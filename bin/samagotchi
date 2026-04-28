@@ -1,0 +1,17 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+$LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
+
+require "optparse"
+require "samagotchi"
+
+options = { mode: "assist" }
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: bin/samagotchi [options]"
+  opts.on("--mode MODE", %w[assist evolve], "Mode: assist (default) or evolve") { |m| options[:mode] = m }
+  opts.on("-h", "--help", "Show help") { puts opts; exit }
+end.parse!
+
+Samagotchi::Agent.new(mode: options[:mode]).run
