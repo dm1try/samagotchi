@@ -87,5 +87,88 @@ RSpec.describe Samagotchi::KernelLoop do
     ensure
       FileUtils.rm_f("/tmp/samagotchi_test_write.txt")
     end
+
+    # ── Native Gemma 4 format ──────────────────────────────────────────────────
+
+    it "dispatches a native execute call and continues the loop" do
+      responses = [
+        %(<|tool_call>call:execute{command: "ruby -e 'puts 7'"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete).and_return(*responses)
+      result = kernel.run([{ role: "user", content: "run ruby" }])
+      expect(result).to eq("done")
+    end
+
+    it "includes native tool results in the follow-up prompt" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? "<|tool_call>call:memory_info{}<tool_call|>" : "done"
+      end
+      kernel.run([{ role: "user", content: "memory?" }])
+      expect(prompts[1]).to include("Tool results")
+      expect(prompts[1]).to include("[memory_info]")
+    end
+
+    it "dispatches a native read call with the correct path" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? %(<|tool_call>call:read{path: "Gemfile"}<tool_call|>) : "ok"
+      end
+      kernel.run([{ role: "user", content: "read gemfile" }])
+      expect(prompts[1]).to include("[read]")
+    end
+
+    it "dispatches a native write call with path and content params" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        if prompts.length == 1
+          %(<|tool_call>call:write{path: "/tmp/native_write_test.txt", content: "hello native"}<tool_call|>)
+        else
+          "written"
+        end
+      end
+      result = kernel.run([{ role: "user", content: "write" }])
+      expect(result).to eq("written")
+      expect(prompts[1]).to include("[write]")
+    ensure
+      FileUtils.rm_f("/tmp/native_write_test.txt")
+    end
+
+    it "handles the exact model output format from the reported issue" do
+      # This is the exact string the model emitted that caused the loop to exit
+      model_output = %(<|channel>thought\n<channel|><|tool_call>call:execute{command: "ls -R"}<tool_call|>)
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? model_output : "finished"
+      end
+      result = kernel.run([{ role: "user", content: "list files" }])
+      expect(result).to eq("finished")
+      expect(prompts[1]).to include("[execute]")
+    end
+
+    it "stops after max_iterations with native tool calls" do
+      call_count = 0
+      allow(client).to receive(:complete) do
+        call_count += 1
+        "<|tool_call>call:memory_info{}<tool_call|>"
+      end
+      kernel.run([{ role: "user", content: "loop" }], max_iterations: 3)
+      expect(call_count).to eq(3)
+    end
+
+    it "returns an error message for unknown native tools" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? "<|tool_call>call:unknown_tool{command: \"hi\"}<tool_call|>" : "OK"
+      end
+      kernel.run([{ role: "user", content: "test" }])
+      expect(prompts[1]).to include("unknown tool")
+    end
   end
 end
