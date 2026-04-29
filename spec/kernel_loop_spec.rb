@@ -9,6 +9,19 @@ RSpec.describe Samagotchi::KernelLoop do
   subject(:kernel) { described_class.new(client: client) }
 
   describe "#run" do
+    it "returns empty string when response is only an unclosed legacy thought block" do
+      allow(client).to receive(:complete).and_return("<|channel>thought")
+      result = kernel.run([{ role: "user", content: "hi" }])
+      expect(result).to eq("")
+    end
+
+    it "strips legacy thought blocks from the final response" do
+      allow(client).to receive(:complete)
+        .and_return("<|channel>thought\nsome internal reasoning\n<channel|>Hello!")
+      result = kernel.run([{ role: "user", content: "hi" }])
+      expect(result).to eq("Hello!")
+    end
+
     it "returns the model response when no tool calls are present" do
       allow(client).to receive(:complete).and_return("Hello!")
       expect(kernel.run([{ role: "user", content: "hi" }])).to eq("Hello!")
@@ -258,6 +271,47 @@ RSpec.describe Samagotchi::KernelLoop do
       end
       kernel.run([{ role: "user", content: "test" }])
       expect(prompts[1]).to include("unknown tool")
+    end
+
+    # ── Unquoted / no-space param values ─────────────────────────────────────
+    # The model sometimes emits {command:ruby -e '...'} without quotes or a
+    # space after the colon.  The harness must strip the "command:" prefix and
+    # execute the real command, not the raw fragment.
+
+    it "strips the 'command:' prefix when the value is unquoted (legacy format)" do
+      # Exact pattern from the reported failure:
+      # call:execute{command:ruby -e 'puts rand(100).to_s'}
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        if prompts.length == 1
+          "<|tool_call>call:execute{command:echo hello}<tool_call|>"
+        else
+          "done"
+        end
+      end
+      kernel.run([{ role: "user", content: "run" }])
+      expect(prompts[1]).to include("stdout:\nhello")
+    end
+
+    it "strips the 'command:' prefix when the value is unquoted (canonical format)" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? "<|tool>declaration:execute{command:echo hello}" : "done"
+      end
+      kernel.run([{ role: "user", content: "run" }])
+      expect(prompts[1]).to include("stdout:\nhello")
+    end
+
+    it "strips the 'path:' prefix when the value is unquoted (read, legacy format)" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? "<|tool_call>call:read{path:Gemfile}<tool_call|>" : "ok"
+      end
+      kernel.run([{ role: "user", content: "read gemfile" }])
+      expect(prompts[1]).to include("[read]")
     end
   end
 

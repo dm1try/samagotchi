@@ -91,7 +91,7 @@ module Samagotchi
         conversation << { role: "user", content: "Tool results:\n#{results}" }
       end
 
-      conversation.last[:content]
+      strip_thought_blocks(conversation.last[:content])
     end
 
     private
@@ -130,12 +130,16 @@ module Samagotchi
                  end
       end
 
-      # Legacy format: strip from <|channel>thought to end of <channel|>
+      # Legacy format: strip from <|channel>thought to end of <channel|>.
+      # If there is no closing tag the entire remainder is the thought block;
+      # strip to EOS (mirrors the canonical <|think|> behaviour above).
       while (open_pos = result.index(THOUGHT_OPEN_LEGACY))
         close_pos = result.index(THOUGHT_CLOSE_LEGACY, open_pos)
-        break unless close_pos
-
-        result = result[0...open_pos] + result[close_pos + THOUGHT_CLOSE_LEGACY.length..]
+        result = if close_pos
+                   result[0...open_pos] + result[close_pos + THOUGHT_CLOSE_LEGACY.length..]
+                 else
+                   result[0...open_pos]
+                 end
       end
 
       result
@@ -217,21 +221,41 @@ module Samagotchi
     # Map native {key: "value"} params to the internal call hash.
     # Uses well-known named params for each tool; falls back to params_raw if
     # no recognised param is present.
+    #
+    # The model sometimes omits quotes and/or the space after the colon, e.g.
+    #   {command:ruby -e 'puts 1'}  instead of  {command: "ruby -e 'puts 1'"}
+    # In that case extract_native_params finds nothing and params_raw still
+    # contains the "key:" prefix. strip_param_prefix removes it so the actual
+    # command/path value is passed to the tool rather than the raw fragment.
     def native_call(name, params_raw)
       params = extract_native_params(params_raw)
 
       case name
       when Tools::Execute::NAME
-        # "command" is the canonical param; fall back to the raw string
-        { name: name, content: params["command"] || params_raw, path: nil }
+        content = params["command"] ||
+                  strip_param_prefix(params_raw, "command") ||
+                  params_raw
+        { name: name, content: content, path: nil }
       when Tools::Read::NAME
-        { name: name, content: params["path"] || params_raw, path: nil }
+        content = params["path"] ||
+                  strip_param_prefix(params_raw, "path") ||
+                  params_raw
+        { name: name, content: content, path: nil }
       when Tools::Write::NAME
         { name: name, content: params["content"] || "", path: params["path"] }
       else
         # For future/unknown tools, pass along whatever the model provided
         { name: name, content: params_raw, path: nil }
       end
+    end
+
+    # Strip a known "key:" or "key: " prefix from a raw params string.
+    # Returns the remainder of the string, or nil if the prefix is absent.
+    # Handles both {command:value} (no space) and {command: value} (space).
+    def strip_param_prefix(params_raw, key)
+      return nil unless params_raw.start_with?("#{key}:")
+
+      params_raw.sub(/\A#{Regexp.escape(key)}:\s*/, "")
     end
 
     # Extract key: "value" / key: 'value' pairs from a native params string.
