@@ -62,15 +62,25 @@ RSpec.describe Samagotchi::Tools::Edit do
     end
 
     it "returns an error when the <old> block is missing" do
-      result = described_class.call("<new>replacement</new>", path: "/tmp/any.txt")
-      expect(result).to include("Error")
-      expect(result).to include("<old>")
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "file.txt")
+        File.write(path, "original content")
+        result = described_class.call("<new>replacement</new>", path: path)
+        expect(result).to include("Error")
+        expect(result).to include("<old>")
+        expect(File.read(path)).to eq("original content")
+      end
     end
 
     it "returns an error when the <new> block is missing" do
-      result = described_class.call("<old>original</old>", path: "/tmp/any.txt")
-      expect(result).to include("Error")
-      expect(result).to include("<new>")
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "file.txt")
+        File.write(path, "original content")
+        result = described_class.call("<old>original</old>", path: path)
+        expect(result).to include("Error")
+        expect(result).to include("<new>")
+        expect(File.read(path)).to eq("original content")
+      end
     end
 
     it "returns an error when <old> is empty" do
