@@ -315,10 +315,19 @@ module Samagotchi
         close_pos = params_raw.index(GEMMA_STRING_DELIM, val_start)
         break unless close_pos
 
-        # Key must be \w+ immediately before the colon and optional whitespace
-        key_match = params_raw[0...delim_pos].match(/(\w+)\s*:\s*\z/)
-        if key_match
-          k = key_match[1]
+        # Extract the key name by scanning backwards: strip trailing whitespace,
+        # expect a colon, then extract trailing word characters — all without
+        # a backtracking regex so there is no polynomial-ReDoS risk.
+        prefix   = params_raw[0...delim_pos].rstrip
+        next search_pos = close_pos + GEMMA_STRING_DELIM.length unless prefix.end_with?(":")
+
+        key_part = prefix[0...-1].rstrip
+        k_end    = key_part.length
+        k_start  = k_end
+        # match? on a single character cannot backtrack
+        k_start -= 1 while k_start > 0 && key_part[k_start - 1].match?(/\w/)
+        if k_start < k_end
+          k = key_part[k_start...k_end]
           params[k] ||= params_raw[val_start...close_pos]
         end
         search_pos = close_pos + GEMMA_STRING_DELIM.length
