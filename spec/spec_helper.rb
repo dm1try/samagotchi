@@ -15,4 +15,8 @@ RSpec.configure do |config|
   config.warnings = true
   config.order = :random
   Kernel.srand config.seed
+
+  config.before(:each, :integration) do
+    skip "Set LLAMA_INTEGRATION=1 to run integration tests" unless ENV["LLAMA_INTEGRATION"] == "1"
+  end
 end
