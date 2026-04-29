@@ -287,7 +287,7 @@ module Samagotchi
                   params_raw
         { name: name, content: strip_gemma_delimiters(content), path: nil }
       when Tools::MemoryWrite::NAME
-        { name: name, content: params["content"] || "", path: params["path"] || params["name"] }
+        { name: name, content: params["content"] || "", path: params["path"] }
       else
         # For future/unknown tools, pass along whatever the model provided
         { name: name, content: strip_gemma_delimiters(params_raw), path: nil }

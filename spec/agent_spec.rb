@@ -43,7 +43,7 @@ RSpec.describe Samagotchi::Agent do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("- **notes**: test notes")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       agent.run
-      expect(received_prompt).to include("Current memory index:")
+      expect(received_prompt).to include("Memories:")
       expect(received_prompt).to include("- **notes**: test notes")
     end
   end

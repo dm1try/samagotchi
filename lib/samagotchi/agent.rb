@@ -144,7 +144,7 @@ module Samagotchi
     # is always aware of stored memories without needing to call a tool first.
     def system_prompt_with_index(base)
       index = Tools::MemoryRead.call("")
-      "#{base}\nCurrent memory index:\n#{index}"
+      "#{base}\nMemories:\n#{index}"
     end
   end
 end
