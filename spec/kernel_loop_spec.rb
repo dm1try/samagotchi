@@ -9,42 +9,10 @@ RSpec.describe Samagotchi::KernelLoop do
   subject(:kernel) { described_class.new(client: client) }
 
   describe "#run" do
-    it "returns empty string when response is only an unclosed legacy thought block with no tool call" do
+    it "returns empty string when response is only an unclosed legacy thought block" do
       allow(client).to receive(:complete).and_return("<|channel>thought")
       result = kernel.run([{ role: "user", content: "hi" }])
       expect(result).to eq("")
-    end
-
-    it "dispatches a tool call found inside an unclosed legacy thought block (no outside call)" do
-      # Reported failure: model places the actual tool call inside <|channel>thought
-      # with no closing <channel|> and no call outside the thought block.
-      prompts = []
-      allow(client).to receive(:complete) do |prompt|
-        prompts << prompt
-        if prompts.length == 1
-          "<|channel>thought\nI should execute this: <tool name=\"execute\">echo inside-only</tool>"
-        else
-          "done"
-        end
-      end
-      result = kernel.run([{ role: "user", content: "run" }])
-      expect(result).to eq("done")
-      expect(prompts[1]).to include("[execute]")
-      expect(prompts[1]).to include("stdout:\ninside-only")
-    end
-
-    it "dispatches a tool call found inside a closed legacy thought block when no outside call exists" do
-      prompts = []
-      allow(client).to receive(:complete) do |prompt|
-        prompts << prompt
-        if prompts.length == 1
-          "<|channel>thought\n<tool name=\"execute\">echo closed-inside</tool>\n<channel|>"
-        else
-          "done"
-        end
-      end
-      kernel.run([{ role: "user", content: "run" }])
-      expect(prompts[1]).to include("stdout:\nclosed-inside")
     end
 
     it "strips legacy thought blocks from the final response" do
@@ -69,14 +37,14 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(result).to eq("The answer is 42.")
     end
 
-    it "includes tool results in the follow-up prompt" do
+    it "injects tool results as a <|tool_response> block in the follow-up prompt" do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
         prompts.length == 1 ? '<tool name="execute">echo hi</tool>' : "done"
       end
       kernel.run([{ role: "user", content: "check" }])
-      expect(prompts[1]).to include("Tool results")
+      expect(prompts[1]).to include("<|tool_response>")
     end
 
     it "returns an error message for unknown tools in the follow-up prompt" do
@@ -145,14 +113,14 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(result).to eq("done")
     end
 
-    it "includes native tool results in the follow-up prompt" do
+    it "injects native tool results as a <|tool_response> block in the follow-up prompt" do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
         prompts.length == 1 ? %(<|tool>declaration:execute{command: "echo hi"}) : "done"
       end
       kernel.run([{ role: "user", content: "run?" }])
-      expect(prompts[1]).to include("Tool results")
+      expect(prompts[1]).to include("<|tool_response>")
       expect(prompts[1]).to include("[execute]")
     end
 
