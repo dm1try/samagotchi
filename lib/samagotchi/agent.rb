@@ -54,12 +54,15 @@ module Samagotchi
       Begin by reading your source files and deciding what to add or improve.
     SYS
 
-    def initialize(mode:, client: nil, verbose: false)
+    def initialize(mode:, prompt: nil, client: nil, verbose: false)
       @mode   = mode.to_sym
+      @prompt = prompt
       @kernel = KernelLoop.new(client: client, verbose: verbose)
     end
 
     def run
+      return prompt_mode if @prompt
+
       case @mode
       when :assist then assist_loop
       when :evolve then evolve_loop
@@ -68,6 +71,14 @@ module Samagotchi
     end
 
     private
+
+    def prompt_mode
+      messages = [
+        { role: "system", content: SYSTEM_ASSIST },
+        { role: "user",   content: @prompt }
+      ]
+      $stdout.puts @kernel.run(messages)
+    end
 
     def assist_loop
       $stdout.puts banner("assist")

@@ -11,8 +11,9 @@ options = { mode: "assist", verbose: false }
 OptionParser.new do |opts|
   opts.banner = "Usage: bin/samagotchi [options]"
   opts.on("--mode MODE", %w[assist evolve], "Mode: assist (default) or evolve") { |m| options[:mode] = m }
+  opts.on("-p", "--prompt PROMPT", "Run a single prompt and exit") { |p| options[:prompt] = p }
   opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results") { options[:verbose] = true }
   opts.on("-h", "--help", "Show help") { puts opts; exit }
 end.parse!
 
-Samagotchi::Agent.new(mode: options[:mode], verbose: options[:verbose]).run
+Samagotchi::Agent.new(mode: options[:mode], prompt: options[:prompt], verbose: options[:verbose]).run
