@@ -42,8 +42,9 @@ module Samagotchi
     NATIVE_CLOSE     = "<tool_call|>"
     NATIVE_CALL_RE   = /\Acall:([a-z_]{1,50})\{/
 
-    def initialize(client: nil)
-      @client = client || Client.new
+    def initialize(client: nil, verbose: false)
+      @client  = client || Client.new
+      @verbose = verbose
     end
 
     # Run the conversation loop and return the final model response text.
@@ -57,6 +58,7 @@ module Samagotchi
       max_iterations.times do
         prompt   = Prompt.format(conversation)
         response = @client.complete(prompt)
+        verbose_log("── LLM response ──\n#{response}\n──────────────────")
         conversation << { role: "model", content: response }
 
         calls = parse_tool_calls(response)
@@ -70,6 +72,12 @@ module Samagotchi
     end
 
     private
+
+    def verbose_log(message)
+      return unless @verbose
+
+      $stderr.puts "\n[verbose] #{message}"
+    end
 
     # Combines XML and native Gemma 4 tool-call parsers so the harness works
     # regardless of which format the model naturally emits.
@@ -166,14 +174,18 @@ module Samagotchi
         return "Error: unknown tool '#{call[:name]}'. Available: #{available}"
       end
 
+      verbose_log("── tool call: #{call[:name]} ──\n#{call[:path] ? "path: #{call[:path]}\n" : ""}#{call[:content]}\n──────────────────")
+
       result = if call[:name] == Tools::Write::NAME && call[:path]
                  tool.call(call[:content], path: call[:path])
                else
                  tool.call(call[:content])
                end
 
+      verbose_log("── tool result: #{call[:name]} ──\n#{result}\n──────────────────")
       "[#{call[:name]}]\n#{result}"
     rescue => e
+      verbose_log("── tool error: #{call[:name]} ──\n#{e.message}\n──────────────────")
       "[#{call[:name]}] Error: #{e.message}"
     end
   end
