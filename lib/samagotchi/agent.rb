@@ -24,6 +24,11 @@ module Samagotchi
         <tool name="write" path="path/to/file">content</tool>
             Write content to a file (parent directories created automatically).
 
+        <tool name="edit" path="path/to/file"><old>exact text to replace</old><new>replacement text</new></tool>
+            Replace an exact block of text in an existing file.
+            The <old> block must appear exactly once.  Use this instead of write
+            when you only need to change one region of a large file.
+
       You may use multiple tools in one response. After seeing tool results, continue reasoning or answer the user.
     SYS
 
@@ -35,6 +40,7 @@ module Samagotchi
         <tool name="execute">shell command</tool>       — run ruby, bundle exec rspec, or any shell command
         <tool name="read">path/to/file</tool>           — read a source file
         <tool name="write" path="path">content</tool>   — write/overwrite a file
+        <tool name="edit" path="path"><old>old text</old><new>new text</new></tool>  — replace exact text in a file
 
       Source layout:
         bin/samagotchi                 CLI entry point
@@ -50,6 +56,8 @@ module Samagotchi
         2. Require it in lib/samagotchi/kernel_loop.rb and add to TOOLS
         3. Write spec/tools/<name>_spec.rb
         4. Validate: <tool name="execute">bundle exec rspec spec/tools/<name>_spec.rb --no-color</tool>
+
+      Prefer <tool name="edit"> over <tool name="write"> when changing a small section of a large file.
 
       Begin by reading your source files and deciding what to add or improve.
     SYS
