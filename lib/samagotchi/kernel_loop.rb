@@ -91,7 +91,7 @@ module Samagotchi
         conversation << { role: "user", content: "Tool results:\n#{results}" }
       end
 
-      conversation.last[:content]
+      strip_thought_blocks(conversation.last[:content])
     end
 
     private
@@ -130,12 +130,16 @@ module Samagotchi
                  end
       end
 
-      # Legacy format: strip from <|channel>thought to end of <channel|>
+      # Legacy format: strip from <|channel>thought to end of <channel|>.
+      # If there is no closing tag the entire remainder is the thought block;
+      # strip to EOS (mirrors the canonical <|think|> behaviour above).
       while (open_pos = result.index(THOUGHT_OPEN_LEGACY))
         close_pos = result.index(THOUGHT_CLOSE_LEGACY, open_pos)
-        break unless close_pos
-
-        result = result[0...open_pos] + result[close_pos + THOUGHT_CLOSE_LEGACY.length..]
+        result = if close_pos
+                   result[0...open_pos] + result[close_pos + THOUGHT_CLOSE_LEGACY.length..]
+                 else
+                   result[0...open_pos]
+                 end
       end
 
       result
@@ -251,7 +255,7 @@ module Samagotchi
     def strip_param_prefix(params_raw, key)
       return nil unless params_raw.start_with?("#{key}:")
 
-      params_raw.sub(/\A#{Regexp.escape(key)}:\s*/, "").strip
+      params_raw.sub(/\A#{Regexp.escape(key)}:\s*/, "")
     end
 
     # Extract key: "value" / key: 'value' pairs from a native params string.

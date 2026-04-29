@@ -9,6 +9,19 @@ RSpec.describe Samagotchi::KernelLoop do
   subject(:kernel) { described_class.new(client: client) }
 
   describe "#run" do
+    it "returns empty string when response is only an unclosed legacy thought block" do
+      allow(client).to receive(:complete).and_return("<|channel>thought")
+      result = kernel.run([{ role: "user", content: "hi" }])
+      expect(result).to eq("")
+    end
+
+    it "strips legacy thought blocks from the final response" do
+      allow(client).to receive(:complete)
+        .and_return("<|channel>thought\nsome internal reasoning\n<channel|>Hello!")
+      result = kernel.run([{ role: "user", content: "hi" }])
+      expect(result).to eq("Hello!")
+    end
+
     it "returns the model response when no tool calls are present" do
       allow(client).to receive(:complete).and_return("Hello!")
       expect(kernel.run([{ role: "user", content: "hi" }])).to eq("Hello!")
