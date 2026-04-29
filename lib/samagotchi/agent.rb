@@ -33,6 +33,11 @@ module Samagotchi
             Write or update a memory entry in the memories directory (memories/<entry_name>.md).
             Use path="index" to update memories/index.md.
 
+        <tool name="edit" path="path/to/file"><old>exact text to replace</old><new>replacement text</new></tool>
+            Replace an exact block of text in an existing file.
+            The <old> block must appear exactly once.  Use this instead of write
+            when you only need to change one region of a large file.
+
       Memory convention:
         memories/index.md  — the memory index: one line per entry with a short description and
                              the entry name, e.g. "- **ruby_style**: preferred Ruby style guide notes"
@@ -53,6 +58,7 @@ module Samagotchi
         <tool name="write" path="path">content</tool>   — write/overwrite a file
         <tool name="memory_read">entry_name</tool>      — read a memory entry (memories/<entry_name>.md); blank reads the index
         <tool name="memory_write" path="entry_name">content</tool> — write/update a memory entry; path="index" updates the index
+        <tool name="edit" path="path"><old>old text</old><new>new text</new></tool>  — replace exact text in a file
 
       Source layout:
         bin/samagotchi                 CLI entry point
@@ -75,6 +81,8 @@ module Samagotchi
         2. Require it in lib/samagotchi/kernel_loop.rb and add to TOOLS
         3. Write spec/tools/<name>_spec.rb
         4. Validate: <tool name="execute">bundle exec rspec spec/tools/<name>_spec.rb --no-color</tool>
+
+      Prefer <tool name="edit"> over <tool name="write"> when changing a small section of a large file.
 
       Begin by reading your source files and deciding what to add or improve.
     SYS
