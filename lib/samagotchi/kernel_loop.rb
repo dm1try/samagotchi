@@ -5,6 +5,7 @@ require_relative "client"
 require_relative "tools/execute"
 require_relative "tools/read"
 require_relative "tools/write"
+require_relative "tools/memory"
 
 module Samagotchi
   # The KernelLoop drives the model ↔ tool interaction cycle.
@@ -34,7 +35,9 @@ module Samagotchi
     TOOLS = [
       Tools::Execute,
       Tools::Read,
-      Tools::Write
+      Tools::Write,
+      Tools::MemoryRead,
+      Tools::MemoryWrite
     ].freeze
 
     # ── XML format constants ───────────────────────────────────────────────────
@@ -278,6 +281,13 @@ module Samagotchi
         { name: name, content: strip_gemma_delimiters(content), path: nil }
       when Tools::Write::NAME
         { name: name, content: params["content"] || "", path: params["path"] }
+      when Tools::MemoryRead::NAME
+        content = params["name"] ||
+                  strip_param_prefix(params_raw, "name") ||
+                  params_raw
+        { name: name, content: strip_gemma_delimiters(content), path: nil }
+      when Tools::MemoryWrite::NAME
+        { name: name, content: params["content"] || "", path: params["path"] || params["name"] }
       else
         # For future/unknown tools, pass along whatever the model provided
         { name: name, content: strip_gemma_delimiters(params_raw), path: nil }
@@ -357,7 +367,7 @@ module Samagotchi
 
       verbose_log("── tool call: #{call[:name]} ──\n#{call[:path] ? "path: #{call[:path]}\n" : ""}#{call[:content]}\n──────────────────")
 
-      result = if call[:name] == Tools::Write::NAME && call[:path]
+      result = if [Tools::Write::NAME, Tools::MemoryWrite::NAME].include?(call[:name]) && call[:path]
                  tool.call(call[:content], path: call[:path])
                else
                  tool.call(call[:content])

@@ -24,6 +24,13 @@ module Samagotchi
         <tool name="write" path="path/to/file">content</tool>
             Write content to a file (parent directories created automatically).
 
+        <tool name="memory_read">entry_name</tool>
+            Read a memory entry from the memories directory (memories/<entry_name>.md).
+            Leave blank to list all stored memories.
+
+        <tool name="memory_write" path="entry_name">content</tool>
+            Write or update a memory entry in the memories directory (memories/<entry_name>.md).
+
       You may use multiple tools in one response. After seeing tool results, continue reasoning or answer the user.
     SYS
 
@@ -35,6 +42,8 @@ module Samagotchi
         <tool name="execute">shell command</tool>       — run ruby, bundle exec rspec, or any shell command
         <tool name="read">path/to/file</tool>           — read a source file
         <tool name="write" path="path">content</tool>   — write/overwrite a file
+        <tool name="memory_read">entry_name</tool>      — read a memory entry (memories/<entry_name>.md); blank to list all
+        <tool name="memory_write" path="entry_name">content</tool> — write/update a memory entry
 
       Source layout:
         bin/samagotchi                 CLI entry point
@@ -43,6 +52,7 @@ module Samagotchi
         lib/samagotchi/kernel_loop.rb  Tool-dispatch loop (add new tools here)
         lib/samagotchi/agent.rb        Role logic (this file)
         lib/samagotchi/tools/          Individual tool implementations
+        memories/                      Persistent memory entries (MD files)
         spec/                          RSpec test suite
 
       Workflow for adding a new tool:
