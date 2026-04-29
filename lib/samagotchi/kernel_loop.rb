@@ -54,11 +54,11 @@ module Samagotchi
     NATIVE_CALL_RE_LEGACY  = /\Acall:([a-z_]{1,50})\{/
 
     # ── Gemma 4 thought-channel stripping (canonical) ─────────────────────────
-    # <|think|> opens a private reasoning block; it ends at the next <| token
-    # or end of string. Both delimiters are used as plain strings (no regex) to
-    # avoid any backtracking risk on adversarial input.
-    THOUGHT_OPEN       = "<|think|>"
-    THOUGHT_NEXT_TOKEN = "<|"
+    # <|think|> opens a private reasoning block; it ends at the next <| control
+    # token or end of string. Both delimiters are used as plain strings (no
+    # regex) to avoid any backtracking risk on adversarial input.
+    THOUGHT_OPEN        = "<|think|>"
+    CONTROL_TOKEN_START = "<|"
 
     # ── Gemma 4 thought-channel stripping (legacy fallback) ───────────────────
     # Older model checkpoints emit <|channel>thought...<channel|> blocks.
@@ -114,7 +114,7 @@ module Samagotchi
       # Canonical format: strip from <|think|> to the next <| (exclusive) or EOS
       while (open_pos = result.index(THOUGHT_OPEN))
         body_start = open_pos + THOUGHT_OPEN.length
-        close_pos  = result.index(THOUGHT_NEXT_TOKEN, body_start)
+        close_pos  = result.index(CONTROL_TOKEN_START, body_start)
         result = if close_pos
                    result[0...open_pos] + result[close_pos..]
                  else
@@ -167,9 +167,7 @@ module Samagotchi
       pos = 0
       while (open_pos = text.index(NATIVE_OPEN, pos))
         body_start = open_pos + NATIVE_OPEN.length
-        nl_pos     = text.index("\n", body_start)
-        token_pos  = text.index(THOUGHT_NEXT_TOKEN, body_start)
-        close_pos  = [nl_pos, token_pos].compact.min || text.length
+        close_pos  = native_call_end(text, body_start)
         body = text[body_start...close_pos]
         if (m = NATIVE_CALL_RE.match(body))
           name       = m[1]
@@ -198,6 +196,14 @@ module Samagotchi
       end
 
       results
+    end
+
+    # Find the end position of a canonical <|tool> call body starting at +start+.
+    # The body is terminated by a newline, the next <| control token, or EOS.
+    def native_call_end(text, start)
+      nl_pos    = text.index("\n", start)
+      token_pos = text.index(CONTROL_TOKEN_START, start)
+      [nl_pos, token_pos].compact.min || text.length
     end
 
     # Map native {key: "value"} params to the internal call hash.

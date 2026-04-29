@@ -151,6 +151,18 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(prompts[1]).to include("[execute]")
     end
 
+    it "handles the canonical equivalent: thought block immediately followed by a tool call" do
+      model_output = %(<|think|>\n<|tool>declaration:execute{command: "ls -R"})
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? model_output : "finished"
+      end
+      result = kernel.run([{ role: "user", content: "list files" }])
+      expect(result).to eq("finished")
+      expect(prompts[1]).to include("[execute]")
+    end
+
     it "does not execute tool calls embedded inside thought blocks" do
       # The model mentions a tool call with extra/wrong params inside its thought,
       # then emits the real call outside. Only the real call should be dispatched.
