@@ -313,6 +313,78 @@ RSpec.describe Samagotchi::KernelLoop do
       kernel.run([{ role: "user", content: "read gemfile" }])
       expect(prompts[1]).to include("[read]")
     end
+
+    # ── Gemma 4 <|"|> string delimiter ────────────────────────────────────────
+    # Gemma 4 uses <|"|> as a delimiter for string values.  The harness must
+    # not treat the <| part as a control-token boundary and must strip the
+    # delimiter tokens so clean values reach the tools.
+
+    it "parses a native execute call with Gemma string delimiters around the value (canonical)" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        # Model emits: command:<|"|>echo hello<|"|>
+        prompts.length == 1 ? %(<|tool>declaration:execute{command:<|"|>echo hello<|"|>}) : "done"
+      end
+      kernel.run([{ role: "user", content: "run" }])
+      expect(prompts[1]).to include("stdout:\nhello")
+    end
+
+    it "parses a native execute call with Gemma string delimiters (legacy format)" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? %(<|tool_call>call:execute{command:<|"|>echo hello<|"|>}<tool_call|>) : "done"
+      end
+      kernel.run([{ role: "user", content: "run" }])
+      expect(prompts[1]).to include("stdout:\nhello")
+    end
+
+    it "parses a native read call with Gemma string delimiters" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? %(<|tool>declaration:read{path:<|"|>Gemfile<|"|>}) : "ok"
+      end
+      kernel.run([{ role: "user", content: "read gemfile" }])
+      expect(prompts[1]).to include("[read]")
+    end
+
+    it "strips Gemma string delimiters from XML tool call content" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? %(<tool name="execute"><|"|>echo hello<|"|></tool>) : "done"
+      end
+      kernel.run([{ role: "user", content: "run" }])
+      expect(prompts[1]).to include("stdout:\nhello")
+    end
+
+    it "does not cut canonical tool call body at the <| inside a Gemma string delimiter" do
+      # If native_call_end incorrectly treats <|"|> as a control-token boundary
+      # the body would be cut to "declaration:execute{command:" and the command
+      # would arrive empty.  The correct body includes the full value.
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? %(<|tool>declaration:execute{command:<|"|>echo boundary<|"|>}) : "done"
+      end
+      kernel.run([{ role: "user", content: "run" }])
+      expect(prompts[1]).to include("stdout:\nboundary")
+    end
+
+    it "does not cut canonical thought block at a <| inside a Gemma string delimiter" do
+      # A thought block that contains a <|"|> token must not be prematurely
+      # closed at that token — the real <|tool> after it must still be parsed.
+      model_output = %(<|think|>use <|"|>value<|"|> form\n<|tool>declaration:execute{command: "echo after-thought"})
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? model_output : "done"
+      end
+      kernel.run([{ role: "user", content: "run" }])
+      expect(prompts[1]).to include("stdout:\nafter-thought")
+    end
   end
 
   describe "verbose mode" do
