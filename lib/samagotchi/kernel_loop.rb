@@ -291,6 +291,8 @@ module Samagotchi
                   params_raw
         { name: name, content: strip_gemma_delimiters(content), path: nil }
       when Tools::MemoryWrite::NAME
+        # New declaration uses "name"; legacy XML/fallback uses "path". path: key
+        # is what dispatch passes to MemoryWrite.call(content, path:).
         entry_name = params["name"] || params["path"] || ""
         { name: name, content: params["content"] || "", path: entry_name }
       when Tools::Edit::NAME
