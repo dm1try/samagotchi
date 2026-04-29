@@ -2,14 +2,13 @@
 
 require "samagotchi/tools/memory"
 require "tmpdir"
+require "fileutils"
 
 RSpec.describe Samagotchi::Tools::MemoryRead do
-  around do |example|
-    Dir.mktmpdir do |dir|
-      stub_const("Samagotchi::Tools::MEMORIES_DIR", dir)
-      example.run
-    end
-  end
+  let(:memories_dir) { Dir.mktmpdir }
+
+  before { stub_const("Samagotchi::Tools::MEMORIES_DIR", memories_dir) }
+  after  { FileUtils.rm_rf(memories_dir) }
 
   describe ".name" do
     it "is 'memory_read'" do
@@ -19,8 +18,7 @@ RSpec.describe Samagotchi::Tools::MemoryRead do
 
   describe ".call" do
     it "reads an existing memory entry" do
-      dir = Samagotchi::Tools::MEMORIES_DIR
-      File.write(File.join(dir, "notes.md"), "# Notes\nRemember this.")
+      File.write(File.join(memories_dir, "notes.md"), "# Notes\nRemember this.")
       expect(described_class.call("notes")).to eq("# Notes\nRemember this.")
     end
 
@@ -29,22 +27,19 @@ RSpec.describe Samagotchi::Tools::MemoryRead do
     end
 
     it "strips whitespace from entry name" do
-      dir = Samagotchi::Tools::MEMORIES_DIR
-      File.write(File.join(dir, "padded.md"), "content")
+      File.write(File.join(memories_dir, "padded.md"), "content")
       expect(described_class.call("  padded  ")).to eq("content")
     end
 
     context "when called with a blank name" do
       it "returns the index file contents when index.md exists" do
-        dir = Samagotchi::Tools::MEMORIES_DIR
-        File.write(File.join(dir, "index.md"), "- **notes**: project notes")
+        File.write(File.join(memories_dir, "index.md"), "- **notes**: project notes")
         expect(described_class.call("")).to eq("- **notes**: project notes")
       end
 
       it "falls back to a file listing when index.md does not exist" do
-        dir = Samagotchi::Tools::MEMORIES_DIR
-        File.write(File.join(dir, "alpha.md"), "a")
-        File.write(File.join(dir, "beta.md"), "b")
+        File.write(File.join(memories_dir, "alpha.md"), "a")
+        File.write(File.join(memories_dir, "beta.md"), "b")
         result = described_class.call("")
         expect(result).to include("alpha")
         expect(result).to include("beta")
@@ -59,12 +54,10 @@ RSpec.describe Samagotchi::Tools::MemoryRead do
 end
 
 RSpec.describe Samagotchi::Tools::MemoryWrite do
-  around do |example|
-    Dir.mktmpdir do |dir|
-      stub_const("Samagotchi::Tools::MEMORIES_DIR", dir)
-      example.run
-    end
-  end
+  let(:memories_dir) { Dir.mktmpdir }
+
+  before { stub_const("Samagotchi::Tools::MEMORIES_DIR", memories_dir) }
+  after  { FileUtils.rm_rf(memories_dir) }
 
   describe ".name" do
     it "is 'memory_write'" do
@@ -76,15 +69,13 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
     it "writes a memory entry and reports success" do
       result = described_class.call("# My Memory\nSome content.", path: "my_memory")
       expect(result).to include("my_memory")
-      path = File.join(Samagotchi::Tools::MEMORIES_DIR, "my_memory.md")
-      expect(File.read(path)).to eq("# My Memory\nSome content.")
+      expect(File.read(File.join(memories_dir, "my_memory.md"))).to eq("# My Memory\nSome content.")
     end
 
     it "overwrites an existing memory entry" do
-      dir = Samagotchi::Tools::MEMORIES_DIR
-      File.write(File.join(dir, "old.md"), "original")
+      File.write(File.join(memories_dir, "old.md"), "original")
       described_class.call("updated", path: "old")
-      expect(File.read(File.join(dir, "old.md"))).to eq("updated")
+      expect(File.read(File.join(memories_dir, "old.md"))).to eq("updated")
     end
 
     it "returns an error when path is blank" do
@@ -100,8 +91,7 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
     it "writes the index file when path is 'index'" do
       result = described_class.call("- **notes**: project notes", path: "index")
       expect(result).to include("index")
-      index_path = File.join(Samagotchi::Tools::MEMORIES_DIR, "index.md")
-      expect(File.read(index_path)).to eq("- **notes**: project notes")
+      expect(File.read(File.join(memories_dir, "index.md"))).to eq("- **notes**: project notes")
     end
   end
 end

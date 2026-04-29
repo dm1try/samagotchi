@@ -118,9 +118,16 @@ module Samagotchi
     # Thought blocks (<|think|> canonical or <|channel>thought legacy) are
     # stripped first so that tool-call examples written in internal reasoning
     # are not inadvertently dispatched.
+    # Fallback: if no calls are found outside thought blocks, the raw text is
+    # also searched — some model variants place the actual tool call inside the
+    # thought channel rather than after it.
     def parse_tool_calls(text)
       cleaned = strip_thought_blocks(text)
-      parse_xml_tool_calls(cleaned) + parse_native_tool_calls(cleaned)
+      calls = parse_xml_tool_calls(cleaned) + parse_native_tool_calls(cleaned)
+      return calls unless calls.empty?
+
+      # Fallback: nothing found outside thought blocks — try the full raw text.
+      parse_xml_tool_calls(text) + parse_native_tool_calls(text)
     end
 
     # Remove thought blocks from model output. Two formats are handled:
