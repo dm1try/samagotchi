@@ -24,9 +24,6 @@ module Samagotchi
         <tool name="write" path="path/to/file">content</tool>
             Write content to a file (parent directories created automatically).
 
-        <tool name="memory_info"></tool>
-            Show Ruby process RSS memory and GC statistics.
-
       You may use multiple tools in one response. After seeing tool results, continue reasoning or answer the user.
     SYS
 
@@ -38,7 +35,6 @@ module Samagotchi
         <tool name="execute">shell command</tool>       — run ruby, bundle exec rspec, or any shell command
         <tool name="read">path/to/file</tool>           — read a source file
         <tool name="write" path="path">content</tool>   — write/overwrite a file
-        <tool name="memory_info"></tool>                 — process memory and GC stats
 
       Source layout:
         bin/samagotchi                 CLI entry point

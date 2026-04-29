@@ -28,9 +28,9 @@ RSpec.describe Samagotchi::KernelLoop do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
-        prompts.length == 1 ? '<tool name="memory_info"></tool>' : "done"
+        prompts.length == 1 ? '<tool name="execute">echo hi</tool>' : "done"
       end
-      kernel.run([{ role: "user", content: "check memory" }])
+      kernel.run([{ role: "user", content: "check" }])
       expect(prompts[1]).to include("Tool results")
     end
 
@@ -48,7 +48,7 @@ RSpec.describe Samagotchi::KernelLoop do
       call_count = 0
       allow(client).to receive(:complete) do
         call_count += 1
-        '<tool name="memory_info"></tool>'
+        '<tool name="execute">echo loop</tool>'
       end
       kernel.run([{ role: "user", content: "loop" }], max_iterations: 3)
       expect(call_count).to eq(3)
@@ -63,7 +63,7 @@ RSpec.describe Samagotchi::KernelLoop do
 
     it "handles multiple tool calls in a single response" do
       responses = [
-        '<tool name="memory_info"></tool><tool name="memory_info"></tool>',
+        '<tool name="execute">echo one</tool><tool name="execute">echo two</tool>',
         "done"
       ]
       allow(client).to receive(:complete).and_return(*responses)
@@ -104,11 +104,11 @@ RSpec.describe Samagotchi::KernelLoop do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
-        prompts.length == 1 ? "<|tool_call>call:memory_info{}<tool_call|>" : "done"
+        prompts.length == 1 ? %(<|tool_call>call:execute{command: "echo hi"}<tool_call|>) : "done"
       end
-      kernel.run([{ role: "user", content: "memory?" }])
+      kernel.run([{ role: "user", content: "run?" }])
       expect(prompts[1]).to include("Tool results")
-      expect(prompts[1]).to include("[memory_info]")
+      expect(prompts[1]).to include("[execute]")
     end
 
     it "dispatches a native read call with the correct path" do
@@ -155,7 +155,7 @@ RSpec.describe Samagotchi::KernelLoop do
       call_count = 0
       allow(client).to receive(:complete) do
         call_count += 1
-        "<|tool_call>call:memory_info{}<tool_call|>"
+        %(<|tool_call>call:execute{command: "echo loop"}<tool_call|>)
       end
       kernel.run([{ role: "user", content: "loop" }], max_iterations: 3)
       expect(call_count).to eq(3)

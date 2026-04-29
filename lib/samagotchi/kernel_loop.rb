@@ -5,7 +5,6 @@ require_relative "client"
 require_relative "tools/execute"
 require_relative "tools/read"
 require_relative "tools/write"
-require_relative "tools/memory_info"
 
 module Samagotchi
   # The KernelLoop drives the model ↔ tool interaction cycle.
@@ -21,19 +20,16 @@ module Samagotchi
   #   <tool name="execute">bundle exec rspec spec/</tool>
   #   <tool name="read">lib/samagotchi/prompt.rb</tool>
   #   <tool name="write" path="lib/samagotchi/tools/foo.rb">content</tool>
-  #   <tool name="memory_info"></tool>
   #
   # Native Gemma 4 syntax (emitted by the model naturally):
   #   <|tool_call>call:execute{command: "bundle exec rspec spec/"}<tool_call|>
   #   <|tool_call>call:read{path: "lib/samagotchi/prompt.rb"}<tool_call|>
   #   <|tool_call>call:write{path: "lib/foo.rb", content: "..."}<tool_call|>
-  #   <|tool_call>call:memory_info{}<tool_call|>
   class KernelLoop
     TOOLS = [
       Tools::Execute,
       Tools::Read,
-      Tools::Write,
-      Tools::MemoryInfo
+      Tools::Write
     ].freeze
 
     # ── XML format constants ───────────────────────────────────────────────────
@@ -139,8 +135,6 @@ module Samagotchi
         { name: name, content: params["path"] || params_raw, path: nil }
       when Tools::Write::NAME
         { name: name, content: params["content"] || "", path: params["path"] }
-      when Tools::MemoryInfo::NAME
-        { name: name, content: "", path: nil }
       else
         # For future/unknown tools, pass along whatever the model provided
         { name: name, content: params_raw, path: nil }
