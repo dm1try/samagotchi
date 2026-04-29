@@ -53,10 +53,18 @@ module Samagotchi
     NATIVE_CLOSE_LEGACY    = "<tool_call|>"
     NATIVE_CALL_RE_LEGACY  = /\Acall:([a-z_]{1,50})\{/
 
+    # ── Gemma 4 string delimiter ──────────────────────────────────────────────
+    # Gemma 4 uses <|"|> as a delimiter token for all string values in its
+    # structured data blocks (function calls, responses, etc.).  The harness
+    # must NOT mistake the <| in this token for a real control-token boundary,
+    # and must strip/translate these delimiters when extracting parameter values.
+    GEMMA_STRING_DELIM = '<|"|>'
+
     # ── Gemma 4 thought-channel stripping (canonical) ─────────────────────────
     # <|think|> opens a private reasoning block; it ends at the next <| control
-    # token or end of string. Both delimiters are used as plain strings (no
-    # regex) to avoid any backtracking risk on adversarial input.
+    # token (that is not the Gemma string delimiter) or end of string.  Both
+    # delimiters are used as plain strings (no regex) to avoid any backtracking
+    # risk on adversarial input.
     THOUGHT_OPEN        = "<|think|>"
     CONTROL_TOKEN_START = "<|"
 
@@ -113,16 +121,17 @@ module Samagotchi
     end
 
     # Remove thought blocks from model output. Two formats are handled:
-    #   Canonical: <|think|>CONTENT — ends at the next <| control token or EOS.
+    #   Canonical: <|think|>CONTENT — ends at the next real <| control token
+    #              (skipping any <|"|> Gemma string-delimiter tokens) or EOS.
     #   Legacy:    <|channel>thought...CONTENT...<channel|>
     # Uses String#index (no regex backtracking) to safely handle large inputs.
     def strip_thought_blocks(text)
       result = text
 
-      # Canonical format: strip from <|think|> to the next <| (exclusive) or EOS
+      # Canonical format: strip from <|think|> to the next real <| (exclusive) or EOS
       while (open_pos = result.index(THOUGHT_OPEN))
         body_start = open_pos + THOUGHT_OPEN.length
-        close_pos  = result.index(CONTROL_TOKEN_START, body_start)
+        close_pos  = next_real_control_token(result, body_start)
         result = if close_pos
                    result[0...open_pos] + result[close_pos..]
                  else
@@ -159,7 +168,7 @@ module Samagotchi
         close   = text.index(TOOL_CLOSE, start)
         break unless close
 
-        content = text[start...close].strip
+        content = strip_gemma_delimiters(text[start...close].strip)
         results << { name: name, path: path, content: content } if name
         pos = close + TOOL_CLOSE.length
       end
@@ -211,11 +220,33 @@ module Samagotchi
     end
 
     # Find the end position of a canonical <|tool> call body starting at +start+.
-    # The body is terminated by a newline, the next <| control token, or EOS.
+    # The body is terminated by a newline, the next real <| control token (i.e.
+    # NOT the Gemma string delimiter <|"|>), or EOS.
     def native_call_end(text, start)
       nl_pos    = text.index("\n", start)
-      token_pos = text.index(CONTROL_TOKEN_START, start)
+      token_pos = next_real_control_token(text, start)
       [nl_pos, token_pos].compact.min || text.length
+    end
+
+    # Scan forward from +start+ for the next <| sequence that is NOT the Gemma
+    # string delimiter <|"|>.  Returns the position of that <| or nil if none.
+    def next_real_control_token(text, start)
+      pos = start
+      while (p = text.index(CONTROL_TOKEN_START, pos))
+        # Skip over a <|"|> token entirely
+        if text[p, GEMMA_STRING_DELIM.length] == GEMMA_STRING_DELIM
+          pos = p + GEMMA_STRING_DELIM.length
+        else
+          return p
+        end
+      end
+      nil
+    end
+
+    # Strip all occurrences of the Gemma string-delimiter token from +str+.
+    # Used to clean up bare values that use <|"|> as quoting.
+    def strip_gemma_delimiters(str)
+      str.gsub(GEMMA_STRING_DELIM, "")
     end
 
     # Map native {key: "value"} params to the internal call hash.
@@ -227,6 +258,10 @@ module Samagotchi
     # In that case extract_native_params finds nothing and params_raw still
     # contains the "key:" prefix. strip_param_prefix removes it so the actual
     # command/path value is passed to the tool rather than the raw fragment.
+    #
+    # Gemma 4 may also use its <|"|> string delimiter token instead of plain
+    # quotes. strip_gemma_delimiters is applied to all fallback values so that
+    # <|"|>value<|"|> is cleaned to just "value" before being dispatched.
     def native_call(name, params_raw)
       params = extract_native_params(params_raw)
 
@@ -235,17 +270,17 @@ module Samagotchi
         content = params["command"] ||
                   strip_param_prefix(params_raw, "command") ||
                   params_raw
-        { name: name, content: content, path: nil }
+        { name: name, content: strip_gemma_delimiters(content), path: nil }
       when Tools::Read::NAME
         content = params["path"] ||
                   strip_param_prefix(params_raw, "path") ||
                   params_raw
-        { name: name, content: content, path: nil }
+        { name: name, content: strip_gemma_delimiters(content), path: nil }
       when Tools::Write::NAME
         { name: name, content: params["content"] || "", path: params["path"] }
       else
         # For future/unknown tools, pass along whatever the model provided
-        { name: name, content: params_raw, path: nil }
+        { name: name, content: strip_gemma_delimiters(params_raw), path: nil }
       end
     end
 
@@ -258,9 +293,11 @@ module Samagotchi
       params_raw.sub(/\A#{Regexp.escape(key)}:\s*/, "")
     end
 
-    # Extract key: "value" / key: 'value' pairs from a native params string.
+    # Extract key: "value" / key: 'value' / key:<|"|>value<|"|> pairs from a
+    # native params string.
     # Atomic groups (?>…) prevent ReDoS on adversarial inputs.
-    # Both quote styles are always scanned; double-quoted values take precedence.
+    # Both quote styles and the Gemma 4 delimiter are always scanned;
+    # double-quoted values take precedence.
     def extract_native_params(params_raw)
       params = {}
       params_raw.scan(/(\w+):\s*"((?>[^"\\]|\\.)*)"/) do |k, v|
@@ -268,6 +305,10 @@ module Samagotchi
       end
       params_raw.scan(/(\w+):\s*'((?>[^'\\]|\\.)*)'/) do |k, v|
         params[k] ||= unescape_native_value(v)
+      end
+      # Gemma 4 string delimiter: key:<|"|>value<|"|>
+      params_raw.scan(/(\w+):\s*<\|"\|>((?:(?!<\|"\|>).)*)<\|"\|>/m) do |k, v|
+        params[k] ||= v
       end
       params
     end
