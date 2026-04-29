@@ -42,6 +42,13 @@ module Samagotchi
     NATIVE_CLOSE     = "<tool_call|>"
     NATIVE_CALL_RE   = /\Acall:([a-z_]{1,50})\{/
 
+    # ── Gemma 4 thought-channel stripping ─────────────────────────────────────
+    # Gemma 4 can emit <|channel>thought...reasoning...<channel|> blocks for
+    # internal chain-of-thought. These blocks must be removed before parsing
+    # tool calls so that any tool-call examples the model mentions in its
+    # reasoning are not inadvertently executed.
+    THOUGHT_BLOCK_RE = /<\|channel>thought.*?<channel\|>/m
+
     def initialize(client: nil)
       @client = client || Client.new
     end
@@ -73,8 +80,16 @@ module Samagotchi
 
     # Combines XML and native Gemma 4 tool-call parsers so the harness works
     # regardless of which format the model naturally emits.
+    # Thought blocks are stripped first so that tool-call examples the model
+    # writes in its internal reasoning are not inadvertently dispatched.
     def parse_tool_calls(text)
-      parse_xml_tool_calls(text) + parse_native_tool_calls(text)
+      cleaned = strip_thought_blocks(text)
+      parse_xml_tool_calls(cleaned) + parse_native_tool_calls(cleaned)
+    end
+
+    # Remove <|channel>thought...<channel|> blocks from model output.
+    def strip_thought_blocks(text)
+      text.gsub(THOUGHT_BLOCK_RE, "")
     end
 
     # ── XML parser ────────────────────────────────────────────────────────────

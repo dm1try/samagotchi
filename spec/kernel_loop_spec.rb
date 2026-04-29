@@ -151,6 +151,45 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(prompts[1]).to include("[execute]")
     end
 
+    it "does not execute tool calls embedded inside thought blocks" do
+      # The model mentions a tool call with extra/wrong params inside its thought,
+      # then emits the real call outside. Only the real call should be dispatched.
+      model_output = <<~OUT
+        <|channel>thought
+        I could run: <tool name="execute">echo wrong --extra-param</tool>
+        But the correct command is simpler.
+        <channel|>
+        <tool name="execute">echo correct</tool>
+      OUT
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? model_output : "done"
+      end
+      kernel.run([{ role: "user", content: "run something" }])
+      # Only one execute result in the tool-results block; the thought-block command was not run
+      expect(prompts[1]).not_to include("stdout:\nwrong")
+      expect(prompts[1]).to include("stdout:\ncorrect")
+    end
+
+    it "does not execute native tool calls embedded inside thought blocks" do
+      model_output = <<~OUT
+        <|channel>thought
+        I might call: <|tool_call>call:execute{command: "echo inside-thought"}<tool_call|>
+        Actually use the proper command.
+        <channel|>
+        <|tool_call>call:execute{command: "echo outside-thought"}<tool_call|>
+      OUT
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? model_output : "done"
+      end
+      kernel.run([{ role: "user", content: "run" }])
+      expect(prompts[1]).not_to include("stdout:\ninside-thought")
+      expect(prompts[1]).to include("stdout:\noutside-thought")
+    end
+
     it "stops after max_iterations with native tool calls" do
       call_count = 0
       allow(client).to receive(:complete) do
