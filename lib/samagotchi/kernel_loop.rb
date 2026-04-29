@@ -44,10 +44,10 @@ module Samagotchi
 
     # ── Gemma 4 thought-channel stripping ─────────────────────────────────────
     # Gemma 4 can emit <|channel>thought...reasoning...<channel|> blocks for
-    # internal chain-of-thought. These blocks must be removed before parsing
-    # tool calls so that any tool-call examples the model mentions in its
-    # reasoning are not inadvertently executed.
-    THOUGHT_BLOCK_RE = /<\|channel>thought.*?<channel\|>/m
+    # internal chain-of-thought. These tokens are used as string delimiters
+    # (no regex) to avoid any backtracking risk on adversarial input.
+    THOUGHT_OPEN  = "<|channel>thought"
+    THOUGHT_CLOSE = "<channel|>"
 
     def initialize(client: nil)
       @client = client || Client.new
@@ -88,8 +88,16 @@ module Samagotchi
     end
 
     # Remove <|channel>thought...<channel|> blocks from model output.
+    # Uses String#index (no regex backtracking) to safely handle large inputs.
     def strip_thought_blocks(text)
-      text.gsub(THOUGHT_BLOCK_RE, "")
+      result = text
+      while (open_pos = result.index(THOUGHT_OPEN))
+        close_pos = result.index(THOUGHT_CLOSE, open_pos)
+        break unless close_pos
+
+        result = result[0...open_pos] + result[close_pos + THOUGHT_CLOSE.length..]
+      end
+      result
     end
 
     # ── XML parser ────────────────────────────────────────────────────────────
