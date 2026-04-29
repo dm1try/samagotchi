@@ -5,15 +5,17 @@ require "fileutils"
 module Samagotchi
   module Tools
     MEMORIES_DIR = "memories"
+    MEMORY_INDEX = "index"
 
     # Reads a memory entry from the memories directory.
-    # If no name is given (or the content is blank), lists all available memories.
+    # If no name is given (or the content is blank), returns the memory index
+    # (memories/index.md) when it exists, or a plain file listing as a fallback.
     # Usage: <tool name="memory_read">entry_name</tool>
     class MemoryRead
       NAME        = "memory_read"
       DESCRIPTION = 'Read a memory entry (MD file) from the memories directory. ' \
                     'Pass entry name without extension: <tool name="memory_read">entry_name</tool>. ' \
-                    "Leave blank to list all stored memories."
+                    "Leave blank to read the memory index (memories/index.md)."
 
       def self.name        = NAME
       def self.description = DESCRIPTION
@@ -23,10 +25,13 @@ module Samagotchi
         dir = MEMORIES_DIR
 
         if entry_name.empty?
+          index_path = File.join(dir, "#{MEMORY_INDEX}.md")
+          return File.read(index_path) if File.exist?(index_path)
+
           files = Dir.glob(File.join(dir, "*.md")).sort
           return "No memories stored yet." if files.empty?
 
-          return "Stored memories:\n" + files.map { |f| File.basename(f, ".md") }.join("\n")
+          return "Stored memories (no index yet):\n" + files.map { |f| File.basename(f, ".md") }.join("\n")
         end
 
         path = File.join(dir, "#{entry_name}.md")
@@ -39,12 +44,14 @@ module Samagotchi
     end
 
     # Writes or updates a memory entry in the memories directory.
+    # Use "index" as the entry name to update the memory index.
     # Usage: <tool name="memory_write" path="entry_name">content</tool>
     class MemoryWrite
       NAME        = "memory_write"
       DESCRIPTION = 'Write or update a memory entry (MD file) in the memories directory. ' \
                     'Use path attribute for the entry name: ' \
-                    '<tool name="memory_write" path="entry_name">content</tool>'
+                    '<tool name="memory_write" path="entry_name">content</tool>. ' \
+                    'Use path="index" to update the memory index (memories/index.md).'
 
       def self.name        = NAME
       def self.description = DESCRIPTION
