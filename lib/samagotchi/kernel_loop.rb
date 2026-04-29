@@ -307,8 +307,21 @@ module Samagotchi
         params[k] ||= unescape_native_value(v)
       end
       # Gemma 4 string delimiter: key:<|"|>value<|"|>
-      params_raw.scan(/(\w+):\s*<\|"\|>((?:(?!<\|"\|>).)*)<\|"\|>/m) do |k, v|
-        params[k] ||= v
+      # Use plain String#index to avoid any regex backtracking risk on the
+      # value content (mirrors the approach used for control-token scanning).
+      search_pos = 0
+      while (delim_pos = params_raw.index(GEMMA_STRING_DELIM, search_pos))
+        val_start = delim_pos + GEMMA_STRING_DELIM.length
+        close_pos = params_raw.index(GEMMA_STRING_DELIM, val_start)
+        break unless close_pos
+
+        # Key must be \w+ immediately before the colon and optional whitespace
+        key_match = params_raw[0...delim_pos].match(/(\w+)\s*:\s*\z/)
+        if key_match
+          k = key_match[1]
+          params[k] ||= params_raw[val_start...close_pos]
+        end
+        search_pos = close_pos + GEMMA_STRING_DELIM.length
       end
       params
     end
