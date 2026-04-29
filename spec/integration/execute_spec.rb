@@ -18,7 +18,7 @@ require "samagotchi/agent"
 #
 # Custom server:
 #   LLAMA_HOST=myhost LLAMA_PORT=9090 LLAMA_INTEGRATION=1 bundle exec rspec spec/integration/execute_spec.rb -v
-RSpec.describe "execute tool — ruby expression integration", :integration do
+RSpec.describe "execute tool - ruby expression integration", :integration do
   let(:kernel) { Samagotchi::KernelLoop.new(verbose: verbose) }
   let(:verbose) { false }
 
