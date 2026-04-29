@@ -171,4 +171,41 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(prompts[1]).to include("unknown tool")
     end
   end
+
+  describe "verbose mode" do
+    subject(:verbose_kernel) { described_class.new(client: client, verbose: true) }
+
+    it "prints the raw LLM response to stderr when verbose" do
+      allow(client).to receive(:complete).and_return("Hello!")
+      expect { verbose_kernel.run([{ role: "user", content: "hi" }]) }
+        .to output(/LLM response.*Hello!/m).to_stderr
+    end
+
+    it "prints tool call details to stderr when verbose" do
+      responses = ['<tool name="execute">echo hi</tool>', "done"]
+      allow(client).to receive(:complete).and_return(*responses)
+      expect { verbose_kernel.run([{ role: "user", content: "go" }]) }
+        .to output(/tool call: execute.*echo hi/m).to_stderr
+    end
+
+    it "prints tool result to stderr when verbose" do
+      responses = ['<tool name="execute">echo hi</tool>', "done"]
+      allow(client).to receive(:complete).and_return(*responses)
+      expect { verbose_kernel.run([{ role: "user", content: "go" }]) }
+        .to output(/tool result: execute/m).to_stderr
+    end
+
+    it "prints tool error to stderr when verbose" do
+      responses = ['<tool name="execute">ruby -e "raise \'boom\'"</tool>', "done"]
+      allow(client).to receive(:complete).and_return(*responses)
+      expect { verbose_kernel.run([{ role: "user", content: "go" }]) }
+        .to output(/tool (result|error): execute/m).to_stderr
+    end
+
+    it "does not print to stderr when verbose is false (default)" do
+      allow(client).to receive(:complete).and_return("Hello!")
+      expect { kernel.run([{ role: "user", content: "hi" }]) }
+        .not_to output.to_stderr
+    end
+  end
 end

@@ -54,9 +54,9 @@ module Samagotchi
       Begin by reading your source files and deciding what to add or improve.
     SYS
 
-    def initialize(mode:, client: nil)
+    def initialize(mode:, client: nil, verbose: false)
       @mode   = mode.to_sym
-      @kernel = KernelLoop.new(client: client)
+      @kernel = KernelLoop.new(client: client, verbose: verbose)
     end
 
     def run
