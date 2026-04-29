@@ -8,15 +8,60 @@ module Samagotchi
   # assist mode  — interactive REPL: user types, model responds, tools execute inline.
   # evolve mode  — autonomous: model reads its own source, extends itself, validates with rspec.
   class Agent
+    # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
+
+    TOOL_EXECUTE = <<~DECL.strip
+      <|tool>declaration:execute{
+        "description": "Run any shell command and see its stdout, stderr, and exit code",
+        "parameters": {
+          "command": {"type": "string", "description": "The shell command to run"}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_READ = <<~DECL.strip
+      <|tool>declaration:read{
+        "description": "Read a file from disk",
+        "parameters": {
+          "path": {"type": "string", "description": "Path to the file"}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_WRITE = <<~DECL.strip
+      <|tool>declaration:write{
+        "description": "Write content to a file (parent directories are created automatically)",
+        "parameters": {
+          "path":    {"type": "string", "description": "Destination file path"},
+          "content": {"type": "string", "description": "Content to write to the file"}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_EDIT = <<~DECL.strip
+      <|tool>declaration:edit{
+        "description": "Replace an exact block of text in an existing file; the old block must appear exactly once",
+        "parameters": {
+          "path":     {"type": "string", "description": "File path"},
+          "old_text": {"type": "string", "description": "Exact text to replace"},
+          "new_text": {"type": "string", "description": "Replacement text"}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param: "value"}<tool_call|>'
+
+    # ── System prompts ─────────────────────────────────────────────────────────
+
     SYSTEM_ASSIST = <<~SYS
       You are a Ruby code assistant. You have access to the following tools:
 
-      <|tool>declaration:execute{"description":"Run any shell command and see its stdout, stderr, and exit code","parameters":{"command":{"type":"string","description":"The shell command to run"}}}<tool|>
-      <|tool>declaration:read{"description":"Read a file from disk","parameters":{"path":{"type":"string","description":"Path to the file"}}}<tool|>
-      <|tool>declaration:write{"description":"Write content to a file (parent directories are created automatically)","parameters":{"path":{"type":"string","description":"Destination file path"},"content":{"type":"string","description":"Content to write to the file"}}}<tool|>
-      <|tool>declaration:edit{"description":"Replace an exact block of text in an existing file; the old block must appear exactly once","parameters":{"path":{"type":"string","description":"File path"},"old_text":{"type":"string","description":"Exact text to replace"},"new_text":{"type":"string","description":"Replacement text"}}}<tool|>
+      #{TOOL_EXECUTE}
+      #{TOOL_READ}
+      #{TOOL_WRITE}
+      #{TOOL_EDIT}
 
-      To call a tool, emit: <|tool_call>call:NAME{param: "value"}<tool_call|>
+      #{TOOL_CALL_HINT}
       You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
     SYS
 
@@ -26,12 +71,12 @@ module Samagotchi
 
       Available tools:
 
-      <|tool>declaration:execute{"description":"Run ruby, bundle exec rspec, or any shell command","parameters":{"command":{"type":"string","description":"Shell command to run"}}}<tool|>
-      <|tool>declaration:read{"description":"Read a source file from disk","parameters":{"path":{"type":"string","description":"Path to the file"}}}<tool|>
-      <|tool>declaration:write{"description":"Write or overwrite a file (parent directories created automatically)","parameters":{"path":{"type":"string","description":"Destination file path"},"content":{"type":"string","description":"File content"}}}<tool|>
-      <|tool>declaration:edit{"description":"Replace an exact block of text in an existing file","parameters":{"path":{"type":"string","description":"File path"},"old_text":{"type":"string","description":"Exact text to replace"},"new_text":{"type":"string","description":"Replacement text"}}}<tool|>
+      #{TOOL_EXECUTE}
+      #{TOOL_READ}
+      #{TOOL_WRITE}
+      #{TOOL_EDIT}
 
-      To call a tool, emit: <|tool_call>call:NAME{param: "value"}<tool_call|>
+      #{TOOL_CALL_HINT}
       Prefer edit over write when changing a small section of a large file.
 
       Source layout:
