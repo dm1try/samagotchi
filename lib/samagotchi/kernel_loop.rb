@@ -21,7 +21,12 @@ module Samagotchi
   #   <tool name="read">lib/samagotchi/prompt.rb</tool>
   #   <tool name="write" path="lib/samagotchi/tools/foo.rb">content</tool>
   #
-  # Native Gemma 4 syntax (emitted by the model naturally):
+  # Native Gemma 4 syntax (canonical, per documentation):
+  #   <|tool>declaration:execute{command: "bundle exec rspec spec/"}
+  #   <|tool>declaration:read{path: "lib/samagotchi/prompt.rb"}
+  #   <|tool>declaration:write{path: "lib/foo.rb", content: "..."}
+  #
+  # Legacy native syntax (still accepted for backward compatibility):
   #   <|tool_call>call:execute{command: "bundle exec rspec spec/"}<tool_call|>
   #   <|tool_call>call:read{path: "lib/samagotchi/prompt.rb"}<tool_call|>
   #   <|tool_call>call:write{path: "lib/foo.rb", content: "..."}<tool_call|>
@@ -37,17 +42,28 @@ module Samagotchi
     TOOL_OPEN_RE  = /<tool\s+([^>]{1,500})>/
     TOOL_CLOSE    = "</tool>"
 
-    # ── Native Gemma 4 format constants ───────────────────────────────────────
-    NATIVE_OPEN      = "<|tool_call>"
-    NATIVE_CLOSE     = "<tool_call|>"
-    NATIVE_CALL_RE   = /\Acall:([a-z_]{1,50})\{/
+    # ── Native Gemma 4 format constants (canonical) ───────────────────────────
+    # <|tool>declaration:NAME{params}  — body runs to next <| token, \n, or EOS
+    NATIVE_OPEN      = "<|tool>"
+    NATIVE_CALL_RE   = /\Adeclaration:([a-z_]{1,50})\{/
 
-    # ── Gemma 4 thought-channel stripping ─────────────────────────────────────
-    # Gemma 4 can emit <|channel>thought...reasoning...<channel|> blocks for
-    # internal chain-of-thought. These tokens are used as string delimiters
-    # (no regex) to avoid any backtracking risk on adversarial input.
-    THOUGHT_OPEN  = "<|channel>thought"
-    THOUGHT_CLOSE = "<channel|>"
+    # ── Native Gemma 4 format constants (legacy fallback) ─────────────────────
+    # Older model checkpoints emit <|tool_call>call:NAME{params}<tool_call|>.
+    NATIVE_OPEN_LEGACY     = "<|tool_call>"
+    NATIVE_CLOSE_LEGACY    = "<tool_call|>"
+    NATIVE_CALL_RE_LEGACY  = /\Acall:([a-z_]{1,50})\{/
+
+    # ── Gemma 4 thought-channel stripping (canonical) ─────────────────────────
+    # <|think|> opens a private reasoning block; it ends at the next <| token
+    # or end of string. Both delimiters are used as plain strings (no regex) to
+    # avoid any backtracking risk on adversarial input.
+    THOUGHT_OPEN       = "<|think|>"
+    THOUGHT_NEXT_TOKEN = "<|"
+
+    # ── Gemma 4 thought-channel stripping (legacy fallback) ───────────────────
+    # Older model checkpoints emit <|channel>thought...<channel|> blocks.
+    THOUGHT_OPEN_LEGACY  = "<|channel>thought"
+    THOUGHT_CLOSE_LEGACY = "<channel|>"
 
     def initialize(client: nil)
       @client = client || Client.new
@@ -80,23 +96,40 @@ module Samagotchi
 
     # Combines XML and native Gemma 4 tool-call parsers so the harness works
     # regardless of which format the model naturally emits.
-    # Thought blocks are stripped first so that tool-call examples the model
-    # writes in its internal reasoning are not inadvertently dispatched.
+    # Thought blocks (<|think|> canonical or <|channel>thought legacy) are
+    # stripped first so that tool-call examples written in internal reasoning
+    # are not inadvertently dispatched.
     def parse_tool_calls(text)
       cleaned = strip_thought_blocks(text)
       parse_xml_tool_calls(cleaned) + parse_native_tool_calls(cleaned)
     end
 
-    # Remove <|channel>thought...<channel|> blocks from model output.
+    # Remove thought blocks from model output. Two formats are handled:
+    #   Canonical: <|think|>CONTENT — ends at the next <| control token or EOS.
+    #   Legacy:    <|channel>thought...CONTENT...<channel|>
     # Uses String#index (no regex backtracking) to safely handle large inputs.
     def strip_thought_blocks(text)
       result = text
+
+      # Canonical format: strip from <|think|> to the next <| (exclusive) or EOS
       while (open_pos = result.index(THOUGHT_OPEN))
-        close_pos = result.index(THOUGHT_CLOSE, open_pos)
+        body_start = open_pos + THOUGHT_OPEN.length
+        close_pos  = result.index(THOUGHT_NEXT_TOKEN, body_start)
+        result = if close_pos
+                   result[0...open_pos] + result[close_pos..]
+                 else
+                   result[0...open_pos]
+                 end
+      end
+
+      # Legacy format: strip from <|channel>thought to end of <channel|>
+      while (open_pos = result.index(THOUGHT_OPEN_LEGACY))
+        close_pos = result.index(THOUGHT_CLOSE_LEGACY, open_pos)
         break unless close_pos
 
-        result = result[0...open_pos] + result[close_pos + THOUGHT_CLOSE.length..]
+        result = result[0...open_pos] + result[close_pos + THOUGHT_CLOSE_LEGACY.length..]
       end
+
       result
     end
 
@@ -122,16 +155,21 @@ module Samagotchi
     end
 
     # ── Native Gemma 4 parser ─────────────────────────────────────────────────
-    # Parse the model's natural output: <|tool_call>call:NAME{params}<tool_call|>
-    # Uses String#index for the outer delimiters (no backtracking risk).
+    # Parse the model's natural output. Two formats are supported:
+    #   Canonical: <|tool>declaration:NAME{params}
+    #              Body runs to the next <| control token, newline, or EOS.
+    #   Legacy:    <|tool_call>call:NAME{params}<tool_call|>
+    # Uses String#index for outer delimiters (no backtracking risk).
     def parse_native_tool_calls(text)
       results = []
+
+      # Canonical format
       pos = 0
       while (open_pos = text.index(NATIVE_OPEN, pos))
         body_start = open_pos + NATIVE_OPEN.length
-        close_pos  = text.index(NATIVE_CLOSE, body_start)
-        break unless close_pos
-
+        nl_pos     = text.index("\n", body_start)
+        token_pos  = text.index(THOUGHT_NEXT_TOKEN, body_start)
+        close_pos  = [nl_pos, token_pos].compact.min || text.length
         body = text[body_start...close_pos]
         if (m = NATIVE_CALL_RE.match(body))
           name       = m[1]
@@ -139,8 +177,26 @@ module Samagotchi
           params_raw = params_raw[0..-2] if params_raw.end_with?("}")
           results << native_call(name, params_raw.strip)
         end
-        pos = close_pos + NATIVE_CLOSE.length
+        pos = close_pos
       end
+
+      # Legacy format
+      pos = 0
+      while (open_pos = text.index(NATIVE_OPEN_LEGACY, pos))
+        body_start = open_pos + NATIVE_OPEN_LEGACY.length
+        close_pos  = text.index(NATIVE_CLOSE_LEGACY, body_start)
+        break unless close_pos
+
+        body = text[body_start...close_pos]
+        if (m = NATIVE_CALL_RE_LEGACY.match(body))
+          name       = m[1]
+          params_raw = body[m.end(0)..]
+          params_raw = params_raw[0..-2] if params_raw.end_with?("}")
+          results << native_call(name, params_raw.strip)
+        end
+        pos = close_pos + NATIVE_CLOSE_LEGACY.length
+      end
+
       results
     end
 

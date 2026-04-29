@@ -88,11 +88,11 @@ RSpec.describe Samagotchi::KernelLoop do
       FileUtils.rm_f("/tmp/samagotchi_test_write.txt")
     end
 
-    # ── Native Gemma 4 format ──────────────────────────────────────────────────
+    # ── Native Gemma 4 canonical format ───────────────────────────────────────
 
     it "dispatches a native execute call and continues the loop" do
       responses = [
-        %(<|tool_call>call:execute{command: "ruby -e 'puts 7'"}<tool_call|>),
+        %(<|tool>declaration:execute{command: "ruby -e 'puts 7'"}),
         "done"
       ]
       allow(client).to receive(:complete).and_return(*responses)
@@ -104,7 +104,7 @@ RSpec.describe Samagotchi::KernelLoop do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
-        prompts.length == 1 ? %(<|tool_call>call:execute{command: "echo hi"}<tool_call|>) : "done"
+        prompts.length == 1 ? %(<|tool>declaration:execute{command: "echo hi"}) : "done"
       end
       kernel.run([{ role: "user", content: "run?" }])
       expect(prompts[1]).to include("Tool results")
@@ -115,7 +115,7 @@ RSpec.describe Samagotchi::KernelLoop do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
-        prompts.length == 1 ? %(<|tool_call>call:read{path: "Gemfile"}<tool_call|>) : "ok"
+        prompts.length == 1 ? %(<|tool>declaration:read{path: "Gemfile"}) : "ok"
       end
       kernel.run([{ role: "user", content: "read gemfile" }])
       expect(prompts[1]).to include("[read]")
@@ -126,7 +126,7 @@ RSpec.describe Samagotchi::KernelLoop do
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
         if prompts.length == 1
-          %(<|tool_call>call:write{path: "/tmp/native_write_test.txt", content: "hello native"}<tool_call|>)
+          %(<|tool>declaration:write{path: "/tmp/native_write_test.txt", content: "hello native"})
         else
           "written"
         end
@@ -138,7 +138,7 @@ RSpec.describe Samagotchi::KernelLoop do
       FileUtils.rm_f("/tmp/native_write_test.txt")
     end
 
-    it "handles the exact model output format from the reported issue" do
+    it "handles the exact model output format from the reported issue (legacy fallback)" do
       # This is the exact string the model emitted that caused the loop to exit
       model_output = %(<|channel>thought\n<channel|><|tool_call>call:execute{command: "ls -R"}<tool_call|>)
       prompts = []
@@ -155,11 +155,10 @@ RSpec.describe Samagotchi::KernelLoop do
       # The model mentions a tool call with extra/wrong params inside its thought,
       # then emits the real call outside. Only the real call should be dispatched.
       model_output = <<~OUT
-        <|channel>thought
+        <|think|>
         I could run: <tool name="execute">echo wrong --extra-param</tool>
         But the correct command is simpler.
-        <channel|>
-        <tool name="execute">echo correct</tool>
+        <|tool>declaration:execute{command: "echo correct"}
       OUT
       prompts = []
       allow(client).to receive(:complete) do |prompt|
@@ -173,6 +172,23 @@ RSpec.describe Samagotchi::KernelLoop do
     end
 
     it "does not execute native tool calls embedded inside thought blocks" do
+      model_output = <<~OUT
+        <|think|>
+        I might use XML: <tool name="execute">echo inside-thought</tool>
+        Actually use the proper command.
+        <|tool>declaration:execute{command: "echo outside-thought"}
+      OUT
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? model_output : "done"
+      end
+      kernel.run([{ role: "user", content: "run" }])
+      expect(prompts[1]).not_to include("stdout:\ninside-thought")
+      expect(prompts[1]).to include("stdout:\noutside-thought")
+    end
+
+    it "does not execute legacy native tool calls embedded inside legacy thought blocks" do
       model_output = <<~OUT
         <|channel>thought
         I might call: <|tool_call>call:execute{command: "echo inside-thought"}<tool_call|>
@@ -194,13 +210,35 @@ RSpec.describe Samagotchi::KernelLoop do
       call_count = 0
       allow(client).to receive(:complete) do
         call_count += 1
-        %(<|tool_call>call:execute{command: "echo loop"}<tool_call|>)
+        %(<|tool>declaration:execute{command: "echo loop"})
       end
       kernel.run([{ role: "user", content: "loop" }], max_iterations: 3)
       expect(call_count).to eq(3)
     end
 
     it "returns an error message for unknown native tools" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? %(<|tool>declaration:unknown_tool{command: "hi"}) : "OK"
+      end
+      kernel.run([{ role: "user", content: "test" }])
+      expect(prompts[1]).to include("unknown tool")
+    end
+
+    # ── Legacy native format (backward compatibility) ─────────────────────────
+
+    it "dispatches a legacy native execute call and continues the loop" do
+      responses = [
+        %(<|tool_call>call:execute{command: "ruby -e 'puts 7'"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete).and_return(*responses)
+      result = kernel.run([{ role: "user", content: "run ruby" }])
+      expect(result).to eq("done")
+    end
+
+    it "returns an error message for unknown legacy native tools" do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
