@@ -54,10 +54,10 @@ module Samagotchi
       Begin by reading your source files and deciding what to add or improve.
     SYS
 
-    def initialize(mode:, prompt: nil, client: nil)
+    def initialize(mode:, prompt: nil, client: nil, verbose: false)
       @mode   = mode.to_sym
       @prompt = prompt
-      @kernel = KernelLoop.new(client: client)
+      @kernel = KernelLoop.new(client: client, verbose: verbose)
     end
 
     def run
