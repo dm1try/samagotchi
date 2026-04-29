@@ -14,7 +14,7 @@ module Samagotchi
   #   1. Format the conversation into a Gemma 4 prompt and call llama.cpp.
   #   2. Parse the response for tool-call blocks (XML or native Gemma 4 format).
   #   3. Dispatch each tool call, collect results.
-  #   4. Append results as a user turn and repeat from step 1.
+  #   4. Inject results as a <|tool_response>…<tool_response|> block and repeat from step 1.
   #   5. Stop when the model emits no tool calls or max_iterations is reached.
   #
   # XML syntax (harness-defined, accepted for completeness):
@@ -22,15 +22,15 @@ module Samagotchi
   #   <tool name="read">lib/samagotchi/prompt.rb</tool>
   #   <tool name="write" path="lib/samagotchi/tools/foo.rb">content</tool>
   #
-  # Native Gemma 4 syntax (canonical, per documentation):
-  #   <|tool>declaration:execute{command: "bundle exec rspec spec/"}
-  #   <|tool>declaration:read{path: "lib/samagotchi/prompt.rb"}
-  #   <|tool>declaration:write{path: "lib/foo.rb", content: "..."}
-  #
-  # Legacy native syntax (still accepted for backward compatibility):
+  # Native Gemma 4 syntax (canonical model call format, per documentation):
   #   <|tool_call>call:execute{command: "bundle exec rspec spec/"}<tool_call|>
   #   <|tool_call>call:read{path: "lib/samagotchi/prompt.rb"}<tool_call|>
   #   <|tool_call>call:write{path: "lib/foo.rb", content: "..."}<tool_call|>
+  #
+  # Secondary native syntax (declaration-echo, also accepted):
+  #   <|tool>declaration:execute{command: "bundle exec rspec spec/"}
+  #   <|tool>declaration:read{path: "lib/samagotchi/prompt.rb"}
+  #   <|tool>declaration:write{path: "lib/foo.rb", content: "..."}
   class KernelLoop
     TOOLS = [
       Tools::Execute,
@@ -44,16 +44,17 @@ module Samagotchi
     TOOL_OPEN_RE  = /<tool\s+([^>]{1,500})>/
     TOOL_CLOSE    = "</tool>"
 
-    # ── Native Gemma 4 format constants (canonical) ───────────────────────────
-    # <|tool>declaration:NAME{params}  — body runs to next <| token, \n, or EOS
-    NATIVE_OPEN      = "<|tool>"
-    NATIVE_CALL_RE   = /\Adeclaration:([a-z_]{1,50})\{/
-
-    # ── Native Gemma 4 format constants (legacy fallback) ─────────────────────
-    # Older model checkpoints emit <|tool_call>call:NAME{params}<tool_call|>.
+    # ── Native Gemma 4 format constants (canonical model call format) ─────────
+    # <|tool_call>call:NAME{params}<tool_call|>  — model's request to use a tool.
     NATIVE_OPEN_LEGACY     = "<|tool_call>"
     NATIVE_CLOSE_LEGACY    = "<tool_call|>"
     NATIVE_CALL_RE_LEGACY  = /\Acall:([a-z_]{1,50})\{/
+
+    # ── Native Gemma 4 format constants (declaration-echo, secondary) ─────────
+    # <|tool>declaration:NAME{params}  — body runs to next <| token, \n, or EOS.
+    # Some model checkpoints echo tool declarations when calling them.
+    NATIVE_OPEN      = "<|tool>"
+    NATIVE_CALL_RE   = /\Adeclaration:([a-z_]{1,50})\{/
 
     # ── Gemma 4 string delimiter ──────────────────────────────────────────────
     # Gemma 4 uses <|"|> as a delimiter token for all string values in its
@@ -98,7 +99,7 @@ module Samagotchi
         break if calls.empty?
 
         results = calls.map { |c| dispatch(c) }.join("\n\n---\n\n")
-        conversation << { role: "user", content: "Tool results:\n#{results}" }
+        conversation << { role: "tool_response", content: results }
       end
 
       strip_thought_blocks(conversation.last[:content])
@@ -179,14 +180,15 @@ module Samagotchi
 
     # ── Native Gemma 4 parser ─────────────────────────────────────────────────
     # Parse the model's natural output. Two formats are supported:
-    #   Canonical: <|tool>declaration:NAME{params}
-    #              Body runs to the next <| control token, newline, or EOS.
-    #   Legacy:    <|tool_call>call:NAME{params}<tool_call|>
+    #   Canonical: <|tool_call>call:NAME{params}<tool_call|>
+    #              The documented model call format.
+    #   Secondary: <|tool>declaration:NAME{params}
+    #              Some model checkpoints echo declarations when calling tools.
     # Uses String#index for outer delimiters (no backtracking risk).
     def parse_native_tool_calls(text)
       results = []
 
-      # Canonical format
+      # Secondary (declaration-echo) format
       pos = 0
       while (open_pos = text.index(NATIVE_OPEN, pos))
         body_start = open_pos + NATIVE_OPEN.length
@@ -201,7 +203,7 @@ module Samagotchi
         pos = close_pos
       end
 
-      # Legacy format
+      # Canonical format (<|tool_call>…<tool_call|>)
       pos = 0
       while (open_pos = text.index(NATIVE_OPEN_LEGACY, pos))
         body_start = open_pos + NATIVE_OPEN_LEGACY.length
@@ -221,7 +223,7 @@ module Samagotchi
       results
     end
 
-    # Find the end position of a canonical <|tool> call body starting at +start+.
+    # Find the end position of a secondary <|tool>declaration: call body starting at +start+.
     # The body is terminated by a newline, the next real <| control token (i.e.
     # NOT the Gemma string delimiter <|"|>), or EOS.
     def native_call_end(text, start)

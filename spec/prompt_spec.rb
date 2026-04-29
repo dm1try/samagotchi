@@ -19,6 +19,25 @@ RSpec.describe Samagotchi::Prompt do
       expect(result).to include("<|turn>model\nHi there<end_of_turn>")
     end
 
+    it "formats a tool_response turn using <|tool_response> tokens (not a regular turn)" do
+      result = described_class.format([{ role: "tool_response", content: "[execute]\nstdout:\nhi" }])
+      expect(result).to include("<|tool_response>\n[execute]\nstdout:\nhi<tool_response|>")
+      expect(result).not_to include("<|turn>tool_response")
+    end
+
+    it "places tool_response block between the preceding model turn and the generation cue" do
+      msgs = [
+        { role: "model",         content: "<|tool_call>call:execute{command: \"echo hi\"}<tool_call|>" },
+        { role: "tool_response", content: "[execute]\nstdout:\nhi" }
+      ]
+      result = described_class.format(msgs)
+      model_pos         = result.index("<|turn>model\n<|tool_call>")
+      tool_response_pos = result.index("<|tool_response>")
+      cue_pos           = result.rindex("<|turn>model\n")
+      expect(model_pos).to be < tool_response_pos
+      expect(tool_response_pos).to be < cue_pos
+    end
+
     it "always ends with the model turn starter to cue generation" do
       result = described_class.format([{ role: "user", content: "go" }])
       expect(result).to end_with("<|turn>model\n")

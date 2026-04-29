@@ -8,28 +8,61 @@ module Samagotchi
   # assist mode  — interactive REPL: user types, model responds, tools execute inline.
   # evolve mode  — autonomous: model reads its own source, extends itself, validates with rspec.
   class Agent
+    # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
+
+    TOOL_EXECUTE = <<~DECL.strip
+      <|tool>declaration:execute{
+        "description": "Run any shell command and see its stdout, stderr, and exit code",
+        "parameters": {
+          "command": {"type": "string", "description": "The shell command to run"}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_READ = <<~DECL.strip
+      <|tool>declaration:read{
+        "description": "Read a file from disk",
+        "parameters": {
+          "path": {"type": "string", "description": "Path to the file"}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_WRITE = <<~DECL.strip
+      <|tool>declaration:write{
+        "description": "Write content to a file (parent directories are created automatically)",
+        "parameters": {
+          "path":    {"type": "string", "description": "Destination file path"},
+          "content": {"type": "string", "description": "Content to write to the file"}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_EDIT = <<~DECL.strip
+      <|tool>declaration:edit{
+        "description": "Replace an exact block of text in an existing file; the old block must appear exactly once",
+        "parameters": {
+          "path":     {"type": "string", "description": "File path"},
+          "old_text": {"type": "string", "description": "Exact text to replace"},
+          "new_text": {"type": "string", "description": "Replacement text"}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param: "value"}<tool_call|>'
+
+    # ── System prompts ─────────────────────────────────────────────────────────
+
     SYSTEM_ASSIST = <<~SYS
       You are a Ruby code assistant. You have access to the following tools:
 
-        <tool name="execute">shell command</tool>
-            Run any shell command and see its stdout/stderr/exit code.
-            Examples:
-              <tool name="execute">ruby -e 'puts 2 + 2'</tool>
-              <tool name="execute">bundle exec rspec spec/ --no-color</tool>
-              <tool name="execute">bundle exec rspec spec/some_spec.rb --no-color</tool>
+      #{TOOL_EXECUTE}
+      #{TOOL_READ}
+      #{TOOL_WRITE}
+      #{TOOL_EDIT}
 
-        <tool name="read">path/to/file</tool>
-            Read a file from disk.
-
-        <tool name="write" path="path/to/file">content</tool>
-            Write content to a file (parent directories created automatically).
-
-        <tool name="edit" path="path/to/file"><old>exact text to replace</old><new>replacement text</new></tool>
-            Replace an exact block of text in an existing file.
-            The <old> block must appear exactly once.  Use this instead of write
-            when you only need to change one region of a large file.
-
-      You may use multiple tools in one response. After seeing tool results, continue reasoning or answer the user.
+      #{TOOL_CALL_HINT}
+      You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
     SYS
 
     SYSTEM_EVOLVE = <<~SYS
@@ -37,10 +70,14 @@ module Samagotchi
       Your goal: read your own source, decide what to improve or extend, implement it, and validate with RSpec.
 
       Available tools:
-        <tool name="execute">shell command</tool>       — run ruby, bundle exec rspec, or any shell command
-        <tool name="read">path/to/file</tool>           — read a source file
-        <tool name="write" path="path">content</tool>   — write/overwrite a file
-        <tool name="edit" path="path"><old>old text</old><new>new text</new></tool>  — replace exact text in a file
+
+      #{TOOL_EXECUTE}
+      #{TOOL_READ}
+      #{TOOL_WRITE}
+      #{TOOL_EDIT}
+
+      #{TOOL_CALL_HINT}
+      Prefer edit over write when changing a small section of a large file.
 
       Source layout:
         bin/samagotchi                 CLI entry point
@@ -55,9 +92,7 @@ module Samagotchi
         1. Write lib/samagotchi/tools/<name>.rb with self.name and self.call
         2. Require it in lib/samagotchi/kernel_loop.rb and add to TOOLS
         3. Write spec/tools/<name>_spec.rb
-        4. Validate: <tool name="execute">bundle exec rspec spec/tools/<name>_spec.rb --no-color</tool>
-
-      Prefer <tool name="edit"> over <tool name="write"> when changing a small section of a large file.
+        4. Validate: <|tool_call>call:execute{command: "bundle exec rspec spec/tools/<name>_spec.rb --no-color"}<tool_call|>
 
       Begin by reading your source files and deciding what to add or improve.
     SYS

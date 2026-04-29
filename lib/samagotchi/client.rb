@@ -22,7 +22,7 @@ module Samagotchi
     # @param temperature [Float]
     # @param max_tokens  [Integer]       maximum tokens to generate (n_predict)
     # @return [String] the generated text
-    def complete(prompt, stop: ["<end_of_turn>"], temperature: 0.7, max_tokens: 2048)
+    def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], temperature: 0.7, max_tokens: 2048)
       uri  = URI("http://#{@host}:#{@port}/completion")
       body = { prompt: prompt, stop: stop, temperature: temperature, n_predict: max_tokens, stream: false }
       resp = Net::HTTP.post(uri, body.to_json, "Content-Type" => "application/json")
