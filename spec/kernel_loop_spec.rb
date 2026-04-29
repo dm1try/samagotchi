@@ -37,14 +37,14 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(result).to eq("The answer is 42.")
     end
 
-    it "includes tool results in the follow-up prompt" do
+    it "injects tool results as a <|tool_response> block in the follow-up prompt" do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
         prompts.length == 1 ? '<tool name="execute">echo hi</tool>' : "done"
       end
       kernel.run([{ role: "user", content: "check" }])
-      expect(prompts[1]).to include("Tool results")
+      expect(prompts[1]).to include("<|tool_response>")
     end
 
     it "returns an error message for unknown tools in the follow-up prompt" do
@@ -113,14 +113,14 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(result).to eq("done")
     end
 
-    it "includes native tool results in the follow-up prompt" do
+    it "injects native tool results as a <|tool_response> block in the follow-up prompt" do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
         prompts.length == 1 ? %(<|tool>declaration:execute{command: "echo hi"}) : "done"
       end
       kernel.run([{ role: "user", content: "run?" }])
-      expect(prompts[1]).to include("Tool results")
+      expect(prompts[1]).to include("<|tool_response>")
       expect(prompts[1]).to include("[execute]")
     end
 
