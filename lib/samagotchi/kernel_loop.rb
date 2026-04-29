@@ -318,14 +318,23 @@ module Samagotchi
         # Extract the key name by scanning backwards: strip trailing whitespace,
         # expect a colon, then extract trailing word characters — all without
         # a backtracking regex so there is no polynomial-ReDoS risk.
-        prefix   = params_raw[0...delim_pos].rstrip
-        next search_pos = close_pos + GEMMA_STRING_DELIM.length unless prefix.end_with?(":")
+        prefix = params_raw[0...delim_pos].rstrip
+        unless prefix.end_with?(":")
+          search_pos = close_pos + GEMMA_STRING_DELIM.length
+          next
+        end
 
         key_part = prefix[0...-1].rstrip
         k_end    = key_part.length
         k_start  = k_end
-        # match? on a single character cannot backtrack
-        k_start -= 1 while k_start > 0 && key_part[k_start - 1].match?(/\w/)
+        # Check each character directly (no regex) — no backtracking risk.
+        while k_start > 0
+          c = key_part[k_start - 1]
+          break unless (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") ||
+                       (c >= "0" && c <= "9") || c == "_"
+
+          k_start -= 1
+        end
         if k_start < k_end
           k = key_part[k_start...k_end]
           params[k] ||= params_raw[val_start...close_pos]
