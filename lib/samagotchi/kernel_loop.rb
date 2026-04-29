@@ -5,6 +5,7 @@ require_relative "client"
 require_relative "tools/execute"
 require_relative "tools/read"
 require_relative "tools/write"
+require_relative "tools/memory"
 require_relative "tools/edit"
 
 module Samagotchi
@@ -36,6 +37,8 @@ module Samagotchi
       Tools::Execute,
       Tools::Read,
       Tools::Write,
+      Tools::MemoryRead,
+      Tools::MemoryWrite,
       Tools::Edit
     ].freeze
 
@@ -282,6 +285,16 @@ module Samagotchi
         { name: name, content: strip_gemma_delimiters(content), path: nil }
       when Tools::Write::NAME
         { name: name, content: params["content"] || "", path: params["path"] }
+      when Tools::MemoryRead::NAME
+        content = params["name"] ||
+                  strip_param_prefix(params_raw, "name") ||
+                  params_raw
+        { name: name, content: strip_gemma_delimiters(content), path: nil }
+      when Tools::MemoryWrite::NAME
+        # New declaration uses "name"; legacy XML/fallback uses "path". path: key
+        # is what dispatch passes to MemoryWrite.call(content, path:).
+        entry_name = params["name"] || params["path"] || ""
+        { name: name, content: params["content"] || "", path: entry_name }
       when Tools::Edit::NAME
         old_text = params["old_text"] || params["old"] || ""
         new_text = params["new_text"] || params["new"] || ""
@@ -366,7 +379,7 @@ module Samagotchi
 
       verbose_log("── tool call: #{call[:name]} ──\n#{call[:path] ? "path: #{call[:path]}\n" : ""}#{call[:content]}\n──────────────────")
 
-      result = if (call[:name] == Tools::Write::NAME || call[:name] == Tools::Edit::NAME) && call[:path]
+      result = if [Tools::Write::NAME, Tools::MemoryWrite::NAME, Tools::Edit::NAME].include?(call[:name]) && call[:path]
                  tool.call(call[:content], path: call[:path])
                else
                  tool.call(call[:content])

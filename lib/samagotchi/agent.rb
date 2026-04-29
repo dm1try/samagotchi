@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "kernel_loop"
+require_relative "tools/memory"
 
 module Samagotchi
   # Agent encapsulates the two operating modes of the harness.
@@ -49,6 +50,25 @@ module Samagotchi
       }<tool|>
     DECL
 
+    TOOL_MEMORY_READ = <<~DECL.strip
+      <|tool>declaration:memory_read{
+        "description": "Read a memory entry from the memories directory (memories/<name>.md). Leave name blank to read the memory index.",
+        "parameters": {
+          "name": {"type": "string", "description": "Memory entry name without .md extension; leave blank for the index"}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_MEMORY_WRITE = <<~DECL.strip
+      <|tool>declaration:memory_write{
+        "description": "Write or update a memory entry in the memories directory (memories/<name>.md). Use name 'index' to update the index.",
+        "parameters": {
+          "name":    {"type": "string", "description": "Memory entry name without .md extension"},
+          "content": {"type": "string", "description": "Markdown content to write"}
+        }
+      }<tool|>
+    DECL
+
     TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param: "value"}<tool_call|>'
 
     # ── System prompts ─────────────────────────────────────────────────────────
@@ -60,9 +80,17 @@ module Samagotchi
       #{TOOL_READ}
       #{TOOL_WRITE}
       #{TOOL_EDIT}
+      #{TOOL_MEMORY_READ}
+      #{TOOL_MEMORY_WRITE}
 
       #{TOOL_CALL_HINT}
       You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
+
+      Memory convention:
+        memories/index.md  — the memory index: one line per entry with a short description and
+                             the entry name, e.g. "- **ruby_style**: preferred Ruby style guide notes"
+        memories/*.md      — individual memory entries referenced from the index
+        Whenever you write a new or updated memory entry, also update memories/index.md.
     SYS
 
     SYSTEM_EVOLVE = <<~SYS
@@ -75,6 +103,8 @@ module Samagotchi
       #{TOOL_READ}
       #{TOOL_WRITE}
       #{TOOL_EDIT}
+      #{TOOL_MEMORY_READ}
+      #{TOOL_MEMORY_WRITE}
 
       #{TOOL_CALL_HINT}
       Prefer edit over write when changing a small section of a large file.
@@ -86,7 +116,14 @@ module Samagotchi
         lib/samagotchi/kernel_loop.rb  Tool-dispatch loop (add new tools here)
         lib/samagotchi/agent.rb        Role logic (this file)
         lib/samagotchi/tools/          Individual tool implementations
+        memories/index.md              Memory index: one-line description per entry
+        memories/                      Individual memory entries (MD files)
         spec/                          RSpec test suite
+
+      Memory convention:
+        memories/index.md lists all memory entries with a short one-line description each.
+        Whenever you write a new or updated memory entry, also update memories/index.md.
+        The current memory index is injected below for your reference.
 
       Workflow for adding a new tool:
         1. Write lib/samagotchi/tools/<name>.rb with self.name and self.call
@@ -117,7 +154,7 @@ module Samagotchi
 
     def prompt_mode
       messages = [
-        { role: "system", content: SYSTEM_ASSIST },
+        { role: "system", content: system_prompt_with_index(SYSTEM_ASSIST) },
         { role: "user",   content: @prompt }
       ]
       $stdout.puts @kernel.run(messages)
@@ -125,7 +162,7 @@ module Samagotchi
 
     def assist_loop
       $stdout.puts banner("assist")
-      messages = [{ role: "system", content: SYSTEM_ASSIST }]
+      messages = [{ role: "system", content: system_prompt_with_index(SYSTEM_ASSIST) }]
 
       loop do
         $stdout.print "\nyou> "
@@ -146,7 +183,7 @@ module Samagotchi
     def evolve_loop
       $stdout.puts banner("evolve")
       messages = [
-        { role: "system", content: SYSTEM_EVOLVE },
+        { role: "system", content: system_prompt_with_index(SYSTEM_EVOLVE) },
         { role: "user",   content: "Read your source files, identify improvements, implement them, and validate with rspec." }
       ]
       $stdout.puts @kernel.run(messages, max_iterations: 20)
@@ -156,6 +193,13 @@ module Samagotchi
       host = ENV.fetch("LLAMA_HOST", "localhost")
       port = ENV.fetch("LLAMA_PORT", "8080")
       "samagotchi [#{mode}] — #{host}:#{port}\n#{"─" * 60}"
+    end
+
+    # Appends the current memory index to the base system prompt so the agent
+    # is always aware of stored memories without needing to call a tool first.
+    def system_prompt_with_index(base)
+      index = Tools::MemoryRead.call("")
+      "#{base}\nMemories:\n#{index}"
     end
   end
 end
