@@ -56,19 +56,21 @@ module Samagotchi
 
     TOOL_MEMORY_READ = <<~DECL.strip
       <|tool>declaration:memory_read{
-        description:<|"|>Read a memory entry from the memories directory (memories/<name>.md). Leave name blank to read the memory index.<|"|>,
+        description:<|"|>Read a memory entry from scoped memories. Scope is optional: if omitted, read falls back from project to system. Leave name blank to read indexes.<|"|>,
         parameters:{
-          name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension; leave blank for the index<|"|>}
+          name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension; leave blank for indexes<|"|>},
+          scope:{type:<|"|>string<|"|>, description:<|"|>Optional scope: project or system<|"|>}
         }
       }<tool|>
     DECL
 
     TOOL_MEMORY_WRITE = <<~DECL.strip
       <|tool>declaration:memory_write{
-        description:<|"|>Write or update a memory entry in the memories directory (memories/<name>.md). Use name 'index' to update the index.<|"|>,
+        description:<|"|>Write or update a memory entry in scoped memories. Scope is required: project or system.<|"|>,
         parameters:{
           name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension<|"|>, required:true},
-          content:{type:<|"|>string<|"|>, description:<|"|>Markdown content to write<|"|>, required:true}
+          content:{type:<|"|>string<|"|>, description:<|"|>Markdown content to write<|"|>, required:true},
+          scope:{type:<|"|>string<|"|>, description:<|"|>Scope to write into: project or system<|"|>, required:true}
         }
       }<tool|>
     DECL
@@ -101,10 +103,11 @@ module Samagotchi
       You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
 
       Memory convention:
-        memories/index.md  — the memory index: one line per entry with a short description and
-                             the entry name, e.g. "- **ruby_style**: preferred Ruby style guide notes"
-        memories/*.md      — individual memory entries referenced from the index
-        Whenever you write a new or updated memory entry, also update memories/index.md.
+        Project scope: memories/ (project-local)
+        System scope:  ~/.config/samagotchi/memories/ (cross-project)
+        memory_read accepts optional scope (project|system).
+        memory_write requires explicit scope and entry name.
+        Keep each scope's index.md updated when adding/updating entries.
 
       #{CONTEXT_STATUS_PROTOCOL}
     SYS
@@ -137,9 +140,12 @@ module Samagotchi
         spec/                          RSpec test suite
 
       Memory convention:
-        memories/index.md lists all memory entries with a short one-line description each.
-        Whenever you write a new or updated memory entry, also update memories/index.md.
-        The current memory index is injected below for your reference.
+        Project scope: memories/ (project-local)
+        System scope:  ~/.config/samagotchi/memories/ (cross-project)
+        memory_read accepts optional scope (project|system).
+        memory_write requires explicit scope and entry name.
+        Keep each scope's index.md updated when adding/updating entries.
+        The current indexes are injected below for your reference.
 
       Workflow for adding a new tool:
         1. Write lib/samagotchi/tools/<name>.rb with self.name and self.call
@@ -236,12 +242,17 @@ module Samagotchi
     # Appends the current memory index to the base system prompt so the agent
     # is always aware of stored memories without needing to call a tool first.
     def system_prompt_with_index(base)
-      index = Tools::MemoryRead.call("")
+      project_index = Tools::MemoryRead.call("", scope: "project")
+      system_index = Tools::MemoryRead.call("", scope: "system")
       project_description = project_specific_description
       # Enable thinking mode by injecting the control token if THINKING_MODE is not "false"
       # This allows it to be ON by default, but explicitly DISABLEABLE via ENV.
       thinking_token = ENV["THINKING_MODE"] == "false" ? "" : "<|think|>\n"
-      [thinking_token + base, rg_guidance, project_description, "Memories:\n#{index}"].compact.join("\n")
+      memory_sections = [
+        "Project memories:\n#{project_index}",
+        "System memories:\n#{system_index}"
+      ].join("\n\n")
+      [thinking_token + base, rg_guidance, project_description, memory_sections].compact.join("\n")
     end
 
     def emit_result(result)

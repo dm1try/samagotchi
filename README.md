@@ -10,6 +10,23 @@ To skip loading AGENT.md, set:
 
 `SAMAGOTCHI_SKIP_AGENT_MD=true`
 
+## Memory Scopes
+
+Samagotchi stores memories in two scopes:
+
+- Project scope: `./memories`
+- System scope: `~/.config/samagotchi/memories`
+
+Tool behavior:
+
+- `memory_read`: `scope` is optional.
+- If `scope` is provided (`project` or `system`), only that scope is read.
+- If `scope` is omitted, read falls back from project to system.
+- `memory_write`: `scope` is required (`project` or `system`).
+
+For blank-name reads, the agent can fetch scope indexes separately and inject
+them into the system prompt as `Project memories` and `System memories`.
+
 ## Llama HTTP Timeouts
 
 Long-running llama.cpp completions can exceed Ruby's default HTTP read timeout.

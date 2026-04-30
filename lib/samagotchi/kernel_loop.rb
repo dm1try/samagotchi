@@ -415,32 +415,31 @@ module Samagotchi
         content = params["command"] ||
                   strip_param_prefix(params_raw, "command") ||
                   params_raw
-        { name: name, content: strip_gemma_delimiters(content), path: nil }
+        { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil }
       when Tools::Read::NAME
         content = params["path"] ||
                   strip_param_prefix(params_raw, "path") ||
                   params_raw
-        { name: name, content: strip_gemma_delimiters(content), path: nil }
+        { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil }
       when Tools::Write::NAME
-        { name: name, content: params["content"] || "", path: params["path"] }
+        { name: name, content: params["content"] || "", path: params["path"], scope: nil }
       when Tools::MemoryRead::NAME
         content = params["name"] ||
                   strip_param_prefix(params_raw, "name") ||
                   params_raw
-        { name: name, content: strip_gemma_delimiters(content), path: nil }
+        { name: name, content: strip_gemma_delimiters(content), path: nil, scope: params["scope"] }
       when Tools::MemoryWrite::NAME
-        # New declaration uses "name"; legacy XML/fallback uses "path". path: key
-        # is what dispatch passes to MemoryWrite.call(content, path:).
+        # The declaration uses "name" and required "scope".
         entry_name = params["name"] || params["path"] || ""
-        { name: name, content: params["content"] || "", path: entry_name }
+        { name: name, content: params["content"] || "", path: entry_name, scope: params["scope"] }
       when Tools::Edit::NAME
         old_text = params["old_text"] || params["old"] || ""
         new_text = params["new_text"] || params["new"] || ""
         content  = "<old>#{old_text}</old><new>#{new_text}</new>"
-        { name: name, content: content, path: params["path"] }
+        { name: name, content: content, path: params["path"], scope: nil }
       else
         # For future/unknown tools, pass along whatever the model provided
-        { name: name, content: strip_gemma_delimiters(params_raw), path: nil }
+        { name: name, content: strip_gemma_delimiters(params_raw), path: nil, scope: nil }
       end
     end
 
@@ -515,9 +514,14 @@ module Samagotchi
         return "Error: unknown tool '#{call[:name]}'. Available: #{available}"
       end
 
-      verbose_log("── tool call: #{call[:name]} ──\n#{call[:path] ? "path: #{call[:path]}\n" : ""}#{call[:content]}\n──────────────────")
+      verbose_log("── tool call: #{call[:name]} ──\n#{call[:path] ? "path: #{call[:path]}\n" : ""}#{call[:scope] ? "scope: #{call[:scope]}\n" : ""}#{call[:content]}\n──────────────────")
 
-      result = if [Tools::Write::NAME, Tools::MemoryWrite::NAME, Tools::Edit::NAME].include?(call[:name]) && call[:path]
+      result = case call[:name]
+               when Tools::MemoryRead::NAME
+                 tool.call(call[:content], scope: call[:scope])
+               when Tools::MemoryWrite::NAME
+                 tool.call(call[:content], path: call[:path], scope: call[:scope])
+               when Tools::Write::NAME, Tools::Edit::NAME
                  tool.call(call[:content], path: call[:path])
                else
                  tool.call(call[:content])

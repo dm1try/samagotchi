@@ -23,10 +23,18 @@ require "fileutils"
 RSpec.describe "memory_read tool - reading existing memory integration", :integration do
   let(:kernel) { Samagotchi::KernelLoop.new(verbose: verbose) }
   let(:verbose) { false }
-  let(:memories_dir) { Dir.mktmpdir }
+  let(:project_memories_dir) { Dir.mktmpdir }
+  let(:system_memories_dir) { Dir.mktmpdir }
 
-  before { stub_const("Samagotchi::Tools::MEMORIES_DIR", memories_dir) }
-  after  { FileUtils.rm_rf(memories_dir) }
+  before do
+    stub_const("Samagotchi::Tools::PROJECT_MEMORIES_DIR", project_memories_dir)
+    stub_const("Samagotchi::Tools::SYSTEM_MEMORIES_DIR", system_memories_dir)
+  end
+
+  after do
+    FileUtils.rm_rf(project_memories_dir)
+    FileUtils.rm_rf(system_memories_dir)
+  end
 
   def run_with_prompt(prompt)
     messages = [
@@ -37,7 +45,7 @@ RSpec.describe "memory_read tool - reading existing memory integration", :integr
   end
 
   it "reads an existing memory entry and includes its content in the response" do
-    File.write(File.join(memories_dir, "test.md"), "# Test Memory\nThis is important test data.")
+    File.write(File.join(project_memories_dir, "test.md"), "# Test Memory\nThis is important test data.")
 
     result = run_with_prompt("Please read the 'test' memory entry and tell me what it says.")
 

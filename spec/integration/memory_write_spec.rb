@@ -23,10 +23,18 @@ require "fileutils"
 RSpec.describe "memory_write tool - writing a new memory integration", :integration do
   let(:kernel) { Samagotchi::KernelLoop.new(verbose: verbose) }
   let(:verbose) { false }
-  let(:memories_dir) { Dir.mktmpdir }
+  let(:project_memories_dir) { Dir.mktmpdir }
+  let(:system_memories_dir) { Dir.mktmpdir }
 
-  before { stub_const("Samagotchi::Tools::MEMORIES_DIR", memories_dir) }
-  after  { FileUtils.rm_rf(memories_dir) }
+  before do
+    stub_const("Samagotchi::Tools::PROJECT_MEMORIES_DIR", project_memories_dir)
+    stub_const("Samagotchi::Tools::SYSTEM_MEMORIES_DIR", system_memories_dir)
+  end
+
+  after do
+    FileUtils.rm_rf(project_memories_dir)
+    FileUtils.rm_rf(system_memories_dir)
+  end
 
   def run_with_prompt(prompt)
     messages = [
@@ -39,12 +47,12 @@ RSpec.describe "memory_write tool - writing a new memory integration", :integrat
   it "writes a new memory entry when instructed" do
     memory_name = "secret_plan"
     memory_content = "# The Secret Plan\nPhase 1: Evolution."
-    prompt = "Please save a new memory called '#{memory_name}' with the following content: #{memory_content}"
+    prompt = "Please save a new memory called '#{memory_name}' in the project scope with the following content: #{memory_content}"
 
     run_with_prompt(prompt)
 
     # Verify the file was actually created on disk
-    expect(File.exist?(File.join(memories_dir, "#{memory_name}.md"))).to be true
-    expect(File.read(File.join(memories_dir, "#{memory_name}.md"))).to eq(memory_content)
+    expect(File.exist?(File.join(project_memories_dir, "#{memory_name}.md"))).to be true
+    expect(File.read(File.join(project_memories_dir, "#{memory_name}.md"))).to eq(memory_content)
   end
 end

@@ -4,67 +4,104 @@ require "fileutils"
 
 module Samagotchi
   module Tools
-    MEMORIES_DIR = "memories"
+    PROJECT_MEMORIES_DIR = "memories"
+    SYSTEM_MEMORIES_DIR = File.join(Dir.home, ".config", "samagotchi", "memories")
     MEMORY_INDEX = "index"
+    VALID_SCOPES = %w[project system].freeze
 
-    # Reads a memory entry from the memories directory.
-    # If no name is given (or the content is blank), returns the memory index
-    # (memories/index.md) when it exists, or a plain file listing as a fallback.
-    # Usage: <tool name="memory_read">entry_name</tool>
+    # Reads a memory entry from scoped memory directories.
+    # When scope is omitted, reads from project first and falls back to system.
+    # Usage: call("entry_name", scope: "project"|"system"|nil)
     class MemoryRead
       NAME        = "memory_read"
-      DESCRIPTION = 'Read a memory entry (MD file) from the memories directory. ' \
-                    'Pass entry name without extension: <tool name="memory_read">entry_name</tool>. ' \
-                    "Leave blank to read the memory index (memories/index.md)."
+      DESCRIPTION = 'Read a memory entry (MD file) from scoped memories. ' \
+                    'Pass name without extension and optional scope (project|system). ' \
+                    "When scope is omitted, read falls back from project to system."
 
       def self.name        = NAME
       def self.description = DESCRIPTION
 
-      def self.call(entry_name)
+      def self.call(entry_name, scope: nil)
         entry_name = entry_name.to_s.strip
-        dir = MEMORIES_DIR
+        scope = normalize_scope(scope)
 
         if entry_name.empty?
-          index_path = File.join(dir, "#{MEMORY_INDEX}.md")
-          return File.read(index_path) if File.exist?(index_path)
+          return scoped_index(scope) if scope
 
-          files = Dir.glob(File.join(dir, "*.md")).sort
-          return "No memories stored yet." if files.empty?
-
-          return "Stored memories (no index yet):\n" + files.map { |f| File.basename(f, ".md") }.join("\n")
+          project = scoped_index("project")
+          system = scoped_index("system")
+          return [
+            "Project memories:",
+            project,
+            "",
+            "System memories:",
+            system
+          ].join("\n")
         end
 
-        path = File.join(dir, "#{entry_name}.md")
-        File.read(path)
+        scopes = scope ? [scope] : %w[project system]
+        scopes.each do |resolved_scope|
+          path = memory_path(entry_name, resolved_scope)
+          return File.read(path) if File.exist?(path)
+        end
+
+        "Error: memory not found: #{entry_name}"
       rescue Errno::ENOENT
         "Error: memory not found: #{entry_name}"
       rescue => e
         "Error: #{e.message}"
       end
+
+      def self.normalize_scope(scope)
+        value = scope.to_s.strip
+        return nil if value.empty?
+        return value if VALID_SCOPES.include?(value)
+
+        raise ArgumentError, "invalid scope '#{scope}', expected one of: #{VALID_SCOPES.join(', ')}"
+      end
+
+      def self.scoped_index(scope)
+        dir = memories_dir(scope)
+        index_path = File.join(dir, "#{MEMORY_INDEX}.md")
+        return File.read(index_path) if File.exist?(index_path)
+
+        files = Dir.glob(File.join(dir, "*.md")).sort
+        return "No memories stored yet." if files.empty?
+
+        "Stored memories (no index yet):\n" + files.map { |f| File.basename(f, ".md") }.join("\n")
+      end
+
+      def self.memory_path(entry_name, scope)
+        File.join(memories_dir(scope), "#{entry_name}.md")
+      end
+
+      def self.memories_dir(scope)
+        scope == "project" ? PROJECT_MEMORIES_DIR : SYSTEM_MEMORIES_DIR
+      end
     end
 
-    # Writes or updates a memory entry in the memories directory.
-    # Use "index" as the entry name to update the memory index.
-    # Usage: <tool name="memory_write" path="entry_name">content</tool>
+    # Writes or updates a memory entry in a scoped memories directory.
+    # Scope is required and must be one of: project, system.
+    # Usage: call(content, path: "entry_name", scope: "project"|"system")
     class MemoryWrite
       NAME        = "memory_write"
-      DESCRIPTION = 'Write or update a memory entry (MD file) in the memories directory. ' \
-                    'Use path attribute for the entry name: ' \
-                    '<tool name="memory_write" path="entry_name">content</tool>. ' \
-                    'Use path="index" to update the memory index (memories/index.md).'
+      DESCRIPTION = 'Write or update a memory entry (MD file) in scoped memories. ' \
+                    'Provide name via path and required scope (project|system).'
 
       def self.name        = NAME
       def self.description = DESCRIPTION
 
-      def self.call(content, path:)
+      def self.call(content, path:, scope:)
         entry_name = path.to_s.strip
         return "Error: entry name is required" if entry_name.empty?
+        return "Error: scope is required" if scope.to_s.strip.empty?
+        resolved_scope = MemoryRead.normalize_scope(scope)
 
-        dir = MEMORIES_DIR
+        dir = MemoryRead.memories_dir(resolved_scope)
         FileUtils.mkdir_p(dir)
         file_path = File.join(dir, "#{entry_name}.md")
         File.write(file_path, content)
-        "Memory '#{entry_name}' saved (#{content.bytesize} bytes)."
+        "Memory '#{entry_name}' saved to #{resolved_scope} scope (#{content.bytesize} bytes)."
       rescue => e
         "Error: #{e.message}"
       end

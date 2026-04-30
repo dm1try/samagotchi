@@ -16,7 +16,7 @@ RSpec.describe Samagotchi::Agent do
 
   describe "#run with a one-off prompt" do
     before do
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
     end
 
@@ -63,17 +63,20 @@ file2.rb")
       expect(received_prompt).to include("Never ignore direct user instructions")
     end
 
-    it "injects the memory index into the system prompt" do
+    it "injects project and system memory indexes into the system prompt" do
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|
         received_prompt = prompt
         "ok"
       end
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("- **notes**: test notes")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "project").and_return("- **project**: test notes")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "system").and_return("- **system**: shared notes")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       agent.run
-      expect(received_prompt).to include("Memories:")
-      expect(received_prompt).to include("- **notes**: test notes")
+      expect(received_prompt).to include("Project memories:")
+      expect(received_prompt).to include("System memories:")
+      expect(received_prompt).to include("- **project**: test notes")
+      expect(received_prompt).to include("- **system**: shared notes")
     end
 
     it "uses Gemma 4 string delimiters (<|\"|\">...<|\"|>) for all string values in tool declarations" do
@@ -82,7 +85,7 @@ file2.rb")
         received_prompt = prompt
         "ok"
       end
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       agent.run
       # All tool declaration string values must use <|"|> delimiters
@@ -98,7 +101,7 @@ file2.rb")
         received_prompt = prompt
         "ok"
       end
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       agent.run
       expect(received_prompt).to include('param:<|"|>value<|"|>')
@@ -144,7 +147,7 @@ file2.rb")
 
   describe "rg guidance" do
     before do
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
       ENV.delete("THINKING_MODE")
     end
@@ -193,7 +196,7 @@ file2.rb")
       # Clear ENV to ensure tests are isolated from the environment
       ENV.delete("THINKING_MODE")
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     end
 
     it "includes the <|think|> token by default" do
@@ -220,7 +223,7 @@ file2.rb")
     let(:looping_call) { %(<|tool_call>call:execute{command: "echo step"}<tool_call|>) }
 
     before do
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
     end
 
