@@ -48,6 +48,34 @@ file2.rb")
       expect(received_prompt).to include("Memories:")
       expect(received_prompt).to include("- **notes**: test notes")
     end
+
+    it "uses Gemma 4 string delimiters (<|\"|\">...<|\"|>) for all string values in tool declarations" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent.run
+      # All tool declaration string values must use <|"|> delimiters
+      expect(received_prompt).to include('description:<|"|>Run any shell command')
+      expect(received_prompt).to include('description:<|"|>Read a file from disk<|"|>')
+      expect(received_prompt).to include('description:<|"|>Write content to a file')
+      expect(received_prompt).to include('type:<|"|>string<|"|>')
+    end
+
+    it "uses Gemma 4 string delimiters in the tool call hint shown to the model" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent.run
+      expect(received_prompt).to include('param:<|"|>value<|"|>')
+    end
   end
 
   describe "Thinking Mode (control token injection)" do

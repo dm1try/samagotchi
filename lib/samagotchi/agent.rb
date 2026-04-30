@@ -13,63 +13,63 @@ module Samagotchi
 
     TOOL_EXECUTE = <<~DECL.strip
       <|tool>declaration:execute{
-        "description": "Run any shell command and see its stdout, stderr, and exit code",
-        "parameters": {
-          "command": {"type": "string", "description": "The shell command to run"}
+        description:<|"|>Run any shell command and see its stdout, stderr, and exit code<|"|>,
+        parameters:{
+          command:{type:<|"|>string<|"|>, description:<|"|>The shell command to run<|"|>}
         }
       }<tool|>
     DECL
 
     TOOL_READ = <<~DECL.strip
       <|tool>declaration:read{
-        "description": "Read a file from disk",
-        "parameters": {
-          "path": {"type": "string", "description": "Path to the file"}
+        description:<|"|>Read a file from disk<|"|>,
+        parameters:{
+          path:{type:<|"|>string<|"|>, description:<|"|>Path to the file<|"|>}
         }
       }<tool|>
     DECL
 
     TOOL_WRITE = <<~DECL.strip
       <|tool>declaration:write{
-        "description": "Write content to a file (parent directories are created automatically)",
-        "parameters": {
-          "path":    {"type": "string", "description": "Destination file path"},
-          "content": {"type": "string", "description": "Content to write to the file"}
+        description:<|"|>Write content to a file (parent directories are created automatically)<|"|>,
+        parameters:{
+          path:{type:<|"|>string<|"|>, description:<|"|>Destination file path<|"|>},
+          content:{type:<|"|>string<|"|>, description:<|"|>Content to write to the file<|"|>}
         }
       }<tool|>
     DECL
 
     TOOL_EDIT = <<~DECL.strip
       <|tool>declaration:edit{
-        "description": "Replace an exact block of text in an existing file; the old block must appear exactly once",
-        "parameters": {
-          "path":     {"type": "string", "description": "File path"},
-          "old_text": {"type": "string", "description": "Exact text to replace"},
-          "new_text": {"type": "string", "description": "Replacement text"}
+        description:<|"|>Replace an exact block of text in an existing file; the old block must appear exactly once<|"|>,
+        parameters:{
+          path:{type:<|"|>string<|"|>, description:<|"|>File path<|"|>},
+          old_text:{type:<|"|>string<|"|>, description:<|"|>Exact text to replace<|"|>},
+          new_text:{type:<|"|>string<|"|>, description:<|"|>Replacement text<|"|>}
         }
       }<tool|>
     DECL
 
     TOOL_MEMORY_READ = <<~DECL.strip
       <|tool>declaration:memory_read{
-        "description": "Read a memory entry from the memories directory (memories/<name>.md). Leave name blank to read the memory index.",
-        "parameters": {
-          "name": {"type": "string", "description": "Memory entry name without .md extension; leave blank for the index"}
+        description:<|"|>Read a memory entry from the memories directory (memories/<name>.md). Leave name blank to read the memory index.<|"|>,
+        parameters:{
+          name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension; leave blank for the index<|"|>}
         }
       }<tool|>
     DECL
 
     TOOL_MEMORY_WRITE = <<~DECL.strip
       <|tool>declaration:memory_write{
-        "description": "Write or update a memory entry in the memories directory (memories/<name>.md). Use name 'index' to update the index.",
-        "parameters": {
-          "name":    {"type": "string", "description": "Memory entry name without .md extension"},
-          "content": {"type": "string", "description": "Markdown content to write"}
+        description:<|"|>Write or update a memory entry in the memories directory (memories/<name>.md). Use name 'index' to update the index.<|"|>,
+        parameters:{
+          name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension<|"|>},
+          content:{type:<|"|>string<|"|>, description:<|"|>Markdown content to write<|"|>}
         }
       }<tool|>
     DECL
 
-    TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param: "value"}<tool_call|>'
+    TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param:<|"|>value<|"|>}<tool_call|>'
 
     # ── System prompts ─────────────────────────────────────────────────────────
 
@@ -129,7 +129,7 @@ module Samagotchi
         1. Write lib/samagotchi/tools/<name>.rb with self.name and self.call
         2. Require it in lib/samagotchi/kernel_loop.rb and add to TOOLS
         3. Write spec/tools/<name>_spec.rb
-        4. Validate: <|tool_call>call:execute{command: "bundle exec rspec spec/tools/<name>_spec.rb --no-color"}<tool_call|>
+        4. Validate: <|tool_call>call:execute{command:<|"|>bundle exec rspec spec/tools/<name>_spec.rb --no-color<|"|>}<tool_call|>
 
       Begin by reading your source files and deciding what to add or improve.
     SYS
