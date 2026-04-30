@@ -231,33 +231,39 @@ file2.rb")
       responses = Array.new(10, looping_call) + ["finished"]
 
       allow(client).to receive(:complete) { |_prompt| responses.shift }
+      allow(Reline).to receive(:readmultiline).and_return("run", nil)
+      allow(Reline).to receive(:readline).and_return("/continue")
 
       agent = described_class.new(mode: "assist", client: client)
-      input = StringIO.new("run\n/continue\n")
-
-      original_stdin = $stdin
-      $stdin = input
 
       expect { agent.run }
         .to output(/iteration limit reached; type \/continue to resume.*finished/m).to_stdout
-    ensure
-      $stdin = original_stdin
     end
 
     it "rejects new input until the interrupted turn is resumed" do
       allow(client).to receive(:complete)
         .and_return(*Array.new(10, looping_call), "finished")
+      allow(Reline).to receive(:readmultiline).and_return("run", nil)
+      allow(Reline).to receive(:readline).and_return("new request", "/continue")
 
       agent = described_class.new(mode: "assist", client: client)
-      input = StringIO.new("run\nnew request\n/continue\n")
-
-      original_stdin = $stdin
-      $stdin = input
 
       expect { agent.run }
         .to output(/type \/continue to resume the interrupted turn.*finished/m).to_stdout
-    ensure
-      $stdin = original_stdin
+    end
+
+    it "accepts multiline content from the default editor flow" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "done"
+      end
+      allow(Reline).to receive(:readmultiline).and_return("line one\nline two", nil)
+
+      agent = described_class.new(mode: "assist", client: client)
+
+      expect { agent.run }.to output(/done/).to_stdout
+      expect(received_prompt).to include("line one\nline two")
     end
   end
 end

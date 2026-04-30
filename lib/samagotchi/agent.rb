@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "reline"
+
 require_relative "kernel_loop"
 require_relative "tools/memory"
 
@@ -191,9 +193,7 @@ module Samagotchi
       awaiting_continue = false
 
       loop do
-        $stdout.print(awaiting_continue ? "\ncontinue> " : "\nyou> ")
-        $stdout.flush
-        input = $stdin.gets&.strip
+        input = read_input(awaiting_continue: awaiting_continue)
         break if input.nil?
 
         if awaiting_continue
@@ -260,6 +260,22 @@ module Samagotchi
       return unless result.resumable?
 
       $stdout.puts "iteration limit reached; type #{CONTINUE_COMMAND} to resume"
+    end
+
+    def read_input(awaiting_continue:)
+      if awaiting_continue
+        input = Reline.readline("continue> ", true)
+        return nil if input.nil?
+
+        return input.strip
+      end
+
+      # In multiline mode Enter submits, while Meta+Enter/Alt+Enter inserts a
+      # newline on terminals that emit that distinct sequence (for example kitty).
+      input = Reline.readmultiline("you> ", true) { true }
+      return nil if input.nil?
+
+      input.gsub(/\r\n?|\n\z/, "\n").strip
     end
 
     def continue_request?(input)
