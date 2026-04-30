@@ -199,7 +199,10 @@ module Samagotchi
     # is always aware of stored memories without needing to call a tool first.
     def system_prompt_with_index(base)
       index = Tools::MemoryRead.call("")
-      "#{base}\nMemories:\n#{index}"
+      # Enable thinking mode by injecting the control token if THINKING_MODE is not "false"
+      # This allows it to be ON by default, but explicitly DISABLEABLE via ENV.
+      thinking_token = ENV["THINKING_MODE"] == "false" ? "" : "<|think|>\n"
+      "#{thinking_token}#{base}\nMemories:\n#{index}"
     end
   end
 end
