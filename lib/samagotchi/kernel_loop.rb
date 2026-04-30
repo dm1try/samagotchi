@@ -51,6 +51,8 @@ module Samagotchi
     # delimiters are used as plain strings (no regex) to avoid any backtracking
     # risk on adversarial input.
     THOUGHT_OPEN        = "<|think|>"
+    THOUGHT_CHANNEL_OPEN  = "<|channel>thought"
+    THOUGHT_CHANNEL_CLOSE = "<channel|>"
     CONTROL_TOKEN_START = "<|"
 
     def initialize(client: nil, verbose: false)
@@ -111,6 +113,17 @@ module Samagotchi
         close_pos  = next_real_control_token(result, body_start)
         result = if close_pos
                    result[0...open_pos] + result[close_pos..]
+                 else
+                   result[0...open_pos]
+                 end
+      end
+
+      # Emitted thought-channel format: strip from <|channel>thought to the
+      # corresponding closing tag, or EOS if the close is missing.
+      while (open_pos = result.index(THOUGHT_CHANNEL_OPEN))
+        close_pos = result.index(THOUGHT_CHANNEL_CLOSE, open_pos)
+        result = if close_pos
+                   result[0...open_pos] + result[close_pos + THOUGHT_CHANNEL_CLOSE.length..]
                  else
                    result[0...open_pos]
                  end

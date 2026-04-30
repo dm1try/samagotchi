@@ -86,6 +86,28 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(kernel.run([{ role: "user", content: "answer" }])).to eq("")
     end
 
+    it "strips emitted thought-channel output from the final response" do
+      model_output = %(<|channel>thought
+The user said "hello". I should respond briefly.
+<channel|>Hello!)
+      allow(client).to receive(:complete).and_return(model_output)
+      expect(kernel.run([{ role: "user", content: "hello" }])).to eq("Hello!")
+    end
+
+    it "preserves tool dispatch when a thought-channel block precedes a tool call" do
+      model_output = %(<|channel>thought
+Need to inspect the filesystem first.
+<channel|><|tool_call>call:execute{command: "echo after-channel"}<tool_call|>)
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? model_output : "finished"
+      end
+      result = kernel.run([{ role: "user", content: "run" }])
+      expect(result).to eq("finished")
+      expect(prompts[1]).to include("stdout:\nafter-channel")
+    end
+
     it "strips previous model thoughts from history before the next standard turn" do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
@@ -100,6 +122,23 @@ RSpec.describe Samagotchi::KernelLoop do
       ]
       kernel.run(history)
       expect(prompts.first).not_to include("private chain of thought")
+      expect(prompts.first).to include("Answer")
+    end
+
+    it "strips previous thought-channel output from history before the next standard turn" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        "ok"
+      end
+
+      history = [
+        { role: "user", content: "first" },
+        { role: "model", content: %(<|channel>thought\nprivate reasoning\n<channel|>Answer) },
+        { role: "user", content: "second" }
+      ]
+      kernel.run(history)
+      expect(prompts.first).not_to include("private reasoning")
       expect(prompts.first).to include("Answer")
     end
 

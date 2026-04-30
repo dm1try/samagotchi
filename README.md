@@ -20,12 +20,14 @@ The kernel loop accepts canonical calls in this format:
 
 `<|tool_call>call:NAME{...}<tool_call|>`
 
-Backward-compatibility formats (legacy thought tags, XML tool tags, declaration-echo parsing) are intentionally not supported.
+XML tool tags and declaration-echo parsing are intentionally not supported.
 
 ### Thought Context Rules
 
 Thought handling follows the Gemma guidance:
 
+- Include `<|think|>` in the system instruction to activate thinking mode.
+- When thinking mode is active, the model may emit internal reasoning as `<|channel>thought ... <channel|>`.
 - Standard multi-turn: prior model thoughts are stripped from conversation history before the next turn.
 - Function/tool-calling exception: during a single turn that includes tool calls, thoughts are not stripped between those tool-call rounds.
 - Final model output returned to the caller is thought-stripped.
