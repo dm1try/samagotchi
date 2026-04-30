@@ -57,13 +57,34 @@ RSpec.describe "edit tool - file editing integration", :integration do
     File.write(path, "def greet\n  puts 'hello'\nend\n")
 
     run_with_prompt(
-      "Use the edit tool to replace \"puts 'hello'\" with \"puts 'hi'\" " \
+      "Use the edit tool to replace \"puts 'hello'\" with \"new_hello\" " \
       "in the file #{path}."
     )
 
     content = File.read(path)
     expect(content).to include("def greet")
-    expect(content).to include("puts 'hi'")
+    expect(content).to include("new_hello")
     expect(content).to include("end")
+  end
+
+  it "edits multiple lines in a file and reports success" do
+    path = File.join(@tmpdir, "multiline.txt")
+    content = "Line 1\nLine 2\nLine 3\nLine 4\n"
+    File.write(path, content)
+
+    run_with_prompt(
+      "Use the edit tool to replace the lines\n" \
+      "Line 2\n" \
+      "Line 3\n" \
+      "with\n" \
+      "Line 2 (updated)\n" \
+      "Line 3 (updated)\n" \
+      "in the file #{path}. The <old> block must be exactly\n" \
+      "'Line 2\nLine 3' and the <new> block must be\n" \
+      "'Line 2 (updated)\nLine 3 (updated)'."
+    )
+
+    expected_content = "Line 1\nLine 2 (updated)\nLine 3 (updated)\nLine 4\n"
+    expect(File.read(path)).to eq(expected_content)
   end
 end
