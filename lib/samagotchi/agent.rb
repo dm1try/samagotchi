@@ -15,7 +15,7 @@ module Samagotchi
       <|tool>declaration:execute{
         description:<|"|>Run any shell command and see its stdout, stderr, and exit code<|"|>,
         parameters:{
-          command:{type:<|"|>string<|"|>, description:<|"|>The shell command to run<|"|>}
+          command:{type:<|"|>string<|"|>, description:<|"|>The shell command to run<|"|>, required:true}
         }
       }<tool|>
     DECL
@@ -24,7 +24,7 @@ module Samagotchi
       <|tool>declaration:read{
         description:<|"|>Read a file from disk<|"|>,
         parameters:{
-          path:{type:<|"|>string<|"|>, description:<|"|>Path to the file<|"|>}
+          path:{type:<|"|>string<|"|>, description:<|"|>Path to the file<|"|>, required:true}
         }
       }<tool|>
     DECL
@@ -33,8 +33,8 @@ module Samagotchi
       <|tool>declaration:write{
         description:<|"|>Write content to a file (parent directories are created automatically)<|"|>,
         parameters:{
-          path:{type:<|"|>string<|"|>, description:<|"|>Destination file path<|"|>},
-          content:{type:<|"|>string<|"|>, description:<|"|>Content to write to the file<|"|>}
+          path:{type:<|"|>string<|"|>, description:<|"|>Destination file path<|"|>, required:true},
+          content:{type:<|"|>string<|"|>, description:<|"|>Content to write to the file<|"|>, required:true}
         }
       }<tool|>
     DECL
@@ -43,9 +43,9 @@ module Samagotchi
       <|tool>declaration:edit{
         description:<|"|>Replace an exact block of text in an existing file; the old block must appear exactly once<|"|>,
         parameters:{
-          path:{type:<|"|>string<|"|>, description:<|"|>File path<|"|>},
-          old_text:{type:<|"|>string<|"|>, description:<|"|>Exact text to replace<|"|>},
-          new_text:{type:<|"|>string<|"|>, description:<|"|>Replacement text<|"|>}
+          path:{type:<|"|>string<|"|>, description:<|"|>File path<|"|>, required:true},
+          old_text:{type:<|"|>string<|"|>, description:<|"|>Exact text to replace<|"|>, required:true},
+          new_text:{type:<|"|>string<|"|>, description:<|"|>Replacement text<|"|>, required:true}
         }
       }<tool|>
     DECL
@@ -63,13 +63,13 @@ module Samagotchi
       <|tool>declaration:memory_write{
         description:<|"|>Write or update a memory entry in the memories directory (memories/<name>.md). Use name 'index' to update the index.<|"|>,
         parameters:{
-          name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension<|"|>},
-          content:{type:<|"|>string<|"|>, description:<|"|>Markdown content to write<|"|>}
+          name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension<|"|>, required:true},
+          content:{type:<|"|>string<|"|>, description:<|"|>Markdown content to write<|"|>, required:true}
         }
       }<tool|>
     DECL
 
-    TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param:<|"|>value<|"|>}<tool_call|>'
+    TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param:<|"|>value<|"|>}<tool_call|>. CRITICAL: check the tool declaration for the exact parameter names and required fields!'
 
     # ── System prompts ─────────────────────────────────────────────────────────
 
