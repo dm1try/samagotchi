@@ -17,16 +17,39 @@ module Samagotchi
 
     # Send a raw prompt and return the model's completion text.
     #
+    # llama.cpp can stream completion chunks as newline-delimited `data: {...}`
+    # records. We consume that stream and still return a single joined string so
+    # the rest of the harness API stays unchanged.
+    #
     # @param prompt      [String]        full formatted prompt string
     # @param stop        [Array<String>] stop sequences
-    # @param temperature [Float]
-    # @param max_tokens  [Integer]       maximum tokens to generate (n_predict)
     # @return [String] the generated text
     def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"])
-      uri  = URI("http://#{@host}:#{@port}/completion")
-      body = { prompt: prompt, stop: stop, stream: false }
-      resp = Net::HTTP.post(uri, body.to_json, "Content-Type" => "application/json")
-      JSON.parse(resp.body).fetch("content")
+      uri = URI("http://#{@host}:#{@port}/completion")
+      request = Net::HTTP::Post.new(uri)
+      request["Content-Type"] = "application/json"
+      request.body = { prompt: prompt, stop: stop, stream: true }.to_json
+
+      result = +""
+      buffer = +""
+
+      Net::HTTP.start(uri.host, uri.port) do |http|
+        http.request(request) do |response|
+          response.read_body do |chunk|
+            buffer << chunk
+
+            while (newline_index = buffer.index("\n"))
+              line = buffer.slice!(0, newline_index + 1).strip
+              next if line.empty? || !line.start_with?("data: ")
+
+              payload = JSON.parse(line.delete_prefix("data: "))
+              result << payload.fetch("content", "")
+            end
+          end
+        end
+      end
+
+      result
     rescue => e
       raise "llama.cpp request failed (#{@host}:#{@port}): #{e.message}"
     end
