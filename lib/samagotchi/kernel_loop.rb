@@ -13,25 +13,15 @@ module Samagotchi
   #
   # Flow:
   #   1. Format the conversation into a Gemma 4 prompt and call llama.cpp.
-  #   2. Parse the response for tool-call blocks (XML or native Gemma 4 format).
+  #   2. Parse the response for canonical Gemma 4 tool-call blocks.
   #   3. Dispatch each tool call, collect results.
   #   4. Inject results as a <|tool_response>…<tool_response|> block and repeat from step 1.
   #   5. Stop when the model emits no tool calls or max_iterations is reached.
   #
-  # XML syntax (harness-defined, accepted for completeness):
-  #   <tool name="execute">bundle exec rspec spec/</tool>
-  #   <tool name="read">lib/samagotchi/prompt.rb</tool>
-  #   <tool name="write" path="lib/samagotchi/tools/foo.rb">content</tool>
-  #
-  # Native Gemma 4 syntax (canonical model call format, per documentation):
+  # Canonical Gemma 4 syntax (model call format):
   #   <|tool_call>call:execute{command: "bundle exec rspec spec/"}<tool_call|>
   #   <|tool_call>call:read{path: "lib/samagotchi/prompt.rb"}<tool_call|>
   #   <|tool_call>call:write{path: "lib/foo.rb", content: "..."}<tool_call|>
-  #
-  # Secondary native syntax (declaration-echo, also accepted):
-  #   <|tool>declaration:execute{command: "bundle exec rspec spec/"}
-  #   <|tool>declaration:read{path: "lib/samagotchi/prompt.rb"}
-  #   <|tool>declaration:write{path: "lib/foo.rb", content: "..."}
   class KernelLoop
     TOOLS = [
       Tools::Execute,
@@ -42,22 +32,11 @@ module Samagotchi
       Tools::Edit
     ].freeze
 
-    # ── XML format constants ───────────────────────────────────────────────────
-    # Regex for the opening tag only — attributes are short, bounded, and safe.
-    TOOL_OPEN_RE  = /<tool\s+([^>]{1,500})>/
-    TOOL_CLOSE    = "</tool>"
-
-    # ── Native Gemma 4 format constants (canonical model call format) ─────────
+    # ── Gemma 4 tool-call constants (canonical model call format) ─────────────
     # <|tool_call>call:NAME{params}<tool_call|>  — model's request to use a tool.
-    NATIVE_OPEN_LEGACY     = "<|tool_call>"
-    NATIVE_CLOSE_LEGACY    = "<tool_call|>"
-    NATIVE_CALL_RE_LEGACY  = /\Acall:([a-z_]{1,50})\{/
-
-    # ── Native Gemma 4 format constants (declaration-echo, secondary) ─────────
-    # <|tool>declaration:NAME{params}  — body runs to next <| token, \n, or EOS.
-    # Some model checkpoints echo tool declarations when calling them.
-    NATIVE_OPEN      = "<|tool>"
-    NATIVE_CALL_RE   = /\Adeclaration:([a-z_]{1,50})\{/
+    TOOL_CALL_OPEN      = "<|tool_call>"
+    TOOL_CALL_CLOSE     = "<tool_call|>"
+    TOOL_CALL_BODY_RE   = /\Acall:([a-z_]{1,50})\{/
 
     # ── Gemma 4 string delimiter ──────────────────────────────────────────────
     # Gemma 4 uses <|"|> as a delimiter token for all string values in its
@@ -74,11 +53,6 @@ module Samagotchi
     THOUGHT_OPEN        = "<|think|>"
     CONTROL_TOKEN_START = "<|"
 
-    # ── Gemma 4 thought-channel stripping (legacy fallback) ───────────────────
-    # Older model checkpoints emit <|channel>thought...<channel|> blocks.
-    THOUGHT_OPEN_LEGACY  = "<|channel>thought"
-    THOUGHT_CLOSE_LEGACY = "<channel|>"
-
     def initialize(client: nil, verbose: false)
       @client  = client || Client.new
       @verbose = verbose
@@ -90,7 +64,8 @@ module Samagotchi
     # @param max_iterations [Integer]    safety cap on tool-call rounds
     # @return [String] last model response (after all tool calls are resolved)
     def run(messages, max_iterations: 10)
-      conversation = messages.dup
+      # Standard multi-turn compliance: never pass prior raw thought blocks.
+      conversation = sanitize_history(messages)
 
       max_iterations.times do
         prompt   = Prompt.format(conversation)
@@ -116,20 +91,16 @@ module Samagotchi
       $stderr.puts "\n[verbose] #{message}"
     end
 
-    # Combines XML and native Gemma 4 tool-call parsers so the harness works
-    # regardless of which format the model naturally emits.
-    # Thought blocks (<|think|> canonical or <|channel>thought legacy) are
-    # stripped first so that tool-call examples written in internal reasoning
-    # are not inadvertently dispatched.
+    # Parse canonical Gemma 4 tool calls from raw model output.
+    # Thought content is intentionally left intact while a tool-call turn is in
+    # progress to preserve same-turn reasoning context between tool calls.
     def parse_tool_calls(text)
-      cleaned = strip_thought_blocks(text)
-      parse_xml_tool_calls(cleaned) + parse_native_tool_calls(cleaned)
+      parse_native_tool_calls(text)
     end
 
-    # Remove thought blocks from model output. Two formats are handled:
-    #   Canonical: <|think|>CONTENT — ends at the next real <| control token
-    #              (skipping any <|"|> Gemma string-delimiter tokens) or EOS.
-    #   Legacy:    <|channel>thought...CONTENT...<channel|>
+    # Remove canonical thought blocks from model output.
+    # <|think|>CONTENT — ends at the next real <| control token
+    # (skipping any <|"|> Gemma string-delimiter tokens) or EOS.
     # Uses String#index (no regex backtracking) to safely handle large inputs.
     def strip_thought_blocks(text)
       result = text
@@ -145,94 +116,42 @@ module Samagotchi
                  end
       end
 
-      # Legacy format: strip from <|channel>thought to end of <channel|>.
-      # If there is no closing tag the entire remainder is the thought block;
-      # strip to EOS (mirrors the canonical <|think|> behaviour above).
-      while (open_pos = result.index(THOUGHT_OPEN_LEGACY))
-        close_pos = result.index(THOUGHT_CLOSE_LEGACY, open_pos)
-        result = if close_pos
-                   result[0...open_pos] + result[close_pos + THOUGHT_CLOSE_LEGACY.length..]
-                 else
-                   result[0...open_pos]
-                 end
-      end
-
       result
     end
 
-    # ── XML parser ────────────────────────────────────────────────────────────
-    # Parse XML-style tool calls without backtracking: locate opening tags with
-    # a bounded regex, then use String#index to find the matching closing tag.
-    def parse_xml_tool_calls(text)
-      results = []
-      pos = 0
-      while (m = TOOL_OPEN_RE.match(text, pos))
-        attrs   = m[1]
-        name    = attrs[/name="([^"]{1,100})"/, 1]
-        path    = attrs[/path="([^"]{1,500})"/, 1]
-        start   = m.end(0)
-        close   = text.index(TOOL_CLOSE, start)
-        break unless close
-
-        content = strip_gemma_delimiters(text[start...close].strip)
-        results << { name: name, path: path, content: content } if name
-        pos = close + TOOL_CLOSE.length
-      end
-      results
-    end
-
-    # ── Native Gemma 4 parser ─────────────────────────────────────────────────
-    # Parse the model's natural output. Two formats are supported:
-    #   Canonical: <|tool_call>call:NAME{params}<tool_call|>
-    #              The documented model call format.
-    #   Secondary: <|tool>declaration:NAME{params}
-    #              Some model checkpoints echo declarations when calling tools.
+    # Parse canonical Gemma 4 tool calls:
+    #   <|tool_call>call:NAME{params}<tool_call|>
     # Uses String#index for outer delimiters (no backtracking risk).
     def parse_native_tool_calls(text)
       results = []
 
-      # Secondary (declaration-echo) format
       pos = 0
-      while (open_pos = text.index(NATIVE_OPEN, pos))
-        body_start = open_pos + NATIVE_OPEN.length
-        close_pos  = native_call_end(text, body_start)
-        body = text[body_start...close_pos]
-        if (m = NATIVE_CALL_RE.match(body))
-          name       = m[1]
-          params_raw = body[m.end(0)..]
-          params_raw = params_raw[0..-2] if params_raw.end_with?("}")
-          results << native_call(name, params_raw.strip)
-        end
-        pos = close_pos
-      end
-
-      # Canonical format (<|tool_call>…<tool_call|>)
-      pos = 0
-      while (open_pos = text.index(NATIVE_OPEN_LEGACY, pos))
-        body_start = open_pos + NATIVE_OPEN_LEGACY.length
-        close_pos  = text.index(NATIVE_CLOSE_LEGACY, body_start)
+      while (open_pos = text.index(TOOL_CALL_OPEN, pos))
+        body_start = open_pos + TOOL_CALL_OPEN.length
+        close_pos  = text.index(TOOL_CALL_CLOSE, body_start)
         break unless close_pos
 
         body = text[body_start...close_pos]
-        if (m = NATIVE_CALL_RE_LEGACY.match(body))
+        if (m = TOOL_CALL_BODY_RE.match(body))
           name       = m[1]
           params_raw = body[m.end(0)..]
           params_raw = params_raw[0..-2] if params_raw.end_with?("}")
           results << native_call(name, params_raw.strip)
         end
-        pos = close_pos + NATIVE_CLOSE_LEGACY.length
+        pos = close_pos + TOOL_CALL_CLOSE.length
       end
 
       results
     end
 
-    # Find the end position of a secondary <|tool>declaration: call body starting at +start+.
-    # The body is terminated by a newline, the next real <| control token (i.e.
-    # NOT the Gemma string delimiter <|"|>), or EOS.
-    def native_call_end(text, start)
-      nl_pos    = text.index("\n", start)
-      token_pos = next_real_control_token(text, start)
-      [nl_pos, token_pos].compact.min || text.length
+    def sanitize_history(messages)
+      messages.map do |m|
+        if m[:role] == "model"
+          { role: m[:role], content: strip_thought_blocks(m[:content].to_s) }
+        else
+          m.dup
+        end
+      end
     end
 
     # Scan forward from +start+ for the next <| sequence that is NOT the Gemma
