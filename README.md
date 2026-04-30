@@ -10,6 +10,14 @@ To skip loading AGENT.md, set:
 
 `SAMAGOTCHI_SKIP_AGENT_MD=true`
 
+## Llama HTTP Timeouts
+
+Long-running llama.cpp completions can exceed Ruby's default HTTP read timeout.
+Configure these environment variables to avoid premature request failures:
+
+- `LLAMA_OPEN_TIMEOUT` (default: `10`) connection timeout in seconds.
+- `LLAMA_READ_TIMEOUT` (default: `600`) response read timeout in seconds.
+
 ## Gemma 4 Behavior Contract
 
 This project uses canonical Gemma 4 tool-call parsing and explicit thought-context handling.

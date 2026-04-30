@@ -9,10 +9,14 @@ module Samagotchi
   # Configure via environment variables:
   #   LLAMA_HOST  (default: localhost)
   #   LLAMA_PORT  (default: 8080)
+  #   LLAMA_OPEN_TIMEOUT (default: 10 seconds)
+  #   LLAMA_READ_TIMEOUT (default: 600 seconds)
   class Client
-    def initialize(host: nil, port: nil)
+    def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil)
       @host = host || ENV.fetch("LLAMA_HOST", "localhost")
       @port = (port || ENV.fetch("LLAMA_PORT", "8080")).to_i
+      @open_timeout = (open_timeout || ENV.fetch("LLAMA_OPEN_TIMEOUT", "10")).to_i
+      @read_timeout = (read_timeout || ENV.fetch("LLAMA_READ_TIMEOUT", "600")).to_i
     end
 
     # Send a raw prompt and return the model's completion text.
@@ -33,7 +37,12 @@ module Samagotchi
       result = +""
       buffer = +""
 
-      Net::HTTP.start(uri.host, uri.port) do |http|
+      Net::HTTP.start(
+        uri.host,
+        uri.port,
+        open_timeout: @open_timeout,
+        read_timeout: @read_timeout
+      ) do |http|
         http.request(request) do |response|
           response.read_body do |chunk|
             buffer << chunk
