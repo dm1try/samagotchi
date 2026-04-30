@@ -74,7 +74,7 @@ module Samagotchi
     DECL
 
     TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param:<|"|>value<|"|>}<tool_call|>. CRITICAL: check the tool declaration for the exact parameter names and required fields!'
-
+    RG_GUIDANCE = "For fast repository/text search, prefer `rg` (ripgrep) over `grep` when exploring files or text."
     # ── System prompts ─────────────────────────────────────────────────────────
 
     SYSTEM_ASSIST = <<~SYS
@@ -227,7 +227,7 @@ module Samagotchi
       # Enable thinking mode by injecting the control token if THINKING_MODE is not "false"
       # This allows it to be ON by default, but explicitly DISABLEABLE via ENV.
       thinking_token = ENV["THINKING_MODE"] == "false" ? "" : "<|think|>\n"
-      [thinking_token + base, project_description, "Memories:\n#{index}"].compact.join("\n")
+      [thinking_token + base, rg_guidance, project_description, "Memories:\n#{index}"].compact.join("\n")
     end
 
     def emit_result(result)
@@ -258,6 +258,14 @@ module Samagotchi
     def skip_agent_description?
       value = ENV[SKIP_AGENT_DESCRIPTION_ENV]
       value == "1" || value&.casecmp?("true")
+    end
+
+    def rg_available?
+      system("command -v rg", out: File::NULL, err: File::NULL)
+    end
+
+    def rg_guidance
+      RG_GUIDANCE if rg_available?
     end
   end
 end

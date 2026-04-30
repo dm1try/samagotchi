@@ -129,6 +129,50 @@ file2.rb")
     end
   end
 
+  describe "rg guidance" do
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      ENV.delete("THINKING_MODE")
+    end
+
+    it "includes rg guidance in the prompt when rg is available" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:rg_available?).and_return(true)
+      agent.run
+      expect(received_prompt).to include("prefer `rg` (ripgrep) over `grep`")
+    end
+
+    it "omits rg guidance from the prompt when rg is not available" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:rg_available?).and_return(false)
+      agent.run
+      expect(received_prompt).not_to include("prefer `rg` (ripgrep) over `grep`")
+    end
+
+    it "includes rg guidance in the evolve prompt when rg is available" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      agent = described_class.new(mode: "evolve", prompt: "hi", client: client)
+      allow(agent).to receive(:rg_available?).and_return(true)
+      agent.run
+      expect(received_prompt).to include("prefer `rg` (ripgrep) over `grep`")
+    end
+  end
+
   describe "Thinking Mode (control token injection)" do
     let(:base_prompt) { "Base Prompt" }
 
