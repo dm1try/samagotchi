@@ -242,8 +242,8 @@ module Samagotchi
     # Appends the current memory index to the base system prompt so the agent
     # is always aware of stored memories without needing to call a tool first.
     def system_prompt_with_index(base)
-      project_index = Tools::MemoryRead.call("", scope: "project")
-      system_index = Tools::MemoryRead.call("", scope: "system")
+      project_index = read_memory_index("project")
+      system_index = read_memory_index("system")
       project_description = project_specific_description
       # Enable thinking mode by injecting the control token if THINKING_MODE is not "false"
       # This allows it to be ON by default, but explicitly DISABLEABLE via ENV.
@@ -256,10 +256,52 @@ module Samagotchi
     end
 
     def emit_result(result)
+      emit_tool_activity(result)
       $stdout.puts result.output
       return unless result.resumable?
 
       $stdout.puts "iteration limit reached; type #{CONTINUE_COMMAND} to resume"
+    end
+
+    def emit_tool_activity(result)
+      activities = result.respond_to?(:tool_activity) ? Array(result.tool_activity) : []
+      activities.each do |activity|
+        $stdout.puts format_tool_activity_line(activity)
+      end
+    end
+
+    def format_tool_activity_line(activity)
+      params = activity[:params].to_s.strip
+      params_suffix = params.empty? ? "" : " #{paint(params, 90)}"
+      status = activity[:status].to_s
+      status_color = status == "ok" ? 32 : 31
+      "#{paint('tool>', 36)} #{activity[:action]} (#{activity[:tool]}#{params_suffix}): #{paint(status, status_color)}"
+    end
+
+    def paint(text, code)
+      return text unless color_output?
+
+      "\e[#{code}m#{text}\e[0m"
+    end
+
+    def color_output?
+      return false unless $stdout.tty?
+      return false if ENV.key?("NO_COLOR")
+
+      ENV.fetch("TERM", "") != "dumb"
+    end
+
+    def read_memory_index(scope)
+      result = Tools::MemoryRead.call("", scope: scope)
+      status = result.to_s.start_with?("Error:") ? "error" : "ok"
+      activity = {
+        action: "reading memory",
+        tool: "memory_read",
+        params: "name=\"\" scope=#{scope.inspect}",
+        status: status
+      }
+      $stdout.puts format_tool_activity_line(activity)
+      result
     end
 
     def read_input(awaiting_continue:)

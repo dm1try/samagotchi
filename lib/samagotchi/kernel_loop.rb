@@ -23,7 +23,7 @@ module Samagotchi
   #   <|tool_call>call:read{path: "lib/samagotchi/prompt.rb"}<tool_call|>
   #   <|tool_call>call:write{path: "lib/foo.rb", content: "..."}<tool_call|>
   class KernelLoop
-    Result = Struct.new(:output, :conversation, :exhausted, :pending_tool_calls, keyword_init: true) do
+    Result = Struct.new(:output, :conversation, :exhausted, :pending_tool_calls, :tool_activity, keyword_init: true) do
       def to_s
         output.to_s
       end
@@ -113,6 +113,7 @@ module Samagotchi
     DEFAULT_CONTEXT_CHARS_PER_TOKEN = 4.0
     DEFAULT_CONTEXT_THRESHOLDS = [20, 40, 60, 80].freeze
     DEFAULT_CONTEXT_CADENCE = 0
+    TOOL_ACTIVITY_PREVIEW_LIMIT = 80
 
     def initialize(client: nil, verbose: false)
       @client  = client || Client.new
@@ -131,6 +132,7 @@ module Samagotchi
       context_state = initial_context_status_state(conversation)
       exhausted = false
       pending_tool_calls = false
+      tool_activity = []
 
       max_iterations.times do |iteration_index|
         prompt = prompt_with_context_status(conversation, iteration_index: iteration_index, state: context_state)
@@ -144,7 +146,7 @@ module Samagotchi
           break
         end
 
-        results = calls.map { |c| dispatch(c) }.join("\n\n---\n\n")
+        results = calls.map { |c| dispatch(c, tool_activity: tool_activity) }.join("\n\n---\n\n")
         conversation << { role: "tool_response", content: results }
         pending_tool_calls = true
       end
@@ -157,7 +159,8 @@ module Samagotchi
         output: strip_thought_blocks(last_model_content(conversation)),
         conversation: duplicate_conversation(conversation),
         exhausted: exhausted,
-        pending_tool_calls: pending_tool_calls
+        pending_tool_calls: pending_tool_calls,
+        tool_activity: tool_activity
       )
     end
 
@@ -507,11 +510,14 @@ module Samagotchi
       s.gsub('\\"', '"').gsub("\\'", "'").gsub("\\n", "\n").gsub("\\\\", "\\")
     end
 
-    def dispatch(call)
+    def dispatch(call, tool_activity: nil)
+      tool_activity ||= []
       tool = TOOLS.find { |t| t.name == call[:name] }
       unless tool
         available = TOOLS.map(&:name).join(", ")
-        return "Error: unknown tool '#{call[:name]}'. Available: #{available}"
+        result = "Error: unknown tool '#{call[:name]}'. Available: #{available}"
+        tool_activity << tool_activity_event(call[:name], call, result)
+        return result
       end
 
       verbose_log("── tool call: #{call[:name]} ──\n#{call[:path] ? "path: #{call[:path]}\n" : ""}#{call[:scope] ? "scope: #{call[:scope]}\n" : ""}#{call[:content]}\n──────────────────")
@@ -528,10 +534,75 @@ module Samagotchi
                end
 
       verbose_log("── tool result: #{call[:name]} ──\n#{result}\n──────────────────")
+      tool_activity << tool_activity_event(call[:name], call, result)
       "[#{call[:name]}]\n#{result}"
     rescue => e
       verbose_log("── tool error: #{call[:name]} ──\n#{e.message}\n──────────────────")
-      "[#{call[:name]}] Error: #{e.message}"
+      result = "Error: #{e.message}"
+      tool_activity << tool_activity_event(call[:name], call, result)
+      "[#{call[:name]}] #{result}"
+    end
+
+    def tool_activity_event(tool_name, call, result)
+      {
+        action: tool_activity_action(tool_name),
+        tool: tool_name,
+        params: tool_activity_params(tool_name, call),
+        status: tool_activity_status(result)
+      }
+    end
+
+    def tool_activity_action(tool_name)
+      case tool_name
+      when Tools::Execute::NAME then "running command"
+      when Tools::Read::NAME then "reading file"
+      when Tools::Write::NAME then "writing file"
+      when Tools::Edit::NAME then "editing file"
+      when Tools::MemoryRead::NAME then "reading memory"
+      when Tools::MemoryWrite::NAME then "saving memory"
+      else "calling tool"
+      end
+    end
+
+    def tool_activity_status(result)
+      result.to_s.start_with?("Error:") ? "error" : "ok"
+    end
+
+    def tool_activity_params(tool_name, call)
+      case tool_name
+      when Tools::Execute::NAME
+        "command=#{preview_tool_param(call[:content])}"
+      when Tools::Read::NAME
+        "path=#{preview_tool_param(call[:content])}"
+      when Tools::Write::NAME, Tools::Edit::NAME
+        "path=#{preview_tool_param(call[:path])}"
+      when Tools::MemoryRead::NAME
+        parts = []
+        name = call[:content].to_s.strip
+        parts << "name=#{preview_tool_param(name)}" unless name.empty?
+        scope = call[:scope].to_s.strip
+        parts << "scope=#{preview_tool_param(scope)}" unless scope.empty?
+        parts.join(" ")
+      when Tools::MemoryWrite::NAME
+        parts = []
+        path = call[:path].to_s.strip
+        parts << "name=#{preview_tool_param(path)}" unless path.empty?
+        scope = call[:scope].to_s.strip
+        parts << "scope=#{preview_tool_param(scope)}" unless scope.empty?
+        parts.join(" ")
+      else
+        nil
+      end
+    end
+
+    def preview_tool_param(value)
+      text = value.to_s.gsub(/\s+/, " ").strip
+      return '""' if text.empty?
+
+      if text.length > TOOL_ACTIVITY_PREVIEW_LIMIT
+        text = "#{text[0, TOOL_ACTIVITY_PREVIEW_LIMIT - 1]}…"
+      end
+      text.inspect
     end
   end
 end

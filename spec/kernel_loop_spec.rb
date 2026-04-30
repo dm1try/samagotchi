@@ -47,6 +47,39 @@ RSpec.describe Samagotchi::KernelLoop do
       allow(client).to receive(:complete).and_return(*responses)
       result = kernel.run([{ role: "user", content: "run ruby" }])
       expect(result).to eq("done")
+      expect(result.tool_activity).to include(
+        action: "running command",
+        tool: "execute",
+        params: "command=\"ruby -e 'puts 7'\"",
+        status: "ok"
+      )
+    end
+
+    it "captures concise tool activity with error status when a tool returns an error" do
+      responses = [
+        %(<|tool_call>call:read{path: "/definitely/missing/file.txt"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete).and_return(*responses)
+      result = kernel.run([{ role: "user", content: "read missing" }])
+
+      expect(result).to eq("done")
+      expect(result.tool_activity).to include(hash_including(action: "reading file", tool: "read", status: "error"))
+    end
+
+    it "truncates long command previews in tool activity" do
+      long_command = "echo #{'x' * 120}"
+      responses = [
+        %(<|tool_call>call:execute{command: "#{long_command}"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete).and_return(*responses)
+
+      result = kernel.run([{ role: "user", content: "run long command" }])
+      params = result.tool_activity.find { |event| event[:tool] == "execute" }[:params]
+
+      expect(params).to start_with("command=\"")
+      expect(params).to end_with("…\"")
     end
 
     it "injects tool results as a <|tool_response> block in the follow-up prompt" do

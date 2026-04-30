@@ -1,6 +1,26 @@
 # samagotchi
 self evolving agent harness
 
+## Tool Activity Log
+
+Samagotchi now prints a concise, human-friendly tool activity log in normal
+chat output. Each tool call is summarized as:
+
+`tool> <action> (<tool> <param-preview>): <status>`
+
+Examples:
+
+- `tool> reading file (read path="README.md"): ok`
+- `tool> running command (execute command="bundle exec rspec spec/..." ): error`
+
+Parameter previews are normalized to one line and truncated to keep output concise.
+
+This is separate from verbose mode:
+
+- Default output shows short activity status lines only.
+- `-v/--verbose` still prints detailed debug logs (raw LLM responses and full
+	tool call/result payloads) to stderr.
+
 ## Project specific description
 
 If an AGENT.md file is present in the project root, samagotchi injects its

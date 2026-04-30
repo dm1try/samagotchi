@@ -5,6 +5,7 @@ require "stringio"
 
 RSpec.describe Samagotchi::Agent do
   let(:client) { instance_double(Samagotchi::Client) }
+  let(:ansi_escape) { /\e\[[0-9;]+m/ }
 
   around do |example|
     original_thinking_mode = ENV["THINKING_MODE"]
@@ -37,6 +38,55 @@ file2.rb")
       agent = described_class.new(mode: "assist", prompt: "hello", client: client)
       agent.run
       expect(call_count).to eq(1)
+    end
+
+    it "prints concise tool activity lines in normal output" do
+      responses = [
+        %(<|tool_call>call:read{path: "README.md"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete).and_return(*responses)
+
+      agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+      expect { agent.run }
+        .to output(/tool> reading file \(read path=\"README.md\"\): ok.*done/m).to_stdout
+    end
+
+    it "prints colored tool activity lines when stdout supports color" do
+      responses = [
+        %(<|tool_call>call:read{path: "README.md"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete).and_return(*responses)
+
+      agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
+      allow(agent).to receive(:color_output?).and_return(true)
+      expect { agent.run }
+        .to output(/#{ansi_escape}tool>#{ansi_escape} reading file .*#{ansi_escape}ok#{ansi_escape}.*done/m).to_stdout
+    end
+
+    it "prints plain tool activity lines when NO_COLOR is set" do
+      responses = [
+        %(<|tool_call>call:read{path: "README.md"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete).and_return(*responses)
+
+      agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+      expect { agent.run }
+        .to output(/tool> reading file \(read path=\"README.md\"\): ok.*done/m).to_stdout
+    end
+
+    it "prints concise memory tool activity lines for system prompt memory index reads" do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "project").and_return("- project index")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "system").and_return("- system index")
+      allow(client).to receive(:complete).and_return("ok")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      expect { agent.run }
+        .to output(/tool> reading memory \(memory_read name=\"\" scope=\"project\"\): ok.*tool> reading memory \(memory_read name=\"\" scope=\"system\"\): ok.*ok/m).to_stdout
     end
 
     it "uses the assist system prompt" do
