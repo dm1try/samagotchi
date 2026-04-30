@@ -5,7 +5,20 @@ require "samagotchi/agent"
 RSpec.describe Samagotchi::Agent do
   let(:client) { instance_double(Samagotchi::Client) }
 
+  around do |example|
+    original_thinking_mode = ENV["THINKING_MODE"]
+    original_skip_agent_md = ENV["SAMAGOTCHI_SKIP_AGENT_MD"]
+    example.run
+    ENV["THINKING_MODE"] = original_thinking_mode
+    ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
+  end
+
   describe "#run with a one-off prompt" do
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+    end
+
     it "sends the prompt to the kernel and prints the response" do
       allow(client).to receive(:complete).and_return("file1.rb\
 file\
@@ -76,6 +89,43 @@ file2.rb")
       agent.run
       expect(received_prompt).to include('param:<|"|>value<|"|>')
     end
+
+    it "injects AGENT.md as project specific description when present" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(File).to receive(:file?).and_call_original
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:file?).with(File.join(Dir.pwd, "AGENT.md")).and_return(true)
+      allow(File).to receive(:read).with(File.join(Dir.pwd, "AGENT.md")).and_return("Use project conventions")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent.run
+
+      expect(received_prompt).to include("Project specific description:")
+      expect(received_prompt).to include("Use project conventions")
+    end
+
+    it "skips AGENT.md injection when SAMAGOTCHI_SKIP_AGENT_MD=true" do
+      ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = "true"
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(File).to receive(:file?).and_call_original
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:file?).with(File.join(Dir.pwd, "AGENT.md")).and_return(true)
+      allow(File).to receive(:read).with(File.join(Dir.pwd, "AGENT.md")).and_return("Use project conventions")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent.run
+
+      expect(received_prompt).not_to include("Project specific description:")
+      expect(received_prompt).not_to include("Use project conventions")
+    end
   end
 
   describe "Thinking Mode (control token injection)" do
@@ -84,6 +134,7 @@ file2.rb")
     before do
       # Clear ENV to ensure tests are isolated from the environment
       ENV.delete("THINKING_MODE")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("")
     end
 

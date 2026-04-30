@@ -9,6 +9,9 @@ module Samagotchi
   # assist mode  — interactive REPL: user types, model responds, tools execute inline.
   # evolve mode  — autonomous: model reads its own source, extends itself, validates with rspec.
   class Agent
+    AGENT_DESCRIPTION_FILE = "AGENT.md"
+    SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
+
     # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
 
     TOOL_EXECUTE = <<~DECL.strip
@@ -199,10 +202,30 @@ module Samagotchi
     # is always aware of stored memories without needing to call a tool first.
     def system_prompt_with_index(base)
       index = Tools::MemoryRead.call("")
+      project_description = project_specific_description
       # Enable thinking mode by injecting the control token if THINKING_MODE is not "false"
       # This allows it to be ON by default, but explicitly DISABLEABLE via ENV.
       thinking_token = ENV["THINKING_MODE"] == "false" ? "" : "<|think|>\n"
-      "#{thinking_token}#{base}\nMemories:\n#{index}"
+      [thinking_token + base, project_description, "Memories:\n#{index}"].compact.join("\n")
+    end
+
+    def project_specific_description
+      return nil if skip_agent_description?
+
+      path = File.join(Dir.pwd, AGENT_DESCRIPTION_FILE)
+      return nil unless File.file?(path)
+
+      content = File.read(path).strip
+      return nil if content.empty?
+
+      "Project specific description:\n#{content}"
+    rescue StandardError
+      nil
+    end
+
+    def skip_agent_description?
+      value = ENV[SKIP_AGENT_DESCRIPTION_ENV]
+      value == "1" || value&.casecmp?("true")
     end
   end
 end

@@ -1,6 +1,15 @@
 # samagotchi
 self evolving agent harness
 
+## Project specific description
+
+If an AGENT.md file is present in the project root, samagotchi injects its
+contents into the system prompt under a "Project specific description:" section.
+
+To skip loading AGENT.md, set:
+
+`SAMAGOTCHI_SKIP_AGENT_MD=true`
+
 ## Gemma 4 Behavior Contract
 
 This project uses canonical Gemma 4 tool-call parsing and explicit thought-context handling.
