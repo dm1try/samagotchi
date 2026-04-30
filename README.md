@@ -33,3 +33,11 @@ Thought handling follows the Gemma guidance:
 - Final model output returned to the caller is thought-stripped.
 
 In short, raw thought blocks are treated as in-turn transient context, not durable history.
+
+### Iteration Limit Behavior
+
+- `max_iterations` remains a hard safety cap on tool-call rounds.
+- Tool side effects that already ran before the cap are not rolled back.
+- `Samagotchi::KernelLoop#run` now returns a resumable result object with the visible output plus the accumulated conversation.
+- If the cap is reached while tool calls are still pending, the result is marked resumable so callers can continue from the saved conversation instead of restarting from scratch.
+- In assist mode, the CLI now pauses and requires `/continue` to resume the interrupted turn.

@@ -23,6 +23,53 @@ module Samagotchi
   #   <|tool_call>call:read{path: "lib/samagotchi/prompt.rb"}<tool_call|>
   #   <|tool_call>call:write{path: "lib/foo.rb", content: "..."}<tool_call|>
   class KernelLoop
+    Result = Struct.new(:output, :conversation, :exhausted, :pending_tool_calls, keyword_init: true) do
+      def to_s
+        output.to_s
+      end
+
+      alias to_str to_s
+
+      def ==(other)
+        if other.is_a?(self.class)
+          super
+        else
+          to_s == other
+        end
+      end
+
+      def exhausted?
+        exhausted
+      end
+
+      def pending_tool_calls?
+        pending_tool_calls
+      end
+
+      def resumable?
+        exhausted? && pending_tool_calls?
+      end
+
+      # Struct/Enumerable defines include? with collection semantics, but the
+      # historical KernelLoop#run contract returned a String. Keep include?
+      # aligned with String#include? for backward compatibility.
+      def include?(needle)
+        to_s.include?(needle)
+      end
+
+      # Keep compatibility with existing callers/specs that treat run() as a
+      # plain string (e.g., include?, match, start_with?).
+      def method_missing(name, *args, &block)
+        return to_s.public_send(name, *args, &block) if to_s.respond_to?(name)
+
+        super
+      end
+
+      def respond_to_missing?(name, include_private = false)
+        to_s.respond_to?(name, include_private) || super
+      end
+    end
+
     TOOLS = [
       Tools::Execute,
       Tools::Read,
@@ -60,14 +107,17 @@ module Samagotchi
       @verbose = verbose
     end
 
-    # Run the conversation loop and return the final model response text.
+    # Run the conversation loop and return the final model response plus
+    # resumable conversation state when execution stops at max_iterations.
     #
-    # @param messages       [Array<Hash>] conversation so far ({role:, content:})
-    # @param max_iterations [Integer]    safety cap on tool-call rounds
-    # @return [String] last model response (after all tool calls are resolved)
+    # @param messages       [Array<Hash>, Result] conversation so far ({role:, content:})
+    #                                           or a previous Result to resume
+    # @param max_iterations [Integer]            safety cap on tool-call rounds
+    # @return [Result] final visible response with continuation metadata
     def run(messages, max_iterations: 10)
-      # Standard multi-turn compliance: never pass prior raw thought blocks.
-      conversation = sanitize_history(messages)
+      conversation = prepare_conversation(messages)
+      exhausted = false
+      pending_tool_calls = false
 
       max_iterations.times do
         prompt   = Prompt.format(conversation)
@@ -76,13 +126,26 @@ module Samagotchi
         conversation << { role: "model", content: response }
 
         calls = parse_tool_calls(response)
-        break if calls.empty?
+        if calls.empty?
+          pending_tool_calls = false
+          break
+        end
 
         results = calls.map { |c| dispatch(c) }.join("\n\n---\n\n")
         conversation << { role: "tool_response", content: results }
+        pending_tool_calls = true
       end
 
-      strip_thought_blocks(conversation.last[:content])
+      if pending_tool_calls && tool_response_turn?(conversation.last)
+        exhausted = true
+      end
+
+      Result.new(
+        output: strip_thought_blocks(last_model_content(conversation)),
+        conversation: duplicate_conversation(conversation),
+        exhausted: exhausted,
+        pending_tool_calls: pending_tool_calls
+      )
     end
 
     private
@@ -165,6 +228,28 @@ module Samagotchi
           m.dup
         end
       end
+    end
+
+    def prepare_conversation(messages)
+      if messages.is_a?(Result)
+        duplicate_conversation(messages.conversation)
+      else
+        # Standard multi-turn compliance: never pass prior raw thought blocks.
+        sanitize_history(messages)
+      end
+    end
+
+    def duplicate_conversation(messages)
+      messages.map(&:dup)
+    end
+
+    def last_model_content(conversation)
+      message = conversation.reverse.find { |entry| entry[:role] == "model" }
+      message ? message[:content].to_s : ""
+    end
+
+    def tool_response_turn?(message)
+      message && message[:role] == "tool_response"
     end
 
     # Scan forward from +start+ for the next <| sequence that is NOT the Gemma

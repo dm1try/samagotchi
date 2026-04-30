@@ -11,6 +11,7 @@ module Samagotchi
   class Agent
     AGENT_DESCRIPTION_FILE = "AGENT.md"
     SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
+    CONTINUE_COMMAND = "/continue"
 
     # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
 
@@ -160,24 +161,43 @@ module Samagotchi
         { role: "system", content: system_prompt_with_index(SYSTEM_ASSIST) },
         { role: "user",   content: @prompt }
       ]
-      $stdout.puts @kernel.run(messages)
+      result = @kernel.run(messages)
+      emit_result(result)
     end
 
     def assist_loop
       $stdout.puts banner("assist")
       messages = [{ role: "system", content: system_prompt_with_index(SYSTEM_ASSIST) }]
+      awaiting_continue = false
 
       loop do
-        $stdout.print "\nyou> "
+        $stdout.print(awaiting_continue ? "\ncontinue> " : "\nyou> ")
         $stdout.flush
         input = $stdin.gets&.strip
         break if input.nil?
-        next  if input.empty?
 
-        messages << { role: "user", content: input }
-        response = @kernel.run(messages)
-        $stdout.puts "\nmodel> #{response}"
-        messages << { role: "model", content: response }
+        if awaiting_continue
+          unless continue_request?(input)
+            $stdout.puts "\nmodel> iteration limit reached; type #{CONTINUE_COMMAND} to resume the interrupted turn"
+            next
+          end
+
+          result = @kernel.run(messages)
+        else
+          next if input.empty?
+
+          if continue_request?(input)
+            $stdout.puts "\nmodel> nothing to continue"
+            next
+          end
+
+          messages << { role: "user", content: input }
+          result = @kernel.run(messages)
+        end
+
+        emit_result(result)
+        messages = result.conversation
+        awaiting_continue = result.resumable?
       end
 
       $stdout.puts "\nbye."
@@ -189,7 +209,8 @@ module Samagotchi
         { role: "system", content: system_prompt_with_index(SYSTEM_EVOLVE) },
         { role: "user",   content: "Read your source files, identify improvements, implement them, and validate with rspec." }
       ]
-      $stdout.puts @kernel.run(messages, max_iterations: 20)
+      result = @kernel.run(messages, max_iterations: 20)
+      emit_result(result)
     end
 
     def banner(mode)
@@ -207,6 +228,17 @@ module Samagotchi
       # This allows it to be ON by default, but explicitly DISABLEABLE via ENV.
       thinking_token = ENV["THINKING_MODE"] == "false" ? "" : "<|think|>\n"
       [thinking_token + base, project_description, "Memories:\n#{index}"].compact.join("\n")
+    end
+
+    def emit_result(result)
+      $stdout.puts result.output
+      return unless result.resumable?
+
+      $stdout.puts "iteration limit reached; type #{CONTINUE_COMMAND} to resume"
+    end
+
+    def continue_request?(input)
+      input.empty? || input == CONTINUE_COMMAND
     end
 
     def project_specific_description

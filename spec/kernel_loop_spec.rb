@@ -13,6 +13,11 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(kernel.run([{ role: "user", content: "hi" }])).to eq("Hello!")
     end
 
+    it "supports String-style include? checks on the returned result" do
+      allow(client).to receive(:complete).and_return("Hello world")
+      expect(kernel.run([{ role: "user", content: "hi" }])).to include("world")
+    end
+
     it "does not mutate the original messages array" do
       original = [{ role: "user", content: "hi" }]
       allow(client).to receive(:complete).and_return("hello")
@@ -150,6 +155,40 @@ Need to inspect the filesystem first.
       end
       kernel.run([{ role: "user", content: "loop" }], max_iterations: 3)
       expect(call_count).to eq(3)
+    end
+
+    it "returns a resumable result when max_iterations is reached with tool calls pending" do
+      allow(client).to receive(:complete)
+        .and_return(%(<|tool_call>call:execute{command: "echo loop"}<tool_call|>))
+
+      result = kernel.run([{ role: "user", content: "loop" }], max_iterations: 1)
+
+      expect(result).to be_exhausted
+      expect(result).to have_attributes(pending_tool_calls?: true, resumable?: true)
+      expect(result.conversation.last[:role]).to eq("tool_response")
+      expect(result.conversation.last[:content]).to include("[execute]")
+    end
+
+    it "can resume from a previous exhausted result" do
+      prompts = []
+      responses = [
+        %(<|tool_call>call:execute{command: "echo resumed"}<tool_call|>),
+        "finished"
+      ]
+
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        responses.shift
+      end
+
+      partial = kernel.run([{ role: "user", content: "resume" }], max_iterations: 1)
+      result = kernel.run(partial, max_iterations: 2)
+
+      expect(partial).to be_resumable
+      expect(result.output).to eq("finished")
+      expect(result).not_to be_resumable
+      expect(prompts[1]).to include("[execute]")
+      expect(prompts[1]).to include("stdout:\nresumed")
     end
 
     it "returns an error message for unknown canonical tools" do

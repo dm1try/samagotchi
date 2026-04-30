@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/agent"
+require "stringio"
 
 RSpec.describe Samagotchi::Agent do
   let(:client) { instance_double(Samagotchi::Client) }
@@ -155,6 +156,48 @@ file2.rb")
         "ok"
       end
       agent.run
+    end
+  end
+
+  describe "assist-mode continuation" do
+    let(:looping_call) { %(<|tool_call>call:execute{command: "echo step"}<tool_call|>) }
+
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("").and_return("")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+    end
+
+    it "prompts for /continue and resumes an exhausted turn" do
+      responses = Array.new(10, looping_call) + ["finished"]
+
+      allow(client).to receive(:complete) { |_prompt| responses.shift }
+
+      agent = described_class.new(mode: "assist", client: client)
+      input = StringIO.new("run\n/continue\n")
+
+      original_stdin = $stdin
+      $stdin = input
+
+      expect { agent.run }
+        .to output(/iteration limit reached; type \/continue to resume.*finished/m).to_stdout
+    ensure
+      $stdin = original_stdin
+    end
+
+    it "rejects new input until the interrupted turn is resumed" do
+      allow(client).to receive(:complete)
+        .and_return(*Array.new(10, looping_call), "finished")
+
+      agent = described_class.new(mode: "assist", client: client)
+      input = StringIO.new("run\nnew request\n/continue\n")
+
+      original_stdin = $stdin
+      $stdin = input
+
+      expect { agent.run }
+        .to output(/type \/continue to resume the interrupted turn.*finished/m).to_stdout
+    ensure
+      $stdin = original_stdin
     end
   end
 end
