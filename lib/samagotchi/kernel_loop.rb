@@ -102,6 +102,18 @@ module Samagotchi
     THOUGHT_CHANNEL_CLOSE = "<channel|>"
     CONTROL_TOKEN_START = "<|"
 
+    CONTEXT_STATUS_PREFIX = "CONTEXT_STATUS"
+    CONTEXT_STATUS_ENABLED_ENV = "SAMAGOTCHI_CONTEXT_STATUS"
+    CONTEXT_WINDOW_TOKENS_ENV = "SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"
+    CONTEXT_CHARS_PER_TOKEN_ENV = "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"
+    CONTEXT_THRESHOLDS_ENV = "SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"
+    CONTEXT_CADENCE_ENV = "SAMAGOTCHI_CONTEXT_STATUS_CADENCE"
+
+    DEFAULT_CONTEXT_WINDOW_TOKENS = 256_000
+    DEFAULT_CONTEXT_CHARS_PER_TOKEN = 4.0
+    DEFAULT_CONTEXT_THRESHOLDS = [20, 40, 60, 80].freeze
+    DEFAULT_CONTEXT_CADENCE = 0
+
     def initialize(client: nil, verbose: false)
       @client  = client || Client.new
       @verbose = verbose
@@ -116,11 +128,12 @@ module Samagotchi
     # @return [Result] final visible response with continuation metadata
     def run(messages, max_iterations: 10)
       conversation = prepare_conversation(messages)
+      context_state = initial_context_status_state(conversation)
       exhausted = false
       pending_tool_calls = false
 
-      max_iterations.times do
-        prompt   = Prompt.format(conversation)
+      max_iterations.times do |iteration_index|
+        prompt = prompt_with_context_status(conversation, iteration_index: iteration_index, state: context_state)
         response = @client.complete(prompt)
         verbose_log("── LLM response ──\n#{response}\n──────────────────")
         conversation << { role: "model", content: response }
@@ -154,6 +167,114 @@ module Samagotchi
       return unless @verbose
 
       $stderr.puts "\n[verbose] #{message}"
+    end
+
+    def prompt_with_context_status(conversation, iteration_index:, state:)
+      prompt = Prompt.format(conversation)
+      return prompt unless context_status_enabled?
+
+      usage = estimate_context_usage(prompt)
+      bucket = context_status_bucket(usage[:estimated_pct])
+      emit_status = should_emit_context_status?(state: state, bucket: bucket, iteration_index: iteration_index)
+      state[:last_bucket] = bucket
+      return prompt unless emit_status
+
+      status_message = context_status_message(usage: usage, bucket: bucket)
+      conversation << { role: "system", content: status_message }
+      verbose_log("── context status ──\n#{status_message}\n──────────────────")
+      Prompt.format(conversation)
+    end
+
+    def initial_context_status_state(conversation)
+      { last_bucket: extract_last_context_status_bucket(conversation) }
+    end
+
+    def extract_last_context_status_bucket(conversation)
+      message = conversation.reverse.find do |entry|
+        entry[:role] == "system" && entry[:content].to_s.start_with?(CONTEXT_STATUS_PREFIX)
+      end
+      return nil unless message
+
+      match = message[:content].match(/\bbucket=([a-z0-9_]+)/)
+      match && match[1]
+    end
+
+    def context_status_enabled?
+      value = ENV[CONTEXT_STATUS_ENABLED_ENV]
+      return true if value.nil?
+
+      !(value == "0" || value.casecmp?("false"))
+    end
+
+    def estimate_context_usage(prompt)
+      window_tokens = context_window_tokens
+      estimated_used_tokens = (prompt.length / context_chars_per_token).ceil
+      estimated_remaining_tokens = [window_tokens - estimated_used_tokens, 0].max
+      estimated_pct = (estimated_used_tokens.to_f / window_tokens) * 100.0
+
+      {
+        window_tokens: window_tokens,
+        estimated_used_tokens: estimated_used_tokens,
+        estimated_remaining_tokens: estimated_remaining_tokens,
+        estimated_pct: estimated_pct
+      }
+    end
+
+    def context_window_tokens
+      value = ENV.fetch(CONTEXT_WINDOW_TOKENS_ENV, DEFAULT_CONTEXT_WINDOW_TOKENS.to_s).to_i
+      value.positive? ? value : DEFAULT_CONTEXT_WINDOW_TOKENS
+    end
+
+    def context_chars_per_token
+      value = ENV.fetch(CONTEXT_CHARS_PER_TOKEN_ENV, DEFAULT_CONTEXT_CHARS_PER_TOKEN.to_s).to_f
+      value.positive? ? value : DEFAULT_CONTEXT_CHARS_PER_TOKEN
+    end
+
+    def context_status_thresholds
+      raw = ENV.fetch(CONTEXT_THRESHOLDS_ENV, DEFAULT_CONTEXT_THRESHOLDS.join(","))
+      parsed = raw.split(",").map { |value| value.strip.to_i }.select { |value| value.between?(1, 99) }.uniq.sort
+      parsed.empty? ? DEFAULT_CONTEXT_THRESHOLDS : parsed
+    end
+
+    def context_status_cadence
+      value = ENV.fetch(CONTEXT_CADENCE_ENV, DEFAULT_CONTEXT_CADENCE.to_s).to_i
+      [value, 0].max
+    end
+
+    def context_status_bucket(estimated_pct)
+      thresholds = context_status_thresholds
+      bucket = "under#{thresholds.first}"
+      thresholds.each do |threshold|
+        bucket = "#{threshold}plus" if estimated_pct >= threshold
+      end
+      bucket
+    end
+
+    def should_emit_context_status?(state:, bucket:, iteration_index:)
+      last_bucket = state[:last_bucket]
+      below_threshold_bucket = "under#{context_status_thresholds.first}"
+      bucket_changed = if last_bucket.nil?
+                         bucket != below_threshold_bucket
+                       else
+                         bucket != last_bucket
+                       end
+
+      cadence = context_status_cadence
+      cadence_due = cadence.positive? && ((iteration_index + 1) % cadence).zero?
+      bucket_changed || cadence_due
+    end
+
+    def context_status_message(usage:, bucket:)
+      format(
+        "%<prefix>s window_tokens=%<window>d est_used_tokens=%<used>d est_remaining_tokens=%<remaining>d est_pct=%<pct>.1f bucket=%<bucket>s thresholds=%<thresholds>s guidance=clarify_scope_minimize_uncertainty",
+        prefix: CONTEXT_STATUS_PREFIX,
+        window: usage[:window_tokens],
+        used: usage[:estimated_used_tokens],
+        remaining: usage[:estimated_remaining_tokens],
+        pct: usage[:estimated_pct],
+        bucket: bucket,
+        thresholds: context_status_thresholds.join(",")
+      )
     end
 
     # Parse canonical Gemma 4 tool calls from raw model output.

@@ -75,6 +75,16 @@ module Samagotchi
 
     TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param:<|"|>value<|"|>}<tool_call|>. CRITICAL: check the tool declaration for the exact parameter names and required fields!'
     RG_GUIDANCE = "For fast repository/text search, prefer `rg` (ripgrep) over `grep` when exploring files or text."
+    CONTEXT_STATUS_PROTOCOL = <<~PROTOCOL
+      Context budget protocol:
+        You may receive synthetic system messages that start with CONTEXT_STATUS.
+        Treat CONTEXT_STATUS as telemetry, not as a user request.
+        If context usage is high (for example >= 80%), prioritise:
+          1. clarifying ambiguous requirements before implementation,
+          2. minimizing unnecessary tool calls and repetitive exploration,
+          3. keeping plans and outputs concise while preserving correctness.
+        Never ignore direct user instructions because of telemetry.
+    PROTOCOL
     # ── System prompts ─────────────────────────────────────────────────────────
 
     SYSTEM_ASSIST = <<~SYS
@@ -95,6 +105,8 @@ module Samagotchi
                              the entry name, e.g. "- **ruby_style**: preferred Ruby style guide notes"
         memories/*.md      — individual memory entries referenced from the index
         Whenever you write a new or updated memory entry, also update memories/index.md.
+
+      #{CONTEXT_STATUS_PROTOCOL}
     SYS
 
     SYSTEM_EVOLVE = <<~SYS
@@ -134,6 +146,8 @@ module Samagotchi
         2. Require it in lib/samagotchi/kernel_loop.rb and add to TOOLS
         3. Write spec/tools/<name>_spec.rb
         4. Validate: <|tool_call>call:execute{command:<|"|>bundle exec rspec spec/tools/<name>_spec.rb --no-color<|"|>}<tool_call|>
+
+      #{CONTEXT_STATUS_PROTOCOL}
 
       Begin by reading your source files and deciding what to add or improve.
     SYS

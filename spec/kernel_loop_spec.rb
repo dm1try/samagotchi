@@ -7,6 +7,20 @@ RSpec.describe Samagotchi::KernelLoop do
   let(:client) { instance_double(Samagotchi::Client) }
   subject(:kernel) { described_class.new(client: client) }
 
+  around do |example|
+    original_env = {
+      "SAMAGOTCHI_CONTEXT_STATUS" => ENV["SAMAGOTCHI_CONTEXT_STATUS"],
+      "SAMAGOTCHI_CONTEXT_WINDOW_TOKENS" => ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"],
+      "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN" => ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"],
+      "SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS" => ENV["SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"],
+      "SAMAGOTCHI_CONTEXT_STATUS_CADENCE" => ENV["SAMAGOTCHI_CONTEXT_STATUS_CADENCE"]
+    }
+
+    example.run
+  ensure
+    original_env.each { |key, value| ENV[key] = value }
+  end
+
   describe "#run" do
     it "returns the model response when no tool calls are present" do
       allow(client).to receive(:complete).and_return("Hello!")
@@ -44,6 +58,57 @@ RSpec.describe Samagotchi::KernelLoop do
       kernel.run([{ role: "user", content: "check" }])
       expect(prompts[1]).to include("<|tool_response>")
       expect(prompts[1]).to include("[execute]")
+    end
+
+    it "emits a CONTEXT_STATUS system message when entering a tracked threshold bucket" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        "ok"
+      end
+      allow(kernel).to receive(:estimate_context_usage).and_return(
+        window_tokens: 256_000,
+        estimated_used_tokens: 90_000,
+        estimated_remaining_tokens: 166_000,
+        estimated_pct: 35.2
+      )
+
+      kernel.run([{ role: "user", content: "hello" }])
+
+      expect(prompts.first).to include("CONTEXT_STATUS")
+      expect(prompts.first).to include("bucket=20plus")
+    end
+
+    it "emits CONTEXT_STATUS only on threshold transitions" do
+      prompts = []
+      responses = [
+        %(<|tool_call>call:execute{command: "echo hi"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        responses.shift
+      end
+      allow(kernel).to receive(:estimate_context_usage).and_return(
+        {
+          window_tokens: 256_000,
+          estimated_used_tokens: 30_000,
+          estimated_remaining_tokens: 226_000,
+          estimated_pct: 11.7
+        },
+        {
+          window_tokens: 256_000,
+          estimated_used_tokens: 140_000,
+          estimated_remaining_tokens: 116_000,
+          estimated_pct: 54.6
+        }
+      )
+
+      kernel.run([{ role: "user", content: "check" }])
+
+      expect(prompts[0]).not_to include("CONTEXT_STATUS")
+      expect(prompts[1]).to include("CONTEXT_STATUS")
+      expect(prompts[1]).to include("bucket=40plus")
     end
 
     it "dispatches a canonical read call with the correct path" do

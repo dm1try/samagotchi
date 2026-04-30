@@ -41,3 +41,24 @@ In short, raw thought blocks are treated as in-turn transient context, not durab
 - `Samagotchi::KernelLoop#run` now returns a resumable result object with the visible output plus the accumulated conversation.
 - If the cap is reached while tool calls are still pending, the result is marked resumable so callers can continue from the saved conversation instead of restarting from scratch.
 - In assist mode, the CLI now pauses and requires `/continue` to resume the interrupted turn.
+
+## Context Status Telemetry
+
+The kernel can emit synthetic system telemetry messages to help the model plan under context pressure.
+Telemetry messages use this prefix:
+
+`CONTEXT_STATUS ...`
+
+Emission behavior:
+
+- A status is emitted when estimated usage crosses configured threshold buckets.
+- Optional cadence-based updates can also be enabled every N rounds.
+- This is warn-only behavior (no automatic history truncation).
+
+Configuration:
+
+- `SAMAGOTCHI_CONTEXT_STATUS` (`true` by default): set to `false` or `0` to disable telemetry.
+- `SAMAGOTCHI_CONTEXT_WINDOW_TOKENS` (default `256000`): estimated context window size.
+- `SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN` (default `4.0`): heuristic ratio for char-to-token estimation.
+- `SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS` (default `20,40,60,80`): comma-separated threshold percentages.
+- `SAMAGOTCHI_CONTEXT_STATUS_CADENCE` (default `0`): emit every N rounds in addition to threshold crossings.

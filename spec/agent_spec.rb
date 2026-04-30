@@ -50,6 +50,19 @@ file2.rb")
       expect(received_prompt).to include("Ruby code assistant")
     end
 
+    it "includes the context status telemetry protocol in the system prompt" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent.run
+      expect(received_prompt).to include("CONTEXT_STATUS")
+      expect(received_prompt).to include("Treat CONTEXT_STATUS as telemetry")
+      expect(received_prompt).to include("Never ignore direct user instructions")
+    end
+
     it "injects the memory index into the system prompt" do
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|
