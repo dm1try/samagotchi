@@ -36,6 +36,8 @@ module Samagotchi
     THINKING_TAIL_PREVIEW_BUFFER_LIMIT = 4096
     THINKING_RENDER_MIN_INTERVAL = 0.08
     THINKING_RENDER_INTERVAL_ENV = "SAMAGOTCHI_THINKING_RENDER_INTERVAL"
+    AT_PATH_COMPLETION_PREFIX = "@"
+    AT_PATH_COMPLETION_MAX_CANDIDATES = 200
 
     # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
 
@@ -382,10 +384,65 @@ module Samagotchi
 
       # In multiline mode Enter submits, while Meta+Enter/Alt+Enter inserts a
       # newline on terminals that emit that distinct sequence (for example kitty).
-      input = Reline.readmultiline("you> ", true) { true }
+      input = with_scoped_at_path_completion do
+        Reline.readmultiline("you> ", true) { true }
+      end
       return nil if input.nil?
 
       input.gsub(/\r\n?|\n\z/, "\n").strip
+    end
+
+    def with_scoped_at_path_completion
+      previous_completion_proc = Reline.completion_proc
+      Reline.completion_proc = method(:assist_path_completion_candidates).to_proc
+      yield
+    ensure
+      Reline.completion_proc = previous_completion_proc
+    end
+
+    def assist_path_completion_candidates(word)
+      token = word.to_s
+      return [] unless token.start_with?(AT_PATH_COMPLETION_PREFIX)
+
+      path_fragment = token.delete_prefix(AT_PATH_COMPLETION_PREFIX)
+      build_project_path_completion_candidates(path_fragment)
+    end
+
+    def build_project_path_completion_candidates(path_fragment)
+      fragment = path_fragment.to_s.tr("\\", "/")
+      return [] if fragment.start_with?("/")
+      return [] if fragment.split("/").include?("..")
+
+      dir_part = ""
+      entry_prefix = fragment
+
+      if fragment.include?("/")
+        dir_part = fragment.sub(%r{[^/]*\z}, "")
+        entry_prefix = fragment.split("/").last.to_s
+      end
+
+      base_dir = dir_part.empty? ? Dir.pwd : File.expand_path(dir_part, Dir.pwd)
+      return [] unless path_within_cwd?(base_dir)
+      return [] unless File.directory?(base_dir)
+
+      entries = Dir.children(base_dir).sort
+      entries.reject! { |entry| entry.start_with?(".") } unless entry_prefix.start_with?(".")
+      matches = entries.select { |entry| entry.start_with?(entry_prefix) }
+
+      matches.first(AT_PATH_COMPLETION_MAX_CANDIDATES).map do |entry|
+        relative_path = "#{dir_part}#{entry}".tr("\\", "/")
+        absolute_path = File.join(base_dir, entry)
+        relative_path = "#{relative_path}/" if File.directory?(absolute_path)
+        "#{AT_PATH_COMPLETION_PREFIX}#{relative_path}"
+      end
+    rescue StandardError
+      []
+    end
+
+    def path_within_cwd?(path)
+      expanded = File.expand_path(path)
+      cwd = Dir.pwd
+      expanded == cwd || expanded.start_with?("#{cwd}#{File::SEPARATOR}")
     end
 
     def history_file_path

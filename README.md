@@ -144,6 +144,7 @@ Behavior details:
 - Prompt history is loaded on startup before the first `you>` prompt.
 - Only real user prompts are persisted.
 - Continue-flow inputs (`yes`, `no`, `no, <reason>`, `/continue`) are not persisted as prompts.
+- In assist mode, pressing `Tab` on an `@`-prefixed token (for example `@lib/sama`) completes project file and directory paths while preserving the `@` prefix.
 - History read/write errors are ignored so the session continues uninterrupted.
 
 ## Context Status Telemetry

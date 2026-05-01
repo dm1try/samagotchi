@@ -665,6 +665,75 @@ file2.rb")
     end
   end
 
+  describe "assist-mode @ path completion" do
+    let(:tmpdir) { Dir.mktmpdir("samagotchi-path-complete") }
+
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+    end
+
+    around do |example|
+      previous_dir = Dir.pwd
+      previous_completion_proc = Reline.completion_proc
+      Dir.chdir(tmpdir)
+      example.run
+      Dir.chdir(previous_dir)
+      Reline.completion_proc = previous_completion_proc
+      FileUtils.rm_rf(tmpdir)
+    end
+
+    it "completes project paths when input starts with @" do
+      FileUtils.mkdir_p("lib/samagotchi")
+      File.write("lib/samagotchi/agent.rb", "# test")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(Reline).to receive(:line_buffer).and_return("@lib/sama")
+
+      candidates = agent.send(:assist_path_completion_candidates, "@lib/sama")
+
+      expect(candidates).to include("@lib/samagotchi/")
+    end
+
+    it "completes when @token appears later in the line" do
+      FileUtils.mkdir_p("lib/samagotchi")
+      File.write("lib/samagotchi/agent.rb", "# test")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(Reline).to receive(:line_buffer).and_return("please open @lib/sama")
+
+      candidates = agent.send(:assist_path_completion_candidates, "@lib/sama")
+
+      expect(candidates).to include("@lib/samagotchi/")
+    end
+
+    it "restores Reline completion proc after multiline input" do
+      File.write("README.md", "test")
+      original_proc = proc { ["original"] }
+      Reline.completion_proc = original_proc
+
+      allow(Reline).to receive(:line_buffer).and_return("@REA")
+      allow(Reline).to receive(:readmultiline) do |_prompt, _history, &_block|
+        expect(Reline.completion_proc.call("@REA")).to include("@README.md")
+        "@README.md"
+      end
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      value = agent.send(:read_input, awaiting_continue: false)
+
+      expect(value).to eq("@README.md")
+      expect(Reline.completion_proc).to be(original_proc)
+    end
+
+    it "does not enable path completion for continuation input" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(Reline).to receive(:readline).and_return("yes")
+
+      expect(agent).not_to receive(:with_scoped_at_path_completion)
+      expect(agent.send(:read_input, awaiting_continue: true)).to eq("yes")
+    end
+  end
+
   describe "assist-mode persistent prompt history" do
     let(:tmpdir) { Dir.mktmpdir("samagotchi-history") }
     let(:xdg_state_home) { File.join(tmpdir, "state") }
