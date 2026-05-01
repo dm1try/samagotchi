@@ -29,7 +29,7 @@ module Samagotchi
     MEMORY_SPINNER_COLOR = "38;5;208"
     MEMORY_SPINNER_PREVIEW_LIMIT = 3
     MEMORY_STICKY_PREVIEW_LIMIT = 8
-    THINKING_PREVIEW_WIDTH = 80
+    THINKING_PREVIEW_WIDTH = 120
     THINKING_PREVIEW_LINES_ENV = "SAMAGOTCHI_THINKING_PREVIEW_LINES"
     THINKING_PREVIEW_LINES_DEFAULT = 1
     THINKING_PREVIEW_LINES_MAX = 3
@@ -335,7 +335,7 @@ module Samagotchi
     end
 
     def emit_active_memories_line
-      line = memory_sticky_line
+      line = sticky_status_line
       return if line.empty?
 
       $stdout.puts line
@@ -644,6 +644,8 @@ module Samagotchi
     end
 
     def run_kernel_with_thinking_feedback(messages, max_iterations: 10)
+      reset_thinking_memory_notification
+      reset_thinking_memory_names
       @kernel.run(
         messages,
         max_iterations: max_iterations,
@@ -663,8 +665,8 @@ module Samagotchi
         tick_thinking_spinner
       when :tool_call_started
         capture_memory_tool_call(event)
+        refresh_thinking_spinner_status
       when :generation_completed
-        reset_thinking_memory_names
         reset_thinking_tail_preview
         finish_thinking_spinner
       when :tool_dispatch_started
@@ -689,6 +691,12 @@ module Samagotchi
 
       @thinking_spinner_index = (@thinking_spinner_index + 1) % THINKING_SPINNER_FRAMES.length
       render_thinking_spinner_if_due
+    end
+
+    def refresh_thinking_spinner_status
+      return unless @thinking_spinner_active
+
+      render_thinking_spinner
     end
 
     def render_thinking_spinner_if_due
@@ -806,9 +814,13 @@ module Samagotchi
 
     def thinking_spinner_status_line(frame)
       base = "model> thinking... #{frame}"
-      return base unless color_output?
+      notification = thinking_memory_notification_suffix
+      available_for_notification = [THINKING_PREVIEW_WIDTH - base.length, 0].max
+      notification = cap_preview_text(notification, available_for_notification)
 
-      paint(base, 90)
+      return "#{base}#{notification}" unless color_output?
+
+      "#{paint(base, 90)}#{paint(notification, MEMORY_SPINNER_COLOR)}"
     end
 
     def cap_preview_line(text)
@@ -854,14 +866,18 @@ module Samagotchi
       memory_name = memory_name_from_tool_call(call)
       return if memory_name.nil? || memory_name.empty?
 
-      add_unique_memory_name(:@thinking_memory_names, memory_name)
+      added_to_thinking = add_unique_memory_name(:@thinking_memory_names, memory_name)
       add_unique_memory_name(:@session_memory_names, memory_name)
+      @thinking_recent_memory_loaded = memory_name if added_to_thinking
     end
 
     def add_unique_memory_name(ivar_name, value)
       names = instance_variable_get(ivar_name) || []
-      names << value unless names.include?(value)
+      return false if names.include?(value)
+
+      names << value
       instance_variable_set(ivar_name, names)
+      true
     end
 
     def memory_name_from_tool_call(call)
@@ -919,6 +935,10 @@ module Samagotchi
 
     def reset_thinking_memory_names
       @thinking_memory_names = []
+    end
+
+    def reset_thinking_memory_notification
+      @thinking_recent_memory_loaded = nil
     end
 
     def capture_context_status_from_result(result)
@@ -1015,6 +1035,13 @@ module Samagotchi
       visible = names.first(limit)
       suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
       "mem: #{visible.join(', ')}#{suffix}"
+    end
+
+    def thinking_memory_notification_suffix
+      memory_name = @thinking_recent_memory_loaded.to_s.strip
+      return "" if memory_name.empty?
+
+      " loaded: #{memory_name}"
     end
 
     def thinking_spinner_enabled?

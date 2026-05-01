@@ -119,7 +119,7 @@ file2.rb")
         .to output(/tool> reading memory \(memory_read name=\"\" scope=\"project\"\): ok.*tool> reading memory \(memory_read name=\"\" scope=\"system\"\): ok.*ok/m).to_stdout
     end
 
-    it "prints sticky session memory line when memory files were loaded" do
+    it "prints unified sticky status line with memory segment when memory files were loaded" do
       responses = [
         %(<|tool_call>call:read{path: "memories/refactoring_backlog.md"}<tool_call|>),
         "done"
@@ -130,7 +130,7 @@ file2.rb")
       allow(agent).to receive(:color_output?).and_return(false)
 
       expect { agent.run }
-        .to output(/memories> active this session: refactoring_backlog.*done/m).to_stdout
+        .to output(/status> mode=assist \| mem: refactoring_backlog.*done/m).to_stdout
     end
 
     it "uses the assist system prompt" do
@@ -539,7 +539,64 @@ file2.rb")
       status = agent.send(:build_status_line, scope: :spinner)
       expect(status).to include("mode=assist")
       expect(status).to include("ctx=35.2% (20plus)")
-      expect(status).to include("mem: refactoring_backlog")
+      expect(status).to include("| mem:")
+    end
+
+    it "keeps spinner memory notification across generation completion within the same turn" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
+      expect(agent.send(:thinking_spinner_status_line, "/")).to include("loaded: refactoring_backlog")
+
+      agent.send(:handle_stream_event, type: :generation_completed)
+
+      expect(agent.send(:thinking_spinner_status_line, "/")).to include("loaded: refactoring_backlog")
+    end
+
+    it "keeps memory notification inline with spinner status during thinking" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
+
+      line = agent.send(:thinking_spinner_status_line, "\\")
+      expect(line).to include("thinking... \\")
+      expect(line).to include("loaded: crawler_exploration_ideas")
+    end
+
+    it "refreshes spinner immediately when memory tool calls start" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      expect(agent).to receive(:render_thinking_spinner).at_least(:once)
+      agent.instance_variable_set(:@thinking_spinner_active, true)
+
+      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
+    end
+
+    it "resets spinner memory notification on a new run" do
+      result = Samagotchi::KernelLoop::Result.new(
+        output: "done",
+        conversation: [],
+        exhausted: false,
+        pending_tool_calls: false,
+        tool_activity: []
+      )
+      kernel = instance_double(Samagotchi::KernelLoop, run: result)
+      allow(Samagotchi::KernelLoop).to receive(:new).and_return(kernel)
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
+      expect(agent.send(:thinking_spinner_status_line, "/")).to include("loaded: crawler_exploration_ideas")
+
+      allow(agent).to receive(:handle_stream_event)
+      agent.send(:run_kernel_with_thinking_feedback, [{ role: "user", content: "hi" }])
+
+      expect(agent.send(:thinking_spinner_status_line, "/")).not_to include("loaded: crawler_exploration_ideas")
     end
 
     it "prints idle status before the next assist prompt when enabled" do
@@ -573,7 +630,7 @@ file2.rb")
       expect(agent.send(:memory_sticky_line)).to include("active this session: crawler_exploration_ideas")
     end
 
-    it "shows only current generation memories in spinner" do
+    it "keeps spinner memory names across generation completion within a turn" do
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:thinking_spinner_enabled?).and_return(false)
       allow(agent).to receive(:color_output?).and_return(false)
@@ -585,7 +642,7 @@ file2.rb")
 
       agent.send(:handle_stream_event, type: :generation_completed)
 
-      expect(agent.send(:memory_spinner_segment)).to eq("")
+      expect(agent.send(:memory_spinner_segment)).to include("refactoring_backlog")
       expect(agent.send(:memory_sticky_line)).to include("refactoring_backlog")
     end
 
