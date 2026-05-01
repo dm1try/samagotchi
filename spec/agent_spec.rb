@@ -667,10 +667,12 @@ file2.rb")
 
   describe "assist-mode @ path completion" do
     let(:tmpdir) { Dir.mktmpdir("samagotchi-path-complete") }
+    let(:system_memories_dir) { Dir.mktmpdir("samagotchi-system-memories") }
 
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      stub_const("Samagotchi::Tools::SYSTEM_MEMORIES_DIR", system_memories_dir)
     end
 
     around do |example|
@@ -683,6 +685,7 @@ file2.rb")
       Reline.completion_proc = previous_completion_proc
       Reline.autocompletion = previous_autocompletion
       FileUtils.rm_rf(tmpdir)
+      FileUtils.rm_rf(system_memories_dir)
     end
 
     it "completes project paths when input starts with @" do
@@ -709,6 +712,56 @@ file2.rb")
       expect(candidates).to include("@lib/samagotchi/")
     end
 
+    it "completes project memories with # shorthand" do
+      FileUtils.mkdir_p("memories")
+      File.write("memories/release_notes.md", "# notes")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(Reline).to receive(:line_buffer).and_return("#rel")
+
+      candidates = agent.send(:assist_path_completion_candidates, "#rel")
+
+      expect(candidates).to include("#release_notes")
+    end
+
+    it "completes system memories with # shorthand" do
+      File.write(File.join(system_memories_dir, "shared_notes.md"), "# notes")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(Reline).to receive(:line_buffer).and_return("#sha")
+
+      candidates = agent.send(:assist_path_completion_candidates, "#sha")
+
+      expect(candidates).to include("#shared_notes")
+    end
+
+    it "disambiguates duplicate memory names across scopes" do
+      FileUtils.mkdir_p("memories")
+      File.write("memories/notes.md", "# project")
+      File.write(File.join(system_memories_dir, "notes.md"), "# system")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+
+      candidates = agent.send(:assist_path_completion_candidates, "#")
+
+      expect(candidates).to include("#project/notes")
+      expect(candidates).to include("#system/notes")
+      expect(candidates).not_to include("#notes")
+    end
+
+    it "prioritizes project memories ahead of system memories in the # list" do
+      FileUtils.mkdir_p("memories")
+      File.write("memories/zebra.md", "# project")
+      File.write(File.join(system_memories_dir, "alpha.md"), "# system")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+
+      candidates = agent.send(:assist_path_completion_candidates, "#")
+
+      expect(candidates.first).to eq("#zebra")
+      expect(candidates).to eq(["#zebra", "#alpha"])
+    end
+
     it "restores Reline completion proc after multiline input" do
       File.write("README.md", "test")
       original_proc = proc { ["original"] }
@@ -730,12 +783,50 @@ file2.rb")
       expect(Reline.autocompletion).to be(false)
     end
 
+    it "offers # memory candidates during multiline input" do
+      FileUtils.mkdir_p("memories")
+      File.write("memories/feature_flags.md", "# flags")
+      original_proc = proc { ["original"] }
+      Reline.completion_proc = original_proc
+      Reline.autocompletion = false
+
+      allow(Reline).to receive(:line_buffer).and_return("#fea")
+      allow(Reline).to receive(:readmultiline) do |_prompt, _history, &_block|
+        expect(Reline.autocompletion).to be(true)
+        expect(Reline.completion_proc.call("#fea")).to include("#feature_flags")
+        "#feature_flags"
+      end
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      value = agent.send(:read_input, awaiting_continue: false)
+
+      expect(value).to eq("#feature_flags")
+      expect(Reline.completion_proc).to be(original_proc)
+      expect(Reline.autocompletion).to be(false)
+    end
+
     it "does not enable path completion for continuation input" do
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(Reline).to receive(:readline).and_return("yes")
 
       expect(agent).not_to receive(:with_scoped_at_path_completion)
       expect(agent.send(:read_input, awaiting_continue: true)).to eq("yes")
+    end
+
+    it "normalizes memory shorthand only for the model-facing prompt" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "done"
+      end
+      allow(Reline).to receive(:readmultiline).and_return("Please review #project/plan and #shared_notes", nil)
+
+      agent = described_class.new(mode: "assist", client: client)
+
+      expect { agent.run }.to output(/done/).to_stdout
+      expect(received_prompt).to include('Please review memory "plan" in project scope and memory "shared_notes"')
+      expect(received_prompt).not_to include("#project/plan")
+      expect(received_prompt).not_to include("#shared_notes")
     end
   end
 

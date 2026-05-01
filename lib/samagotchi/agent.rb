@@ -37,6 +37,7 @@ module Samagotchi
     THINKING_RENDER_MIN_INTERVAL = 0.08
     THINKING_RENDER_INTERVAL_ENV = "SAMAGOTCHI_THINKING_RENDER_INTERVAL"
     AT_PATH_COMPLETION_PREFIX = "@"
+    MEMORY_COMPLETION_PREFIX = "#"
     AT_PATH_COMPLETION_MAX_CANDIDATES = 200
 
     # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
@@ -140,6 +141,10 @@ module Samagotchi
         System scope:  ~/.config/samagotchi/memories/ (cross-project)
         memory_read accepts optional scope (project|system).
         memory_write requires explicit scope and entry name.
+        User prompts may contain memory shorthand like #entry_name.
+        Treat #entry_name as a memory reference, not as a file path.
+        If shorthand includes a scope prefix, such as #project/entry_name or #system/entry_name,
+        preserve that scope when reading the memory.
         Keep each scope's index.md updated when adding/updating entries.
 
       #{CONTEXT_STATUS_PROTOCOL}
@@ -269,7 +274,7 @@ module Samagotchi
           end
 
           interrupted_turn_checkpoint = clone_messages(messages)
-          messages << { role: "user", content: input }
+          messages << { role: "user", content: normalize_model_input(input) }
           persist_recent_history(input)
           result = run_kernel_with_thinking_feedback(messages)
         end
@@ -405,10 +410,19 @@ module Samagotchi
 
     def assist_path_completion_candidates(word)
       token = word.to_s
-      return [] unless token.start_with?(AT_PATH_COMPLETION_PREFIX)
+      return [] if token.empty?
 
-      path_fragment = token.delete_prefix(AT_PATH_COMPLETION_PREFIX)
-      build_project_path_completion_candidates(path_fragment)
+      if token.start_with?(AT_PATH_COMPLETION_PREFIX)
+        path_fragment = token.delete_prefix(AT_PATH_COMPLETION_PREFIX)
+        return build_project_path_completion_candidates(path_fragment)
+      end
+
+      if token.start_with?(MEMORY_COMPLETION_PREFIX)
+        memory_fragment = token.delete_prefix(MEMORY_COMPLETION_PREFIX)
+        return build_memory_completion_candidates(memory_fragment)
+      end
+
+      []
     end
 
     def build_project_path_completion_candidates(path_fragment)
@@ -446,6 +460,78 @@ module Samagotchi
       expanded = File.expand_path(path)
       cwd = Dir.pwd
       expanded == cwd || expanded.start_with?("#{cwd}#{File::SEPARATOR}")
+    end
+
+    def build_memory_completion_candidates(memory_fragment)
+      fragment = memory_fragment.to_s.strip.tr("\\", "/")
+      candidates = memory_completion_entries
+      return candidates.map { |entry| entry[:token] } if fragment.empty?
+
+      candidates.filter_map do |entry|
+        entry[:token] if entry[:token].delete_prefix(MEMORY_COMPLETION_PREFIX).start_with?(fragment)
+      end
+    end
+
+    def memory_completion_entries
+      grouped = Hash.new { |hash, key| hash[key] = [] }
+
+      each_memory_completion_entry do |scope, name|
+        grouped[name] << scope unless grouped[name].include?(scope)
+      end
+
+      grouped.sort_by do |name, scopes|
+        [memory_scope_sort_key(scopes.min_by { |scope| memory_scope_sort_key(scope) }), name]
+      end.flat_map do |name, scopes|
+        scopes = scopes.sort_by { |scope| [memory_scope_sort_key(scope), scope] }
+        if scopes.length == 1
+          [{ token: "#{MEMORY_COMPLETION_PREFIX}#{name}", scope: scopes.first, name: name }]
+        else
+          scopes.map do |scope|
+            { token: "#{MEMORY_COMPLETION_PREFIX}#{scope}/#{name}", scope: scope, name: name }
+          end
+        end
+      end
+    end
+
+    def memory_scope_sort_key(scope)
+      scope == "project" ? 0 : 1
+    end
+
+    def each_memory_completion_entry
+      memory_completion_dirs.each do |scope, dir|
+        next unless File.directory?(dir)
+
+        Dir.glob(File.join(dir, "*.md")).sort.each do |path|
+          name = File.basename(path, ".md")
+          next if name.empty? || name == Tools::MEMORY_INDEX
+
+          yield scope, name
+        end
+      end
+    rescue StandardError
+      []
+    end
+
+    def memory_completion_dirs
+      {
+        "project" => File.expand_path(Tools::PROJECT_MEMORIES_DIR, Dir.pwd),
+        "system" => File.expand_path(Tools::SYSTEM_MEMORIES_DIR)
+      }
+    end
+
+    def normalize_model_input(input)
+      input.to_s.gsub(/(^|[^\w\/])#((?:project|system)\/)?([a-zA-Z0-9][a-zA-Z0-9_-]*)/) do
+        prefix = Regexp.last_match(1)
+        scoped = Regexp.last_match(2).to_s
+        name = Regexp.last_match(3)
+        scope = scoped.delete_suffix("/")
+        normalized = if scope.empty?
+                       "memory \"#{name}\""
+                     else
+                       "memory \"#{name}\" in #{scope} scope"
+                     end
+        "#{prefix}#{normalized}"
+      end
     end
 
     def history_file_path
