@@ -169,6 +169,21 @@ Configuration:
 - `SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS` (default `20,40,60,80`): comma-separated threshold percentages.
 - `SAMAGOTCHI_CONTEXT_STATUS_CADENCE` (default `0`): emit every N rounds in addition to threshold crossings.
 
+## Status Line
+
+Assist mode can render a compact generalized status line that can include mode,
+context estimate, and active memory hints.
+
+Behavior:
+
+- A static status line is printed before the next `you>` prompt in assist mode.
+- During spinner rendering, status details are rendered in the spinner block.
+- Existing memory summaries remain available after responses.
+
+Configuration:
+
+- `SAMAGOTCHI_STATUS_LINE` (default `on`): set to `off`, `false`, or `0` to disable status-line rendering.
+
 ## Read Tool Size Guardrails
 
 The `read` tool now applies adaptive limits to avoid accidental context exhaustion

@@ -36,6 +36,9 @@ module Samagotchi
     THINKING_TAIL_PREVIEW_BUFFER_LIMIT = 4096
     THINKING_RENDER_MIN_INTERVAL = 0.08
     THINKING_RENDER_INTERVAL_ENV = "SAMAGOTCHI_THINKING_RENDER_INTERVAL"
+    STATUS_LINE_ENV = "SAMAGOTCHI_STATUS_LINE"
+    STATUS_LINE_ON = "on"
+    STATUS_LINE_OFF = "off"
     AT_PATH_COMPLETION_PREFIX = "@"
     MEMORY_COMPLETION_PREFIX = "#"
     AT_PATH_COMPLETION_MAX_CANDIDATES = 200
@@ -322,6 +325,7 @@ module Samagotchi
 
     def emit_result(result)
       finish_thinking_spinner
+      capture_context_status_from_result(result)
       emit_tool_activity(result)
       emit_active_memories_line
       $stdout.puts result.output
@@ -379,6 +383,8 @@ module Samagotchi
     end
 
     def read_input(awaiting_continue:)
+      emit_idle_status_line
+
       if awaiting_continue
         prompt = color_output? ? paint(CONTINUE_PROMPT, 33) : CONTINUE_PROMPT
         input = Reline.readline(prompt, true)
@@ -726,25 +732,6 @@ module Samagotchi
       @thinking_preview_has_content = false
     end
 
-    def render_thinking_spinner
-      frame = THINKING_SPINNER_FRAMES[@thinking_spinner_index % THINKING_SPINNER_FRAMES.length]
-      line = thinking_spinner_status_line(frame)
-      preview_lines, preview_has_content = thinking_tail_preview_lines
-      if color_output?
-        preview_lines = preview_lines.map { |text| paint(text, 90) }
-      end
-      lines = [line] + preview_lines
-
-      move_to_thinking_spinner_origin
-      $stdout.print(lines.map { |text| "#{text}\e[0K" }.join("\n"))
-      $stdout.flush
-      @thinking_spinner_rendered = true
-      @thinking_spinner_lines_rendered = lines.length
-      @thinking_spinner_last_render_at = monotonic_time
-      @thinking_tail_preview_dirty = false
-      @thinking_preview_has_content = preview_has_content
-    end
-
     def move_to_thinking_spinner_origin
       return unless @thinking_spinner_rendered
 
@@ -819,13 +806,9 @@ module Samagotchi
 
     def thinking_spinner_status_line(frame)
       base = "model> thinking... #{frame}"
-      memory = memory_spinner_segment_plain
-      available_for_memory = [THINKING_PREVIEW_WIDTH - base.length, 0].max
-      memory = cap_preview_text(memory, available_for_memory)
+      return base unless color_output?
 
-      return "#{base}#{memory}" unless color_output?
-
-      "#{paint(base, 90)}#{paint(memory, MEMORY_SPINNER_COLOR)}"
+      paint(base, 90)
     end
 
     def cap_preview_line(text)
@@ -938,6 +921,102 @@ module Samagotchi
       @thinking_memory_names = []
     end
 
+    def capture_context_status_from_result(result)
+      conversation = result.respond_to?(:conversation) ? Array(result.conversation) : []
+      message = conversation.reverse.find do |entry|
+        entry[:role] == "system" && entry[:content].to_s.start_with?(KernelLoop::CONTEXT_STATUS_PREFIX)
+      end
+      return unless message
+
+      content = message[:content].to_s
+      pct_match = content.match(/\best_pct=([0-9]+(?:\.[0-9]+)?)/)
+      bucket_match = content.match(/\bbucket=([a-z0-9_]+)/)
+      return unless pct_match
+
+      @latest_context_status = {
+        est_pct: pct_match[1].to_f,
+        bucket: bucket_match && bucket_match[1]
+      }
+    end
+
+    def status_line_enabled?
+      value = ENV.fetch(STATUS_LINE_ENV, STATUS_LINE_ON).to_s.strip.downcase
+      !(value.empty? || value == STATUS_LINE_OFF || value == "0" || value == "false")
+    end
+
+    def emit_idle_status_line
+      return unless status_line_enabled?
+
+      line = idle_status_line
+      return if line.empty?
+
+      $stdout.puts line
+    end
+
+    def spinner_status_line
+      return "" unless status_line_enabled?
+
+      build_status_line(scope: :spinner)
+    end
+
+    def sticky_status_line
+      return "" unless status_line_enabled?
+
+      build_status_line(scope: :sticky)
+    end
+
+    def idle_status_line
+      return "" unless status_line_enabled?
+
+      build_status_line(scope: :idle)
+    end
+
+    def build_status_line(scope:)
+      segments = status_segments(scope)
+      return "" if segments.empty?
+
+      body = cap_preview_line("status> #{segments.join(' | ')}")
+      color_output? ? paint(body, 90) : body
+    end
+
+    def status_segments(scope)
+      segments = [status_mode_segment]
+      context_segment = status_context_segment
+      memory_segment = status_memory_segment(scope)
+      segments << context_segment unless context_segment.empty?
+      segments << memory_segment unless memory_segment.empty?
+      segments
+    end
+
+    def status_mode_segment
+      "mode=#{@mode}"
+    end
+
+    def status_context_segment
+      status = @latest_context_status
+      return "" unless status.is_a?(Hash)
+
+      pct = format("%.1f", status[:est_pct].to_f)
+      bucket = status[:bucket].to_s
+      return "ctx=#{pct}%" if bucket.empty?
+
+      "ctx=#{pct}% (#{bucket})"
+    end
+
+    def status_memory_segment(scope)
+      names, limit = case scope
+                     when :spinner
+                       [Array(@thinking_memory_names), MEMORY_SPINNER_PREVIEW_LIMIT]
+                     else
+                       [Array(@session_memory_names), MEMORY_STICKY_PREVIEW_LIMIT]
+                     end
+      return "" if names.empty?
+
+      visible = names.first(limit)
+      suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
+      "mem: #{visible.join(', ')}#{suffix}"
+    end
+
     def thinking_spinner_enabled?
       return false unless $stdout.tty?
 
@@ -945,6 +1024,27 @@ module Samagotchi
       return false if mode.empty? || mode == THINKING_UI_OFF || mode == "false" || mode == "0"
 
       mode == THINKING_UI_SPINNER && ENV.fetch("TERM", "") != "dumb"
+    end
+
+    def render_thinking_spinner
+      frame = THINKING_SPINNER_FRAMES[@thinking_spinner_index % THINKING_SPINNER_FRAMES.length]
+      line = thinking_spinner_status_line(frame)
+      preview_lines, preview_has_content = thinking_tail_preview_lines
+      if color_output?
+        preview_lines = preview_lines.map { |text| paint(text, 90) }
+      end
+      lines = [line] + preview_lines
+      status_line = spinner_status_line
+      lines << status_line unless status_line.empty?
+
+      move_to_thinking_spinner_origin
+      $stdout.print(lines.map { |text| "#{text}\e[0K" }.join("\n"))
+      $stdout.flush
+      @thinking_spinner_rendered = true
+      @thinking_spinner_lines_rendered = lines.length
+      @thinking_spinner_last_render_at = monotonic_time
+      @thinking_tail_preview_dirty = false
+      @thinking_preview_has_content = preview_has_content
     end
   end
 end

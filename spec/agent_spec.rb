@@ -17,6 +17,7 @@ RSpec.describe Samagotchi::Agent do
     original_xdg_state_home = ENV["XDG_STATE_HOME"]
     original_thinking_ui = ENV["SAMAGOTCHI_THINKING_UI"]
     original_thinking_render_interval = ENV["SAMAGOTCHI_THINKING_RENDER_INTERVAL"]
+    original_status_line = ENV["SAMAGOTCHI_STATUS_LINE"]
     example.run
     ENV["THINKING_MODE"] = original_thinking_mode
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
@@ -24,6 +25,7 @@ RSpec.describe Samagotchi::Agent do
     ENV["XDG_STATE_HOME"] = original_xdg_state_home
     ENV["SAMAGOTCHI_THINKING_UI"] = original_thinking_ui
     ENV["SAMAGOTCHI_THINKING_RENDER_INTERVAL"] = original_thinking_render_interval
+    ENV["SAMAGOTCHI_STATUS_LINE"] = original_status_line
   end
 
   describe "#run with a one-off prompt" do
@@ -512,6 +514,53 @@ file2.rb")
 
       expect(agent.send(:memory_spinner_segment)).to include("mem: refactoring_backlog")
       expect(agent.send(:memory_sticky_line)).to include("active this session: refactoring_backlog")
+    end
+
+    it "builds a generalized status line with mode, context, and memory segments" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      result = Samagotchi::KernelLoop::Result.new(
+        output: "ok",
+        conversation: [
+          {
+            role: "system",
+            content: "CONTEXT_STATUS window_tokens=256000 est_used_tokens=90000 est_remaining_tokens=166000 est_pct=35.2 bucket=20plus thresholds=20,40,60,80 guidance=clarify_scope_minimize_uncertainty"
+          }
+        ],
+        exhausted: false,
+        pending_tool_calls: false,
+        tool_activity: []
+      )
+
+      agent.send(:capture_context_status_from_result, result)
+      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
+
+      status = agent.send(:build_status_line, scope: :spinner)
+      expect(status).to include("mode=assist")
+      expect(status).to include("ctx=35.2% (20plus)")
+      expect(status).to include("mem: refactoring_backlog")
+    end
+
+    it "prints idle status before the next assist prompt when enabled" do
+      allow(client).to receive(:complete).and_return("done")
+      allow(Reline).to receive(:readmultiline).and_return("hello", nil)
+
+      agent = described_class.new(mode: "assist", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      expect { agent.run }.to output(/status> mode=assist.*done/m).to_stdout
+    end
+
+    it "does not print idle status when SAMAGOTCHI_STATUS_LINE is off" do
+      ENV["SAMAGOTCHI_STATUS_LINE"] = "off"
+      allow(client).to receive(:complete).and_return("done")
+      allow(Reline).to receive(:readmultiline).and_return("hello", nil)
+
+      agent = described_class.new(mode: "assist", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      expect { agent.run }.not_to output(/status> /).to_stdout
     end
 
     it "tracks active memory names for memory_read tool calls" do
