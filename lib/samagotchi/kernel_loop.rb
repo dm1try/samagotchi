@@ -169,7 +169,19 @@ module Samagotchi
         end
 
         emit_stream_event(on_stream_event, type: :tool_dispatch_started, iteration: iteration_index + 1, call_count: calls.length)
-        results = calls.map { |c| dispatch(c, tool_activity: tool_activity) }.join("\n\n---\n\n")
+        results = calls.map.with_index do |call, call_index|
+          emit_stream_event(
+            on_stream_event,
+            type: :tool_call_started,
+            iteration: iteration_index + 1,
+            call_count: calls.length,
+            call_index: call_index + 1,
+            tool: call[:name],
+            call: call.dup,
+            params: tool_activity_params(call[:name], call)
+          )
+          dispatch(call, tool_activity: tool_activity)
+        end.join("\n\n---\n\n")
         emit_stream_event(on_stream_event, type: :tool_dispatch_completed, iteration: iteration_index + 1, call_count: calls.length)
         conversation << { role: "tool_response", content: results }
         pending_tool_calls = true

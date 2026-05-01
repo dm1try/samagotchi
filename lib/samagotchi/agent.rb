@@ -26,6 +26,9 @@ module Samagotchi
     THINKING_UI_SPINNER = "spinner"
     THINKING_UI_OFF = "off"
     THINKING_SPINNER_FRAMES = ["|", "/", "-", "\\"].freeze
+    MEMORY_SPINNER_COLOR = "38;5;208"
+    MEMORY_SPINNER_PREVIEW_LIMIT = 3
+    MEMORY_STICKY_PREVIEW_LIMIT = 8
 
     # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
 
@@ -306,10 +309,18 @@ module Samagotchi
     def emit_result(result)
       finish_thinking_spinner
       emit_tool_activity(result)
+      emit_active_memories_line
       $stdout.puts result.output
       return unless result.resumable?
 
       $stdout.puts "iteration limit reached"
+    end
+
+    def emit_active_memories_line
+      line = memory_sticky_line
+      return if line.empty?
+
+      $stdout.puts line
     end
 
     def emit_tool_activity(result)
@@ -474,8 +485,6 @@ module Samagotchi
     end
 
     def run_kernel_with_thinking_feedback(messages, max_iterations: 10)
-      return @kernel.run(messages, max_iterations: max_iterations) unless thinking_spinner_enabled?
-
       @kernel.run(
         messages,
         max_iterations: max_iterations,
@@ -491,7 +500,12 @@ module Samagotchi
         start_thinking_spinner
       when :generation_chunk
         tick_thinking_spinner
-      when :generation_completed, :tool_dispatch_started
+      when :tool_call_started
+        capture_memory_tool_call(event)
+      when :generation_completed
+        reset_thinking_memory_names
+        finish_thinking_spinner
+      when :tool_dispatch_started
         finish_thinking_spinner
       end
     end
@@ -522,11 +536,77 @@ module Samagotchi
 
     def render_thinking_spinner
       frame = THINKING_SPINNER_FRAMES[@thinking_spinner_index % THINKING_SPINNER_FRAMES.length]
-      line = "model> thinking... #{frame}"
-      line = paint(line, 90) if color_output?
+      line = color_output? ? paint("model> thinking... #{frame}", 90) : "model> thinking... #{frame}"
+      line += memory_spinner_segment
       $stdout.print("\r#{line}\e[0K")
       $stdout.flush
       @thinking_spinner_rendered = true
+    end
+
+    def capture_memory_tool_call(event)
+      call = event[:call].is_a?(Hash) ? event[:call] : {}
+      memory_name = memory_name_from_tool_call(call)
+      return if memory_name.nil? || memory_name.empty?
+
+      add_unique_memory_name(:@thinking_memory_names, memory_name)
+      add_unique_memory_name(:@session_memory_names, memory_name)
+    end
+
+    def add_unique_memory_name(ivar_name, value)
+      names = instance_variable_get(ivar_name) || []
+      names << value unless names.include?(value)
+      instance_variable_set(ivar_name, names)
+    end
+
+    def memory_name_from_tool_call(call)
+      tool_name = call[:name].to_s
+      case tool_name
+      when Tools::MemoryRead::NAME
+        normalize_memory_name(call[:content])
+      when Tools::Read::NAME
+        memory_name_from_read_path(call[:content])
+      else
+        nil
+      end
+    end
+
+    def normalize_memory_name(raw)
+      value = raw.to_s.strip
+      return nil if value.empty?
+
+      File.basename(value, ".md")
+    end
+
+    def memory_name_from_read_path(raw_path)
+      path = raw_path.to_s.strip.tr("\\", "/")
+      return nil if path.empty?
+      return nil unless path.match?(%r{(?:\A|/)memories/.+\.md\z})
+
+      normalize_memory_name(path)
+    end
+
+    def memory_spinner_segment
+      names = Array(@thinking_memory_names)
+      return "" if names.empty?
+
+      visible = names.first(MEMORY_SPINNER_PREVIEW_LIMIT)
+      suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
+      segment = " mem: #{visible.join(', ')}#{suffix}"
+      color_output? ? paint(segment, MEMORY_SPINNER_COLOR) : segment
+    end
+
+    def memory_sticky_line
+      names = Array(@session_memory_names)
+      return "" if names.empty?
+
+      visible = names.first(MEMORY_STICKY_PREVIEW_LIMIT)
+      suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
+      body = "memories> active this session: #{visible.join(', ')}#{suffix}"
+      color_output? ? paint(body, MEMORY_SPINNER_COLOR) : body
+    end
+
+    def reset_thinking_memory_names
+      @thinking_memory_names = []
     end
 
     def thinking_spinner_enabled?

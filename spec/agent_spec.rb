@@ -115,6 +115,20 @@ file2.rb")
         .to output(/tool> reading memory \(memory_read name=\"\" scope=\"project\"\): ok.*tool> reading memory \(memory_read name=\"\" scope=\"system\"\): ok.*ok/m).to_stdout
     end
 
+    it "prints sticky session memory line when memory files were loaded" do
+      responses = [
+        %(<|tool_call>call:read{path: "memories/refactoring_backlog.md"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete).and_return(*responses)
+
+      agent = described_class.new(mode: "assist", prompt: "read memory", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      expect { agent.run }
+        .to output(/memories> active this session: refactoring_backlog.*done/m).to_stdout
+    end
+
     it "uses the assist system prompt" do
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|
@@ -371,6 +385,56 @@ file2.rb")
 
       expect { agent.run }.to output(/done/).to_stdout
       expect { agent.run }.not_to output(/thinking\.\.\./).to_stdout
+    end
+
+    it "tracks active memory names for direct reads under memories/" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
+
+      expect(agent.send(:memory_spinner_segment)).to include("mem: refactoring_backlog")
+      expect(agent.send(:memory_sticky_line)).to include("active this session: refactoring_backlog")
+    end
+
+    it "tracks active memory names for memory_read tool calls" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
+
+      expect(agent.send(:memory_spinner_segment)).to include("mem: crawler_exploration_ideas")
+      expect(agent.send(:memory_sticky_line)).to include("active this session: crawler_exploration_ideas")
+    end
+
+    it "shows only current generation memories in spinner" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:thinking_spinner_enabled?).and_return(false)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
+      expect(agent.send(:memory_spinner_segment)).to include("refactoring_backlog")
+      expect(agent.send(:memory_sticky_line)).to include("refactoring_backlog")
+
+      agent.send(:handle_stream_event, type: :generation_completed)
+
+      expect(agent.send(:memory_spinner_segment)).to eq("")
+      expect(agent.send(:memory_sticky_line)).to include("refactoring_backlog")
+    end
+
+    it "keeps session memories across generation completion" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:thinking_spinner_enabled?).and_return(false)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
+      expect(agent.send(:memory_sticky_line)).to include("refactoring_backlog")
+
+      agent.send(:handle_stream_event, type: :generation_completed)
+
+      expect(agent.send(:memory_sticky_line)).to include("refactoring_backlog")
     end
   end
 
