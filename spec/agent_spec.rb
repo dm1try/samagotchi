@@ -676,10 +676,12 @@ file2.rb")
     around do |example|
       previous_dir = Dir.pwd
       previous_completion_proc = Reline.completion_proc
+      previous_autocompletion = Reline.autocompletion
       Dir.chdir(tmpdir)
       example.run
       Dir.chdir(previous_dir)
       Reline.completion_proc = previous_completion_proc
+      Reline.autocompletion = previous_autocompletion
       FileUtils.rm_rf(tmpdir)
     end
 
@@ -711,9 +713,11 @@ file2.rb")
       File.write("README.md", "test")
       original_proc = proc { ["original"] }
       Reline.completion_proc = original_proc
+      Reline.autocompletion = false
 
       allow(Reline).to receive(:line_buffer).and_return("@REA")
       allow(Reline).to receive(:readmultiline) do |_prompt, _history, &_block|
+        expect(Reline.autocompletion).to be(true)
         expect(Reline.completion_proc.call("@REA")).to include("@README.md")
         "@README.md"
       end
@@ -723,6 +727,7 @@ file2.rb")
 
       expect(value).to eq("@README.md")
       expect(Reline.completion_proc).to be(original_proc)
+      expect(Reline.autocompletion).to be(false)
     end
 
     it "does not enable path completion for continuation input" do

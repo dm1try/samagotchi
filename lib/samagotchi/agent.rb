@@ -394,10 +394,13 @@ module Samagotchi
 
     def with_scoped_at_path_completion
       previous_completion_proc = Reline.completion_proc
+      previous_autocompletion = Reline.autocompletion
+      Reline.autocompletion = true
       Reline.completion_proc = method(:assist_path_completion_candidates).to_proc
       yield
     ensure
       Reline.completion_proc = previous_completion_proc
+      Reline.autocompletion = previous_autocompletion
     end
 
     def assist_path_completion_candidates(word)

@@ -145,6 +145,7 @@ Behavior details:
 - Only real user prompts are persisted.
 - Continue-flow inputs (`yes`, `no`, `no, <reason>`, `/continue`) are not persisted as prompts.
 - In assist mode, pressing `Tab` on an `@`-prefixed token (for example `@lib/sama`) completes project file and directory paths while preserving the `@` prefix.
+- Press `Tab` twice to cycle/show multiple matching candidates, similar to IRB completion behavior.
 - History read/write errors are ignored so the session continues uninterrupted.
 
 ## Context Status Telemetry
