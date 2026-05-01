@@ -104,6 +104,23 @@ Thought handling follows the Gemma guidance:
 
 In short, raw thought blocks are treated as in-turn transient context, not durable history.
 
+### Thinking Spinner Preview
+
+When `SAMAGOTCHI_THINKING_UI=spinner`, the preview renderer uses a deterministic layout:
+
+- A fixed-width wrapper is used for spinner status and preview lines.
+- Preview wrapping is done by the app (not terminal auto-wrap).
+- The preview area always renders a fixed number of logical lines.
+
+Configuration:
+
+- `SAMAGOTCHI_THINKING_PREVIEW_LINES` (default `1`): number of preview lines to render under the spinner. Values are clamped to `1..3`.
+
+Notes:
+
+- Default behavior remains compact (`1` preview line).
+- Setting `2` or `3` enables multi-line preview while keeping spinner redraw height stable.
+
 ### Iteration Limit Behavior
 
 - `max_iterations` remains a hard safety cap on tool-call rounds.

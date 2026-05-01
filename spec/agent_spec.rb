@@ -362,6 +362,7 @@ file2.rb")
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       ENV["SAMAGOTCHI_THINKING_UI"] = "spinner"
+      ENV.delete("SAMAGOTCHI_THINKING_PREVIEW_LINES")
     end
 
     it "renders spinner progress in TTY mode while streaming" do
@@ -392,7 +393,52 @@ file2.rb")
       expect { agent.run }.to output(/model> .*hello world.*done/m).to_stdout
     end
 
-    it "keeps the preview as an 80-char sanitized tail" do
+    it "renders the preview line in color when color output is enabled" do
+      allow(client).to receive(:complete) do |_prompt, on_chunk: nil|
+        on_chunk&.call(content: "hello", payload: { "content" => "hello" })
+        "done"
+      end
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
+      allow(agent).to receive(:color_output?).and_return(true)
+      allow(agent).to receive(:thinking_render_min_interval).and_return(0.0)
+
+      expect { agent.run }.to output(/#{ansi_escape}model> … hello#{ansi_escape}.*done/m).to_stdout
+    end
+
+    it "keeps preview lines at a fixed height and pads when content is short" do
+      ENV["SAMAGOTCHI_THINKING_PREVIEW_LINES"] = "3"
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(:handle_stream_event, type: :generation_chunk, content: "short")
+
+      lines, has_content = agent.send(:thinking_tail_preview_lines)
+      expect(has_content).to be(true)
+      expect(lines.length).to eq(3)
+      expect(lines[0]).to include("short")
+      expect(lines[1].strip).to eq("")
+      expect(lines[2].strip).to eq("")
+    end
+
+    it "caps each preview line to fixed width" do
+      ENV["SAMAGOTCHI_THINKING_PREVIEW_LINES"] = "3"
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(:handle_stream_event, type: :generation_chunk, content: "x" * 500)
+
+      lines, = agent.send(:thinking_tail_preview_lines)
+      expect(lines.length).to eq(3)
+      expect(lines.all? { |line| line.length <= described_class::THINKING_PREVIEW_WIDTH }).to be(true)
+    end
+
+    it "sanitizes control tokens in preview text before line layout" do
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
       allow(agent).to receive(:color_output?).and_return(false)
@@ -401,10 +447,24 @@ file2.rb")
       raw = "start <|tool_call> call:read{path: \"x\"}<tool_call|> " + ("x" * 120)
       agent.send(:handle_stream_event, type: :generation_chunk, content: raw)
 
-      tail = agent.send(:thinking_tail_preview_text)
-      expect(tail.length).to eq(80)
-      expect(tail).not_to include("<|tool_call>")
-      expect(tail).not_to include("<tool_call|>")
+      lines, has_content = agent.send(:thinking_tail_preview_lines)
+      flattened = lines.join(" ")
+      expect(has_content).to be(true)
+      expect(flattened).not_to include("<|tool_call>")
+      expect(flattened).not_to include("<tool_call|>")
+    end
+
+    it "clamps preview line count config to the supported range" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+
+      ENV["SAMAGOTCHI_THINKING_PREVIEW_LINES"] = "0"
+      expect(agent.send(:thinking_preview_lines_count)).to eq(1)
+
+      ENV["SAMAGOTCHI_THINKING_PREVIEW_LINES"] = "7"
+      expect(agent.send(:thinking_preview_lines_count)).to eq(3)
+
+      ENV["SAMAGOTCHI_THINKING_PREVIEW_LINES"] = "invalid"
+      expect(agent.send(:thinking_preview_lines_count)).to eq(1)
     end
 
     it "does not capture preview text outside assist mode" do

@@ -29,7 +29,10 @@ module Samagotchi
     MEMORY_SPINNER_COLOR = "38;5;208"
     MEMORY_SPINNER_PREVIEW_LIMIT = 3
     MEMORY_STICKY_PREVIEW_LIMIT = 8
-    THINKING_TAIL_PREVIEW_LIMIT = 80
+    THINKING_PREVIEW_WIDTH = 80
+    THINKING_PREVIEW_LINES_ENV = "SAMAGOTCHI_THINKING_PREVIEW_LINES"
+    THINKING_PREVIEW_LINES_DEFAULT = 1
+    THINKING_PREVIEW_LINES_MAX = 3
     THINKING_TAIL_PREVIEW_BUFFER_LIMIT = 4096
     THINKING_RENDER_MIN_INTERVAL = 0.08
     THINKING_RENDER_INTERVAL_ENV = "SAMAGOTCHI_THINKING_RENDER_INTERVAL"
@@ -525,6 +528,7 @@ module Samagotchi
       @thinking_spinner_index = 0 if @thinking_spinner_index.nil?
       @thinking_spinner_last_render_at = nil
       @thinking_tail_preview_dirty = false
+      @thinking_preview_has_content = false
       render_thinking_spinner
     end
 
@@ -546,7 +550,7 @@ module Samagotchi
     end
 
     def force_spinner_render?
-      @thinking_tail_preview_dirty && @thinking_spinner_lines_rendered.to_i < 2
+      @thinking_tail_preview_dirty && !@thinking_preview_has_content
     end
 
     def finish_thinking_spinner
@@ -573,15 +577,17 @@ module Samagotchi
       @thinking_spinner_lines_rendered = 0
       @thinking_spinner_last_render_at = nil
       @thinking_tail_preview_dirty = false
+      @thinking_preview_has_content = false
     end
 
     def render_thinking_spinner
       frame = THINKING_SPINNER_FRAMES[@thinking_spinner_index % THINKING_SPINNER_FRAMES.length]
-      line = color_output? ? paint("model> thinking... #{frame}", 90) : "model> thinking... #{frame}"
-      line += memory_spinner_segment
-      lines = [line]
-      preview_line = thinking_tail_preview_line
-      lines << preview_line unless preview_line.nil?
+      line = thinking_spinner_status_line(frame)
+      preview_lines, preview_has_content = thinking_tail_preview_lines
+      if color_output?
+        preview_lines = preview_lines.map { |text| paint(text, 90) }
+      end
+      lines = [line] + preview_lines
 
       move_to_thinking_spinner_origin
       $stdout.print(lines.map { |text| "#{text}\e[0K" }.join("\n"))
@@ -590,6 +596,7 @@ module Samagotchi
       @thinking_spinner_lines_rendered = lines.length
       @thinking_spinner_last_render_at = monotonic_time
       @thinking_tail_preview_dirty = false
+      @thinking_preview_has_content = preview_has_content
     end
 
     def move_to_thinking_spinner_origin
@@ -617,11 +624,34 @@ module Samagotchi
     end
 
     def thinking_tail_preview_line
-      tail = thinking_tail_preview_text
-      return nil if tail.empty?
+      lines, has_content = thinking_tail_preview_lines
+      return nil unless has_content
 
-      preview = "model> … #{tail}"
-      color_output? ? paint(preview, 90) : preview
+      lines.first
+    end
+
+    def thinking_tail_preview_lines
+      line_count = thinking_preview_lines_count
+      prefix = "model> … "
+      continuation = " " * prefix.length
+      first_width = [THINKING_PREVIEW_WIDTH - prefix.length, 1].max
+      continuation_width = [THINKING_PREVIEW_WIDTH - continuation.length, 1].max
+
+      text = thinking_tail_preview_text
+      text = text[-thinking_tail_preview_capacity, thinking_tail_preview_capacity] || text
+      chunks = [text.slice(0, first_width).to_s]
+      offset = first_width
+      (line_count - 1).times do
+        chunks << text.slice(offset, continuation_width).to_s
+        offset += continuation_width
+      end
+
+      lines = [cap_preview_line("#{prefix}#{chunks[0]}")]
+      chunks.drop(1).each do |chunk|
+        lines << cap_preview_line("#{continuation}#{chunk}")
+      end
+
+      [lines, !text.empty?]
     end
 
     def thinking_tail_preview_text
@@ -632,14 +662,51 @@ module Samagotchi
       text = text.gsub(/<\|[^>]{1,120}>/, "")
       text = text.gsub(/<[a-z_\|]{1,40}>/, "")
       text = text.gsub(/\s+/, " ").strip
-      return "" if text.empty?
-
-      text[-THINKING_TAIL_PREVIEW_LIMIT, THINKING_TAIL_PREVIEW_LIMIT] || text
+      text.empty? ? "" : text
     end
 
     def reset_thinking_tail_preview
       @thinking_tail_preview_buffer = String.new
       @thinking_tail_preview_dirty = false
+      @thinking_preview_has_content = false
+    end
+
+    def thinking_spinner_status_line(frame)
+      base = "model> thinking... #{frame}"
+      memory = memory_spinner_segment_plain
+      available_for_memory = [THINKING_PREVIEW_WIDTH - base.length, 0].max
+      memory = cap_preview_text(memory, available_for_memory)
+
+      return "#{base}#{memory}" unless color_output?
+
+      "#{paint(base, 90)}#{paint(memory, MEMORY_SPINNER_COLOR)}"
+    end
+
+    def cap_preview_line(text)
+      cap_preview_text(text, THINKING_PREVIEW_WIDTH)
+    end
+
+    def cap_preview_text(text, width)
+      return "" if width <= 0
+
+      value = text.to_s
+      value.length > width ? value[0, width] : value
+    end
+
+    def thinking_preview_lines_count
+      raw = ENV.fetch(THINKING_PREVIEW_LINES_ENV, THINKING_PREVIEW_LINES_DEFAULT.to_s).to_s.strip
+      value = Integer(raw)
+      value = THINKING_PREVIEW_LINES_DEFAULT unless value.positive?
+      [[value, 1].max, THINKING_PREVIEW_LINES_MAX].min
+    rescue ArgumentError
+      THINKING_PREVIEW_LINES_DEFAULT
+    end
+
+    def thinking_tail_preview_capacity
+      prefix_length = "model> … ".length
+      first_width = [THINKING_PREVIEW_WIDTH - prefix_length, 1].max
+      continuation_width = first_width
+      first_width + ((thinking_preview_lines_count - 1) * continuation_width)
     end
 
     def thinking_render_min_interval
@@ -696,13 +763,19 @@ module Samagotchi
     end
 
     def memory_spinner_segment
+      segment = memory_spinner_segment_plain
+      return "" if segment.empty?
+
+      color_output? ? paint(segment, MEMORY_SPINNER_COLOR) : segment
+    end
+
+    def memory_spinner_segment_plain
       names = Array(@thinking_memory_names)
       return "" if names.empty?
 
       visible = names.first(MEMORY_SPINNER_PREVIEW_LIMIT)
       suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
-      segment = " mem: #{visible.join(', ')}#{suffix}"
-      color_output? ? paint(segment, MEMORY_SPINNER_COLOR) : segment
+      " mem: #{visible.join(', ')}#{suffix}"
     end
 
     def memory_sticky_line
