@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
 require "samagotchi/agent"
+require "fileutils"
+require "json"
 require "stringio"
+require "tmpdir"
 
 RSpec.describe Samagotchi::Agent do
   let(:client) { instance_double(Samagotchi::Client) }
@@ -10,9 +13,13 @@ RSpec.describe Samagotchi::Agent do
   around do |example|
     original_thinking_mode = ENV["THINKING_MODE"]
     original_skip_agent_md = ENV["SAMAGOTCHI_SKIP_AGENT_MD"]
+    original_history_file = ENV["SAMAGOTCHI_HISTORY_FILE"]
+    original_xdg_state_home = ENV["XDG_STATE_HOME"]
     example.run
     ENV["THINKING_MODE"] = original_thinking_mode
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
+    ENV["SAMAGOTCHI_HISTORY_FILE"] = original_history_file
+    ENV["XDG_STATE_HOME"] = original_xdg_state_home
   end
 
   describe "#run with a one-off prompt" do
@@ -335,10 +342,20 @@ file2.rb")
 
   describe "assist-mode continuation" do
     let(:looping_call) { %(<|tool_call>call:execute{command: "echo step"}<tool_call|>) }
+    let(:tmpdir) { Dir.mktmpdir("samagotchi-continuation") }
 
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+    end
+
+    around do |example|
+      previous_dir = Dir.pwd
+      ENV["SAMAGOTCHI_HISTORY_FILE"] = File.join(tmpdir, "history.json")
+      Dir.chdir(tmpdir)
+      example.run
+      Dir.chdir(previous_dir)
+      FileUtils.rm_rf(tmpdir)
     end
 
     it "accepts yes and resumes an exhausted turn" do
@@ -431,5 +448,75 @@ file2.rb")
       expect { agent.run }.to output(/done/).to_stdout
       expect(received_prompt).to include("line one\nline two")
     end
+  end
+
+  describe "assist-mode persistent prompt history" do
+    let(:tmpdir) { Dir.mktmpdir("samagotchi-history") }
+    let(:xdg_state_home) { File.join(tmpdir, "state") }
+    let(:history_file) { File.join(xdg_state_home, "samagotchi", "history.json") }
+
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      allow(client).to receive(:complete).and_return("done")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+    end
+
+    around do |example|
+      previous_dir = Dir.pwd
+      previous_history = Reline::HISTORY.to_a
+      Reline::HISTORY.clear
+      ENV.delete("SAMAGOTCHI_HISTORY_FILE")
+      ENV["XDG_STATE_HOME"] = xdg_state_home
+      Dir.chdir(tmpdir)
+      example.run
+      Dir.chdir(previous_dir)
+      Reline::HISTORY.clear
+      previous_history.each { |entry| Reline::HISTORY << entry }
+      FileUtils.rm_rf(tmpdir)
+    end
+
+    it "loads XDG state prompt history on assist startup" do
+      FileUtils.mkdir_p(File.dirname(history_file))
+      File.write(history_file, JSON.pretty_generate(["older prompt", "latest prompt"]))
+      allow(Reline).to receive(:readmultiline).and_return(nil)
+
+      agent = described_class.new(mode: "assist", client: client)
+      agent.run
+
+      expect(Reline::HISTORY.to_a).to include("older prompt", "latest prompt")
+    end
+
+    it "persists accepted prompts and keeps only the latest 20 entries" do
+      seed_entries = (1..25).map { |idx| "prompt-#{idx}" }
+      FileUtils.mkdir_p(File.dirname(history_file))
+      File.write(history_file, JSON.pretty_generate(seed_entries))
+      allow(Reline).to receive(:readmultiline).and_return("new prompt", nil)
+
+      agent = described_class.new(mode: "assist", client: client)
+      agent.run
+
+      persisted = JSON.parse(File.read(history_file))
+      expect(persisted.length).to eq(20)
+      expect(persisted.first).to eq("prompt-7")
+      expect(persisted.last).to eq("new prompt")
+    end
+
+    it "does not persist continuation yes or no answers" do
+      looping_call = %(<|tool_call>call:execute{command: "echo step"}<tool_call|>)
+      responses = Array.new(10, looping_call) + ["finished", "fresh answer"]
+
+      allow(client).to receive(:complete) { |_prompt| responses.shift }
+      allow(Reline).to receive(:readmultiline).and_return("first request", "second request", nil)
+      allow(Reline).to receive(:readline).and_return("no")
+
+      agent = described_class.new(mode: "assist", client: client)
+      agent.run
+
+      persisted = JSON.parse(File.read(history_file))
+      expect(persisted).to include("first request", "second request")
+      expect(persisted).not_to include("no")
+      expect(persisted).not_to include("yes")
+    end
+
   end
 end

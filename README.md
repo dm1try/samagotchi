@@ -112,6 +112,23 @@ In short, raw thought blocks are treated as in-turn transient context, not durab
 - If the cap is reached while tool calls are still pending, the result is marked resumable so callers can continue from the saved conversation instead of restarting from scratch.
 - In assist mode, the CLI now pauses at a compact continue prompt (`continue(yes/no/no_with_reason)>`), where `yes` (or `/continue`) resumes, `no` cancels, and `no, <explanation>` cancels while keeping the reason in conversation context.
 
+## Persistent Prompt History
+
+Assist mode keeps a small persistent prompt history across restarts.
+
+- Default history file: `$XDG_STATE_HOME/samagotchi/history.json`
+- XDG fallback when unset: `~/.local/state/samagotchi/history.json`
+- Optional override: `SAMAGOTCHI_HISTORY_FILE=/custom/path/history.json`
+- Stored entries: most recent `20` prompts
+- Format: JSON array of prompt strings
+
+Behavior details:
+
+- Prompt history is loaded on startup before the first `you>` prompt.
+- Only real user prompts are persisted.
+- Continue-flow inputs (`yes`, `no`, `no, <reason>`, `/continue`) are not persisted as prompts.
+- History read/write errors are ignored so the session continues uninterrupted.
+
 ## Context Status Telemetry
 
 The kernel can emit synthetic system telemetry messages to help the model plan under context pressure.

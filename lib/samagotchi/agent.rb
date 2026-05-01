@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+require "fileutils"
 require "reline"
 
 require_relative "kernel_loop"
@@ -12,6 +14,11 @@ module Samagotchi
   # evolve mode  — autonomous: model reads its own source, extends itself, validates with rspec.
   class Agent
     AGENT_DESCRIPTION_FILE = "AGENT.md"
+    PROMPT_HISTORY_ENV = "SAMAGOTCHI_HISTORY_FILE"
+    XDG_STATE_HOME_ENV = "XDG_STATE_HOME"
+    PROMPT_HISTORY_FILE = "history.json"
+    PROMPT_HISTORY_STATE_DIR = "samagotchi"
+    PROMPT_HISTORY_LIMIT = 20
     SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
     CONTINUE_COMMAND = "/continue"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
@@ -202,6 +209,7 @@ module Samagotchi
 
     def assist_loop
       $stdout.puts banner("assist")
+      load_persistent_history
       messages = [{ role: "system", content: system_prompt_with_index(SYSTEM_ASSIST) }]
       awaiting_continue = false
       interrupted_turn_checkpoint = nil
@@ -246,6 +254,7 @@ module Samagotchi
 
           interrupted_turn_checkpoint = clone_messages(messages)
           messages << { role: "user", content: input }
+          persist_recent_history(input)
           result = @kernel.run(messages)
         end
 
@@ -354,6 +363,55 @@ module Samagotchi
       return nil if input.nil?
 
       input.gsub(/\r\n?|\n\z/, "\n").strip
+    end
+
+    def history_file_path
+      explicit = ENV[PROMPT_HISTORY_ENV].to_s.strip
+      return explicit unless explicit.empty?
+
+      File.join(xdg_state_home, PROMPT_HISTORY_STATE_DIR, PROMPT_HISTORY_FILE)
+    end
+
+    def xdg_state_home
+      configured = ENV[XDG_STATE_HOME_ENV].to_s.strip
+      return configured unless configured.empty?
+
+      File.join(Dir.home, ".local", "state")
+    end
+
+    def load_persistent_history
+      entries = load_history_entries_from_disk
+      entries.last(PROMPT_HISTORY_LIMIT).each { |entry| Reline::HISTORY << entry }
+    rescue StandardError
+      nil
+    end
+
+    def persist_recent_history(input)
+      entries = normalize_history_entries(load_history_entries_from_disk)
+      entries << input
+      trimmed_entries = entries.last(PROMPT_HISTORY_LIMIT)
+      path = history_file_path
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, JSON.pretty_generate(trimmed_entries) + "\n")
+    rescue StandardError
+      nil
+    end
+
+    def load_history_entries_from_disk
+      path = history_file_path
+      return [] unless File.file?(path)
+
+      raw = File.read(path)
+      parsed = JSON.parse(raw)
+      normalize_history_entries(parsed)
+    rescue JSON::ParserError
+      normalize_history_entries(raw.to_s.lines.map(&:chomp))
+    rescue StandardError
+      []
+    end
+
+    def normalize_history_entries(entries)
+      Array(entries).map { |entry| entry.to_s.gsub(/\r\n?/, "\n").strip }.reject(&:empty?)
     end
 
     def continue_request?(input)
