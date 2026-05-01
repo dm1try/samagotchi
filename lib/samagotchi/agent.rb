@@ -19,7 +19,7 @@ module Samagotchi
 
     TOOL_EXECUTE = <<~DECL.strip
       <|tool>declaration:execute{
-        description:<|"|>Run any shell command and see its stdout, stderr, and exit code<|"|>,
+        description:<|"|>Run any shell command and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata.<|"|>,
         parameters:{
           command:{type:<|"|>string<|"|>, description:<|"|>The shell command to run<|"|>, required:true}
         }
@@ -28,7 +28,7 @@ module Samagotchi
 
     TOOL_READ = <<~DECL.strip
       <|tool>declaration:read{
-        description:<|"|>Read a file from disk<|"|>,
+        description:<|"|>Read a file from disk. Large files may be truncated to a head+tail preview with metadata.<|"|>,
         parameters:{
           path:{type:<|"|>string<|"|>, description:<|"|>Path to the file<|"|>, required:true}
         }

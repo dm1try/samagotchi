@@ -140,7 +140,7 @@ file2.rb")
       agent.run
       # All tool declaration string values must use <|"|> delimiters
       expect(received_prompt).to include('description:<|"|>Run any shell command')
-      expect(received_prompt).to include('description:<|"|>Read a file from disk<|"|>')
+      expect(received_prompt).to include('description:<|"|>Read a file from disk. Large files may be truncated to a head+tail preview with metadata.<|"|>')
       expect(received_prompt).to include('description:<|"|>Write content to a file')
       expect(received_prompt).to include('type:<|"|>string<|"|>')
     end
