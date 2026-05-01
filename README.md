@@ -110,7 +110,7 @@ In short, raw thought blocks are treated as in-turn transient context, not durab
 - Tool side effects that already ran before the cap are not rolled back.
 - `Samagotchi::KernelLoop#run` now returns a resumable result object with the visible output plus the accumulated conversation.
 - If the cap is reached while tool calls are still pending, the result is marked resumable so callers can continue from the saved conversation instead of restarting from scratch.
-- In assist mode, the CLI now pauses and requires `/continue` to resume the interrupted turn.
+- In assist mode, the CLI now pauses at a compact continue prompt (`continue(yes/no/no_with_reason)>`), where `yes` (or `/continue`) resumes, `no` cancels, and `no, <explanation>` cancels while keeping the reason in conversation context.
 
 ## Context Status Telemetry
 

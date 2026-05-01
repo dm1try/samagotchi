@@ -341,7 +341,20 @@ file2.rb")
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
     end
 
-    it "prompts for /continue and resumes an exhausted turn" do
+    it "accepts yes and resumes an exhausted turn" do
+      responses = Array.new(10, looping_call) + ["finished"]
+
+      allow(client).to receive(:complete) { |_prompt| responses.shift }
+      allow(Reline).to receive(:readmultiline).and_return("run", nil)
+      allow(Reline).to receive(:readline).and_return("yes")
+
+      agent = described_class.new(mode: "assist", client: client)
+
+      expect { agent.run }
+        .to output(/iteration limit reached.*finished/m).to_stdout
+    end
+
+    it "keeps /continue working for backward compatibility" do
       responses = Array.new(10, looping_call) + ["finished"]
 
       allow(client).to receive(:complete) { |_prompt| responses.shift }
@@ -351,19 +364,58 @@ file2.rb")
       agent = described_class.new(mode: "assist", client: client)
 
       expect { agent.run }
-        .to output(/iteration limit reached; type \/continue to resume.*finished/m).to_stdout
+        .to output(/iteration limit reached.*finished/m).to_stdout
     end
 
     it "rejects new input until the interrupted turn is resumed" do
       allow(client).to receive(:complete)
         .and_return(*Array.new(10, looping_call), "finished")
       allow(Reline).to receive(:readmultiline).and_return("run", nil)
-      allow(Reline).to receive(:readline).and_return("new request", "/continue")
+      allow(Reline).to receive(:readline).and_return("new request", "yes")
 
       agent = described_class.new(mode: "assist", client: client)
 
       expect { agent.run }
-        .to output(/type \/continue to resume the interrupted turn.*finished/m).to_stdout
+        .to output(/answer yes, no, or no, <reason>.*finished/m).to_stdout
+    end
+
+    it "supports no to cancel the interrupted turn" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length <= 10 ? looping_call : "fresh answer"
+      end
+      old_request = "OLD_BROAD_REQUEST_UNIQUE"
+      next_request = "NEW_NARROW_REQUEST_UNIQUE"
+      allow(Reline).to receive(:readmultiline).and_return(old_request, next_request, nil)
+      allow(Reline).to receive(:readline).and_return("no")
+
+      agent = described_class.new(mode: "assist", client: client)
+
+      expect { agent.run }
+        .to output(/interrupted turn cancelled; enter your next prompt.*fresh answer/m).to_stdout
+      expect(prompts.last).to include(next_request)
+      expect(prompts.last).not_to include(old_request)
+    end
+
+    it "accepts no with explanation and records it in conversation" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length <= 10 ? looping_call : "fresh answer"
+      end
+      old_request = "OLD_BROAD_REQUEST_WITH_REASON"
+      next_request = "NEW_NARROW_REQUEST_WITH_REASON"
+      allow(Reline).to receive(:readmultiline).and_return(old_request, next_request, nil)
+      allow(Reline).to receive(:readline).and_return("no, this is too risky")
+
+      agent = described_class.new(mode: "assist", client: client)
+
+      expect { agent.run }
+        .to output(/noted your explanation.*fresh answer/m).to_stdout
+      expect(prompts.last).to include("I chose not to continue the interrupted turn because: this is too risky")
+      expect(prompts.last).to include(next_request)
+      expect(prompts.last).not_to include(old_request)
     end
 
     it "accepts multiline content from the default editor flow" do

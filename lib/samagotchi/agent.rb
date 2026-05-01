@@ -14,6 +14,7 @@ module Samagotchi
     AGENT_DESCRIPTION_FILE = "AGENT.md"
     SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
     CONTINUE_COMMAND = "/continue"
+    CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
 
     # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
 
@@ -203,18 +204,38 @@ module Samagotchi
       $stdout.puts banner("assist")
       messages = [{ role: "system", content: system_prompt_with_index(SYSTEM_ASSIST) }]
       awaiting_continue = false
+      interrupted_turn_checkpoint = nil
 
       loop do
         input = read_input(awaiting_continue: awaiting_continue)
         break if input.nil?
 
         if awaiting_continue
-          unless continue_request?(input)
-            $stdout.puts "\nmodel> iteration limit reached; type #{CONTINUE_COMMAND} to resume the interrupted turn"
+          decision, reason = continue_decision(input)
+
+          case decision
+          when :resume
+            result = @kernel.run(messages)
+          when :abort
+            messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
+            interrupted_turn_checkpoint = nil
+            awaiting_continue = false
+            $stdout.puts "\nmodel> interrupted turn cancelled; enter your next prompt"
+            next
+          when :abort_with_reason
+            messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
+            interrupted_turn_checkpoint = nil
+            messages << {
+              role: "user",
+              content: "I chose not to continue the interrupted turn because: #{reason}"
+            }
+            awaiting_continue = false
+            $stdout.puts "\nmodel> interrupted turn cancelled; noted your explanation"
+            next
+          else
+            $stdout.puts "\nmodel> answer yes, no, or no, <reason>"
             next
           end
-
-          result = @kernel.run(messages)
         else
           next if input.empty?
 
@@ -223,6 +244,7 @@ module Samagotchi
             next
           end
 
+          interrupted_turn_checkpoint = clone_messages(messages)
           messages << { role: "user", content: input }
           result = @kernel.run(messages)
         end
@@ -230,6 +252,7 @@ module Samagotchi
         emit_result(result)
         messages = result.conversation
         awaiting_continue = result.resumable?
+        interrupted_turn_checkpoint = nil unless awaiting_continue
       end
 
       $stdout.puts "\nbye."
@@ -272,7 +295,7 @@ module Samagotchi
       $stdout.puts result.output
       return unless result.resumable?
 
-      $stdout.puts "iteration limit reached; type #{CONTINUE_COMMAND} to resume"
+      $stdout.puts "iteration limit reached"
     end
 
     def emit_tool_activity(result)
@@ -318,7 +341,8 @@ module Samagotchi
 
     def read_input(awaiting_continue:)
       if awaiting_continue
-        input = Reline.readline("continue> ", true)
+        prompt = color_output? ? paint(CONTINUE_PROMPT, 33) : CONTINUE_PROMPT
+        input = Reline.readline(prompt, true)
         return nil if input.nil?
 
         return input.strip
@@ -333,7 +357,30 @@ module Samagotchi
     end
 
     def continue_request?(input)
-      input.empty? || input == CONTINUE_COMMAND
+      input == CONTINUE_COMMAND
+    end
+
+    def continue_decision(input)
+      normalized = input.to_s.strip
+      return [:resume, nil] if normalized.empty?
+
+      lowered = normalized.downcase
+      return [:resume, nil] if lowered == CONTINUE_COMMAND || lowered == "yes" || lowered == "y"
+      return [:abort, nil] if lowered == "no" || lowered == "n"
+
+      reason_match = normalized.match(/\A(?:no|n)\s*[,:\-]\s*(.+)\z/i)
+      if reason_match
+        reason = reason_match[1].to_s.strip
+        return [:abort, nil] if reason.empty?
+
+        return [:abort_with_reason, reason]
+      end
+
+      [:invalid, nil]
+    end
+
+    def clone_messages(messages)
+      Array(messages).map(&:dup)
     end
 
     def project_specific_description
