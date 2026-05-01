@@ -27,8 +27,9 @@ module Samagotchi
     #
     # @param prompt      [String]        full formatted prompt string
     # @param stop        [Array<String>] stop sequences
+    # @param on_chunk    [Proc, nil]     optional callback per streamed chunk
     # @return [String] the generated text
-    def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"])
+    def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], on_chunk: nil)
       uri = URI("http://#{@host}:#{@port}/completion")
       request = Net::HTTP::Post.new(uri)
       request["Content-Type"] = "application/json"
@@ -52,7 +53,9 @@ module Samagotchi
               next if line.empty? || !line.start_with?("data: ")
 
               payload = JSON.parse(line.delete_prefix("data: "))
-              result << payload.fetch("content", "")
+              content = payload.fetch("content", "")
+              result << content
+              on_chunk&.call(content: content, payload: payload)
             end
           end
         end

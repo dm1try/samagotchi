@@ -300,6 +300,26 @@ Need to inspect the filesystem first.
       expect(prompts[1]).to include("unknown tool")
     end
 
+    it "forwards generation stream events when a callback is provided" do
+      events = []
+
+      allow(client).to receive(:complete) do |_prompt, on_chunk: nil|
+        on_chunk&.call(content: "Hel", payload: { "content" => "Hel" })
+        on_chunk&.call(content: "lo", payload: { "content" => "lo" })
+        "Hello"
+      end
+
+      result = kernel.run(
+        [{ role: "user", content: "hi" }],
+        on_stream_event: ->(event) { events << event }
+      )
+
+      expect(result).to eq("Hello")
+      expect(events.map { |event| event[:type] }).to include(:generation_started, :generation_chunk, :generation_completed)
+      expect(events.count { |event| event[:type] == :generation_chunk }).to eq(2)
+      expect(events.select { |event| event[:type] == :generation_chunk }.map { |event| event[:content] }).to eq(["Hel", "lo"])
+    end
+
     it "strips the 'command:' prefix when the value is unquoted" do
       prompts = []
       allow(client).to receive(:complete) do |prompt|

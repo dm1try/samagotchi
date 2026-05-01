@@ -15,11 +15,13 @@ RSpec.describe Samagotchi::Agent do
     original_skip_agent_md = ENV["SAMAGOTCHI_SKIP_AGENT_MD"]
     original_history_file = ENV["SAMAGOTCHI_HISTORY_FILE"]
     original_xdg_state_home = ENV["XDG_STATE_HOME"]
+    original_thinking_ui = ENV["SAMAGOTCHI_THINKING_UI"]
     example.run
     ENV["THINKING_MODE"] = original_thinking_mode
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
     ENV["SAMAGOTCHI_HISTORY_FILE"] = original_history_file
     ENV["XDG_STATE_HOME"] = original_xdg_state_home
+    ENV["SAMAGOTCHI_THINKING_UI"] = original_thinking_ui
   end
 
   describe "#run with a one-off prompt" do
@@ -337,6 +339,38 @@ file2.rb")
         "ok"
       end
       agent.run
+    end
+  end
+
+  describe "thinking spinner" do
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      ENV["SAMAGOTCHI_THINKING_UI"] = "spinner"
+    end
+
+    it "renders spinner progress in TTY mode while streaming" do
+      allow(client).to receive(:complete) do |_prompt, on_chunk: nil|
+        on_chunk&.call(content: "a", payload: { "content" => "a" })
+        on_chunk&.call(content: "b", payload: { "content" => "b" })
+        "done"
+      end
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
+
+      expect { agent.run }.to output(/thinking\.\.\..*done/m).to_stdout
+    end
+
+    it "does not render spinner in non-TTY mode" do
+      allow(client).to receive(:complete) do |_prompt, on_chunk: nil|
+        on_chunk&.call(content: "a", payload: { "content" => "a" })
+        "done"
+      end
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:thinking_spinner_enabled?).and_return(false)
+
+      expect { agent.run }.to output(/done/).to_stdout
+      expect { agent.run }.not_to output(/thinking\.\.\./).to_stdout
     end
   end
 

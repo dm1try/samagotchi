@@ -22,6 +22,10 @@ module Samagotchi
     SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
     CONTINUE_COMMAND = "/continue"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
+    THINKING_UI_ENV = "SAMAGOTCHI_THINKING_UI"
+    THINKING_UI_SPINNER = "spinner"
+    THINKING_UI_OFF = "off"
+    THINKING_SPINNER_FRAMES = ["|", "/", "-", "\\"].freeze
 
     # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
 
@@ -203,7 +207,7 @@ module Samagotchi
         { role: "system", content: system_prompt_with_index(SYSTEM_ASSIST) },
         { role: "user",   content: @prompt }
       ]
-      result = @kernel.run(messages)
+      result = run_kernel_with_thinking_feedback(messages)
       emit_result(result)
     end
 
@@ -223,7 +227,7 @@ module Samagotchi
 
           case decision
           when :resume
-            result = @kernel.run(messages)
+            result = run_kernel_with_thinking_feedback(messages)
           when :abort
             messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             interrupted_turn_checkpoint = nil
@@ -255,7 +259,7 @@ module Samagotchi
           interrupted_turn_checkpoint = clone_messages(messages)
           messages << { role: "user", content: input }
           persist_recent_history(input)
-          result = @kernel.run(messages)
+          result = run_kernel_with_thinking_feedback(messages)
         end
 
         emit_result(result)
@@ -273,7 +277,7 @@ module Samagotchi
         { role: "system", content: system_prompt_with_index(SYSTEM_EVOLVE) },
         { role: "user",   content: "Read your source files, identify improvements, implement them, and validate with rspec." }
       ]
-      result = @kernel.run(messages, max_iterations: 20)
+      result = run_kernel_with_thinking_feedback(messages, max_iterations: 20)
       emit_result(result)
     end
 
@@ -300,6 +304,7 @@ module Samagotchi
     end
 
     def emit_result(result)
+      finish_thinking_spinner
       emit_tool_activity(result)
       $stdout.puts result.output
       return unless result.resumable?
@@ -466,6 +471,71 @@ module Samagotchi
 
     def rg_guidance
       RG_GUIDANCE if rg_available?
+    end
+
+    def run_kernel_with_thinking_feedback(messages, max_iterations: 10)
+      return @kernel.run(messages, max_iterations: max_iterations) unless thinking_spinner_enabled?
+
+      @kernel.run(
+        messages,
+        max_iterations: max_iterations,
+        on_stream_event: method(:handle_stream_event)
+      )
+    ensure
+      finish_thinking_spinner
+    end
+
+    def handle_stream_event(event)
+      case event[:type]
+      when :generation_started
+        start_thinking_spinner
+      when :generation_chunk
+        tick_thinking_spinner
+      when :generation_completed, :tool_dispatch_started
+        finish_thinking_spinner
+      end
+    end
+
+    def start_thinking_spinner
+      return unless thinking_spinner_enabled?
+
+      @thinking_spinner_active = true
+      @thinking_spinner_index = 0 if @thinking_spinner_index.nil?
+      render_thinking_spinner
+    end
+
+    def tick_thinking_spinner
+      return unless @thinking_spinner_active
+
+      @thinking_spinner_index = (@thinking_spinner_index + 1) % THINKING_SPINNER_FRAMES.length
+      render_thinking_spinner
+    end
+
+    def finish_thinking_spinner
+      return unless @thinking_spinner_rendered
+
+      $stdout.print("\r\e[0K")
+      $stdout.flush
+      @thinking_spinner_rendered = false
+      @thinking_spinner_active = false
+    end
+
+    def render_thinking_spinner
+      frame = THINKING_SPINNER_FRAMES[@thinking_spinner_index % THINKING_SPINNER_FRAMES.length]
+      line = "model> thinking... #{frame}"
+      line = paint(line, 90) if color_output?
+      $stdout.print("\r#{line}\e[0K")
+      $stdout.flush
+      @thinking_spinner_rendered = true
+    end
+
+    def thinking_spinner_enabled?
+      return false unless $stdout.tty?
+
+      mode = ENV.fetch(THINKING_UI_ENV, THINKING_UI_SPINNER).to_s.strip.downcase
+      return false if mode.empty? || mode == THINKING_UI_OFF || mode == "false" || mode == "0"
+
+      mode == THINKING_UI_SPINNER && ENV.fetch("TERM", "") != "dumb"
     end
   end
 end

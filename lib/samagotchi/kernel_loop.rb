@@ -128,8 +128,9 @@ module Samagotchi
     # @param messages       [Array<Hash>, Result] conversation so far ({role:, content:})
     #                                           or a previous Result to resume
     # @param max_iterations [Integer]            safety cap on tool-call rounds
+    # @param on_stream_event [Proc, nil]         optional callback for generation events
     # @return [Result] final visible response with continuation metadata
-    def run(messages, max_iterations: 10)
+    def run(messages, max_iterations: 10, on_stream_event: nil)
       conversation = prepare_conversation(messages)
       context_state = initial_context_status_state(conversation)
       exhausted = false
@@ -138,7 +139,26 @@ module Samagotchi
 
       max_iterations.times do |iteration_index|
         prompt = prompt_with_context_status(conversation, iteration_index: iteration_index, state: context_state)
-        response = @client.complete(prompt)
+        emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
+        response = if on_stream_event
+                     @client.complete(prompt, on_chunk: lambda { |chunk|
+                       emit_stream_event(
+                         on_stream_event,
+                         type: :generation_chunk,
+                         iteration: iteration_index + 1,
+                         content: chunk[:content].to_s,
+                         payload: chunk[:payload]
+                       )
+                     })
+                   else
+                     @client.complete(prompt)
+                   end
+        emit_stream_event(
+          on_stream_event,
+          type: :generation_completed,
+          iteration: iteration_index + 1,
+          content_length: response.to_s.length
+        )
         verbose_log("── LLM response ──\n#{response}\n──────────────────")
         conversation << { role: "model", content: response }
 
@@ -148,7 +168,9 @@ module Samagotchi
           break
         end
 
+        emit_stream_event(on_stream_event, type: :tool_dispatch_started, iteration: iteration_index + 1, call_count: calls.length)
         results = calls.map { |c| dispatch(c, tool_activity: tool_activity) }.join("\n\n---\n\n")
+        emit_stream_event(on_stream_event, type: :tool_dispatch_completed, iteration: iteration_index + 1, call_count: calls.length)
         conversation << { role: "tool_response", content: results }
         pending_tool_calls = true
       end
@@ -167,6 +189,12 @@ module Samagotchi
     end
 
     private
+
+    def emit_stream_event(callback, event)
+      callback&.call(event)
+    rescue StandardError
+      nil
+    end
 
     def verbose_log(message)
       @debug_log&.write(message)
