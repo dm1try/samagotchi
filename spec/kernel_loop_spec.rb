@@ -2,6 +2,7 @@
 
 require "samagotchi/kernel_loop"
 require "fileutils"
+require "tmpdir"
 
 RSpec.describe Samagotchi::KernelLoop do
   let(:client) { instance_double(Samagotchi::Client) }
@@ -400,6 +401,50 @@ Need to inspect the filesystem first.
       allow(client).to receive(:complete).and_return("Hello!")
       expect { kernel.run([{ role: "user", content: "hi" }]) }
         .not_to output.to_stderr
+    end
+  end
+
+  describe "debug log file" do
+    it "writes verbose-equivalent events to a file when verbose is false" do
+      dir = Dir.mktmpdir("samagotchi-debug-log")
+      log_path = File.join(dir, "samagotchi.log")
+      kernel_with_log = described_class.new(client: client, log_file: log_path)
+
+      allow(client).to receive(:complete).and_return("Hello!")
+      expect { kernel_with_log.run([{ role: "user", content: "hi" }]) }
+        .not_to output.to_stderr
+
+      content = File.read(log_path)
+      expect(content).to include("LLM response")
+      expect(content).to include("Hello!")
+    ensure
+      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+    end
+
+    it "writes to both stderr and file when verbose is true" do
+      dir = Dir.mktmpdir("samagotchi-debug-log")
+      log_path = File.join(dir, "samagotchi.log")
+      kernel_with_log = described_class.new(client: client, verbose: true, log_file: log_path)
+
+      allow(client).to receive(:complete).and_return("Hello!")
+      expect { kernel_with_log.run([{ role: "user", content: "hi" }]) }
+        .to output(/LLM response.*Hello!/m).to_stderr
+
+      content = File.read(log_path)
+      expect(content).to include("LLM response")
+      expect(content).to include("Hello!")
+    ensure
+      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+    end
+
+    it "does not fail the run when log path is not writable" do
+      dir = Dir.mktmpdir("samagotchi-debug-log")
+      kernel_with_bad_log = described_class.new(client: client, log_file: dir)
+
+      allow(client).to receive(:complete).and_return("Hello!")
+      expect(kernel_with_bad_log.run([{ role: "user", content: "hi" }]).to_s).to eq("Hello!")
+    ensure
+      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
     end
   end
 end

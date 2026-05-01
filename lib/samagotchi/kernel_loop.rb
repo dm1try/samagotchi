@@ -2,6 +2,7 @@
 
 require_relative "prompt"
 require_relative "client"
+require_relative "debug_log"
 require_relative "tools/execute"
 require_relative "tools/read"
 require_relative "tools/write"
@@ -115,9 +116,10 @@ module Samagotchi
     DEFAULT_CONTEXT_CADENCE = 0
     TOOL_ACTIVITY_PREVIEW_LIMIT = 80
 
-    def initialize(client: nil, verbose: false)
-      @client  = client || Client.new
+    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil)
+      @client = client || Client.new
       @verbose = verbose
+      @debug_log = debug_log || DebugLog.new(path: log_file)
     end
 
     # Run the conversation loop and return the final model response plus
@@ -167,6 +169,7 @@ module Samagotchi
     private
 
     def verbose_log(message)
+      @debug_log&.write(message)
       return unless @verbose
 
       $stderr.puts "\n[verbose] #{message}"

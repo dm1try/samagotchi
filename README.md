@@ -21,6 +21,31 @@ This is separate from verbose mode:
 - `-v/--verbose` still prints detailed debug logs (raw LLM responses and full
 	tool call/result payloads) to stderr.
 
+## Debug Log File
+
+Samagotchi also writes internal debug events to a file so you can inspect runs
+without enabling `--verbose` in the terminal.
+
+Default path:
+
+- `./tmp/samagotchi.log`
+
+This file receives verbose-equivalent internal events (for example raw LLM
+responses and full tool call/result payloads). It is append-only and intended
+for workflows like:
+
+- `tail -f tmp/samagotchi.log`
+
+Configuration:
+
+- `SAMAGOTCHI_LOG_FILE`: override log file path.
+- `SAMAGOTCHI_DISABLE_LOG_FILE=true` (or `1`): disable file logging.
+
+Behavior notes:
+
+- `--verbose` still controls stderr output only.
+- File logging remains enabled even when `--verbose` is off.
+
 ## Project specific description
 
 If an AGENT.md file is present in the project root, samagotchi injects its

@@ -16,4 +16,15 @@ OptionParser.new do |opts|
   opts.on("-h", "--help", "Show help") { puts opts; exit }
 end.parse!
 
-Samagotchi::Agent.new(mode: options[:mode], prompt: options[:prompt], verbose: options[:verbose]).run
+log_file = if ["1", "true"].include?(ENV.fetch("SAMAGOTCHI_DISABLE_LOG_FILE", "").downcase)
+             nil
+           else
+             ENV.fetch("SAMAGOTCHI_LOG_FILE", File.expand_path("../tmp/samagotchi.log", __dir__))
+           end
+
+Samagotchi::Agent.new(
+  mode: options[:mode],
+  prompt: options[:prompt],
+  verbose: options[:verbose],
+  log_file: log_file
+).run

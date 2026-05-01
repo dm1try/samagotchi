@@ -29,6 +29,23 @@ file2.rb")
       expect { agent.run }.to output(/file1.rb/).to_stdout
     end
 
+    it "passes log_file configuration through to KernelLoop" do
+      result = Samagotchi::KernelLoop::Result.new(
+        output: "ok",
+        conversation: [],
+        exhausted: false,
+        pending_tool_calls: false,
+        tool_activity: []
+      )
+      kernel = instance_double(Samagotchi::KernelLoop, run: result)
+      expect(Samagotchi::KernelLoop).to receive(:new)
+        .with(client: client, verbose: false, log_file: "tmp/custom.log")
+        .and_return(kernel)
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client, log_file: "tmp/custom.log")
+      expect { agent.run }.to output(/ok/).to_stdout
+    end
+
     it "does not start an interactive loop" do
       call_count = 0
       allow(client).to receive(:complete) do
