@@ -83,5 +83,31 @@ RSpec.describe Samagotchi::Client do
       ENV.delete("LLAMA_OPEN_TIMEOUT")
       ENV.delete("LLAMA_READ_TIMEOUT")
     end
+
+    it "raises a cancellation error when the cancel controller is already cancelled" do
+      client = described_class.new(host: "localhost", port: 8080)
+      cancel_controller = described_class::CancellationController.new
+      cancel_controller.cancel!(:double_esc)
+
+      expect(Net::HTTP).not_to receive(:start)
+      expect { client.complete("prompt", cancel_controller: cancel_controller) }
+        .to raise_error(described_class::RequestCancelled) { |error| expect(error.reason).to eq(:double_esc) }
+    end
+
+    it "removes cancel listeners after a successful request" do
+      client = described_class.new(host: "localhost", port: 8080)
+      cancel_controller = described_class::CancellationController.new
+      http = instance_double(Net::HTTP)
+      response = double("response")
+
+      allow(Net::HTTP).to receive(:start)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .and_yield(http)
+      allow(http).to receive(:request) { |_request, &block| block.call(response) }
+      allow(response).to receive(:read_body).and_yield("data: {\"content\":\"ok\"}\n")
+
+      expect(client.complete("prompt", cancel_controller: cancel_controller)).to eq("ok")
+      expect { cancel_controller.cancel!(:double_esc) }.not_to raise_error
+    end
   end
 end

@@ -2,6 +2,7 @@
 
 require "json"
 require "fileutils"
+require "io/console"
 require "reline"
 
 require_relative "kernel_loop"
@@ -42,6 +43,10 @@ module Samagotchi
     AT_PATH_COMPLETION_PREFIX = "@"
     MEMORY_COMPLETION_PREFIX = "#"
     AT_PATH_COMPLETION_MAX_CANDIDATES = 200
+    DOUBLE_ESCAPE_INTERVAL_ENV = "SAMAGOTCHI_DOUBLE_ESC_INTERVAL"
+    DOUBLE_ESCAPE_INTERVAL_DEFAULT = 0.3
+    CANCEL_MONITOR_POLL_INTERVAL = 0.05
+    CTRL_C_BYTE = "\u0003"
 
     # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
 
@@ -241,6 +246,7 @@ module Samagotchi
       loop do
         input = read_input(awaiting_continue: awaiting_continue)
         break if input.nil?
+        continue_flow = awaiting_continue
 
         if awaiting_continue
           decision, reason = continue_decision(input)
@@ -282,7 +288,19 @@ module Samagotchi
           result = run_kernel_with_thinking_feedback(messages)
         end
 
+        if result.respond_to?(:canceled?) && result.canceled?
+          if continue_flow
+            awaiting_continue = true
+          else
+            messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
+            awaiting_continue = false
+          end
+          interrupted_turn_checkpoint = nil unless awaiting_continue
+          next
+        end
+
         emit_result(result)
+
         messages = result.conversation
         awaiting_continue = result.resumable?
         interrupted_turn_checkpoint = nil unless awaiting_continue
@@ -644,20 +662,33 @@ module Samagotchi
     end
 
     def run_kernel_with_thinking_feedback(messages, max_iterations: 10)
+      cancellation_controller = Client::CancellationController.new
+      @active_cancel_controller = cancellation_controller
       reset_thinking_memory_notification
       reset_thinking_memory_names
-      @kernel.run(
+      result = @kernel.run(
         messages,
         max_iterations: max_iterations,
-        on_stream_event: method(:handle_stream_event)
+        on_stream_event: method(:handle_stream_event),
+        cancel_controller: cancellation_controller
       )
+      emit_cancellation_notice(result)
+      result
+    rescue Interrupt
+      cancellation_controller&.cancel!(:ctrl_c)
+      result = cancelled_result_from(messages, reason: :ctrl_c)
+      emit_cancellation_notice(result)
+      result
     ensure
+      stop_cancel_hotkey_monitor
+      @active_cancel_controller = nil
       finish_thinking_spinner
     end
 
     def handle_stream_event(event)
       case event[:type]
       when :generation_started
+        start_cancel_hotkey_monitor(@active_cancel_controller)
         reset_thinking_tail_preview
         start_thinking_spinner
       when :generation_chunk
@@ -667,12 +698,134 @@ module Samagotchi
         capture_memory_tool_call(event)
         refresh_thinking_spinner_status
       when :generation_completed
+        stop_cancel_hotkey_monitor
+        reset_thinking_tail_preview
+        finish_thinking_spinner
+      when :generation_cancelled
+        stop_cancel_hotkey_monitor
         reset_thinking_tail_preview
         finish_thinking_spinner
       when :tool_dispatch_started
+        stop_cancel_hotkey_monitor
         reset_thinking_tail_preview
         finish_thinking_spinner
       end
+    end
+
+    def emit_cancellation_notice(result)
+      return unless result.respond_to?(:canceled?) && result.canceled?
+
+      reason = result.respond_to?(:cancellation_reason) ? result.cancellation_reason : nil
+      label = cancellation_reason_label(reason)
+      $stdout.puts "\nmodel> request cancelled#{label.empty? ? "" : " (#{label})"}"
+    end
+
+    def cancelled_result_from(messages, reason:)
+      KernelLoop::Result.new(
+        output: "",
+        conversation: clone_messages(messages),
+        exhausted: false,
+        pending_tool_calls: false,
+        tool_activity: [],
+        canceled: true,
+        cancellation_reason: reason
+      )
+    end
+
+    def cancellation_reason_label(reason)
+      return "" if reason.nil?
+
+      case reason.to_sym
+      when :double_esc
+        "double-esc"
+      when :ctrl_c
+        "ctrl-c"
+      else
+        reason.to_s
+      end
+    end
+
+    def start_cancel_hotkey_monitor(cancellation_controller)
+      return unless cancellation_controller
+      return unless cancel_hotkey_monitor_enabled?
+
+      stop_cancel_hotkey_monitor
+      reset_cancel_hotkey_sequence
+
+      @cancel_hotkey_thread = Thread.new do
+        Thread.current.report_on_exception = false
+        stdin = $stdin
+
+        begin
+          stdin.raw do
+            loop do
+              break if cancellation_controller.cancelled?
+
+              readable = IO.select([stdin], nil, nil, CANCEL_MONITOR_POLL_INTERVAL)
+              next unless readable
+
+              key = begin
+                stdin.read_nonblock(1)
+              rescue IO::WaitReadable, EOFError
+                nil
+              end
+              next if key.nil?
+
+              process_cancel_hotkey_char(key, at: monotonic_time, controller: cancellation_controller)
+              break if cancellation_controller.cancelled?
+            end
+          end
+        rescue StandardError
+          nil
+        end
+      end
+    end
+
+    def stop_cancel_hotkey_monitor
+      thread = @cancel_hotkey_thread
+      @cancel_hotkey_thread = nil
+      return unless thread
+      return if thread == Thread.current
+
+      thread.kill if thread.alive?
+      thread.join(0.1)
+    rescue StandardError
+      nil
+    end
+
+    def cancel_hotkey_monitor_enabled?
+      return false unless @mode == :assist
+      return false unless $stdin.tty?
+      return false unless $stdout.tty?
+
+      ENV.fetch("TERM", "") != "dumb"
+    end
+
+    def process_cancel_hotkey_char(char, at:, controller:)
+      if char == CTRL_C_BYTE
+        controller.cancel!(:ctrl_c)
+        reset_cancel_hotkey_sequence
+      elsif char == "\e"
+        if @cancel_hotkey_last_escape_at && (at - @cancel_hotkey_last_escape_at) <= double_escape_interval
+          controller.cancel!(:double_esc)
+          reset_cancel_hotkey_sequence
+          return
+        end
+        @cancel_hotkey_last_escape_at = at
+      else
+        reset_cancel_hotkey_sequence
+      end
+    end
+
+    def reset_cancel_hotkey_sequence
+      @cancel_hotkey_last_escape_at = nil
+    end
+
+    def double_escape_interval
+      raw = ENV.fetch(DOUBLE_ESCAPE_INTERVAL_ENV, DOUBLE_ESCAPE_INTERVAL_DEFAULT.to_s).to_f
+      return DOUBLE_ESCAPE_INTERVAL_DEFAULT unless raw.positive?
+
+      raw
     end
 
     def start_thinking_spinner

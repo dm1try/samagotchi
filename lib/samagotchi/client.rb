@@ -12,6 +12,86 @@ module Samagotchi
   #   LLAMA_OPEN_TIMEOUT (default: 10 seconds)
   #   LLAMA_READ_TIMEOUT (default: 600 seconds)
   class Client
+    class RequestCancelled < StandardError
+      attr_reader :reason
+
+      def initialize(reason = nil)
+        @reason = reason
+        super("request cancelled")
+      end
+    end
+
+    class CancellationController
+      def initialize
+        @mutex = Mutex.new
+        @cancelled = false
+        @reason = nil
+        @listeners = {}
+        @next_listener_id = 0
+      end
+
+      def cancel!(reason = :manual)
+        listeners = []
+        @mutex.synchronize do
+          return false if @cancelled
+
+          @cancelled = true
+          @reason = reason
+          listeners = @listeners.values
+          @listeners = {}
+        end
+
+        listeners.each do |listener|
+          listener.call(reason)
+        rescue StandardError
+          nil
+        end
+        true
+      end
+
+      def cancelled?
+        @mutex.synchronize { @cancelled }
+      end
+
+      def reason
+        @mutex.synchronize { @reason }
+      end
+
+      def on_cancel(&block)
+        raise ArgumentError, "block required" unless block
+
+        immediate_reason = nil
+        listener_id = nil
+        @mutex.synchronize do
+          if @cancelled
+            immediate_reason = @reason
+          else
+            listener_id = next_listener_id
+            @listeners[listener_id] = block
+          end
+        end
+
+        if immediate_reason
+          block.call(immediate_reason)
+          nil
+        else
+          listener_id
+        end
+      end
+
+      def remove_listener(listener_id)
+        return unless listener_id
+
+        @mutex.synchronize { @listeners.delete(listener_id) }
+      end
+
+      private
+
+      def next_listener_id
+        @next_listener_id += 1
+      end
+    end
+
     def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil)
       @host = host || ENV.fetch("LLAMA_HOST", "localhost")
       @port = (port || ENV.fetch("LLAMA_PORT", "8080")).to_i
@@ -28,8 +108,9 @@ module Samagotchi
     # @param prompt      [String]        full formatted prompt string
     # @param stop        [Array<String>] stop sequences
     # @param on_chunk    [Proc, nil]     optional callback per streamed chunk
+    # @param cancel_controller [CancellationController, nil] cancellation source for in-flight requests
     # @return [String] the generated text
-    def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], on_chunk: nil)
+    def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], on_chunk: nil, cancel_controller: nil)
       uri = URI("http://#{@host}:#{@port}/completion")
       request = Net::HTTP::Post.new(uri)
       request["Content-Type"] = "application/json"
@@ -37,6 +118,14 @@ module Samagotchi
 
       result = +""
       buffer = +""
+      request_thread = Thread.current
+      cancel_listener_id = cancel_controller&.on_cancel do |reason|
+        request_thread.raise(RequestCancelled.new(reason))
+      end
+
+      if cancel_controller&.cancelled?
+        raise RequestCancelled.new(cancel_controller.reason)
+      end
 
       Net::HTTP.start(
         uri.host,
@@ -62,8 +151,12 @@ module Samagotchi
       end
 
       result
+    rescue RequestCancelled
+      raise
     rescue => e
       raise "llama.cpp request failed (#{@host}:#{@port}): #{e.message}"
+    ensure
+      cancel_controller&.remove_listener(cancel_listener_id)
     end
   end
 end

@@ -121,6 +121,22 @@ Notes:
 - Default behavior remains compact (`1` preview line).
 - Setting `2` or `3` enables multi-line preview while keeping spinner redraw height stable.
 
+### Thinking-Phase Cancellation
+
+During assist-mode thinking (while the spinner is active), you can cancel an in-flight model request without exiting the process:
+
+- Press `Esc` twice quickly to cancel the active request.
+- Press `Ctrl-C` as a fallback cancel gesture.
+
+Behavior notes:
+
+- Cancellation returns control to the next prompt immediately.
+- Partial model output from the canceled request is not committed as a completed model turn.
+
+Configuration:
+
+- `SAMAGOTCHI_DOUBLE_ESC_INTERVAL` (default `0.3`): max interval in seconds between the two `Esc` presses.
+
 ### Iteration Limit Behavior
 
 - `max_iterations` remains a hard safety cap on tool-call rounds.

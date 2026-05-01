@@ -576,6 +576,40 @@ file2.rb")
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
     end
 
+    it "cancels via double escape within the configured interval" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      controller = Samagotchi::Client::CancellationController.new
+
+      t0 = agent.send(:monotonic_time)
+      agent.send(:process_cancel_hotkey_char, "\e", at: t0, controller: controller)
+      agent.send(:process_cancel_hotkey_char, "\e", at: t0 + 0.05, controller: controller)
+
+      expect(controller).to be_cancelled
+      expect(controller.reason).to eq(:double_esc)
+    end
+
+    it "cancels via ctrl-c byte while the raw hotkey monitor is active" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      controller = Samagotchi::Client::CancellationController.new
+
+      agent.send(:process_cancel_hotkey_char, described_class::CTRL_C_BYTE, at: agent.send(:monotonic_time), controller: controller)
+
+      expect(controller).to be_cancelled
+      expect(controller.reason).to eq(:ctrl_c)
+    end
+
+    it "starts and stops the cancel hotkey monitor around generation" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      controller = Samagotchi::Client::CancellationController.new
+      agent.instance_variable_set(:@active_cancel_controller, controller)
+
+      expect(agent).to receive(:start_cancel_hotkey_monitor).with(controller)
+      expect(agent).to receive(:stop_cancel_hotkey_monitor).at_least(:once)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(:handle_stream_event, type: :generation_completed)
+    end
+
     it "resets spinner memory notification on a new run" do
       result = Samagotchi::KernelLoop::Result.new(
         output: "done",

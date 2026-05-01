@@ -320,6 +320,32 @@ Need to inspect the filesystem first.
       expect(events.select { |event| event[:type] == :generation_chunk }.map { |event| event[:content] }).to eq(["Hel", "lo"])
     end
 
+    it "returns a canceled result when client generation is cancelled" do
+      allow(client).to receive(:complete).and_raise(Samagotchi::Client::RequestCancelled.new(:double_esc))
+
+      result = kernel.run([{ role: "user", content: "hi" }])
+
+      expect(result).to be_canceled
+      expect(result.cancellation_reason).to eq(:double_esc)
+      expect(result.output).to eq("")
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }])
+      expect(result).not_to be_resumable
+    end
+
+    it "emits generation_cancelled stream event on cancellation" do
+      events = []
+      allow(client).to receive(:complete).and_raise(Samagotchi::Client::RequestCancelled.new(:ctrl_c))
+
+      kernel.run(
+        [{ role: "user", content: "hi" }],
+        on_stream_event: ->(event) { events << event }
+      )
+
+      expect(events.map { |event| event[:type] }).to include(:generation_started, :generation_cancelled)
+      cancelled = events.find { |event| event[:type] == :generation_cancelled }
+      expect(cancelled[:reason]).to eq(:ctrl_c)
+    end
+
     it "emits tool_call_started events with tool call details" do
       events = []
       responses = [

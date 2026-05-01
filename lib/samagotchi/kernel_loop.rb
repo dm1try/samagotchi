@@ -24,7 +24,7 @@ module Samagotchi
   #   <|tool_call>call:read{path: "lib/samagotchi/prompt.rb"}<tool_call|>
   #   <|tool_call>call:write{path: "lib/foo.rb", content: "..."}<tool_call|>
   class KernelLoop
-    Result = Struct.new(:output, :conversation, :exhausted, :pending_tool_calls, :tool_activity, keyword_init: true) do
+    Result = Struct.new(:output, :conversation, :exhausted, :pending_tool_calls, :tool_activity, :canceled, :cancellation_reason, keyword_init: true) do
       def to_s
         output.to_s
       end
@@ -49,6 +49,10 @@ module Samagotchi
 
       def resumable?
         exhausted? && pending_tool_calls?
+      end
+
+      def canceled?
+        canceled
       end
 
       # Struct/Enumerable defines include? with collection semantics, but the
@@ -129,8 +133,9 @@ module Samagotchi
     #                                           or a previous Result to resume
     # @param max_iterations [Integer]            safety cap on tool-call rounds
     # @param on_stream_event [Proc, nil]         optional callback for generation events
+    # @param cancel_controller [Client::CancellationController, nil] optional cancellation source
     # @return [Result] final visible response with continuation metadata
-    def run(messages, max_iterations: 10, on_stream_event: nil)
+    def run(messages, max_iterations: 10, on_stream_event: nil, cancel_controller: nil)
       conversation = prepare_conversation(messages)
       context_state = initial_context_status_state(conversation)
       exhausted = false
@@ -141,7 +146,7 @@ module Samagotchi
         prompt = prompt_with_context_status(conversation, iteration_index: iteration_index, state: context_state)
         emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
         response = if on_stream_event
-                     @client.complete(prompt, on_chunk: lambda { |chunk|
+                     @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller, on_chunk: lambda { |chunk|
                        emit_stream_event(
                          on_stream_event,
                          type: :generation_chunk,
@@ -149,9 +154,9 @@ module Samagotchi
                          content: chunk[:content].to_s,
                          payload: chunk[:payload]
                        )
-                     })
+                     }))
                    else
-                     @client.complete(prompt)
+                     @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller))
                    end
         emit_stream_event(
           on_stream_event,
@@ -185,6 +190,14 @@ module Samagotchi
         emit_stream_event(on_stream_event, type: :tool_dispatch_completed, iteration: iteration_index + 1, call_count: calls.length)
         conversation << { role: "tool_response", content: results }
         pending_tool_calls = true
+      rescue Client::RequestCancelled => e
+        emit_stream_event(
+          on_stream_event,
+          type: :generation_cancelled,
+          iteration: iteration_index + 1,
+          reason: e.reason
+        )
+        return cancelled_result(conversation, tool_activity: tool_activity, reason: e.reason)
       end
 
       if pending_tool_calls && tool_response_turn?(conversation.last)
@@ -196,7 +209,9 @@ module Samagotchi
         conversation: duplicate_conversation(conversation),
         exhausted: exhausted,
         pending_tool_calls: pending_tool_calls,
-        tool_activity: tool_activity
+        tool_activity: tool_activity,
+        canceled: false,
+        cancellation_reason: nil
       )
     end
 
@@ -206,6 +221,36 @@ module Samagotchi
       callback&.call(event)
     rescue StandardError
       nil
+    end
+
+    def complete_kwargs(cancel_controller:, on_chunk: nil)
+      kwargs = {}
+      kwargs[:on_chunk] = on_chunk if on_chunk
+      if cancel_controller && client_supports_cancel_controller?
+        kwargs[:cancel_controller] = cancel_controller
+      end
+      kwargs
+    end
+
+    def client_supports_cancel_controller?
+      @client_supports_cancel_controller ||= begin
+        parameters = @client.method(:complete).parameters
+        parameters.any? { |kind, name| (kind == :key || kind == :keyreq) && name == :cancel_controller }
+      rescue StandardError
+        false
+      end
+    end
+
+    def cancelled_result(conversation, tool_activity:, reason:)
+      Result.new(
+        output: "",
+        conversation: duplicate_conversation(conversation),
+        exhausted: false,
+        pending_tool_calls: false,
+        tool_activity: tool_activity,
+        canceled: true,
+        cancellation_reason: reason
+      )
     end
 
     def verbose_log(message)
