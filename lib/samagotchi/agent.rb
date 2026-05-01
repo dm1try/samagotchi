@@ -29,6 +29,10 @@ module Samagotchi
     MEMORY_SPINNER_COLOR = "38;5;208"
     MEMORY_SPINNER_PREVIEW_LIMIT = 3
     MEMORY_STICKY_PREVIEW_LIMIT = 8
+    THINKING_TAIL_PREVIEW_LIMIT = 80
+    THINKING_TAIL_PREVIEW_BUFFER_LIMIT = 4096
+    THINKING_RENDER_MIN_INTERVAL = 0.08
+    THINKING_RENDER_INTERVAL_ENV = "SAMAGOTCHI_THINKING_RENDER_INTERVAL"
 
     # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
 
@@ -497,15 +501,19 @@ module Samagotchi
     def handle_stream_event(event)
       case event[:type]
       when :generation_started
+        reset_thinking_tail_preview
         start_thinking_spinner
       when :generation_chunk
+        capture_thinking_tail_chunk(event[:content])
         tick_thinking_spinner
       when :tool_call_started
         capture_memory_tool_call(event)
       when :generation_completed
         reset_thinking_memory_names
+        reset_thinking_tail_preview
         finish_thinking_spinner
       when :tool_dispatch_started
+        reset_thinking_tail_preview
         finish_thinking_spinner
       end
     end
@@ -515,6 +523,8 @@ module Samagotchi
 
       @thinking_spinner_active = true
       @thinking_spinner_index = 0 if @thinking_spinner_index.nil?
+      @thinking_spinner_last_render_at = nil
+      @thinking_tail_preview_dirty = false
       render_thinking_spinner
     end
 
@@ -522,25 +532,125 @@ module Samagotchi
       return unless @thinking_spinner_active
 
       @thinking_spinner_index = (@thinking_spinner_index + 1) % THINKING_SPINNER_FRAMES.length
+      render_thinking_spinner_if_due
+    end
+
+    def render_thinking_spinner_if_due
+      return render_thinking_spinner if force_spinner_render?
+
+      last = @thinking_spinner_last_render_at
+      return render_thinking_spinner if last.nil?
+      return if (monotonic_time - last) < thinking_render_min_interval
+
       render_thinking_spinner
+    end
+
+    def force_spinner_render?
+      @thinking_tail_preview_dirty && @thinking_spinner_lines_rendered.to_i < 2
     end
 
     def finish_thinking_spinner
       return unless @thinking_spinner_rendered
 
-      $stdout.print("\r\e[0K")
+      line_count = @thinking_spinner_lines_rendered.to_i
+      line_count = 1 if line_count <= 0
+
+      if line_count > 1
+        $stdout.print("\e[#{line_count - 1}A")
+      end
+      $stdout.print("\r")
+      line_count.times do |index|
+        $stdout.print("\e[0K")
+        $stdout.print("\n") if index < line_count - 1
+      end
+      if line_count > 1
+        $stdout.print("\e[#{line_count - 1}A")
+      end
+      $stdout.print("\r")
       $stdout.flush
       @thinking_spinner_rendered = false
       @thinking_spinner_active = false
+      @thinking_spinner_lines_rendered = 0
+      @thinking_spinner_last_render_at = nil
+      @thinking_tail_preview_dirty = false
     end
 
     def render_thinking_spinner
       frame = THINKING_SPINNER_FRAMES[@thinking_spinner_index % THINKING_SPINNER_FRAMES.length]
       line = color_output? ? paint("model> thinking... #{frame}", 90) : "model> thinking... #{frame}"
       line += memory_spinner_segment
-      $stdout.print("\r#{line}\e[0K")
+      lines = [line]
+      preview_line = thinking_tail_preview_line
+      lines << preview_line unless preview_line.nil?
+
+      move_to_thinking_spinner_origin
+      $stdout.print(lines.map { |text| "#{text}\e[0K" }.join("\n"))
       $stdout.flush
       @thinking_spinner_rendered = true
+      @thinking_spinner_lines_rendered = lines.length
+      @thinking_spinner_last_render_at = monotonic_time
+      @thinking_tail_preview_dirty = false
+    end
+
+    def move_to_thinking_spinner_origin
+      return unless @thinking_spinner_rendered
+
+      line_count = @thinking_spinner_lines_rendered.to_i
+      if line_count > 1
+        $stdout.print("\e[#{line_count - 1}A")
+      end
+      $stdout.print("\r")
+    end
+
+    def capture_thinking_tail_chunk(chunk)
+      return unless thinking_tail_preview_enabled?
+      return if chunk.nil? || chunk.empty?
+
+      buffer = String.new(@thinking_tail_preview_buffer.to_s)
+      buffer << chunk.to_s
+      @thinking_tail_preview_buffer = buffer[-THINKING_TAIL_PREVIEW_BUFFER_LIMIT, THINKING_TAIL_PREVIEW_BUFFER_LIMIT] || buffer
+      @thinking_tail_preview_dirty = true
+    end
+
+    def thinking_tail_preview_enabled?
+      @mode == :assist && @thinking_spinner_active
+    end
+
+    def thinking_tail_preview_line
+      tail = thinking_tail_preview_text
+      return nil if tail.empty?
+
+      preview = "model> … #{tail}"
+      color_output? ? paint(preview, 90) : preview
+    end
+
+    def thinking_tail_preview_text
+      text = @thinking_tail_preview_buffer.to_s
+      return "" if text.empty?
+
+      # Strip model control-token fragments from the tail preview.
+      text = text.gsub(/<\|[^>]{1,120}>/, "")
+      text = text.gsub(/<[a-z_\|]{1,40}>/, "")
+      text = text.gsub(/\s+/, " ").strip
+      return "" if text.empty?
+
+      text[-THINKING_TAIL_PREVIEW_LIMIT, THINKING_TAIL_PREVIEW_LIMIT] || text
+    end
+
+    def reset_thinking_tail_preview
+      @thinking_tail_preview_buffer = String.new
+      @thinking_tail_preview_dirty = false
+    end
+
+    def thinking_render_min_interval
+      value = ENV.fetch(THINKING_RENDER_INTERVAL_ENV, THINKING_RENDER_MIN_INTERVAL.to_s).to_f
+      return THINKING_RENDER_MIN_INTERVAL unless value.positive?
+
+      value
+    end
+
+    def monotonic_time
+      Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
     def capture_memory_tool_call(event)

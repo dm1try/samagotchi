@@ -16,12 +16,14 @@ RSpec.describe Samagotchi::Agent do
     original_history_file = ENV["SAMAGOTCHI_HISTORY_FILE"]
     original_xdg_state_home = ENV["XDG_STATE_HOME"]
     original_thinking_ui = ENV["SAMAGOTCHI_THINKING_UI"]
+    original_thinking_render_interval = ENV["SAMAGOTCHI_THINKING_RENDER_INTERVAL"]
     example.run
     ENV["THINKING_MODE"] = original_thinking_mode
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
     ENV["SAMAGOTCHI_HISTORY_FILE"] = original_history_file
     ENV["XDG_STATE_HOME"] = original_xdg_state_home
     ENV["SAMAGOTCHI_THINKING_UI"] = original_thinking_ui
+    ENV["SAMAGOTCHI_THINKING_RENDER_INTERVAL"] = original_thinking_render_interval
   end
 
   describe "#run with a one-off prompt" do
@@ -375,6 +377,47 @@ file2.rb")
       expect { agent.run }.to output(/thinking\.\.\..*done/m).to_stdout
     end
 
+    it "renders a tail preview line while streaming" do
+      allow(client).to receive(:complete) do |_prompt, on_chunk: nil|
+        on_chunk&.call(content: "hello", payload: { "content" => "hello" })
+        on_chunk&.call(content: " world", payload: { "content" => " world" })
+        "done"
+      end
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
+      allow(agent).to receive(:color_output?).and_return(false)
+      allow(agent).to receive(:thinking_render_min_interval).and_return(0.0)
+
+      expect { agent.run }.to output(/model> .*hello world.*done/m).to_stdout
+    end
+
+    it "keeps the preview as an 80-char sanitized tail" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      raw = "start <|tool_call> call:read{path: \"x\"}<tool_call|> " + ("x" * 120)
+      agent.send(:handle_stream_event, type: :generation_chunk, content: raw)
+
+      tail = agent.send(:thinking_tail_preview_text)
+      expect(tail.length).to eq(80)
+      expect(tail).not_to include("<|tool_call>")
+      expect(tail).not_to include("<tool_call|>")
+    end
+
+    it "does not capture preview text outside assist mode" do
+      agent = described_class.new(mode: "evolve", prompt: "hi", client: client)
+      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(:handle_stream_event, type: :generation_chunk, content: "preview me")
+
+      expect(agent.send(:thinking_tail_preview_line)).to be_nil
+    end
+
     it "does not render spinner in non-TTY mode" do
       allow(client).to receive(:complete) do |_prompt, on_chunk: nil|
         on_chunk&.call(content: "a", payload: { "content" => "a" })
@@ -385,6 +428,20 @@ file2.rb")
 
       expect { agent.run }.to output(/done/).to_stdout
       expect { agent.run }.not_to output(/thinking\.\.\./).to_stdout
+    end
+
+    it "uses configured render interval for spinner throttling" do
+      ENV["SAMAGOTCHI_THINKING_RENDER_INTERVAL"] = "0.2"
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+
+      expect(agent.send(:thinking_render_min_interval)).to eq(0.2)
+    end
+
+    it "falls back to default render interval for invalid values" do
+      ENV["SAMAGOTCHI_THINKING_RENDER_INTERVAL"] = "invalid"
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+
+      expect(agent.send(:thinking_render_min_interval)).to eq(0.08)
     end
 
     it "tracks active memory names for direct reads under memories/" do
