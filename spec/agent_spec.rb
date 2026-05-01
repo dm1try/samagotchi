@@ -174,6 +174,37 @@ file2.rb")
       expect(received_prompt).to include('param:<|"|>value<|"|>')
     end
 
+    it "includes strict edit declaration guidance about read-first and small unique chunks" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent.run
+
+      expect(received_prompt).to include("Before calling edit, read the file")
+      expect(received_prompt).to include("Prefer small, minimal, unique chunks")
+    end
+
+    it "includes edit workflow instructions in assist mode" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent.run
+
+      expect(received_prompt).to include("Editing workflow:")
+      expect(received_prompt).to include("Copy old_text verbatim")
+      expect(received_prompt).to include("Use write for full-file rewrites")
+    end
+
     it "injects AGENT.md as project specific description when present" do
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|
@@ -253,6 +284,22 @@ file2.rb")
       allow(agent).to receive(:rg_available?).and_return(true)
       agent.run
       expect(received_prompt).to include("prefer `rg` (ripgrep) over `grep`")
+    end
+
+    it "includes edit workflow instructions in evolve mode" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      agent = described_class.new(mode: "evolve", prompt: "hi", client: client)
+      allow(agent).to receive(:rg_available?).and_return(false)
+
+      agent.run
+
+      expect(received_prompt).to include("Editing workflow:")
+      expect(received_prompt).to include("Copy old_text verbatim")
+      expect(received_prompt).to include("Use write for full-file rewrites")
     end
   end
 

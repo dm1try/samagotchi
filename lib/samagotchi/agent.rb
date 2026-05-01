@@ -47,7 +47,7 @@ module Samagotchi
 
     TOOL_EDIT = <<~DECL.strip
       <|tool>declaration:edit{
-        description:<|"|>Replace an exact block of text in an existing file; the old block must appear exactly once<|"|>,
+        description:<|"|>Replace an exact block of text in an existing file. The old block must appear exactly once. Before calling edit, read the file and copy old_text verbatim from the latest read output. Prefer small, minimal, unique chunks (about 3-15 lines) instead of large rewrites.<|"|>,
         parameters:{
           path:{type:<|"|>string<|"|>, description:<|"|>File path<|"|>, required:true},
           old_text:{type:<|"|>string<|"|>, description:<|"|>Exact text to replace<|"|>, required:true},
@@ -104,6 +104,13 @@ module Samagotchi
       #{TOOL_CALL_HINT}
       You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
 
+      Editing workflow:
+        1. Read the target file or region immediately before calling edit.
+        2. Copy old_text verbatim from that read output; do not reconstruct it from memory.
+        3. Prefer the smallest unique block (about 3-15 lines) that contains the change.
+        4. If edit reports not found or multiple matches, read again and retry with a smaller or more unique block.
+        5. Use write for full-file rewrites or creating new files.
+
       Memory convention:
         Project scope: memories/ (project-local)
         System scope:  ~/.config/samagotchi/memories/ (cross-project)
@@ -128,7 +135,12 @@ module Samagotchi
       #{TOOL_MEMORY_WRITE}
 
       #{TOOL_CALL_HINT}
-      Prefer edit over write when changing a small section of a large file.
+      Editing workflow:
+        1. Read the target file or region immediately before calling edit.
+        2. Copy old_text verbatim from that read output; do not reconstruct it from memory.
+        3. Prefer the smallest unique block (about 3-15 lines) that contains the change.
+        4. If edit reports not found or multiple matches, read again and retry with a smaller or more unique block.
+        5. Use write for full-file rewrites or creating new files.
 
       Source layout:
         bin/samagotchi                 CLI entry point
