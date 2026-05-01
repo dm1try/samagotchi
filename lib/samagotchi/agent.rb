@@ -43,8 +43,6 @@ module Samagotchi
     AT_PATH_COMPLETION_PREFIX = "@"
     MEMORY_COMPLETION_PREFIX = "#"
     AT_PATH_COMPLETION_MAX_CANDIDATES = 200
-    DOUBLE_ESCAPE_INTERVAL_ENV = "SAMAGOTCHI_DOUBLE_ESC_INTERVAL"
-    DOUBLE_ESCAPE_INTERVAL_DEFAULT = 0.3
     CANCEL_MONITOR_POLL_INTERVAL = 0.05
     CTRL_C_BYTE = "\u0003"
 
@@ -736,8 +734,6 @@ module Samagotchi
       return "" if reason.nil?
 
       case reason.to_sym
-      when :double_esc
-        "double-esc"
       when :ctrl_c
         "ctrl-c"
       else
@@ -750,15 +746,16 @@ module Samagotchi
       return unless cancel_hotkey_monitor_enabled?
 
       stop_cancel_hotkey_monitor
-      reset_cancel_hotkey_sequence
+      @cancel_hotkey_stop_requested = false
 
       @cancel_hotkey_thread = Thread.new do
         Thread.current.report_on_exception = false
         stdin = $stdin
 
         begin
-          stdin.raw do
+          with_cancel_hotkey_input_mode(stdin) do
             loop do
+              break if @cancel_hotkey_stop_requested
               break if cancellation_controller.cancelled?
 
               readable = IO.select([stdin], nil, nil, CANCEL_MONITOR_POLL_INTERVAL)
@@ -784,13 +781,19 @@ module Samagotchi
     def stop_cancel_hotkey_monitor
       thread = @cancel_hotkey_thread
       @cancel_hotkey_thread = nil
+      @cancel_hotkey_stop_requested = true
       return unless thread
       return if thread == Thread.current
 
-      thread.kill if thread.alive?
-      thread.join(0.1)
+      thread.join(CANCEL_MONITOR_POLL_INTERVAL * 3)
     rescue StandardError
       nil
+    end
+
+    def with_cancel_hotkey_input_mode(stdin)
+      stdin.cbreak do
+        yield
+      end
     end
 
     def cancel_hotkey_monitor_enabled?
@@ -804,28 +807,7 @@ module Samagotchi
     def process_cancel_hotkey_char(char, at:, controller:)
       if char == CTRL_C_BYTE
         controller.cancel!(:ctrl_c)
-        reset_cancel_hotkey_sequence
-      elsif char == "\e"
-        if @cancel_hotkey_last_escape_at && (at - @cancel_hotkey_last_escape_at) <= double_escape_interval
-          controller.cancel!(:double_esc)
-          reset_cancel_hotkey_sequence
-          return
-        end
-        @cancel_hotkey_last_escape_at = at
-      else
-        reset_cancel_hotkey_sequence
       end
-    end
-
-    def reset_cancel_hotkey_sequence
-      @cancel_hotkey_last_escape_at = nil
-    end
-
-    def double_escape_interval
-      raw = ENV.fetch(DOUBLE_ESCAPE_INTERVAL_ENV, DOUBLE_ESCAPE_INTERVAL_DEFAULT.to_s).to_f
-      return DOUBLE_ESCAPE_INTERVAL_DEFAULT unless raw.positive?
-
-      raw
     end
 
     def start_thinking_spinner

@@ -321,12 +321,12 @@ Need to inspect the filesystem first.
     end
 
     it "returns a canceled result when client generation is cancelled" do
-      allow(client).to receive(:complete).and_raise(Samagotchi::Client::RequestCancelled.new(:double_esc))
+      allow(client).to receive(:complete).and_raise(Samagotchi::Client::RequestCancelled.new(:manual))
 
       result = kernel.run([{ role: "user", content: "hi" }])
 
       expect(result).to be_canceled
-      expect(result.cancellation_reason).to eq(:double_esc)
+      expect(result.cancellation_reason).to eq(:manual)
       expect(result.output).to eq("")
       expect(result.conversation).to eq([{ role: "user", content: "hi" }])
       expect(result).not_to be_resumable

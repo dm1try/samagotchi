@@ -576,19 +576,7 @@ file2.rb")
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
     end
 
-    it "cancels via double escape within the configured interval" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      controller = Samagotchi::Client::CancellationController.new
-
-      t0 = agent.send(:monotonic_time)
-      agent.send(:process_cancel_hotkey_char, "\e", at: t0, controller: controller)
-      agent.send(:process_cancel_hotkey_char, "\e", at: t0 + 0.05, controller: controller)
-
-      expect(controller).to be_cancelled
-      expect(controller.reason).to eq(:double_esc)
-    end
-
-    it "cancels via ctrl-c byte while the raw hotkey monitor is active" do
+    it "cancels via ctrl-c byte while the hotkey monitor is active" do
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       controller = Samagotchi::Client::CancellationController.new
 
@@ -608,6 +596,23 @@ file2.rb")
 
       agent.send(:handle_stream_event, type: :generation_started)
       agent.send(:handle_stream_event, type: :generation_completed)
+    end
+
+    it "uses cbreak mode for the cancel hotkey monitor input wrapper" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      stdin = double("stdin")
+      observed = []
+
+      allow(stdin).to receive(:cbreak) do |&block|
+        observed << :cbreak
+        block.call
+      end
+
+      agent.send(:with_cancel_hotkey_input_mode, stdin) do
+        observed << :inside
+      end
+
+      expect(observed).to eq([:cbreak, :inside])
     end
 
     it "resets spinner memory notification on a new run" do
