@@ -1,6 +1,12 @@
 # samagotchi
 self evolving agent harness
 
+Samagotchi is the full engine name. Chi (pronounced "chee") is the short friendly name and CLI command.
+
+Run with:
+
+- `bin/chi`
+
 ## Tool Activity Log
 
 Samagotchi now prints a concise, human-friendly tool activity log in normal

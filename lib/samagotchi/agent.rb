@@ -166,7 +166,7 @@ module Samagotchi
     SYS
 
     SYSTEM_EVOLVE = <<~SYS
-      You are samagotchi, a self-evolving Ruby agent harness running on Gemma 4 via llama.cpp.
+      You are Chi (pronounced "chee"), the friendly name for the Samagotchi self-evolving Ruby agent harness running on Gemma 4 via llama.cpp.
       Your goal: read your own source, decide what to improve or extend, implement it, and validate with RSpec.
 
       Available tools:
@@ -187,7 +187,7 @@ module Samagotchi
         5. Use write for full-file rewrites or creating new files.
 
       Source layout:
-        bin/samagotchi                 CLI entry point
+        bin/chi                        CLI entry point
         lib/samagotchi/prompt.rb       Gemma 4 prompt formatter
         lib/samagotchi/client.rb       llama.cpp HTTP client
         lib/samagotchi/kernel_loop.rb  Tool-dispatch loop (add new tools here)
@@ -346,7 +346,7 @@ module Samagotchi
     def banner(mode)
       host = ENV.fetch("LLAMA_HOST", "localhost")
       port = ENV.fetch("LLAMA_PORT", "8080")
-      "samagotchi [#{mode}] — #{host}:#{port}\n#{"─" * 60}"
+      "chi [#{mode}] (Samagotchi engine) — #{host}:#{port}\n#{"─" * 60}"
     end
 
     # Appends the current memory index to the base system prompt so the agent

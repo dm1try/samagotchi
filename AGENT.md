@@ -3,6 +3,8 @@
 ## Project Overview: Samagotchi
 Samagotchi is a self-evolving Ruby agent harness. The agent is part of the code, capable of recursive self-improvement through "Evolving Mode" using RSpec as a safety net.
 
+Naming note: Samagotchi is the full engine name. Chi (pronounced "chee") is the friendly shorthand used in conversational and CLI contexts.
+
 ## Core Principles
 - **Self-Inhabiting**: The agent's tools are the mechanisms for its own modification.
 - **Persistent Cognition**: Use project memories (`./memories`) and system memories (`~/.config/samagotchi/memories`) for long-term state.
