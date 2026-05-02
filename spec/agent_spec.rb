@@ -138,7 +138,7 @@ file2.rb")
       allow(agent).to receive(:color_output?).and_return(false)
 
       expect { agent.run }
-        .to output(/status> mode=assist .*server=.* mem: refactoring_backlog.*done/m).to_stdout
+        .to output(/status> mode=assist \| mem: refactoring_backlog.*done/m).to_stdout
     end
 
     it "uses the assist system prompt" do
@@ -398,6 +398,28 @@ file2.rb")
         "ok"
       end
       agent.run
+    end
+  end
+
+  describe "#status_server_segment" do
+    let(:agent) { described_class.new(mode: "assist", client: client) }
+
+    it "returns an empty string when host is localhost" do
+      ENV["LLAMA_HOST"] = "localhost"
+      ENV["LLAMA_PORT"] = "8080"
+      expect(agent.send(:status_server_segment)).to eq("")
+    end
+
+    it "returns an empty string when host is 127.0.0.1" do
+      ENV["LLAMA_HOST"] = "127.0.0.1"
+      ENV["LLAMA_PORT"] = "8080"
+      expect(agent.send(:status_server_segment)).to eq("")
+    end
+
+    it "returns the server segment when host is not localhost" do
+      ENV["LLAMA_HOST"] = "192.168.1.29"
+      ENV["LLAMA_PORT"] = "8080"
+      expect(agent.send(:status_server_segment)).to eq("server=192.168.1.29:8080")
     end
   end
 

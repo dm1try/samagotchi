@@ -356,6 +356,8 @@ module Samagotchi
 
     def status_server_segment
       host = ENV.fetch("LLAMA_HOST", "localhost")
+      return "" if ["localhost", "127.0.0.1"].include?(host)
+
       port = ENV.fetch("LLAMA_PORT", "8080")
       "server=#{host}:#{port}"
     end
@@ -1320,7 +1322,7 @@ module Samagotchi
     end
 
     def status_segments(scope)
-      segments = [status_mode_segment, status_server_segment]
+      segments = [status_mode_segment, status_server_segment].reject(&:empty?)
       context_segment = status_context_segment
       memory_segment = status_memory_segment(scope)
       segments << context_segment unless context_segment.empty?
