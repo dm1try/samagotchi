@@ -172,7 +172,7 @@ Assist mode keeps a small persistent prompt history across restarts.
 
 Behavior details:
 
-- Prompt history is loaded on startup before the first `you>` prompt.
+- Prompt history is loaded on startup before the first `>` prompt.
 - Only real user prompts are persisted.
 - Continue-flow inputs (`yes`, `no`, `no, <reason>`, `/continue`) are not persisted as prompts.
 - In assist mode, pressing `Tab` on an `@`-prefixed token (for example `@lib/sama`) completes project file and directory paths while preserving the `@` prefix.
@@ -207,7 +207,7 @@ context estimate, and active memory hints.
 
 Behavior:
 
-- A static status line is printed before the next `you>` prompt in assist mode.
+- A static status line is printed before the next `>` prompt in assist mode.
 - During spinner rendering, status details are rendered in the spinner block.
 - When a memory is loaded between tool rounds, the spinner line includes a `loaded: <memory>` notification immediately after the spinner frame.
 - After responses, memory details are shown via the same unified `status>` line.
