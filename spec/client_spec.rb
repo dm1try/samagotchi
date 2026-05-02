@@ -109,5 +109,56 @@ RSpec.describe Samagotchi::Client do
       expect(client.complete("prompt", cancel_controller: cancel_controller)).to eq("ok")
       expect { cancel_controller.cancel!(:manual) }.not_to raise_error
     end
+
+    it "retries transient network errors and emits retry metadata" do
+      client = described_class.new(host: "localhost", port: 8080)
+      http = instance_double(Net::HTTP)
+      response = double("response")
+      retries = []
+      call_count = 0
+
+      allow(client).to receive(:wait_with_cancellation)
+      allow(Net::HTTP).to receive(:start).with("localhost", 8080, open_timeout: 10, read_timeout: 600) do |_host, _port, open_timeout:, read_timeout:, &block|
+        call_count += 1
+        raise Errno::ECONNREFUSED if call_count == 1
+
+        block.call(http)
+      end
+      allow(http).to receive(:request) { |_request, &block| block.call(response) }
+      allow(response).to receive(:read_body).and_yield("data: {\"content\":\"ok\"}\n")
+
+      result = client.complete("prompt", on_retry: ->(event) { retries << event })
+
+      expect(result).to eq("ok")
+      expect(retries.length).to eq(1)
+      expect(retries.first[:attempt]).to eq(1)
+      expect(retries.first[:max_retries]).to eq(5)
+      expect(retries.first[:next_delay]).to eq(0.5)
+      expect(retries.first[:error_class]).to eq("Errno::ECONNREFUSED")
+    end
+
+    it "raises RetryExhausted after retry budget is exhausted" do
+      client = described_class.new(host: "localhost", port: 8080)
+      allow(client).to receive(:wait_with_cancellation)
+      allow(Net::HTTP).to receive(:start)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .and_raise(Net::OpenTimeout)
+
+      expect { client.complete("prompt") }
+        .to raise_error(described_class::RetryExhausted) do |error|
+          expect(error.attempts).to eq(6)
+          expect(error.last_error).to be_a(Net::OpenTimeout)
+        end
+    end
+
+    it "does not retry non-network errors" do
+      client = described_class.new(host: "localhost", port: 8080)
+      allow(Net::HTTP).to receive(:start)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .and_raise(JSON::ParserError.new("bad json"))
+
+      expect { client.complete("prompt") }
+        .to raise_error(RuntimeError, /llama\.cpp request failed \(localhost:8080\): .*bad json/)
+    end
   end
 end

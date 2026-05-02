@@ -154,6 +154,14 @@ module Samagotchi
                          content: chunk[:content].to_s,
                          payload: chunk[:payload]
                        )
+                     }, on_retry: lambda { |retry_event|
+                       emit_stream_event(
+                         on_stream_event,
+                         {
+                           type: :generation_retrying,
+                           iteration: iteration_index + 1
+                         }.merge(retry_event)
+                       )
                      }))
                    else
                      @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller))
@@ -223,19 +231,21 @@ module Samagotchi
       nil
     end
 
-    def complete_kwargs(cancel_controller:, on_chunk: nil)
+    def complete_kwargs(cancel_controller:, on_chunk: nil, on_retry: nil)
       kwargs = {}
       kwargs[:on_chunk] = on_chunk if on_chunk
-      if cancel_controller && client_supports_cancel_controller?
-        kwargs[:cancel_controller] = cancel_controller
-      end
+      kwargs[:on_retry] = on_retry if on_retry && client_supports_keyword?(:on_retry)
+      kwargs[:cancel_controller] = cancel_controller if cancel_controller && client_supports_keyword?(:cancel_controller)
       kwargs
     end
 
-    def client_supports_cancel_controller?
-      @client_supports_cancel_controller ||= begin
+    def client_supports_keyword?(keyword)
+      @client_complete_keyword_support ||= {}
+      return @client_complete_keyword_support[keyword] if @client_complete_keyword_support.key?(keyword)
+
+      @client_complete_keyword_support[keyword] = begin
         parameters = @client.method(:complete).parameters
-        parameters.any? { |kind, name| (kind == :key || kind == :keyreq) && name == :cancel_controller }
+        parameters.any? { |kind, name| (kind == :key || kind == :keyreq) && name == keyword }
       rescue StandardError
         false
       end

@@ -21,6 +21,23 @@ module Samagotchi
       end
     end
 
+    class RetryExhausted < StandardError
+      attr_reader :attempts, :last_error
+
+      def initialize(attempts:, last_error:)
+        @attempts = attempts
+        @last_error = last_error
+        super("llama.cpp request failed after #{attempts} attempts: #{last_error.class}: #{last_error.message}")
+      end
+    end
+
+    RETRY_MAX_ENV = "SAMAGOTCHI_RETRY_MAX"
+    RETRY_BASE_DELAY_ENV = "SAMAGOTCHI_RETRY_BASE_DELAY"
+    RETRY_MAX_DELAY_ENV = "SAMAGOTCHI_RETRY_MAX_DELAY"
+    DEFAULT_RETRY_MAX = 5
+    DEFAULT_RETRY_BASE_DELAY = 0.5
+    DEFAULT_RETRY_MAX_DELAY = 8.0
+
     class CancellationController
       def initialize
         @mutex = Mutex.new
@@ -97,6 +114,9 @@ module Samagotchi
       @port = (port || ENV.fetch("LLAMA_PORT", "8080")).to_i
       @open_timeout = (open_timeout || ENV.fetch("LLAMA_OPEN_TIMEOUT", "10")).to_i
       @read_timeout = (read_timeout || ENV.fetch("LLAMA_READ_TIMEOUT", "600")).to_i
+      @retry_max = integer_config(RETRY_MAX_ENV, DEFAULT_RETRY_MAX)
+      @retry_base_delay = float_config(RETRY_BASE_DELAY_ENV, DEFAULT_RETRY_BASE_DELAY)
+      @retry_max_delay = float_config(RETRY_MAX_DELAY_ENV, DEFAULT_RETRY_MAX_DELAY)
     end
 
     # Send a raw prompt and return the model's completion text.
@@ -109,54 +129,126 @@ module Samagotchi
     # @param stop        [Array<String>] stop sequences
     # @param on_chunk    [Proc, nil]     optional callback per streamed chunk
     # @param cancel_controller [CancellationController, nil] cancellation source for in-flight requests
+    # @param on_retry    [Proc, nil]     optional callback before retry sleep
     # @return [String] the generated text
-    def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], on_chunk: nil, cancel_controller: nil)
+    def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], on_chunk: nil, cancel_controller: nil, on_retry: nil)
       uri = URI("http://#{@host}:#{@port}/completion")
       request = Net::HTTP::Post.new(uri)
       request["Content-Type"] = "application/json"
       request.body = { prompt: prompt, stop: stop, stream: true }.to_json
 
-      result = +""
-      buffer = +""
-      request_thread = Thread.current
-      cancel_listener_id = cancel_controller&.on_cancel do |reason|
-        request_thread.raise(RequestCancelled.new(reason))
-      end
+      attempts = 0
 
-      if cancel_controller&.cancelled?
-        raise RequestCancelled.new(cancel_controller.reason)
-      end
+      loop do
+        attempts += 1
+        result = +""
+        buffer = +""
+        request_thread = Thread.current
+        cancel_listener_id = cancel_controller&.on_cancel do |reason|
+          request_thread.raise(RequestCancelled.new(reason))
+        end
 
-      Net::HTTP.start(
-        uri.host,
-        uri.port,
-        open_timeout: @open_timeout,
-        read_timeout: @read_timeout
-      ) do |http|
-        http.request(request) do |response|
-          response.read_body do |chunk|
-            buffer << chunk
+        if cancel_controller&.cancelled?
+          raise RequestCancelled.new(cancel_controller.reason)
+        end
 
-            while (newline_index = buffer.index("\n"))
-              line = buffer.slice!(0, newline_index + 1).strip
-              next if line.empty? || !line.start_with?("data: ")
+        begin
+          Net::HTTP.start(
+            uri.host,
+            uri.port,
+            open_timeout: @open_timeout,
+            read_timeout: @read_timeout
+          ) do |http|
+            http.request(request) do |response|
+              response.read_body do |chunk|
+                buffer << chunk
 
-              payload = JSON.parse(line.delete_prefix("data: "))
-              content = payload.fetch("content", "")
-              result << content
-              on_chunk&.call(content: content, payload: payload)
+                while (newline_index = buffer.index("\n"))
+                  line = buffer.slice!(0, newline_index + 1).strip
+                  next if line.empty? || !line.start_with?("data: ")
+
+                  payload = JSON.parse(line.delete_prefix("data: "))
+                  content = payload.fetch("content", "")
+                  result << content
+                  on_chunk&.call(content: content, payload: payload)
+                end
+              end
             end
           end
+
+          return result
+        rescue RequestCancelled
+          raise
+        rescue StandardError => e
+          retry_delay = retry_delay_for(attempts)
+          if retryable_network_error?(e) && !retry_delay.nil?
+            on_retry&.call(
+              attempt: attempts,
+              max_retries: @retry_max,
+              next_delay: retry_delay,
+              error_class: e.class.name,
+              error_message: e.message
+            )
+            wait_with_cancellation(retry_delay, cancel_controller)
+            next
+          end
+
+          if retryable_network_error?(e)
+            raise RetryExhausted.new(attempts: attempts, last_error: e)
+          end
+
+          raise "llama.cpp request failed (#{@host}:#{@port}): #{e.message}"
+        ensure
+          cancel_controller&.remove_listener(cancel_listener_id)
         end
       end
+    end
 
-      result
-    rescue RequestCancelled
-      raise
-    rescue => e
-      raise "llama.cpp request failed (#{@host}:#{@port}): #{e.message}"
-    ensure
-      cancel_controller&.remove_listener(cancel_listener_id)
+    private
+
+    def retryable_network_error?(error)
+      return false if error.is_a?(RequestCancelled)
+
+      error.is_a?(Timeout::Error) ||
+        error.is_a?(EOFError) ||
+        error.is_a?(SocketError) ||
+        error.is_a?(Errno::ECONNREFUSED) ||
+        error.is_a?(Errno::ECONNRESET) ||
+        error.is_a?(Errno::EHOSTUNREACH) ||
+        error.is_a?(Errno::ENETUNREACH) ||
+        error.is_a?(Errno::ETIMEDOUT)
+    end
+
+    def retry_delay_for(attempt)
+      return nil if attempt > @retry_max
+
+      raw_delay = @retry_base_delay * (2**(attempt - 1))
+      [raw_delay, @retry_max_delay].min
+    end
+
+    def wait_with_cancellation(seconds, cancel_controller)
+      return if seconds <= 0
+      return sleep(seconds) unless cancel_controller
+
+      remaining = seconds
+      tick = 0.05
+      while remaining.positive?
+        raise RequestCancelled.new(cancel_controller.reason) if cancel_controller.cancelled?
+
+        slice = [remaining, tick].min
+        sleep(slice)
+        remaining -= slice
+      end
+    end
+
+    def integer_config(name, default)
+      value = ENV.fetch(name, default.to_s).to_i
+      value.negative? ? default : value
+    end
+
+    def float_config(name, default)
+      value = ENV.fetch(name, default.to_s).to_f
+      value.positive? ? value : default
     end
   end
 end

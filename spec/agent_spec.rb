@@ -576,6 +576,44 @@ file2.rb")
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
     end
 
+    it "renders retry status in the same spinner line" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(
+        :handle_stream_event,
+        type: :generation_retrying,
+        attempt: 1,
+        max_retries: 5,
+        next_delay: 0.5,
+        error_class: "Errno::ECONNREFUSED"
+      )
+
+      line = agent.send(:thinking_spinner_status_line, "/")
+      expect(line).to include("network error: retrying")
+      expect(line).to include("(1/6 in 0.5s)")
+    end
+
+    it "renders retry status in red when color output is enabled" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(true)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(
+        :handle_stream_event,
+        type: :generation_retrying,
+        attempt: 2,
+        max_retries: 5,
+        next_delay: 1.0,
+        error_class: "Net::OpenTimeout"
+      )
+
+      line = agent.send(:thinking_spinner_status_line, "-")
+      expect(line).to include("\e[31m")
+      expect(line).to include("network error: retrying")
+    end
+
     it "cancels via ctrl-c byte while the hotkey monitor is active" do
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       controller = Samagotchi::Client::CancellationController.new
@@ -807,6 +845,38 @@ file2.rb")
 
       expect { agent.run }.to output(/done/).to_stdout
       expect(received_prompt).to include("line one\nline two")
+    end
+
+    it "restores the submitted prompt after retry exhaustion" do
+      allow(client).to receive(:complete).and_raise(
+        Samagotchi::Client::RetryExhausted.new(attempts: 6, last_error: Errno::ECONNREFUSED.new)
+      )
+      allow(Reline).to receive(:readmultiline).and_return("retry me", nil)
+
+      agent = described_class.new(mode: "assist", client: client)
+
+      expect(agent).to receive(:queue_input_prefill).with("retry me").and_call_original
+      expect { agent.run }.to output(/network error after 6 attempts; prompt restored for retry/m).to_stdout
+    end
+
+    it "injects queued prefill text into the next multiline input" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+      allow(Reline).to receive(:line_buffer).and_return("retry me")
+
+      previous_hook = Reline.pre_input_hook
+      allow(Reline).to receive(:readmultiline) do |_prompt, _history, &_block|
+        expect(Reline.pre_input_hook).not_to be_nil
+        Reline.pre_input_hook.call
+        "retry me"
+      end
+      expect(Reline).to receive(:insert_text).with("retry me")
+
+      agent.send(:queue_input_prefill, "retry me")
+      value = agent.send(:read_input, awaiting_continue: false)
+
+      expect(value).to eq("retry me")
+      expect(Reline.pre_input_hook).to be(previous_hook)
     end
   end
 

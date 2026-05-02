@@ -28,6 +28,7 @@ module Samagotchi
     THINKING_UI_OFF = "off"
     THINKING_SPINNER_FRAMES = ["|", "/", "-", "\\"].freeze
     MEMORY_SPINNER_COLOR = "38;5;208"
+    NETWORK_RETRY_SPINNER_COLOR = 31
     MEMORY_SPINNER_PREVIEW_LIMIT = 3
     MEMORY_STICKY_PREVIEW_LIMIT = 8
     THINKING_PREVIEW_WIDTH = 120
@@ -251,7 +252,14 @@ module Samagotchi
 
           case decision
           when :resume
-            result = run_kernel_with_thinking_feedback(messages)
+            begin
+              result = run_kernel_with_thinking_feedback(messages)
+            rescue Client::RetryExhausted => e
+              $stdout.puts "\nmodel> network error after #{e.attempts} attempts; continue prompt preserved"
+              awaiting_continue = true
+              interrupted_turn_checkpoint = nil unless awaiting_continue
+              next
+            end
           when :abort
             messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             interrupted_turn_checkpoint = nil
@@ -283,7 +291,16 @@ module Samagotchi
           interrupted_turn_checkpoint = clone_messages(messages)
           messages << { role: "user", content: normalize_model_input(input) }
           persist_recent_history(input)
-          result = run_kernel_with_thinking_feedback(messages)
+          begin
+            result = run_kernel_with_thinking_feedback(messages)
+          rescue Client::RetryExhausted => e
+            messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
+            awaiting_continue = false
+            queue_input_prefill(input)
+            $stdout.puts "\nmodel> network error after #{e.attempts} attempts; prompt restored for retry"
+            interrupted_turn_checkpoint = nil unless awaiting_continue
+            next
+          end
         end
 
         if result.respond_to?(:canceled?) && result.canceled?
@@ -412,7 +429,9 @@ module Samagotchi
       # In multiline mode Enter submits, while Meta+Enter/Alt+Enter inserts a
       # newline on terminals that emit that distinct sequence (for example kitty).
       input = with_scoped_at_path_completion do
-        Reline.readmultiline(paint("> ", 92), true) { true }
+        with_next_input_prefill do
+          Reline.readmultiline(paint("> ", 92), true) { true }
+        end
       end
       return nil if input.nil?
 
@@ -662,6 +681,7 @@ module Samagotchi
     def run_kernel_with_thinking_feedback(messages, max_iterations: 10)
       cancellation_controller = Client::CancellationController.new
       @active_cancel_controller = cancellation_controller
+      clear_retry_spinner_status
       reset_thinking_memory_notification
       reset_thinking_memory_names
       result = @kernel.run(
@@ -687,24 +707,33 @@ module Samagotchi
       case event[:type]
       when :generation_started
         start_cancel_hotkey_monitor(@active_cancel_controller)
+        clear_retry_spinner_status
         reset_thinking_tail_preview
         start_thinking_spinner
+      when :generation_retrying
+        set_retry_spinner_status(event)
+        refresh_thinking_spinner_status
       when :generation_chunk
+        clear_retry_spinner_status if retry_spinner_status_active?
         capture_thinking_tail_chunk(event[:content])
         tick_thinking_spinner
       when :tool_call_started
+        clear_retry_spinner_status
         capture_memory_tool_call(event)
         refresh_thinking_spinner_status
       when :generation_completed
         stop_cancel_hotkey_monitor
+        clear_retry_spinner_status
         reset_thinking_tail_preview
         finish_thinking_spinner
       when :generation_cancelled
         stop_cancel_hotkey_monitor
+        clear_retry_spinner_status
         reset_thinking_tail_preview
         finish_thinking_spinner
       when :tool_dispatch_started
         stop_cancel_hotkey_monitor
+        clear_retry_spinner_status
         reset_thinking_tail_preview
         finish_thinking_spinner
       end
@@ -948,6 +977,10 @@ module Samagotchi
     end
 
     def thinking_spinner_status_line(frame)
+      if retry_spinner_status_active?
+        return retry_spinner_status_line(frame)
+      end
+
       base = "model> thinking... #{frame}"
       notification = thinking_memory_notification_suffix
       available_for_notification = [THINKING_PREVIEW_WIDTH - base.length, 0].max
@@ -956,6 +989,19 @@ module Samagotchi
       return "#{base}#{notification}" unless color_output?
 
       "#{paint(base, 90)}#{paint(notification, MEMORY_SPINNER_COLOR)}"
+    end
+
+    def retry_spinner_status_line(frame)
+      data = @retry_spinner_status || {}
+      attempt = data[:attempt].to_i
+      max_retries = data[:max_retries].to_i
+      total_attempts = max_retries + 1
+      delay = format("%.1f", data[:next_delay].to_f)
+      error_class = data[:error_class].to_s
+      message = "model> network error: retrying (#{attempt}/#{total_attempts} in #{delay}s) #{frame}"
+      message += " #{error_class}" unless error_class.empty?
+      capped = cap_preview_line(message)
+      color_output? ? paint(capped, NETWORK_RETRY_SPINNER_COLOR) : capped
     end
 
     def cap_preview_line(text)
@@ -1186,6 +1232,54 @@ module Samagotchi
       return false if mode.empty? || mode == THINKING_UI_OFF || mode == "false" || mode == "0"
 
       mode == THINKING_UI_SPINNER && ENV.fetch("TERM", "") != "dumb"
+    end
+
+    def set_retry_spinner_status(event)
+      @retry_spinner_status = {
+        attempt: event[:attempt],
+        max_retries: event[:max_retries],
+        next_delay: event[:next_delay],
+        error_class: event[:error_class]
+      }
+    end
+
+    def clear_retry_spinner_status
+      @retry_spinner_status = nil
+    end
+
+    def retry_spinner_status_active?
+      @retry_spinner_status.is_a?(Hash)
+    end
+
+    def queue_input_prefill(text)
+      normalized = text.to_s
+      return if normalized.strip.empty?
+
+      @next_input_prefill = normalized
+    end
+
+    def consume_input_prefill
+      value = @next_input_prefill
+      @next_input_prefill = nil
+      value
+    end
+
+    def with_next_input_prefill
+      prefill = consume_input_prefill
+      return yield if prefill.nil? || prefill.empty?
+
+      previous_hook = Reline.pre_input_hook
+      inserted = false
+      Reline.pre_input_hook = proc do
+        unless inserted
+          Reline.insert_text(prefill)
+          inserted = true
+        end
+        previous_hook.call if previous_hook
+      end
+      yield
+    ensure
+      Reline.pre_input_hook = previous_hook
     end
 
     def render_thinking_spinner

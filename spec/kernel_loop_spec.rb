@@ -346,6 +346,35 @@ Need to inspect the filesystem first.
       expect(cancelled[:reason]).to eq(:ctrl_c)
     end
 
+    it "emits generation_retrying stream events from client retry callbacks" do
+      events = []
+      retry_client = Class.new do
+        def complete(_prompt, on_retry: nil, **_kwargs)
+          on_retry&.call(
+            attempt: 1,
+            max_retries: 5,
+            next_delay: 0.5,
+            error_class: "Errno::ECONNREFUSED",
+            error_message: "Connection refused"
+          )
+          "ok"
+        end
+      end.new
+      retry_kernel = described_class.new(client: retry_client)
+
+      retry_kernel.run(
+        [{ role: "user", content: "hi" }],
+        on_stream_event: ->(event) { events << event }
+      )
+
+      retrying = events.find { |event| event[:type] == :generation_retrying }
+      expect(retrying).not_to be_nil
+      expect(retrying[:attempt]).to eq(1)
+      expect(retrying[:max_retries]).to eq(5)
+      expect(retrying[:next_delay]).to eq(0.5)
+      expect(retrying[:error_class]).to eq("Errno::ECONNREFUSED")
+    end
+
     it "emits tool_call_started events with tool call details" do
       events = []
       responses = [

@@ -80,6 +80,26 @@ Configure these environment variables to avoid premature request failures:
 - `LLAMA_OPEN_TIMEOUT` (default: `10`) connection timeout in seconds.
 - `LLAMA_READ_TIMEOUT` (default: `600`) response read timeout in seconds.
 
+## Llama Network Retry Behavior
+
+Transient network failures are retried automatically with exponential backoff.
+
+- Default retries: `5` (up to `6` total attempts including the first call).
+- Default backoff: `0.5s`, `1s`, `2s`, `4s`, `8s`.
+- Retry scope: transient network errors only (timeouts, refused/reset connections, EOF/socket reachability failures).
+- Cancellation (`Ctrl-C`) is never retried.
+
+Configuration:
+
+- `SAMAGOTCHI_RETRY_MAX` (default `5`): number of retries after the first failed attempt.
+- `SAMAGOTCHI_RETRY_BASE_DELAY` (default `0.5`): backoff base delay in seconds.
+- `SAMAGOTCHI_RETRY_MAX_DELAY` (default `8.0`): cap for backoff delay in seconds.
+
+Assist-mode UX:
+
+- While waiting, retry notices are rendered in the existing thinking spinner area as a red `network error: retrying ...` status.
+- If retry attempts are exhausted, the submitted prompt is restored into the input editor so you can edit and resubmit.
+
 ## Gemma 4 Behavior Contract
 
 This project uses canonical Gemma 4 tool-call parsing and explicit thought-context handling.
