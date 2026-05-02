@@ -119,6 +119,15 @@ module Samagotchi
 
     TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param:<|"|>value<|"|>}<tool_call|>. CRITICAL: check the tool declaration for the exact parameter names and required fields!'
     RG_GUIDANCE = "For fast repository/text search, prefer `rg` (ripgrep) over `grep` when exploring files or text."
+    SMALL_CONTEXT_PROTOCOL = <<~PROTOCOL
+      Small-context retrieval protocol:
+        Default to targeted context before full-file reads.
+        Retrieval order:
+          1. If the user provides file:line (for example, spec/agent_spec.rb:130), inspect that location first.
+          2. Use execute with rg/nl/sed to find the smallest relevant snippet.
+          3. Read a full file only when targeted snippet extraction is insufficient.
+        Avoid broad reads early in debugging; gather just enough context to decide the next step.
+    PROTOCOL
     CONTEXT_STATUS_PROTOCOL = <<~PROTOCOL
       Context budget protocol:
         You may receive synthetic system messages that start with CONTEXT_STATUS.
@@ -143,6 +152,8 @@ module Samagotchi
 
       #{TOOL_CALL_HINT}
       You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
+
+      #{SMALL_CONTEXT_PROTOCOL}
 
       Editing workflow:
         1. Read the target file or region immediately before calling edit.
@@ -179,6 +190,8 @@ module Samagotchi
       #{TOOL_MEMORY_WRITE}
 
       #{TOOL_CALL_HINT}
+      #{SMALL_CONTEXT_PROTOCOL}
+
       Editing workflow:
         1. Read the target file or region immediately before calling edit.
         2. Copy old_text verbatim from that read output; do not reconstruct it from memory.
@@ -244,7 +257,6 @@ module Samagotchi
     end
 
     def assist_loop
-      $stdout.puts banner("assist")
       load_persistent_history
       messages = [{ role: "system", content: system_prompt_with_index(SYSTEM_ASSIST) }]
       awaiting_continue = false
@@ -334,7 +346,6 @@ module Samagotchi
     end
 
     def evolve_loop
-      $stdout.puts banner("evolve")
       messages = [
         { role: "system", content: system_prompt_with_index(SYSTEM_EVOLVE) },
         { role: "user",   content: "Read your source files, identify improvements, implement them, and validate with rspec." }

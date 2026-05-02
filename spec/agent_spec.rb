@@ -240,6 +240,23 @@ file2.rb")
       expect(received_prompt).to include("Use write for full-file rewrites")
     end
 
+    it "includes small-context retrieval protocol in assist mode" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent.run
+
+      expect(received_prompt).to include("Small-context retrieval protocol:")
+      expect(received_prompt).to include("If the user provides file:line")
+      expect(received_prompt).to include("spec/agent_spec.rb:130")
+      expect(received_prompt).to include("Read a full file only when targeted snippet extraction is insufficient")
+    end
+
     it "injects AGENT.md as project specific description when present" do
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|
@@ -335,6 +352,22 @@ file2.rb")
       expect(received_prompt).to include("Editing workflow:")
       expect(received_prompt).to include("Copy old_text verbatim")
       expect(received_prompt).to include("Use write for full-file rewrites")
+    end
+
+    it "includes small-context retrieval protocol in evolve mode" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      agent = described_class.new(mode: "evolve", prompt: "hi", client: client)
+      allow(agent).to receive(:rg_available?).and_return(false)
+
+      agent.run
+
+      expect(received_prompt).to include("Small-context retrieval protocol:")
+      expect(received_prompt).to include("If the user provides file:line")
+      expect(received_prompt).to include("Use execute with rg/nl/sed")
     end
   end
 
