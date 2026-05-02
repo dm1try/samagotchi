@@ -216,7 +216,8 @@ module Samagotchi
         error.is_a?(Errno::ECONNRESET) ||
         error.is_a?(Errno::EHOSTUNREACH) ||
         error.is_a?(Errno::ENETUNREACH) ||
-        error.is_a?(Errno::ETIMEDOUT)
+        error.is_a?(Errno::ETIMEDOUT) ||
+        error.is_a?(IO::TimeoutError)
     end
 
     def retry_delay_for(attempt)
