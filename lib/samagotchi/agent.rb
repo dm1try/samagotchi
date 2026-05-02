@@ -343,10 +343,10 @@ module Samagotchi
       emit_result(result)
     end
 
-    def banner(mode)
+    def status_server_segment
       host = ENV.fetch("LLAMA_HOST", "localhost")
       port = ENV.fetch("LLAMA_PORT", "8080")
-      "chi [#{mode}] (Samagotchi engine) — #{host}:#{port}\n#{"─" * 60}"
+      "server=#{host}:#{port}"
     end
 
     # Appends the current memory index to the base system prompt so the agent
@@ -1309,7 +1309,7 @@ module Samagotchi
     end
 
     def status_segments(scope)
-      segments = [status_mode_segment]
+      segments = [status_mode_segment, status_server_segment]
       context_segment = status_context_segment
       memory_segment = status_memory_segment(scope)
       segments << context_segment unless context_segment.empty?

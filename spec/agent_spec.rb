@@ -138,7 +138,7 @@ file2.rb")
       allow(agent).to receive(:color_output?).and_return(false)
 
       expect { agent.run }
-        .to output(/status> mode=assist \| mem: refactoring_backlog.*done/m).to_stdout
+        .to output(/status> mode=assist .*server=.* mem: refactoring_backlog.*done/m).to_stdout
     end
 
     it "uses the assist system prompt" do
