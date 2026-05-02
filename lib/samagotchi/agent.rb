@@ -405,16 +405,7 @@ module Samagotchi
     end
 
     def read_memory_index(scope)
-      result = Tools::MemoryRead.call("", scope: scope)
-      status = result.to_s.start_with?("Error:") ? "error" : "ok"
-      activity = {
-        action: "reading memory",
-        tool: "memory_read",
-        params: "name=\"\" scope=#{scope.inspect}",
-        status: status
-      }
-      $stdout.puts format_tool_activity_line(activity)
-      result
+      Tools::MemoryRead.call("", scope: scope)
     end
 
     def read_input(awaiting_continue:)

@@ -109,14 +109,14 @@ file2.rb")
         .to output(/tool> reading file \(read path=\"README.md\"\): ok.*done/m).to_stdout
     end
 
-    it "prints concise memory tool activity lines for system prompt memory index reads" do
+    it "does not render tool activity lines for startup memory index reads" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "project").and_return("- project index")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "system").and_return("- system index")
       allow(client).to receive(:complete).and_return("ok")
 
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       expect { agent.run }
-        .to output(/tool> reading memory \(memory_read name=\"\" scope=\"project\"\): ok.*tool> reading memory \(memory_read name=\"\" scope=\"system\"\): ok.*ok/m).to_stdout
+        .to output(/\A(?!.*tool> reading memory).*ok/m).to_stdout
     end
 
     it "prints unified sticky status line with memory segment when memory files were loaded" do

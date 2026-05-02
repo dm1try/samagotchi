@@ -69,8 +69,12 @@ Tool behavior:
 - If `scope` is omitted, read falls back from project to system.
 - `memory_write`: `scope` is required (`project` or `system`).
 
-For blank-name reads, the agent can fetch scope indexes separately and inject
-them into the system prompt as `Project memories` and `System memories`.
+At startup, the agent reads both scope indexes with blank-name memory reads
+and injects them into the system prompt as `Project memories` and
+`System memories`.
+
+These startup index reads are harness-injected context assembly and are not
+rendered as `tool>` activity lines.
 
 ## Llama HTTP Timeouts
 
