@@ -253,6 +253,7 @@ module Samagotchi
       loop do
         input = read_input(awaiting_continue: awaiting_continue)
         break if input.nil?
+        break if exit_command?(input)
         continue_flow = awaiting_continue
 
         if awaiting_continue
@@ -435,6 +436,8 @@ module Samagotchi
       return nil if input.nil?
 
       input.gsub(/\r\n?|\n\z/, "\n").strip
+    rescue Interrupt
+      nil
     end
 
     def with_scoped_at_path_completion
@@ -625,6 +628,11 @@ module Samagotchi
 
     def continue_request?(input)
       input == CONTINUE_COMMAND
+    end
+
+    def exit_command?(input)
+      normalized = input.to_s.strip.downcase
+      normalized == "exit" || normalized == "/exit"
     end
 
     def continue_decision(input)
