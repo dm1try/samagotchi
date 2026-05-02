@@ -149,7 +149,7 @@ file2.rb")
       end
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       agent.run
-      expect(received_prompt).to include("Ruby code assistant")
+      expect(received_prompt).to include("friendly name for the Samagotchi assistant harness")
     end
 
     it "includes the context status telemetry protocol in the system prompt" do

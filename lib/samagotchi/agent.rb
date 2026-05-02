@@ -132,7 +132,7 @@ module Samagotchi
     # ── System prompts ─────────────────────────────────────────────────────────
 
     SYSTEM_ASSIST = <<~SYS
-      You are a Ruby code assistant. You have access to the following tools:
+      You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant harness. You have access to the following tools:
 
       #{TOOL_EXECUTE}
       #{TOOL_READ}
