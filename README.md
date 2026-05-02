@@ -132,8 +132,9 @@ In short, raw thought blocks are treated as in-turn transient context, not durab
 
 When `SAMAGOTCHI_THINKING_UI=spinner`, the preview renderer uses a deterministic layout:
 
-- A fixed-width wrapper is used for spinner status and preview lines.
-- Preview wrapping is done by the app (not terminal auto-wrap).
+- Preview lines use a fixed-width app-managed wrapper.
+- Status lines use a configurable width mode (terminal-aware by default).
+- Wrapping is done by the app (not terminal auto-wrap).
 - The preview area always renders a fixed number of logical lines.
 
 Configuration:
@@ -221,6 +222,19 @@ Behavior:
 Configuration:
 
 - `SAMAGOTCHI_STATUS_LINE` (default `on`): set to `off`, `false`, or `0` to disable status-line rendering.
+- `SAMAGOTCHI_STATUS_WIDTH_MODE` (default `terminal_cap`): one of `terminal_cap`, `fixed`.
+- `SAMAGOTCHI_STATUS_MAX_WIDTH` (default `160`): maximum width used by `terminal_cap`.
+- `SAMAGOTCHI_STATUS_FIXED_WIDTH` (default `120`): fixed width used by `fixed` mode.
+
+Width mode behavior:
+
+- `terminal_cap`: use `min(terminal_columns, SAMAGOTCHI_STATUS_MAX_WIDTH)`, single-line with `+N` overflow indicator.
+- `fixed`: use `SAMAGOTCHI_STATUS_FIXED_WIDTH`, single-line with `+N` overflow indicator.
+
+Notes:
+
+- Spinner rendering remains app-managed to keep cursor cleanup deterministic.
+- Raw terminal auto-wrap is intentionally avoided in the spinner region.
 
 ## Read Tool Size Guardrails
 

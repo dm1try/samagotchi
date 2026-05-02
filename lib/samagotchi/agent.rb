@@ -43,6 +43,12 @@ module Samagotchi
     STATUS_LINE_ENV = "SAMAGOTCHI_STATUS_LINE"
     STATUS_LINE_ON = "on"
     STATUS_LINE_OFF = "off"
+    STATUS_WIDTH_MODE_ENV = "SAMAGOTCHI_STATUS_WIDTH_MODE"
+    STATUS_WIDTH_MODE_TERMINAL_CAP = "terminal_cap"
+    STATUS_WIDTH_MODE_FIXED = "fixed"
+    STATUS_FIXED_WIDTH_ENV = "SAMAGOTCHI_STATUS_FIXED_WIDTH"
+    STATUS_MAX_WIDTH_ENV = "SAMAGOTCHI_STATUS_MAX_WIDTH"
+    STATUS_MAX_WIDTH_DEFAULT = 160
     AT_PATH_COMPLETION_PREFIX = "@"
     MEMORY_COMPLETION_PREFIX = "#"
     AT_PATH_COMPLETION_MAX_CANDIDATES = 200
@@ -370,10 +376,10 @@ module Samagotchi
     end
 
     def emit_active_memories_line
-      line = sticky_status_line
-      return if line.empty?
+      lines = sticky_status_lines
+      return if lines.empty?
 
-      $stdout.puts line
+      lines.each { |line| $stdout.puts line }
     end
 
     def emit_tool_activity(result)
@@ -1181,36 +1187,117 @@ module Samagotchi
     def emit_idle_status_line
       return unless status_line_enabled?
 
-      line = idle_status_line
-      return if line.empty?
+      lines = idle_status_lines
+      return if lines.empty?
 
-      $stdout.puts line
+      lines.each { |line| $stdout.puts line }
     end
 
     def spinner_status_line
       return "" unless status_line_enabled?
 
-      build_status_line(scope: :spinner)
+      lines = spinner_status_lines
+      lines.empty? ? "" : lines.first
+    end
+
+    def spinner_status_lines
+      return [] unless status_line_enabled?
+
+      build_status_lines(scope: :spinner)
     end
 
     def sticky_status_line
       return "" unless status_line_enabled?
 
-      build_status_line(scope: :sticky)
+      lines = sticky_status_lines
+      lines.empty? ? "" : lines.first
+    end
+
+    def sticky_status_lines
+      return [] unless status_line_enabled?
+
+      build_status_lines(scope: :sticky)
     end
 
     def idle_status_line
       return "" unless status_line_enabled?
 
-      build_status_line(scope: :idle)
+      lines = idle_status_lines
+      lines.empty? ? "" : lines.first
+    end
+
+    def idle_status_lines
+      return [] unless status_line_enabled?
+
+      build_status_lines(scope: :idle)
     end
 
     def build_status_line(scope:)
-      segments = status_segments(scope)
-      return "" if segments.empty?
+      lines = build_status_lines(scope: scope)
+      lines.empty? ? "" : lines.first
+    end
 
-      body = cap_preview_line("status> #{segments.join(' | ')}")
-      color_output? ? paint(body, 90) : body
+    def build_status_lines(scope:)
+      segments = status_segments(scope)
+      return [] if segments.empty?
+
+      body = "status> #{segments.join(' | ')}"
+      lines = status_body_lines(body)
+      if color_output?
+        lines.map { |line| paint(line, 90) }
+      else
+        lines
+      end
+    end
+
+    def status_body_lines(body)
+      width = status_effective_width
+      return [] if width <= 0
+
+      [cap_preview_text(body, width)]
+    end
+
+    def status_width_mode
+      mode = ENV.fetch(STATUS_WIDTH_MODE_ENV, STATUS_WIDTH_MODE_TERMINAL_CAP).to_s.strip.downcase
+      return STATUS_WIDTH_MODE_FIXED if mode == STATUS_WIDTH_MODE_FIXED
+
+      STATUS_WIDTH_MODE_TERMINAL_CAP
+    end
+
+    def status_effective_width
+      mode = status_width_mode
+      width = if mode == STATUS_WIDTH_MODE_FIXED
+                status_fixed_width
+              else
+                [terminal_columns, status_max_width].min
+              end
+      width = status_fixed_width unless width.positive?
+      width
+    end
+
+    def status_fixed_width
+      env_positive_int(STATUS_FIXED_WIDTH_ENV, THINKING_PREVIEW_WIDTH)
+    end
+
+    def status_max_width
+      env_positive_int(STATUS_MAX_WIDTH_ENV, STATUS_MAX_WIDTH_DEFAULT)
+    end
+
+    def terminal_columns
+      columns = begin
+        io = IO.console
+        io&.winsize&.[](1).to_i
+      rescue StandardError
+        0
+      end
+      return columns if columns.positive?
+
+      env_positive_int("COLUMNS", status_max_width)
+    end
+
+    def env_positive_int(key, default)
+      value = ENV.fetch(key, default.to_s).to_i
+      value.positive? ? value : default
     end
 
     def status_segments(scope)
@@ -1339,38 +1426,46 @@ module Samagotchi
 
     def render_thinking_spinner
       frame = THINKING_SPINNER_FRAMES[@thinking_spinner_index % THINKING_SPINNER_FRAMES.length]
-      line = thinking_spinner_status_line(frame)
+      spinner_lines = thinking_spinner_status_lines(frame)
       preview_lines, preview_has_content = thinking_tail_preview_lines
       if color_output?
         preview_lines = preview_lines.map { |text| paint(text, 90) }
       end
-      lines = [line] + preview_lines
-      status_line = spinner_status_line
-      lines << status_line unless status_line.empty?
+      lines = spinner_lines + preview_lines
+      status_lines = spinner_status_lines
+      lines.concat(status_lines) unless status_lines.empty?
 
       move_to_thinking_spinner_origin
-      $stdout.print(lines.map { |text| "#{text}\e[0K" }.join("\n"))
+      previous_line_count = @thinking_spinner_lines_rendered.to_i
+      render_line_count = [previous_line_count, lines.length].max
+      padded_lines = lines + Array.new(render_line_count - lines.length, "")
+      $stdout.print(padded_lines.map { |text| "#{text}\e[0K" }.join("\n"))
       $stdout.flush
       @thinking_spinner_rendered = true
-      @thinking_spinner_lines_rendered = lines.length
+      @thinking_spinner_lines_rendered = render_line_count
       @thinking_spinner_last_render_at = monotonic_time
       @thinking_tail_preview_dirty = false
       @thinking_preview_has_content = preview_has_content
     end
 
     def thinking_spinner_status_line(frame)
+      lines = thinking_spinner_status_lines(frame)
+      lines.empty? ? "" : lines.first
+    end
+
+    def thinking_spinner_status_lines(frame)
       if retry_spinner_status_active?
-        return retry_spinner_status_line(frame)
+        return [retry_spinner_status_line(frame)]
       end
 
       base = "model> thinking... #{frame}"
-      available_for_notification = [THINKING_PREVIEW_WIDTH - base.length, 0].max
+      available_for_notification = [status_effective_width - base.length, 0].max
       memory_notification, tool_notification = thinking_notification_segments(available_for_notification)
       notification = "#{memory_notification}#{tool_notification}"
 
-      return "#{base}#{notification}" unless color_output?
+      return ["#{base}#{notification}"] unless color_output?
 
-      "#{paint(base, 90)}#{paint_if_present(memory_notification, MEMORY_SPINNER_COLOR)}#{paint_if_present(tool_notification, TOOL_SPINNER_COLOR)}"
+      ["#{paint(base, 90)}#{paint_if_present(memory_notification, MEMORY_SPINNER_COLOR)}#{paint_if_present(tool_notification, TOOL_SPINNER_COLOR)}"]
     end
   end
 end

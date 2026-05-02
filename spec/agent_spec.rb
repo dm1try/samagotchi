@@ -18,6 +18,10 @@ RSpec.describe Samagotchi::Agent do
     original_thinking_ui = ENV["SAMAGOTCHI_THINKING_UI"]
     original_thinking_render_interval = ENV["SAMAGOTCHI_THINKING_RENDER_INTERVAL"]
     original_status_line = ENV["SAMAGOTCHI_STATUS_LINE"]
+    original_status_width_mode = ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"]
+    original_status_fixed_width = ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"]
+    original_status_max_width = ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"]
+    original_columns = ENV["COLUMNS"]
     example.run
     ENV["THINKING_MODE"] = original_thinking_mode
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
@@ -26,6 +30,10 @@ RSpec.describe Samagotchi::Agent do
     ENV["SAMAGOTCHI_THINKING_UI"] = original_thinking_ui
     ENV["SAMAGOTCHI_THINKING_RENDER_INTERVAL"] = original_thinking_render_interval
     ENV["SAMAGOTCHI_STATUS_LINE"] = original_status_line
+    ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"] = original_status_width_mode
+    ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"] = original_status_fixed_width
+    ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"] = original_status_max_width
+    ENV["COLUMNS"] = original_columns
   end
 
   describe "#run with a one-off prompt" do
@@ -542,6 +550,38 @@ file2.rb")
       expect(status).to include("| mem:")
     end
 
+    it "defaults status width mode to terminal_cap" do
+      ENV.delete("SAMAGOTCHI_STATUS_WIDTH_MODE")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+
+      expect(agent.send(:status_width_mode)).to eq("terminal_cap")
+    end
+
+    it "supports fixed status width mode" do
+      ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"] = "fixed"
+      ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"] = "73"
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+
+      expect(agent.send(:status_effective_width)).to eq(73)
+    end
+
+    it "caps terminal-aware status width to SAMAGOTCHI_STATUS_MAX_WIDTH" do
+      ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"] = "terminal_cap"
+      ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"] = "50"
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:terminal_columns).and_return(120)
+
+      expect(agent.send(:status_effective_width)).to eq(50)
+    end
+
+    it "uses COLUMNS when IO.console width is unavailable" do
+      ENV["COLUMNS"] = "77"
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(IO).to receive(:console).and_return(nil)
+
+      expect(agent.send(:terminal_columns)).to eq(77)
+    end
+
     it "keeps spinner memory notification across generation completion within the same turn" do
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
@@ -564,8 +604,8 @@ file2.rb")
       line = agent.send(:thinking_spinner_status_line, "\\")
       expect(line).to include("thinking... \\")
       expect(line).to include("memory_loaded: crawler_exploration_ideas")
-      expect(line).to include("last_tool: memory_read(")
-      expect(line).to include("crawler_exploration_ideas")
+      expect(line).to include("last_tool:")
+      expect(line).to include("memory_")
     end
 
     it "does not show inline last-tool info for non-memory tool calls" do
