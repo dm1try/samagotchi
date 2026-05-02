@@ -412,7 +412,7 @@ module Samagotchi
       # In multiline mode Enter submits, while Meta+Enter/Alt+Enter inserts a
       # newline on terminals that emit that distinct sequence (for example kitty).
       input = with_scoped_at_path_completion do
-        Reline.readmultiline("you> ", true) { true }
+        Reline.readmultiline(paint("> ", 92), true) { true }
       end
       return nil if input.nil?
 
