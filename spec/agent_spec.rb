@@ -547,11 +547,11 @@ file2.rb")
       allow(agent).to receive(:color_output?).and_return(false)
 
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
-      expect(agent.send(:thinking_spinner_status_line, "/")).to include("loaded: refactoring_backlog")
+      expect(agent.send(:thinking_spinner_status_line, "/")).to include("memory_loaded: refactoring_backlog")
 
       agent.send(:handle_stream_event, type: :generation_completed)
 
-      expect(agent.send(:thinking_spinner_status_line, "/")).to include("loaded: refactoring_backlog")
+      expect(agent.send(:thinking_spinner_status_line, "/")).to include("memory_loaded: refactoring_backlog")
     end
 
     it "keeps memory notification inline with spinner status during thinking" do
@@ -563,7 +563,21 @@ file2.rb")
 
       line = agent.send(:thinking_spinner_status_line, "\\")
       expect(line).to include("thinking... \\")
-      expect(line).to include("loaded: crawler_exploration_ideas")
+      expect(line).to include("memory_loaded: crawler_exploration_ideas")
+      expect(line).to include("last_tool: memory_read(")
+      expect(line).to include("crawler_exploration_ideas")
+    end
+
+    it "does not show inline last-tool info for non-memory tool calls" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "execute", content: "echo hi" })
+
+      line = agent.send(:thinking_spinner_status_line, "|")
+      expect(line).not_to include("loaded:")
+      expect(line).not_to include("tool:")
     end
 
     it "refreshes spinner immediately when memory tool calls start" do
@@ -668,12 +682,13 @@ file2.rb")
       allow(agent).to receive(:color_output?).and_return(false)
 
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
-      expect(agent.send(:thinking_spinner_status_line, "/")).to include("loaded: crawler_exploration_ideas")
+      expect(agent.send(:thinking_spinner_status_line, "/")).to include("memory_loaded: crawler_exploration_ideas")
 
       allow(agent).to receive(:handle_stream_event)
       agent.send(:run_kernel_with_thinking_feedback, [{ role: "user", content: "hi" }])
 
-      expect(agent.send(:thinking_spinner_status_line, "/")).not_to include("loaded: crawler_exploration_ideas")
+      expect(agent.send(:thinking_spinner_status_line, "/")).not_to include("memory_loaded: crawler_exploration_ideas")
+      expect(agent.send(:thinking_spinner_status_line, "/")).not_to include("last_tool: memory_read")
     end
 
     it "prints idle status before the next assist prompt when enabled" do

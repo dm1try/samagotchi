@@ -28,6 +28,7 @@ module Samagotchi
     THINKING_UI_OFF = "off"
     THINKING_SPINNER_FRAMES = ["|", "/", "-", "\\"].freeze
     MEMORY_SPINNER_COLOR = "38;5;208"
+    TOOL_SPINNER_COLOR = 32
     NETWORK_RETRY_SPINNER_COLOR = 31
     MEMORY_SPINNER_PREVIEW_LIMIT = 3
     MEMORY_STICKY_PREVIEW_LIMIT = 8
@@ -36,6 +37,7 @@ module Samagotchi
     THINKING_PREVIEW_LINES_DEFAULT = 1
     THINKING_PREVIEW_LINES_MAX = 3
     THINKING_TAIL_PREVIEW_BUFFER_LIMIT = 4096
+    THINKING_TOOL_PREVIEW_LIMIT = 56
     THINKING_RENDER_MIN_INTERVAL = 0.08
     THINKING_RENDER_INTERVAL_ENV = "SAMAGOTCHI_THINKING_RENDER_INTERVAL"
     STATUS_LINE_ENV = "SAMAGOTCHI_STATUS_LINE"
@@ -684,6 +686,7 @@ module Samagotchi
       clear_retry_spinner_status
       reset_thinking_memory_notification
       reset_thinking_memory_names
+      reset_thinking_tool_notification
       result = @kernel.run(
         messages,
         max_iterations: max_iterations,
@@ -719,7 +722,8 @@ module Samagotchi
         tick_thinking_spinner
       when :tool_call_started
         clear_retry_spinner_status
-        capture_memory_tool_call(event)
+        memory_loaded = capture_memory_tool_call(event)
+        capture_thinking_tool_call(event) if memory_loaded
         refresh_thinking_spinner_status
       when :generation_completed
         stop_cancel_hotkey_monitor
@@ -976,21 +980,6 @@ module Samagotchi
       @thinking_preview_has_content = false
     end
 
-    def thinking_spinner_status_line(frame)
-      if retry_spinner_status_active?
-        return retry_spinner_status_line(frame)
-      end
-
-      base = "model> thinking... #{frame}"
-      notification = thinking_memory_notification_suffix
-      available_for_notification = [THINKING_PREVIEW_WIDTH - base.length, 0].max
-      notification = cap_preview_text(notification, available_for_notification)
-
-      return "#{base}#{notification}" unless color_output?
-
-      "#{paint(base, 90)}#{paint(notification, MEMORY_SPINNER_COLOR)}"
-    end
-
     def retry_spinner_status_line(frame)
       data = @retry_spinner_status || {}
       attempt = data[:attempt].to_i
@@ -1045,11 +1034,60 @@ module Samagotchi
     def capture_memory_tool_call(event)
       call = event[:call].is_a?(Hash) ? event[:call] : {}
       memory_name = memory_name_from_tool_call(call)
-      return if memory_name.nil? || memory_name.empty?
+      return false if memory_name.nil? || memory_name.empty?
 
       added_to_thinking = add_unique_memory_name(:@thinking_memory_names, memory_name)
       add_unique_memory_name(:@session_memory_names, memory_name)
       @thinking_recent_memory_loaded = memory_name if added_to_thinking
+      added_to_thinking
+    end
+
+    def capture_thinking_tool_call(event)
+      call = event[:call].is_a?(Hash) ? event[:call] : {}
+      name = call[:name].to_s.strip
+      return if name.empty?
+
+      params = thinking_tool_params_preview(call, event[:params])
+      text = params.empty? ? name : "#{name}(#{params})"
+      @thinking_recent_tool_call = cap_preview_text(text, THINKING_TOOL_PREVIEW_LIMIT)
+    end
+
+    def thinking_tool_params_preview(call, raw_params)
+      compact = raw_params.to_s.gsub(/\s+/, " ").strip
+      return compact unless compact.empty?
+
+      tool_name = call[:name].to_s
+      case tool_name
+      when Tools::Execute::NAME
+        "command=#{preview_value_for_spinner(call[:content])}"
+      when Tools::Read::NAME
+        "path=#{preview_value_for_spinner(call[:content])}"
+      when Tools::Write::NAME, Tools::Edit::NAME
+        "path=#{preview_value_for_spinner(call[:path])}"
+      when Tools::MemoryRead::NAME
+        parts = []
+        name = call[:content].to_s.strip
+        parts << "name=#{preview_value_for_spinner(name)}" unless name.empty?
+        scope = call[:scope].to_s.strip
+        parts << "scope=#{preview_value_for_spinner(scope)}" unless scope.empty?
+        parts.join(" ")
+      when Tools::MemoryWrite::NAME
+        parts = []
+        path = call[:path].to_s.strip
+        parts << "name=#{preview_value_for_spinner(path)}" unless path.empty?
+        scope = call[:scope].to_s.strip
+        parts << "scope=#{preview_value_for_spinner(scope)}" unless scope.empty?
+        parts.join(" ")
+      else
+        ""
+      end
+    end
+
+    def preview_value_for_spinner(value)
+      text = value.to_s.gsub(/\s+/, " ").strip
+      return '""' if text.empty?
+
+      text.inspect
     end
 
     def add_unique_memory_name(ivar_name, value)
@@ -1120,6 +1158,10 @@ module Samagotchi
 
     def reset_thinking_memory_notification
       @thinking_recent_memory_loaded = nil
+    end
+
+    def reset_thinking_tool_notification
+      @thinking_recent_tool_call = nil
     end
 
     def capture_context_status_from_result(result)
@@ -1222,7 +1264,29 @@ module Samagotchi
       memory_name = @thinking_recent_memory_loaded.to_s.strip
       return "" if memory_name.empty?
 
-      " loaded: #{memory_name}"
+      " memory_loaded: #{memory_name}"
+    end
+
+    def thinking_tool_notification_suffix
+      tool_call = @thinking_recent_tool_call.to_s.strip
+      return "" if tool_call.empty?
+
+      " last_tool: #{tool_call}"
+    end
+
+    def thinking_notification_segments(width)
+      return ["", ""] if width <= 0
+
+      memory_suffix = cap_preview_text(thinking_memory_notification_suffix, width)
+      remaining = [width - memory_suffix.length, 0].max
+      tool_suffix = cap_preview_text(thinking_tool_notification_suffix, remaining)
+      [memory_suffix, tool_suffix]
+    end
+
+    def paint_if_present(text, code)
+      return "" if text.to_s.empty?
+
+      paint(text, code)
     end
 
     def thinking_spinner_enabled?
@@ -1301,6 +1365,21 @@ module Samagotchi
       @thinking_spinner_last_render_at = monotonic_time
       @thinking_tail_preview_dirty = false
       @thinking_preview_has_content = preview_has_content
+    end
+
+    def thinking_spinner_status_line(frame)
+      if retry_spinner_status_active?
+        return retry_spinner_status_line(frame)
+      end
+
+      base = "model> thinking... #{frame}"
+      available_for_notification = [THINKING_PREVIEW_WIDTH - base.length, 0].max
+      memory_notification, tool_notification = thinking_notification_segments(available_for_notification)
+      notification = "#{memory_notification}#{tool_notification}"
+
+      return "#{base}#{notification}" unless color_output?
+
+      "#{paint(base, 90)}#{paint_if_present(memory_notification, MEMORY_SPINNER_COLOR)}#{paint_if_present(tool_notification, TOOL_SPINNER_COLOR)}"
     end
   end
 end

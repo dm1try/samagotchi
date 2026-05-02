@@ -140,6 +140,7 @@ Notes:
 
 - Default behavior remains compact (`1` preview line).
 - Setting `2` or `3` enables multi-line preview while keeping spinner redraw height stable.
+- When a memory entry is loaded during thinking, the spinner line also shows a compact inline preview of that tool call (for example `tool: memory_read(name=...)`) for live visibility before end-of-turn tool logs.
 
 ### Thinking-Phase Cancellation
 
