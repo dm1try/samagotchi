@@ -591,6 +591,78 @@ Need to inspect the filesystem first.
       FileUtils.remove_entry(dir) if dir && File.directory?(dir)
     end
 
+    it "parses a tool call when assistant prose appears before the XML block" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt, **_kwargs|
+        prompts << prompt
+        prompts.length == 1 ? "I'll run that now.\n<tool_call><function=execute><parameter=command>ruby -e 'puts 5'</parameter></function></tool_call>" : "done"
+      end
+
+      result = qwen_kernel.run([{ role: "user", content: "run" }])
+
+      expect(result).to eq("done")
+      expect(prompts[1]).to include("stdout:")
+      expect(prompts[1]).to include("5")
+    end
+
+    it "recovers from an incomplete qwen tool call across generations" do
+      prompts = []
+      responses = [
+        "<tool_call><function=execute><parameter=command>ruby -e 'puts 4'",
+        "</parameter></function></tool_call>",
+        "done"
+      ]
+
+      allow(client).to receive(:complete) do |prompt, **_kwargs|
+        prompts << prompt
+        responses.shift
+      end
+
+      result = qwen_kernel.run([{ role: "user", content: "run" }], max_iterations: 5)
+
+      expect(result).to eq("done")
+      expect(prompts[1]).to include("Continue the previous assistant message by finishing the open <tool_call> XML block")
+      expect(prompts[2]).to include("stdout:")
+      expect(prompts[2]).to include("4")
+    end
+
+    it "stops recovery attempts after the bounded qwen incomplete-call limit" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt, **_kwargs|
+        prompts << prompt
+        "<tool_call><function=execute><parameter=command>ruby -e 'puts 9'"
+      end
+
+      result = qwen_kernel.run([{ role: "user", content: "run" }], max_iterations: 6)
+
+      expect(result.output).to include("<tool_call><function=execute>")
+      expect(result).not_to be_resumable
+      expect(prompts.length).to eq(3)
+    end
+
+    it "parses qwen memory_write parameters with mixed casing and aliases" do
+      dir = Dir.mktmpdir("qwen-memory-test")
+      prompts = []
+
+      allow(client).to receive(:complete) do |prompt, **_kwargs|
+        prompts << prompt
+        if prompts.length == 1
+          "<tool_call><function=MEMORY_WRITE><parameter=Name>secret_plan</parameter><parameter=Value># The Secret Plan\nPhase 1: Evolution.</parameter><parameter=Scope>project</parameter></function></tool_call>"
+        else
+          "ok"
+        end
+      end
+
+      stub_const("Samagotchi::Tools::PROJECT_MEMORIES_DIR", dir)
+
+      result = qwen_kernel.run([{ role: "user", content: "save memory" }])
+
+      expect(result).to eq("ok")
+      expect(File.read(File.join(dir, "secret_plan.md"))).to eq("# The Secret Plan\nPhase 1: Evolution.")
+    ensure
+      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+    end
+
     it "strips Qwen think blocks from the final output" do
       allow(client).to receive(:complete).and_return("<think>This is my reasoning</think>Here is the answer")
       result = qwen_kernel.run([{ role: "user", content: "hi" }])

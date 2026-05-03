@@ -42,7 +42,7 @@ RSpec.describe "edit tool - file editing integration", :integration do
     path = File.join(@tmpdir, "greeting.txt")
     File.write(path, "Hello world\nHow are you?\nGoodbye\n")
 
-    result = run_with_prompt(
+    run_with_prompt(
       "Use the edit tool to replace the text 'How are you?' with 'How do you do?' " \
       "in the file #{path}. The <old> block should be exactly 'How are you?' and " \
       "the <new> block should be 'How do you do?'."

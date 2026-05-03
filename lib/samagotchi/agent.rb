@@ -231,7 +231,7 @@ module Samagotchi
     ].freeze
 
     TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param:<|"|>value<|"|>}<tool_call|>. CRITICAL: check the tool declaration for the exact parameter names and required fields!'
-    QWEN_TOOL_CALL_HINT = "To call a tool, emit XML: <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>"
+    QWEN_TOOL_CALL_HINT = "To call a tool, emit XML: <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>. For write and memory_write, preserve content bytes exactly as provided by the user (no reformatting, no markdown normalization, no heading level changes)."
     RG_GUIDANCE = "For fast repository/text search, prefer `rg` (ripgrep) over `grep` when exploring files or text."
     SMALL_CONTEXT_PROTOCOL = <<~PROTOCOL
       Small-context retrieval protocol:

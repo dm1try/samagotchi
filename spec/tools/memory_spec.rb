@@ -139,6 +139,12 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
       expect(result).to include("5 bytes")
     end
 
+    it "returns an error when content is empty" do
+      result = described_class.call("", path: "entry", scope: "project")
+      expect(result).to include("Error")
+      expect(result).to include("content is required")
+    end
+
     it "writes the index file when path is 'index'" do
       result = described_class.call("- **notes**: project notes", path: "index", scope: "project")
       expect(result).to include("index")

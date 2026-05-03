@@ -48,7 +48,7 @@ RSpec.describe "memory_write tool - writing a new memory integration", :integrat
   it "writes a new memory entry when instructed" do
     memory_name = "secret_plan"
     memory_content = "# The Secret Plan\nPhase 1: Evolution."
-    prompt = "Please save a new memory called '#{memory_name}' in the project scope with the following content: #{memory_content}"
+    prompt = "Please save a new memory called '#{memory_name}' in the project scope with this content copied exactly as-is byte-for-byte (do not reformat, do not change heading level): #{memory_content}"
 
     run_with_prompt(prompt)
 

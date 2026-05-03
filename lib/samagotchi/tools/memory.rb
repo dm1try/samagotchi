@@ -93,15 +93,17 @@ module Samagotchi
 
       def self.call(content, path:, scope:)
         entry_name = path.to_s.strip
+        body = content.to_s
         return "Error: entry name is required" if entry_name.empty?
         return "Error: scope is required" if scope.to_s.strip.empty?
+        return "Error: content is required" if body.empty?
         resolved_scope = MemoryRead.normalize_scope(scope)
 
         dir = MemoryRead.memories_dir(resolved_scope)
         FileUtils.mkdir_p(dir)
         file_path = File.join(dir, "#{entry_name}.md")
-        File.write(file_path, content)
-        "Memory '#{entry_name}' saved to #{resolved_scope} scope (#{content.bytesize} bytes)."
+        File.write(file_path, body)
+        "Memory '#{entry_name}' saved to #{resolved_scope} scope (#{body.bytesize} bytes)."
       rescue => e
         "Error: #{e.message}"
       end

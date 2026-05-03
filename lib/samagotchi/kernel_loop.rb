@@ -119,6 +119,8 @@ module Samagotchi
     DEFAULT_CONTEXT_THRESHOLDS = [20, 40, 60, 80].freeze
     DEFAULT_CONTEXT_CADENCE = 0
     TOOL_ACTIVITY_PREVIEW_LIMIT = 80
+    QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
+    QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
 
     def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil)
       @client = client || Client.new
@@ -142,6 +144,8 @@ module Samagotchi
       exhausted = false
       pending_tool_calls = false
       tool_activity = []
+      qwen_recovery_attempts = 0
+      qwen_partial_tool_call = nil
 
       max_iterations.times do |iteration_index|
         prompt = prompt_with_context_status(conversation, iteration_index: iteration_index, state: context_state)
@@ -176,11 +180,30 @@ module Samagotchi
         verbose_log("── LLM response ──\n#{response}\n──────────────────")
         conversation << { role: "model", content: response }
 
-        calls = parse_tool_calls(response)
+        qwen_parse_input = qwen_parse_input(response, qwen_partial_tool_call)
+        calls = parse_tool_calls(qwen_parse_input)
+        qwen_incomplete_tool_call = qwen_profile? && qwen_incomplete_tool_call?(qwen_parse_input)
+
+        if qwen_incomplete_tool_call
+          qwen_partial_tool_call = qwen_unterminated_tool_call_fragment(qwen_parse_input)
+        else
+          qwen_partial_tool_call = nil
+        end
+
         if calls.empty?
+          if qwen_incomplete_tool_call && qwen_recovery_attempts < QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT
+            qwen_recovery_attempts += 1
+            conversation << { role: "user", content: QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT }
+            pending_tool_calls = false
+            next
+          end
+
           pending_tool_calls = false
           break
         end
+
+        qwen_recovery_attempts = 0
+        qwen_partial_tool_call = nil
 
         emit_stream_event(on_stream_event, type: :tool_dispatch_started, iteration: iteration_index + 1, call_count: calls.length)
         results = calls.map.with_index do |call, call_index|
@@ -496,6 +519,51 @@ module Samagotchi
       results
     end
 
+    def qwen_parse_input(response, partial_fragment)
+      return response.to_s unless qwen_profile?
+      return response.to_s unless partial_fragment
+
+      partial_fragment + response.to_s
+    end
+
+    def qwen_profile?
+      @profile.name == "qwen36"
+    end
+
+    # Returns true when a <tool_call> block is opened but not closed.
+    def qwen_incomplete_tool_call?(text)
+      open_tag = "<tool_call>"
+      close_tag = "</tool_call>"
+      pos = 0
+
+      while (open_pos = text.index(open_tag, pos))
+        body_start = open_pos + open_tag.length
+        close_pos = text.index(close_tag, body_start)
+        return true unless close_pos
+
+        pos = close_pos + close_tag.length
+      end
+
+      false
+    end
+
+    # Returns the suffix starting at the first unterminated <tool_call>.
+    def qwen_unterminated_tool_call_fragment(text)
+      open_tag = "<tool_call>"
+      close_tag = "</tool_call>"
+      pos = 0
+
+      while (open_pos = text.index(open_tag, pos))
+        body_start = open_pos + open_tag.length
+        close_pos = text.index(close_tag, body_start)
+        return text[open_pos..] unless close_pos
+
+        pos = close_pos + close_tag.length
+      end
+
+      nil
+    end
+
     # Parse Qwen 3.6 tool calls:
     #   <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>
     # Uses simple string index matching to find opening/closing tags.
@@ -514,11 +582,11 @@ module Samagotchi
         body = text[body_start...close_pos]
         # Extract function name: <function=NAME>
         if (func_match = body.match(/<function=(\w+)>/))
-          name = func_match[1]
+          name = func_match[1].to_s.downcase
           # Extract all parameters: <parameter=KEY>VALUE</parameter>
           params = {}
           body.scan(/<parameter=(\w+)>(.*?)<\/parameter>/m) do |key, value|
-            params[key] = value.strip
+            params[key.to_s.downcase] = value
           end
           results << qwen_call_to_internal(name, params)
         end
@@ -533,24 +601,34 @@ module Samagotchi
     def qwen_call_to_internal(name, params)
       case name
       when Tools::Execute::NAME
-        { name: name, content: params["command"] || "", path: nil, scope: nil }
+        { name: name, content: qwen_param_value(params, "command"), path: nil, scope: nil }
       when Tools::Read::NAME
-        { name: name, content: params["path"] || "", path: nil, scope: nil }
+        { name: name, content: qwen_param_value(params, "path"), path: nil, scope: nil }
       when Tools::Write::NAME
-        { name: name, content: params["content"] || "", path: params["path"], scope: nil }
+        content = qwen_param_value(params, "content", "text", strip: false)
+        { name: name, content: content, path: qwen_param_value(params, "path"), scope: nil }
       when Tools::MemoryRead::NAME
-        { name: name, content: params["name"] || "", path: nil, scope: params["scope"] }
+        memory_name = qwen_param_value(params, "name", "entry", "path")
+        { name: name, content: memory_name, path: nil, scope: qwen_param_value(params, "scope") }
       when Tools::MemoryWrite::NAME
-        entry_name = params["name"] || params["path"] || ""
-        { name: name, content: params["content"] || "", path: entry_name, scope: params["scope"] }
+        entry_name = qwen_param_value(params, "name", "entry", "path")
+        content = qwen_param_value(params, "content", "text", "body", "value", strip: false)
+        { name: name, content: content, path: entry_name, scope: qwen_param_value(params, "scope") }
       when Tools::Edit::NAME
-        old_text = params["old_text"] || params["old"] || ""
-        new_text = params["new_text"] || params["new"] || ""
+        old_text = qwen_param_value(params, "old_text", "old", strip: false)
+        new_text = qwen_param_value(params, "new_text", "new", strip: false)
         content  = "<old>#{old_text}</old><new>#{new_text}</new>"
-        { name: name, content: content, path: params["path"], scope: nil }
+        { name: name, content: content, path: qwen_param_value(params, "path"), scope: nil }
       else
         { name: name, content: params.to_s, path: nil, scope: nil }
       end
+    end
+
+    def qwen_param_value(params, *keys, strip: true)
+      value = keys.lazy.map { |key| params[key] }.find { |candidate| !candidate.nil? }
+      return "" if value.nil?
+
+      strip ? value.to_s.strip : value.to_s
     end
 
     def sanitize_history(messages)

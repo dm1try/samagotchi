@@ -34,19 +34,19 @@ RSpec.describe "execute tool - ruby expression integration", :integration do
   describe "arithmetic" do
     it "evaluates 2 + 2 and returns 4" do
       result = run_with_prompt("Use the execute tool to run: ruby -e 'puts 2 + 2'")
-      expect(result).to include("4")
+      expect(result.output).to include("4")
     end
 
     it "evaluates an array sum and returns 6" do
       result = run_with_prompt("Use the execute tool to run: ruby -e 'puts [1, 2, 3].sum'")
-      expect(result).to include("6")
+      expect(result.output).to include("6")
     end
   end
 
   describe "string output" do
     it "outputs 'hello world'" do
       result = run_with_prompt("Use the execute tool to run: ruby -e 'puts \"hello world\"'")
-      expect(result).to include("hello world")
+      expect(result.output).to include("hello world")
     end
   end
 end
