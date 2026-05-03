@@ -343,6 +343,15 @@ module Samagotchi
       Begin by reading your source files and deciding what to add or improve.
     SYS
 
+    def self.system_prompt_for(profile, mode: :assist)
+      profile = ModelProfile.normalize(profile) unless profile.is_a?(ModelProfile)
+      case mode.to_sym
+      when :assist   then new(mode: :assist, profile: profile).send(:assist_system_prompt)
+      when :evolve   then new(mode: :evolve, profile: profile).send(:evolve_system_prompt)
+      else raise ArgumentError, "Unknown mode: #{mode}"
+      end
+    end
+
     def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil)
       @mode    = mode.to_sym
       @prompt  = prompt

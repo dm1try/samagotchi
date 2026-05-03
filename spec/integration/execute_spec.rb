@@ -2,6 +2,7 @@
 
 require "samagotchi/kernel_loop"
 require "samagotchi/agent"
+require "samagotchi/model_profile"
 
 # Integration tests that verify the model correctly calls the execute tool
 # and returns the output of Ruby expressions.
@@ -24,7 +25,7 @@ RSpec.describe "execute tool - ruby expression integration", :integration do
 
   def run_with_prompt(prompt)
     messages = [
-      { role: "system", content: Samagotchi::Agent::SYSTEM_ASSIST },
+      { role: "system", content: Samagotchi::Agent.system_prompt_for(Samagotchi::ModelProfile.from_env, mode: :assist) },
       { role: "user",   content: prompt }
     ]
     kernel.run(messages)

@@ -683,4 +683,47 @@ Need to inspect the filesystem first.
       expect(result).to include("More output")
     end
   end
+
+  describe "profile selection from environment" do
+    around do |example|
+      original = ENV.fetch("SAMAGOTCHI_MODEL_PROFILE", nil)
+      example.run
+    ensure
+      if original.nil?
+        ENV.delete("SAMAGOTCHI_MODEL_PROFILE")
+      else
+        ENV["SAMAGOTCHI_MODEL_PROFILE"] = original
+      end
+    end
+
+    it "defaults to gemma4 when SAMAGOTCHI_MODEL_PROFILE is unset" do
+      ENV.delete("SAMAGOTCHI_MODEL_PROFILE")
+      kernel = described_class.new(client: client)
+      expect(kernel.instance_variable_get(:@profile).name).to eq("gemma4")
+    end
+
+    it "selects qwen36 when SAMAGOTCHI_MODEL_PROFILE=qwen36" do
+      ENV["SAMAGOTCHI_MODEL_PROFILE"] = "qwen36"
+      kernel = described_class.new(client: client)
+      expect(kernel.instance_variable_get(:@profile).name).to eq("qwen36")
+    end
+
+    it "selects gemma4 when SAMAGOTCHI_MODEL_PROFILE=gemma4" do
+      ENV["SAMAGOTCHI_MODEL_PROFILE"] = "gemma4"
+      kernel = described_class.new(client: client)
+      expect(kernel.instance_variable_get(:@profile).name).to eq("gemma4")
+    end
+
+    it "defaults to gemma4 for unknown profile names" do
+      ENV["SAMAGOTCHI_MODEL_PROFILE"] = "unknown_model"
+      kernel = described_class.new(client: client)
+      expect(kernel.instance_variable_get(:@profile).name).to eq("gemma4")
+    end
+
+    it "respects explicit profile argument over env var" do
+      ENV["SAMAGOTCHI_MODEL_PROFILE"] = "gemma4"
+      kernel = described_class.new(client: client, profile: Samagotchi::ModelProfile.qwen36)
+      expect(kernel.instance_variable_get(:@profile).name).to eq("qwen36")
+    end
+  end
 end

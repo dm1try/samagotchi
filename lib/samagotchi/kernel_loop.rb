@@ -124,7 +124,7 @@ module Samagotchi
       @client = client || Client.new
       @verbose = verbose
       @debug_log = debug_log || DebugLog.new(path: log_file)
-      @profile = profile || ModelProfile.default
+      @profile = profile || ModelProfile.from_env
     end
 
     # Run the conversation loop and return the final model response plus

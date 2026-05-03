@@ -2,6 +2,7 @@
 
 require "samagotchi/kernel_loop"
 require "samagotchi/agent"
+require "samagotchi/model_profile"
 require "tmpdir"
 require "fileutils"
 
@@ -38,7 +39,7 @@ RSpec.describe "memory_write tool - writing a new memory integration", :integrat
 
   def run_with_prompt(prompt)
     messages = [
-      { role: "system", content: Samagotchi::Agent::SYSTEM_ASSIST },
+      { role: "system", content: Samagotchi::Agent.system_prompt_for(Samagotchi::ModelProfile.from_env, mode: :assist) },
       { role: "user",   content: prompt }
     ]
     kernel.run(messages)
