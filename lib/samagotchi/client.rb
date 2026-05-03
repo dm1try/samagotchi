@@ -127,15 +127,18 @@ module Samagotchi
     #
     # @param prompt      [String]        full formatted prompt string
     # @param stop        [Array<String>] stop sequences
+    # @param n_predict   [Integer, nil]  optional max tokens to generate
     # @param on_chunk    [Proc, nil]     optional callback per streamed chunk
     # @param cancel_controller [CancellationController, nil] cancellation source for in-flight requests
     # @param on_retry    [Proc, nil]     optional callback before retry sleep
     # @return [String] the generated text
-    def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], on_chunk: nil, cancel_controller: nil, on_retry: nil)
+    def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], n_predict: nil, on_chunk: nil, cancel_controller: nil, on_retry: nil)
       uri = URI("http://#{@host}:#{@port}/completion")
       request = Net::HTTP::Post.new(uri)
       request["Content-Type"] = "application/json"
-      request.body = { prompt: prompt, stop: stop, stream: true }.to_json
+      payload = { prompt: prompt, stop: stop, stream: true }
+      payload[:n_predict] = n_predict if n_predict && n_predict.to_i.positive?
+      request.body = payload.to_json
 
       attempts = 0
 

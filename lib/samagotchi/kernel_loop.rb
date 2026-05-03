@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "model_profile"
 require_relative "prompt"
 require_relative "client"
 require_relative "debug_log"
@@ -13,16 +14,15 @@ module Samagotchi
   # The KernelLoop drives the model ↔ tool interaction cycle.
   #
   # Flow:
-  #   1. Format the conversation into a Gemma 4 prompt and call llama.cpp.
-  #   2. Parse the response for canonical Gemma 4 tool-call blocks.
+  #   1. Format the conversation using the active profile and call llama.cpp.
+  #   2. Parse the response for tool-call blocks in the profile's format.
   #   3. Dispatch each tool call, collect results.
-  #   4. Inject results as a <|tool_response>…<tool_response|> block and repeat from step 1.
+  #   4. Inject results as a tool_response message and repeat from step 1.
   #   5. Stop when the model emits no tool calls or max_iterations is reached.
   #
-  # Canonical Gemma 4 syntax (model call format):
-  #   <|tool_call>call:execute{command: "bundle exec rspec spec/"}<tool_call|>
-  #   <|tool_call>call:read{path: "lib/samagotchi/prompt.rb"}<tool_call|>
-  #   <|tool_call>call:write{path: "lib/foo.rb", content: "..."}<tool_call|>
+  # Supports multiple model profiles:
+  #   - Gemma 4: <|tool_call>call:NAME{params}<tool_call|>
+  #   - Qwen 3.6: <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>
   class KernelLoop
     Result = Struct.new(:output, :conversation, :exhausted, :pending_tool_calls, :tool_activity, :canceled, :cancellation_reason, keyword_init: true) do
       def to_s
@@ -120,10 +120,11 @@ module Samagotchi
     DEFAULT_CONTEXT_CADENCE = 0
     TOOL_ACTIVITY_PREVIEW_LIMIT = 80
 
-    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil)
+    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil)
       @client = client || Client.new
       @verbose = verbose
       @debug_log = debug_log || DebugLog.new(path: log_file)
+      @profile = profile || ModelProfile.default
     end
 
     # Run the conversation loop and return the final model response plus
@@ -236,7 +237,24 @@ module Samagotchi
       kwargs[:on_chunk] = on_chunk if on_chunk
       kwargs[:on_retry] = on_retry if on_retry && client_supports_keyword?(:on_retry)
       kwargs[:cancel_controller] = cancel_controller if cancel_controller && client_supports_keyword?(:cancel_controller)
+      kwargs[:stop] = @profile.stop_sequences if client_supports_keyword?(:stop)
+      n_predict = completion_n_predict
+      kwargs[:n_predict] = n_predict if n_predict && client_supports_keyword?(:n_predict)
       kwargs
+    end
+
+    def completion_n_predict
+      env_value = ENV["SAMAGOTCHI_N_PREDICT"] || ENV["SAMAGOTCHI_MAX_TOKENS"]
+      if env_value && !env_value.empty?
+        parsed = env_value.to_i
+        return parsed if parsed.positive?
+      end
+
+      # Qwen often emits hidden reasoning before the final answer; a larger
+      # budget prevents user-visible truncation in assist mode.
+      return 1024 if @profile.name == "qwen36"
+
+      nil
     end
 
     def client_supports_keyword?(keyword)
@@ -245,7 +263,8 @@ module Samagotchi
 
       @client_complete_keyword_support[keyword] = begin
         parameters = @client.method(:complete).parameters
-        parameters.any? { |kind, name| (kind == :key || kind == :keyreq) && name == keyword }
+        parameters.any? { |kind, name| (kind == :key || kind == :keyreq) && name == keyword } ||
+          parameters.any? { |kind, _name| kind == :keyrest }
       rescue StandardError
         false
       end
@@ -271,7 +290,7 @@ module Samagotchi
     end
 
     def prompt_with_context_status(conversation, iteration_index:, state:)
-      prompt = Prompt.format(conversation)
+      prompt = Prompt.format(conversation, profile: @profile)
       return prompt unless context_status_enabled?
 
       usage = estimate_context_usage(prompt)
@@ -283,7 +302,7 @@ module Samagotchi
       status_message = context_status_message(usage: usage, bucket: bucket)
       conversation << { role: "system", content: status_message }
       verbose_log("── context status ──\n#{status_message}\n──────────────────")
-      Prompt.format(conversation)
+      Prompt.format(conversation, profile: @profile)
     end
 
     def initial_context_status_state(conversation)
@@ -378,18 +397,53 @@ module Samagotchi
       )
     end
 
-    # Parse canonical Gemma 4 tool calls from raw model output.
+    # Parse tool calls from raw model output.
+    # Dispatches to the appropriate parser based on the active profile.
+    # Falls back to alternate format if primary parser finds nothing.
     # Thought content is intentionally left intact while a tool-call turn is in
     # progress to preserve same-turn reasoning context between tool calls.
     def parse_tool_calls(text)
-      parse_native_tool_calls(text)
+      case @profile.name
+      when "qwen36"
+        parse_qwen_tool_calls(text)
+      else
+        parse_native_tool_calls(text)
+      end
     end
 
-    # Remove canonical thought blocks from model output.
+    # Remove thought blocks from model output.
+    # Format depends on profile:
+    #   - Gemma 4: <|think|>CONTENT (ends at next real <| token) and <|channel>thought...
+    #   - Qwen 3.6: <think>CONTENT</think>
+    def strip_thought_blocks(text)
+      if @profile.name == "qwen36"
+        strip_qwen_thought_blocks(text)
+      else
+        strip_gemma_thought_blocks(text)
+      end
+    end
+
+    # Remove Qwen 3.6 <think>...</think> blocks from text.
+    # Handles:
+    #   - Complete think blocks: <think>CONTENT</think>
+    #   - Incomplete opening tags: <think> without </think>
+    #   - Orphaned closing tags: </think> without <think>
+    def strip_qwen_thought_blocks(text)
+      # Remove all complete <think>...</think> blocks (including any leading/trailing whitespace)
+      result = text.gsub(/<think>.*?<\/think>/m, '')
+      # Remove any stray opening tags
+      result = result.gsub(/<think>.*?(?=\n|$)/m, '')
+      # Remove any orphaned closing tags (and preceding whitespace on same line if it's all whitespace)
+      result = result.gsub(/^\s*<\/think>\s*\n?/m, '')
+      # Clean up any extra blank lines that may have been left behind
+      result.gsub(/\n\n+/, "\n")
+    end
+
+    # Remove Gemma 4 thought blocks from text.
     # <|think|>CONTENT — ends at the next real <| control token
     # (skipping any <|"|> Gemma string-delimiter tokens) or EOS.
-    # Uses String#index (no regex backtracking) to safely handle large inputs.
-    def strip_thought_blocks(text)
+    # <|channel>thought......</channel|> — channel format blocks
+    def strip_gemma_thought_blocks(text)
       result = text
 
       # Canonical format: strip from <|think|> to the next real <| (exclusive) or EOS
@@ -440,6 +494,63 @@ module Samagotchi
       end
 
       results
+    end
+
+    # Parse Qwen 3.6 tool calls:
+    #   <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>
+    # Uses simple string index matching to find opening/closing tags.
+    def parse_qwen_tool_calls(text)
+      results = []
+
+      pos = 0
+      tool_open = "<tool_call>"
+      tool_close = "</tool_call>"
+
+      while (open_pos = text.index(tool_open, pos))
+        body_start = open_pos + tool_open.length
+        close_pos  = text.index(tool_close, body_start)
+        break unless close_pos
+
+        body = text[body_start...close_pos]
+        # Extract function name: <function=NAME>
+        if (func_match = body.match(/<function=(\w+)>/))
+          name = func_match[1]
+          # Extract all parameters: <parameter=KEY>VALUE</parameter>
+          params = {}
+          body.scan(/<parameter=(\w+)>(.*?)<\/parameter>/m) do |key, value|
+            params[key] = value.strip
+          end
+          results << qwen_call_to_internal(name, params)
+        end
+        pos = close_pos + tool_close.length
+      end
+
+      results
+    end
+
+    # Convert a Qwen tool call to internal format.
+    # Qwen uses XML parameters while internal format uses {name:, content:, path:, scope:}.
+    def qwen_call_to_internal(name, params)
+      case name
+      when Tools::Execute::NAME
+        { name: name, content: params["command"] || "", path: nil, scope: nil }
+      when Tools::Read::NAME
+        { name: name, content: params["path"] || "", path: nil, scope: nil }
+      when Tools::Write::NAME
+        { name: name, content: params["content"] || "", path: params["path"], scope: nil }
+      when Tools::MemoryRead::NAME
+        { name: name, content: params["name"] || "", path: nil, scope: params["scope"] }
+      when Tools::MemoryWrite::NAME
+        entry_name = params["name"] || params["path"] || ""
+        { name: name, content: params["content"] || "", path: entry_name, scope: params["scope"] }
+      when Tools::Edit::NAME
+        old_text = params["old_text"] || params["old"] || ""
+        new_text = params["new_text"] || params["new"] || ""
+        content  = "<old>#{old_text}</old><new>#{new_text}</new>"
+        { name: name, content: content, path: params["path"], scope: nil }
+      else
+        { name: name, content: params.to_s, path: nil, scope: nil }
+      end
     end
 
     def sanitize_history(messages)

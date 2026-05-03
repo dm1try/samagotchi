@@ -60,7 +60,7 @@ file2.rb")
       )
       kernel = instance_double(Samagotchi::KernelLoop, run: result)
       expect(Samagotchi::KernelLoop).to receive(:new)
-        .with(client: client, verbose: false, log_file: "tmp/custom.log")
+        .with(client: client, verbose: false, log_file: "tmp/custom.log", profile: instance_of(Samagotchi::ModelProfile))
         .and_return(kernel)
 
       agent = described_class.new(mode: "assist", prompt: "hi", client: client, log_file: "tmp/custom.log")
@@ -138,7 +138,7 @@ file2.rb")
       allow(agent).to receive(:color_output?).and_return(false)
 
       expect { agent.run }
-        .to output(/status> mode=assist \| mem: refactoring_backlog.*done/m).to_stdout
+        .to output(/status> mode=assist(?: \| server=[^|\n]+)? \| mem: refactoring_backlog.*done/m).to_stdout
     end
 
     it "uses the assist system prompt" do
@@ -399,6 +399,20 @@ file2.rb")
       end
       agent.run
     end
+
+    it "does not include the Gemma think token for Qwen profiles" do
+      agent = described_class.new(
+        mode: "assist",
+        prompt: "hi",
+        client: client,
+        profile: Samagotchi::ModelProfile.qwen36
+      )
+      allow(client).to receive(:complete) do |prompt|
+        expect(prompt).not_to include("<|think|>")
+        "ok"
+      end
+      agent.run
+    end
   end
 
   describe "#status_server_segment" do
@@ -431,7 +445,8 @@ file2.rb")
     end
 
     it "renders spinner progress in TTY mode while streaming" do
-      allow(client).to receive(:complete) do |_prompt, on_chunk: nil|
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        on_chunk = kwargs[:on_chunk]
         on_chunk&.call(content: "a", payload: { "content" => "a" })
         on_chunk&.call(content: "b", payload: { "content" => "b" })
         "done"
@@ -444,7 +459,8 @@ file2.rb")
     end
 
     it "renders a tail preview line while streaming" do
-      allow(client).to receive(:complete) do |_prompt, on_chunk: nil|
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        on_chunk = kwargs[:on_chunk]
         on_chunk&.call(content: "hello", payload: { "content" => "hello" })
         on_chunk&.call(content: " world", payload: { "content" => " world" })
         "done"
@@ -459,7 +475,8 @@ file2.rb")
     end
 
     it "renders the preview line in color when color output is enabled" do
-      allow(client).to receive(:complete) do |_prompt, on_chunk: nil|
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        on_chunk = kwargs[:on_chunk]
         on_chunk&.call(content: "hello", payload: { "content" => "hello" })
         "done"
       end
@@ -544,7 +561,8 @@ file2.rb")
     end
 
     it "does not render spinner in non-TTY mode" do
-      allow(client).to receive(:complete) do |_prompt, on_chunk: nil|
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        on_chunk = kwargs[:on_chunk]
         on_chunk&.call(content: "a", payload: { "content" => "a" })
         "done"
       end
@@ -1223,5 +1241,51 @@ file2.rb")
       expect(persisted).not_to include("yes")
     end
 
+  end
+
+  describe "Profile-aware tool declarations" do
+    it "generates Gemma 4 style declarations for Gemma profile" do
+      gemma_profile = Samagotchi::ModelProfile.gemma4
+      agent = described_class.new(mode: "assist", client: client, profile: gemma_profile)
+      
+      declarations = agent.send(:tool_declarations)
+      expect(declarations).to include("<|tool>declaration:execute")
+      expect(declarations).to include("<tool|>")
+      expect(declarations).not_to include("\"name\":")
+    end
+
+    it "generates JSON declarations for Qwen profile" do
+      qwen_profile = Samagotchi::ModelProfile.qwen36
+      agent = described_class.new(mode: "assist", client: client, profile: qwen_profile)
+      
+      declarations = agent.send(:tool_declarations)
+      expect(declarations).to include("<tools>")
+      expect(declarations).to include("</tools>")
+      
+      # Verify JSON is valid inside tools tags
+      json_match = declarations.match(/<tools>\s*(.*?)\s*<\/tools>/m)
+      expect(json_match).not_to be_nil
+      tools_json = JSON.parse(json_match[1])
+      expect(tools_json).to be_an(Array)
+      expect(tools_json.first["name"]).to eq("execute")
+    end
+
+    it "uses Gemma tool call hint for Gemma profile" do
+      gemma_profile = Samagotchi::ModelProfile.gemma4
+      agent = described_class.new(mode: "assist", client: client, profile: gemma_profile)
+      
+      hint = agent.send(:tool_call_hint)
+      expect(hint).to include("<|tool_call>call:")
+    end
+
+    it "uses Qwen tool call hint for Qwen profile" do
+      qwen_profile = Samagotchi::ModelProfile.qwen36
+      agent = described_class.new(mode: "assist", client: client, profile: qwen_profile)
+      
+      hint = agent.send(:tool_call_hint)
+      expect(hint).to include("<tool_call>")
+      expect(hint).to include("<function=")
+      expect(hint).to include("<parameter=")
+    end
   end
 end

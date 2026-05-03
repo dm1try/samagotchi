@@ -303,7 +303,8 @@ Need to inspect the filesystem first.
     it "forwards generation stream events when a callback is provided" do
       events = []
 
-      allow(client).to receive(:complete) do |_prompt, on_chunk: nil|
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        on_chunk = kwargs[:on_chunk]
         on_chunk&.call(content: "Hel", payload: { "content" => "Hel" })
         on_chunk&.call(content: "lo", payload: { "content" => "lo" })
         "Hello"
@@ -541,6 +542,145 @@ Need to inspect the filesystem first.
       expect(kernel_with_bad_log.run([{ role: "user", content: "hi" }]).to_s).to eq("Hello!")
     ensure
       FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+    end
+  end
+
+  # ── Qwen 3.6 tool-call parsing ────────────────────────────────────────────
+
+  describe "Qwen 3.6 profile" do
+    let(:qwen_profile) { Samagotchi::ModelProfile.qwen36 }
+    subject(:qwen_kernel) { described_class.new(client: client, profile: qwen_profile) }
+
+    it "parses a canonical Qwen 3.6 execute tool call" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt, **_kwargs|
+        prompts << prompt
+        prompts.length == 1 ? "<tool_call><function=execute><parameter=command>echo hello</parameter></function></tool_call>" : "done"
+      end
+      result = qwen_kernel.run([{ role: "user", content: "run" }])
+      expect(result).to eq("done")
+      expect(prompts[1]).to include("stdout:")
+      expect(prompts[1]).to include("hello")
+    end
+
+    it "parses a Qwen 3.6 read tool call" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt, **_kwargs|
+        prompts << prompt
+        prompts.length == 1 ? "<tool_call><function=read><parameter=path>Gemfile</parameter></function></tool_call>" : "ok"
+      end
+      result = qwen_kernel.run([{ role: "user", content: "read" }])
+      expect(result).to eq("ok")
+      expect(prompts[1]).to include("[read]")
+    end
+
+    it "parses a Qwen 3.6 write tool call" do
+      dir = Dir.mktmpdir("qwen-test")
+      file_path = File.join(dir, "test.txt")
+      prompts = []
+
+      allow(client).to receive(:complete) do |prompt, **_kwargs|
+        prompts << prompt
+        prompts.length == 1 ? %(<tool_call><function=write><parameter=path>#{file_path}</parameter><parameter=content>hello world</parameter></function></tool_call>) : "ok"
+      end
+
+      result = qwen_kernel.run([{ role: "user", content: "write" }])
+      expect(result).to eq("ok")
+      expect(File.read(file_path)).to eq("hello world")
+    ensure
+      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+    end
+
+    it "strips Qwen think blocks from the final output" do
+      allow(client).to receive(:complete).and_return("<think>This is my reasoning</think>Here is the answer")
+      result = qwen_kernel.run([{ role: "user", content: "hi" }])
+      expect(result).to eq("Here is the answer")
+    end
+
+    it "strips multiple Qwen think blocks" do
+      allow(client).to receive(:complete)
+        .and_return("<think>Step 1</think>Thinking about it...<think>Step 2</think>Final answer")
+      result = qwen_kernel.run([{ role: "user", content: "hi" }])
+      expect(result).to eq("Thinking about it...Final answer")
+    end
+
+    it "formats prompts with Qwen role prefixes" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt, **_kwargs|
+        prompts << prompt
+        "done"
+      end
+
+      messages = [
+        { role: "system", content: "You are an assistant" },
+        { role: "user", content: "Hi there" }
+      ]
+      qwen_kernel.run(messages)
+
+      prompt = prompts[0]
+      expect(prompt).to include("<|im_start|>system")
+      expect(prompt).to include("<|im_end|>")
+      expect(prompt).to include("<|im_start|>user")
+      expect(prompt).to include("<|im_start|>assistant")
+    end
+
+    it "uses a larger default n_predict for Qwen" do
+      captured_kwargs = nil
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        captured_kwargs = kwargs
+        "done"
+      end
+
+      qwen_kernel.run([{ role: "user", content: "hi" }])
+
+      expect(captured_kwargs[:n_predict]).to eq(1024)
+    end
+
+    it "allows overriding n_predict via environment" do
+      captured_kwargs = nil
+      ENV["SAMAGOTCHI_N_PREDICT"] = "2048"
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        captured_kwargs = kwargs
+        "done"
+      end
+
+      qwen_kernel.run([{ role: "user", content: "hi" }])
+
+      expect(captured_kwargs[:n_predict]).to eq(2048)
+    ensure
+      ENV.delete("SAMAGOTCHI_N_PREDICT")
+    end
+
+    it "handles orphaned closing </think> tags" do
+      # Model might output incomplete blocks - ensure stray closing tags are removed
+      allow(client).to receive(:complete).and_return(
+        "</think>\nHello! This is the actual response."
+      )
+      result = qwen_kernel.run([{ role: "user", content: "hi" }])
+      expect(result.output).not_to include("</think>")
+      expect(result.output).to start_with("Hello!")
+    end
+
+    it "handles incomplete opening <think> tags without closing" do
+      # Model might output incomplete blocks
+      allow(client).to receive(:complete).and_return(
+        "<think>This is unfinished\nHello! Here's the actual response."
+      )
+      result = qwen_kernel.run([{ role: "user", content: "hi" }])
+      expect(result).not_to include("<think>")
+      expect(result).to include("Hello! Here's the actual response.")
+    end
+
+    it "removes multiple consecutive think blocks cleanly" do
+      # Model outputs multiple thought blocks with actual content between
+      allow(client).to receive(:complete).and_return(
+        "<think>First thought</think>\nSome output\n<think>Second thought</think>\nMore output"
+      )
+      result = qwen_kernel.run([{ role: "user", content: "hi" }])
+      expect(result).not_to include("<think>")
+      expect(result).not_to include("</think>")
+      expect(result).to include("Some output")
+      expect(result).to include("More output")
     end
   end
 end

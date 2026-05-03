@@ -31,6 +31,27 @@ RSpec.describe Samagotchi::Client do
       expect(request["Content-Type"]).to eq("application/json")
     end
 
+    it "includes n_predict when provided" do
+      client = described_class.new(host: "localhost", port: 8080)
+      http = instance_double(Net::HTTP)
+      response = double("response")
+      request = nil
+
+      allow(Net::HTTP).to receive(:start)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .and_yield(http)
+      allow(http).to receive(:request) do |built_request, &block|
+        request = built_request
+        block.call(response)
+      end
+      allow(response).to receive(:read_body).and_yield("data: {\"content\":\"ok\"}\n")
+
+      result = client.complete("prompt", stop: ["done"], n_predict: 1024)
+
+      expect(result).to eq("ok")
+      expect(request.body).to include('"n_predict":1024')
+    end
+
     it "uses configured timeout values" do
       client = described_class.new(host: "localhost", port: 8080, open_timeout: 2, read_timeout: 1200)
       http = instance_double(Net::HTTP)

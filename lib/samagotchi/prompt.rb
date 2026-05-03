@@ -1,42 +1,68 @@
 # frozen_string_literal: true
 
 module Samagotchi
-  # Formats a message list into a Gemma 4 prompt string.
+  # Formats a message list into a prompt string ready for the /completion endpoint.
   #
-  # Gemma 4 control tokens:
-  #   <|turn>             — beginning of a dialogue turn
-  #   <end_of_turn>       — end of a dialogue turn
-  #   roles: system | user | model
+  # Supports multiple model profiles (Gemma 4, Qwen 3.6, etc.) with different
+  # token formats, role prefixing strategies, and tool response handling.
   #
-  # Agentic token pairs (per Gemma 4 documentation):
-  #   <|tool> / <tool|>               — defines a tool (used in system prompt)
-  #   <|tool_call> / <tool_call|>     — model's request to invoke a tool
-  #   <|tool_response> / <tool_response|> — harness-injected tool execution result
+  # Gemma 4:
+  #   - Turn markers: <|turn>ROLE\n...<end_of_turn>\n
+  #   - Tool response: standalone <|tool_response>...<tool_response|>
+  #   - Generation cue: <|turn>model\n
   #
-  # Tool-response messages use role "tool_response" and are emitted as a
-  # standalone <|tool_response>…<tool_response|> block between model turns,
-  # NOT as a regular <|turn>…<end_of_turn> block.
-  #
-  # The formatted prompt always ends with <|turn>model\n to cue generation.
+  # Qwen 3.6:
+  #   - Role framing: <|im_start|>ROLE\n...<|im_end|>
+  #   - Tool response: wrapped in user message with <tool_response>...</tool_response>
+  #   - Generation cue: <|im_start|>assistant\n
   module Prompt
-    TURN_START = "<|turn>"
-    TURN_END   = "<end_of_turn>"
-
-    TOOL_RESPONSE_OPEN  = "<|tool_response>"
-    TOOL_RESPONSE_CLOSE = "<tool_response|>"
-
     # @param messages [Array<Hash>] each element has :role and :content.
     #   Recognised roles: "system", "user", "model", "tool_response".
+    # @param profile [ModelProfile] model token configuration
     # @return [String] formatted prompt ready for the /completion endpoint.
-    def self.format(messages)
+    def self.format(messages, profile: ModelProfile.default)
+      if profile.uses_role_prefixes?
+        format_with_prefixes(messages, profile)
+      else
+        format_with_turn_markers(messages, profile)
+      end
+    end
+
+    private
+
+    def self.format_with_turn_markers(messages, profile)
+      # Gemma 4 style: <|turn>ROLE\n...<end_of_turn>\n
       parts = messages.map do |m|
         if m[:role] == "tool_response"
-          "#{TOOL_RESPONSE_OPEN}\n#{m[:content]}#{TOOL_RESPONSE_CLOSE}\n"
+          "#{profile.tool_response_open}\n#{m[:content]}#{profile.tool_response_close}\n"
         else
-          "#{TURN_START}#{m[:role]}\n#{m[:content]}#{TURN_END}\n"
+          "#{profile.turn_start}#{m[:role]}\n#{m[:content]}#{profile.turn_end}\n"
         end
       end
-      parts << "#{TURN_START}model\n"
+      parts << "#{profile.turn_start}model\n"
+      parts.join
+    end
+
+    def self.format_with_prefixes(messages, profile)
+      # Qwen 3.6 style: <|im_start|>ROLE\n...<|im_end|>
+      parts = []
+      
+      messages.each do |m|
+        case m[:role]
+        when "system"
+          parts << "#{profile.system_prefix}#{m[:content]}<|im_end|>\n"
+        when "user"
+          parts << "#{profile.user_prefix}#{m[:content]}<|im_end|>\n"
+        when "model"
+          parts << "#{profile.model_prefix}#{m[:content]}<|im_end|>\n"
+        when "tool_response"
+          # Wrap tool response in user message for Qwen
+          parts << "#{profile.user_prefix}#{profile.tool_response_open}\n#{m[:content]}#{profile.tool_response_close}\n<|im_end|>\n"
+        end
+      end
+      
+      # Cue generation as assistant
+      parts << profile.assistant_prefix
       parts.join
     end
   end

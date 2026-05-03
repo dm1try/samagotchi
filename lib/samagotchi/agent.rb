@@ -5,6 +5,7 @@ require "fileutils"
 require "io/console"
 require "reline"
 
+require_relative "model_profile"
 require_relative "kernel_loop"
 require_relative "tools/memory"
 
@@ -117,7 +118,120 @@ module Samagotchi
       }<tool|>
     DECL
 
+    # ── Qwen 3.6 tool declarations (JSON format) ──────────────────────────────
+
+    QWEN_TOOLS_JSON = [
+      {
+        name: "execute",
+        description: "Run any shell command and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: "The shell command to run"
+            }
+          },
+          required: ["command"]
+        }
+      },
+      {
+        name: "read",
+        description: "Read a file from disk. Large files may be truncated to a head+tail preview with metadata.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "Path to the file"
+            }
+          },
+          required: ["path"]
+        }
+      },
+      {
+        name: "write",
+        description: "Write content to a file (parent directories are created automatically)",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "Destination file path"
+            },
+            content: {
+              type: "string",
+              description: "Content to write to the file"
+            }
+          },
+          required: ["path", "content"]
+        }
+      },
+      {
+        name: "edit",
+        description: "Replace an exact block of text in an existing file. The old block must appear exactly once. Before calling edit, read the file and copy old_text verbatim from the latest read output. Prefer small, minimal, unique chunks (about 3-15 lines) instead of large rewrites.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "File path"
+            },
+            old_text: {
+              type: "string",
+              description: "Exact text to replace"
+            },
+            new_text: {
+              type: "string",
+              description: "Replacement text"
+            }
+          },
+          required: ["path", "old_text", "new_text"]
+        }
+      },
+      {
+        name: "memory_read",
+        description: "Read a memory entry from scoped memories. Scope is optional: if omitted, read falls back from project to system. Leave name blank to read indexes.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Memory entry name without .md extension; leave blank for indexes"
+            },
+            scope: {
+              type: "string",
+              description: "Optional scope: project or system"
+            }
+          }
+        }
+      },
+      {
+        name: "memory_write",
+        description: "Write or update a memory entry in scoped memories. Scope is required: project or system.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Memory entry name without .md extension"
+            },
+            content: {
+              type: "string",
+              description: "Markdown content to write"
+            },
+            scope: {
+              type: "string",
+              description: "Scope to write into: project or system"
+            }
+          },
+          required: ["name", "content", "scope"]
+        }
+      }
+    ].freeze
+
     TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param:<|"|>value<|"|>}<tool_call|>. CRITICAL: check the tool declaration for the exact parameter names and required fields!'
+    QWEN_TOOL_CALL_HINT = "To call a tool, emit XML: <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>"
     RG_GUIDANCE = "For fast repository/text search, prefer `rg` (ripgrep) over `grep` when exploring files or text."
     SMALL_CONTEXT_PROTOCOL = <<~PROTOCOL
       Small-context retrieval protocol:
@@ -229,10 +343,11 @@ module Samagotchi
       Begin by reading your source files and deciding what to add or improve.
     SYS
 
-    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil)
-      @mode   = mode.to_sym
-      @prompt = prompt
-      @kernel = KernelLoop.new(client: client, verbose: verbose, log_file: log_file)
+    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil)
+      @mode    = mode.to_sym
+      @prompt  = prompt
+      @profile = profile || ModelProfile.from_env
+      @kernel  = KernelLoop.new(client: client, verbose: verbose, log_file: log_file, profile: @profile)
     end
 
     def run
@@ -247,9 +362,121 @@ module Samagotchi
 
     private
 
+    # Generate profile-aware tool declarations
+    def tool_declarations
+      case @profile.name
+      when "qwen36"
+        "<tools>\n#{JSON.pretty_generate(QWEN_TOOLS_JSON)}\n</tools>"
+      else
+        # Gemma 4 format
+        [TOOL_EXECUTE, TOOL_READ, TOOL_WRITE, TOOL_EDIT, TOOL_MEMORY_READ, TOOL_MEMORY_WRITE].join("\n")
+      end
+    end
+
+    # Generate profile-aware tool calling hint
+    def tool_call_hint
+      case @profile.name
+      when "qwen36"
+        QWEN_TOOL_CALL_HINT
+      else
+        TOOL_CALL_HINT
+      end
+    end
+
+    # Generate profile-aware assist system prompt
+    def assist_system_prompt
+      declarations = tool_declarations
+      hint = tool_call_hint
+
+      <<~SYS
+        You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant harness. You have access to the following tools:
+
+        #{declarations}
+
+        #{hint}
+        You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
+
+        #{SMALL_CONTEXT_PROTOCOL}
+
+        Editing workflow:
+          1. Read the target file or region immediately before calling edit.
+          2. Copy old_text verbatim from that read output; do not reconstruct it from memory.
+          3. Prefer the smallest unique block (about 3-15 lines) that contains the change.
+          4. If edit reports not found or multiple matches, read again and retry with a smaller or more unique block.
+          5. Use write for full-file rewrites or creating new files.
+
+        Memory convention:
+          Project scope: memories/ (project-local)
+          System scope:  ~/.config/samagotchi/memories/ (cross-project)
+          memory_read accepts optional scope (project|system).
+          memory_write requires explicit scope and entry name.
+          User prompts may contain memory shorthand like #entry_name.
+          Treat #entry_name as a memory reference, not as a file path.
+          If shorthand includes a scope prefix, such as #project/entry_name or #system/entry_name,
+          preserve that scope when reading the memory.
+          Keep each scope's index.md updated when adding/updating entries.
+
+        #{CONTEXT_STATUS_PROTOCOL}
+      SYS
+    end
+
+    # Generate profile-aware evolve system prompt
+    def evolve_system_prompt
+      declarations = tool_declarations
+      hint = tool_call_hint
+
+      <<~SYS
+        You are Chi (pronounced "chee"), the friendly name for the Samagotchi self-evolving Ruby agent harness running on #{@profile.name.upcase} via llama.cpp.
+        Your goal: read your own source, decide what to improve or extend, implement it, and validate with RSpec.
+
+        Available tools:
+
+        #{declarations}
+
+        #{hint}
+        #{SMALL_CONTEXT_PROTOCOL}
+
+        Editing workflow:
+          1. Read the target file or region immediately before calling edit.
+          2. Copy old_text verbatim from that read output; do not reconstruct it from memory.
+          3. Prefer the smallest unique block (about 3-15 lines) that contains the change.
+          4. If edit reports not found or multiple matches, read again and retry with a smaller or more unique block.
+          5. Use write for full-file rewrites or creating new files.
+
+        Source layout:
+          bin/chi                        CLI entry point
+          lib/samagotchi/prompt.rb       Prompt formatter (multi-profile)
+          lib/samagotchi/client.rb       llama.cpp HTTP client
+          lib/samagotchi/kernel_loop.rb  Tool-dispatch loop (add new tools here)
+          lib/samagotchi/agent.rb        Role logic (this file)
+          lib/samagotchi/tools/          Individual tool implementations
+          memories/index.md              Memory index: one-line description per entry
+          memories/                      Individual memory entries (MD files)
+          spec/                          RSpec test suite
+
+        Memory convention:
+          Project scope: memories/ (project-local)
+          System scope:  ~/.config/samagotchi/memories/ (cross-project)
+          memory_read accepts optional scope (project|system).
+          memory_write requires explicit scope and entry name.
+          Keep each scope's index.md updated when adding/updating entries.
+          The current indexes are injected below for your reference.
+
+        Workflow for adding a new tool:
+          1. Write lib/samagotchi/tools/<name>.rb with self.name and self.call
+          2. Require it in lib/samagotchi/kernel_loop.rb and add to TOOLS
+          3. Write spec/tools/<name>_spec.rb
+          4. Validate with RSpec
+
+        #{CONTEXT_STATUS_PROTOCOL}
+
+        Begin by reading your source files and deciding what to add or improve.
+      SYS
+    end
+
     def prompt_mode
       messages = [
-        { role: "system", content: system_prompt_with_index(SYSTEM_ASSIST) },
+        { role: "system", content: system_prompt_with_index(assist_system_prompt) },
         { role: "user",   content: @prompt }
       ]
       result = run_kernel_with_thinking_feedback(messages)
@@ -258,7 +485,7 @@ module Samagotchi
 
     def assist_loop
       load_persistent_history
-      messages = [{ role: "system", content: system_prompt_with_index(SYSTEM_ASSIST) }]
+      messages = [{ role: "system", content: system_prompt_with_index(assist_system_prompt) }]
       awaiting_continue = false
       interrupted_turn_checkpoint = nil
 
@@ -347,7 +574,7 @@ module Samagotchi
 
     def evolve_loop
       messages = [
-        { role: "system", content: system_prompt_with_index(SYSTEM_EVOLVE) },
+        { role: "system", content: system_prompt_with_index(evolve_system_prompt) },
         { role: "user",   content: "Read your source files, identify improvements, implement them, and validate with rspec." }
       ]
       result = run_kernel_with_thinking_feedback(messages, max_iterations: 20)
@@ -368,9 +595,13 @@ module Samagotchi
       project_index = read_memory_index("project")
       system_index = read_memory_index("system")
       project_description = project_specific_description
-      # Enable thinking mode by injecting the control token if THINKING_MODE is not "false"
-      # This allows it to be ON by default, but explicitly DISABLEABLE via ENV.
-      thinking_token = ENV["THINKING_MODE"] == "false" ? "" : "<|think|>\n"
+      # Only inject Gemma thought control tokens for Gemma profiles.
+      # Qwen uses a different reasoning format and should not receive <|think|>.
+      thinking_token = if @profile.name == "gemma4" && ENV["THINKING_MODE"] != "false"
+                         "<|think|>\n"
+                       else
+                         ""
+                       end
       memory_sections = [
         "Project memories:\n#{project_index}",
         "System memories:\n#{system_index}"
