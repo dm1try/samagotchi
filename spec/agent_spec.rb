@@ -192,7 +192,7 @@ file2.rb")
       agent.run
       # All tool declaration string values must use <|"|> delimiters
       expect(received_prompt).to include('description:<|"|>Run any shell command')
-      expect(received_prompt).to include('description:<|"|>Read a file from disk. Large files may be truncated to a head+tail preview with metadata.<|"|>')
+      expect(received_prompt).to include('description:<|"|>Read a file from disk. Large files may be truncated to a head+tail preview with metadata. Optionally pass start_line and end_line (1-based, inclusive) to read only a specific line range.<|"|>')
       expect(received_prompt).to include('description:<|"|>Write content to a file')
       expect(received_prompt).to include('type:<|"|>string<|"|>')
     end
@@ -209,7 +209,7 @@ file2.rb")
       expect(received_prompt).to include('param:<|"|>value<|"|>')
     end
 
-    it "includes strict edit declaration guidance about read-first and small unique chunks" do
+    it "includes edit declaration guidance about exact-match and range modes" do
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|
         received_prompt = prompt
@@ -220,8 +220,8 @@ file2.rb")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       agent.run
 
-      expect(received_prompt).to include("Before calling edit, read the file")
-      expect(received_prompt).to include("Prefer small, minimal, unique chunks")
+      expect(received_prompt).to include("Mode 1 (default): replace an exact old_text block")
+      expect(received_prompt).to include("Mode 2 (range): when start_line and end_line are provided")
     end
 
     it "includes edit workflow instructions in assist mode" do
@@ -236,7 +236,8 @@ file2.rb")
       agent.run
 
       expect(received_prompt).to include("Editing workflow:")
-      expect(received_prompt).to include("Copy old_text verbatim")
+      expect(received_prompt).to include("copy old_text verbatim")
+      expect(received_prompt).to include("prefer range mode")
       expect(received_prompt).to include("Use write for full-file rewrites")
     end
 
@@ -350,7 +351,8 @@ file2.rb")
       agent.run
 
       expect(received_prompt).to include("Editing workflow:")
-      expect(received_prompt).to include("Copy old_text verbatim")
+      expect(received_prompt).to include("copy old_text verbatim")
+      expect(received_prompt).to include("prefer range mode")
       expect(received_prompt).to include("Use write for full-file rewrites")
     end
 

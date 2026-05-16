@@ -155,6 +155,20 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(prompts[1]).to include("[read]")
     end
 
+    it "dispatches a canonical read call with line-range params" do
+      responses = [
+        %(<|tool_call>call:read{path: "Gemfile", start_line: 1, end_line: 1}<tool_call|>),
+        "ok"
+      ]
+      allow(client).to receive(:complete).and_return(*responses)
+
+      result = kernel.run([{ role: "user", content: "read first line" }])
+      event = result.tool_activity.find { |entry| entry[:tool] == "read" }
+
+      expect(result).to eq("ok")
+      expect(event[:params]).to include("lines=1-1")
+    end
+
     it "dispatches a canonical write call with path and content params" do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
@@ -461,6 +475,26 @@ Need to inspect the filesystem first.
       end
       kernel.run([{ role: "user", content: "run" }])
       expect(prompts[1]).to include("stdout:\nafter-thought")
+    end
+
+    it "dispatches a canonical edit call with line-range params" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "range_edit.txt")
+        File.write(path, "line 1\nline 2\nline 3\n")
+
+        responses = [
+          %(<|tool_call>call:edit{path: "#{path}", new_text: "line 2 updated\\n", start_line: 2, end_line: 2}<tool_call|>),
+          "done"
+        ]
+        allow(client).to receive(:complete).and_return(*responses)
+
+        result = kernel.run([{ role: "user", content: "range edit" }])
+        event = result.tool_activity.find { |entry| entry[:tool] == "edit" }
+
+        expect(result).to eq("done")
+        expect(event[:params]).to include("lines=2-2")
+        expect(File.read(path)).to eq("line 1\nline 2 updated\nline 3\n")
+      end
     end
   end
 

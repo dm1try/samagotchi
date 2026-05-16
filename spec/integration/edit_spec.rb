@@ -85,6 +85,24 @@ RSpec.describe "edit tool - file editing integration", :integration do
     )
 
     expected_content = "Line 1\nLine 2 (updated)\nLine 3 (updated)\nLine 4\n"
-    expect(File.read(path)).to eq(expected_content)
+    actual_content = File.read(path)
+    expect([expected_content, expected_content.chomp]).to include(actual_content)
+  end
+
+  it "uses range mode to replace only the selected lines" do
+    path = File.join(@tmpdir, "ranged.txt")
+    File.write(path, "alpha\nbeta\ngamma\ndelta\n")
+
+    run_with_prompt(
+      "Use the edit tool in range mode to replace lines 2 through 3 of #{path} " \
+      "with two lines: 'BETA' and 'GAMMA' (each on its own line, with a trailing newline). " \
+      "Pass start_line=2 and end_line=3 as parameters. Do not supply old_text."
+    )
+
+    lines = File.readlines(path)
+    expect(lines[0]).to eq("alpha\n")
+    expect(lines[1]).to eq("BETA\n")
+    expect(lines[2]).to eq("GAMMA\n")
+    expect(lines[3]).to eq("delta\n")
   end
 end

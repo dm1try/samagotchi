@@ -603,7 +603,14 @@ module Samagotchi
       when Tools::Execute::NAME
         { name: name, content: qwen_param_value(params, "command"), path: nil, scope: nil }
       when Tools::Read::NAME
-        { name: name, content: qwen_param_value(params, "path"), path: nil, scope: nil }
+        {
+          name: name,
+          content: qwen_param_value(params, "path"),
+          path: nil,
+          scope: nil,
+          start_line: qwen_param_value(params, "start_line"),
+          end_line: qwen_param_value(params, "end_line")
+        }
       when Tools::Write::NAME
         content = qwen_param_value(params, "content", "text", strip: false)
         { name: name, content: content, path: qwen_param_value(params, "path"), scope: nil }
@@ -618,7 +625,14 @@ module Samagotchi
         old_text = qwen_param_value(params, "old_text", "old", strip: false)
         new_text = qwen_param_value(params, "new_text", "new", strip: false)
         content  = "<old>#{old_text}</old><new>#{new_text}</new>"
-        { name: name, content: content, path: qwen_param_value(params, "path"), scope: nil }
+        {
+          name: name,
+          content: content,
+          path: qwen_param_value(params, "path"),
+          scope: nil,
+          start_line: qwen_param_value(params, "start_line"),
+          end_line: qwen_param_value(params, "end_line")
+        }
       else
         { name: name, content: params.to_s, path: nil, scope: nil }
       end
@@ -710,7 +724,14 @@ module Samagotchi
         content = params["path"] ||
                   strip_param_prefix(params_raw, "path") ||
                   params_raw
-        { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil }
+        {
+          name: name,
+          content: strip_gemma_delimiters(content),
+          path: nil,
+          scope: nil,
+          start_line: params["start_line"],
+          end_line: params["end_line"]
+        }
       when Tools::Write::NAME
         { name: name, content: params["content"] || "", path: params["path"], scope: nil }
       when Tools::MemoryRead::NAME
@@ -726,7 +747,14 @@ module Samagotchi
         old_text = params["old_text"] || params["old"] || ""
         new_text = params["new_text"] || params["new"] || ""
         content  = "<old>#{old_text}</old><new>#{new_text}</new>"
-        { name: name, content: content, path: params["path"], scope: nil }
+        {
+          name: name,
+          content: content,
+          path: params["path"],
+          scope: nil,
+          start_line: params["start_line"],
+          end_line: params["end_line"]
+        }
       else
         # For future/unknown tools, pass along whatever the model provided
         { name: name, content: strip_gemma_delimiters(params_raw), path: nil, scope: nil }
@@ -754,6 +782,9 @@ module Samagotchi
       end
       params_raw.scan(/(\w+):\s*'((?>[^'\\]|\\.)*)'/) do |k, v|
         params[k] ||= unescape_native_value(v)
+      end
+      params_raw.scan(/(\w+):\s*(-?\d+)/) do |k, v|
+        params[k] ||= v
       end
       # Gemma 4 string delimiter: key:<|"|>value<|"|>
       # Use plain String#index to avoid any regex backtracking risk on the
@@ -814,8 +845,12 @@ module Samagotchi
                  tool.call(call[:content], scope: call[:scope])
                when Tools::MemoryWrite::NAME
                  tool.call(call[:content], path: call[:path], scope: call[:scope])
-               when Tools::Write::NAME, Tools::Edit::NAME
+               when Tools::Write::NAME
                  tool.call(call[:content], path: call[:path])
+               when Tools::Read::NAME
+                 tool.call(call[:content], start_line: call[:start_line], end_line: call[:end_line])
+               when Tools::Edit::NAME
+                 tool.call(call[:content], path: call[:path], start_line: call[:start_line], end_line: call[:end_line])
                else
                  tool.call(call[:content])
                end
@@ -860,9 +895,17 @@ module Samagotchi
       when Tools::Execute::NAME
         "command=#{preview_tool_param(call[:content])}"
       when Tools::Read::NAME
-        "path=#{preview_tool_param(call[:content])}"
-      when Tools::Write::NAME, Tools::Edit::NAME
+        parts = ["path=#{preview_tool_param(call[:content])}"]
+        range = format_line_range(call)
+        parts << "lines=#{range}" if range
+        parts.join(" ")
+      when Tools::Write::NAME
         "path=#{preview_tool_param(call[:path])}"
+      when Tools::Edit::NAME
+        parts = ["path=#{preview_tool_param(call[:path])}"]
+        range = format_line_range(call)
+        parts << "lines=#{range}" if range
+        parts.join(" ")
       when Tools::MemoryRead::NAME
         parts = []
         name = call[:content].to_s.strip
@@ -880,6 +923,14 @@ module Samagotchi
       else
         nil
       end
+    end
+
+    def format_line_range(call)
+      start_line = call[:start_line].to_s.strip
+      end_line = call[:end_line].to_s.strip
+      return nil if start_line.empty? && end_line.empty?
+
+      "#{start_line.empty? ? "?" : start_line}-#{end_line.empty? ? "?" : end_line}"
     end
 
     def preview_tool_param(value)

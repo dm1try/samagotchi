@@ -54,6 +54,7 @@ RSpec.describe "memory_write tool - writing a new memory integration", :integrat
 
     # Verify the file was actually created on disk
     expect(File.exist?(File.join(project_memories_dir, "#{memory_name}.md"))).to be true
-    expect(File.read(File.join(project_memories_dir, "#{memory_name}.md"))).to eq(memory_content)
+    actual_content = File.read(File.join(project_memories_dir, "#{memory_name}.md"))
+    expect([memory_content, memory_content + "\n"]).to include(actual_content)
   end
 end

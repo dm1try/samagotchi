@@ -111,5 +111,48 @@ RSpec.describe Samagotchi::Tools::Read do
         expect(result).not_to include("estimated_window_pct_for_preview=")
       end
     end
+
+    it "reads a specific inclusive line range" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "range.txt")
+        File.write(path, "one\ntwo\nthree\nfour\n")
+
+        result = described_class.call(path, start_line: 2, end_line: 3)
+        expect(result).to eq("two\nthree\n")
+      end
+    end
+
+    it "returns an error when only one range boundary is provided" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "range.txt")
+        File.write(path, "one\ntwo\n")
+
+        result = described_class.call(path, start_line: 1)
+        expect(result).to include("Error")
+        expect(result).to include("must both be provided")
+      end
+    end
+
+    it "returns an error when range is reversed" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "range.txt")
+        File.write(path, "one\ntwo\n")
+
+        result = described_class.call(path, start_line: 2, end_line: 1)
+        expect(result).to include("Error")
+        expect(result).to include("start_line must be <= end_line")
+      end
+    end
+
+    it "returns an error when range is out of bounds" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "range.txt")
+        File.write(path, "one\ntwo\n")
+
+        result = described_class.call(path, start_line: 1, end_line: 5)
+        expect(result).to include("Error")
+        expect(result).to include("out of bounds")
+      end
+    end
   end
 end

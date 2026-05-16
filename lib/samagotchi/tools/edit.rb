@@ -23,8 +23,13 @@ module Samagotchi
       def self.name        = NAME
       def self.description = DESCRIPTION
 
-      def self.call(content, path:)
-        path     = path.strip
+      def self.call(content, path:, start_line: nil, end_line: nil)
+        path = path.strip
+
+        if range_requested?(start_line, end_line)
+          return call_range_mode(content, path: path, start_line: start_line, end_line: end_line)
+        end
+
         old_text = extract_tag(content, "old")
         new_text = extract_tag(content, "new")
 
@@ -47,6 +52,43 @@ module Samagotchi
         "Error: #{e.message}"
       end
 
+      def self.call_range_mode(content, path:, start_line:, end_line:)
+        return "Error: file not found: #{path}" unless File.exist?(path)
+
+        new_text = extract_tag(content, "new")
+        return "Error: missing <new>...</new> block" if new_text.nil?
+
+        start_num = parse_positive_line_number(start_line, "start_line")
+        return start_num if start_num.is_a?(String)
+
+        end_num = parse_positive_line_number(end_line, "end_line")
+        return end_num if end_num.is_a?(String)
+
+        return "Error: start_line and end_line must both be provided for range edits" if start_num.nil? || end_num.nil?
+        return "Error: start_line must be <= end_line" if start_num > end_num
+
+        source = File.read(path)
+        lines = source.lines
+        total_lines = lines.length
+        return "Error: range out of bounds for #{path}: file has #{total_lines} lines" if total_lines.zero?
+        return "Error: range out of bounds for #{path}: file has #{total_lines} lines" if start_num > total_lines || end_num > total_lines
+
+        prefix = lines[0, start_num - 1].join
+        suffix = lines[end_num..]&.join.to_s
+        # Ensure new_text ends with a newline when a suffix follows so that the
+        # first suffix line isn't concatenated onto the last replacement line.
+        normalized = (!new_text.empty? && !suffix.empty? && !new_text.end_with?("\n")) ? new_text + "\n" : new_text
+        updated = prefix + normalized + suffix
+        File.write(path, updated)
+
+        replaced_lines = (end_num - start_num) + 1
+        new_line_count = new_text.lines.length
+        "Edited #{path}: replaced lines #{start_num}-#{end_num} (#{replaced_lines} lines) with #{new_line_count} lines"
+      rescue => e
+        "Error: #{e.message}"
+      end
+      private_class_method :call_range_mode
+
       # Count non-overlapping literal occurrences of +needle+ in +haystack+.
       def self.count_occurrences(haystack, needle)
         count = 0
@@ -65,6 +107,26 @@ module Samagotchi
         m ? m[1] : nil
       end
       private_class_method :extract_tag
+
+      def self.range_requested?(start_line, end_line)
+        !blank?(start_line) || !blank?(end_line)
+      end
+      private_class_method :range_requested?
+
+      def self.parse_positive_line_number(value, key)
+        return nil if blank?(value)
+
+        integer = Integer(value.to_s.strip, exception: false)
+        return "Error: #{key} must be a positive integer" unless integer&.positive?
+
+        integer
+      end
+      private_class_method :parse_positive_line_number
+
+      def self.blank?(value)
+        value.nil? || value.to_s.strip.empty?
+      end
+      private_class_method :blank?
     end
   end
 end

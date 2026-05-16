@@ -69,9 +69,11 @@ module Samagotchi
 
     TOOL_READ = <<~DECL.strip
       <|tool>declaration:read{
-        description:<|"|>Read a file from disk. Large files may be truncated to a head+tail preview with metadata.<|"|>,
+        description:<|"|>Read a file from disk. Large files may be truncated to a head+tail preview with metadata. Optionally pass start_line and end_line (1-based, inclusive) to read only a specific line range.<|"|>,
         parameters:{
-          path:{type:<|"|>string<|"|>, description:<|"|>Path to the file<|"|>, required:true}
+          path:{type:<|"|>string<|"|>, description:<|"|>Path to the file<|"|>, required:true},
+          start_line:{type:<|"|>integer<|"|>, description:<|"|>Optional start line (1-based, inclusive). Must be provided with end_line.<|"|>},
+          end_line:{type:<|"|>integer<|"|>, description:<|"|>Optional end line (1-based, inclusive). Must be provided with start_line.<|"|>}
         }
       }<tool|>
     DECL
@@ -88,11 +90,13 @@ module Samagotchi
 
     TOOL_EDIT = <<~DECL.strip
       <|tool>declaration:edit{
-        description:<|"|>Replace an exact block of text in an existing file. The old block must appear exactly once. Before calling edit, read the file and copy old_text verbatim from the latest read output. Prefer small, minimal, unique chunks (about 3-15 lines) instead of large rewrites.<|"|>,
+        description:<|"|>Edit an existing file. Mode 1 (default): replace an exact old_text block with new_text, where old_text must appear exactly once. Mode 2 (range): when start_line and end_line are provided, replace that whole line range with new_text.<|"|>,
         parameters:{
           path:{type:<|"|>string<|"|>, description:<|"|>File path<|"|>, required:true},
-          old_text:{type:<|"|>string<|"|>, description:<|"|>Exact text to replace<|"|>, required:true},
-          new_text:{type:<|"|>string<|"|>, description:<|"|>Replacement text<|"|>, required:true}
+          old_text:{type:<|"|>string<|"|>, description:<|"|>Exact text to replace (required in exact-match mode)<|"|>},
+          new_text:{type:<|"|>string<|"|>, description:<|"|>Replacement text (required)<|"|>, required:true},
+          start_line:{type:<|"|>integer<|"|>, description:<|"|>Optional start line (1-based, inclusive) for range mode. Must be provided with end_line.<|"|>},
+          end_line:{type:<|"|>integer<|"|>, description:<|"|>Optional end line (1-based, inclusive) for range mode. Must be provided with start_line.<|"|>}
         }
       }<tool|>
     DECL
@@ -137,13 +141,21 @@ module Samagotchi
       },
       {
         name: "read",
-        description: "Read a file from disk. Large files may be truncated to a head+tail preview with metadata.",
+        description: "Read a file from disk. Large files may be truncated to a head+tail preview with metadata. Optionally pass start_line and end_line (1-based, inclusive) to read only a specific line range.",
         parameters: {
           type: "object",
           properties: {
             path: {
               type: "string",
               description: "Path to the file"
+            },
+            start_line: {
+              type: "integer",
+              description: "Optional start line (1-based, inclusive). Must be provided with end_line."
+            },
+            end_line: {
+              type: "integer",
+              description: "Optional end line (1-based, inclusive). Must be provided with start_line."
             }
           },
           required: ["path"]
@@ -169,7 +181,7 @@ module Samagotchi
       },
       {
         name: "edit",
-        description: "Replace an exact block of text in an existing file. The old block must appear exactly once. Before calling edit, read the file and copy old_text verbatim from the latest read output. Prefer small, minimal, unique chunks (about 3-15 lines) instead of large rewrites.",
+        description: "Edit an existing file. Mode 1 (default): replace an exact old_text block with new_text, where old_text must appear exactly once. Mode 2 (range): when start_line and end_line are provided, replace that whole line range with new_text.",
         parameters: {
           type: "object",
           properties: {
@@ -179,14 +191,22 @@ module Samagotchi
             },
             old_text: {
               type: "string",
-              description: "Exact text to replace"
+              description: "Exact text to replace (required in exact-match mode)"
             },
             new_text: {
               type: "string",
               description: "Replacement text"
+            },
+            start_line: {
+              type: "integer",
+              description: "Optional start line (1-based, inclusive) for range mode. Must be provided with end_line."
+            },
+            end_line: {
+              type: "integer",
+              description: "Optional end line (1-based, inclusive) for range mode. Must be provided with start_line."
             }
           },
-          required: ["path", "old_text", "new_text"]
+          required: ["path", "new_text"]
         }
       },
       {
@@ -270,11 +290,12 @@ module Samagotchi
       #{SMALL_CONTEXT_PROTOCOL}
 
       Editing workflow:
-        1. Read the target file or region immediately before calling edit.
-        2. Copy old_text verbatim from that read output; do not reconstruct it from memory.
+        1. Read the target file or line range immediately before calling edit.
+        2. For exact-match mode, copy old_text verbatim from that read output; do not reconstruct it from memory.
         3. Prefer the smallest unique block (about 3-15 lines) that contains the change.
-        4. If edit reports not found or multiple matches, read again and retry with a smaller or more unique block.
-        5. Use write for full-file rewrites or creating new files.
+        4. For large files, prefer range mode (start_line/end_line) to minimize context.
+        5. If exact-match mode reports not found or multiple matches, read again and retry with a smaller or more unique block.
+        6. Use write for full-file rewrites or creating new files.
 
       Memory convention:
         Project scope: memories/ (project-local)
@@ -307,11 +328,12 @@ module Samagotchi
       #{SMALL_CONTEXT_PROTOCOL}
 
       Editing workflow:
-        1. Read the target file or region immediately before calling edit.
-        2. Copy old_text verbatim from that read output; do not reconstruct it from memory.
+        1. Read the target file or line range immediately before calling edit.
+        2. For exact-match mode, copy old_text verbatim from that read output; do not reconstruct it from memory.
         3. Prefer the smallest unique block (about 3-15 lines) that contains the change.
-        4. If edit reports not found or multiple matches, read again and retry with a smaller or more unique block.
-        5. Use write for full-file rewrites or creating new files.
+        4. For large files, prefer range mode (start_line/end_line) to minimize context.
+        5. If exact-match mode reports not found or multiple matches, read again and retry with a smaller or more unique block.
+        6. Use write for full-file rewrites or creating new files.
 
       Source layout:
         bin/chi                        CLI entry point
@@ -408,11 +430,12 @@ module Samagotchi
         #{SMALL_CONTEXT_PROTOCOL}
 
         Editing workflow:
-          1. Read the target file or region immediately before calling edit.
-          2. Copy old_text verbatim from that read output; do not reconstruct it from memory.
+          1. Read the target file or line range immediately before calling edit.
+          2. For exact-match mode, copy old_text verbatim from that read output; do not reconstruct it from memory.
           3. Prefer the smallest unique block (about 3-15 lines) that contains the change.
-          4. If edit reports not found or multiple matches, read again and retry with a smaller or more unique block.
-          5. Use write for full-file rewrites or creating new files.
+          4. For large files, prefer range mode (start_line/end_line) to minimize context.
+          5. If exact-match mode reports not found or multiple matches, read again and retry with a smaller or more unique block.
+          6. Use write for full-file rewrites or creating new files.
 
         Memory convention:
           Project scope: memories/ (project-local)
@@ -446,11 +469,12 @@ module Samagotchi
         #{SMALL_CONTEXT_PROTOCOL}
 
         Editing workflow:
-          1. Read the target file or region immediately before calling edit.
-          2. Copy old_text verbatim from that read output; do not reconstruct it from memory.
+          1. Read the target file or line range immediately before calling edit.
+          2. For exact-match mode, copy old_text verbatim from that read output; do not reconstruct it from memory.
           3. Prefer the smallest unique block (about 3-15 lines) that contains the change.
-          4. If edit reports not found or multiple matches, read again and retry with a smaller or more unique block.
-          5. Use write for full-file rewrites or creating new files.
+          4. For large files, prefer range mode (start_line/end_line) to minimize context.
+          5. If exact-match mode reports not found or multiple matches, read again and retry with a smaller or more unique block.
+          6. Use write for full-file rewrites or creating new files.
 
         Source layout:
           bin/chi                        CLI entry point

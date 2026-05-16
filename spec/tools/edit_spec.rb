@@ -112,5 +112,60 @@ RSpec.describe Samagotchi::Tools::Edit do
         expect(File.read(path)).to eq("start center end")
       end
     end
+
+    it "replaces a specific line range with new text" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "file.txt")
+        File.write(path, "line 1\nline 2\nline 3\nline 4\n")
+
+        result = described_class.call(content("", "line 2 updated\nline 3 updated\n"), path: path, start_line: 2, end_line: 3)
+        expect(result).to include("replaced lines 2-3")
+        expect(File.read(path)).to eq("line 1\nline 2 updated\nline 3 updated\nline 4\n")
+      end
+    end
+
+    it "allows deleting a line range by using empty new text" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "file.txt")
+        File.write(path, "line 1\nline 2\nline 3\n")
+
+        result = described_class.call(content("unused", ""), path: path, start_line: 2, end_line: 2)
+        expect(result).to include("replaced lines 2-2")
+        expect(File.read(path)).to eq("line 1\nline 3\n")
+      end
+    end
+
+    it "returns an error when only one range boundary is provided" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "file.txt")
+        File.write(path, "line 1\nline 2\n")
+
+        result = described_class.call(content("", "updated\n"), path: path, start_line: 1)
+        expect(result).to include("Error")
+        expect(result).to include("must both be provided")
+      end
+    end
+
+    it "returns an error when range boundaries are invalid" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "file.txt")
+        File.write(path, "line 1\nline 2\n")
+
+        result = described_class.call(content("", "updated\n"), path: path, start_line: 0, end_line: 1)
+        expect(result).to include("Error")
+        expect(result).to include("start_line must be a positive integer")
+      end
+    end
+
+    it "returns an error when range is out of bounds" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "file.txt")
+        File.write(path, "line 1\nline 2\n")
+
+        result = described_class.call(content("", "updated\n"), path: path, start_line: 1, end_line: 5)
+        expect(result).to include("Error")
+        expect(result).to include("out of bounds")
+      end
+    end
   end
 end
