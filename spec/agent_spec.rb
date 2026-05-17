@@ -625,6 +625,71 @@ file2.rb")
       expect(status).to include("| mem:")
     end
 
+    it "prefers server usage telemetry over estimated CONTEXT_STATUS in status output" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      result = Samagotchi::KernelLoop::Result.new(
+        output: "ok",
+        conversation: [
+          {
+            role: "system",
+            content: "CONTEXT_STATUS window_tokens=256000 est_used_tokens=90000 est_remaining_tokens=166000 est_pct=35.2 bucket=20plus thresholds=20,40,60,80 guidance=clarify_scope_minimize_uncertainty"
+          }
+        ],
+        exhausted: false,
+        pending_tool_calls: false,
+        tool_activity: []
+      )
+      agent.send(:capture_context_status_from_result, result)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(
+        :handle_stream_event,
+        type: :generation_chunk,
+        content: "chunk",
+        payload: {
+          "timings" => { "prompt_n" => 120, "predicted_n" => 30 },
+          "n_ctx" => 1000
+        }
+      )
+
+      status = agent.send(:build_status_line, scope: :spinner)
+      expect(status).to include("ctx=15.0%")
+      expect(status).to include("p=120")
+      expect(status).to include("c=30")
+      expect(status).to include("t=150")
+      expect(status).not_to include("20plus")
+    end
+
+    it "falls back to estimated CONTEXT_STATUS when server usage is unavailable" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      result = Samagotchi::KernelLoop::Result.new(
+        output: "ok",
+        conversation: [
+          {
+            role: "system",
+            content: "CONTEXT_STATUS window_tokens=256000 est_used_tokens=90000 est_remaining_tokens=166000 est_pct=35.2 bucket=20plus thresholds=20,40,60,80 guidance=clarify_scope_minimize_uncertainty"
+          }
+        ],
+        exhausted: false,
+        pending_tool_calls: false,
+        tool_activity: []
+      )
+      agent.send(:capture_context_status_from_result, result)
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(:handle_stream_event, type: :generation_chunk, content: "chunk", payload: { "content" => "chunk" })
+
+      status = agent.send(:build_status_line, scope: :spinner)
+      expect(status).to include("ctx=35.2% (20plus)")
+      expect(status).not_to include("p=")
+      expect(status).not_to include("c=")
+      expect(status).not_to include("t=")
+    end
+
     it "defaults status width mode to terminal_cap" do
       ENV.delete("SAMAGOTCHI_STATUS_WIDTH_MODE")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
@@ -1249,7 +1314,7 @@ file2.rb")
     it "generates Gemma 4 style declarations for Gemma profile" do
       gemma_profile = Samagotchi::ModelProfile.gemma4
       agent = described_class.new(mode: "assist", client: client, profile: gemma_profile)
-      
+
       declarations = agent.send(:tool_declarations)
       expect(declarations).to include("<|tool>declaration:execute")
       expect(declarations).to include("<tool|>")
@@ -1259,11 +1324,11 @@ file2.rb")
     it "generates JSON declarations for Qwen profile" do
       qwen_profile = Samagotchi::ModelProfile.qwen36
       agent = described_class.new(mode: "assist", client: client, profile: qwen_profile)
-      
+
       declarations = agent.send(:tool_declarations)
       expect(declarations).to include("<tools>")
       expect(declarations).to include("</tools>")
-      
+
       # Verify JSON is valid inside tools tags
       json_match = declarations.match(/<tools>\s*(.*?)\s*<\/tools>/m)
       expect(json_match).not_to be_nil
@@ -1275,7 +1340,7 @@ file2.rb")
     it "uses Gemma tool call hint for Gemma profile" do
       gemma_profile = Samagotchi::ModelProfile.gemma4
       agent = described_class.new(mode: "assist", client: client, profile: gemma_profile)
-      
+
       hint = agent.send(:tool_call_hint)
       expect(hint).to include("<|tool_call>call:")
     end
@@ -1283,7 +1348,7 @@ file2.rb")
     it "uses Qwen tool call hint for Qwen profile" do
       qwen_profile = Samagotchi::ModelProfile.qwen36
       agent = described_class.new(mode: "assist", client: client, profile: qwen_profile)
-      
+
       hint = agent.send(:tool_call_hint)
       expect(hint).to include("<tool_call>")
       expect(hint).to include("<function=")

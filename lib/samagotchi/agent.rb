@@ -993,6 +993,7 @@ module Samagotchi
       when :generation_started
         start_cancel_hotkey_monitor(@active_cancel_controller)
         clear_retry_spinner_status
+        @latest_server_context_status = nil
         reset_thinking_tail_preview
         start_thinking_spinner
       when :generation_retrying
@@ -1000,6 +1001,7 @@ module Samagotchi
         refresh_thinking_spinner_status
       when :generation_chunk
         clear_retry_spinner_status if retry_spinner_status_active?
+        capture_server_context_status_from_payload(event[:payload])
         capture_thinking_tail_chunk(event[:content])
         tick_thinking_spinner
       when :tool_call_started
@@ -1464,6 +1466,94 @@ module Samagotchi
       }
     end
 
+    def capture_server_context_status_from_payload(payload)
+      normalized = normalize_server_context_status(payload)
+      return unless normalized
+
+      @latest_server_context_status = normalized
+    end
+
+    def normalize_server_context_status(payload)
+      payload_hash = payload.is_a?(Hash) ? payload : {}
+      usage = payload_hash["usage"] || payload_hash[:usage]
+      usage = {} unless usage.is_a?(Hash)
+
+      prompt_tokens = first_positive_integer(
+        usage["prompt_tokens"],
+        usage[:prompt_tokens],
+        payload_hash["prompt_tokens"],
+        payload_hash[:prompt_tokens],
+        payload_hash["prompt_n"],
+        payload_hash[:prompt_n],
+        payload_hash["tokens_evaluated"],
+        payload_hash[:tokens_evaluated],
+        payload_hash.dig("timings", "prompt_n"),
+        payload_hash.dig(:timings, :prompt_n)
+      )
+
+      completion_tokens = first_positive_integer(
+        usage["completion_tokens"],
+        usage[:completion_tokens],
+        payload_hash["completion_tokens"],
+        payload_hash[:completion_tokens],
+        payload_hash["predicted_n"],
+        payload_hash[:predicted_n],
+        payload_hash["tokens_predicted"],
+        payload_hash[:tokens_predicted],
+        payload_hash.dig("timings", "predicted_n"),
+        payload_hash.dig(:timings, :predicted_n)
+      )
+
+      total_tokens = first_positive_integer(
+        usage["total_tokens"],
+        usage[:total_tokens],
+        payload_hash["total_tokens"],
+        payload_hash[:total_tokens],
+        payload_hash["n_past"],
+        payload_hash[:n_past]
+      )
+      total_tokens ||= prompt_tokens.to_i + completion_tokens.to_i if prompt_tokens || completion_tokens
+
+      context_window_tokens = first_positive_integer(
+        payload_hash["n_ctx"],
+        payload_hash[:n_ctx],
+        payload_hash["context_window"],
+        payload_hash[:context_window],
+        ENV[KernelLoop::CONTEXT_WINDOW_TOKENS_ENV],
+        KernelLoop::DEFAULT_CONTEXT_WINDOW_TOKENS
+      )
+
+      context_used_tokens = first_positive_integer(
+        payload_hash["n_past"],
+        payload_hash[:n_past],
+        total_tokens
+      )
+
+      ctx_pct = if context_window_tokens && context_used_tokens
+                  (context_used_tokens.to_f / context_window_tokens) * 100.0
+                end
+
+      return nil unless prompt_tokens || completion_tokens || total_tokens || ctx_pct
+
+      {
+        prompt_tokens: prompt_tokens,
+        completion_tokens: completion_tokens,
+        total_tokens: total_tokens,
+        ctx_pct: ctx_pct
+      }
+    end
+
+    def first_positive_integer(*values)
+      values.each do |value|
+        integer = Integer(value)
+        return integer if integer.positive?
+      rescue ArgumentError, TypeError
+        next
+      end
+
+      nil
+    end
+
     def status_line_enabled?
       value = ENV.fetch(STATUS_LINE_ENV, STATUS_LINE_ON).to_s.strip.downcase
       !(value.empty? || value == STATUS_LINE_OFF || value == "0" || value == "false")
@@ -1599,6 +1689,9 @@ module Samagotchi
     end
 
     def status_context_segment
+      server_status = @latest_server_context_status
+      return format_server_context_segment(server_status) if server_status.is_a?(Hash)
+
       status = @latest_context_status
       return "" unless status.is_a?(Hash)
 
@@ -1607,6 +1700,23 @@ module Samagotchi
       return "ctx=#{pct}%" if bucket.empty?
 
       "ctx=#{pct}% (#{bucket})"
+    end
+
+    def format_server_context_segment(status)
+      pct = status[:ctx_pct]
+      base = pct ? "ctx=#{format('%.1f', pct)}%" : "ctx=srv"
+
+      tokens = []
+      prompt_tokens = status[:prompt_tokens]
+      completion_tokens = status[:completion_tokens]
+      total_tokens = status[:total_tokens]
+      tokens << "p=#{prompt_tokens}" if prompt_tokens
+      tokens << "c=#{completion_tokens}" if completion_tokens
+      tokens << "t=#{total_tokens}" if total_tokens
+
+      return base if tokens.empty?
+
+      "#{base} (#{tokens.join(' ')})"
     end
 
     def status_memory_segment(scope)
