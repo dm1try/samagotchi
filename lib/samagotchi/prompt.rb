@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "prompt_literal_guard"
+
 module Samagotchi
   # Formats a message list into a prompt string ready for the /completion endpoint.
   #
@@ -33,10 +35,11 @@ module Samagotchi
     def self.format_with_turn_markers(messages, profile)
       # Gemma 4 style: <|turn>ROLE\n...<end_of_turn>\n
       parts = messages.map do |m|
+        content = prompt_content_for(m, profile)
         if m[:role] == "tool_response"
-          "#{profile.tool_response_open}\n#{m[:content]}#{profile.tool_response_close}\n"
+          "#{profile.tool_response_open}\n#{content}#{profile.tool_response_close}\n"
         else
-          "#{profile.turn_start}#{m[:role]}\n#{m[:content]}#{profile.turn_end}\n"
+          "#{profile.turn_start}#{m[:role]}\n#{content}#{profile.turn_end}\n"
         end
       end
       parts << "#{profile.turn_start}model\n"
@@ -46,24 +49,31 @@ module Samagotchi
     def self.format_with_prefixes(messages, profile)
       # Qwen 3.6 style: <|im_start|>ROLE\n...<|im_end|>
       parts = []
-      
+
       messages.each do |m|
+        content = prompt_content_for(m, profile)
         case m[:role]
         when "system"
-          parts << "#{profile.system_prefix}#{m[:content]}<|im_end|>\n"
+          parts << "#{profile.system_prefix}#{content}<|im_end|>\n"
         when "user"
-          parts << "#{profile.user_prefix}#{m[:content]}<|im_end|>\n"
+          parts << "#{profile.user_prefix}#{content}<|im_end|>\n"
         when "model"
-          parts << "#{profile.model_prefix}#{m[:content]}<|im_end|>\n"
+          parts << "#{profile.model_prefix}#{content}<|im_end|>\n"
         when "tool_response"
           # Wrap tool response in user message for Qwen
-          parts << "#{profile.user_prefix}#{profile.tool_response_open}\n#{m[:content]}#{profile.tool_response_close}\n<|im_end|>\n"
+          parts << "#{profile.user_prefix}#{profile.tool_response_open}\n#{content}#{profile.tool_response_close}\n<|im_end|>\n"
         end
       end
-      
+
       # Cue generation as assistant
       parts << profile.assistant_prefix
       parts.join
+    end
+
+    def self.prompt_content_for(message, profile)
+      return message[:content].to_s if message[:preserve_literals]
+
+      PromptLiteralGuard.escape(message[:content], profile: profile, role: message[:role])
     end
   end
 end

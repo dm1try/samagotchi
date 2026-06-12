@@ -2,6 +2,7 @@
 
 require_relative "model_profile"
 require_relative "prompt"
+require_relative "prompt_literal_guard"
 require_relative "client"
 require_relative "debug_log"
 require_relative "tools/execute"
@@ -181,7 +182,9 @@ module Samagotchi
         conversation << { role: "model", content: response }
 
         qwen_parse_input = qwen_parse_input(response, qwen_partial_tool_call)
-        calls = parse_tool_calls(qwen_parse_input)
+        calls = parse_tool_calls(qwen_parse_input).map do |call|
+          PromptLiteralGuard.restore_call(call, profile: @profile)
+        end
         qwen_incomplete_tool_call = qwen_profile? && qwen_incomplete_tool_call?(qwen_parse_input)
 
         if qwen_incomplete_tool_call
@@ -193,7 +196,7 @@ module Samagotchi
         if calls.empty?
           if qwen_incomplete_tool_call && qwen_recovery_attempts < QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT
             qwen_recovery_attempts += 1
-            conversation << { role: "user", content: QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT }
+            conversation << { role: "user", content: QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT, preserve_literals: true }
             pending_tool_calls = false
             next
           end
@@ -237,7 +240,7 @@ module Samagotchi
       end
 
       Result.new(
-        output: strip_thought_blocks(last_model_content(conversation)),
+        output: PromptLiteralGuard.restore(strip_thought_blocks(last_model_content(conversation)), profile: @profile),
         conversation: duplicate_conversation(conversation),
         exhausted: exhausted,
         pending_tool_calls: pending_tool_calls,

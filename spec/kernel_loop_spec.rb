@@ -94,6 +94,20 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(prompts[1]).to include("[execute]")
     end
 
+    it "escapes literal control tokens in tool results before reinserting them into the next prompt" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        prompts.length == 1 ? %(<|tool_call>call:execute{command: "ruby -e 'puts %q(<end_of_turn>); puts %q(<|tool_response>)'"}<tool_call|>) : "done"
+      end
+
+      kernel.run([{ role: "user", content: "check" }])
+
+      expect(prompts[1]).to include("[[SAMAGOTCHI_LITERAL_TURN_END]]")
+      expect(prompts[1]).to include("[[SAMAGOTCHI_LITERAL_TOOL_RESPONSE_OPEN]]")
+      expect(prompts[1]).not_to include("stdout:\n<end_of_turn>\n<|tool_response>")
+    end
+
     it "emits a CONTEXT_STATUS system message when entering a tracked threshold bucket" do
       prompts = []
       allow(client).to receive(:complete) do |prompt|
@@ -312,6 +326,28 @@ Need to inspect the filesystem first.
       end
       kernel.run([{ role: "user", content: "test" }])
       expect(prompts[1]).to include("unknown tool")
+    end
+
+    it "restores escaped literal control tokens in final user-visible output" do
+      allow(client).to receive(:complete).and_return("literal [[SAMAGOTCHI_LITERAL_TURN_END]] token")
+
+      expect(kernel.run([{ role: "user", content: "answer" }])).to eq("literal <end_of_turn> token")
+    end
+
+    it "restores escaped literal control tokens in tool call params before dispatch" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "literal_tokens.txt")
+        responses = [
+          %(<|tool_call>call:write{path: "#{path}", content: "before [[SAMAGOTCHI_LITERAL_TURN_END]] after"}<tool_call|>),
+          "done"
+        ]
+        allow(client).to receive(:complete).and_return(*responses)
+
+        result = kernel.run([{ role: "user", content: "write literal token" }])
+
+        expect(result).to eq("done")
+        expect(File.read(path)).to eq("before <end_of_turn> after")
+      end
     end
 
     it "forwards generation stream events when a callback is provided" do
