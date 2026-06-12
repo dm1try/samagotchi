@@ -7,6 +7,34 @@ Run with:
 
 - `bin/chi`
 
+## Global Config File
+
+Chi can preload a global config file and expose those entries as environment
+variables before the app boots.
+
+Default path:
+
+- `$XDG_CONFIG_HOME/samagotchi/config.yml`
+- Fallback when `XDG_CONFIG_HOME` is unset: `~/.config/samagotchi/config.yml`
+
+Example:
+
+```yaml
+SAMAGOTCHI_MODEL_PROFILE: qwen36
+LLAMA_HOST: 192.168.1.29
+LLAMA_PORT: 8081
+SAMAGOTCHI_THINKING_UI: spinner
+```
+
+Behavior:
+
+- The file is optional.
+- Entries must be a flat YAML mapping of scalar values.
+- Real environment variables still win over config-file values.
+
+This lets you run `bin/chi` without repeating common defaults such as model
+profile or llama host/port on every invocation.
+
 ## Tool Activity Log
 
 Samagotchi now prints a concise, human-friendly tool activity log in normal
