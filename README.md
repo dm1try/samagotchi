@@ -315,3 +315,25 @@ Implementation note:
 
 - Shared logic lives in `lib/samagotchi/tools/output_guardrails.rb` and is used by both `read` and `execute`.
 - Additional tools that can emit large payloads should rely on this shared helper for consistent behavior.
+
+## Background Task Tools
+
+Samagotchi now supports long-running commands in the background through four task tools:
+
+- `task_create`: start a background command and return `task_id` plus `output_path`.
+- `task_get`: fetch current task metadata by id.
+- `task_list`: list all tasks for the current workspace.
+- `task_stop`: stop a running task by id.
+
+Recommended workflow:
+
+1. Create a task with `task_create`.
+2. Poll progress with `task_get` or `task_list`.
+3. Read logs with `read` using the returned `output_path`.
+4. Stop the task with `task_stop` if needed.
+
+Behavior:
+
+- Task metadata and output are persisted under `tmp/tasks/`.
+- Task listing is workspace-scoped (current project only).
+- `task_get` returns metadata and `output_path`; use `read` for output contents.

@@ -10,6 +10,10 @@ require_relative "tools/read"
 require_relative "tools/write"
 require_relative "tools/memory"
 require_relative "tools/edit"
+require_relative "tools/task_create"
+require_relative "tools/task_get"
+require_relative "tools/task_list"
+require_relative "tools/task_stop"
 
 module Samagotchi
   # The KernelLoop drives the model ↔ tool interaction cycle.
@@ -82,7 +86,11 @@ module Samagotchi
       Tools::Write,
       Tools::MemoryRead,
       Tools::MemoryWrite,
-      Tools::Edit
+      Tools::Edit,
+      Tools::TaskCreate,
+      Tools::TaskGet,
+      Tools::TaskList,
+      Tools::TaskStop
     ].freeze
 
     # ── Gemma 4 tool-call constants (canonical model call format) ─────────────
@@ -636,6 +644,23 @@ module Samagotchi
           start_line: qwen_param_value(params, "start_line"),
           end_line: qwen_param_value(params, "end_line")
         }
+      when Tools::TaskCreate::NAME
+        {
+          name: name,
+          content: qwen_param_value(params, "command"),
+          path: nil,
+          scope: nil,
+          cwd: qwen_param_value(params, "cwd")
+        }
+      when Tools::TaskGet::NAME, Tools::TaskStop::NAME
+        {
+          name: name,
+          content: qwen_param_value(params, "id", "task_id"),
+          path: nil,
+          scope: nil
+        }
+      when Tools::TaskList::NAME
+        { name: name, content: "", path: nil, scope: nil }
       else
         { name: name, content: params.to_s, path: nil, scope: nil }
       end
@@ -758,6 +783,31 @@ module Samagotchi
           start_line: params["start_line"],
           end_line: params["end_line"]
         }
+      when Tools::TaskCreate::NAME
+        command = params["command"] ||
+                  strip_param_prefix(params_raw, "command") ||
+                  params_raw
+        {
+          name: name,
+          content: strip_gemma_delimiters(command),
+          path: nil,
+          scope: nil,
+          cwd: params["cwd"]
+        }
+      when Tools::TaskGet::NAME, Tools::TaskStop::NAME
+        task_id = params["id"] ||
+                  params["task_id"] ||
+                  strip_param_prefix(params_raw, "id") ||
+                  strip_param_prefix(params_raw, "task_id") ||
+                  params_raw
+        {
+          name: name,
+          content: strip_gemma_delimiters(task_id),
+          path: nil,
+          scope: nil
+        }
+      when Tools::TaskList::NAME
+        { name: name, content: "", path: nil, scope: nil }
       else
         # For future/unknown tools, pass along whatever the model provided
         { name: name, content: strip_gemma_delimiters(params_raw), path: nil, scope: nil }
@@ -854,6 +904,10 @@ module Samagotchi
                  tool.call(call[:content], start_line: call[:start_line], end_line: call[:end_line])
                when Tools::Edit::NAME
                  tool.call(call[:content], path: call[:path], start_line: call[:start_line], end_line: call[:end_line])
+               when Tools::TaskCreate::NAME
+                 tool.call(call[:content], cwd: call[:cwd])
+               when Tools::TaskGet::NAME, Tools::TaskStop::NAME
+                 tool.call(call[:content])
                else
                  tool.call(call[:content])
                end
@@ -885,6 +939,10 @@ module Samagotchi
       when Tools::Edit::NAME then "editing file"
       when Tools::MemoryRead::NAME then "reading memory"
       when Tools::MemoryWrite::NAME then "saving memory"
+      when Tools::TaskCreate::NAME then "starting background task"
+      when Tools::TaskGet::NAME then "checking task"
+      when Tools::TaskList::NAME then "listing tasks"
+      when Tools::TaskStop::NAME then "stopping task"
       else "calling tool"
       end
     end
@@ -923,6 +981,15 @@ module Samagotchi
         scope = call[:scope].to_s.strip
         parts << "scope=#{preview_tool_param(scope)}" unless scope.empty?
         parts.join(" ")
+      when Tools::TaskCreate::NAME
+        parts = ["command=#{preview_tool_param(call[:content])}"]
+        cwd = call[:cwd].to_s.strip
+        parts << "cwd=#{preview_tool_param(cwd)}" unless cwd.empty?
+        parts.join(" ")
+      when Tools::TaskGet::NAME, Tools::TaskStop::NAME
+        "id=#{preview_tool_param(call[:content])}"
+      when Tools::TaskList::NAME
+        nil
       else
         nil
       end

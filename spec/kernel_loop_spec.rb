@@ -532,6 +532,25 @@ Need to inspect the filesystem first.
         expect(File.read(path)).to eq("line 1\nline 2 updated\nline 3\n")
       end
     end
+
+    it "dispatches a native task_create call and records task activity" do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          responses = [
+            %(<|tool_call>call:task_create{command: "ruby -e 'puts 12'"}<tool_call|>),
+            "done"
+          ]
+          allow(client).to receive(:complete).and_return(*responses)
+
+          result = kernel.run([{ role: "user", content: "run in background" }])
+          event = result.tool_activity.find { |entry| entry[:tool] == "task_create" }
+
+          expect(result).to eq("done")
+          expect(event[:action]).to eq("starting background task")
+          expect(event[:params]).to include("command=")
+        end
+      end
+    end
   end
 
   describe "verbose mode" do
@@ -642,6 +661,19 @@ Need to inspect the filesystem first.
       result = qwen_kernel.run([{ role: "user", content: "read" }])
       expect(result).to eq("ok")
       expect(prompts[1]).to include("[read]")
+    end
+
+    it "parses a Qwen task_list call" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt, **_kwargs|
+        prompts << prompt
+        prompts.length == 1 ? "<tool_call><function=task_list></function></tool_call>" : "ok"
+      end
+
+      result = qwen_kernel.run([{ role: "user", content: "list tasks" }])
+
+      expect(result).to eq("ok")
+      expect(prompts[1]).to include("[task_list]")
     end
 
     it "parses a Qwen 3.6 write tool call" do

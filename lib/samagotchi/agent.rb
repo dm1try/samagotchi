@@ -122,6 +122,41 @@ module Samagotchi
       }<tool|>
     DECL
 
+    TOOL_TASK_CREATE = <<~DECL.strip
+      <|tool>declaration:task_create{
+        description:<|"|>Start a background task for a long-running shell command. Returns task id and output path for later inspection.<|"|>,
+        parameters:{
+          command:{type:<|"|>string<|"|>, description:<|"|>Shell command to run in the background<|"|>, required:true},
+          cwd:{type:<|"|>string<|"|>, description:<|"|>Optional working directory (defaults to project root)<|"|>}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_TASK_GET = <<~DECL.strip
+      <|tool>declaration:task_get{
+        description:<|"|>Get full metadata for a task by id. Use read on output_path to inspect command output.<|"|>,
+        parameters:{
+          id:{type:<|"|>string<|"|>, description:<|"|>Task id returned by task_create<|"|>, required:true}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_TASK_LIST = <<~DECL.strip
+      <|tool>declaration:task_list{
+        description:<|"|>List all background tasks in the current workspace with current status.<|"|>,
+        parameters:{}
+      }<tool|>
+    DECL
+
+    TOOL_TASK_STOP = <<~DECL.strip
+      <|tool>declaration:task_stop{
+        description:<|"|>Stop a running background task by id.<|"|>,
+        parameters:{
+          id:{type:<|"|>string<|"|>, description:<|"|>Task id to stop<|"|>, required:true}
+        }
+      }<tool|>
+    DECL
+
     # ── Qwen 3.6 tool declarations (JSON format) ──────────────────────────────
 
     QWEN_TOOLS_JSON = [
@@ -247,6 +282,60 @@ module Samagotchi
           },
           required: ["name", "content", "scope"]
         }
+      },
+      {
+        name: "task_create",
+        description: "Start a background task for a long-running shell command. Returns task id and output path for later inspection.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: "Shell command to run in the background"
+            },
+            cwd: {
+              type: "string",
+              description: "Optional working directory (defaults to project root)"
+            }
+          },
+          required: ["command"]
+        }
+      },
+      {
+        name: "task_get",
+        description: "Get full metadata for a task by id. Use read on output_path to inspect command output.",
+        parameters: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "Task id returned by task_create"
+            }
+          },
+          required: ["id"]
+        }
+      },
+      {
+        name: "task_list",
+        description: "List all background tasks in the current workspace with current status.",
+        parameters: {
+          type: "object",
+          properties: {}
+        }
+      },
+      {
+        name: "task_stop",
+        description: "Stop a running background task by id.",
+        parameters: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "Task id to stop"
+            }
+          },
+          required: ["id"]
+        }
       }
     ].freeze
 
@@ -283,6 +372,10 @@ module Samagotchi
       #{TOOL_EDIT}
       #{TOOL_MEMORY_READ}
       #{TOOL_MEMORY_WRITE}
+      #{TOOL_TASK_CREATE}
+      #{TOOL_TASK_GET}
+      #{TOOL_TASK_LIST}
+      #{TOOL_TASK_STOP}
 
       #{TOOL_CALL_HINT}
       You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
@@ -323,6 +416,10 @@ module Samagotchi
       #{TOOL_EDIT}
       #{TOOL_MEMORY_READ}
       #{TOOL_MEMORY_WRITE}
+      #{TOOL_TASK_CREATE}
+      #{TOOL_TASK_GET}
+      #{TOOL_TASK_LIST}
+      #{TOOL_TASK_STOP}
 
       #{TOOL_CALL_HINT}
       #{SMALL_CONTEXT_PROTOCOL}
@@ -400,7 +497,18 @@ module Samagotchi
         "<tools>\n#{JSON.pretty_generate(QWEN_TOOLS_JSON)}\n</tools>"
       else
         # Gemma 4 format
-        [TOOL_EXECUTE, TOOL_READ, TOOL_WRITE, TOOL_EDIT, TOOL_MEMORY_READ, TOOL_MEMORY_WRITE].join("\n")
+        [
+          TOOL_EXECUTE,
+          TOOL_READ,
+          TOOL_WRITE,
+          TOOL_EDIT,
+          TOOL_MEMORY_READ,
+          TOOL_MEMORY_WRITE,
+          TOOL_TASK_CREATE,
+          TOOL_TASK_GET,
+          TOOL_TASK_LIST,
+          TOOL_TASK_STOP
+        ].join("\n")
       end
     end
 
