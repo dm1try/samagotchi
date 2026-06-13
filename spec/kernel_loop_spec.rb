@@ -732,6 +732,42 @@ Need to inspect the filesystem first.
       expect(prompts[1]).to include("5")
     end
 
+    it "parses a qwen edit tool call when the function tag is missing its closing bracket" do
+      dir = Dir.mktmpdir("qwen-edit-test")
+      file_path = File.join(dir, "test.txt")
+      File.write(file_path, "line 1\nline 2\nline 3\n")
+
+      allow(client).to receive(:complete).and_return(
+        %(<tool_call><function=edit<parameter=path>#{file_path}</parameter><parameter=new_text>line 2 updated\n</parameter><parameter=start_line>2</parameter><parameter=end_line>2</parameter></function></tool_call>),
+        "ok"
+      )
+
+      result = qwen_kernel.run([{ role: "user", content: "edit" }])
+
+      expect(result).to eq("ok")
+      expect(File.read(file_path)).to eq("line 1\nline 2 updated\nline 3\n")
+    ensure
+      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+    end
+
+    it "parses logged qwen arg_key/arg_value pairs when the function tag is missing its closing bracket" do
+      dir = Dir.mktmpdir("qwen-edit-arg-test")
+      file_path = File.join(dir, "test.txt")
+      File.write(file_path, "line 1\nline 2\nline 3\n")
+
+      allow(client).to receive(:complete).and_return(
+        %(<tool_call><function=edit<arg_key>path</arg_key><arg_value>#{file_path}</arg_value><arg_key>new_text</arg_key><arg_value>line 2 updated\n</arg_value><arg_key>start_line</arg_key><arg_value>2</arg_value><arg_key>end_line</arg_key><arg_value>2</arg_value></function></tool_call>),
+        "ok"
+      )
+
+      result = qwen_kernel.run([{ role: "user", content: "edit" }])
+
+      expect(result).to eq("ok")
+      expect(File.read(file_path)).to eq("line 1\nline 2 updated\nline 3\n")
+    ensure
+      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+    end
+
     it "recovers from an incomplete qwen tool call across generations" do
       prompts = []
       responses = [

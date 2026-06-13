@@ -591,6 +591,9 @@ module Samagotchi
 
     # Parse Qwen 3.6 tool calls:
     #   <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>
+    # Also recovers from a common malformed variant where the function tag is
+    # missing its closing ">" before the next XML tag, and from logged
+    # arg_key/arg_value pairs emitted by some model responses.
     # Uses simple string index matching to find opening/closing tags.
     def parse_qwen_tool_calls(text)
       results = []
@@ -605,20 +608,33 @@ module Samagotchi
         break unless close_pos
 
         body = text[body_start...close_pos]
-        # Extract function name: <function=NAME>
-        if (func_match = body.match(/<function=(\w+)>/))
-          name = func_match[1].to_s.downcase
-          # Extract all parameters: <parameter=KEY>VALUE</parameter>
-          params = {}
-          body.scan(/<parameter=(\w+)>(.*?)<\/parameter>/m) do |key, value|
-            params[key.to_s.downcase] = value
-          end
+        if (name = qwen_function_name(body))
+          params = qwen_params(body)
           results << qwen_call_to_internal(name, params)
         end
         pos = close_pos + tool_close.length
       end
 
       results
+    end
+
+    def qwen_function_name(body)
+      match = body.match(/<function=([a-z0-9_]+)(?:>|(?=<)|$)/i)
+      match && match[1].to_s.downcase
+    end
+
+    def qwen_params(body)
+      params = {}
+
+      body.scan(/<parameter=(\w+)>(.*?)<\/parameter>/m) do |key, value|
+        params[key.to_s.downcase] = value
+      end
+
+      body.scan(/<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>/m) do |key, value|
+        params[key.to_s.downcase.strip] = value
+      end
+
+      params
     end
 
     # Convert a Qwen tool call to internal format.
