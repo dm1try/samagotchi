@@ -14,6 +14,7 @@ require_relative "tools/task_create"
 require_relative "tools/task_get"
 require_relative "tools/task_list"
 require_relative "tools/task_stop"
+require_relative "tools/web_fetch"
 
 module Samagotchi
   # The KernelLoop drives the model ↔ tool interaction cycle.
@@ -90,7 +91,8 @@ module Samagotchi
       Tools::TaskCreate,
       Tools::TaskGet,
       Tools::TaskList,
-      Tools::TaskStop
+      Tools::TaskStop,
+      Tools::WebFetch
     ].freeze
 
     # ── Gemma 4 tool-call constants (canonical model call format) ─────────────
@@ -661,6 +663,8 @@ module Samagotchi
         }
       when Tools::TaskList::NAME
         { name: name, content: "", path: nil, scope: nil }
+      when Tools::WebFetch::NAME
+        { name: name, content: qwen_param_value(params, "url"), path: nil, scope: nil }
       else
         { name: name, content: params.to_s, path: nil, scope: nil }
       end
@@ -808,6 +812,11 @@ module Samagotchi
         }
       when Tools::TaskList::NAME
         { name: name, content: "", path: nil, scope: nil }
+      when Tools::WebFetch::NAME
+        content = params["url"] ||
+                  strip_param_prefix(params_raw, "url") ||
+                  params_raw
+        { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil }
       else
         # For future/unknown tools, pass along whatever the model provided
         { name: name, content: strip_gemma_delimiters(params_raw), path: nil, scope: nil }
@@ -908,6 +917,8 @@ module Samagotchi
                  tool.call(call[:content], cwd: call[:cwd])
                when Tools::TaskGet::NAME, Tools::TaskStop::NAME
                  tool.call(call[:content])
+               when Tools::WebFetch::NAME
+                 tool.call(call[:content])
                else
                  tool.call(call[:content])
                end
@@ -943,6 +954,7 @@ module Samagotchi
       when Tools::TaskGet::NAME then "checking task"
       when Tools::TaskList::NAME then "listing tasks"
       when Tools::TaskStop::NAME then "stopping task"
+      when Tools::WebFetch::NAME then "fetching URL"
       else "calling tool"
       end
     end

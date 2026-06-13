@@ -157,6 +157,15 @@ module Samagotchi
       }<tool|>
     DECL
 
+    TOOL_WEB_FETCH = <<~DECL.strip
+      <|tool>declaration:web_fetch{
+        description:<|"|>Fetch the content of a URL (HTML or text) and return cleaned text. Handles HTML by stripping scripts/styles and extracting visible text. Returns error messages for invalid URLs or HTTP errors.<|"|>,
+        parameters:{
+          url:{type:<|"|>string<|"|>, description:<|"|>The URL to fetch<|"|>, required:true}
+        }
+      }<tool|>
+    DECL
+
     # ── Qwen 3.6 tool declarations (JSON format) ──────────────────────────────
 
     QWEN_TOOLS_JSON = [
@@ -336,6 +345,20 @@ module Samagotchi
           },
           required: ["id"]
         }
+      },
+      {
+        name: "web_fetch",
+        description: "Fetch the content of a URL (HTML or text) and return cleaned text. Handles HTML by stripping scripts/styles and extracting visible text. Returns error messages for invalid URLs or HTTP errors.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "The URL to fetch"
+            }
+          },
+          required: ["url"]
+        }
       }
     ].freeze
 
@@ -376,6 +399,7 @@ module Samagotchi
       #{TOOL_TASK_GET}
       #{TOOL_TASK_LIST}
       #{TOOL_TASK_STOP}
+      #{TOOL_WEB_FETCH}
 
       #{TOOL_CALL_HINT}
       You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
@@ -420,6 +444,7 @@ module Samagotchi
       #{TOOL_TASK_GET}
       #{TOOL_TASK_LIST}
       #{TOOL_TASK_STOP}
+      #{TOOL_WEB_FETCH}
 
       #{TOOL_CALL_HINT}
       #{SMALL_CONTEXT_PROTOCOL}
@@ -507,7 +532,8 @@ module Samagotchi
           TOOL_TASK_CREATE,
           TOOL_TASK_GET,
           TOOL_TASK_LIST,
-          TOOL_TASK_STOP
+          TOOL_TASK_STOP,
+          TOOL_WEB_FETCH
         ].join("\n")
       end
     end
