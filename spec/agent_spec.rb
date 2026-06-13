@@ -117,6 +117,36 @@ file2.rb")
         .to output(/tool> reading file \(read path=\"README.md\"\): ok.*done/m).to_stdout
     end
 
+    it "renders tool activity immediately without duplicating it at turn end" do
+      responses = [
+        %(<|tool_call>call:read{path: "README.md"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete).and_return(*responses)
+
+      agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      original_stdout = $stdout
+      buffer = StringIO.new
+      $stdout = buffer
+      begin
+        agent.run
+      ensure
+        $stdout = original_stdout
+      end
+
+      output = buffer.string
+      tool_line = 'tool> reading file (read path="README.md"): ok'
+      tool_index = output.index(tool_line)
+      done_index = output.index("done")
+
+      expect(tool_index).not_to be_nil
+      expect(done_index).not_to be_nil
+      expect(tool_index).to be < done_index
+      expect(output.scan(/tool> reading file \(read path=\"README.md\"\): ok/).length).to eq(1)
+    end
+
     it "does not render tool activity lines for startup memory index reads" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "project").and_return("- project index")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "system").and_return("- system index")

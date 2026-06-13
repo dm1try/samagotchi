@@ -447,6 +447,31 @@ Need to inspect the filesystem first.
       expect(tool_event[:params]).to eq('path="memories/refactoring_backlog.md"')
     end
 
+    it "emits tool_call_completed events with activity details" do
+      events = []
+      responses = [
+        %(<|tool_call>call:read{path: "README.md"}<tool_call|>),
+        "done"
+      ]
+
+      allow(client).to receive(:complete).and_return(*responses)
+
+      kernel.run(
+        [{ role: "user", content: "read readme" }],
+        on_stream_event: ->(event) { events << event }
+      )
+
+      tool_event = events.find { |event| event[:type] == :tool_call_completed }
+      expect(tool_event).not_to be_nil
+      expect(tool_event).to include(tool: "read", call_index: 1, call_count: 1)
+      expect(tool_event[:activity]).to include(
+        action: "reading file",
+        tool: "read",
+        params: 'path="README.md"',
+        status: "ok"
+      )
+    end
+
     it "strips the 'command:' prefix when the value is unquoted" do
       prompts = []
       allow(client).to receive(:complete) do |prompt|

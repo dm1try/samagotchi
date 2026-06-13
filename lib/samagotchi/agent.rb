@@ -797,6 +797,8 @@ module Samagotchi
     def emit_tool_activity(result)
       activities = result.respond_to?(:tool_activity) ? Array(result.tool_activity) : []
       activities.each do |activity|
+        next if consume_streamed_tool_activity(activity)
+
         $stdout.puts format_tool_activity_line(activity)
       end
     end
@@ -1099,6 +1101,7 @@ module Samagotchi
     def run_kernel_with_thinking_feedback(messages, max_iterations: 10)
       cancellation_controller = Client::CancellationController.new
       @active_cancel_controller = cancellation_controller
+      reset_streamed_tool_activity_counts
       clear_retry_spinner_status
       reset_thinking_memory_notification
       reset_thinking_memory_names
@@ -1143,6 +1146,9 @@ module Samagotchi
         memory_loaded = capture_memory_tool_call(event)
         capture_thinking_tool_call(event) if memory_loaded
         refresh_thinking_spinner_status
+      when :tool_call_completed
+        clear_retry_spinner_status
+        emit_streamed_tool_activity(event[:activity])
       when :generation_completed
         stop_cancel_hotkey_monitor
         clear_retry_spinner_status
@@ -1159,6 +1165,37 @@ module Samagotchi
         reset_thinking_tail_preview
         finish_thinking_spinner
       end
+    end
+
+    def emit_streamed_tool_activity(activity)
+      return if activity.nil?
+
+      track_streamed_tool_activity(activity)
+      $stdout.puts format_tool_activity_line(activity)
+    end
+
+    def reset_streamed_tool_activity_counts
+      @streamed_tool_activity_counts = Hash.new(0)
+    end
+
+    def track_streamed_tool_activity(activity)
+      @streamed_tool_activity_counts ||= Hash.new(0)
+      key = tool_activity_key(activity)
+      @streamed_tool_activity_counts[key] += 1
+    end
+
+    def consume_streamed_tool_activity(activity)
+      @streamed_tool_activity_counts ||= Hash.new(0)
+      key = tool_activity_key(activity)
+      count = @streamed_tool_activity_counts[key]
+      return false unless count.positive?
+
+      @streamed_tool_activity_counts[key] = count - 1
+      true
+    end
+
+    def tool_activity_key(activity)
+      [activity[:action], activity[:tool], activity[:params], activity[:status]].map(&:to_s).join("|")
     end
 
     def emit_cancellation_notice(result)

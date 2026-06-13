@@ -230,7 +230,19 @@ module Samagotchi
             call: call.dup,
             params: tool_activity_params(call[:name], call)
           )
-          dispatch(call, tool_activity: tool_activity)
+          dispatch_result = dispatch(call)
+          activity = dispatch_result[:activity]
+          tool_activity << activity
+          emit_stream_event(
+            on_stream_event,
+            type: :tool_call_completed,
+            iteration: iteration_index + 1,
+            call_count: calls.length,
+            call_index: call_index + 1,
+            tool: call[:name],
+            activity: activity
+          )
+          dispatch_result[:output]
         end.join("\n\n---\n\n")
         emit_stream_event(on_stream_event, type: :tool_dispatch_completed, iteration: iteration_index + 1, call_count: calls.length)
         conversation << { role: "tool_response", content: results }
@@ -890,14 +902,15 @@ module Samagotchi
       s.gsub('\\"', '"').gsub("\\'", "'").gsub("\\n", "\n").gsub("\\\\", "\\")
     end
 
-    def dispatch(call, tool_activity: nil)
-      tool_activity ||= []
+    def dispatch(call)
       tool = TOOLS.find { |t| t.name == call[:name] }
       unless tool
         available = TOOLS.map(&:name).join(", ")
         result = "Error: unknown tool '#{call[:name]}'. Available: #{available}"
-        tool_activity << tool_activity_event(call[:name], call, result)
-        return result
+        return {
+          output: result,
+          activity: tool_activity_event(call[:name], call, result)
+        }
       end
 
       verbose_log("── tool call: #{call[:name]} ──\n#{call[:path] ? "path: #{call[:path]}\n" : ""}#{call[:scope] ? "scope: #{call[:scope]}\n" : ""}#{call[:content]}\n──────────────────")
@@ -924,13 +937,17 @@ module Samagotchi
                end
 
       verbose_log("── tool result: #{call[:name]} ──\n#{result}\n──────────────────")
-      tool_activity << tool_activity_event(call[:name], call, result)
-      "[#{call[:name]}]\n#{result}"
+      {
+        output: "[#{call[:name]}]\n#{result}",
+        activity: tool_activity_event(call[:name], call, result)
+      }
     rescue => e
       verbose_log("── tool error: #{call[:name]} ──\n#{e.message}\n──────────────────")
       result = "Error: #{e.message}"
-      tool_activity << tool_activity_event(call[:name], call, result)
-      "[#{call[:name]}] #{result}"
+      {
+        output: "[#{call[:name]}] #{result}",
+        activity: tool_activity_event(call[:name], call, result)
+      }
     end
 
     def tool_activity_event(tool_name, call, result)
