@@ -1035,6 +1035,8 @@ module Samagotchi
         "id=#{preview_tool_param(call[:content])}"
       when Tools::TaskList::NAME
         nil
+      when Tools::WebFetch::NAME
+        "url=#{preview_tool_param(call[:content])}"
       else
         nil
       end
