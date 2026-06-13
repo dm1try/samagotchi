@@ -3,6 +3,7 @@
 
 require "net/http"
 require "uri"
+require "ipaddr"
 require "nokogiri"
 
 module Samagotchi
@@ -26,6 +27,8 @@ module Samagotchi
           return "Error: invalid URL scheme. Expected http:// or https://"
         end
 
+        return "Error: SSRF protection blocked access to internal/private host" unless ssrf_protected?(uri)
+
         response = fetch_url(uri)
         return handle_http_error(response, uri) unless response.is_a?(Net::HTTPSuccess)
 
@@ -42,6 +45,43 @@ module Samagotchi
         "Error: request timed out after #{TIMEOUT_SEC}s"
       rescue => e
         "Error: #{e.message}"
+      end
+
+      def self.ssrf_protected?(uri)
+        return true if uri.host.nil?
+
+        private_ranges = [
+          IPAddr.new("127.0.0.0/8"),
+          IPAddr.new("10.0.0.0/8"),
+          IPAddr.new("172.16.0.0/12"),
+          IPAddr.new("192.168.0.0/16"),
+          IPAddr.new("169.254.0.0/16"),
+          IPAddr.new("0.0.0.0/8"),
+          IPAddr.new("::1/128"),
+          IPAddr.new("fc00::/7"),
+          IPAddr.new("fe80::/10"),
+          IPAddr.new("::ffff:0:0/96"),
+        ]
+
+        # Try to parse host as IP directly
+        begin
+          ip = IPAddr.new(uri.host)
+          private_ranges.each { |range| return false if range.include?(ip) }
+          return true
+        rescue IPAddr::InvalidAddressError
+          # Host is a domain name — resolve and check
+        end
+
+        # Resolve domain to IP and check
+        begin
+          addr_info = Socket.getaddrinfo(uri.host, 80, :INET, :STREAM)
+          ip = addr_info.first[3]
+          private_ranges.each { |range| return false if range.include?(ip) }
+        rescue SocketError
+          # DNS failure — let fetch URL handle it
+        end
+
+        true
       end
 
       def self.fetch_url(uri)
@@ -75,8 +115,13 @@ module Samagotchi
 
         doc = Nokogiri::HTML(html)
 
-        # Remove script and style elements
-        doc.css("script, style, noscript, iframe, svg").remove
+        # Extract noscript text before removing it
+        doc.css("noscript").each do |node|
+          node.replace(node.text) if node.text?
+        end
+
+        # Remove script, style, iframe, svg elements
+        doc.css("script, style, iframe, svg").remove
 
         # Get text content
         text = doc.text
@@ -87,8 +132,11 @@ module Samagotchi
 
         # Truncate to max output bytes
         if text.bytesize > MAX_OUTPUT_BYTES
-          text = text.byteslice(0, MAX_OUTPUT_BYTES)
-          text = "#{text}... [TRUNCATED - content too large]"
+          suffix = "... [TRUNCATED - content too large]"
+          budget = MAX_OUTPUT_BYTES - suffix.bytesize
+          truncated = text.byteslice(0, budget)
+          truncated = truncated.encode("UTF-8", invalid: :replace, undef: :replace)
+          text = "#{truncated}#{suffix}"
         end
 
         text

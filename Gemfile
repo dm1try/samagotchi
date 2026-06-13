@@ -9,4 +9,5 @@ gem "nokogiri"
 
 group :test do
   gem "rspec", "~> 3"
+  gem "webmock"
 end
