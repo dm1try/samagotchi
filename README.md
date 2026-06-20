@@ -118,6 +118,14 @@ Configure these environment variables to avoid premature request failures:
 - `LLAMA_OPEN_TIMEOUT` (default: `10`) connection timeout in seconds.
 - `LLAMA_READ_TIMEOUT` (default: `600`) response read timeout in seconds.
 
+## Llama Model Routing
+
+To explicitly route requests to a named model in llama.cpp, set:
+
+- `SAMAGOTCHI_MODEL` (optional): model name/id sent as the `model` field on `/completion` requests.
+
+When unset or blank, Samagotchi keeps the previous behavior and omits `model` from the request payload.
+
 ## Llama Network Retry Behavior
 
 Transient network failures are retried automatically with exponential backoff.

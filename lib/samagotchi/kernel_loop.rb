@@ -288,6 +288,8 @@ module Samagotchi
       kwargs[:stop] = @profile.stop_sequences if client_supports_keyword?(:stop)
       n_predict = completion_n_predict
       kwargs[:n_predict] = n_predict if n_predict && client_supports_keyword?(:n_predict)
+      model_name = completion_model_name
+      kwargs[:model] = model_name if model_name && client_supports_keyword?(:model)
       kwargs
     end
 
@@ -303,6 +305,11 @@ module Samagotchi
       return 1024 if @profile.name == "qwen36"
 
       nil
+    end
+
+    def completion_model_name
+      value = ENV["SAMAGOTCHI_MODEL"].to_s.strip
+      value.empty? ? nil : value
     end
 
     def client_supports_keyword?(keyword)

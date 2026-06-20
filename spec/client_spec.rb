@@ -52,6 +52,48 @@ RSpec.describe Samagotchi::Client do
       expect(request.body).to include('"n_predict":1024')
     end
 
+    it "includes model when provided" do
+      client = described_class.new(host: "localhost", port: 8080)
+      http = instance_double(Net::HTTP)
+      response = double("response")
+      request = nil
+
+      allow(Net::HTTP).to receive(:start)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .and_yield(http)
+      allow(http).to receive(:request) do |built_request, &block|
+        request = built_request
+        block.call(response)
+      end
+      allow(response).to receive(:read_body).and_yield("data: {\"content\":\"ok\"}\n")
+
+      result = client.complete("prompt", stop: ["done"], model: "Qwen3-14B-Instruct")
+
+      expect(result).to eq("ok")
+      expect(request.body).to include('"model":"Qwen3-14B-Instruct"')
+    end
+
+    it "omits model when blank" do
+      client = described_class.new(host: "localhost", port: 8080)
+      http = instance_double(Net::HTTP)
+      response = double("response")
+      request = nil
+
+      allow(Net::HTTP).to receive(:start)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .and_yield(http)
+      allow(http).to receive(:request) do |built_request, &block|
+        request = built_request
+        block.call(response)
+      end
+      allow(response).to receive(:read_body).and_yield("data: {\"content\":\"ok\"}\n")
+
+      result = client.complete("prompt", stop: ["done"], model: "   ")
+
+      expect(result).to eq("ok")
+      expect(request.body).not_to include('"model"')
+    end
+
     it "uses configured timeout values" do
       client = described_class.new(host: "localhost", port: 8080, open_timeout: 2, read_timeout: 1200)
       http = instance_double(Net::HTTP)
@@ -180,6 +222,83 @@ RSpec.describe Samagotchi::Client do
 
       expect { client.complete("prompt") }
         .to raise_error(RuntimeError, /llama\.cpp request failed \(localhost:8080\): .*bad json/)
+    end
+
+    context "with the OpenAI-compatible transport" do
+      it "posts to /v1/chat/completions and joins streamed delta content" do
+        client = described_class.new(host: "localhost", port: 8000, transport: :openai, model: "qwen3")
+        http = instance_double(Net::HTTP)
+        response = double("response")
+        request = nil
+
+        allow(Net::HTTP).to receive(:start)
+          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .and_yield(http)
+        allow(http).to receive(:request) do |built_request, &block|
+          request = built_request
+          block.call(response)
+        end
+        allow(response).to receive(:read_body)
+          .and_yield("data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n")
+          .and_yield("data: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n")
+          .and_yield("data: [DONE]\n")
+
+        result = client.complete("prompt", stop: ["done"], n_predict: 128)
+
+        expect(result).to eq("Hello")
+        expect(request.path).to eq("/v1/chat/completions")
+        expect(request.body).to include('"model":"qwen3"')
+        expect(request.body).to include('"messages":[{"role":"user","content":"prompt"}]')
+        expect(request.body).to include('"stop":["done"]')
+        expect(request.body).to include('"max_tokens":128')
+      end
+
+      it "emits chunk callbacks only for visible delta content" do
+        client = described_class.new(host: "localhost", port: 8000, transport: :openai, model: "qwen3")
+        http = instance_double(Net::HTTP)
+        response = double("response")
+        chunks = []
+
+        allow(Net::HTTP).to receive(:start)
+          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .and_yield(http)
+        allow(http).to receive(:request) { |_request, &block| block.call(response) }
+        allow(response).to receive(:read_body)
+          .and_yield("data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n")
+          .and_yield("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n")
+          .and_yield("data: [DONE]\n")
+
+        result = client.complete("prompt", on_chunk: ->(event) { chunks << event[:content] })
+
+        expect(result).to eq("Hi")
+        expect(chunks).to eq(["Hi"])
+      end
+
+      it "adds an authorization header when an API key is configured" do
+        client = described_class.new(host: "localhost", port: 8000, transport: :openai, model: "qwen3", api_key: "secret")
+        http = instance_double(Net::HTTP)
+        response = double("response")
+        request = nil
+
+        allow(Net::HTTP).to receive(:start)
+          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .and_yield(http)
+        allow(http).to receive(:request) do |built_request, &block|
+          request = built_request
+          block.call(response)
+        end
+        allow(response).to receive(:read_body).and_yield("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n")
+
+        expect(client.complete("prompt")).to eq("ok")
+        expect(request["Authorization"]).to eq("Bearer secret")
+      end
+
+      it "requires a model when using the OpenAI-compatible transport" do
+        client = described_class.new(host: "localhost", port: 8000, transport: :openai)
+
+        expect { client.complete("prompt") }
+          .to raise_error(ArgumentError, /SAMAGOTCHI_MODEL is required/)
+      end
     end
   end
 end
