@@ -23,6 +23,7 @@ module Samagotchi
     PROMPT_HISTORY_LIMIT = 20
     SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
     CONTINUE_COMMAND = "/continue"
+    MODEL_COMMAND = "/model"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
     THINKING_UI_ENV = "SAMAGOTCHI_THINKING_UI"
     THINKING_UI_SPINNER = "spinner"
@@ -514,6 +515,8 @@ module Samagotchi
       @mode    = mode.to_sym
       @prompt  = prompt
       @profile = profile || ModelProfile.from_env
+      @session_model_name = ENV["SAMAGOTCHI_MODEL"].to_s.strip
+      @session_model_name = nil if @session_model_name.empty?
       @kernel  = KernelLoop.new(client: client, verbose: verbose, log_file: log_file, profile: @profile)
     end
 
@@ -714,6 +717,11 @@ module Samagotchi
 
           if continue_request?(input)
             $stdout.puts "\nmodel> nothing to continue"
+            next
+          end
+
+          if model_command?(input)
+            $stdout.puts "\nmodel> #{handle_model_command(input)}"
             next
           end
 
@@ -1057,6 +1065,35 @@ module Samagotchi
       input == CONTINUE_COMMAND
     end
 
+    def model_command?(input)
+      input.to_s.strip.match?(/\A\/model(?:\s+.*)?\z/)
+    end
+
+    def handle_model_command(input)
+      suffix = input.to_s.strip.delete_prefix(MODEL_COMMAND).strip
+      if suffix.empty?
+        return "runtime model: #{current_model_label}"
+      end
+
+      lowered = suffix.downcase
+      if ["clear", "default", "none", "off"].include?(lowered)
+        @session_model_name = nil
+        return "runtime model cleared (using #{current_model_label})"
+      end
+
+      @session_model_name = suffix
+      "runtime model set to #{@session_model_name}"
+    end
+
+    def current_model_label
+      return @session_model_name if @session_model_name && !@session_model_name.empty?
+
+      env_model = ENV["SAMAGOTCHI_MODEL"].to_s.strip
+      return env_model unless env_model.empty?
+
+      "server default"
+    end
+
     def exit_command?(input)
       normalized = input.to_s.strip.downcase
       normalized == "exit" || normalized == "/exit"
@@ -1124,7 +1161,8 @@ module Samagotchi
         messages,
         max_iterations: max_iterations,
         on_stream_event: method(:handle_stream_event),
-        cancel_controller: cancellation_controller
+        cancel_controller: cancellation_controller,
+        model_name: @session_model_name
       )
       emit_cancellation_notice(result)
       result

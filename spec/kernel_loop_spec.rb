@@ -901,6 +901,21 @@ Need to inspect the filesystem first.
       ENV.delete("SAMAGOTCHI_MODEL")
     end
 
+    it "prefers explicit model_name run override over environment" do
+      captured_kwargs = nil
+      ENV["SAMAGOTCHI_MODEL"] = "env-model"
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        captured_kwargs = kwargs
+        "done"
+      end
+
+      qwen_kernel.run([{ role: "user", content: "hi" }], model_name: "runtime-model")
+
+      expect(captured_kwargs[:model]).to eq("runtime-model")
+    ensure
+      ENV.delete("SAMAGOTCHI_MODEL")
+    end
+
     it "handles orphaned closing </think> tags" do
       # Model might output incomplete blocks - ensure stray closing tags are removed
       allow(client).to receive(:complete).and_return(

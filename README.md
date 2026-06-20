@@ -35,6 +35,19 @@ Behavior:
 This lets you run `bin/chi` without repeating common defaults such as model
 profile or llama host/port on every invocation.
 
+## Runtime Model Switch (Assist Mode)
+
+In interactive assist mode, you can switch the request model without restarting:
+
+- `/model <name>`: set a session-scoped model override.
+- `/model`: show the effective model currently used for requests.
+- `/model clear` (or `default`/`none`/`off`): clear the session override.
+
+Notes:
+
+- The switch updates only the request `model` field; it does not rewrite config files.
+- Profile formatting (`SAMAGOTCHI_MODEL_PROFILE`) remains unchanged for the current run.
+
 ## Tool Activity Log
 
 Samagotchi now prints a concise, human-friendly tool activity log in normal

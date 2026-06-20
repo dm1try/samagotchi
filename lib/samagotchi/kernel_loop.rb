@@ -148,8 +148,9 @@ module Samagotchi
     # @param max_iterations [Integer]            safety cap on tool-call rounds
     # @param on_stream_event [Proc, nil]         optional callback for generation events
     # @param cancel_controller [Client::CancellationController, nil] optional cancellation source
+    # @param model_name [String, nil]            optional per-run model override
     # @return [Result] final visible response with continuation metadata
-    def run(messages, max_iterations: 10, on_stream_event: nil, cancel_controller: nil)
+    def run(messages, max_iterations: 10, on_stream_event: nil, cancel_controller: nil, model_name: nil)
       conversation = prepare_conversation(messages)
       context_state = initial_context_status_state(conversation)
       exhausted = false
@@ -162,7 +163,7 @@ module Samagotchi
         prompt = prompt_with_context_status(conversation, iteration_index: iteration_index, state: context_state)
         emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
         response = if on_stream_event
-                     @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller, on_chunk: lambda { |chunk|
+                     @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller, model_name: model_name, on_chunk: lambda { |chunk|
                        emit_stream_event(
                          on_stream_event,
                          type: :generation_chunk,
@@ -180,7 +181,7 @@ module Samagotchi
                        )
                      }))
                    else
-                     @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller))
+                     @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller, model_name: model_name))
                    end
         emit_stream_event(
           on_stream_event,
@@ -280,7 +281,7 @@ module Samagotchi
       nil
     end
 
-    def complete_kwargs(cancel_controller:, on_chunk: nil, on_retry: nil)
+    def complete_kwargs(cancel_controller:, model_name: nil, on_chunk: nil, on_retry: nil)
       kwargs = {}
       kwargs[:on_chunk] = on_chunk if on_chunk
       kwargs[:on_retry] = on_retry if on_retry && client_supports_keyword?(:on_retry)
@@ -288,8 +289,8 @@ module Samagotchi
       kwargs[:stop] = @profile.stop_sequences if client_supports_keyword?(:stop)
       n_predict = completion_n_predict
       kwargs[:n_predict] = n_predict if n_predict && client_supports_keyword?(:n_predict)
-      model_name = completion_model_name
-      kwargs[:model] = model_name if model_name && client_supports_keyword?(:model)
+      resolved_model_name = completion_model_name(model_name)
+      kwargs[:model] = resolved_model_name if resolved_model_name && client_supports_keyword?(:model)
       kwargs
     end
 
@@ -307,8 +308,9 @@ module Samagotchi
       nil
     end
 
-    def completion_model_name
-      value = ENV["SAMAGOTCHI_MODEL"].to_s.strip
+    def completion_model_name(override = nil)
+      value = override.to_s.strip
+      value = ENV["SAMAGOTCHI_MODEL"].to_s.strip if value.empty?
       value.empty? ? nil : value
     end
 

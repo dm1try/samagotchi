@@ -21,6 +21,7 @@ RSpec.describe Samagotchi::Agent do
     original_status_width_mode = ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"]
     original_status_fixed_width = ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"]
     original_status_max_width = ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"]
+    original_model = ENV["SAMAGOTCHI_MODEL"]
     original_columns = ENV["COLUMNS"]
     example.run
     ENV["THINKING_MODE"] = original_thinking_mode
@@ -33,6 +34,7 @@ RSpec.describe Samagotchi::Agent do
     ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"] = original_status_width_mode
     ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"] = original_status_fixed_width
     ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"] = original_status_max_width
+    ENV["SAMAGOTCHI_MODEL"] = original_model
     ENV["COLUMNS"] = original_columns
   end
 
@@ -1005,6 +1007,32 @@ file2.rb")
 
       expect { agent.run }
         .to output(/iteration limit reached.*finished/m).to_stdout
+    end
+
+    it "supports /model in assist mode and applies it to subsequent requests" do
+      captured_kwargs = nil
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        captured_kwargs = kwargs
+        "done"
+      end
+      allow(Reline).to receive(:readmultiline).and_return("/model Qwen3-14B-Instruct", "run", nil)
+
+      agent = described_class.new(mode: "assist", client: client)
+
+      expect { agent.run }
+        .to output(/runtime model set to Qwen3-14B-Instruct.*done/m).to_stdout
+      expect(captured_kwargs[:model]).to eq("Qwen3-14B-Instruct")
+    end
+
+    it "shows effective /model value without calling the model" do
+      ENV["SAMAGOTCHI_MODEL"] = "env-model"
+      allow(Reline).to receive(:readmultiline).and_return("/model", nil)
+      expect(client).not_to receive(:complete)
+
+      agent = described_class.new(mode: "assist", client: client)
+
+      expect { agent.run }
+        .to output(/runtime model: env-model/).to_stdout
     end
 
     it "rejects new input until the interrupted turn is resumed" do
