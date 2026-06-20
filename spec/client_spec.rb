@@ -301,4 +301,37 @@ RSpec.describe Samagotchi::Client do
       end
     end
   end
+
+  describe "#list_models" do
+    it "returns the discovered models from /models" do
+      client = described_class.new(host: "localhost", port: 8080)
+      http = instance_double(Net::HTTP)
+      response = instance_double(Net::HTTPResponse, body: '{"data":[{"id":"ggml-org/gemma-4-26b-a4b-it-GGUF:Q4_K_M","status":"loaded"}]}')
+
+      allow(Net::HTTP).to receive(:start)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .and_yield(http)
+      allow(http).to receive(:request).and_return(response)
+
+      result = client.list_models
+
+      expect(result).to eq([
+        { "id" => "ggml-org/gemma-4-26b-a4b-it-GGUF:Q4_K_M", "status" => "loaded" }
+      ])
+    end
+
+    it "raises RetryExhausted after retry budget is exhausted" do
+      client = described_class.new(host: "localhost", port: 8080)
+      allow(client).to receive(:wait_with_cancellation)
+      allow(Net::HTTP).to receive(:start)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .and_raise(Net::OpenTimeout)
+
+      expect { client.list_models }
+        .to raise_error(described_class::RetryExhausted) do |error|
+          expect(error.attempts).to eq(6)
+          expect(error.last_error).to be_a(Net::OpenTimeout)
+        end
+    end
+  end
 end

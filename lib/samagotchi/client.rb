@@ -210,6 +210,45 @@ module Samagotchi
       end
     end
 
+    def list_models
+      uri = URI("http://#{@host}:#{@port}/models")
+      request = Net::HTTP::Get.new(uri)
+
+      attempts = 0
+
+      loop do
+        attempts += 1
+
+        begin
+          response_body = nil
+          Net::HTTP.start(
+            uri.host,
+            uri.port,
+            open_timeout: @open_timeout,
+            read_timeout: @read_timeout
+          ) do |http|
+            response = http.request(request)
+            response_body = response.body.to_s
+          end
+
+          parsed = JSON.parse(response_body)
+          return parsed.fetch("data", parsed)
+        rescue StandardError => e
+          retry_delay = retry_delay_for(attempts)
+          if retryable_network_error?(e) && !retry_delay.nil?
+            wait_with_cancellation(retry_delay, nil)
+            next
+          end
+
+          if retryable_network_error?(e)
+            raise RetryExhausted.new(attempts: attempts, last_error: e)
+          end
+
+          raise "llama.cpp model listing failed (#{@host}:#{@port}): #{e.message}"
+        end
+      end
+    end
+
     private
 
     def retryable_network_error?(error)

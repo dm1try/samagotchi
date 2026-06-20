@@ -24,6 +24,7 @@ module Samagotchi
     SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
     CONTINUE_COMMAND = "/continue"
     MODEL_COMMAND = "/model"
+    MODELS_COMMAND = "/models"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
     THINKING_UI_ENV = "SAMAGOTCHI_THINKING_UI"
     THINKING_UI_SPINNER = "spinner"
@@ -516,8 +517,9 @@ module Samagotchi
       @prompt  = prompt
       @base_model_name = ModelProfile.required_model_name
       @session_model_name = @base_model_name
+      @client = client || Client.new
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@session_model_name)
-      @kernel  = KernelLoop.new(client: client, verbose: verbose, log_file: log_file, profile: @profile)
+      @kernel  = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile)
     end
 
     def run
@@ -717,6 +719,11 @@ module Samagotchi
 
           if continue_request?(input)
             $stdout.puts "\nmodel> nothing to continue"
+            next
+          end
+
+          if models_command?(input)
+            $stdout.puts "\nmodel> #{handle_models_command}"
             next
           end
 
@@ -1069,6 +1076,10 @@ module Samagotchi
       input.to_s.strip.match?(/\A\/model(?:\s+.*)?\z/)
     end
 
+    def models_command?(input)
+      input.to_s.strip == MODELS_COMMAND
+    end
+
     def handle_model_command(input)
       suffix = input.to_s.strip.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
@@ -1087,6 +1098,21 @@ module Samagotchi
 
     def current_model_label
       @session_model_name
+    end
+
+    def handle_models_command
+      models = Array(@client.list_models)
+      return "no models discovered" if models.empty?
+
+      models.map do |entry|
+        identifier = entry["id"] || entry[:id] || "unknown"
+        status = entry["status"] || entry[:status]
+        status.to_s.empty? ? identifier : "#{identifier} (#{status})"
+      end.join("\n")
+    rescue RetryExhausted => e
+      "network error after #{e.attempts} attempts while listing models"
+    rescue StandardError => e
+      "unable to list models: #{e.message}"
     end
 
     def apply_runtime_model!(model_name)

@@ -42,6 +42,7 @@ In interactive assist mode, you can switch the request model without restarting:
 - `/model <name>`: set a session-scoped model override.
 - `/model`: show the effective model currently used for requests.
 - `/model clear` (or `default`/`none`/`off`): clear the session override.
+- `/models`: list model ids currently discovered by llama.cpp.
 
 Notes:
 

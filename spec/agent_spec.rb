@@ -1036,6 +1036,20 @@ file2.rb")
         .to output(/runtime model: env-model/).to_stdout
     end
 
+    it "lists discovered models without invoking completion" do
+      allow(Reline).to receive(:readmultiline).and_return("/models", nil)
+      allow(client).to receive(:list_models).and_return([
+        { "id" => "ggml-org/gemma-4-26b-a4b-it-GGUF:Q4_K_M", "status" => "loaded" },
+        { "id" => "Qwen3-14B-Instruct", "status" => "unloaded" }
+      ])
+      expect(client).not_to receive(:complete)
+
+      agent = described_class.new(mode: "assist", client: client)
+
+      expect { agent.run }
+        .to output(/ggml-org\/gemma-4-26b-a4b-it-GGUF:Q4_K_M \(loaded\).*Qwen3-14B-Instruct \(unloaded\)/m).to_stdout
+    end
+
     it "rejects new input until the interrupted turn is resumed" do
       allow(client).to receive(:complete)
         .and_return(*Array.new(10, looping_call), "finished")
