@@ -10,12 +10,15 @@ RSpec.describe Samagotchi::KernelLoop do
 
   around do |example|
     original_env = {
+      "SAMAGOTCHI_MODEL" => ENV["SAMAGOTCHI_MODEL"],
       "SAMAGOTCHI_CONTEXT_STATUS" => ENV["SAMAGOTCHI_CONTEXT_STATUS"],
       "SAMAGOTCHI_CONTEXT_WINDOW_TOKENS" => ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"],
       "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN" => ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"],
       "SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS" => ENV["SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"],
       "SAMAGOTCHI_CONTEXT_STATUS_CADENCE" => ENV["SAMAGOTCHI_CONTEXT_STATUS_CADENCE"]
     }
+
+    ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it" if ENV["SAMAGOTCHI_MODEL"].to_s.strip.empty?
 
     example.run
   ensure
@@ -949,44 +952,38 @@ Need to inspect the filesystem first.
     end
   end
 
-  describe "profile selection from environment" do
+  describe "profile inference from model" do
     around do |example|
-      original = ENV.fetch("SAMAGOTCHI_MODEL_PROFILE", nil)
+      original = ENV.fetch("SAMAGOTCHI_MODEL", nil)
       example.run
     ensure
       if original.nil?
-        ENV.delete("SAMAGOTCHI_MODEL_PROFILE")
+        ENV.delete("SAMAGOTCHI_MODEL")
       else
-        ENV["SAMAGOTCHI_MODEL_PROFILE"] = original
+        ENV["SAMAGOTCHI_MODEL"] = original
       end
     end
 
-    it "defaults to gemma4 when SAMAGOTCHI_MODEL_PROFILE is unset" do
-      ENV.delete("SAMAGOTCHI_MODEL_PROFILE")
-      kernel = described_class.new(client: client)
-      expect(kernel.instance_variable_get(:@profile).name).to eq("gemma4")
+    it "raises when SAMAGOTCHI_MODEL is unset" do
+      ENV.delete("SAMAGOTCHI_MODEL")
+      expect { described_class.new(client: client) }
+        .to raise_error(ArgumentError, /SAMAGOTCHI_MODEL is required/)
     end
 
-    it "selects qwen36 when SAMAGOTCHI_MODEL_PROFILE=qwen36" do
-      ENV["SAMAGOTCHI_MODEL_PROFILE"] = "qwen36"
+    it "infers qwen36 when SAMAGOTCHI_MODEL contains qwen" do
+      ENV["SAMAGOTCHI_MODEL"] = "Qwen3-14B-Instruct"
       kernel = described_class.new(client: client)
       expect(kernel.instance_variable_get(:@profile).name).to eq("qwen36")
     end
 
-    it "selects gemma4 when SAMAGOTCHI_MODEL_PROFILE=gemma4" do
-      ENV["SAMAGOTCHI_MODEL_PROFILE"] = "gemma4"
-      kernel = described_class.new(client: client)
-      expect(kernel.instance_variable_get(:@profile).name).to eq("gemma4")
-    end
-
-    it "defaults to gemma4 for unknown profile names" do
-      ENV["SAMAGOTCHI_MODEL_PROFILE"] = "unknown_model"
+    it "infers gemma4 for non-qwen model names" do
+      ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
       kernel = described_class.new(client: client)
       expect(kernel.instance_variable_get(:@profile).name).to eq("gemma4")
     end
 
     it "respects explicit profile argument over env var" do
-      ENV["SAMAGOTCHI_MODEL_PROFILE"] = "gemma4"
+      ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
       kernel = described_class.new(client: client, profile: Samagotchi::ModelProfile.qwen36)
       expect(kernel.instance_variable_get(:@profile).name).to eq("qwen36")
     end

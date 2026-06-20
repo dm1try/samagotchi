@@ -20,7 +20,7 @@ Default path:
 Example:
 
 ```yaml
-SAMAGOTCHI_MODEL_PROFILE: qwen36
+SAMAGOTCHI_MODEL: Qwen3-14B-Instruct
 LLAMA_HOST: 192.168.1.29
 LLAMA_PORT: 8081
 SAMAGOTCHI_THINKING_UI: spinner
@@ -33,7 +33,7 @@ Behavior:
 - Real environment variables still win over config-file values.
 
 This lets you run `bin/chi` without repeating common defaults such as model
-profile or llama host/port on every invocation.
+and llama host/port on every invocation.
 
 ## Runtime Model Switch (Assist Mode)
 
@@ -45,8 +45,8 @@ In interactive assist mode, you can switch the request model without restarting:
 
 Notes:
 
-- The switch updates only the request `model` field; it does not rewrite config files.
-- Profile formatting (`SAMAGOTCHI_MODEL_PROFILE`) remains unchanged for the current run.
+- The switch updates the request `model` field and automatically infers/switches profile behavior.
+- The command is session-scoped and does not rewrite config files.
 
 ## Tool Activity Log
 
@@ -135,9 +135,14 @@ Configure these environment variables to avoid premature request failures:
 
 To explicitly route requests to a named model in llama.cpp, set:
 
-- `SAMAGOTCHI_MODEL` (optional): model name/id sent as the `model` field on `/completion` requests.
+- `SAMAGOTCHI_MODEL` (required): model name/id sent as the `model` field on `/completion` requests.
 
-When unset or blank, Samagotchi keeps the previous behavior and omits `model` from the request payload.
+Profile inference uses the model name:
+
+- names containing `qwen` map to the `qwen36` profile
+- all others map to the `gemma4` profile
+
+When `SAMAGOTCHI_MODEL` is unset or blank, Samagotchi fails fast with a clear startup/configuration error.
 
 ## Llama Network Retry Behavior
 

@@ -514,9 +514,9 @@ module Samagotchi
     def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil)
       @mode    = mode.to_sym
       @prompt  = prompt
-      @profile = profile || ModelProfile.from_env
-      @session_model_name = ENV["SAMAGOTCHI_MODEL"].to_s.strip
-      @session_model_name = nil if @session_model_name.empty?
+      @base_model_name = ModelProfile.required_model_name
+      @session_model_name = @base_model_name
+      @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@session_model_name)
       @kernel  = KernelLoop.new(client: client, verbose: verbose, log_file: log_file, profile: @profile)
     end
 
@@ -1072,26 +1072,28 @@ module Samagotchi
     def handle_model_command(input)
       suffix = input.to_s.strip.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
-        return "runtime model: #{current_model_label}"
+        return "runtime model: #{current_model_label} (profile=#{@profile.name})"
       end
 
       lowered = suffix.downcase
       if ["clear", "default", "none", "off"].include?(lowered)
-        @session_model_name = nil
-        return "runtime model cleared (using #{current_model_label})"
+        apply_runtime_model!(@base_model_name)
+        return "runtime model reset to #{@session_model_name} (profile=#{@profile.name})"
       end
 
-      @session_model_name = suffix
-      "runtime model set to #{@session_model_name}"
+      apply_runtime_model!(suffix)
+      "runtime model set to #{@session_model_name} (profile=#{@profile.name})"
     end
 
     def current_model_label
-      return @session_model_name if @session_model_name && !@session_model_name.empty?
+      @session_model_name
+    end
 
-      env_model = ENV["SAMAGOTCHI_MODEL"].to_s.strip
-      return env_model unless env_model.empty?
-
-      "server default"
+    def apply_runtime_model!(model_name)
+      resolved_model_name = ModelProfile.required_model_name(model_name)
+      @session_model_name = resolved_model_name
+      @profile = ModelProfile.from_model_name(resolved_model_name)
+      @kernel.sync_profile_from_model!(resolved_model_name)
     end
 
     def exit_command?(input)

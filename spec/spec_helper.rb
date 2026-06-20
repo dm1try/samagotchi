@@ -19,4 +19,5 @@ RSpec.configure do |config|
   config.before(:each, :integration) do
     skip "Set LLAMA_INTEGRATION=1 to run integration tests" unless ENV["LLAMA_INTEGRATION"] == "1"
   end
+
 end

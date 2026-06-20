@@ -23,6 +23,7 @@ RSpec.describe Samagotchi::Agent do
     original_status_max_width = ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"]
     original_model = ENV["SAMAGOTCHI_MODEL"]
     original_columns = ENV["COLUMNS"]
+    ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it" if ENV["SAMAGOTCHI_MODEL"].to_s.strip.empty?
     example.run
     ENV["THINKING_MODE"] = original_thinking_mode
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
@@ -1020,7 +1021,7 @@ file2.rb")
       agent = described_class.new(mode: "assist", client: client)
 
       expect { agent.run }
-        .to output(/runtime model set to Qwen3-14B-Instruct.*done/m).to_stdout
+        .to output(/runtime model set to Qwen3-14B-Instruct \(profile=qwen36\).*done/m).to_stdout
       expect(captured_kwargs[:model]).to eq("Qwen3-14B-Instruct")
     end
 

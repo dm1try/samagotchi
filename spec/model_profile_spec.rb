@@ -61,29 +61,67 @@ RSpec.describe Samagotchi::ModelProfile do
     end
   end
 
-  describe ".from_env" do
-    after { ENV.delete("SAMAGOTCHI_MODEL_PROFILE") }
-
-    it "returns Gemma 4 when SAMAGOTCHI_MODEL_PROFILE is not set" do
-      ENV.delete("SAMAGOTCHI_MODEL_PROFILE")
-      profile = described_class.from_env
-      expect(profile.name).to eq("gemma4")
+  describe ".from_model_name" do
+    it "infers Qwen profile when model name contains qwen" do
+      profile = described_class.from_model_name("Qwen3-14B-Instruct")
+      expect(profile.name).to eq("qwen36")
     end
 
-    it "returns Qwen 3.6 when SAMAGOTCHI_MODEL_PROFILE=qwen36" do
-      ENV["SAMAGOTCHI_MODEL_PROFILE"] = "qwen36"
+    it "falls back to Gemma profile for unknown model families" do
+      profile = described_class.from_model_name("some-other-model")
+      expect(profile.name).to eq("gemma4")
+    end
+  end
+
+  describe ".required_model_name" do
+    around do |example|
+      original = ENV.fetch("SAMAGOTCHI_MODEL", nil)
+      example.run
+    ensure
+      if original.nil?
+        ENV.delete("SAMAGOTCHI_MODEL")
+      else
+        ENV["SAMAGOTCHI_MODEL"] = original
+      end
+    end
+
+    it "raises when model is missing" do
+      ENV.delete("SAMAGOTCHI_MODEL")
+      expect { described_class.required_model_name }
+        .to raise_error(ArgumentError, /SAMAGOTCHI_MODEL is required/)
+    end
+
+    it "returns explicit argument when provided" do
+      ENV.delete("SAMAGOTCHI_MODEL")
+      expect(described_class.required_model_name("Qwen3-14B-Instruct")).to eq("Qwen3-14B-Instruct")
+    end
+
+    it "returns environment model when argument is blank" do
+      ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
+      expect(described_class.required_model_name(" ")).to eq("Gemma-4B-it")
+    end
+  end
+
+  describe ".from_env" do
+    around do |example|
+      original = ENV.fetch("SAMAGOTCHI_MODEL", nil)
+      example.run
+    ensure
+      if original.nil?
+        ENV.delete("SAMAGOTCHI_MODEL")
+      else
+        ENV["SAMAGOTCHI_MODEL"] = original
+      end
+    end
+
+    it "infers qwen36 from SAMAGOTCHI_MODEL" do
+      ENV["SAMAGOTCHI_MODEL"] = "Qwen3-14B-Instruct"
       profile = described_class.from_env
       expect(profile.name).to eq("qwen36")
     end
 
-    it "returns Gemma 4 when SAMAGOTCHI_MODEL_PROFILE=gemma4" do
-      ENV["SAMAGOTCHI_MODEL_PROFILE"] = "gemma4"
-      profile = described_class.from_env
-      expect(profile.name).to eq("gemma4")
-    end
-
-    it "defaults to Gemma 4 for unknown profile names" do
-      ENV["SAMAGOTCHI_MODEL_PROFILE"] = "unknown"
+    it "defaults to gemma4 for non-qwen SAMAGOTCHI_MODEL values" do
+      ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
       profile = described_class.from_env
       expect(profile.name).to eq("gemma4")
     end

@@ -133,11 +133,13 @@ module Samagotchi
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
 
-    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil)
+    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil, model_name: nil)
       @client = client || Client.new
       @verbose = verbose
       @debug_log = debug_log || DebugLog.new(path: log_file)
-      @profile = profile || ModelProfile.from_env
+      @profile_explicit = !profile.nil?
+      resolved_model_name = ModelProfile.required_model_name(model_name)
+      @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(resolved_model_name)
     end
 
     # Run the conversation loop and return the final model response plus
@@ -151,6 +153,9 @@ module Samagotchi
     # @param model_name [String, nil]            optional per-run model override
     # @return [Result] final visible response with continuation metadata
     def run(messages, max_iterations: 10, on_stream_event: nil, cancel_controller: nil, model_name: nil)
+      resolved_model_name = completion_model_name(model_name)
+      @profile = ModelProfile.from_model_name(resolved_model_name) unless @profile_explicit
+
       conversation = prepare_conversation(messages)
       context_state = initial_context_status_state(conversation)
       exhausted = false
@@ -163,7 +168,7 @@ module Samagotchi
         prompt = prompt_with_context_status(conversation, iteration_index: iteration_index, state: context_state)
         emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
         response = if on_stream_event
-                     @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller, model_name: model_name, on_chunk: lambda { |chunk|
+                     @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller, model_name: resolved_model_name, on_chunk: lambda { |chunk|
                        emit_stream_event(
                          on_stream_event,
                          type: :generation_chunk,
@@ -181,7 +186,7 @@ module Samagotchi
                        )
                      }))
                    else
-                     @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller, model_name: model_name))
+                     @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller, model_name: resolved_model_name))
                    end
         emit_stream_event(
           on_stream_event,
@@ -273,6 +278,11 @@ module Samagotchi
       )
     end
 
+    def sync_profile_from_model!(model_name)
+      @profile_explicit = false
+      @profile = ModelProfile.from_model_name(model_name)
+    end
+
     private
 
     def emit_stream_event(callback, event)
@@ -309,9 +319,7 @@ module Samagotchi
     end
 
     def completion_model_name(override = nil)
-      value = override.to_s.strip
-      value = ENV["SAMAGOTCHI_MODEL"].to_s.strip if value.empty?
-      value.empty? ? nil : value
+      ModelProfile.required_model_name(override)
     end
 
     def client_supports_keyword?(keyword)

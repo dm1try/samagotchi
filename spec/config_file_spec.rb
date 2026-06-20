@@ -10,14 +10,14 @@ RSpec.describe Samagotchi::ConfigFile do
   around do |example|
     original_env = {
       "XDG_CONFIG_HOME" => ENV["XDG_CONFIG_HOME"],
-      "SAMAGOTCHI_MODEL_PROFILE" => ENV["SAMAGOTCHI_MODEL_PROFILE"],
+      "SAMAGOTCHI_MODEL" => ENV["SAMAGOTCHI_MODEL"],
       "LLAMA_HOST" => ENV["LLAMA_HOST"],
       "LLAMA_PORT" => ENV["LLAMA_PORT"]
     }
 
     begin
       ENV.delete("XDG_CONFIG_HOME")
-      ENV.delete("SAMAGOTCHI_MODEL_PROFILE")
+      ENV.delete("SAMAGOTCHI_MODEL")
       ENV.delete("LLAMA_HOST")
       ENV.delete("LLAMA_PORT")
       example.run
@@ -50,7 +50,7 @@ RSpec.describe Samagotchi::ConfigFile do
         config_dir = File.join(dir, "samagotchi")
         Dir.mkdir(config_dir)
         File.write(File.join(config_dir, "config.yml"), <<~YAML)
-          SAMAGOTCHI_MODEL_PROFILE: qwen36
+          SAMAGOTCHI_MODEL: Qwen3-14B-Instruct
           LLAMA_HOST: 192.168.1.29
           LLAMA_PORT: 8081
         YAML
@@ -60,6 +60,7 @@ RSpec.describe Samagotchi::ConfigFile do
 
         expect(described_class.load_global_env!).to be(true)
         expect(Samagotchi::ModelProfile.from_env.name).to eq("qwen36")
+        expect(ENV["SAMAGOTCHI_MODEL"]).to eq("Qwen3-14B-Instruct")
 
         client = Samagotchi::Client.new
         expect(client.instance_variable_get(:@host)).to eq("192.168.1.29")

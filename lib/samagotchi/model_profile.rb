@@ -2,13 +2,15 @@
 
 module Samagotchi
   # Encapsulates all model-specific token formats and parsing behavior.
-  # Each profile maps to a model family and is selected at runtime via
-  # the SAMAGOTCHI_MODEL_PROFILE environment variable.
+  # Each profile maps to a model family and is inferred from the selected
+  # model name.
   #
   # Current profiles:
   #   gemma4  — default, original Gemma 4 format
   #   qwen36  — Qwen 3.6 chat template with function calling
   class ModelProfile
+    MODEL_ENV = "SAMAGOTCHI_MODEL"
+
     attr_reader :name, :turn_start, :turn_end,
                 :tool_call_open, :tool_call_close,
                 :tool_response_open, :tool_response_close,
@@ -83,9 +85,10 @@ module Samagotchi
       gemma4
     end
 
-    def self.from_env
-      name = ENV.fetch("SAMAGOTCHI_MODEL_PROFILE", "gemma4").downcase
-      case name
+    def self.normalize(value)
+      return value if value.is_a?(self)
+
+      case value.to_s.strip.downcase
       when "qwen", "qwen3", "qwen36", "qwen3.6"
         qwen36
       when "gemma", "gemma4", "gemma4o"
@@ -93,6 +96,32 @@ module Samagotchi
       else
         gemma4
       end
+    end
+
+    def self.required_model_name(model_name = nil, env: ENV)
+      value = model_name.to_s.strip
+      value = env[MODEL_ENV].to_s.strip if value.empty?
+      raise ArgumentError, "#{MODEL_ENV} is required" if value.empty?
+
+      value
+    end
+
+    def self.from_model_name(model_name)
+      case inferred_profile_name(model_name)
+      when "qwen36" then qwen36
+      else gemma4
+      end
+    end
+
+    def self.inferred_profile_name(model_name)
+      normalized = model_name.to_s.strip.downcase
+      return "qwen36" if normalized.include?("qwen")
+
+      "gemma4"
+    end
+
+    def self.from_env
+      from_model_name(required_model_name(nil, env: ENV))
     end
 
     # ── Thought channel support ──────────────────────────────────────────
