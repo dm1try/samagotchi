@@ -1,3 +1,4 @@
+
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
@@ -9,16 +10,23 @@ require "samagotchi/config_file"
 Samagotchi::ConfigFile.load_global_env!
 require "samagotchi"
 
-options = { mode: "assist", verbose: false }
+options = { mode: "assist", verbose: false, no_interrupt: false, non_interactive: false }
 
 OptionParser.new do |opts|
   opts.banner = "Usage: bin/chi [options]"
   opts.on("--mode MODE", %w[assist evolve], "Mode: assist (default) or evolve") { |m| options[:mode] = m }
   opts.on("-p", "--prompt PROMPT", "Run a single prompt and exit") { |p| options[:prompt] = p }
   opts.on("--resume SESSION_ID", "Resume a previous session by its ID") { |s| options[:resume] = s }
+  opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true }
+  opts.on("--non-interactive", "Run a single prompt and exit (no REPL, implies --no-interrupt)") { options[:non_interactive] = true }
   opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results") { options[:verbose] = true }
   opts.on("-h", "--help", "Show help") { puts opts; exit }
 end.parse!
+
+if options[:non_interactive] && !options[:prompt]
+  warn "Error: --non-interactive requires --prompt"
+  exit 1
+end
 
 log_file = if ["1", "true"].include?(ENV.fetch("SAMAGOTCHI_DISABLE_LOG_FILE", "").downcase)
              nil
@@ -31,5 +39,7 @@ Samagotchi::Agent.new(
   prompt: options[:prompt],
   verbose: options[:verbose],
   log_file: log_file,
-  session_id: options[:resume]
+  session_id: options[:resume],
+  no_interrupt: options[:no_interrupt] || options[:non_interactive]
 ).run
+

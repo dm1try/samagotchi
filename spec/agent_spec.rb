@@ -63,7 +63,7 @@ file2.rb")
       )
       kernel = instance_double(Samagotchi::KernelLoop, run: result)
       expect(Samagotchi::KernelLoop).to receive(:new)
-        .with(client: client, verbose: false, log_file: "tmp/custom.log", profile: instance_of(Samagotchi::ModelProfile))
+        .with(client: client, verbose: false, log_file: "tmp/custom.log", profile: instance_of(Samagotchi::ModelProfile), no_interrupt: false)
         .and_return(kernel)
 
       agent = described_class.new(mode: "assist", prompt: "hi", client: client, log_file: "tmp/custom.log")
@@ -79,6 +79,12 @@ file2.rb")
       agent = described_class.new(mode: "assist", prompt: "hello", client: client)
       agent.run
       expect(call_count).to eq(1)
+    end
+
+    it "forwards no_interrupt to the kernel loop" do
+      agent = described_class.new(mode: "assist", prompt: "test", no_interrupt: true)
+      kernel = agent.instance_variable_get(:@kernel)
+      expect(kernel.instance_variable_get(:@no_interrupt)).to be true
     end
 
     it "prints concise tool activity lines in normal output" do

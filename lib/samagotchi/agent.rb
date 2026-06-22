@@ -517,14 +517,14 @@ module Samagotchi
       end
     end
 
-    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil)
+    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false)
       @mode    = mode.to_sym
       @prompt  = prompt
       @base_model_name = ModelProfile.required_model_name
       @session_model_name = @base_model_name
       @client = client || Client.new
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@session_model_name)
-      @kernel  = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile)
+      @kernel  = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt)
       @resume_session = session_id ? Session.load(session_id) : nil
     end
 
@@ -671,7 +671,8 @@ module Samagotchi
         { role: "system", content: system_prompt_with_index(assist_system_prompt) },
         { role: "user",   content: @prompt }
       ]
-      result = run_kernel_with_thinking_feedback(messages)
+      max_iter = @no_interrupt ? 1000 : 10
+      result = run_kernel_with_thinking_feedback(messages, max_iterations: max_iter)
       emit_result(result)
     end
 

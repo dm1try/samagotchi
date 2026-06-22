@@ -287,6 +287,12 @@ Need to inspect the filesystem first.
       expect(call_count).to eq(3)
     end
 
+    it "raises effective max_iterations to 1000 when no_interrupt is true" do
+      no_interrupt_kernel = described_class.new(client: client, no_interrupt: true)
+      # Verify the instance variable is set correctly
+      expect(no_interrupt_kernel.instance_variable_get(:@no_interrupt)).to be true
+    end
+
     it "returns a resumable result when max_iterations is reached with tool calls pending" do
       allow(client).to receive(:complete)
         .and_return(%(<|tool_call>call:execute{command: "echo loop"}<tool_call|>))

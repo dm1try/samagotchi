@@ -133,11 +133,12 @@ module Samagotchi
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
 
-    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil, model_name: nil)
+    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil, model_name: nil, no_interrupt: false)
       @client = client || Client.new
       @verbose = verbose
       @debug_log = debug_log || DebugLog.new(path: log_file)
       @profile_explicit = !profile.nil?
+      @no_interrupt = no_interrupt
       resolved_model_name = ModelProfile.required_model_name(model_name)
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(resolved_model_name)
     end
@@ -164,7 +165,8 @@ module Samagotchi
       qwen_recovery_attempts = 0
       qwen_partial_tool_call = nil
 
-      max_iterations.times do |iteration_index|
+      effective_max_iterations = @no_interrupt ? 1000 : max_iterations
+      effective_max_iterations.times do |iteration_index|
         prompt = prompt_with_context_status(conversation, iteration_index: iteration_index, state: context_state)
         emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
         response = if on_stream_event
