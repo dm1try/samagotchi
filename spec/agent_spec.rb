@@ -1493,4 +1493,50 @@ file2.rb")
       expect(agent.send(:shell_bang_command?, "")).to be(false)
     end
   end
+
+  describe "#exit_command?" do
+    let(:agent) { described_class.new(mode: "assist", prompt: "hi") }
+
+    it "returns true for 'exit'" do
+      expect(agent.send(:exit_command?, "exit")).to be(true)
+    end
+
+    it "returns true for '/exit'" do
+      expect(agent.send(:exit_command?, "/exit")).to be(true)
+    end
+
+    it "is case-insensitive" do
+      expect(agent.send(:exit_command?, "EXIT")).to be(true)
+      expect(agent.send(:exit_command?, "/EXIT")).to be(true)
+      expect(agent.send(:exit_command?, "Exit")).to be(true)
+    end
+
+    it "ignores surrounding whitespace" do
+      expect(agent.send(:exit_command?, " exit ")).to be(true)
+    end
+
+    it "returns false for similar but different input" do
+      expect(agent.send(:exit_command?, "exit now")).to be(false)
+      expect(agent.send(:exit_command?, "exit!")).to be(false)
+      expect(agent.send(:exit_command?, "no exit")).to be(false)
+      expect(agent.send(:exit_command?, "xit")).to be(false)
+    end
+  end
+
+  describe "#assist_loop exits with session id" do
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      allow(client).to receive(:complete).and_return("done")
+    end
+
+    it "prints the session id on exit" do
+      agent = described_class.new(mode: "assist", client: client)
+      agent.instance_variable_set(:@resume_session, nil)
+      # Stub Reline to return nil (exit) immediately
+      allow(Reline).to receive(:readmultiline).and_return(nil)
+      expect { agent.send(:assist_loop) }
+        .to output(/Session: [0-9a-f-]+/).to_stdout
+    end
+  end
 end

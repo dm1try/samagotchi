@@ -826,6 +826,7 @@ module Samagotchi
         session.save
       end
 
+      $stdout.puts "\nSession: #{session.id}"
       $stdout.puts "\nbye."
     end
 
