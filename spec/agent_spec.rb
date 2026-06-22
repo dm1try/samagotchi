@@ -1461,4 +1461,36 @@ file2.rb")
       expect(hint).to include("<parameter=")
     end
   end
+
+  describe "#shell_bang_command?" do
+    let(:agent) { described_class.new(mode: "assist", prompt: "hi") }
+
+    it "returns true for !ls" do
+      expect(agent.send(:shell_bang_command?, "!ls")).to be(true)
+    end
+
+    it "returns true for !ruby -e 'puts 1'" do
+      expect(agent.send(:shell_bang_command?, "!ruby -e 'puts 1'")).to be(true)
+    end
+
+    it "returns true for ! with leading space" do
+      expect(agent.send(:shell_bang_command?, "! ls")).to be(true)
+    end
+
+    it "returns false for ! alone" do
+      expect(agent.send(:shell_bang_command?, "!")).to be(false)
+    end
+
+    it "returns false for normal input" do
+      expect(agent.send(:shell_bang_command?, "hello world")).to be(false)
+    end
+
+    it "returns false for ! at end of line" do
+      expect(agent.send(:shell_bang_command?, "hello !")).to be(false)
+    end
+
+    it "returns false for empty string" do
+      expect(agent.send(:shell_bang_command?, "")).to be(false)
+    end
+  end
 end

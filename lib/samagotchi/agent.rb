@@ -26,6 +26,7 @@ module Samagotchi
     CONTINUE_COMMAND = "/continue"
     MODEL_COMMAND = "/model"
     MODELS_COMMAND = "/models"
+    SHELL_BANG_PREFIX = "!"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
     THINKING_UI_ENV = "SAMAGOTCHI_THINKING_UI"
     THINKING_UI_SPINNER = "spinner"
@@ -425,6 +426,8 @@ module Samagotchi
       #{TOOL_CALL_HINT}
       You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
 
+      You can also run shell commands inline from the CLI by typing `!command` (e.g., `!ls`, `!ruby script.rb`). The output is injected into the conversation for you to reason about.
+
       #{SMALL_CONTEXT_PROTOCOL}
 
       Editing workflow:
@@ -747,6 +750,20 @@ module Samagotchi
           end
         else
           next if input.empty?
+
+          if shell_bang_command?(input)
+            command = input.delete_prefix(SHELL_BANG_PREFIX).strip
+            if command.empty?
+              $stdout.puts "\nmodel> !: please provide a shell command after '!'"
+              next
+            end
+            output = Samagotchi::Tools::Execute.call(command)
+            $stdout.puts output
+            $stdout.puts
+            messages << { role: "user", content: "!(#{command})\n#{output}" }
+            persist_recent_history(input)
+            next
+          end
 
           if continue_request?(input)
             $stdout.puts "\nmodel> nothing to continue"
@@ -1118,6 +1135,10 @@ module Samagotchi
 
     def model_command?(input)
       input.to_s.strip.match?(/\A\/model(?:\s+.*)?\z/)
+    end
+
+    def shell_bang_command?(input)
+      input.to_s.match?(/\A!\s*\S/)
     end
 
     def models_command?(input)
