@@ -991,7 +991,7 @@ file2.rb")
     end
 
     it "accepts yes and resumes an exhausted turn" do
-      responses = Array.new(10, looping_call) + ["finished"]
+      responses = Array.new(100, looping_call) + ["finished"]
 
       allow(client).to receive(:complete) { |_prompt| responses.shift }
       allow(Reline).to receive(:readmultiline).and_return("run", nil)
@@ -1004,7 +1004,7 @@ file2.rb")
     end
 
     it "keeps /continue working for backward compatibility" do
-      responses = Array.new(10, looping_call) + ["finished"]
+      responses = Array.new(100, looping_call) + ["finished"]
 
       allow(client).to receive(:complete) { |_prompt| responses.shift }
       allow(Reline).to receive(:readmultiline).and_return("run", nil)
@@ -1058,7 +1058,7 @@ file2.rb")
 
     it "rejects new input until the interrupted turn is resumed" do
       allow(client).to receive(:complete)
-        .and_return(*Array.new(10, looping_call), "finished")
+        .and_return(*Array.new(100, looping_call), "finished")
       allow(Reline).to receive(:readmultiline).and_return("run", nil)
       allow(Reline).to receive(:readline).and_return("new request", "yes")
 
@@ -1072,7 +1072,7 @@ file2.rb")
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
-        prompts.length <= 10 ? looping_call : "fresh answer"
+        prompts.length <= 100 ? looping_call : "fresh answer"
       end
       old_request = "OLD_BROAD_REQUEST_UNIQUE"
       next_request = "NEW_NARROW_REQUEST_UNIQUE"
@@ -1091,7 +1091,7 @@ file2.rb")
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
-        prompts.length <= 10 ? looping_call : "fresh answer"
+        prompts.length <= 100 ? looping_call : "fresh answer"
       end
       old_request = "OLD_BROAD_REQUEST_WITH_REASON"
       next_request = "NEW_NARROW_REQUEST_WITH_REASON"
@@ -1111,7 +1111,7 @@ file2.rb")
 
     it "preserves prior user context while summarizing interrupted turns" do
       prompts = []
-      responses = ["anchor response"] + Array.new(10, looping_call) + ["fresh answer"]
+      responses = ["anchor response"] + Array.new(100, looping_call) + ["fresh answer"]
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
         responses.shift

@@ -13,6 +13,7 @@ Naming note: Samagotchi is the full engine name. Chi (pronounced "chee") is the 
     - **Evolve Mode**: Autonomous development.
 
 ## Operational Instructions
+- **Always validate the test suite** (`bundle exec rspec`) after adding, updating, or removing functionality. Failing specs must be fixed before committing.
 - When modifying code, always ensure RSpec tests pass.
 - Use memory scopes explicitly: `memory_read` may omit scope (project -> system fallback), while `memory_write` must provide `scope` (`project` or `system`).
 - When adding new capabilities, update the relevant tools in `lib/samagotchi/tools/`.
