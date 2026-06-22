@@ -1319,7 +1319,7 @@ module Samagotchi
       RG_GUIDANCE if rg_available?
     end
 
-    def run_kernel_with_thinking_feedback(messages, max_iterations: 10)
+    def run_kernel_with_thinking_feedback(messages, max_iterations: 100)
       cancellation_controller = Client::CancellationController.new
       @active_cancel_controller = cancellation_controller
       reset_streamed_tool_activity_counts

@@ -153,7 +153,7 @@ module Samagotchi
     # @param cancel_controller [Client::CancellationController, nil] optional cancellation source
     # @param model_name [String, nil]            optional per-run model override
     # @return [Result] final visible response with continuation metadata
-    def run(messages, max_iterations: 10, on_stream_event: nil, cancel_controller: nil, model_name: nil)
+    def run(messages, max_iterations: 100, on_stream_event: nil, cancel_controller: nil, model_name: nil)
       resolved_model_name = completion_model_name(model_name)
       @profile = ModelProfile.from_model_name(resolved_model_name) unless @profile_explicit
 
