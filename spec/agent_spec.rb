@@ -1097,8 +1097,35 @@ file2.rb")
       expect { agent.run }
         .to output(/noted your explanation.*fresh answer/m).to_stdout
       expect(prompts.last).to include("I chose not to continue the interrupted turn because: this is too risky")
+      expect(prompts.last).to include("Interrupted turn summary:")
+      expect(prompts.last).to include(old_request)
+      expect(prompts.last).to include("Please keep the original prompt context")
       expect(prompts.last).to include(next_request)
-      expect(prompts.last).not_to include(old_request)
+    end
+
+    it "preserves prior user context while summarizing interrupted turns" do
+      prompts = []
+      responses = ["anchor response"] + Array.new(10, looping_call) + ["fresh answer"]
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        responses.shift
+      end
+      anchor_request = "INITIAL_PROMPT_ANCHOR_UNIQUE"
+      interrupted_request = "INTERRUPTED_REQUEST_UNIQUE"
+      next_request = "FOLLOWUP_REQUEST_UNIQUE"
+      allow(Reline).to receive(:readmultiline).and_return(anchor_request, interrupted_request, next_request, nil)
+      allow(Reline).to receive(:readline).and_return("no, stay in plan mode")
+
+      agent = described_class.new(mode: "assist", client: client)
+
+      expect { agent.run }
+        .to output(/anchor response.*iteration limit reached.*noted your explanation.*fresh answer/m).to_stdout
+      expect(prompts.last).to include(anchor_request)
+      expect(prompts.last).to include(interrupted_request)
+      expect(prompts.last).to include("I chose not to continue the interrupted turn because: stay in plan mode")
+      expect(prompts.last).to include("Interrupted turn summary:")
+      expect(prompts.last).to include("Please keep the original prompt context")
+      expect(prompts.last).to include(next_request)
     end
 
     it "accepts multiline content from the default editor flow" do

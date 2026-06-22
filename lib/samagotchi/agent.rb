@@ -7,6 +7,7 @@ require "reline"
 
 require_relative "model_profile"
 require_relative "kernel_loop"
+require_relative "session"
 require_relative "tools/memory"
 
 module Samagotchi
@@ -52,6 +53,10 @@ module Samagotchi
     STATUS_FIXED_WIDTH_ENV = "SAMAGOTCHI_STATUS_FIXED_WIDTH"
     STATUS_MAX_WIDTH_ENV = "SAMAGOTCHI_STATUS_MAX_WIDTH"
     STATUS_MAX_WIDTH_DEFAULT = 160
+    INTERRUPTED_SUMMARY_PROMPT_LIMIT = 600
+    INTERRUPTED_SUMMARY_MODEL_LIMIT = 360
+    INTERRUPTED_SUMMARY_PARAMS_LIMIT = 80
+    INTERRUPTED_SUMMARY_TOOLS_LIMIT = 5
     AT_PATH_COMPLETION_PREFIX = "@"
     MEMORY_COMPLETION_PREFIX = "#"
     AT_PATH_COMPLETION_MAX_CANDIDATES = 200
@@ -690,6 +695,7 @@ module Samagotchi
 
       awaiting_continue = false
       interrupted_turn_checkpoint = nil
+      interrupted_turn_context = nil
 
       loop do
         input = read_input(awaiting_continue: awaiting_continue)
@@ -713,7 +719,11 @@ module Samagotchi
           when :abort
             messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             interrupted_turn_checkpoint = nil
+            interrupted_turn_context = nil
             awaiting_continue = false
+            session.messages = messages
+            session.model_name = @session_model_name
+            session.save
             $stdout.puts "\nmodel> interrupted turn cancelled; enter your next prompt"
             next
           when :abort_with_reason
@@ -721,9 +731,13 @@ module Samagotchi
             interrupted_turn_checkpoint = nil
             messages << {
               role: "user",
-              content: "I chose not to continue the interrupted turn because: #{reason}"
+              content: interrupted_turn_reason_message(reason: reason, context: interrupted_turn_context)
             }
+            interrupted_turn_context = nil
             awaiting_continue = false
+            session.messages = messages
+            session.model_name = @session_model_name
+            session.save
             $stdout.puts "\nmodel> interrupted turn cancelled; noted your explanation"
             next
           else
@@ -778,6 +792,15 @@ module Samagotchi
 
         messages = result.conversation
         awaiting_continue = result.resumable?
+        interrupted_turn_context = if awaiting_continue
+                                     build_interrupted_turn_context(
+                                       result: result,
+                                       checkpoint: interrupted_turn_checkpoint,
+                                       conversation: messages
+                                     )
+                                   else
+                                     nil
+                                   end
         interrupted_turn_checkpoint = nil unless awaiting_continue
 
         session.messages = messages
@@ -1168,6 +1191,82 @@ module Samagotchi
 
     def clone_messages(messages)
       Array(messages).map(&:dup)
+    end
+
+    def build_interrupted_turn_context(result:, checkpoint:, conversation:)
+      interrupted_messages = extract_interrupted_turn_messages(checkpoint: checkpoint, conversation: conversation)
+      {
+        original_prompt: summarized_interrupted_prompt(interrupted_messages),
+        tool_trace: summarized_interrupted_tool_trace(result),
+        last_model_intent: summarized_interrupted_model_excerpt(interrupted_messages)
+      }
+    end
+
+    def extract_interrupted_turn_messages(checkpoint:, conversation:)
+      checkpoint_messages = Array(checkpoint)
+      conversation_messages = Array(conversation)
+      return [] if checkpoint_messages.empty? || conversation_messages.length < checkpoint_messages.length
+      return [] unless conversation_messages.first(checkpoint_messages.length) == checkpoint_messages
+
+      conversation_messages[checkpoint_messages.length..] || []
+    end
+
+    def summarized_interrupted_prompt(messages)
+      prompt = Array(messages).find { |message| message[:role] == "user" }
+      preview_text(prompt && prompt[:content], INTERRUPTED_SUMMARY_PROMPT_LIMIT)
+    end
+
+    def summarized_interrupted_tool_trace(result)
+      activities = if result.respond_to?(:tool_activity)
+                     Array(result.tool_activity)
+                   else
+                     []
+                   end
+      return [] if activities.empty?
+
+      activities.last(INTERRUPTED_SUMMARY_TOOLS_LIMIT).map do |activity|
+        tool = activity[:tool].to_s.strip
+        status = activity[:status].to_s.strip
+        params = preview_text(activity[:params], INTERRUPTED_SUMMARY_PARAMS_LIMIT)
+        parts = [tool]
+        parts << "status=#{status}" unless status.empty?
+        parts << "params=#{params}" unless params.empty?
+        parts.join(" ")
+      end
+    end
+
+    def summarized_interrupted_model_excerpt(messages)
+      model_message = Array(messages).reverse.find { |message| message[:role] == "model" }
+      preview_text(model_message && model_message[:content], INTERRUPTED_SUMMARY_MODEL_LIMIT)
+    end
+
+    def interrupted_turn_reason_message(reason:, context:)
+      lines = ["I chose not to continue the interrupted turn because: #{reason}"]
+      lines << ""
+      lines << "Interrupted turn summary:"
+      original_prompt = context && context[:original_prompt]
+      lines << "- original_prompt: #{original_prompt.to_s.empty? ? "(unavailable)" : original_prompt}"
+
+      tool_trace = context ? Array(context[:tool_trace]) : []
+      if tool_trace.empty?
+        lines << "- interrupted_tools: (none)"
+      else
+        lines << "- interrupted_tools: #{tool_trace.join("; ")}"
+      end
+
+      model_intent = context && context[:last_model_intent]
+      lines << "- last_model_intent: #{model_intent.to_s.empty? ? "(unavailable)" : model_intent}"
+      lines << ""
+      lines << "Please keep the original prompt context. If my next message does not provide a clear replacement request, ask what we should do instead."
+      lines.join("\n")
+    end
+
+    def preview_text(text, limit)
+      normalized = text.to_s.gsub(/\s+/, " ").strip
+      return "" if normalized.empty?
+      return normalized if normalized.length <= limit
+
+      normalized[0, limit].rstrip + "..."
     end
 
     def project_specific_description
