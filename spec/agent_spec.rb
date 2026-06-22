@@ -23,7 +23,7 @@ RSpec.describe Samagotchi::Agent do
     original_status_max_width = ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"]
     original_model = ENV["SAMAGOTCHI_MODEL"]
     original_columns = ENV["COLUMNS"]
-    ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it" if ENV["SAMAGOTCHI_MODEL"].to_s.strip.empty?
+    ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
     example.run
     ENV["THINKING_MODE"] = original_thinking_mode
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
