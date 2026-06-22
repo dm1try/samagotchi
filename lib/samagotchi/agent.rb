@@ -165,6 +165,16 @@ module Samagotchi
       }<tool|>
     DECL
 
+    TOOL_TASK_WAIT = <<~DECL.strip
+      <|tool>declaration:task_wait{
+        description:<|"|>Wait for a background task to finish. Polls every 0.5s until the task completes or the timeout is reached. Returns status and output path.<|"|>,
+        parameters:{
+          task_id:{type:<|"|>string<|"|>, description:<|"|>Task id returned by task_create<|"|>, required:true},
+          timeout:{type:<|"|>integer<|"|>, description:<|"|>Maximum seconds to wait (default: 60)<|"|>, required:false}
+        }
+      }<tool|>
+    DECL
+
     TOOL_WEB_FETCH = <<~DECL.strip
       <|tool>declaration:web_fetch{
         description:<|"|>Fetch the content of a URL (HTML or text) and return cleaned text. Handles HTML by stripping scripts/styles and extracting visible text. Returns error messages for invalid URLs or HTTP errors.<|"|>,
@@ -352,6 +362,24 @@ module Samagotchi
             }
           },
           required: ["id"]
+        }
+      },
+      {
+        name: "task_wait",
+        description: "Wait for a background task to finish. Polls every 0.5s until the task completes or the timeout is reached. Returns status and output path.",
+        parameters: {
+          type: "object",
+          properties: {
+            task_id: {
+              type: "string",
+              description: "Task id returned by task_create"
+            },
+            timeout: {
+              type: "integer",
+              description: "Maximum seconds to wait (default: 60)"
+            }
+          },
+          required: ["task_id"]
         }
       },
       {

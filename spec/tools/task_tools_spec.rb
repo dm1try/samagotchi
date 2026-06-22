@@ -6,6 +6,7 @@ require "samagotchi/tools/task_get"
 require "samagotchi/tools/task_list"
 require "samagotchi/tools/task_runtime"
 require "samagotchi/tools/task_stop"
+require "samagotchi/tools/task_wait"
 require "tmpdir"
 
 RSpec.describe "task tools" do
@@ -88,6 +89,46 @@ RSpec.describe "task tools" do
       result = described_class.call("does-not-exist")
 
       expect(result).to include("Error: task not found")
+    end
+  end
+
+  describe Samagotchi::Tools::TaskWait do
+    it "waits for a task to complete and returns status with output path" do
+      create_result = Samagotchi::Tools::TaskCreate.call("ruby -e 'puts \"hello\"'")
+      task_id = extract_field(create_result, "task_id")
+      result = described_class.call(task_id)
+      expect(result).to include("task_id: #{task_id}")
+      expect(result).to include("status: completed")
+      expect(result).to include("exit_code: 0")
+      expect(result).to include("output_path:")
+    end
+
+    it "returns running status when task is still in progress" do
+      create_result = Samagotchi::Tools::TaskCreate.call("sleep 10")
+      task_id = extract_field(create_result, "task_id")
+      result = described_class.call(task_id, timeout: 1)
+      expect(result).to include("task_id: #{task_id}")
+      expect(result).to include("status: running")
+    end
+
+    it "returns failed status when task is stopped via task_stop" do
+      create_result = Samagotchi::Tools::TaskCreate.call("sleep 30")
+      task_id = extract_field(create_result, "task_id")
+      Samagotchi::Tools::TaskStop.call(task_id)
+      result = described_class.call(task_id)
+      expect(result).to include("task_id: #{task_id}")
+      expect(result).to include("status: failed")
+      expect(result).to include("stop_reason: stopped_by_user")
+    end
+
+    it "returns an error for an unknown task id" do
+      result = described_class.call("does-not-exist")
+      expect(result).to include("Error: task not found")
+    end
+
+    it "returns an error for an empty task_id" do
+      result = described_class.call("  ")
+      expect(result).to include("Error: task_id is required")
     end
   end
 

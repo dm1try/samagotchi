@@ -14,6 +14,7 @@ require_relative "tools/task_create"
 require_relative "tools/task_get"
 require_relative "tools/task_list"
 require_relative "tools/task_stop"
+require_relative "tools/task_wait"
 require_relative "tools/web_fetch"
 
 module Samagotchi
@@ -92,6 +93,7 @@ module Samagotchi
       Tools::TaskGet,
       Tools::TaskList,
       Tools::TaskStop,
+      Tools::TaskWait,
       Tools::WebFetch
     ].freeze
 
@@ -701,12 +703,20 @@ module Samagotchi
           scope: nil,
           cwd: qwen_param_value(params, "cwd")
         }
-      when Tools::TaskGet::NAME, Tools::TaskStop::NAME
+      when Tools::TaskGet::NAME, Tools::TaskStop::NAME, Tools::TaskWait::NAME
         {
           name: name,
           content: qwen_param_value(params, "id", "task_id"),
           path: nil,
           scope: nil
+        }
+      when Tools::TaskWait::NAME
+        {
+          name: name,
+          content: qwen_param_value(params, "id", "task_id"),
+          path: nil,
+          scope: nil,
+          timeout: qwen_param_value(params, "timeout")
         }
       when Tools::TaskList::NAME
         { name: name, content: "", path: nil, scope: nil }
@@ -857,6 +867,19 @@ module Samagotchi
           path: nil,
           scope: nil
         }
+      when Tools::TaskWait::NAME
+        task_id = params["id"] ||
+                  params["task_id"] ||
+                  strip_param_prefix(params_raw, "id") ||
+                  strip_param_prefix(params_raw, "task_id") ||
+                  params_raw
+        {
+          name: name,
+          content: strip_gemma_delimiters(task_id),
+          path: nil,
+          scope: nil,
+          timeout: params["timeout"]
+        }
       when Tools::TaskList::NAME
         { name: name, content: "", path: nil, scope: nil }
       when Tools::WebFetch::NAME
@@ -965,6 +988,8 @@ module Samagotchi
                  tool.call(call[:content], cwd: call[:cwd])
                when Tools::TaskGet::NAME, Tools::TaskStop::NAME
                  tool.call(call[:content])
+               when Tools::TaskWait::NAME
+                 tool.call(call[:content], timeout: call[:timeout])
                when Tools::WebFetch::NAME
                  tool.call(call[:content])
                else
@@ -1006,6 +1031,7 @@ module Samagotchi
       when Tools::TaskGet::NAME then "checking task"
       when Tools::TaskList::NAME then "listing tasks"
       when Tools::TaskStop::NAME then "stopping task"
+      when Tools::TaskWait::NAME then "waiting for task"
       when Tools::WebFetch::NAME then "fetching URL"
       else "calling tool"
       end
@@ -1051,6 +1077,8 @@ module Samagotchi
         parts << "cwd=#{preview_tool_param(cwd)}" unless cwd.empty?
         parts.join(" ")
       when Tools::TaskGet::NAME, Tools::TaskStop::NAME
+        "id=#{preview_tool_param(call[:content])}"
+      when Tools::TaskWait::NAME
         "id=#{preview_tool_param(call[:content])}"
       when Tools::TaskList::NAME
         nil
