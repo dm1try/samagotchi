@@ -512,7 +512,7 @@ module Samagotchi
       end
     end
 
-    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil)
+    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil)
       @mode    = mode.to_sym
       @prompt  = prompt
       @base_model_name = ModelProfile.required_model_name
@@ -520,6 +520,7 @@ module Samagotchi
       @client = client || Client.new
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@session_model_name)
       @kernel  = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile)
+      @resume_session = session_id ? Session.load(session_id) : nil
     end
 
     def run
@@ -671,7 +672,22 @@ module Samagotchi
 
     def assist_loop
       load_persistent_history
-      messages = [{ role: "system", content: system_prompt_with_index(assist_system_prompt) }]
+
+      if @resume_session
+        session = @resume_session
+        messages = session.messages.dup
+        if messages.empty?
+          messages = [{ role: "system", content: system_prompt_with_index(assist_system_prompt) }]
+        else
+          messages[0] = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
+        end
+        $stdout.puts "Resumed session: #{session.id}"
+      else
+        messages = [{ role: "system", content: system_prompt_with_index(assist_system_prompt) }]
+        session = Session.new_session(mode: @mode.to_s, model_name: @session_model_name, working_directory: Dir.pwd)
+        $stdout.puts "Session: #{session.id}"
+      end
+
       awaiting_continue = false
       interrupted_turn_checkpoint = nil
 
@@ -763,6 +779,10 @@ module Samagotchi
         messages = result.conversation
         awaiting_continue = result.resumable?
         interrupted_turn_checkpoint = nil unless awaiting_continue
+
+        session.messages = messages
+        session.model_name = @session_model_name
+        session.save
       end
 
       $stdout.puts "\nbye."
