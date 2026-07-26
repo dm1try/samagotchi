@@ -1,11 +1,17 @@
+
 # frozen_string_literal: true
 
 require "fileutils"
+require "digest"
 
 module Samagotchi
   module Tools
-    PROJECT_MEMORIES_DIR = "memories"
     SYSTEM_MEMORIES_DIR = File.join(Dir.home, ".config", "samagotchi", "memories")
+    PROJECT_MEMORIES_DIR = File.join(
+      SYSTEM_MEMORIES_DIR,
+      "projects",
+      "#{File.basename(Dir.pwd)}_#{Digest::MD5.hexdigest(Dir.pwd)[0..7]}"
+    )
     MEMORY_INDEX = "index"
     VALID_SCOPES = %w[project system].freeze
 

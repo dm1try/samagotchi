@@ -1189,6 +1189,10 @@ file2.rb")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
       stub_const("Samagotchi::Tools::SYSTEM_MEMORIES_DIR", system_memories_dir)
+
+      project_memories_dir = File.join(tmpdir, "memories")
+      FileUtils.mkdir_p(project_memories_dir)
+      stub_const("Samagotchi::Tools::PROJECT_MEMORIES_DIR", project_memories_dir)
     end
 
     around do |example|
