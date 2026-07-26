@@ -467,7 +467,7 @@ module Samagotchi
         6. Use write for full-file rewrites or creating new files.
 
       Memory convention:
-        Project scope: memories/ (project-local)
+        Project scope: ~/.config/samagotchi/memories/projects/<name>_<hash>/ (project-local)
         System scope:  ~/.config/samagotchi/memories/ (cross-project)
         memory_read accepts optional scope (project|system).
         memory_write requires explicit scope and entry name.
@@ -516,12 +516,12 @@ module Samagotchi
         lib/samagotchi/kernel_loop.rb  Tool-dispatch loop (add new tools here)
         lib/samagotchi/agent.rb        Role logic (this file)
         lib/samagotchi/tools/          Individual tool implementations
-        memories/index.md              Memory index: one-line description per entry
-        memories/                      Individual memory entries (MD files)
+        ~/.config/samagotchi/memories/projects/<name>_<hash>/index.md  Memory index: one-line description per entry
+        ~/.config/samagotchi/memories/projects/<name>_<hash>/          Individual memory entries (MD files)
         spec/                          RSpec test suite
 
       Memory convention:
-        Project scope: memories/ (project-local)
+        Project scope: ~/.config/samagotchi/memories/projects/<name>_<hash>/ (project-local)
         System scope:  ~/.config/samagotchi/memories/ (cross-project)
         memory_read accepts optional scope (project|system).
         memory_write requires explicit scope and entry name.
@@ -628,7 +628,7 @@ module Samagotchi
           6. Use write for full-file rewrites or creating new files.
 
         Memory convention:
-          Project scope: memories/ (project-local)
+          Project scope: ~/.config/samagotchi/memories/projects/<name>_<hash>/ (project-local)
           System scope:  ~/.config/samagotchi/memories/ (cross-project)
           memory_read accepts optional scope (project|system).
           memory_write requires explicit scope and entry name.
@@ -673,12 +673,12 @@ module Samagotchi
           lib/samagotchi/kernel_loop.rb  Tool-dispatch loop (add new tools here)
           lib/samagotchi/agent.rb        Role logic (this file)
           lib/samagotchi/tools/          Individual tool implementations
-          memories/index.md              Memory index: one-line description per entry
-          memories/                      Individual memory entries (MD files)
+          ~/.config/samagotchi/memories/projects/<name>_<hash>/index.md  Memory index: one-line description per entry
+          ~/.config/samagotchi/memories/projects/<name>_<hash>/          Individual memory entries (MD files)
           spec/                          RSpec test suite
 
         Memory convention:
-          Project scope: memories/ (project-local)
+          Project scope: ~/.config/samagotchi/memories/projects/<name>_<hash>/ (project-local)
           System scope:  ~/.config/samagotchi/memories/ (cross-project)
           memory_read accepts optional scope (project|system).
           memory_write requires explicit scope and entry name.
@@ -1826,7 +1826,7 @@ module Samagotchi
     def memory_name_from_read_path(raw_path)
       path = raw_path.to_s.strip.tr("\\", "/")
       return nil if path.empty?
-      return nil unless path.match?(%r{(?:\A|/)memories/.+\.md\z})
+      return nil unless path.match?(/memories[\/].+\.md\z/)
 
       normalize_memory_name(path)
     end

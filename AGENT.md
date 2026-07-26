@@ -7,7 +7,7 @@ Naming note: Samagotchi is the full engine name. Chi (pronounced "chee") is the 
 
 ## Core Principles
 - **Self-Inhabiting**: The agent's tools are the mechanisms for its own modification.
-- **Persistent Cognition**: Use project memories (`./memories`) and system memories (`~/.config/samagotchi/memories`) for long-term state.
+- **Persistent Cognition**: Use project memories (`~/.config/samagotchi/memories/projects/<name>_<hash>/`) and system memories (`~/.config/samagotchi/memories`) for long-term state.
 - **Two Modes**:
     - **Assist Mode**: Human-AI collaboration.
     - **Evolve Mode**: Autonomous development.

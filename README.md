@@ -107,7 +107,7 @@ To skip loading AGENT.md, set:
 
 Samagotchi stores memories in two scopes:
 
-- Project scope: `./memories`
+- Project scope: `~/.config/samagotchi/memories/projects/<name>_<hash>/`
 - System scope: `~/.config/samagotchi/memories`
 
 Tool behavior:
