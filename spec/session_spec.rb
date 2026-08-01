@@ -148,4 +148,65 @@ RSpec.describe Samagotchi::Session do
       expect(dir).to eq(File.join(Dir.home, ".local", "state", "samagotchi", "sessions"))
     end
   end
+
+  describe "status fields" do
+    it "defaults to idle status and empty last_prompt" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      expect(session.status).to eq(described_class::STATUS_IDLE)
+      expect(session.last_prompt).to eq("")
+    end
+
+    it "round-trips status and last_prompt through save/load" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.status = described_class::STATUS_RUNNING
+      session.last_prompt = "tell me a joke"
+      session.save(state_dir: tmpdir)
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.status).to eq(described_class::STATUS_RUNNING)
+      expect(loaded.last_prompt).to eq("tell me a joke")
+    end
+  end
+
+  describe "status transition methods" do
+    let(:session) { described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp") }
+
+    before { session.save(state_dir: tmpdir) }
+
+    it ".mark_running sets status to running" do
+      described_class.mark_running(session.id, state_dir: tmpdir)
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.status).to eq(described_class::STATUS_RUNNING)
+    end
+
+    it ".mark_completed sets status to completed" do
+      described_class.mark_completed(session.id, state_dir: tmpdir)
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.status).to eq(described_class::STATUS_COMPLETED)
+    end
+
+    it ".mark_error sets status to error with reason in last_prompt" do
+      described_class.mark_error(session.id, reason: "timeout", state_dir: tmpdir)
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.status).to eq(described_class::STATUS_ERROR)
+      expect(loaded.last_prompt).to eq("timeout")
+    end
+
+    it ".mark_stopped sets status to stopped" do
+      described_class.mark_stopped(session.id, state_dir: tmpdir)
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.status).to eq(described_class::STATUS_STOPPED)
+    end
+  end
+
+  describe ".session_dir and .default_sessions_dir" do
+    it "returns a directory path for a session" do
+      dir = described_class.session_dir("abc-123", state_dir: tmpdir)
+      expect(dir).to eq(File.join(tmpdir, "abc-123"))
+    end
+
+    it ".default_sessions_dir equals .default_state_dir" do
+      expect(described_class.default_sessions_dir).to eq(described_class.default_state_dir)
+    end
+  end
 end

@@ -571,6 +571,49 @@ module Samagotchi
       end
     end
 
+    # Non-interactive session loop — runs outside of assist_loop.
+    # Reads input files from the session directory, processes prompts through the kernel,
+    # writes responses to output files, and saves session state after each cycle.
+    # Exits when the session is marked stopped.
+    def run_session_loop(session_id:, initial_prompt: nil)
+      session = Session.load(session_id)
+      session.status = Session::STATUS_RUNNING
+      session.save
+
+      session_dir = Session.session_dir(session_id)
+      input_dir = File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR)
+      output_dir = File.join(session_dir, Samagotchi::SessionManager::OUTPUT_DIR)
+      FileUtils.mkdir_p(input_dir)
+      FileUtils.mkdir_p(output_dir)
+
+      if initial_prompt
+        response = process_prompt_through_kernel(session, initial_prompt)
+        write_session_output(output_dir, response) if response
+        session.save
+      end
+
+      loop do
+        if session.status == Session::STATUS_STOPPED
+          exit(0)
+        end
+
+        input_files = Dir.glob(File.join(input_dir, "*.txt")).sort
+        next if input_files.empty?
+
+        input_files.each do |input_file|
+          message = File.read(input_file)
+          response = process_prompt_through_kernel(session, message)
+          write_session_output(output_dir, response) if response
+          session.save
+        end
+
+        sleep(1)
+      end
+    rescue StandardError => e
+      Session.mark_error(session_id, reason: e.message)
+      exit(1)
+    end
+
     private
 
     # Generate profile-aware tool declarations
@@ -2295,6 +2338,27 @@ module Samagotchi
       return ["#{base}#{notification}"] unless color_output?
 
       ["#{paint(base, 90)}#{paint_if_present(memory_notification, MEMORY_SPINNER_COLOR)}#{paint_if_present(tool_notification, TOOL_SPINNER_COLOR)}"]
+    end
+
+    # Process a prompt through the kernel loop and return the model response.
+    def process_prompt_through_kernel(session, prompt)
+      session.messages << { role: "user", content: prompt }
+      session.last_prompt = prompt
+
+      result = @kernel.call(session.messages.dup)
+      if result && result[:content]
+        session.messages << { role: "model", content: result[:content] }
+        result[:content]
+      else
+        session.messages << { role: "model", content: "[No response]" }
+        "[No response]"
+      end
+    end
+
+    # Write an agent response to the session output directory.
+    def write_session_output(output_dir, response)
+      timestamp = Time.now.strftime("%Y%m%d%H%M%S%9N")
+      File.write(File.join(output_dir, "#{timestamp}.txt"), response.to_s)
     end
   end
 end

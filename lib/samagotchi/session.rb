@@ -11,11 +11,17 @@ module Samagotchi
     STATE_SUBDIR = File.join("samagotchi", "sessions")
     FILE_EXT = ".json"
 
+    STATUS_IDLE = "idle"
+    STATUS_RUNNING = "running"
+    STATUS_COMPLETED = "completed"
+    STATUS_ERROR = "error"
+    STATUS_STOPPED = "stopped"
+
     attr_accessor :id, :metadata_version, :mode, :model_name, :working_directory, :messages,
-                  :created_at, :updated_at
+                  :created_at, :updated_at, :status, :last_prompt
 
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
-                   metadata_version: METADATA_VERSION)
+                   metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "")
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -24,6 +30,8 @@ module Samagotchi
       @messages = messages
       @created_at = created_at
       @updated_at = updated_at
+      @status = status
+      @last_prompt = last_prompt
     end
 
     # Build a new, unsaved session.
@@ -36,7 +44,8 @@ module Samagotchi
         working_directory: working_directory.to_s,
         messages: [],
         created_at: now,
-        updated_at: now
+        updated_at: now,
+        status: STATUS_IDLE
       )
     end
 
@@ -55,7 +64,9 @@ module Samagotchi
         working_directory: data.fetch("working_directory"),
         messages: messages,
         created_at: data.fetch("created_at"),
-        updated_at: data.fetch("updated_at")
+        updated_at: data.fetch("updated_at"),
+        status: data.fetch("status", STATUS_IDLE),
+        last_prompt: data.fetch("last_prompt", "")
       )
     rescue JSON::ParserError => e
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
@@ -75,7 +86,9 @@ module Samagotchi
           working_directory: data.fetch("working_directory"),
           messages: [],
           created_at: data.fetch("created_at"),
-          updated_at: data.fetch("updated_at")
+          updated_at: data.fetch("updated_at"),
+          status: data.fetch("status", STATUS_IDLE),
+          last_prompt: data.fetch("last_prompt", "")
         )
       rescue JSON::ParserError, KeyError
         nil
@@ -98,12 +111,53 @@ module Samagotchi
         "working_directory" => @working_directory,
         "messages" => @messages.map { |msg| stringify_message_keys(msg) },
         "created_at" => @created_at,
-        "updated_at" => @updated_at
+        "updated_at" => @updated_at,
+        "status" => @status,
+        "last_prompt" => @last_prompt
       }
 
       File.write(temp_path, JSON.pretty_generate(record) + "\n")
       File.rename(temp_path, path)
       self
+    end
+
+    # Mark a session as running.
+    def self.mark_running(session_id, state_dir: default_state_dir)
+      session = load(session_id, state_dir: state_dir)
+      session.status = STATUS_RUNNING
+      session.save(state_dir: state_dir)
+    end
+
+    # Mark a session as completed.
+    def self.mark_completed(session_id, state_dir: default_state_dir)
+      session = load(session_id, state_dir: state_dir)
+      session.status = STATUS_COMPLETED
+      session.save(state_dir: state_dir)
+    end
+
+    # Mark a session as errored.
+    def self.mark_error(session_id, reason:, state_dir: default_state_dir)
+      session = load(session_id, state_dir: state_dir)
+      session.status = STATUS_ERROR
+      session.last_prompt = reason.to_s
+      session.save(state_dir: state_dir)
+    end
+
+    # Mark a session as stopped.
+    def self.mark_stopped(session_id, state_dir: default_state_dir)
+      session = load(session_id, state_dir: state_dir)
+      session.status = STATUS_STOPPED
+      session.save(state_dir: state_dir)
+    end
+
+    # Directory for a specific session (holds IPC files alongside session.json).
+    def self.session_dir(session_id, state_dir: default_state_dir)
+      File.join(state_dir, session_id)
+    end
+
+    # Default sessions directory path.
+    def self.default_sessions_dir
+      default_state_dir
     end
 
     # XDG-aware sessions directory.
