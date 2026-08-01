@@ -22,6 +22,7 @@ module Samagotchi
     PROMPT_HISTORY_FILE = "history.json"
     PROMPT_HISTORY_STATE_DIR = "samagotchi"
     PROMPT_HISTORY_LIMIT = 20
+    DEFAULT_INPUT_ENV = "SAMAGOTCHI_DEFAULT_INPUT"
     SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
     CONTINUE_COMMAND = "/continue"
     MODEL_COMMAND = "/model"
@@ -548,7 +549,7 @@ module Samagotchi
       end
     end
 
-    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false)
+    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false)
       @mode    = mode.to_sym
       @prompt  = prompt
       @base_model_name = ModelProfile.required_model_name
@@ -557,6 +558,7 @@ module Samagotchi
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@session_model_name)
       @kernel  = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt)
       @resume_session = session_id ? Session.load(session_id) : nil
+      @no_default_input = no_default_input
     end
 
     def run
@@ -723,6 +725,7 @@ module Samagotchi
         messages = [{ role: "system", content: system_prompt_with_index(assist_system_prompt) }]
         session = Session.new_session(mode: @mode.to_s, model_name: @session_model_name, working_directory: Dir.pwd)
         $stdout.puts "Session: #{session.id}"
+        queue_default_input
       end
 
       awaiting_continue = false
@@ -2214,6 +2217,16 @@ module Samagotchi
       return if normalized.strip.empty?
 
       @next_input_prefill = normalized
+    end
+
+    def queue_default_input
+      return if @resume_session
+      return if @no_default_input
+
+      default = ENV.fetch(DEFAULT_INPUT_ENV, nil)
+      return if default.nil? || default.strip.empty?
+
+      queue_input_prefill(default)
     end
 
     def consume_input_prefill

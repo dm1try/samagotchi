@@ -9,7 +9,7 @@ require "samagotchi/config_file"
 Samagotchi::ConfigFile.load_global_env!
 require "samagotchi"
 
-options = { mode: "assist", verbose: false, no_interrupt: false, non_interactive: false }
+options = { mode: "assist", verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false }
 
 OptionParser.new do |opts|
   opts.banner = "Usage: bin/chi [options]"
@@ -19,6 +19,7 @@ OptionParser.new do |opts|
   opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true }
   opts.on("--non-interactive", "Run a single prompt and exit (no REPL, implies --no-interrupt)") { options[:non_interactive] = true }
   opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results") { options[:verbose] = true }
+  opts.on("--no-default-input", "Skip default REPL input prefill") { options[:no_default_input] = true }
   opts.on("-h", "--help", "Show help") { puts opts; exit }
 end.parse!
 
@@ -39,6 +40,7 @@ Samagotchi::Agent.new(
   verbose: options[:verbose],
   log_file: log_file,
   session_id: options[:resume],
-  no_interrupt: options[:no_interrupt] || options[:non_interactive]
+  no_interrupt: options[:no_interrupt] || options[:non_interactive],
+  no_default_input: options[:no_default_input]
 ).run
 

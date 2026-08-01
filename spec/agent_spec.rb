@@ -3,6 +3,7 @@
 require "samagotchi/agent"
 require "fileutils"
 require "json"
+require "ostruct"
 require "stringio"
 require "tmpdir"
 
@@ -1541,6 +1542,64 @@ file2.rb")
       allow(Reline).to receive(:readmultiline).and_return(nil)
       expect { agent.send(:assist_loop) }
         .to output(/Session: [0-9a-f-]+/).to_stdout
+    end
+  end
+
+  describe "#queue_default_input" do
+    around do |example|
+      original_env = ENV.fetch("SAMAGOTCHI_DEFAULT_INPUT", nil)
+      before_run = ENV.to_h
+
+      begin
+        ENV.delete("SAMAGOTCHI_DEFAULT_INPUT")
+        example.run
+      ensure
+        ENV.replace(before_run)
+        ENV.delete("SAMAGOTCHI_DEFAULT_INPUT") if original_env.nil?
+        ENV["SAMAGOTCHI_DEFAULT_INPUT"] = original_env if original_env
+      end
+    end
+
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+    end
+
+    it "queues prefill when env is set, no resume, and no --no-default-input" do
+      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Hey Chi, "
+      agent = described_class.new(mode: "assist", client: client)
+      agent.instance_variable_set(:@resume_session, nil)
+      expect(agent).to receive(:queue_input_prefill).with("Hey Chi, ")
+      agent.send(:queue_default_input)
+    end
+
+    it "does not queue when --no-default-input is true" do
+      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Hey Chi, "
+      agent = described_class.new(mode: "assist", client: client, no_default_input: true)
+      expect(agent).not_to receive(:queue_input_prefill)
+      agent.send(:queue_default_input)
+    end
+
+    it "does not queue when resuming a session" do
+      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Hey Chi, "
+      agent = described_class.new(mode: "assist", client: client)
+      agent.instance_variable_set(:@resume_session, OpenStruct.new(id: "abc-123"))
+      expect(agent).not_to receive(:queue_input_prefill)
+      agent.send(:queue_default_input)
+    end
+
+    it "does not queue when env is not set" do
+      ENV.delete("SAMAGOTCHI_DEFAULT_INPUT")
+      agent = described_class.new(mode: "assist", client: client)
+      expect(agent).not_to receive(:queue_input_prefill)
+      agent.send(:queue_default_input)
+    end
+
+    it "does not queue when env is blank" do
+      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "   "
+      agent = described_class.new(mode: "assist", client: client)
+      expect(agent).not_to receive(:queue_input_prefill)
+      agent.send(:queue_default_input)
     end
   end
 end

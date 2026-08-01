@@ -91,5 +91,20 @@ RSpec.describe Samagotchi::ConfigFile do
           .to raise_error(ArgumentError, /global config values must be scalars/)
       end
     end
+
+    it "loads SAMAGOTCHI_DEFAULT_INPUT as a scalar string" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        config_dir = File.join(dir, "samagotchi")
+        Dir.mkdir(config_dir)
+        File.write(File.join(config_dir, "config.yml"), <<~YAML)
+          SAMAGOTCHI_DEFAULT_INPUT: "Hey Chi, "
+        YAML
+
+        ENV["XDG_CONFIG_HOME"] = dir
+
+        expect(described_class.load_global_env!).to be(true)
+        expect(ENV["SAMAGOTCHI_DEFAULT_INPUT"]).to eq("Hey Chi, ")
+      end
+    end
   end
 end
