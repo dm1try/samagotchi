@@ -549,10 +549,10 @@ module Samagotchi
       end
     end
 
-    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false)
+    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil)
       @mode    = mode.to_sym
       @prompt  = prompt
-      @base_model_name = ModelProfile.required_model_name
+      @base_model_name = ModelProfile.required_model_name(model_name)
       @session_model_name = @base_model_name
       @client = client || Client.new
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@session_model_name)
@@ -571,47 +571,10 @@ module Samagotchi
       end
     end
 
-    # Non-interactive session loop — runs outside of assist_loop.
-    # Reads input files from the session directory, processes prompts through the kernel,
-    # writes responses to output files, and saves session state after each cycle.
-    # Exits when the session is marked stopped.
-    def run_session_loop(session_id:, initial_prompt: nil)
-      session = Session.load(session_id)
-      session.status = Session::STATUS_RUNNING
-      session.save
-
-      session_dir = Session.session_dir(session_id)
-      input_dir = File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR)
-      output_dir = File.join(session_dir, Samagotchi::SessionManager::OUTPUT_DIR)
-      FileUtils.mkdir_p(input_dir)
-      FileUtils.mkdir_p(output_dir)
-
-      if initial_prompt
-        response = process_prompt_through_kernel(session, initial_prompt)
-        write_session_output(output_dir, response) if response
-        session.save
-      end
-
-      loop do
-        if session.status == Session::STATUS_STOPPED
-          exit(0)
-        end
-
-        input_files = Dir.glob(File.join(input_dir, "*.txt")).sort
-        next if input_files.empty?
-
-        input_files.each do |input_file|
-          message = File.read(input_file)
-          response = process_prompt_through_kernel(session, message)
-          write_session_output(output_dir, response) if response
-          session.save
-        end
-
-        sleep(1)
-      end
-    rescue StandardError => e
-      Session.mark_error(session_id, reason: e.message)
-      exit(1)
+    # Public entrypoint for background session workers.
+    # Keeps worker call sites out of Agent private API details.
+    def process_background_prompt(session:, prompt:)
+      process_prompt_through_kernel(session, prompt)
     end
 
     private
@@ -2342,16 +2305,29 @@ module Samagotchi
 
     # Process a prompt through the kernel loop and return the model response.
     def process_prompt_through_kernel(session, prompt)
-      session.messages << { role: "user", content: prompt }
+      messages = session.messages.dup
+      system_message = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
+
+      if messages.empty?
+        messages = [system_message]
+      elsif messages.first[:role].to_s != "system"
+        messages.unshift(system_message)
+      else
+        messages[0] = system_message
+      end
+
+      messages << { role: "user", content: prompt }
       session.last_prompt = prompt
 
-      result = @kernel.call(session.messages.dup)
-      if result && result[:content]
-        session.messages << { role: "model", content: result[:content] }
-        result[:content]
-      else
+      result = @kernel.run(messages)
+      session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
+
+      response = result.respond_to?(:output) ? result.output.to_s : result.to_s
+      if response.strip.empty?
         session.messages << { role: "model", content: "[No response]" }
         "[No response]"
+      else
+        response
       end
     end
 

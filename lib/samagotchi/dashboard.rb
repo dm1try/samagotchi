@@ -10,6 +10,8 @@ module Samagotchi
     DETACH_COMMAND = "/detach"
     STOP_COMMAND = "/stop"
     CONTINUE_PROMPT = "/continue"
+    RECENT_MESSAGES_LIMIT = 4
+    RECENT_MESSAGE_PREVIEW_LIMIT = 90
 
     def initialize
       @sessions = []
@@ -41,6 +43,9 @@ module Samagotchi
           spawn_new_session(input)
         end
       end
+    rescue Interrupt
+      puts "\nInterrupted."
+    ensure
       puts "Goodbye!"
     end
 
@@ -122,6 +127,7 @@ module Samagotchi
       $stdout.puts " Attached: #{session.id[0, 12]}"
       $stdout.puts " Status: #{session.status}"
       $stdout.puts " Messages: #{session.messages.length}"
+      render_recent_messages(session)
       $stdout.puts "─" * 35
       $stdout.puts " Type message to send,"
       $stdout.puts "   #{DETACH_COMMAND} to detach,"
@@ -138,13 +144,56 @@ module Samagotchi
     end
 
     def send_message(session, message)
+      before_time = Time.now
       responses = SessionManager.attach_session(session.id, message: message)
 
       if responses.any?
         responses.each { |r| puts "→ #{r}" }
       else
-        puts "Message sent. (No response yet)"
+        puts "Message sent. (Waiting for response...)"
+        # Poll for output files for up to 30 seconds
+        30.times do
+          sleep(1)
+          new_responses = SessionManager.read_responses(session.id, since_time: before_time)
+          if new_responses.any?
+            new_responses.each { |r| puts "→ #{r}" }
+            return
+          end
+        end
+        puts "(No response received)"
       end
+    end
+
+    def render_recent_messages(session)
+      recent = session.messages.last(RECENT_MESSAGES_LIMIT)
+      if recent.empty?
+        $stdout.puts " Recent: (none yet)"
+        return
+      end
+
+      $stdout.puts " Recent:"
+      recent.each do |message|
+        $stdout.puts "  #{format_message_preview(message)}"
+      end
+    end
+
+    def format_message_preview(message)
+      role = message[:role].to_s
+      label = case role
+              when "user" then "you"
+              when "model" then "chi"
+              when "system" then "sys"
+              when "tool_response" then "tool"
+              else role.empty? ? "msg" : role
+              end
+
+      content = message[:content].to_s.gsub(/\s+/, " ").strip
+      content = "[empty]" if content.empty?
+      if content.length > RECENT_MESSAGE_PREVIEW_LIMIT
+        content = "#{content[0, RECENT_MESSAGE_PREVIEW_LIMIT]}..."
+      end
+
+      "#{label}> #{content}"
     end
   end
 end
