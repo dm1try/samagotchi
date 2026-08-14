@@ -8,6 +8,7 @@ RSpec.describe Samagotchi::Tools::Execute do
     original_env = {
       "SAMAGOTCHI_EXECUTE_TRUNCATE_AT_BYTES" => ENV["SAMAGOTCHI_EXECUTE_TRUNCATE_AT_BYTES"],
       "SAMAGOTCHI_EXECUTE_PREVIEW_BYTES" => ENV["SAMAGOTCHI_EXECUTE_PREVIEW_BYTES"],
+      "SAMAGOTCHI_EXECUTE_TIMEOUT_SEC" => ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"],
       "SAMAGOTCHI_CONTEXT_WINDOW_TOKENS" => ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"],
       "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN" => ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"],
       "SAMAGOTCHI_EXECUTE_TELEMETRY_THRESHOLD_PCT" => ENV["SAMAGOTCHI_EXECUTE_TELEMETRY_THRESHOLD_PCT"]
@@ -104,6 +105,14 @@ RSpec.describe Samagotchi::Tools::Execute do
 
       expect(result).not_to include("estimated_tokens_for_command_output=")
       expect(result).not_to include("estimated_window_pct_for_command_output=")
+    end
+
+    it "returns a timeout error when command exceeds configured timeout" do
+      ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+
+      result = described_class.call("ruby -e 'sleep 5'")
+
+      expect(result).to eq("Error: command timed out after 1s")
     end
   end
 end
