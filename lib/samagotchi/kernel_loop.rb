@@ -648,14 +648,21 @@ module Samagotchi
       params = {}
 
       body.scan(/<parameter=(\w+)>(.*?)<\/parameter>/m) do |key, value|
-        params[key.to_s.downcase] = value
+        params[key.to_s.downcase] = trim_tag_newline(value)
       end
 
       body.scan(/<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>/m) do |key, value|
-        params[key.to_s.downcase.strip] = value
+        params[key.to_s.downcase.strip] = trim_tag_newline(value)
       end
 
       params
+    end
+
+    # Models often place the value on its own line inside the tag pair, per the
+    # documented hint template; strip only that one formatting newline on each
+    # side so it isn't mistaken for actual leading/trailing content.
+    def trim_tag_newline(value)
+      value.sub(/\A\r?\n/, "").sub(/\r?\n\z/, "")
     end
 
     # Convert a Qwen tool call to internal format.

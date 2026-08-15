@@ -769,6 +769,54 @@ Need to inspect the filesystem first.
       FileUtils.remove_entry(dir) if dir && File.directory?(dir)
     end
 
+    it "trims the templating newline around a Qwen parameter value" do
+      dir = Dir.mktmpdir("qwen-newline-test")
+      file_path = File.join(dir, "test.txt")
+      prompts = []
+
+      allow(client).to receive(:complete) do |prompt, **_kwargs|
+        prompts << prompt
+        prompts.length == 1 ? %(<tool_call><function=write><parameter=path>\n#{file_path}\n</parameter><parameter=content>\nabc\ndef\n</parameter></function></tool_call>) : "ok"
+      end
+
+      result = qwen_kernel.run([{ role: "user", content: "write" }])
+      expect(result).to eq("ok")
+      expect(File.read(file_path)).to eq("abc\ndef")
+    ensure
+      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+    end
+
+    it "preserves an intentional blank line beyond the single trimmed templating newline" do
+      dir = Dir.mktmpdir("qwen-blank-line-test")
+      file_path = File.join(dir, "test.txt")
+
+      allow(client).to receive(:complete).and_return(
+        %(<tool_call><function=write><parameter=path>#{file_path}</parameter><parameter=content>\n\nabc\n\n</parameter></function></tool_call>),
+        "ok"
+      )
+
+      result = qwen_kernel.run([{ role: "user", content: "write" }])
+      expect(result).to eq("ok")
+      expect(File.read(file_path)).to eq("\nabc\n")
+    end
+
+    it "matches exact-match edit text located at the very start of the file despite a templating newline" do
+      dir = Dir.mktmpdir("qwen-edit-start-test")
+      file_path = File.join(dir, "test.txt")
+      File.write(file_path, "hello world\nsecond line\n")
+
+      allow(client).to receive(:complete).and_return(
+        %(<tool_call><function=edit><parameter=path>#{file_path}</parameter><parameter=old_text>\nhello world\n</parameter><parameter=new_text>\ngoodbye world\n</parameter></function></tool_call>),
+        "ok"
+      )
+
+      result = qwen_kernel.run([{ role: "user", content: "edit" }])
+      expect(result).to eq("ok")
+      expect(File.read(file_path)).to eq("goodbye world\nsecond line\n")
+    ensure
+      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+    end
+
     it "parses a tool call when assistant prose appears before the XML block" do
       prompts = []
       allow(client).to receive(:complete) do |prompt, **_kwargs|
