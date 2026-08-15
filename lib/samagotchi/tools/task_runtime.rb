@@ -42,9 +42,11 @@ module Samagotchi
         output_io.sync = true
 
         wrapped_command = wrapped_shell_command(normalized_command, exit_code_path)
+        # Non-login shell (matches Execute): a login shell re-sources profile
+        # files, which can rebuild PATH and shadow the inherited toolchain.
         pid = Process.spawn(
           spawn_env,
-          "/bin/sh", "-lc", wrapped_command,
+          "/bin/sh", "-c", wrapped_command,
           chdir: resolved_cwd,
           out: output_io,
           err: output_io,

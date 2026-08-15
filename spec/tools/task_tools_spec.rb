@@ -74,6 +74,15 @@ RSpec.describe "task tools" do
 
       expect(result).to eq("Error: env key is reserved: RUBYOPT")
     end
+
+    it "spawns a non-login shell so profile files can't clobber inherited PATH" do
+      expect(Process).to receive(:spawn) do |*args, **_kwargs|
+        expect(args[1..2]).to eq(["/bin/sh", "-c"])
+        fork { exit! }
+      end
+
+      described_class.call("true")
+    end
   end
 
   describe Samagotchi::Tools::TaskGet do
