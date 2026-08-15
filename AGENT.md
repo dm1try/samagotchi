@@ -18,5 +18,5 @@ Naming note: Samagotchi is the full engine name. Chi (pronounced "chee") is the 
 - Use memory scopes explicitly: `memory_read` may omit scope (project -> system fallback), while `memory_write` must provide `scope` (`project` or `system`).
 - When adding new capabilities, update the relevant tools in `lib/samagotchi/tools/`.
 - Always check `AGENT.md` for current operational context.
-- Prefer `execute` for short commands and `task_create`/`task_get`/`task_list`/`task_stop` for long-running commands.
-- When inspecting task command output, use `read` on the task `output_path` returned by task tools.
+- Prefer `execute` for short commands and `task_create`/`task_wait` for long-running commands. Use `task_get`/`task_list` for nonblocking status checks and `task_stop` to stop a task.
+- Let `task_wait` return its timeout tail before separately reading a task `output_path`; use `done_pattern` when the command emits a reliable completion marker.

@@ -136,7 +136,8 @@ module Samagotchi
         description:<|"|>Start a background task for a long-running shell command. Returns task id and output path for later inspection.<|"|>,
         parameters:{
           command:{type:<|"|>string<|"|>, description:<|"|>Shell command to run in the background<|"|>, required:true},
-          cwd:{type:<|"|>string<|"|>, description:<|"|>Optional working directory (defaults to project root)<|"|>}
+          cwd:{type:<|"|>string<|"|>, description:<|"|>Optional working directory (defaults to project root)<|"|>},
+          env:{type:<|"|>string<|"|>, description:<|"|>Optional JSON object of environment overrides; use this for PATH or tool-specific variables<|"|>}
         }
       }<tool|>
     DECL
@@ -168,10 +169,12 @@ module Samagotchi
 
     TOOL_TASK_WAIT = <<~DECL.strip
       <|tool>declaration:task_wait{
-        description:<|"|>Wait for a background task to finish. Polls every 0.5s until the task completes or the timeout is reached. Returns status and output path.<|"|>,
+        description:<|"|>Wait for a background task to finish. Polls every 0.5s until completion, a log pattern matches, or timeout. Timed-out waits include a bounded output tail.<|"|>,
         parameters:{
           task_id:{type:<|"|>string<|"|>, description:<|"|>Task id returned by task_create<|"|>, required:true},
-          timeout:{type:<|"|>integer<|"|>, description:<|"|>Maximum seconds to wait (default: 60)<|"|>, required:false}
+          timeout:{type:<|"|>integer<|"|>, description:<|"|>Maximum seconds to wait (default: 600)<|"|>, required:false},
+          tail_lines:{type:<|"|>integer<|"|>, description:<|"|>Log lines to return when timing out or matching a pattern (default: 10, max: 100)<|"|>, required:false},
+          done_pattern:{type:<|"|>string<|"|>, description:<|"|>Optional regular expression that returns early when it matches the recent log output<|"|>, required:false}
         }
       }<tool|>
     DECL
@@ -324,6 +327,10 @@ module Samagotchi
             cwd: {
               type: "string",
               description: "Optional working directory (defaults to project root)"
+            },
+            env: {
+              type: "string",
+              description: "Optional JSON object of environment overrides; use this for PATH or tool-specific variables"
             }
           },
           required: ["command"]
@@ -367,7 +374,7 @@ module Samagotchi
       },
       {
         name: "task_wait",
-        description: "Wait for a background task to finish. Polls every 0.5s until the task completes or the timeout is reached. Returns status and output path.",
+        description: "Wait for a background task to finish. Polls every 0.5s until completion, a log pattern matches, or timeout. Timed-out waits include a bounded output tail.",
         parameters: {
           type: "object",
           properties: {
@@ -377,7 +384,15 @@ module Samagotchi
             },
             timeout: {
               type: "integer",
-              description: "Maximum seconds to wait (default: 60)"
+              description: "Maximum seconds to wait (default: 600)"
+            },
+            tail_lines: {
+              type: "integer",
+              description: "Log lines to return when timing out or matching a pattern (default: 10, max: 100)"
+            },
+            done_pattern: {
+              type: "string",
+              description: "Optional regular expression that returns early when it matches the recent log output"
             }
           },
           required: ["task_id"]
@@ -450,6 +465,7 @@ module Samagotchi
       #{TOOL_TASK_GET}
       #{TOOL_TASK_LIST}
       #{TOOL_TASK_STOP}
+      #{TOOL_TASK_WAIT}
       #{TOOL_WEB_FETCH}
 
       #{TOOL_CALL_HINT}
@@ -497,6 +513,7 @@ module Samagotchi
       #{TOOL_TASK_GET}
       #{TOOL_TASK_LIST}
       #{TOOL_TASK_STOP}
+      #{TOOL_TASK_WAIT}
       #{TOOL_WEB_FETCH}
 
       #{TOOL_CALL_HINT}
@@ -597,6 +614,7 @@ module Samagotchi
           TOOL_TASK_GET,
           TOOL_TASK_LIST,
           TOOL_TASK_STOP,
+          TOOL_TASK_WAIT,
           TOOL_WEB_FETCH
         ].join("\n")
       end

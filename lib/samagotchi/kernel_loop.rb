@@ -701,9 +701,10 @@ module Samagotchi
           content: qwen_param_value(params, "command"),
           path: nil,
           scope: nil,
-          cwd: qwen_param_value(params, "cwd")
+          cwd: qwen_param_value(params, "cwd"),
+          env: qwen_param_value(params, "env", strip: false)
         }
-      when Tools::TaskGet::NAME, Tools::TaskStop::NAME, Tools::TaskWait::NAME
+      when Tools::TaskGet::NAME, Tools::TaskStop::NAME
         {
           name: name,
           content: qwen_param_value(params, "id", "task_id"),
@@ -716,7 +717,9 @@ module Samagotchi
           content: qwen_param_value(params, "id", "task_id"),
           path: nil,
           scope: nil,
-          timeout: qwen_param_value(params, "timeout")
+          timeout: qwen_param_value(params, "timeout"),
+          tail_lines: qwen_param_value(params, "tail_lines"),
+          done_pattern: qwen_param_value(params, "done_pattern")
         }
       when Tools::TaskList::NAME
         { name: name, content: "", path: nil, scope: nil }
@@ -853,7 +856,8 @@ module Samagotchi
           content: strip_gemma_delimiters(command),
           path: nil,
           scope: nil,
-          cwd: params["cwd"]
+          cwd: params["cwd"],
+          env: params["env"]
         }
       when Tools::TaskGet::NAME, Tools::TaskStop::NAME
         task_id = params["id"] ||
@@ -878,7 +882,9 @@ module Samagotchi
           content: strip_gemma_delimiters(task_id),
           path: nil,
           scope: nil,
-          timeout: params["timeout"]
+          timeout: params["timeout"],
+          tail_lines: params["tail_lines"],
+          done_pattern: params["done_pattern"]
         }
       when Tools::TaskList::NAME
         { name: name, content: "", path: nil, scope: nil }
@@ -985,11 +991,16 @@ module Samagotchi
                when Tools::Edit::NAME
                  tool.call(call[:content], path: call[:path], start_line: call[:start_line], end_line: call[:end_line])
                when Tools::TaskCreate::NAME
-                 tool.call(call[:content], cwd: call[:cwd])
+                 tool.call(call[:content], cwd: call[:cwd], env: call[:env])
                when Tools::TaskGet::NAME, Tools::TaskStop::NAME
                  tool.call(call[:content])
                when Tools::TaskWait::NAME
-                 tool.call(call[:content], timeout: call[:timeout])
+                 tool.call(
+                   call[:content],
+                   timeout: call[:timeout],
+                   tail_lines: call[:tail_lines],
+                   done_pattern: call[:done_pattern]
+                 )
                when Tools::WebFetch::NAME
                  tool.call(call[:content])
                else
@@ -1075,11 +1086,20 @@ module Samagotchi
         parts = ["command=#{preview_tool_param(call[:content])}"]
         cwd = call[:cwd].to_s.strip
         parts << "cwd=#{preview_tool_param(cwd)}" unless cwd.empty?
+        env = call[:env].to_s.strip
+        parts << "env=#{preview_tool_param(env)}" unless env.empty?
         parts.join(" ")
       when Tools::TaskGet::NAME, Tools::TaskStop::NAME
         "id=#{preview_tool_param(call[:content])}"
       when Tools::TaskWait::NAME
-        "id=#{preview_tool_param(call[:content])}"
+        parts = ["id=#{preview_tool_param(call[:content])}"]
+        timeout = call[:timeout].to_s.strip
+        tail_lines = call[:tail_lines].to_s.strip
+        done_pattern = call[:done_pattern].to_s.strip
+        parts << "timeout=#{preview_tool_param(timeout)}" unless timeout.empty?
+        parts << "tail_lines=#{preview_tool_param(tail_lines)}" unless tail_lines.empty?
+        parts << "done_pattern=#{preview_tool_param(done_pattern)}" unless done_pattern.empty?
+        parts.join(" ")
       when Tools::TaskList::NAME
         nil
       when Tools::WebFetch::NAME

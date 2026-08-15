@@ -589,6 +589,21 @@ Need to inspect the filesystem first.
         end
       end
     end
+
+    it "parses native task_wait options" do
+      call = kernel.send(
+        :native_call,
+        "task_wait",
+        'task_id: "task-1", timeout: 90, tail_lines: 5, done_pattern: "Done!"'
+      )
+
+      expect(call).to include(
+        content: "task-1",
+        timeout: "90",
+        tail_lines: "5",
+        done_pattern: "Done!"
+      )
+    end
   end
 
   describe "verbose mode" do
@@ -712,6 +727,29 @@ Need to inspect the filesystem first.
 
       expect(result).to eq("ok")
       expect(prompts[1]).to include("[task_list]")
+    end
+
+    it "parses Qwen task_wait options" do
+      call = qwen_kernel.send(
+        :qwen_call_to_internal,
+        "task_wait",
+        "task_id" => "task-1", "timeout" => "90", "tail_lines" => "5", "done_pattern" => "Done!"
+      )
+
+      expect(call).to include(
+        content: "task-1",
+        timeout: "90",
+        tail_lines: "5",
+        done_pattern: "Done!"
+      )
+    end
+
+    it "uses task defaults for omitted Qwen optional parameters" do
+      wait_call = qwen_kernel.send(:qwen_call_to_internal, "task_wait", "task_id" => "task-1")
+      create_call = qwen_kernel.send(:qwen_call_to_internal, "task_create", "command" => "echo hi")
+
+      expect(wait_call).to include(timeout: "", tail_lines: "", done_pattern: "")
+      expect(create_call).to include(env: "")
     end
 
     it "parses a Qwen 3.6 write tool call" do

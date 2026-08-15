@@ -32,6 +32,48 @@ RSpec.describe "task tools" do
 
       expect(result).to include("Error: command is required")
     end
+
+    it "passes validated environment overrides to the task process" do
+      create_result = described_class.call(
+        "ruby -e 'puts ENV.fetch(\"SAMAGOTCHI_TASK_TEST\")'",
+        env: { "SAMAGOTCHI_TASK_TEST" => "present" }
+      )
+      task_id = extract_field(create_result, "task_id")
+
+      result = wait_for_task(task_id)
+      output_path = extract_field(result, "output_path")
+
+      expect(File.read(output_path)).to include("present")
+    end
+
+    it "accepts JSON environment overrides from model tool calls" do
+      create_result = described_class.call(
+        "ruby -e 'puts ENV.fetch(\"SAMAGOTCHI_TASK_JSON_TEST\")'",
+        env: '{"SAMAGOTCHI_TASK_JSON_TEST":"present"}'
+      )
+      task_id = extract_field(create_result, "task_id")
+
+      result = wait_for_task(task_id)
+      output_path = extract_field(result, "output_path")
+
+      expect(File.read(output_path)).to include("present")
+    end
+
+    it "treats an omitted model environment as no override" do
+      create_result = described_class.call("ruby -e 'puts \"no override\"'", env: "")
+      task_id = extract_field(create_result, "task_id")
+
+      result = wait_for_task(task_id)
+      output_path = extract_field(result, "output_path")
+
+      expect(File.read(output_path)).to include("no override")
+    end
+
+    it "does not allow overrides of sanitized Bundler environment keys" do
+      result = described_class.call("echo blocked", env: { "RUBYOPT" => "-rbundler/setup" })
+
+      expect(result).to eq("Error: env key is reserved: RUBYOPT")
+    end
   end
 
   describe Samagotchi::Tools::TaskGet do
@@ -93,6 +135,14 @@ RSpec.describe "task tools" do
   end
 
   describe Samagotchi::Tools::TaskWait do
+    it "uses a multi-minute default timeout" do
+      expect(described_class::TIMEOUT_DEFAULT).to eq(600)
+    end
+
+    it "uses defaults when optional model parameters are omitted" do
+      expect(described_class.call("does-not-exist", timeout: "", tail_lines: "")).to include("Error: task not found")
+    end
+
     it "waits for a task to complete and returns status with output path" do
       create_result = Samagotchi::Tools::TaskCreate.call("ruby -e 'puts \"hello\"'")
       task_id = extract_field(create_result, "task_id")
@@ -103,12 +153,46 @@ RSpec.describe "task tools" do
       expect(result).to include("output_path:")
     end
 
-    it "returns running status when task is still in progress" do
-      create_result = Samagotchi::Tools::TaskCreate.call("sleep 10")
+    it "returns a bounded output tail when task is still in progress" do
+      create_result = Samagotchi::Tools::TaskCreate.call("ruby -e '$stdout.sync = true; puts " + '"first"; puts "second"; sleep 10' + "'")
       task_id = extract_field(create_result, "task_id")
-      result = described_class.call(task_id, timeout: 1)
+      result = described_class.call(task_id, timeout: 1, tail_lines: 1)
       expect(result).to include("task_id: #{task_id}")
       expect(result).to include("status: running")
+      expect(result).to include("wait_result: timeout")
+      expect(result).to include("output_tail:\nsecond")
+      expect(result).not_to include("first")
+    end
+
+    it "uses the default timeout when an omitted model timeout is empty" do
+      create_result = Samagotchi::Tools::TaskCreate.call("ruby -e '$stdout.sync = true; puts \"ready\"; sleep 1'")
+      task_id = extract_field(create_result, "task_id")
+
+      result = described_class.call(task_id, timeout: "", tail_lines: 1, done_pattern: "ready")
+
+      expect(result).to include("wait_result: pattern_matched")
+      expect(result).to include("output_tail:\nready")
+    end
+
+    it "returns when the output matches a completion pattern" do
+      create_result = Samagotchi::Tools::TaskCreate.call(
+        "ruby -e '$stdout.sync = true; puts " + '"phase one"; puts "Done!"; sleep 10' + "'"
+      )
+      task_id = extract_field(create_result, "task_id")
+
+      result = described_class.call(task_id, timeout: 1, done_pattern: "Done!")
+
+      expect(result).to include("status: running")
+      expect(result).to include("wait_result: pattern_matched")
+      expect(result).to include("output_tail:\nphase one\nDone!")
+    end
+
+    it "returns an error for an invalid completion pattern" do
+      expect(described_class.call("task", done_pattern: "[")).to start_with("Error: invalid done_pattern:")
+    end
+
+    it "rejects an invalid output-tail size" do
+      expect(described_class.call("task", tail_lines: 0)).to eq("Error: tail_lines must be a positive integer")
     end
 
     it "returns failed status when task is stopped via task_stop" do

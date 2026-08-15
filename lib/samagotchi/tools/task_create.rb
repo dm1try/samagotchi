@@ -6,13 +6,13 @@ module Samagotchi
   module Tools
     class TaskCreate
       NAME = "task_create"
-      DESCRIPTION = "Create a background task for a long-running shell command. Returns task id and output path."
+      DESCRIPTION = "Create a background task for a long-running shell command, with optional environment overrides. Returns task id and output path."
 
       def self.name = NAME
       def self.description = DESCRIPTION
 
-      def self.call(command, cwd: nil)
-        record, error = TaskRuntime.create_task(command, cwd: cwd)
+      def self.call(command, cwd: nil, env: nil)
+        record, error = TaskRuntime.create_task(command, cwd: cwd, env: env)
         return error if error
 
         [

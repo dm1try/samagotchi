@@ -1428,6 +1428,9 @@ file2.rb")
 
       declarations = agent.send(:tool_declarations)
       expect(declarations).to include("<|tool>declaration:execute")
+      expect(declarations).to include("<|tool>declaration:task_wait")
+      expect(declarations).to include("default: 600")
+      expect(declarations).to include("done_pattern")
       expect(declarations).to include("<tool|>")
       expect(declarations).not_to include("\"name\":")
     end
@@ -1446,6 +1449,10 @@ file2.rb")
       tools_json = JSON.parse(json_match[1])
       expect(tools_json).to be_an(Array)
       expect(tools_json.first["name"]).to eq("execute")
+      task_wait = tools_json.find { |tool| tool["name"] == "task_wait" }
+      task_create = tools_json.find { |tool| tool["name"] == "task_create" }
+      expect(task_wait.dig("parameters", "properties")).to include("tail_lines", "done_pattern")
+      expect(task_create.dig("parameters", "properties")).to include("env")
     end
 
     it "uses Gemma tool call hint for Gemma profile" do
