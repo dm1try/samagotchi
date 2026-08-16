@@ -6,6 +6,7 @@ Samagotchi is the full engine name. Chi (pronounced "chee") is the short friendl
 Run with:
 
 - `bin/chi`
+- `bin/chi -p "your prompt"` to run a single prompt and exit
 
 ## Global Config File
 

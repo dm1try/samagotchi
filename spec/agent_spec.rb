@@ -24,7 +24,9 @@ RSpec.describe Samagotchi::Agent do
     original_status_max_width = ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"]
     original_model = ENV["SAMAGOTCHI_MODEL"]
     original_columns = ENV["COLUMNS"]
+    original_default_input = ENV["SAMAGOTCHI_DEFAULT_INPUT"]
     ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
+    ENV.delete("SAMAGOTCHI_DEFAULT_INPUT")
     example.run
     ENV["THINKING_MODE"] = original_thinking_mode
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
@@ -38,6 +40,11 @@ RSpec.describe Samagotchi::Agent do
     ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"] = original_status_max_width
     ENV["SAMAGOTCHI_MODEL"] = original_model
     ENV["COLUMNS"] = original_columns
+    if original_default_input.nil?
+      ENV.delete("SAMAGOTCHI_DEFAULT_INPUT")
+    else
+      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = original_default_input
+    end
   end
 
   describe "#run with a one-off prompt" do
@@ -367,50 +374,6 @@ file2.rb")
       expect(received_prompt).not_to include("prefer `rg` (ripgrep) over `grep`")
     end
 
-    it "includes rg guidance in the evolve prompt when rg is available" do
-      received_prompt = nil
-      allow(client).to receive(:complete) do |prompt|
-        received_prompt = prompt
-        "ok"
-      end
-      agent = described_class.new(mode: "evolve", prompt: "hi", client: client)
-      allow(agent).to receive(:rg_available?).and_return(true)
-      agent.run
-      expect(received_prompt).to include("prefer `rg` (ripgrep) over `grep`")
-    end
-
-    it "includes edit workflow instructions in evolve mode" do
-      received_prompt = nil
-      allow(client).to receive(:complete) do |prompt|
-        received_prompt = prompt
-        "ok"
-      end
-      agent = described_class.new(mode: "evolve", prompt: "hi", client: client)
-      allow(agent).to receive(:rg_available?).and_return(false)
-
-      agent.run
-
-      expect(received_prompt).to include("Editing workflow:")
-      expect(received_prompt).to include("copy old_text verbatim")
-      expect(received_prompt).to include("prefer range mode")
-      expect(received_prompt).to include("Use write for full-file rewrites")
-    end
-
-    it "includes small-context retrieval protocol in evolve mode" do
-      received_prompt = nil
-      allow(client).to receive(:complete) do |prompt|
-        received_prompt = prompt
-        "ok"
-      end
-      agent = described_class.new(mode: "evolve", prompt: "hi", client: client)
-      allow(agent).to receive(:rg_available?).and_return(false)
-
-      agent.run
-
-      expect(received_prompt).to include("Small-context retrieval protocol:")
-      expect(received_prompt).to include("If the user provides file:line")
-      expect(received_prompt).to include("Use execute with rg/nl/sed")
-    end
   end
 
   describe "Thinking Mode (control token injection)" do
@@ -591,15 +554,16 @@ file2.rb")
       expect(agent.send(:thinking_preview_lines_count)).to eq(1)
     end
 
-    it "does not capture preview text outside assist mode" do
-      agent = described_class.new(mode: "evolve", prompt: "hi", client: client)
+    it "captures preview text in assist mode" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
       allow(agent).to receive(:color_output?).and_return(false)
 
       agent.send(:handle_stream_event, type: :generation_started)
       agent.send(:handle_stream_event, type: :generation_chunk, content: "preview me")
 
-      expect(agent.send(:thinking_tail_preview_line)).to be_nil
+      expect(agent.send(:thinking_tail_preview_line)).not_to be_nil
+      expect(agent.send(:thinking_tail_preview_line)).to include("preview me")
     end
 
     it "does not render spinner in non-TTY mode" do
@@ -1156,7 +1120,6 @@ file2.rb")
       allow(Reline).to receive(:readmultiline).and_return("retry me", nil)
 
       agent = described_class.new(mode: "assist", client: client)
-
       expect(agent).to receive(:queue_input_prefill).with("retry me").and_call_original
       expect { agent.run }.to output(/network error after 6 attempts; prompt restored for retry/m).to_stdout
     end
@@ -1555,15 +1518,16 @@ file2.rb")
   describe "#queue_default_input" do
     around do |example|
       original_env = ENV.fetch("SAMAGOTCHI_DEFAULT_INPUT", nil)
-      before_run = ENV.to_h
 
       begin
         ENV.delete("SAMAGOTCHI_DEFAULT_INPUT")
         example.run
       ensure
-        ENV.replace(before_run)
-        ENV.delete("SAMAGOTCHI_DEFAULT_INPUT") if original_env.nil?
-        ENV["SAMAGOTCHI_DEFAULT_INPUT"] = original_env if original_env
+        if original_env.nil?
+          ENV.delete("SAMAGOTCHI_DEFAULT_INPUT")
+        else
+          ENV["SAMAGOTCHI_DEFAULT_INPUT"] = original_env
+        end
       end
     end
 

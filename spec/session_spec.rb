@@ -113,7 +113,7 @@ RSpec.describe Samagotchi::Session do
     it "returns sessions sorted by created_at oldest first" do
       s1 = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       sleep(0.01)
-      s2 = described_class.new_session(mode: "evolve", model_name: "qwen36", working_directory: "/tmp")
+      s2 = described_class.new_session(mode: "assist", model_name: "qwen36", working_directory: "/tmp")
       s1.save(state_dir: tmpdir)
       s2.save(state_dir: tmpdir)
 

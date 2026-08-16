@@ -11,10 +11,9 @@ require_relative "session"
 require_relative "tools/memory"
 
 module Samagotchi
-  # Agent encapsulates the two operating modes of the harness.
+  # Agent encapsulates the single operating mode of the harness.
   #
   # assist mode  — interactive REPL: user types, model responds, tools execute inline.
-  # evolve mode  — autonomous: model reads its own source, extends itself, validates with rspec.
   class Agent
     AGENT_DESCRIPTION_FILE = "AGENT.md"
     PROMPT_HISTORY_ENV = "SAMAGOTCHI_HISTORY_FILE"
@@ -497,73 +496,10 @@ module Samagotchi
       #{CONTEXT_STATUS_PROTOCOL}
     SYS
 
-    SYSTEM_EVOLVE = <<~SYS
-      You are Chi (pronounced "chee"), the friendly name for the Samagotchi self-evolving Ruby agent harness running on Gemma 4 via llama.cpp.
-      Your goal: read your own source, decide what to improve or extend, implement it, and validate with RSpec.
-
-      Available tools:
-
-      #{TOOL_EXECUTE}
-      #{TOOL_READ}
-      #{TOOL_WRITE}
-      #{TOOL_EDIT}
-      #{TOOL_MEMORY_READ}
-      #{TOOL_MEMORY_WRITE}
-      #{TOOL_TASK_CREATE}
-      #{TOOL_TASK_GET}
-      #{TOOL_TASK_LIST}
-      #{TOOL_TASK_STOP}
-      #{TOOL_TASK_WAIT}
-      #{TOOL_WEB_FETCH}
-
-      #{TOOL_CALL_HINT}
-      #{SMALL_CONTEXT_PROTOCOL}
-
-      Editing workflow:
-        1. Read the target file or line range immediately before calling edit.
-        2. For exact-match mode, copy old_text verbatim from that read output; do not reconstruct it from memory.
-        3. Prefer the smallest unique block (about 3-15 lines) that contains the change.
-        4. For large files, prefer range mode (start_line/end_line) to minimize context.
-        5. If exact-match mode reports not found or multiple matches, read again and retry with a smaller or more unique block.
-        6. Use write for full-file rewrites or creating new files.
-
-      Source layout:
-        bin/chi                        CLI entry point
-        lib/samagotchi/prompt.rb       Gemma 4 prompt formatter
-        lib/samagotchi/client.rb       llama.cpp HTTP client
-        lib/samagotchi/kernel_loop.rb  Tool-dispatch loop (add new tools here)
-        lib/samagotchi/agent.rb        Role logic (this file)
-        lib/samagotchi/tools/          Individual tool implementations
-        ~/.config/samagotchi/memories/projects/<name>_<hash>/index.md  Memory index: one-line description per entry
-        ~/.config/samagotchi/memories/projects/<name>_<hash>/          Individual memory entries (MD files)
-        spec/                          RSpec test suite
-
-      Memory convention:
-        Project scope: ~/.config/samagotchi/memories/projects/<name>_<hash>/ (project-local)
-        System scope:  ~/.config/samagotchi/memories/ (cross-project)
-        memory_read accepts optional scope (project|system).
-        memory_write requires explicit scope and entry name.
-        Keep each scope's index.md updated when adding/updating entries.
-        The current indexes are injected below for your reference.
-
-      Workflow for adding a new tool:
-        1. Write lib/samagotchi/tools/<name>.rb with self.name and self.call
-        2. Require it in lib/samagotchi/kernel_loop.rb and add to TOOLS
-        3. Write spec/tools/<name>_spec.rb
-        4. Validate: <|tool_call>call:execute{command:<|"|>bundle exec rspec spec/tools/<name>_spec.rb --no-color<|"|>}<tool_call|>
-
-      #{CONTEXT_STATUS_PROTOCOL}
-
-      Begin by reading your source files and deciding what to add or improve.
-    SYS
-
-    def self.system_prompt_for(profile, mode: :assist)
+    
+    def self.system_prompt_for(profile)
       profile = ModelProfile.normalize(profile) unless profile.is_a?(ModelProfile)
-      case mode.to_sym
-      when :assist   then new(mode: :assist, profile: profile).send(:assist_system_prompt)
-      when :evolve   then new(mode: :evolve, profile: profile).send(:evolve_system_prompt)
-      else raise ArgumentError, "Unknown mode: #{mode}"
-      end
+      new(mode: :assist, profile: profile).send(:assist_system_prompt)
     end
 
     def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil)
@@ -583,8 +519,7 @@ module Samagotchi
 
       case @mode
       when :assist then assist_loop
-      when :evolve then evolve_loop
-      else raise ArgumentError, "Unknown mode '#{@mode}'. Use: assist, evolve"
+      else raise ArgumentError, "Unknown mode '#{@mode}'. Use: assist"
       end
     end
 
@@ -665,61 +600,6 @@ module Samagotchi
           Keep each scope's index.md updated when adding/updating entries.
 
         #{CONTEXT_STATUS_PROTOCOL}
-      SYS
-    end
-
-    # Generate profile-aware evolve system prompt
-    def evolve_system_prompt
-      declarations = tool_declarations
-      hint = tool_call_hint
-
-      <<~SYS
-        You are Chi (pronounced "chee"), the friendly name for the Samagotchi self-evolving Ruby agent harness running on #{@profile.name.upcase} via llama.cpp.
-        Your goal: read your own source, decide what to improve or extend, implement it, and validate with RSpec.
-
-        Available tools:
-
-        #{declarations}
-
-        #{hint}
-        #{SMALL_CONTEXT_PROTOCOL}
-
-        Editing workflow:
-          1. Read the target file or line range immediately before calling edit.
-          2. For exact-match mode, copy old_text verbatim from that read output; do not reconstruct it from memory.
-          3. Prefer the smallest unique block (about 3-15 lines) that contains the change.
-          4. For large files, prefer range mode (start_line/end_line) to minimize context.
-          5. If exact-match mode reports not found or multiple matches, read again and retry with a smaller or more unique block.
-          6. Use write for full-file rewrites or creating new files.
-
-        Source layout:
-          bin/chi                        CLI entry point
-          lib/samagotchi/prompt.rb       Prompt formatter (multi-profile)
-          lib/samagotchi/client.rb       llama.cpp HTTP client
-          lib/samagotchi/kernel_loop.rb  Tool-dispatch loop (add new tools here)
-          lib/samagotchi/agent.rb        Role logic (this file)
-          lib/samagotchi/tools/          Individual tool implementations
-          ~/.config/samagotchi/memories/projects/<name>_<hash>/index.md  Memory index: one-line description per entry
-          ~/.config/samagotchi/memories/projects/<name>_<hash>/          Individual memory entries (MD files)
-          spec/                          RSpec test suite
-
-        Memory convention:
-          Project scope: ~/.config/samagotchi/memories/projects/<name>_<hash>/ (project-local)
-          System scope:  ~/.config/samagotchi/memories/ (cross-project)
-          memory_read accepts optional scope (project|system).
-          memory_write requires explicit scope and entry name.
-          Keep each scope's index.md updated when adding/updating entries.
-          The current indexes are injected below for your reference.
-
-        Workflow for adding a new tool:
-          1. Write lib/samagotchi/tools/<name>.rb with self.name and self.call
-          2. Require it in lib/samagotchi/kernel_loop.rb and add to TOOLS
-          3. Write spec/tools/<name>_spec.rb
-          4. Validate with RSpec
-
-        #{CONTEXT_STATUS_PROTOCOL}
-
-        Begin by reading your source files and deciding what to add or improve.
       SYS
     end
 
@@ -883,15 +763,6 @@ module Samagotchi
 
       $stdout.puts "\nSession: #{session.id}"
       $stdout.puts "\nbye."
-    end
-
-    def evolve_loop
-      messages = [
-        { role: "system", content: system_prompt_with_index(evolve_system_prompt) },
-        { role: "user",   content: "Read your source files, identify improvements, implement them, and validate with rspec." }
-      ]
-      result = run_kernel_with_thinking_feedback(messages, max_iterations: 20)
-      emit_result(result)
     end
 
     def status_server_segment
@@ -1661,7 +1532,7 @@ module Samagotchi
     end
 
     def thinking_tail_preview_enabled?
-      @mode == :assist && @thinking_spinner_active
+      @thinking_spinner_active
     end
 
     def thinking_tail_preview_line
@@ -2237,8 +2108,8 @@ module Samagotchi
     end
 
     def queue_input_prefill(text)
-      normalized = text.to_s
-      return if normalized.strip.empty?
+      normalized = text.to_s.strip
+      return if normalized.empty?
 
       @next_input_prefill = normalized
     end
