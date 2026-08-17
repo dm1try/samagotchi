@@ -502,7 +502,7 @@ module Samagotchi
       new(mode: :assist, profile: profile).send(:assist_system_prompt)
     end
 
-    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil)
+    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [])
       @mode    = mode.to_sym
       @prompt  = prompt
       @base_model_name = ModelProfile.required_model_name(model_name)
@@ -512,6 +512,7 @@ module Samagotchi
       @kernel  = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt)
       @resume_session = session_id ? Session.load(session_id) : nil
       @no_default_input = no_default_input
+      @requested_memories = Array(memories)
     end
 
     def run
@@ -790,7 +791,7 @@ module Samagotchi
         "Project memories:\n#{project_index}",
         "System memories:\n#{system_index}"
       ].join("\n\n")
-      [thinking_token + base, rg_guidance, project_description, memory_sections].compact.join("\n")
+      [thinking_token + base, rg_guidance, project_description, memory_sections, explicit_memory_section].compact.join("\n")
     end
 
     def emit_result(result)
@@ -843,6 +844,37 @@ module Samagotchi
 
     def read_memory_index(scope)
       Tools::MemoryRead.call("", scope: scope)
+    end
+
+    # Preloads memories requested via --memory so the model sees full bodies, not just the index.
+    def explicit_memory_section
+      return nil if @requested_memories.empty?
+
+      entries = @requested_memories.filter_map do |raw|
+        scope, name = split_memory_scope(raw)
+        body = Tools::MemoryRead.call(name, scope: scope)
+        if body.start_with?("Error:")
+          warn "Warning: --memory '#{raw}' could not be loaded (#{body})"
+          next nil
+        end
+
+        add_unique_memory_name(:@session_memory_names, name)
+        "this memory is required by the user in the current context: memory name: #{name}\n#{body}"
+      end
+
+      return nil if entries.empty?
+
+      entries.join("\n\n")
+    end
+
+    def split_memory_scope(raw)
+      value = raw.to_s.strip
+      if value.include?("/")
+        scope, name = value.split("/", 2)
+        return [scope, name] if Tools::VALID_SCOPES.include?(scope)
+      end
+
+      [nil, value]
     end
 
     def read_input(awaiting_continue:)

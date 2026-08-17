@@ -228,6 +228,67 @@ file2.rb")
       expect(received_prompt).to include("- **system**: shared notes")
     end
 
+    it "injects requested --memory entries into the system prompt" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["foo"])
+      agent.run
+      expect(received_prompt).to include("this memory is required by the user in the current context: memory name: foo")
+      expect(received_prompt).to include("foo body")
+    end
+
+    it "marks a preloaded --memory entry as active in the sticky status line" do
+      allow(client).to receive(:complete).and_return("ok")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["foo"])
+      agent.run
+      expect(agent.send(:sticky_status_lines).join("\n")).to include("mem: foo")
+    end
+
+    it "resolves scope-prefixed --memory entries" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: "project").and_return("foo body")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["project/foo"])
+      agent.run
+      expect(received_prompt).to include("memory name: foo")
+    end
+
+    it "skips a --memory entry that cannot be found without crashing" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("missing", scope: nil).and_return("Error: memory not found: missing")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["missing"])
+      expect { agent.run }.not_to raise_error
+      expect(received_prompt).not_to include("memory is required by the user")
+    end
+
+    it "does not inject an explicit memory section when no --memory flags are given" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent.run
+      expect(received_prompt).not_to include("memory is required by the user")
+    end
+
     it "uses Gemma 4 string delimiters (<|\"|\">...<|\"|>) for all string values in tool declarations" do
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|

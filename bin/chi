@@ -13,9 +13,10 @@ options = { mode: "assist", verbose: false, no_interrupt: false, non_interactive
 
 OptionParser.new do |opts|
   opts.banner = "Usage: bin/chi [options] [subcommand]"
-  opts.on("--mode MODE", %w[assist], "Mode: assist (default)") { |m| options[:mode] = m }
+   opts.on("--mode MODE", %w[assist], "Mode: assist (default)") { |m| options[:mode] = m }
   opts.on("-p", "--prompt PROMPT", "Run a single prompt and exit") { |p| options[:prompt] = p }
   opts.on("--resume SESSION_ID", "Resume a previous session by its ID") { |s| options[:resume] = s }
+  opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable)") { |m| (options[:memories] ||= []) << m }
   opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true }
   opts.on("--non-interactive", "Run a single prompt and exit (no REPL, implies --no-interrupt)") { options[:non_interactive] = true }
   opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results") { options[:verbose] = true }
@@ -53,6 +54,7 @@ Samagotchi::Agent.new(
   log_file: log_file,
   session_id: options[:resume],
   no_interrupt: options[:no_interrupt] || options[:non_interactive],
-  no_default_input: options[:no_default_input]
+  no_default_input: options[:no_default_input],
+  memories: options[:memories] || []
 ).run
 
