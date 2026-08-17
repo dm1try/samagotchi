@@ -850,16 +850,20 @@ module Samagotchi
     def explicit_memory_section
       return nil if @requested_memories.empty?
 
-      entries = @requested_memories.filter_map do |raw|
-        scope, name = split_memory_scope(raw)
-        body = Tools::MemoryRead.call(name, scope: scope)
-        if body.start_with?("Error:")
-          warn "Warning: --memory '#{raw}' could not be loaded (#{body})"
-          next nil
-        end
+      entries = []
+      @requested_memories.each do |raw|
+        names = raw.split(",").map(&:strip).reject(&:empty?)
+        names.each do |name|
+          scope, actual_name = split_memory_scope(name)
+          body = Tools::MemoryRead.call(actual_name, scope: scope)
+          if body.start_with?("Error:")
+            warn "Warning: --memory '#{name}' could not be loaded (#{body})"
+            next
+          end
 
-        add_unique_memory_name(:@session_memory_names, name)
-        "this memory is required by the user in the current context: memory name: #{name}\n#{body}"
+          add_unique_memory_name(:@session_memory_names, actual_name)
+          entries << "this memory is required by the user in the current context: memory name: #{actual_name}\n#{body}"
+        end
       end
 
       return nil if entries.empty?

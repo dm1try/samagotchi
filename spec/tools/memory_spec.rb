@@ -86,6 +86,69 @@ RSpec.describe Samagotchi::Tools::MemoryRead do
         expect(described_class.call("", scope: "project")).to include("No memories")
       end
     end
+
+    context "comma-separated multi-value support" do
+      it "reads multiple entries and concatenates with separator" do
+        File.write(File.join(project_memories_dir, "one.md"), "content-one")
+        File.write(File.join(project_memories_dir, "two.md"), "content-two")
+        result = described_class.call("one, two")
+        expected = "content-one" + "\n\n---\n\n" + "content-two"
+        expect(result).to eq(expected)
+      end
+
+      it "handles mixed found and missing entries" do
+        File.write(File.join(project_memories_dir, "found.md"), "found-content")
+        result = described_class.call("found, missing-entry")
+        expect(result).to include("found-content")
+        expect(result).to include("Error: memory not found: missing-entry")
+      end
+
+      it "returns combined error when all entries are missing" do
+        result = described_class.call("missing-a, missing-b")
+        expect(result).to eq("Error: memory not found: missing-a, missing-b")
+      end
+
+      it "skips blank entries in the list" do
+        File.write(File.join(project_memories_dir, "one.md"), "content-one")
+        File.write(File.join(project_memories_dir, "two.md"), "content-two")
+        result = described_class.call("one,, ,two")
+        expected = "content-one" + "\n\n---\n\n" + "content-two"
+        expect(result).to eq(expected)
+      end
+
+      it "reads the same entry twice when listed twice (no dedup)" do
+        File.write(File.join(project_memories_dir, "dup.md"), "dup-content")
+        result = described_class.call("dup, dup")
+        expected = "dup-content" + "\n\n---\n\n" + "dup-content"
+        expect(result).to eq(expected)
+      end
+
+      it "respects scope: all names are searched only in the given scope" do
+        File.write(File.join(project_memories_dir, "only-proj.md"), "project-only")
+        File.write(File.join(system_memories_dir, "only-sys.md"), "system-only")
+        result = described_class.call("only-proj, only-sys", scope: "project")
+        expect(result).to include("project-only")
+        expect(result).to include("Error: memory not found: only-sys")
+      end
+
+      it "falls back per-entry when scope is omitted" do
+        File.write(File.join(project_memories_dir, "a.md"), "project-a")
+        File.write(File.join(system_memories_dir, "b.md"), "system-b")
+        result = described_class.call("a, b")
+        expected = "project-a" + "\n\n---\n\n" + "system-b"
+        expect(result).to eq(expected)
+      end
+
+      it "returns error for only-blank list" do
+        result = described_class.call("  ,  ,  ")
+        expect(result).to eq("Error: no memory names provided")
+      end
+
+      it "single name behaves identically to pre-change behavior" do
+        File.write(File.join(project_memories_dir, "single.md"), "single-content")
+        expect(described_class.call("single")).to eq("single-content")
+      end
+    end
   end
 end
 

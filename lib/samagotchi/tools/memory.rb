@@ -22,10 +22,14 @@ module Samagotchi
       NAME        = "memory_read"
       DESCRIPTION = 'Read a memory entry (MD file) from scoped memories. ' \
                     'Pass name without extension and optional scope (project|system). ' \
-                    "When scope is omitted, read falls back from project to system."
+                    "When scope is omitted, read falls back from project to system. " \
+                    'Multiple comma-separated names (e.g. "one, two") read all matched entries ' \
+                    'concatenated with a `---` separator.'
 
       def self.name        = NAME
       def self.description = DESCRIPTION
+
+      SEPARATOR = "\n\n---\n\n"
 
       def self.call(entry_name, scope: nil)
         entry_name = entry_name.to_s.strip
@@ -45,17 +49,45 @@ module Samagotchi
           ].join("\n")
         end
 
-        scopes = scope ? [scope] : %w[project system]
-        scopes.each do |resolved_scope|
-          path = memory_path(entry_name, resolved_scope)
-          return File.read(path) if File.exist?(path)
+        names = parse_names(entry_name)
+
+        if names.empty?
+          return "Error: no memory names provided"
         end
 
-        "Error: memory not found: #{entry_name}"
-      rescue Errno::ENOENT
-        "Error: memory not found: #{entry_name}"
+        resolved_scopes = scope ? [scope] : %w[project system]
+
+        results = []
+        missing = []
+
+        names.each do |name|
+          found = false
+          resolved_scopes.each do |resolved_scope|
+            path = memory_path(name, resolved_scope)
+            if File.exist?(path)
+              results << File.read(path)
+              found = true
+              break
+            end
+          end
+          missing << name unless found
+        end
+
+        if results.empty? && !missing.empty?
+          "Error: memory not found: #{missing.join(', ')}"
+        elsif missing.empty?
+          results.join(SEPARATOR)
+        else
+          results.join(SEPARATOR) + SEPARATOR + "Error: memory not found: #{missing.join(', ')}"
+        end
+      rescue Errno::ENOENT => e
+        "Error: #{e.message}"
       rescue => e
         "Error: #{e.message}"
+      end
+
+      def self.parse_names(entry_name)
+        entry_name.split(",").map(&:strip).reject(&:empty?)
       end
 
       def self.normalize_scope(scope)
