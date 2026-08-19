@@ -8,6 +8,8 @@ require "reline"
 require_relative "model_profile"
 require_relative "kernel_loop"
 require_relative "session"
+require_relative "tool_declarations"
+require_relative "engine"
 require_relative "tools/memory"
 
 module Samagotchi
@@ -498,21 +500,32 @@ module Samagotchi
 
     
     def self.system_prompt_for(profile)
-      profile = ModelProfile.normalize(profile) unless profile.is_a?(ModelProfile)
-      new(mode: :assist, profile: profile).send(:assist_system_prompt)
+      Engine.system_prompt_for(profile)
     end
 
     def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [])
-      @mode    = mode.to_sym
-      @prompt  = prompt
+      @mode           = mode.to_sym
+      @prompt         = prompt
       @base_model_name = ModelProfile.required_model_name(model_name)
       @session_model_name = @base_model_name
-      @client = client || Client.new
-      @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@session_model_name)
-      @kernel  = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt)
+      @client         = client || Client.new
+      @profile        = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@session_model_name)
+      @kernel         = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt)
       @resume_session = session_id ? Session.load(session_id) : nil
       @no_default_input = no_default_input
       @requested_memories = Array(memories)
+      @engine         = Engine.new(
+        mode: :assist,
+        client: @client,
+        verbose: verbose,
+        log_file: log_file,
+        profile: @profile,
+        session_id: session_id,
+        no_interrupt: no_interrupt,
+        model_name: @session_model_name,
+        memories: @requested_memories,
+        kernel: @kernel
+      )
     end
 
     def run
@@ -527,7 +540,7 @@ module Samagotchi
     # Public entrypoint for background session workers.
     # Keeps worker call sites out of Agent private API details.
     def process_background_prompt(session:, prompt:)
-      process_prompt_through_kernel(session, prompt)
+      @engine.process_background_prompt(session: session, prompt: prompt)
     end
 
     private
@@ -2229,31 +2242,9 @@ module Samagotchi
     end
 
     # Process a prompt through the kernel loop and return the model response.
+    # Delegates to the internal Engine instance.
     def process_prompt_through_kernel(session, prompt)
-      messages = session.messages.dup
-      system_message = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
-
-      if messages.empty?
-        messages = [system_message]
-      elsif messages.first[:role].to_s != "system"
-        messages.unshift(system_message)
-      else
-        messages[0] = system_message
-      end
-
-      messages << { role: "user", content: prompt }
-      session.last_prompt = prompt
-
-      result = @kernel.run(messages)
-      session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
-
-      response = result.respond_to?(:output) ? result.output.to_s : result.to_s
-      if response.strip.empty?
-        session.messages << { role: "model", content: "[No response]" }
-        "[No response]"
-      else
-        response
-      end
+      @engine.process_prompt_through_kernel(session, prompt)
     end
 
     # Write an agent response to the session output directory.
