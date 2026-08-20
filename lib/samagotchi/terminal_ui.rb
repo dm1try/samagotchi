@@ -617,14 +617,26 @@ module Samagotchi
       SYS
     end
 
+    # Minimal one-shot run for --prompt / --non-interactive.
+    #
+    # Decoupled from terminal rendering: build the Engine (already constructed
+    # in initialize), run a single turn on a transient session, and print only
+    # the result output. No spinner / REPL / Reline / status line.
     def prompt_mode
-      messages = [
-        { role: "system", content: system_prompt_with_index(assist_system_prompt) },
-        { role: "user",   content: @prompt }
-      ]
-      max_iter = @no_interrupt ? 1000 : 10
-      result = run_kernel_with_thinking_feedback(messages, max_iterations: max_iter)
-      emit_result(result)
+      engine = @engine
+      session = Session.new_session(
+        mode: @mode.to_s,
+        model_name: @session_model_name,
+        working_directory: Dir.pwd
+      )
+      result = engine.run_turn(
+        session,
+        @prompt,
+        on_event: nil,
+        max_iterations: @no_interrupt ? 1000 : 10,
+        cancel_controller: nil
+      )
+      $stdout.puts result.output
     end
 
     def assist_loop

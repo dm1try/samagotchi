@@ -313,7 +313,7 @@ module Samagotchi
       value = raw.to_s.strip
       if value.include?("/")
         scope, name = value.split("/", 2)
-        return [scope, name] if Tools::MemoryRead.respond_to?(:VALID_SCOPES) && Tools::MemoryRead::VALID_SCOPES.include?(scope)
+        return [scope, name] if Tools::VALID_SCOPES.include?(scope)
       end
 
       [nil, value]

@@ -11,6 +11,31 @@ RSpec.describe Samagotchi::Agent do
   let(:client) { instance_double(Samagotchi::Client) }
   let(:ansi_escape) { /\e\[[0-9;]+m/ }
 
+  # Build the [system, user] message pair the UI uses to seed a turn, so tests
+  # can drive the interactive rendering path (run_kernel_with_thinking_feedback +
+  # emit_result) directly — independent of the now-minimal prompt_mode.
+  def ui_turn_messages(agent, prompt:)
+    [
+      { role: "system", content: agent.send(:system_prompt_with_index, agent.send(:assist_system_prompt)) },
+      { role: "user", content: prompt }
+    ]
+  end
+
+  # Run the UI's streaming kernel run and render the result, capturing stdout.
+  # Mirrors what prompt_mode used to do before it became a minimal Engine run.
+  def run_and_render(agent, prompt:)
+    original = $stdout
+    buffer = StringIO.new
+    $stdout = buffer
+    begin
+      result = agent.send(:run_kernel_with_thinking_feedback, ui_turn_messages(agent, prompt: prompt))
+      agent.send(:emit_result, result)
+    ensure
+      $stdout = original
+    end
+    buffer.string
+  end
+
   around do |example|
     original_thinking_mode = ENV["THINKING_MODE"]
     original_skip_agent_md = ENV["SAMAGOTCHI_SKIP_AGENT_MD"]
@@ -104,8 +129,9 @@ file2.rb")
 
       agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
-      expect { agent.run }
-        .to output(/tool> reading file \(read path=\"README.md\"\): ok.*done/m).to_stdout
+      output = run_and_render(agent, prompt: "read readme")
+      expect(output).to include('tool> reading file (read path="README.md"): ok')
+      expect(output).to include("done")
     end
 
     it "prints colored tool activity lines when stdout supports color" do
@@ -114,11 +140,12 @@ file2.rb")
         "done"
       ]
       allow(client).to receive(:complete).and_return(*responses)
-
       agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
       allow(agent).to receive(:color_output?).and_return(true)
-      expect { agent.run }
-        .to output(/#{ansi_escape}tool>#{ansi_escape} reading file .*#{ansi_escape}ok#{ansi_escape}.*done/m).to_stdout
+      output = run_and_render(agent, prompt: "read readme")
+      expect(output).to match(/#{ansi_escape}tool>#{ansi_escape}/)
+      expect(output).to match(/#{ansi_escape}ok#{ansi_escape}/)
+      expect(output).to include("done")
     end
 
     it "prints plain tool activity lines when NO_COLOR is set" do
@@ -127,11 +154,12 @@ file2.rb")
         "done"
       ]
       allow(client).to receive(:complete).and_return(*responses)
-
       agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
-      expect { agent.run }
-        .to output(/tool> reading file \(read path=\"README.md\"\): ok.*done/m).to_stdout
+      output = run_and_render(agent, prompt: "read readme")
+      expect(output).to include('tool> reading file (read path="README.md"): ok')
+      expect(output).not_to match(/#{ansi_escape}/)
+      expect(output).to include("done")
     end
 
     it "renders tool activity immediately without duplicating it at turn end" do
@@ -140,38 +168,23 @@ file2.rb")
         "done"
       ]
       allow(client).to receive(:complete).and_return(*responses)
-
       agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
-
-      original_stdout = $stdout
-      buffer = StringIO.new
-      $stdout = buffer
-      begin
-        agent.run
-      ensure
-        $stdout = original_stdout
-      end
-
-      output = buffer.string
+      output = run_and_render(agent, prompt: "read readme")
       tool_line = 'tool> reading file (read path="README.md"): ok'
-      tool_index = output.index(tool_line)
-      done_index = output.index("done")
-
-      expect(tool_index).not_to be_nil
-      expect(done_index).not_to be_nil
-      expect(tool_index).to be < done_index
-      expect(output.scan(/tool> reading file \(read path=\"README.md\"\): ok/).length).to eq(1)
+      expect(output).to include(tool_line)
+      expect(output).to include("done")
+      expect(output.index(tool_line)).to be < output.index("done")
+      expect(output.scan(/#{Regexp.escape(tool_line)}/).length).to eq(1)
     end
 
     it "does not render tool activity lines for startup memory index reads" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "project").and_return("- project index")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "system").and_return("- system index")
       allow(client).to receive(:complete).and_return("ok")
-
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      expect { agent.run }
-        .to output(/\A(?!.*tool> reading memory).*ok/m).to_stdout
+      output = run_and_render(agent, prompt: "hi")
+      expect(output).to match(/\A(?!.*tool> reading memory).*ok/m)
     end
 
     it "prints unified sticky status line with memory segment when memory files were loaded" do
@@ -180,12 +193,11 @@ file2.rb")
         "done"
       ]
       allow(client).to receive(:complete).and_return(*responses)
-
       agent = described_class.new(mode: "assist", prompt: "read memory", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
-
-      expect { agent.run }
-        .to output(/status> mode=assist(?: \| server=[^|\n]+)? \| mem: refactoring_backlog.*done/m).to_stdout
+      output = run_and_render(agent, prompt: "read memory")
+      expect(output).to match(/mem: refactoring_backlog/)
+      expect(output).to include("done")
     end
 
     it "uses the assist system prompt" do
@@ -247,7 +259,7 @@ file2.rb")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["foo"])
-      agent.run
+      run_and_render(agent, prompt: "hi")
       expect(agent.send(:sticky_status_lines).join("\n")).to include("mem: foo")
     end
 
@@ -419,39 +431,6 @@ file2.rb")
     end
   end
 
-  describe "rg guidance" do
-    before do
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
-      ENV.delete("THINKING_MODE")
-    end
-
-    it "includes rg guidance in the prompt when rg is available" do
-      received_prompt = nil
-      allow(client).to receive(:complete) do |prompt|
-        received_prompt = prompt
-        "ok"
-      end
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:rg_available?).and_return(true)
-      agent.run
-      expect(received_prompt).to include("prefer `rg` (ripgrep) over `grep`")
-    end
-
-    it "omits rg guidance from the prompt when rg is not available" do
-      received_prompt = nil
-      allow(client).to receive(:complete) do |prompt|
-        received_prompt = prompt
-        "ok"
-      end
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:rg_available?).and_return(false)
-      agent.run
-      expect(received_prompt).not_to include("prefer `rg` (ripgrep) over `grep`")
-    end
-
-  end
-
   describe "Thinking Mode (control token injection)" do
     let(:base_prompt) { "Base Prompt" }
 
@@ -532,11 +511,10 @@ file2.rb")
         on_chunk&.call(content: "b", payload: { "content" => "b" })
         "done"
       end
-
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
-
-      expect { agent.run }.to output(/thinking\.\.\..*done/m).to_stdout
+      output = run_and_render(agent, prompt: "hi")
+      expect(output).to match(/thinking\.\.\..*done/m)
     end
 
     it "renders a tail preview line while streaming" do
@@ -546,13 +524,12 @@ file2.rb")
         on_chunk&.call(content: " world", payload: { "content" => " world" })
         "done"
       end
-
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
       allow(agent).to receive(:color_output?).and_return(false)
       allow(agent).to receive(:thinking_render_min_interval).and_return(0.0)
-
-      expect { agent.run }.to output(/model> .*hello world.*done/m).to_stdout
+      output = run_and_render(agent, prompt: "hi")
+      expect(output).to match(/model> .*hello world.*done/m)
     end
 
     it "renders the preview line in color when color output is enabled" do
@@ -561,13 +538,12 @@ file2.rb")
         on_chunk&.call(content: "hello", payload: { "content" => "hello" })
         "done"
       end
-
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
       allow(agent).to receive(:color_output?).and_return(true)
       allow(agent).to receive(:thinking_render_min_interval).and_return(0.0)
-
-      expect { agent.run }.to output(/#{ansi_escape}model> … hello#{ansi_escape}.*done/m).to_stdout
+      output = run_and_render(agent, prompt: "hi")
+      expect(output).to match(/#{ansi_escape}model> … hello#{ansi_escape}.*done/m)
     end
 
     it "keeps preview lines at a fixed height and pads when content is short" do

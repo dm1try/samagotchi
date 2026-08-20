@@ -46,6 +46,18 @@ RSpec.describe Samagotchi::Engine do
       engine = build_engine(profile: "gemma4")
       expect(helper).to eq(engine.send(:assist_system_prompt))
     end
+
+    it "includes rg guidance in the system prompt when rg is available" do
+      engine = build_engine(profile: "gemma4")
+      allow(engine).to receive(:rg_available?).and_return(true)
+      expect(engine.system_prompt).to include("prefer `rg` (ripgrep) over `grep`")
+    end
+
+    it "omits rg guidance from the system prompt when rg is not available" do
+      engine = build_engine(profile: "gemma4")
+      allow(engine).to receive(:rg_available?).and_return(false)
+      expect(engine.system_prompt).not_to include("prefer `rg` (ripgrep) over `grep`")
+    end
   end
 
   describe "memory injection" do
