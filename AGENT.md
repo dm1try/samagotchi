@@ -5,6 +5,20 @@ Samagotchi is a self-evolving Ruby agent harness. The agent is part of the code,
 
 Naming note: Samagotchi is the full engine name. Chi (pronounced "chee") is the friendly shorthand used in conversational and CLI contexts.
 
+## Architecture
+
+Samagotchi is split into a core **Engine** (`lib/samagotchi/engine.rb`) and a
+**TerminalUI** (`lib/samagotchi/terminal_ui.rb`); see the README's Architecture section.
+- `Engine` owns all agent logic: system prompt, memory injection, tool declarations,
+  session lifecycle, and the model↔tool loop (`Engine#run_turn`). No terminal coupling.
+- `TerminalUI` owns the REPL (Reline), rendering, and REPL commands; it delegates all core
+  work to an internal `Engine`.
+- Background workers (`SessionManager`) and `--prompt`/`--non-interactive` build `Engine`
+  directly. `bin/chi` interactive mode still builds `TerminalUI`.
+- The `on_event:` seam on `run_turn` exposes raw `KernelLoop` events plus higher-level
+  `:turn_started` / `:turn_completed` / `:turn_canceled` events, so any new UI can render
+  without terminal coupling.
+
 ## Core Principles
 - **Self-Inhabiting**: The agent's tools are the mechanisms for its own modification.
 - **Persistent Cognition**: Use project memories (`~/.config/samagotchi/memories/projects/<name>_<hash>/`) and system memories (`~/.config/samagotchi/memories`) for long-term state.

@@ -3,7 +3,7 @@
 require "spec_helper"
 require "samagotchi/terminal_ui"
 
-RSpec.describe Samagotchi::Agent do
+RSpec.describe Samagotchi::TerminalUI do
   describe "#process_background_prompt" do
     it "uses KernelLoop#run and returns model output" do
       kernel = instance_double(Samagotchi::KernelLoop)

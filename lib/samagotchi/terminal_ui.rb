@@ -2271,7 +2271,4 @@ module Samagotchi
       File.write(File.join(output_dir, "#{timestamp}.txt"), response.to_s)
     end
   end
-
-  # Backward-compat alias (Step 2). Removal is Step 5.
-  Agent = TerminalUI
 end

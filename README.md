@@ -8,6 +8,53 @@ Run with:
 - `bin/chi`
 - `bin/chi -p "your prompt"` to run a single prompt and exit
 
+## Architecture
+
+Samagotchi is split into a **core engine** and a **terminal UI**. The core holds all
+agent logic and can be used without any terminal rendering; the UI is a thin layer on top.
+
+| Layer | Class | Responsibility |
+|-------|-------|----------------|
+| Core | `Samagotchi::Engine` | System prompt, memory injection, tool declarations, session lifecycle, the model↔tool loop (`run_turn`). No terminal coupling. |
+| UI | `Samagotchi::TerminalUI` | Interactive REPL (Reline), rendering (ANSI, spinner, status line), REPL commands. Delegates all core work to an `Engine`. |
+| Transport | `Samagotchi::Client`, `KernelLoop`, `Session` | HTTP transport, model↔tool loop, session data model (already clean). |
+
+- `bin/chi` (interactive) builds `TerminalUI`; `bin/chi -p "..."` runs a minimal
+  `Engine` turn (no spinner, no REPL, no Reline).
+- `SessionManager` background workers build `Engine` directly (no terminal rendering).
+- `Dashboard` is currently a minimal no-crash shim; its full rework is documented in
+  `tmp/plans/20260818-000000-core-ui-separation.md`.
+
+#### Using the core
+
+```ruby
+engine = Samagotchi::Engine.new(mode: :assist, model_name: "gemma4", memories: [])
+session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd)
+
+engine.run_turn(session, "hello", on_event: nil)   # => KernelLoop::Result (`.output`)
+```
+
+#### The `on_event` seam
+
+`run_turn` accepts an optional `on_event:` callable that receives an event stream. It
+forwards the raw `KernelLoop` events unchanged (the low-level contract) and adds a few
+higher-level events so UIs get clean turn boundaries without inferring them:
+
+- `:turn_started` — `{ session_id:, prompt: }`
+- `:turn_completed` — `{ result: }` (the final `KernelLoop::Result`)
+- `:turn_canceled` — `{ cancellation_reason: }`
+
+Every event is a `Hash` with a `:type` symbol key; the sink must not raise (the Engine
+rescues sink errors). A new UI (web, API, dashboard) supplies its own `on_event` and
+renders whatever it needs from the stream + final `Result`. The public Engine API:
+
+```ruby
+engine.run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil)
+engine.run(session: nil, prompt: "...", on_event: nil)   # create/resume session + run
+engine.system_prompt     # fully built system prompt string
+engine.session           # current session (Engine owns create/resume)
+```
+
 ## Global Config File
 
 Chi can preload a global config file and expose those entries as environment

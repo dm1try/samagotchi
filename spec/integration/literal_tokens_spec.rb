@@ -35,7 +35,7 @@ RSpec.describe "read tool - literal control token integration", :integration do
 
   def run_with_prompt(prompt)
     messages = [
-      { role: "system", content: Samagotchi::Agent.system_prompt_for(profile, mode: :assist) },
+      { role: "system", content: Samagotchi::Engine.system_prompt_for(profile, mode: :assist) },
       { role: "user", content: prompt }
     ]
     kernel.run(messages)

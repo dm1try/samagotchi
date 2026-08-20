@@ -7,7 +7,7 @@ require "ostruct"
 require "stringio"
 require "tmpdir"
 
-RSpec.describe Samagotchi::Agent do
+RSpec.describe Samagotchi::TerminalUI do
   let(:client) { instance_double(Samagotchi::Client) }
   let(:ansi_escape) { /\e\[[0-9;]+m/ }
 

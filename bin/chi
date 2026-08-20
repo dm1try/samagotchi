@@ -47,7 +47,7 @@ log_file = if ["1", "true"].include?(ENV.fetch("SAMAGOTCHI_DISABLE_LOG_FILE", ""
              ENV.fetch("SAMAGOTCHI_LOG_FILE", File.expand_path("../tmp/samagotchi.log", __dir__))
            end
 
-Samagotchi::Agent.new(
+Samagotchi::TerminalUI.new(
   mode: options[:mode],
   prompt: options[:prompt],
   verbose: options[:verbose],
