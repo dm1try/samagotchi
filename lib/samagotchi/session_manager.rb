@@ -8,7 +8,7 @@ require "securerandom"
 require "rbconfig"
 
 require_relative "session"
-require_relative "agent"
+require_relative "terminal_ui"
 
 module Samagotchi
   # SessionManager coordinates background session processes.

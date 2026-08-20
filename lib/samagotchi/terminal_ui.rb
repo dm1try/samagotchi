@@ -13,10 +13,10 @@ require_relative "engine"
 require_relative "tools/memory"
 
 module Samagotchi
-  # Agent encapsulates the single operating mode of the harness.
+  # TerminalUI encapsulates the single operating mode of the harness.
   #
   # assist mode  — interactive REPL: user types, model responds, tools execute inline.
-  class Agent
+  class TerminalUI
     AGENT_DESCRIPTION_FILE = "AGENT.md"
     PROMPT_HISTORY_ENV = "SAMAGOTCHI_HISTORY_FILE"
     XDG_STATE_HOME_ENV = "XDG_STATE_HOME"
@@ -538,7 +538,7 @@ module Samagotchi
     end
 
     # Public entrypoint for background session workers.
-    # Keeps worker call sites out of Agent private API details.
+    # Keeps worker call sites out of TerminalUI private API details.
     def process_background_prompt(session:, prompt:)
       @engine.process_background_prompt(session: session, prompt: prompt)
     end
@@ -2253,4 +2253,7 @@ module Samagotchi
       File.write(File.join(output_dir, "#{timestamp}.txt"), response.to_s)
     end
   end
+
+  # Backward-compat alias (Step 2). Removal is Step 5.
+  Agent = TerminalUI
 end

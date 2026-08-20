@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/kernel_loop"
-require "samagotchi/agent"
+require "samagotchi/terminal_ui"
 require "samagotchi/model_profile"
 
 # Integration tests that verify the model correctly calls the execute tool

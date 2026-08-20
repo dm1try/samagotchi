@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "samagotchi/agent"
+require "samagotchi/terminal_ui"
 
 RSpec.describe Samagotchi::Agent do
   describe "#process_background_prompt" do

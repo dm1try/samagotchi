@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "samagotchi/agent"
+require "samagotchi/terminal_ui"
 require "fileutils"
 require "json"
 require "ostruct"
@@ -1235,7 +1235,7 @@ file2.rb")
 
     it "completes project paths when input starts with @" do
       FileUtils.mkdir_p("lib/samagotchi")
-      File.write("lib/samagotchi/agent.rb", "# test")
+      File.write("lib/samagotchi/terminal_ui.rb", "# test")
 
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(Reline).to receive(:line_buffer).and_return("@lib/sama")
@@ -1247,7 +1247,7 @@ file2.rb")
 
     it "completes when @token appears later in the line" do
       FileUtils.mkdir_p("lib/samagotchi")
-      File.write("lib/samagotchi/agent.rb", "# test")
+      File.write("lib/samagotchi/terminal_ui.rb", "# test")
 
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(Reline).to receive(:line_buffer).and_return("please open @lib/sama")
