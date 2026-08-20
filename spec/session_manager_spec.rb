@@ -125,15 +125,15 @@ RSpec.describe Samagotchi::SessionManager do
   end
 
   describe ".run_session_loop" do
-    it "initializes Agent with supported keywords" do
+    it "initializes Engine with supported keywords" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.status = Samagotchi::Session::STATUS_STOPPED
       session.save(state_dir: tmpdir)
 
-      agent = instance_double(Samagotchi::Agent)
-      expect(Samagotchi::Agent).to receive(:new)
-        .with(mode: :assist, model_name: "gemma4", no_default_input: true)
-        .and_return(agent)
+      engine = instance_double(Samagotchi::Engine)
+      expect(Samagotchi::Engine).to receive(:new)
+        .with(mode: :assist, model_name: "gemma4")
+        .and_return(engine)
 
       expect {
         described_class.run_session_loop(session.id, state_dir: tmpdir)
@@ -159,18 +159,19 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Dir.glob(File.join(input_dir, "*")).length).to eq(0)
     end
 
-    it "processes prompts through Agent public background API" do
+    it "processes prompts through Engine public background API" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.status = Samagotchi::Session::STATUS_RUNNING
       session.last_prompt = "hello"
       session.save(state_dir: tmpdir)
 
-      agent = instance_double(Samagotchi::Agent)
-      allow(Samagotchi::Agent).to receive(:new).and_return(agent)
-      expect(agent).to receive(:process_background_prompt)
-        .with(session: instance_of(Samagotchi::Session), prompt: "hello") do
+      engine = instance_double(Samagotchi::Engine)
+      result = instance_double(Samagotchi::KernelLoop::Result, output: "hi")
+      allow(Samagotchi::Engine).to receive(:new).and_return(engine)
+      expect(engine).to receive(:run_turn)
+        .with(instance_of(Samagotchi::Session), "hello") do
           Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
-          "hi"
+          result
         end
 
       expect {

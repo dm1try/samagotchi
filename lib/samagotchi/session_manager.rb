@@ -158,7 +158,7 @@ module Samagotchi
       sd = state_dir || Session.default_state_dir
       session = Session.load(session_id, state_dir: sd)
       session_dir = Session.session_dir(session_id, state_dir: sd)
-      agent = Samagotchi::Agent.new(mode: session.mode.to_sym, model_name: session.model_name, no_default_input: true)
+      engine = Samagotchi::Engine.new(mode: session.mode.to_sym, model_name: session.model_name)
 
       begin
         # Process the initial prompt
@@ -167,8 +167,11 @@ module Samagotchi
           session.last_prompt = ""
           session.save(state_dir: sd)
 
-          response = agent.process_background_prompt(session: session, prompt: prompt)
-          write_output(session_dir, response) if response
+          result = engine.run_turn(session, prompt)
+          response = result.respond_to?(:output) ? result.output : nil
+          unless response.nil? || response.strip.empty?
+            write_output(session_dir, response)
+          end
           session.save(state_dir: sd) unless stopped_on_disk?(session_id, state_dir: sd)
         end
 
@@ -194,8 +197,11 @@ module Samagotchi
               message = File.read(claimed_file).to_s
               next if message.strip.empty?
 
-              response = agent.process_background_prompt(session: session, prompt: message)
-              write_output(session_dir, response) if response
+              result = engine.run_turn(session, message)
+              response = result.respond_to?(:output) ? result.output : nil
+              unless response.nil? || response.strip.empty?
+                write_output(session_dir, response)
+              end
               session.save(state_dir: sd) unless stopped_on_disk?(session_id, state_dir: sd)
             ensure
               FileUtils.rm_f(claimed_file)
