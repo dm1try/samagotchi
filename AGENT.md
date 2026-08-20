@@ -14,6 +14,7 @@ Naming note: Samagotchi is the full engine name. Chi (pronounced "chee") is the 
 - **Always validate the test suite** (`bundle exec rspec`) after adding, updating, or removing functionality. Failing specs must be fixed before committing.
 - When modifying code, always ensure RSpec tests pass.
 - Use memory scopes explicitly: `memory_read` may omit scope (project -> system fallback), while `memory_write` must provide `scope` (`project` or `system`).
+- `memory_write` accepts an optional `description` (and its scoped `index.md` is auto-maintained). Each entry is written as a managed line — `- **name** · scope · date · size — description` — with every other line preserved byte-for-byte.
 - When adding new capabilities, update the relevant tools in `lib/samagotchi/tools/`.
 - Always check `AGENT.md` for current operational context.
 - Prefer `execute` for short commands and `task_create`/`task_wait` for long-running commands. Use `task_get`/`task_list` for nonblocking status checks and `task_stop` to stop a task.
