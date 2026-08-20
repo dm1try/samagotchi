@@ -135,14 +135,14 @@ RSpec.describe Samagotchi::Tools::Edit do
       end
     end
 
-    it "returns an error when only one range boundary is provided" do
+    it "returns an error when start_line is missing" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "file.txt")
         File.write(path, "line 1\nline 2\n")
 
-        result = described_class.call(content("", "updated\n"), path: path, start_line: 1)
+        result = described_class.call(content("", "updated\n"), path: path, end_line: 2)
         expect(result).to include("Error")
-        expect(result).to include("must both be provided")
+        expect(result).to include("start_line must be provided")
       end
     end
 
@@ -157,14 +157,53 @@ RSpec.describe Samagotchi::Tools::Edit do
       end
     end
 
-    it "returns an error when range is out of bounds" do
+    it "returns an error when start_line is past EOF" do
       Dir.mktmpdir do |dir|
+        path = File.join(dir, "file.txt")
+        File.write(path, "line 1\nline 2\n")
+
+        result = described_class.call(content("", "updated\n"), path: path, start_line: 5, end_line: 6)
+        expect(result).to include("Error")
+        expect(result).to include("out of bounds")
+      end
+    end
+
+    it "clamps an overshooting end_line to EOF and applies the edit" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "file.txt")
+        File.write(path, "line 1\nline 2\n")
+
+        result = described_class.call(content("", "updated\n"), path: path, start_line: 1, end_line: 5)
+        expect(result).to include("Edited")
+        expect(result).to include("clamped to line 2")
+
+        # The replacement actually covered the whole (clamped) range.
+        expect(File.read(path)).to eq("updated\n")
+      end
+    end
+
+    it "replaces from start_line to EOF when end_line is omitted" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "file.txt")
+        File.write(path, "line 1\nline 2\nline 3\n")
+
+        described_class.call(content("", "X\n"), path: path, start_line: 2)
+
+        expect(File.read(path)).to eq("line 1\nX\n")
+      end
+    end
+
+    it "keeps the hard error when SAMAGOTCHI_EDIT_ALLOW_OOR_END is disabled" do
+      Dir.mktmpdir do |dir|
+        ENV["SAMAGOTCHI_EDIT_ALLOW_OOR_END"] = "false"
         path = File.join(dir, "file.txt")
         File.write(path, "line 1\nline 2\n")
 
         result = described_class.call(content("", "updated\n"), path: path, start_line: 1, end_line: 5)
         expect(result).to include("Error")
         expect(result).to include("out of bounds")
+      ensure
+        ENV.delete("SAMAGOTCHI_EDIT_ALLOW_OOR_END")
       end
     end
   end

@@ -60,30 +60,56 @@ module Samagotchi
 
         start_num = parse_positive_line_number(start_line, "start_line")
         return start_num if start_num.is_a?(String)
-
-        end_num = parse_positive_line_number(end_line, "end_line")
-        return end_num if end_num.is_a?(String)
-
-        return "Error: start_line and end_line must both be provided for range edits" if start_num.nil? || end_num.nil?
-        return "Error: start_line must be <= end_line" if start_num > end_num
+        return "Error: start_line must be provided for range edits" if start_num.nil?
 
         source = File.read(path)
         lines = source.lines
         total_lines = lines.length
-        return "Error: range out of bounds for #{path}: file has #{total_lines} lines" if total_lines.zero?
-        return "Error: range out of bounds for #{path}: file has #{total_lines} lines" if start_num > total_lines || end_num > total_lines
+
+        # Option C: end_line is optional and means "to EOF" when omitted
+        # (unless SAMAGOTCHI_EDIT_END_OPTIONAL=false).
+        end_provided = !blank?(end_line)
+        end_num = end_provided ? parse_positive_line_number(end_line, "end_line") : nil
+        return end_num if end_num.is_a?(String)
+
+        # Option B: an end_line that overshoots EOF is clamped here and flagged
+        # in the result so the agent never mutates a different span silently.
+        # Set SAMAGOTCHI_EDIT_ALLOW_OOR_END=false to keep the hard error instead.
+        clamp_note = ""
+        end_value = nil
+        if end_provided
+          if end_num > total_lines
+            if OutputGuardrails.env_bool("SAMAGOTCHI_EDIT_ALLOW_OOR_END", default: true)
+              clamp_note = " (end_line #{end_num} exceeds #{total_lines} lines; clamped to line #{total_lines})"
+              end_value = total_lines
+            else
+              return "Error: range out of bounds for #{path}: file has #{total_lines} lines"
+            end
+          else
+            end_value = end_num
+          end
+        else
+          unless OutputGuardrails.env_bool("SAMAGOTCHI_EDIT_END_OPTIONAL", default: true)
+            return "Error: start_line and end_line must both be provided for range edits"
+          end
+          end_value = total_lines
+        end
+
+        # start past EOF is genuinely unusable -> keep a hard error.
+        return "Error: start_line #{start_num} out of bounds for #{path}: file has #{total_lines} lines" if start_num > total_lines
+        return "Error: start_line must be <= end_line" if start_num > end_value
 
         prefix = lines[0, start_num - 1].join
-        suffix = lines[end_num..]&.join.to_s
+        suffix = lines[end_value..]&.join.to_s
         # Ensure new_text ends with a newline when a suffix follows so that the
         # first suffix line isn't concatenated onto the last replacement line.
         normalized = (!new_text.empty? && !suffix.empty? && !new_text.end_with?("\n")) ? new_text + "\n" : new_text
         updated = prefix + normalized + suffix
         File.write(path, updated)
 
-        replaced_lines = (end_num - start_num) + 1
+        replaced_lines = (end_value - start_num) + 1
         new_line_count = new_text.lines.length
-        "Edited #{path}: replaced lines #{start_num}-#{end_num} (#{replaced_lines} lines) with #{new_line_count} lines"
+        "Edited #{path}: replaced lines #{start_num}-#{end_value} (#{replaced_lines} lines) with #{new_line_count} lines#{clamp_note}"
       rescue => e
         "Error: #{e.message}"
       end

@@ -122,14 +122,15 @@ RSpec.describe Samagotchi::Tools::Read do
       end
     end
 
-    it "returns an error when only one range boundary is provided" do
+    it "returns an error when start_line is missing" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "range.txt")
         File.write(path, "one\ntwo\n")
 
-        result = described_class.call(path, start_line: 1)
+        # end_line supplied but start_line omitted -> cannot resolve a span.
+        result = described_class.call(path, end_line: 1)
         expect(result).to include("Error")
-        expect(result).to include("must both be provided")
+        expect(result).to include("start_line must be provided")
       end
     end
 
@@ -144,14 +145,63 @@ RSpec.describe Samagotchi::Tools::Read do
       end
     end
 
-    it "returns an error when range is out of bounds" do
+    it "returns an error when start_line is past EOF" do
       Dir.mktmpdir do |dir|
+        path = File.join(dir, "range.txt")
+        File.write(path, "one\ntwo\n")
+
+        result = described_class.call(path, start_line: 5, end_line: 6)
+        expect(result).to include("Error")
+        expect(result).to include("out of bounds")
+      end
+    end
+
+    it "reads from start_line to EOF when end_line is omitted" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "range.txt")
+        File.write(path, "one\ntwo\nthree\n")
+
+        result = described_class.call(path, start_line: 2)
+        expect(result).to eq("two\nthree\n")
+      end
+    end
+
+    it "clamps an overshooting end_line to EOF and reports it" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "range.txt")
+        File.write(path, "one\ntwo\n")
+
+        result = described_class.call(path, start_line: 1, end_line: 5)
+        expect(result).to start_with("one\ntwo\n")
+        expect(result).to include("end_line 5 exceeds 2 lines")
+      end
+    end
+
+    it "keeps the hard error when SAMAGOTCHI_READ_ALLOW_OOR_END is disabled" do
+      Dir.mktmpdir do |dir|
+        ENV["SAMAGOTCHI_READ_ALLOW_OOR_END"] = "false"
         path = File.join(dir, "range.txt")
         File.write(path, "one\ntwo\n")
 
         result = described_class.call(path, start_line: 1, end_line: 5)
         expect(result).to include("Error")
         expect(result).to include("out of bounds")
+      ensure
+        ENV.delete("SAMAGOTCHI_READ_ALLOW_OOR_END")
+      end
+    end
+
+    it "keeps the hard error when SAMAGOTCHI_READ_END_OPTIONAL is disabled" do
+      Dir.mktmpdir do |dir|
+        ENV["SAMAGOTCHI_READ_END_OPTIONAL"] = "false"
+        path = File.join(dir, "range.txt")
+        File.write(path, "one\ntwo\n")
+
+        result = described_class.call(path, start_line: 2)
+        expect(result).to include("Error")
+        expect(result).to include("must both be provided")
+      ensure
+        ENV.delete("SAMAGOTCHI_READ_END_OPTIONAL")
       end
     end
   end

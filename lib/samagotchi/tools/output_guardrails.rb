@@ -22,6 +22,17 @@ module Samagotchi
         value.positive? ? value : default
       end
 
+      def env_bool(key, default:)
+        raw = ENV[key]
+        return default if raw.nil? || raw.strip.empty?
+
+        case raw.strip.downcase
+        when "true", "1", "yes", "on"                       then true
+        when "false", "0", "no", "off", "none"             then false
+        else default
+        end
+      end
+
       def safe_utf8(bytes)
         bytes.to_s
              .force_encoding(Encoding::UTF_8)

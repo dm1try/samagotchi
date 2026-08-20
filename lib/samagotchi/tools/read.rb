@@ -82,21 +82,48 @@ module Samagotchi
       private_class_method :range_requested?
 
       def self.read_range(path, start_line:, end_line:)
-        start_num = parse_positive_line_number(start_line, "start_line")
-        return start_num if start_num.is_a?(String)
-
-        end_num = parse_positive_line_number(end_line, "end_line")
-        return end_num if end_num.is_a?(String)
-
-        return "Error: start_line and end_line must both be provided for range reads" if start_num.nil? || end_num.nil?
-        return "Error: start_line must be <= end_line" if start_num > end_num
-
         lines = File.readlines(path, chomp: false)
         total_lines = lines.length
-        return "Error: range out of bounds for #{path}: file has #{total_lines} lines" if total_lines.zero?
-        return "Error: range out of bounds for #{path}: file has #{total_lines} lines" if start_num > total_lines || end_num > total_lines
+        return "Error: range out of bounds for #{path}: file is empty (0 lines)" if total_lines.zero?
 
-        lines[(start_num - 1)..(end_num - 1)].join
+        start_num = parse_positive_line_number(start_line, "start_line")
+        return start_num if start_num.is_a?(String)
+        return "Error: start_line must be provided for range reads" if start_num.nil?
+
+        end_provided = !blank?(end_line)
+        end_num = end_provided ? parse_positive_line_number(end_line, "end_line") : nil
+        return end_num if end_num.is_a?(String)
+
+        # Option C: end_line is optional and means "to EOF" when omitted
+        # (unless SAMAGOTCHI_READ_END_OPTIONAL=false).
+        unless end_provided
+          return "Error: start_line and end_line must both be provided for range reads" unless OutputGuardrails.env_bool("SAMAGOTCHI_READ_END_OPTIONAL", default: true)
+
+          end_num = total_lines
+        end
+
+        # Option B: an end_line that overshoots EOF is clamped silently by
+        # Ruby's slice; when it also exceeds the file we trim here so the agent
+        # sees the real span.  Set SAMAGOTCHI_READ_ALLOW_OOR_END=false to keep
+        # the historical hard error instead.
+        clamp_note = ""
+        if end_provided && end_num > total_lines
+          if OutputGuardrails.env_bool("SAMAGOTCHI_READ_ALLOW_OOR_END", default: true)
+            clamp_note = "\n[read: end_line #{end_num} exceeds #{total_lines} lines; returning lines #{start_num}-#{total_lines}]"
+            end_num = total_lines
+          else
+            return "Error: range out of bounds for #{path}: file has #{total_lines} lines"
+          end
+        end
+
+        # A start past EOF is genuinely unusable -> keep a hard error.  A slice
+        # whose start is within the file never yields nil, so this also guards
+        # against the previous ".join on nil" crash.
+        return "Error: start_line #{start_num} out of bounds for #{path}: file has #{total_lines} lines" if start_num > total_lines
+        return "Error: start_line must be <= end_line" if start_num > end_num
+
+        content = lines[(start_num - 1)..(end_num - 1)].join
+        clamp_note.empty? ? content : content + clamp_note
       end
       private_class_method :read_range
 
