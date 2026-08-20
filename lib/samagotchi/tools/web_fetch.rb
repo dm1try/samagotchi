@@ -33,8 +33,8 @@ module Samagotchi
         return handle_http_error(response, uri) unless response.is_a?(Net::HTTPSuccess)
 
         content_type = response["content-type"] || ""
-        return extract_text_from_html(response.body) if content_type.include?("text/html")
-        return response.body if content_type.include?("text/")
+        return to_utf8(extract_text_from_html(response.body)) if content_type.include?("text/html")
+        return to_utf8(response.body) if content_type.include?("text/")
 
         "Error: unsupported content type: #{content_type}"
       rescue URI::InvalidURIError
@@ -108,6 +108,23 @@ module Samagotchi
         else
           "Error: HTTP #{response.code} for #{uri}"
         end
+      end
+
+      # Network bodies come back tagged ASCII-8BIT even when they hold UTF-8
+      # bytes (web text is essentially always UTF-8). Relabel as UTF-8 so the
+      # result can be safely interpolated into UTF-8 strings (logs, conversation
+      # history) without raising
+      # "incompatible character encodings: UTF-8 and BINARY (ASCII-8BIT)".
+      # Falls back to lossy replacement only if the bytes are genuinely not
+      # valid UTF-8.
+      def self.to_utf8(str)
+        s = str.to_s
+        return s if s.encoding == Encoding::UTF_8 && s.valid_encoding?
+
+        s = s.dup.force_encoding(Encoding::UTF_8)
+        return s if s.valid_encoding?
+
+        s.encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
       end
 
       def self.extract_text_from_html(html)

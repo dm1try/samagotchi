@@ -201,6 +201,24 @@ RSpec.describe Samagotchi::Tools::WebFetch do
       expect(result).to eq("plain text content")
     end
 
+    it "returns valid UTF-8 for an ASCII-8BIT text body (regression: encoding mismatch)" do
+      # Net::HTTP returns response bodies tagged ASCII-8BIT even when they hold
+      # UTF-8 bytes (e.g. raw source files on raw.githubusercontent.com).
+      body = "const x = 1; // café — ☕".b
+      expect(body.encoding).to eq(Encoding::ASCII_8BIT)
+      stub_request(:get, "https://example.com/raw").to_return(
+        status: 200,
+        body: body,
+        headers: { "Content-Type" => "text/plain; charset=utf-8" },
+      )
+      result = web_fetch.call("https://example.com/raw")
+      expect(result.encoding).to eq(Encoding::UTF_8)
+      expect(result.valid_encoding?).to be(true)
+      # Must not raise when interpolated into a UTF-8 string (logs/history).
+      expect { "result: #{result}" }.not_to raise_error
+      expect(result).to include("café")
+    end
+
     it "returns error for unsupported content type" do
       stub_request(:get, "https://example.com/json").to_return(
         status: 200,
