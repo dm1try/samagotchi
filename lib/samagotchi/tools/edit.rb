@@ -18,6 +18,8 @@ module Samagotchi
         Edit a file by replacing an exact block of text.
         Usage: <tool name="edit" path="path/to/file"><old>exact text to replace</old><new>replacement text</new></tool>
         The <old> block must match exactly once in the file.
+        Range mode: pass start_line/end_line (inclusive) instead of old_text.
+        end_line is optional (means "to EOF") and may overshoot EOF — the tool clamps to the last line and reports the clamp. A start_line past EOF returns an error.
       DESC
 
       def self.name        = NAME
