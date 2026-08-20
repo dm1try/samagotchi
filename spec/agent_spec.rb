@@ -384,6 +384,21 @@ file2.rb")
       expect(received_prompt).to include("Use project conventions")
     end
 
+    it "injects the current working directory as context" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent.run
+
+      expect(received_prompt).to include("Current working directory:")
+      expect(received_prompt).to include(Dir.pwd)
+    end
+
     it "skips AGENT.md injection when SAMAGOTCHI_SKIP_AGENT_MD=true" do
       ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = "true"
       received_prompt = nil

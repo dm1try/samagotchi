@@ -278,7 +278,7 @@ module Samagotchi
         "Project memories:\n#{project_index}",
         "System memories:\n#{system_index}"
       ].join("\n\n")
-      [thinking_token + base, rg_guidance, project_description, memory_sections, explicit_memory_section].compact.join("\n")
+      [thinking_token + base, rg_guidance, project_description, current_directory, memory_sections, explicit_memory_section].compact.join("\n")
     end
 
     # ── Memory helpers ─────────────────────────────────────────────────────────
@@ -331,6 +331,12 @@ module Samagotchi
       return nil if content.empty?
 
       "Project specific description:\n#{content}"
+    rescue StandardError
+      nil
+    end
+
+    def current_directory
+      "Current working directory:\n#{Dir.pwd}"
     rescue StandardError
       nil
     end
