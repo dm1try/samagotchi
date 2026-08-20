@@ -2,6 +2,8 @@
 
 require "samagotchi/tools/execute"
 require "tempfile"
+require "tmpdir"
+require "fileutils"
 
 RSpec.describe Samagotchi::Tools::Execute do
   around do |example|
@@ -105,6 +107,30 @@ RSpec.describe Samagotchi::Tools::Execute do
 
       expect(result).not_to include("estimated_tokens_for_command_output=")
       expect(result).not_to include("estimated_window_pct_for_command_output=")
+    end
+
+    it "runs in the specified cwd" do
+      dir = Dir.mktmpdir("execute_cwd")
+      result = described_class.call("ruby -e 'puts Dir.pwd'", cwd: dir)
+      expect(result).to include(dir)
+      expect(result).to include("exit: 0")
+    end
+
+    it "resolves a relative cwd against the project root" do
+      subdir = File.join(Dir.pwd, "tmp", "execute_cwd_relative_probe")
+      FileUtils.mkdir_p(subdir)
+      begin
+        result = described_class.call("ruby -e 'puts Dir.pwd'", cwd: "tmp/execute_cwd_relative_probe")
+        expect(result).to include(subdir)
+        expect(result).to include("exit: 0")
+      ensure
+        FileUtils.remove_entry(subdir)
+      end
+    end
+
+    it "returns an error for a nonexistent cwd" do
+      result = described_class.call("ruby -e 'puts 1'", cwd: "/definitely/not/here/execute_probe")
+      expect(result).to start_with("Error: cwd not found:")
     end
 
     it "returns a timeout error when command exceeds configured timeout" do

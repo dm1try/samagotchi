@@ -23,10 +23,13 @@ module Samagotchi
       def self.name        = NAME
       def self.description = DESCRIPTION
 
-      def self.call(command)
+      def self.call(command, cwd: nil)
         command = command.strip
+        resolved_cwd = resolve_cwd(cwd)
+        return "Error: cwd not found: #{resolved_cwd}" unless resolved_cwd
+
         timeout_sec = timeout_seconds
-        stdout, stderr, status = run_command(command, timeout_sec: timeout_sec)
+        stdout, stderr, status = run_command(command, timeout_sec: timeout_sec, cwd: resolved_cwd)
 
         stdout_block = output_block("stdout", stdout)
         stderr_block = output_block("stderr", stderr)
@@ -44,13 +47,13 @@ module Samagotchi
         "Error: #{e.message}"
       end
 
-      def self.run_command(command, timeout_sec:)
+      def self.run_command(command, timeout_sec:, cwd:)
         stdout_text = ""
         stderr_text = ""
         status = nil
         timed_out = false
 
-        Open3.popen3(command, pgroup: true) do |stdin, stdout, stderr, wait_thr|
+        Open3.popen3(command, chdir: cwd, pgroup: true) do |stdin, stdout, stderr, wait_thr|
           stdin.close
           stdout_reader = reader_thread_for(stdout)
           stderr_reader = reader_thread_for(stderr)
@@ -144,6 +147,17 @@ module Samagotchi
         value
       end
       private_class_method :timeout_seconds
+
+      # Resolves the working directory for the child process. An empty/absent
+      # cwd defaults to the project root (Dir.pwd), mirroring task_runtime.
+      # Relative paths are expanded against Dir.pwd; an unresolvable directory
+      # returns nil so the caller can surface a friendly error.
+      def self.resolve_cwd(cwd)
+        value = cwd.to_s.strip
+        resolved = value.empty? ? Dir.pwd : File.expand_path(value)
+        Dir.exist?(resolved) ? resolved : nil
+      end
+      private_class_method :resolve_cwd
 
       def self.output_block(label, content)
         return nil if content.nil? || content.empty?

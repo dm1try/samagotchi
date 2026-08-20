@@ -1008,6 +1008,8 @@ module Samagotchi
                    tail_lines: call[:tail_lines],
                    done_pattern: call[:done_pattern]
                  )
+               when Tools::Execute::NAME
+                 tool.call(call[:content], cwd: call[:cwd])
                when Tools::WebFetch::NAME
                  tool.call(call[:content])
                else

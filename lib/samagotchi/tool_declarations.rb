@@ -10,9 +10,10 @@ module Samagotchi
 
     TOOL_EXECUTE = <<~DECL.strip
       <|tool>declaration:execute{
-        description:<|"|>Run any shell command and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata.<|"|>,
+        description:<|"|>Run any shell command in a working directory (defaults to the project root) and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata.<|"|>,
         parameters:{
-          command:{type:<|"|>string<|"|>, description:<|"|>The shell command to run<|"|>, required:true}
+          command:{type:<|"|>string<|"|>, description:<|"|>The shell command to run<|"|>, required:true},
+          cwd:{type:<|"|>string<|"|>, description:<|"|>Optional working directory to run in (defaults to the project root). Relative paths are resolved against the project root.<|"|>}
         }
       }<tool|>
     DECL
@@ -135,13 +136,17 @@ module Samagotchi
     QWEN_TOOLS_JSON = [
       {
         name: "execute",
-        description: "Run any shell command and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata.",
+        description: "Run any shell command in a working directory (defaults to the project root) and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata.",
         parameters: {
           type: "object",
           properties: {
             command: {
               type: "string",
               description: "The shell command to run"
+            },
+            cwd: {
+              type: "string",
+              description: "Optional working directory to run in (defaults to the project root). Relative paths are resolved against the project root."
             }
           },
           required: ["command"]
