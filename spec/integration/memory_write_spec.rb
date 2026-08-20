@@ -57,4 +57,19 @@ RSpec.describe "memory_write tool - writing a new memory integration", :integrat
     actual_content = File.read(File.join(project_memories_dir, "#{memory_name}.md"))
     expect([memory_content, memory_content + "\n"]).to include(actual_content)
   end
+
+  it "auto-writes a managed index line when a description is requested" do
+    memory_name = "index_guarded_plan"
+    memory_content = "# The Guarded Plan"
+    prompt = "Please save a new memory called '#{memory_name}' in the project scope with this content: #{memory_content}, and give it a short description"
+
+    run_with_prompt(prompt)
+
+    expect(File.exist?(File.join(project_memories_dir, "#{memory_name}.md"))).to be true
+    index_path = File.join(project_memories_dir, "index.md")
+    expect(File.exist?(index_path)).to be true
+    contents = File.read(index_path)
+    # A managed line (name · scope · date · size) should have been recorded.
+    expect(contents).to include("- **#{memory_name}**")
+  end
 end

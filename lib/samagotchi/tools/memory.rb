@@ -3,6 +3,7 @@
 
 require "fileutils"
 require "digest"
+require "date"
 
 module Samagotchi
   module Tools
@@ -120,16 +121,28 @@ module Samagotchi
 
     # Writes or updates a memory entry in a scoped memories directory.
     # Scope is required and must be one of: project, system.
-    # Usage: call(content, path: "entry_name", scope: "project"|"system")
+    # Optional `description` is appended to the managed index line when supplied.
+    # Passing path: "index" writes index.md verbatim (no index maintenance).
+    # Usage: call(content, path: "entry_name", scope: "project"|"system", description: "…")
     class MemoryWrite
       NAME        = "memory_write"
       DESCRIPTION = 'Write or update a memory entry (MD file) in scoped memories. ' \
-                    'Provide name via path and required scope (project|system).'
+                    'Provide name via path and required scope (project|system). ' \
+                    'Optional description is appended to the managed index line.'
 
       def self.name        = NAME
       def self.description = DESCRIPTION
 
-      def self.call(content, path:, scope:)
+      # A line is "managed for entry `name`" only when the bolded token exactly
+      # equals the entry name, followed by end-of-line, `:`, or a middle dot.
+      # This catches both the new ` · ` format and legacy `- **name**: desc`
+      # lines so legacy entries upgrade in place, while safely ignoring free-form
+      # prose such as `- **notes are important**`.
+      def self.managed_pattern(name)
+        /^- \*\*#{Regexp.escape(name)}\*\*[ \t]*(?:[·•].*|:.*)?(\r?\n|\z)/
+      end
+
+      def self.call(content, path:, scope:, description: nil)
         entry_name = path.to_s.strip
         body = content.to_s
         return "Error: entry name is required" if entry_name.empty?
@@ -141,9 +154,94 @@ module Samagotchi
         FileUtils.mkdir_p(dir)
         file_path = File.join(dir, "#{entry_name}.md")
         File.write(file_path, body)
-        "Memory '#{entry_name}' saved to #{resolved_scope} scope (#{body.bytesize} bytes)."
+        bytes = body.bytesize
+        message = "Memory '#{entry_name}' saved to #{resolved_scope} scope (#{bytes} bytes)."
+
+        # The verbatim "write to index.md" behavior (path: "index") must not
+        # trigger upsert logic.
+        unless entry_name == MEMORY_INDEX
+          index_path = self.index_path_for(resolved_scope)
+          if manage_index(resolved_scope, entry_name, bytes, description)
+            message += " Index updated: #{index_path}"
+          end
+        end
+
+        message
       rescue => e
         "Error: #{e.message}"
+      end
+
+      # Adds or refreshes a single managed line for `entry_name` in the given
+      # scope's index.md, preserving every other byte byte-for-byte.
+      # Returns true when an entry was written (i.e. the index was managed).
+      def self.manage_index(scope, entry_name, byte_count, description)
+        index_path = self.index_path_for(scope)
+        new_line = self.managed_line(entry_name, scope, byte_count, description)
+        content = File.exist?(index_path) ? File.read(index_path) : nil
+
+        # New file (or blank existing file): create with a brief header.
+        if content.nil? || content.strip.empty?
+          File.write(index_path, "#{self.auto_index_header}\n\n#{new_line}\n")
+          return true
+        end
+
+        pattern = self.managed_pattern(entry_name)
+
+        # Upsert: replace the existing managed line for this entry in place.
+        if content.match?(pattern)
+          existing_description = self.extract_description(content[pattern].to_s)
+          resolved_description =
+            if description.to_s.strip.empty?
+              existing_description
+            else
+              description
+            end
+          new_line = self.managed_line(entry_name, scope, byte_count, resolved_description)
+          updated = content.sub(pattern) { new_line + $1 }
+          File.write(index_path, updated)
+          return true
+        end
+
+        # Append: add a new managed line, keeping the file newline-terminated.
+        updated = if content.end_with?("\n")
+                    "#{content}#{new_line}\n"
+                  else
+                    "#{content}\n#{new_line}\n"
+                  end
+        File.write(index_path, updated)
+        true
+      end
+
+      def self.managed_line(name, scope, byte_count, description)
+        line = "- **#{name}** · #{scope} · #{self.date_str} · #{byte_count}"
+        desc = description.to_s.strip
+        line += " — #{desc}" unless desc.empty?
+        line
+      end
+
+      # Extracts the human description from an existing managed line so that a
+      # legacy `- **name**: desc` or a new-format line with a description keeps
+      # its description when the entry is updated without a new one.
+      def self.extract_description(line)
+        if line =~ /\s—\s(.*)\s*\z/
+          $1
+        elsif line =~ /:\s*(.*)\s*\z/
+          $1
+        end
+      end
+
+      def self.auto_index_header
+        "# Memory Index\n\n" \
+          "Managed entries below are auto-maintained by memory_write " \
+          "(name, scope, last-written date, size). Free-form sections are preserved."
+      end
+
+      def self.date_str
+        Date.today.iso8601
+      end
+
+      def self.index_path_for(scope)
+        File.join(MemoryRead.memories_dir(scope), "#{MEMORY_INDEX}.md")
       end
     end
   end

@@ -3,6 +3,7 @@
 require "samagotchi/tools/memory"
 require "tmpdir"
 require "fileutils"
+require "date"
 
 RSpec.describe Samagotchi::Tools::MemoryRead do
   let(:project_memories_dir) { Dir.mktmpdir }
@@ -212,6 +213,114 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
       result = described_class.call("- **notes**: project notes", path: "index", scope: "project")
       expect(result).to include("index")
       expect(File.read(File.join(project_memories_dir, "index.md"))).to eq("- **notes**: project notes")
+      # verbatim index write must not trigger upsert / header injection
+      expect(result).not_to include("Index updated")
+      expect(File.read(File.join(project_memories_dir, "index.md"))).not_to include("auto-maintained")
+    end
+
+    describe "auto-maintained index" do
+      def managed_line_for(index_contents, name)
+        index_contents.lines.find { |l| l.start_with?("- **#{name}**") }
+      end
+
+      it "creates index.md with a header and exactly one managed line on first write" do
+        described_class.call("Note", path: "notes", scope: "project")
+        index_path = File.join(project_memories_dir, "index.md")
+        expect(File.exist?(index_path)).to be true
+        contents = File.read(index_path)
+        expect(contents).to include("auto-maintained")
+        expect(contents.lines.count { |l| l.start_with?("- **notes**") }).to eq(1)
+        line = managed_line_for(contents, "notes")
+        expect(line).to eq("- **notes** · project · #{Date.today.iso8601} · #{'Note'.bytesize}\n")
+      end
+
+      it "omits the description segment when none is supplied" do
+        described_class.call("Note", path: "notes", scope: "project")
+        line = managed_line_for(File.read(File.join(project_memories_dir, "index.md")), "notes")
+        expect(line).not_to include("—")
+      end
+
+      it "appends the description when supplied" do
+        described_class.call("content", path: "todo", scope: "project", description: "quick todos")
+        line = managed_line_for(File.read(File.join(project_memories_dir, "index.md")), "todo")
+        expect(line).to end_with("quick todos\n")
+      end
+
+      it "upserts an existing managed line in place (no duplicate) and refreshes size" do
+        described_class.call("old", path: "note", scope: "project")
+        described_class.call("a much longer content", path: "note", scope: "project")
+        contents = File.read(File.join(project_memories_dir, "index.md"))
+        lines = contents.lines.select { |l| l.start_with?("- **note**") }
+        expect(lines.size).to eq(1)
+        expect(lines.first).to eq("- **note** · project · #{Date.today.iso8601} · #{'a much longer content'.bytesize}\n")
+      end
+
+      it "appends a new managed line without disturbing existing ones" do
+        described_class.call("one", path: "alpha", scope: "project")
+        before = File.read(File.join(project_memories_dir, "index.md"))
+        described_class.call("two", path: "beta", scope: "project")
+        after = File.read(File.join(project_memories_dir, "index.md"))
+        expect(after.lines.count { |l| l.start_with?("- **alpha**") }).to eq(1)
+        expect(after).to include(before.lines.find { |l| l.start_with?("- **alpha**") })
+        expect(after).to include("- **beta**")
+      end
+
+      it "preserves hand-written free-form sections when adding a managed line" do
+        File.write(File.join(project_memories_dir, "index.md"), "## Custom Notes\nSome hand-written text.\n")
+        described_class.call("x", path: "xentry", scope: "project")
+        contents = File.read(File.join(project_memories_dir, "index.md"))
+        expect(contents).to include("## Custom Notes\nSome hand-written text.\n")
+        expect(contents).to include("- **xentry**")
+      end
+
+      it "preserves existing managed lines byte-for-byte when adding another entry" do
+        File.write(File.join(project_memories_dir, "index.md"), "- **notes** · project · 2020-01-02 · 9\n## Notes\n")
+        described_class.call("x", path: "xentry", scope: "project")
+        contents = File.read(File.join(project_memories_dir, "index.md"))
+        expect(contents).to include("- **notes** · project · 2020-01-02 · 9\n")
+        expect(contents.lines.count { |l| l.start_with?("- **notes**") }).to eq(1)
+      end
+
+      it "upgrades a legacy '- **name**: desc' line in place, preserving the description" do
+        File.write(File.join(project_memories_dir, "index.md"), "- **notes**: old desc\n")
+        described_class.call("new content", path: "notes", scope: "project")
+        contents = File.read(File.join(project_memories_dir, "index.md"))
+        lines = contents.lines.select { |l| l.start_with?("- **notes**") }
+        expect(lines.size).to eq(1)
+        expect(lines.first).to match(%r{^- \*\*notes\*\* · project · \d{4}-\d{2}-\d{2} · \d+})
+        expect(lines.first).to end_with("old desc\n")
+      end
+
+      it "keeps an existing description when updating without a new one" do
+        described_class.call("v1", path: "k", scope: "project", description: "first desc")
+        described_class.call("v2 longer", path: "k", scope: "project")
+        line = managed_line_for(File.read(File.join(project_memories_dir, "index.md")), "k")
+        expect(line).to end_with("first desc\n")
+      end
+
+      it "overrides the description when a new one is supplied" do
+        described_class.call("v1", path: "k", scope: "project", description: "first desc")
+        described_class.call("v2 longer", path: "k", scope: "project", description: "second desc")
+        line = managed_line_for(File.read(File.join(project_memories_dir, "index.md")), "k")
+        expect(line).to end_with("second desc\n")
+      end
+
+      it "ignores free-form prose that merely starts with '**name**' on a new line" do
+        File.write(File.join(project_memories_dir, "index.md"), "- **notes are the best**: keep me\n")
+        described_class.call("content", path: "notes", scope: "project")
+        contents = File.read(File.join(project_memories_dir, "index.md"))
+        # free-form prose untouched, plus a real managed line for notes added
+        expect(contents).to include("- **notes are the best**: keep me\n")
+        expect(contents.lines.count { |l| l.start_with?("- **notes**") }).to eq(1)
+      end
+    end
+
+    it "includes the index file path in the success message on a normal write" do
+      result = described_class.call("hello", path: "greet", scope: "project")
+      expect(result).to include("greet")
+      expect(result).to include("project")
+      expect(result).to include("5 bytes")
+      expect(result).to include(File.join(project_memories_dir, "index.md"))
     end
   end
 end

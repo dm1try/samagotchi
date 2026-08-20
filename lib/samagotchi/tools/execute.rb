@@ -65,12 +65,15 @@ module Samagotchi
               status = wait_thr.value
             end
           ensure
+            # Read the buffered output before closing the pipes. For a process
+            # that exits almost instantly (e.g. `echo hello`), the background
+            # reader thread may not have scheduled its `io.read` yet; joining
+            # the reader after the pipe is closed would return "".
+            stdout_text = stdout_reader.value
+            stderr_text = stderr_reader.value
             close_quietly(stdout)
             close_quietly(stderr)
           end
-
-          stdout_text = stdout_reader.value
-          stderr_text = stderr_reader.value
         end
 
         raise CommandTimedOut if timed_out

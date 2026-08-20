@@ -689,7 +689,7 @@ module Samagotchi
       when Tools::MemoryWrite::NAME
         entry_name = qwen_param_value(params, "name", "entry", "path")
         content = qwen_param_value(params, "content", "text", "body", "value", strip: false)
-        { name: name, content: content, path: entry_name, scope: qwen_param_value(params, "scope") }
+        { name: name, content: content, path: entry_name, scope: qwen_param_value(params, "scope"), description: qwen_param_value(params, "description") }
       when Tools::Edit::NAME
         old_text = qwen_param_value(params, "old_text", "old", strip: false)
         new_text = qwen_param_value(params, "new_text", "new", strip: false)
@@ -841,7 +841,7 @@ module Samagotchi
       when Tools::MemoryWrite::NAME
         # The declaration uses "name" and required "scope".
         entry_name = params["name"] || params["path"] || ""
-        { name: name, content: params["content"] || "", path: entry_name, scope: params["scope"] }
+        { name: name, content: params["content"] || "", path: entry_name, scope: params["scope"], description: params["description"] ? strip_gemma_delimiters(params["description"]) : nil }
       when Tools::Edit::NAME
         old_text = params["old_text"] || params["old"] || ""
         new_text = params["new_text"] || params["new"] || ""
@@ -990,7 +990,7 @@ module Samagotchi
                when Tools::MemoryRead::NAME
                  tool.call(call[:content], scope: call[:scope])
                when Tools::MemoryWrite::NAME
-                 tool.call(call[:content], path: call[:path], scope: call[:scope])
+                 tool.call(call[:content], path: call[:path], scope: call[:scope], description: call[:description])
                when Tools::Write::NAME
                  tool.call(call[:content], path: call[:path])
                when Tools::Read::NAME
@@ -1088,6 +1088,8 @@ module Samagotchi
         parts << "name=#{preview_tool_param(path)}" unless path.empty?
         scope = call[:scope].to_s.strip
         parts << "scope=#{preview_tool_param(scope)}" unless scope.empty?
+        desc = call[:description].to_s.strip
+        parts << "description=#{preview_tool_param(desc)}" unless desc.empty?
         parts.join(" ")
       when Tools::TaskCreate::NAME
         parts = ["command=#{preview_tool_param(call[:content])}"]

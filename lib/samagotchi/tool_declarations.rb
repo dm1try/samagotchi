@@ -63,11 +63,12 @@ module Samagotchi
 
     TOOL_MEMORY_WRITE = <<~DECL.strip
       <|tool>declaration:memory_write{
-        description:<|"|>Write or update a memory entry in scoped memories. Scope is required: project or system.<|"|>,
+        description:<|"|>Write or update a memory entry in scoped memories. Scope is required: project or system. Each scope's index.md is auto-maintained (one managed line per entry); use name \"index\" to write the index file verbatim.<|"|>,
         parameters:{
           name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension<|"|>, required:true},
           content:{type:<|"|>string<|"|>, description:<|"|>Markdown content to write<|"|>, required:true},
-          scope:{type:<|"|>string<|"|>, description:<|"|>Scope to write into: project or system<|"|>, required:true}
+          scope:{type:<|"|>string<|"|>, description:<|"|>Scope to write into: project or system<|"|>, required:true},
+          description:{type:<|"|>string<|"|>, description:<|"|>Optional short description appended to the managed index line<|"|>}
         }
       }<tool|>
     DECL
@@ -235,7 +236,7 @@ module Samagotchi
       },
       {
         name: "memory_write",
-        description: "Write or update a memory entry in scoped memories. Scope is required: project or system.",
+        description: "Write or update a memory entry in scoped memories. Scope is required: project or system. Each scope's index.md is auto-maintained (one managed line per entry); use name \"index\" to write the index file verbatim.",
         parameters: {
           type: "object",
           properties: {
@@ -250,6 +251,10 @@ module Samagotchi
             scope: {
               type: "string",
               description: "Scope to write into: project or system"
+            },
+            description: {
+              type: "string",
+              description: "Optional short description appended to the managed index line"
             }
           },
           required: ["name", "content", "scope"]
