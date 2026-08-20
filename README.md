@@ -36,6 +36,41 @@ Behavior:
 This lets you run `bin/chi` without repeating common defaults such as model
 and llama host/port on every invocation.
 
+## Model Server Transport
+
+Chi talks to a model server over HTTP and supports two transports:
+
+- `llama_cpp` (default): llama.cpp's native `/completion` and `/models` endpoints.
+- `mlx`: [mlx-lm](https://github.com/ml-explore/mlx-lm)'s OpenAI-compatible
+  `/v1/completions` and `/v1/models` endpoints (Apple Silicon-native models).
+
+Select the transport with `SAMAGOTCHI_SERVER_TRANSPORT` (`llama_cpp` or `mlx`).
+`LLAMA_HOST`/`LLAMA_PORT` are reused for both transports — only the request/response
+shape differs.
+
+Example for mlx-lm:
+
+```yaml
+SAMAGOTCHI_SERVER_TRANSPORT: mlx
+LLAMA_HOST: 127.0.0.1
+LLAMA_PORT: 8080
+```
+
+```shell
+mlx_lm.server --model mlx-community/Qwen3-14B-Instruct-4bit
+```
+
+The `mlx` transport still sends chi's own raw formatted prompt (via `/v1/completions`)
+rather than a `messages` array, so the existing per-model prompt/tool-call formatting
+is unaffected — mlx-lm does not reapply its own chat template on this endpoint.
+
+`SAMAGOTCHI_MODEL`/`/model` only drive samagotchi's own prompt-profile selection
+(Gemma4 vs Qwen36 formatting) when using the `mlx` transport — they are never sent
+as the request's `model` field. mlx_lm.server treats `model` as a path/HF repo id to
+load, and only the implicit default value (`"default_model"`, mapped to whatever
+was passed to `mlx_lm.server --model ...`) is guaranteed to work; sending anything
+else causes mlx-lm to try loading it as a new model and fail with an HTTP 404.
+
 ## Runtime Model Switch (Assist Mode)
 
 In interactive assist mode, you can switch the request model without restarting:

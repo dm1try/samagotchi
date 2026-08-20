@@ -5,12 +5,14 @@ require "json"
 require "uri"
 
 module Samagotchi
-  # Thin HTTP client for the llama.cpp native /completion endpoint.
+  # Thin HTTP client for llama.cpp's native /completion endpoint, or an
+  # OpenAI-compatible /v1/completions endpoint (e.g. mlx_lm.server).
   # Configure via environment variables:
   #   LLAMA_HOST  (default: localhost)
   #   LLAMA_PORT  (default: 8080)
   #   LLAMA_OPEN_TIMEOUT (default: 10 seconds)
   #   LLAMA_READ_TIMEOUT (default: 600 seconds)
+  #   SAMAGOTCHI_SERVER_TRANSPORT (llama_cpp|mlx, default: llama_cpp)
   class Client
     class RequestCancelled < StandardError
       attr_reader :reason
@@ -24,10 +26,10 @@ module Samagotchi
     class RetryExhausted < StandardError
       attr_reader :attempts, :last_error
 
-      def initialize(attempts:, last_error:)
+      def initialize(attempts:, last_error:, label: "llama.cpp")
         @attempts = attempts
         @last_error = last_error
-        super("llama.cpp request failed after #{attempts} attempts: #{last_error.class}: #{last_error.message}")
+        super("#{label} request failed after #{attempts} attempts: #{last_error.class}: #{last_error.message}")
       end
     end
 
@@ -37,6 +39,10 @@ module Samagotchi
     DEFAULT_RETRY_MAX = 5
     DEFAULT_RETRY_BASE_DELAY = 0.5
     DEFAULT_RETRY_MAX_DELAY = 8.0
+
+    SERVER_TRANSPORT_ENV = "SAMAGOTCHI_SERVER_TRANSPORT"
+    DEFAULT_TRANSPORT = :llama_cpp
+    VALID_TRANSPORTS = %i[llama_cpp mlx].freeze
 
     class CancellationController
       def initialize
@@ -109,11 +115,12 @@ module Samagotchi
       end
     end
 
-    def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil)
+    def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil)
       @host = host || ENV.fetch("LLAMA_HOST", "localhost")
       @port = (port || ENV.fetch("LLAMA_PORT", "8080")).to_i
       @open_timeout = (open_timeout || ENV.fetch("LLAMA_OPEN_TIMEOUT", "10")).to_i
       @read_timeout = (read_timeout || ENV.fetch("LLAMA_READ_TIMEOUT", "600")).to_i
+      @transport = resolve_transport(transport)
       @retry_max = integer_config(RETRY_MAX_ENV, DEFAULT_RETRY_MAX)
       @retry_base_delay = float_config(RETRY_BASE_DELAY_ENV, DEFAULT_RETRY_BASE_DELAY)
       @retry_max_delay = float_config(RETRY_MAX_DELAY_ENV, DEFAULT_RETRY_MAX_DELAY)
@@ -134,14 +141,10 @@ module Samagotchi
     # @param on_retry    [Proc, nil]     optional callback before retry sleep
     # @return [String] the generated text
     def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], n_predict: nil, model: nil, on_chunk: nil, cancel_controller: nil, on_retry: nil)
-      uri = URI("http://#{@host}:#{@port}/completion")
+      uri = completion_uri
       request = Net::HTTP::Post.new(uri)
       request["Content-Type"] = "application/json"
-      payload = { prompt: prompt, stop: stop, stream: true }
-      payload[:n_predict] = n_predict if n_predict && n_predict.to_i.positive?
-      model_name = model.to_s.strip
-      payload[:model] = model_name unless model_name.empty?
-      request.body = payload.to_json
+      request.body = completion_payload(prompt, stop: stop, n_predict: n_predict, model: model).to_json
 
       attempts = 0
 
@@ -171,10 +174,10 @@ module Samagotchi
 
                 while (newline_index = buffer.index("\n"))
                   line = buffer.slice!(0, newline_index + 1).strip
-                  next if line.empty? || !line.start_with?("data: ")
+                  parsed_chunk = parse_stream_line(line)
+                  next unless parsed_chunk
 
-                  payload = JSON.parse(line.delete_prefix("data: "))
-                  content = payload.fetch("content", "")
+                  content, payload = parsed_chunk
                   result << content
                   on_chunk&.call(content: content, payload: payload)
                 end
@@ -200,10 +203,10 @@ module Samagotchi
           end
 
           if retryable_network_error?(e)
-            raise RetryExhausted.new(attempts: attempts, last_error: e)
+            raise RetryExhausted.new(attempts: attempts, last_error: e, label: transport_label)
           end
 
-          raise "llama.cpp request failed (#{@host}:#{@port}): #{e.message}"
+          raise "#{transport_label} request failed (#{@host}:#{@port}): #{e.message}"
         ensure
           cancel_controller&.remove_listener(cancel_listener_id)
         end
@@ -211,7 +214,7 @@ module Samagotchi
     end
 
     def list_models
-      uri = URI("http://#{@host}:#{@port}/models")
+      uri = URI("http://#{@host}:#{@port}#{models_path}")
       request = Net::HTTP::Get.new(uri)
 
       attempts = 0
@@ -241,15 +244,68 @@ module Samagotchi
           end
 
           if retryable_network_error?(e)
-            raise RetryExhausted.new(attempts: attempts, last_error: e)
+            raise RetryExhausted.new(attempts: attempts, last_error: e, label: transport_label)
           end
 
-          raise "llama.cpp model listing failed (#{@host}:#{@port}): #{e.message}"
+          raise "#{transport_label} model listing failed (#{@host}:#{@port}): #{e.message}"
         end
       end
     end
 
     private
+
+    def resolve_transport(transport)
+      value = (transport || ENV.fetch(SERVER_TRANSPORT_ENV, DEFAULT_TRANSPORT.to_s)).to_s.strip.downcase.to_sym
+      VALID_TRANSPORTS.include?(value) ? value : DEFAULT_TRANSPORT
+    end
+
+    def transport_label
+      @transport == :mlx ? "mlx" : "llama.cpp"
+    end
+
+    def completion_uri
+      path = @transport == :mlx ? "/v1/completions" : "/completion"
+      URI("http://#{@host}:#{@port}#{path}")
+    end
+
+    def models_path
+      @transport == :mlx ? "/v1/models" : "/models"
+    end
+
+    def completion_payload(prompt, stop:, n_predict:, model:)
+      payload = { prompt: prompt, stop: stop, stream: true }
+      token_limit_key = @transport == :mlx ? :max_tokens : :n_predict
+      payload[token_limit_key] = n_predict if n_predict && n_predict.to_i.positive?
+      model_name = payload_model_name(model)
+      payload[:model] = model_name if model_name
+      payload
+    end
+
+    # mlx_lm.server treats `model` as a repo/path to (re)load rather than a
+    # selector among already-loaded models, so passing our profile-selection
+    # model name (e.g. SAMAGOTCHI_MODEL) would make it try to load an unrelated
+    # path and fail with a 404. Only llama.cpp supports the `model` field the
+    # way we use it; omit it entirely for mlx and let the server use whatever
+    # was loaded via its own `--model` CLI flag.
+    def payload_model_name(model)
+      return nil if @transport == :mlx
+
+      value = model.to_s.strip
+      value.empty? ? nil : value
+    end
+
+    # Returns [content, payload] for a streamed SSE line, or nil to skip
+    # (blank lines, non-data lines, and the mlx `[DONE]` sentinel).
+    def parse_stream_line(line)
+      return nil if line.empty? || !line.start_with?("data: ")
+
+      data = line.delete_prefix("data: ")
+      return nil if data == "[DONE]"
+
+      payload = JSON.parse(data)
+      content = @transport == :mlx ? payload.dig("choices", 0, "text").to_s : payload.fetch("content", "")
+      [content, payload]
+    end
 
     def retryable_network_error?(error)
       return false if error.is_a?(RequestCancelled)

@@ -224,50 +224,85 @@ RSpec.describe Samagotchi::Client do
         .to raise_error(RuntimeError, /llama\.cpp request failed \(localhost:8080\): .*bad json/)
     end
 
-    xcontext "with the OpenAI-compatible transport" do
-      # unimplemented — Client does not support transport/api_key params yet
-      # When implemented, move skip: back to individual examples
-      it "posts to /v1/chat/completions and joins streamed delta content" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :openai, model: "qwen3")
+    context "with the mlx transport" do
+      it "posts a raw prompt to /v1/completions and joins streamed text" do
+        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
         http = instance_double(Net::HTTP)
         response = double("response")
         request = nil
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
           .and_yield(http)
         allow(http).to receive(:request) do |built_request, &block|
           request = built_request
           block.call(response)
         end
         allow(response).to receive(:read_body)
-          .and_yield("data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n")
-          .and_yield("data: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n")
+          .and_yield("data: {\"choices\":[{\"text\":\"Hel\"}]}\n")
+          .and_yield("data: {\"choices\":[{\"text\":\"lo\"}]}\n")
           .and_yield("data: [DONE]\n")
 
-        result = client.complete("prompt", stop: ["done"], n_predict: 128)
+        result = client.complete("prompt", stop: ["done"], n_predict: 128, model: "Qwen3-14B-Instruct")
 
         expect(result).to eq("Hello")
-        expect(request.path).to eq("/v1/chat/completions")
-        expect(request.body).to include('"model":"qwen3"')
-        expect(request.body).to include('"messages":[{"role":"user","content":"prompt"}]')
+        expect(request.path).to eq("/v1/completions")
+        expect(request.body).to include('"prompt":"prompt"')
         expect(request.body).to include('"stop":["done"]')
         expect(request.body).to include('"max_tokens":128')
+        expect(request.body).not_to include('"n_predict"')
       end
 
-      it "emits chunk callbacks only for visible delta content" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :openai, model: "qwen3")
+      it "omits max_tokens when n_predict is not provided" do
+        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
+        http = instance_double(Net::HTTP)
+        response = double("response")
+        request = nil
+
+        allow(Net::HTTP).to receive(:start)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+          .and_yield(http)
+        allow(http).to receive(:request) do |built_request, &block|
+          request = built_request
+          block.call(response)
+        end
+        allow(response).to receive(:read_body).and_yield("data: {\"choices\":[{\"text\":\"ok\"}]}\n")
+
+        expect(client.complete("prompt")).to eq("ok")
+        expect(request.body).not_to include('"max_tokens"')
+      end
+
+      it "never forwards model, since mlx-lm treats it as a path/repo to (re)load" do
+        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
+        http = instance_double(Net::HTTP)
+        response = double("response")
+        request = nil
+
+        allow(Net::HTTP).to receive(:start)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+          .and_yield(http)
+        allow(http).to receive(:request) do |built_request, &block|
+          request = built_request
+          block.call(response)
+        end
+        allow(response).to receive(:read_body).and_yield("data: {\"choices\":[{\"text\":\"ok\"}]}\n")
+
+        expect(client.complete("prompt", model: "mlx-community/Qwen3-14B-Instruct")).to eq("ok")
+        expect(request.body).not_to include('"model"')
+      end
+
+      it "emits chunk callbacks and ignores the [DONE] sentinel" do
+        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
         http = instance_double(Net::HTTP)
         response = double("response")
         chunks = []
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
           .and_yield(http)
         allow(http).to receive(:request) { |_request, &block| block.call(response) }
         allow(response).to receive(:read_body)
-          .and_yield("data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n")
-          .and_yield("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n")
+          .and_yield("data: {\"choices\":[{\"text\":\"Hi\"}]}\n")
           .and_yield("data: [DONE]\n")
 
         result = client.complete("prompt", on_chunk: ->(event) { chunks << event[:content] })
@@ -276,30 +311,36 @@ RSpec.describe Samagotchi::Client do
         expect(chunks).to eq(["Hi"])
       end
 
-      it "adds an authorization header when an API key is configured" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :openai, model: "qwen3", api_key: "secret")
+      it "reads the transport from SAMAGOTCHI_SERVER_TRANSPORT when not passed explicitly" do
+        ENV["SAMAGOTCHI_SERVER_TRANSPORT"] = "mlx"
+        client = described_class.new(host: "localhost", port: 8080)
         http = instance_double(Net::HTTP)
         response = double("response")
         request = nil
 
         allow(Net::HTTP).to receive(:start)
-          .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
           .and_yield(http)
         allow(http).to receive(:request) do |built_request, &block|
           request = built_request
           block.call(response)
         end
-        allow(response).to receive(:read_body).and_yield("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n")
+        allow(response).to receive(:read_body).and_yield("data: {\"choices\":[{\"text\":\"ok\"}]}\n")
 
         expect(client.complete("prompt")).to eq("ok")
-        expect(request["Authorization"]).to eq("Bearer secret")
+        expect(request.path).to eq("/v1/completions")
+      ensure
+        ENV.delete("SAMAGOTCHI_SERVER_TRANSPORT")
       end
 
-      it "requires a model when using the OpenAI-compatible transport" do
-        client = described_class.new(host: "localhost", port: 8000, transport: :openai)
+      it "labels errors with mlx instead of llama.cpp" do
+        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
+        allow(Net::HTTP).to receive(:start)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+          .and_raise(JSON::ParserError.new("bad json"))
 
         expect { client.complete("prompt") }
-          .to raise_error(ArgumentError, /SAMAGOTCHI_MODEL is required/)
+          .to raise_error(RuntimeError, /mlx request failed \(localhost:8080\): .*bad json/)
       end
     end
   end
@@ -334,6 +375,30 @@ RSpec.describe Samagotchi::Client do
           expect(error.attempts).to eq(6)
           expect(error.last_error).to be_a(Net::OpenTimeout)
         end
+    end
+
+    context "with the mlx transport" do
+      it "returns the discovered models from /v1/models" do
+        client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
+        http = instance_double(Net::HTTP)
+        request = nil
+        response = instance_double(Net::HTTPResponse, body: '{"object":"list","data":[{"id":"mlx-community/Qwen3-14B-Instruct","object":"model","created":1}]}')
+
+        allow(Net::HTTP).to receive(:start)
+          .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+          .and_yield(http)
+        allow(http).to receive(:request) do |built_request|
+          request = built_request
+          response
+        end
+
+        result = client.list_models
+
+        expect(request.path).to eq("/v1/models")
+        expect(result).to eq([
+          { "id" => "mlx-community/Qwen3-14B-Instruct", "object" => "model", "created" => 1 }
+        ])
+      end
     end
   end
 end
