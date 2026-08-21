@@ -76,6 +76,9 @@ RSpec.describe Samagotchi::TerminalUI do
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      # The prompt entrypoint runs one turn then drops into the REPL; stub
+      # Reline to exit immediately so .run returns in tests.
+      allow(Reline).to receive(:readmultiline).and_return(nil)
     end
 
     it "sends the prompt to the kernel and prints the response" do
@@ -103,7 +106,7 @@ file2.rb")
       expect { agent.run }.to output(/ok/).to_stdout
     end
 
-    it "does not start an interactive loop" do
+    it "runs the prompt once then enters the interactive loop (exits on first read)" do
       call_count = 0
       allow(client).to receive(:complete) do
         call_count += 1
@@ -111,7 +114,7 @@ file2.rb")
       end
       agent = described_class.new(mode: "assist", prompt: "hello", client: client)
       agent.run
-      expect(call_count).to eq(1)
+      expect(call_count).to eq(1)   # one prompt turn; REPL exits on first read
     end
 
     it "forwards no_interrupt to the kernel loop" do
@@ -428,6 +431,110 @@ file2.rb")
 
       expect(received_prompt).not_to include("Project specific description:")
       expect(received_prompt).not_to include("Use project conventions")
+    end
+  end
+
+  describe "run entrypoints (--prompt / --non-interactive / --resume)" do
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+    end
+
+    # Scenario 1: -p "x" (no --non-interactive) feeds the prompt, runs one turn,
+    # then STAYS in the REPL (Option B). Reline exits immediately.
+    it "feeds a -p prompt, runs one turn, then enters the REPL" do
+      seen = []
+      allow(client).to receive(:complete) { |p| seen << p; "done" }
+      allow(Reline).to receive(:readmultiline).and_return(nil) # exit REPL immediately
+
+      agent = described_class.new(mode: "assist", prompt: "refactor this", client: client)
+      agent.run
+
+      expect(seen.length).to eq(1) # one prompt turn only
+      expect(seen.first).to include("refactor this") # prompt was fed to the model
+      expect(Reline).to have_received(:readmultiline).at_least(:once) # REPL was entered
+    end
+
+    # Scenario 2: -p "x" --non-interactive runs one turn then exits (no REPL).
+    it "runs the -p prompt once and exits without entering the REPL when --non-interactive" do
+      seen = []
+      allow(client).to receive(:complete) { |p| seen << p; "done" }
+      agent = described_class.new(mode: "assist", prompt: "refactor this", client: client, non_interactive: true)
+
+      expect(Reline).not_to receive(:readmultiline) # never enters the REPL
+      agent.run
+
+      expect(seen.length).to eq(1)
+      expect(seen.first).to include("refactor this")
+    end
+
+    # Scenario 7: --non-interactive with no -p is a harmless no-op exit.
+    it "exits without building a session or entering the REPL for --non-interactive with no prompt" do
+      expect(client).not_to receive(:complete)
+      expect(Reline).not_to receive(:readmultiline)
+      agent = described_class.new(mode: "assist", client: client, non_interactive: true)
+      expect { agent.run }.not_to output(/Session:/).to_stdout
+    end
+
+    # Scenario 6/10: --resume ID -p x runs the prompt on the resumed session,
+    # preserving prior history as context.
+    it "runs the -p prompt on a resumed session and threads history as context" do
+      resumed = Samagotchi::Session.new_session(
+        mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd
+      )
+      resumed.messages = [
+        { role: "system", content: "system" },
+        { role: "user", content: "prior prompt" },
+        { role: "model", content: "prior answer" }
+      ]
+
+      seen = []
+      allow(client).to receive(:complete) { |p| seen << p; "done" }
+      allow(Reline).to receive(:readmultiline).and_return(nil)
+
+      agent = described_class.new(mode: "assist", prompt: "next step", client: client)
+      agent.instance_variable_set(:@resume_session, resumed)
+      agent.run
+
+      expect(seen.length).to eq(1) # one turn on the resumed session
+      expect(seen.first).to include("next step")
+      expect(seen.first).to include("prior prompt") # prior history present in context
+    end
+
+    # Scenario 4: a plain interactive session (no prompt) drops into the REPL.
+    it "drops into the REPL for a plain interactive session (no prompt)" do
+      allow(Reline).to receive(:readmultiline).and_return("hello", nil)
+      allow(client).to receive(:complete).and_return("hi there")
+
+      agent = described_class.new(mode: "assist", client: client)
+      agent.run
+
+      expect(Reline).to have_received(:readmultiline).at_least(:once)
+    end
+
+    # Option B end-to-end: -p prompt turn, then a follow-up REPL turn runs too.
+    it "runs the prompt turn then answers a follow-up REPL turn" do
+      responses = []
+      allow(client).to receive(:complete) do |p|
+        responses << p
+        "response: #{p}"
+      end
+      allow(Reline).to receive(:readmultiline).and_return("follow-up", nil)
+
+      agent = described_class.new(mode: "assist", prompt: "first turn", client: client)
+      agent.run
+
+      expect(responses.length).to eq(2)
+      expect(responses.first).to include("first turn")
+      expect(responses.last).to include("follow-up")
+    end
+
+    describe "no-op exit for --non-interactive with no prompt" do
+      it "builds nothing and prints no banner" do
+        expect {
+          described_class.new(mode: "assist", client: client, non_interactive: true).run
+        }.not_to output(/Session:|Resumed session:/).to_stdout
+      end
     end
   end
 
@@ -1562,7 +1669,11 @@ file2.rb")
       agent.instance_variable_set(:@resume_session, nil)
       # Stub Reline to return nil (exit) immediately
       allow(Reline).to receive(:readmultiline).and_return(nil)
-      expect { agent.send(:assist_loop) }
+      session = Samagotchi::Session.new_session(
+        mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd
+      )
+      messages = [{ role: "system", content: agent.send(:assist_system_prompt) }]
+      expect { agent.send(:assist_loop, session: session, messages: messages) }
         .to output(/Session: [0-9a-f-]+/).to_stdout
     end
   end

@@ -36,11 +36,6 @@ if options[:dashboard]
   exit
 end
 
-if options[:non_interactive] && !options[:prompt]
-  warn "Error: --non-interactive requires --prompt"
-  exit 1
-end
-
 log_file = if ["1", "true"].include?(ENV.fetch("SAMAGOTCHI_DISABLE_LOG_FILE", "").downcase)
              nil
            else
@@ -55,6 +50,7 @@ Samagotchi::TerminalUI.new(
   session_id: options[:resume],
   no_interrupt: options[:no_interrupt] || options[:non_interactive],
   no_default_input: options[:no_default_input],
-  memories: options[:memories] || []
+  memories: options[:memories] || [],
+  non_interactive: options[:non_interactive]
 ).run
 

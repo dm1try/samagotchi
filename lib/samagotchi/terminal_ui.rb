@@ -503,7 +503,7 @@ module Samagotchi
       Engine.system_prompt_for(profile)
     end
 
-    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [])
+    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false)
       @mode           = mode.to_sym
       @prompt         = prompt
       @base_model_name = ModelProfile.required_model_name(model_name)
@@ -513,6 +513,7 @@ module Samagotchi
       @kernel         = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt)
       @resume_session = session_id ? Session.load(session_id) : nil
       @no_default_input = no_default_input
+      @non_interactive = non_interactive
       @requested_memories = Array(memories)
       @engine         = Engine.new(
         mode: :assist,
@@ -528,13 +529,67 @@ module Samagotchi
       )
     end
 
+    # Single dispatch for all entrypoints (interactive REPL, --prompt,
+    # --non-interactive, --resume). Builds the working session and its seed
+    # messages once, runs a single prompt turn when -p/--prompt is given
+    # (auto-executing it, then saving), then either exits when there is no
+    # follow-up REPL (--non-interactive) or drops into the REPL carrying the
+    # post-turn conversation.
     def run
-      return prompt_mode if @prompt
-
-      case @mode
-      when :assist then assist_loop
-      else raise ArgumentError, "Unknown mode '#{@mode}'. Use: assist"
+      unless @mode == :assist
+        raise ArgumentError, "Unknown mode '#{@mode}'. Use: assist"
       end
+
+      # --non-interactive with no --prompt is a harmless no-op exit: build
+      # nothing and return (no transient session, no banner).
+      return if @non_interactive && @prompt.nil?
+
+      session = @resume_session || Session.new_session(
+        mode: @mode.to_s,
+        model_name: @session_model_name,
+        working_directory: Dir.pwd
+      )
+      messages = messages_for(session)
+
+      if @prompt
+        result = @engine.run_turn(
+          session,
+          @prompt,
+          on_event: nil,
+          max_iterations: @non_interactive ? 1000 : 10,
+          cancel_controller: nil
+        )
+        $stdout.puts result.output
+        session.save
+        # run_turn mutates session.messages to the post-turn conversation, so
+        # reassign so the REPL continues from it. When there was no prompt,
+        # `messages` already holds the seed array to feed into the REPL.
+        messages = session.messages
+        return if @non_interactive
+      end
+
+      assist_loop(session: session, messages: messages)
+    end
+
+    # Build the seed messages for the working session.
+    #
+    # Resumed sessions keep their prior conversation (only the system-prompt
+    # slot is replaced); fresh sessions start with just the system prompt.
+    # Prints a one-line banner so the user sees which session they're in.
+    def messages_for(session)
+      if @resume_session
+        messages = session.messages.dup
+        if messages.empty?
+          messages = [{ role: "system", content: system_prompt_with_index(assist_system_prompt) }]
+        else
+          messages[0] = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
+        end
+        $stdout.puts "Resumed session: #{session.id}"
+      else
+        messages = [{ role: "system", content: system_prompt_with_index(assist_system_prompt) }]
+        $stdout.puts "Session: #{session.id}"
+      end
+      messages
     end
 
     # Public entrypoint for background session workers.
@@ -617,46 +672,15 @@ module Samagotchi
       SYS
     end
 
-    # Minimal one-shot run for --prompt / --non-interactive.
-    #
-    # Decoupled from terminal rendering: build the Engine (already constructed
-    # in initialize), run a single turn on a transient session, and print only
-    # the result output. No spinner / REPL / Reline / status line.
-    def prompt_mode
-      engine = @engine
-      session = Session.new_session(
-        mode: @mode.to_s,
-        model_name: @session_model_name,
-        working_directory: Dir.pwd
-      )
-      result = engine.run_turn(
-        session,
-        @prompt,
-        on_event: nil,
-        max_iterations: @no_interrupt ? 1000 : 10,
-        cancel_controller: nil
-      )
-      $stdout.puts result.output
-    end
-
-    def assist_loop
+    # Interactive REPL loop. Session seed + messages are built by #run and
+    # threaded in here (so --prompt / --resume share one code path). The
+    # working session is persisted at the end of every turn.
+    def assist_loop(session:, messages:)
       load_persistent_history
 
-      if @resume_session
-        session = @resume_session
-        messages = session.messages.dup
-        if messages.empty?
-          messages = [{ role: "system", content: system_prompt_with_index(assist_system_prompt) }]
-        else
-          messages[0] = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
-        end
-        $stdout.puts "Resumed session: #{session.id}"
-      else
-        messages = [{ role: "system", content: system_prompt_with_index(assist_system_prompt) }]
-        session = Session.new_session(mode: @mode.to_s, model_name: @session_model_name, working_directory: Dir.pwd)
-        $stdout.puts "Session: #{session.id}"
-        queue_default_input
-      end
+      # queue_default_input self-guards on @resume_session, so calling it
+      # unconditionally preserves the original fresh-session prefill behavior.
+      queue_default_input
 
       awaiting_continue = false
       interrupted_turn_checkpoint = nil
