@@ -5,8 +5,49 @@ Samagotchi is the full engine name. Chi (pronounced "chee") is the short friendl
 
 Run with:
 
-- `bin/chi`
-- `bin/chi -p "your prompt"` to run a single prompt and exit
+- `bin/chi` — start the interactive REPL
+- `bin/chi -p "your prompt"` — run a prompt, then stay in the REPL
+- `bin/chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
+- `bin/chi --resume <session-id>` — resume a prior session in the REPL
+- `bin/chi dashboard` — open the dashboard shim
+
+## CLI Usage
+
+Samagotchi exposes one flag that feeds a prompt (`-p`, `--prompt`) and one that
+controls exit behavior (`--non-interactive`); `--resume` composes with both.
+
+| Flag | Purpose |
+|------|---------|
+| `-p`, `--prompt TEXT` | Feed `TEXT` as the first turn (also prefill-equivalent; `-p` feeds **and** runs). |
+| `--non-interactive` | Run a single turn then exit the REPL (sets a high iteration cap; implies `--no-interrupt`). Harmless no-op when given without `-p`. |
+| `--resume SESSION_ID` | Load a prior session's history instead of creating a fresh one. |
+| `--mode assist` | Current supported mode (assist). |
+| `--memory NAME` | Preload a memory entry into the system prompt (repeatable). |
+| `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
+| `--no-default-input` | Skip prefilling the first REPL line from `SAMAGOTCHI_DEFAULT_INPUT`. |
+| `-v`, `--verbose` | Print raw LLM responses and tool call/result payloads to stderr. |
+
+### Entrypoint scenarios
+
+| Command | Behavior |
+|---------|----------|
+| `bin/chi` | Start the REPL with a fresh transient session. |
+| `bin/chi -p "refactor this"` | Run one turn with the prompt, save the session, **stay in the REPL**. |
+| `bin/chi -p "refactor this" --non-interactive` | Run one turn, save, **exit** (no REPL). |
+| `bin/chi --non-interactive` | Harmless no-op exit; no session created, no error. |
+| `bin/chi --resume ID` | Resume session `ID` and enter the REPL with its history. |
+| `bin/chi --resume ID -p "next step" --non-interactive` | Resume `ID`, run the prompt, save, exit. |
+| `bin/chi --resume ID -p "next step"` | Resume `ID`, run the prompt, **stay in the REPL** on that session. |
+
+Notes:
+
+- `-p` always feeds **and** runs the prompt; there is no feed-and-edit variant. To
+  prefill (edit, not execute) the first REPL line, use the
+  `SAMAGOTCHI_DEFAULT_INPUT` environment variable instead.
+- Prompt history is persisted per session; `--resume` preserves prior messages as
+  turn context (a `-p` run on a resumed session never clobbers existing history).
+- Non-interactive runs (`-p` with `--non-interactive`, or bare `--non-interactive`)
+  print only the final result output — no spinner, status line, or REPL.
 
 ## Architecture
 
@@ -19,8 +60,11 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
 | UI | `Samagotchi::TerminalUI` | Interactive REPL (Reline), rendering (ANSI, spinner, status line), REPL commands. Delegates all core work to an `Engine`. |
 | Transport | `Samagotchi::Client`, `KernelLoop`, `Session` | HTTP transport, model↔tool loop, session data model (already clean). |
 
-- `bin/chi` (interactive) builds `TerminalUI`; `bin/chi -p "..."` runs a minimal
-  `Engine` turn (no spinner, no REPL, no Reline).
+- `bin/chi` (interactive) builds `TerminalUI`. `TerminalUI#run` is the single
+  dispatch for the REPL, `-p`/`--prompt`, `--non-interactive`, and `--resume`: it
+  builds the working session once, runs a single prompt turn when `-p` is given,
+  then either exits (`--non-interactive`) or drops into the REPL carrying the
+  post-turn conversation.
 - `SessionManager` background workers build `Engine` directly (no terminal rendering).
 - `Dashboard` is currently a minimal no-crash shim; its full rework is documented in
   `tmp/plans/20260818-000000-core-ui-separation.md`.

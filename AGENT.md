@@ -19,6 +19,19 @@ Samagotchi is split into a core **Engine** (`lib/samagotchi/engine.rb`) and a
   `:turn_started` / `:turn_completed` / `:turn_canceled` events, so any new UI can render
   without terminal coupling.
 
+## CLI Usage (`bin/chi`)
+`TerminalUI#run` is the single dispatch for the REPL, `-p`/`--prompt`, `--non-interactive`,
+and `--resume`. Flag semantics (also in README's "CLI Usage" section):
+- `-p`, `--prompt TEXT`: feed `TEXT` as the first turn — feeds **and** runs it.
+- `--non-interactive`: run one turn then exit (high iteration cap; implies `--no-interrupt`).
+  A harmless no-op when given without `-p` (no session created).
+- `--resume SESSION_ID`: load a prior session's history instead of creating a fresh one;
+  composes with `-p` (prompt runs on the resumed session, prior history preserved as context).
+- `-p "..."` alone (no `--non-interactive`) runs one turn and **stays in the REPL**
+  (breaking change vs the old one-shot-then-exit behavior).
+- `--mode`, `--memory` (repeatable), `--no-interrupt`, `--no-default-input`,
+  `-v`/`--verbose`, `--help` also available; `SAMAGOTCHI_DEFAULT_INPUT` prefill (edit, not run).
+
 ## Core Principles
 - **Self-Inhabiting**: The agent's tools are the mechanisms for its own modification.
 - **Persistent Cognition**: Use project memories (`~/.config/samagotchi/memories/projects/<name>_<hash>/`) and system memories (`~/.config/samagotchi/memories`) for long-term state.
