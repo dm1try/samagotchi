@@ -68,8 +68,10 @@ module Samagotchi
     # @param on_event [Proc, nil] receives event hashes
     # @param max_iterations [Integer] max kernel iterations
     # @param cancel_controller [Client::CancellationController, nil]
+    # @param max_tool_output_chars [Integer, nil] per-output char cap for the
+    #   :tool_call_completed event's `output:` (nil → env/DEFAULT_MAX_TOOL_OUTPUT_CHARS)
     # @return [KernelLoop::Result]
-    def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil)
+    def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil)
       # Emit turn_started event
       emit_event(on_event, {
         type: :turn_started,
@@ -96,7 +98,8 @@ module Samagotchi
         max_iterations: max_iterations,
         on_stream_event: build_stream_event_handler(on_event),
         cancel_controller: cancel_controller,
-        model_name: @session_model_name
+        model_name: @session_model_name,
+        max_tool_output_chars: max_tool_output_chars
       )
 
       session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)

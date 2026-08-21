@@ -132,6 +132,8 @@ module Samagotchi
     DEFAULT_CONTEXT_THRESHOLDS = [20, 40, 60, 80].freeze
     DEFAULT_CONTEXT_CADENCE = 0
     TOOL_ACTIVITY_PREVIEW_LIMIT = 80
+    DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
+    TOOL_OUTPUT_CHARS_ENV = "SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS"
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
 
@@ -154,8 +156,10 @@ module Samagotchi
     # @param on_stream_event [Proc, nil]         optional callback for generation events
     # @param cancel_controller [Client::CancellationController, nil] optional cancellation source
     # @param model_name [String, nil]            optional per-run model override
+    # @param max_tool_output_chars [Integer, nil] per-output char cap for the
+    #   :tool_call_completed event's `output:` (nil → env/DEFAULT_MAX_TOOL_OUTPUT_CHARS)
     # @return [Result] final visible response with continuation metadata
-    def run(messages, max_iterations: 100, on_stream_event: nil, cancel_controller: nil, model_name: nil)
+    def run(messages, max_iterations: 100, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil)
       resolved_model_name = completion_model_name(model_name)
       @profile = ModelProfile.from_model_name(resolved_model_name) unless @profile_explicit
 
@@ -168,6 +172,7 @@ module Samagotchi
       qwen_partial_tool_call = nil
 
       effective_max_iterations = @no_interrupt ? 1000 : max_iterations
+      effective_max_tool_output_chars = resolve_output_char_cap(max_tool_output_chars)
       effective_max_iterations.times do |iteration_index|
         prompt = prompt_with_context_status(conversation, iteration_index: iteration_index, state: context_state)
         emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
@@ -243,6 +248,12 @@ module Samagotchi
           dispatch_result = dispatch(call)
           activity = dispatch_result[:activity]
           tool_activity << activity
+          output_truncated = false
+          completed_output = dispatch_result[:output]
+          if effective_max_tool_output_chars && completed_output.length > effective_max_tool_output_chars
+            output_truncated = true
+            completed_output = completed_output[0, effective_max_tool_output_chars]
+          end
           emit_stream_event(
             on_stream_event,
             type: :tool_call_completed,
@@ -250,6 +261,8 @@ module Samagotchi
             call_count: calls.length,
             call_index: call_index + 1,
             tool: call[:name],
+            output: completed_output,
+            output_truncated: output_truncated,
             activity: activity
           )
           dispatch_result[:output]
@@ -293,6 +306,18 @@ module Samagotchi
       callback&.call(event)
     rescue StandardError
       nil
+    end
+
+    # Resolve the per-output character cap for the emitted tool call events.
+    #
+    # Precedence: an explicit override wins, then the SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS
+    # env var, then DEFAULT_MAX_TOOL_OUTPUT_CHARS. A non-positive value falls back
+    # to the default (there is intentionally no "unlimited" — live UIs get a
+    # bounded `output:` plus a truthful `output_truncated:` flag).
+    def resolve_output_char_cap(override)
+      value = override || ENV[TOOL_OUTPUT_CHARS_ENV]
+      parsed = value.to_i
+      parsed.positive? ? parsed : DEFAULT_MAX_TOOL_OUTPUT_CHARS
     end
 
     def complete_kwargs(cancel_controller:, model_name: nil, on_chunk: nil, on_retry: nil)
@@ -684,10 +709,10 @@ module Samagotchi
         content = qwen_param_value(params, "content", "text", strip: false)
         { name: name, content: content, path: qwen_param_value(params, "path"), scope: nil }
       when Tools::MemoryRead::NAME
-        memory_name = qwen_param_value(params, "name", "entry", "path")
+        memory_name = qwen_param_value(params, "name")
         { name: name, content: memory_name, path: nil, scope: qwen_param_value(params, "scope") }
       when Tools::MemoryWrite::NAME
-        entry_name = qwen_param_value(params, "name", "entry", "path")
+        entry_name = qwen_param_value(params, "name")
         content = qwen_param_value(params, "content", "text", "body", "value", strip: false)
         { name: name, content: content, path: entry_name, scope: qwen_param_value(params, "scope"), description: qwen_param_value(params, "description") }
       when Tools::Edit::NAME
@@ -839,8 +864,8 @@ module Samagotchi
                   params_raw
         { name: name, content: strip_gemma_delimiters(content), path: nil, scope: params["scope"] }
       when Tools::MemoryWrite::NAME
-        # The declaration uses "name" and required "scope".
-        entry_name = params["name"] || params["path"] || ""
+        # The declaration uses "name" (required) and "scope" (required).
+        entry_name = params["name"] || ""
         { name: name, content: params["content"] || "", path: entry_name, scope: params["scope"], description: params["description"] ? strip_gemma_delimiters(params["description"]) : nil }
       when Tools::Edit::NAME
         old_text = params["old_text"] || params["old"] || ""

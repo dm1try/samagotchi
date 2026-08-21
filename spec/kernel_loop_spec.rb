@@ -477,12 +477,147 @@ Need to inspect the filesystem first.
       tool_event = events.find { |event| event[:type] == :tool_call_completed }
       expect(tool_event).not_to be_nil
       expect(tool_event).to include(tool: "read", call_index: 1, call_count: 1)
+      # README.md exceeds the default 10000-char cap, so the emitted output is
+      # capped and flagged as truncated; the activity summary is unaffected.
+      expect(tool_event[:output]).to start_with("[read]\n")
+      expect(tool_event[:output].length).to be <= Samagotchi::KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS
+      expect(tool_event[:output_truncated]).to be(true)
       expect(tool_event[:activity]).to include(
         action: "reading file",
         tool: "read",
         params: 'path="README.md"',
         status: "ok"
       )
+    end
+
+    describe ":tool_call_completed output and output_truncated" do
+      it "includes the dispatched output and flags output_truncated: false when within cap" do
+        Dir.mktmpdir do |dir|
+          path = File.join(dir, "small.txt")
+          File.write(path, "hello world")
+          events = []
+          allow(client).to receive(:complete).and_return(
+            %(<|tool_call>call:read{path: "#{path}"}<tool_call|>),
+            "done"
+          )
+          kernel.run(
+            [{ role: "user", content: "read" }],
+            on_stream_event: ->(event) { events << event }
+          )
+
+          completed = events.find { |event| event[:type] == :tool_call_completed }
+          expect(completed[:output]).to eq("[read]\nhello world")
+          expect(completed[:output_truncated]).to be(false)
+        end
+      end
+
+      it "truncates output to the cap and flags output_truncated: true" do
+        Dir.mktmpdir do |dir|
+          path = File.join(dir, "big.txt")
+          File.write(path, "x" * 5000)
+          events = []
+          allow(client).to receive(:complete).and_return(
+            %(<|tool_call>call:read{path: "#{path}"}<tool_call|>),
+            "done"
+          )
+          kernel.run(
+            [{ role: "user", content: "read" }],
+            max_tool_output_chars: 1000,
+            on_stream_event: ->(event) { events << event }
+          )
+
+          completed = events.find { |event| event[:type] == :tool_call_completed }
+          expect(completed[:output].length).to eq(1000)
+          expect(completed[:output].to_s.start_with?("[read]\n")).to be(true)
+          expect(completed[:output_truncated]).to be(true)
+        end
+      end
+
+      it "honors SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS for the default cap" do
+        Dir.mktmpdir do |dir|
+          path = File.join(dir, "big.txt")
+          File.write(path, "z" * 5000)
+          original = ENV["SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS"]
+          ENV["SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS"] = "42"
+          events = []
+          allow(client).to receive(:complete).and_return(
+            %(<|tool_call>call:read{path: "#{path}"}<tool_call|>),
+            "done"
+          )
+          kernel.run([{ role: "user", content: "read" }], on_stream_event: ->(event) { events << event })
+
+          completed = events.find { |event| event[:type] == :tool_call_completed }
+          expect(completed[:output].length).to eq(42)
+          expect(completed[:output_truncated]).to be(true)
+        ensure
+          original.nil? ? ENV.delete("SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS") : ENV["SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS"] = original
+        end
+      end
+
+      it "carries the unknown-tool error string and error status" do
+        events = []
+        allow(client).to receive(:complete).and_return(
+          %(<|tool_call>call:frobnicate{bogus: 1}<tool_call|>),
+          "done"
+        )
+        kernel.run([{ role: "user", content: "call a missing tool" }], on_stream_event: ->(event) { events << event })
+
+        completed = events.find { |event| event[:type] == :tool_call_completed }
+        expect(completed[:output].to_s).to start_with("Error: unknown tool 'frobnicate'")
+        expect(completed[:activity][:status]).to eq("error")
+      end
+
+      it "carries the raised tool's error string and error status" do
+        allow(Samagotchi::Tools::Read).to receive(:call).and_raise(RuntimeError.new("boom"))
+        events = []
+        allow(client).to receive(:complete).and_return(
+          %(<|tool_call>call:read{path: "x"}<tool_call|>),
+          "done"
+        )
+        kernel.run([{ role: "user", content: "read" }], on_stream_event: ->(event) { events << event })
+
+        completed = events.find { |event| event[:type] == :tool_call_completed }
+        expect(completed[:output].to_s).to eq("[read] Error: boom")
+        expect(completed[:activity][:status]).to eq("error")
+      end
+
+      it "carries its own matching output per call across multiple calls in one iteration" do
+        Dir.mktmpdir do |dir|
+          a = File.join(dir, "a.txt"); File.write(a, "AAAA")
+          b = File.join(dir, "b.txt"); File.write(b, "BBBB")
+          events = []
+          allow(client).to receive(:complete).and_return(
+            %(<|tool_call>call:read{path: "#{a}"}<tool_call|>
+<|tool_call>call:read{path: "#{b}"}<tool_call|>),
+            "done"
+          )
+          kernel.run([{ role: "user", content: "read both" }], on_stream_event: ->(event) { events << event })
+
+          completed = events.select { |event| event[:type] == :tool_call_completed }
+          expect(completed.length).to eq(2)
+          outputs = completed.map { |event| event[:output] }
+          expect(outputs).to include("[read]\nAAAA")
+          expect(outputs).to include("[read]\nBBBB")
+          completed.each { |event| expect(event[:output_truncated]).to be(false) }
+        end
+      end
+
+      it "caps only the event, not the conversation tool_response content" do
+        Dir.mktmpdir do |dir|
+          path = File.join(dir, "big.txt")
+          long = "y" * 5000
+          File.write(path, long)
+          allow(client).to receive(:complete).and_return(
+            %(<|tool_call>call:read{path: "#{path}"}<tool_call|>),
+            "done"
+          )
+          result = kernel.run([{ role: "user", content: "read" }], max_tool_output_chars: 1000)
+
+          expect(result.output).to eq("done")
+          tool_response = result.conversation.find { |message| message[:role] == "tool_response" }
+          expect(tool_response[:content]).to include(long)
+        end
+      end
     end
 
     it "strips the 'command:' prefix when the value is unquoted" do
@@ -603,6 +738,16 @@ Need to inspect the filesystem first.
         tail_lines: "5",
         done_pattern: "Done!"
       )
+    end
+
+    it "resolves memory_write name only (the `path` alias no longer satisfies the name slot)" do
+      name_call = kernel.send(:native_call, "memory_write", 'name: "secret_plan", scope: "project"')
+      expect(name_call[:path]).to eq("secret_plan")
+
+      # A stray `path:` (the file-tool alias the model tends to emit) must NOT
+      # satisfy the name slot; it resolves to "" so the guard can reject it.
+      path_call = kernel.send(:native_call, "memory_write", 'path: "secret_plan", scope: "project"')
+      expect(path_call[:path]).to eq("")
     end
   end
 
@@ -923,6 +1068,16 @@ Need to inspect the filesystem first.
       expect(File.read(File.join(dir, "secret_plan.md"))).to eq("# The Secret Plan\nPhase 1: Evolution.")
     ensure
       FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+    end
+
+    it "resolves memory_write name only (the `path` alias no longer satisfies the name slot)" do
+      name_call = qwen_kernel.send(:qwen_call_to_internal, "memory_write", "name" => "secret_plan")
+      expect(name_call[:path]).to eq("secret_plan")
+
+      # A stray `path:` (the file-tool alias the model tends to emit) must NOT
+      # satisfy the name slot; it resolves to "" so the guard can reject it.
+      path_call = qwen_kernel.send(:qwen_call_to_internal, "memory_write", "path" => "secret_plan")
+      expect(path_call[:path]).to eq("")
     end
 
     it "strips Qwen think blocks from the final output" do

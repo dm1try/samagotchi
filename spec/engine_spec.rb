@@ -165,5 +165,24 @@ RSpec.describe Samagotchi::Engine do
         engine.run_turn(session, "hi", on_event: proc { |_event| raise "boom" })
       }.not_to raise_error
     end
+
+    it "forwards tool_call_completed output and output_truncated to the event sink" do
+      engine = build_engine(profile: "gemma4")
+      events = []
+      allow(kernel).to receive(:run) do |_messages, **kwargs|
+        kwargs[:on_stream_event]&.call(
+          type: :tool_call_completed,
+          output: "[read]\nhi",
+          output_truncated: false,
+          activity: { action: "reading file", tool: "read", params: 'path="x"', status: "ok" }
+        )
+      end
+
+      engine.run_turn(make_session, "hi", on_event: proc { |event| events << event })
+
+      completed = events.find { |event| event[:type] == :tool_call_completed }
+      expect(completed[:output]).to eq("[read]\nhi")
+      expect(completed[:output_truncated]).to be(false)
+    end
   end
 end
