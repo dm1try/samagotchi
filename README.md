@@ -198,7 +198,7 @@ Tool behavior:
 - `memory_read`: `scope` is optional.
 - If `scope` is provided (`project` or `system`), only that scope is read.
 - If `scope` is omitted, read falls back from project to system.
-- `memory_write`: `scope` is required (`project` or `system`).
+- `memory_write`: `scope` is required (`project` or `system`). The entry name is passed via the `name` parameter (not `path` — the file tools use `path`).
 
 At startup, the agent reads both scope indexes with blank-name memory reads
 and injects them into the system prompt as `Project memories` and

@@ -127,7 +127,7 @@ module Samagotchi
     class MemoryWrite
       NAME        = "memory_write"
       DESCRIPTION = 'Write or update a memory entry (MD file) in scoped memories. ' \
-                    'Provide name via path and required scope (project|system). ' \
+                    'Provide the entry name (via the `name` parameter) and required scope (project|system). ' \
                     'Optional description is appended to the managed index line.'
 
       def self.name        = NAME

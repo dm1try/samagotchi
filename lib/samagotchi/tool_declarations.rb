@@ -64,7 +64,7 @@ module Samagotchi
 
     TOOL_MEMORY_WRITE = <<~DECL.strip
       <|tool>declaration:memory_write{
-        description:<|"|>Write or update a memory entry in scoped memories. Scope is required: project or system. Each scope's index.md is auto-maintained (one managed line per entry); use name \"index\" to write the index file verbatim.<|"|>,
+        description:<|"|>Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`); each scope's index.md is auto-maintained (one managed line per entry); use name "index" to write the index file verbatim.<|"|>,
         parameters:{
           name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension<|"|>, required:true},
           content:{type:<|"|>string<|"|>, description:<|"|>Markdown content to write<|"|>, required:true},
@@ -241,7 +241,7 @@ module Samagotchi
       },
       {
         name: "memory_write",
-        description: "Write or update a memory entry in scoped memories. Scope is required: project or system. Each scope's index.md is auto-maintained (one managed line per entry); use name \"index\" to write the index file verbatim.",
+        description: "Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`); each scope's index.md is auto-maintained (one managed line per entry); use name \"index\" to write the index file verbatim.",
         parameters: {
           type: "object",
           properties: {

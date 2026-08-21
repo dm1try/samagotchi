@@ -123,7 +123,7 @@ module Samagotchi
 
     TOOL_MEMORY_WRITE = <<~DECL.strip
       <|tool>declaration:memory_write{
-        description:<|"|>Write or update a memory entry in scoped memories. Scope is required: project or system.<|"|>,
+        description:<|"|>Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`).<|"|>,
         parameters:{
           name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension<|"|>, required:true},
           content:{type:<|"|>string<|"|>, description:<|"|>Markdown content to write<|"|>, required:true},
@@ -295,7 +295,7 @@ module Samagotchi
       },
       {
         name: "memory_write",
-        description: "Write or update a memory entry in scoped memories. Scope is required: project or system.",
+        description: "Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`).",
         parameters: {
           type: "object",
           properties: {
