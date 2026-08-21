@@ -7,6 +7,7 @@ require "time"
 require_relative "model_profile"
 require_relative "kernel_loop"
 require_relative "session"
+require_relative "session_observer"
 require_relative "tool_declarations"
 require_relative "tools/memory"
 
@@ -46,6 +47,31 @@ module Samagotchi
       @resume_session = session_id ? Session.load(session_id) : nil
       @requested_memories = Array(memories)
       @session = nil
+      @session_observer = SessionObserver.new
+    end
+
+    # Subscribe a persistent observer to engine events.
+    #
+    # Unlike the turn-scoped `on_event:` sink, a subscribed observer keeps
+    # receiving events across every `run_turn` call on this Engine. Each
+    # delivery carries a locally-monotonic `event_seq`. The returned handle can
+    # be used to unsubscribe later.
+    # @param observer [#call] receives event hashes (with `event_seq:` merged in)
+    # @return [Samagotchi::SessionObserver::SubscribedObserver] handle to unsubscribe
+    def subscribe(observer:)
+      @session_observer.subscribe(observer: observer)
+    end
+
+    # Unsubscribe a previously-registered observer.
+    # @param handle [Samagotchi::SessionObserver::SubscribedObserver]
+    # @return [Boolean] whether the observer was removed (nil/unknown never raises)
+    def unsubscribe(handle:)
+      @session_observer.unsubscribe(handle: handle)
+    end
+
+    # @return [Integer] total engine events emitted so far (locally monotonic)
+    def event_count
+      @session_observer.event_count
     end
 
     # @return [String] fully built system prompt (for inspection/tests)
@@ -186,10 +212,20 @@ module Samagotchi
     end
 
     def emit_event(on_event, event)
-      return unless on_event
-      on_event.call(event)
-    rescue StandardError
-      # Sink errors must not break the kernel loop (same as KernelLoop's own handling)
+      # Turn-scoped sink: receives the original event hash (no event_seq),
+      # byte-for-byte unchanged. Sink errors are isolated and never break the
+      # kernel loop (same as KernelLoop's own handling).
+      if on_event
+        begin
+          on_event.call(event)
+        rescue StandardError
+          # Sink errors must not break the kernel loop (same as KernelLoop's own handling)
+        end
+      end
+
+      # Persistent subscribers: receive a copy with a locally-monotonic
+      # `event_seq`, fan out with per-subscriber error isolation.
+      @session_observer.notify(event)
     end
 
     # ── Tool declarations ──────────────────────────────────────────────────────

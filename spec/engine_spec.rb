@@ -185,4 +185,125 @@ RSpec.describe Samagotchi::Engine do
       expect(completed[:output_truncated]).to be(false)
     end
   end
+
+  describe "#subscribe / persistent observer" do
+    let(:result) do
+      Samagotchi::KernelLoop::Result.new(
+        output: "hello back",
+        conversation: [{ role: "user", content: "hi" }, { role: "model", content: "hello back" }],
+        exhausted: false,
+        pending_tool_calls: false,
+        tool_activity: []
+      )
+    end
+
+    # Stub the kernel so it emits a small set of raw events on each run.
+    def stub_kernel_events
+      allow(kernel).to receive(:run) do |_messages, **kwargs|
+        cb = kwargs[:on_stream_event]
+        cb.call(type: :generation_started, iteration: 1)
+        cb.call(type: :generation_completed, iteration: 1, content: "hello back")
+        result
+      end
+    end
+
+    # Stub the kernel, run a turn with a no-op on_event sink, and return nothing.
+    def run_turn_with_kernel_events(engine, session, prompt)
+      stub_kernel_events
+      engine.run_turn(session, prompt, on_event: ->(_event) {})
+    end
+
+    it "delivers every event across multiple turns to a single observer" do
+      events = []
+      engine = build_engine(profile: "gemma4")
+      engine.subscribe(observer: ->(event) { events << event })
+      session = make_session
+
+      2.times { |i| run_turn_with_kernel_events(engine, session, "hi #{i}") }
+
+      expect(events.map { |e| e[:type] }.count(:turn_started)).to eq(2)
+      expect(events.map { |e| e[:type] }.count(:turn_completed)).to eq(2)
+      expect(events.map { |e| e[:type] }).to include(:generation_started, :generation_completed)
+      # event_seq is strictly increasing and consecutive across turns.
+      seqs = events.map { |e| e[:event_seq] }
+      expect(seqs.first).to eq(1)
+      expect(seqs).to eq((1..seqs.length).to_a)
+    end
+
+    it "delivers identical events to multiple subscribers" do
+      first, second = [], []
+      engine = build_engine(profile: "gemma4")
+      engine.subscribe(observer: ->(event) { first << event })
+      engine.subscribe(observer: ->(event) { second << event })
+      session = make_session
+      run_turn_with_kernel_events(engine, session, "hi")
+      expect(first).to eq(second)
+      expect(first).not_to be_empty
+    end
+
+    it "exposes a monotonic engine-local event_count that increments per emitted event" do
+      engine = build_engine(profile: "gemma4")
+      expect(engine.event_count).to eq(0)
+      session = make_session
+      run_turn_with_kernel_events(engine, session, "hi")
+      expect(engine.event_count).to eq(4) # turn_started + 2 raw kernel + turn_completed
+    end
+
+    it "stops delivery after unsubscribe but leaves other subscribers intact" do
+      dropped, kept = [], []
+      engine = build_engine(profile: "gemma4")
+      handle = engine.subscribe(observer: ->(event) { dropped << event })
+      engine.subscribe(observer: ->(event) { kept << event })
+      session = make_session
+
+      run_turn_with_kernel_events(engine, session, "hi 1")
+      handle.unsubscribe
+      run_turn_with_kernel_events(engine, session, "hi 2")
+
+      expect(dropped.map { |e| e[:type] }).to eq(%i[turn_started generation_started generation_completed turn_completed])
+      expect(kept.map { |e| e[:type] }).to eq((%i[turn_started generation_started generation_completed turn_completed] * 2))
+    end
+
+    it "isolates a raising observer so the turn completes and others still receive" do
+      other = []
+      engine = build_engine(profile: "gemma4")
+      engine.subscribe(observer: ->(_event) { raise "boom" })
+      engine.subscribe(observer: ->(event) { other << event })
+      session = make_session
+
+      expect { run_turn_with_kernel_events(engine, session, "hi") }.not_to raise_error
+      expect(other.map { |e| e[:type] }).to include(:turn_started, :turn_completed)
+    end
+
+    it "leaves on_event: un-sequenced while the observer receives a sequenced copy" do
+      on_events, observer_events = [], []
+      engine = build_engine(profile: "gemma4")
+      engine.subscribe(observer: ->(event) { observer_events << event })
+      stub_kernel_events
+      session = make_session
+      engine.run_turn(session, "hi", on_event: ->(event) { on_events << event })
+
+      expect(on_events.count).to eq(observer_events.count)
+      expect(on_events.first).not_to have_key(:event_seq)
+      expect(observer_events.first).to have_key(:event_seq)
+      expect(on_events.map { |e| e[:type] }).to eq(observer_events.map { |e| e[:type] })
+    end
+
+    it "does not deliver past events to a subscriber added after a turn ran" do
+      engine = build_engine(profile: "gemma4")
+      session = make_session
+      run_turn_with_kernel_events(engine, session, "hi")
+
+      events = []
+      engine.subscribe(observer: ->(event) { events << event })
+      run_turn_with_kernel_events(engine, session, "hi again")
+
+      expect(events.map { |e| e[:type] }).to eq(%i[turn_started generation_started generation_completed turn_completed])
+    end
+
+    it "unsubscribe(nil) on the engine does not raise" do
+      engine = build_engine(profile: "gemma4")
+      expect { engine.unsubscribe(handle: nil) }.not_to raise_error
+    end
+  end
 end
