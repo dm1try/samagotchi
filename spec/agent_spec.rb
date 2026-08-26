@@ -1544,39 +1544,6 @@ file2.rb")
   end
 
   describe "Profile-aware tool declarations" do
-    it "generates Gemma 4 style declarations for Gemma profile" do
-      gemma_profile = Samagotchi::ModelProfile.gemma4
-      agent = described_class.new(mode: "assist", client: client, profile: gemma_profile)
-
-      declarations = agent.send(:tool_declarations)
-      expect(declarations).to include("<|tool>declaration:execute")
-      expect(declarations).to include("<|tool>declaration:task_wait")
-      expect(declarations).to include("default: 600")
-      expect(declarations).to include("done_pattern")
-      expect(declarations).to include("<tool|>")
-      expect(declarations).not_to include("\"name\":")
-    end
-
-    it "generates JSON declarations for Qwen profile" do
-      qwen_profile = Samagotchi::ModelProfile.qwen36
-      agent = described_class.new(mode: "assist", client: client, profile: qwen_profile)
-
-      declarations = agent.send(:tool_declarations)
-      expect(declarations).to include("<tools>")
-      expect(declarations).to include("</tools>")
-
-      # Verify JSON is valid inside tools tags
-      json_match = declarations.match(/<tools>\s*(.*?)\s*<\/tools>/m)
-      expect(json_match).not_to be_nil
-      tools_json = JSON.parse(json_match[1])
-      expect(tools_json).to be_an(Array)
-      expect(tools_json.first["name"]).to eq("execute")
-      task_wait = tools_json.find { |tool| tool["name"] == "task_wait" }
-      task_create = tools_json.find { |tool| tool["name"] == "task_create" }
-      expect(task_wait.dig("parameters", "properties")).to include("tail_lines", "done_pattern")
-      expect(task_create.dig("parameters", "properties")).to include("env")
-    end
-
     it "uses Gemma tool call hint for Gemma profile" do
       gemma_profile = Samagotchi::ModelProfile.gemma4
       agent = described_class.new(mode: "assist", client: client, profile: gemma_profile)

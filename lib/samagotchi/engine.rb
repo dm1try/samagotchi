@@ -330,6 +330,7 @@ module Samagotchi
       return nil if @requested_memories.empty?
 
       entries = []
+      @activated_memory_names ||= []
       @requested_memories.each do |raw|
         names = raw.split(",").map(&:strip).reject(&:empty?)
         names.each do |name|
@@ -339,6 +340,10 @@ module Samagotchi
             warn "Warning: --memory '#{name}' could not be loaded (#{body})"
             next
           end
+          # Record activated names so the UI can echo them in the sticky
+          # status line. The memory-body injection itself stays here — the
+          # Engine is the single source of truth for the system prompt.
+          @activated_memory_names << actual_name
           entries << "this memory is required by the user in the current context: memory name: #{actual_name}\n#{body}"
         end
       end
@@ -346,6 +351,13 @@ module Samagotchi
       return nil if entries.empty?
 
       entries.join("\n\n")
+    end
+
+    # Names activated via preloaded --memory entries during system-prompt
+    # construction. Exposed so the UI can surface them in the sticky status
+    # line; Engine still owns the prompt, the UI owns the rendering state.
+    def activated_memory_names
+      @activated_memory_names ||= []
     end
 
     def split_memory_scope(raw)

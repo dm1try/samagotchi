@@ -600,76 +600,16 @@ module Samagotchi
 
     private
 
-    # Generate profile-aware tool declarations
-    def tool_declarations
-      case @profile.name
-      when "qwen36"
-        "<tools>\n#{JSON.pretty_generate(QWEN_TOOLS_JSON)}\n</tools>"
-      else
-        # Gemma 4 format
-        [
-          TOOL_EXECUTE,
-          TOOL_READ,
-          TOOL_WRITE,
-          TOOL_EDIT,
-          TOOL_MEMORY_READ,
-          TOOL_MEMORY_WRITE,
-          TOOL_TASK_CREATE,
-          TOOL_TASK_GET,
-          TOOL_TASK_LIST,
-          TOOL_TASK_STOP,
-          TOOL_TASK_WAIT,
-          TOOL_WEB_FETCH
-        ].join("\n")
-      end
-    end
-
-    # Generate profile-aware tool calling hint
+    # Generate profile-aware tool calling hint.
+    # Kept as a one-line delegator to Engine (single source of truth).
     def tool_call_hint
-      case @profile.name
-      when "qwen36"
-        QWEN_TOOL_CALL_HINT
-      else
-        TOOL_CALL_HINT
-      end
+      return @engine.send(:tool_call_hint)
     end
 
-    # Generate profile-aware assist system prompt
+    # Assist system prompt — delegates wholesale to Engine so the two can
+    # never drift apart. This single delegator fixes the 4-line regression.
     def assist_system_prompt
-      declarations = tool_declarations
-      hint = tool_call_hint
-
-      <<~SYS
-        You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant harness. You have access to the following tools:
-
-        #{declarations}
-
-        #{hint}
-        You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
-
-        #{SMALL_CONTEXT_PROTOCOL}
-
-        Editing workflow:
-          1. Read the target file or line range immediately before calling edit.
-          2. For exact-match mode, copy old_text verbatim from that read output; do not reconstruct it from memory.
-          3. Prefer the smallest unique block (about 3-15 lines) that contains the change.
-          4. For large files, prefer range mode (start_line/end_line) to minimize context.
-          5. If exact-match mode reports not found or multiple matches, read again and retry with a smaller or more unique block.
-          6. Use write for full-file rewrites or creating new files.
-
-        Memory convention:
-          Project scope: ~/.config/samagotchi/memories/projects/<name>_<hash>/ (project-local)
-          System scope:  ~/.config/samagotchi/memories/ (cross-project)
-          memory_read accepts optional scope (project|system).
-          memory_write requires explicit scope and entry name.
-          User prompts may contain memory shorthand like #entry_name.
-          Treat #entry_name as a memory reference, not as a file path.
-          If shorthand includes a scope prefix, such as #project/entry_name or #system/entry_name,
-          preserve that scope when reading the memory.
-          Keep each scope's index.md updated when adding/updating entries.
-
-        #{CONTEXT_STATUS_PROTOCOL}
-      SYS
+      return @engine.send(:assist_system_prompt)
     end
 
     # Interactive REPL loop. Session seed + messages are built by #run and
@@ -825,22 +765,24 @@ module Samagotchi
 
     # Appends the current memory index to the base system prompt so the agent
     # is always aware of stored memories without needing to call a tool first.
+    # Delegates wholesale to Engine (single source of truth).
+    # system_prompt_with_index is private on Engine, so we dispatch via send.
     def system_prompt_with_index(base)
-      project_index = read_memory_index("project")
-      system_index = read_memory_index("system")
-      project_description = project_specific_description
-      # Only inject Gemma thought control tokens for Gemma profiles.
-      # Qwen uses a different reasoning format and should not receive <|think|>.
-      thinking_token = if @profile.name == "gemma4" && ENV["THINKING_MODE"] != "false"
-                         "<|think|>\n"
-                       else
-                         ""
-                       end
-      memory_sections = [
-        "Project memories:\n#{project_index}",
-        "System memories:\n#{system_index}"
-      ].join("\n\n")
-      [thinking_token + base, rg_guidance, project_description, current_directory, memory_sections, explicit_memory_section].compact.join("\n")
+      result = @engine.send(:system_prompt_with_index, base)
+      # Mirror any --memory activations the Engine performed so the sticky
+      # status line can surface them. The prompt body injection moved into
+      # Engine; echoing the activated names here is purely a UI concern.
+      sync_engine_activated_memories
+      result
+    end
+
+    # Engine owns the system prompt (including --memory activation), but the
+    # sticky status line is a UI concern. Mirror the activated names so they
+    # appear in the status line.
+    def sync_engine_activated_memories
+      @engine.send(:activated_memory_names).each do |name|
+        add_unique_memory_name(:@session_memory_names, name)
+      end
     end
 
     def emit_result(result)
@@ -889,35 +831,6 @@ module Samagotchi
       return false if ENV.key?("NO_COLOR")
 
       ENV.fetch("TERM", "") != "dumb"
-    end
-
-    def read_memory_index(scope)
-      Tools::MemoryRead.call("", scope: scope)
-    end
-
-    # Preloads memories requested via --memory so the model sees full bodies, not just the index.
-    def explicit_memory_section
-      return nil if @requested_memories.empty?
-
-      entries = []
-      @requested_memories.each do |raw|
-        names = raw.split(",").map(&:strip).reject(&:empty?)
-        names.each do |name|
-          scope, actual_name = split_memory_scope(name)
-          body = Tools::MemoryRead.call(actual_name, scope: scope)
-          if body.start_with?("Error:")
-            warn "Warning: --memory '#{name}' could not be loaded (#{body})"
-            next
-          end
-
-          add_unique_memory_name(:@session_memory_names, actual_name)
-          entries << "this memory is required by the user in the current context: memory name: #{actual_name}\n#{body}"
-        end
-      end
-
-      return nil if entries.empty?
-
-      entries.join("\n\n")
     end
 
     def split_memory_scope(raw)
@@ -1303,26 +1216,6 @@ module Samagotchi
       normalized[0, limit].rstrip + "..."
     end
 
-    def project_specific_description
-      return nil if skip_agent_description?
-
-      path = File.join(Dir.pwd, AGENT_DESCRIPTION_FILE)
-      return nil unless File.file?(path)
-
-      content = File.read(path).strip
-      return nil if content.empty?
-
-      "Project specific description:\n#{content}"
-    rescue StandardError
-      nil
-    end
-
-    def current_directory
-      "Current working directory:\n#{Dir.pwd}"
-    rescue StandardError
-      nil
-    end
-
     def skip_agent_description?
       value = ENV[SKIP_AGENT_DESCRIPTION_ENV]
       value == "1" || value&.casecmp?("true")
@@ -1330,10 +1223,6 @@ module Samagotchi
 
     def rg_available?
       system("command -v rg", out: File::NULL, err: File::NULL)
-    end
-
-    def rg_guidance
-      RG_GUIDANCE if rg_available?
     end
 
     def run_kernel_with_thinking_feedback(messages, max_iterations: 100)
