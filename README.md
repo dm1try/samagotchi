@@ -53,6 +53,7 @@ Notes:
 
 Samagotchi is split into a **core engine** and a **terminal UI**. The core holds all
 agent logic and can be used without any terminal rendering; the UI is a thin layer on top.
+See `docs/architecture.md` for a visual overview of the layers and turn flow.
 
 | Layer | Class | Responsibility |
 |-------|-------|----------------|
