@@ -235,12 +235,13 @@ module Samagotchi
 
     # ── Event helpers ──────────────────────────────────────────────────────────
 
-    # Forward raw kernel loop events and emit Engine-level events.
+    # Always return a handler so raw kernel loop events reach the persistent
+    # SessionObserver (and thus the analytics collector) even when there is no
+    # turn-scoped +on_event+ sink (e.g. the -p/--resume paths and
+    # SessionManager background workers). emit_event tolerates a nil on_event by
+    # only notifying the observer.
     def build_stream_event_handler(on_event)
-      return nil unless on_event
-
       proc do |event|
-        # Forward the raw kernel event unchanged
         emit_event(on_event, event)
       end
     end

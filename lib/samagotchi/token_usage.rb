@@ -69,10 +69,15 @@ module Samagotchi
 
       private
 
+      # Coerce each candidate to an integer, accepting integers, numeric strings,
+      # and floats (e.g. a JSON backend emitting 50.0). Truncates via to_i so a
+      # float never raises RangeError; non-numeric values are skipped.
       def first_positive(*values)
         values.each do |value|
-          integer = Integer(value)
-          return integer if integer.positive?
+          next if value.nil?
+
+          n = Float(value).to_i
+          return n if n.positive?
         rescue ArgumentError, TypeError
           next
         end

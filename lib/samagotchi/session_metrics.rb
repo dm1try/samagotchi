@@ -4,6 +4,7 @@ require "json"
 require "monitor"
 require "time"
 require "fileutils"
+require_relative "session"
 
 module Samagotchi
   # SessionMetrics is a persistent, error-isolated collector of per-session
@@ -152,7 +153,10 @@ module Samagotchi
       sid = @mutex.synchronize { @session_id }
       return false if sid.nil? || sid.to_s.empty?
 
-      dir = Session.session_dir(sid, state_dir: state_dir)
+      # Omitting state_dir lets Session.session_dir fall back to the default
+      # (XDG) location; passing an explicit nil would override it and break
+      # File.join.
+      dir = state_dir ? Session.session_dir(sid, state_dir: state_dir) : Session.session_dir(sid)
       FileUtils.mkdir_p(dir)
       path = File.join(dir, "analytics.json")
       temp_path = "#{path}.tmp"
