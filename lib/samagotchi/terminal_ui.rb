@@ -29,6 +29,7 @@ module Samagotchi
     MODEL_COMMAND = "/model"
     MODELS_COMMAND = "/models"
     STATS_COMMAND = "/stats"
+    ANALYTICS_COMMAND = "/analytics"
     SHELL_BANG_PREFIX = "!"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
     THINKING_UI_ENV = "SAMAGOTCHI_THINKING_UI"
@@ -1080,7 +1081,8 @@ module Samagotchi
     end
 
     def stats_command?(input)
-      input.to_s.strip == STATS_COMMAND
+      normalized = input.to_s.strip
+      normalized == STATS_COMMAND || normalized == ANALYTICS_COMMAND
     end
 
     # Render the analytics snapshot as a compact, user-facing report. Raw event
