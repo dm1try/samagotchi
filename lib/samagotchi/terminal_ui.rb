@@ -29,6 +29,8 @@ module Samagotchi
     CONTINUE_COMMAND = "/continue"
     MODEL_COMMAND = "/model"
     MODELS_COMMAND = "/models"
+    STATS_COMMAND = "/stats"
+    ANALYTICS_COMMAND = "/analytics"
     SHELL_BANG_PREFIX = "!"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
     THINKING_UI_ENV = "SAMAGOTCHI_THINKING_UI"
@@ -706,6 +708,11 @@ module Samagotchi
             next
           end
 
+          if stats_command?(input)
+            $stdout.puts "\nmodel> session stats:\n#{format_session_metrics(@engine.metrics.snapshot)}"
+            next
+          end
+
           interrupted_turn_checkpoint = clone_messages(messages)
           messages << { role: "user", content: normalize_model_input(input) }
           persist_recent_history(input)
@@ -750,6 +757,9 @@ module Samagotchi
         session.messages = messages
         session.model_name = @session_model_name
         session.save
+        # Mirror engine.run_turn's persistence for the REPL path (which drives
+        # KernelLoop directly and bypasses the Engine observer's persist call).
+        @engine.metrics.persist
       end
 
       $stdout.puts "\nSession: #{session.id}"
@@ -1071,6 +1081,38 @@ module Samagotchi
       input.to_s.strip == MODELS_COMMAND
     end
 
+    def stats_command?(input)
+      normalized = input.to_s.strip
+      normalized == STATS_COMMAND || normalized == ANALYTICS_COMMAND
+    end
+
+    # Render the analytics snapshot as a compact, user-facing report. Raw event
+    # logs (debug-only) are intentionally excluded; this surface is for the REPL.
+    def format_session_metrics(snapshot)
+      return "(no metrics yet)" unless snapshot.is_a?(Hash)
+
+      token_src = snapshot[:token_source]
+      token_src_label = case token_src
+                        when :server then "server-reported"
+                        when :estimate then "estimated (chars/4)"
+                        else "n/a"
+                        end
+
+      lines = []
+      lines << "turns:            #{snapshot[:turns]}"
+      lines << "tool calls:       #{snapshot[:tool_calls_total]} (#{snapshot[:tool_errors]} errors)"
+      unless snapshot[:tool_calls_by_tool].to_a.empty?
+        by_tool = snapshot[:tool_calls_by_tool].sort_by { |_k, v| -v }
+        lines << "  by tool:        #{by_tool.map { |k, v| "#{k}=#{v}" }.join(", ")}"
+      end
+      lines << "iterations:       #{snapshot[:iterations_total]}"
+      lines << "tokens in/out:    #{snapshot[:tokens_in]}/#{snapshot[:tokens_out]} (total #{snapshot[:tokens_total]}, #{token_src_label})"
+      lines << "gen latency (ms): #{snapshot[:gen_latency_ms]}"
+      lines << "cancellations:    #{snapshot[:cancellations]}"
+      lines << "retries:          #{snapshot[:retries]}"
+      lines.join("\n")
+    end
+
     def handle_model_command(input)
       suffix = input.to_s.strip.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
@@ -1255,6 +1297,12 @@ module Samagotchi
     end
 
     def handle_stream_event(event)
+      # Forward REPL stream events into the Engine's shared analytics collector.
+      # The interactive loop drives KernelLoop directly (bypassing
+      # Engine#run_turn), so this is the only feed point for REPL sessions;
+      # -p/--resume/worker paths are covered by the Engine observer instead.
+      @engine.metrics.call(event)
+
       case event[:type]
       when :generation_started
         start_cancel_hotkey_monitor(@active_cancel_controller)
