@@ -517,6 +517,9 @@ module Samagotchi
       @resume_session = session_id ? Session.load(session_id) : nil
       @no_default_input = no_default_input
       @non_interactive = non_interactive
+      # Toggled by begin/end_interactive_turn so an interrupted-and-continued
+      # turn isn't counted as multiple turns.
+      @turn_open = false
       @requested_memories = Array(memories)
       @engine         = Engine.new(
         mode: :assist,
@@ -656,6 +659,7 @@ module Samagotchi
             session.messages = messages
             session.model_name = @session_model_name
             session.save
+            end_interactive_turn(canceled: true)
             $stdout.puts "\nmodel> interrupted turn cancelled; enter your next prompt"
             next
           when :abort_with_reason
@@ -670,6 +674,7 @@ module Samagotchi
             session.messages = messages
             session.model_name = @session_model_name
             session.save
+            end_interactive_turn(canceled: true)
             $stdout.puts "\nmodel> interrupted turn cancelled; noted your explanation"
             next
           else
@@ -717,8 +722,12 @@ module Samagotchi
           messages << { role: "user", content: normalize_model_input(input) }
           persist_recent_history(input)
           begin
+            begin_interactive_turn(session)
             result = run_kernel_with_thinking_feedback(messages)
           rescue Client::RetryExhausted => e
+            # Terminal failure: close the turn so the flag doesn't leak open.
+            # Retries were already tallied via generation_retrying events.
+            end_interactive_turn(canceled: false)
             messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             awaiting_continue = false
             queue_input_prefill(input)
@@ -732,6 +741,8 @@ module Samagotchi
           if continue_flow
             awaiting_continue = true
           else
+            # Ctrl-c on a fresh turn: cancel the open turn before abandoning it.
+            end_interactive_turn(canceled: true)
             messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             awaiting_continue = false
           end
@@ -740,6 +751,7 @@ module Samagotchi
         end
 
         emit_result(result)
+        end_interactive_turn(canceled: false)
 
         messages = result.conversation
         awaiting_continue = result.resumable?
@@ -1294,6 +1306,39 @@ module Samagotchi
       stop_cancel_hotkey_monitor
       @active_cancel_controller = nil
       finish_thinking_spinner
+    end
+
+    # Turn lifecycle for the interactive REPL.
+    #
+    # The REPL drives KernelLoop directly via #run_kernel_with_thinking_feedback,
+    # bypassing Engine#run_turn. That means it never receives the :turn_started /
+    # :turn_completed / :turn_canceled events the SessionMetrics collector needs to
+    # tally a turn: without them the collector never opens a turn, so turns,
+    # output tokens (tokens out), iterations, and generation latency all stay 0
+    # even though the server did report completion tokens. begin/end_interactive_turn
+    # feed the same shared collector the Engine observer feeds for the -p /
+    # --non-interactive / --resume paths, so /stats reports real numbers.
+    #
+    # An interrupted turn can be resumed in the next loop iteration, so the flag
+    # is idempotent (guard on @turn_open) and every terminal path calls end so the
+    # turn never leaks open.
+    def begin_interactive_turn(session)
+      return if @turn_open
+
+      @turn_open = true
+      @engine.metrics.session_id = session.id if session.respond_to?(:id)
+      @engine.metrics.call(type: :turn_started, session_id: session.id.to_s, prompt: nil)
+    end
+
+    def end_interactive_turn(canceled:)
+      return unless @turn_open
+
+      @turn_open = false
+      if canceled
+        @engine.metrics.call(type: :turn_canceled, cancellation_reason: :interrupt)
+      else
+        @engine.metrics.call(type: :turn_completed, result: nil)
+      end
     end
 
     def handle_stream_event(event)
