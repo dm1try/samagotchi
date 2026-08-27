@@ -9,6 +9,8 @@ require_relative "kernel_loop"
 require_relative "session"
 require_relative "session_observer"
 require_relative "tool_declarations"
+require_relative "session_metrics"
+require_relative "token_usage"
 require_relative "tools/memory"
 
 module Samagotchi
@@ -48,7 +50,16 @@ module Samagotchi
       @requested_memories = Array(memories)
       @session = nil
       @session_observer = SessionObserver.new
+      @metrics = SessionMetrics.new
+      # The metrics collector is a persistent observer so every run_turn event
+      # (covering -p/--non-interactive/--resume and SessionManager workers)
+      # feeds it automatically. The interactive REPL drives KernelLoop directly
+      # and forwards its stream events into the same instance.
+      @session_observer.subscribe(observer: @metrics)
     end
+
+    # @return [SessionMetrics] the per-session analytics collector
+    attr_reader :metrics
 
     # Subscribe a persistent observer to engine events.
     #
@@ -84,12 +95,14 @@ module Samagotchi
     #   :message_count [Integer]   number of messages in the session
     #   :last_prompt   [String, nil] the last user prompt (empty string if none)
     #   :event_seq     [Integer]   @session_observer.event_count
+    #   :metrics       [Hash]      @metrics.snapshot (per-session analytics)
     def session_state_snapshot
       {
         status: @session&.status,
         message_count: (@session&.messages || []).size,
         last_prompt: @session&.last_prompt,
-        event_seq: @session_observer&.event_count
+        event_seq: @session_observer&.event_count,
+        metrics: @metrics.snapshot
       }
     end
 
@@ -118,6 +131,7 @@ module Samagotchi
     # @return [KernelLoop::Result]
     def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil)
       # Emit turn_started event
+      @metrics.session_id = session.id
       emit_event(on_event, {
         type: :turn_started,
         session_id: session.id,
@@ -147,6 +161,7 @@ module Samagotchi
         max_tool_output_chars: max_tool_output_chars
       )
 
+      @metrics.persist
       session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
 
       # Emit turn_completed or turn_canceled

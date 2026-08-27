@@ -305,5 +305,15 @@ RSpec.describe Samagotchi::Engine do
       engine = build_engine(profile: "gemma4")
       expect { engine.unsubscribe(handle: nil) }.not_to raise_error
     end
+
+    describe "#session_state_snapshot" do
+      it "includes a metrics snapshot key carrying per-session analytics" do
+        engine = build_engine(profile: "gemma4")
+        snap = engine.session_state_snapshot
+        expect(snap).to have_key(:metrics)
+        expect(snap[:metrics]).to be_a(Hash)
+        expect(snap[:metrics][:turns]).to eq(0)
+      end
+    end
   end
 end
