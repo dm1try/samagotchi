@@ -6,6 +6,7 @@ require "time"
 
 require_relative "model_profile"
 require_relative "kernel_loop"
+require_relative "llm/backend"
 require_relative "session"
 require_relative "session_observer"
 require_relative "tool_declarations"
@@ -44,6 +45,7 @@ module Samagotchi
       @client = client || Client.new
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@base_model_name)
       @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt)
+      @backend = LLM::Factory.factory(provider: :native, model_name: @base_model_name, kernel: @kernel)
       @resume_session = session_id ? Session.load(session_id) : nil
       @requested_memories = Array(memories)
       @session = nil
@@ -138,8 +140,8 @@ module Samagotchi
       messages << { role: "user", content: prompt }
       session.last_prompt = prompt
 
-      result = @kernel.run(
-        messages,
+      result = @backend.complete(
+        messages: messages,
         max_iterations: max_iterations,
         on_stream_event: build_stream_event_handler(on_event),
         cancel_controller: cancel_controller,

@@ -100,7 +100,8 @@ RSpec.describe Samagotchi::Engine do
 
       returned = engine.run_turn(session, "hi")
 
-      expect(returned).to be(result)
+      expect(returned).to be_a(Samagotchi::LLM::ModelResult)
+      expect(returned.conversation).to eq(result.conversation)
       expect(session.last_prompt).to eq("hi")
       expect(session.messages).to eq(result.conversation)
     end
@@ -130,7 +131,7 @@ RSpec.describe Samagotchi::Engine do
       # Higher-level Engine events carry turn boundaries + session id.
       expect(events.find { |e| e[:type] == :turn_started })
         .to include(session_id: session.id, prompt: "hi")
-      expect(events.find { |e| e[:type] == :turn_completed }[:result]).to be(result)
+      expect(events.find { |e| e[:type] == :turn_completed }[:result]).to be_a(Samagotchi::LLM::ModelResult)
     end
 
     it "emits turn_canceled (not turn_completed) when the result is canceled" do
