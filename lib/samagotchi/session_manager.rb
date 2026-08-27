@@ -32,8 +32,10 @@ module Samagotchi
 
     # Spawn a new background session that processes the given prompt.
     #
-    # Returns the session object with its ID.
-    def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil)
+    # Returns the session object with its ID. When +bridge:+ is true the worker
+    # is launched with the SSE/HTTP transport opt-in (an env var threaded
+    # through Process.spawn) so an external client can reach it.
+    def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil, bridge: false)
       sd = state_dir || Session.default_state_dir
       session = Session.new_session(
         mode: mode,
@@ -46,12 +48,13 @@ module Samagotchi
       setup_session_directory(session_dir, session, state_dir: sd)
 
       lib_path = File.expand_path("..", __dir__)
+      opts = { out: File::NULL, err: File::NULL }
+      opts[:env] = { "SAMAGOTCHI_ENABLE_BRIDGE" => "1" } if bridge
       pid = Process.spawn(
         RbConfig.ruby,
         "-I", lib_path,
         "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{sd.inspect})",
-        out: File::NULL,
-        err: File::NULL
+        **opts
       )
 
       File.write(File.join(session_dir, PID_FILE), pid.to_s)
@@ -154,11 +157,21 @@ module Samagotchi
 
     # Run the session loop inside the forked process.
     # This is the entry point called by Process.spawn.
-    def self.run_session_loop(session_id, state_dir: nil)
+    #
+    # When the bridge is enabled (opt-in via the +bridge:+ keyword or the
+    # SAMAGOTCHI_ENABLE_BRIDGE env var threaded through Process.spawn) an
+    # in-process SSE/HTTP transport is started on a per-session port bound to
+    # 127.0.0.1 before the loop and stopped on exit. Never changes default
+    # behaviour: the bridge is off unless explicitly engaged.
+    def self.run_session_loop(session_id, state_dir: nil, bridge: nil)
       sd = state_dir || Session.default_state_dir
       session = Session.load(session_id, state_dir: sd)
       session_dir = Session.session_dir(session_id, state_dir: sd)
       engine = Samagotchi::Engine.new(mode: session.mode.to_sym, model_name: session.model_name)
+
+      bridge_instance = start_bridge_if_enabled(
+        engine:, state_dir: sd, session_id: session_id, enabled: bridge
+      )
 
       begin
         # Process the initial prompt
@@ -211,6 +224,8 @@ module Samagotchi
       rescue StandardError => e
         Session.mark_error(session_id, reason: e.message, state_dir: sd)
         exit(1)
+      ensure
+        bridge_instance&.stop
       end
     end
 
@@ -221,22 +236,70 @@ module Samagotchi
       session.save(state_dir: state_dir)
     end
 
-    private_class_method def self.spawn_worker_for_session(session, state_dir:)
+    private_class_method def self.spawn_worker_for_session(session, state_dir:, bridge: false)
       session_dir = Session.session_dir(session.id, state_dir: state_dir)
       FileUtils.mkdir_p(session_dir)
       FileUtils.mkdir_p(File.join(session_dir, INPUT_DIR))
       FileUtils.mkdir_p(File.join(session_dir, OUTPUT_DIR))
 
       lib_path = File.expand_path("..", __dir__)
+      opts = { out: File::NULL, err: File::NULL }
+      opts[:env] = { "SAMAGOTCHI_ENABLE_BRIDGE" => "1" } if bridge
       pid = Process.spawn(
         RbConfig.ruby,
         "-I", lib_path,
         "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{state_dir.inspect})",
-        out: File::NULL,
-        err: File::NULL
+        **opts
       )
       File.write(File.join(session_dir, PID_FILE), pid.to_s)
       pid
+    end
+
+    # Start an in-process bridge/transport for this worker when enabled.
+    #
+    # Opt-in via the +bridge:+ keyword (preferred) or the
+    # SAMAGOTCHI_ENABLE_BRIDGE env var threaded through Process.spawn. When
+    # disabled (the default) this is a no-op and nothing is loaded or bound.
+    # Bridge creation happens *before* the loop so the capture observer is in
+    # place for the whole session; the caller stops the returned instance on
+    # exit (see run_session_loop's ensure).
+    #
+    # @return [Samagotchi::Bridge, nil]
+    private_class_method def self.start_bridge_if_enabled(engine:, state_dir:, session_id:, enabled:)
+      return nil unless enabled_bridge?(enabled)
+
+      Samagotchi::Bridge.new(
+        engine: engine, state_dir: state_dir, session_id: session_id
+      ).start
+    rescue StandardError => e
+      warn "Bridge: failed to start for session #{session_id}: #{e.class}: #{e.message}"
+      nil
+    end
+
+    # Resolve whether the transport is enabled: the +enabled:+ keyword wins;
+    # otherwise fall back to the SAMAGOTCHI_ENABLE_BRIDGE env var.
+    private_class_method def self.enabled_bridge?(enabled)
+      return enabled unless enabled.nil?
+
+      value = ENV.fetch("SAMAGOTCHI_ENABLE_BRIDGE", "").to_s.downcase
+      !value.empty? && !%w[0 false no off].include?(value)
+    end
+
+    # Write a user turn into a session's input directory via the same file IPC
+    # the worker polls. Reused by the bridge's POST surface so a turn is
+    # fire-and-forget and never calls run_turn across the thread/process
+    # boundary. @return [Boolean] true on success.
+    def self.write_turn_input(session_id, prompt:, state_dir: nil)
+      sd = state_dir || Session.default_state_dir
+      session_dir = Session.session_dir(session_id, state_dir: sd)
+      input_dir = File.join(session_dir, INPUT_DIR)
+      FileUtils.mkdir_p(input_dir)
+
+      timestamp = Time.now.strftime("%Y%m%d%H%M%S%9N")
+      write_atomic(File.join(input_dir, "#{timestamp}.txt"), prompt.to_s)
+      true
+    rescue StandardError
+      false
     end
 
     private_class_method def self.write_output(session_dir, response)

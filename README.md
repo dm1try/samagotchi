@@ -60,6 +60,7 @@ See `docs/architecture.md` for a visual overview of the layers and turn flow.
 | Core | `Samagotchi::Engine` | System prompt, memory injection, tool declarations, session lifecycle, the model↔tool loop (`run_turn`). No terminal coupling. |
 | UI | `Samagotchi::TerminalUI` | Interactive REPL (Reline), rendering (ANSI, spinner, status line), REPL commands. Delegates all core work to an `Engine`. |
 | Transport | `Samagotchi::Client`, `KernelLoop`, `Session` | HTTP transport, model↔tool loop, session data model (already clean). |
+| Bridge (SSE/HTTP) | `Samagotchi::Bridge`, `SessionManager` | **Opt-in** external-client transport: an SSE read stream + HTTP POST turn-creation surface that attaches to a worker's existing `Engine` via `Engine#subscribe`. Bound `127.0.0.1`, no auth (localhost-only). Enabled by `SAMAGOTCHI_ENABLE_BRIDGE` in the forked session worker. |
 
 - `bin/chi` (interactive) builds `TerminalUI`. `TerminalUI#run` is the single
   dispatch for the REPL, `-p`/`--prompt`, `--non-interactive`, and `--resume`: it
@@ -99,6 +100,37 @@ engine.run(session: nil, prompt: "...", on_event: nil)   # create/resume session
 engine.system_prompt     # fully built system prompt string
 engine.session           # current session (Engine owns create/resume)
 ```
+
+#### Subscribing to the live stream (and the bridge)
+
+For an **always-on** consumer (an external SSE client, a dashboard, a second UI), use
+`Engine#subscribe` rather than passing `on_event:` to a single turn. It is a thread-safe,
+error-isolated fan-out with a monotonic `event_seq` on every event:
+
+```ruby
+handle = engine.subscribe(observer: ->(event) { ... })   # observer receives {..., event_seq:}
+engine.unsubscribe(handle: handle)
+engine.session_state_snapshot   # => { status:, message_count:, last_prompt:, event_seq: }
+```
+
+`Engine#subscribe` is the seam the SSE bridge (`Samagotchi::Bridge`) rides on. The bridge
+is an **optional** HTTP transport that runs **inside the forked session worker** (the same
+process that already owns the `Engine`) and exposes:
+
+- `GET  /session/:id/stream` — SSE stream of engine + kernel events, each with an `id: <event_seq>`
+  cursor; resume via `Last-Event-ID` / `?from_seq=`; a `: ping` heartbeat keeps idle proxies alive;
+  too-old reconnects receive a `reset` marker carrying `session_state_snapshot`.
+- `POST /session/:id/turn` — fire-and-forget turn creation; returns `202` with an `enqueued_id`
+  (delivery is at-least-once via the worker's file-IPC input path — it never calls `run_turn`
+  across the HTTP boundary). Inspect results through the read surface, not the turn response.
+- `GET  /session/:id/state` — `session_state_snapshot` (JSON).
+- `OPTIONS *` — CORS preflight (`Access-Control-Allow-Origin: *`).
+
+It is engaged only when the worker is spawned with `SAMAGOTCHI_ENABLE_BRIDGE=1`; `bin/chi`
+without that flag never loads the bridge or binds a port. The per-session port is
+OS-assigned (bound to `0`) and published to a `bridge.json` sidecar for client discovery.
+Resume/ring-buffer state is **in-memory** (v1) — durable cross-process resume is a staged
+next step, not part of v1.
 
 ## Global Config File
 

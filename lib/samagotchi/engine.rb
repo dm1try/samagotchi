@@ -74,6 +74,25 @@ module Samagotchi
       @session_observer.event_count
     end
 
+    # Read-only snapshot of the engine's view of the current session plus the
+    # live event sequence. Cheap primitive used by the bridge's reconnect-too-
+    # old reset marker and the GET /session/:id/state read surface. Orthogonal
+    # to the transport — safe to call before the first turn (nil session).
+    #
+    # @return [Hash] with keys:
+    #   :status        [String, nil] current session status
+    #   :message_count [Integer]   number of messages in the session
+    #   :last_prompt   [String, nil] the last user prompt (empty string if none)
+    #   :event_seq     [Integer]   @session_observer.event_count
+    def session_state_snapshot
+      {
+        status: @session&.status,
+        message_count: (@session&.messages || []).size,
+        last_prompt: @session&.last_prompt,
+        event_seq: @session_observer&.event_count
+      }
+    end
+
     # @return [String] fully built system prompt (for inspection/tests)
     def system_prompt
       @system_prompt ||= system_prompt_with_index(assist_system_prompt)
