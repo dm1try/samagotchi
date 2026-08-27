@@ -166,6 +166,58 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(prompts[1]).to include("bucket=40plus")
     end
 
+    it "prefers real server usage over the synthetic estimate when available" do
+      prompts = []
+      responses = [
+        %(<|tool_call>call:execute{command: "echo hi"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete) do |prompt, **kwargs|
+        prompts << prompt
+        kwargs[:on_chunk]&.call(
+          content: responses.first,
+          payload: { "usage" => { "prompt_tokens" => 120_000, "completion_tokens" => 80 }, "n_ctx" => 256_000 }
+        )
+        responses.shift
+      end
+
+      kernel.run([{ role: "user", content: "check" }])
+
+      expect(prompts[1]).to include("CONTEXT_STATUS")
+      expect(prompts[1]).to include("src=server")
+      expect(prompts[1]).to include("est_used_tokens=120000")
+      expect(prompts[1]).to include("bucket=40plus")
+    end
+
+    it "still falls back to the synthetic estimate when the server reports no usage" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt, **kwargs|
+        prompts << prompt
+        kwargs[:on_chunk]&.call(content: "ok", payload: {})
+        "ok"
+      end
+      allow(kernel).to receive(:estimate_context_usage).and_return(
+        window_tokens: 256_000,
+        estimated_used_tokens: 90_000,
+        estimated_remaining_tokens: 166_000,
+        estimated_pct: 35.2,
+        source: "estimate"
+      )
+
+      kernel.run([{ role: "user", content: "hello" }])
+
+      expect(prompts.first).to include("CONTEXT_STATUS")
+      expect(prompts.first).to include("src=estimate")
+      expect(prompts.first).to include("bucket=20plus")
+    end
+
+    it "emits bucket-aware actionable guidance" do
+      expect(kernel.send(:context_status_guidance, "20plus")).to include("proceed normally")
+      expect(kernel.send(:context_status_guidance, "40plus")).to include("prefer targeted")
+      expect(kernel.send(:context_status_guidance, "60plus")).to include("concise")
+      expect(kernel.send(:context_status_guidance, "80plus")).to include("summarize")
+    end
+
     it "dispatches a canonical read call with the correct path" do
       prompts = []
       allow(client).to receive(:complete) do |prompt|

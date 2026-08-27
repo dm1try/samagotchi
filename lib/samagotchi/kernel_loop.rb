@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "model_profile"
+require_relative "context_usage"
 require_relative "prompt"
 require_relative "prompt_literal_guard"
 require_relative "client"
@@ -176,27 +177,34 @@ module Samagotchi
       effective_max_iterations.times do |iteration_index|
         prompt = prompt_with_context_status(conversation, iteration_index: iteration_index, state: context_state)
         emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
-        response = if on_stream_event
-                     @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller, model_name: resolved_model_name, on_chunk: lambda { |chunk|
-                       emit_stream_event(
-                         on_stream_event,
-                         type: :generation_chunk,
-                         iteration: iteration_index + 1,
-                         content: chunk[:content].to_s,
-                         payload: chunk[:payload]
-                       )
-                     }, on_retry: lambda { |retry_event|
-                       emit_stream_event(
-                         on_stream_event,
-                         {
-                           type: :generation_retrying,
-                           iteration: iteration_index + 1
-                         }.merge(retry_event)
-                       )
-                     }))
-                   else
-                     @client.complete(prompt, **complete_kwargs(cancel_controller: cancel_controller, model_name: resolved_model_name))
-                   end
+        response = @client.complete(
+          prompt,
+          **complete_kwargs(
+            cancel_controller: cancel_controller,
+            model_name: resolved_model_name,
+            on_chunk: lambda { |chunk|
+              capture_server_usage(chunk[:payload], context_state)
+              if on_stream_event
+                emit_stream_event(
+                  on_stream_event,
+                  type: :generation_chunk,
+                  iteration: iteration_index + 1,
+                  content: chunk[:content],
+                  payload: chunk[:payload]
+                )
+              end
+            },
+            on_retry: (on_stream_event ? lambda { |retry_event|
+              emit_stream_event(
+                on_stream_event,
+                {
+                  type: :generation_retrying,
+                  iteration: iteration_index + 1
+                }.merge(retry_event)
+              )
+            } : nil)
+          )
+        )
         emit_stream_event(
           on_stream_event,
           type: :generation_completed,
@@ -387,16 +395,21 @@ module Samagotchi
       prompt = Prompt.format(conversation, profile: @profile)
       return prompt unless context_status_enabled?
 
-      usage = estimate_context_usage(prompt)
+      usage = estimate_context_usage(prompt, server_usage: state[:server_usage])
       bucket = context_status_bucket(usage[:estimated_pct])
       emit_status = should_emit_context_status?(state: state, bucket: bucket, iteration_index: iteration_index)
       state[:last_bucket] = bucket
       return prompt unless emit_status
 
-      status_message = context_status_message(usage: usage, bucket: bucket)
+      status_message = context_status_message(usage: usage, bucket: bucket, source: usage[:source])
       conversation << { role: "system", content: status_message }
       verbose_log("── context status ──\n#{status_message}\n──────────────────")
       Prompt.format(conversation, profile: @profile)
+    end
+
+    def capture_server_usage(payload, state)
+      normalized = ContextUsage.normalize(payload)
+      state[:server_usage] = normalized if normalized
     end
 
     def initial_context_status_state(conversation)
@@ -420,7 +433,22 @@ module Samagotchi
       !(value == "0" || value.casecmp?("false"))
     end
 
-    def estimate_context_usage(prompt)
+    def estimate_context_usage(prompt, server_usage: nil)
+      if server_usage && server_usage[:prompt_tokens]
+        window_tokens = server_usage[:context_window_tokens] || context_window_tokens
+        estimated_used_tokens = server_usage[:prompt_tokens]
+        estimated_remaining_tokens = [window_tokens - estimated_used_tokens, 0].max
+        estimated_pct = (estimated_used_tokens.to_f / window_tokens) * 100.0
+
+        return {
+          window_tokens: window_tokens,
+          estimated_used_tokens: estimated_used_tokens,
+          estimated_remaining_tokens: estimated_remaining_tokens,
+          estimated_pct: estimated_pct,
+          source: "server"
+        }
+      end
+
       window_tokens = context_window_tokens
       estimated_used_tokens = (prompt.length / context_chars_per_token).ceil
       estimated_remaining_tokens = [window_tokens - estimated_used_tokens, 0].max
@@ -430,7 +458,8 @@ module Samagotchi
         window_tokens: window_tokens,
         estimated_used_tokens: estimated_used_tokens,
         estimated_remaining_tokens: estimated_remaining_tokens,
-        estimated_pct: estimated_pct
+        estimated_pct: estimated_pct,
+        source: "estimate"
       }
     end
 
@@ -478,17 +507,34 @@ module Samagotchi
       bucket_changed || cadence_due
     end
 
-    def context_status_message(usage:, bucket:)
+    def context_status_message(usage:, bucket:, source:)
       format(
-        "%<prefix>s window_tokens=%<window>d est_used_tokens=%<used>d est_remaining_tokens=%<remaining>d est_pct=%<pct>.1f bucket=%<bucket>s thresholds=%<thresholds>s guidance=clarify_scope_minimize_uncertainty",
+        "%<prefix>s window_tokens=%<window>d est_used_tokens=%<used>d est_remaining_tokens=%<remaining>d est_pct=%<pct>.1f bucket=%<bucket>s thresholds=%<thresholds>s src=%<src>s guidance=%<guidance>s",
         prefix: CONTEXT_STATUS_PREFIX,
         window: usage[:window_tokens],
         used: usage[:estimated_used_tokens],
         remaining: usage[:estimated_remaining_tokens],
         pct: usage[:estimated_pct],
         bucket: bucket,
-        thresholds: context_status_thresholds.join(",")
+        thresholds: context_status_thresholds.join(","),
+        src: source,
+        guidance: context_status_guidance(bucket)
       )
+    end
+
+    def context_status_guidance(bucket)
+      case bucket
+      when "under20", "20plus"
+        "context healthy — proceed normally"
+      when "40plus"
+        "context moderate — prefer targeted and range reads over full-file dumps"
+      when "60plus"
+        "context elevated — be concise, prefer range reads, avoid re-reading large files"
+      when "80plus"
+        "context critical — summarize aggressively, avoid large outputs, delegate broad work to subagents"
+      else
+        "context healthy — proceed normally"
+      end
     end
 
     # Parse tool calls from raw model output.

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "samagotchi/config_file"
+require_relative "samagotchi/context_usage"
 require_relative "samagotchi/model_profile"
 require_relative "samagotchi/prompt"
 require_relative "samagotchi/client"
