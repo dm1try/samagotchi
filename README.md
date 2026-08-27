@@ -418,6 +418,12 @@ Emission behavior:
 - A status is emitted when estimated usage crosses configured threshold buckets.
 - Optional cadence-based updates can also be enabled every N rounds.
 - This is warn-only behavior (no automatic history truncation).
+- When the model server reports real `usage` fields in the stream payload, the
+  telemetry uses those actual token counts (prefixed `src=server`) instead of the
+  synthetic char-based estimate (`src=estimate`). The guidance text is dynamic
+  and escalates with the bucket: healthy → proceed normally; moderate → prefer
+  targeted/range reads; elevated → be concise, avoid large re-reads; critical →
+  summarize aggressively and delegate broad work to subagents.
 
 Configuration:
 
