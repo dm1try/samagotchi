@@ -1,19 +1,25 @@
 # frozen_string_literal: true
 
 require "samagotchi/session_manager"
+require_relative "output_formatter"
 
 module Samagotchi
   # Dashboard — a thin menu loop for managing background sessions.
   #
-  # Step 1 (this file): render the numbered session list, spawn a new session
-  # from a typed line, route numeric lines to the #attach_to seam (Step 2), and
-  # support /quit to exit.
+  # Step 1: render the numbered session list, spawn a new session from a typed
+  # line, route numeric lines to the #attach_to seam, and support /quit.
+  #
+  # Step 2: #attach_to now runs the real attach loop — load (resuming the worker
+  # if needed) the selected session through the injected manager, print an
+  # on-disk conversation header and history, send messages via file IPC, and
+  # render new output as it arrives, leaving via /detach, /stop, /quit, EOF, or
+  # an automatic terminal-state detach.
   #
   # The dashboard is intentionally thin. It never constructs an Engine, spawns
   # an inline agent loop, or reaches into TerminalUI. It only talks to a
-  # duck-typed manager object (responding to #list_sessions / #spawn_session),
-  # which keeps the menu loop fork-free in specs. Attaching in Step 2 will keep
-  # using file-IPC, never an inline Engine.
+  # duck-typed manager object (responding to #list_sessions / #spawn_session /
+  # #resume_session / #read_responses / #write_turn_input / #stop_session /
+  # #wait_for_session), which keeps the menu + attach loops fork-free in specs.
   class Dashboard
     BANNER = "Chi Dashboard"
 
@@ -35,10 +41,21 @@ module Samagotchi
     # Characters kept from a session id when rendering a "short id".
     SHORT_ID_CHARS = 8
 
+    # Poll bounds for the attach send/display cycle. A model/LLM turn can take
+    # many seconds, so this is a generous-timeout bounded poll (never a fixed
+    # short sleep) plus a hard iteration cap so attach can never hang.
+    POLL_TIMEOUT_SECONDS = 60
+    POLL_ITERATION_CAP = 10_000
+
     # Default manager: the SessionManager class responds to its own class
     # methods (list_sessions / spawn_session), so injection is duck-typed.
-    def initialize(manager: nil)
+    #
+    # +state_dir:+ is optional; when nil the manager defaults to
+    # Session.default_state_dir. Threaded into attach calls for test isolation
+    # with custom session stores.
+    def initialize(manager: nil, state_dir: nil)
       @manager = manager || Samagotchi::SessionManager
+      @state_dir = state_dir
     end
 
     # Print the banner + session list, then read one line at a time until EOF
@@ -73,6 +90,14 @@ module Samagotchi
 
     def quit?(line)
       line.downcase == "/quit"
+    end
+
+    def detach?(line)
+      line.downcase == "/detach"
+    end
+
+    def stop?(line)
+      line.downcase == "/stop"
     end
 
     # Resolve a numeric list index (1-based) to its session id and attach.
@@ -137,16 +162,133 @@ module Samagotchi
       "#{stripped[0, PREVIEW_CHARS]}…"
     end
 
-    # Step 1 placeholder. This is the explicit integration point Step 2 fills
-    # in with real attach (poll output/, send messages, /detach, /stop).
-    def attach_to(_session_id)
-      $stdout.puts(<<~MSG.strip)
-        Attach is coming soon (Step 2).
+    # Step-2 integration point. Load (resuming the worker if needed) the
+    # session the menu selected, then run the interactive attach loop until the
+    # user leaves (/detach, /stop, /quit, EOF) or the session reaches a terminal
+    # state. Returns :detach to the menu; never exits the process.
+    #
+    # Thin renderer only: talks to the duck-typed manager's file-IPC surface,
+    # never constructs an Engine. See the plan's Implementation Notes.
+    def attach_to(session_id)
+      session = @manager.resume_session(session_id, state_dir: @state_dir)
+      render_attach_header(session)
+      display_history(session_id)
 
-        In Step 2 this method will poll the session's output directory, let you
-        send messages, and support /detach and /stop. The number route above is
-        wired so Step 2 can drop in the real implementation here.
-      MSG
+      loop do
+        input = read_input
+        case classify_attach_input(input)
+        when :eof         then return :detach
+        when :detach_cmd  then return detach_notice("Detached from session menu.")
+        when :quit_cmd    then return detach_notice("Detached — type /quit again from the menu to exit.")
+        when :stop_cmd    then return detach_stopped(session_id)
+        when :empty       then next
+        else
+          result = send_and_poll(session_id, input.chomp)
+          case result
+          when :terminal
+            $stdout.puts("Session finished. Detaching to menu.")
+            return :detach
+          when :timeout
+            $stdout.puts("No response within #{POLL_TIMEOUT_SECONDS}s. Detaching to menu.")
+            return :detach
+          end
+          # :ok -> loop back to the prompt
+        end
+      end
+    end
+
+    # Classify one attached-mode input exactly once, in this order:
+    #   1. nil (EOF)     -> :eof     -> detach
+    #   2. /detach       -> :detach  -> detach (worker keeps running)
+    #   3. /stop         -> :stop    -> stop the worker, then detach
+    #   4. /quit         -> :quit    -> detach (menu-level exit only)
+    #   5. blank         -> :empty   -> no-op, read next line
+    #   6. else          -> :message -> send + poll for output
+    def classify_attach_input(line)
+      return :eof if line.nil?
+
+      text = line.chomp
+      return :detach_cmd if detach?(text)
+      return :stop_cmd if stop?(text)
+      return :quit_cmd if quit?(text)
+      return :empty if text.strip.empty?
+
+      :message
+    end
+
+    # Short, plain-text header: id, status label, working directory.
+    def render_attach_header(session)
+      $stdout.puts
+      $stdout.puts("Session #{session.id}")
+      $stdout.puts("  status:  #{session.status}")
+      $stdout.puts("  workdir: #{session.working_directory}")
+      $stdout.puts
+    end
+
+    # Print the on-disk conversation history by reading the session's output/
+    # files. History lives on disk (never on the Session object), so rebuild it
+    # here instead of inventing a message list.
+    def display_history(session_id)
+      responses = @manager.read_responses(session_id, since_time: nil, state_dir: @state_dir)
+      return if responses.empty?
+
+      $stdout.puts
+      $stdout.puts("Conversation history (from output/):")
+      responses.each { |chunk| render_output(chunk) }
+    end
+
+    # Send a message via file IPC, then poll output/ for new responses until
+    # one arrives, the session goes terminal, or the poll timeout elapses.
+    #
+    # Captures since_time at send and reads only newer files (matching the
+    # worker's mtime filter). Bounded poll: generous timeout, a hard iteration
+    # cap, and never a fixed short sleep — a model turn can take many seconds.
+    # Returns :ok (back to prompt), :terminal (auto-detach), or :timeout (back
+    # to prompt after the deadline with no output).
+    def send_and_poll(session_id, message)
+      @manager.write_turn_input(session_id, prompt: message, state_dir: @state_dir)
+      since_time = Time.now
+      deadline = Time.now + POLL_TIMEOUT_SECONDS
+      iterations = 0
+
+      loop do
+        responses = @manager.read_responses(session_id, since_time: since_time, state_dir: @state_dir)
+        responses.each { |chunk| render_output(chunk) }
+        return :ok unless responses.empty?
+        return :terminal if @manager.wait_for_session(session_id, timeout: 0.5, state_dir: @state_dir)
+        return :timeout if Time.now >= deadline || (iterations += 1) >= POLL_ITERATION_CAP
+
+        # wait_for_session above already blocks ~0.5s on a non-terminal check.
+      end
+    end
+
+    # Render one output chunk through the shared OutputFormatter so wire-format
+    # protocol/literal tokens (both the Gemma <|…> control family and the Qwen
+    # [[SAMAGOTCHI_LITERAL_*]] call family) are stripped before display. History
+    # and live-poll output share this one path. The formatter keeps internal
+    # newlines, so multi-line responses stay readable.
+    def render_output(chunk)
+      text = OutputFormatter.strip(chunk)
+      $stdout.puts(text) unless text.empty?
+    end
+
+    # Print a detach notice and return to the menu.
+    def detach_notice(message)
+      $stdout.puts(message)
+      :detach
+    end
+
+    # Stop the session's worker, confirm it stopped, then detach to the menu.
+    def detach_stopped(session_id)
+      @manager.stop_session(session_id, state_dir: @state_dir)
+
+      if @manager.wait_for_session(session_id, timeout: 5, state_dir: @state_dir)
+        $stdout.puts("Session stopped. Detaching to menu.")
+      else
+        $stdout.puts("Stopping session… Detaching to menu.")
+      end
+
+      :detach
     end
 
     # Input seam: reads one line from $stdin, or nil on EOF (Ctrl+D). Uses gets

@@ -11,6 +11,7 @@ require_relative "session"
 require_relative "tool_declarations"
 require_relative "engine"
 require_relative "tools/memory"
+require_relative "output_formatter"
 
 module Samagotchi
   # TerminalUI encapsulates the single operating mode of the harness.
@@ -1547,14 +1548,13 @@ module Samagotchi
     end
 
     def thinking_tail_preview_text
-      text = @thinking_tail_preview_buffer.to_s
-      return "" if text.empty?
+      raw = @thinking_tail_preview_buffer.to_s
+      return "" if raw.empty?
 
-      # Strip model control-token fragments from the tail preview.
-      text = text.gsub(/<\|[^>]{1,120}>/, "")
-      text = text.gsub(/<[a-z_\|]{1,40}>/, "")
-      text = text.gsub(/\s+/, " ").strip
-      text.empty? ? "" : text
+      # OutputFormatter strips both wire-format token families (control +
+      # literal) as the single source of truth; the single-line preview then
+      # collapses whitespace for display.
+      OutputFormatter.strip(raw).gsub(/\s+/, " ").strip
     end
 
     def reset_thinking_tail_preview
