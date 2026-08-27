@@ -150,6 +150,13 @@ RSpec.describe Samagotchi::TokenUsage do
       expect(described_class.from_payload("content" => "hi")).to be_nil
       expect(described_class.from_payload(nil)).to be_nil
     end
+
+    it "accepts float token counts without raising" do
+      # Some backends emit floats (e.g. 50.0); ensure it coerces instead of
+      # raising RangeError.
+      result = described_class.from_payload("timings" => { "prompt_n" => 50.0, "predicted_n" => 12.9 })
+      expect(result).to eq(prompt_tokens: 50, completion_tokens: 12, source: :server)
+    end
   end
 
   describe ".estimate" do
