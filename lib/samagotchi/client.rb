@@ -6,13 +6,13 @@ require "uri"
 
 module Samagotchi
   # Thin HTTP client for llama.cpp's native /completion endpoint, or an
-  # OpenAI-compatible /v1/completions endpoint (e.g. mlx_lm.server).
+  # OpenAI-compatible /v1/completions endpoint (e.g. mlx_lm.server or oMLX).
   # Configure via environment variables:
   #   LLAMA_HOST  (default: localhost)
-  #   LLAMA_PORT  (default: 8080)
+  #   LLAMA_PORT  (default: 8080; oMLX's default is 8000, set LLAMA_PORT to match)
   #   LLAMA_OPEN_TIMEOUT (default: 10 seconds)
   #   LLAMA_READ_TIMEOUT (default: 600 seconds)
-  #   SAMAGOTCHI_SERVER_TRANSPORT (llama_cpp|mlx, default: llama_cpp)
+  #   SAMAGOTCHI_SERVER_TRANSPORT (llama_cpp|mlx|omlx, default: llama_cpp)
   class Client
     class RequestCancelled < StandardError
       attr_reader :reason
@@ -42,7 +42,7 @@ module Samagotchi
 
     SERVER_TRANSPORT_ENV = "SAMAGOTCHI_SERVER_TRANSPORT"
     DEFAULT_TRANSPORT = :llama_cpp
-    VALID_TRANSPORTS = %i[llama_cpp mlx].freeze
+    VALID_TRANSPORTS = %i[llama_cpp mlx omlx].freeze
 
     class CancellationController
       def initialize
@@ -260,42 +260,43 @@ module Samagotchi
     end
 
     def transport_label
-      @transport == :mlx ? "mlx" : "llama.cpp"
+      # oMLX gets its own label so its error paths read "omlx ...", not "mlx ...".
+      @transport == :omlx ? "omlx" : (@transport == :mlx ? "mlx" : "llama.cpp")
     end
 
     def completion_uri
-      path = @transport == :mlx ? "/v1/completions" : "/completion"
+      path = @transport == :mlx || @transport == :omlx ? "/v1/completions" : "/completion"
       URI("http://#{@host}:#{@port}#{path}")
     end
 
     def models_path
-      @transport == :mlx ? "/v1/models" : "/models"
+      @transport == :mlx || @transport == :omlx ? "/v1/models" : "/models"
     end
 
     def completion_payload(prompt, stop:, n_predict:, model:)
       payload = { prompt: prompt, stop: stop, stream: true }
-      token_limit_key = @transport == :mlx ? :max_tokens : :n_predict
+      token_limit_key = @transport == :mlx || @transport == :omlx ? :max_tokens : :n_predict
       payload[token_limit_key] = n_predict if n_predict && n_predict.to_i.positive?
       model_name = payload_model_name(model)
       payload[:model] = model_name if model_name
       payload
     end
 
-    # mlx_lm.server treats `model` as a repo/path to (re)load rather than a
-    # selector among already-loaded models, so passing our profile-selection
+    # mlx_lm.server and oMLX both treat `model` as a repo/path to (re)load rather
+    # than a selector among already-loaded models, so passing our profile-selection
     # model name (e.g. SAMAGOTCHI_MODEL) would make it try to load an unrelated
     # path and fail with a 404. Only llama.cpp supports the `model` field the
-    # way we use it; omit it entirely for mlx and let the server use whatever
+    # way we use it; omit it entirely for mlx/oMLX and let the server use whatever
     # was loaded via its own `--model` CLI flag.
     def payload_model_name(model)
-      return nil if @transport == :mlx
+      return nil if @transport == :mlx || @transport == :omlx
 
       value = model.to_s.strip
       value.empty? ? nil : value
     end
 
     # Returns [content, payload] for a streamed SSE line, or nil to skip
-    # (blank lines, non-data lines, and the mlx `[DONE]` sentinel).
+    # (blank lines, non-data lines, and the mlx/oMLX `[DONE]` sentinel).
     def parse_stream_line(line)
       return nil if line.empty? || !line.start_with?("data: ")
 
@@ -303,7 +304,7 @@ module Samagotchi
       return nil if data == "[DONE]"
 
       payload = JSON.parse(data)
-      content = @transport == :mlx ? payload.dig("choices", 0, "text").to_s : payload.fetch("content", "")
+      content = @transport == :mlx || @transport == :omlx ? payload.dig("choices", 0, "text").to_s : payload.fetch("content", "")
       [content, payload]
     end
 

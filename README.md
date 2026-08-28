@@ -162,15 +162,19 @@ and llama host/port on every invocation.
 
 ## Model Server Transport
 
-Chi talks to a model server over HTTP and supports two transports:
+Chi talks to a model server over HTTP and supports three transports:
 
 - `llama_cpp` (default): llama.cpp's native `/completion` and `/models` endpoints.
 - `mlx`: [mlx-lm](https://github.com/ml-explore/mlx-lm)'s OpenAI-compatible
   `/v1/completions` and `/v1/models` endpoints (Apple Silicon-native models).
+- `omlx`: [oMLX](https://github.com/jundot/omlx) (the mlx-lm successor —
+  continuous batching + tiered SSD KV cache) using the same `/v1/completions`
+  and `/v1/models` endpoints as `mlx`.
 
-Select the transport with `SAMAGOTCHI_SERVER_TRANSPORT` (`llama_cpp` or `mlx`).
-`LLAMA_HOST`/`LLAMA_PORT` are reused for both transports — only the request/response
-shape differs.
+Select the transport with `SAMAGOTCHI_SERVER_TRANSPORT` (`llama_cpp`, `mlx`, or
+`omlx`). `LLAMA_HOST`/`LLAMA_PORT` are reused for all three — only the
+request/response shape differs. oMLX's default server port is `8000` (not `8080`),
+so point `LLAMA_PORT` at it, e.g. `LLAMA_PORT=8000`.
 
 Example for mlx-lm:
 
@@ -184,16 +188,32 @@ LLAMA_PORT: 8080
 mlx_lm.server --model mlx-community/Qwen3-14B-Instruct-4bit
 ```
 
-The `mlx` transport still sends chi's own raw formatted prompt (via `/v1/completions`)
-rather than a `messages` array, so the existing per-model prompt/tool-call formatting
-is unaffected — mlx-lm does not reapply its own chat template on this endpoint.
+Example for oMLX:
+
+```yaml
+SAMAGOTCHI_SERVER_TRANSPORT: omlx
+LLAMA_HOST: 192.168.1.29
+LLAMA_PORT: 8000
+```
+
+Both the `mlx` and `omlx` transports still send chi's own raw formatted prompt
+(via `/v1/completions`) rather than a `messages` array, so the existing
+per-model prompt/tool-call formatting is unaffected — neither server reapplies its
+own chat template on this endpoint. Only the Gemma4 (`<|tool_call>…`) and Qwen3.6
+(`[[…]]`/`<|tool_call>`) tool-call formats are in scope; GLM/Mistral/Kimi/MiniMax
+formats are not parsed.
+
+oMLX's known tool-call limitation (a stream filter that strips markup) only
+affects its `/v1/chat/completions` endpoint, not the `/v1/completions` endpoint
+chi uses, so raw `[[…]]`/`<|tool_call>` markers stream through untouched.
 
 `SAMAGOTCHI_MODEL`/`/model` only drive samagotchi's own prompt-profile selection
-(Gemma4 vs Qwen36 formatting) when using the `mlx` transport — they are never sent
-as the request's `model` field. mlx_lm.server treats `model` as a path/HF repo id to
-load, and only the implicit default value (`"default_model"`, mapped to whatever
-was passed to `mlx_lm.server --model ...`) is guaranteed to work; sending anything
-else causes mlx-lm to try loading it as a new model and fail with an HTTP 404.
+(Gemma4 vs Qwen36 formatting) when using the `mlx`/`omlx` transport — they are
+never sent as the request's `model` field. Both `mlx_lm.server` and oMLX treat
+`model` as a path/HF repo id to load, and only the implicit default value
+(`"default_model"`, mapped to whatever was passed to the server's `--model` flag)
+is guaranteed to work; sending anything else causes the server to try loading it
+as a new model and fail with an HTTP 404.
 
 ## Runtime Model Switch (Assist Mode)
 
