@@ -44,20 +44,14 @@ RSpec.describe "omlx transport - model resolution + forwarding", :integration do
     expect(live_model_ids).to include(resolved)
   end
 
-  # Directly against the oMLX completion endpoint: a non-empty reply proves the
-  # request was *accepted* — the resolved `model` id was forwarded and oMLX did
-  # NOT 400 on a missing field. Resolution already proved itself in the
-  # /v1/models-membership test above; here we just need the endpoint to run a
-  # generation against our selector.
+  # Directly against the oMLX completion endpoint: forwarding our short selector
+  # as the `model:` argument proves resolution worked — oMLX accepts the request
+  # (no 400 "model: Field required") with the resolved id in the body. We assert
+  # acceptance (a 400 raises, so a clean String return is the signal), not text
+  # output: oMLX occasionally emits an empty chunk stream for a prompt (a model
+  # quirk, not a forwarding failure); that's the KernelLoop test's job.
   it "completes against the live oMLX endpoint with the resolved model (no 400)" do
-    # n_predict low so even a single token counts as a non-empty generation, and
-    # so the test stays fast. The point is the request round-trips without the
-    # "model: Field required" 400 that the bug caused.
-    result = client.complete("hi", n_predict: 32)
-    # Accept any String: a 400 would raise, not return "", so a clean String
-    # return proves the request was accepted with our resolved model id. oMLX
-    # sometimes emits an empty chunk stream for a given prompt (a model quirk,
-    # not a forwarding failure); the KernelLoop test exercises actual text.
+    result = client.complete("hi", n_predict: 32, model: selector)
     expect(result).to be_a(String)
   end
 
