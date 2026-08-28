@@ -282,17 +282,65 @@ module Samagotchi
       payload
     end
 
-    # mlx_lm.server and oMLX both treat `model` as a repo/path to (re)load rather
-    # than a selector among already-loaded models, so passing our profile-selection
-    # model name (e.g. SAMAGOTCHI_MODEL) would make it try to load an unrelated
-    # path and fail with a 404. Only llama.cpp supports the `model` field the
-    # way we use it; omit it entirely for mlx/oMLX and let the server use whatever
-    # was loaded via its own `--model` CLI flag.
+    # Transport semantics for the request's `model` field:
+    #   - llama.cpp: forward the selector (SAMAGOTCHI_MODEL) verbatim.
+    #   - mlx_lm.server: omit `model` entirely (use whatever was loaded via the
+    #     server's own `--model` CLI flag).
+    #   - oMLX: MUST send a model id that exists in the server's `/v1/models`
+    #     list, or oMLX 400s with "model: Field required". Our short
+    #     SAMAGOTCHI_MODEL selector (e.g. `gemma-4-26b-a4b-it-4bit`) is resolved
+    #     to the exact registered id (which may be prefixed, e.g.
+    #     `mlx-community--...`) by matching against the loaded `/v1/models` list.
     def payload_model_name(model)
-      return nil if @transport == :mlx || @transport == :omlx
+      case @transport
+      when :mlx
+        nil
+      when :omlx
+        resolve_omlx_model(model)
+      else
+        value = model.to_s.strip
+        value.empty? ? nil : value
+      end
+    end
 
-      value = model.to_s.strip
-      value.empty? ? nil : value
+    # Resolve a user-facing SAMAGOTCHI_MODEL selector to the exact id oMLX
+    # expects in the request body (an id from its `/v1/models` list).
+    #
+    # Resolution order: exact (case-insensitive) match first, then the first
+    # substring match, else the selector passes through unchanged so oMLX returns
+    # its own 404 listing the available models. An empty selector yields nil (no
+    # model field). The id list is loaded once per client and memoized, but
+    # resolution runs on every completion so a runtime model switch re-resolves.
+    def resolve_omlx_model(raw)
+      value = raw.to_s.strip
+      return nil if value.empty?
+
+      ids = fetch_omlx_model_ids
+      return value if ids.empty?
+
+      ids.find { |id| id.casecmp?(value) } ||
+        ids.select { |id| id.downcase.include?(value.downcase) }.first ||
+        value
+    end
+
+    # Load and memoize the list of model ids from oMLX's `/v1/models`.
+    #
+    # Only memoize on success: a failed `list_models` must leave the cache unset
+    # so the next completion retries (a transient blip shouldn't disable
+    # resolution for the whole session). On failure we return [] so an unknown
+    # selector still passes through raw, letting oMLX return its own 400/404
+    # (server decides), matching the README's documented behavior.
+    def fetch_omlx_model_ids
+      return @omlx_model_ids if defined?(@omlx_model_ids)
+
+      begin
+        ids = list_models.map { |m| m.is_a?(Hash) ? m["id"] : m }
+      rescue StandardError
+        return []
+      end
+
+      @omlx_model_ids = ids
+      ids
     end
 
     # Returns [content, payload] for a streamed SSE line, or nil to skip

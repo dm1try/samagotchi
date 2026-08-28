@@ -207,13 +207,23 @@ oMLX's known tool-call limitation (a stream filter that strips markup) only
 affects its `/v1/chat/completions` endpoint, not the `/v1/completions` endpoint
 chi uses, so raw `[[…]]`/`<|tool_call>` markers stream through untouched.
 
-`SAMAGOTCHI_MODEL`/`/model` only drive samagotchi's own prompt-profile selection
-(Gemma4 vs Qwen36 formatting) when using the `mlx`/`omlx` transport — they are
-never sent as the request's `model` field. Both `mlx_lm.server` and oMLX treat
-`model` as a path/HF repo id to load, and only the implicit default value
-(`"default_model"`, mapped to whatever was passed to the server's `--model` flag)
-is guaranteed to work; sending anything else causes the server to try loading it
-as a new model and fail with an HTTP 404.
+`SAMAGOTCHI_MODEL`/`/model` always drive samagotchi's own prompt-profile
+selection (Gemma4 vs Qwen36 formatting); how the selector reaches the request
+differs by transport:
+
+- **mlx** (`mlx_lm.server`): the `model` field is omitted entirely — the server
+  uses whatever was loaded via its own `--model` CLI flag.
+- **omlx**: the server *requires* a `model` field and returns `HTTP 400`
+  (`model: Field required`) without it, so samagotchi forwards the selector
+  resolved to the exact id listed in the server's `/v1/models` — matched by exact
+  (case-insensitive) first, then substring, then passed through unchanged. That
+  resolved id is usually prefixed (e.g. `mlx-community--gemma-3-4b-it-4bit`), so a
+  short selector such as `gemma-3-4b-it-4bit` is what you set in
+  `SAMAGOTCHI_MODEL`. An unknown selector passes through raw and oMLX 404s,
+  listing its available models; if `/v1/models` is unreachable, samagotchi falls
+  back to the raw selector and lets the server decide (its own 400/404). Runtime
+  model switch re-resolves each completion (the `/v1/models` id list is cached per
+  client; the selector itself is re-resolved every time).
 
 ## Runtime Model Switch (Assist Mode)
 
