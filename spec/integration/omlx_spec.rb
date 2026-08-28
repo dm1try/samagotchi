@@ -44,15 +44,25 @@ RSpec.describe "omlx transport - model resolution + forwarding", :integration do
     expect(live_model_ids).to include(resolved)
   end
 
-  # Directly against the oMLX completion endpoint: forwarding our short selector
-  # as the `model:` argument proves resolution worked — oMLX accepts the request
-  # (no 400 "model: Field required") with the resolved id in the body. We assert
-  # acceptance (a 400 raises, so a clean String return is the signal), not text
-  # output: oMLX occasionally emits an empty chunk stream for a prompt (a model
-  # quirk, not a forwarding failure); that's the KernelLoop test's job.
-  it "completes against the live oMLX endpoint with the resolved model (no 400)" do
-    result = client.complete("hi", n_predict: 32, model: selector)
-    expect(result).to be_a(String)
+  # Directly against the oMLX completion endpoint: the resolved selector must be
+  # a real /v1/models id (test #1 proves this) and the completed body must be
+  # non-empty. A 400 "model: Field required" yields an error JSON body that
+  # parse_stream_line skips, so complete() returns "" — a non-empty body is the
+  # signal that the resolved model id was forwarded and oMLX accepted it.
+  # oMLX can emit an empty stream for a given prompt (a model quirk, not a
+  # forwarding failure), so we retry simple prompts until we land on a reply.
+  it "returns a non-empty completion with the resolved model id (no 400)" do
+    prompts = [
+      "Reply with a single digit between 1 and 9.",
+      "Reply with a single word that is also a colour.",
+      "Reply with exactly one word: banana."
+    ]
+    reply = ""
+    (0...prompts.size).each do |i|
+      reply = client.complete(prompts[i], n_predict: 32, model: selector).to_s.strip
+      break unless reply.empty?
+    end
+    expect(reply).not_to be_empty
   end
 
   it "runs a KernelLoop end-to-end round trip against the live oMLX host" do
