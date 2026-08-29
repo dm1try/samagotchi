@@ -14,8 +14,13 @@ RSpec.describe Samagotchi::LLM::Factory do
     expect(backend).to be_a(Samagotchi::LLM::NativeInContextBackend)
   end
 
+  it "routes :ruby_llm to RubyLLMBackend" do
+    backend = described_class.factory(provider: :ruby_llm, model_name: "x")
+    expect(backend).to be_a(Samagotchi::LLM::RubyLLMBackend)
+  end
+
   it "raises a descriptive ArgumentError for an unknown provider" do
-    expect { described_class.factory(provider: :ruby_llm, model_name: "x") }
-      .to raise_error(ArgumentError, /ruby_llm/)
+    expect { described_class.factory(provider: :watson, model_name: "x") }
+      .to raise_error(ArgumentError, /native.*ruby_llm|ruby_llm.*native/)
   end
 end
