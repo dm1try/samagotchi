@@ -33,7 +33,7 @@ module Samagotchi
         when :native
           Samagotchi::LLM::NativeInContextBackend.new(kernel: kernel, model_name: model_name)
         when :ruby_llm
-          Samagotchi::LLM::RubyLLMBackend.new(model_name: model_name)
+          Samagotchi::LLM::RubyLLMBackend.new(model_name: model_name, kernel: kernel)
         else
           raise ArgumentError,
                 "Unsupported model backend provider: #{provider.inspect} (known: :native, :ruby_llm)"

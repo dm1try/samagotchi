@@ -13,6 +13,7 @@ RSpec.describe Samagotchi::LLM::ModelResult do
     expect(r.conversation).to be_nil
     expect(r.canceled).to be_falsey
     expect(r.cancellation_reason).to be_nil
+    expect(r.exhausted).to be_falsey
   end
 
   it "aliases output to text for renderer compatibility" do
@@ -22,6 +23,11 @@ RSpec.describe Samagotchi::LLM::ModelResult do
   it "exposes a canceled? predicate" do
     expect(described_class.new(text: "x", canceled: true).canceled?).to be(true)
     expect(described_class.new(text: "x").canceled?).to be(false)
+  end
+
+  it "exposes an exhausted? predicate (opt-in loop-exit status)" do
+    expect(described_class.new(text: "x", exhausted: true).exhausted?).to be(true)
+    expect(described_class.new(text: "x").exhausted?).to be(false)
   end
 
   it "stringifies via to_s as text" do

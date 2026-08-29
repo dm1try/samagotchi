@@ -505,6 +505,14 @@ module Samagotchi
       end
     end
 
+    # Public wrapper so other loops (e.g. the ruby_llm backend) can strip
+    # per-profile thought blocks from finished model text without duplicating the
+    # Gemma 4 / Qwen 3.6 logic. Mirrors the native loop's "strip before deciding
+    # whether the model called a tool / returning the final answer".
+    def strip_model_thought(text)
+      strip_thought_blocks(text)
+    end
+
     # Remove thought blocks from model output.
     # Format depends on profile:
     #   - Gemma 4: <|think|>CONTENT (ends at next real <| token) and <|channel>thought...
@@ -996,6 +1004,19 @@ module Samagotchi
 
     def unescape_native_value(s)
       s.gsub('\\"', '"').gsub("\\'", "'").gsub("\\n", "\n").gsub("\\\\", "\\")
+    end
+
+    # Public entry point for executing an ALREADY-NORMALIZED internal tool call
+    # (the {name:, content:, path:, scope:, …} shape).
+    #
+    # Other agentic loops — notably the ruby_llm backend's native tool-round loop
+    # — need to execute tool calls through this single path so tool execution,
+    # unknown-tool handling, and activity events are shared, not duplicated. Callers
+    # are responsible for normalizing the provider's native call into this shape
+    # first (see Samagotchi::LLM::NativeToolNormalizer); dispatch itself never
+    # parses provider text.
+    def dispatch_tool_call(call)
+      dispatch(call)
     end
 
     def dispatch(call)

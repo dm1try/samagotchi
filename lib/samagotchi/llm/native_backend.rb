@@ -43,7 +43,8 @@ module Samagotchi
           provider: :native,
           conversation: kernel_result.respond_to?(:conversation) ? kernel_result.conversation : nil,
           canceled: kernel_result.respond_to?(:canceled?) && kernel_result.canceled?,
-          cancellation_reason: kernel_result.respond_to?(:cancellation_reason) ? kernel_result.cancellation_reason : nil
+          cancellation_reason: kernel_result.respond_to?(:cancellation_reason) ? kernel_result.cancellation_reason : nil,
+          exhausted: kernel_result.respond_to?(:exhausted) && kernel_result.exhausted
         )
       end
     end
