@@ -783,7 +783,7 @@ file2.rb")
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
 
       status = agent.send(:build_status_line, scope: :spinner)
-      expect(status).to include("mode=assist")
+      expect(status).to include("model=")
       expect(status).to include("ctx=35.2% (20plus)")
       expect(status).to include("| mem:")
     end
@@ -1041,7 +1041,7 @@ file2.rb")
       agent = described_class.new(mode: "assist", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
 
-      expect { agent.run }.to output(/status> mode=assist.*done/m).to_stdout
+      expect { agent.run }.to output(/status> model=.*done/m).to_stdout
     end
 
     it "does not print idle status when SAMAGOTCHI_STATUS_LINE is off" do

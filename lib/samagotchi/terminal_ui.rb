@@ -1988,7 +1988,7 @@ module Samagotchi
     end
 
     def status_segments(scope)
-      segments = [status_mode_segment, status_server_segment].reject(&:empty?)
+      segments = [status_model_segment, status_server_segment].reject(&:empty?)
       context_segment = status_context_segment
       memory_segment = status_memory_segment(scope)
       segments << context_segment unless context_segment.empty?
@@ -1996,8 +1996,8 @@ module Samagotchi
       segments
     end
 
-    def status_mode_segment
-      "mode=#{@mode}"
+    def status_model_segment
+      "model=#{@session_model_name}"
     end
 
     def status_context_segment
