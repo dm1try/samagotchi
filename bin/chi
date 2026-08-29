@@ -17,6 +17,7 @@ OptionParser.new do |opts|
   opts.on("-p", "--prompt PROMPT", "Run a single prompt and exit") { |p| options[:prompt] = p }
   opts.on("--resume SESSION_ID", "Resume a previous session by its ID") { |s| options[:resume] = s }
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable)") { |m| (options[:memories] ||= []) << m }
+  opts.on("--backend NAME", %w[native ruby_llm], "Model backend to use (default: native)") { |b| options[:backend] = b }
   opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true }
   opts.on("--non-interactive", "Run a single prompt and exit (no REPL, implies --no-interrupt)") { options[:non_interactive] = true }
   opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results") { options[:verbose] = true }
@@ -35,6 +36,12 @@ if options[:dashboard]
   Samagotchi::Dashboard.new.run
   exit
 end
+
+# Export the selected backend so the Engine resolves it (Engine#initialize reads
+# SAMAGOTCHI_BACKEND). A --backend flag wins over a config.yml / pre-set value
+# because it sets the env key directly; with no flag, resolve_provider falls
+# back to the (already-loaded) env / :native default.
+ENV["SAMAGOTCHI_BACKEND"] = options[:backend] if options[:backend]
 
 log_file = if ["1", "true"].include?(ENV.fetch("SAMAGOTCHI_DISABLE_LOG_FILE", "").downcase)
              nil

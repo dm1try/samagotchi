@@ -23,9 +23,17 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `--resume SESSION_ID` | Load a prior session's history instead of creating a fresh one. |
 | `--mode assist` | Current supported mode (assist). |
 | `--memory NAME` | Preload a memory entry into the system prompt (repeatable). |
+| `--backend {native,ruby_llm}` | Choose the model backend (default: `native`). See below. |
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
 | `--no-default-input` | Skip prefilling the first REPL line from `SAMAGOTCHI_DEFAULT_INPUT`. |
 | `-v`, `--verbose` | Print raw LLM responses and tool call/result payloads to stderr. |
+
+**Backend selection.** `--backend ruby_llm` (or `SAMAGOTCHI_BACKEND=ruby_llm`) runs
+through the ruby_llm gem backend (an OpenAI-compatible endpoint); the default
+`native` path is the well-tested built-in. Both support text and agentic
+tool-round completion. `--backend` exports `SAMAGOTCHI_BACKEND`, so a value in your
+`~/.config/samagotchi/config.yml` sets the default and the CLI flag overrides it;
+an unknown value is rejected at startup.
 
 ### Entrypoint scenarios
 

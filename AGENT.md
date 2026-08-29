@@ -31,6 +31,10 @@ and `--resume`. Flag semantics (also in README's "CLI Usage" section):
   (breaking change vs the old one-shot-then-exit behavior).
 - `--mode`, `--memory` (repeatable), `--no-interrupt`, `--no-default-input`,
   `-v`/`--verbose`, `--help` also available; `SAMAGOTCHI_DEFAULT_INPUT` prefill (edit, not run).
+- `--backend {native,ruby_llm}` selects the model backend (default: `native`; also
+  `SAMAGOTCHI_BACKEND`). `:native` is the default and well-tested; `:ruby_llm` is
+  the gem-backed path behind `SAMAGOTCHI_BACKEND` (Phase 4). The CLI flag exports
+  `SAMAGOTCHI_BACKEND` and overrides any `config.yml` value.
 
 ## Core Principles
 - **Self-Inhabiting**: The agent's tools are the mechanisms for its own modification.
