@@ -75,30 +75,16 @@ module Samagotchi
         # Holder for the dedicated request thread so the cancel listener can
         # raise into it regardless of which thread triggered cancellation.
         request_thread_holder = {}
-        listener_id = nil
         canceled = false
         reason = nil
-        begin
-          if cancel_controller
-            # Registered BEFORE the request starts so an early cancel still
-            # interrupts the in-flight thread (mirrors client.rb's ensure).
-            listener_id = cancel_controller.on_cancel do |cancel_reason|
-              target = request_thread_holder[:thread]
-              target&.raise(Samagotchi::Client::RequestCancelled.new(cancel_reason))
-            end
-          end
-
-          outcome = run_completion(chat, on_stream_event, request_thread_holder)
-          if outcome.is_a?(Array) && outcome.first == :canceled
-            canceled = true
-            reason = outcome[1]
-          end
-
-          build_result(chat, response: outcome.is_a?(Array) ? outcome[1] : nil,
-                             canceled: canceled, reason: reason)
-        ensure
-          cancel_controller&.remove_listener(listener_id) if listener_id
+        outcome = run_completion(chat, on_stream_event, request_thread_holder, cancel_controller)
+        if outcome.is_a?(Array) && outcome.first == :canceled
+          canceled = true
+          reason = outcome[1]
         end
+
+        build_result(chat, response: outcome.is_a?(Array) ? outcome[1] : nil,
+                             canceled: canceled, reason: reason)
       end
 
       private
@@ -122,21 +108,36 @@ module Samagotchi
       # Runs the single-pass completion, emitting streaming events. Returns
       # [:ok, response] on success or [:canceled, reason] when the request thread
       # is interrupted with RequestCancelled.
-      def run_completion(chat, on_stream_event, request_thread_holder)
+      def run_completion(chat, on_stream_event, request_thread_holder, cancel_controller)
         if Thread.current == Thread.main
           # Can't Thread#raise into the main thread: run inline and let the gem
           # finish (a cancel here is a no-op — graceful degradation, no crash).
           [:ok, run_off(chat, on_stream_event)]
         else
+          # Spawn first: the holder synchronously captures the thread *before*
+          # the cancel listener is registered. This closes the race external
+          # review flagged — a cancel in the sub-millisecond window between
+          # spawning the thread and registering the listener can no longer be
+          # silently dropped. Registered after the request is live so a cancel
+          # mid-Faraday-read still raises RequestCancelled into it (mirrors
+          # client.rb's ensure).
           request_thread_holder[:thread] = Thread.new do
             response = run_off(chat, on_stream_event)
             [:ok, response]
           rescue Samagotchi::Client::RequestCancelled => e
             [:canceled, e.reason]
           end
+          listener_id = cancel_controller.on_cancel do |cancel_reason|
+            target = request_thread_holder[:thread]
+            target&.raise(Samagotchi::Client::RequestCancelled.new(cancel_reason))
+          end if cancel_controller
           thread = request_thread_holder[:thread]
-          thread.join
-          thread.value
+          begin
+            thread.join
+            thread.value
+          ensure
+            cancel_controller&.remove_listener(listener_id)
+          end
         end
       end
 
