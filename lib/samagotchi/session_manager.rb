@@ -48,8 +48,7 @@ module Samagotchi
       setup_session_directory(session_dir, session, state_dir: sd)
 
       lib_path = File.expand_path("..", __dir__)
-      opts = { out: File::NULL, err: File::NULL }
-      opts[:env] = { "SAMAGOTCHI_ENABLE_BRIDGE" => "1" } if bridge
+      opts = spawn_options(bridge: bridge)
       pid = Process.spawn(
         RbConfig.ruby,
         "-I", lib_path,
@@ -59,6 +58,20 @@ module Samagotchi
 
       File.write(File.join(session_dir, PID_FILE), pid.to_s)
       session
+    end
+
+    # Build the opts hash passed to Process.spawn for a forked worker. Without an
+    # explicit opts[:env], Process.spawn inherits the parent's ENV verbatim; but
+    # setting opts[:env] REPLACES the child ENV — so the bridge path (which set
+    # SAMAGOTCHI_ENABLE_BRIDGE) would silently drop SAMAGOTCHI_BACKEND. Merge both
+    # here so a bridge worker still honors the selected backend (Phase 4).
+    private_class_method def self.spawn_options(bridge:)
+      opts = { out: File::NULL, err: File::NULL }
+      child_env = {}
+      child_env["SAMAGOTCHI_ENABLE_BRIDGE"] = "1" if bridge
+      child_env["SAMAGOTCHI_BACKEND"] = ENV["SAMAGOTCHI_BACKEND"] if ENV["SAMAGOTCHI_BACKEND"]
+      opts[:env] = child_env unless child_env.empty?
+      opts
     end
 
     # List all sessions, reading status from persisted session.json files.
@@ -243,8 +256,7 @@ module Samagotchi
       FileUtils.mkdir_p(File.join(session_dir, OUTPUT_DIR))
 
       lib_path = File.expand_path("..", __dir__)
-      opts = { out: File::NULL, err: File::NULL }
-      opts[:env] = { "SAMAGOTCHI_ENABLE_BRIDGE" => "1" } if bridge
+      opts = spawn_options(bridge: bridge)
       pid = Process.spawn(
         RbConfig.ruby,
         "-I", lib_path,

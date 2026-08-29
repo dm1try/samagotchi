@@ -45,7 +45,16 @@ module Samagotchi
       @client = client || Client.new
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@base_model_name)
       @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt)
-      @backend = LLM::Factory.factory(provider: :native, model_name: @base_model_name, kernel: @kernel)
+      # Resolve the backend provider at the Engine boundary: no `provider:` kwarg
+      # is required at the call sites, so the two `Engine.new` callers
+      # (TerminalUI, SessionManager) are untouched. Falls back to
+      # `ENV["SAMAGOTCHI_BACKEND"]` when unset/blank, defaulting to `:native`
+      # (Phase 4; see the provider-selection plan).
+      @backend = LLM::Factory.factory(
+        provider: LLM::Factory.resolve_provider,
+        model_name: @base_model_name,
+        kernel: @kernel
+      )
       @resume_session = session_id ? Session.load(session_id) : nil
       @requested_memories = Array(memories)
       @session = nil

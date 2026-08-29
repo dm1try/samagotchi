@@ -28,15 +28,36 @@ module Samagotchi
     # Provider-based factory. Phase 1 knows `:native`; Phase 2 adds `:ruby_llm`
     # (and later phases register others here) without touching callers.
     module Factory
+      # The default backend when no selection is made. `:native` is the currently
+      # featured, well-tested path — Phase 4 selects the backend, it never flips.
+      DEFAULT_PROVIDER = :native
+
+      # Single source of truth for resolving the backend provider. Prefers an
+      # explicit `provider:` value when given; otherwise falls back to
+      # `ENV["SAMAGOTCHI_BACKEND"]`. Blank / whitespace / nil all resolve to
+      # `:native`.
+      #
+      # Note the blank handling: `ENV["SAMAGOTCHI_BACKEND"] = ""` is a *truthy*
+      # string in Ruby, so the naive `ENV["..."] || :native` one-liner yields
+      # `:""` -> `Factory#factory` hits its else -> `ArgumentError` instead of
+      # the `:native` default. We `.to_s.strip` first and resolve to a symbol
+      # here so Factory never sees a stray `nil` (which would raise NoMethodError
+      # on `nil.to_sym` rather than a clean ArgumentError).
+      def self.resolve_provider(provider = nil, env: ENV)
+        raw = provider.nil? ? env["SAMAGOTCHI_BACKEND"] : provider
+        raw = raw.to_s.strip
+        raw.empty? ? DEFAULT_PROVIDER : raw.to_sym
+      end
+
       def self.factory(provider:, model_name:, kernel: nil, **_opts)
-        case provider.to_sym
+        case (resolved = resolve_provider(provider))
         when :native
           Samagotchi::LLM::NativeInContextBackend.new(kernel: kernel, model_name: model_name)
         when :ruby_llm
           Samagotchi::LLM::RubyLLMBackend.new(model_name: model_name, kernel: kernel)
         else
           raise ArgumentError,
-                "Unsupported model backend provider: #{provider.inspect} (known: :native, :ruby_llm)"
+                "Unsupported model backend provider: #{resolved.inspect} (known: :native, :ruby_llm)"
         end
       end
     end
