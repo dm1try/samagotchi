@@ -31,6 +31,33 @@ RSpec.describe Samagotchi::Client do
       expect(request["Content-Type"]).to eq("application/json")
     end
 
+    it "scrubs invalid UTF-8 bytes in the prompt before serializing so a stray bad byte can't abort the turn" do
+      client = described_class.new(host: "localhost", port: 8080)
+      http = instance_double(Net::HTTP)
+      response = double("response")
+      request = nil
+
+      # A tool response that carried a garbled (truncated) em-dash byte is the
+      # real crash that surfaced this: JSON#to_json raises on invalid UTF-8.
+      conv = [
+        { "role" => "system", "content" => "system prompt" },
+        { "role" => "tool_response", "content" => "broken dash: \xE2\x80" }
+      ]
+
+      allow(Net::HTTP).to receive(:start)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .and_yield(http)
+      allow(http).to receive(:request) do |built_request, &block|
+        request = built_request
+        block.call(response)
+      end
+      allow(response).to receive(:read_body).and_yield("data: {\"content\":\"ok\"}\n")
+
+      expect { client.complete(conv, stop: ["done"]) }.not_to raise_error
+      expect(request.body).not_to include("\xE2\x80")
+      expect(request.body).to include('"stream":true')
+    end
+
     it "includes n_predict when provided" do
       client = described_class.new(host: "localhost", port: 8080)
       http = instance_double(Net::HTTP)

@@ -144,7 +144,7 @@ module Samagotchi
       uri = completion_uri
       request = Net::HTTP::Post.new(uri)
       request["Content-Type"] = "application/json"
-      request.body = completion_payload(prompt, stop: stop, n_predict: n_predict, model: model).to_json
+      request.body = completion_payload(scrub_utf8(prompt), stop: stop, n_predict: n_predict, model: model).to_json
 
       attempts = 0
 
@@ -280,6 +280,27 @@ module Samagotchi
       model_name = payload_model_name(model)
       payload[:model] = model_name if model_name
       payload
+    end
+
+    # Conversation content (system prompt + tool responses + model output) can
+    # contain invalid UTF-8 — e.g. a shell/file op writes a garbled multibyte
+    # sequence (a truncated em-dash, a stray replacement byte). `JSON#to_json`
+    # raises `JSON::GeneratorError` on such input, which would abort the whole
+    # turn. Scrub the payload first: only offending bytes are replaced with "?",
+    # every valid UTF-8 string passes through untouched. Non-UTF-8 encodings are
+    # left alone because `#to_json` already handles them without raising.
+    def scrub_utf8(obj)
+      case obj
+      when String
+        str = obj.to_s
+        str.encoding == Encoding::UTF_8 && !str.valid_encoding? ? str.scrub("?") : str
+      when Array
+        obj.map { |element| scrub_utf8(element) }
+      when Hash
+        obj.each_with_object({}) { |(key, value), memo| memo[scrub_utf8(key)] = scrub_utf8(value) }
+      else
+        obj
+      end
     end
 
     # Transport semantics for the request's `model` field:
