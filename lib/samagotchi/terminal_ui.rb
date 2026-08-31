@@ -32,6 +32,7 @@ module Samagotchi
     MODELS_COMMAND = "/models"
     STATS_COMMAND = "/stats"
     ANALYTICS_COMMAND = "/analytics"
+    RECAP_COMMAND = "/recap"
     SHELL_BANG_PREFIX = "!"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
     THINKING_UI_ENV = "SAMAGOTCHI_THINKING_UI"
@@ -522,6 +523,8 @@ module Samagotchi
       # turn isn't counted as multiple turns.
       @turn_open = false
       @requested_memories = Array(memories)
+      @last_recap = nil
+      @last_recap_generation = nil
       @engine         = Engine.new(
         mode: :assist,
         client: @client,
@@ -532,8 +535,12 @@ module Samagotchi
         no_interrupt: no_interrupt,
         model_name: @session_model_name,
         memories: @requested_memories,
-        kernel: @kernel
+        kernel: @kernel,
+        recap: recap_config
       )
+      # Render an idle session-recap via the cursor-safe background writer; the
+      # detector itself is Engine-owned (see Engine#recap) and opt-in.
+      @recap_handle = @engine.subscribe(observer: ->(event) { handle_recap_ready(event) })
     end
 
     # Single dispatch for all entrypoints (interactive REPL, --prompt,
@@ -629,6 +636,21 @@ module Samagotchi
       # unconditionally preserves the original fresh-session prefill behavior.
       queue_default_input
 
+      # The recap detector is Engine-owned and opt-in; (re)start it for this REPL
+      # and stop it on exit. with_activity_hook installs a Reline.pre_input_hook
+      # that resets the shared inactivity clock on the first keystroke.
+      @engine.start_recap
+      with_activity_hook do
+        run_assist_loop(session: session, messages: messages)
+      ensure
+        @engine.stop_recap
+      end
+    end
+
+    # Interactive REPL loop. Session seed + messages are built by #run and
+    # threaded in here (so --prompt / --resume share one code path). The
+    # working session is persisted at the end of every turn.
+    def run_assist_loop(session:, messages:)
       awaiting_continue = false
       interrupted_turn_checkpoint = nil
       interrupted_turn_context = nil
@@ -716,6 +738,11 @@ module Samagotchi
 
           if stats_command?(input)
             $stdout.puts "\nmodel> session stats:\n#{format_session_metrics(@engine.metrics.snapshot)}"
+            next
+          end
+
+          if recap_command?(input)
+            $stdout.puts "\nmodel> #{handle_recap_command}"
             next
           end
 
@@ -1099,6 +1126,10 @@ module Samagotchi
       normalized == STATS_COMMAND || normalized == ANALYTICS_COMMAND
     end
 
+    def recap_command?(input)
+      input.to_s.strip == RECAP_COMMAND
+    end
+
     # Render the analytics snapshot as a compact, user-facing report. Raw event
     # logs (debug-only) are intentionally excluded; this surface is for the REPL.
     def format_session_metrics(snapshot)
@@ -1159,6 +1190,18 @@ module Samagotchi
       "network error after #{e.attempts} attempts while listing models"
     rescue StandardError => e
       "unable to list models: #{e.message}"
+    end
+
+    # Handle /recap command - display the last generated recap or trigger a new one
+    def handle_recap_command
+      return "recap feature not enabled (set SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL)" unless @engine.recap
+
+      if @last_recap
+        "session recap:\n#{@last_recap}"
+      else
+        recap = @engine.recap
+        "no recap available yet — the session needs at least #{recap.min_user_turns} user turns and #{recap.inactivity.to_i}s of inactivity to generate one automatically"
+      end
     end
 
     def apply_runtime_model!(model_name)
@@ -1327,7 +1370,12 @@ module Samagotchi
       return if @turn_open
 
       @turn_open = true
+      @engine.session = session
       @engine.metrics.session_id = session.id if session.respond_to?(:id)
+      # A new turn invalidates any in-flight recap; the running flag stops
+      # the idle detector from firing while a turn is in progress.
+      @engine.set_turn_running(true)
+      @engine.recap&.invalidate!
       @engine.metrics.call(type: :turn_started, session_id: session.id.to_s, prompt: nil)
     end
 
@@ -1335,6 +1383,7 @@ module Samagotchi
       return unless @turn_open
 
       @turn_open = false
+      @engine.set_turn_running(false)
       if canceled
         @engine.metrics.call(type: :turn_canceled, cancellation_reason: :interrupt)
       else
@@ -1880,6 +1929,39 @@ module Samagotchi
       lines.each { |line| $stdout.puts line }
     end
 
+    # ── Idle session recap ───────────────────────────────────────────────────
+    #
+    # The Engine's idle detector (opt-in via SAMAGOTCHI_RECAP_BASE_URL +
+    # SAMAGOTCHI_RECAP_MODEL) emits a :recap_ready event once the session has
+    # been idle for its inactivity threshold. We store it for on-demand display
+    # via the /recap command.
+
+    def handle_recap_ready(event)
+      return unless event[:type] == :recap_ready
+      recap = event[:recap]
+      generation = event[:generation]
+      return if recap.nil? || recap.to_s.strip.empty?
+      return unless @engine.recap&.generation == generation
+      # Store the recap for on-demand display via /recap command
+      @last_recap = recap
+      @last_recap_generation = generation
+    end
+
+    # Resolve the recap config from env (OFF by default). Returns nil when
+    # disabled; a Hash when enabled so the Engine can build the detector.
+    def recap_config
+      base_url = ENV["SAMAGOTCHI_RECAP_BASE_URL"].to_s.strip
+      model = ENV["SAMAGOTCHI_RECAP_MODEL"].to_s.strip
+      return nil if base_url.empty? || model.empty?
+
+      {
+        base_url: base_url,
+        model: model,
+        inactivity: ENV["SAMAGOTCHI_RECAP_INACTIVITY"],
+        timeout: ENV["SAMAGOTCHI_RECAP_TIMEOUT"]
+      }
+    end
+
     def spinner_status_line
       return "" unless status_line_enabled?
 
@@ -2134,6 +2216,22 @@ module Samagotchi
           Reline.insert_text(prefill)
           inserted = true
         end
+        previous_hook.call if previous_hook
+      end
+      yield
+    ensure
+      Reline.pre_input_hook = previous_hook
+    end
+
+    # Install a Reline.pre_input_hook that resets the Engine's shared inactivity
+    # clock on the first keystroke of each input (not on submit). This is the
+    # single seam the Engine-owned idle recap detector reads, so the idle clock
+    # is identical for the REPL and any other Engine-backed UI. Chains onto any
+    # previously-installed hook (e.g. the input prefill hook).
+    def with_activity_hook
+      previous_hook = Reline.pre_input_hook
+      Reline.pre_input_hook = proc do
+        @engine.record_activity
         previous_hook.call if previous_hook
       end
       yield

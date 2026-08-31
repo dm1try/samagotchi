@@ -12,6 +12,7 @@ require_relative "session_observer"
 require_relative "tool_declarations"
 require_relative "session_metrics"
 require_relative "token_usage"
+require_relative "idle_recap"
 require_relative "tools/memory"
 
 module Samagotchi
@@ -40,7 +41,7 @@ module Samagotchi
     # @param no_interrupt       [Boolean]
     # @param model_name         [String, nil] defaults from SAMAGOTCHI_MODEL
     # @param memories           [Array<String>] --memory preload list
-    def initialize(mode:, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil)
+    def initialize(mode:, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil)
       @mode = mode.to_sym
       @base_model_name = ModelProfile.required_model_name(model_name)
       @session_model_name = @base_model_name
@@ -62,11 +63,78 @@ module Samagotchi
       @session = nil
       @session_observer = SessionObserver.new
       @metrics = SessionMetrics.new
+      # Shared inactivity clock + turn-running flag for the optional idle
+      # session-recap detector. `record_activity` is the single seam both the
+      # run_turn/worker path and the interactive REPL (which drives KernelLoop
+      # directly) call, so the idle detector's clock is identical across UIs.
+      @activity_mutex = Monitor.new
+      @last_activity_at = monotonic_now
+      @activity_seq = 0
+      @turn_running = false
+      @recap = build_recap(recap)
       # The metrics collector is a persistent observer so every run_turn event
       # (covering -p/--non-interactive/--resume and SessionManager workers)
       # feeds it automatically. The interactive REPL drives KernelLoop directly
       # and forwards its stream events into the same instance.
       @session_observer.subscribe(observer: @metrics)
+    end
+
+    # A monotonically-increasing clock (wall clock can jump backwards; the idle
+    # detector must never treat a jump as "activity"). Injectable for specs.
+    def monotonic_now
+      Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    end
+
+    # Record that activity happened (user input or a completed turn). Shared,
+    # mutex-guarded seam for the idle recap detector. Idempotent-ish: each call
+    # advances both the last-activity timestamp and the activity sequence.
+    # @param now [Float, nil] injectable monotonic time (defaults to now)
+    def record_activity(now = nil)
+      @activity_mutex.synchronize do
+        @last_activity_at = now ? now.to_f : monotonic_now
+        @activity_seq += 1
+      end
+    end
+
+    # @return [Float] monotonic seconds of the last recorded activity
+    def last_activity_at
+      @activity_mutex.synchronize { @last_activity_at }
+    end
+
+    # @return [Integer] monotonically-increasing activity counter (advanced by
+    #   #record_activity; lets the idle detector summarize once per idle window)
+    def activity_seq
+      @activity_mutex.synchronize { @activity_seq }
+    end
+
+    # Mark whether a turn is currently running (shared with the idle detector so
+    # a recap never fires, or renders, while the model is generating).
+    def set_turn_running(running)
+      @activity_mutex.synchronize { @turn_running = running }
+    end
+
+    # @return [Boolean] true while a turn is in flight
+    def turn_running?
+      @activity_mutex.synchronize { @turn_running }
+    end
+
+    # Snapshot the current session messages as a JSON string for the idle
+    # recap. Reads the array reference under the mutex (a single atomic
+    # pointer read in CRuby) then serializes a dup'd copy OUTSIDE the lock so
+    # the brief serialization never blocks the main turn thread. Never mutates
+    # session.messages.
+    # @return [String] JSON array of the messages
+    def messages_json_for_recap
+      snapshot = @activity_mutex.synchronize { @session&.messages }
+      return "[]" if snapshot.nil?
+
+      JSON.generate(Array(snapshot).map(&:dup))
+    end
+
+    # Emit a :recap_ready event (additive slot) carrying the generated recap
+    # and the generation id an observer uses to reject an invalidated recap.
+    def emit_recap(recap:, generation:)
+      @session_observer.notify(type: :recap_ready, recap: recap, generation: generation)
     end
 
     # @return [SessionMetrics] the per-session analytics collector
@@ -127,6 +195,30 @@ module Samagotchi
       @session
     end
 
+    # Set the current session for recap tracking (used by REPL which bypasses run_turn)
+    def session=(session)
+      @session = session
+    end
+
+    # @return [IdleRecap, nil] the idle recap detector, or nil when disabled
+    def recap
+      @recap
+    end
+
+    # Start the idle recap detector (no-op when disabled). TerminalUI calls this
+    # before the REPL; one-shot/worker paths never call it, so recap never fires
+    # there.
+    def start_recap
+      @recap&.start
+      self
+    end
+
+    # Stop the idle recap detector (TerminalUI calls this when the REPL exits).
+    def stop_recap
+      @recap&.stop
+      self
+    end
+
     # Run a single turn with event emission.
     #
     # Builds the system prompt + user messages, runs the kernel loop with
@@ -141,59 +233,74 @@ module Samagotchi
     #   :tool_call_completed event's `output:` (nil → env/DEFAULT_MAX_TOOL_OUTPUT_CHARS)
     # @return [KernelLoop::Result]
     def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil)
-      # Emit turn_started event
-      @metrics.session_id = session.id
-      emit_event(on_event, {
-        type: :turn_started,
-        session_id: session.id,
-        prompt: prompt
-      })
+      # Track the active session for recap and status snapshot.
+      @session = session
+      # Mark the turn running before generating so the idle recap detector does
+      # not fire (or render an invalidated recap) while the model is working.
+      set_turn_running(true)
 
-      messages = session.messages.dup
-      system_message = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
-
-      if messages.empty?
-        messages = [system_message]
-      elsif messages.first[:role].to_s != "system"
-        messages.unshift(system_message)
-      else
-        messages[0] = system_message
-      end
-
-      messages << { role: "user", content: prompt }
-      session.last_prompt = prompt
-
-      result = @backend.complete(
-        messages: messages,
-        max_iterations: max_iterations,
-        on_stream_event: build_stream_event_handler(on_event),
-        cancel_controller: cancel_controller,
-        model_name: @session_model_name,
-        max_tool_output_chars: max_tool_output_chars
-      )
-
-      @metrics.persist
-      session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
-
-      # Emit turn_completed or turn_canceled
-      if result.respond_to?(:canceled?) && result.canceled?
+      begin
+        # Emit turn_started event
+        @metrics.session_id = session.id
         emit_event(on_event, {
-          type: :turn_canceled,
-          cancellation_reason: result.cancellation_reason
+          type: :turn_started,
+          session_id: session.id,
+          prompt: prompt
         })
-      else
-        emit_event(on_event, {
-          type: :turn_completed,
-          result: result
-        })
-      end
 
-      response = result.respond_to?(:output) ? result.output.to_s : result.to_s
-      if response.strip.empty?
-        session.messages << { role: "model", content: "[No response]" }
-      end
+        messages = session.messages.dup
+        system_message = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
 
-      result
+        if messages.empty?
+          messages = [system_message]
+        elsif messages.first[:role].to_s != "system"
+          messages.unshift(system_message)
+        else
+          messages[0] = system_message
+        end
+
+        messages << { role: "user", content: prompt }
+        session.last_prompt = prompt
+
+        result = @backend.complete(
+          messages: messages,
+          max_iterations: max_iterations,
+          on_stream_event: build_stream_event_handler(on_event),
+          cancel_controller: cancel_controller,
+          model_name: @session_model_name,
+          max_tool_output_chars: max_tool_output_chars
+        )
+
+        @metrics.persist
+        session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
+
+        # Emit turn_completed or turn_canceled
+        if result.respond_to?(:canceled?) && result.canceled?
+          emit_event(on_event, {
+            type: :turn_canceled,
+            cancellation_reason: result.cancellation_reason
+          })
+        else
+          emit_event(on_event, {
+            type: :turn_completed,
+            result: result
+          })
+        end
+
+        response = result.respond_to?(:output) ? result.output.to_s : result.to_s
+        if response.strip.empty?
+          session.messages << { role: "model", content: "[No response]" }
+        end
+
+        result
+      ensure
+        # A completed turn is activity: release the turn flag and advance the
+        # shared inactivity clock so the idle recap detector (shared with the REPL)
+        # treats the just-finished turn as activity and re-arms its window.
+        # Always runs, even if an exception occurred.
+        set_turn_running(false)
+        record_activity
+      end
     end
 
     # Backward-compatible: runs a prompt through the kernel loop without event forwarding.
@@ -243,6 +350,64 @@ module Samagotchi
     end
 
     private
+
+    # Build (or disable) the idle recap detector from the `recap:` kwarg.
+    #
+    # Enabled when a `base_url` (points at a local OpenAI-compatible
+    # /chat/completions server) and a `model` are both present — resolved from
+    # the kwarg Hash, or from the SAMAGOTCHI_RECAP_* env vars. Missing either
+    # fails fast with a warning and leaves recap disabled — the idle thread must
+    # never spin up with no configured endpoint. An explicit `recap: false`
+    # disables it regardless of env.
+    def build_recap(recap)
+      return nil if recap == false
+
+      config = recap.is_a?(Hash) ? recap : {}
+      base_url = string_config(config, :base_url) || env_or_nil("SAMAGOTCHI_RECAP_BASE_URL")
+      model = string_config(config, :model) || env_or_nil("SAMAGOTCHI_RECAP_MODEL")
+      if base_url.to_s.strip.empty? || model.to_s.strip.empty?
+        warn "Warning: SAMAGOTCHI session recap is enabled but base_url/model are missing; recap disabled. " \
+             "Set SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL (or pass recap: {base_url:, model:})."
+        return nil
+      end
+
+      IdleRecap.new(
+        engine: self,
+        model: model.to_s.strip,
+        base_url: base_url.to_s.strip,
+        inactivity: float_config(config, :inactivity, IdleRecap::DEFAULT_INACTIVITY_SECONDS, "SAMAGOTCHI_RECAP_INACTIVITY"),
+        min_user_turns: int_config(config, :min_user_turns, IdleRecap::DEFAULT_MIN_USER_TURNS, "SAMAGOTCHI_RECAP_MIN_USER_TURNS"),
+        timeout: float_config(config, :timeout, IdleRecap::DEFAULT_TIMEOUT_SECONDS, "SAMAGOTCHI_RECAP_TIMEOUT")
+      )
+    end
+
+    def env_or_nil(key)
+      value = ENV[key]
+      return nil if value.nil? || value.strip.empty?
+
+      value
+    end
+
+    def string_config(config, key)
+      value = config[key]
+      value.to_s.strip.empty? ? nil : value.to_s
+    end
+
+    def float_config(config, key, default, env_key = nil)
+      value = config[key]
+      value = ENV[env_key] if value.to_s.strip.empty? && env_key
+      return default if value.nil? || value.to_s.strip.empty?
+
+      value.to_f
+    end
+
+    def int_config(config, key, default, env_key = nil)
+      value = config[key]
+      value = ENV[env_key] if value.to_s.strip.empty? && env_key
+      return default if value.nil? || value.to_s.strip.empty?
+
+      value.to_i
+    end
 
     # ── Event helpers ──────────────────────────────────────────────────────────
 

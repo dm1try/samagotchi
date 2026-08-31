@@ -13,6 +13,14 @@ module Samagotchi
   # track ordering and how far behind it is. Subscribers are error-isolated:
   # a subscriber that raises does not stop other subscribers from receiving the
   # same event, and does not break the running turn.
+  #
+  # Documented event vocabulary (subscribers match on `:type`):
+  #   * turn_started / turn_completed / turn_canceled — turn boundaries
+  #   * generation_* / tool_call_* / tool_dispatch_* — raw kernel-loop events
+  #   * session_activity — an activity tick was recorded (see Engine#record_activity)
+  #   * recap_ready — an idle session-recap finished generating
+  #     (`recap:` prose, `generation:` id). Purely additive: it never mutates
+  #     session.messages; each UI renders it (or not) however it likes.
   class SessionObserver
     # Handle returned by #subscribe. Holds the observer reference and carries
     # #unsubscribe so a caller can deregister without keeping the registry.
