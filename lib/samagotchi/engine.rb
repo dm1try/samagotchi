@@ -54,8 +54,15 @@ module Samagotchi
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@base_model_name)
       # Load hooks from config (plugins) and create the registry
       @hooks = load_hooks_from_config
-      # Create the reminder store and inject it into the KernelLoop
-      @reminder_store = ReminderStore.new
+      # Use the KernelLoop's reminder_store if provided (TerminalUI path),
+      # otherwise create our own (SessionManager/one-shot paths). This ensures
+      # tool calls via KernelLoop and reminder injection via Engine read/write
+      # the same store.
+      if kernel && kernel.respond_to?(:reminder_store)
+        @reminder_store = kernel.reminder_store
+      else
+        @reminder_store = ReminderStore.new
+      end
       # Build the idle reminders detector (wired to reminder_store)
       @reminders = build_reminders
       # Track whether this is the first turn in the session (for session_start event)

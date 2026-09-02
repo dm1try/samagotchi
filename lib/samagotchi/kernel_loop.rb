@@ -157,6 +157,11 @@ module Samagotchi
       @reminder_store = reminder_store
     end
 
+    # @return [ReminderStore, nil] the reminder store for inspection (used by
+    #   Engine to share the same store with the KernelLoop when TerminalUI
+    #   creates both).
+    attr_reader :reminder_store
+
     # Run the conversation loop and return the final model response plus
     # resumable conversation state when execution stops at max_iterations.
     #
