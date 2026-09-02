@@ -3,6 +3,7 @@
 require "json"
 require "securerandom"
 require "time"
+require "yaml"
 
 require_relative "model_profile"
 require_relative "kernel_loop"
@@ -13,6 +14,7 @@ require_relative "tool_declarations"
 require_relative "session_metrics"
 require_relative "token_usage"
 require_relative "idle_recap"
+require_relative "hooks"
 require_relative "tools/memory"
 
 module Samagotchi
@@ -47,7 +49,11 @@ module Samagotchi
       @session_model_name = @base_model_name
       @client = client || Client.new
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@base_model_name)
-      @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt)
+      # Load hooks from config (plugins) and create the registry
+      @hooks = load_hooks_from_config
+      # Track whether this is the first turn in the session (for session_start event)
+      @first_turn = true
+      @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, hooks: @hooks)
       # Resolve the backend provider at the Engine boundary: no `provider:` kwarg
       # is required at the call sites, so the two `Engine.new` callers
       # (TerminalUI, SessionManager) are untouched. Falls back to
@@ -164,6 +170,34 @@ module Samagotchi
       @session_observer.event_count
     end
 
+    # ── Hooks API ──────────────────────────────────────────────────────────────
+
+    # Register a hook callback for a named lifecycle event.
+    #
+    # Hooks are turn-scoped: they are automatically cleared after each
+    # `run_turn` call so that a single turn's hooks do not leak into the next.
+    #
+    # @param name [Symbol] one of the hook names (see Hooks module)
+    # @param block [Proc] receives an event hash (may mutate in place)
+    # @return [void]
+    def register_hook(name, &block)
+      @hooks.register(name, &block)
+    end
+
+    # Unregister a previously registered hook.
+    # @param name [Symbol]
+    # @return [Boolean] true if it was removed, false if not found
+    def unregister_hook(name)
+      @hooks.unregister(name)
+    end
+
+    # Clear all registered hooks. Called automatically at the end of each
+    # `run_turn` to keep hooks turn-scoped.
+    # @return [void]
+    def clear_hooks
+      @hooks.clear_all
+    end
+
     # Read-only snapshot of the engine's view of the current session plus the
     # live event sequence. Cheap primitive used by the bridge's reconnect-too-
     # old reset marker and the GET /session/:id/state read surface. Orthogonal
@@ -248,6 +282,15 @@ module Samagotchi
           prompt: prompt
         })
 
+        # Fire :session_start on the very first turn
+        if @first_turn
+          @hooks.fire(:session_start, { type: :session_start, session_id: session.id })
+          @first_turn = false
+        end
+
+        # Fire :before_turn hook
+        @hooks.fire(:before_turn, { type: :before_turn })
+
         messages = session.messages.dup
         system_message = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
 
@@ -292,6 +335,12 @@ module Samagotchi
           session.messages << { role: "model", content: "[No response]" }
         end
 
+        # Fire :after_turn hook (runs even on cancel/success)
+        @hooks.fire(:after_turn, { type: :after_turn })
+
+        # Fire :session_end after every turn (turn-level lifecycle)
+        @hooks.fire(:session_end, { type: :session_end, session_id: session.id })
+
         result
       ensure
         # A completed turn is activity: release the turn flag and advance the
@@ -300,6 +349,8 @@ module Samagotchi
         # Always runs, even if an exception occurred.
         set_turn_running(false)
         record_activity
+        # Clear hooks so they remain turn-scoped and never leak into the next turn.
+        clear_hooks
       end
     end
 
@@ -350,6 +401,22 @@ module Samagotchi
     end
 
     private
+
+    # Load hooks from the global config file using the Hooks::Loader.
+    # Returns a Registry with all plugins registered (or an empty Registry if
+    # no hooks config is present).
+    def load_hooks_from_config
+      config_path = Samagotchi::ConfigFile.global_path
+      if File.file?(config_path)
+        begin
+          data = YAML.safe_load(File.read(config_path), permitted_classes: [], aliases: false)
+          return Hooks::Loader.load(data) if data.is_a?(Hash)
+        rescue StandardError
+          # If config parsing fails, fall back to an empty registry
+        end
+      end
+      Hooks::Registry.new
+    end
 
     # Build (or disable) the idle recap detector from the `recap:` kwarg.
     #

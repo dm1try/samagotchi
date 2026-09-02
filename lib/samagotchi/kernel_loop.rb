@@ -6,6 +6,7 @@ require_relative "prompt"
 require_relative "prompt_literal_guard"
 require_relative "client"
 require_relative "debug_log"
+require_relative "hooks"
 require_relative "tools/execute"
 require_relative "tools/read"
 require_relative "tools/write"
@@ -138,7 +139,7 @@ module Samagotchi
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
 
-    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil, model_name: nil, no_interrupt: false)
+    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil, model_name: nil, no_interrupt: false, hooks: nil)
       @client = client || Client.new
       @verbose = verbose
       @debug_log = debug_log || DebugLog.new(path: log_file)
@@ -146,6 +147,7 @@ module Samagotchi
       @no_interrupt = no_interrupt
       resolved_model_name = ModelProfile.required_model_name(model_name)
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(resolved_model_name)
+      @hooks = hooks
     end
 
     # Run the conversation loop and return the final model response plus
@@ -177,6 +179,9 @@ module Samagotchi
       effective_max_iterations.times do |iteration_index|
         prompt = prompt_with_context_status(conversation, iteration_index: iteration_index, state: context_state)
         emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
+        # Fire :before_generation hook
+        gen_event = { type: :before_generation, iteration: iteration_index + 1 }
+        fire_hook(:before_generation, gen_event) if @hooks
         response = @client.complete(
           prompt,
           **complete_kwargs(
@@ -212,6 +217,9 @@ module Samagotchi
           content_length: response.to_s.length
         )
         verbose_log("── LLM response ──\n#{response}\n──────────────────")
+        # Fire :after_generation hook (after LLM returns, before tool parse)
+        after_gen_event = { type: :after_generation, iteration: iteration_index + 1, response: response }
+        fire_hook(:after_generation, after_gen_event) if @hooks
         conversation << { role: "model", content: response }
 
         qwen_parse_input = qwen_parse_input(response, qwen_partial_tool_call)
@@ -253,7 +261,10 @@ module Samagotchi
             call: call.dup,
             params: tool_activity_params(call[:name], call)
           )
-          dispatch_result = dispatch(call)
+          # Fire :before_tool_call hook (before tool dispatch, can mutate params)
+          before_tool_event = { type: :before_tool_call, iteration: iteration_index + 1, call: call.dup, params: tool_activity_params(call[:name], call) }
+          fire_hook(:before_tool_call, before_tool_event) if @hooks
+          dispatch_result = dispatch(before_tool_event[:call])
           activity = dispatch_result[:activity]
           tool_activity << activity
           output_truncated = false
@@ -262,6 +273,9 @@ module Samagotchi
             output_truncated = true
             completed_output = completed_output[0, effective_max_tool_output_chars]
           end
+          # Fire :after_tool_call hook (after tool execution, before result injection)
+          after_tool_event = { type: :after_tool_call, iteration: iteration_index + 1, tool: call[:name], output: completed_output }
+          fire_hook(:after_tool_call, after_tool_event) if @hooks
           emit_stream_event(
             on_stream_event,
             type: :tool_call_completed,
@@ -315,6 +329,20 @@ module Samagotchi
     rescue StandardError
       nil
     end
+
+    # ── Hook dispatch helper ───────────────────────────────────────────────────
+
+    # Fire a named hook on the registry (if present).
+    # Hooks are dispatched synchronously; the event hash is passed by reference
+    # so hooks can mutate fields (e.g. :before_tool_call can modify :call).
+    def fire_hook(name, event)
+      return unless @hooks
+      @hooks.fire(name, event)
+    rescue StandardError
+      # A failing hook must not break the turn.
+    end
+
+    # ── Output char cap resolution ─────────────────────────────────────────────
 
     # Resolve the per-output character cap for the emitted tool call events.
     #
