@@ -640,10 +640,12 @@ module Samagotchi
       # and stop it on exit. with_activity_hook installs a Reline.pre_input_hook
       # that resets the shared inactivity clock on the first keystroke.
       @engine.start_recap
+      @engine.start_reminders
       with_activity_hook do
         run_assist_loop(session: session, messages: messages)
       ensure
         @engine.stop_recap
+        @engine.stop_reminders
       end
     end
 

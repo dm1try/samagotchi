@@ -15,7 +15,9 @@ require_relative "tool_declarations"
 require_relative "session_metrics"
 require_relative "token_usage"
 require_relative "idle_recap"
+require_relative "idle_reminders"
 require_relative "hooks"
+require_relative "reminder_store"
 require_relative "tools/memory"
 
 module Samagotchi
@@ -52,9 +54,13 @@ module Samagotchi
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@base_model_name)
       # Load hooks from config (plugins) and create the registry
       @hooks = load_hooks_from_config
+      # Create the reminder store and inject it into the KernelLoop
+      @reminder_store = ReminderStore.new
+      # Build the idle reminders detector (wired to reminder_store)
+      @reminders = build_reminders
       # Track whether this is the first turn in the session (for session_start event)
       @first_turn = true
-      @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, hooks: @hooks)
+      @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, hooks: @hooks, reminder_store: @reminder_store)
       # Resolve the backend provider at the Engine boundary: no `provider:` kwarg
       # is required at the call sites, so the two `Engine.new` callers
       # (TerminalUI, SessionManager) are untouched. Falls back to
@@ -199,6 +205,62 @@ module Samagotchi
       @hooks.clear_all
     end
 
+    # ── Reminders API ────────────────────────────────────────────────────────────
+
+    # Start the idle reminders detector (no-op when already running).
+    # TerminalUI calls this before the REPL; background workers never call it.
+    # @return [self]
+    def start_reminders
+      @reminders&.start
+      self
+    end
+
+    # Stop the idle reminders detector (TerminalUI calls this when the REPL exits).
+    def stop_reminders
+      @reminders&.stop
+      self
+    end
+
+    # Get and inject all due reminders into the conversation. Called at the top
+    # of run_turn (before set_turn_running(true)) so injection happens on the
+    # main thread, serially with the turn — no TOCTOU race.
+    #
+    # Returns the array of due reminder hashes (may be empty). Injects a
+    # [SYSTEM: REMINDERS DUE] message into the conversation when there are
+    # Get due reminders, inject them into the provided messages array as
+    # [SYSTEM: REMINDERS DUE], and atomically mark all as fired under one
+    # ReminderStore lock.
+    #
+    # This is the canonical method for reminder injection, called from
+    # Engine#run_turn after system prompt construction so the reminder text
+    # is never overwritten.
+    #
+    # @param messages [Array<Hash>] the conversation messages (mutated in place)
+    # @return [Array<Hash>] [{name:, description:, interval_minutes:}, ...]
+    def collect_due_reminders(messages)
+      due = @reminders&.due_reminders
+      return [] if due.empty?
+
+      # Build reminder text and append to the system message
+      reminder_lines = due.map do |r|
+        "  #{r[:name]}: #{r[:description]} (interval: #{r[:interval_minutes]}m)"
+      end.join("\n")
+      reminder_text = "[SYSTEM: REMINDERS DUE]\n#{reminder_lines}\n[END REMINDERS]"
+      if messages.first&.dig(:role) == "system"
+        messages.first[:content] = "#{messages.first[:content]}\n\n#{reminder_text}"
+      else
+        messages.unshift({ role: "system", content: reminder_text })
+      end
+      # Atomically mark all due as fired under one lock
+      @reminder_store&.mark_fired_batch(due.map { |r| r[:name] })
+      due
+    end
+    # Alias for backward compatibility.
+    alias maybe_inject_reminders collect_due_reminders
+
+    # @return [ReminderStore] the reminder store for inspection
+    attr_reader :reminder_store
+
     # Read-only snapshot of the engine's view of the current session plus the
     # live event sequence. Cheap primitive used by the bridge's reconnect-too-
     # old reset marker and the GET /session/:id/state read surface. Orthogonal
@@ -294,7 +356,15 @@ module Samagotchi
 
         messages = session.messages.dup
         system_message = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
-
+        # Inject due reminders AFTER system prompt construction so they are
+        # not overwritten. The method mutates `system_message[:content]`.
+        due_reminders = collect_due_reminders([system_message])
+        if due_reminders.any?
+          emit_event(on_event, {
+            type: :reminder_injected,
+            reminders: due_reminders
+          })
+        end
         if messages.empty?
           messages = [system_message]
         elsif messages.first[:role].to_s != "system"
@@ -449,6 +519,17 @@ module Samagotchi
       )
     end
 
+    # Build the idle reminders detector. Always created (reminders are opt-in
+    # via the agent calling register_reminder). The background thread polls
+    # but is currently no-op in pull-based mode — Engine reads directly from
+    # ReminderStore#due_reminders.
+    def build_reminders
+      IdleReminders.new(
+        engine: self,
+        reminder_store: @reminder_store
+      )
+    end
+
     def env_or_nil(key)
       value = ENV[key]
       return nil if value.nil? || value.strip.empty?
@@ -527,7 +608,10 @@ module Samagotchi
           ToolDeclarations::TOOL_TASK_LIST,
           ToolDeclarations::TOOL_TASK_STOP,
           ToolDeclarations::TOOL_TASK_WAIT,
-          ToolDeclarations::TOOL_WEB_FETCH
+          ToolDeclarations::TOOL_WEB_FETCH,
+          ToolDeclarations::TOOL_REGISTER_REMINDER,
+          ToolDeclarations::TOOL_CANCEL_REMINDER,
+          ToolDeclarations::TOOL_LIST_REMINDERS
         ].join("\n")
       end
     end

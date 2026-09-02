@@ -131,6 +131,33 @@ module Samagotchi
       }<tool|>
     DECL
 
+    TOOL_REGISTER_REMINDER = <<~DECL.strip
+      <|tool>declaration:register_reminder{
+        description:<|"|>Register a periodic reminder. The harness injects a [SYSTEM:] message into your next idle turn when the reminder is due.<|"|>,
+        parameters:{
+          name:{type:<|"|>string<|"|>, description:<|"|>Short identifier, e.g. 'api_health'<|"|>, required:true},
+          description:{type:<|"|>string<|"|>, description:<|"|>What should happen when this reminder fires<|"|>, required:true},
+          interval_minutes:{type:<|"|>integer<|"|>, description:<|"|>How often to remind (1-1440 minutes, i.e. up to 1 day)<|"|>, required:true}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_CANCEL_REMINDER = <<~DECL.strip
+      <|tool>declaration:cancel_reminder{
+        description:<|"|>Cancel a previously registered reminder so it stops firing.<|"|>,
+        parameters:{
+          name:{type:<|"|>string<|"|>, description:<|"|>The reminder identifier to cancel<|"|>, required:true}
+        }
+      }<tool|>
+    DECL
+
+    TOOL_LIST_REMINDERS = <<~DECL.strip
+      <|tool>declaration:list_reminders{
+        description:<|"|>List all active registered reminders.<|"|>,
+        parameters:{}
+      }<tool|>
+    DECL
+
     # ── Qwen 3.6 tool declarations (JSON format) ──────────────────────────────
 
     QWEN_TOOLS_JSON = [
@@ -361,6 +388,50 @@ module Samagotchi
             }
           },
           required: ["url"]
+        }
+      },
+      {
+        name: "register_reminder",
+        description: "Register a periodic reminder. The harness injects a [SYSTEM:] message into your next idle turn when the reminder is due.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Short identifier, e.g. 'api_health'"
+            },
+            description: {
+              type: "string",
+              description: "What should happen when this reminder fires"
+            },
+            interval_minutes: {
+              type: "integer",
+              description: "How often to remind (1-1440 minutes, i.e. up to 1 day)"
+            }
+          },
+          required: ["name", "description", "interval_minutes"]
+        }
+      },
+      {
+        name: "cancel_reminder",
+        description: "Cancel a previously registered reminder so it stops firing.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "The reminder identifier to cancel"
+            }
+          },
+          required: ["name"]
+        }
+      },
+      {
+        name: "list_reminders",
+        description: "List all active registered reminders.",
+        parameters: {
+          type: "object",
+          properties: {}
         }
       }
     ].freeze

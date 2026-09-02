@@ -18,6 +18,9 @@ require_relative "tools/task_list"
 require_relative "tools/task_stop"
 require_relative "tools/task_wait"
 require_relative "tools/web_fetch"
+require_relative "tools/register_reminder"
+require_relative "tools/cancel_reminder"
+require_relative "tools/list_reminders"
 
 module Samagotchi
   # The KernelLoop drives the model ↔ tool interaction cycle.
@@ -96,7 +99,10 @@ module Samagotchi
       Tools::TaskList,
       Tools::TaskStop,
       Tools::TaskWait,
-      Tools::WebFetch
+      Tools::WebFetch,
+      Tools::RegisterReminder,
+      Tools::CancelReminder,
+      Tools::ListReminders
     ].freeze
 
     # ── Gemma 4 tool-call constants (canonical model call format) ─────────────
@@ -139,7 +145,7 @@ module Samagotchi
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
 
-    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil, model_name: nil, no_interrupt: false, hooks: nil)
+    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil, model_name: nil, no_interrupt: false, hooks: nil, reminder_store: nil)
       @client = client || Client.new
       @verbose = verbose
       @debug_log = debug_log || DebugLog.new(path: log_file)
@@ -148,6 +154,7 @@ module Samagotchi
       resolved_model_name = ModelProfile.required_model_name(model_name)
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(resolved_model_name)
       @hooks = hooks
+      @reminder_store = reminder_store
     end
 
     # Run the conversation loop and return the final model response plus
@@ -839,6 +846,19 @@ module Samagotchi
         { name: name, content: "", path: nil, scope: nil }
       when Tools::WebFetch::NAME
         { name: name, content: qwen_param_value(params, "url"), path: nil, scope: nil }
+      when Tools::RegisterReminder::NAME
+        {
+          name: name,
+          content: qwen_param_value(params, "name"),
+          path: nil,
+          scope: nil,
+          description: qwen_param_value(params, "description"),
+          interval_minutes: qwen_param_value(params, "interval_minutes")
+        }
+      when Tools::CancelReminder::NAME
+        { name: name, content: qwen_param_value(params, "name"), path: nil, scope: nil }
+      when Tools::ListReminders::NAME
+        { name: name, content: "", path: nil, scope: nil }
       else
         { name: name, content: params.to_s, path: nil, scope: nil }
       end
@@ -1007,6 +1027,21 @@ module Samagotchi
                   strip_param_prefix(params_raw, "url") ||
                   params_raw
         { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil }
+      when Tools::RegisterReminder::NAME
+        content = params["name"] || strip_param_prefix(params_raw, "name") || params_raw
+        {
+          name: name,
+          content: strip_gemma_delimiters(content),
+          path: nil,
+          scope: nil,
+          description: params["description"] || "",
+          interval_minutes: params["interval_minutes"] || "1"
+        }
+      when Tools::CancelReminder::NAME
+        content = params["name"] || strip_param_prefix(params_raw, "name") || params_raw
+        { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil }
+      when Tools::ListReminders::NAME
+        { name: name, content: "", path: nil, scope: nil }
       else
         # For future/unknown tools, pass along whatever the model provided
         { name: name, content: strip_gemma_delimiters(params_raw), path: nil, scope: nil }
@@ -1132,6 +1167,12 @@ module Samagotchi
                  tool.call(call[:content], cwd: call[:cwd])
                when Tools::WebFetch::NAME
                  tool.call(call[:content])
+               when Tools::RegisterReminder::NAME
+                 tool.call(call[:content], reminder_store: @reminder_store, description: call[:description], interval_minutes: call[:interval_minutes])
+               when Tools::CancelReminder::NAME
+                 tool.call(call[:content], reminder_store: @reminder_store)
+               when Tools::ListReminders::NAME
+                 tool.call(call[:content], reminder_store: @reminder_store)
                else
                  tool.call(call[:content])
                end

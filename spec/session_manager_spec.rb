@@ -135,6 +135,10 @@ RSpec.describe Samagotchi::SessionManager do
         .with(mode: :assist, model_name: "gemma4")
         .and_return(engine)
 
+      allow(engine).to receive(:start_reminders)
+      allow(engine).to receive(:stop_reminders)
+      allow(engine).to receive(:reminder_store).and_return(nil)
+
       expect {
         described_class.run_session_loop(session.id, state_dir: tmpdir)
       }.to raise_error(SystemExit)
@@ -168,6 +172,9 @@ RSpec.describe Samagotchi::SessionManager do
       engine = instance_double(Samagotchi::Engine)
       result = instance_double(Samagotchi::KernelLoop::Result, output: "hi")
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
+      allow(engine).to receive(:start_reminders)
+      allow(engine).to receive(:stop_reminders)
+      allow(engine).to receive(:reminder_store).and_return(nil)
       expect(engine).to receive(:run_turn)
         .with(instance_of(Samagotchi::Session), "hello") do
           Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)

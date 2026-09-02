@@ -181,6 +181,9 @@ module Samagotchi
       session = Session.load(session_id, state_dir: sd)
       session_dir = Session.session_dir(session_id, state_dir: sd)
       engine = Samagotchi::Engine.new(mode: session.mode.to_sym, model_name: session.model_name)
+      # Start the idle reminders detector so the worker can trigger turns when
+      # reminders are due (even with no user input).
+      engine.start_reminders
 
       bridge_instance = start_bridge_if_enabled(
         engine:, state_dir: sd, session_id: session_id, enabled: bridge
