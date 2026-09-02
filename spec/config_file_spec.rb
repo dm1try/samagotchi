@@ -76,19 +76,24 @@ RSpec.describe Samagotchi::ConfigFile do
       end
     end
 
-    it "raises when the config is not a flat YAML mapping" do
+    it "skips non-scalar values (e.g., nested sections) instead of raising" do
       Dir.mktmpdir("samagotchi-config") do |dir|
         config_dir = File.join(dir, "samagotchi")
         Dir.mkdir(config_dir)
         File.write(File.join(config_dir, "config.yml"), <<~YAML)
-          llama:
-            host: 192.168.1.29
+          SAMAGOTCHI_MODEL: Qwen3-14B-Instruct
+          hooks:
+            hooks_dir: ~/.config/samagotchi/hooks/
+            before_turn:
+              - path: audit.rb
         YAML
 
         ENV["XDG_CONFIG_HOME"] = dir
 
-        expect { described_class.load_global_env! }
-          .to raise_error(ArgumentError, /global config values must be scalars/)
+        expect(described_class.load_global_env!).to be(true)
+        expect(ENV["SAMAGOTCHI_MODEL"]).to eq("Qwen3-14B-Instruct")
+        # Non-scalar hooks section is skipped for env-loading
+        expect(ENV).not_to have_key("hooks")
       end
     end
 

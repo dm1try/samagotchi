@@ -38,7 +38,10 @@ module Samagotchi
         next if value.nil?
 
         unless scalar_value?(value)
-          raise ArgumentError, "global config values must be scalars: #{path} key=#{key}"
+          # Skip non-scalar values (e.g., nested hashes, arrays).
+          # This allows the config file to contain sections like `hooks:` that
+          # are parsed separately by other subsystems (e.g. Hooks::Loader).
+          next
         end
 
         result[key.to_s] = value.to_s

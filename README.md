@@ -168,6 +168,11 @@ Behavior:
 This lets you run `bin/chi` without repeating common defaults such as model
 and llama host/port on every invocation.
 
+Note: The global config file supports both flat scalar entries (for env vars)
+and nested sections like `hooks:`. Scalar entries are loaded as environment
+variables; non-scalar sections are skipped by the env-loader and parsed by
+their respective subsystems (e.g. the hooks system).
+
 ## Plugin Hooks
 
 Samagotchi supports pluggable Ruby hooks that fire at key lifecycle points
