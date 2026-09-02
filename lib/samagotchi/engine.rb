@@ -46,7 +46,7 @@ module Samagotchi
     # @param no_interrupt       [Boolean]
     # @param model_name         [String, nil] defaults from SAMAGOTCHI_MODEL
     # @param memories           [Array<String>] --memory preload list
-    def initialize(mode:, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil)
+    def initialize(mode:, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
       @mode = mode.to_sym
       @base_model_name = ModelProfile.required_model_name(model_name)
       @session_model_name = @base_model_name
@@ -64,7 +64,8 @@ module Samagotchi
         @reminder_store = ReminderStore.new
       end
       # Build the idle reminders detector (wired to reminder_store)
-      @reminders = build_reminders
+      callback = reminders.is_a?(Hash) && reminders[:callback] ? reminders[:callback] : nil
+      @reminders = build_reminders(auto_turn_callback: callback)
       # Track whether this is the first turn in the session (for session_start event)
       @first_turn = true
       @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, hooks: @hooks, reminder_store: @reminder_store)
@@ -528,12 +529,17 @@ module Samagotchi
 
     # Build the idle reminders detector. Always created (reminders are opt-in
     # via the agent calling register_reminder). The background thread polls
-    # but is currently no-op in pull-based mode — Engine reads directly from
-    # ReminderStore#due_reminders.
-    def build_reminders
+    # and triggers synthetic turns when reminders are due.
+    #
+    # @param auto_turn_callback [Proc, nil] called when a reminder is due;
+    #   receives the due reminder names; responsible for triggering a synthetic
+    #   turn (e.g. SessionManager writes a file, TerminalUI queues input).
+    def build_reminders(auto_turn_callback: nil)
+      @auto_turn_callback = auto_turn_callback
       IdleReminders.new(
         engine: self,
-        reminder_store: @reminder_store
+        reminder_store: @reminder_store,
+        callback: @auto_turn_callback
       )
     end
 

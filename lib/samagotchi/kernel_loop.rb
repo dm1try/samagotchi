@@ -18,6 +18,7 @@ require_relative "tools/task_list"
 require_relative "tools/task_stop"
 require_relative "tools/task_wait"
 require_relative "tools/web_fetch"
+require_relative "tools/image_read"
 require_relative "tools/register_reminder"
 require_relative "tools/cancel_reminder"
 require_relative "tools/list_reminders"
@@ -102,7 +103,8 @@ module Samagotchi
       Tools::WebFetch,
       Tools::RegisterReminder,
       Tools::CancelReminder,
-      Tools::ListReminders
+      Tools::ListReminders,
+      Tools::ImageRead
     ].freeze
 
     # ── Gemma 4 tool-call constants (canonical model call format) ─────────────

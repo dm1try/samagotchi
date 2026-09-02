@@ -132,7 +132,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       engine = instance_double(Samagotchi::Engine)
       expect(Samagotchi::Engine).to receive(:new)
-        .with(mode: :assist, model_name: "gemma4")
+        .with(hash_including(mode: :assist, model_name: "gemma4"))
         .and_return(engine)
 
       allow(engine).to receive(:start_reminders)

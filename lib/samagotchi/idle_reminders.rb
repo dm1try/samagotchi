@@ -23,13 +23,15 @@ module Samagotchi
 
     def initialize(engine:, inactivity: DEFAULT_MIN_INACTIVITY_SECONDS,
                    reminder_store: nil,
-                   clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
+                   clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
+                   callback: nil)
       raise ArgumentError, "IdleReminders requires an engine" unless engine
 
       @engine = engine
       @inactivity = inactivity
       @reminder_store = reminder_store || engine.instance_variable_get(:@reminder_store)
       @clock = clock
+      @auto_turn_callback = callback
 
       @mutex = Monitor.new
       @due_reminder_name = nil
@@ -68,6 +70,12 @@ module Samagotchi
     # @return [Array<Hash>] [{name:, description:, interval_minutes:}, ...]
     def due_reminders
       @reminder_store&.due_reminders || []
+    end
+    # Get the names of all due reminders. Called by the background thread to
+    # determine which reminders need a synthetic turn.
+    # @return [Array<String>] reminder names that are due
+    def due_reminder_names
+      due_reminders.map { |r| r[:name] }
     end
 
     # Clear the pending due reminder (after it has been delivered).
@@ -114,20 +122,16 @@ module Samagotchi
 
     def check_due_reminders
       return unless @reminder_store
-
-      name = @reminder_store.next_due_name
-      return unless name
-
-      description = @reminder_store.get_description(name)
-      return unless description
-
-      # Signal the engine to create a synthetic turn
-      @mutex.synchronize { @due_reminder_name = name }
-
-      # If the engine is idle (no turn running), the engine's run_turn will
-      # pick up the due reminder and inject it into the system prompt.
-      # The engine does NOT auto-run a turn — the reminder waits for the next
-      # natural pause (user input or background worker input).
+      due_names = @reminder_store.due_reminders.map { |r| r[:name] }
+      return if due_names.empty?
+      # Signal the engine to create a synthetic turn via callback.
+      # The callback is responsible for triggering a turn (e.g. SessionManager
+      # writes a file, TerminalUI queues input). The engine's run_turn or
+      # REPL injection point then picks up and delivers the reminders.
+      @mutex.synchronize { @due_reminder_name = due_names.first }
+      if @auto_turn_callback
+        @auto_turn_callback.call(due_names)
+      end
     end
   end
 end

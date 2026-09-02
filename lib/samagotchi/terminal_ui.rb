@@ -536,7 +536,16 @@ module Samagotchi
         model_name: @session_model_name,
         memories: @requested_memories,
         kernel: @kernel,
-        recap: recap_config
+        recap: recap_config,
+        reminders: {
+          callback: lambda { |due_names|
+            # When a reminder is due, queue a synthetic turn by setting an
+            # instance variable that run_assist_loop checks before read_input.
+            # The synthetic turn uses an empty prompt so the agent can see
+            # [SYSTEM: REMINDERS DUE] and act on them.
+            @engine.instance_variable_set(:@due_reminder_names, due_names)
+          }
+        }
       )
       # Render an idle session-recap via the cursor-safe background writer; the
       # detector itself is Engine-owned (see Engine#recap) and opt-in.
@@ -658,6 +667,30 @@ module Samagotchi
       interrupted_turn_context = nil
 
       loop do
+        # Check if there are due reminders from the background thread.
+        # If so, run a synthetic turn with an empty prompt so the agent
+        # sees [SYSTEM: REMINDERS DUE] in context.
+        due_names = @engine.instance_variable_get(:@due_reminder_names)
+        if due_names && !due_names.empty?
+          @engine.instance_variable_set(:@due_reminder_names, [])
+          # Inject reminders into messages before running the kernel
+          @engine.collect_due_reminders(messages)
+          @engine.set_turn_running(true)
+          begin
+            begin_interactive_turn(session)
+            result = run_kernel_with_thinking_feedback(messages)
+            # Clear any pending prompt so we don't re-run
+            @prompt = nil
+            messages = result.conversation if result.respond_to?(:conversation)
+          rescue Client::RetryExhausted
+            # Treat retry exhaustion the same as other errors — continue loop
+          ensure
+            end_interactive_turn(canceled: false)
+            @engine.set_turn_running(false)
+          end
+          persist_recent_history("[REMINDER CHECK]")
+          next
+        end
         input = @prompt
         @prompt = nil if input
         input ||= read_input(awaiting_continue: awaiting_continue)

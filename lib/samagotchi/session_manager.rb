@@ -180,7 +180,17 @@ module Samagotchi
       sd = state_dir || Session.default_state_dir
       session = Session.load(session_id, state_dir: sd)
       session_dir = Session.session_dir(session_id, state_dir: sd)
-      engine = Samagotchi::Engine.new(mode: session.mode.to_sym, model_name: session.model_name)
+      engine = Samagotchi::Engine.new(
+        mode: session.mode.to_sym,
+        model_name: session.model_name,
+        reminders: {
+          callback: lambda { |due_names|
+            # SessionManager: when a reminder is due, write a synthetic input
+            # file via write_turn_input so the existing poll loop picks it up.
+            self.class.write_turn_input(session_id, prompt: "[SYSTEM: Your scheduled reminders are due. Please check them.]")
+          }
+        }
+      )
       # Start the idle reminders detector so the worker can trigger turns when
       # reminders are due (even with no user input).
       engine.start_reminders

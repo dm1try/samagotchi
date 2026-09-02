@@ -225,13 +225,15 @@ module Samagotchi
 
       # engine-format conversation -> OpenAI wire messages. Tool responses carry
       # their `tool_call_id`; model turns are thought-stripped.
+      # Supports multimodal content: content can be a String (text-only) or an
+      # Array of content parts (text + image_url for vision models).
       def wire_messages(conversation)
         conversation.map do |entry|
           case entry[:role]
           when "system"
             { role: "system", content: entry[:content].to_s }
           when "user"
-            { role: "user", content: entry[:content].to_s }
+            { role: "user", content: format_content(entry[:content]) }
           when "model"
             { role: "assistant", content: strip_model_thought(entry[:content].to_s) }
           when "tool_response"
@@ -239,8 +241,18 @@ module Samagotchi
             msg[:tool_call_id] = entry[:tool_call_id] if entry[:tool_call_id]
             msg
           else
-            { role: entry[:role].to_s, content: entry[:content].to_s }
+            { role: entry[:role].to_s, content: format_content(entry[:content]) }
           end
+        end
+      end
+
+      # Formats content for the OpenAI wire format. If content is already an
+      # array (multimodal), returns it as-is. Otherwise wraps it in a text part.
+      def format_content(content)
+        if content.is_a?(Array)
+          content
+        else
+          [{ type: "text", text: content.to_s }]
         end
       end
 
