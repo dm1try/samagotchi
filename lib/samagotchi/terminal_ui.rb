@@ -515,7 +515,7 @@ module Samagotchi
       @session_model_name = @base_model_name
       @client         = client || Client.new
       @profile        = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@session_model_name)
-      @kernel         = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt)
+      @kernel         = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
       @resume_session = session_id ? Session.load(session_id) : nil
       @no_default_input = no_default_input
       @non_interactive = non_interactive

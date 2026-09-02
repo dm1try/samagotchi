@@ -99,7 +99,7 @@ file2.rb")
       )
       kernel = instance_double(Samagotchi::KernelLoop, run: result)
       expect(Samagotchi::KernelLoop).to receive(:new)
-        .with(client: client, verbose: false, log_file: "tmp/custom.log", profile: instance_of(Samagotchi::ModelProfile), no_interrupt: false)
+        .with(client: client, verbose: false, log_file: "tmp/custom.log", profile: instance_of(Samagotchi::ModelProfile), no_interrupt: false, reminder_store: instance_of(Samagotchi::ReminderStore))
         .and_return(kernel)
 
       agent = described_class.new(mode: "assist", prompt: "hi", client: client, log_file: "tmp/custom.log")
