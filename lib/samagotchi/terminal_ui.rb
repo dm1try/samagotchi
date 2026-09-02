@@ -70,6 +70,8 @@ module Samagotchi
     AT_PATH_COMPLETION_MAX_CANDIDATES = 200
     CANCEL_MONITOR_POLL_INTERVAL = 0.05
     CTRL_C_BYTE = "\u0003"
+    REMINDER_TYPING_PAUSE_SECONDS = 2.0
+    REMINDER_PENDING_POLL_INTERVAL = 0.5
 
     # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
 
@@ -525,6 +527,12 @@ module Samagotchi
       @requested_memories = Array(memories)
       @last_recap = nil
       @last_recap_generation = nil
+      @pending_reminder_results = []
+      @pending_reminder_mutex = Monitor.new
+      @muted_reminder_thread = nil
+      @pending_reminder_banner_shown = false
+      @last_keystroke_at = monotonic_time
+      @last_line_buffer = ""
       @engine         = Engine.new(
         mode: :assist,
         client: @client,
@@ -667,64 +675,107 @@ module Samagotchi
       interrupted_turn_context = nil
 
       loop do
+        # Drain any completed muted reminder turns before handling new
+        # synthetic idle turns. This is the send+mute path: generation
+        # happened in background while the user was typing, we only
+        # render after a 2s pause or after submit. Draining here covers
+        # the after-submit case (poll returned) and the case where a
+        # background turn finished while we were busy.
+        if drain_pending_muted_results?(messages, session)
+          # pending drain already emitted/saved and updated messages
+          next if pending_reminder_results_pending?
+          # continue to handle normal input below after draining
+        end
+
         # Check if there are due reminders from the background thread.
-        # If so, run a synthetic turn with an empty prompt so the agent
-        # sees [SYSTEM: REMINDERS DUE] in context. This check is at the
-        # top of the loop so we catch due reminders that arrived while
-        # we were busy with the previous turn.
-        due_names = @engine.instance_variable_get(:@due_reminder_names)
-        if due_names && !due_names.empty?
-          @engine.instance_variable_set(:@due_reminder_names, [])
-          # Inject reminders into messages before running the kernel.
-          # If the store was already drained by a normal-turn injection
-          # (stale latch), skip the empty synthetic to avoid duplicate
-          # generation (user observed 2 identical time outputs).
-          injected = @engine.collect_due_reminders(messages)
-          if injected.empty?
-            next
-          end
-          @engine.set_turn_running(true)
-          begin
-            begin_interactive_turn(session)
-            result = run_kernel_with_thinking_feedback(messages)
-            # Clear any pending prompt so we don't re-run
-            @prompt = nil
-            messages = result.conversation if result.respond_to?(:conversation)
-          rescue Client::RetryExhausted
-            # Treat retry exhaustion the same as other errors — continue loop
-          ensure
-            end_interactive_turn(canceled: false)
-            @engine.set_turn_running(false)
-          end
-          # Also handle the result lifecycle (emit, save) so the synthetic
-          # turn is visible. We persist & emit then loop to check for more.
-          unless result.nil?
-            if result.respond_to?(:canceled?) && result.canceled?
-              # Don't loop forever on cancel
+        # Idle synthetic turn — only when prompt is empty / truly idle.
+        # If a muted background turn is already running, skip sync synthetic
+        # and let the muted path finish; its result will be drained above.
+        unless muted_reminder_running?
+          due_names = @engine.instance_variable_get(:@due_reminder_names)
+          if due_names && !due_names.empty?
+            # If user is actively typing (line buffer non-empty) we defer
+            # to send+mute instead of interrupting. The poll loop will
+            # have started the muted thread; here we only run sync when
+            # not typing. Check via Reline where possible, fallback to
+            # immediate sync for non-TTY / empty buffer.
+            if typing_active?
+              # Defer — ensure muted thread is started with current snapshot
+              start_muted_reminder_generation(messages, session) unless muted_reminder_pending? || muted_reminder_running?
+              # Don't consume latch yet — muted thread will consume via collect_due_reminders
+              # Just notify once
+              notify_pending_reminder_banner(due_names) unless @pending_reminder_banner_shown
+              # fall through to poll (don't run sync now)
             else
-              emit_result(result)
-              messages = result.conversation if result.respond_to?(:conversation)
-              session.messages = messages
-              session.model_name = @session_model_name
-              session.save
-              @engine.metrics.persist
+              @engine.instance_variable_set(:@due_reminder_names, [])
+              # Inject reminders into messages before running the kernel.
+              # If the store was already drained by a normal-turn injection
+              # (stale latch), skip the empty synthetic to avoid duplicate
+              # generation (user observed 2 identical time outputs).
+              injected = @engine.collect_due_reminders(messages)
+              if injected.empty?
+                next
+              end
+              @engine.set_turn_running(true)
+              begin
+                begin_interactive_turn(session)
+                result = run_kernel_with_thinking_feedback(messages)
+                # Clear any pending prompt so we don't re-run
+                @prompt = nil
+                messages = result.conversation if result.respond_to?(:conversation)
+              rescue Client::RetryExhausted
+                # Treat retry exhaustion the same as other errors — continue loop
+              ensure
+                end_interactive_turn(canceled: false)
+                @engine.set_turn_running(false)
+              end
+              # Also handle the result lifecycle (emit, save) so the synthetic
+              # turn is visible. We persist & emit then loop to check for more.
+              unless result.nil?
+                if result.respond_to?(:canceled?) && result.canceled?
+                  # Don't loop forever on cancel
+                else
+                  emit_result(result)
+                  messages = result.conversation if result.respond_to?(:conversation)
+                  session.messages = messages
+                  session.model_name = @session_model_name
+                  session.save
+                  @engine.metrics.persist
+                end
+              end
+              # Synthetic turn is activity for the idle detector — reset the
+              # inactivity clock so the next reminder waits a full interval
+              # instead of firing immediately (observed rapid "Current time is"
+              # -> "" -> empty).
+              @engine.record_activity
+              @pending_reminder_banner_shown = false
+              next
             end
           end
-          # Synthetic turn is activity for the idle detector — reset the
-          # inactivity clock so the next reminder waits a full interval
-          # instead of firing immediately (observed rapid "Current time is"
-          # -> "" -> empty).
-          @engine.record_activity
-          next
         end
         input = @prompt
         @prompt = nil if input
         if input.nil?
-          input = poll_input_with_reminder_check(awaiting_continue: awaiting_continue)
-          # poll returns :due if a reminder became due while waiting;
+          input = poll_input_with_reminder_check(awaiting_continue: awaiting_continue, messages: messages, session: session)
+          # poll returns :due if a reminder became due while idle+empty;
           # loop again to run the synthetic turn at the top.
           if input == :due
             next
+          end
+          # poll returns :pending_due when a muted result was ready and
+          # typing paused 2s — we preserved the buffer via prefill, drain
+          # will happen at top of next loop; just continue.
+          if input == :pending_ready
+            next
+          end
+          # After poll returns a real user line, drain any muted that
+          # finished while typing before handling the user turn — so order
+          # is [history, tail SYSTEM DUE, model reply, user next] without
+          # clobbering the just-typed line.
+          if drain_pending_muted_results?(messages, session)
+            # We have an updated messages; the user's input is still in
+            # `input` and will be processed next. Don't discard it.
+            # Fall through to normal turn handling with refreshed messages.
           end
         end
         break if input.nil?
@@ -996,17 +1047,152 @@ module Samagotchi
       nil
     end
 
+    # ── Send+mute helpers ──────────────────────────────────────────────────
+
+    def typing_active?
+      buf = begin
+        Reline.line_buffer.to_s
+      rescue StandardError
+        ""
+      end
+      !buf.strip.empty?
+    end
+
+    def muted_reminder_running?
+      @muted_reminder_thread && @muted_reminder_thread.alive?
+    end
+
+    def muted_reminder_pending?
+      @pending_reminder_mutex.synchronize { !@pending_reminder_results.empty? }
+    end
+
+    def pending_reminder_results_pending?
+      muted_reminder_pending?
+    end
+
+    def notify_pending_reminder_banner(due_names)
+      return if due_names.nil? || due_names.empty?
+      # No inline stdout write while Reline is active — that clobbers the
+      # current input line (user observed "[reminder pending: ...]" inserted
+      # mid-typing). Just set the flag; the muted result will be rendered
+      # after 2s pause or submit. A future status-line integration can show
+      # a non-intrusive indicator without touching Reline's buffer.
+      @pending_reminder_banner_shown = true
+    rescue StandardError
+      nil
+    end
+
+    def start_muted_reminder_generation(messages, session)
+      return if muted_reminder_running?
+      return if muted_reminder_pending? # already have a pending to drain
+      due = @engine.instance_variable_get(:@due_reminder_names)
+      return if due.nil? || due.empty?
+
+      # Snapshot the current messages; muted thread injects and runs on the
+      # copy so foreground `messages` is untouched until drain.
+      snapshot = clone_messages(messages)
+      latched_due = due.dup
+      @muted_reminder_thread = Thread.new do
+        Thread.current.report_on_exception = false
+        @engine.set_turn_running(true)
+        begin
+          begin_interactive_turn(session)
+          # Inject due reminders into the snapshot; this marks them fired
+          # atomically in ReminderStore and clears IdleReminders latch.
+          # We duplicate snapshot handling inside the thread so the
+          # foreground latch isn't cleared prematurely on failure.
+          injected = @engine.collect_due_reminders(snapshot)
+          if injected.empty?
+            # Stale latch — clear and exit quietly
+            @pending_reminder_mutex.synchronize { @pending_reminder_banner_shown = false }
+          else
+            result = run_kernel_muted(snapshot)
+            @pending_reminder_mutex.synchronize do
+              @pending_reminder_results << result
+            end
+          end
+        rescue StandardError => e
+          warn "[reminder muted] generation failed: #{e.class}: #{e.message}"
+        ensure
+          begin
+            end_interactive_turn(canceled: false)
+          rescue StandardError
+            nil
+          end
+          @engine.set_turn_running(false)
+          # Clear the banner flag so next due can notify again after drain
+        end
+      end
+    end
+
+    def run_kernel_muted(messages, max_iterations: 100)
+      # Muted variant of run_kernel_with_thinking_feedback: no spinner,
+      # no tool-activity streaming to stdout. Still forwards to
+      # Engine.metrics so /stats stays correct.
+      cancellation_controller = Client::CancellationController.new
+      @active_cancel_controller = cancellation_controller
+      muted_handler = proc do |event|
+        begin
+          @engine.metrics.call(event)
+        rescue StandardError
+          nil
+        end
+        # intentionally suppress spinner/tool rendering
+      end
+      result = @kernel.run(
+        messages,
+        max_iterations: max_iterations,
+        on_stream_event: muted_handler,
+        cancel_controller: cancellation_controller,
+        model_name: @session_model_name
+      )
+      result
+    rescue Interrupt
+      cancellation_controller&.cancel!(:ctrl_c)
+      cancelled_result_from(messages, reason: :ctrl_c)
+    ensure
+      @active_cancel_controller = nil
+      finish_thinking_spinner
+    end
+
+    def drain_pending_muted_results?(messages, session)
+      pending = nil
+      @pending_reminder_mutex.synchronize do
+        pending = @pending_reminder_results.dup
+        @pending_reminder_results.clear if pending.any?
+      end
+      return false if pending.empty?
+
+      pending.each do |result|
+        next if result.nil?
+        if result.respond_to?(:canceled?) && result.canceled?
+          next
+        end
+        # result.conversation already contains the injected SYSTEM DUE +
+        # model reply. Replace foreground messages with it.
+        if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
+          messages.replace(Array(result.conversation).map(&:dup))
+        end
+        emit_result(result)
+        session.messages = messages.dup
+        session.model_name = @session_model_name
+        session.save
+        @engine.metrics.persist
+        @engine.record_activity
+      end
+      @pending_reminder_banner_shown = false
+      true
+    end
+
     # Poll for input while also checking for due reminders. We must show
     # the prompt/prefill immediately (via Reline) *and* poll for due.
-    # The previous IO.select-before-Reline loop hid "> Hey Chi," until STDIN
-    # was readable. This version runs Reline in a thread so the prompt is
-    # visible via with_next_input_prefill (lib/terminal_ui.rb:2252
-    # Reline.insert_text) while the main thread polls every 0.5s (same as
-    # IdleReminders::POLL_INTERVAL_SECONDS). When a reminder becomes due, we
-    # interrupt the reader thread and return :due so run_assist_loop:669
-    # can run the synthetic turn. Non-TTY (specs/pipes) falls back to a
-    # direct blocking read.
-    def poll_input_with_reminder_check(awaiting_continue:)
+    # Send+mute: while the user is typing we never kill Reline. Instead we
+    # start a muted background generation on the first due tick, show a
+    # lightweight banner, and either (a) render after a 2s typing pause
+    # (kill+prefill to show pending without losing keystrokes) or (b) after
+    # submit at the top of the next loop. When prompt is empty / truly idle
+    # we still return :due for the synchronous synthetic path.
+    def poll_input_with_reminder_check(awaiting_continue:, messages: nil, session: nil)
       # Check due before any blocking so push-mode fires even in specs/non-TTY.
       due = @engine.instance_variable_get(:@due_reminder_names)
       return :due if due && !due.empty?
@@ -1023,6 +1209,8 @@ module Samagotchi
         result = read_input(awaiting_continue: awaiting_continue)
       end
 
+      @last_line_buffer = ""
+      @last_keystroke_at = monotonic_time
       loop do
         # Reader finished (user submitted or Ctrl-D) — return their input.
         unless reader.alive?
@@ -1030,36 +1218,101 @@ module Samagotchi
           return result
         end
 
-        due = @engine.instance_variable_get(:@due_reminder_names)
-        if due && !due.empty?
-          # Interrupt the blocking Reline call. Thread#raise will cause the
-          # reader's read_input to rescue Interrupt and return nil; we then
-          # kill if still alive to avoid hanging in C-level io.select.
-          begin
-            reader.raise(Interrupt)
-          rescue StandardError
-            nil
-          end
-          reader.join(0.3)
-          if reader.alive?
-            reader.kill
-            reader.join(0.3)
-          end
-          # Reline may have left terminal in raw — best-effort restore.
-          begin
-            STDIN.cooked! if STDIN.respond_to?(:cooked!) && STDIN.tty?
-          rescue StandardError
-            nil
-          end
-          begin
-            $stdout.puts if $stdout.tty?
-          rescue StandardError
-            nil
-          end
-          return :due
+        # Track typing activity for 2s pause detection (on top of
+        # Engine's pre_input_hook which only fires on first keystroke).
+        begin
+          current_buf = Reline.line_buffer.to_s
+        rescue StandardError
+          current_buf = ""
+        end
+        if current_buf != @last_line_buffer
+          @last_line_buffer = current_buf
+          @last_keystroke_at = monotonic_time
+          @engine.record_activity if current_buf.strip.length > @last_line_buffer.strip.length
         end
 
-        sleep 0.5
+        due = @engine.instance_variable_get(:@due_reminder_names)
+        if due && !due.empty?
+          if typing_active?
+            # Send+mute: generate in background, don't interrupt typing
+            if messages && session && !muted_reminder_running? && !muted_reminder_pending?
+              start_muted_reminder_generation(messages, session)
+            elsif messages.nil? || session.nil?
+              # Fallback when poll was called without snapshot (e.g. /continue)
+              # still notify, drain will happen after submit via top-of-loop
+            end
+            notify_pending_reminder_banner(due) unless @pending_reminder_banner_shown
+          else
+            # Truly idle with empty prompt — keep synchronous synthetic path
+            begin
+              reader.raise(Interrupt)
+            rescue StandardError
+              nil
+            end
+            reader.join(0.3)
+            if reader.alive?
+              reader.kill
+              reader.join(0.3)
+            end
+            begin
+              STDIN.cooked! if STDIN.respond_to?(:cooked!) && STDIN.tty?
+            rescue StandardError
+              nil
+            end
+            begin
+              $stdout.puts if $stdout.tty?
+            rescue StandardError
+              nil
+            end
+            return :due
+          end
+        end
+
+        # If a muted generation finished while typing and user has paused
+        # 2s, render now without losing the current buffer (preserve via
+        # prefill and kill reader so top-of-loop can drain). Clear the
+        # current input line first to avoid the duplicated-line artifact
+        # user observed (original typing left on screen + new prefilled
+        # prompt showing same text).
+        if muted_reminder_pending? && !muted_reminder_running?
+          if (monotonic_time - @last_keystroke_at) >= REMINDER_TYPING_PAUSE_SECONDS
+            saved = begin
+              Reline.line_buffer.to_s
+            rescue StandardError
+              ""
+            end
+            # Preserve typed buffer across the interrupt
+            queue_input_prefill(saved) unless saved.strip.empty?
+            # Clear the in-progress Reline line before interrupting so the
+            # next prompt's prefill is the only visible copy (avoids the
+            # "line is copied" duplication).
+            begin
+              $stdout.print("\r\e[2K") if $stdout.tty?
+              $stdout.flush if $stdout.tty?
+            rescue StandardError
+              nil
+            end
+            begin
+              reader.raise(Interrupt)
+            rescue StandardError
+              nil
+            end
+            reader.join(0.3)
+            if reader.alive?
+              reader.kill
+              reader.join(0.3)
+            end
+            begin
+              STDIN.cooked! if STDIN.respond_to?(:cooked!) && STDIN.tty?
+            rescue StandardError
+              nil
+            end
+            # No extra puts — drain will emit the reminder output next
+            return :pending_ready
+          end
+        end
+
+        sleep REMINDER_PENDING_POLL_INTERVAL
       end
     end
 
