@@ -671,6 +671,10 @@ module Samagotchi
           case decision
           when :resume
             begin
+              # Inject due reminders before the model call so the agent sees
+              # them in context (REPL bypasses Engine#run_turn, so this is
+              # the only injection point for interactive mode).
+              @engine.collect_due_reminders(messages)
               result = run_kernel_with_thinking_feedback(messages)
             rescue Client::RetryExhausted => e
               $stdout.puts "\nmodel> network error after #{e.attempts} attempts; continue prompt preserved"
@@ -754,6 +758,9 @@ module Samagotchi
           messages << { role: "user", content: normalize_model_input(input) }
           persist_recent_history(input)
           begin
+            # Inject due reminders before the model call (REPL bypasses
+            # Engine#run_turn). collect_due_reminders mutates messages in place.
+            @engine.collect_due_reminders(messages)
             begin_interactive_turn(session)
             result = run_kernel_with_thinking_feedback(messages)
           rescue Client::RetryExhausted => e
