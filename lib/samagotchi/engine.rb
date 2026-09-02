@@ -247,20 +247,30 @@ module Samagotchi
     # @return [Array<Hash>] [{name:, description:, interval_minutes:}, ...]
     def collect_due_reminders(messages)
       due = @reminders&.due_reminders
-      return [] if due.empty?
+      return [] if due.nil? || due.empty?
 
-      # Build reminder text and append to the system message
       reminder_lines = due.map do |r|
         "  #{r[:name]}: #{r[:description]} (interval: #{r[:interval_minutes]}m)"
       end.join("\n")
       reminder_text = "[SYSTEM: REMINDERS DUE]\n#{reminder_lines}\n[END REMINDERS]"
-      if messages.first&.dig(:role) == "system"
-        messages.first[:content] = "#{messages.first[:content]}\n\n#{reminder_text}"
-      else
-        messages.unshift({ role: "system", content: reminder_text })
-      end
-      # Atomically mark all due as fired under one lock
+      # Append as a tail message to preserve prefix KV cache. Mutating the
+      # head system prompt invalidates the cache for the entire conversation
+      # (prompt re-evaluated every interval). A tail append keeps the prefix
+      # intact — only the new reminder suffix is evaluated. Mirrors the
+      # context-status injection at lib/samagotchi/kernel_loop.rb:447.
+      messages << { role: "system", content: reminder_text }
+      # Atomically mark all due as fired under one lock and clear the
+      # IdleReminders latch so the next interval can be detected.
       @reminder_store&.mark_fired_batch(due.map { |r| r[:name] })
+      @reminders&.clear_due
+      # Also clear the TerminalUI queue latch (Engine#@due_reminder_names is
+      # set by the IdleReminders callback). Without this, a normal-turn
+      # injection (via collect_due_reminders at lib/terminal_ui.rb:732/818)
+      # leaves a stale @due_reminder_names entry, causing the next
+      # top-of-loop synthetic turn to fire empty and duplicate output.
+      if instance_variable_defined?(:@due_reminder_names)
+        instance_variable_set(:@due_reminder_names, [])
+      end
       due
     end
     # Alias for backward compatibility.
@@ -364,21 +374,23 @@ module Samagotchi
 
         messages = session.messages.dup
         system_message = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
-        # Inject due reminders AFTER system prompt construction so they are
-        # not overwritten. The method mutates `system_message[:content]`.
-        due_reminders = collect_due_reminders([system_message])
-        if due_reminders.any?
-          emit_event(on_event, {
-            type: :reminder_injected,
-            reminders: due_reminders
-          })
-        end
         if messages.empty?
           messages = [system_message]
         elsif messages.first[:role].to_s != "system"
           messages.unshift(system_message)
         else
           messages[0] = system_message
+        end
+
+        # Inject due reminders as a tail system message (after history, before
+        # the new user prompt) to preserve prefix KV cache. Mutating the head
+        # system prompt invalidates cache for the entire prefix.
+        due_reminders = collect_due_reminders(messages)
+        if due_reminders.any?
+          emit_event(on_event, {
+            type: :reminder_injected,
+            reminders: due_reminders
+          })
         end
 
         messages << { role: "user", content: prompt }

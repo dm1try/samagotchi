@@ -29,29 +29,35 @@ RSpec.describe Samagotchi::Engine do
       end
     end
     describe "when a reminder is due" do
-      it "injects a system message and returns due reminders" do
+      it "appends a tail system message and returns due reminders (preserves prefix cache)" do
         engine.reminder_store.register({ name: "health", description: "Check API health", interval_minutes: 1 })
         # Fast-forward: set next_fire_at to the past
         engine.reminder_store.instance_variable_get(:@mutex).synchronize do
           engine.reminder_store.reminders["health"][:next_fire_at] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 1
         end
         messages = [{ role: "system", content: "You are Chi." }, { role: "user", content: "hello" }]
+        original_first = messages.first[:content].dup
         result = engine.maybe_inject_reminders(messages)
         expect(result).to be_an(Array)
         expect(result.map { |r| r[:name] }).to include("health")
         expect(result.map { |r| r[:description] }).to include("Check API health")
-        expect(messages.first[:content]).to include("[SYSTEM: REMINDERS DUE]")
-        expect(messages.first[:content]).to include("health: Check API health")
+        # Head must be untouched to preserve KV cache prefix
+        expect(messages.first[:content]).to eq(original_first)
+        expect(messages.last[:role]).to eq("system")
+        expect(messages.last[:content]).to include("[SYSTEM: REMINDERS DUE]")
+        expect(messages.last[:content]).to include("health: Check API health")
+        expect(messages.size).to eq(3)
       end
-      it "creates a new system message when none exists" do
+      it "appends a tail system message even when none exists (no head mutation)" do
         engine.reminder_store.register({ name: "health", description: "Check API", interval_minutes: 1 })
         engine.reminder_store.instance_variable_get(:@mutex).synchronize do
           engine.reminder_store.reminders["health"][:next_fire_at] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 1
         end
         messages = [{ role: "user", content: "hello" }]
         engine.maybe_inject_reminders(messages)
-        expect(messages.first[:role]).to eq("system")
-        expect(messages.first[:content]).to include("[SYSTEM: REMINDERS DUE]")
+        expect(messages.last[:role]).to eq("system")
+        expect(messages.last[:content]).to include("[SYSTEM: REMINDERS DUE]")
+        expect(messages.size).to eq(2)
       end
       it "marks reminders as fired" do
         engine.reminder_store.register({ name: "health", description: "Check API", interval_minutes: 1 })
@@ -64,7 +70,7 @@ RSpec.describe Samagotchi::Engine do
       end
     end
     describe "when multiple reminders are due" do
-      it "injects all due reminders" do
+      it "injects all due reminders as one tail message" do
         engine.reminder_store.register({ name: "health", description: "Check API", interval_minutes: 1 })
         engine.reminder_store.register({ name: "cleanup", description: "Clean temp files", interval_minutes: 1 })
         engine.reminder_store.instance_variable_get(:@mutex).synchronize do
@@ -75,8 +81,9 @@ RSpec.describe Samagotchi::Engine do
         messages = [{ role: "system", content: "You are Chi." }]
         result = engine.maybe_inject_reminders(messages)
         expect(result.map { |r| r[:name] }).to match_array(["health", "cleanup"])
-        expect(messages.first[:content]).to include("health: Check API")
-        expect(messages.first[:content]).to include("cleanup: Clean temp files")
+        expect(messages.last[:content]).to include("health: Check API")
+        expect(messages.last[:content]).to include("cleanup: Clean temp files")
+        expect(messages.size).to eq(2)
       end
     end
   end

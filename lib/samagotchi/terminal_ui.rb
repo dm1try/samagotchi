@@ -669,12 +669,20 @@ module Samagotchi
       loop do
         # Check if there are due reminders from the background thread.
         # If so, run a synthetic turn with an empty prompt so the agent
-        # sees [SYSTEM: REMINDERS DUE] in context.
+        # sees [SYSTEM: REMINDERS DUE] in context. This check is at the
+        # top of the loop so we catch due reminders that arrived while
+        # we were busy with the previous turn.
         due_names = @engine.instance_variable_get(:@due_reminder_names)
         if due_names && !due_names.empty?
           @engine.instance_variable_set(:@due_reminder_names, [])
-          # Inject reminders into messages before running the kernel
-          @engine.collect_due_reminders(messages)
+          # Inject reminders into messages before running the kernel.
+          # If the store was already drained by a normal-turn injection
+          # (stale latch), skip the empty synthetic to avoid duplicate
+          # generation (user observed 2 identical time outputs).
+          injected = @engine.collect_due_reminders(messages)
+          if injected.empty?
+            next
+          end
           @engine.set_turn_running(true)
           begin
             begin_interactive_turn(session)
@@ -688,12 +696,37 @@ module Samagotchi
             end_interactive_turn(canceled: false)
             @engine.set_turn_running(false)
           end
-          persist_recent_history("[REMINDER CHECK]")
+          # Also handle the result lifecycle (emit, save) so the synthetic
+          # turn is visible. We persist & emit then loop to check for more.
+          unless result.nil?
+            if result.respond_to?(:canceled?) && result.canceled?
+              # Don't loop forever on cancel
+            else
+              emit_result(result)
+              messages = result.conversation if result.respond_to?(:conversation)
+              session.messages = messages
+              session.model_name = @session_model_name
+              session.save
+              @engine.metrics.persist
+            end
+          end
+          # Synthetic turn is activity for the idle detector — reset the
+          # inactivity clock so the next reminder waits a full interval
+          # instead of firing immediately (observed rapid "Current time is"
+          # -> "" -> empty).
+          @engine.record_activity
           next
         end
         input = @prompt
         @prompt = nil if input
-        input ||= read_input(awaiting_continue: awaiting_continue)
+        if input.nil?
+          input = poll_input_with_reminder_check(awaiting_continue: awaiting_continue)
+          # poll returns :due if a reminder became due while waiting;
+          # loop again to run the synthetic turn at the top.
+          if input == :due
+            next
+          end
+        end
         break if input.nil?
         break if exit_command?(input)
         continue_flow = awaiting_continue
@@ -788,12 +821,12 @@ module Samagotchi
           end
 
           interrupted_turn_checkpoint = clone_messages(messages)
+          # Inject due reminders as tail before the new user message to
+          # preserve prefix KV cache (head mutation invalidates cache).
+          @engine.collect_due_reminders(messages)
           messages << { role: "user", content: normalize_model_input(input) }
           persist_recent_history(input)
           begin
-            # Inject due reminders before the model call (REPL bypasses
-            # Engine#run_turn). collect_due_reminders mutates messages in place.
-            @engine.collect_due_reminders(messages)
             begin_interactive_turn(session)
             result = run_kernel_with_thinking_feedback(messages)
           rescue Client::RetryExhausted => e
@@ -961,6 +994,73 @@ module Samagotchi
       input.gsub(/\r\n?|\n\z/, "\n").strip
     rescue Interrupt
       nil
+    end
+
+    # Poll for input while also checking for due reminders. We must show
+    # the prompt/prefill immediately (via Reline) *and* poll for due.
+    # The previous IO.select-before-Reline loop hid "> Hey Chi," until STDIN
+    # was readable. This version runs Reline in a thread so the prompt is
+    # visible via with_next_input_prefill (lib/terminal_ui.rb:2252
+    # Reline.insert_text) while the main thread polls every 0.5s (same as
+    # IdleReminders::POLL_INTERVAL_SECONDS). When a reminder becomes due, we
+    # interrupt the reader thread and return :due so run_assist_loop:669
+    # can run the synthetic turn. Non-TTY (specs/pipes) falls back to a
+    # direct blocking read.
+    def poll_input_with_reminder_check(awaiting_continue:)
+      # Check due before any blocking so push-mode fires even in specs/non-TTY.
+      due = @engine.instance_variable_get(:@due_reminder_names)
+      return :due if due && !due.empty?
+
+      # Non-TTY (specs, pipes) — just block directly; no push needed there.
+      unless STDIN.tty? && $stdin.tty?
+        return read_input(awaiting_continue: awaiting_continue)
+      end
+
+      # TTY: show prompt immediately but still poll for due in background.
+      result = nil
+      reader = Thread.new do
+        Thread.current.report_on_exception = false
+        result = read_input(awaiting_continue: awaiting_continue)
+      end
+
+      loop do
+        # Reader finished (user submitted or Ctrl-D) — return their input.
+        unless reader.alive?
+          reader.join
+          return result
+        end
+
+        due = @engine.instance_variable_get(:@due_reminder_names)
+        if due && !due.empty?
+          # Interrupt the blocking Reline call. Thread#raise will cause the
+          # reader's read_input to rescue Interrupt and return nil; we then
+          # kill if still alive to avoid hanging in C-level io.select.
+          begin
+            reader.raise(Interrupt)
+          rescue StandardError
+            nil
+          end
+          reader.join(0.3)
+          if reader.alive?
+            reader.kill
+            reader.join(0.3)
+          end
+          # Reline may have left terminal in raw — best-effort restore.
+          begin
+            STDIN.cooked! if STDIN.respond_to?(:cooked!) && STDIN.tty?
+          rescue StandardError
+            nil
+          end
+          begin
+            $stdout.puts if $stdout.tty?
+          rescue StandardError
+            nil
+          end
+          return :due
+        end
+
+        sleep 0.5
+      end
     end
 
     def with_scoped_at_path_completion
