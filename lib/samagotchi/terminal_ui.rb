@@ -565,21 +565,18 @@ module Samagotchi
       )
       messages = messages_for(session)
 
-      if @prompt
+      if @prompt && @non_interactive
+        # Headless / CI mode: run directly without TTY rendering.
         result = @engine.run_turn(
           session,
           @prompt,
           on_event: nil,
-          max_iterations: @non_interactive ? 1000 : 10,
+          max_iterations: 1000,
           cancel_controller: nil
         )
         $stdout.puts result.output
         session.save
-        # run_turn mutates session.messages to the post-turn conversation, so
-        # reassign so the REPL continues from it. When there was no prompt,
-        # `messages` already holds the seed array to feed into the REPL.
-        messages = session.messages
-        return if @non_interactive
+        return
       end
 
       assist_loop(session: session, messages: messages)
@@ -634,7 +631,10 @@ module Samagotchi
 
       # queue_default_input self-guards on @resume_session, so calling it
       # unconditionally preserves the original fresh-session prefill behavior.
-      queue_default_input
+      # Skip the default input prefill when a user-provided --prompt was used —
+      # the explicit prompt means the user is in command and shouldn't see the
+      # default input ("Hey Chi," etc.) on the next REPL prompt.
+      queue_default_input if @prompt.nil?
 
       # The recap detector is Engine-owned and opt-in; (re)start it for this REPL
       # and stop it on exit. with_activity_hook installs a Reline.pre_input_hook
@@ -656,7 +656,9 @@ module Samagotchi
       interrupted_turn_context = nil
 
       loop do
-        input = read_input(awaiting_continue: awaiting_continue)
+        input = @prompt
+        @prompt = nil if input
+        input ||= read_input(awaiting_continue: awaiting_continue)
         break if input.nil?
         break if exit_command?(input)
         continue_flow = awaiting_continue
