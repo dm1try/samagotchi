@@ -168,6 +168,136 @@ Behavior:
 This lets you run `bin/chi` without repeating common defaults such as model
 and llama host/port on every invocation.
 
+## Plugin Hooks
+
+Samagotchi supports pluggable Ruby hooks that fire at key lifecycle points
+during agent turns. Hooks let you add external tooling (CI checks, logging,
+analytics) or in-process verification (test gates, policy checks).
+
+### Configuration
+
+Add a `hooks:` section to your global config file (`~/.config/samagotchi/config.yml`):
+
+```yaml
+hooks:
+  hooks_dir: "~/.config/samagotchi/hooks/"
+  session_start:
+    - path: "analytics.rb"
+      on_error: log
+  before_turn:
+    - path: "audit.rb"
+      on_error: skip
+  after_tool_call:
+    - path: "metrics.rb"
+      on_error: skip
+```
+
+### Plugin Format
+
+Each plugin is a `.rb` file in the hooks directory. The class name must match
+the filename (snake_case → PascalCase):
+
+```ruby
+# ~/.config/samagotchi/hooks/metrics.rb
+class Metrics
+  def call(event)
+    # event is a Hash — you can read or mutate fields
+    tool = event[:tool]
+    output = event[:output]
+    # ... record metrics, log, etc.
+  end
+end
+```
+
+The plugin class must respond to `#call(event)` — duck-typed, no base class required.
+
+### Hook Events
+
+| Event | When it fires | Event payload |
+|-------|--------------|---------------|
+| `:session_start` | First turn of the session | `{ type: :session_start, session_id: "..." }` |
+| `:before_turn` | Before each turn starts | `{ type: :before_turn }` |
+| `:after_turn` | After each turn completes | `{ type: :after_turn }` |
+| `:before_generation` | Before LLM API call | `{ type: :before_generation, iteration: N }` |
+| `:after_generation` | After LLM returns | `{ type: :after_generation, iteration: N, response: "..." }` |
+| `:before_tool_call` | Before tool dispatch | `{ type: :before_tool_call, iteration: N, call: {...}, params: {...} }` |
+| `:after_tool_call` | After tool execution | `{ type: :after_tool_call, iteration: N, tool: "read", output: "..." }` |
+| `:session_end` | After every turn (turn-level lifecycle) | `{ type: :session_end, session_id: "..." }` |
+
+### Error Handling
+
+- `on_error: "skip"` (default): silently ignore hook failures
+- `on_error: "log"`: emit a `warn` message to stderr
+
+Hook failures never break the engine loop — each hook is wrapped in its own
+try/catch.
+
+### Runtime Hook Registration
+
+You can also register hooks programmatically during a turn (they are cleared
+automatically after each `run_turn`):
+
+```ruby
+engine = Samagotchi::Engine.new(mode: :assist)
+engine.register_hook(:before_turn) do |event|
+  puts "Turn starting..."
+end
+engine.run_turn(session, "Hello")
+# Hooks cleared automatically — won't fire on the next turn
+```
+
+### Example Plugins
+
+**Logging every tool call:**
+
+```ruby
+# ~/.config/samagotchi/hooks/audit.rb
+class Audit
+  def call(event)
+    return unless event[:type] == :after_tool_call
+    puts "[audit] #{event[:tool]} → #{event[:output][0..100]}"
+  end
+end
+```
+
+**Tracking tool call counts:**
+
+```ruby
+# ~/.config/samagotchi/hooks/tool_counter.rb
+class ToolCounter
+  def initialize
+    @counts = Hash.new(0)
+    @mutex = Mutex.new
+  end
+
+  def call(event)
+    return unless event[:type] == :after_tool_call
+    @mutex.synchronize { @counts[event[:tool]] += 1 }
+  end
+
+  def report
+    @mutex.synchronize { @counts.dup }
+  end
+end
+```
+
+**Blocking turns with a policy check:**
+
+```ruby
+# ~/.config/samagotchi/hooks/safety.rb
+class Safety
+  def call(event)
+    return unless event[:type] == :before_tool_call
+    tool = event[:call][:name]
+    if tool == "execute" && event[:call][:content]&.include?("rm -rf /")
+      event[:call][:content] = "echo 'Safety check: dangerous command blocked'"
+    end
+  end
+end
+```
+
+Note: `:before_tool_call` can mutate the `:call` hash to modify or intercept tool execution.
+
 ## Model Server Transport
 
 Chi talks to a model server over HTTP and supports three transports:
