@@ -1814,8 +1814,9 @@ module Samagotchi
       line_count = thinking_preview_lines_count
       prefix = "model> … "
       continuation = " " * prefix.length
-      first_width = [THINKING_PREVIEW_WIDTH - prefix.length, 1].max
-      continuation_width = [THINKING_PREVIEW_WIDTH - continuation.length, 1].max
+      preview_width = thinking_preview_width
+      first_width = [preview_width - prefix.length, 1].max
+      continuation_width = [preview_width - continuation.length, 1].max
 
       text = thinking_tail_preview_text
       text = text[-thinking_tail_preview_capacity, thinking_tail_preview_capacity] || text
@@ -1864,7 +1865,14 @@ module Samagotchi
     end
 
     def cap_preview_line(text)
-      cap_preview_text(text, THINKING_PREVIEW_WIDTH)
+      cap_preview_text(text, thinking_preview_width)
+    end
+
+    def thinking_preview_width
+      width = status_effective_width
+      return THINKING_PREVIEW_WIDTH if width <= 0
+
+      [width, THINKING_PREVIEW_WIDTH].min
     end
 
     def cap_preview_text(text, width)
@@ -1885,7 +1893,8 @@ module Samagotchi
 
     def thinking_tail_preview_capacity
       prefix_length = "model> … ".length
-      first_width = [THINKING_PREVIEW_WIDTH - prefix_length, 1].max
+      preview_width = thinking_preview_width
+      first_width = [preview_width - prefix_length, 1].max
       continuation_width = first_width
       first_width + ((thinking_preview_lines_count - 1) * continuation_width)
     end
