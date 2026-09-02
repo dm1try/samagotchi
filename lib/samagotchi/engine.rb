@@ -37,7 +37,7 @@ module Samagotchi
       new(mode: :assist, profile: profile).send(:assist_system_prompt)
     end
 
-    # @param mode               [Symbol] :assist or other (Engine only supports :assist)
+    # @param mode               [Symbol] :assist (harness is single-mode; memory-reliant; kwarg kept for compat, ignored)
     # @param client             [Client, nil] defaults to Client.new
     # @param verbose            [Boolean]
     # @param log_file           [String, nil]
@@ -46,7 +46,7 @@ module Samagotchi
     # @param no_interrupt       [Boolean]
     # @param model_name         [String, nil] defaults from SAMAGOTCHI_MODEL
     # @param memories           [Array<String>] --memory preload list
-    def initialize(mode:, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
+    def initialize(mode: :assist, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
       @mode = mode.to_sym
       @base_model_name = ModelProfile.required_model_name(model_name)
       @session_model_name = @base_model_name
@@ -687,6 +687,11 @@ module Samagotchi
           Each scope's `index.md` is auto-maintained by `memory_write` (one
           managed line per entry with name/scope/date/size); free-form sections
           are preserved. The verbatim `index` write (`path: "index"`) is kept.
+
+        Memory priority:
+          Treat loaded Project/System memories as priority knowledge — second only to the current user prompt.
+          When a memory conflicts with older history or generic knowledge, prefer the memory.
+          Read memories with memory_read before answering if the task touches remembered conventions.
 
         #{ToolDeclarations::CONTEXT_STATUS_PROTOCOL}
       SYS

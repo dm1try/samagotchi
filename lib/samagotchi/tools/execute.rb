@@ -7,7 +7,7 @@ module Samagotchi
   module Tools
     # Runs an arbitrary shell command and returns stdout, stderr, and exit code.
     # The model can use this to execute Ruby snippets, run RSpec, or any other
-    # shell command needed during self-improvement or code assistance.
+    # shell command needed during code assistance via the memory-reliant harness.
     #
     # Examples the model can emit:
     #   <tool name="execute">ruby -e 'puts 2 + 2'</tool>

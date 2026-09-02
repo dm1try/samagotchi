@@ -1,5 +1,5 @@
 # samagotchi
-self evolving agent harness
+agent harness which heavily relies on memory
 
 Samagotchi is the full engine name. Chi (pronounced "chee") is the short friendly name and CLI command.
 
@@ -21,7 +21,6 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `-p`, `--prompt TEXT` | Feed `TEXT` as the first turn (also prefill-equivalent; `-p` feeds **and** runs). |
 | `--non-interactive` | Run a single turn then exit the REPL (sets a high iteration cap; implies `--no-interrupt`). Harmless no-op when given without `-p`. |
 | `--resume SESSION_ID` | Load a prior session's history instead of creating a fresh one. |
-| `--mode assist` | Current supported mode (assist). |
 | `--memory NAME` | Preload a memory entry into the system prompt (repeatable). |
 | `--backend {native,ruby_llm}` | Choose the model backend (default: `native`). See below. |
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |

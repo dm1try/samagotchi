@@ -510,7 +510,7 @@ module Samagotchi
       Engine.system_prompt_for(profile)
     end
 
-    def initialize(mode:, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false)
+    def initialize(mode: :assist, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false)
       @mode           = mode.to_sym
       @prompt         = prompt
       @base_model_name = ModelProfile.required_model_name(model_name)

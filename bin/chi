@@ -9,11 +9,10 @@ require "samagotchi/config_file"
 Samagotchi::ConfigFile.load_global_env!
 require "samagotchi"
 
-options = { mode: "assist", verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, dashboard: false }
+options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, dashboard: false }
 
 OptionParser.new do |opts|
   opts.banner = "Usage: bin/chi [options] [subcommand]"
-   opts.on("--mode MODE", %w[assist], "Mode: assist (default)") { |m| options[:mode] = m }
   opts.on("-p", "--prompt PROMPT", "Run a single prompt and exit") { |p| options[:prompt] = p }
   opts.on("--resume SESSION_ID", "Resume a previous session by its ID") { |s| options[:resume] = s }
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable)") { |m| (options[:memories] ||= []) << m }
@@ -50,7 +49,6 @@ log_file = if ["1", "true"].include?(ENV.fetch("SAMAGOTCHI_DISABLE_LOG_FILE", ""
            end
 
 Samagotchi::TerminalUI.new(
-  mode: options[:mode],
   prompt: options[:prompt],
   verbose: options[:verbose],
   log_file: log_file,

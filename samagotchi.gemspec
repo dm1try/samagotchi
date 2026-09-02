@@ -9,8 +9,8 @@ require "samagotchi/version"
 Gem::Specification.new do |spec|
   spec.name          = "samagotchi"
   spec.version       = Samagotchi::VERSION
-  spec.summary       = "Self-evolving agent harness"
-  spec.description   = "A self-evolving Ruby agent harness with recursive self-improvement capabilities. Includes Engine, TerminalUI, memory system, and agentic tool execution."
+  spec.summary       = "Agent harness which heavily relies on memory"
+  spec.description   = "An agent harness which heavily relies on memory. Includes Engine, TerminalUI, memory system, and agentic tool execution."
   spec.authors       = ["samagotchi"]
   spec.email         = [""]
   spec.homepage      = "https://github.com/dmitrydedov/samagotchi"

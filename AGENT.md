@@ -1,7 +1,7 @@
 # AGENT.md
 
 ## Project Overview: Samagotchi
-Samagotchi is a self-evolving Ruby agent harness. The agent is part of the code, capable of recursive self-improvement through "Evolving Mode" using RSpec as a safety net.
+Samagotchi is an agent harness which heavily relies on memory. It runs via Engine + TerminalUI, using project/system memories for long-term state.
 
 Naming note: Samagotchi is the full engine name. Chi (pronounced "chee") is the friendly shorthand used in conversational and CLI contexts.
 
@@ -29,7 +29,7 @@ and `--resume`. Flag semantics (also in README's "CLI Usage" section):
   composes with `-p` (prompt runs on the resumed session, prior history preserved as context).
 - `-p "..."` alone (no `--non-interactive`) runs one turn and **stays in the REPL**
   (breaking change vs the old one-shot-then-exit behavior).
-- `--mode`, `--memory` (repeatable), `--no-interrupt`, `--no-default-input`,
+- `--memory` (repeatable), `--no-interrupt`, `--no-default-input`,
   `-v`/`--verbose`, `--help` also available; `SAMAGOTCHI_DEFAULT_INPUT` prefill (edit, not run).
 - `--backend {native,ruby_llm}` selects the model backend (default: `native`; also
   `SAMAGOTCHI_BACKEND`). `:native` is the default and well-tested; `:ruby_llm` is
@@ -37,9 +37,9 @@ and `--resume`. Flag semantics (also in README's "CLI Usage" section):
   `SAMAGOTCHI_BACKEND` and overrides any `config.yml` value.
 
 ## Core Principles
-- **Self-Inhabiting**: The agent's tools are the mechanisms for its own modification.
+- **Memory-Centric**: The harness relies heavily on memory (project/system scopes) for persistent cognition; tools operate on code/memories but the core is not self-modifying.
 - **Persistent Cognition**: Use project memories (`~/.config/samagotchi/memories/projects/<name>_<hash>/`) and system memories (`~/.config/samagotchi/memories`) for long-term state.
-- **Single Mode (Assist)**: The harness currently runs in **Assist Mode** only (human-AI collaboration). Autonomous evolution is paused; future self-modification will be re-introduced as a controlled, layer-isolated approach with a frozen core to prevent accidental self-removal.
+- **Single Mode (Assist)**: The harness currently runs in **Assist Mode** only (human-AI collaboration). Persisted state lives in memories; see Memory Scopes.
 
 ## Operational Instructions
 - **Always validate the test suite** (`bundle exec rspec`) after adding, updating, or removing functionality. Failing specs must be fixed before committing.
