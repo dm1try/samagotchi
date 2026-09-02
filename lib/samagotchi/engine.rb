@@ -5,6 +5,7 @@ require "securerandom"
 require "time"
 require "yaml"
 
+require_relative "config_file"
 require_relative "model_profile"
 require_relative "kernel_loop"
 require_relative "llm/backend"
