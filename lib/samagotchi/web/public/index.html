@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chi Web</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0f1115;color:#e6e8eb;height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #1f232b;background:#151821}
+h1{font-size:16px;letter-spacing:.02em}
+h1 span{color:#7aa5ff}
+header .actions{display:flex;gap:8px;align-items:center}
+button,input,textarea{font:inherit}
+button{background:#1f6feb;border:0;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
+button.ghost{background:#22262f;color:#c9d1d9}
+button:disabled{opacity:.5;cursor:not-allowed}
+main{flex:1;display:flex;min-height:0}
+#sidebar{width:360px;min-width:260px;border-right:1px solid #1f232b;background:#0f1115;display:flex;flex-direction:column}
+#sidebar .sb-head{padding:10px 12px;border-bottom:1px solid #1f232b;display:flex;gap:8px;align-items:center}
+#sidebar .sb-head input{flex:1;background:#151821;border:1px solid #1f232b;color:#e6e8eb;padding:8px 10px;border-radius:8px}
+#list{overflow:auto;flex:1;padding:8px}
+.row{display:flex;gap:8px;padding:10px 8px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+.row:hover{background:#151821;border-color:#1f232b}
+.row.active{background:#1b2336;border-color:#223150}
+.row .meta{flex:1;min-width:0}
+.row .id{font-family:ui-monospace,monospace;font-size:12px;color:#8b949e}
+.row .preview{font-size:13px;color:#e6e8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .status{font-size:11px;padding:2px 6px;border-radius:999px;background:#22262f;color:#8b949e;height:fit-content}
+.status.running{background:#1a2e1a;color:#7ee787}
+.status.idle{background:#22262f}
+.status.completed{background:#1a2336;color:#7aa5ff}
+.status.error{background:#3d1f1f;color:#ff7b72}
+#detail{flex:1;display:flex;flex-direction:column;min-width:0}
+#detailHead{padding:10px 12px;border-bottom:1px solid #1f232b;display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#0f1115}
+#detailHead .badge{font-size:12px;color:#8b949e}
+#history{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px;background:#0b0d11}
+.bubble{background:#151821;border:1px solid #1f232b;border-radius:12px;padding:12px 14px;white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5}
+.bubble.output{border-left:3px solid #1f6feb}
+.hint{color:#8b949e;font-size:13px;padding:12px}
+#composer{padding:12px;border-top:1px solid #1f232b;display:flex;gap:8px;background:#0f1115}
+#composer textarea{flex:1;min-height:44px;max-height:160px;resize:vertical;background:#151821;border:1px solid #1f232b;color:#e6e8eb;padding:10px 12px;border-radius:10px}
+#empty{flex:1;display:grid;place-items:center;color:#8b949e;padding:24px;text-align:center}
+a{color:#7aa5ff}
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Chi</span> Web</h1>
+  <div class="actions">
+    <button class="ghost" id="refresh">Refresh</button>
+    <button id="newBtn">New session</button>
+  </div>
+</header>
+<main>
+  <section id="sidebar">
+    <div class="sb-head">
+      <input id="newPrompt" placeholder="New session prompt — press Enter">
+      <button id="create">Create</button>
+    </div>
+    <div id="list"></div>
+  </section>
+  <section id="detail">
+    <div id="detailHead" style="display:none">
+      <strong id="detailId" style="font-family:ui-monospace,monospace"></strong>
+      <span class="badge" id="detailStatus"></span>
+      <span class="badge" id="detailDir"></span>
+      <span class="badge" id="detailModel"></span>
+      <button class="ghost" id="stopBtn">Stop</button>
+    </div>
+    <div id="history"></div>
+    <div id="empty">Select a session or create one. <br><small>Sessions are stored in <code>~/.local/state/samagotchi/sessions</code>.</small></div>
+    <div id="composer" style="display:none">
+      <textarea id="prompt" placeholder="Send a message… (Enter to send, Shift+Enter for newline)"></textarea>
+      <button id="send">Send</button>
+    </div>
+  </section>
+</main>
+<script>
+const $ = s=>document.querySelector(s);
+const listEl=$("#list"), historyEl=$("#history"), emptyEl=$("#empty"), composerEl=$("#composer"), detailHead=$("#detailHead");
+let selected=null, es=null, pollTimer=null;
+
+function api(path, opts={}){
+  return fetch(path, {headers:{"Content-Type":"application/json"}, ...opts}).then(async r=>{
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error((j.detail||j.error||r.statusText)+" ("+r.status+")");
+    return j;
+  });
+}
+function rowHtml(s){
+  return `<div class="row" data-id="${s.id}"><div class="meta"><div class="id">${s.short_id} · ${s.id.slice(0,8)}</div><div class="preview">${esc(s.preview||"—")}</div></div><span class="status ${esc(s.status)}">${esc(s.status)}</span></div>`;
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]))}
+async function refresh(){
+  const sessions=await api("/api/sessions");
+  listEl.innerHTML=sessions.length? sessions.map(rowHtml).join("") : `<div class="hint">No sessions yet. Create one.</div>`;
+  listEl.querySelectorAll(".row").forEach(el=>{
+    el.addEventListener("click",()=>select(el.dataset.id));
+    if(selected && el.dataset.id===selected) el.classList.add("active");
+  });
+}
+async function select(id){
+  selected=id;
+  document.querySelectorAll(".row").forEach(el=>el.classList.toggle("active", el.dataset.id===id));
+  emptyEl.style.display="none";
+  composerEl.style.display="flex";
+  detailHead.style.display="flex";
+  historyEl.innerHTML=`<div class="hint">Loading…</div>`;
+  closeStream();
+  try{
+    const data=await api(`/api/sessions/${id}`);
+    const s=data.session;
+    $("#detailId").textContent=s.short_id+" · "+s.id;
+    $("#detailStatus").textContent=s.status; $("#detailStatus").className="badge status "+s.status;
+    $("#detailDir").textContent=s.working_directory;
+    $("#detailModel").textContent=s.model_name;
+    renderHistory(data.history||[]);
+    openStream(id);
+    // also poll output as fallback
+    startPoll(id);
+  }catch(e){ historyEl.innerHTML=`<div class="hint">Error: ${esc(e.message)}</div>`; }
+}
+function renderHistory(chunks){
+  if(!chunks.length){ historyEl.innerHTML=`<div class="hint">No output yet. Send a message.</div>`; return; }
+  historyEl.innerHTML=chunks.map(c=>`<div class="bubble output">${esc(c)}</div>`).join("");
+  historyEl.scrollTop=historyEl.scrollHeight;
+}
+function appendChunk(text){
+  if(!text) return;
+  // remove initial hint if present
+  const hint=historyEl.querySelector(".hint");
+  if(hint) hint.remove();
+  const div=document.createElement("div");
+  div.className="bubble output";
+  div.textContent=text;
+  historyEl.appendChild(div);
+  historyEl.scrollTop=historyEl.scrollHeight;
+}
+function openStream(id){
+  // Try SSE
+  try{
+    es=new EventSource(`/api/sessions/${id}/stream`);
+    es.onmessage=e=>{
+      try{
+        const data=JSON.parse(e.data);
+        const txt=data.content||data.output||e.data;
+        if(typeof txt==="string" && txt.trim()) appendChunk(txt.trim());
+      }catch(_){ if(e.data && e.data.trim() && e.data!==": ping") appendChunk(e.data.trim()); }
+    };
+    es.onerror=()=>{/* keep polling fallback */};
+  }catch(_){}
+}
+function closeStream(){ if(es){ try{es.close()}catch(_){} es=null; } if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+function startPoll(id){
+  let seen=new Set();
+  // seed seen from current DOM
+  historyEl.querySelectorAll(".bubble").forEach(b=>seen.add(b.textContent));
+  pollTimer=setInterval(async()=>{
+    try{
+      const r=await api(`/api/sessions/${id}/output`);
+      (r.output||[]).forEach(txt=>{
+        if(!seen.has(txt)){ seen.add(txt); appendChunk(txt); }
+      });
+    }catch(_){}
+  }, 1500);
+}
+async function createSession(){
+  const prompt=$("#newPrompt").value.trim();
+  if(!prompt) return;
+  $("#create").disabled=true;
+  try{ const s=await api("/api/sessions", {method:"POST", body:JSON.stringify({prompt})}); await refresh(); select(s.id); $("#newPrompt").value=""; }catch(e){ alert(e.message); } finally{ $("#create").disabled=false; }
+}
+async function sendTurn(){
+  if(!selected) return;
+  const ta=$("#prompt"); const prompt=ta.value.trim(); if(!prompt) return;
+  $("#send").disabled=true;
+  try{ await api(`/api/sessions/${selected}/turn`, {method:"POST", body:JSON.stringify({prompt})}); ta.value=""; }catch(e){ alert(e.message); } finally{ $("#send").disabled=false; ta.focus(); }
+}
+
+$("#refresh").addEventListener("click", refresh);
+$("#create").addEventListener("click", createSession);
+$("#newPrompt").addEventListener("keydown", e=>{ if(e.key==="Enter") createSession(); });
+$("#newBtn").addEventListener("click", ()=>{ $("#newPrompt").focus(); });
+$("#send").addEventListener("click", sendTurn);
+$("#prompt").addEventListener("keydown", e=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendTurn(); }});
+$("#stopBtn").addEventListener("click", async()=>{
+  if(!selected) return;
+  if(!confirm("Stop session "+selected+"?")) return;
+  await api(`/api/sessions/${selected}/stop`, {method:"POST", body: JSON.stringify({})}); refresh();
+});
+refresh();
+</script>
+</body>
+</html>

@@ -9,7 +9,8 @@ Run with:
 - `bin/chi -p "your prompt"` — run a prompt, then stay in the REPL
 - `bin/chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
 - `bin/chi --resume <session-id>` — resume a prior session in the REPL
-- `bin/chi dashboard` — open the dashboard shim
+- `bin/chi web [--port 4567] [--open]` — start the Web UI (single localhost port, replicates dashboard)
+- `bin/chi dashboard` — open the dashboard shim (deprecated — use `chi web`)
 
 ## CLI Usage
 
@@ -68,6 +69,7 @@ See `docs/architecture.md` for a visual overview of the layers and turn flow.
 | UI | `Samagotchi::TerminalUI` | Interactive REPL (Reline), rendering (ANSI, spinner, status line), REPL commands. Delegates all core work to an `Engine`. |
 | Transport | `Samagotchi::Client`, `KernelLoop`, `Session` | HTTP transport, model↔tool loop, session data model (already clean). |
 | Bridge (SSE/HTTP) | `Samagotchi::Bridge`, `SessionManager` | **Opt-in** external-client transport: an SSE read stream + HTTP POST turn-creation surface that attaches to a worker's existing `Engine` via `Engine#subscribe`. Bound `127.0.0.1`, no auth (localhost-only). Enabled by `SAMAGOTCHI_ENABLE_BRIDGE` in the forked session worker. |
+| Web (Rack) | `Samagotchi::Web::App`, `SessionManager` | Single-port `127.0.0.1:4567` control plane that replicates the dashboard via `rack`+`webrick` (serve `index.html` + `/api/*` + SSE poll). `bin/chi web` entrypoint. |
 
 - `bin/chi` (interactive) builds `TerminalUI`. `TerminalUI#run` is the single
   dispatch for the REPL, `-p`/`--prompt`, `--non-interactive`, and `--resume`: it

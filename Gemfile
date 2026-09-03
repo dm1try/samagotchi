@@ -7,6 +7,9 @@ ruby ">= 3.0"
 gem "reline"
 gem "nokogiri"
 gem "ruby_llm"
+gem "rack", ">= 2.0"
+gem "rackup"
+gem "webrick"
 
 group :test do
   gem "rspec", "~> 3"

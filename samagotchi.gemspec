@@ -38,6 +38,9 @@ Gem::Specification.new do |spec|
   spec.add_dependency "reline"
   spec.add_dependency "nokogiri"
   spec.add_dependency "ruby_llm"
+  spec.add_dependency "rack", ">= 2.0"
+  spec.add_dependency "rackup"
+  spec.add_dependency "webrick"
 
   # Development dependencies
   spec.add_development_dependency "rspec", "~> 3"
