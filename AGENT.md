@@ -50,3 +50,4 @@ and `--resume`. Flag semantics (also in README's "CLI Usage" section):
 - Always check `AGENT.md` for current operational context.
 - Prefer `execute` for short commands and `task_create`/`task_wait` for long-running commands. Use `task_get`/`task_list` for nonblocking status checks and `task_stop` to stop a task.
 - Let `task_wait` return its timeout tail before separately reading a task `output_path`; use `done_pattern` when the command emits a reliable completion marker.
+- Sessions are file-based (`~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar). Retention is 14d/500 (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`/`MAX_COUNT`), `updated_at desc` by default, lazy sweep ≤1/24h on `GET /api/sessions` & dashboard; manual via `bin/chi sessions {list,prune,clean} --dry-run`. Use `XDG_STATE_HOME` for isolated test runs; `test_run` flag auto-set when `SAMAGOTCHI_ENV`/`RACK_ENV`/`CI`.

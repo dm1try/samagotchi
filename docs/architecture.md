@@ -91,14 +91,23 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
 | Tools | `lib/samagotchi/tools/*` | Execute, read, edit, write, memory, task_*, web_fetch, plus runtime/output-guardrails. |
 | Background | `Samagotchi::SessionManager` | Builds `Engine` directly (no terminal rendering) for workers. |
 | Web | `Samagotchi::Web::App`, `Samagotchi::Web::Server` | Rack+WEBrick single-port `127.0.0.1:4567` (index.html + `/api/*` + SSE). Replicates dashboard via file IPC. |
+| Sessions | `Samagotchi::Session`, `SessionManager` | File `sessions/<uuid>.json` + sidecar `input/`/`output/`/`pid`; retention 14d/500, `updated_at desc`, lazy sweep. |
 
 ## Entry points
 
 - `bin/chi` interactive → builds `TerminalUI`. `TerminalUI#run` is the single dispatch
   for the REPL, `-p`/`--prompt`, `--non-interactive`, and `--resume`.
 - `bin/chi web` → builds `Web::Server` (Rack+WEBrick on `127.0.0.1:4567`, `--port`/`SAMAGOTCHI_WEB_PORT`, `--open`).
+- `bin/chi sessions {list,prune,clean}` → retention & ordering (`Session.prune`, `updated_at desc`, dry-run, test-only).
 - `bin/chi dashboard` → deprecated, use `chi web`.
 - `--prompt`, `--non-interactive`, and `SessionManager` workers build `Engine` directly.
+
+## Session retention & ordering
+
+- **Files:** `~/.local/state/samagotchi/sessions/<uuid>.json` + `<uuid>/input|output|pid` (XDG-aware).
+- **Retention:** 14 days / 500 cap (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`/`MAX_COUNT`, `KEEP_STATUS=running`), live-worker guard, only when `*.json` present; lazy sweep ≤1/24h on `GET /api/sessions` & `Dashboard#render_list`, manual via `bin/chi sessions prune --dry-run`.
+- **Ordering:** `Session.list(sort:,order:,limit:,offset:)` and `GET /api/sessions?sort=&order=&limit=&offset=` default `updated_at desc`; Web UI sort/filter/pagination.
+- **Test hygiene:** `test_run` flag when `SAMAGOTCHI_ENV=test`/`RACK_ENV=test`/`CI`, targetable via `prune --test-only` / `clean`.
 
 ## Minimal core usage
 

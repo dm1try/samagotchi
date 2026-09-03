@@ -11,6 +11,7 @@ Run with:
 - `bin/chi --resume <session-id>` — resume a prior session in the REPL
 - `bin/chi web [--port 4567] [--open]` — start the Web UI (single localhost port, replicates dashboard)
 - `bin/chi dashboard` — open the dashboard shim (deprecated — use `chi web`)
+- `bin/chi sessions list|prune|clean` — manage persisted sessions (retention + ordering, see below)
 
 ## CLI Usage
 
@@ -70,6 +71,7 @@ See `docs/architecture.md` for a visual overview of the layers and turn flow.
 | Transport | `Samagotchi::Client`, `KernelLoop`, `Session` | HTTP transport, model↔tool loop, session data model (already clean). |
 | Bridge (SSE/HTTP) | `Samagotchi::Bridge`, `SessionManager` | **Opt-in** external-client transport: an SSE read stream + HTTP POST turn-creation surface that attaches to a worker's existing `Engine` via `Engine#subscribe`. Bound `127.0.0.1`, no auth (localhost-only). Enabled by `SAMAGOTCHI_ENABLE_BRIDGE` in the forked session worker. |
 | Web (Rack) | `Samagotchi::Web::App`, `SessionManager` | Single-port `127.0.0.1:4567` control plane that replicates the dashboard via `rack`+`webrick` (serve `index.html` + `/api/*` + SSE poll). `bin/chi web` entrypoint. |
+| Sessions | `Samagotchi::Session`, `SessionManager` | File-based `~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar `input/`/`output/`/`pid`; retention (14d/500) + ordering (`updated_at desc`). |
 
 - `bin/chi` (interactive) builds `TerminalUI`. `TerminalUI#run` is the single
   dispatch for the REPL, `-p`/`--prompt`, `--non-interactive`, and `--resume`: it
@@ -140,6 +142,54 @@ without that flag never loads the bridge or binds a port. The per-session port i
 OS-assigned (bound to `0`) and published to a `bridge.json` sidecar for client discovery.
 Resume/ring-buffer state is **in-memory** (v1) — durable cross-process resume is a staged
 next step, not part of v1.
+
+## Session Management & Retention
+
+Sessions are plain files — no DB. Each session is `~/.local/state/samagotchi/sessions/<uuid>.json` (XDG-aware via `XDG_STATE_HOME`) plus a sidecar dir `<uuid>/` with `input/`/`output/`/`pid`/`bridge.json` (`Session.session_dir`).
+
+**Retention (file-based, opt-out via env):**
+
+| Env | Default | Purpose |
+|-----|---------|---------|
+| `SAMAGOTCHI_SESSION_RETENTION_DAYS` | `14` (`0`=forever) | Delete if `updated_at` older than N days |
+| `SAMAGOTCHI_SESSION_MAX_COUNT` | `500` (`0`=uncapped) | Keep newest N, prune overflow |
+| `SAMAGOTCHI_SESSION_KEEP_STATUS` | `running` | CSV of statuses never auto-pruned |
+| `SAMAGOTCHI_SESSION_SWEEP_INTERVAL_HOURS` | `24` | Throttle lazy sweep |
+
+A session is deleted if **expired by age OR overflow by count** (unless `keep_status` or live-worker guard). Orphan dirs without a `*.json` are never deleted. Deletion removes both `*.json` and sidecar dir atomically. Set both `DAYS=0` and `MAX=0` to retain forever.
+
+**Lazy sweep:** automatic prune runs at most once per 24h on `GET /api/sessions` (Web) and `Dashboard#render_list`. No background thread or cron. Manual prune is always available.
+
+**CLI:**
+
+```sh
+bin/chi sessions list [--sort updated_at|created_at] [--order desc|asc] [--limit N]
+bin/chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
+bin/chi sessions clean [--dry-run] [--days N] [--keep N]   # alias to prune --test-only
+```
+
+Examples:
+
+```sh
+bin/chi sessions list --sort updated_at --order desc --limit 20
+bin/chi sessions prune --dry-run --days 14 --keep 500
+bin/chi sessions prune --days 14 --keep 500          # actually delete
+bin/chi sessions clean --dry-run --days 7            # only test sessions
+```
+
+`--dry-run` is the safe preview (your choice #5). Web has no prune endpoint; use the CLI.
+
+**Ordering:**
+
+- `Session.list` / `SessionManager.list_sessions` / `GET /api/sessions?sort=&order=&limit=&offset=` default to `updated_at desc` (newest activity first). Also supports `created_at`, `asc`. `X-Total-Count` header when paginated.
+- Web UI (`bin/chi web`) has sort select (Updated/Created), order toggle (Desc/Asc), filter input (preview/id/status), `localStorage` persistence, and pagination (first 100 + Show all) to avoid 10k-row jank.
+- Dashboard orders the same way.
+
+**Test-session hygiene:**
+
+- New sessions set `test_run:true` when `SAMAGOTCHI_ENV=test` or `RACK_ENV=test` or `CI` is set (explicit flag, `metadata_version` 2). Old sessions without the flag load as `test_run:false`.
+- Future `CI`/test runs are tagged and obey the same retention but can be targeted via `bin/chi sessions prune --test-only` or `bin/chi sessions clean`.
+- For ad-hoc manual QA use `XDG_STATE_HOME=/tmp/chi-test-$USER bin/chi ...` to isolate from real state.
 
 ## Global Config File
 
