@@ -11,17 +11,22 @@ README's **Architecture** section.
                           │           (CLI entry point)             │
                           └───────────────────┬─────────────────────┘
                                               │
-                    ┌──────────────────────────┴──────────────┐
-                    │           TerminalUI                     │  ← REPL (Reline),
-                    │   render · status line · REPL commands   │    rendering, commands
-                    └──────────────────────────┬──────────────┘
-                                                 │ delegates
-                     ┌───────────────────────────┴───────────────────────┐
-                     │                    Engine (core logic)             │
-                     │   system prompt · memory injection                  │
-                     │   tool declarations · session lifecycle           │
-                     │   model↔tool loop — `run_turn`                    │
-                     └───────────────────────────┬───────────────────────┘
+                     ┌──────────────────────────┴──────────────┐
+                     │           TerminalUI                     │  ← REPL (Reline),
+                     │   render · status line · REPL commands   │    rendering, commands
+                     └──────────────────────────┬──────────────┘
+                                                  │ delegates
+                      ┌───────────────────────────┴───────────────────────┐
+                      │                    Engine (core logic)             │
+                      │   system prompt · memory injection                  │
+                      │   tool declarations · session lifecycle           │
+                      │   model↔tool loop — `run_turn`                    │
+                      └───────────────────────────┬───────────────────────┘
+                                                  │ delegates
+                     ┌────────────────────────────┴──────────────┐
+                     │             Web::App (Rack)                │ ← browser UI
+                     │   dashboard parity · SSE poll · /api/*      │   via SessionManager file IPC
+                     └───────────────────────────┬───────────────┘
                                                    │
         ┌───────────────────────────────┬──────────┴───────────────┬──────────────────┐
         │                                 │                          │                  │
@@ -85,11 +90,14 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
 | Transport | `Samagotchi::Client`, `KernelLoop`, `Session` | HTTP transport, model↔tool loop, session data model. |
 | Tools | `lib/samagotchi/tools/*` | Execute, read, edit, write, memory, task_*, web_fetch, plus runtime/output-guardrails. |
 | Background | `Samagotchi::SessionManager` | Builds `Engine` directly (no terminal rendering) for workers. |
+| Web | `Samagotchi::Web::App`, `Samagotchi::Web::Server` | Rack+WEBrick single-port `127.0.0.1:4567` (index.html + `/api/*` + SSE). Replicates dashboard via file IPC. |
 
 ## Entry points
 
 - `bin/chi` interactive → builds `TerminalUI`. `TerminalUI#run` is the single dispatch
   for the REPL, `-p`/`--prompt`, `--non-interactive`, and `--resume`.
+- `bin/chi web` → builds `Web::Server` (Rack+WEBrick on `127.0.0.1:4567`, `--port`/`SAMAGOTCHI_WEB_PORT`, `--open`).
+- `bin/chi dashboard` → deprecated, use `chi web`.
 - `--prompt`, `--non-interactive`, and `SessionManager` workers build `Engine` directly.
 
 ## Minimal core usage

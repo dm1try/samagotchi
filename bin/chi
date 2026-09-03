@@ -9,7 +9,7 @@ require "samagotchi/config_file"
 Samagotchi::ConfigFile.load_global_env!
 require "samagotchi"
 
-options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, dashboard: false }
+options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, dashboard: false, web: false, web_port: nil, web_open: false }
 
 OptionParser.new do |opts|
   opts.banner = "Usage: bin/chi [options] [subcommand]"
@@ -21,16 +21,41 @@ OptionParser.new do |opts|
   opts.on("--non-interactive", "Run a single prompt and exit (no REPL, implies --no-interrupt)") { options[:non_interactive] = true }
   opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results") { options[:verbose] = true }
   opts.on("--no-default-input", "Skip default REPL input prefill") { options[:no_default_input] = true }
+  opts.on("--port PORT", "Port for `chi web` (default: 4567, env SAMAGOTCHI_WEB_PORT)") { |p| options[:web_port] = p.to_i }
+  opts.on("--open", "Open browser for `chi web`") { options[:web_open] = true }
   opts.on("-h", "--help", "Show help") { puts opts; exit }
 end.parse!
 
-# Handle subcommands
+# Handle subcommands (support `chi web --port 4567 --open` and `chi dashboard`)
+web_args = ARGV.dup
 case ARGV[0]
 when "dashboard"
   options[:dashboard] = true
+when "web"
+  options[:web] = true
+  # consume subcommand and re-parse web-specific flags that may follow it
+  web_args.shift
+  web_args.each_with_index do |arg, i|
+    if arg == "--port" && web_args[i + 1]
+      options[:web_port] = web_args[i + 1].to_i
+    elsif arg == "--open"
+      options[:web_open] = true
+    elsif arg.start_with?("--port=")
+      options[:web_port] = arg.split("=", 2).last.to_i
+    end
+  end
+end
+
+if options[:web]
+  require "samagotchi/web/server"
+  port = options[:web_port]
+  port = ENV.fetch("SAMAGOTCHI_WEB_PORT", port || 4567).to_i
+  Samagotchi::Web::Server.start(port: port, open_browser: options[:web_open])
+  exit
 end
 
 if options[:dashboard]
+  warn "[deprecated] `chi dashboard` is deprecated — use `chi web` instead"
   require "samagotchi/dashboard"
   Samagotchi::Dashboard.new.run
   exit
