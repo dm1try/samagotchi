@@ -75,8 +75,74 @@ module Samagotchi
     end
 
     # List all sessions, reading status from persisted session.json files.
-    def self.list_sessions(state_dir: nil)
-      Session.list(state_dir: state_dir || Session.default_state_dir)
+    def self.list_sessions(state_dir: nil, sort: "updated_at", order: "desc", limit: nil, offset: 0)
+      Session.list(state_dir: state_dir || Session.default_state_dir, sort: sort, order: order, limit: limit, offset: offset)
+    end
+
+    # Prune sessions per retention policy. Delegates to Session.prune with live-worker guard.
+    def self.prune_sessions(state_dir: nil, days: nil, max_count: nil, keep_status: nil, dry_run: false, test_only: false)
+      sd = state_dir || Session.default_state_dir
+      days = resolve_retention_days(days)
+      max_count = resolve_retention_max_count(max_count)
+      keep_status = resolve_retention_keep_status(keep_status)
+      Session.prune(
+        state_dir: sd,
+        days: days,
+        max_count: max_count,
+        keep_status: keep_status,
+        dry_run: dry_run,
+        test_only: test_only,
+        alive_check: ->(sid) { worker_alive_for_session?(sid, state_dir: sd) }
+      )
+    end
+
+    # Lazy sweep guard: runs prune at most once per RETENTION_SWEEP_INTERVAL_HOURS.
+    RETENTION_MARKER = ".last_retention"
+    RETENTION_SWEEP_INTERVAL_HOURS = 24
+
+    def self.retention_sweep_if_due(state_dir: nil)
+      sd = state_dir || Session.default_state_dir
+      return unless Dir.exist?(sd)
+
+      interval = (ENV.fetch("SAMAGOTCHI_SESSION_SWEEP_INTERVAL_HOURS", RETENTION_SWEEP_INTERVAL_HOURS.to_s).to_i * 3600)
+      marker = File.join(sd, RETENTION_MARKER)
+      if File.exist?(marker)
+        age = Time.now - File.mtime(marker)
+        return if age < interval
+      end
+      result = prune_sessions(state_dir: sd)
+      FileUtils.touch(marker)
+      if result[:deleted].any?
+        warn "[retention] pruned #{result[:deleted].size} sessions (kept #{result[:kept].size})"
+      end
+      result
+    rescue StandardError => e
+      warn "[retention] sweep failed: #{e.class}: #{e.message}"
+      nil
+    end
+
+    private_class_method def self.resolve_retention_days(val)
+      return val.to_i if !val.nil? && val.to_s.strip != ""
+      env = ENV["SAMAGOTCHI_SESSION_RETENTION_DAYS"]
+      return env.to_i if env && !env.strip.empty?
+      Session::DEFAULT_RETENTION_DAYS
+    end
+
+    private_class_method def self.resolve_retention_max_count(val)
+      return val.to_i if !val.nil? && val.to_s.strip != ""
+      env = ENV["SAMAGOTCHI_SESSION_MAX_COUNT"]
+      return env.to_i if env && !env.strip.empty?
+      Session::DEFAULT_MAX_COUNT
+    end
+
+    private_class_method def self.resolve_retention_keep_status(val)
+      raw = if !val.nil? && val.to_s.strip != ""
+              val.to_s
+            else
+              ENV["SAMAGOTCHI_SESSION_KEEP_STATUS"] || ENV["SAMAGOTCHI_SESSION_RETENTION_KEEP_STATUS"]
+            end
+      return Session::DEFAULT_KEEP_STATUS if raw.nil? || raw.strip.empty?
+      raw.split(",").map(&:strip).reject(&:empty?)
     end
 
     # Attach to a session: write a message to its input directory and read output.

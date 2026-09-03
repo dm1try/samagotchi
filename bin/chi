@@ -9,6 +9,77 @@ require "samagotchi/config_file"
 Samagotchi::ConfigFile.load_global_env!
 require "samagotchi"
 
+# Early handle `sessions` subcommand before OptionParser (has its own flags like --dry-run)
+if ARGV[0] == "sessions"
+  require "samagotchi/session"
+  require "samagotchi/session_manager"
+  sessions_args = ARGV[1..] || []
+  sub = sessions_args[0]
+  if sub.nil? || %w[-h --help help].include?(sub)
+    puts "Usage: bin/chi sessions <list|prune|clean> [options]"
+    puts "  list [--sort updated_at|created_at] [--order desc|asc] [--limit N]"
+    puts "  prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]"
+    puts "  clean [--dry-run] [--days N] [--keep N]   # alias to prune --test-only"
+    puts "Defaults: days=14 keep=500 keep_status=running (env overrides: SAMAGOTCHI_SESSION_RETENTION_DAYS etc.)"
+    exit 0
+  end
+  dry_run = sessions_args.include?("--dry-run")
+  test_only = sessions_args.include?("--test-only") || sessions_args.include?("--test")
+  days = nil
+  keep = nil
+  keep_status = nil
+  sort = nil
+  order = nil
+  limit = nil
+  sessions_args.each_with_index do |arg, i|
+    nxt = sessions_args[i+1]
+    if arg == "--days" && nxt then days = nxt.to_i
+    elsif arg.start_with?("--days=") then days = arg.split("=",2).last.to_i
+    elsif arg == "--keep" && nxt then keep = nxt.to_i
+    elsif arg.start_with?("--keep=") then keep = arg.split("=",2).last.to_i
+    elsif arg == "--keep-status" && nxt then keep_status = nxt
+    elsif arg.start_with?("--keep-status=") then keep_status = arg.split("=",2).last
+    elsif arg == "--sort" && nxt then sort = nxt
+    elsif arg.start_with?("--sort=") then sort = arg.split("=",2).last
+    elsif arg == "--order" && nxt then order = nxt
+    elsif arg.start_with?("--order=") then order = arg.split("=",2).last
+    elsif arg == "--limit" && nxt then limit = nxt.to_i
+    elsif arg.start_with?("--limit=") then limit = arg.split("=",2).last.to_i
+    end
+  end
+  case sub
+  when "list"
+    sort ||= "updated_at"
+    order ||= "desc"
+    sessions = Samagotchi::SessionManager.list_sessions(sort: sort, order: order, limit: limit)
+    if sessions.empty?
+      puts "No sessions."
+    else
+      sessions.each do |s|
+        flag = s.test_run ? " [test]" : ""
+        puts "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{s.last_prompt.to_s.gsub(/\s+/, ' ')[0,60]}#{flag}"
+      end
+      puts "\n#{sessions.size} session(s) (sort=#{sort} order=#{order})"
+    end
+    exit 0
+  when "prune", "clean"
+    test_only = true if sub == "clean" && !sessions_args.include?("--all")
+    result = Samagotchi::SessionManager.prune_sessions(days: days, max_count: keep, keep_status: keep_status, dry_run: dry_run, test_only: test_only)
+    mode = dry_run ? "Would delete" : "Deleted"
+    puts "#{mode} #{result[:deleted].size} sessions (kept #{result[:kept].size}, skipped #{result[:skipped].size})"
+    if result[:deleted].any?
+      result[:deleted].each { |id| puts "  #{id}" }
+    end
+    if dry_run && result[:deleted].any?
+      puts "\nRun without --dry-run to delete."
+    end
+    exit 0
+  else
+    warn "Unknown sessions subcommand: #{sub}. Use: list, prune, clean"
+    exit 1
+  end
+end
+
 options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, dashboard: false, web: false, web_port: nil, web_open: false }
 
 OptionParser.new do |opts|

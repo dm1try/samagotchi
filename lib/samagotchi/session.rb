@@ -7,7 +7,7 @@ require "time"
 
 module Samagotchi
   class Session
-    METADATA_VERSION = 1
+    METADATA_VERSION = 2
     STATE_SUBDIR = File.join("samagotchi", "sessions")
     FILE_EXT = ".json"
 
@@ -17,11 +17,18 @@ module Samagotchi
     STATUS_ERROR = "error"
     STATUS_STOPPED = "stopped"
 
+    # Retention / ordering defaults (14 days, 500 sessions) — env overrides in SessionManager.
+    DEFAULT_RETENTION_DAYS = 14
+    DEFAULT_MAX_COUNT = 500
+    DEFAULT_KEEP_STATUS = [STATUS_RUNNING].freeze
+    SORT_KEYS = %w[created_at updated_at].freeze
+    SORT_ORDERS = %w[asc desc].freeze
+
     attr_accessor :id, :metadata_version, :mode, :model_name, :working_directory, :messages,
-                  :created_at, :updated_at, :status, :last_prompt
+                  :created_at, :updated_at, :status, :last_prompt, :test_run
 
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
-                   metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "")
+                   metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "", test_run: false)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -32,11 +39,17 @@ module Samagotchi
       @updated_at = updated_at
       @status = status
       @last_prompt = last_prompt
+      @test_run = !!test_run
     end
 
     # Build a new, unsaved session.
-    def self.new_session(mode:, model_name:, working_directory:)
+    def self.new_session(mode:, model_name:, working_directory:, test_run: nil)
       now = Time.now.iso8601(3)
+      resolved_test = if test_run.nil?
+                        test_session_env?
+                      else
+                        !!test_run
+                      end
       new(
         id: SecureRandom.uuid,
         mode: mode.to_s,
@@ -45,8 +58,13 @@ module Samagotchi
         messages: [],
         created_at: now,
         updated_at: now,
-        status: STATUS_IDLE
+        status: STATUS_IDLE,
+        test_run: resolved_test
       )
+    end
+
+    def self.test_session_env?(env: ENV)
+      env["SAMAGOTCHI_ENV"].to_s == "test" || env["RACK_ENV"].to_s == "test" || !env["CI"].to_s.strip.empty?
     end
 
     # Load a persisted session by its UUID.
@@ -58,7 +76,7 @@ module Samagotchi
       messages = (data["messages"] || []).map { |msg| symbolize_message_keys(msg) }
       new(
         id: data.fetch("id"),
-        metadata_version: data.fetch("metadata_version", METADATA_VERSION),
+        metadata_version: data.fetch("metadata_version", 1),
         mode: data.fetch("mode"),
         model_name: data.fetch("model_name"),
         working_directory: data.fetch("working_directory"),
@@ -66,21 +84,26 @@ module Samagotchi
         created_at: data.fetch("created_at"),
         updated_at: data.fetch("updated_at"),
         status: data.fetch("status", STATUS_IDLE),
-        last_prompt: data.fetch("last_prompt", "")
+        last_prompt: data.fetch("last_prompt", ""),
+        test_run: data.fetch("test_run", false)
       )
     rescue JSON::ParserError => e
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
     end
 
-    # Return all saved sessions sorted by created_at (oldest first).
-    def self.list(state_dir: default_state_dir)
+    # Return all saved sessions sorted by updated_at desc by default (newest first).
+    # Supports sort: created_at|updated_at and order: asc|desc.
+    def self.list(state_dir: default_state_dir, sort: "updated_at", order: "desc", limit: nil, offset: 0)
       return [] unless Dir.exist?(state_dir)
 
-      Dir.glob(File.join(state_dir, "*#{FILE_EXT}")).filter_map do |path|
+      sort_key = SORT_KEYS.include?(sort.to_s) ? sort.to_s : "updated_at"
+      sort_order = SORT_ORDERS.include?(order.to_s) ? order.to_s : "desc"
+
+      sessions = Dir.glob(File.join(state_dir, "*#{FILE_EXT}")).filter_map do |path|
         data = JSON.parse(File.read(path))
         new(
           id: data.fetch("id"),
-          metadata_version: data.fetch("metadata_version", METADATA_VERSION),
+          metadata_version: data.fetch("metadata_version", 1),
           mode: data.fetch("mode"),
           model_name: data.fetch("model_name"),
           working_directory: data.fetch("working_directory"),
@@ -88,16 +111,131 @@ module Samagotchi
           created_at: data.fetch("created_at"),
           updated_at: data.fetch("updated_at"),
           status: data.fetch("status", STATUS_IDLE),
-          last_prompt: data.fetch("last_prompt", "")
+          last_prompt: data.fetch("last_prompt", ""),
+          test_run: data.fetch("test_run", false)
         )
       rescue JSON::ParserError, KeyError
         nil
-      end.sort_by(&:created_at)
+      end
+
+      sorted = sessions.sort_by do |s|
+        val = sort_key == "created_at" ? s.created_at : s.updated_at
+        begin
+          Time.iso8601(val.to_s)
+        rescue ArgumentError
+          Time.at(0)
+        end
+      end
+      sorted.reverse! if sort_order == "desc"
+      # Apply offset/limit if given
+      off = offset.to_i
+      sorted = sorted.drop(off) if off.positive?
+      if limit && limit.to_i.positive?
+        sorted = sorted.first(limit.to_i)
+      end
+      sorted
+    end
+
+    # Prune old sessions according to retention policy.
+    #
+    # Only deletes when the json file exists — orphan dirs without json are never removed.
+    # Honors keep_status and live-worker guard.
+    # A session is kept only if it is NOT expired by age AND within max_count;
+    # either expiry or overflow triggers deletion (unless protected).
+    #
+    # @return [Hash] { deleted: [ids], kept: [ids], skipped: [ids] }
+    def self.prune(state_dir: default_state_dir, days: DEFAULT_RETENTION_DAYS, max_count: DEFAULT_MAX_COUNT,
+                   keep_status: DEFAULT_KEEP_STATUS, dry_run: false, test_only: false, alive_check: nil)
+      keep_status = Array(keep_status).map(&:to_s)
+      # Fetch all sessions sorted newest-first for count logic
+      all = list(state_dir: state_dir, sort: "updated_at", order: "desc")
+      # Filter test_only if requested
+      if test_only
+        all = all.select(&:test_run)
+      end
+
+      now = Time.now
+      cutoff = days.to_i.positive? ? now - days.to_i * 86_400 : nil
+      max = max_count.to_i
+
+      deleted = []
+      kept = []
+      skipped = []
+
+      all.each_with_index do |session, idx|
+        path = File.join(state_dir, "#{session.id}#{FILE_EXT}")
+        # Only when json present
+        unless File.exist?(path)
+          skipped << session.id
+          next
+        end
+
+        # Protected by keep_status
+        if keep_status.include?(session.status.to_s)
+          kept << session.id
+          next
+        end
+
+        # Protected by live worker
+        if alive_check
+          begin
+            if alive_check.call(session.id)
+              kept << session.id
+              next
+            end
+          rescue StandardError
+            nil
+          end
+        end
+
+        # Determine expiry and overflow
+        expired = false
+        if cutoff
+          begin
+            updated = Time.iso8601(session.updated_at.to_s)
+          rescue ArgumentError
+            updated = File.mtime(path) rescue now
+          end
+          expired = updated < cutoff
+        end
+
+        overflow = max.positive? && idx >= max
+
+        # retain forever when both disabled
+        if max.zero? && cutoff.nil?
+          kept << session.id
+          next
+        end
+
+        # If neither expired nor overflow, keep
+        unless expired || overflow
+          kept << session.id
+          next
+        end
+
+        # Eligible for deletion
+        if dry_run
+          deleted << session.id
+        else
+          begin
+            FileUtils.rm_f(path)
+            sidecar = File.join(state_dir, session.id)
+            FileUtils.rm_rf(sidecar) if File.exist?(sidecar)
+            deleted << session.id
+          rescue StandardError
+            skipped << session.id
+          end
+        end
+      end
+
+      { deleted: deleted, kept: kept, skipped: skipped }
     end
 
     # Persist the session atomically. Updates +updated_at+ in place.
     def save(state_dir: self.class.default_state_dir)
       @updated_at = Time.now.iso8601(3)
+      # Persist with current metadata version so new flag is written
+      @metadata_version = METADATA_VERSION
       FileUtils.mkdir_p(state_dir)
 
       path = File.join(state_dir, "#{@id}#{FILE_EXT}")
@@ -113,7 +251,8 @@ module Samagotchi
         "created_at" => @created_at,
         "updated_at" => @updated_at,
         "status" => @status,
-        "last_prompt" => @last_prompt
+        "last_prompt" => @last_prompt,
+        "test_run" => !!@test_run
       }
 
       File.write(temp_path, JSON.pretty_generate(record) + "\n")

@@ -124,9 +124,17 @@ module Samagotchi
       :refresh
     end
 
-    # Print the banner and the numbered session list (ordered by created_at).
+    # Print the banner and the numbered session list (ordered by updated_at desc).
     # Populates @sessions so dispatch can resolve numeric indices.
+    # Lazy retention sweep (once per 24h) runs here as well as in Web::App.
     def render_list
+      if @manager.respond_to?(:retention_sweep_if_due)
+        begin
+          @manager.retention_sweep_if_due(state_dir: @state_dir)
+        rescue StandardError
+          nil
+        end
+      end
       @sessions = @manager.list_sessions
       $stdout.puts BANNER
       $stdout.puts ("=" * BANNER.length)

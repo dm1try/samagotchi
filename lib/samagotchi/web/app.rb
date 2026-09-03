@@ -87,14 +87,60 @@ module Samagotchi
         error_response(403, "forbidden", "only 127.0.0.1 is allowed")
       end
 
-      def handle_list(_req)
+      def handle_list(req)
+        # Lazy retention sweep (once per 24h)
+        if @manager.respond_to?(:retention_sweep_if_due)
+          begin
+            @manager.retention_sweep_if_due(state_dir: @state_dir)
+          rescue StandardError
+            nil
+          end
+        end
+        sort = sanitize_sort(req.params["sort"])
+        order = sanitize_order(req.params["order"])
+        limit = sanitize_limit(req.params["limit"])
+        offset = sanitize_offset(req.params["offset"])
         sessions = if @state_dir
-                     @manager.list_sessions(state_dir: @state_dir)
+                     @manager.list_sessions(state_dir: @state_dir, sort: sort, order: order, limit: limit, offset: offset)
                    else
-                     @manager.list_sessions
+                     @manager.list_sessions(sort: sort, order: order, limit: limit, offset: offset)
                    end
         payload = sessions.map { |s| session_to_json(s) }
-        json_response(200, payload)
+        # Expose total via header for pagination (total unordered count)
+        headers = { "Content-Type" => "application/json; charset=utf-8", "Cache-Control" => "no-store", "Access-Control-Allow-Origin" => "*" }
+        # Compute total without limit/offset for header
+        if limit || offset.positive?
+          total = if @state_dir
+                    @manager.list_sessions(state_dir: @state_dir, sort: sort, order: order).size
+                  else
+                    @manager.list_sessions(sort: sort, order: order).size
+                  end
+          headers["X-Total-Count"] = total.to_s
+        end
+        body = JSON.generate(payload)
+        headers["Content-Length"] = body.bytesize.to_s
+        [200, headers, [body]]
+      end
+
+      def sanitize_sort(val)
+        %w[created_at updated_at].include?(val.to_s) ? val.to_s : "updated_at"
+      end
+
+      def sanitize_order(val)
+        %w[asc desc].include?(val.to_s) ? val.to_s : "desc"
+      end
+
+      def sanitize_limit(val)
+        return nil if val.nil? || val.to_s.strip.empty?
+        n = val.to_i
+        return nil if n <= 0
+        [n, 1000].min
+      end
+
+      def sanitize_offset(val)
+        return 0 if val.nil? || val.to_s.strip.empty?
+        n = val.to_i
+        n.positive? ? n : 0
       end
 
       def handle_create(req)
@@ -292,7 +338,8 @@ module Samagotchi
           updated_at: s.updated_at,
           last_prompt: s.last_prompt,
           preview: preview,
-          short_id: s.id.to_s[0, 8]
+          short_id: s.id.to_s[0, 8],
+          test_run: !!s.test_run
         }
       end
 

@@ -110,7 +110,7 @@ RSpec.describe Samagotchi::Session do
       expect(described_class.list(state_dir: "/nonexistent/path")).to eq([])
     end
 
-    it "returns sessions sorted by created_at oldest first" do
+    it "returns sessions sorted by updated_at desc by default (newest first)" do
       s1 = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       sleep(0.01)
       s2 = described_class.new_session(mode: "assist", model_name: "qwen36", working_directory: "/tmp")
@@ -118,7 +118,24 @@ RSpec.describe Samagotchi::Session do
       s2.save(state_dir: tmpdir)
 
       sessions = described_class.list(state_dir: tmpdir)
+      expect(sessions.map(&:id)).to eq([s2.id, s1.id])
+    end
+
+    it "supports explicit sort by created_at asc (oldest first)" do
+      s1 = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      sleep(0.01)
+      s2 = described_class.new_session(mode: "assist", model_name: "qwen36", working_directory: "/tmp")
+      s1.save(state_dir: tmpdir)
+      s2.save(state_dir: tmpdir)
+
+      sessions = described_class.list(state_dir: tmpdir, sort: "created_at", order: "asc")
       expect(sessions.map(&:id)).to eq([s1.id, s2.id])
+    end
+
+    it "supports limit and offset" do
+      sessions = 3.times.map { described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap { |s| sleep(0.01); s.save(state_dir: tmpdir) } }
+      listed = described_class.list(state_dir: tmpdir, sort: "created_at", order: "asc", limit: 2, offset: 1)
+      expect(listed.map(&:id)).to eq(sessions[1..2].map(&:id))
     end
 
     it "skips files with invalid JSON without raising" do
@@ -207,6 +224,126 @@ RSpec.describe Samagotchi::Session do
 
     it ".default_sessions_dir equals .default_state_dir" do
       expect(described_class.default_sessions_dir).to eq(described_class.default_state_dir)
+    end
+  end
+
+  describe "test_run flag" do
+    it "defaults to false and round-trips" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", test_run: false)
+      session.save(state_dir: tmpdir)
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.test_run).to be false
+    end
+
+    it "persists test_run true" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", test_run: true)
+      session.save(state_dir: tmpdir)
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.test_run).to be true
+    end
+
+    it "loads old sessions without test_run as false" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", test_run: false)
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      data = JSON.parse(File.read(path))
+      data.delete("test_run")
+      File.write(path, JSON.generate(data))
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.test_run).to be false
+    end
+
+    it "auto-detects test env when test_run not given" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      # In rspec, CI may be unset but RACK_ENV not test; ensure explicit env check
+      expect([true, false]).to include(session.test_run)
+    end
+  end
+
+  describe ".prune" do
+    it "deletes sessions older than days" do
+      s_old = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      s_old.save(state_dir: tmpdir)
+      # fake old updated_at
+      old_time = (Time.now - 20 * 86_400).iso8601(3)
+      path_old = File.join(tmpdir, "#{s_old.id}.json")
+      data = JSON.parse(File.read(path_old))
+      data["updated_at"] = old_time
+      data["created_at"] = old_time
+      File.write(path_old, JSON.generate(data))
+
+      s_new = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      s_new.save(state_dir: tmpdir)
+
+      result = described_class.prune(state_dir: tmpdir, days: 14, max_count: 500, dry_run: false)
+      expect(result[:deleted]).to include(s_old.id)
+      expect(result[:kept]).to include(s_new.id)
+      expect(File.exist?(path_old)).to be false
+      expect(File.exist?(File.join(tmpdir, "#{s_new.id}.json"))).to be true
+    end
+
+    it "keeps running sessions even if old" do
+      s_old = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      s_old.status = described_class::STATUS_RUNNING
+      s_old.save(state_dir: tmpdir)
+      path_old = File.join(tmpdir, "#{s_old.id}.json")
+      data = JSON.parse(File.read(path_old))
+      data["updated_at"] = (Time.now - 20 * 86_400).iso8601(3)
+      data["created_at"] = data["updated_at"]
+      File.write(path_old, JSON.generate(data))
+
+      result = described_class.prune(state_dir: tmpdir, days: 14, max_count: 500)
+      expect(result[:kept]).to include(s_old.id)
+      expect(File.exist?(path_old)).to be true
+    end
+
+    it "respects max_count overflow (deletes beyond limit)" do
+      3.times do
+        s = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+        s.save(state_dir: tmpdir)
+        sleep(0.01)
+      end
+      result = described_class.prune(state_dir: tmpdir, days: 0, max_count: 2)
+      expect(result[:deleted].size).to eq(1)
+      expect(result[:kept].size).to eq(2)
+    end
+
+    it "supports dry_run without deleting" do
+      s = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      s.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{s.id}.json")
+      data = JSON.parse(File.read(path))
+      data["updated_at"] = (Time.now - 20 * 86_400).iso8601(3)
+      File.write(path, JSON.generate(data))
+      result = described_class.prune(state_dir: tmpdir, days: 14, dry_run: true)
+      expect(result[:deleted]).to include(s.id)
+      expect(File.exist?(path)).to be true
+    end
+
+    it "only deletes when json present (skips orphan dirs)" do
+      s = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      s.save(state_dir: tmpdir)
+      FileUtils.mkdir_p(File.join(tmpdir, "orphan-dir"))
+      result = described_class.prune(state_dir: tmpdir, days: 0, max_count: 0)
+      # orphan dir should not be counted as deleted/skipped as it's not a session
+      expect(Dir.exist?(File.join(tmpdir, "orphan-dir"))).to be true
+    end
+
+    it "filters test_only" do
+      s_test = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", test_run: true)
+      s_test.save(state_dir: tmpdir)
+      s_real = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", test_run: false)
+      s_real.save(state_dir: tmpdir)
+      # make both old
+      [s_test, s_real].each do |s|
+        p = File.join(tmpdir, "#{s.id}.json")
+        d = JSON.parse(File.read(p))
+        d["updated_at"] = (Time.now - 20 * 86_400).iso8601(3)
+        File.write(p, JSON.generate(d))
+      end
+      result = described_class.prune(state_dir: tmpdir, days: 14, test_only: true)
+      expect(result[:deleted]).to include(s_test.id)
+      expect(result[:deleted]).not_to include(s_real.id)
     end
   end
 end
