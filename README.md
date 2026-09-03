@@ -285,11 +285,29 @@ class ToolCounter
 end
 ```
 
-**Blocking turns with a policy check:**
+**Blocking tool calls with a guardrail (veto):**
 
 ```ruby
 # ~/.config/samagotchi/hooks/safety.rb
 class Safety
+  def call(event)
+    return unless event[:type] == :before_tool_call
+    tool = event[:call][:name]
+    if tool == "execute" && event[:call][:content]&.include?("rm -rf /")
+      event[:blocked] = true
+      event[:block_reason] = "dangerous command denied by policy"
+    end
+  end
+end
+```
+
+When `event[:blocked] = true`, the tool is not dispatched. The model receives `Error: blocked by guardrail: <reason>` as the tool output (with `block_reason` or default `blocked by hook`), activity status is `blocked`, and `:after_tool_call` still fires. Only `:before_tool_call` supports veto — `blocked` is ignored on other hooks.
+
+**Mutating params (legacy):**
+
+```ruby
+# ~/.config/samagotchi/hooks/safety_legacy.rb
+class SafetyLegacy
   def call(event)
     return unless event[:type] == :before_tool_call
     tool = event[:call][:name]
@@ -300,7 +318,7 @@ class Safety
 end
 ```
 
-Note: `:before_tool_call` can mutate the `:call` hash to modify or intercept tool execution.
+Note: `:before_tool_call` can mutate the `:call` hash to modify tool execution, or set `blocked`/`block_reason` to veto it entirely.
 
 ## Model Server Transport
 

@@ -16,7 +16,7 @@ module Samagotchi
   #   :after_turn         — after the turn completes (success or cancel)
   #   :before_generation  — before calling the LLM API
   #   :after_generation   — after LLM returns, before tool parse
-  #   :before_tool_call   — before a tool is dispatched
+  #   :before_tool_call   — before a tool is dispatched (vetoable: set event[:blocked]=true with optional event[:block_reason])
   #   :after_tool_call    — after tool execution, before result injection
   module Hooks
     REGISTRY_CLASS = Registry

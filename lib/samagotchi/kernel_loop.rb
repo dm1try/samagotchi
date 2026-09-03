@@ -280,10 +280,20 @@ module Samagotchi
             call: call.dup,
             params: tool_activity_params(call[:name], call)
           )
-          # Fire :before_tool_call hook (before tool dispatch, can mutate params)
-          before_tool_event = { type: :before_tool_call, iteration: iteration_index + 1, call: call.dup, params: tool_activity_params(call[:name], call) }
+          # Fire :before_tool_call hook (before tool dispatch, can mutate params or veto)
+          # Veto protocol (minimal guardrail): a hook may set event[:blocked]=true with optional
+          # event[:block_reason]="..." to prevent dispatch. Only this hook supports veto; other
+          # hooks ignore :blocked. When blocked, we synthesize an error output without calling dispatch.
+          before_tool_event = { type: :before_tool_call, iteration: iteration_index + 1, call: call.dup, params: tool_activity_params(call[:name], call), blocked: false, block_reason: nil }
           fire_hook(:before_tool_call, before_tool_event) if @hooks
-          dispatch_result = dispatch(before_tool_event[:call])
+          dispatch_result = if before_tool_event[:blocked]
+                              reason = before_tool_event[:block_reason].to_s.strip
+                              reason = "blocked by hook" if reason.empty?
+                              synthetic = "[#{call[:name]}] Error: blocked by guardrail: #{reason}"
+                              { output: synthetic, activity: tool_activity_event(call[:name], call, synthetic).merge(status: "blocked") }
+                            else
+                              dispatch(before_tool_event[:call])
+                            end
           activity = dispatch_result[:activity]
           tool_activity << activity
           output_truncated = false

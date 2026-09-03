@@ -315,12 +315,35 @@ module Samagotchi
           call: call.dup,
           params: nil
         )
-        result = begin
-                   @kernel.dispatch_tool_call(call)
-                 rescue StandardError => e
-                   # A failing tool is captured as the tool_response output (fed
-                   # back to the model) rather than crashing the loop.
-                   { output: "Error: #{e.class}: #{e.message}", activity: nil }
+        # Fire :before_tool_call hook (guardrail veto) via KernelLoop if available.
+        # Only this hook supports veto; event[:blocked]=true with optional :block_reason prevents dispatch.
+        before_event = { type: :before_tool_call, iteration: iteration, call: call.dup, params: nil, blocked: false, block_reason: nil }
+        if @kernel && @kernel.respond_to?(:hooks) && @kernel.hooks
+          begin
+            before_event[:params] = @kernel.send(:tool_activity_params, call[:name], call) rescue nil
+            @kernel.send(:fire_hook, :before_tool_call, before_event)
+          rescue StandardError
+            nil
+          end
+        end
+        result = if before_event[:blocked]
+                   reason = before_event[:block_reason].to_s.strip
+                   reason = "blocked by hook" if reason.empty?
+                   synthetic_output = "Error: blocked by guardrail: #{reason}"
+                   activity = begin
+                                @kernel.send(:tool_activity_event, call[:name], call, synthetic_output).merge(status: "blocked")
+                              rescue StandardError
+                                { action: "blocked", tool: call[:name], params: before_event[:params].to_s, status: "blocked" }
+                              end
+                   { output: synthetic_output, activity: activity }
+                 else
+                   begin
+                     @kernel.dispatch_tool_call(before_event[:call] || call)
+                   rescue StandardError => e
+                     # A failing tool is captured as the tool_response output (fed
+                     # back to the model) rather than crashing the loop.
+                     { output: "Error: #{e.class}: #{e.message}", activity: nil }
+                   end
                  end
         activity = result[:activity]
         completed_output = result[:output].to_s
