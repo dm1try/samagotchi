@@ -164,6 +164,11 @@ module Samagotchi
     #   creates both).
     attr_reader :reminder_store
 
+    # @return [Samagotchi::Hooks::Registry, nil] hooks registry shared with Engine.
+    #   Engine owns the registry; KernelLoop only fires events. Accessor allows
+    #   Engine to propagate its registry to an externally-created kernel (TUI path).
+    attr_accessor :hooks
+
     # Run the conversation loop and return the final model response plus
     # resumable conversation state when execution stops at max_iterations.
     #

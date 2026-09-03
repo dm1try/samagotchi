@@ -69,6 +69,13 @@ module Samagotchi
       # Track whether this is the first turn in the session (for session_start event)
       @first_turn = true
       @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, hooks: @hooks, reminder_store: @reminder_store)
+      # Engine owns hooks; if a kernel was supplied externally (TUI path) propagate
+      # the Engine's registry so all UIs reuse the same instance. Without this the
+      # TUI's KernelLoop fires with nil hooks and before_generation/after_generation
+      # etc. never fire in interactive mode.
+      if kernel && @kernel.respond_to?(:hooks=)
+        @kernel.hooks = @hooks
+      end
       # Resolve the backend provider at the Engine boundary: no `provider:` kwarg
       # is required at the call sites, so the two `Engine.new` callers
       # (TerminalUI, SessionManager) are untouched. Falls back to
