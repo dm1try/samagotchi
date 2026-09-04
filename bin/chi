@@ -86,7 +86,7 @@ if ARGV[0] == "memory"
   memory_args = ARGV[1..] || []
   sub = memory_args[0]
   if sub.nil? || %w[-h --help help].include?(sub)
-    puts "Usage: bin/chi memory <install|upgrade|uninstall|status|diff|bundles> [options]"
+    puts "Usage: bin/chi memory <install|upgrade|uninstall|status|diff|bundles|export> [options]"
     puts ""
     puts "  install <source> [--scope system|project] [--force]"
     puts "    Install a memory bundle from a directory, zip, tar archive, or git URL."
@@ -108,6 +108,11 @@ if ARGV[0] == "memory"
     puts ""
     puts "  bundles"
     puts "    List installed memory bundles and their provenance."
+    puts ""
+    puts "  export [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
+    puts "    Package local memories into a shareable bundle (dir or zip)."
+    puts "    --scope selects source dir (default: system). --out inferred from extension; default <name>.zip."
+    puts "    FILES... optional allowlist of *.md basenames to export (default: all)."
     exit 0
   end
 
@@ -517,8 +522,92 @@ if ARGV[0] == "memory"
       end
     end
 
+  when "export"
+    rest = memory_args[1..]
+    scope = nil
+    name = nil
+    version = nil
+    description = ""
+    out = nil
+    filter_files = []
+    i = 0
+    while i < rest.size
+      arg = rest[i]
+      if arg.start_with?("--")
+        nxt = rest[i + 1]
+        if %w[-h --help help].include?(arg)
+          puts "Usage: bin/chi memory export [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
+          puts ""
+          puts "  export [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
+          puts "    Package local memories into a shareable bundle (dir or zip)."
+          puts "    --scope selects source dir (default: system). --out inferred from extension; default <name>.zip."
+          puts "    FILES... optional allowlist of *.md basenames to export (default: all)."
+          puts ""
+          puts "  Examples:"
+          puts "    bin/chi memory export --scope system"
+          puts "    bin/chi memory export --scope project --name my-bundle --version 1.0.0 --out bundle.zip"
+          puts "    bin/chi memory export --scope system --out ./my-bundle/ identity.md work.md"
+          exit 0
+        elsif arg == "--scope" && nxt && !nxt.start_with?("--")
+          scope = nxt; i += 2
+        elsif arg.start_with?("--scope=")
+          scope = arg.split("=", 2).last; i += 1
+        elsif arg == "--name" && nxt && !nxt.start_with?("--")
+          name = nxt; i += 2
+        elsif arg.start_with?("--name=")
+          name = arg.split("=", 2).last; i += 1
+        elsif arg == "--version" && nxt && !nxt.start_with?("--")
+          version = nxt; i += 2
+        elsif arg.start_with?("--version=")
+          version = arg.split("=", 2).last; i += 1
+        elsif arg == "--description" && nxt && !nxt.start_with?("--")
+          description = nxt; i += 2
+        elsif arg.start_with?("--description=")
+          description = arg.split("=", 2).last; i += 1
+        elsif arg == "--out" && nxt && !nxt.start_with?("--")
+          out = nxt; i += 2
+        elsif arg.start_with?("--out=")
+          out = arg.split("=", 2).last; i += 1
+        else
+          warn "Unknown memory export flag: #{arg}"
+          exit 1
+        end
+      else
+        filter_files << arg
+        i += 1
+      end
+    end
+    # Validate scope if given
+    if scope && !%w[system project].include?(scope.to_s.strip.downcase)
+      warn "Invalid scope '#{scope}', expected system or project"
+      exit 1
+    end
+    filter_files = nil if filter_files.empty?
+    begin
+      exporter = Samagotchi::MemoryBundle::Exporter.new(
+        scope: scope,
+        name: name,
+        version: version,
+        description: description,
+        out: out,
+        files: filter_files
+      )
+      result = exporter.run
+      puts "Exported #{result[:files].size} file(s) to #{result[:out_path]}"
+      puts "Bundle: #{result[:name]} v#{result[:version]} scope=#{result[:scope]}"
+      puts "Files: #{result[:files].join(', ')}" unless result[:files].empty?
+      unless result[:placeholder_warnings].empty?
+        puts "Placeholders:"
+        result[:placeholder_warnings].each { |w| puts "  #{w}" }
+      end
+      exit 0
+    rescue Samagotchi::MemoryBundle::Exporter::ExportError => e
+      warn "Export failed: #{e.message}"
+      exit 1
+    end
+
   else
-    warn "Unknown memory subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, bundles"
+    warn "Unknown memory subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, bundles, export"
     exit 1
   end
 

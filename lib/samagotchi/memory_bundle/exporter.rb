@@ -1,0 +1,276 @@
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "tmpdir"
+require_relative "manifest"
+require_relative "placeholder"
+
+module Samagotchi
+  module MemoryBundle
+    # Packages local memories (scoped *.md files) into a shareable bundle.
+    #
+    # Inverse of Installer: reads from the resolved scope directory,
+    # computes SHA256 checksums, writes manifest.yml via Manifest.write,
+    # and optionally zips/tars the staging directory.
+    #
+    # Reuses Installer.system_dir / project_dir_base overrides for test isolation.
+    class Exporter
+      class ExportError < StandardError; end
+
+      DEFAULT_VERSION = "1.0.0"
+      DEFAULT_SYSTEM_NAME = "chi_system_memories"
+
+      attr_reader :exported_files, :warnings, :placeholder_warnings, :out_path, :staging_dir
+
+      def initialize(scope: nil, name: nil, version: nil, description: "", out: nil, files: nil)
+        @scope = normalize_scope(scope) || "system"
+        @name = sanitize_name(name) if name && !name.to_s.strip.empty?
+        @version = version&.to_s&.strip
+        @version = nil if @version && @version.empty?
+        @description = description.to_s
+        @out = out&.to_s&.strip
+        @out = nil if @out && @out.empty?
+        @filter_files = files # nil or Array<String> basenames
+        @exported_files = []
+        @warnings = []
+        @placeholder_warnings = []
+        @out_path = nil
+        @staging_dir = nil
+      end
+
+      def run
+        target_dir = resolve_target_dir(@scope)
+        resolved_name = @name || default_name(@scope)
+        resolved_version = @version || DEFAULT_VERSION
+
+        validate_name!(resolved_name)
+        validate_version!(resolved_version)
+        raise ExportError, "invalid scope: #{@scope}" unless %w[system project].include?(@scope)
+
+        # Collect *.md files, excluding index.md and hidden files
+        all_md = Dir.glob(File.join(target_dir, "*.md")).sort
+        candidates = all_md.reject { |p| File.basename(p) == "index.md" }
+        candidates.reject! { |p| File.basename(p).start_with?(".") }
+
+        if candidates.empty?
+          raise ExportError, "No memories to export in #{@scope} scope (#{target_dir}): no .md files found"
+        end
+
+        # Apply allowlist filter if provided
+        if @filter_files && !@filter_files.empty?
+          allow = @filter_files.map { |f| normalize_filter_entry(f) }
+          # Validate each requested file exists in candidates
+          candidates_by_basename = candidates.map { |p| [File.basename(p), p] }.to_h
+          missing = allow.reject { |k| candidates_by_basename.key?(k) }
+          unless missing.empty?
+            raise ExportError, "Requested file(s) not found in #{@scope} scope: #{missing.join(', ')}"
+          end
+          candidates = allow.map { |k| candidates_by_basename[k] }
+        end
+
+        # Compute checksums and detect placeholders
+        files_map = {}
+        candidates.each do |path|
+          key = File.basename(path)
+          content = File.read(path)
+          hex = Digest::SHA256.hexdigest(content)
+          files_map[key] = "sha256:#{hex}"
+          @exported_files << key
+
+          names = Placeholder.new(content: content).placeholders
+          unless names.empty?
+            uniq = names.map(&:strip).uniq.sort
+            @placeholder_warnings << "#{key}: {{#{uniq.join("}}, {{")}}}"
+          end
+        end
+
+        # Resolve output path and format
+        resolved_out, format = resolve_out_path(@out, resolved_name)
+
+        # Prepare staging dir (temp)
+        staging = Dir.mktmpdir("samagotchi-export-")
+        @staging_dir = staging
+        begin
+          candidates.each do |src|
+            FileUtils.cp(src, File.join(staging, File.basename(src)))
+          end
+
+          Manifest.write(
+            dir: staging,
+            name: resolved_name,
+            version: resolved_version,
+            scope: @scope,
+            description: @description,
+            files: files_map
+          )
+
+          case format
+          when :zip
+            zip_staging(staging, resolved_out)
+            @out_path = resolved_out
+          when :tar_gz, :tar, :tgz
+            tar_staging(staging, resolved_out, format)
+            @out_path = resolved_out
+          when :dir
+            # Copy staging contents to out dir
+            FileUtils.mkdir_p(resolved_out)
+            # Guard: refuse to overwrite non-empty dir without force (error)
+            existing = Dir.entries(resolved_out).reject { |e| e.start_with?(".") }
+            unless existing.empty?
+              # Allow if out is the staging itself? no, staging is temp
+              # Check if out dir already has manifest.yml — treat as existing bundle
+              if File.exist?(File.join(resolved_out, "manifest.yml"))
+                raise ExportError, "Output directory already contains a bundle (#{resolved_out}/manifest.yml) — choose different --out or remove it"
+              end
+              # If dir has any files, still require explicit handling — error
+              unless existing.empty?
+                raise ExportError, "Output directory already exists and is not empty: #{resolved_out}"
+              end
+            end
+            FileUtils.cp_r("#{staging}/.", resolved_out)
+            @out_path = resolved_out
+          else
+            raise ExportError, "unknown format: #{format}"
+          end
+        ensure
+          # Clean up staging temp dir unless out_path == staging (not possible for dir)
+          FileUtils.rm_rf(staging) if staging && File.directory?(staging)
+          @staging_dir = nil
+        end
+
+        {
+          out_path: @out_path,
+          format: format,
+          name: resolved_name,
+          version: resolved_version,
+          scope: @scope,
+          files: @exported_files.dup,
+          placeholder_warnings: @placeholder_warnings.dup
+        }
+      end
+
+      def summary
+        lines = []
+        lines << "Exported #{@exported_files.size} file(s) to #{@out_path}"
+        lines << "Files: #{@exported_files.join(', ')}" unless @exported_files.empty?
+        lines.concat(@placeholder_warnings.map { |w| "Placeholder: #{w}" }) unless @placeholder_warnings.empty?
+        lines.concat(@warnings) unless @warnings.empty?
+        lines.join("\n")
+      end
+
+      private
+
+      def normalize_scope(val)
+        return nil if val.nil? || val.to_s.strip.empty?
+        v = val.to_s.strip.downcase
+        %w[project system].include?(v) ? v : nil
+      end
+
+      def sanitize_name(name)
+        name.to_s.strip
+      end
+
+      def validate_name!(name)
+        raise ExportError, "bundle name is required" if name.nil? || name.strip.empty?
+        raise ExportError, "bundle name must not contain path separators" if name.include?("/") || name.include?("\\")
+      end
+
+      def validate_version!(version)
+        raise ExportError, "bundle version is required" if version.nil? || version.strip.empty?
+      end
+
+      def default_name(scope)
+        if scope == "project"
+          base = File.basename(Dir.pwd).gsub(/[^A-Za-z0-9_-]/, "-").downcase
+          base = base.gsub(/-+/, "-").gsub(/\A-+|-+\z/, "")
+          base = "project" if base.empty?
+          "chi_#{base}_memories"
+        else
+          DEFAULT_SYSTEM_NAME
+        end
+      end
+
+      def normalize_filter_entry(entry)
+        s = entry.to_s.strip
+        # Allow with or without .md extension, but normalize to basename with .md
+        base = File.basename(s)
+        base = "#{base}.md" unless base.downcase.end_with?(".md")
+        base
+      end
+
+      def resolve_target_dir(scope)
+        case scope
+        when "system"
+          Samagotchi::MemoryBundle::Installer.system_dir
+        when "project"
+          if Samagotchi::MemoryBundle::Installer.project_dir_base_override
+            Samagotchi::MemoryBundle::Installer.project_dir_base
+          else
+            File.join(
+              Samagotchi::MemoryBundle::Installer.project_dir_base,
+              "#{File.basename(Dir.pwd)}_#{Digest::MD5.hexdigest(Dir.pwd)[0..7]}"
+            )
+          end
+        else
+          raise ExportError, "invalid scope: #{scope}"
+        end
+      end
+
+      def resolve_out_path(out_arg, default_name)
+        if out_arg.nil? || out_arg.empty?
+          # Default: <name>.zip in Dir.pwd
+          path = File.join(Dir.pwd, "#{default_name}.zip")
+          return [File.expand_path(path), :zip]
+        end
+
+        expanded = File.expand_path(out_arg)
+        lower = expanded.downcase
+
+        if lower.end_with?(".zip")
+          [expanded, :zip]
+        elsif lower.end_with?(".tar.gz")
+          [expanded, :tar_gz]
+        elsif lower.end_with?(".tgz")
+          [expanded, :tgz]
+        elsif lower.end_with?(".tar")
+          [expanded, :tar]
+        else
+          # Treat as directory — if path exists and is a file, error
+          if File.exist?(expanded) && !File.directory?(expanded)
+            raise ExportError, "Output path exists and is not a directory: #{expanded}"
+          end
+          [expanded, :dir]
+        end
+      end
+
+      def zip_staging(staging, out_path)
+        FileUtils.mkdir_p(File.dirname(out_path))
+        if File.exist?(out_path)
+          raise ExportError, "Output file already exists: #{out_path} — remove it or choose different --out"
+        end
+        # Use zip CLI like source.rb does with unzip
+        Dir.chdir(staging) do
+          result = system("zip", "-r", out_path, ".")
+          raise ExportError, "zip failed for #{out_path} (is zip installed?)" unless result && File.exist?(out_path)
+        end
+      end
+
+      def tar_staging(staging, out_path, format)
+        FileUtils.mkdir_p(File.dirname(out_path))
+        if File.exist?(out_path)
+          raise ExportError, "Output file already exists: #{out_path} — remove it or choose different --out"
+        end
+        # Use tar CLI
+        Dir.chdir(staging) do
+          cmd = case format
+                when :tar_gz, :tgz then ["tar", "-czf", out_path, "."]
+                when :tar then ["tar", "-cf", out_path, "."]
+                end
+          result = system(*cmd)
+          raise ExportError, "tar failed for #{out_path}" unless result && File.exist?(out_path)
+        end
+      end
+    end
+  end
+end
