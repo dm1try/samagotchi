@@ -513,13 +513,18 @@ module Samagotchi
     def initialize(mode: :assist, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false)
       @mode           = mode.to_sym
       @prompt         = prompt
-      @default_model_name = ModelProfile.required_model_name(model_name)
-      @effective_model_name = @default_model_name
+      @default_model_name = ModelProfile.required_model_name(nil)
+      flag_model_name = model_name.to_s.strip.empty? ? nil : ModelProfile.required_model_name(model_name)
+      @effective_model_name = flag_model_name || @default_model_name
       @client         = client || Client.new
       @resume_session = session_id ? Session.load(session_id) : nil
       if @resume_session
-        # Restore persisted effective model as runtime; config/default stays unchanged
-        @effective_model_name = @resume_session.model_name.to_s.strip.empty? ? @default_model_name : @resume_session.model_name
+        # --model overrides resumed session's model (runtime only, default unchanged)
+        if flag_model_name
+          @effective_model_name = flag_model_name
+        else
+          @effective_model_name = @resume_session.model_name.to_s.strip.empty? ? @default_model_name : @resume_session.model_name
+        end
       end
       @profile        = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@effective_model_name)
       @kernel         = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
@@ -559,10 +564,10 @@ module Samagotchi
           }
         }
       )
-      # If resumed, restore effective model without persisting default
-      if @resume_session && @effective_model_name != @default_model_name
+      # Runtime --model flag or resumed session: sync effective model without persisting default
+      if @effective_model_name != @default_model_name
         @engine.switch_model!(@effective_model_name)
-        # keep default distinct
+        # keep default distinct (switch_model! without persist leaves default as-is, but ensure)
         @engine.instance_variable_set(:@default_model_name, @default_model_name)
         @kernel.sync_profile_from_model!(@effective_model_name)
       end
