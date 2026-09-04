@@ -33,6 +33,7 @@ module Samagotchi
     STATS_COMMAND = "/stats"
     ANALYTICS_COMMAND = "/analytics"
     RECAP_COMMAND = "/recap"
+    SLASH_COMMANDS = %w[/analytics /continue /exit /model /models /recap /stats].freeze
     SHELL_BANG_PREFIX = "!"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
     THINKING_UI_ENV = "SAMAGOTCHI_THINKING_UI"
@@ -1342,6 +1343,10 @@ module Samagotchi
       token = word.to_s
       return [] if token.empty?
 
+      if token.start_with?("/")
+        return build_slash_completion_candidates(token)
+      end
+
       if token.start_with?(AT_PATH_COMPLETION_PREFIX)
         path_fragment = token.delete_prefix(AT_PATH_COMPLETION_PREFIX)
         return build_project_path_completion_candidates(path_fragment)
@@ -1352,6 +1357,27 @@ module Samagotchi
         return build_memory_completion_candidates(memory_fragment)
       end
 
+      []
+    end
+
+    def build_slash_completion_candidates(slash_fragment)
+      fragment = slash_fragment.to_s.strip
+      return [] unless fragment.start_with?("/")
+
+      begin
+        buf = Reline.line_buffer.to_s
+        unless buf.empty?
+          return [] unless buf.lstrip.start_with?("/")
+        end
+      rescue StandardError
+        nil
+      end
+
+      lowered = fragment.downcase
+      return SLASH_COMMANDS.dup if lowered == "/"
+
+      SLASH_COMMANDS.select { |cmd| cmd.start_with?(lowered) }
+    rescue StandardError
       []
     end
 
