@@ -173,71 +173,30 @@ module Samagotchi
 
       # Adds or refreshes a single managed line for `entry_name` in the given
       # scope's index.md, preserving every other byte byte-for-byte.
+      # Delegates to IndexUpdater to maintain a single source of truth.
       # Returns true when an entry was written (i.e. the index was managed).
-      def self.manage_index(scope, entry_name, byte_count, description)
-        index_path = self.index_path_for(scope)
-        new_line = self.managed_line(entry_name, scope, byte_count, description)
-        content = File.exist?(index_path) ? File.read(index_path) : nil
-
-        # New file (or blank existing file): create with a brief header.
-        if content.nil? || content.strip.empty?
-          File.write(index_path, "#{self.auto_index_header}\n\n#{new_line}\n")
-          return true
-        end
-
-        pattern = self.managed_pattern(entry_name)
-
-        # Upsert: replace the existing managed line for this entry in place.
-        if content.match?(pattern)
-          existing_description = self.extract_description(content[pattern].to_s)
-          resolved_description =
-            if description.to_s.strip.empty?
-              existing_description
-            else
-              description
-            end
-          new_line = self.managed_line(entry_name, scope, byte_count, resolved_description)
-          updated = content.sub(pattern) { new_line + $1 }
-          File.write(index_path, updated)
-          return true
-        end
-
-        # Append: add a new managed line, keeping the file newline-terminated.
-        updated = if content.end_with?("\n")
-                    "#{content}#{new_line}\n"
-                  else
-                    "#{content}\n#{new_line}\n"
-                  end
-        File.write(index_path, updated)
-        true
+      def self.manage_index(scope, entry_name, byte_count, description = nil)
+        require_relative "../memory_bundle/index_updater"
+        Samagotchi::MemoryBundle::IndexUpdater.update_index(scope, entry_name, byte_count, description)
       end
 
       def self.managed_line(name, scope, byte_count, description)
-        line = "- **#{name}** · #{scope} · #{self.date_str} · #{byte_count}"
-        desc = description.to_s.strip
-        line += " — #{desc}" unless desc.empty?
-        line
+        Samagotchi::MemoryBundle::IndexUpdater.managed_line(name, scope, byte_count, description)
       end
 
       # Extracts the human description from an existing managed line so that a
       # legacy `- **name**: desc` or a new-format line with a description keeps
       # its description when the entry is updated without a new one.
       def self.extract_description(line)
-        if line =~ /\s—\s(.*)\s*\z/
-          $1
-        elsif line =~ /:\s*(.*)\s*\z/
-          $1
-        end
+        Samagotchi::MemoryBundle::IndexUpdater.extract_description(line)
       end
 
       def self.auto_index_header
-        "# Memory Index\n\n" \
-          "Managed entries below are auto-maintained by memory_write " \
-          "(name, scope, last-written date, size). Free-form sections are preserved."
+        Samagotchi::MemoryBundle::IndexUpdater.auto_index_header
       end
 
       def self.date_str
-        Date.today.iso8601
+        Samagotchi::MemoryBundle::IndexUpdater.date_str
       end
 
       def self.index_path_for(scope)

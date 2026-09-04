@@ -80,6 +80,147 @@ if ARGV[0] == "sessions"
   end
 end
 
+# Handle `memory` subcommand before OptionParser (has its own flags like --scope, --force)
+if ARGV[0] == "memory"
+  require "samagotchi/memory_bundle"
+  memory_args = ARGV[1..] || []
+  sub = memory_args[0]
+  if sub.nil? || %w[-h --help help].include?(sub)
+    puts "Usage: bin/chi memory <install|bundles> [options]"
+    puts ""
+    puts "  install <source> [--scope system|project] [--force]"
+    puts "    Install a memory bundle from a directory, zip, or tar archive."
+    puts "    Source is the path to the bundle (dir/zip/tar.gz)."
+    puts "    --force overwrites existing entries; default skips them."
+    puts ""
+    puts "  bundles"
+    puts "    List installed memory bundles and their provenance."
+    exit 0
+  end
+
+  case sub
+  when "install"
+    # Parse install-specific flags from the remaining args
+    rest = memory_args[1..]
+    source = nil
+    scope = nil
+    force = false
+
+    i = 0
+    while i < rest.size
+      arg = rest[i]
+      if arg.start_with?("--")
+        nxt = rest[i + 1]
+        if %w[-h --help help].include?(arg)
+          puts "Usage: bin/chi memory install <source> [--scope system|project] [--force]"
+          puts ""
+          puts "  install <source> [--scope system|project] [--force]"
+          puts "    Install a memory bundle from a directory, zip, or tar archive."
+          puts "    Source is the path to the bundle (dir/zip/tar.gz)."
+          puts "    --force overwrites existing entries; default skips them."
+          exit 0
+        elsif arg == "--scope" && nxt
+          scope = nxt
+          i += 2
+        elsif arg.start_with?("--scope=")
+          scope = arg.split("=", 2).last
+          i += 1
+        elsif arg == "--force"
+          force = true
+          i += 1
+        else
+          warn "Unknown memory install flag: #{arg}"
+          exit 1
+        end
+      else
+        # Positional argument — the source path
+        source = arg
+        i += 1
+      end
+    end
+
+    if source.nil? || source.empty?
+      warn "Usage: bin/chi memory install <source> [--scope system|project] [--force]"
+      exit 1
+    end
+
+    expanded_source = File.expand_path(source)
+
+    # Derive bundle name from normalized dir (not source path) so zip/tar
+    # produce clean names like "dmitry-base" instead of "dmitry-base.zip".
+    require "yaml"
+    normalized_dir = nil
+    source_owned = false
+    begin
+      normalized_dir, source_owned = Samagotchi::MemoryBundle::SourceNormalizer.normalize(expanded_source)
+      manifest = Samagotchi::MemoryBundle::Manifest.read(dir: normalized_dir)
+    rescue Samagotchi::MemoryBundle::Manifest::ValidationError
+      manifest = nil
+    ensure
+      Samagotchi::MemoryBundle::SourceNormalizer.cleanup(normalized_dir) if source_owned
+    end
+
+    if manifest
+      bundle_name = manifest.name
+    else
+      bundle_name = File.basename(normalized_dir)
+    end
+
+    installer = Samagotchi::MemoryBundle::Installer.new(
+      source: expanded_source,
+      name: bundle_name,
+      scope: scope,
+      force: force,
+      strict: true
+    )
+
+    begin
+      normalized_dir, manifest = installer.run
+      puts installer.summary
+      puts "Provenance written to: #{Samagotchi::MemoryBundle::Provenance.bundles_dir}/#{bundle_name}/" if manifest
+      # Warnings are informational; install still succeeds.
+      if installer.warnings.any? || installer.placeholder_warnings.any?
+        exit 0
+      end
+    rescue Samagotchi::MemoryBundle::Installer::InstallError => e
+      warn "Install failed: #{e.message}"
+      exit 1
+    end
+
+  when "bundles"
+    require "json"
+    bundles_dir = Samagotchi::MemoryBundle::Provenance.bundles_dir
+    unless File.directory?(bundles_dir)
+      puts "No installed bundles."
+      exit 0
+    end
+
+    entries = Dir.entries(bundles_dir).reject { |e| e.start_with?(".") }
+    if entries.empty?
+      puts "No installed bundles."
+    else
+      puts "Installed memory bundles:"
+      puts ""
+      entries.sort.each do |name|
+        prov = Samagotchi::MemoryBundle::Provenance.new(name: name)
+        data = prov.read
+        next unless data
+        version = data[:version] || "?"
+        scope = data[:scope] || "?"
+        installed_at = data[:installed_at] || "?"
+        file_count = (data[:files] || {}).size
+        puts "  #{name}  v#{version}  scope=#{scope}  files=#{file_count}  installed=#{installed_at}"
+      end
+    end
+
+  else
+    warn "Unknown memory subcommand: #{sub}. Use: install, bundles"
+    exit 1
+  end
+
+  exit 0
+end
+
 options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, dashboard: false, web: false, web_port: nil, web_open: false }
 
 OptionParser.new do |opts|
