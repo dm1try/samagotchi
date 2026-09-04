@@ -6,6 +6,7 @@ require "io/console"
 require "reline"
 
 require_relative "model_profile"
+require_relative "config_file"
 require_relative "context_usage"
 require_relative "kernel_loop"
 require_relative "session"
@@ -514,7 +515,8 @@ module Samagotchi
       @mode           = mode.to_sym
       @prompt         = prompt
       @default_model_name = ModelProfile.required_model_name(nil)
-      flag_model_name = model_name.to_s.strip.empty? ? nil : ModelProfile.required_model_name(model_name)
+      aliased_model_name = model_name.to_s.strip.empty? ? nil : ConfigFile.resolve_model_alias(model_name)
+      flag_model_name = aliased_model_name.to_s.strip.empty? ? nil : ModelProfile.required_model_name(aliased_model_name)
       @effective_model_name = flag_model_name || @default_model_name
       @client         = client || Client.new
       @resume_session = session_id ? Session.load(session_id) : nil

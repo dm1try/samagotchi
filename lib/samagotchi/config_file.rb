@@ -9,6 +9,7 @@ module Samagotchi
     CONFIG_DIR = "samagotchi"
     CONFIG_FILE = "config.yml"
     DEFAULT_MODEL_KEY = "SAMAGOTCHI_DEFAULT_MODEL"
+    MODEL_ALIASES_KEY = "model_aliases"
 
     module_function
 
@@ -73,6 +74,36 @@ module Samagotchi
       File.rename(tmp, path)
       env[DEFAULT_MODEL_KEY] = resolved
       true
+    end
+
+    def model_aliases(env: ENV, path: global_path(env: env))
+      return {} unless File.file?(path)
+
+      data = YAML.safe_load(File.read(path), permitted_classes: [], aliases: false)
+      return {} unless data.is_a?(Hash)
+
+      raw = data[MODEL_ALIASES_KEY]
+      return {} if raw.nil?
+      return {} unless raw.is_a?(Hash)
+
+      raw.each_with_object({}) do |(k, v), result|
+        key = k.to_s.strip
+        next if key.empty?
+        val = v.to_s.strip
+        next if val.empty?
+
+        result[key.downcase] = val
+      end
+    rescue StandardError
+      {}
+    end
+
+    def resolve_model_alias(raw, env: ENV, path: global_path(env: env))
+      value = raw.to_s.strip
+      return value if value.empty?
+
+      aliases = model_aliases(env: env, path: path)
+      aliases.fetch(value.downcase, value)
     end
   end
 end
