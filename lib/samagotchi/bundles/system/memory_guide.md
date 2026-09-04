@@ -1,0 +1,102 @@
+# Memory Guide
+
+This memory teaches you (the agent) how to use Samagotchi memories — persistent MD files that survive across sessions and are injected into your system prompt.
+
+## What memories are
+
+- Plain Markdown files (`*.md`) stored outside the repo so they persist.
+- Loaded at startup into your system prompt as **Project memories** and **System memories** indexes (blank-name `memory_read`).
+- You manage them via tools, not shell file ops. On write, `index.md` is auto-maintained — do not edit it manually.
+
+## Scopes — where files live
+
+| Scope | Path | Use for |
+|-------|------|---------|
+| `system` | `~/.config/samagotchi/memories/` (`Samagotchi::Tools::SYSTEM_MEMORIES_DIR`) | User-wide preferences, identity, cross-project knowledge |
+| `project` | `~/.config/samagotchi/memories/projects/<basename>_<hash>/` (`PROJECT_MEMORIES_DIR` = `basename(Dir.pwd)` + 8-char `MD5(Dir.pwd)` ) | Repo-specific conventions, workflow, stack decisions |
+
+- `hash` ties a project memory to the absolute `Dir.pwd`. Running `bin/chi` from a different checkout yields a different directory — always run from the project root.
+- `index.md` lives in each scope dir and contains auto-managed lines like `- **name** · scope · date · bytes — description`. Your free-form sections in `index.md` are preserved but managed lines are owned by `memory_write`.
+
+## Tools you have
+
+### `memory_read` — read entries
+
+- `call("entry")` — project-first fallback: tries `project/<entry>.md`, then `system/<entry>.md`.
+- `call("entry", scope: "system"|"project")` — scoped read.
+- `call("a, b, c")` — comma-separated, concatenated with `\n\n---\n\n`.
+- `call("", scope: "system"|"project")` or `call("")` — reads the index. Empty name with no scope returns both indexes concatenated (`Project memories:` / `System memories:`). Use this at start to discover what exists.
+- Returns `Error: memory not found: …` on miss — treat as missing, not fatal.
+
+### `memory_write` — write/update entries
+
+- `call(content, path: "entry_name", scope: "project"|"system", description: "optional one-liner")`
+- `path` is the entry name **without** `.md` (the tool adds it). `path: "index"` is verbatim write to `index.md` (no auto-index update) — rarely needed.
+- `scope` is **required** — never omit. Prefer `project` for repo conventions, `system` for user preferences.
+- `description` is appended to the managed `index.md` line (`— description`). Replaces previous description if given; otherwise preserves existing one.
+- On success returns `Memory 'name' saved to <scope> scope (N bytes). Index updated: …` — confirm `bytes` and `scope`.
+
+**When to write:**
+- After learning a durable preference (e.g. commit style, test command, coding guideline) that the user confirmed or you observed repeatedly — ask before overwriting existing entries where appropriate.
+- Keep entries small and focused (one topic per file). Use clear filenames: `commit_preferences`, `testing_guide`, `project_conventions`.
+- Never store secrets, tokens, or transient state. Memories are shared via bundles.
+
+**Placeholders:**
+- Content may contain placeholder hints written as double-curly braces around a name (e.g., test_command, language). Detected by `Placeholder` (`lib/samagotchi/memory_bundle/placeholder.rb:8`) — install warns but does not fail. Fill them when you write. The placeholder syntax is two opening braces, a name, two closing braces.
+
+## Memory Bundles — shareable packs
+
+Bundles are versioned directories/zips/tar.gz/git URLs containing `manifest.yml` + `*.md`. They are shareable and installable.
+
+### CLI — `bin/chi memory`
+
+| Command | Purpose |
+|---------|---------|
+| `install <source> [--scope system\|project] [--force]` | Install from dir/zip/tar.gz/git URL. `--force` overwrites existing entries, otherwise skips. Writes provenance to `.bundles/<name>/` (base snapshots + `manifest.json`) and updates `index.md`. Warns on double-brace placeholders and checksum mismatches (strict mode). |
+| `upgrade <source> [--force] [--dry-run] [--agent]` | 3-way merge upgrade (base vs current vs incoming) per `Merger.classify` (`merger.rb:13`): `install` (new file), `noop` (current==incoming), `fast_forward` (current==base, not edited → auto-update), `keep` (incoming==base → preserve local edits), `conflict` (both edited → warn, needs `--force` or interactive `memory_write` resolution). Pruned files (removed from new bundle) are kept if locally edited, otherwise warned. |
+| `uninstall <bundle> [--force]` | Removes bundle files (skips locally edited files unless `--force`) and `index.md` lines, deletes provenance dir. |
+| `status [<bundle>]` | Provenance + per-file `ok|modified|missing|no-index` vs stored checksum and base snapshot. |
+| `diff <bundle> [file]` | Prints `base` (provenance snapshot) vs `current` (on-disk) for each file. |
+| `bundles` | Lists installed bundles (`name v<version> scope files installed_at`). |
+| `export [--scope system\|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]` | **Inverse of install** — packages local memories into a bundle. Infers `zip` vs `dir`/`tar.gz` from `--out` extension; default `chi_system_memories.zip` (system) or `chi_<project>_memories.zip` (project) v`1.0.0` in `Dir.pwd`. `FILES...` is an optional allowlist of basenames (`identity` or `identity.md`); if omitted exports all `*.md` except `index.md`/hidden/non-md. Computes `sha256:` via `Manifest.write` (`manifest.rb:49`). No provenance write. |
+
+**Scope resolution for install/export:**
+- CLI `--scope` wins over `manifest.yml` `scope`. Default is `system` if none given (`installer.rb:80`). For `project`, target is `~/.config/…/projects/<basename>_<hash>` (`installer.rb:294`).
+
+**Example flows:**
+```bash
+# export your system memories (all files) to zip
+bin/chi memory export --scope system --out my-prefs.zip
+
+# export just two entries, custom name/version, to dir
+bin/chi memory export --scope system --name my-bundle --version 1.2.0 --out ./my-bundle/ identity.md commit_preferences.md
+
+# install a bundle shared by a teammate
+bin/chi memory install ./my-bundle --scope system
+bin/chi memory install https://github.com/org/bundle.git#v1.2.0 --scope system --force
+
+# check what would change and upgrade
+bin/chi memory upgrade ./my-bundle --dry-run
+bin/chi memory upgrade ./my-bundle  # auto-merges, warns on conflicts
+
+# share again after editing
+bin/chi memory export --scope system --out updated.zip
+```
+
+### Provenance internals (for debugging)
+
+- Each installed bundle is recorded at `~/.config/samagotchi/memories/.bundles/<name>/manifest.json` + `bases/<file>.md` snapshots (`provenance.rb:15`). Used only for upgrade `Merger` and `status`/`diff`. Export does **not** write provenance.
+- `index.md` is best-effort — failures are swallowed (`installer.rb:283`).
+
+## Best practices for the agent
+
+1. **Discover first:** read the index (`memory_read ""`) before assuming entries exist. Prefer scoped reads when you know the scope.
+2. **Prefer project scope** for repo decisions; `system` for cross-project identity/preferences.
+3. **One concept per file:** small files merge and share better than monoliths.
+4. **Use bundles for sharing:** `export` → zip → share → `install`. Do not copy raw `~/.config` paths in docs — give `bin/chi memory install <url>` instructions.
+5. **Respect local edits:** installs skip existing files by default; use `--force` only when the user explicitly wants overwrite. Upgrades preserve edits (`keep`) or report `conflict` — guide the user to resolve via `memory_read`/`memory_write` or `bin/chi memory diff <bundle>` + `--force`.
+6. **Keep secrets out:** never write tokens/keys to memories — they are plain files and go into bundles.
+
+## Current system bundle
+
+`samagotchi-system` (`lib/samagotchi/bundles/system/manifest.yml`) ships `identity.md` + `config_modification_protocol.md` + this guide itself. It is auto-installed/upgrade on first `Engine` creation (`system_bundle.rb:30`) — no manual install needed. Bump `manifest.yml` `version` when editing bundled files so existing installs upgrade (3-way merge).
