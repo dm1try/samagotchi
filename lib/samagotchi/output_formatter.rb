@@ -55,6 +55,12 @@ module Samagotchi
 
     # Qwen prompt-literal placeholders, e.g. </think>.
     PROMPT_LITERALS = /\[\[SAMAGOTCHI_LITERAL_[A-Z_]+\]\]/.freeze
+
+    # Qwen3.6 thinking blocks: <think>...</think> (including empty)
+    QWEN_THINK_RE = /<think>.*?<\/think>/m.freeze
+    # Qwen tool_call XML blocks that survive when a tool call is rendered as text
+    # e.g. <tool_call>\n<function=list_reminders>\n</function>\n</tool_call>
+    QWEN_TOOL_CALL_RE = /<tool_call>.*?<\/tool_call>/m.freeze
     module_function
 
     # Remove both control-token and prompt-literal token families from +text+.
@@ -66,9 +72,14 @@ module Samagotchi
     def strip(text)
       cleaned =
         text.to_s
+        .gsub(QWEN_THINK_RE, '')
+        .gsub(QWEN_TOOL_CALL_RE, '')
         .gsub(LITERALS_RE, '')
         .gsub(INDIVIDUAL_RE, '')
         .gsub(PROMPT_LITERALS, '')
+        # orphaned closing tags that may remain after block removal
+        .gsub(/<\/?think>/, '')
+        .gsub(/<\/?tool_call>/, '')
         .gsub(/[ \t]+/, " ")
         .gsub(/ *\n */, "\n")
         .strip

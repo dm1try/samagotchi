@@ -109,6 +109,7 @@ module Samagotchi
       @last_activity_at = monotonic_now
       @activity_seq = 0
       @turn_running = false
+      @active_cancel_controller = nil
       @recap = build_recap(recap)
       # The metrics collector is a persistent observer so every run_turn event
       # (covering -p/--non-interactive/--resume and SessionManager workers)
@@ -154,6 +155,21 @@ module Samagotchi
     # @return [Boolean] true while a turn is in flight
     def turn_running?
       @activity_mutex.synchronize { @turn_running }
+    end
+
+    # @return [Client::CancellationController, nil] active turn's cancellation controller
+    def active_cancel_controller
+      @activity_mutex.synchronize { @active_cancel_controller }
+    end
+
+    # Cancel the currently running turn, if any.
+    # @param reason [Symbol] cancellation reason
+    # @return [Boolean] whether a cancellation was triggered
+    def cancel_current_turn!(reason = :manual)
+      ctrl = active_cancel_controller
+      return false unless ctrl
+
+      ctrl.cancel!(reason)
     end
 
     # Snapshot the current session messages as a JSON string for the idle
@@ -390,6 +406,9 @@ module Samagotchi
       # Mark the turn running before generating so the idle recap detector does
       # not fire (or render an invalidated recap) while the model is working.
       set_turn_running(true)
+      # Provide a cancellable controller for this turn (cross-process cancel via file flag)
+      effective_controller = cancel_controller || Client::CancellationController.new
+      @activity_mutex.synchronize { @active_cancel_controller = effective_controller }
 
       begin
         # Emit turn_started event
@@ -437,7 +456,7 @@ module Samagotchi
           messages: messages,
           max_iterations: max_iterations,
           on_stream_event: build_stream_event_handler(on_event),
-          cancel_controller: cancel_controller,
+          cancel_controller: effective_controller,
           model_name: @effective_model_name,
           max_tool_output_chars: max_tool_output_chars
         )
@@ -476,6 +495,7 @@ module Samagotchi
         # treats the just-finished turn as activity and re-arms its window.
         # Always runs, even if an exception occurred.
         set_turn_running(false)
+        @activity_mutex.synchronize { @active_cancel_controller = nil }
         record_activity
         # Clear hooks so they remain turn-scoped and never leak into the next turn.
         clear_hooks

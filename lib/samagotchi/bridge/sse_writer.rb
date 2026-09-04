@@ -154,11 +154,14 @@ module Samagotchi
         raise
       end
 
-      # Serialise one SSE event: an `id:` line (the replay cursor), one or more
-      # `data:` lines, and the terminating blank line.
+      # Serialise one SSE event: an `id:` line (the replay cursor), an optional
+      # `event:` line for EventSource.addEventListener, one or more `data:` lines,
+      # and the terminating blank line.
       def write_frame(io, seq:, data:)
         lines = []
         lines << "id: #{seq}"
+        event_type = data.is_a?(Hash) && (data[:type] || data["type"])
+        lines << "event: #{event_type}" if event_type && !event_type.to_s.empty?
         JSON.generate(data).each_line { |line| lines << "data: #{line.chomp}" }
         io.write(lines.join("\r\n") + "\r\n\r\n")
         io.flush

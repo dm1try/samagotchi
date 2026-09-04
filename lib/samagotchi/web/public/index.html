@@ -41,6 +41,10 @@ main{flex:1;display:flex;min-height:0}
 #history{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px;background:#0b0d11}
 .bubble{background:#151821;border:1px solid #1f232b;border-radius:12px;padding:12px 14px;white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5}
 .bubble.output{border-left:3px solid #1f6feb}
+.bubble.output.streaming{border-left-color:#58a6ff;opacity:.95}
+.bubble.user{border-left:3px solid #7aa5ff;background:#1b2336;align-self:flex-end;max-width:85%;margin-left:auto}
+.bubble.tool{border-left:3px solid #238636;background:#0f1a12;font-size:13px;color:#c9d1d9}
+.bubble.cancel{border-left:3px solid #f85149;background:#1a0f0f;color:#ff7b72;font-size:13px}
 .hint{color:#8b949e;font-size:13px;padding:12px}
 #composer{padding:12px;border-top:1px solid #1f232b;display:flex;gap:8px;background:#0f1115}
 #composer textarea{flex:1;min-height:44px;max-height:160px;resize:vertical;background:#151821;border:1px solid #1f232b;color:#e6e8eb;padding:10px 12px;border-radius:10px}
@@ -76,6 +80,7 @@ a{color:#7aa5ff}
       <span class="badge" id="detailStatus"></span>
       <span class="badge" id="detailDir"></span>
       <span class="badge" id="detailModel"></span>
+      <button class="ghost" id="cancelBtn" title="Cancel current turn">Cancel</button>
       <button class="ghost" id="stopBtn">Stop</button>
     </div>
     <div id="history"></div>
@@ -91,6 +96,8 @@ const $ = s=>document.querySelector(s);
 const listEl=$("#list"), historyEl=$("#history"), emptyEl=$("#empty"), composerEl=$("#composer"), detailHead=$("#detailHead");
 let selected=null, es=null, pollTimer=null;
 let allSessions=[], displayLimit=100;
+// streaming buffer for token-level SSE (generation_chunk)
+let streamingBubble=null, streamingBuffer="", rafPending=false;
 
 function api(path, opts={}){
   return fetch(path, {headers:{"Content-Type":"application/json"}, ...opts}).then(async r=>{
@@ -150,15 +157,28 @@ async function select(id){
     $("#detailStatus").textContent=s.status; $("#detailStatus").className="badge status "+s.status;
     $("#detailDir").textContent=s.working_directory;
     $("#detailModel").textContent=s.model_name;
-    renderHistory(data.history||[]);
+    // prefer structured messages (user+assistant) if available, fallback to legacy history
+    if(data.messages && data.messages.length){
+      renderHistory(data.messages);
+    } else {
+      renderHistory(data.history||[]);
+    }
     openStream(id);
     // also poll output as fallback
     startPoll(id);
   }catch(e){ historyEl.innerHTML=`<div class="hint">Error: ${esc(e.message)}</div>`; }
 }
-function renderHistory(chunks){
-  if(!chunks.length){ historyEl.innerHTML=`<div class="hint">No output yet. Send a message.</div>`; return; }
-  historyEl.innerHTML=chunks.map(c=>`<div class="bubble output">${esc(c)}</div>`).join("");
+function renderHistory(items){
+  if(!items.length){ historyEl.innerHTML=`<div class="hint">No output yet. Send a message.</div>`; return; }
+  // structured messages: {role, content}
+  if(typeof items[0]==='object' && items[0].role){
+    historyEl.innerHTML=items.map(m=>{
+      const cls = m.role==="user" ? "user" : "output";
+      return `<div class="bubble ${cls}">${esc(m.content)}</div>`;
+    }).join("");
+  } else {
+    historyEl.innerHTML=items.map(c=>`<div class="bubble output">${esc(c)}</div>`).join("");
+  }
   historyEl.scrollTop=historyEl.scrollHeight;
 }
 function appendChunk(text){
@@ -172,13 +192,122 @@ function appendChunk(text){
   historyEl.appendChild(div);
   historyEl.scrollTop=historyEl.scrollHeight;
 }
+function ensureStreamingBubble(){
+  if(streamingBubble) return streamingBubble;
+  const hint=historyEl.querySelector(".hint");
+  if(hint) hint.remove();
+  streamingBubble=document.createElement("div");
+  streamingBubble.className="bubble output streaming";
+  streamingBubble.textContent="";
+  historyEl.appendChild(streamingBubble);
+  return streamingBubble;
+}
+function flushStreaming(){
+  rafPending=false;
+  if(!streamingBubble) return;
+  streamingBubble.textContent=streamingBuffer;
+  historyEl.scrollTop=historyEl.scrollHeight;
+}
+function appendToken(content){
+  if(!content) return;
+  streamingBuffer += content;
+  ensureStreamingBubble();
+  if(!rafPending){
+    rafPending=true;
+    requestAnimationFrame(flushStreaming);
+  }
+}
+function finalizeStreaming(){
+  if(streamingBubble){
+    streamingBubble.classList.remove("streaming");
+    // dedup: finalize once, reset buffer for next turn
+    streamingBubble=null;
+  }
+  streamingBuffer="";
+  rafPending=false;
+}
 function openStream(id){
-  // Try SSE
+  // Try SSE — supports both generic JSON and typed events (generation_chunk etc.)
   try{
     es=new EventSource(`/api/sessions/${id}/stream`);
-    es.onmessage=e=>{
+    // typed listeners (require Bridge to emit `event: <type>`)
+    const onChunk = (e)=>{
       try{
         const data=JSON.parse(e.data);
+        const c = data.content || data.text || "";
+        if(typeof c==="string" && c) appendToken(c);
+      }catch(_){ if(e.data) appendToken(e.data); }
+    };
+    es.addEventListener("generation_chunk", onChunk);
+    es.addEventListener("generation_started", ()=>{ streamingBuffer=""; ensureStreamingBubble(); });
+    es.addEventListener("generation_completed", ()=>{ finalizeStreaming(); });
+    es.addEventListener("turn_started", (e)=>{
+      try{
+        const d=JSON.parse(e.data);
+        streamingBuffer=""; ensureStreamingBubble();
+        if(d.prompt) streamingBubble.textContent="…";
+      }catch(_){}
+    });
+    es.addEventListener("turn_completed", (e)=>{
+      finalizeStreaming();
+      try{
+        const d=JSON.parse(e.data);
+        const out = d.result ? (d.result.output || "") : (d.content||d.output||"");
+        if(typeof out==="string" && out.trim() && !streamingBuffer.includes(out.trim().slice(0,40))){
+          appendChunk(out.trim());
+        }
+      }catch(_){}
+    });
+    es.addEventListener("turn_canceled", (e)=>{
+      finalizeStreaming();
+      let reason=""; try{ reason=JSON.parse(e.data).cancellation_reason||"";}catch(_){}
+      const div=document.createElement("div");
+      div.className="bubble cancel";
+      div.textContent="✕ canceled"+(reason?" ("+reason+")":"");
+      historyEl.appendChild(div);
+      historyEl.scrollTop=historyEl.scrollHeight;
+    });
+    es.addEventListener("tool_call_completed", (e)=>{
+      try{
+        const d=JSON.parse(e.data);
+        const act=d.activity||{};
+        const line=`tool> ${act.action||d.tool||"tool"}: ${act.status||"ok"}`;
+        const div=document.createElement("div");
+        div.className="bubble tool";
+        div.textContent=line;
+        historyEl.appendChild(div);
+        historyEl.scrollTop=historyEl.scrollHeight;
+      }catch(_){}
+    });
+    es.onmessage=e=>{
+      // fallback for fallback StreamBody (history/output) and generic events without `event:` field
+      try{
+        const data=JSON.parse(e.data);
+        if(data.type==="history" || data.type==="output"){
+          const txt=data.content||data.output||e.data;
+          if(typeof txt==="string" && txt.trim()){
+            // avoid duplicate of streaming buffer
+            if(streamingBuffer && txt.trim().slice(0,60)===streamingBuffer.slice(0,60)) return;
+            finalizeStreaming();
+            appendChunk(txt.trim());
+          }
+          return;
+        }
+        // if data contains typed field but was sent without event:, handle chunk
+        if(data.type==="generation_chunk"){
+          const c=data.content||data.text||"";
+          if(c) appendToken(c);
+          return;
+        }
+        if(data.type==="turn_canceled"){
+          finalizeStreaming();
+          const div=document.createElement("div");
+          div.className="bubble cancel";
+          div.textContent="✕ canceled"+(data.cancellation_reason?" ("+data.cancellation_reason+")":"");
+          historyEl.appendChild(div);
+          historyEl.scrollTop=historyEl.scrollHeight;
+          return;
+        }
         const txt=data.content||data.output||e.data;
         if(typeof txt==="string" && txt.trim()) appendChunk(txt.trim());
       }catch(_){ if(e.data && e.data.trim() && e.data!==": ping") appendChunk(e.data.trim()); }
@@ -186,7 +315,7 @@ function openStream(id){
     es.onerror=()=>{/* keep polling fallback */};
   }catch(_){}
 }
-function closeStream(){ if(es){ try{es.close()}catch(_){} es=null; } if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+function closeStream(){ streamingBubble=null; streamingBuffer=""; rafPending=false; if(es){ try{es.close()}catch(_){} es=null; } if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
 function startPoll(id){
   let seen=new Set();
   // seed seen from current DOM
@@ -209,6 +338,15 @@ async function createSession(){
 async function sendTurn(){
   if(!selected) return;
   const ta=$("#prompt"); const prompt=ta.value.trim(); if(!prompt) return;
+  // optimistic user bubble
+  const hint=historyEl.querySelector(".hint");
+  if(hint) hint.remove();
+  finalizeStreaming();
+  const userDiv=document.createElement("div");
+  userDiv.className="bubble user";
+  userDiv.textContent=prompt;
+  historyEl.appendChild(userDiv);
+  historyEl.scrollTop=historyEl.scrollHeight;
   $("#send").disabled=true;
   try{ await api(`/api/sessions/${selected}/turn`, {method:"POST", body:JSON.stringify({prompt})}); ta.value=""; }catch(e){ alert(e.message); } finally{ $("#send").disabled=false; ta.focus(); }
 }
@@ -223,6 +361,11 @@ $("#stopBtn").addEventListener("click", async()=>{
   if(!selected) return;
   if(!confirm("Stop session "+selected+"?")) return;
   await api(`/api/sessions/${selected}/stop`, {method:"POST", body: JSON.stringify({})}); refresh();
+});
+$("#cancelBtn").addEventListener("click", async()=>{
+  if(!selected) return;
+  $("#cancelBtn").disabled=true;
+  try{ await api(`/api/sessions/${selected}/cancel`, {method:"POST", body: JSON.stringify({reason:"user"})}); }catch(e){ alert(e.message); } finally{ $("#cancelBtn").disabled=false; }
 });
 // sort/order/filter wiring
 (function initControls(){

@@ -29,6 +29,7 @@ module Samagotchi
     OUTPUT_DIR = "output"
     PID_FILE   = "pid"
     SESSION_JSON = "session.json"
+    CANCEL_FILE = "cancel.json"
 
     # Spawn a new background session that processes the given prompt.
     #
@@ -49,12 +50,23 @@ module Samagotchi
 
       lib_path = File.expand_path("..", __dir__)
       opts = spawn_options(bridge: bridge)
-      pid = Process.spawn(
-        RbConfig.ruby,
-        "-I", lib_path,
-        "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{sd.inspect})",
-        **opts
-      )
+      env = opts.delete(:env)
+      pid = if env
+              Process.spawn(
+                env,
+                RbConfig.ruby,
+                "-I", lib_path,
+                "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{sd.inspect})",
+                **opts
+              )
+            else
+              Process.spawn(
+                RbConfig.ruby,
+                "-I", lib_path,
+                "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{sd.inspect})",
+                **opts
+              )
+            end
 
       File.write(File.join(session_dir, PID_FILE), pid.to_s)
       session
@@ -265,6 +277,33 @@ module Samagotchi
         engine:, state_dir: sd, session_id: session_id, enabled: bridge
       )
 
+      # Monitor thread for rare cancel requests via file flag (cross-process).
+      cancel_monitor = Thread.new do
+        loop do
+          sleep 0.2
+          break if Thread.current[:stop]
+          payload = begin
+            consume_cancel_flag(session_id, state_dir: sd)
+          rescue StandardError
+            nil
+          end
+          next unless payload
+
+          reason = payload["reason"] || payload[:reason] || "user"
+          if engine.turn_running?
+            begin
+              engine.cancel_current_turn!(reason.to_sym)
+            rescue StandardError
+              nil
+            end
+          end
+        end
+      rescue StandardError
+        nil
+      end
+      cancel_monitor.abort_on_exception = false
+      cancel_monitor.report_on_exception = false
+
       begin
         # Process the initial prompt
         unless session.last_prompt.to_s.strip.empty?
@@ -317,6 +356,12 @@ module Samagotchi
         Session.mark_error(session_id, reason: e.message, state_dir: sd)
         exit(1)
       ensure
+        begin
+          cancel_monitor[:stop] = true
+          cancel_monitor.kill if cancel_monitor&.alive?
+        rescue StandardError
+          nil
+        end
         bridge_instance&.stop
       end
     end
@@ -336,12 +381,23 @@ module Samagotchi
 
       lib_path = File.expand_path("..", __dir__)
       opts = spawn_options(bridge: bridge)
-      pid = Process.spawn(
-        RbConfig.ruby,
-        "-I", lib_path,
-        "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{state_dir.inspect})",
-        **opts
-      )
+      env = opts.delete(:env)
+      pid = if env
+              Process.spawn(
+                env,
+                RbConfig.ruby,
+                "-I", lib_path,
+                "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{state_dir.inspect})",
+                **opts
+              )
+            else
+              Process.spawn(
+                RbConfig.ruby,
+                "-I", lib_path,
+                "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{state_dir.inspect})",
+                **opts
+              )
+            end
       File.write(File.join(session_dir, PID_FILE), pid.to_s)
       pid
     end
@@ -359,6 +415,7 @@ module Samagotchi
     private_class_method def self.start_bridge_if_enabled(engine:, state_dir:, session_id:, enabled:)
       return nil unless enabled_bridge?(enabled)
 
+      require_relative "bridge"
       Samagotchi::Bridge.new(
         engine: engine, state_dir: state_dir, session_id: session_id
       ).start
@@ -374,6 +431,34 @@ module Samagotchi
 
       value = ENV.fetch("SAMAGOTCHI_ENABLE_BRIDGE", "").to_s.downcase
       !value.empty? && !%w[0 false no off].include?(value)
+    end
+
+    # Write a cancellation flag for the worker's active turn.
+    # The worker's monitor thread polls this file and calls `engine.cancel_current_turn!`.
+    # @return [Boolean] true on success
+    def self.write_cancel_flag(session_id, reason: "user", state_dir: nil)
+      sd = state_dir || Session.default_state_dir
+      session_dir = Session.session_dir(session_id, state_dir: sd)
+      FileUtils.mkdir_p(session_dir)
+      payload = JSON.generate({ reason: reason.to_s, at: Time.now.iso8601(3) })
+      write_atomic(File.join(session_dir, CANCEL_FILE), payload)
+      true
+    rescue StandardError
+      false
+    end
+
+    # Consume and remove a pending cancel flag, if any.
+    # @return [Hash, nil] parsed payload or nil if no flag
+    def self.consume_cancel_flag(session_id, state_dir: nil)
+      sd = state_dir || Session.default_state_dir
+      path = File.join(Session.session_dir(session_id, state_dir: sd), CANCEL_FILE)
+      return nil unless File.exist?(path)
+
+      data = JSON.parse(File.read(path)) rescue { "reason" => "user" }
+      FileUtils.rm_f(path)
+      data
+    rescue StandardError
+      nil
     end
 
     # Write a user turn into a session's input directory via the same file IPC

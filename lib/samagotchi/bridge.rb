@@ -158,6 +158,9 @@ module Samagotchi
           cursor = reconnect_cursor(headers, request[:query])
           serve_sse(io, m[1], last_event_id: cursor)
           break # SSE owns the connection until the client disconnects.
+        elsif (m = cancel_match(request[:path])) && method == "POST"
+          payload, status, body = handle_cancel(m[1], request[:body])
+          write_json(io, status, payload, body)
         elsif (m = turn_match(request[:path])) && method == "POST"
           payload, status, body = handle_post_turn(m[1], request[:body])
           write_json(io, status, payload, body)
@@ -219,6 +222,37 @@ module Samagotchi
 
     def state_match(path)
       %r|\A/session/([^/]+)/state\z|u.match(path.to_s)
+    end
+
+    def cancel_match(path)
+      %r|\A/session/([^/]+)/cancel\z|u.match(path.to_s)
+    end
+
+    # Cancel the active turn on this session's engine, if any.
+    # Returns [headers, status, body].
+    def handle_cancel(session_id, body)
+      unless own_session?(session_id)
+        return [{}, 404, { error: "unknown_session" }]
+      end
+
+      # Optional reason from JSON body
+      reason = :manual
+      if body && !body.strip.empty?
+        parsed = parse_json(body)
+        r = parsed.is_a?(Hash) ? (fetched(parsed, "reason") || fetched(parsed, "cancellation_reason")) : nil
+        reason = r.to_s.strip.empty? ? :manual : r.to_sym
+      end
+
+      if @engine.turn_running? && @engine.active_cancel_controller
+        ok = @engine.cancel_current_turn!(reason)
+        return [{}, 202, { status: "cancel_requested", session_id: @session_id, reason: reason.to_s }] if ok
+
+        [{}, 409, { error: "cancel_failed", detail: "could not cancel", session_id: @session_id }]
+      else
+        [{}, 409, { error: "not_running", detail: "no active turn to cancel", session_id: @session_id }]
+      end
+    rescue StandardError => e
+      [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 
     # Create a turn via file IPC (fire-and-forget). Returns [headers, status, body].

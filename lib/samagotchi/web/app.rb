@@ -52,6 +52,9 @@ module Samagotchi
           if (m = %r{\A/api/sessions/([^/]+)/output\z}.match(req.path_info)) && req.get?
             return handle_output(req, m[1])
           end
+          if (m = %r{\A/api/sessions/([^/]+)/cancel\z}.match(req.path_info)) && req.post?
+            return handle_cancel(req, m[1])
+          end
           if (m = %r{\A/api/sessions/([^/]+)/stop\z}.match(req.path_info)) && req.post?
             return handle_stop(req, m[1])
           end
@@ -153,7 +156,12 @@ module Samagotchi
           return error_response(400, "missing_fields", "prompt is required")
         end
         begin
-          session = @manager.spawn_session(prompt: prompt.to_s, state_dir: @state_dir)
+          bridge_enabled = web_bridge_enabled?
+          if bridge_enabled
+            session = @manager.spawn_session(prompt: prompt.to_s, state_dir: @state_dir, bridge: true)
+          else
+            session = @manager.spawn_session(prompt: prompt.to_s, state_dir: @state_dir)
+          end
         rescue ArgumentError => e
           return error_response(400, "invalid_model", e.message) if e.message.match?(/SAMAGOTCHI_DEFAULT_MODEL/)
           raise
@@ -164,9 +172,11 @@ module Samagotchi
       def handle_show(_req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
         history = read_history(id)
+        messages = messages_for_display(session)
         json_response(200, {
           session: session_to_json(session),
-          history: history
+          history: history,
+          messages: messages
         })
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
@@ -202,6 +212,61 @@ module Samagotchi
         end
         enqueued_id = SecureRandom.uuid
         json_response(202, { status: "accepted", enqueued_id: enqueued_id, session_id: id })
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      def handle_cancel(req, id)
+        # Validate session exists
+        begin
+          @session_class.load(id, state_dir: default_state_dir)
+        rescue ArgumentError => e
+          return error_response(404, "not_found", e.message)
+        end
+
+        body = req.body.read
+        reason = "user"
+        unless body.nil? || body.strip.empty?
+          parsed = parse_json(body)
+          if parsed.is_a?(Hash)
+            r = parsed["reason"] || parsed[:reason] || parsed["cancellation_reason"]
+            reason = r.to_s.strip.empty? ? "user" : r.to_s
+          end
+        end
+
+        # Try direct bridge cancel first (in-process, low latency)
+        bridge_port = bridge_sidecar_port(id)
+        if bridge_port
+          begin
+            require "socket"
+            sock = TCPSocket.new(DEFAULT_HOST, bridge_port)
+            json_body = JSON.generate({ reason: reason })
+            sock.write("POST /session/#{id}/cancel HTTP/1.1\r\nHost: #{DEFAULT_HOST}:#{bridge_port}\r\nContent-Type: application/json\r\nContent-Length: #{json_body.bytesize}\r\nConnection: close\r\n\r\n#{json_body}")
+            status_line = sock.gets
+            sock.close rescue nil
+            if status_line && status_line.include?("202")
+              return json_response(202, { status: "cancel_requested", session_id: id, reason: reason, via: "bridge" })
+            end
+            # fall through to file flag if bridge did not accept (409 etc)
+            # try to parse bridge response code for not_running → return 409
+            if status_line
+              code = status_line.split[1].to_i
+              return json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id }) if code == 409
+            end
+          rescue StandardError
+            nil
+          end
+        end
+
+        # Fallback: file flag for worker monitor thread
+        if @manager.respond_to?(:write_cancel_flag)
+          ok = @manager.write_cancel_flag(id, reason: reason, state_dir: @state_dir)
+          return json_response(202, { status: "cancel_requested", session_id: id, reason: reason, via: "file" }) if ok
+
+          return error_response(500, "cancel_failed", "could not write cancel flag")
+        end
+
+        error_response(500, "cancel_failed", "cancel not supported")
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
       end
@@ -282,7 +347,23 @@ module Samagotchi
 
         data = JSON.parse(File.read(sidecar))
         port = data["port"]
-        port.is_a?(Integer) ? port : port.to_i
+        port = port.is_a?(Integer) ? port : port.to_i
+        return nil unless port.to_i > 0
+
+        # Validate liveness: stale sidecar after worker death causes ECONNREFUSED
+        # which surfaces as WEBrick ERROR. Probe quickly and clean up if dead.
+        begin
+          require "socket"
+          Socket.tcp(DEFAULT_HOST, port, connect_timeout: 0.2).close
+        rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ETIMEDOUT, SocketError, IOError, StandardError
+          begin
+            File.unlink(sidecar)
+          rescue StandardError
+            nil
+          end
+          return nil
+        end
+        port
       rescue StandardError
         nil
       end
@@ -350,6 +431,31 @@ module Samagotchi
         []
       end
 
+      def messages_for_display(session)
+        msgs = session.messages || []
+        filtered = []
+        msgs.each do |m|
+          role = m[:role].to_s
+          content = m[:content].to_s
+          next if role == "system"
+          next if role == "tool_response"
+
+          stripped = Samagotchi::OutputFormatter.strip(content)
+          next if stripped.empty?
+
+          norm_role = role == "model" ? "assistant" : role
+          # normalize assistant vs model, keep user as is
+          norm_role = "assistant" if norm_role == "assistant" || norm_role == "model"
+          norm_role = "user" if norm_role == "user"
+          next unless %w[user assistant].include?(norm_role)
+
+          filtered << { role: norm_role, content: stripped }
+        end
+        filtered
+      rescue StandardError
+        []
+      end
+
       def parse_json(str)
         return nil if str.nil? || str.strip.empty?
 
@@ -382,6 +488,17 @@ module Samagotchi
 
       def error_response(status, code, detail)
         json_response(status, { error: code, detail: detail })
+      end
+
+      def web_bridge_enabled?
+        # Default-on for web spawns; opt-out via SAMAGOTCHI_DISABLE_BRIDGE=1/true or explicit SAMAGOTCHI_ENABLE_BRIDGE=0/false
+        disable = ENV.fetch("SAMAGOTCHI_DISABLE_BRIDGE", "").to_s.downcase
+        return false if %w[1 true yes on].include?(disable)
+
+        val = ENV.fetch("SAMAGOTCHI_ENABLE_BRIDGE", "").to_s.downcase
+        return false if !val.empty? && %w[0 false no off].include?(val)
+
+        true
       end
 
       def not_found(path:)
@@ -480,7 +597,9 @@ module Samagotchi
         def sse_frame(data)
           json = JSON.generate(data)
           id = SecureRandom.uuid # per-frame id for Last-Event-ID resumption (client can store)
-          "id: #{id}\ndata: #{json}\n\n"
+          event = data.is_a?(Hash) && (data[:type] || data["type"])
+          header = event ? "event: #{event}\n" : ""
+          "#{header}id: #{id}\ndata: #{json}\n\n"
         end
       end
 
@@ -496,20 +615,27 @@ module Samagotchi
 
         def each
           require "socket"
-          sock = TCPSocket.new(@host, @port)
-          sock.write("GET /session/#{@session_id}/stream#{@query} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nAccept: text/event-stream\r\nConnection: keep-alive\r\n\r\n")
-          # Skip HTTP headers
-          while (line = sock.gets)
-            break if line.strip.empty?
+          sock = nil
+          begin
+            sock = TCPSocket.new(@host, @port)
+          rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ETIMEDOUT, SocketError, StandardError
+            return
           end
-          loop do
-            chunk = sock.readpartial(4096)
-            yield chunk
-          rescue EOFError, IOError, Errno::ECONNRESET
-            break
+          begin
+            sock.write("GET /session/#{@session_id}/stream#{@query} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nAccept: text/event-stream\r\nConnection: keep-alive\r\n\r\n")
+            # Skip HTTP headers
+            while (line = sock.gets)
+              break if line.strip.empty?
+            end
+            loop do
+              chunk = sock.readpartial(4096)
+              yield chunk
+            rescue EOFError, IOError, Errno::ECONNRESET, Errno::ECONNREFUSED
+              break
+            end
+          ensure
+            sock&.close rescue nil
           end
-        ensure
-          sock&.close rescue nil
         end
       end
     end
