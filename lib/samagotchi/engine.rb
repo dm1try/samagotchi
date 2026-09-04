@@ -46,12 +46,22 @@ module Samagotchi
     # @param no_interrupt       [Boolean]
     # @param model_name         [String, nil] defaults from SAMAGOTCHI_DEFAULT_MODEL
     # @param memories           [Array<String>] --memory preload list
+    DEFAULT_SYSTEM_MEMORIES = %w[identity].freeze
+
     def initialize(mode: :assist, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
       @mode = mode.to_sym
       @default_model_name = ModelProfile.required_model_name(model_name)
       @effective_model_name = @default_model_name
       @client = client || Client.new
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@default_model_name)
+      # Ensure the built-in system bundle is installed (lazy, warn-only).
+      # This is the single seam for both TUI and non-TUI (web/worker) paths.
+      begin
+        require_relative "memory_bundle/system_bundle"
+        MemoryBundle::SystemBundle.ensure!
+      rescue StandardError
+        nil
+      end
       # Load hooks from config (plugins) and create the registry
       @hooks = load_hooks_from_config
       # Use the KernelLoop's reminder_store if provided (TerminalUI path),
@@ -737,7 +747,25 @@ module Samagotchi
         "Project memories:\n#{project_index}",
         "System memories:\n#{system_index}"
       ].join("\n\n")
-      [thinking_token + base, rg_guidance, project_description, current_directory, memory_sections, explicit_memory_section].compact.join("\n")
+      [thinking_token + base, rg_guidance, project_description, current_directory, memory_sections, system_identity_section, explicit_memory_section].compact.join("\n")
+    end
+
+    # B-light: auto-preload the built-in identity memory.
+    # The file is installed by SystemBundle.ensure! as a normal system memory,
+    # but its body is injected here so the agent has it without an extra tool call.
+    # Identity is not tracked as an "activated" memory for the sticky status line
+    # to avoid always showing `mem: identity`.
+    def system_identity_section
+      DEFAULT_SYSTEM_MEMORIES.each do |name|
+        body = Tools::MemoryRead.call(name, scope: "system")
+        next if body.start_with?("Error:")
+        next if body.strip.empty?
+
+        return "System identity (auto-loaded, scope=system):\n#{body}"
+      end
+      nil
+    rescue StandardError
+      nil
     end
 
     # ── Memory helpers ─────────────────────────────────────────────────────────
