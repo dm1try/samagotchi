@@ -1606,33 +1606,114 @@ module Samagotchi
         end
       end
 
-      # Parse optional --default flag (flag-first canonical: /model --default <name>)
+      # Parse flags: --default and --alias <name> / --alias=<name> (tolerant order)
       tokens = suffix.split(/\s+/)
-      persist_default = tokens.delete("--default")
-      # Support trailing flag as tolerant alias
-      # tokens now contains remaining args
-      arg = tokens.join(" ").strip
-
-      if arg.empty?
-        return "--default requires a model name: usage /model --default <name> or /model <name> [--default]"
-      end
-
-      lowered = arg.downcase
-      if ["clear", "default", "none", "off"].include?(lowered)
-        if persist_default
-          return "--default cannot be combined with clear/default/none/off"
+      persist_default = false
+      alias_name = nil
+      alias_seen = false
+      model_parts = []
+      i = 0
+      while i < tokens.length
+        tok = tokens[i]
+        if tok == "--default"
+          persist_default = true
+          i += 1
+        elsif tok == "--alias"
+          if alias_seen
+            return "multiple --alias flags are not supported: usage /model <model> --alias <name> [--default]"
+          end
+          alias_seen = true
+          nxt = tokens[i + 1]
+          if nxt.nil? || nxt.strip.empty? || nxt.start_with?("-")
+            return "--alias requires a name: usage /model <model> --alias <name> [--default]"
+          end
+          alias_name = nxt.strip
+          i += 2
+        elsif tok.start_with?("--alias=")
+          if alias_seen
+            return "multiple --alias flags are not supported: usage /model <model> --alias <name> [--default]"
+          end
+          alias_seen = true
+          val = tok.delete_prefix("--alias=").strip
+          if val.empty? || val.start_with?("-")
+            return "--alias requires a name: usage /model <model> --alias <name> [--default]"
+          end
+          alias_name = val
+          i += 1
+        else
+          model_parts << tok
+          i += 1
         end
-        apply_runtime_model!(@default_model_name)
-        persist_session_model
-        return "runtime model reset to #{@effective_model_name} (profile=#{@profile.name})"
       end
 
-      apply_runtime_model!(arg, persist_default: !!persist_default)
-      persist_session_model
-      if persist_default
-        "runtime model set to #{@effective_model_name} (profile=#{@profile.name}) and default updated"
+      arg = model_parts.join(" ").strip
+
+      if alias_name
+        if arg.empty?
+          return "--alias requires a model name: usage /model <model> --alias <name> [--default]"
+        end
+        lowered_arg = arg.downcase
+        if ["clear", "default", "none", "off"].include?(lowered_arg)
+          return "--alias cannot be combined with clear/default/none/off"
+        end
+        # Pre-validate alias name before switching runtime (so invalid alias doesn't change model)
+        begin
+          # Reuse ConfigFile validation without IO by attempting a dry-run via the writer's checks
+          # Inline quick checks mirroring ConfigFile.write_model_alias! to avoid switching on invalid name
+          ak = alias_name.strip
+          raise ArgumentError, "alias name is required" if ak.empty?
+          lk = ak.downcase
+          if %w[clear default none off].include?(lk)
+            raise ArgumentError, "alias name '#{ak}' is reserved"
+          end
+          raise ArgumentError, "alias name must not contain whitespace" if ak.match?(/\s/)
+          raise ArgumentError, "alias name must not start with '-'" if ak.start_with?("-")
+          raise ArgumentError, "alias name must not contain '/'" if ak.include?("/")
+          unless ak.match?(/\A[a-z0-9][a-z0-9._-]*\z/i)
+            raise ArgumentError, "alias name must match /[a-z0-9][a-z0-9._-]*/i (got '#{ak}')"
+          end
+          raise ArgumentError, "alias must not point to itself" if lk == arg.strip.downcase
+        rescue ArgumentError => e
+          return "invalid alias: #{e.message}"
+        end
+
+        apply_runtime_model!(arg, persist_default: !!persist_default)
+        persist_session_model
+
+        begin
+          previous = ConfigFile.write_model_alias!(alias_name, @effective_model_name)
+        rescue ArgumentError => e
+          return "invalid alias: #{e.message} (runtime model set to #{@effective_model_name} (profile=#{@profile.name}))"
+        rescue StandardError => e
+          return "runtime model set to #{@effective_model_name} (profile=#{@profile.name}) but failed to persist alias: #{e.message}"
+        end
+
+        key = alias_name.strip.downcase
+        warn_prefix = previous ? "warning: overwriting alias '#{key}' (#{previous} -> #{@effective_model_name}); " : ""
+        base = persist_default ? "runtime model set to #{@effective_model_name} (profile=#{@profile.name}) and default updated" : "runtime model set to #{@effective_model_name} (profile=#{@profile.name})"
+        "#{warn_prefix}#{base}; alias '#{key}' -> '#{@effective_model_name}' persisted"
       else
-        "runtime model set to #{@effective_model_name} (profile=#{@profile.name})"
+        if arg.empty?
+          return "--default requires a model name: usage /model --default <name> or /model <name> [--default]"
+        end
+
+        lowered = arg.downcase
+        if ["clear", "default", "none", "off"].include?(lowered)
+          if persist_default
+            return "--default cannot be combined with clear/default/none/off"
+          end
+          apply_runtime_model!(@default_model_name)
+          persist_session_model
+          return "runtime model reset to #{@effective_model_name} (profile=#{@profile.name})"
+        end
+
+        apply_runtime_model!(arg, persist_default: !!persist_default)
+        persist_session_model
+        if persist_default
+          "runtime model set to #{@effective_model_name} (profile=#{@profile.name}) and default updated"
+        else
+          "runtime model set to #{@effective_model_name} (profile=#{@profile.name})"
+        end
       end
     end
 
@@ -1682,7 +1763,8 @@ module Samagotchi
     end
 
     def apply_runtime_model!(model_name, persist_default: false)
-      resolved_model_name = ModelProfile.required_model_name(model_name)
+      aliased = ConfigFile.resolve_model_alias(model_name)
+      resolved_model_name = ModelProfile.required_model_name(aliased)
       @effective_model_name = resolved_model_name
       @profile = ModelProfile.from_model_name(resolved_model_name)
       @kernel.sync_profile_from_model!(resolved_model_name)

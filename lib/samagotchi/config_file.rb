@@ -105,5 +105,55 @@ module Samagotchi
       aliases = model_aliases(env: env, path: path)
       aliases.fetch(value.downcase, value)
     end
+
+    RESERVED_MODEL_ALIASES = %w[clear default none off].freeze
+
+    def write_model_alias!(alias_name, model_name, env: ENV, path: global_path(env: env))
+      alias_key = alias_name.to_s.strip
+      raise ArgumentError, "alias name is required" if alias_key.empty?
+      raise ArgumentError, "model name is required" if model_name.to_s.strip.empty?
+
+      lowered_key = alias_key.downcase
+      raise ArgumentError, "alias name '#{alias_key}' is reserved" if RESERVED_MODEL_ALIASES.include?(lowered_key)
+      raise ArgumentError, "alias name must not contain whitespace" if alias_key.match?(/\s/)
+      raise ArgumentError, "alias name must not start with '-'" if alias_key.start_with?("-")
+      raise ArgumentError, "alias name must not contain '/'" if alias_key.include?("/")
+      unless alias_key.match?(/\A[a-z0-9][a-z0-9._-]*\z/i)
+        raise ArgumentError, "alias name must match /[a-z0-9][a-z0-9._-]*/i (got '#{alias_key}')"
+      end
+
+      resolved_model = model_name.to_s.strip
+      raise ArgumentError, "alias must not point to itself" if lowered_key == resolved_model.downcase
+
+      raw_data = {}
+      if File.file?(path)
+        loaded = YAML.safe_load(File.read(path), permitted_classes: [], aliases: false)
+        raw_data = loaded if loaded.is_a?(Hash)
+      end
+
+      aliases_hash = raw_data[MODEL_ALIASES_KEY]
+      unless aliases_hash.is_a?(Hash)
+        aliases_hash = {}
+        raw_data[MODEL_ALIASES_KEY] = aliases_hash
+      end
+
+      # Normalize existing alias keys to downcase to avoid duplicates like Qwen/qwen
+      normalized = {}
+      aliases_hash.each do |k, v|
+        nk = k.to_s.strip.downcase
+        next if nk.empty?
+        normalized[nk] = v.to_s.strip unless v.to_s.strip.empty?
+      end
+      raw_data[MODEL_ALIASES_KEY] = normalized
+
+      previous = normalized[lowered_key]
+      normalized[lowered_key] = resolved_model
+
+      FileUtils.mkdir_p(File.dirname(path))
+      tmp = "#{path}.tmp"
+      File.write(tmp, YAML.dump(raw_data))
+      File.rename(tmp, path)
+      previous
+    end
   end
 end
