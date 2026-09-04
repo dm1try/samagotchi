@@ -9,7 +9,7 @@ module Samagotchi
   #   gemma4  — default, original Gemma 4 format
   #   qwen36  — Qwen 3.6 chat template with function calling
   class ModelProfile
-    MODEL_ENV = "SAMAGOTCHI_MODEL"
+    MODEL_ENV = "SAMAGOTCHI_DEFAULT_MODEL"
 
     attr_reader :name, :turn_start, :turn_end,
                 :tool_call_open, :tool_call_close,

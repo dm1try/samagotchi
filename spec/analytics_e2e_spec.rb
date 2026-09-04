@@ -28,12 +28,12 @@ RSpec.describe "SessionMetrics end-to-end (real KernelLoop flow)" do
   around do |example|
     @xdg = Dir.mktmpdir
     original_xdg = ENV["XDG_STATE_HOME"]
-    original_model = ENV["SAMAGOTCHI_MODEL"]
+    original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
     ENV["XDG_STATE_HOME"] = @xdg
-    ENV["SAMAGOTCHI_MODEL"] = "gemma4"
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "gemma4"
     example.run
     ENV["XDG_STATE_HOME"] = original_xdg
-    ENV["SAMAGOTCHI_MODEL"] = original_model
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
   end
 
   it "captures server-reported tokens through a full run_turn" do

@@ -155,7 +155,7 @@ module Samagotchi
         begin
           session = @manager.spawn_session(prompt: prompt.to_s, state_dir: @state_dir)
         rescue ArgumentError => e
-          return error_response(400, "invalid_model", e.message) if e.message.match?(/SAMAGOTCHI_MODEL/)
+          return error_response(400, "invalid_model", e.message) if e.message.match?(/SAMAGOTCHI_DEFAULT_MODEL/)
           raise
         end
         json_response(201, session_to_json(session))

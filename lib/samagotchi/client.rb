@@ -304,12 +304,12 @@ module Samagotchi
     end
 
     # Transport semantics for the request's `model` field:
-    #   - llama.cpp: forward the selector (SAMAGOTCHI_MODEL) verbatim.
+    #   - llama.cpp: forward the selector (SAMAGOTCHI_DEFAULT_MODEL) verbatim.
     #   - mlx_lm.server: omit `model` entirely (use whatever was loaded via the
     #     server's own `--model` CLI flag).
     #   - oMLX: MUST send a model id that exists in the server's `/v1/models`
     #     list, or oMLX 400s with "model: Field required". Our short
-    #     SAMAGOTCHI_MODEL selector (e.g. `gemma-4-26b-a4b-it-4bit`) is resolved
+    #     SAMAGOTCHI_DEFAULT_MODEL selector (e.g. `gemma-4-26b-a4b-it-4bit`) is resolved
     #     to the exact registered id (which may be prefixed, e.g.
     #     `mlx-community--...`) by matching against the loaded `/v1/models` list.
     def payload_model_name(model)
@@ -324,7 +324,7 @@ module Samagotchi
       end
     end
 
-    # Resolve a user-facing SAMAGOTCHI_MODEL selector to the exact id oMLX
+    # Resolve a user-facing SAMAGOTCHI_DEFAULT_MODEL selector to the exact id oMLX
     # expects in the request body (an id from its `/v1/models` list).
     #
     # Resolution order: exact (case-insensitive) match first, then the first

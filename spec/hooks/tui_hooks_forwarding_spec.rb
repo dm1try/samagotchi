@@ -12,10 +12,10 @@ RSpec.describe "TUI hooks forwarding regression" do
   # in interactive (TUI) mode.
 
   around do |example|
-    orig = ENV["SAMAGOTCHI_MODEL"]
-    ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
+    orig = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
     example.run
-    ENV["SAMAGOTCHI_MODEL"] = orig
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = orig
   end
 
   let(:client) { instance_double(Samagotchi::Client) }

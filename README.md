@@ -204,7 +204,7 @@ Default path:
 Example:
 
 ```yaml
-SAMAGOTCHI_MODEL: Qwen3-14B-Instruct
+SAMAGOTCHI_DEFAULT_MODEL: Qwen3-14B-Instruct
 LLAMA_HOST: 192.168.1.29
 LLAMA_PORT: 8081
 SAMAGOTCHI_THINKING_UI: spinner
@@ -419,8 +419,8 @@ oMLX's known tool-call limitation (a stream filter that strips markup) only
 affects its `/v1/chat/completions` endpoint, not the `/v1/completions` endpoint
 chi uses, so raw `[[…]]`/`<|tool_call>` markers stream through untouched.
 
-`SAMAGOTCHI_MODEL`/`/model` always drive samagotchi's own prompt-profile
-selection (Gemma4 vs Qwen36 formatting); how the selector reaches the request
+`SAMAGOTCHI_DEFAULT_MODEL` (config default) and `/model` (runtime effective) drive samagotchi's own prompt-profile
+selection (Gemma4 vs Qwen36 formatting); the status line and `/model` output always render the runtime effective model (showing default when diverged). How the selector reaches the request
 differs by transport:
 
 - **mlx** (`mlx_lm.server`): the `model` field is omitted entirely — the server
@@ -431,7 +431,7 @@ differs by transport:
   (case-insensitive) first, then substring, then passed through unchanged. That
   resolved id is usually prefixed (e.g. `mlx-community--gemma-3-4b-it-4bit`), so a
   short selector such as `gemma-3-4b-it-4bit` is what you set in
-  `SAMAGOTCHI_MODEL`. An unknown selector passes through raw and oMLX 404s,
+  `SAMAGOTCHI_DEFAULT_MODEL`. An unknown selector passes through raw and oMLX 404s,
   listing its available models; if `/v1/models` is unreachable, samagotchi falls
   back to the raw selector and lets the server decide (its own 400/404). Runtime
   model switch re-resolves each completion (the `/v1/models` id list is cached per
@@ -442,14 +442,16 @@ differs by transport:
 In interactive assist mode, you can switch the request model without restarting:
 
 - `/model <name>`: set a session-scoped model override.
-- `/model`: show the effective model currently used for requests.
-- `/model clear` (or `default`/`none`/`off`): clear the session override.
+- `/model --default <name>`: set session model and persist as new default in `config.yml` (also updates `SAMAGOTCHI_DEFAULT_MODEL` for future sessions).
+- `/model`: show the effective model (and default when diverged: `runtime model: <effective> (default: <default>, profile=...)`).
+- `/model clear` (or `default`/`none`/`off`): clear the session override, reverting to the configured default.
 - `/models`: list model ids currently discovered by llama.cpp.
 
 Notes:
 
 - The switch updates the request `model` field and automatically infers/switches profile behavior.
-- The command is session-scoped and does not rewrite config files.
+- Without `--default` the command is session-scoped and does not rewrite config files.
+- With `--default` the new default is written to `~/.config/samagotchi/config.yml` (honoring `XDG_CONFIG_HOME`) and takes effect for all new sessions; the current session's effective model is also updated immediately.
 
 ## Tool Activity Log
 
@@ -538,14 +540,14 @@ Configure these environment variables to avoid premature request failures:
 
 To explicitly route requests to a named model in llama.cpp, set:
 
-- `SAMAGOTCHI_MODEL` (required): model name/id sent as the `model` field on `/completion` requests.
+- `SAMAGOTCHI_DEFAULT_MODEL` (required): model name/id sent as the `model` field on `/completion` requests.
 
 Profile inference uses the model name:
 
 - names containing `qwen` map to the `qwen36` profile
 - all others map to the `gemma4` profile
 
-When `SAMAGOTCHI_MODEL` is unset or blank, Samagotchi fails fast with a clear startup/configuration error.
+When `SAMAGOTCHI_DEFAULT_MODEL` is unset or blank, Samagotchi fails fast with a clear startup/configuration error.
 
 ## Llama Network Retry Behavior
 

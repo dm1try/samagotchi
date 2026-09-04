@@ -47,10 +47,10 @@ RSpec.describe Samagotchi::TerminalUI do
     original_status_width_mode = ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"]
     original_status_fixed_width = ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"]
     original_status_max_width = ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"]
-    original_model = ENV["SAMAGOTCHI_MODEL"]
+    original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
     original_columns = ENV["COLUMNS"]
     original_default_input = ENV["SAMAGOTCHI_DEFAULT_INPUT"]
-    ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
     ENV.delete("SAMAGOTCHI_DEFAULT_INPUT")
     example.run
     ENV["THINKING_MODE"] = original_thinking_mode
@@ -63,7 +63,7 @@ RSpec.describe Samagotchi::TerminalUI do
     ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"] = original_status_width_mode
     ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"] = original_status_fixed_width
     ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"] = original_status_max_width
-    ENV["SAMAGOTCHI_MODEL"] = original_model
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
     ENV["COLUMNS"] = original_columns
     if original_default_input.nil?
       ENV.delete("SAMAGOTCHI_DEFAULT_INPUT")
@@ -1156,7 +1156,7 @@ file2.rb")
     end
 
     it "shows effective /model value without calling the model" do
-      ENV["SAMAGOTCHI_MODEL"] = "env-model"
+      ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "env-model"
       allow(Reline).to receive(:readmultiline).and_return("/model", nil)
       expect(client).not_to receive(:complete)
 

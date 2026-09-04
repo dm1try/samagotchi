@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
 require "yaml"
+require "fileutils"
 
 module Samagotchi
   module ConfigFile
     XDG_CONFIG_HOME_ENV = "XDG_CONFIG_HOME"
     CONFIG_DIR = "samagotchi"
     CONFIG_FILE = "config.yml"
+    DEFAULT_MODEL_KEY = "SAMAGOTCHI_DEFAULT_MODEL"
 
     module_function
 
@@ -52,5 +54,25 @@ module Samagotchi
       value.is_a?(String) || value.is_a?(Numeric) || value == true || value == false
     end
     private_class_method :scalar_value?
+
+    def write_default_model!(model_name, env: ENV, path: global_path(env: env))
+      resolved = model_name.to_s.strip
+      raise ArgumentError, "model name is required" if resolved.empty?
+
+      # Load raw YAML (including nested sections like hooks:) so we don't clobber them
+      raw_data = {}
+      if File.file?(path)
+        loaded = YAML.safe_load(File.read(path), permitted_classes: [], aliases: false)
+        raw_data = loaded if loaded.is_a?(Hash)
+      end
+
+      raw_data[DEFAULT_MODEL_KEY] = resolved
+      FileUtils.mkdir_p(File.dirname(path))
+      tmp = "#{path}.tmp"
+      File.write(tmp, YAML.dump(raw_data))
+      File.rename(tmp, path)
+      env[DEFAULT_MODEL_KEY] = resolved
+      true
+    end
   end
 end

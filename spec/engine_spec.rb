@@ -5,14 +5,14 @@ require "samagotchi/session"
 
 RSpec.describe Samagotchi::Engine do
   around do |example|
-    original_model = ENV["SAMAGOTCHI_MODEL"]
+    original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
     original_thinking = ENV["THINKING_MODE"]
     original_skip = ENV["SAMAGOTCHI_SKIP_AGENT_MD"]
-    ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
     ENV["THINKING_MODE"] = "false"
     ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
     example.run
-    ENV["SAMAGOTCHI_MODEL"] = original_model
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
     ENV["THINKING_MODE"] = original_thinking
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip
   end
