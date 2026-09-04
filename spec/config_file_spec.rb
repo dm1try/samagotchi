@@ -10,14 +10,14 @@ RSpec.describe Samagotchi::ConfigFile do
   around do |example|
     original_env = {
       "XDG_CONFIG_HOME" => ENV["XDG_CONFIG_HOME"],
-      "SAMAGOTCHI_MODEL" => ENV["SAMAGOTCHI_MODEL"],
+      "SAMAGOTCHI_DEFAULT_MODEL" => ENV["SAMAGOTCHI_DEFAULT_MODEL"],
       "LLAMA_HOST" => ENV["LLAMA_HOST"],
       "LLAMA_PORT" => ENV["LLAMA_PORT"]
     }
 
     begin
       ENV.delete("XDG_CONFIG_HOME")
-      ENV.delete("SAMAGOTCHI_MODEL")
+      ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
       ENV.delete("LLAMA_HOST")
       ENV.delete("LLAMA_PORT")
       example.run
@@ -50,7 +50,7 @@ RSpec.describe Samagotchi::ConfigFile do
         config_dir = File.join(dir, "samagotchi")
         Dir.mkdir(config_dir)
         File.write(File.join(config_dir, "config.yml"), <<~YAML)
-          SAMAGOTCHI_MODEL: Qwen3-14B-Instruct
+          SAMAGOTCHI_DEFAULT_MODEL: Qwen3-14B-Instruct
           LLAMA_HOST: 192.168.1.29
           LLAMA_PORT: 8081
         YAML
@@ -60,7 +60,7 @@ RSpec.describe Samagotchi::ConfigFile do
 
         expect(described_class.load_global_env!).to be(true)
         expect(Samagotchi::ModelProfile.from_env.name).to eq("qwen36")
-        expect(ENV["SAMAGOTCHI_MODEL"]).to eq("Qwen3-14B-Instruct")
+        expect(ENV["SAMAGOTCHI_DEFAULT_MODEL"]).to eq("Qwen3-14B-Instruct")
 
         client = Samagotchi::Client.new
         expect(client.instance_variable_get(:@host)).to eq("192.168.1.29")
@@ -81,7 +81,7 @@ RSpec.describe Samagotchi::ConfigFile do
         config_dir = File.join(dir, "samagotchi")
         Dir.mkdir(config_dir)
         File.write(File.join(config_dir, "config.yml"), <<~YAML)
-          SAMAGOTCHI_MODEL: Qwen3-14B-Instruct
+          SAMAGOTCHI_DEFAULT_MODEL: Qwen3-14B-Instruct
           hooks:
             hooks_dir: ~/.config/samagotchi/hooks/
             before_turn:
@@ -91,7 +91,7 @@ RSpec.describe Samagotchi::ConfigFile do
         ENV["XDG_CONFIG_HOME"] = dir
 
         expect(described_class.load_global_env!).to be(true)
-        expect(ENV["SAMAGOTCHI_MODEL"]).to eq("Qwen3-14B-Instruct")
+        expect(ENV["SAMAGOTCHI_DEFAULT_MODEL"]).to eq("Qwen3-14B-Instruct")
         # Non-scalar hooks section is skipped for env-loading
         expect(ENV).not_to have_key("hooks")
       end

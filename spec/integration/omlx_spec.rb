@@ -4,11 +4,11 @@ require "samagotchi/client"
 require "samagotchi/kernel_loop"
 
 # Integration test that verifies the omlx transport forwards a *resolved* `model`
-# id to a live oMLX server: a short SAMAGOTCHI_MODEL selector is resolved, via the
+# id to a live oMLX server: a short SAMAGOTCHI_DEFAULT_MODEL selector is resolved, via the
 # server's own /v1/models, to the exact registered id (which may be prefixed,
 # e.g. "mlx-community--..."), so the completion no longer 400s on a missing model.
 #
-# No stubs: this talks to the real host via LLAMA_HOST/LLAMA_PORT/SAMAGOTCHI_MODEL.
+# No stubs: this talks to the real host via LLAMA_HOST/LLAMA_PORT/SAMAGOTCHI_DEFAULT_MODEL.
 #
 # Prerequisites:
 #   - An oMLX server must be running (default: 192.168.1.29:8000)
@@ -16,15 +16,15 @@ require "samagotchi/kernel_loop"
 #
 # Run with:
 #   LLAMA_INTEGRATION=1 LLAMA_HOST=192.168.1.29 LLAMA_PORT=8000 \
-#     SAMAGOTCHI_MODEL=gemma-3-4b-it-4bit SAMAGOTCHI_SERVER_TRANSPORT=omlx \
+#     SAMAGOTCHI_DEFAULT_MODEL=gemma-3-4b-it-4bit SAMAGOTCHI_SERVER_TRANSPORT=omlx \
 #     bundle exec rspec spec/integration/omlx_spec.rb
 #
 # Verbose output:
 #   LLAMA_INTEGRATION=1 LLAMA_HOST=192.168.1.29 LLAMA_PORT=8000 \
-#     SAMAGOTCHI_MODEL=gemma-3-4b-it-4bit bundle exec rspec spec/integration/omlx_spec.rb -v
+#     SAMAGOTCHI_DEFAULT_MODEL=gemma-3-4b-it-4bit bundle exec rspec spec/integration/omlx_spec.rb -v
 RSpec.describe "omlx transport - model resolution + forwarding", :integration do
   # The short selector we expect to resolve to a live /v1/models id.
-  let(:selector) { ENV.fetch("SAMAGOTCHI_MODEL") }
+  let(:selector) { ENV.fetch("SAMAGOTCHI_DEFAULT_MODEL") }
 
   # A real oMLX client built from LLAMA_HOST / LLAMA_PORT / SAMAGOTCHI_SERVER_TRANSPORT.
   let(:client) { Samagotchi::Client.new(transport: :omlx) }

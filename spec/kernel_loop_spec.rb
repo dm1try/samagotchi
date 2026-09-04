@@ -10,7 +10,7 @@ RSpec.describe Samagotchi::KernelLoop do
 
   around do |example|
     original_env = {
-      "SAMAGOTCHI_MODEL" => ENV["SAMAGOTCHI_MODEL"],
+      "SAMAGOTCHI_DEFAULT_MODEL" => ENV["SAMAGOTCHI_DEFAULT_MODEL"],
       "SAMAGOTCHI_CONTEXT_STATUS" => ENV["SAMAGOTCHI_CONTEXT_STATUS"],
       "SAMAGOTCHI_CONTEXT_WINDOW_TOKENS" => ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"],
       "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN" => ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"],
@@ -20,7 +20,7 @@ RSpec.describe Samagotchi::KernelLoop do
       "SAMAGOTCHI_MAX_TOKENS" => ENV["SAMAGOTCHI_MAX_TOKENS"]
     }
 
-    ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
     ENV.delete("SAMAGOTCHI_N_PREDICT")
     ENV.delete("SAMAGOTCHI_MAX_TOKENS")
 
@@ -1194,7 +1194,7 @@ Need to inspect the filesystem first.
 
     it "passes model from environment when configured" do
       captured_kwargs = nil
-      ENV["SAMAGOTCHI_MODEL"] = "Qwen3-14B-Instruct"
+      ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Qwen3-14B-Instruct"
       allow(client).to receive(:complete) do |_prompt, **kwargs|
         captured_kwargs = kwargs
         "done"
@@ -1204,12 +1204,12 @@ Need to inspect the filesystem first.
 
       expect(captured_kwargs[:model]).to eq("Qwen3-14B-Instruct")
     ensure
-      ENV.delete("SAMAGOTCHI_MODEL")
+      ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
     end
 
     it "prefers explicit model_name run override over environment" do
       captured_kwargs = nil
-      ENV["SAMAGOTCHI_MODEL"] = "env-model"
+      ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "env-model"
       allow(client).to receive(:complete) do |_prompt, **kwargs|
         captured_kwargs = kwargs
         "done"
@@ -1219,7 +1219,7 @@ Need to inspect the filesystem first.
 
       expect(captured_kwargs[:model]).to eq("runtime-model")
     ensure
-      ENV.delete("SAMAGOTCHI_MODEL")
+      ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
     end
 
     it "handles orphaned closing </think> tags" do
@@ -1257,36 +1257,36 @@ Need to inspect the filesystem first.
 
   describe "profile inference from model" do
     around do |example|
-      original = ENV.fetch("SAMAGOTCHI_MODEL", nil)
+      original = ENV.fetch("SAMAGOTCHI_DEFAULT_MODEL", nil)
       example.run
     ensure
       if original.nil?
-        ENV.delete("SAMAGOTCHI_MODEL")
+        ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
       else
-        ENV["SAMAGOTCHI_MODEL"] = original
+        ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
       end
     end
 
-    it "raises when SAMAGOTCHI_MODEL is unset" do
-      ENV.delete("SAMAGOTCHI_MODEL")
+    it "raises when SAMAGOTCHI_DEFAULT_MODEL is unset" do
+      ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
       expect { described_class.new(client: client) }
-        .to raise_error(ArgumentError, /SAMAGOTCHI_MODEL is required/)
+        .to raise_error(ArgumentError, /SAMAGOTCHI_DEFAULT_MODEL is required/)
     end
 
-    it "infers qwen36 when SAMAGOTCHI_MODEL contains qwen" do
-      ENV["SAMAGOTCHI_MODEL"] = "Qwen3-14B-Instruct"
+    it "infers qwen36 when SAMAGOTCHI_DEFAULT_MODEL contains qwen" do
+      ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Qwen3-14B-Instruct"
       kernel = described_class.new(client: client)
       expect(kernel.instance_variable_get(:@profile).name).to eq("qwen36")
     end
 
     it "infers gemma4 for non-qwen model names" do
-      ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
+      ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
       kernel = described_class.new(client: client)
       expect(kernel.instance_variable_get(:@profile).name).to eq("gemma4")
     end
 
     it "respects explicit profile argument over env var" do
-      ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
+      ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
       kernel = described_class.new(client: client, profile: Samagotchi::ModelProfile.qwen36)
       expect(kernel.instance_variable_get(:@profile).name).to eq("qwen36")
     end

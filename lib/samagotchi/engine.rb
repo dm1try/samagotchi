@@ -44,14 +44,14 @@ module Samagotchi
     # @param profile            [ModelProfile, Symbol, String, nil]
     # @param session_id         [String, nil] resume an existing session
     # @param no_interrupt       [Boolean]
-    # @param model_name         [String, nil] defaults from SAMAGOTCHI_MODEL
+    # @param model_name         [String, nil] defaults from SAMAGOTCHI_DEFAULT_MODEL
     # @param memories           [Array<String>] --memory preload list
     def initialize(mode: :assist, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
       @mode = mode.to_sym
-      @base_model_name = ModelProfile.required_model_name(model_name)
-      @session_model_name = @base_model_name
+      @default_model_name = ModelProfile.required_model_name(model_name)
+      @effective_model_name = @default_model_name
       @client = client || Client.new
-      @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@base_model_name)
+      @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@default_model_name)
       # Load hooks from config (plugins) and create the registry
       @hooks = load_hooks_from_config
       # Use the KernelLoop's reminder_store if provided (TerminalUI path),
@@ -83,7 +83,7 @@ module Samagotchi
       # (Phase 4; see the provider-selection plan).
       @backend = LLM::Factory.factory(
         provider: LLM::Factory.resolve_provider,
-        model_name: @base_model_name,
+        model_name: @default_model_name,
         kernel: @kernel
       )
       @resume_session = session_id ? Session.load(session_id) : nil
@@ -167,6 +167,7 @@ module Samagotchi
 
     # @return [SessionMetrics] the per-session analytics collector
     attr_reader :metrics
+    attr_reader :default_model_name, :effective_model_name
 
     # Subscribe a persistent observer to engine events.
     #
@@ -190,6 +191,25 @@ module Samagotchi
     # @return [Integer] total engine events emitted so far (locally monotonic)
     def event_count
       @session_observer.event_count
+    end
+
+    # ── Model switching ────────────────────────────────────────────────────────
+
+    def switch_model!(model_name, persist_default: false)
+      resolved = ModelProfile.required_model_name(model_name)
+      @effective_model_name = resolved
+      @profile = ModelProfile.from_model_name(resolved)
+      @kernel.sync_profile_from_model!(resolved) if @kernel.respond_to?(:sync_profile_from_model!)
+      @system_prompt = nil
+      if persist_default
+        ConfigFile.write_default_model!(resolved)
+        @default_model_name = resolved
+      end
+      resolved
+    end
+
+    def reset_model!
+      switch_model!(@default_model_name)
     end
 
     # ── Hooks API ──────────────────────────────────────────────────────────────
@@ -408,7 +428,7 @@ module Samagotchi
           max_iterations: max_iterations,
           on_stream_event: build_stream_event_handler(on_event),
           cancel_controller: cancel_controller,
-          model_name: @session_model_name,
+          model_name: @effective_model_name,
           max_tool_output_chars: max_tool_output_chars
         )
 

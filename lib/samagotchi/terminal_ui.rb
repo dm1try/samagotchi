@@ -513,12 +513,16 @@ module Samagotchi
     def initialize(mode: :assist, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false)
       @mode           = mode.to_sym
       @prompt         = prompt
-      @base_model_name = ModelProfile.required_model_name(model_name)
-      @session_model_name = @base_model_name
+      @default_model_name = ModelProfile.required_model_name(model_name)
+      @effective_model_name = @default_model_name
       @client         = client || Client.new
-      @profile        = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@session_model_name)
-      @kernel         = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
       @resume_session = session_id ? Session.load(session_id) : nil
+      if @resume_session
+        # Restore persisted effective model as runtime; config/default stays unchanged
+        @effective_model_name = @resume_session.model_name.to_s.strip.empty? ? @default_model_name : @resume_session.model_name
+      end
+      @profile        = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@effective_model_name)
+      @kernel         = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
       @no_default_input = no_default_input
       @non_interactive = non_interactive
       # Toggled by begin/end_interactive_turn so an interrupted-and-continued
@@ -541,7 +545,7 @@ module Samagotchi
         profile: @profile,
         session_id: session_id,
         no_interrupt: no_interrupt,
-        model_name: @session_model_name,
+        model_name: @default_model_name,
         memories: @requested_memories,
         kernel: @kernel,
         recap: recap_config,
@@ -555,6 +559,13 @@ module Samagotchi
           }
         }
       )
+      # If resumed, restore effective model without persisting default
+      if @resume_session && @effective_model_name != @default_model_name
+        @engine.switch_model!(@effective_model_name)
+        # keep default distinct
+        @engine.instance_variable_set(:@default_model_name, @default_model_name)
+        @kernel.sync_profile_from_model!(@effective_model_name)
+      end
       # Render an idle session-recap via the cursor-safe background writer; the
       # detector itself is Engine-owned (see Engine#recap) and opt-in.
       @recap_handle = @engine.subscribe(observer: ->(event) { handle_recap_ready(event) })
@@ -577,7 +588,7 @@ module Samagotchi
 
       session = @resume_session || Session.new_session(
         mode: @mode.to_s,
-        model_name: @session_model_name,
+        model_name: @effective_model_name,
         working_directory: Dir.pwd
       )
       messages = messages_for(session)
@@ -738,7 +749,7 @@ module Samagotchi
                   emit_result(result)
                   messages = result.conversation if result.respond_to?(:conversation)
                   session.messages = messages
-                  session.model_name = @session_model_name
+                  session.model_name = @effective_model_name
                   session.save
                   @engine.metrics.persist
                 end
@@ -805,7 +816,7 @@ module Samagotchi
             interrupted_turn_context = nil
             awaiting_continue = false
             session.messages = messages
-            session.model_name = @session_model_name
+            session.model_name = @effective_model_name
             session.save
             end_interactive_turn(canceled: true)
             $stdout.puts "\nmodel> interrupted turn cancelled; enter your next prompt"
@@ -820,7 +831,7 @@ module Samagotchi
             interrupted_turn_context = nil
             awaiting_continue = false
             session.messages = messages
-            session.model_name = @session_model_name
+            session.model_name = @effective_model_name
             session.save
             end_interactive_turn(canceled: true)
             $stdout.puts "\nmodel> interrupted turn cancelled; noted your explanation"
@@ -923,7 +934,7 @@ module Samagotchi
         interrupted_turn_checkpoint = nil unless awaiting_continue
 
         session.messages = messages
-        session.model_name = @session_model_name
+        session.model_name = @effective_model_name
         session.save
         # Mirror engine.run_turn's persistence for the REPL path (which drives
         # KernelLoop directly and bypasses the Engine observer's persist call).
@@ -1144,7 +1155,7 @@ module Samagotchi
         max_iterations: max_iterations,
         on_stream_event: muted_handler,
         cancel_controller: cancellation_controller,
-        model_name: @session_model_name
+        model_name: @effective_model_name
       )
       result
     rescue Interrupt
@@ -1175,7 +1186,7 @@ module Samagotchi
         end
         emit_result(result)
         session.messages = messages.dup
-        session.model_name = @session_model_name
+        session.model_name = @effective_model_name
         session.save
         @engine.metrics.persist
         @engine.record_activity
@@ -1557,21 +1568,59 @@ module Samagotchi
     def handle_model_command(input)
       suffix = input.to_s.strip.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
-        return "runtime model: #{current_model_label} (profile=#{@profile.name})"
+        if @effective_model_name == @default_model_name
+          return "runtime model: #{current_model_label} (profile=#{@profile.name})"
+        else
+          return "runtime model: #{current_model_label} (default: #{@default_model_name}, profile=#{@profile.name})"
+        end
       end
 
-      lowered = suffix.downcase
+      # Parse optional --default flag (flag-first canonical: /model --default <name>)
+      tokens = suffix.split(/\s+/)
+      persist_default = tokens.delete("--default")
+      # Support trailing flag as tolerant alias
+      # tokens now contains remaining args
+      arg = tokens.join(" ").strip
+
+      if arg.empty?
+        return "--default requires a model name: usage /model --default <name> or /model <name> [--default]"
+      end
+
+      lowered = arg.downcase
       if ["clear", "default", "none", "off"].include?(lowered)
-        apply_runtime_model!(@base_model_name)
-        return "runtime model reset to #{@session_model_name} (profile=#{@profile.name})"
+        if persist_default
+          return "--default cannot be combined with clear/default/none/off"
+        end
+        apply_runtime_model!(@default_model_name)
+        persist_session_model
+        return "runtime model reset to #{@effective_model_name} (profile=#{@profile.name})"
       end
 
-      apply_runtime_model!(suffix)
-      "runtime model set to #{@session_model_name} (profile=#{@profile.name})"
+      apply_runtime_model!(arg, persist_default: !!persist_default)
+      persist_session_model
+      if persist_default
+        "runtime model set to #{@effective_model_name} (profile=#{@profile.name}) and default updated"
+      else
+        "runtime model set to #{@effective_model_name} (profile=#{@profile.name})"
+      end
     end
 
     def current_model_label
-      @session_model_name
+      @effective_model_name
+    end
+
+    def persist_session_model
+      # If engine has an active session, keep it in sync immediately
+      sess = @engine.session if @engine.respond_to?(:session)
+      sess ||= @resume_session
+      if sess && sess.respond_to?(:model_name=)
+        sess.model_name = @effective_model_name
+        begin
+          sess.save
+        rescue StandardError
+          nil
+        end
+      end
     end
 
     def handle_models_command
@@ -1601,11 +1650,22 @@ module Samagotchi
       end
     end
 
-    def apply_runtime_model!(model_name)
+    def apply_runtime_model!(model_name, persist_default: false)
       resolved_model_name = ModelProfile.required_model_name(model_name)
-      @session_model_name = resolved_model_name
+      @effective_model_name = resolved_model_name
       @profile = ModelProfile.from_model_name(resolved_model_name)
       @kernel.sync_profile_from_model!(resolved_model_name)
+      @engine.switch_model!(resolved_model_name, persist_default: false) if @engine.respond_to?(:switch_model!)
+      # Keep engine's effective in sync without persisting via engine (persist handled here)
+      @engine.instance_variable_set(:@effective_model_name, resolved_model_name) if @engine
+      @engine.instance_variable_set(:@profile, @profile) if @engine
+      if persist_default
+        require_relative "config_file"
+        ConfigFile.write_default_model!(resolved_model_name)
+        @default_model_name = resolved_model_name
+        @engine.instance_variable_set(:@default_model_name, resolved_model_name) if @engine
+      end
+      resolved_model_name
     end
 
     def exit_command?(input)
@@ -1734,7 +1794,7 @@ module Samagotchi
         max_iterations: max_iterations,
         on_stream_event: method(:handle_stream_event),
         cancel_controller: cancellation_controller,
-        model_name: @session_model_name
+        model_name: @effective_model_name
       )
       emit_cancellation_notice(result)
       result
@@ -2485,7 +2545,11 @@ module Samagotchi
     end
 
     def status_model_segment
-      "model=#{@session_model_name}"
+      if @effective_model_name == @default_model_name
+        "model=#{@effective_model_name}"
+      else
+        "model=#{@effective_model_name} (default: #{@default_model_name})"
+      end
     end
 
     def status_context_segment

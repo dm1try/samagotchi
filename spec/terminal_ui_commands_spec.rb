@@ -8,10 +8,10 @@ RSpec.describe Samagotchi::TerminalUI do
   let(:agent) { described_class.new(mode: :assist, client: client) }
 
   around do |example|
-    original_model = ENV["SAMAGOTCHI_MODEL"]
-    ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
+    original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
     example.run
-    ENV["SAMAGOTCHI_MODEL"] = original_model
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
   end
 
   describe "analytics REPL commands" do

@@ -5,10 +5,10 @@ require "samagotchi/session"
 
 RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
   around do |example|
-    original = ENV["SAMAGOTCHI_MODEL"]
-    ENV["SAMAGOTCHI_MODEL"] = "Gemma-4B-it"
+    original = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
     example.run
-    ENV["SAMAGOTCHI_MODEL"] = original
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
   end
 
   let(:client) { instance_double(Samagotchi::Client) }
