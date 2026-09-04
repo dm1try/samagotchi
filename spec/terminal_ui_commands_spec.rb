@@ -14,12 +14,12 @@ RSpec.describe Samagotchi::TerminalUI do
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
   end
 
-  describe "analytics REPL commands" do
-    it "treats both /stats and /analytics as the stats command" do
+  describe "stats REPL commands" do
+    it "treats /stats as the stats command" do
       expect(agent.send(:stats_command?, "/stats")).to be(true)
-      expect(agent.send(:stats_command?, "/analytics")).to be(true)
-      expect(agent.send(:stats_command?, "  /analytics  ")).to be(true)
+      expect(agent.send(:stats_command?, "  /stats  ")).to be(true)
       expect(agent.send(:stats_command?, "hello")).to be(false)
+      expect(agent.send(:stats_command?, "/analytics")).to be(false)
     end
 
     it "renders the session metrics summary via format_session_metrics" do

@@ -31,9 +31,8 @@ module Samagotchi
     MODEL_COMMAND = "/model"
     MODELS_COMMAND = "/models"
     STATS_COMMAND = "/stats"
-    ANALYTICS_COMMAND = "/analytics"
     RECAP_COMMAND = "/recap"
-    SLASH_COMMANDS = %w[/analytics /continue /exit /model /models /recap /stats].freeze
+    SLASH_COMMANDS = %w[/continue /exit /model /models /recap /stats].freeze
     SHELL_BANG_PREFIX = "!"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
     THINKING_UI_ENV = "SAMAGOTCHI_THINKING_UI"
@@ -1556,8 +1555,7 @@ module Samagotchi
     end
 
     def stats_command?(input)
-      normalized = input.to_s.strip
-      normalized == STATS_COMMAND || normalized == ANALYTICS_COMMAND
+      input.to_s.strip == STATS_COMMAND
     end
 
     def recap_command?(input)
