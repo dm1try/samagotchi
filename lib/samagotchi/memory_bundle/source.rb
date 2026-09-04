@@ -14,6 +14,8 @@ module Samagotchi
       class UnknownSourceError < StandardError; end
 
       def self.normalize(source_path)
+        return normalize_git(source_path) if git_url?(source_path)
+
         path = File.expand_path(source_path)
         raise UnknownSourceError, "source does not exist: #{path}" unless File.exist?(path)
 
@@ -21,14 +23,45 @@ module Samagotchi
           return [path, false]
         end
 
-        ext = File.extname(path).downcase
-        case ext
-        when ".zip"
+        # Use full lowercase path for compound extensions like .tar.gz
+        lower = path.downcase
+        if lower.end_with?(".zip")
           normalize_zip(path)
-        when ".gz", ".tar.gz", ".tgz"
+        elsif lower.end_with?(".tar.gz") || lower.end_with?(".tgz") || lower.end_with?(".tar")
           normalize_tar(path)
         else
+          ext = File.extname(path).downcase
           raise UnknownSourceError, "unsupported source format: #{path} (extension: #{ext})"
+        end
+      end
+
+      def self.git_url?(str)
+        s = str.to_s.strip
+        return false if s.empty?
+        s.match?(%r{\A(?:https?://|git@|ssh://|git://|file://).+})
+      end
+
+      def self.strip_git_ref(url)
+        if url.include?("#")
+          parts = url.split("#", 2)
+          [parts[0], parts[1]]
+        else
+          [url, nil]
+        end
+      end
+
+      def self.normalize_git(git_url)
+        url, ref = strip_git_ref(git_url.strip)
+        Dir.mktmpdir("samagotchi-git-") do |clone_parent|
+          clone_dir = File.join(clone_parent, "repo")
+          args = ["git", "clone", "--depth", "1"]
+          args += ["--branch", ref] if ref && !ref.empty?
+          args += [url, clone_dir]
+          result = system(*args)
+          raise UnknownSourceError, "git clone failed for #{git_url}" unless result && File.directory?(clone_dir)
+          # Remove .git to avoid leaking
+          FileUtils.rm_rf(File.join(clone_dir, ".git"))
+          return clean_copy_of(clone_dir)
         end
       end
 

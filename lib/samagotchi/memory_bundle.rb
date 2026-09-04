@@ -4,7 +4,10 @@ require_relative "memory_bundle/source"
 require_relative "memory_bundle/provenance"
 require_relative "memory_bundle/placeholder"
 require_relative "memory_bundle/index_updater"
+require_relative "memory_bundle/merger"
 require_relative "memory_bundle/installer"
+require_relative "memory_bundle/uninstaller"
+require_relative "memory_bundle/status"
 module Samagotchi
   # Namespace for shareable memory bundle functionality.
   module MemoryBundle; end

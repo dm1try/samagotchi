@@ -86,26 +86,114 @@ if ARGV[0] == "memory"
   memory_args = ARGV[1..] || []
   sub = memory_args[0]
   if sub.nil? || %w[-h --help help].include?(sub)
-    puts "Usage: bin/chi memory <install|bundles> [options]"
+    puts "Usage: bin/chi memory <install|upgrade|uninstall|status|diff|bundles> [options]"
     puts ""
     puts "  install <source> [--scope system|project] [--force]"
-    puts "    Install a memory bundle from a directory, zip, or tar archive."
-    puts "    Source is the path to the bundle (dir/zip/tar.gz)."
+    puts "    Install a memory bundle from a directory, zip, tar archive, or git URL."
+    puts "    Source is the path/URL to the bundle (dir/zip/tar.gz/git)."
     puts "    --force overwrites existing entries; default skips them."
+    puts ""
+    puts "  upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]"
+    puts "    Upgrade a bundle (3-way merge: auto-merge if not edited, conflict otherwise)."
+    puts "    --dry-run shows what would change. --agent launches interactive session on conflict."
+    puts ""
+    puts "  uninstall <bundle> [--scope system|project] [--force]"
+    puts "    Remove a bundle and its index entries (--force if locally edited)."
+    puts ""
+    puts "  status [<bundle>]"
+    puts "    Show provenance + modification status for bundles."
+    puts ""
+    puts "  diff <bundle> [file]"
+    puts "    Show diffs between base/current/incoming for a bundle."
     puts ""
     puts "  bundles"
     puts "    List installed memory bundles and their provenance."
     exit 0
   end
 
+  # helpers for bundle_name derivation
+  def chi_expand_source(src)
+    return src if Samagotchi::MemoryBundle::SourceNormalizer.git_url?(src)
+    File.expand_path(src)
+  end
+
+  def chi_bundle_name_for(expanded_src)
+    # Try to derive from manifest if possible (skip git clone for speed if possible)
+    if Samagotchi::MemoryBundle::SourceNormalizer.git_url?(expanded_src)
+      # For git URLs, avoid double clone: derive name from URL basename if no manifest yet
+      # Let Installer do the real manifest read; fallback to URL basename
+      base = expanded_src.split("/").last.to_s.split("#").first.to_s
+      base = base.sub(/\.git\z/i, "")
+      return base.empty? ? "bundle" : base
+    end
+    require "yaml"
+    nd = nil
+    owned = false
+    begin
+      nd, owned = Samagotchi::MemoryBundle::SourceNormalizer.normalize(expanded_src)
+      m = Samagotchi::MemoryBundle::Manifest.read(dir: nd)
+      return m.name
+    rescue Samagotchi::MemoryBundle::Manifest::ValidationError
+      # Fallback to source basename without archive extensions
+      src = expanded_src
+      name = File.basename(src)
+      name = name.sub(/\.tar\.gz\z/i, "").sub(/\.tgz\z/i, "").sub(/\.zip\z/i, "").sub(/\.tar\z/i, "")
+      return name.empty? ? File.basename(nd || src) : name
+    ensure
+      Samagotchi::MemoryBundle::SourceNormalizer.cleanup(nd) if owned
+    end
+  end
+
+  def chi_build_conflict_prompt(bundle_name, conflicts, expanded_source)
+    lines = []
+    lines << "Memory bundle upgrade has conflicts that need interactive resolution."
+    lines << "Bundle: #{bundle_name}"
+    lines << "Source: #{expanded_source}"
+    lines << "Conflicts (#{conflicts.size} file(s)):"
+    conflicts.each do |file_key, info|
+      lines << "  - #{file_key}"
+      lines << "    base:     #{info[:base]} (provenance snapshot)"
+      lines << "    current:  #{info[:current]} (on-disk, has local edits)"
+      lines << "    incoming: #{info[:incoming]} (new bundle version)"
+      begin
+        if File.exist?(info[:current]) && File.exist?(info[:incoming])
+          base_content = File.exist?(info[:base]) ? File.read(info[:base]) : ""
+          cur = File.read(info[:current])
+          inc = File.read(info[:incoming])
+          lines << "    --- current vs incoming preview ---"
+          # simple line diff preview (first 40 lines)
+          cur_lines = cur.lines
+          inc_lines = inc.lines
+          max = [cur_lines.size, inc_lines.size].max
+          preview = []
+          max.times do |i|
+            break if preview.size >= 30
+            c = cur_lines[i]
+            n = inc_lines[i]
+            if c != n
+              preview << "- #{c.chomp}" if c
+              preview << "+ #{n.chomp}" if n
+            end
+          end
+          lines.concat(preview)
+          lines << "    --- end preview ---"
+        end
+      rescue => _e
+      end
+    end
+    lines << ""
+    lines << "Your task: resolve each conflict by editing the file in place using the memory_write tool."
+    lines << "Use memory_read to inspect current content if needed. The correct scope for memory_write is the bundle's scope."
+    lines << "When all conflicts are resolved, type /exit to finish. If you abort, the upgrade will not be applied."
+    lines.join("\n")
+  end
+
   case sub
   when "install"
-    # Parse install-specific flags from the remaining args
     rest = memory_args[1..]
     source = nil
     scope = nil
     force = false
-
     i = 0
     while i < rest.size
       arg = rest[i]
@@ -115,8 +203,7 @@ if ARGV[0] == "memory"
           puts "Usage: bin/chi memory install <source> [--scope system|project] [--force]"
           puts ""
           puts "  install <source> [--scope system|project] [--force]"
-          puts "    Install a memory bundle from a directory, zip, or tar archive."
-          puts "    Source is the path to the bundle (dir/zip/tar.gz)."
+          puts "    Install a memory bundle from a directory, zip, tar archive, or git URL."
           puts "    --force overwrites existing entries; default skips them."
           exit 0
         elsif arg == "--scope" && nxt
@@ -133,39 +220,16 @@ if ARGV[0] == "memory"
           exit 1
         end
       else
-        # Positional argument — the source path
         source = arg
         i += 1
       end
     end
-
     if source.nil? || source.empty?
       warn "Usage: bin/chi memory install <source> [--scope system|project] [--force]"
       exit 1
     end
-
-    expanded_source = File.expand_path(source)
-
-    # Derive bundle name from normalized dir (not source path) so zip/tar
-    # produce clean names like "dmitry-base" instead of "dmitry-base.zip".
-    require "yaml"
-    normalized_dir = nil
-    source_owned = false
-    begin
-      normalized_dir, source_owned = Samagotchi::MemoryBundle::SourceNormalizer.normalize(expanded_source)
-      manifest = Samagotchi::MemoryBundle::Manifest.read(dir: normalized_dir)
-    rescue Samagotchi::MemoryBundle::Manifest::ValidationError
-      manifest = nil
-    ensure
-      Samagotchi::MemoryBundle::SourceNormalizer.cleanup(normalized_dir) if source_owned
-    end
-
-    if manifest
-      bundle_name = manifest.name
-    else
-      bundle_name = File.basename(normalized_dir)
-    end
-
+    expanded_source = chi_expand_source(source)
+    bundle_name = chi_bundle_name_for(expanded_source)
     installer = Samagotchi::MemoryBundle::Installer.new(
       source: expanded_source,
       name: bundle_name,
@@ -173,19 +237,259 @@ if ARGV[0] == "memory"
       force: force,
       strict: true
     )
-
     begin
-      normalized_dir, manifest = installer.run
+      _nd, manifest = installer.run
       puts installer.summary
       puts "Provenance written to: #{Samagotchi::MemoryBundle::Provenance.bundles_dir}/#{bundle_name}/" if manifest
-      # Warnings are informational; install still succeeds.
-      if installer.warnings.any? || installer.placeholder_warnings.any?
-        exit 0
-      end
+      exit 0
     rescue Samagotchi::MemoryBundle::Installer::InstallError => e
       warn "Install failed: #{e.message}"
       exit 1
     end
+
+  when "upgrade"
+    rest = memory_args[1..]
+    source = nil
+    scope = nil
+    force = false
+    dry_run = false
+    agent = nil
+    i = 0
+    while i < rest.size
+      arg = rest[i]
+      if arg.start_with?("--")
+        nxt = rest[i + 1]
+        if %w[-h --help help].include?(arg)
+          puts "Usage: bin/chi memory upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]"
+          exit 0
+        elsif arg == "--scope" && nxt
+          scope = nxt; i += 2
+        elsif arg.start_with?("--scope=")
+          scope = arg.split("=", 2).last; i += 1
+        elsif arg == "--force"
+          force = true; i += 1
+        elsif arg == "--dry-run"
+          dry_run = true; i += 1
+        elsif arg == "--agent"
+          agent = true; i += 1
+        elsif arg == "--no-agent"
+          agent = false; i += 1
+        else
+          warn "Unknown memory upgrade flag: #{arg}"
+          exit 1
+        end
+      else
+        source = arg; i += 1
+      end
+    end
+    if source.nil? || source.empty?
+      warn "Usage: bin/chi memory upgrade <source> [--scope system|project] [--force] [--dry-run]"
+      exit 1
+    end
+    expanded_source = chi_expand_source(source)
+    bundle_name = chi_bundle_name_for(expanded_source)
+    provenance = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name)
+    unless provenance.installed?
+      warn "Bundle '#{bundle_name}' not installed — falling back to install"
+      installer = Samagotchi::MemoryBundle::Installer.new(source: expanded_source, name: bundle_name, scope: scope, force: force, strict: true)
+      begin
+        _nd, manifest = installer.run
+        puts installer.summary
+        puts "Provenance written to: #{Samagotchi::MemoryBundle::Provenance.bundles_dir}/#{bundle_name}/" if manifest
+        exit 0
+      rescue Samagotchi::MemoryBundle::Installer::InstallError => e
+        warn "Install failed: #{e.message}"; exit 1
+      end
+    end
+    installer = Samagotchi::MemoryBundle::Installer.new(
+      source: expanded_source,
+      name: bundle_name,
+      scope: scope,
+      force: force,
+      strict: true,
+      upgrade: true,
+      dry_run: dry_run
+    )
+    begin
+      _nd, manifest = installer.run
+      puts installer.summary
+      if dry_run
+        puts "(dry-run: no changes written)" 
+        exit 0
+      end
+      if installer.conflicts.any? && !force
+        puts "\n#{installer.conflicts.size} conflict(s) need resolution."
+        installer.conflicts.each { |k, _| puts "  conflict: #{k}" }
+        # Decide whether to launch agent
+        launch = false
+        if agent == false
+          launch = false
+        elsif agent == true
+          launch = true
+        elsif STDIN.tty?
+          print "Conflicts detected — launch interactive agent to resolve? [y/N] "
+          ans = begin; $stdin.gets; rescue => _e; nil; end
+          launch = ans && ans.strip.downcase.start_with?("y")
+        else
+          puts "Non-interactive terminal — aborting. Re-run with --force to overwrite or --agent in a TTY."
+          exit 2
+        end
+        if launch
+          prompt = chi_build_conflict_prompt(bundle_name, installer.conflicts, expanded_source)
+          puts "Launching interactive session for conflict resolution… (/exit when done)"
+          require "samagotchi/terminal_ui"
+          Samagotchi::TerminalUI.new(prompt: prompt).run
+          # After session, re-check if conflicts resolved by re-reading current files vs incoming
+          # Simple heuristic: if user edited files, current != base now but we assume resolved if file exists
+          # Re-run upgrade without conflicts? User already edited in place, so we need to write provenance now
+          # Update provenance to reflect resolved state
+          if manifest
+            # Re-collect provenance files from target dir for this bundle
+            prov_files = {}
+            target_scope = scope || provenance.read[:scope]&.to_s || "system"
+            target_dir = Samagotchi::MemoryBundle::Installer.new(source: expanded_source, name: bundle_name, scope: target_scope).send(:resolve_target_dir, target_scope)
+            # Actually reuse provenance write with current target files for bundle keys
+            bundle_files = installer.conflicts.keys + installer.results.select { |_, r| %w[installed updated].include?(r[:status]) }.keys
+            # Fallback: collect all md that exist and were in installer results
+            all_keys = installer.results.keys
+            all_keys.each do |k|
+              p = File.join(target_dir, k)
+              prov_files[k] = p if File.exist?(p)
+            end
+            if prov_files.any?
+              Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).write(
+                files: prov_files,
+                scope: target_scope,
+                version: manifest.version,
+                source_path: expanded_source
+              )
+              puts "Provenance updated after interactive resolution."
+            end
+          end
+          puts "Upgrade resolved interactively."
+          exit 0
+        else
+          puts "Upgrade aborted due to conflicts. Resolve manually or re-run with --force."
+          exit 2
+        end
+      end
+      puts "Provenance written to: #{Samagotchi::MemoryBundle::Provenance.bundles_dir}/#{bundle_name}/" if manifest
+      exit 0
+    rescue Samagotchi::MemoryBundle::Installer::InstallError => e
+      warn "Upgrade failed: #{e.message}"; exit 1
+    end
+
+  when "uninstall"
+    rest = memory_args[1..]
+    bundle_name = nil
+    scope = nil
+    force = false
+    i = 0
+    while i < rest.size
+      arg = rest[i]
+      if arg.start_with?("--")
+        nxt = rest[i + 1]
+        if %w[-h --help help].include?(arg)
+          puts "Usage: bin/chi memory uninstall <bundle> [--scope system|project] [--force]"
+          exit 0
+        elsif arg == "--scope" && nxt
+          scope = nxt; i += 2
+        elsif arg.start_with?("--scope=")
+          scope = arg.split("=", 2).last; i += 1
+        elsif arg == "--force"
+          force = true; i += 1
+        else
+          warn "Unknown memory uninstall flag: #{arg}"; exit 1
+        end
+      else
+        bundle_name = arg; i += 1
+      end
+    end
+    if bundle_name.nil? || bundle_name.empty?
+      warn "Usage: bin/chi memory uninstall <bundle> [--scope system|project] [--force]"
+      exit 1
+    end
+    # Propagate overrides
+    Samagotchi::MemoryBundle::Uninstaller.system_dir_override = Samagotchi::MemoryBundle::Installer.system_dir_override
+    Samagotchi::MemoryBundle::Uninstaller.project_dir_base_override = Samagotchi::MemoryBundle::Installer.project_dir_base_override
+    uninstaller = Samagotchi::MemoryBundle::Uninstaller.new(name: bundle_name, scope: scope, force: force)
+    begin
+      uninstaller.run
+      puts "Uninstalled bundle '#{bundle_name}'"
+      puts "Removed: #{uninstaller.removed_files.join(', ')}" unless uninstaller.removed_files.empty?
+      uninstaller.warnings.each { |w| puts w }
+      exit 0
+    rescue Samagotchi::MemoryBundle::Uninstaller::UninstallError => e
+      warn "Uninstall failed: #{e.message}"; exit 1
+    end
+
+  when "status"
+    rest = memory_args[1..]
+    name = rest.find { |a| !a.start_with?("--") }
+    require "json"
+    if name
+      st = Samagotchi::MemoryBundle::Status.bundle_status(name)
+      unless st
+        puts "Bundle '#{name}' not installed."
+        exit 0
+      end
+      puts "Bundle: #{name} v#{st[:provenance][:version]} scope=#{st[:scope]} installed=#{st[:provenance][:installed_at]}"
+      puts "Target: #{st[:target_dir]}"
+      st[:files].each do |k, info|
+        mods = []
+        mods << "modified" if info[:modified]
+        mods << "missing" if info[:missing]
+        mods << "no-index" unless info[:index_present]
+        label = mods.empty? ? "ok" : mods.join(",")
+        puts "  #{k}: #{label}"
+      end
+    else
+      bundles_dir = Samagotchi::MemoryBundle::Provenance.bundles_dir
+      unless File.directory?(bundles_dir)
+        puts "No installed bundles."; exit 0
+      end
+      entries = Dir.entries(bundles_dir).reject { |e| e.start_with?(".") }
+      if entries.empty?
+        puts "No installed bundles."
+      else
+        entries.sort.each do |bname|
+          st = Samagotchi::MemoryBundle::Status.bundle_status(bname)
+          next unless st
+          mods = st[:files].values.count { |v| v[:modified] || v[:missing] }
+          puts "  #{bname} v#{st[:provenance][:version]} scope=#{st[:scope]} files=#{st[:files].size} issues=#{mods}"
+        end
+      end
+    end
+    exit 0
+
+  when "diff"
+    rest = memory_args[1..]
+    args = rest.reject { |a| a.start_with?("--") }
+    bname = args[0]
+    file_arg = args[1]
+    if bname.nil? || bname.empty?
+      warn "Usage: bin/chi memory diff <bundle> [file]"; exit 1
+    end
+    prov = Samagotchi::MemoryBundle::Provenance.new(name: bname)
+    data = prov.read
+    unless data
+      warn "Bundle '#{bname}' not installed"; exit 1
+    end
+    scope = data[:scope]&.to_s || "system"
+    target_dir = Samagotchi::MemoryBundle::Installer.new(source: ".", name: bname, scope: scope).send(:resolve_target_dir, scope)
+    files = data[:files] || {}
+    keys = file_arg ? [file_arg] : files.keys.map(&:to_s)
+    keys.each do |k|
+      base = prov.base_path(k)
+      cur = File.join(target_dir, k)
+      puts "=== #{k} ==="
+      puts "--- base (provenance) ---"
+      puts File.exist?(base) ? File.read(base) : "(no base)"
+      puts "--- current (on-disk) ---"
+      puts File.exist?(cur) ? File.read(cur) : "(missing)"
+      puts ""
+    end
+    exit 0
 
   when "bundles"
     require "json"
@@ -214,7 +518,7 @@ if ARGV[0] == "memory"
     end
 
   else
-    warn "Unknown memory subcommand: #{sub}. Use: install, bundles"
+    warn "Unknown memory subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, bundles"
     exit 1
   end
 

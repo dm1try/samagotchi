@@ -45,6 +45,18 @@ module Samagotchi
       def self.managed_pattern(name)
         /^- \*\*#{Regexp.escape(name)}\*\*[ \t]*(?:[·•].*|:.*)?(\r?\n|\z)/
       end
+      def self.remove_index(scope, entry_name)
+        index_path = index_path_for(scope)
+        return true unless index_path && File.exist?(index_path)
+        content = File.read(index_path)
+        pattern = managed_pattern(entry_name)
+        return true unless content.match?(pattern)
+        updated = content.gsub(pattern, "")
+        # Clean up extra blank lines: collapse 3+ newlines to 2
+        updated = updated.gsub(/\n{3,}/, "\n\n")
+        File.write(index_path, updated)
+        true
+      end
       def self.managed_line(name, scope, byte_count, description)
         line = "- **#{name}** · #{scope} · #{date_str} · #{byte_count}"
         desc = description&.to_s&.strip
@@ -68,7 +80,9 @@ module Samagotchi
         Date.today.iso8601
       end
       def self.index_path_for(scope)
-        base_dir = case scope
+        normalized = scope.to_s.strip
+        normalized = "system" if normalized.empty?
+        base_dir = case normalized
                    when "system"
                      system_dir_override ||
                        (defined?(Samagotchi::Tools::SYSTEM_MEMORIES_DIR) ? Samagotchi::Tools::SYSTEM_MEMORIES_DIR : File.join(Dir.home, ".config", "samagotchi", "memories"))
