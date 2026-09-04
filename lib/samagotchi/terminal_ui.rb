@@ -4,6 +4,7 @@ require "json"
 require "fileutils"
 require "io/console"
 require "reline"
+require "set"
 
 require_relative "model_profile"
 require_relative "config_file"
@@ -1739,11 +1740,32 @@ module Samagotchi
       models = Array(@client.list_models)
       return "no models discovered" if models.empty?
 
-      models.map do |entry|
+      aliases = ConfigFile.model_aliases
+      by_model = Hash.new { |h, k| h[k] = [] }
+      aliases.each do |alias_name, model_id|
+        by_model[model_id.downcase] << alias_name
+      end
+      by_model.each_value(&:sort!)
+
+      seen = Set.new
+      lines = models.map do |entry|
         identifier = entry["id"] || entry[:id] || "unknown"
-        status = entry["status"] || entry[:status]
-        status.to_s.empty? ? identifier : "#{identifier} (#{status})"
-      end.join("\n")
+        raw_status = entry["status"] || entry[:status]
+        status = raw_status.is_a?(Hash) ? (raw_status["value"] || raw_status[:value] || raw_status["status"] || raw_status[:status]) : raw_status
+        seen << identifier.to_s.downcase
+        base = status.to_s.empty? ? identifier.to_s : "#{identifier} (#{status})"
+        alias_list = by_model[identifier.to_s.downcase]
+        alias_list.empty? ? base : "#{base} (alias: #{alias_list.join(", ")})"
+      end
+
+      orphans = aliases.reject { |_, model_id| seen.include?(model_id.downcase) }
+      unless orphans.empty?
+        lines << ""
+        lines << "orphan aliases (target not discovered):"
+        orphans.sort.each { |alias_name, model_id| lines << "  #{alias_name} -> #{model_id}" }
+      end
+
+      lines.join("\n")
     rescue RetryExhausted => e
       "network error after #{e.attempts} attempts while listing models"
     rescue StandardError => e
