@@ -177,12 +177,16 @@ module Samagotchi
         history = read_history(id)
         messages = messages_for_display(session)
         pending = session.respond_to?(:pending_question) ? session.pending_question : nil
-        # Also check Engine live state via Bridge sidecar if available (not required for stub)
+        # Cursor into the SSE stream so a fresh connect skips already-rendered
+        # content: bridge sessions expose the monotonic event_seq from the live
+        # Engine; otherwise the number of stripped non-empty output chunks.
+        last_event_seq = bridge_event_seq(id) || history.length
         json_response(200, {
           session: session_to_json(session),
           history: history,
           messages: messages,
-          pending_question: pending
+          pending_question: pending,
+          last_event_seq: last_event_seq
         })
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
@@ -352,10 +356,10 @@ module Samagotchi
           return error_response(404, "not_found", "Session not found: #{id}")
         end
 
-        # Use chunked SSE streaming via Rack hijack / streaming body.
-        # We implement a streaming enumerator that polls output/ and emits SSE frames.
-        since_param = req.params["since"] || req.params["from_seq"]
-        # For file-poll mode, since is a timestamp threshold; for bridge proxy we pass through
+        # Chunked SSE streaming. Two modes: proxy to the per-session Bridge when
+        # a live sidecar exists (real push SSE), otherwise fall back to a
+        # file-polling StreamBody that emulates SSE over the same output files.
+        cursor_param, since_time = stream_cursor(req)
         headers = {
           "Content-Type" => "text/event-stream",
           "Cache-Control" => "no-cache",
@@ -376,7 +380,8 @@ module Samagotchi
           state_dir: @state_dir,
           heartbeat_interval: HEARTBEAT_INTERVAL,
           poll_interval: STREAM_POLL_INTERVAL,
-          since_param: since_param
+          cursor: cursor_param,
+          since_time: since_time
         )
 
         [200, headers, body]
@@ -392,13 +397,15 @@ module Samagotchi
         [200, headers, body]
       rescue StandardError
         # Fallback to file polling if proxy fails
+        cursor_param, since_time = stream_cursor(req)
         StreamBody.new(
           session_id: id,
           manager: @manager,
           state_dir: @state_dir,
           heartbeat_interval: HEARTBEAT_INTERVAL,
           poll_interval: STREAM_POLL_INTERVAL,
-          since_param: req.params["since"] || req.params["from_seq"]
+          cursor: cursor_param,
+          since_time: since_time
         ).then { |b| [200, headers, b] }
       end
 
@@ -427,6 +434,63 @@ module Samagotchi
         end
         port
       rescue StandardError
+        nil
+      end
+
+      # Read the live Engine state over the bridge (raw GET /session/:id/state).
+      # @return [Hash, nil] parsed JSON body, or nil when no live bridge / timeout.
+      def bridge_get_json(session_id, path)
+        port = bridge_sidecar_port(session_id)
+        return nil unless port
+
+        require "socket"
+        sock = TCPSocket.new(DEFAULT_HOST, port)
+        sock.write("GET /session/#{session_id}/#{path} HTTP/1.1\r\nHost: #{DEFAULT_HOST}:#{port}\r\nConnection: close\r\n\r\n")
+        response = sock.read
+        sock.close rescue nil
+        return nil unless response
+
+        status_line = response.lines.first.to_s
+        return nil unless status_line.include?("200")
+
+        body = response.split("\r\n\r\n", 2)[1] || ""
+        JSON.parse(body)
+      rescue StandardError
+        nil
+      end
+
+      # Monotonic SSE cursor for a live bridge session, else nil.
+      def bridge_event_seq(session_id)
+        state = bridge_get_json(session_id, "state")
+        seq = state && state.dig("session_state_snapshot", "event_seq")
+        seq.nil? ? nil : seq.to_i
+      rescue StandardError
+        nil
+      end
+
+      # Resolve the SSE resume cursor for a /stream request:
+      #   * browser auto-reconnect sends `Last-Event-ID` (header) with the seq it
+      #     last saw — highest priority,
+      #   * explicit clients send `?from_seq=<int>`,
+      #   * legacy `?since=<timestamp>` still works as an mtime threshold.
+      # @return [Array<Integer, Time>] [cursor (or nil), since_time (or nil)]
+      def stream_cursor(req)
+        last_event = req.env["HTTP_LAST_EVENT_ID"]
+        cursor = parse_int_cursor(last_event) if last_event && !last_event.to_s.strip.empty?
+        cursor ||= parse_int_cursor(req.params["from_seq"])
+        if cursor
+          [cursor, nil]
+        else
+          [nil, parse_since(req.params["since"])]
+        end
+      end
+
+      def parse_int_cursor(val)
+        return nil if val.nil? || val.to_s.strip.empty?
+
+        n = Integer(val.to_s.strip)
+        n.positive? ? n : 0
+      rescue ArgumentError, TypeError
         nil
       end
 
@@ -567,37 +631,47 @@ module Samagotchi
         error_response(404, "not_found", "not found: #{path}")
       end
 
-      # Streaming body that polls output files and emits SSE frames.
+      # Streaming body that polls output files and emits SSE frames with a stable,
+      # monotonic per-session integer `id:` cursor so browser auto-reconnect
+      # (`Last-Event-ID`) can resume without re-delivering already-displayed
+      # content. Seq numbering is 1-based over the session's stripped, non-empty
+      # response chunks in read_history order.
       class StreamBody
-        def initialize(session_id:, manager:, state_dir:, heartbeat_interval:, poll_interval:, since_param:)
+        def initialize(session_id:, manager:, state_dir:, heartbeat_interval:, poll_interval:, cursor: nil, since_time: nil)
           @session_id = session_id
           @manager = manager
           @state_dir = state_dir
           @heartbeat_interval = heartbeat_interval
           @poll_interval = poll_interval
-          @since_param = since_param
-          @seen = {}
+          @cursor = cursor
+          @since_time = since_time
         end
 
         def each
-          since_time = parse_since(@since_param)
-          # Initial replay: emit history once
-          emit_history(since_time) { |frame| yield frame }
+          chunks = full_chunks
+          skip = effective_cursor(chunks)
+
+          # Initial replay: emit only chunks the client has not seen yet.
+          chunks.each do |entry|
+            next if entry[:seq] <= skip
+            yield sse_frame({ type: "history", content: entry[:content] }, entry[:seq])
+          end
+          @last_seq = chunks.empty? ? skip : [skip, chunks.last[:seq]].max
 
           last_heartbeat = Time.now
           loop do
-            # Check if session went terminal (stopped) — emit reset-like event and continue heartbeating
             sleep(@poll_interval)
-            new_chunks = poll_new_chunks(since_time)
-            new_chunks.each { |chunk| yield sse_frame(chunk) }
+            full_chunks.each do |entry|
+              next if entry[:seq] <= @last_seq
+
+              @last_seq = entry[:seq]
+              yield sse_frame({ type: "output", content: entry[:content] }, entry[:seq])
+            end
 
             if Time.now - last_heartbeat >= @heartbeat_interval
               yield ": ping\n\n"
               last_heartbeat = Time.now
             end
-
-            # If session file indicates stopped, keep heartbeating but also emit state event
-            # The loop runs until client disconnects (Rack will stop calling each).
           end
         rescue StandardError
           nil
@@ -605,63 +679,46 @@ module Samagotchi
 
         private
 
-        def parse_since(val)
-          return nil if val.nil? || val.to_s.strip.empty?
-
-          Time.iso8601(val.to_s)
-        rescue ArgumentError
-          begin
-            Time.at(Float(val.to_s))
-          rescue StandardError
-            nil
-          end
-        end
-
-        def emit_history(since_time)
-          raw = @manager.read_responses(@session_id, since_time: since_time, state_dir: @state_dir)
+        # All stripped, non-empty output chunks with stable seq = index + 1 over
+        # the full sorted set. Same ordering/pagination as App#read_history.
+        def full_chunks
+          raw = @manager.read_responses(@session_id, since_time: nil, state_dir: @state_dir)
+          chunks = []
           raw.each do |chunk|
             cleaned = Samagotchi::OutputFormatter.strip(chunk)
             next if cleaned.empty?
 
-            seq = chunk.hash.abs # not monotonic, but dedups via @seen
-            next if @seen[seq]
-
-            @seen[seq] = true
-            yield sse_frame({ type: "history", content: cleaned })
+            chunks << { seq: chunks.length + 1, content: cleaned }
           end
-        rescue StandardError
-          nil
-        end
-
-        def poll_new_chunks(since_time)
-          # Use mtime-based polling via read_responses if since_time provided; otherwise track seen
-          since = since_time || (Time.now - 86400) # fallback: last day via mtime filter
-          # If since_time was nil, we use dedup approach instead of mtime
-          if since_time
-            raw = @manager.read_responses(@session_id, since_time: Time.now - 1, state_dir: @state_dir)
-          else
-            raw = @manager.read_responses(@session_id, since_time: nil, state_dir: @state_dir)
-          end
-          raw.filter_map do |chunk|
-            cleaned = Samagotchi::OutputFormatter.strip(chunk)
-            next if cleaned.empty?
-
-            h = chunk.hash
-            next if @seen[h]
-
-            @seen[h] = true
-            { type: "output", content: cleaned }
-          end
+          chunks
         rescue StandardError
           []
         end
 
-        def sse_frame(data)
+        # Number of chunks already delivered to this client (skip that many).
+        # Cursor (Last-Event-ID / ?from_seq=) wins; legacy ?since=<timestamp>
+        # maps to "chunks written after T → effective cursor = count before T".
+        def effective_cursor(chunks)
+          cursor = @cursor.to_i > 0 ? @cursor.to_i : 0
+          if @since_time
+            newer = @manager.read_responses(@session_id, since_time: @since_time, state_dir: @state_dir)
+            newer_count = 0
+            newer.each do |chunk|
+              newer_count += 1 unless Samagotchi::OutputFormatter.strip(chunk).empty?
+            end
+            skipped = chunks.length - newer_count
+            cursor = skipped if skipped > cursor
+          end
+          cursor
+        rescue StandardError
+          @cursor.to_i > 0 ? @cursor.to_i : 0
+        end
+
+        def sse_frame(data, seq)
           json = JSON.generate(data)
-          id = SecureRandom.uuid # per-frame id for Last-Event-ID resumption (client can store)
           event = data.is_a?(Hash) && (data[:type] || data["type"])
           header = event ? "event: #{event}\n" : ""
-          "#{header}id: #{id}\ndata: #{json}\n\n"
+          "#{header}id: #{seq}\ndata: #{json}\n\n"
         end
       end
 
@@ -684,7 +741,13 @@ module Samagotchi
             return
           end
           begin
-            sock.write("GET /session/#{@session_id}/stream#{@query} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nAccept: text/event-stream\r\nConnection: keep-alive\r\n\r\n")
+            # Forward the browser's auto-reconnect cursor: the bridge prefers the
+            # Last-Event-ID header over ?from_seq, and the reconnect URL carries a
+            # stale initial cursor — without this the bridge would replay content
+            # already delivered (duplicate bubbles).
+            lei = @headers["HTTP_LAST_EVENT_ID"].to_s.strip
+            last_event_line = lei.empty? ? "" : "Last-Event-ID: #{lei}\r\n"
+            sock.write("GET /session/#{@session_id}/stream#{@query} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nAccept: text/event-stream\r\n#{last_event_line}Connection: keep-alive\r\n\r\n")
             # Skip HTTP headers
             while (line = sock.gets)
               break if line.strip.empty?
