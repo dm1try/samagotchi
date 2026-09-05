@@ -12,6 +12,7 @@ require_relative "../tools/task_list"
 require_relative "../tools/task_stop"
 require_relative "../tools/task_wait"
 require_relative "../tools/web_fetch"
+require_relative "../tools/ask_user_question"
 
 module Samagotchi
   module LLM
@@ -154,6 +155,21 @@ module Samagotchi
             path: nil, scope: nil,
             start_line: nil, end_line: nil,
             cwd: nil, env: nil, description: nil
+          }
+        },
+        Tools::AskUserQuestion::NAME => lambda { |args|
+          raw_opts = args["options"]
+          norm_opts = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(raw_opts)
+          norm_opts = raw_opts if norm_opts.empty? && raw_opts.is_a?(Array)
+          {
+            name: Tools::AskUserQuestion::NAME,
+            content: args["question"].to_s,
+            path: nil, scope: nil,
+            question: args["question"].to_s,
+            options: norm_opts.empty? ? raw_opts : norm_opts,
+            header: args["header"],
+            multi_select: args["multi_select"],
+            allow_freeform: args["allow_freeform"]
           }
         }
       }.freeze

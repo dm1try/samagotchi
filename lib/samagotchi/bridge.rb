@@ -161,6 +161,9 @@ module Samagotchi
         elsif (m = cancel_match(request[:path])) && method == "POST"
           payload, status, body = handle_cancel(m[1], request[:body])
           write_json(io, status, payload, body)
+        elsif (m = answer_match(request[:path])) && method == "POST"
+          payload, status, body = handle_answer(m[1], request[:body])
+          write_json(io, status, payload, body)
         elsif (m = turn_match(request[:path])) && method == "POST"
           payload, status, body = handle_post_turn(m[1], request[:body])
           write_json(io, status, payload, body)
@@ -228,6 +231,10 @@ module Samagotchi
       %r|\A/session/([^/]+)/cancel\z|u.match(path.to_s)
     end
 
+    def answer_match(path)
+      %r|\A/session/([^/]+)/answer\z|u.match(path.to_s)
+    end
+
     # Cancel the active turn on this session's engine, if any.
     # Returns [headers, status, body].
     def handle_cancel(session_id, body)
@@ -253,6 +260,37 @@ module Samagotchi
       end
     rescue StandardError => e
       [{}, 500, { error: "bridge_error", detail: e.message }]
+    end
+
+    def handle_answer(session_id, body)
+      unless own_session?(session_id)
+        return [{}, 404, { error: "unknown_session" }]
+      end
+      parsed = parse_json(body)
+      unless parsed.is_a?(Hash)
+        return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }]
+      end
+      qid = fetched(parsed, "id") || fetched(parsed, "question_id")
+      selected = fetched(parsed, "selected") || fetched(parsed, "selection")
+      freeform = fetched(parsed, "freeform") || fetched(parsed, "other")
+      # Support nested answer
+      if parsed["answer"].is_a?(Hash)
+        ans = parsed["answer"]
+        qid ||= fetched(ans, "id")
+        selected ||= fetched(ans, "selected")
+        freeform ||= fetched(ans, "freeform")
+      end
+      if qid.to_s.strip.empty?
+        return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "id required" }]
+      end
+      begin
+        result = @engine.answer_question(id: qid, selected: selected, freeform: freeform)
+        [{}, 200, { status: "answered", session_id: session_id, answer: result }]
+      rescue ArgumentError => e
+        [{}, 400, { error: "invalid_answer", detail: e.message }]
+      rescue StandardError => e
+        [{}, 500, { error: "bridge_error", detail: e.message }]
+      end
     end
 
     # Create a turn via file IPC (fire-and-forget). Returns [headers, status, body].

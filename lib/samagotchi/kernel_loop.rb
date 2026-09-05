@@ -22,6 +22,7 @@ require_relative "tools/image_read"
 require_relative "tools/register_reminder"
 require_relative "tools/cancel_reminder"
 require_relative "tools/list_reminders"
+require_relative "tools/ask_user_question"
 
 module Samagotchi
   # The KernelLoop drives the model ↔ tool interaction cycle.
@@ -104,7 +105,8 @@ module Samagotchi
       Tools::RegisterReminder,
       Tools::CancelReminder,
       Tools::ListReminders,
-      Tools::ImageRead
+      Tools::ImageRead,
+      Tools::AskUserQuestion
     ].freeze
 
     # ── Gemma 4 tool-call constants (canonical model call format) ─────────────
@@ -881,17 +883,35 @@ module Samagotchi
       when Tools::CancelReminder::NAME
         { name: name, content: qwen_param_value(params, "name"), path: nil, scope: nil }
       when Tools::ListReminders::NAME
-        { name: name, content: "", path: nil, scope: nil }
+         { name: name, content: "", path: nil, scope: nil }
+      when Tools::AskUserQuestion::NAME
+         opts_raw = qwen_param_value(params, "options", strip: false)
+         opts = qwen_ask_options(opts_raw)
+         {
+           name: name,
+           content: qwen_param_value(params, "question"),
+           path: nil, scope: nil,
+           question: qwen_param_value(params, "question"),
+           options: opts,
+           header: qwen_param_value(params, "header"),
+           multi_select: qwen_param_value(params, "multi_select"),
+           allow_freeform: qwen_param_value(params, "allow_freeform")
+         }
       else
-        { name: name, content: params.to_s, path: nil, scope: nil }
+         { name: name, content: params.to_s, path: nil, scope: nil }
       end
     end
 
-    def qwen_param_value(params, *keys, strip: true)
+     def qwen_param_value(params, *keys, strip: true)
       value = keys.lazy.map { |key| params[key] }.find { |candidate| !candidate.nil? }
       return "" if value.nil?
 
       strip ? value.to_s.strip : value.to_s
+    end
+
+    def qwen_ask_options(raw)
+      norm = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(raw)
+      norm.empty? ? nil : norm
     end
 
     def sanitize_history(messages)
@@ -1065,10 +1085,60 @@ module Samagotchi
         { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil }
       when Tools::ListReminders::NAME
         { name: name, content: "", path: nil, scope: nil }
+      when Tools::AskUserQuestion::NAME
+        { name: name, content: params["question"] ? strip_gemma_delimiters(params["question"]) : strip_gemma_delimiters(params_raw),
+          path: nil, scope: nil,
+          question: params["question"] ? strip_gemma_delimiters(params["question"]) : strip_gemma_delimiters(params_raw),
+          options: parse_ask_options(params, params_raw),
+          header: params["header"] ? strip_gemma_delimiters(params["header"]) : nil,
+          multi_select: params["multi_select"],
+          allow_freeform: params["allow_freeform"] }
       else
         # For future/unknown tools, pass along whatever the model provided
         { name: name, content: strip_gemma_delimiters(params_raw), path: nil, scope: nil }
       end
+    end
+
+    def parse_ask_options(params, params_raw)
+      raw = params["options"]
+      # Use tolerant normalizer for String and Array; handles dumb-model noise like ["\"Cats\""] or "]"
+      if raw.is_a?(String) || raw.is_a?(Array)
+        norm = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(raw)
+        return norm unless norm.empty?
+      end
+
+      # Fallback: extract array-like syntax from raw string e.g. options:["a","b"]
+      if params_raw.include?("options")
+        # Try to find a JSON array substring first
+        if (m = params_raw.match(/options:\s*(\[[^\]]*\])/))
+          norm = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(m[1])
+          return norm unless norm.empty?
+        end
+        if (m = params_raw.match(/options:\s*\[([^\]]*)\]/))
+          inner = m[1]
+          norm = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(inner)
+          return norm unless norm.empty?
+        end
+        # also try Gemma delimiter array
+        arr = []
+        pos = 0
+        while (s = params_raw.index(GEMMA_STRING_DELIM, pos))
+          e = params_raw.index(GEMMA_STRING_DELIM, s + GEMMA_STRING_DELIM.length)
+          break unless e
+
+          arr << params_raw[s + GEMMA_STRING_DELIM.length...e]
+          pos = e + GEMMA_STRING_DELIM.length
+        end
+        unless arr.empty?
+          norm = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(arr)
+          return norm unless norm.empty?
+        end
+      end
+      nil
+    end
+
+    def parse_ask_options_string(str)
+      Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(str).then { |a| a.empty? ? nil : a }
     end
 
     # Strip a known "key:" or "key: " prefix from a raw params string.
@@ -1194,24 +1264,110 @@ module Samagotchi
                  tool.call(call[:content], reminder_store: @reminder_store, description: call[:description], interval_minutes: call[:interval_minutes])
                when Tools::CancelReminder::NAME
                  tool.call(call[:content], reminder_store: @reminder_store)
-               when Tools::ListReminders::NAME
-                 tool.call(call[:content], reminder_store: @reminder_store)
-               else
-                 tool.call(call[:content])
-               end
+                when Tools::ListReminders::NAME
+                  tool.call(call[:content], reminder_store: @reminder_store)
+                when Tools::AskUserQuestion::NAME
+                  handle_ask_user_question(call)
+                else
+                  tool.call(call[:content])
+                end
 
       verbose_log("── tool result: #{call[:name]} ──\n#{result}\n──────────────────")
       {
         output: "[#{call[:name]}]\n#{result}",
         activity: tool_activity_event(call[:name], call, result)
       }
-    rescue => e
+     rescue => e
       verbose_log("── tool error: #{call[:name]} ──\n#{e.message}\n──────────────────")
       result = "Error: #{e.message}"
       {
         output: "[#{call[:name]}] #{result}",
         activity: tool_activity_event(call[:name], call, result)
       }
+    end
+
+    def handle_ask_user_question(call)
+      question = (call[:question] || call[:content]).to_s.strip
+      raw_opts = call[:options]
+      # Dumb-model tolerant: raw may be String JSON, Array, or malformed with brackets/quotes
+      options = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(raw_opts)
+      # Fallback for case where raw was String like '["a","b"]' but lenient returned [] due to edge parse, try raw string of params
+      if options.empty? && raw_opts.is_a?(String)
+        options = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(raw_opts.to_s)
+      end
+      header = call[:header].to_s.strip
+      header = nil if header.empty?
+      multi = call[:multi_select]
+      free = call[:allow_freeform]
+      # Normalize booleans from string forms (Gemma passes "true"/"false" as strings)
+      multi = normalize_ask_bool(multi)
+      free = normalize_ask_bool(free)
+
+      if question.empty?
+        return "Error: ask_user_question requires 'question'"
+      end
+      # Dumb-model tolerant: salvage single-option parse glitches, but still require at least 1
+      if options.size < 1
+        alt = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(call[:content].to_s) if call[:content]
+        options = alt unless alt.empty?
+      end
+      if options.empty?
+        return "Error: ask_user_question requires 2-8 options (got 0). Provide e.g. options=[\"Cats\",\"Dogs\"]"
+      end
+      if options.size == 1
+        # Allow single-option salvage for dumb models (will still render, user can answer or provide freeform)
+      elsif options.size < 2 || options.size > 8
+        return "Error: ask_user_question requires 2-8 options (got #{options.size}). Provide e.g. options=[\"Cats\",\"Dogs\"]"
+      end
+
+      # If an Engine-level blocking handler is registered (TUI/Web), delegate there.
+      # The handler is stored on the Engine via KernelLoop's engine reference set
+      # by Engine initializer (see Engine#initialize kernel coupling). Fallback to a
+      # non-blocking JSON preview so the model can still see a structured response.
+      handler = nil
+      if defined?(@question_handler) && @question_handler
+        handler = @question_handler
+      elsif instance_variable_defined?(:@engine) && @engine && @engine.respond_to?(:request_question)
+        handler = proc { |payload| @engine.request_question(payload) }
+      elsif instance_variable_defined?(:@kernel) && @kernel && @kernel.respond_to?(:engine) && @kernel.engine.respond_to?(:request_question)
+        handler = proc { |payload| @kernel.engine.request_question(payload) }
+      end
+      # Also check if KernelLoop was constructed with an Engine-linked kernel that exposes request_question via injected Engine
+      if handler.nil? && defined?(@engine_request_question_handler) && @engine_request_question_handler
+        handler = @engine_request_question_handler
+      end
+
+      payload = {
+        question: question,
+        options: options,
+        header: header,
+        multi_select: !!multi,
+        allow_freeform: !!free
+      }.compact
+
+      if handler
+        begin
+          result = handler.call(payload)
+          return result.to_s
+        rescue => e
+          return "Error: ask_user_question handler failed: #{e.message}"
+        end
+      end
+
+      # Headless fallback: return JSON so model sees structured options and can
+      # fallback to plain text qualification.
+      JSON.pretty_generate(payload)
+    end
+
+    def normalize_ask_bool(v)
+      return nil if v.nil?
+      return v if v == true || v == false
+
+      s = v.to_s.strip.downcase
+      return true if %w[1 true yes on].include?(s)
+      return false if %w[0 false no off].include?(s)
+
+      nil
     end
 
     def tool_activity_event(tool_name, call, result)
@@ -1237,6 +1393,7 @@ module Samagotchi
       when Tools::TaskStop::NAME then "stopping task"
       when Tools::TaskWait::NAME then "waiting for task"
       when Tools::WebFetch::NAME then "fetching URL"
+      when Tools::AskUserQuestion::NAME then "asking user"
       else "calling tool"
       end
     end
@@ -1299,6 +1456,11 @@ module Samagotchi
         nil
       when Tools::WebFetch::NAME
         "url=#{preview_tool_param(call[:content])}"
+      when Tools::AskUserQuestion::NAME
+        parts = ["question=#{preview_tool_param(call[:question] || call[:content])}"]
+        opts = call[:options]
+        parts << "options=#{preview_tool_param(Array(opts).join(","))}" if opts && !Array(opts).empty?
+        parts.join(" ")
       else
         nil
       end

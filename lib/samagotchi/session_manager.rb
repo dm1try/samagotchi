@@ -314,6 +314,37 @@ module Samagotchi
       cancel_monitor.abort_on_exception = false
       cancel_monitor.report_on_exception = false
 
+      # Monitor thread for ask_user_question answers via file flag (WEB stub fallback)
+      answer_monitor = Thread.new do
+        loop do
+          sleep 0.2
+          break if Thread.current[:stop]
+          path = File.join(session_dir, "pending_answer.json")
+          next unless File.exist?(path)
+
+          begin
+            data = JSON.parse(File.read(path))
+            id = data["id"] || data[:id]
+            selected = data["selected"] || data[:selected] || data["selection"] || data[:selection]
+            freeform = data["freeform"] || data[:freeform]
+            if id && engine.pending_question && engine.pending_question[:id].to_s == id.to_s
+              begin
+                engine.answer_question(id: id, selected: selected, freeform: freeform)
+              rescue StandardError
+                nil
+              end
+            end
+            FileUtils.rm_f(path)
+          rescue StandardError
+            begin; FileUtils.rm_f(path); rescue StandardError; nil; end
+          end
+        end
+      rescue StandardError
+        nil
+      end
+      answer_monitor.abort_on_exception = false
+      answer_monitor.report_on_exception = false
+
       begin
         # Process the initial prompt
         unless session.last_prompt.to_s.strip.empty?
@@ -369,6 +400,12 @@ module Samagotchi
         begin
           cancel_monitor[:stop] = true
           cancel_monitor.kill if cancel_monitor&.alive?
+        rescue StandardError
+          nil
+        end
+        begin
+          answer_monitor[:stop] = true
+          answer_monitor.kill if answer_monitor&.alive?
         rescue StandardError
           nil
         end

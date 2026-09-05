@@ -158,6 +158,19 @@ module Samagotchi
       }<tool|>
     DECL
 
+    TOOL_ASK_USER_QUESTION = <<~DECL.strip
+      <|tool>declaration:ask_user_question{
+        description:<|"|>Ask the user a structured qualification question. Supports single/multi selection plus optional freeform/Other input. Prefer this over plain numbered lists when you need a clear choice. The harness renders it natively and returns {selected, freeform}.<|"|>,
+        parameters:{
+          question:{type:<|"|>string<|"|>, description:<|"|>The question to ask the user<|"|>, required:true},
+          options:{type:<|"|>array<|"|>, description:<|"|>2-8 answer options as strings (labels). Single/multi selection via multi_select flag.<|"|>, required:true},
+          header:{type:<|"|>string<|"|>, description:<|"|>Optional short header/title<|"|>},
+          multi_select:{type:<|"|>boolean<|"|>, description:<|"|>Allow selecting multiple options (comma-separated in TUI). Default false.<|"|>},
+          allow_freeform:{type:<|"|>boolean<|"|>, description:<|"|>Allow freeform/Other text alongside selection. Default false.<|"|>}
+        }
+      }<tool|>
+    DECL
+
     # ── Qwen 3.6 tool declarations (JSON format) ──────────────────────────────
 
     QWEN_TOOLS_JSON = [
@@ -432,6 +445,37 @@ module Samagotchi
         parameters: {
           type: "object",
           properties: {}
+        }
+      },
+      {
+        name: "ask_user_question",
+        description: "Ask the user a structured qualification question. Supports single/multi selection plus optional freeform/Other input. Prefer this over plain numbered lists when you need a clear choice. The harness renders it natively and returns {selected, freeform}.",
+        parameters: {
+          type: "object",
+          properties: {
+            question: {
+              type: "string",
+              description: "The question to ask the user"
+            },
+            options: {
+              type: "array",
+              description: "2-8 answer options as strings (labels)",
+              items: { type: "string" }
+            },
+            header: {
+              type: "string",
+              description: "Optional short header/title"
+            },
+            multi_select: {
+              type: "boolean",
+              description: "Allow selecting multiple options (comma-separated in TUI). Default false."
+            },
+            allow_freeform: {
+              type: "boolean",
+              description: "Allow freeform/Other text alongside selection. Default false."
+            }
+          },
+          required: ["question", "options"]
         }
       }
     ].freeze

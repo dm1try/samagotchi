@@ -597,6 +597,16 @@ module Samagotchi
       # Render an idle session-recap via the cursor-safe background writer; the
       # detector itself is Engine-owned (see Engine#recap) and opt-in.
       @recap_handle = @engine.subscribe(observer: ->(event) { handle_recap_ready(event) })
+      @question_handle = @engine.subscribe(observer: ->(event) { handle_question_event(event) })
+      # Synchronous TUI handler for in-turn ask_user_question: the turn thread IS the
+      # REPL thread (run_kernel_with_thinking_feedback runs inline), so we must render
+      # and collect input on the SAME thread without parking on a second thread.
+      @engine.set_question_sync_handler do |pending|
+        render_question_widget(pending)
+        # render_question_widget calls engine.answer_question which sets @question_answer;
+        # return it so Engine.request_question can short-circuit without CV wait.
+        @engine.instance_variable_get(:@question_answer)
+      end
     end
 
     # Single dispatch for all entrypoints (interactive REPL, --prompt,
@@ -714,6 +724,10 @@ module Samagotchi
       interrupted_turn_context = nil
 
       loop do
+        # Drain any pending ask_user_question first — it has priority over reminders and
+        # must be rendered on the REPL thread (turn thread is parked on Engine Monitor).
+        drain_pending_question?
+
         # Drain any completed muted reminder turns before handling new
         # synthetic idle turns. This is the send+mute path: generation
         # happened in background while the user was typing, we only
@@ -2968,6 +2982,196 @@ module Samagotchi
       return ["#{base}#{notification}"] unless color_output?
 
       ["#{paint(base, 90)}#{paint_if_present(memory_notification, MEMORY_SPINNER_COLOR)}#{paint_if_present(tool_notification, TOOL_SPINNER_COLOR)}"]
+    end
+
+    # ── Ask-user-question adapter (generic TUI renderer) ─────────────────────
+
+    # Non-blocking observer: the turn thread emits :question_requested; we stash
+    # it so the REPL thread (the only one that may touch Reline) can drain it
+    # at the top of run_assist_loop without racing the completion.
+    def handle_question_event(event)
+      return unless event.is_a?(Hash)
+
+      type = event[:type] || event["type"]
+      return unless type.to_s == "question_requested"
+
+      pq = event[:pending_question] || event["pending_question"] || event[:pendingQuestion]
+      return unless pq
+
+      @pending_question_event = pq
+    rescue StandardError
+      nil
+    end
+
+    def pending_question_event?
+      !!@pending_question_event
+    end
+
+    # Called from REPL thread (run_assist_loop top) — renders widget, blocks
+    # until user selects, then answers via Engine#answer_question which wakes
+    # the parked turn thread.
+    def drain_pending_question?
+      pq = @pending_question_event
+      # Also check Engine's persisted pending (covers resume)
+      pq ||= @engine.pending_question
+      return false unless pq
+
+      # If the pending no longer matches the engine's current pending (stale
+      # event after sync handler already answered and cleared), discard.
+      current = @engine.pending_question
+      if current && (pq[:id] || pq["id"]).to_s != (current[:id] || current["id"]).to_s
+        @pending_question_event = nil
+        return false
+      end
+      if current.nil? && @pending_question_event
+        # Stale stash where engine already cleared (sync path completed)
+        @pending_question_event = nil
+        return false
+      end
+
+      @pending_question_event = nil
+      result = render_question_widget(pq)
+      return false unless result
+
+      # result is already answered via Engine#answer_question in render_question_widget
+      true
+    rescue StandardError => e
+      warn "[ask_user_question] drain failed: #{e.class}: #{e.message}"
+      false
+    end
+
+    def render_question_widget(pending)
+      id = (pending[:id] || pending["id"]).to_s
+      question = (pending[:question] || pending["question"]).to_s
+      options = pending[:options] || pending["options"] || []
+      options = Array(options).map { |v| v.to_s.strip }.reject(&:empty?)
+      header = (pending[:header] || pending["header"]).to_s.strip
+      header = nil if header.empty?
+      multi = !!(pending[:multi_select] || pending["multi_select"])
+      free = !!(pending[:allow_freeform] || pending["allow_freeform"])
+
+      # Ensure spinner cleared and terminal in known state (same as reminder mute handling)
+      finish_thinking_spinner rescue nil
+
+      # Print widget (uses $stdout directly, not Reline buffer)
+      $stdout.puts "" if $stdout.tty?
+      if header && !header.empty?
+        line = header
+        line = paint(line, 1) if color_output?
+        $stdout.puts line
+      end
+      q_line = "? #{question}"
+      q_line = paint(q_line, 94) if color_output?
+      $stdout.puts q_line
+      options.each_with_index do |opt, idx|
+        num = idx + 1
+        opt_str = "  #{num}) #{opt}"
+        opt_str = paint(opt_str, 92) if color_output?
+        $stdout.puts opt_str
+      end
+      hint = []
+      hint << (multi ? "Select one or more (e.g. 1,3)" : "Select one (e.g. 2)")
+      hint << "add '; freeform text' when Other/freeform needed" if free
+      $stdout.puts paint("  [#{hint.join('; ')}]", 90) if color_output?
+      $stdout.puts "  Enter empty to cancel." if !free # still allow cancel
+
+      # Loop until valid selection or cancel
+      loop do
+        prompt = color_output? ? paint("choice> ", 33) : "choice> "
+        raw = nil
+        begin
+          # Use plain Reline.readline when tty, else $stdin.gets for non-tty/specs
+          if $stdin.tty? && $stdout.tty?
+            raw = Reline.readline(prompt, true)
+          else
+            $stdout.print(prompt)
+            $stdout.flush
+            raw = $stdin.gets
+          end
+        rescue Interrupt
+          raw = nil
+        end
+        if raw.nil?
+          # EOF / Ctrl-D -> cancel
+          @engine.cancel_question("user") rescue nil
+          return false
+        end
+        raw = raw.to_s.strip
+        if raw.empty?
+          @engine.cancel_question("user") rescue nil
+          $stdout.puts "(cancelled)" if $stdout.tty?
+          return false
+        end
+
+        # Split freeform: "1,3; my text" or "1; text" — first ';' separates selection vs freeform
+        sel_part, free_part = raw.split(";", 2).map { |s| s.to_s.strip } if raw.include?(";")
+        sel_part ||= raw
+        free_part = free_part ? free_part.strip : nil
+        free_part = nil if free_part && free_part.empty?
+        # Validate freeform allowed — dumb-model tolerant: accept freeform even if not flagged, just warn
+        if free_part && !free
+          $stdout.puts "(note: freeform not flagged but accepting '#{free_part}')"
+        end
+
+        # Parse selection indices: comma/space separated numbers or values
+        tokens = sel_part.split(/[,\s]+/).map(&:strip).reject(&:empty?)
+        # Also handle "1 3" etc
+        indices = []
+        labels = []
+        valid = true
+        tokens.each do |tok|
+          if tok.match?(/\A\d+\z/)
+            idx = tok.to_i - 1
+            if idx < 0 || idx >= options.size
+              $stdout.puts "Invalid choice '#{tok}': pick 1-#{options.size}"
+              valid = false
+              break
+            end
+            indices << idx
+            labels << options[idx]
+          else
+            # Allow value/label substring match (case-insensitive)
+            found = options.index { |o| o.downcase == tok.downcase || o.downcase.include?(tok.downcase) }
+            if found.nil?
+              $stdout.puts "Unknown option '#{tok}'. Use numbers 1-#{options.size} or exact labels."
+              valid = false
+              break
+            end
+            indices << found
+            labels << options[found]
+          end
+        end
+        next unless valid
+
+        labels.uniq!
+        indices = labels.map { |l| options.index(l) }.compact
+
+        if labels.empty? && free_part.nil?
+          $stdout.puts "No selection. Try again."
+          next
+        end
+        if !multi && labels.size > 1
+          $stdout.puts "This is single-select (pick one). Try again."
+          next
+        end
+        # Require freeform when 'Other' selected? Not enforced generically — harness accepts any.
+
+        # Deduplicate + preserve order
+        uniq_labels = []
+        seen = {}
+        labels.each { |l| unless seen[l]; uniq_labels << l; seen[l]=true; end }
+
+        begin
+          @engine.answer_question(id: id, selected: uniq_labels, freeform: free_part)
+          return true
+        rescue ArgumentError => e
+          $stdout.puts "Invalid: #{e.message}. Try again."
+          next
+        rescue StandardError => e
+          $stdout.puts "Error: #{e.message}"
+          return false
+        end
+      end
     end
 
     # Process a prompt through the kernel loop and return the model response.

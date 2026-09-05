@@ -96,6 +96,24 @@ module Samagotchi
       if kernel && @kernel.respond_to?(:hooks=)
         @kernel.hooks = @hooks
       end
+      # Cross-link kernel ↔ engine for ask_user_question blocking path (kernel needs to call back into engine)
+      if @kernel.instance_variable_defined?(:@engine) || @kernel.respond_to?(:engine=)
+        @kernel.instance_variable_set(:@engine, self) rescue nil
+        @kernel.instance_variable_set(:@engine_ref, self) rescue nil
+      else
+        @kernel.instance_variable_set(:@engine, self) rescue nil
+      end
+      # Also expose a direct handler proc on kernel for the fallback path
+      begin
+        @kernel.instance_variable_set(:@engine_request_question_handler, proc { |payload| request_question(payload) })
+      rescue StandardError
+        nil
+      end
+      # If session was resumed and has a pending_question, hydrate engine state
+      if @resume_session && @resume_session.pending_question
+        @pending_question = @resume_session.pending_question.dup
+        @session = @resume_session
+      end
       # Resolve the backend provider at the Engine boundary: no `provider:` kwarg
       # is required at the call sites, so the two `Engine.new` callers
       # (TerminalUI, SessionManager) are untouched. Falls back to
@@ -120,6 +138,10 @@ module Samagotchi
       @activity_seq = 0
       @turn_running = false
       @active_cancel_controller = nil
+      @question_mutex = Monitor.new
+      @question_cv = @question_mutex.new_cond
+      @pending_question = nil
+      @question_answer = nil
       @recap = build_recap(recap)
       # The metrics collector is a persistent observer so every run_turn event
       # (covering -p/--non-interactive/--resume and SessionManager workers)
@@ -380,14 +402,215 @@ module Samagotchi
     #   :last_prompt   [String, nil] the last user prompt (empty string if none)
     #   :event_seq     [Integer]   @session_observer.event_count
     #   :metrics       [Hash]      @metrics.snapshot (per-session analytics)
+    #   :pending_question [Hash, nil] current pending structured question
     def session_state_snapshot
       {
         status: @session&.status,
         message_count: (@session&.messages || []).size,
         last_prompt: @session&.last_prompt,
         event_seq: @session_observer&.event_count,
-        metrics: @metrics.snapshot
+        metrics: @metrics.snapshot,
+        pending_question: @question_mutex.synchronize { @pending_question&.dup }
       }
+    end
+
+    # ── Ask-user-question (structured qualification) ──────────────────────────
+
+    # @return [Hash, nil] current pending question (thread-safe copy)
+    def pending_question
+      @question_mutex.synchronize { @pending_question&.dup }
+    end
+
+    # Request a structured question from the user. Called from KernelLoop's
+    # turn thread (via dispatch). Emits :question_requested, persists to session,
+    # and BLOCKS until answer_question / cancel_question wakes it (or controller
+    # cancels). Returns a normalized JSON string for the tool_response.
+    # @param payload [Hash] {question:, options:, header:, multi_select:, allow_freeform:}
+    # @return [String] normalized answer JSON
+    def request_question(payload)
+      question = payload[:question].to_s.strip
+      options = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(payload[:options])
+      # Fallback for string JSON that lenient missed
+      if options.empty? && payload[:options].is_a?(String)
+        options = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(payload[:options].to_s)
+      end
+      if question.empty? || options.empty?
+        return JSON.generate({ error: "invalid question", detail: "question and 2-8 options required (got #{options.size})" })
+      end
+      # Dumb-model salvage: allow single option (don't hard error, just render what we have)
+      if options.size == 1
+        # keep as is
+      elsif options.size < 2
+        return JSON.generate({ error: "invalid question", detail: "question and 2-8 options required (got #{options.size})" })
+      end
+      if options.size > 8
+        options = options.first(8)
+      end
+
+      id = SecureRandom.uuid
+      pending = {
+        id: id,
+        question: question,
+        options: options,
+        header: payload[:header].to_s.strip.empty? ? nil : payload[:header].to_s.strip,
+        multi_select: !!payload[:multi_select],
+        allow_freeform: !!payload[:allow_freeform],
+        status: "pending",
+        created_at: Time.now.iso8601(3)
+      }.compact
+
+      @question_mutex.synchronize do
+        @pending_question = pending
+        @question_answer = nil
+      end
+      # Persist to session file for WEB stub + resume (generic for all UIs)
+      if @session
+        @session.pending_question = pending.dup
+        begin; @session.save; rescue StandardError; nil; end
+      end
+      # Generic emit for all UIs (TUI, WEB, Bridge, future). Observers that
+      # stash this event (e.g. TerminalUI handle_question_event) will
+      # discard it as stale if the synchronous handler below already answers
+      # and clears pending — see drain_pending_question? staleness check.
+      emit_event(nil, { type: :question_requested, pending_question: pending })
+
+      # If a synchronous UI handler is registered (TUI), invoke it inline on the
+      # SAME thread that called request_question (TerminalUI's REPL thread is the
+      # turn thread — no second thread exists to answer). This avoids deadlock.
+      # This path is TUI-specific but the surrounding emit/clear is generic, so
+      # any future UI that registers a sync handler gets the same guarantee.
+      if instance_variable_defined?(:@question_sync_handler) && @question_sync_handler
+        begin
+          sync_res = @question_sync_handler.call(pending.dup)
+          # Handler may have called answer_question or returned a hash/string
+          @question_mutex.synchronize do
+            if @question_answer
+              ans = @question_answer
+              @pending_question = nil
+              if @session
+                @session.pending_question = nil
+                begin; @session.save; rescue StandardError; nil; end
+              end
+              emit_event(nil, { type: :question_answered, id: id, answer: ans })
+              return JSON.generate(ans)
+            end
+            if sync_res.is_a?(Hash) && sync_res[:selected]
+              # Treat returned hash as answer (handler rendered and parsed)
+              @question_answer = sync_res
+              @pending_question = nil
+              if @session
+                @session.pending_question = nil
+                begin; @session.save; rescue StandardError; nil; end
+              end
+              emit_event(nil, { type: :question_answered, id: id, answer: sync_res })
+              return JSON.generate(sync_res)
+            elsif sync_res.is_a?(String) && !sync_res.strip.empty?
+              return sync_res
+            end
+          end
+        rescue StandardError => e
+          warn "[ask_user_question] sync handler failed: #{e.message}"
+        end
+        # Sync handler existed but did not produce an answer — do not deadlock on
+        # CV (no cross-thread answerer exists for synchronous UIs). Clear pending
+        # and return an error so the model can fallback to plain text. Generic
+        # observers will discard the stale question_requested via staleness check.
+        @question_mutex.synchronize { @pending_question = nil }
+        if @session
+          @session.pending_question = nil
+          begin; @session.save; rescue StandardError; nil; end
+        end
+        return JSON.generate({ error: "no answer", detail: "handler failed to capture selection", id: id })
+      end
+
+      # Block until answered/cancelled (cross-thread path: WEB/Bridge/background worker)
+      answer = nil
+      @question_mutex.synchronize do
+        loop do
+          break if @question_answer
+          break if active_cancel_controller&.cancelled?
+          break if @pending_question.nil? || @pending_question[:status] != "pending"
+
+          # Wait with timeout to check cancel; 0.2s matches reminder poll
+          @question_cv.wait(0.2)
+        end
+        answer = @question_answer
+        # If cancelled
+        if active_cancel_controller&.cancelled? && answer.nil?
+          @pending_question = nil
+          if @session
+            @session.pending_question = nil
+            begin; @session.save; rescue StandardError; nil; end
+          end
+          emit_event(nil, { type: :question_cancelled, id: id, reason: active_cancel_controller.reason.to_s })
+          return JSON.generate({ error: "cancelled", reason: active_cancel_controller.reason.to_s, id: id })
+        end
+      end
+
+      # Clear persisted
+      @question_mutex.synchronize { @pending_question = nil }
+      if @session
+        @session.pending_question = nil
+        begin; @session.save; rescue StandardError; nil; end
+      end
+      if answer
+        emit_event(nil, { type: :question_answered, id: id, answer: answer })
+        JSON.generate(answer)
+      else
+        JSON.generate({ error: "no answer", id: id })
+      end
+    end
+
+    # Answer the pending question (called from UI thread).
+    # @param id [String] pending id
+    # @param selected [Array<String>] values/labels
+    # @param freeform [String, nil]
+    # @return [Hash] normalized answer
+    def answer_question(id:, selected:, freeform: nil)
+      sel = Array(selected).map { |v| v.to_s.strip }.reject(&:empty?)
+      fm = freeform.to_s.strip
+      fm = nil if fm.empty?
+      @question_mutex.synchronize do
+        pending = @pending_question
+        raise ArgumentError, "no pending question" unless pending
+        raise ArgumentError, "id mismatch" unless pending[:id].to_s == id.to_s
+
+        opts = Array(pending[:options])
+        # Validate selected subset of options (value == label in v1)
+        invalid = sel.reject { |v| opts.include?(v) }
+        unless invalid.empty?
+          raise ArgumentError, "invalid selection: #{invalid.join(', ')} (valid: #{opts.join(', ')})"
+        end
+        if !pending[:multi_select] && sel.size > 1
+          raise ArgumentError, "single-select question: got #{sel.size} selections"
+        end
+        if pending[:multi_select] == false && sel.empty? && fm.nil?
+          raise ArgumentError, "selection required"
+        end
+        # Persist pending cleared elsewhere; just set answer
+        answer = { id: id.to_s, selected: sel, freeform: fm }
+        # Derive indices for convenience
+        answer[:selected_indices] = sel.map { |v| opts.index(v) }.compact
+        @question_answer = answer
+        @question_cv.broadcast
+        answer
+      end
+    end
+
+    def set_question_sync_handler(&block)
+      @question_sync_handler = block
+    end
+
+    # Cancel the pending question (e.g. /cancel).
+    def cancel_question(reason = "user")
+      @question_mutex.synchronize do
+        if @pending_question
+          @pending_question[:status] = "cancelled"
+          @question_cv.broadcast
+        end
+      end
+      emit_event(nil, { type: :question_cancelled, reason: reason.to_s }) rescue nil
+      true
     end
 
     # @return [String] fully built system prompt (for inspection/tests)
@@ -786,7 +1009,8 @@ module Samagotchi
           ToolDeclarations::TOOL_WEB_FETCH,
           ToolDeclarations::TOOL_REGISTER_REMINDER,
           ToolDeclarations::TOOL_CANCEL_REMINDER,
-          ToolDeclarations::TOOL_LIST_REMINDERS
+          ToolDeclarations::TOOL_LIST_REMINDERS,
+          ToolDeclarations::TOOL_ASK_USER_QUESTION
         ].join("\n")
       end
     end
@@ -842,6 +1066,10 @@ module Samagotchi
           Treat loaded Project/System memories as priority knowledge — second only to the current user prompt.
           When a memory conflicts with older history or generic knowledge, prefer the memory.
           Read memories with memory_read before answering if the task touches remembered conventions.
+
+        Structured qualification:
+          When you need a clear user choice (qualification, disambiguation, confirmation), prefer ask_user_question over plain numbered lists.
+          ask_user_question supports single/multi selection plus optional freeform/Other text. The harness renders it natively (TUI/Web) and returns {selected, freeform}.
 
         #{ToolDeclarations::CONTEXT_STATUS_PROTOCOL}
       SYS

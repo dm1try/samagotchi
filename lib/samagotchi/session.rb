@@ -25,10 +25,11 @@ module Samagotchi
     SORT_ORDERS = %w[asc desc].freeze
 
     attr_accessor :id, :metadata_version, :mode, :model_name, :working_directory, :messages,
-                  :created_at, :updated_at, :status, :last_prompt, :test_run
+                   :created_at, :updated_at, :status, :last_prompt, :test_run, :pending_question
 
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
-                   metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "", test_run: false)
+                   metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "", test_run: false,
+                   pending_question: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -40,6 +41,7 @@ module Samagotchi
       @status = status
       @last_prompt = last_prompt
       @test_run = !!test_run
+      @pending_question = pending_question
     end
 
     # Build a new, unsaved session.
@@ -74,6 +76,8 @@ module Samagotchi
 
       data = JSON.parse(File.read(path))
       messages = (data["messages"] || []).map { |msg| symbolize_message_keys(msg) }
+      pending = data["pending_question"]
+      pending = symbolize_message_keys(pending) if pending.is_a?(Hash)
       new(
         id: data.fetch("id"),
         metadata_version: data.fetch("metadata_version", 1),
@@ -85,7 +89,8 @@ module Samagotchi
         updated_at: data.fetch("updated_at"),
         status: data.fetch("status", STATUS_IDLE),
         last_prompt: data.fetch("last_prompt", ""),
-        test_run: data.fetch("test_run", false)
+        test_run: data.fetch("test_run", false),
+        pending_question: pending
       )
     rescue JSON::ParserError => e
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
@@ -252,7 +257,8 @@ module Samagotchi
         "updated_at" => @updated_at,
         "status" => @status,
         "last_prompt" => @last_prompt,
-        "test_run" => !!@test_run
+        "test_run" => !!@test_run,
+        "pending_question" => @pending_question ? stringify_message_keys(@pending_question) : nil
       }
 
       File.write(temp_path, JSON.pretty_generate(record) + "\n")

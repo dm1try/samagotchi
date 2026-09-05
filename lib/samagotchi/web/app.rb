@@ -61,6 +61,9 @@ module Samagotchi
           if (m = %r{\A/api/sessions/([^/]+)/turn\z}.match(req.path_info)) && req.post?
             return handle_turn(req, m[1])
           end
+          if (m = %r{\A/api/sessions/([^/]+)/answer\z}.match(req.path_info)) && req.post?
+            return handle_question_answer(req, m[1])
+          end
           if (m = %r{\A/api/sessions/([^/]+)\z}.match(req.path_info)) && req.get?
             return handle_show(req, m[1])
           end
@@ -173,11 +176,70 @@ module Samagotchi
         session = @session_class.load(id, state_dir: default_state_dir)
         history = read_history(id)
         messages = messages_for_display(session)
+        pending = session.respond_to?(:pending_question) ? session.pending_question : nil
+        # Also check Engine live state via Bridge sidecar if available (not required for stub)
         json_response(200, {
           session: session_to_json(session),
           history: history,
-          messages: messages
+          messages: messages,
+          pending_question: pending
         })
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      def handle_question_answer(req, id)
+        session = @session_class.load(id, state_dir: default_state_dir) rescue nil
+        return error_response(404, "not_found", "Session not found: #{id}") unless session
+
+        body = parse_json(req.body.read)
+        unless body.is_a?(Hash)
+          return error_response(400, "invalid_json", "invalid JSON body")
+        end
+        qid = body["id"] || body[:id] || body["question_id"] || body[:question_id]
+        selected = body["selected"] || body[:selected] || body["selection"] || body[:selection]
+        freeform = body["freeform"] || body[:freeform] || body["other"] || body[:other]
+        # Allow payload nested under answer
+        if body["answer"].is_a?(Hash)
+          ans = body["answer"]
+          qid ||= ans["id"] || ans[:id]
+          selected ||= ans["selected"] || ans[:selected]
+          freeform ||= ans["freeform"] || ans[:freeform]
+        end
+        if qid.to_s.strip.empty?
+          return error_response(400, "missing_fields", "id is required")
+        end
+        # Try live Engine via Bridge first (in-process answer without file IPC)
+        bridge_port = bridge_sidecar_port(id)
+        if bridge_port
+          begin
+            require "socket"
+            sock = TCPSocket.new(DEFAULT_HOST, bridge_port)
+            # POST to Bridge's /session/:id/answer if it exists; fallback to file flag
+            json_body = JSON.generate({ id: qid, selected: selected, freeform: freeform })
+            sock.write("POST /session/#{id}/answer HTTP/1.1\r\nHost: #{DEFAULT_HOST}:#{bridge_port}\r\nContent-Type: application/json\r\nContent-Length: #{json_body.bytesize}\r\nConnection: close\r\n\r\n#{json_body}")
+            status_line = sock.gets
+            sock.close rescue nil
+            if status_line && status_line.include?("200")
+              return json_response(200, { status: "answered", session_id: id, id: qid })
+            end
+          rescue StandardError
+            nil
+          end
+        end
+        # Fallback: write structured answer to input dir flag file
+        begin
+          session_dir = @session_class.session_dir(id, state_dir: default_state_dir)
+          FileUtils.mkdir_p(session_dir)
+          answer_payload = JSON.generate({ type: "ask_user_answer", id: qid.to_s, selected: Array(selected), freeform: freeform.to_s })
+          # Use a distinct file so SessionManager loop can distinguish from turn input
+          answer_file = File.join(session_dir, "pending_answer.json")
+          File.write("#{answer_file}.tmp", answer_payload)
+          File.rename("#{answer_file}.tmp", answer_file) rescue File.write(answer_file, answer_payload)
+          json_response(202, { status: "answer_queued", session_id: id, id: qid })
+        rescue StandardError => e
+          error_response(500, "enqueue_failed", e.message)
+        end
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
       end
