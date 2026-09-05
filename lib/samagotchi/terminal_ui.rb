@@ -508,7 +508,7 @@ module Samagotchi
       #{CONTEXT_STATUS_PROTOCOL}
     SYS
 
-    
+
     def self.system_prompt_for(profile)
       Engine.system_prompt_for(profile)
     end
@@ -983,8 +983,7 @@ module Samagotchi
         @engine.metrics.persist
       end
 
-      $stdout.puts "\nSession: #{session.id}"
-      $stdout.puts "\nbye."
+      $stdout.puts "\nContinue session: chi --resume #{session.id}"
     end
 
     def status_server_segment

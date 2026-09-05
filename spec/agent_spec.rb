@@ -1666,7 +1666,7 @@ file2.rb")
       )
       messages = [{ role: "system", content: agent.send(:assist_system_prompt) }]
       expect { agent.send(:assist_loop, session: session, messages: messages) }
-        .to output(/Session: [0-9a-f-]+/).to_stdout
+        .to output(/Continue session: chi --resume [0-9a-f-]+/).to_stdout
     end
   end
 
