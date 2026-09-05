@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "model_profile"
+require_relative "config"
+require_relative "config_file"
 require_relative "context_usage"
 require_relative "prompt"
 require_relative "prompt_literal_guard"
