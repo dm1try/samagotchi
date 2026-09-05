@@ -575,7 +575,7 @@ module Samagotchi
     # never spin up with no configured endpoint. An explicit `recap: false`
     # disables it regardless of env.
     def build_recap(recap)
-      return nil if recap == false
+      return nil unless recap || ENV["SAMAGOTCHI_RECAP_BASE_URL"] || ENV["SAMAGOTCHI_RECAP_MODEL"]
 
       config = recap.is_a?(Hash) ? recap : {}
       base_url = string_config(config, :base_url) || env_or_nil("SAMAGOTCHI_RECAP_BASE_URL")
