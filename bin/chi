@@ -5,6 +5,7 @@ $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 
 require "optparse"
 require "samagotchi/config_file"
+require "samagotchi/config"
 
 Samagotchi::ConfigFile.load_global_env!
 require "samagotchi"
@@ -615,22 +616,70 @@ if ARGV[0] == "memory"
 end
 
 options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, dashboard: false, web: false, web_port: nil, web_open: false }
+cli_overrides = {}
+
+# Strict kebab enforcement: --recap_base_url is unknown (OptionParser would otherwise accept _ as -)
+ARGV.each do |arg|
+  next unless arg.start_with?("--") && arg.include?("_")
+  # Allow --no-interrupt etc. already dash; underscore is always rejected for config flags
+  # We check raw ARGV before OptionParser normalizes
+  base = arg.split("=", 2).first
+  # If dashed version is a known flag (registry or hardcoded), reject underscore variant
+  dashed = base.tr("_", "-")
+  known = %w[--prompt --resume --model --memory --backend --no-interrupt --non-interactive --verbose --no-default-input --port --open] + Samagotchi::Config.cli_entries.map(&:cli_flag)
+  if known.include?(dashed) || known.include?(base)
+    warn "Unknown option: #{arg} (did you mean #{dashed}?)"
+    exit 1
+  end
+end
 
 OptionParser.new do |opts|
   opts.banner = "Usage: bin/chi [options] [subcommand]"
   opts.on("-p", "--prompt PROMPT", "Run a single prompt and exit") { |p| options[:prompt] = p }
   opts.on("--resume SESSION_ID", "Resume a previous session by its ID") { |s| options[:resume] = s }
-  opts.on("--model NAME", "Model selector (runtime only, overrides --resume)") { |m| options[:model] = m }
+  opts.on("--model NAME", "Model selector (runtime only, overrides --resume) [alias for --default-model]") { |m| options[:model] = m; cli_overrides["default.model"] = m }
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable)") { |m| (options[:memories] ||= []) << m }
-  opts.on("--backend NAME", %w[native ruby_llm], "Model backend to use (default: native)") { |b| options[:backend] = b }
-  opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true }
+  opts.on("--backend NAME", %w[native ruby_llm], "Model backend to use (default: native)") { |b| options[:backend] = b; cli_overrides["backend"] = b }
+  opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true; cli_overrides["no_interrupt"] = true }
   opts.on("--non-interactive", "Run a single prompt and exit (no REPL, implies --no-interrupt)") { options[:non_interactive] = true }
   opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results") { options[:verbose] = true }
-  opts.on("--no-default-input", "Skip default REPL input prefill") { options[:no_default_input] = true }
-  opts.on("--port PORT", "Port for `chi web` (default: 4567, env SAMAGOTCHI_WEB_PORT)") { |p| options[:web_port] = p.to_i }
+  opts.on("--no-default-input", "Skip default REPL input prefill") { options[:no_default_input] = true; cli_overrides["no_default_input"] = true }
+  opts.on("--port PORT", "Port for `chi web` (default: 4567, env SAMAGOTCHI_WEB_PORT)") { |p| options[:web_port] = p.to_i; cli_overrides["web.port"] = p.to_s }
   opts.on("--open", "Open browser for `chi web`") { options[:web_open] = true }
+  # Universal config flags (implicit convention: ENV SAMAGOTCHI_* ↔ YAML dotted ↔ CLI --kebab)
+  # Generated from Samagotchi::Config registry — Option A: snake leaf in YAML, kebab in CLI.
+  Samagotchi::Config.cli_entries.each do |entry|
+    next if %w[backend no_interrupt no_default_input].include?(entry.key)
+    next if entry.key == "web.port" # already handled as --port
+    next if entry.key == "default.model" # alias --model above
+    case entry.type
+    when :bool
+      opts.on(entry.cli_flag, "Set #{entry.key} (bool) [env #{entry.env_key}]") { cli_overrides[entry.key] = true }
+      opts.on("--no-#{entry.cli_flag.sub(/^--/, '')}", "Disable #{entry.key}") { cli_overrides[entry.key] = false } if entry.key.start_with?("no_")
+    when :integer, :float, :string, :enum
+      desc = "Set #{entry.key} [env #{entry.env_key}]"
+      desc += " (#{entry.enum_values.join('|')})" if entry.type == :enum
+      if entry.type == :enum
+        opts.on("#{entry.cli_flag} VALUE", entry.enum_values, desc) { |v| cli_overrides[entry.key] = v }
+      else
+        opts.on("#{entry.cli_flag} VALUE", desc) { |v| cli_overrides[entry.key] = v }
+      end
+    end
+  end
+  # Strict underscore rejection: --recap_base_url etc. are not registered and will raise OptionParser::InvalidOption
   opts.on("-h", "--help", "Show help") { puts opts; exit }
 end.parse!
+
+# Apply CLI precedence: CLI > ENV > file
+unless cli_overrides.empty?
+  Samagotchi::Config.reload!(cli_overrides: cli_overrides)
+  # Keep ENV in sync for legacy readers still using ENV directly
+  cli_overrides.each do |k, v|
+    entry = Samagotchi::Config.find_by_key(k)
+    next unless entry&.env_exposed?
+    ENV[entry.env_key] = v.to_s
+  end
+end
 
 # Handle subcommands (support `chi web --port 4567 --open` and `chi dashboard`)
 web_args = ARGV.dup
@@ -654,8 +703,9 @@ end
 
 if options[:web]
   require "samagotchi/web/server"
-  port = options[:web_port]
-  port = ENV.fetch("SAMAGOTCHI_WEB_PORT", port || 4567).to_i
+  port = options[:web_port] || Samagotchi::Config.get("web.port") || 4567
+  # legacy env fallback
+  port = ENV.fetch("SAMAGOTCHI_WEB_PORT", port.to_s).to_i rescue port.to_i
   Samagotchi::Web::Server.start(port: port, open_browser: options[:web_open])
   exit
 end
@@ -667,17 +717,19 @@ if options[:dashboard]
   exit
 end
 
-# Export the selected backend so the Engine resolves it (Engine#initialize reads
-# SAMAGOTCHI_BACKEND). A --backend flag wins over a config.yml / pre-set value
-# because it sets the env key directly; with no flag, resolve_provider falls
-# back to the (already-loaded) env / :native default.
-ENV["SAMAGOTCHI_BACKEND"] = options[:backend] if options[:backend]
-
-log_file = if ["1", "true"].include?(ENV.fetch("SAMAGOTCHI_DISABLE_LOG_FILE", "").downcase)
-             nil
-           else
-             ENV.fetch("SAMAGOTCHI_LOG_FILE", File.expand_path("../tmp/samagotchi.log", __dir__))
-           end
+# Log file resolved via unified Config (CLI > ENV > file). Legacy ENV fallback kept.
+log_file = begin
+  disable = Samagotchi::Config.get("log.disable")
+  disable = true if ["1", "true"].include?(ENV.fetch("SAMAGOTCHI_DISABLE_LOG_FILE", "").downcase) rescue false
+  if disable
+    nil
+  else
+    cfg_file = Samagotchi::Config.get("log.file")
+    cfg_file = ENV["SAMAGOTCHI_LOG_FILE"] if cfg_file.nil? || cfg_file.to_s.strip.empty?
+    cfg_file = File.expand_path("../tmp/samagotchi.log", __dir__) if cfg_file.to_s.strip.empty?
+    cfg_file
+  end
+end
 
 Samagotchi::TerminalUI.new(
   prompt: options[:prompt],

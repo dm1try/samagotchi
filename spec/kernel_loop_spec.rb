@@ -1166,15 +1166,23 @@ Need to inspect the filesystem first.
     end
 
     it "uses a larger default n_predict for Qwen" do
-      captured_kwargs = nil
-      allow(client).to receive(:complete) do |_prompt, **kwargs|
-        captured_kwargs = kwargs
-        "done"
+      original_xdg = ENV["XDG_CONFIG_HOME"]
+      Dir.mktmpdir("samagotchi-empty") do |dir|
+        ENV["XDG_CONFIG_HOME"] = dir
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+        captured_kwargs = nil
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          captured_kwargs = kwargs
+          "done"
+        end
+
+        qwen_kernel.run([{ role: "user", content: "hi" }])
+
+        expect(captured_kwargs[:n_predict]).to eq(1024)
+      ensure
+        ENV["XDG_CONFIG_HOME"] = original_xdg
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
       end
-
-      qwen_kernel.run([{ role: "user", content: "hi" }])
-
-      expect(captured_kwargs[:n_predict]).to eq(1024)
     end
 
     it "allows overriding n_predict via environment" do
@@ -1258,12 +1266,19 @@ Need to inspect the filesystem first.
   describe "profile inference from model" do
     around do |example|
       original = ENV.fetch("SAMAGOTCHI_DEFAULT_MODEL", nil)
-      example.run
-    ensure
-      if original.nil?
-        ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
-      else
-        ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
+      original_xdg = ENV["XDG_CONFIG_HOME"]
+      Dir.mktmpdir("samagotchi-empty") do |dir|
+        ENV["XDG_CONFIG_HOME"] = dir
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+        example.run
+      ensure
+        if original.nil?
+          ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
+        else
+          ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
+        end
+        ENV["XDG_CONFIG_HOME"] = original_xdg
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
       end
     end
 

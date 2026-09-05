@@ -126,7 +126,12 @@ module Samagotchi
       sd = state_dir || Session.default_state_dir
       return unless Dir.exist?(sd)
 
-      interval = (ENV.fetch("SAMAGOTCHI_SESSION_SWEEP_INTERVAL_HOURS", RETENTION_SWEEP_INTERVAL_HOURS.to_s).to_i * 3600)
+      cfg_interval = begin Samagotchi::Config.get("session.sweep_interval_hours") rescue nil end
+      interval = if cfg_interval && cfg_interval.to_i.positive?
+                   cfg_interval.to_i * 3600
+                 else
+                   (ENV.fetch("SAMAGOTCHI_SESSION_SWEEP_INTERVAL_HOURS", RETENTION_SWEEP_INTERVAL_HOURS.to_s).to_i * 3600)
+                 end
       marker = File.join(sd, RETENTION_MARKER)
       if File.exist?(marker)
         age = Time.now - File.mtime(marker)
@@ -145,6 +150,8 @@ module Samagotchi
 
     private_class_method def self.resolve_retention_days(val)
       return val.to_i if !val.nil? && val.to_s.strip != ""
+      cfg = begin Samagotchi::Config.get("session.retention_days") rescue nil end
+      return cfg.to_i if cfg && !cfg.to_s.strip.empty?
       env = ENV["SAMAGOTCHI_SESSION_RETENTION_DAYS"]
       return env.to_i if env && !env.strip.empty?
       Session::DEFAULT_RETENTION_DAYS
@@ -152,6 +159,8 @@ module Samagotchi
 
     private_class_method def self.resolve_retention_max_count(val)
       return val.to_i if !val.nil? && val.to_s.strip != ""
+      cfg = begin Samagotchi::Config.get("session.max_count") rescue nil end
+      return cfg.to_i if cfg && !cfg.to_s.strip.empty?
       env = ENV["SAMAGOTCHI_SESSION_MAX_COUNT"]
       return env.to_i if env && !env.strip.empty?
       Session::DEFAULT_MAX_COUNT
@@ -161,7 +170,8 @@ module Samagotchi
       raw = if !val.nil? && val.to_s.strip != ""
               val.to_s
             else
-              ENV["SAMAGOTCHI_SESSION_KEEP_STATUS"] || ENV["SAMAGOTCHI_SESSION_RETENTION_KEEP_STATUS"]
+              cfg = begin Samagotchi::Config.get("session.keep_status") rescue nil end
+              cfg && !cfg.to_s.strip.empty? ? cfg.to_s : (ENV["SAMAGOTCHI_SESSION_KEEP_STATUS"] || ENV["SAMAGOTCHI_SESSION_RETENTION_KEEP_STATUS"])
             end
       return Session::DEFAULT_KEEP_STATUS if raw.nil? || raw.strip.empty?
       raw.split(",").map(&:strip).reject(&:empty?)

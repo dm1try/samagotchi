@@ -116,14 +116,35 @@ module Samagotchi
     end
 
     def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil)
-      @host = host || ENV.fetch("LLAMA_HOST", "localhost")
-      @port = (port || ENV.fetch("LLAMA_PORT", "8080")).to_i
+      # Unified config precedence: CLI > ENV > file > default (via Samagotchi::Config)
+      # Fallback to ENV/legacy LLAMA_* for transition.
+      cfg_host = nil; cfg_port = nil; cfg_transport_raw = nil
+      begin
+        require_relative "config"
+        cfg_host = Samagotchi::Config.get("server.host") if Samagotchi::Config.find_by_key("server.host")
+        cfg_port = Samagotchi::Config.get("server.port") if Samagotchi::Config.find_by_key("server.port")
+        cfg_transport_raw = Samagotchi::Config.get("server.transport") if Samagotchi::Config.find_by_key("server.transport")
+      rescue StandardError
+        nil
+      end
+      @host = host || cfg_host || ENV.fetch("LLAMA_HOST", "localhost")
+      @port = (port || cfg_port || ENV.fetch("LLAMA_PORT", "8080")).to_i
       @open_timeout = (open_timeout || ENV.fetch("LLAMA_OPEN_TIMEOUT", "10")).to_i
       @read_timeout = (read_timeout || ENV.fetch("LLAMA_READ_TIMEOUT", "600")).to_i
-      @transport = resolve_transport(transport)
-      @retry_max = integer_config(RETRY_MAX_ENV, DEFAULT_RETRY_MAX)
-      @retry_base_delay = float_config(RETRY_BASE_DELAY_ENV, DEFAULT_RETRY_BASE_DELAY)
-      @retry_max_delay = float_config(RETRY_MAX_DELAY_ENV, DEFAULT_RETRY_MAX_DELAY)
+      transport_fallback = cfg_transport_raw || ENV.fetch(SERVER_TRANSPORT_ENV, DEFAULT_TRANSPORT.to_s)
+      @transport = resolve_transport(transport || transport_fallback)
+      @retry_max = begin
+        v = Samagotchi::Config.get("retry.max") rescue nil
+        v.is_a?(Integer) && v >= 0 ? v : integer_config(RETRY_MAX_ENV, DEFAULT_RETRY_MAX)
+      end
+      @retry_base_delay = begin
+        v = Samagotchi::Config.get("retry.base_delay") rescue nil
+        v.is_a?(Numeric) && v.positive? ? v.to_f : float_config(RETRY_BASE_DELAY_ENV, DEFAULT_RETRY_BASE_DELAY)
+      end
+      @retry_max_delay = begin
+        v = Samagotchi::Config.get("retry.max_delay") rescue nil
+        v.is_a?(Numeric) && v.positive? ? v.to_f : float_config(RETRY_MAX_DELAY_ENV, DEFAULT_RETRY_MAX_DELAY)
+      end
     end
 
     # Send a raw prompt and return the model's completion text.

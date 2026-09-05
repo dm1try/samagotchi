@@ -848,8 +848,12 @@ module Samagotchi
         return nil
       end
 
+      cfg_base_url = begin Samagotchi::Config.get("recap.base_url") rescue nil end
+      cfg_model = begin Samagotchi::Config.get("recap.model") rescue nil end
+      cfg_host_ref = begin Samagotchi::Config.get("recap.host_ref") rescue nil end
+      has_cfg_recap = cfg_base_url || cfg_model || cfg_host_ref
       has_file_recap = file_recap.is_a?(Hash)
-      has_env = ENV["SAMAGOTCHI_RECAP_BASE_URL"] || ENV["SAMAGOTCHI_RECAP_MODEL"]
+      has_env = ENV["SAMAGOTCHI_RECAP_BASE_URL"] || ENV["SAMAGOTCHI_RECAP_MODEL"] || has_cfg_recap
       has_kwarg = recap && recap.is_a?(Hash) && !recap.empty?
 
       # No recap anywhere -> disabled (preserve old behavior)
@@ -858,17 +862,18 @@ module Samagotchi
       # Normalize kwarg (TerminalUI passes recap: recap_config hash or nil)
       kwarg_config = recap.is_a?(Hash) ? recap : {}
 
-      # Resolve with priority: kwarg > file > env
-      # file_recap may have host_ref path
+      # Resolve with priority: kwarg > file > Config > env
       base_url = string_config(kwarg_config, :base_url) ||
                  (has_file_recap ? string_config(file_recap, :base_url) : nil) ||
+                 cfg_base_url&.to_s&.strip.then { |v| v && !v.empty? ? v : nil } ||
                  env_or_nil("SAMAGOTCHI_RECAP_BASE_URL")
-      # host_ref resolution (new generalized path)
       host_ref = string_config(kwarg_config, :host_ref) ||
                  string_config(kwarg_config, :host) ||
-                 (has_file_recap ? (string_config(file_recap, :host_ref) || string_config(file_recap, :host)) : nil)
+                 (has_file_recap ? (string_config(file_recap, :host_ref) || string_config(file_recap, :host)) : nil) ||
+                 cfg_host_ref&.to_s&.strip.then { |v| v && !v.empty? ? v : nil }
       model = string_config(kwarg_config, :model) ||
               (has_file_recap ? string_config(file_recap, :model) : nil) ||
+              cfg_model&.to_s&.strip.then { |v| v && !v.empty? ? v : nil } ||
               env_or_nil("SAMAGOTCHI_RECAP_MODEL")
 
       # If host_ref given, derive base_url from host_registry entry

@@ -583,6 +583,17 @@ file2.rb")
   end
 
   describe "#status_server_segment" do
+    around do |example|
+      original_xdg = ENV["XDG_CONFIG_HOME"]
+      Dir.mktmpdir("samagotchi-empty") do |dir|
+        ENV["XDG_CONFIG_HOME"] = dir
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+        example.run
+      ensure
+        ENV["XDG_CONFIG_HOME"] = original_xdg
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+      end
+    end
     let(:agent) { described_class.new(mode: "assist", client: client) }
 
     it "returns an empty string when host is localhost" do
@@ -1107,10 +1118,20 @@ file2.rb")
 
     around do |example|
       previous_dir = Dir.pwd
-      ENV["SAMAGOTCHI_HISTORY_FILE"] = File.join(tmpdir, "history.json")
-      Dir.chdir(tmpdir)
-      example.run
-      Dir.chdir(previous_dir)
+      original_xdg = ENV["XDG_CONFIG_HOME"]
+      Dir.mktmpdir("samagotchi-empty") do |empty_cfg|
+        begin
+          ENV["XDG_CONFIG_HOME"] = empty_cfg
+          Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+          ENV["SAMAGOTCHI_HISTORY_FILE"] = File.join(tmpdir, "history.json")
+          Dir.chdir(tmpdir)
+          example.run
+        ensure
+          ENV["XDG_CONFIG_HOME"] = original_xdg
+          Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+          Dir.chdir(previous_dir) rescue nil
+        end
+      end
       FileUtils.rm_rf(tmpdir)
     end
 

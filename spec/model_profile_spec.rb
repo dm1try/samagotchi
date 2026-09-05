@@ -76,12 +76,20 @@ RSpec.describe Samagotchi::ModelProfile do
   describe ".required_model_name" do
     around do |example|
       original = ENV.fetch("SAMAGOTCHI_DEFAULT_MODEL", nil)
-      example.run
-    ensure
-      if original.nil?
-        ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
-      else
-        ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
+      original_xdg = ENV["XDG_CONFIG_HOME"]
+      Dir.mktmpdir("samagotchi-empty") do |dir|
+        ENV["XDG_CONFIG_HOME"] = dir
+        # Clear Config cache so file isolation takes effect
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+        example.run
+      ensure
+        if original.nil?
+          ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
+        else
+          ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
+        end
+        ENV["XDG_CONFIG_HOME"] = original_xdg
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
       end
     end
 

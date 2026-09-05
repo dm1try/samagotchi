@@ -14,14 +14,58 @@ module Samagotchi
 
     module_function
 
+    # New unified loader: delegates to Samagotchi::Config registry.
+    # Breaking: YAML now expects lower snake dotted paths (default.model)
+    # instead of UPPER scalar keys. For compatibility, UPPER keys are warned
+    # and ignored — env wins over file as before, now via registry precedence
+    # (CLI > ENV > file > default). Returns true if file existed.
     def load_global_env!(env: ENV, path: global_path(env: env))
-      return false unless File.file?(path)
-
-      parse_file(path).each do |key, value|
-        env[key] = value unless env.key?(key)
+      require_relative "config"
+      existed = File.file?(path)
+      # Load snapshot with precedence CLI(∅) > ENV > file
+      snapshot = Samagotchi::Config.load_snapshot(path: path, env: env, cli_overrides: {})
+      # Validate sections for '_' misuse
+      if existed
+        begin
+          raw = YAML.safe_load(File.read(path), permitted_classes: [], aliases: false)
+          if raw.is_a?(Hash)
+            Samagotchi::Config.validate_yaml_sections(raw).each { |w| warn "Warning: #{w}" }
+            # Warn on legacy UPPER keys
+            raw.each_key do |k|
+              if k.to_s.match?(/\A[A-Z_]{2,}\z/) && k.to_s.start_with?("SAMAGOTCHI_")
+                warn "Warning: config key '#{k}' is legacy UPPER — use '#{k.to_s.downcase.sub(/^samagotchi_/, '').tr('_', '.')}' (e.g., default.model)"
+              end
+            end
+          end
+        rescue StandardError
+          nil
+        end
       end
-
-      true
+      # For process-wide access, prime the Config store (so Config.get works)
+      Samagotchi::Config.reload!(path: path, env: env, cli_overrides: {})
+      # Keep ENV in sync for any code still reading ENV directly (transition)
+      # Only for keys that were actually present in file (not defaults) to avoid polluting ENV with defaults
+      if existed
+        begin
+          raw = YAML.safe_load(File.read(path), permitted_classes: [], aliases: false)
+          raw = {} unless raw.is_a?(Hash)
+        rescue StandardError
+          raw = {}
+        end
+        Samagotchi::Config.all_entries.each do |entry|
+          next unless entry.env_exposed?
+          # check if file actually contained this key (including legacy flat)
+          file_val = Samagotchi::Config.lookup_yaml(raw, entry.yaml_path) rescue nil
+          # also consider legacy flat env_key as file presence
+          file_val ||= raw[entry.env_key] if raw.key?(entry.env_key)
+          Array(entry.aliases).each { |a| file_val ||= raw[a] if raw.key?(a) }
+          next if file_val.nil?
+          val = snapshot[entry.key]
+          next if val.nil?
+          env[entry.env_key] = val.to_s unless env.key?(entry.env_key)
+        end
+      end
+      existed
     end
 
     def global_path(env: ENV)
@@ -38,19 +82,32 @@ module Samagotchi
         raise ArgumentError, "global config must be a YAML mapping: #{path}"
       end
 
-      data.each_with_object({}) do |(key, value), result|
-        next if value.nil?
+      # Legacy path: return flattened dotted keys for registry-compatible file,
+      # plus warn on legacy UPPER scalar keys. For maps (hosts/hooks) keep as-is
+      # — callers handle them separately. This keeps ConfigFile.hosts_config etc.
+      # working while new Config handles scalars.
+      result = {}
+      flatten_for_parse(data, [], result)
+      result
+    end
 
-        unless scalar_value?(value)
-          # Skip non-scalar values (e.g., nested hashes, arrays).
-          # This allows the config file to contain sections like `hooks:` that
-          # are parsed separately by other subsystems (e.g. Hooks::Loader).
+    def flatten_for_parse(hash, prefix, result)
+      hash.each do |k, v|
+        full = (prefix + [k.to_s]).join(".")
+        if v.is_a?(Hash)
+          # Preserve maps like hosts/hooks/model_aliases as non-scalar skip for old callers
+          # but also recurse for new dotted leaves so hosts_config still works via direct YAML read
+          flatten_for_parse(v, prefix + [k.to_s], result) if prefix.empty? && %w[default recap server session log status context thinking read execute web].include?(k.to_s)
           next
         end
-
-        result[key.to_s] = value.to_s
+        next if v.nil?
+        unless scalar_value?(v)
+          next
+        end
+        result[full] = v.to_s
       end
     end
+    private_class_method :flatten_for_parse
 
     def scalar_value?(value)
       value.is_a?(String) || value.is_a?(Numeric) || value == true || value == false
@@ -221,35 +278,45 @@ module Samagotchi
       resolved = model_name.to_s.strip
       raise ArgumentError, "model name is required" if resolved.empty?
 
-      # Validate host-qualified ref if present (host must match known hosts when possible)
       if resolved.include?(":") || resolved.include?("/")
         sep = resolved.include?(":") ? ":" : "/"
         prefix = resolved.split(sep, 2).first.to_s.strip.downcase
-        # Only validate if hosts are configured (otherwise bare LLAMA_HOST is fine)
         begin
           hosts = hosts_config(env: env, path: path)
           if hosts && !hosts.empty? && !hosts.key?(prefix) && prefix.match?(HOST_NAME_RE)
-            # Allow unknown host prefix if no hosts file yet — still warn but don't raise
-            # Persist as-is so user can add host later. Only raise for reserved alias conflict.
           end
         rescue StandardError
           nil
         end
       end
 
-      # Load raw YAML (including nested sections like hooks:) so we don't clobber them
       raw_data = {}
       if File.file?(path)
         loaded = YAML.safe_load(File.read(path), permitted_classes: [], aliases: false)
         raw_data = loaded if loaded.is_a?(Hash)
       end
 
-      raw_data[DEFAULT_MODEL_KEY] = resolved
+      # Migrate to new dotted nested form: default.model (Option A)
+      raw_data["default"] ||= {}
+      if raw_data["default"].is_a?(Hash)
+        raw_data["default"]["model"] = resolved
+      else
+        raw_data["default"] = { "model" => resolved }
+      end
+      # Remove legacy UPPER key if present
+      raw_data.delete(DEFAULT_MODEL_KEY)
       FileUtils.mkdir_p(File.dirname(path))
       tmp = "#{path}.tmp"
       File.write(tmp, YAML.dump(raw_data))
       File.rename(tmp, path)
       env[DEFAULT_MODEL_KEY] = resolved
+      # Also sync new Config store if loaded
+      begin
+        require_relative "config"
+        Samagotchi::Config.reload!(path: path, env: env, cli_overrides: {})
+      rescue StandardError
+        nil
+      end
       true
     end
 

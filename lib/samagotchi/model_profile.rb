@@ -100,6 +100,15 @@ module Samagotchi
 
     def self.required_model_name(model_name = nil, env: ENV)
       value = model_name.to_s.strip
+      if value.empty?
+        begin
+          require_relative "config"
+          cfg = Samagotchi::Config.get("default.model") rescue nil
+          value = cfg.to_s.strip unless cfg.nil? || cfg.to_s.strip.empty?
+        rescue StandardError
+          nil
+        end
+      end
       value = env[MODEL_ENV].to_s.strip if value.empty?
       raise ArgumentError, "#{MODEL_ENV} is required" if value.empty?
 

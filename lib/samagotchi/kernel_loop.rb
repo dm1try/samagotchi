@@ -383,7 +383,11 @@ module Samagotchi
     # to the default (there is intentionally no "unlimited" — live UIs get a
     # bounded `output:` plus a truthful `output_truncated:` flag).
     def resolve_output_char_cap(override)
-      value = override || ENV[TOOL_OUTPUT_CHARS_ENV]
+      cfg_val = begin
+        v = Samagotchi::Config.get("max_tool_output_chars") rescue nil
+        v.to_i if v
+      end
+      value = override || cfg_val || ENV[TOOL_OUTPUT_CHARS_ENV]
       parsed = value.to_i
       parsed.positive? ? parsed : DEFAULT_MAX_TOOL_OUTPUT_CHARS
     end
@@ -402,6 +406,11 @@ module Samagotchi
     end
 
     def completion_n_predict
+      cfg_val = begin
+        v = Samagotchi::Config.get("n_predict") rescue nil
+        v.to_i if v && v.to_i.positive?
+      end
+      return cfg_val if cfg_val && cfg_val.positive?
       env_value = ENV["SAMAGOTCHI_N_PREDICT"] || ENV["SAMAGOTCHI_MAX_TOKENS"]
       if env_value && !env_value.empty?
         parsed = env_value.to_i
@@ -487,6 +496,10 @@ module Samagotchi
     end
 
     def context_status_enabled?
+      cfg = begin Samagotchi::Config.get("context.status") rescue nil end
+      unless cfg.nil?
+        return !!cfg
+      end
       value = ENV[CONTEXT_STATUS_ENABLED_ENV]
       return true if value.nil?
 
@@ -524,22 +537,38 @@ module Samagotchi
     end
 
     def context_window_tokens
+      cfg = begin Samagotchi::Config.get("context.window_tokens") rescue nil end
+      if cfg && cfg.to_i.positive?
+        v = cfg.to_i
+        return v.positive? ? v : DEFAULT_CONTEXT_WINDOW_TOKENS
+      end
       value = ENV.fetch(CONTEXT_WINDOW_TOKENS_ENV, DEFAULT_CONTEXT_WINDOW_TOKENS.to_s).to_i
       value.positive? ? value : DEFAULT_CONTEXT_WINDOW_TOKENS
     end
 
     def context_chars_per_token
+      cfg = begin Samagotchi::Config.get("context.chars_per_token") rescue nil end
+      if cfg && cfg.to_f.positive?
+        v = cfg.to_f
+        return v.positive? ? v : DEFAULT_CONTEXT_CHARS_PER_TOKEN
+      end
       value = ENV.fetch(CONTEXT_CHARS_PER_TOKEN_ENV, DEFAULT_CONTEXT_CHARS_PER_TOKEN.to_s).to_f
       value.positive? ? value : DEFAULT_CONTEXT_CHARS_PER_TOKEN
     end
 
     def context_status_thresholds
-      raw = ENV.fetch(CONTEXT_THRESHOLDS_ENV, DEFAULT_CONTEXT_THRESHOLDS.join(","))
+      cfg = begin Samagotchi::Config.get("context.status_thresholds") rescue nil end
+      raw = cfg && !cfg.to_s.strip.empty? ? cfg.to_s : ENV.fetch(CONTEXT_THRESHOLDS_ENV, DEFAULT_CONTEXT_THRESHOLDS.join(","))
       parsed = raw.split(",").map { |value| value.strip.to_i }.select { |value| value.between?(1, 99) }.uniq.sort
       parsed.empty? ? DEFAULT_CONTEXT_THRESHOLDS : parsed
     end
 
     def context_status_cadence
+      cfg = begin Samagotchi::Config.get("context.status_cadence") rescue nil end
+      if !cfg.nil?
+        v = cfg.to_i
+        return [v, 0].max
+      end
       value = ENV.fetch(CONTEXT_CADENCE_ENV, DEFAULT_CONTEXT_CADENCE.to_s).to_i
       [value, 0].max
     end
