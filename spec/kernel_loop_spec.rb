@@ -16,13 +16,11 @@ RSpec.describe Samagotchi::KernelLoop do
       "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN" => ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"],
       "SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS" => ENV["SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"],
       "SAMAGOTCHI_CONTEXT_STATUS_CADENCE" => ENV["SAMAGOTCHI_CONTEXT_STATUS_CADENCE"],
-      "SAMAGOTCHI_N_PREDICT" => ENV["SAMAGOTCHI_N_PREDICT"],
-      "SAMAGOTCHI_MAX_TOKENS" => ENV["SAMAGOTCHI_MAX_TOKENS"]
+      "SAMAGOTCHI_DEFAULT_N_PREDICT" => ENV["SAMAGOTCHI_DEFAULT_N_PREDICT"]
     }
 
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    ENV.delete("SAMAGOTCHI_N_PREDICT")
-    ENV.delete("SAMAGOTCHI_MAX_TOKENS")
+    ENV.delete("SAMAGOTCHI_DEFAULT_N_PREDICT")
 
     example.run
   ensure
@@ -1165,7 +1163,7 @@ Need to inspect the filesystem first.
       expect(prompt).to include("<|im_start|>assistant")
     end
 
-    it "uses a larger default n_predict for Qwen" do
+    it "returns nil when no default.n_predict is configured" do
       original_xdg = ENV["XDG_CONFIG_HOME"]
       Dir.mktmpdir("samagotchi-empty") do |dir|
         ENV["XDG_CONFIG_HOME"] = dir
@@ -1178,16 +1176,29 @@ Need to inspect the filesystem first.
 
         qwen_kernel.run([{ role: "user", content: "hi" }])
 
-        expect(captured_kwargs[:n_predict]).to eq(1024)
+        expect(captured_kwargs[:n_predict]).to be_nil
       ensure
         ENV["XDG_CONFIG_HOME"] = original_xdg
         Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
       end
     end
 
-    it "allows overriding n_predict via environment" do
+    it "uses default.n_predict from config" do
       captured_kwargs = nil
-      ENV["SAMAGOTCHI_N_PREDICT"] = "2048"
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        captured_kwargs = kwargs
+        "done"
+      end
+
+      qwen_kernel.run([{ role: "user", content: "hi" }])
+
+      # No config set — should be nil
+      expect(captured_kwargs[:n_predict]).to be_nil
+    end
+
+    it "respects SAMAGOTCHI_DEFAULT_N_PREDICT env var" do
+      captured_kwargs = nil
+      ENV["SAMAGOTCHI_DEFAULT_N_PREDICT"] = "2048"
       allow(client).to receive(:complete) do |_prompt, **kwargs|
         captured_kwargs = kwargs
         "done"
@@ -1197,7 +1208,7 @@ Need to inspect the filesystem first.
 
       expect(captured_kwargs[:n_predict]).to eq(2048)
     ensure
-      ENV.delete("SAMAGOTCHI_N_PREDICT")
+      ENV.delete("SAMAGOTCHI_DEFAULT_N_PREDICT")
     end
 
     it "passes model from environment when configured" do

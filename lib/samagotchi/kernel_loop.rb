@@ -406,22 +406,8 @@ module Samagotchi
     end
 
     def completion_n_predict
-      cfg_val = begin
-        v = Samagotchi::Config.get("n_predict") rescue nil
-        v.to_i if v && v.to_i.positive?
-      end
-      return cfg_val if cfg_val && cfg_val.positive?
-      env_value = ENV["SAMAGOTCHI_N_PREDICT"] || ENV["SAMAGOTCHI_MAX_TOKENS"]
-      if env_value && !env_value.empty?
-        parsed = env_value.to_i
-        return parsed if parsed.positive?
-      end
-
-      # Qwen often emits hidden reasoning before the final answer; a larger
-      # budget prevents user-visible truncation in assist mode.
-      return 1024 if @profile.name == "qwen36"
-
-      nil
+      v = Samagotchi::Config.get("default.n_predict") rescue nil
+      v.to_i if v && v.to_i.positive?
     end
 
     def completion_model_name(override = nil)
