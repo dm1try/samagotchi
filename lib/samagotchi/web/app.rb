@@ -368,23 +368,57 @@ module Samagotchi
           "Access-Control-Allow-Origin" => "*"
         }
 
+        # Handlers that buffer enumerable bodies before responding (rackup's
+        # WEBrick does `body.each` to completion) hang forever on an unbounded
+        # SSE body — the browser never even receives the status line. When the
+        # handler supports hijacking, stream frames straight to the socket
+        # instead of returning an enumerable.
+        if req.env["rack.hijack?"]
+          hijack = sse_hijack(id, req)
+          return [200, headers.merge("rack.hijack" => hijack), []]
+        end
+
         # Attempt to proxy to per-session Bridge if it exists (optional, v1.1)
         bridge_port = bridge_sidecar_port(id)
         if bridge_port
           return proxy_bridge_stream(req, id, bridge_port, headers)
         end
 
-        body = StreamBody.new(
+        [200, headers, build_stream_body(id, cursor_param, since_time)]
+      end
+
+      # Rack hijack lambda (env["rack.hijack?"] truthy): writes SSE frames
+      # directly to the client socket until it disconnects. The handler
+      # (WEBrick via rackup) has already sent the status line + headers, so
+      # only body bytes go to the socket here.
+      def sse_hijack(id, req)
+        lambda do |io|
+          port = bridge_sidecar_port(id)
+          if port
+            query = req.query_string.to_s.empty? ? "" : "?#{req.query_string}"
+            body = ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: query, headers: req.env)
+            body.each { |chunk| io.write(chunk) }
+          else
+            cursor, since_time = stream_cursor(req)
+            build_stream_body(id, cursor, since_time).each { |frame| io.write(frame) }
+          end
+        rescue Errno::EPIPE, Errno::ECONNRESET, IOError
+          nil # client went away — end the stream quietly
+        rescue StandardError
+          nil
+        end
+      end
+
+      def build_stream_body(id, cursor, since_time)
+        StreamBody.new(
           session_id: id,
           manager: @manager,
           state_dir: @state_dir,
           heartbeat_interval: HEARTBEAT_INTERVAL,
           poll_interval: STREAM_POLL_INTERVAL,
-          cursor: cursor_param,
+          cursor: cursor,
           since_time: since_time
         )
-
-        [200, headers, body]
       end
 
       # Attempt to proxy SSE from a per-session Bridge instance if sidecar exists.
@@ -398,15 +432,7 @@ module Samagotchi
       rescue StandardError
         # Fallback to file polling if proxy fails
         cursor_param, since_time = stream_cursor(req)
-        StreamBody.new(
-          session_id: id,
-          manager: @manager,
-          state_dir: @state_dir,
-          heartbeat_interval: HEARTBEAT_INTERVAL,
-          poll_interval: STREAM_POLL_INTERVAL,
-          cursor: cursor_param,
-          since_time: since_time
-        ).then { |b| [200, headers, b] }
+        [200, headers, build_stream_body(id, cursor_param, since_time)]
       end
 
       def bridge_sidecar_port(session_id)

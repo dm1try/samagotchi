@@ -3,6 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 require "json"
+require "stringio"
 require "rack/mock"
 require "rack/request"
 
@@ -246,6 +247,32 @@ RSpec.describe Samagotchi::Web::App do
       _status, _headers, body = app.call(env_for("/api/sessions/s1/stream?from_seq=abc"))
 
       expect(body.instance_variable_get(:@cursor)).to be_nil
+    end
+
+    it "honors rack.hijack? by returning a lambda that writes SSE frames straight to the socket" do
+      manager = FakeResponsesManager.new(responses: %w[one two])
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      status, headers, body = app.call(
+        env_for("/api/sessions/s1/stream?from_seq=0", headers: { "rack.hijack?" => true })
+      )
+
+      expect(status).to eq(200)
+      expect(body).to eq([])
+      hijack = headers["rack.hijack"]
+      expect(hijack).to respond_to(:call)
+
+      out = StringIO.new
+      t = Thread.new { hijack.call(out) }
+      t.report_on_exception = false
+      deadline = mono + 2.0
+      sleep(0.005) while out.string.length < 40 && mono < deadline
+      t.kill if t.alive?
+      t.join(0.2)
+
+      expect(out.string).to include("event: history")
+      expect(out.string).to include("id: 1")
+      expect(out.string).to include(%q{"content":"one"})
+      expect(out.string).not_to include("HTTP/1.1") # handler owns the status line
     end
   end
 
