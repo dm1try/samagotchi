@@ -94,10 +94,13 @@ a{color:#7aa5ff}
 <script>
 const $ = s=>document.querySelector(s);
 const listEl=$("#list"), historyEl=$("#history"), emptyEl=$("#empty"), composerEl=$("#composer"), detailHead=$("#detailHead");
-let selected=null, es=null, pollTimer=null;
+let selected=null, es=null;
 let allSessions=[], displayLimit=100;
 // streaming buffer for token-level SSE (generation_chunk)
 let streamingBubble=null, streamingBuffer="", rafPending=false;
+// defense-in-depth dedup: whitespace-normalized keys of already-rendered content
+let seenContent=new Set();
+const norm = s => String(s||"").replace(/\s+/g," ").trim();
 
 function api(path, opts={}){
   return fetch(path, {headers:{"Content-Type":"application/json"}, ...opts}).then(async r=>{
@@ -163,9 +166,8 @@ async function select(id){
     } else {
       renderHistory(data.history||[]);
     }
-    openStream(id);
-    // also poll output as fallback
-    startPoll(id);
+    seedSeenFromDom();
+    openStream(id, data.last_event_seq);
   }catch(e){ historyEl.innerHTML=`<div class="hint">Error: ${esc(e.message)}</div>`; }
 }
 function renderHistory(items){
@@ -181,8 +183,19 @@ function renderHistory(items){
   }
   historyEl.scrollTop=historyEl.scrollHeight;
 }
+function seedSeenFromDom(){
+  seenContent=new Set();
+  historyEl.querySelectorAll(".bubble").forEach(b=>{
+    const k=norm(b.textContent);
+    if(k) seenContent.add(k);
+  });
+}
 function appendChunk(text){
   if(!text) return;
+  // skip content already rendered (seeded from DOM / finalized streaming buffer);
+  // live content is otherwise governed by the server's seq cursor, not this set
+  const k=norm(text);
+  if(!k || seenContent.has(k)) return;
   // remove initial hint if present
   const hint=historyEl.querySelector(".hint");
   if(hint) hint.remove();
@@ -219,6 +232,10 @@ function appendToken(content){
 }
 function finalizeStreaming(){
   if(streamingBubble){
+    // remember the streamed text so a later turn_completed whole-chunk (which
+    // carries the same final output) is not rendered a second time
+    const k=norm(streamingBuffer);
+    if(k) seenContent.add(k);
     streamingBubble.classList.remove("streaming");
     // dedup: finalize once, reset buffer for next turn
     streamingBubble=null;
@@ -226,10 +243,12 @@ function finalizeStreaming(){
   streamingBuffer="";
   rafPending=false;
 }
-function openStream(id){
-  // Try SSE — supports both generic JSON and typed events (generation_chunk etc.)
+function openStream(id, fromSeq){
+  // SSE-only: browser EventSource auto-reconnect + server cursor replay
+  // (stable `id:` seqs / Last-Event-ID) handle drops — no polling fallback.
   try{
-    es=new EventSource(`/api/sessions/${id}/stream`);
+    const seq = Number.isInteger(fromSeq) ? fromSeq : 0;
+    es=new EventSource(`/api/sessions/${id}/stream?from_seq=${seq}`);
     // typed listeners (require Bridge to emit `event: <type>`)
     const onChunk = (e)=>{
       try{
@@ -253,9 +272,8 @@ function openStream(id){
       try{
         const d=JSON.parse(e.data);
         const out = d.result ? (d.result.output || "") : (d.content||d.output||"");
-        if(typeof out==="string" && out.trim() && !streamingBuffer.includes(out.trim().slice(0,40))){
-          appendChunk(out.trim());
-        }
+        // appendChunk dedups against the finalized streaming bubble via seenContent
+        if(typeof out==="string" && out.trim()) appendChunk(out.trim());
       }catch(_){}
     });
     es.addEventListener("turn_canceled", (e)=>{
@@ -312,23 +330,13 @@ function openStream(id){
         if(typeof txt==="string" && txt.trim()) appendChunk(txt.trim());
       }catch(_){ if(e.data && e.data.trim() && e.data!==": ping") appendChunk(e.data.trim()); }
     };
-    es.onerror=()=>{/* keep polling fallback */};
+    // lightweight: native EventSource auto-reconnect + server cursor replay
+    // (Last-Event-ID) are the resilience story — no polling revival here
+    es.onerror=()=>{};
   }catch(_){}
 }
-function closeStream(){ streamingBubble=null; streamingBuffer=""; rafPending=false; if(es){ try{es.close()}catch(_){} es=null; } if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
-function startPoll(id){
-  let seen=new Set();
-  // seed seen from current DOM
-  historyEl.querySelectorAll(".bubble").forEach(b=>seen.add(b.textContent));
-  pollTimer=setInterval(async()=>{
-    try{
-      const r=await api(`/api/sessions/${id}/output`);
-      (r.output||[]).forEach(txt=>{
-        if(!seen.has(txt)){ seen.add(txt); appendChunk(txt); }
-      });
-    }catch(_){}
-  }, 1500);
-}
+function closeStream(){ streamingBubble=null; streamingBuffer=""; rafPending=false; if(es){ try{es.close()}catch(_){} es=null; } }
+
 async function createSession(){
   const prompt=$("#newPrompt").value.trim();
   if(!prompt) return;
