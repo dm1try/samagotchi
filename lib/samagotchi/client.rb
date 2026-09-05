@@ -44,6 +44,69 @@ module Samagotchi
     DEFAULT_TRANSPORT = :llama_cpp
     VALID_TRANSPORTS = %i[llama_cpp mlx omlx].freeze
 
+    # Wire-format strategy for one server transport. `Client` keeps the
+    # transport-agnostic request/retry/stream loop; everything that differs
+    # between llama.cpp's native API and the OpenAI-compatible servers
+    # (mlx_lm.server, oMLX) lives here: endpoint paths, payload keys, streamed
+    # content parsing, and the request's `model` field semantics.
+    class Transport
+      attr_reader :name
+
+      # @param name [Symbol] one of Client::VALID_TRANSPORTS
+      # @param model_resolver [Proc, nil] client-installed resolver for the
+      #   request's `model` field (oMLX resolves against its /v1/models list;
+      #   mlx installs one that always returns nil to omit the field); nil
+      #   means forward the selector verbatim (llama.cpp default)
+      def initialize(name, model_resolver: nil)
+        @name = name
+        @model_resolver = model_resolver
+      end
+
+      def label
+        # oMLX gets its own label so its error paths read "omlx ...", not "mlx ...".
+        @name == :llama_cpp ? "llama.cpp" : @name.to_s
+      end
+
+      def completion_path
+        openai_compatible? ? "/v1/completions" : "/completion"
+      end
+
+      def models_path
+        openai_compatible? ? "/v1/models" : "/models"
+      end
+
+      def token_limit_key
+        openai_compatible? ? :max_tokens : :n_predict
+      end
+
+      # Text content carried by one streamed `data:` payload.
+      def content_from_payload(payload)
+        openai_compatible? ? payload.dig("choices", 0, "text").to_s : payload.fetch("content", "")
+      end
+
+      # The request's `model` field for this transport (nil = omit the field):
+      #   - llama.cpp: forward the selector (SAMAGOTCHI_DEFAULT_MODEL) verbatim.
+      #   - mlx_lm.server: omit `model` entirely (use whatever was loaded via the
+      #     server's own `--model` CLI flag).
+      #   - oMLX: MUST send a model id that exists in the server's `/v1/models`
+      #     list, or oMLX 400s with "model: Field required". The client-installed
+      #     resolver maps the short selector (e.g. `gemma-4-26b-a4b-it-4bit`) to
+      #     the exact registered id (which may be prefixed, e.g.
+      #     `mlx-community--...`) by matching against the loaded /v1/models list.
+      def model_for_payload(model)
+        return @model_resolver.call(model) if @model_resolver
+
+        value = model.to_s.strip
+        value.empty? ? nil : value
+      end
+
+      private
+
+      def openai_compatible?
+        @name == :mlx || @name == :omlx
+      end
+    end
+
     class CancellationController
       def initialize
         @mutex = Mutex.new
@@ -132,7 +195,7 @@ module Samagotchi
       @open_timeout = (open_timeout || ENV.fetch("LLAMA_OPEN_TIMEOUT", "10")).to_i
       @read_timeout = (read_timeout || ENV.fetch("LLAMA_READ_TIMEOUT", "600")).to_i
       transport_fallback = cfg_transport_raw || ENV.fetch(SERVER_TRANSPORT_ENV, DEFAULT_TRANSPORT.to_s)
-      @transport = resolve_transport(transport || transport_fallback)
+      @transport = build_transport(resolve_transport(transport || transport_fallback))
       @retry_max = begin
         v = Samagotchi::Config.get("retry.max") rescue nil
         v.is_a?(Integer) && v >= 0 ? v : integer_config(RETRY_MAX_ENV, DEFAULT_RETRY_MAX)
@@ -145,6 +208,11 @@ module Samagotchi
         v = Samagotchi::Config.get("retry.max_delay") rescue nil
         v.is_a?(Numeric) && v.positive? ? v.to_f : float_config(RETRY_MAX_DELAY_ENV, DEFAULT_RETRY_MAX_DELAY)
       end
+    end
+
+    # The wire-format strategy for this client's transport.
+    def transport
+      @transport
     end
 
     # Send a raw prompt and return the model's completion text.
@@ -224,10 +292,10 @@ module Samagotchi
           end
 
           if retryable_network_error?(e)
-            raise RetryExhausted.new(attempts: attempts, last_error: e, label: transport_label)
+            raise RetryExhausted.new(attempts: attempts, last_error: e, label: @transport.label)
           end
 
-          raise "#{transport_label} request failed (#{@host}:#{@port}): #{e.message}"
+          raise "#{@transport.label} request failed (#{@host}:#{@port}): #{e.message}"
         ensure
           cancel_controller&.remove_listener(cancel_listener_id)
         end
@@ -235,7 +303,7 @@ module Samagotchi
     end
 
     def list_models
-      uri = URI("http://#{@host}:#{@port}#{models_path}")
+      uri = URI("http://#{@host}:#{@port}#{@transport.models_path}")
       request = Net::HTTP::Get.new(uri)
 
       attempts = 0
@@ -265,10 +333,10 @@ module Samagotchi
           end
 
           if retryable_network_error?(e)
-            raise RetryExhausted.new(attempts: attempts, last_error: e, label: transport_label)
+            raise RetryExhausted.new(attempts: attempts, last_error: e, label: @transport.label)
           end
 
-          raise "#{transport_label} model listing failed (#{@host}:#{@port}): #{e.message}"
+          raise "#{@transport.label} model listing failed (#{@host}:#{@port}): #{e.message}"
         end
       end
     end
@@ -280,25 +348,29 @@ module Samagotchi
       VALID_TRANSPORTS.include?(value) ? value : DEFAULT_TRANSPORT
     end
 
-    def transport_label
-      # oMLX gets its own label so its error paths read "omlx ...", not "mlx ...".
-      @transport == :omlx ? "omlx" : (@transport == :mlx ? "mlx" : "llama.cpp")
+    # Build the wire-format strategy for a resolved transport name. oMLX gets
+    # a resolver that maps the short selector to the exact /v1/models id (see
+    # #resolve_omlx_model); mlx gets a resolver that always returns nil so the
+    # `model` field is omitted; llama.cpp uses the strategy's default (forward
+    # the selector verbatim).
+    def build_transport(name)
+      resolver = case name
+                 when :omlx
+                   ->(model) { resolve_omlx_model(model) }
+                 when :mlx
+                   ->(_model) { nil }
+                 end
+      Transport.new(name, model_resolver: resolver)
     end
 
     def completion_uri
-      path = @transport == :mlx || @transport == :omlx ? "/v1/completions" : "/completion"
-      URI("http://#{@host}:#{@port}#{path}")
-    end
-
-    def models_path
-      @transport == :mlx || @transport == :omlx ? "/v1/models" : "/models"
+      URI("http://#{@host}:#{@port}#{@transport.completion_path}")
     end
 
     def completion_payload(prompt, stop:, n_predict:, model:)
       payload = { prompt: prompt, stop: stop, stream: true }
-      token_limit_key = @transport == :mlx || @transport == :omlx ? :max_tokens : :n_predict
-      payload[token_limit_key] = n_predict if n_predict && n_predict.to_i.positive?
-      model_name = payload_model_name(model)
+      payload[@transport.token_limit_key] = n_predict if n_predict && n_predict.to_i.positive?
+      model_name = @transport.model_for_payload(model)
       payload[:model] = model_name if model_name
       payload
     end
@@ -321,27 +393,6 @@ module Samagotchi
         obj.each_with_object({}) { |(key, value), memo| memo[scrub_utf8(key)] = scrub_utf8(value) }
       else
         obj
-      end
-    end
-
-    # Transport semantics for the request's `model` field:
-    #   - llama.cpp: forward the selector (SAMAGOTCHI_DEFAULT_MODEL) verbatim.
-    #   - mlx_lm.server: omit `model` entirely (use whatever was loaded via the
-    #     server's own `--model` CLI flag).
-    #   - oMLX: MUST send a model id that exists in the server's `/v1/models`
-    #     list, or oMLX 400s with "model: Field required". Our short
-    #     SAMAGOTCHI_DEFAULT_MODEL selector (e.g. `gemma-4-26b-a4b-it-4bit`) is resolved
-    #     to the exact registered id (which may be prefixed, e.g.
-    #     `mlx-community--...`) by matching against the loaded `/v1/models` list.
-    def payload_model_name(model)
-      case @transport
-      when :mlx
-        nil
-      when :omlx
-        resolve_omlx_model(model)
-      else
-        value = model.to_s.strip
-        value.empty? ? nil : value
       end
     end
 
@@ -394,7 +445,7 @@ module Samagotchi
       return nil if data == "[DONE]"
 
       payload = JSON.parse(data)
-      content = @transport == :mlx || @transport == :omlx ? payload.dig("choices", 0, "text").to_s : payload.fetch("content", "")
+      content = @transport.content_from_payload(payload)
       [content, payload]
     end
 

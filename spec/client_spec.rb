@@ -4,6 +4,44 @@ require "spec_helper"
 require "samagotchi/client"
 
 RSpec.describe Samagotchi::Client do
+  describe Samagotchi::Client::Transport do
+    it "uses llama.cpp native paths and payload keys" do
+      t = described_class.new(:llama_cpp)
+      expect(t.label).to eq("llama.cpp")
+      expect(t.completion_path).to eq("/completion")
+      expect(t.models_path).to eq("/models")
+      expect(t.token_limit_key).to eq(:n_predict)
+      expect(t.content_from_payload({ "content" => "hi" })).to eq("hi")
+    end
+
+    it "uses OpenAI-compatible paths and payload keys for mlx and omlx" do
+      %i[mlx omlx].each do |name|
+        t = described_class.new(name)
+        expect(t.label).to eq(name.to_s)
+        expect(t.completion_path).to eq("/v1/completions")
+        expect(t.models_path).to eq("/v1/models")
+        expect(t.token_limit_key).to eq(:max_tokens)
+        expect(t.content_from_payload({ "choices" => [{ "text" => "hi" }] })).to eq("hi")
+      end
+    end
+
+    it "forwards the model selector verbatim by default (omitting empty/blank)" do
+      t = described_class.new(:llama_cpp)
+      expect(t.model_for_payload("gemma-4-26b-a4b-it-4bit")).to eq("gemma-4-26b-a4b-it-4bit")
+      expect(t.model_for_payload("  spaced  ")).to eq("spaced")
+      expect(t.model_for_payload("")).to be_nil
+      expect(t.model_for_payload(nil)).to be_nil
+    end
+
+    it "defers to an installed model resolver (mlx omits, omlx resolves)" do
+      omitting = described_class.new(:mlx, model_resolver: ->(_m) { nil })
+      expect(omitting.model_for_payload("anything")).to be_nil
+
+      resolving = described_class.new(:omlx, model_resolver: ->(m) { "mlx-community--#{m}" })
+      expect(resolving.model_for_payload("gemma-3-4b")).to eq("mlx-community--gemma-3-4b")
+    end
+  end
+
   describe "#complete" do
     it "joins streamed completion chunks into a single response" do
       client = described_class.new(host: "localhost", port: 8080)
@@ -541,14 +579,14 @@ RSpec.describe Samagotchi::Client do
 
         expect(client.complete("prompt")).to eq("ok")
         expect(request.path).to eq("/v1/completions")
-        expect(client.instance_variable_get(:@transport)).to eq(:omlx)
+        expect(client.transport.name).to eq(:omlx)
       ensure
         ENV.delete("SAMAGOTCHI_SERVER_TRANSPORT")
       end
 
       it "resolves uppercase and whitespace-padded values to :omlx" do
-        expect(described_class.new(transport: "OMLX").instance_variable_get(:@transport)).to eq(:omlx)
-        expect(described_class.new(transport: " omlx ").instance_variable_get(:@transport)).to eq(:omlx)
+        expect(described_class.new(transport: "OMLX").transport.name).to eq(:omlx)
+        expect(described_class.new(transport: " omlx ").transport.name).to eq(:omlx)
       end
 
       it "labels errors with omlx instead of llama.cpp" do
