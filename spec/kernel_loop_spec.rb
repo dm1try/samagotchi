@@ -1184,16 +1184,25 @@ Need to inspect the filesystem first.
     end
 
     it "uses default.n_predict from config" do
-      captured_kwargs = nil
-      allow(client).to receive(:complete) do |_prompt, **kwargs|
-        captured_kwargs = kwargs
-        "done"
+      original_xdg = ENV["XDG_CONFIG_HOME"]
+      Dir.mktmpdir("samagotchi-npredict") do |dir|
+        ENV["XDG_CONFIG_HOME"] = dir
+        config_path = File.join(dir, "samagotchi", "config.yml")
+        FileUtils.mkdir_p(File.dirname(config_path))
+        File.write(config_path, "default:\n  n_predict: 4096\n")
+
+        captured_kwargs = nil
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          captured_kwargs = kwargs
+          "done"
+        end
+
+        qwen_kernel.run([{ role: "user", content: "hi" }])
+
+        expect(captured_kwargs[:n_predict]).to eq(4096)
+      ensure
+        ENV["XDG_CONFIG_HOME"] = original_xdg
       end
-
-      qwen_kernel.run([{ role: "user", content: "hi" }])
-
-      # No config set — should be nil
-      expect(captured_kwargs[:n_predict]).to be_nil
     end
 
     it "respects SAMAGOTCHI_DEFAULT_N_PREDICT env var" do
