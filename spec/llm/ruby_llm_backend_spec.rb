@@ -103,9 +103,12 @@ RSpec.describe Samagotchi::LLM::RubyLLMBackend do
         { role: "model", content: "last" }
       ])
 
-      # :model -> :assistant (so the gem never sees :model); system/user pass through.
+      # :model -> :assistant (so the gem never sees :model); system passes through
+      # as raw string; user content is wrapped in OpenAI array format.
       expect(request_bodies.last[:messages].map { |m| m[:role] }).to eq(%w[system user assistant])
-      expect(request_bodies.last[:messages].map { |m| m[:content] }).to eq(["sys", "hi", "last"])
+      expect(request_bodies.last[:messages].map { |m| m[:content] }).to eq(
+        ["sys", [{ type: "text", text: "hi" }], "last"]
+      )
     end
   end
 
@@ -278,8 +281,8 @@ RSpec.describe Samagotchi::LLM::RubyLLMBackend do
 
       # Two POSTs, each built from its own messages — no shared/cached gem Chat.
       expect(request_bodies.length).to eq(2)
-      expect(request_bodies.first[:messages].map { |m| m[:content] }).to eq(["hi"])
-      expect(request_bodies.last[:messages].map { |m| m[:content] }).to eq(["hi again"])
+      expect(request_bodies.first[:messages].map { |m| m[:content] }).to eq([[{ type: "text", text: "hi" }]])
+      expect(request_bodies.last[:messages].map { |m| m[:content] }).to eq([[{ type: "text", text: "hi again" }]])
     end
   end
 

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require "spec_helper"
-require_relative "../../lib/samagotchi/llm/ruby_llm_backend"
+require "samagotchi/llm/backend"
 
 RSpec.describe Samagotchi::LLM::RubyLLMBackend do
   describe "#wire_messages" do
