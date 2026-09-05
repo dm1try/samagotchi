@@ -498,7 +498,13 @@ module Samagotchi
         path = File.join(@public_dir, "index.html")
         if File.file?(path)
           body = File.read(path)
-          [200, { "Content-Type" => "text/html; charset=utf-8", "Content-Length" => body.bytesize.to_s, "Cache-Control" => "no-store" }, [body]]
+          [200, {
+            "Content-Type" => "text/html; charset=utf-8",
+            "Content-Length" => body.bytesize.to_s,
+            "Cache-Control" => "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma" => "no-cache",
+            "Expires" => "0"
+          }, [body]]
         else
           [200, { "Content-Type" => "text/html" }, ["<h1>Chi Web</h1><p>Public dir missing: #{@public_dir}</p>"]]
         end

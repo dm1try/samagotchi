@@ -294,6 +294,20 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "GET /" do
+    it "serves index.html with hard no-cache headers and no polling code" do
+      app = build_app(manager: FakeResponsesManager.new)
+      status, headers, body = app.call(env_for("/"))
+
+      expect(status).to eq(200)
+      expect(headers["Cache-Control"]).to eq("no-store, no-cache, must-revalidate, max-age=0")
+      expect(headers["Pragma"]).to eq("no-cache")
+      expect(headers["Expires"]).to eq("0")
+      expect(body.first).not_to include("startPoll")
+      expect(body.first).to include("from_seq")
+    end
+  end
+
   describe "bridge_get_json" do
     it "returns nil when no live bridge sidecar is present" do
       app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
