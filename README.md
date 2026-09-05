@@ -208,21 +208,46 @@ SAMAGOTCHI_DEFAULT_MODEL: Qwen3-14B-Instruct
 LLAMA_HOST: 192.168.1.29
 LLAMA_PORT: 8081
 SAMAGOTCHI_THINKING_UI: spinner
+
+# Multi-host (optional): aggregated /models and per-model routing.
+# Bare SAMAGOTCHI_DEFAULT_MODEL uses the default host; host:model pins to a host.
+# Transport per host overrides SAMAGOTCHI_SERVER_TRANSPORT.
+hosts:
+  main:
+    host: localhost
+    port: 8080
+    transport: llama_cpp
+  recap-box:
+    host: 192.168.1.50
+    port: 8080
+
+# Idle recap now generalized via host_ref (preferred) or base_url fallback.
+recap:
+  host_ref: recap-box
+  model: gemma4-small
+  # inactivity: 180
+  # timeout: 30
+  # min_user_turns: 2
+
+model_aliases:
+  small: gemma4-small
+  tiny: recap-box:gemma4-small  # alias may be bare or host:model (hybrid)
 ```
 
 Behavior:
 
 - The file is optional.
-- Entries must be a flat YAML mapping of scalar values.
+- Top level is a YAML mapping of scalar env overrides plus nested sections.
 - Real environment variables still win over config-file values.
+- Workers inherit hosts via `SAMAGOTCHI_HOSTS_JSON` propagated through `SessionManager.spawn_options`.
 
 This lets you run `bin/chi` without repeating common defaults such as model
 and llama host/port on every invocation.
 
 Note: The global config file supports both flat scalar entries (for env vars)
-and nested sections like `hooks:`. Scalar entries are loaded as environment
+and nested sections like `hosts:`, `recap:`, `hooks:`, `model_aliases:`. Scalar entries are loaded as environment
 variables; non-scalar sections are skipped by the env-loader and parsed by
-their respective subsystems (e.g. the hooks system).
+their respective subsystems (e.g. the hooks system, `HostRegistry`).
 
 ## Plugin Hooks
 
@@ -386,7 +411,9 @@ Chi talks to a model server over HTTP and supports three transports:
 Select the transport with `SAMAGOTCHI_SERVER_TRANSPORT` (`llama_cpp`, `mlx`, or
 `omlx`). `LLAMA_HOST`/`LLAMA_PORT` are reused for all three — only the
 request/response shape differs. oMLX's default server port is `8000` (not `8080`),
-so point `LLAMA_PORT` at it, e.g. `LLAMA_PORT=8000`.
+so point `LLAMA_PORT` at it, e.g. `LLAMA_PORT=8000`. With `hosts:` each entry may
+set `transport: llama_cpp|mlx|omlx` to override the global transport per host
+(`lib/samagotchi/host_registry.rb:25`).
 
 Example for mlx-lm:
 
@@ -442,16 +469,20 @@ differs by transport:
 In interactive assist mode, you can switch the request model without restarting:
 
 - `/model <name>`: set a session-scoped model override.
-- `/model --default <name>`: set session model and persist as new default in `config.yml` (also updates `SAMAGOTCHI_DEFAULT_MODEL` for future sessions).
+- `/model host:model` or `/model host/alias`: qualified host routing (`host:alias` expands alias bare, alias may itself be `host:model` — hybrid).
+- `/model --default <name>`: set session model and persist as new default in `config.yml` (also updates `SAMAGOTCHI_DEFAULT_MODEL` for future sessions; supports `host:model` full ref).
+- `/model <name> --alias <alias>`: create alias for current effective model (alias value may be bare or `host:model`).
 - `/model`: show the effective model (and default when diverged: `runtime model: <effective> (default: <default>, profile=...)`).
 - `/model clear` (or `default`/`none`/`off`): clear the session override, reverting to the configured default.
-- `/models`: list model ids currently discovered by llama.cpp.
+- `/models`: list model ids aggregated across all `hosts:` (grouped `host (host:port):` with per-host `unreachable` warnings, 60s cache, lazy — no startup prefill).
 
 Notes:
 
-- The switch updates the request `model` field and automatically infers/switches profile behavior.
+- The switch updates the request `model` field, routes to the matching host (`HostRegistry`, `lib/samagotchi/host_registry.rb:72`), and automatically infers/switches profile behavior.
 - Without `--default` the command is session-scoped and does not rewrite config files.
-- With `--default` the new default is written to `~/.config/samagotchi/config.yml` (honoring `XDG_CONFIG_HOME`) and takes effect for all new sessions; the current session's effective model is also updated immediately.
+- With `--default` the new default is written to `~/.config/samagotchi/config.yml` (honoring `XDG_CONFIG_HOME`) and takes effect for all new sessions; the current session's effective model is also updated immediately. Bare aliases and `host:model` are both valid.
+- Worker sessions inherit `hosts:` via `SAMAGOTCHI_HOSTS_JSON`.
+- Recap is a generalized `hosts:` entry (`recap: {host_ref, model}`) — no separate base URL needed.
 
 ## Tool Activity Log
 

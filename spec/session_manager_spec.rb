@@ -107,13 +107,11 @@ RSpec.describe Samagotchi::SessionManager do
 
       described_class.spawn_session(prompt: "hello", mode: "assist", model_name: "gemma4", state_dir: tmpdir)
 
-      expect(Process).to have_received(:spawn).with(
-        RbConfig.ruby,
-        "-I", anything,
-        "-e", include("require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop") ,
-        out: File::NULL,
-        err: File::NULL
-      )
+      expect(Process).to have_received(:spawn)
+      args_str = spawned_args.map(&:to_s).join(" ")
+      expect(args_str).to include("require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop")
+      expect(spawned_args).to include(RbConfig.ruby)
+      expect(spawned_args).to include("-I")
 
       lib_path_index = spawned_args.index("-I") + 1
       expect(spawned_args[lib_path_index]).to end_with("/lib")

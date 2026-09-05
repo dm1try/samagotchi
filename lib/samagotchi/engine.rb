@@ -8,6 +8,7 @@ require "yaml"
 require_relative "config_file"
 require_relative "model_profile"
 require_relative "kernel_loop"
+require_relative "host_registry"
 require_relative "llm/backend"
 require_relative "session"
 require_relative "session_observer"
@@ -48,12 +49,18 @@ module Samagotchi
     # @param memories           [Array<String>] --memory preload list
     DEFAULT_SYSTEM_MEMORIES = %w[identity].freeze
 
-    def initialize(mode: :assist, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
+    def initialize(mode: :assist, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
       @mode = mode.to_sym
       @default_model_name = ModelProfile.required_model_name(model_name)
       @effective_model_name = @default_model_name
-      @client = client || Client.new
-      @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@default_model_name)
+      @host_registry = host_registry || HostRegistry.new
+      @client_injected = !client.nil?
+      @client = client || default_client_for(@effective_model_name)
+      # If client was injected, ensure registry's default points to it (for routing)
+      if @client_injected && @host_registry.entries["default"]
+        @host_registry.entries["default"].client = @client
+      end
+      @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(bare_model_name(@default_model_name))
       # Ensure the built-in system bundle is installed (lazy, warn-only).
       # This is the single seam for both TUI and non-TUI (web/worker) paths.
       begin
@@ -79,6 +86,9 @@ module Samagotchi
       # Track whether this is the first turn in the session (for session_start event)
       @first_turn = true
       @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, hooks: @hooks, reminder_store: @reminder_store)
+      sync_kernel_client!
+      # Keep kernel client in sync with active host via setter
+      @kernel_client_synced = false
       # Engine owns hooks; if a kernel was supplied externally (TUI path) propagate
       # the Engine's registry so all UIs reuse the same instance. Without this the
       # TUI's KernelLoop fires with nil hooks and before_generation/after_generation
@@ -194,6 +204,29 @@ module Samagotchi
     # @return [SessionMetrics] the per-session analytics collector
     attr_reader :metrics
     attr_reader :default_model_name, :effective_model_name
+    attr_reader :host_registry, :client
+
+    def bare_model_name(full_ref)
+      _, bare = @host_registry.parse_qualified_model(full_ref)
+      bare.to_s.strip.empty? ? full_ref.to_s.strip : bare
+    end
+
+    def default_client_for(model_name)
+      return @client if @client_injected
+      client, _bare, _entry = @host_registry.client_for_model(model_name)
+      client
+    end
+
+    def sync_kernel_client!
+      return if @client_injected
+      active = default_client_for(@effective_model_name)
+      @client = active
+      if @kernel.respond_to?(:client) && @kernel.client != active
+        @kernel.client = active if @kernel.respond_to?(:client=)
+      elsif @kernel.instance_variable_defined?(:@client)
+        @kernel.instance_variable_set(:@client, active)
+      end
+    end
 
     # Subscribe a persistent observer to engine events.
     #
@@ -222,11 +255,15 @@ module Samagotchi
     # ── Model switching ────────────────────────────────────────────────────────
 
     def switch_model!(model_name, persist_default: false)
-      resolved = ModelProfile.required_model_name(model_name)
+      # Resolve alias first (alias may point to qualified ref)
+      aliased = ConfigFile.resolve_model_alias(model_name)
+      resolved = ModelProfile.required_model_name(aliased)
       @effective_model_name = resolved
-      @profile = ModelProfile.from_model_name(resolved)
-      @kernel.sync_profile_from_model!(resolved) if @kernel.respond_to?(:sync_profile_from_model!)
+      bare = bare_model_name(resolved)
+      @profile = ModelProfile.from_model_name(bare)
+      @kernel.sync_profile_from_model!(bare) if @kernel.respond_to?(:sync_profile_from_model!)
       @system_prompt = nil
+      sync_kernel_client!
       if persist_default
         ConfigFile.write_default_model!(resolved)
         @default_model_name = resolved
@@ -452,12 +489,16 @@ module Samagotchi
         messages << { role: "user", content: prompt }
         session.last_prompt = prompt
 
+        sync_kernel_client!
+        # Route model name as bare (without host prefix) to the transport;
+        # host selection already done via active client.
+        bare_for_backend = bare_model_name(@effective_model_name)
         result = @backend.complete(
           messages: messages,
           max_iterations: max_iterations,
           on_stream_event: build_stream_event_handler(on_event),
           cancel_controller: effective_controller,
-          model_name: @effective_model_name,
+          model_name: bare_for_backend,
           max_tool_output_chars: max_tool_output_chars
         )
 
@@ -575,24 +616,76 @@ module Samagotchi
     # never spin up with no configured endpoint. An explicit `recap: false`
     # disables it regardless of env.
     def build_recap(recap)
-      return nil unless recap || ENV["SAMAGOTCHI_RECAP_BASE_URL"] || ENV["SAMAGOTCHI_RECAP_MODEL"]
-
-      config = recap.is_a?(Hash) ? recap : {}
-      base_url = string_config(config, :base_url) || env_or_nil("SAMAGOTCHI_RECAP_BASE_URL")
-      model = string_config(config, :model) || env_or_nil("SAMAGOTCHI_RECAP_MODEL")
-      if base_url.to_s.strip.empty? || model.to_s.strip.empty?
-        warn "Warning: SAMAGOTCHI session recap is enabled but base_url/model are missing; recap disabled. " \
-             "Set SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL (or pass recap: {base_url:, model:})."
+      # Check config file recap: section first
+      file_recap = ConfigFile.recap_config
+      return nil if file_recap == false
+      # If file recap explicitly disabled, never use env/kwarg
+      # Merge priority: kwarg > file recap > env
+      if file_recap == false
         return nil
       end
+
+      has_file_recap = file_recap.is_a?(Hash)
+      has_env = ENV["SAMAGOTCHI_RECAP_BASE_URL"] || ENV["SAMAGOTCHI_RECAP_MODEL"]
+      has_kwarg = recap && recap.is_a?(Hash) && !recap.empty?
+
+      # No recap anywhere -> disabled (preserve old behavior)
+      return nil unless has_file_recap || has_env || has_kwarg || recap
+
+      # Normalize kwarg (TerminalUI passes recap: recap_config hash or nil)
+      kwarg_config = recap.is_a?(Hash) ? recap : {}
+
+      # Resolve with priority: kwarg > file > env
+      # file_recap may have host_ref path
+      base_url = string_config(kwarg_config, :base_url) ||
+                 (has_file_recap ? string_config(file_recap, :base_url) : nil) ||
+                 env_or_nil("SAMAGOTCHI_RECAP_BASE_URL")
+      # host_ref resolution (new generalized path)
+      host_ref = string_config(kwarg_config, :host_ref) ||
+                 string_config(kwarg_config, :host) ||
+                 (has_file_recap ? (string_config(file_recap, :host_ref) || string_config(file_recap, :host)) : nil)
+      model = string_config(kwarg_config, :model) ||
+              (has_file_recap ? string_config(file_recap, :model) : nil) ||
+              env_or_nil("SAMAGOTCHI_RECAP_MODEL")
+
+      # If host_ref given, derive base_url from host_registry entry
+      if host_ref && !host_ref.empty?
+        entry = @host_registry.find_entry(host_ref)
+        if entry
+          base_url = "http://#{entry.host}:#{entry.port}"
+          # If model is host-qualified, extract bare model for recap client
+          _, bare = @host_registry.parse_qualified_model(model) if model
+          model = bare if bare && !bare.empty?
+        else
+          warn "Warning: recap host_ref '#{host_ref}' not found in hosts:; recap disabled."
+          return nil
+        end
+      end
+
+      # Handle recap: true without details -> fall back to env
+      if base_url.to_s.strip.empty? || model.to_s.strip.empty?
+        # If file_recap existed but incomplete and no env, warn
+        if has_file_recap || has_kwarg || has_env
+          warn "Warning: SAMAGOTCHI session recap is enabled but base_url/model are missing; recap disabled. " \
+               "Set recap: {host_ref:, model:} or SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL (or pass recap: {base_url:, model:})."
+        end
+        return nil
+      end
+
+      # Merge timing configs: kwarg > file > env
+      merged_for_float = {}
+      # Build a merged hash for float_config helper
+      merged_for_float[:inactivity] = kwarg_config[:inactivity] || kwarg_config["inactivity"] || (has_file_recap ? (file_recap[:inactivity] || file_recap["inactivity"]) : nil)
+      merged_for_float[:timeout] = kwarg_config[:timeout] || kwarg_config["timeout"] || (has_file_recap ? (file_recap[:timeout] || file_recap["timeout"]) : nil)
+      merged_for_float[:min_user_turns] = kwarg_config[:min_user_turns] || kwarg_config["min_user_turns"] || (has_file_recap ? (file_recap[:min_user_turns] || file_recap["min_user_turns"]) : nil)
 
       IdleRecap.new(
         engine: self,
         model: model.to_s.strip,
         base_url: base_url.to_s.strip,
-        inactivity: float_config(config, :inactivity, IdleRecap::DEFAULT_INACTIVITY_SECONDS, "SAMAGOTCHI_RECAP_INACTIVITY"),
-        min_user_turns: int_config(config, :min_user_turns, IdleRecap::DEFAULT_MIN_USER_TURNS, "SAMAGOTCHI_RECAP_MIN_USER_TURNS"),
-        timeout: float_config(config, :timeout, IdleRecap::DEFAULT_TIMEOUT_SECONDS, "SAMAGOTCHI_RECAP_TIMEOUT")
+        inactivity: float_config(merged_for_float, :inactivity, IdleRecap::DEFAULT_INACTIVITY_SECONDS, "SAMAGOTCHI_RECAP_INACTIVITY"),
+        min_user_turns: int_config(merged_for_float, :min_user_turns, IdleRecap::DEFAULT_MIN_USER_TURNS, "SAMAGOTCHI_RECAP_MIN_USER_TURNS"),
+        timeout: float_config(merged_for_float, :timeout, IdleRecap::DEFAULT_TIMEOUT_SECONDS, "SAMAGOTCHI_RECAP_TIMEOUT")
       )
     end
 

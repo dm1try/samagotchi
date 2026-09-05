@@ -12,9 +12,11 @@ This memory teaches the harness how to safely read and update `~/.config/samagot
 
 - **Flat scalar env overrides**: string/number/boolean values become `ENV` entries (`load_global_env!:16` only sets if `ENV[key]` not already set). Examples: `SAMAGOTCHI_DEFAULT_MODEL`, `LLAMA_HOST`, `LLAMA_PORT`, `SAMAGOTCHI_BACKEND`, `SAMAGOTCHI_THINKING_UI`, `SAMAGOTCHI_STATUS_LINE`, etc.
 - **Nested sections** (skipped by env loader, parsed by subsystems):
-  - `model_aliases:` map of alias → model id (`model_aliases:80`, `resolve_model_alias:101`). Keys lowercased on read/write (`write_model_alias!:140`).
+  - `model_aliases:` map of alias → model id (`model_aliases:80`, `resolve_model_alias:101`). Keys lowercased on read/write (`write_model_alias!:140`). Values may be bare `model` or qualified `host:model` (hybrid); `host:alias` sugar expands via `resolve_model_alias:78` + `HostRegistry`.
+  - `hosts:` map of `name → {host, port, transport, enabled}` (`hosts_config:65`, `host_registry.rb:25`). Names lowercased; `transport` overrides `SAMAGOTCHI_SERVER_TRANSPORT`; workers inherit via `SAMAGOTCHI_HOSTS_JSON` (`hosts_json_for_env:208`, `session_manager.rb:80`).
+  - `recap:` map of `{host_ref|base_url, model, inactivity, timeout, min_user_turns, enabled}` (`recap_config:145`, `engine.rb:603`). Preferred `host_ref` derives `base_url` from `hosts:` entry.
   - `hooks:` map of `hooks_dir` + per-event lists `{path, on_error}` (`lib/samagotchi/hooks/loader.rb:32`). `hooks_dir` may start with `~`.
-- **Preservation rule**: `write_default_model!:63` and `write_model_alias!:128` both load raw YAML (including nested sections), mutate one key, write atomically via `tmp`+`rename`. Never overwrite the file with only scalar keys — that would clobber `hooks:` / `model_aliases:`.
+- **Preservation rule**: `write_default_model!:63` and `write_model_alias!:128` both load raw YAML (including nested sections), mutate one key, write atomically via `tmp`+`rename`. Never overwrite the file with only scalar keys — that would clobber `hooks:` / `model_aliases:` / `hosts:` / `recap:`.
 
 ## Workflow for any config edit
 

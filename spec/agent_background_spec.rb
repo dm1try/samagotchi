@@ -8,6 +8,7 @@ RSpec.describe Samagotchi::TerminalUI do
     it "uses KernelLoop#run and returns model output" do
       kernel = instance_double(Samagotchi::KernelLoop)
       allow(Samagotchi::KernelLoop).to receive(:new).and_return(kernel)
+      allow(kernel).to receive(:sync_profile_from_model!)
 
       conversation = [
         { role: "user", content: "hello" },
@@ -39,6 +40,7 @@ RSpec.describe Samagotchi::TerminalUI do
     it "returns no-response fallback when kernel output is blank" do
       kernel = instance_double(Samagotchi::KernelLoop)
       allow(Samagotchi::KernelLoop).to receive(:new).and_return(kernel)
+      allow(kernel).to receive(:sync_profile_from_model!)
 
       result = Samagotchi::KernelLoop::Result.new(
         output: "",

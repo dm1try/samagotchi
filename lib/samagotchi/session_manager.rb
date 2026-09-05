@@ -82,6 +82,16 @@ module Samagotchi
       child_env = {}
       child_env["SAMAGOTCHI_ENABLE_BRIDGE"] = "1" if bridge
       child_env["SAMAGOTCHI_BACKEND"] = ENV["SAMAGOTCHI_BACKEND"] if ENV["SAMAGOTCHI_BACKEND"]
+      # Propagate hosts config for multi-host routing
+      begin
+        require_relative "config_file"
+        hosts_json = ConfigFile.hosts_json_for_env
+        child_env["SAMAGOTCHI_HOSTS_JSON"] = hosts_json if hosts_json && !hosts_json.strip.empty?
+      rescue StandardError
+        nil
+      end
+      # Also propagate current default model (may be host-qualified)
+      child_env["SAMAGOTCHI_DEFAULT_MODEL"] = ENV["SAMAGOTCHI_DEFAULT_MODEL"] if ENV["SAMAGOTCHI_DEFAULT_MODEL"]
       opts[:env] = child_env unless child_env.empty?
       opts
     end

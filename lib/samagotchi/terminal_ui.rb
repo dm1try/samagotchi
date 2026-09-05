@@ -8,6 +8,7 @@ require "set"
 
 require_relative "model_profile"
 require_relative "config_file"
+require_relative "host_registry"
 require_relative "context_usage"
 require_relative "kernel_loop"
 require_relative "session"
@@ -512,14 +513,26 @@ module Samagotchi
       Engine.system_prompt_for(profile)
     end
 
-    def initialize(mode: :assist, prompt: nil, client: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false)
+    def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false)
       @mode           = mode.to_sym
       @prompt         = prompt
       @default_model_name = ModelProfile.required_model_name(nil)
       aliased_model_name = model_name.to_s.strip.empty? ? nil : ConfigFile.resolve_model_alias(model_name)
       flag_model_name = aliased_model_name.to_s.strip.empty? ? nil : ModelProfile.required_model_name(aliased_model_name)
       @effective_model_name = flag_model_name || @default_model_name
-      @client         = client || Client.new
+      @host_registry  = host_registry || Samagotchi::HostRegistry.new
+      @client_injected = !client.nil?
+      # Client is now registry-aware: resolve active host for effective model
+      if client
+        @client = client
+        # Ensure registry's default entry points to injected client so routing respects stub
+        if @host_registry.entries["default"]
+          @host_registry.entries["default"].client = client
+        end
+      else
+        _cli, _bare, _entry = @host_registry.client_for_model(@effective_model_name)
+        @client = _cli
+      end
       @resume_session = session_id ? Session.load(session_id) : nil
       if @resume_session
         # --model overrides resumed session's model (runtime only, default unchanged)
@@ -528,8 +541,13 @@ module Samagotchi
         else
           @effective_model_name = @resume_session.model_name.to_s.strip.empty? ? @default_model_name : @resume_session.model_name
         end
+        # Re-resolve client after resume may change effective model
+        unless client
+          _cli2, _bare2, _entry2 = @host_registry.client_for_model(@effective_model_name)
+          @client = _cli2
+        end
       end
-      @profile        = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(@effective_model_name)
+      @profile        = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(bare_model_for(@effective_model_name))
       @kernel         = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
       @no_default_input = no_default_input
       @non_interactive = non_interactive
@@ -548,6 +566,7 @@ module Samagotchi
       @engine         = Engine.new(
         mode: :assist,
         client: @client,
+        host_registry: @host_registry,
         verbose: verbose,
         log_file: log_file,
         profile: @profile,
@@ -572,7 +591,8 @@ module Samagotchi
         @engine.switch_model!(@effective_model_name)
         # keep default distinct (switch_model! without persist leaves default as-is, but ensure)
         @engine.instance_variable_set(:@default_model_name, @default_model_name)
-        @kernel.sync_profile_from_model!(@effective_model_name)
+        @kernel.sync_profile_from_model!(bare_model_for(@effective_model_name))
+        sync_client_for_model!(@effective_model_name)
       end
       # Render an idle session-recap via the cursor-safe background writer; the
       # detector itself is Engine-owned (see Engine#recap) and opt-in.
@@ -954,6 +974,18 @@ module Samagotchi
     end
 
     def status_server_segment
+      # Show per-host info when multi-host is configured
+      if @host_registry && @host_registry.entries.size > 1
+        active = @host_registry.host_for_model(@effective_model_name)[0] rescue nil
+        if active
+          host = active.host
+          port = active.port
+          total = @host_registry.entries.size
+          return "" if ["localhost", "127.0.0.1"].include?(host) && total == 1
+          # When multiple hosts, always show active + count
+          return "server=#{host}:#{port} (#{total} hosts)"
+        end
+      end
       host = ENV.fetch("LLAMA_HOST", "localhost")
       return "" if ["localhost", "127.0.0.1"].include?(host)
 
@@ -1737,37 +1769,62 @@ module Samagotchi
     end
 
     def handle_models_command
-      models = Array(@client.list_models)
-      return "no models discovered" if models.empty?
-
+      # Aggregate across all hosts (lazy discovery, skip-on-error)
+      results = @host_registry.list_all_models
+      if results.nil? || results.empty?
+        return "no hosts configured"
+      end
       aliases = ConfigFile.model_aliases
       by_model = Hash.new { |h, k| h[k] = [] }
       aliases.each do |alias_name, model_id|
-        by_model[model_id.downcase] << alias_name
+        # normalize bare comparison for orphan detection (strip host prefix if present)
+        _, bare = @host_registry.parse_qualified_model(model_id)
+        key = (bare.empty? ? model_id : bare).to_s.downcase
+        by_model[key] << alias_name
+        # also index full ref for exact alias display
+        by_model[model_id.downcase] << alias_name unless key == model_id.downcase
       end
-      by_model.each_value(&:sort!)
+      by_model.each_value { |v| v.uniq!; v.sort! }
 
       seen = Set.new
-      lines = models.map do |entry|
-        identifier = entry["id"] || entry[:id] || "unknown"
-        raw_status = entry["status"] || entry[:status]
-        status = raw_status.is_a?(Hash) ? (raw_status["value"] || raw_status[:value] || raw_status["status"] || raw_status[:status]) : raw_status
-        seen << identifier.to_s.downcase
-        base = status.to_s.empty? ? identifier.to_s : "#{identifier} (#{status})"
-        alias_list = by_model[identifier.to_s.downcase]
-        alias_list.empty? ? base : "#{base} (alias: #{alias_list.join(", ")})"
+      lines = []
+      # Sort hosts for deterministic output
+      results.keys.sort.each do |hname|
+        data = results[hname]
+        host_label = "#{hname} (#{data[:host]}:#{data[:port]})"
+        if data[:error]
+          lines << "#{host_label} — unreachable: #{data[:error]}"
+          next
+        end
+        models = Array(data[:models])
+        if models.empty?
+          lines << "#{host_label} — no models discovered"
+          next
+        end
+        lines << "#{host_label}:"
+        models.each do |entry|
+          identifier = entry["id"] || entry[:id] || "unknown"
+          raw_status = entry["status"] || entry[:status]
+          status = raw_status.is_a?(Hash) ? (raw_status["value"] || raw_status[:value] || raw_status["status"] || raw_status[:status]) : raw_status
+          seen << identifier.to_s.downcase
+          # also track host-qualified seen for orphan logic
+          seen << "#{hname}:#{identifier}".downcase
+          seen << "#{hname}/#{identifier}".downcase
+          base = status.to_s.empty? ? "  #{identifier}" : "  #{identifier} (#{status})"
+          alias_list = (by_model[identifier.to_s.downcase] || []) + (by_model["#{hname}:#{identifier}".downcase] || [])
+          alias_list.uniq!
+          lines << (alias_list.empty? ? base : "#{base} (alias: #{alias_list.join(", ")})")
+        end
       end
-
-      orphans = aliases.reject { |_, model_id| seen.include?(model_id.downcase) }
+      # Warnings for unreachable hosts are already in lines; no failover
+      orphans = aliases.reject { |_, model_id| seen.include?(model_id.downcase) || seen.include?(bare_model_for(model_id).downcase) }
       unless orphans.empty?
         lines << ""
         lines << "orphan aliases (target not discovered):"
         orphans.sort.each { |alias_name, model_id| lines << "  #{alias_name} -> #{model_id}" }
       end
-
+      lines = ["no models discovered"] if lines.empty?
       lines.join("\n")
-    rescue RetryExhausted => e
-      "network error after #{e.attempts} attempts while listing models"
     rescue StandardError => e
       "unable to list models: #{e.message}"
     end
@@ -1788,9 +1845,11 @@ module Samagotchi
       aliased = ConfigFile.resolve_model_alias(model_name)
       resolved_model_name = ModelProfile.required_model_name(aliased)
       @effective_model_name = resolved_model_name
-      @profile = ModelProfile.from_model_name(resolved_model_name)
-      @kernel.sync_profile_from_model!(resolved_model_name)
+      bare = bare_model_for(resolved_model_name)
+      @profile = ModelProfile.from_model_name(bare)
+      @kernel.sync_profile_from_model!(bare)
       @engine.switch_model!(resolved_model_name, persist_default: false) if @engine.respond_to?(:switch_model!)
+      sync_client_for_model!(resolved_model_name)
       # Keep engine's effective in sync without persisting via engine (persist handled here)
       @engine.instance_variable_set(:@effective_model_name, resolved_model_name) if @engine
       @engine.instance_variable_set(:@profile, @profile) if @engine
@@ -2548,9 +2607,15 @@ module Samagotchi
       @last_recap_generation = generation
     end
 
-    # Resolve the recap config from env (OFF by default). Returns nil when
+    # Resolve the recap config from env/file (OFF by default). Returns nil when
     # disabled; a Hash when enabled so the Engine can build the detector.
+    # Now delegates to ConfigFile.recap_config which handles file + env priority,
+    # but keep env fallback for backward compat when TerminalUI is used standalone.
     def recap_config
+      file_rc = ConfigFile.recap_config
+      return file_rc if file_rc == false
+      return file_rc if file_rc.is_a?(Hash)
+
       base_url = ENV["SAMAGOTCHI_RECAP_BASE_URL"].to_s.strip
       model = ENV["SAMAGOTCHI_RECAP_MODEL"].to_s.strip
       return nil if base_url.empty? || model.empty?
@@ -2561,6 +2626,23 @@ module Samagotchi
         inactivity: ENV["SAMAGOTCHI_RECAP_INACTIVITY"],
         timeout: ENV["SAMAGOTCHI_RECAP_TIMEOUT"]
       }
+    end
+
+    def bare_model_for(full_ref)
+      _, bare = @host_registry.parse_qualified_model(full_ref)
+      bare.to_s.strip.empty? ? full_ref.to_s.strip : bare
+    end
+
+    def sync_client_for_model!(full_ref)
+      return if @client_injected
+      cli, _bare, _entry = @host_registry.client_for_model(full_ref)
+      @client = cli
+      @engine.instance_variable_set(:@client, cli) if @engine
+      if @kernel.respond_to?(:client=)
+        @kernel.client = cli
+      elsif @kernel.instance_variable_defined?(:@client)
+        @kernel.instance_variable_set(:@client, cli)
+      end
     end
 
     def spinner_status_line
