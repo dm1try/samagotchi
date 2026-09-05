@@ -52,6 +52,10 @@ RSpec.describe Samagotchi::TerminalUI do
     original_default_input = ENV["SAMAGOTCHI_DEFAULT_INPUT"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
     ENV.delete("SAMAGOTCHI_DEFAULT_INPUT")
+    # Pin a deterministic status width so content assertions never depend on
+    # the host terminal width (narrow ptys truncate status segments).
+    ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"] = "fixed"
+    ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"] = "200"
     example.run
     ENV["THINKING_MODE"] = original_thinking_mode
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
