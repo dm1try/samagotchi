@@ -297,8 +297,23 @@ function openStream(id, fromSeq){
         historyEl.scrollTop=historyEl.scrollHeight;
       }catch(_){}
     });
+    // StreamBody fallback mode emits named SSE events: `output` (live chunk)
+    // and `history` (replay). Named events never reach onmessage — they need
+    // explicit listeners, otherwise live content only appears on refresh.
+    const onWholeChunk = (e)=>{
+      let txt;
+      try{ const d=JSON.parse(e.data); txt = d.content || d.output || e.data; }catch(_){ txt = e.data; }
+      if(typeof txt==="string" && txt.trim()){
+        // avoid duplicate of the streaming buffer
+        if(streamingBuffer && txt.trim().slice(0,60)===streamingBuffer.slice(0,60)) return;
+        finalizeStreaming();
+        appendChunk(txt.trim());
+      }
+    };
+    es.addEventListener("output", onWholeChunk);
+    es.addEventListener("history", onWholeChunk);
     es.onmessage=e=>{
-      // fallback for fallback StreamBody (history/output) and generic events without `event:` field
+      // fallback for generic events without `event:` field
       try{
         const data=JSON.parse(e.data);
         if(data.type==="history" || data.type==="output"){
