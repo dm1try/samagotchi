@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 module Samagotchi
   # OutputFormatter strips model wire-format tokens from raw engine output at
-  # render time, so downstream renderers (dashboard, terminal UI) never show the
+  # render time, so downstream renderers (web UI, terminal UI) never show the
   # model's internal control/literal vocabulary.
   #
   # Two token families survive KernelLoop#run's strip_thought_blocks():

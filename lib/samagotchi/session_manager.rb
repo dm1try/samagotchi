@@ -19,7 +19,7 @@ module Samagotchi
   # Directory layout per session:
   #   ~/.local/state/samagotchi/sessions/<session_id>/
   #   ├── session.json          # session metadata
-  #   ├── input/                # dashboard writes messages here
+  #   ├── input/                # clients (web/terminal UI) write messages here
   #   │   └── <timestamp>.txt   # one file per user message
   #   ├── output/               # agent writes responses here
   #   │   └── <timestamp>.txt   # one file per agent response

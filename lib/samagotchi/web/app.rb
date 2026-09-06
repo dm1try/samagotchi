@@ -16,8 +16,8 @@ module Samagotchi
     # Rack application that serves the Web UI and JSON API.
     #
     # This is the single-port control plane for Chi Web. It never constructs
-    # an Engine directly — it talks to SessionManager over the same file IPC
-    # that Dashboard uses. Live SSE is proxied from each session's Bridge
+    # an Engine directly — it talks to SessionManager over the file IPC layer.
+    # Live SSE is proxied from each session's Bridge
     # (the single live client transport); history for any session — including
     # dead ones — is served by GET /api/sessions/:id/output from output/ files.
     class App
@@ -258,7 +258,7 @@ module Samagotchi
         if prompt.to_s.strip.empty?
           return error_response(400, "missing_fields", "prompt is required")
         end
-        # Ensure session exists and resume worker if needed (like Dashboard#attach_to)
+        # Ensure session exists and resume worker if needed
         @manager.resume_session(id, state_dir: @state_dir) if @manager.respond_to?(:resume_session)
         ok = @manager.write_turn_input(id, prompt: prompt.to_s, state_dir: @state_dir)
         unless ok

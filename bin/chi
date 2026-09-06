@@ -614,7 +614,7 @@ if ARGV[0] == "memory"
   exit 0
 end
 
-options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, dashboard: false, web: false, web_port: nil, web_open: false }
+options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, web: false, web_port: nil, web_open: false }
 cli_overrides = {}
 
 # Strict kebab enforcement: --recap_base_url is unknown (OptionParser would otherwise accept _ as -)
@@ -680,11 +680,9 @@ unless cli_overrides.empty?
   end
 end
 
-# Handle subcommands (support `chi web --port 4567 --open` and `chi dashboard`)
+# Handle subcommands (support `chi web --port 4567 --open`)
 web_args = ARGV.dup
 case ARGV[0]
-when "dashboard"
-  options[:dashboard] = true
 when "web"
   options[:web] = true
   # consume subcommand and re-parse web-specific flags that may follow it
@@ -706,13 +704,6 @@ if options[:web]
   # legacy env fallback
   port = ENV.fetch("SAMAGOTCHI_WEB_PORT", port.to_s).to_i rescue port.to_i
   Samagotchi::Web::Server.start(port: port, open_browser: options[:web_open])
-  exit
-end
-
-if options[:dashboard]
-  warn "[deprecated] `chi dashboard` is deprecated — use `chi web` instead"
-  require "samagotchi/dashboard"
-  Samagotchi::Dashboard.new.run
   exit
 end
 

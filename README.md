@@ -9,8 +9,7 @@ Run with:
 - `bin/chi -p "your prompt"` — run a prompt, then stay in the REPL
 - `bin/chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
 - `bin/chi --resume <session-id>` — resume a prior session in the REPL
-- `bin/chi web [--port 4567] [--open]` — start the Web UI (single localhost port, replicates dashboard)
-- `bin/chi dashboard` — open the dashboard shim (deprecated — use `chi web`)
+- `bin/chi web [--port 4567] [--open]` — start the Web UI (single localhost port session control plane)
 - `bin/chi sessions list|prune|clean` — manage persisted sessions (retention + ordering, see below)
 
 ## CLI Usage
@@ -70,7 +69,7 @@ See `docs/architecture.md` for a visual overview of the layers and turn flow.
 | UI | `Samagotchi::TerminalUI` | Interactive REPL (Reline), rendering (ANSI, spinner, status line), REPL commands. Delegates all core work to an `Engine`. |
 | Transport | `Samagotchi::Client`, `KernelLoop`, `Session` | HTTP transport, model↔tool loop, session data model (already clean). |
 | Bridge (SSE/HTTP) | `Samagotchi::Bridge`, `SessionManager` | The **single live client transport**: an SSE read stream + HTTP POST turn/cancel/answer surface that attaches to a worker's existing `Engine` via `Engine#subscribe`. Every session worker starts it (bound `127.0.0.1`, no auth, localhost-only). |
-| Web (Rack) | `Samagotchi::Web::App`, `SessionManager` | Single-port `127.0.0.1:4567` control plane that replicates the dashboard via `rack`+`webrick` (serve `index.html` + `/api/*`; `/stream` proxies each session's Bridge). `bin/chi web` entrypoint. |
+| Web (Rack) | `Samagotchi::Web::App`, `SessionManager` | Single-port `127.0.0.1:4567` control plane via `rack`+`webrick` (serve `index.html` + `/api/*`; `/stream` proxies each session's Bridge). `bin/chi web` entrypoint. |
 | Sessions | `Samagotchi::Session`, `SessionManager` | File-based `~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar `input/`/`output/`/`pid`; retention (14d/500) + ordering (`updated_at desc`). |
 
 - `bin/chi` (interactive) builds `TerminalUI`. `TerminalUI#run` is the single
@@ -79,8 +78,6 @@ See `docs/architecture.md` for a visual overview of the layers and turn flow.
   then either exits (`--non-interactive`) or drops into the REPL carrying the
   post-turn conversation.
 - `SessionManager` background workers build `Engine` directly (no terminal rendering).
-- `Dashboard` is currently a minimal no-crash shim; its full rework is documented in
-  `tmp/plans/20260818-000000-core-ui-separation.md`.
 
 #### Using the core
 
@@ -102,7 +99,7 @@ higher-level events so UIs get clean turn boundaries without inferring them:
 - `:turn_canceled` — `{ cancellation_reason: }`
 
 Every event is a `Hash` with a `:type` symbol key; the sink must not raise (the Engine
-rescues sink errors). A new UI (web, API, dashboard) supplies its own `on_event` and
+rescues sink errors). A new UI (web, API) supplies its own `on_event` and
 renders whatever it needs from the stream + final `Result`. The public Engine API:
 
 ```ruby
@@ -114,7 +111,7 @@ engine.session           # current session (Engine owns create/resume)
 
 #### Subscribing to the live stream (and the bridge)
 
-For an **always-on** consumer (an external SSE client, a dashboard, a second UI), use
+For an **always-on** consumer (an external SSE client, a second UI), use
 `Engine#subscribe` rather than passing `on_event:` to a single turn. It is a thread-safe,
 error-isolated fan-out with a monotonic `event_seq` on every event:
 
@@ -158,7 +155,7 @@ Sessions are plain files — no DB. Each session is `~/.local/state/samagotchi/s
 
 A session is deleted if **expired by age OR overflow by count** (unless `keep_status` or live-worker guard). Orphan dirs without a `*.json` are never deleted. Deletion removes both `*.json` and sidecar dir atomically. Set both `DAYS=0` and `MAX=0` to retain forever.
 
-**Lazy sweep:** automatic prune runs at most once per 24h on `GET /api/sessions` (Web) and `Dashboard#render_list`. No background thread or cron. Manual prune is always available.
+**Lazy sweep:** automatic prune runs at most once per 24h on `GET /api/sessions` (Web). No background thread or cron. Manual prune is always available.
 
 **CLI:**
 
@@ -183,7 +180,6 @@ bin/chi sessions clean --dry-run --days 7            # only test sessions
 
 - `Session.list` / `SessionManager.list_sessions` / `GET /api/sessions?sort=&order=&limit=&offset=` default to `updated_at desc` (newest activity first). Also supports `created_at`, `asc`. `X-Total-Count` header when paginated.
 - Web UI (`bin/chi web`) has sort select (Updated/Created), order toggle (Desc/Asc), filter input (preview/id/status), `localStorage` persistence, and pagination (first 100 + Show all) to avoid 10k-row jank.
-- Dashboard orders the same way.
 
 **Test-session hygiene:**
 
