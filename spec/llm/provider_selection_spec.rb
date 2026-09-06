@@ -50,9 +50,9 @@ RSpec.describe Samagotchi::LLM::Factory do
   end
 
   describe ".factory routing" do
-    it "routes :native to NativeInContextBackend (existing assertion)" do
+    it "returns nil for :native (engine drives KernelLoop directly)" do
       backend = described_class.factory(provider: :native, model_name: "gemma4")
-      expect(backend).to be_a(Samagotchi::LLM::NativeInContextBackend)
+      expect(backend).to be_nil
     end
 
     it "routes :ruby_llm to RubyLLMBackend (existing assertion)" do
@@ -65,10 +65,10 @@ RSpec.describe Samagotchi::LLM::Factory do
         .to raise_error(ArgumentError, /native.*ruby_llm|ruby_llm.*native/)
     end
 
-    it "falls back to the :native default when provider: nil and ENV is unset" do
+    it "returns nil when provider: nil and ENV is unset (the :native default)" do
       ENV.delete("SAMAGOTCHI_BACKEND")
       backend = described_class.factory(provider: nil, model_name: "gemma4")
-      expect(backend).to be_a(Samagotchi::LLM::NativeInContextBackend)
+      expect(backend).to be_nil
     end
 
     it "resolves a nil provider against SAMAGOTCHI_BACKEND (the Engine path)" do
@@ -77,10 +77,10 @@ RSpec.describe Samagotchi::LLM::Factory do
       expect(backend).to be_a(Samagotchi::LLM::RubyLLMBackend)
     end
 
-    it "treats a blank env var as :native even via the nil provider path" do
+    it "returns nil when a blank env var maps to :native default" do
       ENV["SAMAGOTCHI_BACKEND"] = ""
       backend = described_class.factory(provider: nil, model_name: "gemma4")
-      expect(backend).to be_a(Samagotchi::LLM::NativeInContextBackend)
+      expect(backend).to be_nil
     end
   end
 
@@ -93,10 +93,10 @@ RSpec.describe Samagotchi::LLM::Factory do
       Samagotchi::Engine.new(mode: :assist, client: client, kernel: kernel, **overrides)
     end
 
-    it "builds the native backend by default" do
+    it "sets @backend to nil by default (:native path)" do
       ENV.delete("SAMAGOTCHI_BACKEND")
       engine = build_engine(model_name: "Gemma-4B-it")
-      expect(engine.instance_variable_get(:@backend)).to be_a(Samagotchi::LLM::NativeInContextBackend)
+      expect(engine.instance_variable_get(:@backend)).to be_nil
     end
 
     it "builds the ruby_llm backend when SAMAGOTCHI_BACKEND=ruby_llm" do
@@ -105,10 +105,10 @@ RSpec.describe Samagotchi::LLM::Factory do
       expect(engine.instance_variable_get(:@backend)).to be_a(Samagotchi::LLM::RubyLLMBackend)
     end
 
-    it "defaults to native for a blank backend selection" do
+    it "sets @backend to nil for a blank backend selection" do
       ENV["SAMAGOTCHI_BACKEND"] = ""
       engine = build_engine(model_name: "Gemma-4B-it")
-      expect(engine.instance_variable_get(:@backend)).to be_a(Samagotchi::LLM::NativeInContextBackend)
+      expect(engine.instance_variable_get(:@backend)).to be_nil
     end
   end
 end

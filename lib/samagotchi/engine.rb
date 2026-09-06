@@ -713,14 +713,38 @@ module Samagotchi
         # Route model name as bare (without host prefix) to the transport;
         # host selection already done via active client.
         bare_for_backend = bare_model_name(@effective_model_name)
-        result = @backend.complete(
-          messages: messages,
-          max_iterations: max_iterations,
-          on_stream_event: build_stream_event_handler(on_event),
-          cancel_controller: effective_controller,
-          model_name: bare_for_backend,
-          max_tool_output_chars: max_tool_output_chars
-        )
+
+        result = if @backend
+          # RubyLLM (or future) backend owns the agentic loop.
+          @backend.complete(
+            messages: messages,
+            max_iterations: max_iterations,
+            on_stream_event: build_stream_event_handler(on_event),
+            cancel_controller: effective_controller,
+            model_name: bare_for_backend,
+            max_tool_output_chars: max_tool_output_chars
+          )
+        else
+          # :native path — no wrapper backend; drive KernelLoop directly.
+          # KernelLoop#run takes messages positionally + same kwargs.
+          kernel_result = @kernel.run(
+            messages,
+            max_iterations: max_iterations,
+            on_stream_event: build_stream_event_handler(on_event),
+            cancel_controller: effective_controller,
+            model_name: bare_for_backend,
+            max_tool_output_chars: max_tool_output_chars
+          )
+          Samagotchi::LLM::ModelResult.new(
+            text: kernel_result.respond_to?(:output) ? kernel_result.output.to_s : kernel_result.to_s,
+            tool_calls: nil,
+            provider: :native,
+            conversation: kernel_result.respond_to?(:conversation) ? kernel_result.conversation : nil,
+            canceled: kernel_result.respond_to?(:canceled?) && kernel_result.canceled?,
+            cancellation_reason: kernel_result.respond_to?(:cancellation_reason) ? kernel_result.cancellation_reason : nil,
+            exhausted: kernel_result.respond_to?(:exhausted) && kernel_result.exhausted
+          )
+        end
 
         @metrics.persist
         session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)

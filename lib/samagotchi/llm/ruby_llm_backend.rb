@@ -38,8 +38,9 @@ module Samagotchi
     #
     # Statelessness, by design: every iteration issues a FRESH request built from
     # the accumulated `conversation` (engine-format, the single source of truth).
-    # No gem `Chat` is held between iterations — this mirrors NativeInContextBackend's
-    # per-turn reseed and fixes the "dual source of truth" reviewer gap.
+    # No gem `Chat` is held between iterations — every iteration re-seeds from the
+    # accumulated conversation, mirroring the engine's single-turn-per-iteration
+    # discipline and fixing the "dual source of truth" reviewer gap.
     #
     # Cancellation: the gem exposes NO cancel API. A peer
     # `Samagotchi::Client::CancellationController` listener raises
