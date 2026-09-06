@@ -218,19 +218,6 @@ file2.rb")
       expect(received_prompt).to include("friendly name for the Samagotchi assistant harness")
     end
 
-    it "includes the context status telemetry protocol in the system prompt" do
-      received_prompt = nil
-      allow(client).to receive(:complete) do |prompt|
-        received_prompt = prompt
-        "ok"
-      end
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      agent.run
-      expect(received_prompt).to include("CONTEXT_STATUS")
-      expect(received_prompt).to include("Treat CONTEXT_STATUS as telemetry")
-      expect(received_prompt).to include("Never ignore direct user instructions")
-    end
-
     it "injects project and system memory indexes into the system prompt" do
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|
@@ -783,12 +770,8 @@ file2.rb")
 
       result = Samagotchi::KernelLoop::Result.new(
         output: "ok",
-        conversation: [
-          {
-            role: "system",
-            content: "CONTEXT_STATUS window_tokens=256000 est_used_tokens=90000 est_remaining_tokens=166000 est_pct=35.2 bucket=20plus thresholds=20,40,60,80 guidance=clarify_scope_minimize_uncertainty"
-          }
-        ],
+        conversation: [],
+        context_status: { est_pct: 35.2, bucket: "20plus" },
         exhausted: false,
         pending_tool_calls: false,
         tool_activity: []
@@ -809,12 +792,8 @@ file2.rb")
 
       result = Samagotchi::KernelLoop::Result.new(
         output: "ok",
-        conversation: [
-          {
-            role: "system",
-            content: "CONTEXT_STATUS window_tokens=256000 est_used_tokens=90000 est_remaining_tokens=166000 est_pct=35.2 bucket=20plus thresholds=20,40,60,80 guidance=clarify_scope_minimize_uncertainty"
-          }
-        ],
+        conversation: [],
+        context_status: { est_pct: 35.2, bucket: "20plus" },
         exhausted: false,
         pending_tool_calls: false,
         tool_activity: []
@@ -846,12 +825,8 @@ file2.rb")
 
       result = Samagotchi::KernelLoop::Result.new(
         output: "ok",
-        conversation: [
-          {
-            role: "system",
-            content: "CONTEXT_STATUS window_tokens=256000 est_used_tokens=90000 est_remaining_tokens=166000 est_pct=35.2 bucket=20plus thresholds=20,40,60,80 guidance=clarify_scope_minimize_uncertainty"
-          }
-        ],
+        conversation: [],
+        context_status: { est_pct: 35.2, bucket: "20plus" },
         exhausted: false,
         pending_tool_calls: false,
         tool_activity: []

@@ -679,8 +679,10 @@ Behavior details:
 
 ## Context Status Telemetry
 
-The kernel can emit synthetic system telemetry messages to help the model plan under context pressure.
-Telemetry messages use this prefix:
+The kernel surfaces context-usage telemetry to UI consumers (status line,
+web/SSE clients) as a `:context_status` stream event. It is no longer injected
+into the model's conversation. The event carries a `status` string using this
+prefix:
 
 `CONTEXT_STATUS ...`
 
@@ -714,7 +716,7 @@ Behavior:
 - A static status line is printed before the next `>` prompt in assist mode.
 - During spinner rendering, status details are rendered in the spinner block.
 - When llama.cpp streaming payload includes usage fields, status prefers server-derived token telemetry (`p`, `c`, `t`) and context percent.
-- If server usage fields are absent, status falls back to synthetic `CONTEXT_STATUS` estimate telemetry.
+- If server usage fields are absent, status falls back to the `:context_status` estimate telemetry.
 - When a memory is loaded between tool rounds, the spinner line includes a `loaded: <memory>` notification immediately after the spinner frame.
 - After responses, memory details are shown via the same unified `status>` line.
 - The legacy standalone `memories>` summary line is no longer emitted.

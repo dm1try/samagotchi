@@ -1029,8 +1029,6 @@ module Samagotchi
         Structured qualification:
           When you need a clear user choice (qualification, disambiguation, confirmation), prefer ask_user_question over plain numbered lists.
           ask_user_question supports single/multi selection plus optional freeform/Other text. The harness renders it natively (TUI/Web) and returns {selected, freeform}.
-
-        #{ToolDeclarations::CONTEXT_STATUS_PROTOCOL}
       SYS
     end
 

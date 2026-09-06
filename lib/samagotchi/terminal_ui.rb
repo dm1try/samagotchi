@@ -2130,20 +2130,15 @@ module Samagotchi
     end
 
     def capture_context_status_from_result(result)
-      conversation = result.respond_to?(:conversation) ? Array(result.conversation) : []
-      message = conversation.reverse.find do |entry|
-        entry[:role] == "system" && entry[:content].to_s.start_with?(KernelLoop::CONTEXT_STATUS_PREFIX)
-      end
-      return unless message
-
-      content = message[:content].to_s
-      pct_match = content.match(/\best_pct=([0-9]+(?:\.[0-9]+)?)/)
-      bucket_match = content.match(/\bbucket=([a-z0-9_]+)/)
-      return unless pct_match
+      # The kernel no longer injects CONTEXT_STATUS messages into the
+      # conversation; it reports the last emitted status on the Result
+      # (populated alongside the :context_status stream event).
+      status = result.respond_to?(:context_status) ? result.context_status : nil
+      return unless status
 
       @latest_context_status = {
-        est_pct: pct_match[1].to_f,
-        bucket: bucket_match && bucket_match[1]
+        est_pct: status[:est_pct],
+        bucket: status[:bucket]
       }
     end
 

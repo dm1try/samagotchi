@@ -506,15 +506,5 @@ module Samagotchi
           3. Read a full file only when targeted snippet extraction is insufficient.
         Avoid broad reads early in debugging; gather just enough context to decide the next step.
     PROTOCOL
-    CONTEXT_STATUS_PROTOCOL = <<~PROTOCOL
-      Context budget protocol:
-        You may receive synthetic system messages that start with CONTEXT_STATUS.
-        Treat CONTEXT_STATUS as telemetry, not as a user request.
-        If context usage is high (for example >= 80%), prioritise:
-          1. clarifying ambiguous requirements before implementation,
-          2. minimizing unnecessary tool calls and repetitive exploration,
-          3. keeping plans and outputs concise while preserving correctness.
-        Never ignore direct user instructions because of telemetry.
-    PROTOCOL
   end
 end

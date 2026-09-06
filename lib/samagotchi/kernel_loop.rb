@@ -40,7 +40,7 @@ module Samagotchi
   #   - Gemma 4: <|tool_call>call:NAME{params}<tool_call|>
   #   - Qwen 3.6: <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>
   class KernelLoop
-    Result = Struct.new(:output, :conversation, :exhausted, :pending_tool_calls, :tool_activity, :canceled, :cancellation_reason, keyword_init: true) do
+    Result = Struct.new(:output, :conversation, :exhausted, :pending_tool_calls, :tool_activity, :canceled, :cancellation_reason, :context_status, keyword_init: true) do
       def to_s
         output.to_s
       end
@@ -174,11 +174,13 @@ module Samagotchi
       tool_activity = []
       qwen_recovery_attempts = 0
       qwen_partial_tool_call = nil
+      context_status = nil
 
       effective_max_iterations = @no_interrupt ? 1000 : max_iterations
       effective_max_tool_output_chars = resolve_output_char_cap(max_tool_output_chars)
       effective_max_iterations.times do |iteration_index|
-        prompt = prompt_with_context_status(conversation, iteration_index: iteration_index, state: context_state)
+        prompt = Prompt.format(conversation, profile: @profile)
+        context_status = emit_context_status_event(on_stream_event, prompt, iteration_index: iteration_index, state: context_state) || context_status
         emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
         # Fire :before_generation hook
         gen_event = { type: :before_generation, iteration: iteration_index + 1 }
@@ -321,7 +323,8 @@ module Samagotchi
         pending_tool_calls: pending_tool_calls,
         tool_activity: tool_activity,
         canceled: false,
-        cancellation_reason: nil
+        cancellation_reason: nil,
+        context_status: context_status
       )
     end
 
@@ -422,20 +425,32 @@ module Samagotchi
       $stderr.puts "\n[verbose] #{message}"
     end
 
-    def prompt_with_context_status(conversation, iteration_index:, state:)
-      prompt = Prompt.format(conversation, profile: @profile)
-      return prompt unless context_status_enabled?
+    # Estimate context usage for this iteration's prompt and, when the emit
+    # gate fires, surface it to stream consumers as a :context_status event.
+    # The model no longer receives the telemetry (it used to be injected as a
+    # synthetic system message); the returned {est_pct:, bucket:} hash feeds
+    # the Result's context_status for UI status lines (nil when not emitted).
+    def emit_context_status_event(on_stream_event, prompt, iteration_index:, state:)
+      return nil unless context_status_enabled?
 
       usage = estimate_context_usage(prompt, server_usage: state[:server_usage])
       bucket = context_status_bucket(usage[:estimated_pct])
       emit_status = should_emit_context_status?(state: state, bucket: bucket, iteration_index: iteration_index)
       state[:last_bucket] = bucket
-      return prompt unless emit_status
+      return nil unless emit_status
 
       status_message = context_status_message(usage: usage, bucket: bucket, source: usage[:source])
-      conversation << { role: "system", content: status_message }
+      emit_stream_event(
+        on_stream_event,
+        type: :context_status,
+        iteration: iteration_index + 1,
+        status: status_message,
+        usage: usage,
+        bucket: bucket,
+        source: usage[:source]
+      )
       verbose_log("── context status ──\n#{status_message}\n──────────────────")
-      Prompt.format(conversation, profile: @profile)
+      { est_pct: usage[:estimated_pct], bucket: bucket }
     end
 
     def capture_server_usage(payload, state)

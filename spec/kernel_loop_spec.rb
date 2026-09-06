@@ -113,8 +113,9 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(prompts[1]).not_to include("stdout:\n<end_of_turn>\n<|tool_response>")
     end
 
-    it "emits a CONTEXT_STATUS system message when entering a tracked threshold bucket" do
+    it "emits a :context_status stream event when entering a tracked threshold bucket" do
       prompts = []
+      events = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
         "ok"
@@ -126,14 +127,21 @@ RSpec.describe Samagotchi::KernelLoop do
         estimated_pct: 35.2
       )
 
-      kernel.run([{ role: "user", content: "hello" }])
+      result = kernel.run([{ role: "user", content: "hello" }], on_stream_event: ->(e) { events << e })
+      status_events = events.select { |e| e[:type] == :context_status }
 
-      expect(prompts.first).to include("CONTEXT_STATUS")
-      expect(prompts.first).to include("bucket=20plus")
+      expect(status_events.size).to eq(1)
+      expect(status_events.first[:status]).to include("CONTEXT_STATUS")
+      expect(status_events.first[:status]).to include("bucket=20plus")
+      expect(status_events.first[:bucket]).to eq("20plus")
+      # The model no longer receives the telemetry in the prompt.
+      expect(prompts.first).not_to include("CONTEXT_STATUS")
+      expect(result.context_status).to include(est_pct: 35.2, bucket: "20plus")
     end
 
-    it "emits CONTEXT_STATUS only on threshold transitions" do
+    it "emits :context_status only on threshold transitions" do
       prompts = []
+      events = []
       responses = [
         %(<|tool_call>call:execute{command: "echo hi"}<tool_call|>),
         "done"
@@ -157,15 +165,19 @@ RSpec.describe Samagotchi::KernelLoop do
         }
       )
 
-      kernel.run([{ role: "user", content: "check" }])
+      kernel.run([{ role: "user", content: "check" }], on_stream_event: ->(e) { events << e })
+      status_events = events.select { |e| e[:type] == :context_status }
 
+      expect(status_events.size).to eq(1)
+      expect(status_events.first[:status]).to include("CONTEXT_STATUS")
+      expect(status_events.first[:status]).to include("bucket=40plus")
       expect(prompts[0]).not_to include("CONTEXT_STATUS")
-      expect(prompts[1]).to include("CONTEXT_STATUS")
-      expect(prompts[1]).to include("bucket=40plus")
+      expect(prompts[1]).not_to include("CONTEXT_STATUS")
     end
 
     it "prefers real server usage over the synthetic estimate when available" do
       prompts = []
+      events = []
       responses = [
         %(<|tool_call>call:execute{command: "echo hi"}<tool_call|>),
         "done"
@@ -179,16 +191,20 @@ RSpec.describe Samagotchi::KernelLoop do
         responses.shift
       end
 
-      kernel.run([{ role: "user", content: "check" }])
+      kernel.run([{ role: "user", content: "check" }], on_stream_event: ->(e) { events << e })
+      status_events = events.select { |e| e[:type] == :context_status }
 
-      expect(prompts[1]).to include("CONTEXT_STATUS")
-      expect(prompts[1]).to include("src=server")
-      expect(prompts[1]).to include("est_used_tokens=120000")
-      expect(prompts[1]).to include("bucket=40plus")
+      expect(status_events.size).to eq(1)
+      expect(status_events.first[:status]).to include("CONTEXT_STATUS")
+      expect(status_events.first[:status]).to include("src=server")
+      expect(status_events.first[:status]).to include("est_used_tokens=120000")
+      expect(status_events.first[:status]).to include("bucket=40plus")
+      expect(prompts.first).not_to include("CONTEXT_STATUS")
     end
 
     it "still falls back to the synthetic estimate when the server reports no usage" do
       prompts = []
+      events = []
       allow(client).to receive(:complete) do |prompt, **kwargs|
         prompts << prompt
         kwargs[:on_chunk]&.call(content: "ok", payload: {})
@@ -202,11 +218,15 @@ RSpec.describe Samagotchi::KernelLoop do
         source: "estimate"
       )
 
-      kernel.run([{ role: "user", content: "hello" }])
+      result = kernel.run([{ role: "user", content: "hello" }], on_stream_event: ->(e) { events << e })
+      status_events = events.select { |e| e[:type] == :context_status }
 
-      expect(prompts.first).to include("CONTEXT_STATUS")
-      expect(prompts.first).to include("src=estimate")
-      expect(prompts.first).to include("bucket=20plus")
+      expect(status_events.size).to eq(1)
+      expect(status_events.first[:status]).to include("CONTEXT_STATUS")
+      expect(status_events.first[:status]).to include("src=estimate")
+      expect(status_events.first[:status]).to include("bucket=20plus")
+      expect(prompts.first).not_to include("CONTEXT_STATUS")
+      expect(result.context_status).to include(est_pct: 35.2, bucket: "20plus")
     end
 
     it "emits bucket-aware actionable guidance" do
