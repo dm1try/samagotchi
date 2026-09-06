@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "config_file"
+require_relative "config"
 require_relative "client"
 
 module Samagotchi

@@ -5,7 +5,7 @@ require "securerandom"
 require "time"
 require "yaml"
 
-require_relative "config_file"
+require_relative "config"
 require_relative "model_profile"
 require_relative "kernel_loop"
 require_relative "host_registry"
@@ -819,14 +819,8 @@ module Samagotchi
     # no hooks config is present).
     def load_hooks_from_config
       config_path = Samagotchi::ConfigFile.global_path
-      if File.file?(config_path)
-        begin
-          data = YAML.safe_load(File.read(config_path), permitted_classes: [], aliases: false)
-          return Hooks::Loader.load(data) if data.is_a?(Hash)
-        rescue StandardError
-          # If config parsing fails, fall back to an empty registry
-        end
-      end
+      data = Samagotchi::ConfigFile.read_yaml(path: config_path)
+      return Hooks::Loader.load(data) if data.is_a?(Hash)
       Hooks::Registry.new
     end
 
@@ -838,43 +832,18 @@ module Samagotchi
     # fails fast with a warning and leaves recap disabled — the idle thread must
     # never spin up with no configured endpoint. An explicit `recap: false`
     # disables it regardless of env.
+    # Single precedence path for recap settings: kwarg > Config registry
+    # (CLI > ENV > file > default). An explicit disable (file `recap: false`,
+    # `recap: {enabled: false}`, or SAMAGOTCHI_RECAP_ENABLED=false) always wins.
     def build_recap(recap)
-      # Check config file recap: section first
-      file_recap = ConfigFile.recap_config
-      return nil if file_recap == false
-      # If file recap explicitly disabled, never use env/kwarg
-      # Merge priority: kwarg > file recap > env
-      if file_recap == false
-        return nil
-      end
-
-      cfg_base_url = begin Samagotchi::Config.get("recap.base_url") rescue nil end
-      cfg_model = begin Samagotchi::Config.get("recap.model") rescue nil end
-      cfg_host_ref = begin Samagotchi::Config.get("recap.host_ref") rescue nil end
-      has_cfg_recap = cfg_base_url || cfg_model || cfg_host_ref
-      has_file_recap = file_recap.is_a?(Hash)
-      has_env = ENV["SAMAGOTCHI_RECAP_BASE_URL"] || ENV["SAMAGOTCHI_RECAP_MODEL"] || has_cfg_recap
-      has_kwarg = recap && recap.is_a?(Hash) && !recap.empty?
-
-      # No recap anywhere -> disabled (preserve old behavior)
-      return nil unless has_file_recap || has_env || has_kwarg || recap
+      return nil if Samagotchi::Config.get("recap.enabled") == false
 
       # Normalize kwarg (TerminalUI passes recap: recap_config hash or nil)
       kwarg_config = recap.is_a?(Hash) ? recap : {}
 
-      # Resolve with priority: kwarg > file > Config > env
-      base_url = string_config(kwarg_config, :base_url) ||
-                 (has_file_recap ? string_config(file_recap, :base_url) : nil) ||
-                 cfg_base_url&.to_s&.strip.then { |v| v && !v.empty? ? v : nil } ||
-                 env_or_nil("SAMAGOTCHI_RECAP_BASE_URL")
-      host_ref = string_config(kwarg_config, :host_ref) ||
-                 string_config(kwarg_config, :host) ||
-                 (has_file_recap ? (string_config(file_recap, :host_ref) || string_config(file_recap, :host)) : nil) ||
-                 cfg_host_ref&.to_s&.strip.then { |v| v && !v.empty? ? v : nil }
-      model = string_config(kwarg_config, :model) ||
-              (has_file_recap ? string_config(file_recap, :model) : nil) ||
-              cfg_model&.to_s&.strip.then { |v| v && !v.empty? ? v : nil } ||
-              env_or_nil("SAMAGOTCHI_RECAP_MODEL")
+      base_url = string_config(kwarg_config, :base_url) || registry_string("recap.base_url")
+      host_ref = string_config(kwarg_config, :host_ref) || string_config(kwarg_config, :host) || registry_string("recap.host_ref")
+      model = string_config(kwarg_config, :model) || registry_string("recap.model")
 
       # If host_ref given, derive base_url from host_registry entry
       if host_ref && !host_ref.empty?
@@ -890,31 +859,42 @@ module Samagotchi
         end
       end
 
-      # Handle recap: true without details -> fall back to env
       if base_url.to_s.strip.empty? || model.to_s.strip.empty?
-        # If file_recap existed but incomplete and no env, warn
-        if has_file_recap || has_kwarg || has_env
+        # Something recap-related was configured but is incomplete
+        if base_url || model || host_ref || !kwarg_config.empty?
           warn "Warning: SAMAGOTCHI session recap is enabled but base_url/model are missing; recap disabled. " \
                "Set recap: {host_ref:, model:} or SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL (or pass recap: {base_url:, model:})."
         end
         return nil
       end
 
-      # Merge timing configs: kwarg > file > env
-      merged_for_float = {}
-      # Build a merged hash for float_config helper
-      merged_for_float[:inactivity] = kwarg_config[:inactivity] || kwarg_config["inactivity"] || (has_file_recap ? (file_recap[:inactivity] || file_recap["inactivity"]) : nil)
-      merged_for_float[:timeout] = kwarg_config[:timeout] || kwarg_config["timeout"] || (has_file_recap ? (file_recap[:timeout] || file_recap["timeout"]) : nil)
-      merged_for_float[:min_user_turns] = kwarg_config[:min_user_turns] || kwarg_config["min_user_turns"] || (has_file_recap ? (file_recap[:min_user_turns] || file_recap["min_user_turns"]) : nil)
-
       IdleRecap.new(
         engine: self,
         model: model.to_s.strip,
         base_url: base_url.to_s.strip,
-        inactivity: float_config(merged_for_float, :inactivity, IdleRecap::DEFAULT_INACTIVITY_SECONDS, "SAMAGOTCHI_RECAP_INACTIVITY"),
-        min_user_turns: int_config(merged_for_float, :min_user_turns, IdleRecap::DEFAULT_MIN_USER_TURNS, "SAMAGOTCHI_RECAP_MIN_USER_TURNS"),
-        timeout: float_config(merged_for_float, :timeout, IdleRecap::DEFAULT_TIMEOUT_SECONDS, "SAMAGOTCHI_RECAP_TIMEOUT")
+        inactivity: recap_number_setting(kwarg_config, :inactivity, "recap.inactivity", IdleRecap::DEFAULT_INACTIVITY_SECONDS, :float),
+        min_user_turns: recap_number_setting(kwarg_config, :min_user_turns, "recap.min_user_turns", IdleRecap::DEFAULT_MIN_USER_TURNS, :int),
+        timeout: recap_number_setting(kwarg_config, :timeout, "recap.timeout", IdleRecap::DEFAULT_TIMEOUT_SECONDS, :float)
       )
+    end
+
+    # Read a scalar recap setting via the Config registry (ENV > file > default).
+    def registry_string(key)
+      value = Samagotchi::Config.get(key)
+      value = value.to_s.strip
+      value.empty? ? nil : value
+    rescue StandardError
+      nil
+    end
+
+    # Resolve a numeric recap setting: kwarg > Config registry > built-in default.
+    def recap_number_setting(kwarg_config, kwarg_key, config_key, default, numeric_type)
+      value = kwarg_config[kwarg_key] || kwarg_config[kwarg_key.to_s]
+      value = Samagotchi::Config.get(config_key) if value.nil? || value.to_s.strip.empty?
+      value = default if value.nil? || value.to_s.strip.empty?
+      numeric_type == :float ? value.to_f : value.to_i
+    rescue StandardError
+      numeric_type == :float ? default.to_f : default.to_i
     end
 
     # Build the idle reminders detector. Always created (reminders are opt-in
@@ -933,32 +913,9 @@ module Samagotchi
       )
     end
 
-    def env_or_nil(key)
-      value = ENV[key]
-      return nil if value.nil? || value.strip.empty?
-
-      value
-    end
-
     def string_config(config, key)
       value = config[key]
       value.to_s.strip.empty? ? nil : value.to_s
-    end
-
-    def float_config(config, key, default, env_key = nil)
-      value = config[key]
-      value = ENV[env_key] if value.to_s.strip.empty? && env_key
-      return default if value.nil? || value.to_s.strip.empty?
-
-      value.to_f
-    end
-
-    def int_config(config, key, default, env_key = nil)
-      value = config[key]
-      value = ENV[env_key] if value.to_s.strip.empty? && env_key
-      return default if value.nil? || value.to_s.strip.empty?
-
-      value.to_i
     end
 
     # ── Event helpers ──────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ require "reline"
 require "set"
 
 require_relative "model_profile"
-require_relative "config_file"
+require_relative "config"
 require_relative "host_registry"
 require_relative "context_usage"
 require_relative "kernel_loop"
@@ -1434,7 +1434,7 @@ module Samagotchi
       @engine.instance_variable_set(:@effective_model_name, resolved_model_name) if @engine
       @engine.instance_variable_set(:@profile, @profile) if @engine
       if persist_default
-        require_relative "config_file"
+        require_relative "config"
         ConfigFile.write_default_model!(resolved_model_name)
         @default_model_name = resolved_model_name
         @engine.instance_variable_set(:@default_model_name, resolved_model_name) if @engine
@@ -2187,25 +2187,12 @@ module Samagotchi
       @last_recap_generation = generation
     end
 
-    # Resolve the recap config from env/file (OFF by default). Returns nil when
-    # disabled; a Hash when enabled so the Engine can build the detector.
-    # Now delegates to ConfigFile.recap_config which handles file + env priority,
-    # but keep env fallback for backward compat when TerminalUI is used standalone.
+    # Resolve the recap config (OFF by default). Returns false when explicitly
+    # disabled, nil when nothing is configured, or a Hash when enabled so the
+    # Engine can build the detector. Single precedence path via the Config
+    # registry: CLI > ENV (SAMAGOTCHI_RECAP_*) > file (recap:) > default.
     def recap_config
-      file_rc = ConfigFile.recap_config
-      return file_rc if file_rc == false
-      return file_rc if file_rc.is_a?(Hash)
-
-      base_url = ENV["SAMAGOTCHI_RECAP_BASE_URL"].to_s.strip
-      model = ENV["SAMAGOTCHI_RECAP_MODEL"].to_s.strip
-      return nil if base_url.empty? || model.empty?
-
-      {
-        base_url: base_url,
-        model: model,
-        inactivity: ENV["SAMAGOTCHI_RECAP_INACTIVITY"],
-        timeout: ENV["SAMAGOTCHI_RECAP_TIMEOUT"]
-      }
+      ConfigFile.recap_config
     end
 
     def bare_model_for(full_ref)

@@ -4,7 +4,6 @@
 $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 
 require "optparse"
-require "samagotchi/config_file"
 require "samagotchi/config"
 
 Samagotchi::ConfigFile.load_global_env!

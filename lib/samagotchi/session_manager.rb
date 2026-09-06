@@ -80,7 +80,7 @@ module Samagotchi
       child_env["SAMAGOTCHI_BACKEND"] = ENV["SAMAGOTCHI_BACKEND"] if ENV["SAMAGOTCHI_BACKEND"]
       # Propagate hosts config for multi-host routing
       begin
-        require_relative "config_file"
+        require_relative "config"
         hosts_json = ConfigFile.hosts_json_for_env
         child_env["SAMAGOTCHI_HOSTS_JSON"] = hosts_json if hosts_json && !hosts_json.strip.empty?
       rescue StandardError
