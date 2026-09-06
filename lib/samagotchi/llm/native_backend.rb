@@ -6,8 +6,8 @@ module Samagotchi
   module LLM
     # Thin adapter over the existing in-context local path (Client + KernelLoop).
     # Holds no behavior of its own: it delegates to KernelLoop#run and wraps the
-    # outcome in a ModelResult. All tool-call normalization (native_call /
-    # qwen_call_to_internal) and thought-stripping stay in KernelLoop, unchanged.
+    # outcome in a ModelResult. All tool-call normalization (ToolCallParser)
+    # and thought-stripping stay in KernelLoop/ToolCallParser, unchanged.
     #
     # The backend instance is stateless w.r.t. provider specifics: it owns a
     # KernelLoop (injected or built fresh) but memoizes nothing on itself, so

@@ -776,7 +776,7 @@ Need to inspect the filesystem first.
     end
 
     it "parses native task_wait options" do
-      call = kernel.send(
+      call = kernel.parser.send(
         :native_call,
         "task_wait",
         'task_id: "task-1", timeout: 90, tail_lines: 5, done_pattern: "Done!"'
@@ -791,12 +791,12 @@ Need to inspect the filesystem first.
     end
 
     it "resolves memory_write name only (the `path` alias no longer satisfies the name slot)" do
-      name_call = kernel.send(:native_call, "memory_write", 'name: "secret_plan", scope: "project"')
+      name_call = kernel.parser.send(:native_call, "memory_write", 'name: "secret_plan", scope: "project"')
       expect(name_call[:path]).to eq("secret_plan")
 
       # A stray `path:` (the file-tool alias the model tends to emit) must NOT
       # satisfy the name slot; it resolves to "" so the guard can reject it.
-      path_call = kernel.send(:native_call, "memory_write", 'path: "secret_plan", scope: "project"')
+      path_call = kernel.parser.send(:native_call, "memory_write", 'path: "secret_plan", scope: "project"')
       expect(path_call[:path]).to eq("")
     end
   end
@@ -925,7 +925,7 @@ Need to inspect the filesystem first.
     end
 
     it "parses Qwen task_wait options" do
-      call = qwen_kernel.send(
+      call = qwen_kernel.parser.send(
         :qwen_call_to_internal,
         "task_wait",
         "task_id" => "task-1", "timeout" => "90", "tail_lines" => "5", "done_pattern" => "Done!"
@@ -940,8 +940,8 @@ Need to inspect the filesystem first.
     end
 
     it "uses task defaults for omitted Qwen optional parameters" do
-      wait_call = qwen_kernel.send(:qwen_call_to_internal, "task_wait", "task_id" => "task-1")
-      create_call = qwen_kernel.send(:qwen_call_to_internal, "task_create", "command" => "echo hi")
+      wait_call = qwen_kernel.parser.send(:qwen_call_to_internal, "task_wait", "task_id" => "task-1")
+      create_call = qwen_kernel.parser.send(:qwen_call_to_internal, "task_create", "command" => "echo hi")
 
       expect(wait_call).to include(timeout: "", tail_lines: "", done_pattern: "")
       expect(create_call).to include(env: "")
@@ -1121,12 +1121,12 @@ Need to inspect the filesystem first.
     end
 
     it "resolves memory_write name only (the `path` alias no longer satisfies the name slot)" do
-      name_call = qwen_kernel.send(:qwen_call_to_internal, "memory_write", "name" => "secret_plan")
+      name_call = qwen_kernel.parser.send(:qwen_call_to_internal, "memory_write", "name" => "secret_plan")
       expect(name_call[:path]).to eq("secret_plan")
 
       # A stray `path:` (the file-tool alias the model tends to emit) must NOT
       # satisfy the name slot; it resolves to "" so the guard can reject it.
-      path_call = qwen_kernel.send(:qwen_call_to_internal, "memory_write", "path" => "secret_plan")
+      path_call = qwen_kernel.parser.send(:qwen_call_to_internal, "memory_write", "path" => "secret_plan")
       expect(path_call[:path]).to eq("")
     end
 
