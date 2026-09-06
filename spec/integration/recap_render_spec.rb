@@ -186,7 +186,7 @@ RSpec.describe "idle session-recap CLI integration", :integration do
     end
 
     it "emits a :recap_ready event when the full chain fires with a real model" do
-      engine.start_recap
+      engine.start_idle
       allow(engine).to receive(:turn_running?).and_return(false)
       allow(engine).to receive(:last_activity_at).and_return(base_time - 60)
       allow(engine).to receive(:activity_seq).and_return(2)

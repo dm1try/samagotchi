@@ -269,16 +269,15 @@ module Samagotchi
       # default input ("Hey Chi," etc.) on the next REPL prompt.
       queue_default_input if @prompt.nil?
 
-      # The recap detector is Engine-owned and opt-in; (re)start it for this REPL
-      # and stop it on exit. with_activity_hook installs a Reline.pre_input_hook
-      # that resets the shared inactivity clock on the first keystroke.
-      @engine.start_recap
-      @engine.start_reminders
+      # The idle layer (reminders + optional recap) is Engine-owned; start the
+      # shared scheduler for this REPL and stop it on exit. with_activity_hook
+      # installs a Reline.pre_input_hook that resets the shared inactivity
+      # clock on the first keystroke.
+      @engine.start_idle
       with_activity_hook do
         run_assist_loop(session: session, messages: messages)
       ensure
-        @engine.stop_recap
-        @engine.stop_reminders
+        @engine.stop_idle
       end
     end
 

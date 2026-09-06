@@ -7,7 +7,8 @@ require "time"
 require_relative "idle_client"
 
 module Samagotchi
-  # Engine-owned idle detector for the session-recap feature.
+  # Idle job for the session-recap feature — polled by the shared
+  # IdleScheduler (one background thread for the whole idle layer).
   #
   # Owns the inactivity clock bookkeeping shared across UIs: it reads the
   # Engine's `last_activity_at` / `activity_seq` / `turn_running?` seam (the
@@ -16,7 +17,7 @@ module Samagotchi
   # directly and never emits :turn_completed) and any Engine-backed worker.
   #
   # When the session has been idle for `@inactivity` seconds, no turn is
-  # running, and there are >= `@min_user_turns` user turns, the detector
+  # running, and there are >= `@min_user_turns` user turns, the job
   # snapshots the conversation (as a JSON string, never mutating it), summarizes
   # it with a decoupled #IdleClient on a background thread, and emits a
   # `:recap_ready` event (with a generation id so an invalidated recap can't
@@ -26,7 +27,6 @@ module Samagotchi
     DEFAULT_INACTIVITY_SECONDS = 180.0
     DEFAULT_TIMEOUT_SECONDS = 30.0
     DEFAULT_MIN_USER_TURNS = 2
-    POLL_INTERVAL_SECONDS = 0.5
     WAIT_TICK_SECONDS = 0.1
     # Above this many tool calls we ask only for a goal/achievement summary
     # (never enumerate calls).
@@ -127,27 +127,6 @@ module Samagotchi
       @mutex = Monitor.new
       @generation = 0
       @last_fire_activity_seq = nil
-      @thread = nil
-      @stopped = false
-    end
-
-    # Spawn the idle-detection thread (idempotent).
-    def start
-      return if running?
-
-      @thread = Thread.new { run_loop }
-      self
-    end
-
-    def running?
-      !@thread.nil? && @thread.alive? && !@stopped
-    end
-
-    # Stop the idle-detection thread.
-    def stop
-      @stopped = true
-      @thread&.kill
-      @thread = nil
     end
 
     # Mark any in-flight recap stale (called when a new turn starts). The
@@ -157,9 +136,9 @@ module Samagotchi
       @mutex.synchronize { @generation += 1 }
     end
 
-    # One detector step. Public so specs can drive it deterministically.
+    # One detector step, called by the shared IdleScheduler. Public so specs
+    # can drive it deterministically.
     def tick
-      return if @stopped
       return unless should_fire?
 
       generate
@@ -178,21 +157,6 @@ module Samagotchi
     end
 
     private
-
-    def run_loop
-      loop do
-        break if @stopped
-        begin
-          tick
-        rescue StandardError => e
-          warn "[IdleRecap] tick failed: #{e.class}: #{e.message}"
-          # Don't kill the thread on transient errors — just log and continue
-        end
-        sleep(POLL_INTERVAL_SECONDS)
-      end
-    rescue StandardError => e
-      warn "[IdleRecap] detector thread crashed: #{e.class}: #{e.message}"
-    end
 
     def last_idle_seconds
       @clock.call - @engine.last_activity_at

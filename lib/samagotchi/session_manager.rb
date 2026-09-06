@@ -285,9 +285,9 @@ module Samagotchi
           }
         }
       )
-      # Start the idle reminders detector so the worker can trigger turns when
+      # Start the shared idle scheduler so the worker can trigger turns when
       # reminders are due (even with no user input).
-      engine.start_reminders
+      engine.start_idle
 
       bridge_instance = start_bridge(engine:, state_dir: sd, session_id: session_id)
 

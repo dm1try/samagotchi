@@ -126,7 +126,7 @@ RSpec.describe "idle session-recap end-to-end", :integration do
     # Note: Engine#run_turn now sets @session, so messages_json_for_recap works
     # without stubbing. We still stub turn_running?/last_activity_at/activity_seq
     # to trigger the idle condition immediately.
-    engine.start_recap
+    engine.start_idle
 
     # Set the engine to idle: last_activity_at is far in the past, no turn running
     allow(engine).to receive(:turn_running?).and_return(false)

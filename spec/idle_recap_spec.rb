@@ -128,26 +128,22 @@ RSpec.describe Samagotchi::IdleRecap do
         .and_return(double(summarize: "recap"))
       idle = described_class.new(engine: engine, model: model, base_url: base_url)
       expect(Samagotchi::IdleClient).to have_received(:new).with(model: model, base_url: base_url)
-      idle.stop
     end
     it "uses a custom client when provided" do
       client_double = double
       engine = stub_engine
       idle = described_class.new(engine: engine, model: model, base_url: base_url, client: client_double)
       expect(idle.instance_variable_get(:@client)).to eq(client_double)
-      idle.stop
     end
     it "defaults to DEFAULT_INACTIVITY_SECONDS" do
       engine = stub_engine
       idle = described_class.new(engine: engine, model: model, base_url: base_url)
       expect(idle.instance_variable_get(:@inactivity)).to eq(described_class::DEFAULT_INACTIVITY_SECONDS)
-      idle.stop
     end
     it "defaults to DEFAULT_MIN_USER_TURNS" do
       engine = stub_engine
       idle = described_class.new(engine: engine, model: model, base_url: base_url)
       expect(idle.instance_variable_get(:@min_user_turns)).to eq(described_class::DEFAULT_MIN_USER_TURNS)
-      idle.stop
     end
   end
 
@@ -163,32 +159,6 @@ RSpec.describe Samagotchi::IdleRecap do
       idle_recap.invalidate!
       idle_recap.invalidate!
       expect(idle_recap.generation).to eq(2)
-    end
-  end
-
-  describe "#running?" do
-    it "is false initially" do
-      expect(idle_recap).not_to be_running
-    end
-    it "becomes true after start" do
-      idle_recap.start
-      expect(idle_recap).to be_running
-      idle_recap.stop
-    end
-    it "becomes false after stop" do
-      idle_recap.start
-      idle_recap.stop
-      expect(idle_recap).not_to be_running
-    end
-  end
-
-  describe "#stop" do
-    it "is idempotent" do
-      idle_recap.start
-      idle_recap.stop
-      idle_recap.stop
-      idle_recap.stop
-      expect(idle_recap).not_to be_running
     end
   end
 
@@ -331,15 +301,6 @@ RSpec.describe Samagotchi::IdleRecap do
     end
   end
 
-  describe "#start" do
-    it "is idempotent — calling start twice only has one thread" do
-      idle_recap.start
-      idle_recap.start
-      expect(idle_recap).to be_running
-      idle_recap.stop
-    end
-  end
-
   describe "min_user_turns configuration" do
     let(:two_user_turns) do
       JSON.generate([
@@ -444,14 +405,4 @@ RSpec.describe Samagotchi::IdleRecap do
     end
   end
 
-  describe "#stop" do
-    it "kills the background thread" do
-      engine = stub_engine
-      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 2.0, timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
-      idle.start
-      idle.stop
-      sleep(0.1)
-      expect(idle).not_to be_running
-    end
-  end
 end

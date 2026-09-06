@@ -5,18 +5,17 @@ require "monitor"
 require_relative "reminder_store"
 
 module Samagotchi
-  # Engine-owned idle detector for periodic reminders.
+  # Idle job for periodic reminders — polled by the shared IdleScheduler
+  # (one background thread for the whole idle layer).
   #
-  # In the pull-based model, the background thread polls but does NOT set
-  # @due_reminder_name — Engine#maybe_inject_reminders / collect_due_reminders
-  # reads directly from ReminderStore#due_reminders. The thread exists as a
-  # no-op hook in case push-based auto-turn is re-enabled later.
-  #
-  # Communication pattern (pull-based):
-  #   Engine#run_turn: collect_due_reminders reads ReminderStore#due_reminders
-  #   → injects [SYSTEM: REMINDERS DUE] → marks all as fired atomically
+  # Two delivery paths cooperate:
+  #   1. Pull-based: Engine#maybe_inject_reminders / collect_due_reminders
+  #      reads ReminderStore#due_reminders at turn start → injects
+  #      [SYSTEM: REMINDERS DUE] → marks all as fired atomically.
+  #   2. Synthetic turns: when this job's tick finds due reminders while
+  #      idle, it latches @due_reminder_name and fires @auto_turn_callback
+  #      (the TUI/SessionManager queue a synthetic turn from the latch).
   class IdleReminders
-    POLL_INTERVAL_SECONDS = 0.5
     DEFAULT_MIN_INACTIVITY_SECONDS = 60.0 # Minimum idle time before checking for reminders
 
     attr_reader :inactivity
@@ -35,27 +34,6 @@ module Samagotchi
 
       @mutex = Monitor.new
       @due_reminder_name = nil
-      @thread = nil
-      @stopped = false
-    end
-
-    # Spawn the idle-detection thread (idempotent).
-    def start
-      return if running?
-
-      @thread = Thread.new { run_loop }
-      self
-    end
-
-    def running?
-      !@thread.nil? && @thread.alive? && !@stopped
-    end
-
-    # Stop the idle-detection thread.
-    def stop
-      @stopped = true
-      @thread&.kill
-      @thread = nil
     end
 
     # Get the currently pending due reminder name (for Engine to read).
@@ -84,9 +62,9 @@ module Samagotchi
       @mutex.synchronize { @due_reminder_name = nil }
     end
 
-    # One detector step. Public so specs can drive it deterministically.
+    # One detector step, called by the shared IdleScheduler. Public so specs
+    # can drive it deterministically.
     def tick
-      return if @stopped
       return if @due_reminder_name # already due, waiting for engine to deliver
       return unless should_check?
 
@@ -101,20 +79,6 @@ module Samagotchi
     end
 
     private
-
-    def run_loop
-      loop do
-        break if @stopped
-        begin
-          tick
-        rescue StandardError => e
-          warn "[IdleReminders] tick failed: #{e.class}: #{e.message}"
-        end
-        sleep(POLL_INTERVAL_SECONDS)
-      end
-    rescue StandardError => e
-      warn "[IdleReminders] detector thread crashed: #{e.class}: #{e.message}"
-    end
 
     def last_idle_seconds
       @clock.call - @engine.last_activity_at

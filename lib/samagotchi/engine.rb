@@ -17,6 +17,7 @@ require_relative "session_metrics"
 require_relative "token_usage"
 require_relative "idle_recap"
 require_relative "idle_reminders"
+require_relative "idle_scheduler"
 require_relative "hooks"
 require_relative "reminder_store"
 require_relative "tools/memory"
@@ -129,10 +130,11 @@ module Samagotchi
       @session = nil
       @session_observer = SessionObserver.new
       @metrics = SessionMetrics.new
-      # Shared inactivity clock + turn-running flag for the optional idle
-      # session-recap detector. `record_activity` is the single seam both the
-      # run_turn/worker path and the interactive REPL (which drives KernelLoop
-      # directly) call, so the idle detector's clock is identical across UIs.
+      # Shared inactivity clock + turn-running flag for the idle subsystems
+      # (session recap + reminders), all polled by the shared IdleScheduler.
+      # `record_activity` is the single seam both the run_turn/worker path and
+      # the interactive REPL (which drives KernelLoop directly) call, so the
+      # idle layer's clock is identical across UIs.
       @activity_mutex = Monitor.new
       @last_activity_at = monotonic_now
       @activity_seq = 0
@@ -143,6 +145,13 @@ module Samagotchi
       @pending_question = nil
       @question_answer = nil
       @recap = build_recap(recap)
+      # One shared poller for the whole idle layer (reminders + optional
+      # recap). Both jobs read the activity seam above; the scheduler owns
+      # the single background thread and isolates per-job failures.
+      @idle_scheduler = IdleScheduler.new(
+        engine: self,
+        jobs: [@reminders, @recap].compact
+      )
       # The metrics collector is a persistent observer so every run_turn event
       # (covering -p/--non-interactive/--resume and SessionManager workers)
       # feeds it automatically. The interactive REPL drives KernelLoop directly
@@ -326,20 +335,6 @@ module Samagotchi
     end
 
     # ── Reminders API ────────────────────────────────────────────────────────────
-
-    # Start the idle reminders detector (no-op when already running).
-    # TerminalUI calls this before the REPL; background workers never call it.
-    # @return [self]
-    def start_reminders
-      @reminders&.start
-      self
-    end
-
-    # Stop the idle reminders detector (TerminalUI calls this when the REPL exits).
-    def stop_reminders
-      @reminders&.stop
-      self
-    end
 
     # Get and inject all due reminders into the conversation. Called at the top
     # of run_turn (before set_turn_running(true)) so injection happens on the
@@ -633,17 +628,19 @@ module Samagotchi
       @recap
     end
 
-    # Start the idle recap detector (no-op when disabled). TerminalUI calls this
-    # before the REPL; one-shot/worker paths never call it, so recap never fires
-    # there.
-    def start_recap
-      @recap&.start
+    # Start the shared idle scheduler (reminders + optional recap). The recap
+    # job is only registered when recap is configured; the reminders job is
+    # always present. TerminalUI calls this before the REPL and SessionManager
+    # workers call it so reminders can trigger turns; one-shot/worker paths
+    # that never start it poll nothing.
+    def start_idle
+      @idle_scheduler&.start
       self
     end
 
-    # Stop the idle recap detector (TerminalUI calls this when the REPL exits).
-    def stop_recap
-      @recap&.stop
+    # Stop the shared idle scheduler (TerminalUI calls this when the REPL exits).
+    def stop_idle
+      @idle_scheduler&.stop
       self
     end
 
@@ -897,9 +894,9 @@ module Samagotchi
       numeric_type == :float ? default.to_f : default.to_i
     end
 
-    # Build the idle reminders detector. Always created (reminders are opt-in
-    # via the agent calling register_reminder). The background thread polls
-    # and triggers synthetic turns when reminders are due.
+    # Build the idle reminders job. Always created (reminders are opt-in
+    # via the agent calling register_reminder). The shared IdleScheduler
+    # polls it and triggers synthetic turns when reminders are due.
     #
     # @param auto_turn_callback [Proc, nil] called when a reminder is due;
     #   receives the due reminder names; responsible for triggering a synthetic

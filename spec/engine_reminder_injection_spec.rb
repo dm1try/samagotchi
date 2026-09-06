@@ -6,11 +6,11 @@ RSpec.describe Samagotchi::Engine do
     let(:engine) { described_class.new(mode: :assist, profile: :gemma4) }
     let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd) }
     before do
-      engine.start_reminders
+      engine.start_idle
       engine.instance_variable_set(:@session, session)
     end
     after do
-      engine.stop_reminders
+      engine.stop_idle
       engine.reminder_store&.clear_all
     end
     describe "when no reminders are registered" do

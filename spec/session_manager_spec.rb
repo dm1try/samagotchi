@@ -133,8 +133,8 @@ RSpec.describe Samagotchi::SessionManager do
         .with(hash_including(mode: :assist, model_name: "gemma4"))
         .and_return(engine)
 
-      allow(engine).to receive(:start_reminders)
-      allow(engine).to receive(:stop_reminders)
+      allow(engine).to receive(:start_idle)
+      allow(engine).to receive(:stop_idle)
       allow(engine).to receive(:reminder_store).and_return(nil)
       # The worker always starts its Bridge, which subscribes a capture observer.
       sub_handle = double("subscribe_handle")
@@ -174,8 +174,8 @@ RSpec.describe Samagotchi::SessionManager do
       engine = instance_double(Samagotchi::Engine)
       result = instance_double(Samagotchi::KernelLoop::Result, output: "hi")
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
-      allow(engine).to receive(:start_reminders)
-      allow(engine).to receive(:stop_reminders)
+      allow(engine).to receive(:start_idle)
+      allow(engine).to receive(:stop_idle)
       allow(engine).to receive(:reminder_store).and_return(nil)
       # The worker always starts its Bridge, which subscribes a capture observer.
       sub_handle = double("subscribe_handle")

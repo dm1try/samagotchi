@@ -101,31 +101,6 @@ RSpec.describe Samagotchi::IdleReminders do
     end
   end
 
-  describe "#start" do
-    it "spawns a background thread" do
-      idle_reminders.start
-      expect(idle_reminders.running?).to be true
-      idle_reminders.stop
-    end
-
-    it "is idempotent" do
-      idle_reminders.start
-      idle_reminders.start
-      # Should not spawn a second thread
-      expect(idle_reminders.running?).to be true
-      idle_reminders.stop
-    end
-  end
-
-  describe "#stop" do
-    it "kills the background thread" do
-      idle_reminders.start
-      idle_reminders.stop
-      expect(idle_reminders.running?).to be false
-      expect(idle_reminders.instance_variable_get(:@thread)).to be_nil
-    end
-  end
-
   describe "#clear_due" do
     it "clears the pending due reminder" do
       reminder_store.register({ name: "health", description: "test", interval_minutes: 1 })
