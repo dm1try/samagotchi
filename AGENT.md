@@ -42,7 +42,7 @@ and `--resume`. Flag semantics (also in README's "CLI Usage" section):
 - **Single Mode (Assist)**: The harness currently runs in **Assist Mode** only (human-AI collaboration). Persisted state lives in memories; see Memory Scopes.
 
 ## Operational Instructions
-- **Always validate the test suite** (`bundle exec rspec`) after adding, updating, or removing functionality. Failing specs must be fixed before committing.
+- **Always validate the test suite** (`bundle exec rspec`; run `npm test` too for web frontend changes — files under `lib/samagotchi/web/public/` and `spec/web/public/`) after adding, updating, or removing functionality. Failing specs must be fixed before committing.
 - When modifying code, always ensure RSpec tests pass.
 - Use memory scopes explicitly: `memory_read` may omit scope (project -> system fallback), while `memory_write` must provide `scope` (`project` or `system`).
 - `memory_write` accepts an optional `description` (and its scoped `index.md` is auto-maintained). The entry name is passed via the `name` parameter (not `path` — the file tools use `path`). Each entry is written as a managed line — `- **name** · scope · date · size — description` — with every other line preserved byte-for-byte.
