@@ -14,12 +14,13 @@ require "samagotchi/session"
 # optionally filtering by mtime threshold using a parallel +times+ array.
 class FakeResponsesManager
   attr_accessor :responses, :times
-  attr_reader :spawn_calls
+  attr_reader :spawn_calls, :resume_calls
 
   def initialize(responses: [], times: nil)
     @responses = responses
     @times = times
     @spawn_calls = []
+    @resume_calls = []
   end
 
   def read_responses(_session_id, since_time: nil, state_dir: nil)
@@ -43,7 +44,7 @@ class FakeResponsesManager
     nil
   end
 
-  def resume_session(_id, state_dir: nil); nil; end
+  def resume_session(id, state_dir: nil); @resume_calls << [id, state_dir]; nil; end
   def write_turn_input(_id, prompt:, state_dir: nil); true; end
   def stop_session(_id, state_dir: nil); nil; end
   def wait_for_session(_id, timeout: 30, state_dir: nil); nil; end
@@ -183,6 +184,27 @@ RSpec.describe Samagotchi::Web::App do
       expect(status).to eq(200)
       expect(JSON.parse(body.first)["last_event_seq"]).to eq(12)
     end
+
+    it "resumes a dead session's worker so select can attach to a live stream" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_sidecar_port).and_return(nil)
+
+      status, _headers, _body = app.call(env_for("/api/sessions/s1"))
+
+      expect(status).to eq(200)
+      expect(manager.resume_calls.map(&:first)).to include("s1")
+    end
+
+    it "does not resume when the bridge is already live" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_sidecar_port).and_return(4567)
+
+      app.call(env_for("/api/sessions/s1"))
+
+      expect(manager.resume_calls).to be_empty
+    end
   end
 
   describe "POST /api/sessions (worker spawn)" do
@@ -227,7 +249,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(headers["Pragma"]).to eq("no-cache")
       expect(headers["Expires"]).to eq("0")
       expect(body.first).not_to include("startPoll")
-      expect(body.first).to include("from_seq")
+      expect(body.first).to include("/assets/app.js")
     end
   end
 

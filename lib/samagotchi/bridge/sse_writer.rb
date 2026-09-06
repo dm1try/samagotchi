@@ -95,13 +95,17 @@ module Samagotchi
 
       def replay!(io, snapshot_seq)
         from_seq = @high_water
-
-        served = @ring.events_in_range(after_seq: from_seq, to_seq: snapshot_seq)
-        if served.empty? && !@ring.has_any_after?(from_seq: from_seq)
-          # Reconnected from older than the served window: do not stall.
+        oldest = @ring.oldest_seq
+        if from_seq > snapshot_seq || (from_seq.positive? && oldest && from_seq < oldest)
+          # Cursor is ahead of the engine (worker restarted) or behind the
+          # ring's buffered window (overflow): the server cannot replay the
+          # gap, so it emits a reset marker and the client re-syncs. A cold
+          # connect (from_seq == 0) replays the whole served window, and a
+          # fully caught-up cursor (from_seq == snapshot_seq) is NOT a reset
+          # case — it gets an empty replay and holds for live events.
           emit_reset(io, snapshot_seq)
         else
-          served.each { |record| write_event(io, record[:data]) }
+          @ring.events_in_range(after_seq: from_seq, to_seq: snapshot_seq).each { |record| write_event(io, record[:data]) }
         end
       end
 

@@ -22,7 +22,6 @@ module Samagotchi
     # dead ones — is served by GET /api/sessions/:id/output from output/ files.
     class App
       DEFAULT_HOST = "127.0.0.1"
-      PREVIEW_CHARS = 40
       BRIDGE_WAIT_TIMEOUT = 10.0
 
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
@@ -177,6 +176,18 @@ module Samagotchi
         history = read_history(id)
         messages = messages_for_display(session)
         pending = session.respond_to?(:pending_question) ? session.pending_question : nil
+        # Eagerly resume a stopped session's worker + bridge so selecting it
+        # attaches to a live stream right away — no /turn needed to wake the
+        # worker. No-op when a live bridge already exists.
+        if bridge_sidecar_port(id).nil?
+          @manager.resume_session(id, state_dir: @state_dir) if @manager.respond_to?(:resume_session)
+          # Short bounded wait for the freshly-spawned bridge sidecar so the
+          # SSE connect that follows avoids EventSource retry churn (only when
+          # bridge waiting is enabled; specs disable it to avoid real workers).
+          if @bridge_wait_timeout.to_i.positive?
+            await_bridge_port(id, timeout: [@bridge_wait_timeout.to_f, 2.0].min)
+          end
+        end
         # Cursor into the SSE stream so a fresh connect skips already-rendered
         # content: the monotonic event_seq from the live Engine's Bridge
         # (nil when no live worker).
@@ -339,6 +350,12 @@ module Samagotchi
         # worker exists there is nothing to stream — history is available via
         # GET /api/sessions/:id/output.
         bridge_port = bridge_sidecar_port(id)
+        # A resume just spawned the worker: its bridge may still be binding.
+        # Wait briefly for it so the first SSE connect lands on a live bridge
+        # instead of an instantly-closed empty 200 / 503 during startup.
+        if bridge_port.nil? && @bridge_wait_timeout.to_i.positive?
+          bridge_port = await_bridge_port(id, timeout: [@bridge_wait_timeout.to_f, 2.0].min)
+        end
         return error_response(503, "not_live", "no live bridge for session #{id}") unless bridge_port
 
         headers = {
@@ -380,14 +397,13 @@ module Samagotchi
       end
 
       # Bounded wait for a freshly-spawned worker's bridge sidecar so the
-      # create response hands the client a live transport without client-side
-      # polling. Returns the bridge port, or nil when it is not up by the
-      # deadline (the session still exists; EventSource auto-reconnect covers
-      # late binders).
-      def await_bridge_port(session_id)
-        return nil if @bridge_wait_timeout.nil? || @bridge_wait_timeout <= 0
+      # response hands the client a live transport without client-side polling.
+      # Returns the bridge port, or nil when it is not up by the deadline (the
+      # session still exists; EventSource auto-reconnect covers late binders).
+      def await_bridge_port(session_id, timeout: @bridge_wait_timeout)
+        return nil if timeout.nil? || timeout <= 0
 
-        deadline = Time.now + @bridge_wait_timeout
+        deadline = Time.now + timeout
         loop do
           port = bridge_sidecar_port(session_id)
           return port if port
@@ -502,9 +518,6 @@ module Samagotchi
       end
 
       def session_to_json(s)
-        preview = s.last_prompt.to_s.gsub(/\s+/, " ").strip
-        preview = "—" if preview.empty?
-        preview = "#{preview[0, PREVIEW_CHARS]}…" if preview.length > PREVIEW_CHARS
         {
           id: s.id,
           status: s.status,
@@ -514,7 +527,6 @@ module Samagotchi
           created_at: s.created_at,
           updated_at: s.updated_at,
           last_prompt: s.last_prompt,
-          preview: preview,
           short_id: s.id.to_s[0, 8],
           test_run: !!s.test_run
         }
@@ -604,11 +616,21 @@ module Samagotchi
         def each
           require "socket"
           sock = nil
-          begin
-            sock = TCPSocket.new(@host, @port)
-          rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ETIMEDOUT, SocketError, StandardError
-            return
+          # Absorb the probe→connect race around a resumed worker's bridge:
+          # the sidecar probe can succeed a moment before the worker dies (or
+          # the bridge socket briefly refuses). A few quick bounded retries
+          # avoid the silent empty-200 that EventSource would otherwise keep
+          # re-opening.
+          3.times do |attempt|
+            begin
+              sock = TCPSocket.new(@host, @port)
+              break
+            rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ETIMEDOUT, SocketError, StandardError
+              sock = nil
+              sleep(0.15 * (attempt + 1))
+            end
           end
+          return unless sock
           begin
             # Forward the browser's auto-reconnect cursor: the bridge prefers the
             # Last-Event-ID header over ?from_seq, and the reconnect URL carries a

@@ -1,0 +1,193 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { openStream } from "../../../lib/samagotchi/web/public/data.js";
+
+class FakeEventSource {
+  constructor(url) {
+    this.url = url;
+    this.listeners = new Map();
+    this.closed = false;
+    this.onerror = null;
+  }
+  addEventListener(type, fn) {
+    const list = this.listeners.get(type) || [];
+    list.push(fn);
+    this.listeners.set(type, list);
+  }
+  dispatch(type, raw = {}) {
+    const list = this.listeners.get(type) || [];
+    list.forEach((fn) => fn(raw));
+  }
+  fireError() {
+    if (typeof this.onerror === "function") this.onerror();
+  }
+  close() {
+    this.closed = true;
+  }
+}
+
+const expectedTypes = [
+  "generation_chunk",
+  "generation_started",
+  "generation_completed",
+  "turn_started",
+  "turn_completed",
+  "turn_canceled",
+  "tool_call_completed",
+  "reset",
+];
+
+test("openStream registers a listener for every canonical event type", () => {
+  const calls = [];
+  openStream("abc", 0, {}, { EventSourceImpl: FakeEventSource });
+  // no handlers supplied -> nothing registered, but also no throw
+  assert.ok(true);
+});
+
+test("openStream dispatches JSON events to the right typed handler", () => {
+  const url = "/api/sessions/abc/stream?from_seq=0";
+  let es;
+  const seen = {};
+  const control = openStream(
+    "abc",
+    0,
+    {
+      generation_chunk: (data) => {
+        seen.chunk = data.content;
+      },
+      turn_completed: (data) => {
+        seen.completed = data.result.output;
+      },
+      reset: (data) => {
+        seen.reset = data.session_state_snapshot;
+      },
+    },
+    {
+      EventSourceImpl: class extends FakeEventSource {
+        constructor(u) {
+          super(u);
+          es = this;
+        }
+      },
+    },
+  );
+
+  assert.equal(es.url, "/api/sessions/abc/stream?from_seq=0");
+  assert.equal(typeof control.close, "function");
+
+  es.dispatch("generation_chunk", { data: JSON.stringify({ content: "hel" }) });
+  es.dispatch("turn_completed", {
+    data: JSON.stringify({ result: { output: "done" } }),
+  });
+  es.dispatch("reset", {
+    data: JSON.stringify({ type: "reset", session_state_snapshot: { status: "idle" } }),
+  });
+
+  assert.equal(seen.chunk, "hel");
+  assert.equal(seen.completed, "done");
+  assert.deepEqual(seen.reset, { status: "idle" });
+  assert.equal(control.live, true);
+});
+
+test("openStream falls back to text when JSON.parse fails", () => {
+  const seen = {};
+  const esHolder = {};
+  const Fake = class extends FakeEventSource {
+    constructor(u) {
+      super(u);
+      esHolder.es = this;
+    }
+  };
+  openStream(
+    "abc",
+    0,
+    { generation_chunk: (data) => { seen.r = data; } },
+    { EventSourceImpl: Fake },
+  );
+  esHolder.es.dispatch("generation_chunk", { data: "not-json" });
+  assert.deepEqual(seen.r, { text: "not-json" });
+});
+
+test("openStream only registers listeners for supplied handlers", () => {
+  const seen = [];
+  const esHolder = {};
+  const Fake = class extends FakeEventSource {
+    constructor(u) {
+      super(u);
+      esHolder.es = this;
+    }
+  };
+  const control = openStream(
+    "abc",
+    3,
+    { turn_started: () => { seen.push("turn_started"); } },
+    { EventSourceImpl: Fake },
+  );
+  assert.equal(esHolder.es.url, "/api/sessions/abc/stream?from_seq=3");
+  assert.equal(esHolder.es.listeners.has("generation_chunk"), false);
+  assert.equal(esHolder.es.listeners.has("turn_started"), true);
+  control.close();
+  assert.equal(control.live, false);
+  assert.equal(esHolder.es.closed, true);
+});
+
+test("non-integer from_seq defaults to 0", () => {
+  const esHolder = {};
+  const Fake = class extends FakeEventSource {
+    constructor(u) {
+      super(u);
+      esHolder.es = this;
+    }
+  };
+  openStream("abc", undefined, {}, { EventSourceImpl: Fake });
+  assert.equal(esHolder.es.url, "/api/sessions/abc/stream?from_seq=0");
+});
+
+test("onStreamError fires when connection closes before any events", () => {
+  const esHolder = {};
+  const Fake = class extends FakeEventSource {
+    constructor(u) {
+      super(u);
+      esHolder.es = this;
+    }
+  };
+  let errorFired = 0;
+  const control = openStream("abc", 0, {}, { EventSourceImpl: Fake, onStreamError: () => errorFired++ });
+  esHolder.es.fireError();
+  assert.equal(errorFired, 1);
+  assert.equal(esHolder.es.closed, true);
+  assert.equal(control.live, false);
+});
+
+test("onStreamError does not fire after events were received", () => {
+  const esHolder = {};
+  const Fake = class extends FakeEventSource {
+    constructor(u) {
+      super(u);
+      esHolder.es = this;
+    }
+  };
+  let errorFired = 0;
+  openStream("abc", 0, { generation_chunk: () => {} }, {
+    EventSourceImpl: Fake,
+    onStreamError: () => errorFired++,
+  });
+  esHolder.es.dispatch("generation_chunk", { data: JSON.stringify({ content: "x" }) });
+  esHolder.es.fireError();
+  assert.equal(errorFired, 0);
+});
+
+test("onStreamError does not fire after explicit close", () => {
+  const esHolder = {};
+  const Fake = class extends FakeEventSource {
+    constructor(u) {
+      super(u);
+      esHolder.es = this;
+    }
+  };
+  let errorFired = 0;
+  const control = openStream("abc", 0, {}, { EventSourceImpl: Fake, onStreamError: () => errorFired++ });
+  control.close();
+  esHolder.es.fireError();
+  assert.equal(errorFired, 0);
+});

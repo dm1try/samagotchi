@@ -432,6 +432,27 @@ RSpec.describe Samagotchi::Bridge do
       expect(reset[:data]["session_state_snapshot"]).to have_key("event_seq")
     end
 
+    it "holds the stream open without a reset marker when the client is fully caught up" do
+      start_bridge
+      stub_kernel_emit({ type: :generation_started, iteration: 1 },
+                       { type: :generation_completed, iteration: 1, content: "hi" })
+      run_turn_sync(@engine, @session, "hi")
+
+      _, state = get_state
+      current_seq = state.dig("session_state_snapshot", "event_seq").to_i
+      expect(current_seq).to be > 0
+
+      c = SSEClient.new(@bridge_port, @session.id, last_event_id: current_seq.to_s).start
+      @clients << c
+      sleep(0.3)
+      events = c.events
+      reset = events.find { |e| e[:data]&.fetch("type") == "reset" }
+      expect(reset).to be_nil
+      # The all-events-wait_for consumer would time out, but the connection
+      # stays serviceable: status is 200 and no reset was sent.
+      expect(c.status_code).to eq(200)
+    end
+
     it "returns a 2xx ACK (enqueued_id + accepted) for a valid POST" do
       start_bridge
       body = JSON.generate(session_id: @session.id, prompt: "hello there")

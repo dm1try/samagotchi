@@ -50,6 +50,11 @@ module Samagotchi
         @mutex.synchronize { @events.last&.[](:seq) }
       end
 
+      # @return [Integer, nil] the lowest seq buffered so far.
+      def oldest_seq
+        @mutex.synchronize { @events.first&.[](:seq) }
+      end
+
       def empty?
         @mutex.synchronize { @events.empty? }
       end
