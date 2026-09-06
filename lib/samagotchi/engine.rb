@@ -821,17 +821,17 @@ module Samagotchi
       Hooks::Registry.new
     end
 
-    # Build (or disable) the idle recap detector from the `recap:` kwarg.
+    # Build (or disable) the idle recap job. Recap is opt-in: it is active
+    # only when (a) not explicitly disabled and (b) both a `base_url`
+    # (a local OpenAI-compatible /chat/completions server) and a `model`
+    # are present. Missing either fails fast with a warning and leaves
+    # recap disabled — the idle job must never run with no configured
+    # endpoint.
     #
-    # Enabled when a `base_url` (points at a local OpenAI-compatible
-    # /chat/completions server) and a `model` are both present — resolved from
-    # the kwarg Hash, or from the SAMAGOTCHI_RECAP_* env vars. Missing either
-    # fails fast with a warning and leaves recap disabled — the idle thread must
-    # never spin up with no configured endpoint. An explicit `recap: false`
-    # disables it regardless of env.
-    # Single precedence path for recap settings: kwarg > Config registry
-    # (CLI > ENV > file > default). An explicit disable (file `recap: false`,
-    # `recap: {enabled: false}`, or SAMAGOTCHI_RECAP_ENABLED=false) always wins.
+    # Single precedence path: explicit `recap:` kwarg > Config registry
+    # (CLI > ENV > file > default). An explicit disable (`recap: false` in
+    # the config file, `recap: {enabled: false}`, or
+    # SAMAGOTCHI_RECAP_ENABLED=false) always wins.
     def build_recap(recap)
       return nil if Samagotchi::Config.get("recap.enabled") == false
 
