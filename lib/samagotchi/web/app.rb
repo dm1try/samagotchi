@@ -17,20 +17,23 @@ module Samagotchi
     #
     # This is the single-port control plane for Chi Web. It never constructs
     # an Engine directly — it talks to SessionManager over the same file IPC
-    # that Dashboard uses. SSE streaming is emulated by polling output/ files
-    # (worker lives in a forked process) with a heartbeat, so no cross-process
-    # subscribe is needed for v1.
+    # that Dashboard uses. Live SSE is proxied from each session's Bridge
+    # (the single live client transport); history for any session — including
+    # dead ones — is served by GET /api/sessions/:id/output from output/ files.
     class App
       DEFAULT_HOST = "127.0.0.1"
-      HEARTBEAT_INTERVAL = 15.0
-      STREAM_POLL_INTERVAL = 0.5
       PREVIEW_CHARS = 40
+      BRIDGE_WAIT_TIMEOUT = 10.0
 
-      def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil)
+      # @param bridge_wait_timeout [Float] bounded seconds to wait for a
+      #   freshly-spawned worker's bridge before answering POST /api/sessions.
+      def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
+                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT)
         @manager = manager || SessionManager
         @session_class = session_class || Session
         @state_dir = state_dir
         @public_dir = public_dir || File.expand_path("public", __dir__)
+        @bridge_wait_timeout = bridge_wait_timeout
       end
 
       def call(env)
@@ -159,17 +162,14 @@ module Samagotchi
           return error_response(400, "missing_fields", "prompt is required")
         end
         begin
-          bridge_enabled = web_bridge_enabled?
-          if bridge_enabled
-            session = @manager.spawn_session(prompt: prompt.to_s, state_dir: @state_dir, bridge: true)
-          else
-            session = @manager.spawn_session(prompt: prompt.to_s, state_dir: @state_dir)
-          end
+          session = @manager.spawn_session(prompt: prompt.to_s, state_dir: @state_dir)
         rescue ArgumentError => e
           return error_response(400, "invalid_model", e.message) if e.message.match?(/SAMAGOTCHI_DEFAULT_MODEL/)
           raise
         end
-        json_response(201, session_to_json(session))
+        # The worker's Bridge is the single live transport: wait (bounded) for
+        # it so the client can attach without client-side polling.
+        json_response(201, session_to_json(session).merge(bridge_port: await_bridge_port(session.id)))
       end
 
       def handle_show(_req, id)
@@ -178,9 +178,9 @@ module Samagotchi
         messages = messages_for_display(session)
         pending = session.respond_to?(:pending_question) ? session.pending_question : nil
         # Cursor into the SSE stream so a fresh connect skips already-rendered
-        # content: bridge sessions expose the monotonic event_seq from the live
-        # Engine; otherwise the number of stripped non-empty output chunks.
-        last_event_seq = bridge_event_seq(id) || history.length
+        # content: the monotonic event_seq from the live Engine's Bridge
+        # (nil when no live worker).
+        last_event_seq = bridge_event_seq(id)
         json_response(200, {
           session: session_to_json(session),
           history: history,
@@ -219,7 +219,7 @@ module Samagotchi
           begin
             require "socket"
             sock = TCPSocket.new(DEFAULT_HOST, bridge_port)
-            # POST to Bridge's /session/:id/answer if it exists; fallback to file flag
+            # POST to Bridge's /session/:id/answer (in-process, single transport)
             json_body = JSON.generate({ id: qid, selected: selected, freeform: freeform })
             sock.write("POST /session/#{id}/answer HTTP/1.1\r\nHost: #{DEFAULT_HOST}:#{bridge_port}\r\nContent-Type: application/json\r\nContent-Length: #{json_body.bytesize}\r\nConnection: close\r\n\r\n#{json_body}")
             status_line = sock.gets
@@ -231,19 +231,7 @@ module Samagotchi
             nil
           end
         end
-        # Fallback: write structured answer to input dir flag file
-        begin
-          session_dir = @session_class.session_dir(id, state_dir: default_state_dir)
-          FileUtils.mkdir_p(session_dir)
-          answer_payload = JSON.generate({ type: "ask_user_answer", id: qid.to_s, selected: Array(selected), freeform: freeform.to_s })
-          # Use a distinct file so SessionManager loop can distinguish from turn input
-          answer_file = File.join(session_dir, "pending_answer.json")
-          File.write("#{answer_file}.tmp", answer_payload)
-          File.rename("#{answer_file}.tmp", answer_file) rescue File.write(answer_file, answer_payload)
-          json_response(202, { status: "answer_queued", session_id: id, id: qid })
-        rescue StandardError => e
-          error_response(500, "enqueue_failed", e.message)
-        end
+        error_response(503, "not_live", "no live bridge for session #{id}")
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
       end
@@ -313,8 +301,7 @@ module Samagotchi
             if status_line && status_line.include?("202")
               return json_response(202, { status: "cancel_requested", session_id: id, reason: reason, via: "bridge" })
             end
-            # fall through to file flag if bridge did not accept (409 etc)
-            # try to parse bridge response code for not_running → return 409
+            # The bridge answers 409 when there is no active turn to cancel.
             if status_line
               code = status_line.split[1].to_i
               return json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id }) if code == 409
@@ -324,15 +311,7 @@ module Samagotchi
           end
         end
 
-        # Fallback: file flag for worker monitor thread
-        if @manager.respond_to?(:write_cancel_flag)
-          ok = @manager.write_cancel_flag(id, reason: reason, state_dir: @state_dir)
-          return json_response(202, { status: "cancel_requested", session_id: id, reason: reason, via: "file" }) if ok
-
-          return error_response(500, "cancel_failed", "could not write cancel flag")
-        end
-
-        error_response(500, "cancel_failed", "cancel not supported")
+        error_response(503, "not_live", "no live bridge for session #{id}")
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
       end
@@ -356,10 +335,12 @@ module Samagotchi
           return error_response(404, "not_found", "Session not found: #{id}")
         end
 
-        # Chunked SSE streaming. Two modes: proxy to the per-session Bridge when
-        # a live sidecar exists (real push SSE), otherwise fall back to a
-        # file-polling StreamBody that emulates SSE over the same output files.
-        cursor_param, since_time = stream_cursor(req)
+        # Single live transport: proxy to the session's Bridge. When no live
+        # worker exists there is nothing to stream — history is available via
+        # GET /api/sessions/:id/output.
+        bridge_port = bridge_sidecar_port(id)
+        return error_response(503, "not_live", "no live bridge for session #{id}") unless bridge_port
+
         headers = {
           "Content-Type" => "text/event-stream",
           "Cache-Control" => "no-cache",
@@ -374,34 +355,23 @@ module Samagotchi
         # handler supports hijacking, stream frames straight to the socket
         # instead of returning an enumerable.
         if req.env["rack.hijack?"]
-          hijack = sse_hijack(id, req)
+          hijack = sse_hijack(id, req, bridge_port)
           return [200, headers.merge("rack.hijack" => hijack), []]
         end
 
-        # Attempt to proxy to per-session Bridge if it exists (optional, v1.1)
-        bridge_port = bridge_sidecar_port(id)
-        if bridge_port
-          return proxy_bridge_stream(req, id, bridge_port, headers)
-        end
-
-        [200, headers, build_stream_body(id, cursor_param, since_time)]
+        query = req.query_string.to_s.empty? ? "" : "?#{req.query_string}"
+        [200, headers, ProxyStreamBody.new(host: DEFAULT_HOST, port: bridge_port, session_id: id, query: query, headers: req.env)]
       end
 
-      # Rack hijack lambda (env["rack.hijack?"] truthy): writes SSE frames
-      # directly to the client socket until it disconnects. The handler
+      # Rack hijack lambda (env["rack.hijack?"] truthy): pipes the bridge's SSE
+      # frames directly to the client socket until it disconnects. The handler
       # (WEBrick via rackup) has already sent the status line + headers, so
       # only body bytes go to the socket here.
-      def sse_hijack(id, req)
+      def sse_hijack(id, req, port)
         lambda do |io|
-          port = bridge_sidecar_port(id)
-          if port
-            query = req.query_string.to_s.empty? ? "" : "?#{req.query_string}"
-            body = ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: query, headers: req.env)
-            body.each { |chunk| io.write(chunk) }
-          else
-            cursor, since_time = stream_cursor(req)
-            build_stream_body(id, cursor, since_time).each { |frame| io.write(frame) }
-          end
+          query = req.query_string.to_s.empty? ? "" : "?#{req.query_string}"
+          body = ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: query, headers: req.env)
+          body.each { |chunk| io.write(chunk) }
         rescue Errno::EPIPE, Errno::ECONNRESET, IOError
           nil # client went away — end the stream quietly
         rescue StandardError
@@ -409,30 +379,24 @@ module Samagotchi
         end
       end
 
-      def build_stream_body(id, cursor, since_time)
-        StreamBody.new(
-          session_id: id,
-          manager: @manager,
-          state_dir: @state_dir,
-          heartbeat_interval: HEARTBEAT_INTERVAL,
-          poll_interval: STREAM_POLL_INTERVAL,
-          cursor: cursor,
-          since_time: since_time
-        )
-      end
+      # Bounded wait for a freshly-spawned worker's bridge sidecar so the
+      # create response hands the client a live transport without client-side
+      # polling. Returns the bridge port, or nil when it is not up by the
+      # deadline (the session still exists; EventSource auto-reconnect covers
+      # late binders).
+      def await_bridge_port(session_id)
+        return nil if @bridge_wait_timeout.nil? || @bridge_wait_timeout <= 0
 
-      # Attempt to proxy SSE from a per-session Bridge instance if sidecar exists.
-      def proxy_bridge_stream(req, id, port, headers)
-        # Stream by opening a TCP connection to the bridge and piping SSE frames
-        require "socket"
-        # Build forwarding request: GET /session/:id/stream with Last-Event-ID and ?from_seq=
-        query = req.query_string.to_s.empty? ? "" : "?#{req.query_string}"
-        body = ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: query, headers: req.env)
-        [200, headers, body]
+        deadline = Time.now + @bridge_wait_timeout
+        loop do
+          port = bridge_sidecar_port(session_id)
+          return port if port
+          break if Time.now >= deadline
+          sleep(0.1)
+        end
+        nil
       rescue StandardError
-        # Fallback to file polling if proxy fails
-        cursor_param, since_time = stream_cursor(req)
-        [200, headers, build_stream_body(id, cursor_param, since_time)]
+        nil
       end
 
       def bridge_sidecar_port(session_id)
@@ -491,32 +455,6 @@ module Samagotchi
         seq = state && state.dig("session_state_snapshot", "event_seq")
         seq.nil? ? nil : seq.to_i
       rescue StandardError
-        nil
-      end
-
-      # Resolve the SSE resume cursor for a /stream request:
-      #   * browser auto-reconnect sends `Last-Event-ID` (header) with the seq it
-      #     last saw — highest priority,
-      #   * explicit clients send `?from_seq=<int>`,
-      #   * legacy `?since=<timestamp>` still works as an mtime threshold.
-      # @return [Array<Integer, Time>] [cursor (or nil), since_time (or nil)]
-      def stream_cursor(req)
-        last_event = req.env["HTTP_LAST_EVENT_ID"]
-        cursor = parse_int_cursor(last_event) if last_event && !last_event.to_s.strip.empty?
-        cursor ||= parse_int_cursor(req.params["from_seq"])
-        if cursor
-          [cursor, nil]
-        else
-          [nil, parse_since(req.params["since"])]
-        end
-      end
-
-      def parse_int_cursor(val)
-        return nil if val.nil? || val.to_s.strip.empty?
-
-        n = Integer(val.to_s.strip)
-        n.positive? ? n : 0
-      rescue ArgumentError, TypeError
         nil
       end
 
@@ -648,110 +586,9 @@ module Samagotchi
         json_response(status, { error: code, detail: detail })
       end
 
-      def web_bridge_enabled?
-        # Default-on for web spawns; opt-out via SAMAGOTCHI_DISABLE_BRIDGE=1/true or explicit SAMAGOTCHI_ENABLE_BRIDGE=0/false
-        disable = ENV.fetch("SAMAGOTCHI_DISABLE_BRIDGE", "").to_s.downcase
-        return false if %w[1 true yes on].include?(disable)
-
-        val = ENV.fetch("SAMAGOTCHI_ENABLE_BRIDGE", "").to_s.downcase
-        return false if !val.empty? && %w[0 false no off].include?(val)
-
-        true
-      end
 
       def not_found(path:)
         error_response(404, "not_found", "not found: #{path}")
-      end
-
-      # Streaming body that polls output files and emits SSE frames with a stable,
-      # monotonic per-session integer `id:` cursor so browser auto-reconnect
-      # (`Last-Event-ID`) can resume without re-delivering already-displayed
-      # content. Seq numbering is 1-based over the session's stripped, non-empty
-      # response chunks in read_history order.
-      class StreamBody
-        def initialize(session_id:, manager:, state_dir:, heartbeat_interval:, poll_interval:, cursor: nil, since_time: nil)
-          @session_id = session_id
-          @manager = manager
-          @state_dir = state_dir
-          @heartbeat_interval = heartbeat_interval
-          @poll_interval = poll_interval
-          @cursor = cursor
-          @since_time = since_time
-        end
-
-        def each
-          chunks = full_chunks
-          skip = effective_cursor(chunks)
-
-          # Initial replay: emit only chunks the client has not seen yet.
-          chunks.each do |entry|
-            next if entry[:seq] <= skip
-            yield sse_frame({ type: "history", content: entry[:content] }, entry[:seq])
-          end
-          @last_seq = chunks.empty? ? skip : [skip, chunks.last[:seq]].max
-
-          last_heartbeat = Time.now
-          loop do
-            sleep(@poll_interval)
-            full_chunks.each do |entry|
-              next if entry[:seq] <= @last_seq
-
-              @last_seq = entry[:seq]
-              yield sse_frame({ type: "output", content: entry[:content] }, entry[:seq])
-            end
-
-            if Time.now - last_heartbeat >= @heartbeat_interval
-              yield ": ping\n\n"
-              last_heartbeat = Time.now
-            end
-          end
-        rescue StandardError
-          nil
-        end
-
-        private
-
-        # All stripped, non-empty output chunks with stable seq = index + 1 over
-        # the full sorted set. Same ordering/pagination as App#read_history.
-        def full_chunks
-          raw = @manager.read_responses(@session_id, since_time: nil, state_dir: @state_dir)
-          chunks = []
-          raw.each do |chunk|
-            cleaned = Samagotchi::OutputFormatter.strip(chunk)
-            next if cleaned.empty?
-
-            chunks << { seq: chunks.length + 1, content: cleaned }
-          end
-          chunks
-        rescue StandardError
-          []
-        end
-
-        # Number of chunks already delivered to this client (skip that many).
-        # Cursor (Last-Event-ID / ?from_seq=) wins; legacy ?since=<timestamp>
-        # maps to "chunks written after T → effective cursor = count before T".
-        def effective_cursor(chunks)
-          cursor = @cursor.to_i > 0 ? @cursor.to_i : 0
-          if @since_time
-            newer = @manager.read_responses(@session_id, since_time: @since_time, state_dir: @state_dir)
-            newer_count = 0
-            newer.each do |chunk|
-              newer_count += 1 unless Samagotchi::OutputFormatter.strip(chunk).empty?
-            end
-            skipped = chunks.length - newer_count
-            cursor = skipped if skipped > cursor
-          end
-          cursor
-        rescue StandardError
-          @cursor.to_i > 0 ? @cursor.to_i : 0
-        end
-
-        def sse_frame(data, seq)
-          json = JSON.generate(data)
-          event = data.is_a?(Hash) && (data[:type] || data["type"])
-          header = event ? "event: #{event}\n" : ""
-          "#{header}id: #{seq}\ndata: #{json}\n\n"
-        end
       end
 
       # Proxy body that streams from the per-session Bridge TCP server.

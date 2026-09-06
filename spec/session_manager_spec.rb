@@ -136,6 +136,10 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:start_reminders)
       allow(engine).to receive(:stop_reminders)
       allow(engine).to receive(:reminder_store).and_return(nil)
+      # The worker always starts its Bridge, which subscribes a capture observer.
+      sub_handle = double("subscribe_handle")
+      allow(sub_handle).to receive(:unsubscribe)
+      allow(engine).to receive(:subscribe).and_return(sub_handle)
 
       expect {
         described_class.run_session_loop(session.id, state_dir: tmpdir)
@@ -173,6 +177,10 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:start_reminders)
       allow(engine).to receive(:stop_reminders)
       allow(engine).to receive(:reminder_store).and_return(nil)
+      # The worker always starts its Bridge, which subscribes a capture observer.
+      sub_handle = double("subscribe_handle")
+      allow(sub_handle).to receive(:unsubscribe)
+      allow(engine).to receive(:subscribe).and_return(sub_handle)
       expect(engine).to receive(:run_turn)
         .with(instance_of(Samagotchi::Session), "hello") do
           Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)

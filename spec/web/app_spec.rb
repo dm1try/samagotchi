@@ -28,8 +28,8 @@ class FakeResponsesManager
     @responses.each_with_index.select { |_, i| @times[i] > since_time }.map(&:first)
   end
 
-  def spawn_session(prompt:, state_dir: nil, bridge: false, **kw)
-    @spawn_calls << { prompt: prompt, state_dir: state_dir, bridge: bridge, extra: kw }
+  def spawn_session(prompt:, state_dir: nil, **kw)
+    @spawn_calls << { prompt: prompt, state_dir: state_dir, extra: kw }
     Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd).tap do |s|
       s.last_prompt = prompt
     end
@@ -45,7 +45,6 @@ class FakeResponsesManager
 
   def resume_session(_id, state_dir: nil); nil; end
   def write_turn_input(_id, prompt:, state_dir: nil); true; end
-  def write_cancel_flag(_id, reason: "user", state_dir: nil); true; end
   def stop_session(_id, state_dir: nil); nil; end
   def wait_for_session(_id, timeout: 30, state_dir: nil); nil; end
 end
@@ -82,9 +81,11 @@ RSpec.describe Samagotchi::Web::App do
     Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
 
+  # bridge_wait_timeout: 0 — no real worker is spawned in these specs, so the
+  # create handler must not wait for a bridge sidecar.
   def build_app(manager: nil, state_dir: nil)
     manager ||= FakeResponsesManager.new
-    described_class.new(manager: manager, state_dir: state_dir, session_class: StubSessionLoader)
+    described_class.new(manager: manager, state_dir: state_dir, session_class: StubSessionLoader, bridge_wait_timeout: 0)
   end
 
   def env_for(path, method: "GET", body: nil, headers: {})
@@ -97,161 +98,50 @@ RSpec.describe Samagotchi::Web::App do
     )
   end
 
-  def parse_sse(frames)
-    frames.map do |f|
-      id = f[/^id: (.*)$/, 1]
-      event = f[/^event: (.*)$/, 1]
-      data_line = f[/^data: (.*)$/m, 1]
-      { id: id, event: event, data: data_line ? JSON.parse(data_line) : nil }
-    end
-  end
-
-  # Run a StreamBody#each and collect frames until +count+ arrive. Raises
-  # StopIteration from the block which StreamBody's rescue-er swallows and
-  # turns into a clean end-of-each; the thread is killed after the timeout.
-  def frames_up_to(body, count:, timeout: 2.0)
-    frames = []
-    t = Thread.new do
-      body.each do |f|
-        frames << f
-        raise StopIteration if frames.size >= count
-      end
-    rescue StandardError
-      nil
-    end
-    t.report_on_exception = false
-    deadline = mono + timeout
-    sleep(0.005) while frames.size < count && mono < deadline
-    t.kill if t.alive?
-    t.join(0.2)
-    frames
-  end
-
-  def stream_body(manager, cursor: nil, since: nil, poll: 0.05)
-    described_class::StreamBody.new(
-      session_id: "s1",
-      manager: manager,
-      state_dir: nil,
-      heartbeat_interval: 60,
-      poll_interval: poll,
-      cursor: cursor,
-      since_time: since
-    )
-  end
-
-  describe "StreamBody" do
-    it "emits every chunk with a stable, monotonic 1-based seq and id" do
-      manager = FakeResponsesManager.new(responses: ["one", "two", "three"])
-      events = parse_sse(frames_up_to(stream_body(manager, cursor: 0), count: 3))
-
-      expect(events.map { |e| e[:id] }).to eq(%w[1 2 3])
-      expect(events.map { |e| e[:data]["content"] }).to eq(%w[one two three])
-      expect(events.map { |e| e[:event] }).to eq(%w[history history history])
-    end
-
-    it "skips chunks at or below the reconnect cursor" do
-      manager = FakeResponsesManager.new(responses: %w[one two three four])
-      events = parse_sse(frames_up_to(stream_body(manager, cursor: 2), count: 2))
-
-      expect(events.map { |e| e[:id] }).to eq(%w[3 4])
-    end
-
-    it "emits nothing when the cursor is at/above the current chunk count" do
-      manager = FakeResponsesManager.new(responses: %w[one two three])
-      frames = frames_up_to(stream_body(manager, cursor: 5), count: 1, timeout: 0.4)
-
-      expect(frames).to be_empty
-    end
-
-    it "does not reset the seq when new chunks are appended mid-connection" do
-      manager = FakeResponsesManager.new(responses: %w[one two])
-      frames = []
-      t = Thread.new do
-        stream_body(manager, cursor: 0).each do |f|
-          frames << f
-          raise StopIteration if frames.size >= 4
-        end
-      rescue StandardError
-        nil
-      end
-      t.report_on_exception = false
-      deadline = mono + 2.0
-      sleep(0.005) while frames.size < 2 && mono < deadline
-      manager.responses.concat(%w[three four])
-      sleep(0.005) while frames.size < 4 && mono < deadline
-      t.kill if t.alive?
-      t.join(0.2)
-
-      events = parse_sse(frames)
-      expect(events.map { |e| e[:id] }).to eq(%w[1 2 3 4])
-      expect(events.map { |e| e[:data]["content"] }).to eq(%w[one two three four])
-    end
-
-    it "honors the legacy ?since= timestamp (skips chunks older than the threshold)" do
-      t0 = Time.now - 3600
-      t1 = Time.now
-      manager = FakeResponsesManager.new(
-        responses: %w[old old2 new],
-        times: [t0, t0, t1]
-      )
-      events = parse_sse(frames_up_to(stream_body(manager, since: Time.now - 1800), count: 1))
-
-      expect(events.length).to eq(1)
-      expect(events.first[:id]).to eq("3")
-      expect(events.first[:data]["content"]).to eq("new")
-    end
-
-    it "strips empty/chunk bodies out of the seq numbering entirely" do
-      manager = FakeResponsesManager.new(responses: ["a", "   ", "b"])
-      events = parse_sse(frames_up_to(stream_body(manager, cursor: 0), count: 2))
-
-      expect(events.map { |e| e[:id] }).to eq(%w[1 2])
-      expect(events.map { |e| e[:data]["content"] }).to eq(%w[a b])
-    end
-  end
 
   describe "GET /api/sessions/:id/stream" do
-    it "serves StreamBody (no bridge) and wires ?from_seq=<int> as the cursor" do
-      app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
+    it "returns a typed 503 not_live when no live bridge sidecar exists" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      status, _headers, body = app.call(env_for("/api/sessions/s1/stream"))
+
+      expect(status).to eq(503)
+      expect(JSON.parse(body.first)).to include("error" => "not_live")
+    end
+
+    it "proxies to the live bridge and forwards the client query string" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_sidecar_port).and_return(9_999)
       status, headers, body = app.call(env_for("/api/sessions/s1/stream?from_seq=3"))
 
       expect(status).to eq(200)
       expect(headers["Content-Type"]).to eq("text/event-stream")
-      expect(body).to be_a(described_class::StreamBody)
-      expect(body.instance_variable_get(:@cursor)).to eq(3)
-      expect(body.instance_variable_get(:@since_time)).to be_nil
+      expect(body).to be_a(described_class::ProxyStreamBody)
+      expect(body.instance_variable_get(:@query)).to eq("?from_seq=3")
     end
 
-    it "prefers the Last-Event-ID header as the reconnect cursor" do
-      app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
-      status, _headers, body = app.call(
+    it "forwards the Last-Event-ID header through to the bridge" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_sidecar_port).and_return(9_999)
+      _status, _headers, body = app.call(
         env_for("/api/sessions/s1/stream?from_seq=3", headers: { "HTTP_LAST_EVENT_ID" => "7" })
       )
 
-      expect(status).to eq(200)
-      expect(body.instance_variable_get(:@cursor)).to eq(7)
+      expect(body.instance_variable_get(:@headers)["HTTP_LAST_EVENT_ID"]).to eq("7")
     end
 
-    it "falls through to legacy ?since= (timestamp) when no int cursor is given" do
-      app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
-      _status, _headers, body = app.call(
-        env_for("/api/sessions/s1/stream?since=2020-01-01T00:00:00Z")
-      )
+    it "honors rack.hijack? by returning a lambda that pipes bridge frames straight to the socket" do
+      server = TCPServer.new("127.0.0.1", 0)
+      port = server.local_address.ip_port
+      accept_thread = Thread.new do
+        conn = server.accept
+        conn.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nid: 1\nevent: generation_chunk\ndata: {\"content\":\"one\"}\r\n\r\n")
+        sleep(0.3)
+        conn.close
+      end
+      accept_thread.report_on_exception = false
 
-      expect(body.instance_variable_get(:@cursor)).to be_nil
-      expect(body.instance_variable_get(:@since_time)).to be_a(Time)
-    end
-
-    it "resolves a non-integer cursor/garbage into no cursor" do
-      app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
-      _status, _headers, body = app.call(env_for("/api/sessions/s1/stream?from_seq=abc"))
-
-      expect(body.instance_variable_get(:@cursor)).to be_nil
-    end
-
-    it "honors rack.hijack? by returning a lambda that writes SSE frames straight to the socket" do
-      manager = FakeResponsesManager.new(responses: %w[one two])
-      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_sidecar_port).and_return(port)
       status, headers, body = app.call(
         env_for("/api/sessions/s1/stream?from_seq=0", headers: { "rack.hijack?" => true })
       )
@@ -262,29 +152,26 @@ RSpec.describe Samagotchi::Web::App do
       expect(hijack).to respond_to(:call)
 
       out = StringIO.new
-      t = Thread.new { hijack.call(out) }
-      t.report_on_exception = false
-      deadline = mono + 2.0
-      sleep(0.005) while out.string.length < 40 && mono < deadline
-      t.kill if t.alive?
-      t.join(0.2)
+      hijack.call(out)
+      server.close
+      accept_thread.join(1)
 
-      expect(out.string).to include("event: history")
       expect(out.string).to include("id: 1")
+      expect(out.string).to include("event: generation_chunk")
       expect(out.string).to include(%q{"content":"one"})
       expect(out.string).not_to include("HTTP/1.1") # handler owns the status line
     end
   end
 
   describe "GET /api/sessions/:id" do
-    it "includes last_event_seq = stripped chunk count when no bridge is live" do
+    it "includes last_event_seq = nil when no bridge is live" do
       manager = FakeResponsesManager.new(responses: %w[one two three])
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
       status, _headers, body = app.call(env_for("/api/sessions/s1"))
 
       expect(status).to eq(200)
       payload = JSON.parse(body.first)
-      expect(payload["last_event_seq"]).to eq(3)
+      expect(payload["last_event_seq"]).to be_nil
       expect(payload["messages"].map { |m| m["content"] }).to eq(%w[hello hi\ there])
     end
 
@@ -299,25 +186,34 @@ RSpec.describe Samagotchi::Web::App do
   end
 
   describe "POST /api/sessions (worker spawn)" do
-    it "spawns with bridge:true by default" do
+    it "spawns the worker (bridge is always on) and reports the session" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager)
       status, _headers, body = app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi"}'))
 
       expect(status).to eq(201)
-      expect(manager.spawn_calls.last[:bridge]).to be(true)
+      expect(manager.spawn_calls.last[:prompt]).to eq("hi")
       expect(JSON.parse(body.first)).to have_key("id")
     end
 
-    it "spawns without a bridge when SAMAGOTCHI_DISABLE_BRIDGE=1" do
-      allow(ENV).to receive(:fetch).and_call_original
-      allow(ENV).to receive(:fetch).with("SAMAGOTCHI_DISABLE_BRIDGE", "").and_return("1")
+    it "reports the bridge port once the worker bridge comes up" do
       manager = FakeResponsesManager.new
-      app = build_app(manager: manager)
-      status, _status, _body = app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi"}'))
+      app = described_class.new(manager: manager, session_class: StubSessionLoader, bridge_wait_timeout: 5)
+      allow(app).to receive(:bridge_sidecar_port).and_return(nil, nil, 4_321)
+      status, _headers, body = app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi"}'))
 
       expect(status).to eq(201)
-      expect(manager.spawn_calls.last[:bridge]).to be(false)
+      expect(JSON.parse(body.first)["bridge_port"]).to eq(4_321)
+    end
+
+    it "reports a null bridge_port when the bridge is not up by the deadline" do
+      manager = FakeResponsesManager.new
+      app = described_class.new(manager: manager, session_class: StubSessionLoader, bridge_wait_timeout: 0.3)
+      allow(app).to receive(:bridge_sidecar_port).and_return(nil)
+      status, _headers, body = app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi"}'))
+
+      expect(status).to eq(201)
+      expect(JSON.parse(body.first)["bridge_port"]).to be_nil
     end
   end
 

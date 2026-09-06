@@ -69,8 +69,8 @@ See `docs/architecture.md` for a visual overview of the layers and turn flow.
 | Core | `Samagotchi::Engine` | System prompt, memory injection, tool declarations, session lifecycle, the model↔tool loop (`run_turn`). No terminal coupling. |
 | UI | `Samagotchi::TerminalUI` | Interactive REPL (Reline), rendering (ANSI, spinner, status line), REPL commands. Delegates all core work to an `Engine`. |
 | Transport | `Samagotchi::Client`, `KernelLoop`, `Session` | HTTP transport, model↔tool loop, session data model (already clean). |
-| Bridge (SSE/HTTP) | `Samagotchi::Bridge`, `SessionManager` | **Opt-in** external-client transport: an SSE read stream + HTTP POST turn-creation surface that attaches to a worker's existing `Engine` via `Engine#subscribe`. Bound `127.0.0.1`, no auth (localhost-only). Enabled by `SAMAGOTCHI_ENABLE_BRIDGE` in the forked session worker. |
-| Web (Rack) | `Samagotchi::Web::App`, `SessionManager` | Single-port `127.0.0.1:4567` control plane that replicates the dashboard via `rack`+`webrick` (serve `index.html` + `/api/*` + SSE poll). `bin/chi web` entrypoint. |
+| Bridge (SSE/HTTP) | `Samagotchi::Bridge`, `SessionManager` | The **single live client transport**: an SSE read stream + HTTP POST turn/cancel/answer surface that attaches to a worker's existing `Engine` via `Engine#subscribe`. Every session worker starts it (bound `127.0.0.1`, no auth, localhost-only). |
+| Web (Rack) | `Samagotchi::Web::App`, `SessionManager` | Single-port `127.0.0.1:4567` control plane that replicates the dashboard via `rack`+`webrick` (serve `index.html` + `/api/*`; `/stream` proxies each session's Bridge). `bin/chi web` entrypoint. |
 | Sessions | `Samagotchi::Session`, `SessionManager` | File-based `~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar `input/`/`output/`/`pid`; retention (14d/500) + ordering (`updated_at desc`). |
 
 - `bin/chi` (interactive) builds `TerminalUI`. `TerminalUI#run` is the single
@@ -125,8 +125,8 @@ engine.session_state_snapshot   # => { status:, message_count:, last_prompt:, ev
 ```
 
 `Engine#subscribe` is the seam the SSE bridge (`Samagotchi::Bridge`) rides on. The bridge
-is an **optional** HTTP transport that runs **inside the forked session worker** (the same
-process that already owns the `Engine`) and exposes:
+is the **single live transport** and runs **inside the forked session worker** (the same
+process that already owns the `Engine`); every worker starts it, and it exposes:
 
 - `GET  /session/:id/stream` — SSE stream of engine + kernel events, each with an `id: <event_seq>`
   cursor; resume via `Last-Event-ID` / `?from_seq=`; a `: ping` heartbeat keeps idle proxies alive;
@@ -137,11 +137,11 @@ process that already owns the `Engine`) and exposes:
 - `GET  /session/:id/state` — `session_state_snapshot` (JSON).
 - `OPTIONS *` — CORS preflight (`Access-Control-Allow-Origin: *`).
 
-It is engaged only when the worker is spawned with `SAMAGOTCHI_ENABLE_BRIDGE=1`; `bin/chi`
-without that flag never loads the bridge or binds a port. The per-session port is
-OS-assigned (bound to `0`) and published to a `bridge.json` sidecar for client discovery.
-Resume/ring-buffer state is **in-memory** (v1) — durable cross-process resume is a staged
-next step, not part of v1.
+The per-session port is OS-assigned (bound to `0`) and published to a `bridge.json` sidecar
+for client discovery. `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
+(503 `not_live` when the worker is not running; full history of any session is served by
+`GET /api/sessions/:id/output`). Resume/ring-buffer state is **in-memory** (v1) — durable
+cross-process resume is a staged next step, not part of v1.
 
 ## Session Management & Retention
 

@@ -29,14 +29,13 @@ module Samagotchi
     OUTPUT_DIR = "output"
     PID_FILE   = "pid"
     SESSION_JSON = "session.json"
-    CANCEL_FILE = "cancel.json"
 
     # Spawn a new background session that processes the given prompt.
     #
-    # Returns the session object with its ID. When +bridge:+ is true the worker
-    # is launched with the SSE/HTTP transport opt-in (an env var threaded
-    # through Process.spawn) so an external client can reach it.
-    def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil, bridge: false)
+    # Returns the session object with its ID. Every worker always starts its
+    # per-session Bridge (the single live client transport), so external
+    # clients can reach it once the sidecar is published.
+    def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil)
       sd = state_dir || Session.default_state_dir
       session = Session.new_session(
         mode: mode,
@@ -49,7 +48,7 @@ module Samagotchi
       setup_session_directory(session_dir, session, state_dir: sd)
 
       lib_path = File.expand_path("..", __dir__)
-      opts = spawn_options(bridge: bridge)
+      opts = spawn_options
       env = opts.delete(:env)
       pid = if env
               Process.spawn(
@@ -72,15 +71,12 @@ module Samagotchi
       session
     end
 
-    # Build the opts hash passed to Process.spawn for a forked worker. Without an
-    # explicit opts[:env], Process.spawn inherits the parent's ENV verbatim; but
-    # setting opts[:env] REPLACES the child ENV — so the bridge path (which set
-    # SAMAGOTCHI_ENABLE_BRIDGE) would silently drop SAMAGOTCHI_BACKEND. Merge both
-    # here so a bridge worker still honors the selected backend (Phase 4).
-    private_class_method def self.spawn_options(bridge:)
+    # Build the opts hash passed to Process.spawn for a forked worker. Setting
+    # opts[:env] REPLACES the child ENV rather than merging it, so explicitly
+    # thread through the values a worker needs (backend, hosts, default model).
+    private_class_method def self.spawn_options
       opts = { out: File::NULL, err: File::NULL }
       child_env = {}
-      child_env["SAMAGOTCHI_ENABLE_BRIDGE"] = "1" if bridge
       child_env["SAMAGOTCHI_BACKEND"] = ENV["SAMAGOTCHI_BACKEND"] if ENV["SAMAGOTCHI_BACKEND"]
       # Propagate hosts config for multi-host routing
       begin
@@ -269,12 +265,12 @@ module Samagotchi
     # Run the session loop inside the forked process.
     # This is the entry point called by Process.spawn.
     #
-    # When the bridge is enabled (opt-in via the +bridge:+ keyword or the
-    # SAMAGOTCHI_ENABLE_BRIDGE env var threaded through Process.spawn) an
-    # in-process SSE/HTTP transport is started on a per-session port bound to
-    # 127.0.0.1 before the loop and stopped on exit. Never changes default
-    # behaviour: the bridge is off unless explicitly engaged.
-    def self.run_session_loop(session_id, state_dir: nil, bridge: nil)
+    # Every worker starts its per-session Bridge (the single live client
+    # transport) on a port bound to 127.0.0.1 before the loop and stops it on
+    # exit. If the bridge fails to start the worker degrades: turns still flow
+    # through the input-dir loop, but there is no live SSE or in-process
+    # cancel/answer.
+    def self.run_session_loop(session_id, state_dir: nil)
       sd = state_dir || Session.default_state_dir
       session = Session.load(session_id, state_dir: sd)
       session_dir = Session.session_dir(session_id, state_dir: sd)
@@ -293,67 +289,7 @@ module Samagotchi
       # reminders are due (even with no user input).
       engine.start_reminders
 
-      bridge_instance = start_bridge_if_enabled(
-        engine:, state_dir: sd, session_id: session_id, enabled: bridge
-      )
-
-      # Monitor thread for rare cancel requests via file flag (cross-process).
-      cancel_monitor = Thread.new do
-        loop do
-          sleep 0.2
-          break if Thread.current[:stop]
-          payload = begin
-            consume_cancel_flag(session_id, state_dir: sd)
-          rescue StandardError
-            nil
-          end
-          next unless payload
-
-          reason = payload["reason"] || payload[:reason] || "user"
-          if engine.turn_running?
-            begin
-              engine.cancel_current_turn!(reason.to_sym)
-            rescue StandardError
-              nil
-            end
-          end
-        end
-      rescue StandardError
-        nil
-      end
-      cancel_monitor.abort_on_exception = false
-      cancel_monitor.report_on_exception = false
-
-      # Monitor thread for ask_user_question answers via file flag (WEB stub fallback)
-      answer_monitor = Thread.new do
-        loop do
-          sleep 0.2
-          break if Thread.current[:stop]
-          path = File.join(session_dir, "pending_answer.json")
-          next unless File.exist?(path)
-
-          begin
-            data = JSON.parse(File.read(path))
-            id = data["id"] || data[:id]
-            selected = data["selected"] || data[:selected] || data["selection"] || data[:selection]
-            freeform = data["freeform"] || data[:freeform]
-            if id && engine.pending_question && engine.pending_question[:id].to_s == id.to_s
-              begin
-                engine.answer_question(id: id, selected: selected, freeform: freeform)
-              rescue StandardError
-                nil
-              end
-            end
-            FileUtils.rm_f(path)
-          rescue StandardError
-            begin; FileUtils.rm_f(path); rescue StandardError; nil; end
-          end
-        end
-      rescue StandardError
-        nil
-      end
-      answer_monitor.abort_on_exception = false
-      answer_monitor.report_on_exception = false
+      bridge_instance = start_bridge(engine:, state_dir: sd, session_id: session_id)
 
       begin
         # Process the initial prompt
@@ -407,18 +343,6 @@ module Samagotchi
         Session.mark_error(session_id, reason: e.message, state_dir: sd)
         exit(1)
       ensure
-        begin
-          cancel_monitor[:stop] = true
-          cancel_monitor.kill if cancel_monitor&.alive?
-        rescue StandardError
-          nil
-        end
-        begin
-          answer_monitor[:stop] = true
-          answer_monitor.kill if answer_monitor&.alive?
-        rescue StandardError
-          nil
-        end
         bridge_instance&.stop
       end
     end
@@ -430,14 +354,14 @@ module Samagotchi
       session.save(state_dir: state_dir)
     end
 
-    private_class_method def self.spawn_worker_for_session(session, state_dir:, bridge: false)
+    private_class_method def self.spawn_worker_for_session(session, state_dir:)
       session_dir = Session.session_dir(session.id, state_dir: state_dir)
       FileUtils.mkdir_p(session_dir)
       FileUtils.mkdir_p(File.join(session_dir, INPUT_DIR))
       FileUtils.mkdir_p(File.join(session_dir, OUTPUT_DIR))
 
       lib_path = File.expand_path("..", __dir__)
-      opts = spawn_options(bridge: bridge)
+      opts = spawn_options
       env = opts.delete(:env)
       pid = if env
               Process.spawn(
@@ -459,19 +383,16 @@ module Samagotchi
       pid
     end
 
-    # Start an in-process bridge/transport for this worker when enabled.
+    # Start the in-process Bridge transport for this worker. The bridge is
+    # the single live client transport, so every worker starts it. Bridge
+    # creation happens *before* the loop so the capture observer is in place
+    # for the whole session; the caller stops the returned instance on exit
+    # (see run_session_loop's ensure).
     #
-    # Opt-in via the +bridge:+ keyword (preferred) or the
-    # SAMAGOTCHI_ENABLE_BRIDGE env var threaded through Process.spawn. When
-    # disabled (the default) this is a no-op and nothing is loaded or bound.
-    # Bridge creation happens *before* the loop so the capture observer is in
-    # place for the whole session; the caller stops the returned instance on
-    # exit (see run_session_loop's ensure).
-    #
-    # @return [Samagotchi::Bridge, nil]
-    private_class_method def self.start_bridge_if_enabled(engine:, state_dir:, session_id:, enabled:)
-      return nil unless enabled_bridge?(enabled)
-
+    # @return [Samagotchi::Bridge, nil] nil when the transport failed to start
+    #   (the worker degrades: turns still flow through the input-dir loop, but
+    #   there is no live SSE or in-process cancel/answer).
+    private_class_method def self.start_bridge(engine:, state_dir:, session_id:)
       require_relative "bridge"
       Samagotchi::Bridge.new(
         engine: engine, state_dir: state_dir, session_id: session_id
@@ -481,42 +402,7 @@ module Samagotchi
       nil
     end
 
-    # Resolve whether the transport is enabled: the +enabled:+ keyword wins;
-    # otherwise fall back to the SAMAGOTCHI_ENABLE_BRIDGE env var.
-    private_class_method def self.enabled_bridge?(enabled)
-      return enabled unless enabled.nil?
 
-      value = ENV.fetch("SAMAGOTCHI_ENABLE_BRIDGE", "").to_s.downcase
-      !value.empty? && !%w[0 false no off].include?(value)
-    end
-
-    # Write a cancellation flag for the worker's active turn.
-    # The worker's monitor thread polls this file and calls `engine.cancel_current_turn!`.
-    # @return [Boolean] true on success
-    def self.write_cancel_flag(session_id, reason: "user", state_dir: nil)
-      sd = state_dir || Session.default_state_dir
-      session_dir = Session.session_dir(session_id, state_dir: sd)
-      FileUtils.mkdir_p(session_dir)
-      payload = JSON.generate({ reason: reason.to_s, at: Time.now.iso8601(3) })
-      write_atomic(File.join(session_dir, CANCEL_FILE), payload)
-      true
-    rescue StandardError
-      false
-    end
-
-    # Consume and remove a pending cancel flag, if any.
-    # @return [Hash, nil] parsed payload or nil if no flag
-    def self.consume_cancel_flag(session_id, state_dir: nil)
-      sd = state_dir || Session.default_state_dir
-      path = File.join(Session.session_dir(session_id, state_dir: sd), CANCEL_FILE)
-      return nil unless File.exist?(path)
-
-      data = JSON.parse(File.read(path)) rescue { "reason" => "user" }
-      FileUtils.rm_f(path)
-      data
-    rescue StandardError
-      nil
-    end
 
     # Write a user turn into a session's input directory via the same file IPC
     # the worker polls. Reused by the bridge's POST surface so a turn is
