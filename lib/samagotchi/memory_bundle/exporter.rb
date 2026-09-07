@@ -23,7 +23,7 @@ module Samagotchi
 
       attr_reader :exported_files, :warnings, :placeholder_warnings, :out_path, :staging_dir
 
-      def initialize(scope: nil, name: nil, version: nil, description: "", out: nil, files: nil)
+      def initialize(scope: nil, name: nil, version: nil, description: "", out: nil, files: nil, trust_level: nil)
         @scope = normalize_scope(scope) || "system"
         @name = sanitize_name(name) if name && !name.to_s.strip.empty?
         @version = version&.to_s&.strip
@@ -32,6 +32,7 @@ module Samagotchi
         @out = out&.to_s&.strip
         @out = nil if @out && @out.empty?
         @filter_files = files # nil or Array<String> basenames
+        @trust_level = trust_level&.to_s&.strip
         @exported_files = []
         @warnings = []
         @placeholder_warnings = []
@@ -85,6 +86,64 @@ module Samagotchi
           end
         end
 
+        # ── Hooks: collect hooks for export ──────────────────────────
+        hooks_map = {}
+        hooks_to_copy = [] # Array of [src_path, basename]
+        # Try provenance first (if bundle with this name is installed)
+        prov = nil
+        prov_data = nil
+        begin
+          require_relative "provenance"
+          prov = Provenance.new(name: resolved_name)
+          prov_data = prov.read
+        rescue StandardError
+          prov_data = nil
+        end
+        if prov_data && prov_data[:hooks].is_a?(Hash) && !prov_data[:hooks].empty?
+          prov_data[:hooks].each do |k, meta|
+            basename = k.to_s
+            src = File.join(prov.hooks_dir, basename)
+            # Skip if hook file missing on disk
+            next unless File.exist?(src)
+            # meta may be symbol-keyed
+            m = meta.is_a?(Hash) ? meta.transform_keys(&:to_s) : {}
+            sha = (m["sha256"] || m["checksum"] || "").to_s
+            if sha.empty?
+              sha = "sha256:#{Digest::SHA256.hexdigest(File.read(src))}"
+            elsif !sha.start_with?("sha256:")
+              sha = "sha256:#{sha}"
+            end
+            hooks_map[basename] = {
+              "sha256" => sha,
+              "event" => (m["event"] || "").to_s,
+              "on_error" => (m["on_error"] || "skip").to_s,
+              "priority" => (m["priority"] || 100).to_i
+            }
+            hooks_to_copy << [src, basename]
+          end
+        else
+          # Fallback: scan target_dir/hooks if present (e.g. exporting a raw bundle dir that is also the mem dir)
+          local_hooks_dir = File.join(target_dir, "hooks")
+          if Dir.exist?(local_hooks_dir)
+            Dir.glob(File.join(local_hooks_dir, "*.rb")).sort.each do |src|
+              basename = File.basename(src)
+              sha = Digest::SHA256.hexdigest(File.read(src))
+              hooks_map[basename] = {
+                "sha256" => "sha256:#{sha}",
+                "event" => "",
+                "on_error" => "skip",
+                "priority" => 100
+              }
+              hooks_to_copy << [src, basename]
+            end
+          end
+        end
+        # Determine trust_level for export
+        export_trust_level = @trust_level
+        if (export_trust_level.nil? || export_trust_level.empty?) && prov_data && prov_data[:trust_level]
+          export_trust_level = prov_data[:trust_level].to_s
+        end
+
         # Resolve output path and format
         resolved_out, format = resolve_out_path(@out, resolved_name)
 
@@ -95,6 +154,14 @@ module Samagotchi
           candidates.each do |src|
             FileUtils.cp(src, File.join(staging, File.basename(src)))
           end
+          # Copy hooks into staging/hooks/
+          unless hooks_to_copy.empty?
+            hooks_staging = File.join(staging, "hooks")
+            FileUtils.mkdir_p(hooks_staging)
+            hooks_to_copy.each do |src, basename|
+              FileUtils.cp(src, File.join(hooks_staging, basename))
+            end
+          end
 
           Manifest.write(
             dir: staging,
@@ -102,7 +169,9 @@ module Samagotchi
             version: resolved_version,
             scope: @scope,
             description: @description,
-            files: files_map
+            files: files_map,
+            hooks: hooks_map.empty? ? nil : hooks_map,
+            trust_level: export_trust_level
           )
 
           case format

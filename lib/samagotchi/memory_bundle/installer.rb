@@ -61,9 +61,10 @@ module Samagotchi
       def run
         normalized_dir = nil
         source_owned = false
+        source_commit = nil
         manifest = nil
         begin
-          normalized_dir, source_owned = SourceNormalizer.normalize(@source)
+          normalized_dir, source_owned, source_commit = SourceNormalizer.normalize(@source)
           manifest = Manifest.read(dir: normalized_dir)
         rescue SourceNormalizer::UnknownSourceError => e
           raise InstallError, "Source normalization failed: #{e.message}"
@@ -142,6 +143,110 @@ module Samagotchi
             update_target_index(target_scope, target_path, file_key) unless @dry_run
           end
         end
+
+        # ── Hooks: copy hooks/*.rb into <bundle_dir>/hooks/ ───────────────
+        hooks_target = File.join(provenance.bundle_dir, "hooks")
+        all_hooks_in_bundle = []
+        hooks_files_for_provenance = {}
+        if manifest
+          hook_entries = manifest.hooks
+          # Fallback: if manifest has no hooks but source has hooks/*.rb, discover them
+          if hook_entries.empty?
+            discovered = Dir.glob(File.join(normalized_dir, "hooks", "*.rb")).map { |p| File.basename(p) }
+            discovered.each do |bn|
+              # Build minimal metadata so copy still happens (event unknown -> skipped by loader but copied for integrity)
+              hook_entries[bn] = { sha256: "", event: "", on_error: "skip", priority: 100 }
+            end
+          end
+
+          hook_entries.each do |basename, meta|
+            next unless basename.is_a?(String) && !basename.empty?
+            all_hooks_in_bundle << basename
+            src = File.join(normalized_dir, "hooks", basename)
+            next unless File.exist?(src)
+
+            dest = File.join(hooks_target, basename)
+
+            if @dry_run
+              if File.exist?(dest) && !@force
+                @results[basename] = { status: "would_skip" }
+              else
+                @results[basename] = { status: "would_install" }
+              end
+              next
+            end
+
+            # Local-edit detection for upgrade path (overwrite + warn)
+            if @upgrade && existing_provenance && File.exist?(dest) && !@force
+              prev_meta = existing_provenance[:hooks] ? (existing_provenance[:hooks][basename.to_sym] || existing_provenance[:hooks][basename]) : nil
+              if prev_meta
+                prev_sha = (prev_meta[:sha256] || prev_meta["sha256"] || "").to_s.sub(/\Asha256:/, "")
+                if File.exist?(dest)
+                  cur_sha = Digest::SHA256.hexdigest(File.read(dest))
+                  if cur_sha != prev_sha && !prev_sha.empty?
+                    @warnings << "Hook #{basename} was locally modified; overwriting"
+                  end
+                end
+              end
+            end
+
+            FileUtils.mkdir_p(hooks_target)
+            FileUtils.cp(src, dest)
+            status = File.exist?(dest) && @upgrade ? "updated" : "installed"
+            # For fresh install, status is installed; for upgrade overwrite, mark updated
+            if @upgrade && existing_provenance
+              @results[basename] = { status: "updated" }
+            else
+              @results[basename] = { status: "installed" }
+            end
+            hooks_files_for_provenance[basename] = dest
+          end
+        else
+          # No manifest (non-strict): still copy any hooks/*.rb if present
+          Dir.glob(File.join(normalized_dir, "hooks", "*.rb")).each do |src|
+            basename = File.basename(src)
+            all_hooks_in_bundle << basename
+            dest = File.join(hooks_target, basename)
+            if @dry_run
+              @results[basename] = { status: "would_install" }
+            else
+              FileUtils.mkdir_p(hooks_target)
+              FileUtils.cp(src, dest)
+              @results[basename] = { status: "installed" }
+              hooks_files_for_provenance[basename] = dest
+            end
+          end
+        end
+
+        # Prune stale hooks (removed from bundle) — reuse bases pruning via provenance but also remove files
+        if @upgrade && existing_provenance && existing_provenance[:hooks] && !@dry_run
+          existing_provenance[:hooks].keys.each do |old_key|
+            old_key_str = old_key.to_s
+            next if all_hooks_in_bundle.include?(old_key_str)
+            old_dest = File.join(hooks_target, old_key_str)
+            if File.exist?(old_dest) && !@force
+              @warnings << "Bundle no longer includes hook #{old_key_str} but local file exists — removing"
+            end
+            FileUtils.rm_f(old_dest) if File.exist?(old_dest)
+          end
+        end
+
+        # Verify hook checksums in strict mode (mirror .md block)
+        if manifest && @strict
+          all_hooks_in_bundle.each do |basename|
+            next if @conflicts.key?(basename)
+            expected = manifest.checksum_for_hook(basename)
+            if expected
+              dest = File.join(hooks_target, basename)
+              next unless File.exist?(dest)
+              actual = Digest::SHA256.hexdigest(File.read(dest))
+              if actual != expected
+                @warnings << "Checksum mismatch for hook #{basename}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
+              end
+            end
+          end
+        end
+
         # Handle pruned files (removed from bundle) — report warnings
         if @upgrade && existing_provenance && existing_provenance[:files]
           existing_provenance[:files].keys.each do |old_key|
@@ -225,11 +330,26 @@ module Samagotchi
                 provenance_files[file_key] = target_path if File.exist?(target_path)
               end
             end
+            # Build hooks metadata for provenance
+            hooks_for_provenance = {}
+            if manifest && manifest.hooks && !manifest.hooks.empty?
+              hooks_for_provenance = manifest.hooks
+            elsif hooks_files_for_provenance.any?
+              hooks_files_for_provenance.each do |basename, path|
+                next unless File.exist?(path)
+                sha = Digest::SHA256.hexdigest(File.read(path))
+                hooks_for_provenance[basename] = { "sha256" => "sha256:#{sha}", "event" => "", "on_error" => "skip", "priority" => 100 }
+              end
+            end
             Provenance.new(name: @name).write(
               files: provenance_files,
               scope: target_scope,
               version: manifest.version,
-              source_path: @source
+              source_path: @source,
+              hooks: hooks_for_provenance,
+              trust_level: manifest.respond_to?(:trust_level) ? manifest.trust_level : nil,
+              source_commit: source_commit,
+              hooks_files: hooks_files_for_provenance
             )
           end
         end

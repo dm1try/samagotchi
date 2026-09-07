@@ -15,7 +15,8 @@ module Samagotchi
     class Registry
       def initialize
         @mutex = Monitor.new
-        @hooks = {} # name -> Array<Proc>
+        @hooks = {} # name -> Array<Proc> (config.yml / manual hooks, run last)
+        @bundle_hooks = {} # name -> Array<{bundle:, hook_name:, priority:, proc:}>
       end
 
       # Register a hook with the given name.
@@ -30,6 +31,53 @@ module Samagotchi
         @mutex.synchronize { (@hooks[name] ||= []) << block }
       end
 
+      # Register a bundle-owned hook. Bundle hooks are ordered by
+      # (priority, bundle_name, hook_name) and fire BEFORE any plain
+      # (config.yml / manual) hooks registered via #register.
+      #
+      # @param bundle_name [String] owning bundle
+      # @param event_name [Symbol] hook event identifier
+      # @param hook_name [String] logical hook name (e.g. file basename)
+      # @param priority [Integer] lower runs first
+      # @return [void]
+      def register_bundle(bundle_name, event_name, hook_name:, priority: 100, &block)
+        raise ArgumentError, "hook block is required" unless block_given?
+        @mutex.synchronize do
+          (@bundle_hooks[event_name] ||= []) << {
+            bundle: bundle_name,
+            hook_name: hook_name,
+            priority: priority,
+            proc: block
+          }
+        end
+      end
+
+      # Unregister all hooks owned by a bundle.
+      # @param bundle_name [String]
+      # @param event_name [Symbol, nil] restrict to one event (nil = all events)
+      # @return [Integer] number of hooks removed
+      def unregister_bundle(bundle_name, event_name = nil)
+        removed = 0
+        @mutex.synchronize do
+          if event_name
+            arr = @bundle_hooks[event_name]
+            return 0 unless arr
+            before = arr.size
+            @bundle_hooks[event_name] = arr.reject { |h| h[:bundle] == bundle_name }
+            removed = before - @bundle_hooks[event_name].size
+            @bundle_hooks.delete(event_name) if @bundle_hooks[event_name].empty?
+          else
+            @bundle_hooks.each do |_event, arr|
+              before = arr.size
+              arr.reject! { |h| h[:bundle] == bundle_name }
+              removed += before - arr.size
+            end
+            @bundle_hooks.reject! { |_, arr| arr.empty? }
+          end
+        end
+        removed
+      end
+
       # Unregister a hook by name.
       # @param name [Symbol]
       # @return [Boolean] true if it was removed, false if not found
@@ -37,10 +85,14 @@ module Samagotchi
         @mutex.synchronize { !!@hooks.delete(name) }
       end
 
-      # Remove all registered hooks.
+      # Remove all registered hooks (plain only).
+      # Bundle hooks are process-scoped and teardown via #unregister_bundle;
+      # they survive the per-turn clear_all so guardrails protect every turn.
       # @return [void]
       def clear_all
-        @mutex.synchronize { @hooks.clear }
+        @mutex.synchronize do
+          @hooks.clear
+        end
       end
 
       # Dispatch an event to all registered hooks under the given name.
@@ -50,14 +102,17 @@ module Samagotchi
       # caught and ignored so that one misbehaving hook cannot break the
       # running turn.
       #
+      # Ordering: bundle hooks (sorted by priority, then bundle, then hook
+      # name) fire first; plain hooks fire in registration order, last.
+      #
       # @param name [Symbol] the hook name to fire
       # @param event [Hash] the event payload (may be mutated by hooks)
       # @return [void]
       def fire(name, event)
-        hooks = @mutex.synchronize { @hooks[name] }
-        return unless hooks
+        procs = ordered_procs(name)
+        return if procs.empty?
 
-        hooks.each do |hook_proc|
+        procs.each do |hook_proc|
           begin
             hook_proc.call(event)
           rescue StandardError
@@ -66,9 +121,23 @@ module Samagotchi
         end
       end
 
-      # @return [Integer] total number of registered hooks
+      # @return [Integer] total number of registered hooks (bundle + plain)
       def size
-        @mutex.synchronize { @hooks.values.sum(&:size) }
+        @mutex.synchronize { @hooks.values.sum(&:size) + @bundle_hooks.values.sum(&:size) }
+      end
+
+      private
+
+      # Returns the ordered list of procs for an event: bundle hooks sorted by
+      # (priority, bundle, hook_name), followed by plain hooks in registration
+      # order.
+      def ordered_procs(name)
+        @mutex.synchronize do
+          bundle_procs = (@bundle_hooks[name] || [])
+            .sort_by { |h| [h[:priority].to_i, h[:bundle].to_s, h[:hook_name].to_s] }
+            .map { |h| h[:proc] }
+          bundle_procs + (@hooks[name] || [])
+        end
       end
     end
   end

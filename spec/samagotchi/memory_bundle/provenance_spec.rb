@@ -131,4 +131,45 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       expect(prov.base_path("identity.md")).not_to end_with(".md.md")
     end
   end
+
+  describe "hooks" do
+    it "returns hooks_dir" do
+      prov = described_class.new(name: "my-bundle")
+      expect(prov.hooks_dir).to eq(File.join(bundles_dir, "my-bundle", "hooks"))
+    end
+
+    it "write/read round-trips hooks map and trust_level + source_commit (experimental must survive)" do
+      prov = described_class.new(name: "hook-bundle")
+      prov.write(files: {}, scope: "system", version: "1.0", source_path: "/src",
+                 hooks: { "guardrails.rb" => { "sha256" => "sha256:abc", "event" => "before_tool_call", "on_error" => "fail_closed", "priority" => 10 } },
+                 trust_level: "experimental", source_commit: "deadbeef")
+      data = prov.read
+      expect(data[:hooks]).to include(:"guardrails.rb")
+      expect(data[:trust_level]).to eq("experimental")
+      expect(data[:source_commit]).to eq("deadbeef")
+    end
+
+    it "each_installed_holding_hooks yields only hook-bearing bundles" do
+      p1 = described_class.new(name: "with-hooks")
+      p1.write(files: {}, scope: "system", version: "1.0", source_path: "/src",
+               hooks: { "a.rb" => { "sha256" => "sha256:x", "event" => "e", "on_error" => "skip", "priority" => 100 } })
+      p2 = described_class.new(name: "without-hooks")
+      p2.write(files: {}, scope: "system", version: "1.0", source_path: "/src")
+      names = []
+      described_class.each_installed_holding_hooks { |n, _d| names << n }
+      expect(names).to include("with-hooks")
+      expect(names).not_to include("without-hooks")
+    end
+
+    it "each_installed_holding_hooks is no-op for empty/absent dir" do
+      FileUtils.rm_rf(bundles_dir)
+      expect { |b| described_class.each_installed_holding_hooks(&b) }.not_to yield_control
+      expect(described_class.each_installed_holding_hooks.to_a).to be_empty
+    end
+
+    it "each_installed_holding_hooks returns enum when no block" do
+      enum = described_class.each_installed_holding_hooks
+      expect(enum).to be_a(Enumerator)
+    end
+  end
 end

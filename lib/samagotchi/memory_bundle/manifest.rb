@@ -19,7 +19,7 @@ module Samagotchi
     class Manifest
       class ValidationError < StandardError; end
 
-      attr_reader :name, :version, :scope, :description, :files
+      attr_reader :name, :version, :scope, :description, :files, :hooks, :trust_level
 
       def initialize(path:)
         @path = path
@@ -29,6 +29,8 @@ module Samagotchi
         @scope    = normalize_scope(raw["scope"])
         @description = (raw["description"] || "").to_s
         @files    = parse_files(raw["files"] || {})
+        @hooks    = parse_hooks(raw["hooks"] || {})
+        @trust_level = (raw["trust_level"] || "experimental").to_s
       end
 
       def self.read(dir:)
@@ -45,8 +47,17 @@ module Samagotchi
         raw.start_with?("sha256:") ? raw[7..] : raw
       end
 
+      # Returns sha256 hex for a hook basename (e.g. "guardrails.rb").
+      def checksum_for_hook(basename)
+        raw = @hooks[basename]
+        return nil unless raw
+        sha = raw[:sha256] || raw["sha256"]
+        return nil unless sha
+        sha.to_s.start_with?("sha256:") ? sha.to_s[7..] : sha.to_s
+      end
+
       # Writes a fresh manifest.yml from computed checksums at `dir`.
-      def self.write(dir:, name:, version:, scope: nil, description: "", files:)
+      def self.write(dir:, name:, version:, scope: nil, description: "", files:, hooks: nil, trust_level: nil)
         FileUtils.mkdir_p(dir)
         manifest = {
           "name" => name,
@@ -55,6 +66,15 @@ module Samagotchi
         }
         manifest["scope"] = scope if scope
         manifest["files"] = files # { "file.md" => "sha256:abc..." }
+        if hooks && !hooks.empty?
+          # Normalize hooks to string-keyed with sha256 prefix preserved
+          manifest["hooks"] = hooks.transform_keys(&:to_s).transform_values do |v|
+            h = v.transform_keys(&:to_s)
+            h["sha256"] = h["sha256"].to_s.start_with?("sha256:") ? h["sha256"].to_s : "sha256:#{h["sha256"]}" if h["sha256"]
+            h
+          end
+        end
+        manifest["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
         File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
       end
 
@@ -82,6 +102,26 @@ module Samagotchi
                    else
                      "sha256:#{str}"
                    end
+        end
+      end
+
+      def parse_hooks(raw)
+        return {} unless raw.is_a?(Hash)
+        raw.each_with_object({}) do |(k, v), acc|
+          next unless k.is_a?(String) && !k.empty?
+          next unless v.is_a?(Hash)
+          sha = (v["sha256"] || v[:sha256] || "").to_s
+          sha = sha.start_with?("sha256:") ? sha : "sha256:#{sha}" unless sha.empty?
+          event = (v["event"] || v[:event] || "").to_s.strip
+          on_error = (v["on_error"] || v[:on_error] || "skip").to_s.strip
+          on_error = "skip" if on_error.empty?
+          priority = (v["priority"] || v[:priority] || 100).to_i
+          acc[k] = {
+            sha256: sha,
+            event: event,
+            on_error: on_error,
+            priority: priority
+          }
         end
       end
     end

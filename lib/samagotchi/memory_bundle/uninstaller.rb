@@ -47,7 +47,8 @@ module Samagotchi
         target_dir = resolve_target_dir(target_scope)
 
         files = data[:files] || {}
-        if files.empty?
+        hooks = data[:hooks] || {}
+        if files.empty? && hooks.empty?
           # No file list, just remove provenance
           FileUtils.rm_rf(provenance.bundle_dir)
           return true
@@ -79,6 +80,26 @@ module Samagotchi
             IndexUpdater.remove_index(target_scope, file_key_str)
           rescue => _e
           end
+        end
+
+        # ── Hooks removal (bundle-owned) ──────────────────────────
+        # Hooks are stored under <bundle_dir>/hooks/ and are not part of the index.
+        # Explicit removal for intent; the final rm_rf sweeps it anyway.
+        if hooks.is_a?(Hash) && !hooks.empty?
+          hooks_dir = provenance.hooks_dir
+          hooks.each do |hook_key, _meta|
+            hook_key_str = hook_key.to_s
+            hook_path = File.join(hooks_dir, hook_key_str)
+            if File.exist?(hook_path)
+              FileUtils.rm_f(hook_path)
+              @removed_files << "hooks/#{hook_key_str}"
+            end
+          end
+          # Remove hooks dir if empty, else rm_rf will clean
+          FileUtils.rm_rf(hooks_dir) if Dir.exist?(hooks_dir)
+        else
+          # Ensure stale hooks dir removed even if provenance has no hooks map but dir exists
+          FileUtils.rm_rf(provenance.hooks_dir) if Dir.exist?(provenance.hooks_dir)
         end
 
         FileUtils.rm_rf(provenance.bundle_dir)

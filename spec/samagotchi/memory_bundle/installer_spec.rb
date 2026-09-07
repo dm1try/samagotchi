@@ -352,4 +352,72 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(installer.placeholder_warnings).to include("test.md: {{placeholder}}")
     end
   end
+
+  describe "hooks" do
+    def write_bundle_with_hooks(base_dir, files = {}, hooks = {}, name: "test-bundle", version: "1.0.0", trust_level: nil)
+      bundle_dir = File.join(base_dir, "bundle_hooks_#{rand(1000)}")
+      FileUtils.mkdir_p(bundle_dir)
+      FileUtils.mkdir_p(File.join(bundle_dir, "hooks"))
+      files.each { |fname, content| File.write(File.join(bundle_dir, fname), content) }
+      hooks.each { |fname, content| File.write(File.join(bundle_dir, "hooks", fname), content) }
+      manifest = { "name" => name, "version" => version, "files" => {}, "hooks" => {} }
+      files.keys.each { |k| manifest["files"][k] = "sha256:#{Digest::SHA256.hexdigest(files[k])}" }
+      hooks.keys.each { |k| manifest["hooks"][k] = { "sha256" => "sha256:#{Digest::SHA256.hexdigest(hooks[k])}", "event" => "before_tool_call", "on_error" => "fail_closed", "priority" => 10 } }
+      manifest["trust_level"] = trust_level if trust_level
+      File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump(manifest))
+      bundle_dir
+    end
+
+    it "copies hooks/*.rb to <bundle_dir>/hooks/" do
+      bundle_dir = write_bundle_with_hooks(tmpdir, { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" })
+      installer = installer_for(source: bundle_dir, name: "hook-bundle", scope: "system")
+      installer.run
+      expect(File.exist?(File.join(bundles_dir, "hook-bundle", "hooks", "guardrails.rb"))).to be true
+      expect(installer.results["guardrails.rb"][:status]).to eq("installed")
+    end
+
+    it "stores hook provenance and trust_level" do
+      bundle_dir = write_bundle_with_hooks(tmpdir, { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, trust_level: "reviewed")
+      installer = installer_for(source: bundle_dir, name: "hook-bundle", scope: "system")
+      installer.run
+      data = JSON.parse(File.read(File.join(bundles_dir, "hook-bundle", "manifest.json")), symbolize_names: true)
+      expect(data[:hooks]).to include(:"guardrails.rb")
+      expect(data[:trust_level]).to eq("reviewed")
+    end
+
+    it "upgrade overwrites hook and warns on local edit" do
+      bundle_dir = write_bundle_with_hooks(tmpdir, { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, name: "up-bundle")
+      installer = installer_for(source: bundle_dir, name: "up-bundle", scope: "system")
+      installer.run
+      # local edit
+      hook_path = File.join(bundles_dir, "up-bundle", "hooks", "guardrails.rb")
+      File.write(hook_path, File.read(hook_path) + "# local edit\n")
+      # new bundle version
+      bundle_dir2 = write_bundle_with_hooks(tmpdir, { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); raise \"x\"; end; end" }, name: "up-bundle", version: "1.0.1")
+      up_installer = described_class.new(source: bundle_dir2, name: "up-bundle", scope: "system", force: false, strict: true, upgrade: true)
+      up_installer.run
+      expect(up_installer.warnings.any? { |w| w.include?("locally modified") }).to be true
+      expect(up_installer.results["guardrails.rb"][:status]).to eq("updated")
+    end
+
+    it "dry_run does not copy hooks" do
+      bundle_dir = write_bundle_with_hooks(tmpdir, { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" })
+      installer = described_class.new(source: bundle_dir, name: "dry-bundle", scope: "system", force: false, strict: true, dry_run: true)
+      installer.run
+      expect(File.exist?(File.join(bundles_dir, "dry-bundle", "hooks", "guardrails.rb"))).to be false
+      expect(installer.results["guardrails.rb"][:status]).to eq("would_install")
+    end
+
+    it "strict hook checksum verify warns on mismatch" do
+      bundle_dir = File.join(tmpdir, "bundle_hook_cksum")
+      FileUtils.mkdir_p(File.join(bundle_dir, "hooks"))
+      File.write(File.join(bundle_dir, "identity.md"), "# Id\n")
+      File.write(File.join(bundle_dir, "hooks", "guardrails.rb"), "class Guardrails; def call(e); end; end")
+      manifest = { "name" => "cksum-hook", "version" => "1.0", "files" => { "identity.md" => "sha256:#{Digest::SHA256.hexdigest("# Id\n")}" }, "hooks" => { "guardrails.rb" => { "sha256" => "sha256:0000000000000000000000000000000000000000000000000000000000000000", "event" => "before_tool_call" } } }
+      File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump(manifest))
+      installer = installer_for(source: bundle_dir, name: "cksum-hook", scope: "system")
+      installer.run
+      expect(installer.warnings.any? { |w| w.include?("Checksum mismatch for hook") }).to be true
+    end
+  end
 end

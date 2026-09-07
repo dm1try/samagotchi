@@ -135,4 +135,36 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
       expect(owned).to be true
     end
   end
+
+  describe "git source" do
+    it "captures HEAD commit before .git strip and threads it through" do
+      Dir.mktmpdir do |repo_parent|
+        repo = File.join(repo_parent, "repo")
+        FileUtils.mkdir_p(repo)
+        system("git", "init", repo, out: File::NULL, err: File::NULL)
+        system("git", "-C", repo, "config", "user.email", "test@test.com", out: File::NULL, err: File::NULL)
+        system("git", "-C", repo, "config", "user.name", "Test", out: File::NULL, err: File::NULL)
+        File.write(File.join(repo, "identity.md"), "# Id\n")
+        manifest = { "name" => "git-bundle", "version" => "1.0.0", "files" => { "identity.md" => "sha256:fake" } }
+        File.write(File.join(repo, "manifest.yml"), YAML.dump(manifest))
+        system("git", "-C", repo, "add", ".", out: File::NULL, err: File::NULL)
+        system("git", "-C", repo, "commit", "-m", "init", out: File::NULL, err: File::NULL)
+        expected = `git -C #{repo} rev-parse HEAD`.strip
+        url = "file://#{repo}"
+        path, owned, commit = described_class.normalize(url)
+        expect(owned).to be true
+        expect(commit).to eq(expected)
+        expect(File.exist?(File.join(path, "identity.md"))).to be true
+        expect(File.exist?(File.join(path, ".git"))).to be false
+        described_class.cleanup(path)
+      end
+    end
+
+    it "returns nil commit for non-git sources" do
+      bundle_dir = write_bundle_dir(tmpdir, "identity.md" => "# Id\n")
+      path, owned = described_class.normalize(bundle_dir)
+      expect(path).to eq(File.expand_path(bundle_dir))
+      expect(owned).to be false
+    end
+  end
 end

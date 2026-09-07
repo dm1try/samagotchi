@@ -127,4 +127,63 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
       expect(content).not_to include("scope:")
     end
   end
+
+  describe "hooks" do
+    it "parses hooks: sha/event/on_error/priority with defaults and both hex forms" do
+      path = write_manifest({
+        "hooks" => {
+          "guardrails.rb" => { "sha256" => "abc123", "event" => "before_tool_call", "on_error" => "fail_closed", "priority" => "10" },
+          "audit.rb" => { "sha256" => "sha256:def456", "event" => "after_tool_call" }
+        },
+        "trust_level" => "reviewed"
+      })
+      m = described_class.new(path: path)
+      expect(m.hooks["guardrails.rb"][:sha256]).to eq("sha256:abc123")
+      expect(m.hooks["guardrails.rb"][:event]).to eq("before_tool_call")
+      expect(m.hooks["guardrails.rb"][:on_error]).to eq("fail_closed")
+      expect(m.hooks["guardrails.rb"][:priority]).to eq(10)
+      expect(m.hooks["audit.rb"][:on_error]).to eq("skip") # default
+      expect(m.hooks["audit.rb"][:priority]).to eq(100)
+      expect(m.trust_level).to eq("reviewed")
+    end
+
+    it "defaults trust_level to experimental" do
+      path = write_manifest({})
+      m = described_class.new(path: path)
+      expect(m.trust_level).to eq("experimental")
+      expect(m.hooks).to eq({})
+    end
+
+    it "ignores non-string hook keys and empty basenames" do
+      path = write_manifest({ "hooks" => { "" => { "sha256" => "abc", "event" => "x" }, 123 => { "sha256" => "abc" } } })
+      m = described_class.new(path: path)
+      expect(m.hooks).to be_empty
+    end
+
+    it "checksum_for_hook strips prefix and handles both forms" do
+      path = write_manifest({ "hooks" => { "a.rb" => { "sha256" => "sha256:xyz", "event" => "e" }, "b.rb" => { "sha256" => "bare", "event" => "e" } } })
+      m = described_class.new(path: path)
+      expect(m.checksum_for_hook("a.rb")).to eq("xyz")
+      expect(m.checksum_for_hook("b.rb")).to eq("bare")
+      expect(m.checksum_for_hook("missing.rb")).to be_nil
+    end
+
+    it "write round-trips hooks and trust_level" do
+      dest = File.join(tmpdir, "out_hooks")
+      described_class.write(
+        dir: dest,
+        name: "hook-bundle",
+        version: "1.0.0",
+        scope: "system",
+        description: "with hooks",
+        files: {},
+        hooks: { "guardrails.rb" => { "sha256" => "sha256:abc", "event" => "before_tool_call", "on_error" => "fail_closed", "priority" => 10 } },
+        trust_level: "reviewed"
+      )
+      m = described_class.read(dir: dest)
+      expect(m.hooks["guardrails.rb"][:event]).to eq("before_tool_call")
+      expect(m.trust_level).to eq("reviewed")
+      expect(m.checksum_for_hook("guardrails.rb")).to eq("abc")
+    end
+  end
 end

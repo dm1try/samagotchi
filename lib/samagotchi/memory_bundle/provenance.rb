@@ -29,10 +29,26 @@ module Samagotchi
         @bundle_dir = File.join(self.class.bundles_dir, name)
       end
 
+      def hooks_dir
+        File.join(@bundle_dir, "hooks")
+      end
+
+      def self.each_installed_holding_hooks
+        return enum_for(:each_installed_holding_hooks) unless block_given?
+        dir = self.bundles_dir
+        return unless Dir.exist?(dir)
+        Dir[File.join(dir, "*", "manifest.json")].sort.each do |mjson|
+          data = JSON.parse(File.read(mjson), symbolize_names: true)
+          next unless data && data[:hooks].is_a?(Hash) && !data[:hooks].empty?
+          yield File.basename(File.dirname(mjson)), data
+        end
+      end
+
       # Writes provenance for an installation: merges into existing manifest.json
       # and saves base snapshots. Stale base snapshots (files removed from bundle)
       # are pruned.
-      def write(files:, scope:, version:, source_path:)
+      # @param hooks_files [Hash] basename => path for hook file snapshots (optional)
+      def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {})
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -61,14 +77,62 @@ module Samagotchi
           end
         end
 
+        # Hooks provenance: persist metadata and base snapshots for hooks
+        hooks_map = {}
+        # existing hooks for pruning
+        existing_hooks = existing && existing[:hooks] ? existing[:hooks] : {}
+        # Normalize incoming hooks (basename => metadata hash)
+        normalized_hooks = {}
+        if hooks.is_a?(Hash)
+          hooks.each do |k, v|
+            next unless k.is_a?(String) && !k.empty?
+            next unless v.is_a?(Hash)
+            hv = v.transform_keys(&:to_sym)
+            sha = (hv[:sha256] || "").to_s
+            sha = sha.start_with?("sha256:") ? sha : "sha256:#{sha}" unless sha.empty?
+            normalized_hooks[k] = {
+              sha256: sha,
+              event: (hv[:event] || "").to_s,
+              on_error: (hv[:on_error] || "skip").to_s,
+              priority: (hv[:priority] || 100).to_i
+            }
+          end
+        end
+        # Prune stale hook bases
+        if existing_hooks.is_a?(Hash)
+          existing_hooks.keys.each do |old_key|
+            old_key_str = old_key.to_s
+            unless normalized_hooks.key?(old_key_str) || normalized_hooks.key?(old_key_str.to_sym)
+              old_base = File.join(bases_dir, old_key_str)
+              FileUtils.rm_f(old_base) if File.exist?(old_base)
+            end
+          end
+        end
+        # Save base snapshots for hooks where a file path was provided
+        hooks_files = {} unless hooks_files.is_a?(Hash)
+        normalized_hooks.each do |k, meta|
+          hooks_map[k] = meta.transform_keys(&:to_s)
+          src = hooks_files[k] || hooks_files[k.to_sym]
+          if src && File.exist?(src.to_s)
+            begin
+              File.write(File.join(bases_dir, k), File.read(src.to_s))
+            rescue StandardError
+              nil
+            end
+          end
+        end
+
         manifest_data = {
           "name" => @name,
           "version" => version.to_s,
           "scope" => scope.to_s,
           "source" => source_path.to_s,
           "installed_at" => DateTime.now.iso8601,
-          "files" => merged_entries
+          "files" => merged_entries,
+          "hooks" => hooks_map
         }
+        manifest_data["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
+        manifest_data["source_commit"] = source_commit.to_s if source_commit && !source_commit.to_s.empty?
 
         File.write(File.join(@bundle_dir, "manifest.json"), JSON.pretty_generate(manifest_data))
       end

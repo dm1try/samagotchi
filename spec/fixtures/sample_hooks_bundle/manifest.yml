@@ -1,0 +1,13 @@
+name: sample-hooks-bundle
+version: 1.0.0
+scope: system
+description: "Sample bundle with guardrail"
+files:
+  identity.md: sha256:abb92e44f446b66ef1aa44474bba89ec1854c0ab068f3fe565ac21284cebf3a6
+hooks:
+  guardrails.rb:
+    sha256: sha256:c85b4847cafaf3f4011833a87b455abcfb57b2bb5715056f779a1aadf820b504
+    event: before_tool_call
+    on_error: fail_closed
+    priority: 10
+trust_level: reviewed

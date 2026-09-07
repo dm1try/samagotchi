@@ -72,6 +72,7 @@ module Samagotchi
       end
       # Load hooks from config (plugins) and create the registry
       @hooks = load_hooks_from_config
+      load_hooks_from_bundles
       # Use the KernelLoop's reminder_store if provided (TerminalUI path),
       # otherwise create our own (SessionManager/one-shot paths). This ensures
       # tool calls via KernelLoop and reminder injection via Engine read/write
@@ -843,6 +844,24 @@ module Samagotchi
       data = Samagotchi::ConfigFile.read_yaml(path: config_path)
       return Hooks::Loader.load(data) if data.is_a?(Hash)
       Hooks::Registry.new
+    end
+
+    def load_hooks_from_bundles
+      require_relative "memory_bundle/provenance"
+      MemoryBundle::Provenance.each_installed_holding_hooks do |bundle_name, data|
+        bundle_dir = File.join(MemoryBundle::Provenance.bundles_dir, bundle_name)
+        hooks_dir = File.join(bundle_dir, "hooks")
+        if (data[:trust_level] || "experimental").to_s == "experimental"
+          warn "[hooks] Bundle '#{bundle_name}' is experimental — its hooks may change or misbehave."
+        end
+        begin
+          Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: data[:hooks], registry: @hooks)
+        rescue Exception => e
+          warn "[samagotchi:hooks] bundle '#{bundle_name}' failed to load hooks: #{e.class}: #{e.message}"
+        end
+      end
+    rescue Exception => e
+      warn "[samagotchi:hooks] failed to load bundle hooks: #{e.class}: #{e.message}"
     end
 
     # Build (or disable) the idle recap job. Recap is opt-in: it is active

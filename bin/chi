@@ -245,6 +245,10 @@ if ARGV[0] == "memory"
     begin
       _nd, manifest = installer.run
       puts installer.summary
+      if manifest && manifest.hooks && !manifest.hooks.empty?
+        hook_cnt = manifest.hooks.size
+        puts "Hooks: #{hook_cnt} hook(s) (#{manifest.hooks.keys.join(', ')})"
+      end
       puts "Provenance written to: #{Samagotchi::MemoryBundle::Provenance.bundles_dir}/#{bundle_name}/" if manifest
       exit 0
     rescue Samagotchi::MemoryBundle::Installer::InstallError => e
@@ -318,6 +322,9 @@ if ARGV[0] == "memory"
     begin
       _nd, manifest = installer.run
       puts installer.summary
+      if manifest && manifest.hooks && !manifest.hooks.empty?
+        puts "Hooks: #{manifest.hooks.size} hook(s) (#{manifest.hooks.keys.join(', ')})"
+      end
       if dry_run
         puts "(dry-run: no changes written)" 
         exit 0
@@ -422,6 +429,8 @@ if ARGV[0] == "memory"
       uninstaller.run
       puts "Uninstalled bundle '#{bundle_name}'"
       puts "Removed: #{uninstaller.removed_files.join(', ')}" unless uninstaller.removed_files.empty?
+      hook_removed = uninstaller.removed_files.count { |f| f.start_with?("hooks/") }
+      puts "Hooks removed: #{hook_removed}" if hook_removed > 0
       uninstaller.warnings.each { |w| puts w }
       exit 0
     rescue Samagotchi::MemoryBundle::Uninstaller::UninstallError => e
@@ -448,6 +457,24 @@ if ARGV[0] == "memory"
         label = mods.empty? ? "ok" : mods.join(",")
         puts "  #{k}: #{label}"
       end
+      # Hooks
+      hooks = st[:provenance][:hooks] || {}
+      trust = st[:provenance][:trust_level] || "experimental"
+      commit = st[:provenance][:source_commit]
+      puts "  trust_level: #{trust}" if hooks.any? || trust
+      puts "  source_commit: #{commit}" if commit
+      if hooks.any?
+        puts "  Hooks (#{hooks.size}):"
+        hooks.each do |hk, meta|
+          m = meta.is_a?(Hash) ? meta.transform_keys(&:to_s) : {}
+          event = m["event"] || ""
+          on_error = m["on_error"] || "skip"
+          prio = m["priority"] || 100
+          hook_path = File.join(Samagotchi::MemoryBundle::Provenance.new(name: name).hooks_dir, hk.to_s)
+          exists = File.exist?(hook_path) ? "ok" : "missing"
+          puts "    #{hk}: event=#{event} on_error=#{on_error} priority=#{prio} [#{exists}]"
+        end
+      end
     else
       bundles_dir = Samagotchi::MemoryBundle::Provenance.bundles_dir
       unless File.directory?(bundles_dir)
@@ -461,7 +488,9 @@ if ARGV[0] == "memory"
           st = Samagotchi::MemoryBundle::Status.bundle_status(bname)
           next unless st
           mods = st[:files].values.count { |v| v[:modified] || v[:missing] }
-          puts "  #{bname} v#{st[:provenance][:version]} scope=#{st[:scope]} files=#{st[:files].size} issues=#{mods}"
+          hooks_count = (st[:provenance][:hooks] || {}).size
+          hook_info = hooks_count > 0 ? " hooks=#{hooks_count}" : ""
+          puts "  #{bname} v#{st[:provenance][:version]} scope=#{st[:scope]} files=#{st[:files].size}#{hook_info} issues=#{mods}"
         end
       end
     end
@@ -483,16 +512,64 @@ if ARGV[0] == "memory"
     scope = data[:scope]&.to_s || "system"
     target_dir = Samagotchi::MemoryBundle::Installer.new(source: ".", name: bname, scope: scope).send(:resolve_target_dir, scope)
     files = data[:files] || {}
-    keys = file_arg ? [file_arg] : files.keys.map(&:to_s)
-    keys.each do |k|
-      base = prov.base_path(k)
-      cur = File.join(target_dir, k)
-      puts "=== #{k} ==="
-      puts "--- base (provenance) ---"
-      puts File.exist?(base) ? File.read(base) : "(no base)"
-      puts "--- current (on-disk) ---"
-      puts File.exist?(cur) ? File.read(cur) : "(missing)"
+    hooks = data[:hooks] || {}
+    if file_arg
+      # Try file first, then hook
+      if files.key?(file_arg.to_sym) || files.key?(file_arg)
+        base = prov.base_path(file_arg)
+        cur = File.join(target_dir, file_arg)
+        puts "=== #{file_arg} ==="
+        puts "--- base (provenance) ---"
+        puts File.exist?(base) ? File.read(base) : "(no base)"
+        puts "--- current (on-disk) ---"
+        puts File.exist?(cur) ? File.read(cur) : "(missing)"
+      elsif hooks.key?(file_arg.to_sym) || hooks.key?(file_arg)
+        base = prov.base_path(file_arg)
+        cur = File.join(prov.hooks_dir, file_arg)
+        puts "=== hooks/#{file_arg} ==="
+        puts "--- base (provenance) ---"
+        puts File.exist?(base) ? File.read(base) : "(no base)"
+        puts "--- current (on-disk) ---"
+        puts File.exist?(cur) ? File.read(cur) : "(missing)"
+        # Show hook metadata
+        meta = hooks[file_arg.to_sym] || hooks[file_arg]
+        if meta
+          m = meta.transform_keys(&:to_s)
+          puts "--- metadata: event=#{m['event']} on_error=#{m['on_error']} priority=#{m['priority']} sha256=#{m['sha256']}"
+        end
+      else
+        puts "=== #{file_arg} ==="
+        puts "(not found in bundle)"
+      end
       puts ""
+    else
+      keys = files.keys.map(&:to_s)
+      keys.each do |k|
+        base = prov.base_path(k)
+        cur = File.join(target_dir, k)
+        puts "=== #{k} ==="
+        puts "--- base (provenance) ---"
+        puts File.exist?(base) ? File.read(base) : "(no base)"
+        puts "--- current (on-disk) ---"
+        puts File.exist?(cur) ? File.read(cur) : "(missing)"
+        puts ""
+      end
+      # Hooks diff
+      hooks.keys.map(&:to_s).each do |k|
+        base = prov.base_path(k)
+        cur = File.join(prov.hooks_dir, k)
+        puts "=== hooks/#{k} ==="
+        puts "--- base (provenance) ---"
+        puts File.exist?(base) ? File.read(base) : "(no base)"
+        puts "--- current (on-disk) ---"
+        puts File.exist?(cur) ? File.read(cur) : "(missing)"
+        meta = hooks[k.to_sym] || hooks[k]
+        if meta
+          m = meta.transform_keys(&:to_s)
+          puts "--- metadata: event=#{m['event']} on_error=#{m['on_error']} priority=#{m['priority']} sha256=#{m['sha256']}"
+        end
+        puts ""
+      end
     end
     exit 0
 

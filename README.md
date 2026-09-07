@@ -395,6 +395,57 @@ end
 
 Note: `:before_tool_call` can mutate the `:call` hash to modify tool execution, or set `blocked`/`block_reason` to veto it entirely.
 
+### Bundle Hooks (unified workflow bundle)
+
+Bundles can ship executable guardrails alongside memories. A bundle with hooks lives as a directory with a `hooks/` subdirectory (flat, basename-keyed):
+
+```
+my-bundle/
+  manifest.yml
+  identity.md
+  hooks/
+    guardrails.rb   # class Guardrails; def call(event); ...; end; end
+    audit.rb
+```
+
+`manifest.yml` may carry an optional `hooks:` map (both `files:` and `hooks:` are optional; a bundle may carry only one):
+
+```yaml
+name: code-review-workflow
+version: 1.0.0
+scope: project
+files:
+  identity.md: sha256:abc...
+hooks:
+  guardrails.rb:
+    sha256: 1234...
+    event: before_tool_call
+    on_error: fail_closed   # default for before_tool_call
+    priority: 10
+  audit.rb:
+    sha256: 5678...
+    event: after_tool_call
+    on_error: log
+    priority: 100
+trust_level: reviewed        # reviewed | experimental (default)
+```
+
+Notes:
+
+- Hook key = basename (flat under `hooks/`). No subdirs in v1.
+- `event` is required for auto-registration; a hook with no event is skipped.
+- `sha256` is integrity (not authenticity). No signing in v1.
+- Hook code is the bundle author's source of truth: on upgrade, hooks are overwritten; if the installed file was locally modified, a warning is emitted (`was locally modified; overwriting`).
+- A raising `:before_tool_call` guardrail respects `on_error`: `fail_closed` sets `event[:blocked]=true` (fail-closed), `log` warns, `skip` is silent.
+- Ordering: bundle hooks fire by `(priority, bundle_name, hook_name)` (lower priority first), then plain `config.yml` hooks in registration order.
+- Installing a bundle executes its hook code at `Engine` startup. Only install bundles you trust, as you would a gem. Hooks are **not** executed at install time (copy-only); they are `module_eval`'d at `Engine.new` inside per-bundle `Samagotchi::Bundles::<name>` namespaces (no top-level `require` collisions). Keep hook files side-effect-free at load time; do work in `#call` — top-level side effects (require, IO, `at_exit`, global assignment) run once per `Engine.new` (class redefinition is idempotent).
+
+Lifecycle:
+
+- `bin/chi memory install <source>` copies `hooks/*.rb` to `~/.config/samagotchi/memories/.bundles/<name>/hooks/` and persists metadata + `trust_level` + `source_commit` (git HEAD) to provenance.
+- `Engine.new` loads `config.yml` hooks first, then bundle hooks via `Provenance.each_installed_holding_hooks` → `Hooks::BundleLoader.load`. Bundle hooks are process-scoped (they survive the per-turn `clear_hooks`; only plain hooks are cleared). Experimental bundles emit a one-line startup warning.
+- `bin/chi memory status`, `diff`, `uninstall`, `export` are hook-aware (counts, metadata, removal).
+
 ## Model Server Transport
 
 Chi talks to a model server over HTTP and supports three transports:

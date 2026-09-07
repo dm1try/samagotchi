@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "fileutils"
+require "shellwords"
 
 module Samagotchi
   module MemoryBundle
@@ -59,13 +60,26 @@ module Samagotchi
           args += [url, clone_dir]
           result = system(*args)
           raise UnknownSourceError, "git clone failed for #{git_url}" unless result && File.directory?(clone_dir)
+          # Capture HEAD commit before stripping .git (audit trail)
+          commit = nil
+          begin
+            commit = `git -C #{clone_dir.shellescape} rev-parse HEAD 2>/dev/null`.strip
+            commit = nil if commit.empty?
+          rescue StandardError
+            commit = nil
+          end
           # Remove .git to avoid leaking
           FileUtils.rm_rf(File.join(clone_dir, ".git"))
-          return clean_copy_of(clone_dir)
+          path, owned = clean_copy_of(clone_dir)
+          # Thread commit through via extra return value and class accessor for backward compat
+          @last_git_commit = commit
+          return [path, owned, commit]
         end
       end
 
       class << self
+        attr_accessor :last_git_commit
+
         def cleanup(dir)
           FileUtils.rm_rf(dir) if dir && File.directory?(dir)
         end
