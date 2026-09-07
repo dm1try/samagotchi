@@ -41,7 +41,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #composer #actionMenu.visible{display:flex}
 #composer #actionMenu button{justify-content:flex-start;background:transparent;color:#e6e8eb;padding:8px 10px;border-radius:6px;text-align:left}
 #composer #actionMenu button:hover{background:#22262f}
-#infoBar{display:none;padding:10px 12px;border-top:1px solid #1f232b;background:#d4a72c;color:#0b0d11;gap:10px;align-items:center;flex-wrap:wrap}
+#infoBar{display:none;padding:10px 12px;border-top:1px solid #1f232b;background:#d4a72c;color:#0b0d11;gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0}
 #infoBar.visible{display:flex}
 #infoBar .info{flex:1;min-width:0;font-size:13px;line-height:1.4;word-break:break-word;display:flex;flex-direction:column;gap:2px}
 #infoBar .meta{font-size:11px;opacity:.9;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -49,7 +49,8 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #infoBar .meta .status{font-size:11px;padding:2px 6px;border-radius:999px;background:#0002;color:#0b0d11;border:1px solid #0001}
 #infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;opacity:.75;word-break:break-all}
 #infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:#0001}
-#infoBar .preview-line{font-size:13px;word-break:break-word}
+#infoBar .preview-line{font-size:13px;word-break:break-word;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;line-height:1.4;max-height:2.8em}
+#infoBar .preview-line .preview, #infoBar .preview-line .mem{word-break:break-word}
 #infoBar .mem{font-size:12px;opacity:.9}
 #infoBar button{padding:6px 14px;border-radius:8px;font-size:13px;font-weight:600}
 #infoBar button.ghost{color:#0b0d11;background:#fff3}
@@ -59,13 +60,15 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #bottomHead{display:flex;gap:8px;align-items:center}
 #bottomHead input{flex:1;background:#151821;border:1px solid #1f232b;color:#e6e8eb;padding:8px 10px;border-radius:8px}
 #bottomHead .count{font-size:11px;color:#8b949e;white-space:nowrap}
-#gridList{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-height:320px;overflow:auto;padding:2px}
+#gridList{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-height:216px;overflow:auto;padding:2px}
 #gridList:empty::after{content:"No sessions";color:#8b949e;font-size:13px;padding:12px}
 .card{padding:12px;border-radius:10px;background:#151821;border:1px solid #1f232b;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:72px}
 .card:hover{border-color:#2d333f;background:#1a1f2b}
 .card.active{background:#1b2336;border-color:#223150}
 .card .id{font-family:ui-monospace,monospace;font-size:11px;color:#8b949e}
 .card .preview{font-size:13px;color:#e6e8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#topStrip .card .preview{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#gridList .card .preview{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;word-break:break-word;line-height:1.4}
 .card .meta{font-size:11px;color:#8b949e;display:flex;gap:6px;align-items:center}
 .card .status{font-size:11px;padding:2px 6px;border-radius:999px;background:#22262f;color:#8b949e}
 .status.running{background:#1a2e1a;color:#7ee787}
@@ -74,11 +77,13 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .status.error{background:#3d1f1f;color:#ff7b72}
 @media(max-width:900px){
   #topStrip{grid-template-columns:1fr}
-  #gridList{grid-template-columns:1fr;max-height:420px}
+  #gridList{grid-template-columns:1fr;max-height:216px}
 }
-body.zen #topStrip, body.zen #bottomArea{display:none}
-body.zen #center{flex:1;min-height:calc(100vh - 70px)}
-body.zen main{padding:8px;gap:8px}
+body.zen #topStrip, body.zen #bottomArea, body.zen #firstPeek{display:none !important}
+body.zen #topStrip[style], body.zen #firstPeek[style]{display:none !important}
+body.zen #center{flex:1;min-height:0;overflow:hidden}
+body.zen main{padding:8px;gap:8px;overflow:hidden;min-height:0}
+body.zen #history{flex:1;min-height:0;overflow:auto}
 a{color:#7aa5ff}
 </style>
 </head>
