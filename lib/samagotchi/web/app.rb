@@ -518,6 +518,7 @@ module Samagotchi
       end
 
       def session_to_json(s)
+        used = s.respond_to?(:used_memory_names) ? Array(s.used_memory_names) : []
         {
           id: s.id,
           status: s.status,
@@ -528,8 +529,22 @@ module Samagotchi
           updated_at: s.updated_at,
           last_prompt: s.last_prompt,
           short_id: s.id.to_s[0, 8],
-          test_run: !!s.test_run
+          test_run: !!s.test_run,
+          used_memory_names: used,
+          first_preview: first_preview_for(s)
         }
+      end
+
+      def first_preview_for(session)
+        msgs = session.respond_to?(:messages) ? Array(session.messages) : []
+        first_user = msgs.find { |m| m[:role].to_s == "user" || m["role"].to_s == "user" }
+        raw = first_user ? (first_user[:content] || first_user["content"] || "") : (session.last_prompt || "")
+        norm = raw.to_s.gsub(/\s+/, " ").strip
+        return "" if norm.empty?
+
+        norm.length > 80 ? "#{norm[0, 80]}…" : norm
+      rescue StandardError
+        ""
       end
 
       def read_history(id)

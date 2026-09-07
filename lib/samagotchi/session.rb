@@ -25,11 +25,12 @@ module Samagotchi
     SORT_ORDERS = %w[asc desc].freeze
 
     attr_accessor :id, :metadata_version, :mode, :model_name, :working_directory, :messages,
-                   :created_at, :updated_at, :status, :last_prompt, :test_run, :pending_question
+                   :created_at, :updated_at, :status, :last_prompt, :test_run, :pending_question,
+                   :used_memory_names
 
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
                    metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "", test_run: false,
-                   pending_question: nil)
+                   pending_question: nil, used_memory_names: [])
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -42,6 +43,7 @@ module Samagotchi
       @last_prompt = last_prompt
       @test_run = !!test_run
       @pending_question = pending_question
+      @used_memory_names = Array(used_memory_names).map(&:to_s).reject(&:empty?).uniq
     end
 
     # Build a new, unsaved session.
@@ -78,6 +80,7 @@ module Samagotchi
       messages = (data["messages"] || []).map { |msg| symbolize_message_keys(msg) }
       pending = data["pending_question"]
       pending = symbolize_message_keys(pending) if pending.is_a?(Hash)
+      used_mems = data["used_memory_names"] || data["used_memories"] || []
       new(
         id: data.fetch("id"),
         metadata_version: data.fetch("metadata_version", 1),
@@ -90,7 +93,8 @@ module Samagotchi
         status: data.fetch("status", STATUS_IDLE),
         last_prompt: data.fetch("last_prompt", ""),
         test_run: data.fetch("test_run", false),
-        pending_question: pending
+        pending_question: pending,
+        used_memory_names: Array(used_mems)
       )
     rescue JSON::ParserError => e
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
@@ -106,6 +110,7 @@ module Samagotchi
 
       sessions = Dir.glob(File.join(state_dir, "*#{FILE_EXT}")).filter_map do |path|
         data = JSON.parse(File.read(path))
+        used_mems = data["used_memory_names"] || data["used_memories"] || []
         new(
           id: data.fetch("id"),
           metadata_version: data.fetch("metadata_version", 1),
@@ -117,7 +122,8 @@ module Samagotchi
           updated_at: data.fetch("updated_at"),
           status: data.fetch("status", STATUS_IDLE),
           last_prompt: data.fetch("last_prompt", ""),
-          test_run: data.fetch("test_run", false)
+          test_run: data.fetch("test_run", false),
+          used_memory_names: Array(used_mems)
         )
       rescue JSON::ParserError, KeyError
         nil
@@ -258,7 +264,8 @@ module Samagotchi
         "status" => @status,
         "last_prompt" => @last_prompt,
         "test_run" => !!@test_run,
-        "pending_question" => @pending_question ? stringify_message_keys(@pending_question) : nil
+        "pending_question" => @pending_question ? stringify_message_keys(@pending_question) : nil,
+        "used_memory_names" => Array(@used_memory_names)
       }
 
       File.write(temp_path, JSON.pretty_generate(record) + "\n")

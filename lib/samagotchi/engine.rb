@@ -131,6 +131,13 @@ module Samagotchi
       @session = nil
       @session_observer = SessionObserver.new
       @metrics = SessionMetrics.new
+      @used_memory_names = []
+      @used_memory_mutex = Monitor.new
+      # Hydrate from resumed session if present
+      if @resume_session && @resume_session.respond_to?(:used_memory_names)
+        @used_memory_names = Array(@resume_session.used_memory_names).map(&:to_s).reject(&:empty?).uniq
+        @session = @resume_session
+      end
       # Shared inactivity clock + turn-running flag for the idle subsystems
       # (session recap + reminders), all polled by the shared IdleScheduler.
       # `record_activity` is the single seam both the run_turn/worker path and
@@ -399,6 +406,7 @@ module Samagotchi
     #   :event_seq     [Integer]   @session_observer.event_count
     #   :metrics       [Hash]      @metrics.snapshot (per-session analytics)
     #   :pending_question [Hash, nil] current pending structured question
+    #   :used_memory_names [Array<String>] deduped memory names active this session
     def session_state_snapshot
       {
         status: @session&.status,
@@ -406,8 +414,75 @@ module Samagotchi
         last_prompt: @session&.last_prompt,
         event_seq: @session_observer&.event_count,
         metrics: @metrics.snapshot,
-        pending_question: @question_mutex.synchronize { @pending_question&.dup }
+        pending_question: @question_mutex.synchronize { @pending_question&.dup },
+        used_memory_names: @used_memory_mutex.synchronize { @used_memory_names.dup }
       }
+    end
+
+    # @return [Array<String>] deduped used memory names (thread-safe copy)
+    def used_memory_names
+      @used_memory_mutex.synchronize { @used_memory_names.dup }
+    end
+
+    def add_used_memory_names(names)
+      return if names.nil? || Array(names).empty?
+
+      @used_memory_mutex.synchronize do
+        Array(names).each do |n|
+          v = n.to_s.strip
+          next if v.empty?
+          next if @used_memory_names.include?(v)
+
+          @used_memory_names << v
+        end
+      end
+    end
+
+    def sync_used_memories_from_session(session)
+      return unless session && session.respond_to?(:used_memory_names)
+
+      add_used_memory_names(Array(session.used_memory_names))
+    end
+
+    def memory_name_from_tool_call(call)
+      return nil unless call.is_a?(Hash)
+
+      tool = call[:name].to_s
+      case tool
+      when Tools::MemoryRead::NAME
+        content = call[:content].to_s.strip
+        return nil if content.empty?
+
+        # comma-separated names
+        content.split(",").map { |s| normalize_memory_name(s) }.compact
+      when Tools::Read::NAME
+        path = call[:content].to_s.strip.tr("\\", "/")
+        return nil if path.empty?
+        return nil unless path.match?(/memories\/.+\.md\z/)
+
+        normalize_memory_name(path)
+      else
+        nil
+      end
+    end
+
+    def normalize_memory_name(raw)
+      v = raw.to_s.strip
+      return nil if v.empty?
+
+      # basename without .md, handle comma already split
+      base = File.basename(v, ".md").strip
+      base.empty? ? nil : base
+    end
+
+    def capture_used_memory_from_event(event)
+      return unless event.is_a?(Hash) && event[:type] == :tool_call_started
+
+      call = event[:call].is_a?(Hash) ? event[:call] : {}
+      names = memory_name_from_tool_call(call)
+      return if names.nil? || (names.is_a?(Array) && names.empty?)
+
+      add_used_memory_names(names)
     end
 
     # ── Ask-user-question (structured qualification) ──────────────────────────
@@ -622,6 +697,7 @@ module Samagotchi
     # Set the current session for recap tracking (used by REPL which bypasses run_turn)
     def session=(session)
       @session = session
+      sync_used_memories_from_session(session)
     end
 
     # @return [IdleRecap, nil] the idle recap detector, or nil when disabled
@@ -661,6 +737,7 @@ module Samagotchi
     def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil)
       # Track the active session for recap and status snapshot.
       @session = session
+      sync_used_memories_from_session(session)
       # Mark the turn running before generating so the idle recap detector does
       # not fire (or render an invalidated recap) while the model is working.
       set_turn_running(true)
@@ -695,6 +772,9 @@ module Samagotchi
         else
           messages[0] = system_message
         end
+        # Explicit --memory preloads are now known after system prompt build.
+        add_used_memory_names(activated_memory_names)
+        sync_used_memories_from_session(session)
 
         # Inject due reminders as a tail system message (after history, before
         # the new user prompt) to preserve prefix KV cache. Mutating the head
@@ -749,6 +829,22 @@ module Samagotchi
 
         @metrics.persist
         session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
+        # Persist deduped used memories onto the session for Web + reload.
+        begin
+          session.used_memory_names = used_memory_names
+        rescue StandardError
+          nil
+        end
+        # Notify live observers of the updated memory list (so yellow bar refreshes
+        # even without a tool_call event if the preload was the only addition).
+        # Only emit when there is something to report to avoid noisy event_count drift.
+        if used_memory_names.any?
+          begin
+            emit_event(on_event, { type: :used_memories_updated, used_memory_names: used_memory_names })
+          rescue StandardError
+            nil
+          end
+        end
 
         # Emit turn_completed or turn_canceled
         if result.respond_to?(:canceled?) && result.canceled?
@@ -972,6 +1068,12 @@ module Samagotchi
     end
 
     def emit_event(on_event, event)
+      # Capture used memories synchronously in the turn thread.
+      begin
+        capture_used_memory_from_event(event)
+      rescue StandardError
+        nil
+      end
       # Turn-scoped sink: receives the original event hash (no event_seq),
       # byte-for-byte unchanged. Sink errors are isolated and never break the
       # kernel loop (same as KernelLoop's own handling).
