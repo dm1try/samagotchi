@@ -16,13 +16,15 @@ button.ghost{background:#22262f;color:#c9d1d9}
 button.danger{background:#da3633}
 button:disabled{opacity:.5;cursor:not-allowed}
 main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:auto;background:#0b0d11;min-height:0}
-#topStrip{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-#topStrip:empty{display:none}
+#topStrip{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;min-height:88px;align-content:start;transition:opacity 280ms ease, transform 280ms ease}
+#topStrip:empty{display:grid}
+#topStrip.loading, #gridList.loading{opacity:.75}
 #center{flex:1;display:flex;flex-direction:column;min-height:45vh;background:#151821;border:1px solid #1f232b;border-radius:12px;overflow:hidden}
+#stage{flex:1;display:flex;flex-direction:column;position:relative;min-height:260px;background:#0b0d11;overflow:hidden}
 #firstPeek{display:none;padding:8px 12px;background:#9fddd0;color:#0b0d11;font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #firstPeek.visible{display:block}
 #composer #actionBtn.cancel{background:#da3633}
-#history{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px;background:#0b0d11;min-height:200px}
+#history{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px;background:#0b0d11;min-height:160px}
 .bubble{background:#151821;border:1px solid #1f232b;border-radius:12px;padding:12px 14px;white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5}
 .bubble.output{border-left:3px solid #1f6feb}
 .bubble.output.streaming{border-left-color:#58a6ff;opacity:.95}
@@ -32,17 +34,23 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .hint{color:#8b949e;font-size:13px;padding:12px}
 #composer{padding:12px;border-top:1px solid #1f232b;gap:8px;background:#0f1115;display:flex}
 #composer textarea{flex:1;min-height:44px;max-height:160px;resize:vertical;background:#0f1115;border:1px solid #1f232b;color:#e6e8eb;padding:10px 12px;border-radius:10px}
-#composer .actions-col{display:flex;flex-direction:column;gap:6px;align-items:stretch}
+#composer .actions-col{display:flex;flex-direction:column;gap:6px;align-items:stretch;width:132px;flex-shrink:0}
 #composer .actions-col button{white-space:nowrap}
 #composer .actions-col .split{display:flex;gap:4px}
-#composer #actionBtn{min-width:96px}
-#composer #createAltBtn{font-size:12px;padding:6px 10px}
+#composer #actionBtn{min-width:96px;flex:1}
+#composer #actionMenuBtn{width:32px;min-width:32px;visibility:hidden}
+#composer #createAltBtn{font-size:12px;padding:6px 10px;min-height:28px;visibility:hidden}
+#composer .actions-col.ready #actionMenuBtn{visibility:visible}
+#composer .actions-col.has-selection #createAltBtn{visibility:visible}
 #composer #actionMenu{position:absolute;right:12px;bottom:52px;background:#1f242f;border:1px solid #2d333f;border-radius:8px;padding:4px;display:none;flex-direction:column;gap:2px;z-index:10;min-width:180px}
 #composer #actionMenu.visible{display:flex}
 #composer #actionMenu button{justify-content:flex-start;background:transparent;color:#e6e8eb;padding:8px 10px;border-radius:6px;text-align:left}
 #composer #actionMenu button:hover{background:#22262f}
-#infoBar{display:none;padding:10px 12px;border-top:1px solid #1f232b;background:#d4a72c;color:#0b0d11;gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0}
+#infoBar{display:flex;padding:10px 12px;border-top:1px solid #1f232b;background:#d4a72c;color:#0b0d11;gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;min-height:56px;transition:opacity 280ms ease, min-height 300ms ease}
 #infoBar.visible{display:flex}
+#infoBar .idle{font-size:13px;line-height:1.4}
+#infoBar .idle small{font-size:11px;opacity:.85}
+#infoBar .idle code{font-family:ui-monospace,monospace;font-size:11px;background:#0002;padding:1px 4px;border-radius:4px}
 #infoBar .info{flex:1;min-width:0;font-size:13px;line-height:1.4;word-break:break-word;display:flex;flex-direction:column;gap:2px}
 #infoBar .meta{font-size:11px;opacity:.9;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 #infoBar .meta .id{font-family:ui-monospace,monospace;font-weight:700;font-size:12px}
@@ -54,14 +62,26 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #infoBar .mem{font-size:12px;opacity:.9}
 #infoBar button{padding:6px 14px;border-radius:8px;font-size:13px;font-weight:600}
 #infoBar button.ghost{color:#0b0d11;background:#fff3}
-#empty{display:grid;place-items:center;color:#8b949e;padding:24px;text-align:center}
-#empty.hidden{display:none}
+#empty{position:absolute;inset:0;display:grid;place-items:center;color:#8b949e;padding:24px;text-align:center;background:#0b0d11;z-index:1}
+#empty.hidden{display:none !important}
+#empty .brand-start{font-size:clamp(28px,5vw,38px);font-weight:700;letter-spacing:.02em;color:#e6e8eb;padding:0}
+#empty .brand-start span{color:#7aa5ff}
+#empty .brand-start small{display:none}
 #bottomArea{display:flex;flex-direction:column;gap:8px}
 #bottomHead{display:flex;gap:8px;align-items:center}
 #bottomHead input{flex:1;background:#151821;border:1px solid #1f232b;color:#e6e8eb;padding:8px 10px;border-radius:8px}
-#bottomHead .count{font-size:11px;color:#8b949e;white-space:nowrap}
-#gridList{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-height:216px;overflow:auto;padding:2px}
+#bottomHead .count{font-size:11px;color:#8b949e;white-space:nowrap;min-width:72px;text-align:right;font-variant-numeric:tabular-nums}
+#gridList{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-height:216px;min-height:80px;overflow:auto;padding:2px;transition:opacity 300ms ease}
 #gridList:empty::after{content:"No sessions";color:#8b949e;font-size:13px;padding:12px}
+.card.skeleton{pointer-events:none;border-style:dashed;opacity:.9;animation:skeleton-pulse 1.2s ease-in-out infinite}
+.card.skeleton .line{height:10px;background:#22262f;border-radius:6px}
+.card.skeleton .line.short{width:42%}
+.card.skeleton .line.long{width:78%}
+.card.skeleton .line.long2{width:62%}
+.card.skeleton .line.tiny{width:30%;height:8px}
+@keyframes skeleton-pulse{0%,100%{opacity:1}50%{opacity:.55}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+#topStrip:not(.loading) .card, #gridList:not(.loading) .card{animation:fadeIn .28s ease}
 .card{padding:12px;border-radius:10px;background:#151821;border:1px solid #1f232b;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:72px}
 .card:hover{border-color:#2d333f;background:#1a1f2b}
 .card.active{background:#1b2336;border-color:#223150}
@@ -83,17 +103,20 @@ body.zen #topStrip, body.zen #bottomArea, body.zen #firstPeek{display:none !impo
 body.zen #topStrip[style], body.zen #firstPeek[style]{display:none !important}
 body.zen #center{flex:1;min-height:0;overflow:hidden}
 body.zen main{padding:8px;gap:8px;overflow:hidden;min-height:0}
+body.zen #stage{flex:1;min-height:0;overflow:hidden}
 body.zen #history{flex:1;min-height:0;overflow:auto}
 a{color:#7aa5ff}
 </style>
 </head>
 <body>
 <main>
-  <section id="topStrip" aria-label="Latest sessions"></section>
+  <section id="topStrip" aria-label="Latest sessions" class="loading"><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div></section>
   <section id="center">
     <div id="firstPeek"></div>
-    <div id="history"></div>
-    <div id="empty"><div class="brand-start"><span>Chi</span> Web<small>select a session or create one — or type a prompt below to start a new session.<br>Sessions are stored in <code>~/.local/state/samagotchi/sessions</code>.</small></div></div>
+    <div id="stage">
+      <div id="history"></div>
+      <div id="empty"><div class="brand-start"><span>Chi</span> Web</div></div>
+    </div>
     <div id="composer" style="position:relative">
       <textarea id="prompt" placeholder="New session prompt — press Enter to create (Shift+Enter for newline)"></textarea>
       <div class="actions-col">
@@ -101,7 +124,7 @@ a{color:#7aa5ff}
           <button id="actionBtn">Create</button>
           <button id="actionMenuBtn" class="ghost" title="More actions" style="padding:8px 10px">▾</button>
         </div>
-        <button id="createAltBtn" class="ghost" style="display:none">Create new</button>
+        <button id="createAltBtn" class="ghost" style="visibility:hidden">Create new</button>
       </div>
       <div id="actionMenu">
         <button data-action="send">Send to current session</button>
@@ -109,17 +132,17 @@ a{color:#7aa5ff}
       </div>
     </div>
     <div id="infoBar">
-      <div class="info" id="infoText"></div>
-      <button class="danger" id="infoStopBtn" title="Stop session (terminate worker)">stop</button>
+      <div class="info" id="infoText"><div class="idle">No session selected — select one above or type a prompt below to start a new session.</div><div class="idle"><small>Sessions are stored in <code>~/.local/state/samagotchi/sessions</code> · choose a session or create one via the composer</small></div></div>
+      <button class="danger" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop</button>
       <button class="ghost" id="zenBtn" title="Zen mode (z / Esc)">zen</button>
     </div>
   </section>
   <section id="bottomArea">
     <div id="bottomHead">
       <input id="filter" placeholder="Search… (preview / id / status)">
-      <span class="count" id="count"></span>
+      <span class="count" id="count">loading…</span>
     </div>
-    <div id="gridList"></div>
+    <div id="gridList" class="loading"><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="line long2"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="line long2"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="line long2"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="line long2"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="line long2"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="line long2"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div></div>
   </section>
 </main>
 <script type="module" src="/assets/app.js"></script>
