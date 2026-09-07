@@ -46,6 +46,7 @@ and `--resume`. Flag semantics (also in README's "CLI Usage" section):
 - When modifying code, always ensure RSpec tests pass.
 - Use memory scopes explicitly: `memory_read` may omit scope (project -> system fallback), while `memory_write` must provide `scope` (`project` or `system`).
 - `memory_write` accepts an optional `description` (and its scoped `index.md` is auto-maintained). The entry name is passed via the `name` parameter (not `path` — the file tools use `path`). Each entry is written as a managed line — `- **name** · scope · date · size — description` — with every other line preserved byte-for-byte.
+- `memory_write` also accepts `current_model_only: true` to save a model-specific overlay (`<name>.<model-key>.md`) that is auto-appended when read under that model. See README.md's "Model-Specific Memory Overlays" section.
 - When adding new capabilities, update the relevant tools in `lib/samagotchi/tools/`.
 - Always check `AGENT.md` for current operational context.
 - Prefer `execute` for short commands and `task_create`/`task_wait` for long-running commands. Use `task_get`/`task_list` for nonblocking status checks and `task_stop` to stop a task.

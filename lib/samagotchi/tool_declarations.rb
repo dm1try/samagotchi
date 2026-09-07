@@ -64,12 +64,13 @@ module Samagotchi
 
     TOOL_MEMORY_WRITE = <<~DECL.strip
       <|tool>declaration:memory_write{
-        description:<|"|>Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`); each scope's index.md is auto-maintained (one managed line per entry); use name "index" to write the index file verbatim.<|"|>,
+        description:<|"|>Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`); each scope's index.md is auto-maintained (one managed line per entry); use name "index" to write the index file verbatim. If the user asks to save guidance for the current model only, pass current_model_only: true to save a model-specific overlay.<|"|>,
         parameters:{
           name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension<|"|>, required:true},
           content:{type:<|"|>string<|"|>, description:<|"|>Markdown content to write<|"|>, required:true},
           scope:{type:<|"|>string<|"|>, description:<|"|>Scope to write into: project or system<|"|>, required:true},
-          description:{type:<|"|>string<|"|>, description:<|"|>Optional short description appended to the managed index line<|"|>}
+          description:{type:<|"|>string<|"|>, description:<|"|>Optional short description appended to the managed index line<|"|>},
+          current_model_only:{type:<|"|>boolean<|"|>, description:<|"|>Set true to save this entry as a model-specific overlay for the current model only (<name>.<model>.md); it is auto-appended when the entry is read under that model and never listed in the index.<|"|>}
         }
       }<tool|>
     DECL
@@ -281,7 +282,7 @@ module Samagotchi
       },
       {
         name: "memory_write",
-        description: "Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`); each scope's index.md is auto-maintained (one managed line per entry); use name \"index\" to write the index file verbatim.",
+        description: "Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`); each scope's index.md is auto-maintained (one managed line per entry); use name \"index\" to write the index file verbatim. If the user asks to save guidance for the current model only, pass current_model_only: true to save a model-specific overlay.",
         parameters: {
           type: "object",
           properties: {
@@ -300,6 +301,10 @@ module Samagotchi
             description: {
               type: "string",
               description: "Optional short description appended to the managed index line"
+            },
+            current_model_only: {
+              type: "boolean",
+              description: "Set true to save this entry as a model-specific overlay for the current model only (<name>.<model>.md); it is auto-appended when the entry is read under that model and never listed in the index."
             }
           },
           required: ["name", "content", "scope"]

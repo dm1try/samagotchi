@@ -1346,4 +1346,51 @@ Need to inspect the filesystem first.
       expect(kernel.instance_variable_get(:@profile).name).to eq("qwen36")
     end
   end
+
+  describe "model_key" do
+    it "accepts model_key on initialization" do
+      kernel = described_class.new(client: client, model_key: "gemma4o")
+      expect(kernel.model_key).to eq("gemma4o")
+    end
+
+    it "defaults to nil" do
+      kernel = described_class.new(client: client)
+      expect(kernel.model_key).to be_nil
+    end
+
+    it "sync_model_key! updates the key" do
+      kernel = described_class.new(client: client, model_key: "initial")
+      kernel.sync_model_key!("updated")
+      expect(kernel.model_key).to eq("updated")
+    end
+  end
+
+  describe "#truthy?" do
+    let(:kernel) { described_class.new(client: client) }
+
+    it "coerces true" do
+      expect(kernel.send(:truthy?, true)).to be true
+    end
+
+    it "coerces false" do
+      expect(kernel.send(:truthy?, false)).to be false
+    end
+
+    it "coerces nil" do
+      expect(kernel.send(:truthy?, nil)).to be false
+    end
+
+    it "coerces string 'true'" do
+      expect(kernel.send(:truthy?, "true")).to be true
+    end
+
+    it "coerces string 'false'" do
+      expect(kernel.send(:truthy?, "false")).to be false
+    end
+
+    it "coerces other strings" do
+      expect(kernel.send(:truthy?, "1")).to be false
+      expect(kernel.send(:truthy?, "yes")).to be false
+    end
+  end
 end

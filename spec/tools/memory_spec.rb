@@ -322,5 +322,145 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
       expect(result).to include("5 bytes")
       expect(result).to include(File.join(project_memories_dir, "index.md"))
     end
+
+    # ── Overlay tests ────────────────────────────────────────────────────
+
+    describe "model overlays (current_model_only + read)" do
+      def mr
+        Samagotchi::Tools::MemoryRead
+      end
+
+      it "read with model_key appends overlay when key matches and same scope" do
+        File.write(File.join(project_memories_dir, "my_memory.md"), "base content")
+        File.write(File.join(project_memories_dir, "my_memory.gemma4o.md"), "overlay content")
+        result = mr.call("my_memory", scope: "project", model_key: "gemma4o")
+        expect(result).to include("base content")
+        expect(result).to include("Model-specific guidance (gemma4o):")
+        expect(result).to include("overlay content")
+      end
+
+      it "read with no key (legacy callers) returns unchanged output" do
+        File.write(File.join(project_memories_dir, "my_memory.md"), "base content")
+        File.write(File.join(project_memories_dir, "my_memory.gemma4o.md"), "overlay content")
+        result = mr.call("my_memory", scope: "project", model_key: nil)
+        expect(result).to eq("base content")
+        expect(result).not_to include("overlay")
+      end
+
+      it "index reads (blank name) never carry overlays" do
+        File.write(File.join(project_memories_dir, "index.md"), "## Index\n")
+        File.write(File.join(project_memories_dir, "index.gemma4o.md"), "overlay")
+        result = mr.call("", scope: "project", model_key: "gemma4o")
+        expect(result).to include("## Index")
+        expect(result).not_to include("overlay")
+      end
+
+      it "overlay is only appended when overlay file exists" do
+        File.write(File.join(project_memories_dir, "my_memory.md"), "base content")
+        result = mr.call("my_memory", scope: "project", model_key: "gemma4o")
+        expect(result).to eq("base content")
+      end
+
+      it "overlay is dormant under a different key" do
+        File.write(File.join(project_memories_dir, "my_memory.md"), "base content")
+        File.write(File.join(project_memories_dir, "my_memory.gemma4o.md"), "overlay content")
+        result = mr.call("my_memory", scope: "project", model_key: "qwen3-6-35b-a3b")
+        expect(result).to eq("base content")
+      end
+
+      it "comma-separated multi-name read applies overlay per matched name" do
+        File.write(File.join(project_memories_dir, "a.md"), "base-a")
+        File.write(File.join(project_memories_dir, "b.md"), "base-b")
+        File.write(File.join(project_memories_dir, "a.gemma4o.md"), "overlay-a")
+        result = mr.call("a, b", scope: "project", model_key: "gemma4o")
+        expect(result).to include("base-a")
+        expect(result).to include("overlay-a")
+        expect(result).to include("base-b")
+        expect(result).not_to include("overlay-b")
+      end
+
+      it "overlay is scoped to the same scope as the base" do
+        File.write(File.join(project_memories_dir, "my_memory.md"), "base")
+        # overlay in system, base in project — should not find overlay
+        File.write(File.join(system_memories_dir, "my_memory.gemma4o.md"), "sys-overlay")
+        result = mr.call("my_memory", scope: "project", model_key: "gemma4o")
+        expect(result).to eq("base")
+        expect(result).not_to include("overlay")
+      end
+
+      describe "write with current_model_only" do
+        it "writes suffixed file" do
+          result = described_class.call(
+            "overlay body",
+            path: "my_memory",
+            scope: "project",
+            current_model_only: true,
+            model_key: "gemma4o"
+          )
+          expect(result).to include("Model overlay 'my_memory'")
+          expect(result).to include("gemma4o")
+          expect(File.exist?(File.join(project_memories_dir, "my_memory.gemma4o.md"))).to be true
+          expect(File.read(File.join(project_memories_dir, "my_memory.gemma4o.md"))).to eq("overlay body")
+        end
+
+        it "does NOT create the base .md file" do
+          described_class.call(
+            "overlay body",
+            path: "my_memory",
+            scope: "project",
+            current_model_only: true,
+            model_key: "gemma4o"
+          )
+          expect(File.exist?(File.join(project_memories_dir, "my_memory.md"))).to be false
+        end
+
+        it "skips index upsert — index.md byte-identical" do
+          File.write(File.join(project_memories_dir, "index.md"), "- **existing**: entry\n")
+          before = File.read(File.join(project_memories_dir, "index.md"))
+          described_class.call(
+            "overlay body",
+            path: "my_memory",
+            scope: "project",
+            current_model_only: true,
+            model_key: "gemma4o"
+          )
+          after = File.read(File.join(project_memories_dir, "index.md"))
+          expect(after).to eq(before)
+        end
+
+        it "errors when model_key is nil" do
+          result = described_class.call(
+            "body",
+            path: "entry",
+            scope: "project",
+            current_model_only: true,
+            model_key: nil
+          )
+          expect(result).to include("model key is required")
+        end
+
+        it "errors when name is 'index'" do
+          result = described_class.call(
+            "body",
+            path: "index",
+            scope: "project",
+            current_model_only: true,
+            model_key: "gemma4o"
+          )
+          expect(result).to include("incompatible with the index entry")
+        end
+
+        it "errors when the model key has an invalid shape" do
+          result = described_class.call(
+            "body",
+            path: "my_memory",
+            scope: "project",
+            current_model_only: true,
+            model_key: "../escape"
+          )
+          expect(result).to include("invalid model key")
+        end
+      end
+    end
   end
 end

@@ -87,6 +87,7 @@ module Samagotchi
             content: args["content"] || args["text"] || args["body"],
             path: args["name"], scope: args["scope"],
             description: args["description"],
+            current_model_only: args["current_model_only"],
             start_line: nil, end_line: nil,
             cwd: nil, env: nil
           }

@@ -176,7 +176,8 @@ module Samagotchi
         when Tools::MemoryWrite::NAME
           # The declaration uses "name" (required) and "scope" (required).
           entry_name = params["name"] || ""
-          { name: name, content: params["content"] || "", path: entry_name, scope: params["scope"], description: params["description"] ? strip_gemma_delimiters(params["description"]) : nil }
+          { name: name, content: params["content"] || "", path: entry_name, scope: params["scope"], description: params["description"] ? strip_gemma_delimiters(params["description"]) : nil,
+            current_model_only: params["current_model_only"] }
         when Tools::Edit::NAME
           old_text = params["old_text"] || params["old"] || ""
           new_text = params["new_text"] || params["new"] || ""
@@ -325,6 +326,10 @@ module Samagotchi
           params[k] ||= unescape_native_value(v)
         end
         params_raw.scan(/(\w+):\s*(-?\d+)/) do |k, v|
+          params[k] ||= v
+        end
+        # Unquoted boolean values: key:true or key:false
+        params_raw.scan(/(\w+):\s*(true|false)\b/) do |k, v|
           params[k] ||= v
         end
         # Gemma 4 string delimiter: key:<|"|>value<|"|>
@@ -483,7 +488,8 @@ module Samagotchi
         when Tools::MemoryWrite::NAME
           entry_name = qwen_param_value(params, "name")
           content = qwen_param_value(params, "content", "text", "body", "value", strip: false)
-          { name: name, content: content, path: entry_name, scope: qwen_param_value(params, "scope"), description: qwen_param_value(params, "description") }
+          { name: name, content: content, path: entry_name, scope: qwen_param_value(params, "scope"), description: qwen_param_value(params, "description"),
+            current_model_only: qwen_param_value(params, "current_model_only") }
         when Tools::Edit::NAME
           old_text = qwen_param_value(params, "old_text", "old", strip: false)
           new_text = qwen_param_value(params, "new_text", "new", strip: false)

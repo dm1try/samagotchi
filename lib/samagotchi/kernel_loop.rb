@@ -128,7 +128,7 @@ module Samagotchi
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
 
-    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil, model_name: nil, no_interrupt: false, hooks: nil, reminder_store: nil)
+    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil, model_name: nil, no_interrupt: false, hooks: nil, reminder_store: nil, model_key: nil)
       @client = client || Client.new
       @verbose = verbose
       @debug_log = debug_log || DebugLog.new(path: log_file)
@@ -138,6 +138,7 @@ module Samagotchi
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(resolved_model_name)
       @hooks = hooks
       @reminder_store = reminder_store
+      @model_key = model_key
     end
 
     # @return [ReminderStore, nil] the reminder store for inspection (used by
@@ -150,6 +151,7 @@ module Samagotchi
     #   Engine to propagate its registry to an externally-created kernel (TUI path).
     attr_accessor :hooks
     attr_accessor :client
+    attr_accessor :model_key
 
     # Run the conversation loop and return the final model response plus
     # resumable conversation state when execution stops at max_iterations.
@@ -333,6 +335,10 @@ module Samagotchi
       @profile = ModelProfile.from_model_name(model_name)
     end
 
+    def sync_model_key!(key)
+      @model_key = key
+    end
+
     private
 
     def emit_stream_event(callback, event)
@@ -351,6 +357,13 @@ module Samagotchi
       @hooks.fire(name, event)
     rescue StandardError
       # A failing hook must not break the turn.
+    end
+
+    # Coerce a value to boolean — handles true/false, nil, and string "true"/"false".
+    def truthy?(val)
+      return true  if val == true
+      return false if val == false || val.nil?
+      val.to_s.strip.downcase == "true"
     end
 
     # ── Output char cap resolution ─────────────────────────────────────────────
@@ -697,9 +710,10 @@ module Samagotchi
 
       result = case call[:name]
                when Tools::MemoryRead::NAME
-                 tool.call(call[:content], scope: call[:scope])
+                 tool.call(call[:content], scope: call[:scope], model_key: @model_key)
                when Tools::MemoryWrite::NAME
-                 tool.call(call[:content], path: call[:path], scope: call[:scope], description: call[:description])
+                 tool.call(call[:content], path: call[:path], scope: call[:scope], description: call[:description],
+                           current_model_only: truthy?(call[:current_model_only]), model_key: @model_key)
                when Tools::Write::NAME
                  tool.call(call[:content], path: call[:path])
                when Tools::Read::NAME
@@ -738,7 +752,7 @@ module Samagotchi
         output: "[#{call[:name]}]\n#{result}",
         activity: tool_activity_event(call[:name], call, result)
       }
-     rescue => e
+    rescue => e
       verbose_log("── tool error: #{call[:name]} ──\n#{e.message}\n──────────────────")
       result = "Error: #{e.message}"
       {

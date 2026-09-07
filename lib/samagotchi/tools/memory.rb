@@ -32,7 +32,7 @@ module Samagotchi
 
       SEPARATOR = "\n\n---\n\n"
 
-      def self.call(entry_name, scope: nil)
+      def self.call(entry_name, scope: nil, model_key: nil)
         entry_name = entry_name.to_s.strip
         scope = normalize_scope(scope)
 
@@ -66,7 +66,15 @@ module Samagotchi
           resolved_scopes.each do |resolved_scope|
             path = memory_path(name, resolved_scope)
             if File.exist?(path)
-              results << File.read(path)
+              body = File.read(path)
+              # Append model-specific overlay if key is provided and overlay exists.
+              if model_key
+                overlay_path = ModelOverlay.overlay_path_for(name, model_key, resolved_scope)
+                if overlay_path && File.exist?(overlay_path)
+                  body += SEPARATOR + "Model-specific guidance (#{model_key}):\n" + File.read(overlay_path)
+                end
+              end
+              results << body
               found = true
               break
             end
@@ -152,7 +160,7 @@ module Samagotchi
         /^- \*\*#{Regexp.escape(name)}\*\*[ \t]*(?:[·•].*|:.*)?(\r?\n|\z)/
       end
 
-      def self.call(content, path:, scope:, description: nil)
+      def self.call(content, path:, scope:, description: nil, current_model_only: false, model_key: nil)
         entry_name = path.to_s.strip
         body = content.to_s
         return "Error: entry name is required" if entry_name.empty?
@@ -160,8 +168,22 @@ module Samagotchi
         return "Error: content is required" if body.empty?
         resolved_scope = MemoryRead.normalize_scope(scope)
 
+        if current_model_only
+          return "Error: model key is required for current_model_only writes" if model_key.nil? || model_key.to_s.strip.empty?
+          return "Error: invalid model key for current_model_only writes" unless model_key.to_s.match?(/\A[a-z0-9-]+\z/)
+          return "Error: current_model_only is incompatible with the index entry" if entry_name == MEMORY_INDEX
+        end
+
         dir = MemoryRead.memories_dir(resolved_scope)
         FileUtils.mkdir_p(dir)
+
+        if current_model_only && model_key
+          file_path = File.join(dir, "#{entry_name}.#{model_key}.md")
+          File.write(file_path, body)
+          bytes = body.bytesize
+          return "Model overlay '#{entry_name}' for #{model_key} saved to #{resolved_scope} scope (#{bytes} bytes)."
+        end
+
         file_path = File.join(dir, "#{entry_name}.md")
         File.write(file_path, body)
         bytes = body.bytesize

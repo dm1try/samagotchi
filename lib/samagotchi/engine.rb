@@ -21,6 +21,7 @@ require_relative "idle_scheduler"
 require_relative "hooks"
 require_relative "reminder_store"
 require_relative "tools/memory"
+require_relative "model_overlay"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -89,6 +90,8 @@ module Samagotchi
       @first_turn = true
       @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, hooks: @hooks, reminder_store: @reminder_store)
       sync_kernel_client!
+      @model_key = ModelOverlay.key_for(bare_model_name(@effective_model_name))
+      @kernel.sync_model_key!(@model_key) if @kernel.respond_to?(:sync_model_key!)
       # Keep kernel client in sync with active host via setter
       @kernel_client_synced = false
       # Engine owns hooks; if a kernel was supplied externally (TUI path) propagate
@@ -301,6 +304,8 @@ module Samagotchi
       bare = bare_model_name(resolved)
       @profile = ModelProfile.from_model_name(bare)
       @kernel.sync_profile_from_model!(bare) if @kernel.respond_to?(:sync_profile_from_model!)
+      @model_key = ModelOverlay.key_for(bare)
+      @kernel.sync_model_key!(@model_key) if @kernel.respond_to?(:sync_model_key!)
       @system_prompt = nil
       sync_kernel_client!
       if persist_default
@@ -1165,6 +1170,11 @@ module Samagotchi
           Each scope's `index.md` is auto-maintained by `memory_write` (one
           managed line per entry with name/scope/date/size); free-form sections
           are preserved. The verbatim `index` write (`path: "index"`) is kept.
+          Entries may have a model-specific companion <name>.<model>.md, auto-appended
+          when read under the matching model — the base entry is the contract;
+          overlays only add model-specific guidance and never contradict it.
+          If the user asks to save guidance for the current model only, pass
+          current_model_only: true to memory_write (the harness resolves the model key).
 
         Memory priority:
           Treat loaded Project/System memories as priority knowledge — second only to the current user prompt.
