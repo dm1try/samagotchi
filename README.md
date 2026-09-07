@@ -599,7 +599,7 @@ Tool behavior:
 - `memory_read`: `scope` is optional.
 - If `scope` is provided (`project` or `system`), only that scope is read.
 - If `scope` is omitted, read falls back from project to system.
-- `memory_write`: `scope` is required (`project` or `system`). The entry name is passed via the `name` parameter (not `path` — the file tools use `path`).
+- `memory_write`: `scope` is required (`project` or `system`). The entry name is passed via the `name` parameter (not `path` — the file tools use `path`). On success, the return value includes the full file path, so you can use the `edit` tool directly for targeted updates.
 
 #### Model-Specific Memory Overlays
 

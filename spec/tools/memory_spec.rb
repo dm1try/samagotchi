@@ -203,6 +203,12 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
       expect(result).to include("5 bytes")
     end
 
+    it "includes the entry file path in the success message" do
+      result = described_class.call("hello", path: "greet", scope: "project")
+      expect(result).to include("File written:")
+      expect(result).to include(File.join(project_memories_dir, "greet.md"))
+    end
+
     it "returns an error when content is empty" do
       result = described_class.call("", path: "entry", scope: "project")
       expect(result).to include("Error")
@@ -401,6 +407,18 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
           expect(result).to include("gemma4o")
           expect(File.exist?(File.join(project_memories_dir, "my_memory.gemma4o.md"))).to be true
           expect(File.read(File.join(project_memories_dir, "my_memory.gemma4o.md"))).to eq("overlay body")
+        end
+
+        it "includes the overlay file path in the success message" do
+          result = described_class.call(
+            "overlay body",
+            path: "my_memory",
+            scope: "project",
+            current_model_only: true,
+            model_key: "gemma4o"
+          )
+          expect(result).to include("File written:")
+          expect(result).to include(File.join(project_memories_dir, "my_memory.gemma4o.md"))
         end
 
         it "does NOT create the base .md file" do

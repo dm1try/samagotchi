@@ -181,13 +181,13 @@ module Samagotchi
           file_path = File.join(dir, "#{entry_name}.#{model_key}.md")
           File.write(file_path, body)
           bytes = body.bytesize
-          return "Model overlay '#{entry_name}' for #{model_key} saved to #{resolved_scope} scope (#{bytes} bytes)."
+          return "Model overlay '#{entry_name}' for #{model_key} saved to #{resolved_scope} scope (#{bytes} bytes). File written: #{file_path}"
         end
 
         file_path = File.join(dir, "#{entry_name}.md")
         File.write(file_path, body)
         bytes = body.bytesize
-        message = "Memory '#{entry_name}' saved to #{resolved_scope} scope (#{bytes} bytes)."
+        message = "Memory '#{entry_name}' saved to #{resolved_scope} scope (#{bytes} bytes). File written: #{file_path}"
 
         # The verbatim "write to index.md" behavior (path: "index") must not
         # trigger upsert logic.
