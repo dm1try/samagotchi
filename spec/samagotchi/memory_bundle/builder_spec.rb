@@ -8,10 +8,10 @@ require "json"
 require "digest"
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/provenance"
-require "samagotchi/memory_bundle/exporter"
+require "samagotchi/memory_bundle/builder"
 
-RSpec.describe Samagotchi::MemoryBundle::Exporter do
-  let(:tmpdir) { Dir.mktmpdir("exporter-") }
+RSpec.describe Samagotchi::MemoryBundle::Builder do
+  let(:tmpdir) { Dir.mktmpdir("builder-") }
   let(:system_dir) { File.join(tmpdir, "mem") }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
 
@@ -45,13 +45,13 @@ RSpec.describe Samagotchi::MemoryBundle::Exporter do
     src
   end
 
-  it "exports hooks/*.rb and hooks: manifest round-trip" do
-    src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, name: "export-hook", trust_level: "reviewed")
-    inst = Samagotchi::MemoryBundle::Installer.new(source: src, name: "export-hook", scope: "system", force: false, strict: true)
+  it "builds hooks/*.rb and hooks: manifest round-trip" do
+    src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, name: "build-hook", trust_level: "reviewed")
+    inst = Samagotchi::MemoryBundle::Installer.new(source: src, name: "build-hook", scope: "system", force: false, strict: true)
     inst.run
     out = File.join(tmpdir, "out")
-    exporter = described_class.new(scope: "system", name: "export-hook", version: "1.0.0", out: out)
-    result = exporter.run
+    builder = described_class.new(scope: "system", name: "build-hook", version: "1.0.0", out: out)
+    result = builder.run
     expect(File.exist?(File.join(out, "hooks", "guardrails.rb"))).to be true
     manifest = YAML.load_file(File.join(out, "manifest.yml"))
     expect(manifest["hooks"]).to include("guardrails.rb")
@@ -59,13 +59,13 @@ RSpec.describe Samagotchi::MemoryBundle::Exporter do
     expect(result[:files]).to include("identity.md")
   end
 
-  it "export without hooks still succeeds" do
-    src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "no-hook-export")
-    inst = Samagotchi::MemoryBundle::Installer.new(source: src, name: "no-hook-export", scope: "system", force: false, strict: true)
+  it "build without hooks still succeeds" do
+    src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "no-hook-build")
+    inst = Samagotchi::MemoryBundle::Installer.new(source: src, name: "no-hook-build", scope: "system", force: false, strict: true)
     inst.run
     out = File.join(tmpdir, "out2")
-    exporter = described_class.new(scope: "system", name: "no-hook-export", version: "1.0.0", out: out)
-    expect { exporter.run }.not_to raise_error
+    builder = described_class.new(scope: "system", name: "no-hook-build", version: "1.0.0", out: out)
+    expect { builder.run }.not_to raise_error
     manifest = YAML.load_file(File.join(out, "manifest.yml"))
     expect(manifest["hooks"]).to be_nil
   end

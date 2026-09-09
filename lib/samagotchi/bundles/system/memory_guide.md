@@ -48,7 +48,7 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 
 Bundles are versioned directories/zips/tar.gz/git URLs containing `manifest.yml` + `*.md`. They are shareable and installable.
 
-### CLI — `bin/chi memory`
+### CLI — `bin/chi bundle`
 
 | Command | Purpose |
 |---------|---------|
@@ -58,34 +58,34 @@ Bundles are versioned directories/zips/tar.gz/git URLs containing `manifest.yml`
 | `status [<bundle>]` | Provenance + per-file `ok|modified|missing|no-index` vs stored checksum and base snapshot. |
 | `diff <bundle> [file]` | Prints `base` (provenance snapshot) vs `current` (on-disk) for each file. |
 | `bundles` | Lists installed bundles (`name v<version> scope files installed_at`). |
-| `export [--scope system\|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]` | **Inverse of install** — packages local memories into a bundle. Infers `zip` vs `dir`/`tar.gz` from `--out` extension; default `chi_system_memories.zip` (system) or `chi_<project>_memories.zip` (project) v`1.0.0` in `Dir.pwd`. `FILES...` is an optional allowlist of basenames (`identity` or `identity.md`); if omitted exports all `*.md` except `index.md`/hidden/non-md. Computes `sha256:` via `Manifest.write` (`manifest.rb:49`). No provenance write. |
+| `build [--scope system\|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]` | **Inverse of install** — builds a shareable bundle from local memories and installed hooks. Infers `zip` vs `dir`/`tar.gz` from `--out` extension; default `chi_system_memories.zip` (system) or `chi_<project>_memories.zip` (project) v`1.0.0` in `Dir.pwd`. `FILES...` is an optional allowlist of memory basenames (`identity` or `identity.md`); if omitted, all `*.md` except `index.md`/hidden/non-md are included. Installed hooks are copied to `hooks/` with their manifest metadata. Computes `sha256:` via `Manifest.write` (`manifest.rb:49`). No provenance write. |
 
-**Scope resolution for install/export:**
+**Scope resolution for install/build:**
 - CLI `--scope` wins over `manifest.yml` `scope`. Default is `system` if none given (`installer.rb:80`). For `project`, target is `~/.config/…/projects/<basename>_<hash>` (`installer.rb:294`).
 
 **Example flows:**
 ```bash
 # export your system memories (all files) to zip
-bin/chi memory export --scope system --out my-prefs.zip
+bin/chi bundle build --scope system --out my-prefs.zip
 
 # export just two entries, custom name/version, to dir
-bin/chi memory export --scope system --name my-bundle --version 1.2.0 --out ./my-bundle/ identity.md commit_preferences.md
+bin/chi bundle build --scope system --name my-bundle --version 1.2.0 --out ./my-bundle/ identity.md commit_preferences.md
 
 # install a bundle shared by a teammate
-bin/chi memory install ./my-bundle --scope system
-bin/chi memory install https://github.com/org/bundle.git#v1.2.0 --scope system --force
+bin/chi bundle install ./my-bundle --scope system
+bin/chi bundle install https://github.com/org/bundle.git#v1.2.0 --scope system --force
 
 # check what would change and upgrade
-bin/chi memory upgrade ./my-bundle --dry-run
-bin/chi memory upgrade ./my-bundle  # auto-merges, warns on conflicts
+bin/chi bundle upgrade ./my-bundle --dry-run
+bin/chi bundle upgrade ./my-bundle  # auto-merges, warns on conflicts
 
 # share again after editing
-bin/chi memory export --scope system --out updated.zip
+bin/chi bundle build --scope system --out updated.zip
 ```
 
 ### Provenance internals (for debugging)
 
-- Each installed bundle is recorded at `~/.config/samagotchi/memories/.bundles/<name>/manifest.json` + `bases/<file>.md` snapshots (`provenance.rb:15`). Used only for upgrade `Merger` and `status`/`diff`. Export does **not** write provenance.
+- Each installed bundle is recorded at `~/.config/samagotchi/memories/.bundles/<name>/manifest.json` + `bases/<file>.md` snapshots (`provenance.rb:15`). Used only for upgrade `Merger` and `status`/`diff`. Build does **not** write provenance.
 - `index.md` is best-effort — failures are swallowed (`installer.rb:283`).
 
 ## Best practices for the agent
@@ -93,8 +93,8 @@ bin/chi memory export --scope system --out updated.zip
 1. **Discover first:** read the index (`memory_read ""`) before assuming entries exist. Prefer scoped reads when you know the scope.
 2. **Prefer project scope** for repo decisions; `system` for cross-project identity/preferences.
 3. **One concept per file:** small files merge and share better than monoliths.
-4. **Use bundles for sharing:** `export` → zip → share → `install`. Do not copy raw `~/.config` paths in docs — give `bin/chi memory install <url>` instructions.
-5. **Respect local edits:** installs skip existing files by default; use `--force` only when the user explicitly wants overwrite. Upgrades preserve edits (`keep`) or report `conflict` — guide the user to resolve via `memory_read`/`memory_write` or `bin/chi memory diff <bundle>` + `--force`.
+4. **Use bundles for sharing:** `build` → zip → share → `install`. Do not copy raw `~/.config` paths in docs — give `bin/chi bundle install <url>` instructions.
+5. **Respect local edits:** installs skip existing files by default; use `--force` only when the user explicitly wants overwrite. Upgrades preserve edits (`keep`) or report `conflict` — guide the user to resolve via `memory_read`/`memory_write` or `bin/chi bundle diff <bundle>` + `--force`.
 6. **Keep secrets out:** never write tokens/keys to memories — they are plain files and go into bundles.
 
 ## Current system bundle

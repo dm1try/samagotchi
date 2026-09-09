@@ -80,13 +80,13 @@ if ARGV[0] == "sessions"
   end
 end
 
-# Handle `memory` subcommand before OptionParser (has its own flags like --scope, --force)
-if ARGV[0] == "memory"
+# Handle `bundle` subcommand before OptionParser (has its own flags like --scope, --force)
+if ARGV[0] == "bundle"
   require "samagotchi/memory_bundle"
-  memory_args = ARGV[1..] || []
-  sub = memory_args[0]
+  bundle_args = ARGV[1..] || []
+  sub = bundle_args[0]
   if sub.nil? || %w[-h --help help].include?(sub)
-    puts "Usage: bin/chi memory <install|upgrade|uninstall|status|diff|bundles|export> [options]"
+    puts "Usage: bin/chi bundle <install|upgrade|uninstall|status|diff|bundles|build> [options]"
     puts ""
     puts "  install <source> [--scope system|project] [--force]"
     puts "    Install a memory bundle from a directory, zip, tar archive, or git URL."
@@ -107,12 +107,12 @@ if ARGV[0] == "memory"
     puts "    Show diffs between base/current/incoming for a bundle."
     puts ""
     puts "  bundles"
-    puts "    List installed memory bundles and their provenance."
+    puts "    List installed bundles and their provenance."
     puts ""
-    puts "  export [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
-    puts "    Package local memories into a shareable bundle (dir or zip)."
+    puts "  build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
+    puts "    Build local memories and installed hooks into a shareable bundle (dir or zip)."
     puts "    --scope selects source dir (default: system). --out inferred from extension; default <name>.zip."
-    puts "    FILES... optional allowlist of *.md basenames to export (default: all)."
+    puts "    FILES... optional allowlist of *.md basenames to include (default: all)."
     exit 0
   end
 
@@ -195,7 +195,7 @@ if ARGV[0] == "memory"
 
   case sub
   when "install"
-    rest = memory_args[1..]
+    rest = bundle_args[1..]
     source = nil
     scope = nil
     force = false
@@ -205,7 +205,7 @@ if ARGV[0] == "memory"
       if arg.start_with?("--")
         nxt = rest[i + 1]
         if %w[-h --help help].include?(arg)
-          puts "Usage: bin/chi memory install <source> [--scope system|project] [--force]"
+          puts "Usage: bin/chi bundle install <source> [--scope system|project] [--force]"
           puts ""
           puts "  install <source> [--scope system|project] [--force]"
           puts "    Install a memory bundle from a directory, zip, tar archive, or git URL."
@@ -221,7 +221,7 @@ if ARGV[0] == "memory"
           force = true
           i += 1
         else
-          warn "Unknown memory install flag: #{arg}"
+          warn "Unknown bundle install flag: #{arg}"
           exit 1
         end
       else
@@ -230,7 +230,7 @@ if ARGV[0] == "memory"
       end
     end
     if source.nil? || source.empty?
-      warn "Usage: bin/chi memory install <source> [--scope system|project] [--force]"
+          warn "Usage: bin/chi bundle install <source> [--scope system|project] [--force]"
       exit 1
     end
     expanded_source = chi_expand_source(source)
@@ -269,7 +269,7 @@ if ARGV[0] == "memory"
       if arg.start_with?("--")
         nxt = rest[i + 1]
         if %w[-h --help help].include?(arg)
-          puts "Usage: bin/chi memory upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]"
+          puts "Usage: bin/chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]"
           exit 0
         elsif arg == "--scope" && nxt
           scope = nxt; i += 2
@@ -284,7 +284,7 @@ if ARGV[0] == "memory"
         elsif arg == "--no-agent"
           agent = false; i += 1
         else
-          warn "Unknown memory upgrade flag: #{arg}"
+          warn "Unknown bundle upgrade flag: #{arg}"
           exit 1
         end
       else
@@ -292,7 +292,7 @@ if ARGV[0] == "memory"
       end
     end
     if source.nil? || source.empty?
-      warn "Usage: bin/chi memory upgrade <source> [--scope system|project] [--force] [--dry-run]"
+          warn "Usage: bin/chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run]"
       exit 1
     end
     expanded_source = chi_expand_source(source)
@@ -402,7 +402,7 @@ if ARGV[0] == "memory"
       if arg.start_with?("--")
         nxt = rest[i + 1]
         if %w[-h --help help].include?(arg)
-          puts "Usage: bin/chi memory uninstall <bundle> [--scope system|project] [--force]"
+          puts "Usage: bin/chi bundle uninstall <bundle> [--scope system|project] [--force]"
           exit 0
         elsif arg == "--scope" && nxt
           scope = nxt; i += 2
@@ -411,14 +411,14 @@ if ARGV[0] == "memory"
         elsif arg == "--force"
           force = true; i += 1
         else
-          warn "Unknown memory uninstall flag: #{arg}"; exit 1
+          warn "Unknown bundle uninstall flag: #{arg}"; exit 1
         end
       else
         bundle_name = arg; i += 1
       end
     end
     if bundle_name.nil? || bundle_name.empty?
-      warn "Usage: bin/chi memory uninstall <bundle> [--scope system|project] [--force]"
+          warn "Usage: bin/chi bundle uninstall <bundle> [--scope system|project] [--force]"
       exit 1
     end
     # Propagate overrides
@@ -502,7 +502,7 @@ if ARGV[0] == "memory"
     bname = args[0]
     file_arg = args[1]
     if bname.nil? || bname.empty?
-      warn "Usage: bin/chi memory diff <bundle> [file]"; exit 1
+          warn "Usage: bin/chi bundle diff <bundle> [file]"; exit 1
     end
     prov = Samagotchi::MemoryBundle::Provenance.new(name: bname)
     data = prov.read
@@ -599,8 +599,8 @@ if ARGV[0] == "memory"
       end
     end
 
-  when "export"
-    rest = memory_args[1..]
+  when "build"
+    rest = bundle_args[1..]
     scope = nil
     name = nil
     version = nil
@@ -613,17 +613,17 @@ if ARGV[0] == "memory"
       if arg.start_with?("--")
         nxt = rest[i + 1]
         if %w[-h --help help].include?(arg)
-          puts "Usage: bin/chi memory export [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
+          puts "Usage: bin/chi bundle build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
           puts ""
-          puts "  export [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
-          puts "    Package local memories into a shareable bundle (dir or zip)."
+          puts "  build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
+          puts "    Build local memories and installed hooks into a shareable bundle (dir or zip)."
           puts "    --scope selects source dir (default: system). --out inferred from extension; default <name>.zip."
-          puts "    FILES... optional allowlist of *.md basenames to export (default: all)."
+          puts "    FILES... optional allowlist of *.md basenames to include (default: all)."
           puts ""
           puts "  Examples:"
-          puts "    bin/chi memory export --scope system"
-          puts "    bin/chi memory export --scope project --name my-bundle --version 1.0.0 --out bundle.zip"
-          puts "    bin/chi memory export --scope system --out ./my-bundle/ identity.md work.md"
+          puts "    bin/chi bundle build --scope system"
+          puts "    bin/chi bundle build --scope project --name my-bundle --version 1.0.0 --out bundle.zip"
+          puts "    bin/chi bundle build --scope system --out ./my-bundle/ identity.md work.md"
           exit 0
         elsif arg == "--scope" && nxt && !nxt.start_with?("--")
           scope = nxt; i += 2
@@ -646,7 +646,7 @@ if ARGV[0] == "memory"
         elsif arg.start_with?("--out=")
           out = arg.split("=", 2).last; i += 1
         else
-          warn "Unknown memory export flag: #{arg}"
+          warn "Unknown bundle build flag: #{arg}"
           exit 1
         end
       else
@@ -661,7 +661,7 @@ if ARGV[0] == "memory"
     end
     filter_files = nil if filter_files.empty?
     begin
-      exporter = Samagotchi::MemoryBundle::Exporter.new(
+      builder = Samagotchi::MemoryBundle::Builder.new(
         scope: scope,
         name: name,
         version: version,
@@ -669,8 +669,8 @@ if ARGV[0] == "memory"
         out: out,
         files: filter_files
       )
-      result = exporter.run
-      puts "Exported #{result[:files].size} file(s) to #{result[:out_path]}"
+      result = builder.run
+      puts "Built #{result[:files].size} file(s) to #{result[:out_path]}"
       puts "Bundle: #{result[:name]} v#{result[:version]} scope=#{result[:scope]}"
       puts "Files: #{result[:files].join(', ')}" unless result[:files].empty?
       unless result[:placeholder_warnings].empty?
@@ -678,13 +678,13 @@ if ARGV[0] == "memory"
         result[:placeholder_warnings].each { |w| puts "  #{w}" }
       end
       exit 0
-    rescue Samagotchi::MemoryBundle::Exporter::ExportError => e
-      warn "Export failed: #{e.message}"
+    rescue Samagotchi::MemoryBundle::Builder::BuildError => e
+      warn "Build failed: #{e.message}"
       exit 1
     end
 
   else
-    warn "Unknown memory subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, bundles, export"
+    warn "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, bundles, build"
     exit 1
   end
 

@@ -86,7 +86,7 @@ Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `LLAMA_HOST`, `SAMAGOTCHI_N_PREDIC
 - Prefer `read` + `write`/`edit` on `config.yml`. Do **not** use `memory_write` for config.
 - For single-model switches, prefer the `ConfigFile` helpers (`write_default_model!`, `write_model_alias!`) via `execute` `ruby -r samagotchi/config_file -e ...` if available, otherwise direct nested YAML edit as above.
 - For generic keys, you may also use `ruby -r samagotchi/config -e 'Samagotchi::Config.reload!(cli_overrides: {...})'` in tests, but prefer file edit for persistence.
-- After editing, verify with `YAML.safe_load(File.read(path))` or `XDG_CONFIG_HOME=/tmp/empty bin/chi --help` (shows generated `--recap-base-url` etc.) / `bin/chi memory status` if relevant.
+- After editing, verify with `YAML.safe_load(File.read(path))` or `XDG_CONFIG_HOME=/tmp/empty bin/chi --help` (shows generated `--recap-base-url` etc.) / `bin/chi bundle status` if relevant.
 
 ## Hints
 

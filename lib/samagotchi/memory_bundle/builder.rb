@@ -8,20 +8,20 @@ require_relative "placeholder"
 
 module Samagotchi
   module MemoryBundle
-    # Packages local memories (scoped *.md files) into a shareable bundle.
+    # Builds local memories and installed hooks into a shareable bundle.
     #
     # Inverse of Installer: reads from the resolved scope directory,
     # computes SHA256 checksums, writes manifest.yml via Manifest.write,
     # and optionally zips/tars the staging directory.
     #
     # Reuses Installer.system_dir / project_dir_base overrides for test isolation.
-    class Exporter
-      class ExportError < StandardError; end
+    class Builder
+      class BuildError < StandardError; end
 
       DEFAULT_VERSION = "1.0.0"
       DEFAULT_SYSTEM_NAME = "chi_system_memories"
 
-      attr_reader :exported_files, :warnings, :placeholder_warnings, :out_path, :staging_dir
+      attr_reader :built_files, :warnings, :placeholder_warnings, :out_path, :staging_dir
 
       def initialize(scope: nil, name: nil, version: nil, description: "", out: nil, files: nil, trust_level: nil)
         @scope = normalize_scope(scope) || "system"
@@ -33,7 +33,7 @@ module Samagotchi
         @out = nil if @out && @out.empty?
         @filter_files = files # nil or Array<String> basenames
         @trust_level = trust_level&.to_s&.strip
-        @exported_files = []
+        @built_files = []
         @warnings = []
         @placeholder_warnings = []
         @out_path = nil
@@ -47,7 +47,7 @@ module Samagotchi
 
         validate_name!(resolved_name)
         validate_version!(resolved_version)
-        raise ExportError, "invalid scope: #{@scope}" unless %w[system project].include?(@scope)
+        raise BuildError, "invalid scope: #{@scope}" unless %w[system project].include?(@scope)
 
         # Collect *.md files, excluding index.md and hidden files
         all_md = Dir.glob(File.join(target_dir, "*.md")).sort
@@ -55,7 +55,7 @@ module Samagotchi
         candidates.reject! { |p| File.basename(p).start_with?(".") }
 
         if candidates.empty?
-          raise ExportError, "No memories to export in #{@scope} scope (#{target_dir}): no .md files found"
+          raise BuildError, "No memories to build in #{@scope} scope (#{target_dir}): no .md files found"
         end
 
         # Apply allowlist filter if provided
@@ -65,7 +65,7 @@ module Samagotchi
           candidates_by_basename = candidates.map { |p| [File.basename(p), p] }.to_h
           missing = allow.reject { |k| candidates_by_basename.key?(k) }
           unless missing.empty?
-            raise ExportError, "Requested file(s) not found in #{@scope} scope: #{missing.join(', ')}"
+            raise BuildError, "Requested file(s) not found in #{@scope} scope: #{missing.join(', ')}"
           end
           candidates = allow.map { |k| candidates_by_basename[k] }
         end
@@ -77,7 +77,7 @@ module Samagotchi
           content = File.read(path)
           hex = Digest::SHA256.hexdigest(content)
           files_map[key] = "sha256:#{hex}"
-          @exported_files << key
+          @built_files << key
 
           names = Placeholder.new(content: content).placeholders
           unless names.empty?
@@ -86,7 +86,7 @@ module Samagotchi
           end
         end
 
-        # ── Hooks: collect hooks for export ──────────────────────────
+        # ── Hooks: collect hooks for the bundle ──────────────────────
         hooks_map = {}
         hooks_to_copy = [] # Array of [src_path, basename]
         # Try provenance first (if bundle with this name is installed)
@@ -122,7 +122,7 @@ module Samagotchi
             hooks_to_copy << [src, basename]
           end
         else
-          # Fallback: scan target_dir/hooks if present (e.g. exporting a raw bundle dir that is also the mem dir)
+          # Fallback: scan target_dir/hooks if present (e.g. building from a raw bundle dir that is also the mem dir)
           local_hooks_dir = File.join(target_dir, "hooks")
           if Dir.exist?(local_hooks_dir)
             Dir.glob(File.join(local_hooks_dir, "*.rb")).sort.each do |src|
@@ -138,17 +138,17 @@ module Samagotchi
             end
           end
         end
-        # Determine trust_level for export
-        export_trust_level = @trust_level
-        if (export_trust_level.nil? || export_trust_level.empty?) && prov_data && prov_data[:trust_level]
-          export_trust_level = prov_data[:trust_level].to_s
+        # Determine trust_level for the built bundle
+        build_trust_level = @trust_level
+        if (build_trust_level.nil? || build_trust_level.empty?) && prov_data && prov_data[:trust_level]
+          build_trust_level = prov_data[:trust_level].to_s
         end
 
         # Resolve output path and format
         resolved_out, format = resolve_out_path(@out, resolved_name)
 
         # Prepare staging dir (temp)
-        staging = Dir.mktmpdir("samagotchi-export-")
+        staging = Dir.mktmpdir("samagotchi-build-")
         @staging_dir = staging
         begin
           candidates.each do |src|
@@ -171,7 +171,7 @@ module Samagotchi
             description: @description,
             files: files_map,
             hooks: hooks_map.empty? ? nil : hooks_map,
-            trust_level: export_trust_level
+            trust_level: build_trust_level
           )
 
           case format
@@ -190,17 +190,17 @@ module Samagotchi
               # Allow if out is the staging itself? no, staging is temp
               # Check if out dir already has manifest.yml — treat as existing bundle
               if File.exist?(File.join(resolved_out, "manifest.yml"))
-                raise ExportError, "Output directory already contains a bundle (#{resolved_out}/manifest.yml) — choose different --out or remove it"
+                raise BuildError, "Output directory already contains a bundle (#{resolved_out}/manifest.yml) — choose different --out or remove it"
               end
               # If dir has any files, still require explicit handling — error
               unless existing.empty?
-                raise ExportError, "Output directory already exists and is not empty: #{resolved_out}"
+                raise BuildError, "Output directory already exists and is not empty: #{resolved_out}"
               end
             end
             FileUtils.cp_r("#{staging}/.", resolved_out)
             @out_path = resolved_out
           else
-            raise ExportError, "unknown format: #{format}"
+            raise BuildError, "unknown format: #{format}"
           end
         ensure
           # Clean up staging temp dir unless out_path == staging (not possible for dir)
@@ -214,15 +214,15 @@ module Samagotchi
           name: resolved_name,
           version: resolved_version,
           scope: @scope,
-          files: @exported_files.dup,
+          files: @built_files.dup,
           placeholder_warnings: @placeholder_warnings.dup
         }
       end
 
       def summary
         lines = []
-        lines << "Exported #{@exported_files.size} file(s) to #{@out_path}"
-        lines << "Files: #{@exported_files.join(', ')}" unless @exported_files.empty?
+        lines << "Built #{@built_files.size} file(s) to #{@out_path}"
+        lines << "Files: #{@built_files.join(', ')}" unless @built_files.empty?
         lines.concat(@placeholder_warnings.map { |w| "Placeholder: #{w}" }) unless @placeholder_warnings.empty?
         lines.concat(@warnings) unless @warnings.empty?
         lines.join("\n")
@@ -241,12 +241,12 @@ module Samagotchi
       end
 
       def validate_name!(name)
-        raise ExportError, "bundle name is required" if name.nil? || name.strip.empty?
-        raise ExportError, "bundle name must not contain path separators" if name.include?("/") || name.include?("\\")
+        raise BuildError, "bundle name is required" if name.nil? || name.strip.empty?
+        raise BuildError, "bundle name must not contain path separators" if name.include?("/") || name.include?("\\")
       end
 
       def validate_version!(version)
-        raise ExportError, "bundle version is required" if version.nil? || version.strip.empty?
+        raise BuildError, "bundle version is required" if version.nil? || version.strip.empty?
       end
 
       def default_name(scope)
@@ -282,7 +282,7 @@ module Samagotchi
             )
           end
         else
-          raise ExportError, "invalid scope: #{scope}"
+          raise BuildError, "invalid scope: #{scope}"
         end
       end
 
@@ -307,7 +307,7 @@ module Samagotchi
         else
           # Treat as directory — if path exists and is a file, error
           if File.exist?(expanded) && !File.directory?(expanded)
-            raise ExportError, "Output path exists and is not a directory: #{expanded}"
+            raise BuildError, "Output path exists and is not a directory: #{expanded}"
           end
           [expanded, :dir]
         end
@@ -316,19 +316,19 @@ module Samagotchi
       def zip_staging(staging, out_path)
         FileUtils.mkdir_p(File.dirname(out_path))
         if File.exist?(out_path)
-          raise ExportError, "Output file already exists: #{out_path} — remove it or choose different --out"
+          raise BuildError, "Output file already exists: #{out_path} — remove it or choose different --out"
         end
         # Use zip CLI like source.rb does with unzip
         Dir.chdir(staging) do
           result = system("zip", "-r", out_path, ".")
-          raise ExportError, "zip failed for #{out_path} (is zip installed?)" unless result && File.exist?(out_path)
+          raise BuildError, "zip failed for #{out_path} (is zip installed?)" unless result && File.exist?(out_path)
         end
       end
 
       def tar_staging(staging, out_path, format)
         FileUtils.mkdir_p(File.dirname(out_path))
         if File.exist?(out_path)
-          raise ExportError, "Output file already exists: #{out_path} — remove it or choose different --out"
+          raise BuildError, "Output file already exists: #{out_path} — remove it or choose different --out"
         end
         # Use tar CLI
         Dir.chdir(staging) do
@@ -337,7 +337,7 @@ module Samagotchi
                 when :tar then ["tar", "-cf", out_path, "."]
                 end
           result = system(*cmd)
-          raise ExportError, "tar failed for #{out_path}" unless result && File.exist?(out_path)
+          raise BuildError, "tar failed for #{out_path}" unless result && File.exist?(out_path)
         end
       end
     end
