@@ -112,9 +112,9 @@ RSpec.describe Samagotchi::Session do
 
     it "returns sessions sorted by updated_at desc by default (newest first)" do
       s1 = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      sleep(0.01)
-      s2 = described_class.new_session(mode: "assist", model_name: "qwen36", working_directory: "/tmp")
       s1.save(state_dir: tmpdir)
+      sleep(0.02)
+      s2 = described_class.new_session(mode: "assist", model_name: "qwen36", working_directory: "/tmp")
       s2.save(state_dir: tmpdir)
 
       sessions = described_class.list(state_dir: tmpdir)
@@ -213,6 +213,113 @@ RSpec.describe Samagotchi::Session do
       described_class.mark_stopped(session.id, state_dir: tmpdir)
       loaded = described_class.load(session.id, state_dir: tmpdir)
       expect(loaded.status).to eq(described_class::STATUS_STOPPED)
+    end
+  end
+
+  describe "first_preview" do
+    it "defaults to empty for new sessions" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      expect(session.first_preview).to eq("")
+    end
+
+    it "round-trips through save/load" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.first_preview = "hello world"
+      session.save(state_dir: tmpdir)
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.first_preview).to eq("hello world")
+    end
+
+    it "auto-computes from first user message on save" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.messages = [
+        { role: "system", content: "You are Chi." },
+        { role: "user", content: "Hey Chi, could you write some temporary memory?" },
+        { role: "assistant", content: "Sure!" }
+      ]
+      session.save(state_dir: tmpdir)
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.first_preview).to include("Hey Chi")
+    end
+
+    it "auto-computes and truncates to 80 chars" do
+      long_content = "a" * 200
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.messages = [{ role: "user", content: long_content }]
+      session.save(state_dir: tmpdir)
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.first_preview.length).to eq(81)
+      expect(loaded.first_preview).to end_with("…")
+    end
+
+    it "does not recompute when already cached" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.first_preview = "original"
+      session.messages = [{ role: "user", content: "new message" }]
+      session.save(state_dir: tmpdir)
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.first_preview).to eq("original")
+    end
+
+    it "is read by .list alongside other metadata" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.first_preview = "list preview"
+      session.save(state_dir: tmpdir)
+
+      listed = described_class.list(state_dir: tmpdir).first
+      expect(listed.first_preview).to eq("list preview")
+    end
+
+    it "loads old sessions without first_preview as empty (migration)" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.messages = [{ role: "user", content: "hello" }]
+      session.save(state_dir: tmpdir)
+
+      # Simulate old session file without first_preview
+      path = File.join(tmpdir, "#{session.id}.json")
+      data = JSON.parse(File.read(path))
+      data.delete("first_preview")
+      File.write(path, JSON.generate(data))
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.first_preview).to eq("")
+      loaded.save(state_dir: tmpdir)
+
+      reloaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(reloaded.first_preview).to include("hello")
+    end
+
+    describe "#compute_first_preview!" do
+      it "returns true and sets first_preview when user message exists" do
+        session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+        session.messages = [{ role: "user", content: "test content" }]
+        expect(session.compute_first_preview!).to be true
+        expect(session.first_preview).to eq("test content")
+      end
+
+      it "returns false when there are no messages" do
+        session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+        expect(session.compute_first_preview!).to be false
+        expect(session.first_preview).to eq("")
+      end
+
+      it "returns false when no user messages exist" do
+        session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+        session.messages = [{ role: "system", content: "You are Chi." }]
+        expect(session.compute_first_preview!).to be false
+      end
+
+      it "returns false and does not overwrite existing value" do
+        session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+        session.first_preview = "cached"
+        session.messages = [{ role: "user", content: "new" }]
+        expect(session.compute_first_preview!).to be false
+        expect(session.first_preview).to eq("cached")
+      end
     end
   end
 

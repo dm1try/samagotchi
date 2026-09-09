@@ -7,7 +7,7 @@ require "time"
 
 module Samagotchi
   class Session
-    METADATA_VERSION = 2
+    METADATA_VERSION = 3
     STATE_SUBDIR = File.join("samagotchi", "sessions")
     FILE_EXT = ".json"
 
@@ -25,12 +25,13 @@ module Samagotchi
     SORT_ORDERS = %w[asc desc].freeze
 
     attr_accessor :id, :metadata_version, :mode, :model_name, :working_directory, :messages,
-                   :created_at, :updated_at, :status, :last_prompt, :test_run, :pending_question,
-                   :used_memory_names
+                   :created_at, :updated_at, :status, :last_prompt, :first_preview, :test_run,
+                   :pending_question, :used_memory_names
 
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
-                   metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "", test_run: false,
-                   pending_question: nil, used_memory_names: [])
+                   metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
+                   first_preview: "", test_run: false, pending_question: nil,
+                   used_memory_names: [])
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -41,6 +42,7 @@ module Samagotchi
       @updated_at = updated_at
       @status = status
       @last_prompt = last_prompt
+      @first_preview = first_preview
       @test_run = !!test_run
       @pending_question = pending_question
       @used_memory_names = Array(used_memory_names).map(&:to_s).reject(&:empty?).uniq
@@ -63,6 +65,7 @@ module Samagotchi
         created_at: now,
         updated_at: now,
         status: STATUS_IDLE,
+        first_preview: "",
         test_run: resolved_test
       )
     end
@@ -92,6 +95,7 @@ module Samagotchi
         updated_at: data.fetch("updated_at"),
         status: data.fetch("status", STATUS_IDLE),
         last_prompt: data.fetch("last_prompt", ""),
+        first_preview: data.fetch("first_preview", ""),
         test_run: data.fetch("test_run", false),
         pending_question: pending,
         used_memory_names: Array(used_mems)
@@ -122,6 +126,7 @@ module Samagotchi
           updated_at: data.fetch("updated_at"),
           status: data.fetch("status", STATUS_IDLE),
           last_prompt: data.fetch("last_prompt", ""),
+          first_preview: data.fetch("first_preview", ""),
           test_run: data.fetch("test_run", false),
           used_memory_names: Array(used_mems)
         )
@@ -252,6 +257,9 @@ module Samagotchi
       path = File.join(state_dir, "#{@id}#{FILE_EXT}")
       temp_path = "#{path}.tmp"
 
+      # Auto-compute first_preview if not yet cached and messages contain a user entry.
+      compute_first_preview!
+
       record = {
         "metadata_version" => @metadata_version,
         "id" => @id,
@@ -263,6 +271,7 @@ module Samagotchi
         "updated_at" => @updated_at,
         "status" => @status,
         "last_prompt" => @last_prompt,
+        "first_preview" => @first_preview,
         "test_run" => !!@test_run,
         "pending_question" => @pending_question ? stringify_message_keys(@pending_question) : nil,
         "used_memory_names" => Array(@used_memory_names)
@@ -317,6 +326,22 @@ module Samagotchi
       xdg = env.fetch("XDG_STATE_HOME", "").to_s.strip
       base = xdg.empty? ? File.join(Dir.home, ".local", "state") : xdg
       File.join(base, STATE_SUBDIR)
+    end
+
+    # Derive and cache the first user-message preview in the session record.
+    # Returns true if the cached value was set or updated.
+    def compute_first_preview!
+      return false if @first_preview && !@first_preview.empty?
+
+      first_user = @messages.find { |m| m[:role].to_s == "user" || m["role"].to_s == "user" }
+      return false unless first_user
+
+      raw = first_user[:content] || first_user["content"] || ""
+      norm = raw.to_s.gsub(/\s+/, " ").strip
+      return false if norm.empty?
+
+      @first_preview = norm.length > 80 ? "#{norm[0, 80]}…" : norm
+      true
     end
 
     private

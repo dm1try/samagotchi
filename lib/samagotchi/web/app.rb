@@ -176,21 +176,12 @@ module Samagotchi
         history = read_history(id)
         messages = messages_for_display(session)
         pending = session.respond_to?(:pending_question) ? session.pending_question : nil
-        # Eagerly resume a stopped session's worker + bridge so selecting it
-        # attaches to a live stream right away — no /turn needed to wake the
-        # worker. No-op when a live bridge already exists.
-        if bridge_sidecar_port(id).nil?
-          @manager.resume_session(id, state_dir: @state_dir) if @manager.respond_to?(:resume_session)
-          # Short bounded wait for the freshly-spawned bridge sidecar so the
-          # SSE connect that follows avoids EventSource retry churn (only when
-          # bridge waiting is enabled; specs disable it to avoid real workers).
-          if @bridge_wait_timeout.to_i.positive?
-            await_bridge_port(id, timeout: [@bridge_wait_timeout.to_f, 2.0].min)
-          end
-        end
-        # Cursor into the SSE stream so a fresh connect skips already-rendered
-        # content: the monotonic event_seq from the live Engine's Bridge
-        # (nil when no live worker).
+        # Read-only preview: selecting a session never spawns a worker.
+        # The worker is woken only on POST /turn (handle_turn) via
+        # SessionManager.resume_session + write_turn_input. This avoids
+        # replaying last_prompt and spamming workers on preview scrub.
+        # last_event_seq is nil when no live bridge, so the frontend stays
+        # silent until the first Send.
         last_event_seq = bridge_event_seq(id)
         json_response(200, {
           session: session_to_json(session),
@@ -536,9 +527,7 @@ module Samagotchi
       end
 
       def first_preview_for(session)
-        msgs = session.respond_to?(:messages) ? Array(session.messages) : []
-        first_user = msgs.find { |m| m[:role].to_s == "user" || m["role"].to_s == "user" }
-        raw = first_user ? (first_user[:content] || first_user["content"] || "") : (session.last_prompt || "")
+        raw = session.first_preview || session.last_prompt || ""
         norm = raw.to_s.gsub(/\s+/, " ").strip
         return "" if norm.empty?
 

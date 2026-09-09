@@ -185,7 +185,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)["last_event_seq"]).to eq(12)
     end
 
-    it "resumes a dead session's worker so select can attach to a live stream" do
+    it "does not resume a dead session on preview — read-only, wake on POST /turn" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
       allow(app).to receive(:bridge_sidecar_port).and_return(nil)
@@ -193,7 +193,7 @@ RSpec.describe Samagotchi::Web::App do
       status, _headers, _body = app.call(env_for("/api/sessions/s1"))
 
       expect(status).to eq(200)
-      expect(manager.resume_calls.map(&:first)).to include("s1")
+      expect(manager.resume_calls).to be_empty
     end
 
     it "does not resume when the bridge is already live" do
@@ -250,6 +250,31 @@ RSpec.describe Samagotchi::Web::App do
       expect(headers["Expires"]).to eq("0")
       expect(body.first).not_to include("startPoll")
       expect(body.first).to include("/assets/app.js")
+    end
+  end
+
+  describe "session_to_json" do
+    it "includes first_preview in the session payload" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd)
+      session.first_preview = "cached preview"
+      session.last_prompt = "original prompt"
+
+      json = app.send(:session_to_json, session)
+      expect(json[:first_preview]).to eq("cached preview")
+      expect(json[:last_prompt]).to eq("original prompt")
+    end
+
+    it "uses first_preview over last_prompt when both present" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd)
+      session.first_preview = "first user message"
+      session.last_prompt = "last prompt"
+
+      json = app.send(:session_to_json, session)
+      expect(json[:first_preview]).to eq("first user message")
     end
   end
 
