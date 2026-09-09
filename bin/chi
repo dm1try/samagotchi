@@ -257,7 +257,7 @@ if ARGV[0] == "bundle"
     end
 
   when "upgrade"
-    rest = memory_args[1..]
+    rest = bundle_args[1..]
     source = nil
     scope = nil
     force = false
@@ -392,7 +392,7 @@ if ARGV[0] == "bundle"
     end
 
   when "uninstall"
-    rest = memory_args[1..]
+    rest = bundle_args[1..]
     bundle_name = nil
     scope = nil
     force = false
@@ -438,7 +438,7 @@ if ARGV[0] == "bundle"
     end
 
   when "status"
-    rest = memory_args[1..]
+    rest = bundle_args[1..]
     name = rest.find { |a| !a.start_with?("--") }
     require "json"
     if name
@@ -497,7 +497,7 @@ if ARGV[0] == "bundle"
     exit 0
 
   when "diff"
-    rest = memory_args[1..]
+    rest = bundle_args[1..]
     args = rest.reject { |a| a.start_with?("--") }
     bname = args[0]
     file_arg = args[1]
