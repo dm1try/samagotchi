@@ -46,6 +46,12 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .activity-tool{color:#79c0ff;font-weight:600}
 .activity-params{color:#8b949e;word-break:break-all}
 .activity-output{margin:4px 0 2px 60px;font-size:12px;color:#8b949e;white-space:pre-wrap;word-break:break-word;background:#0b0d11;border-radius:6px;padding:6px 8px;max-height:160px;overflow:auto}
+.bubble.thinking{border-left:3px solid #8957e5;background:#12101a;padding:8px 12px}
+.bubble.thinking>summary{cursor:pointer;color:#8b949e;font-size:13px;font-weight:600;font-style:italic;user-select:none;list-style:none}
+.bubble.thinking>summary::-webkit-details-marker{display:none}
+.bubble.thinking>summary::before{content:"▸ ";color:#8957e5}
+.bubble.thinking[open]>summary::before{content:"▾ "}
+.thinking-body{margin-top:6px;font-size:13px;color:#a89bc4;white-space:pre-wrap;word-break:break-word;font-style:italic;max-height:240px;overflow:auto}
 .hint{color:#8b949e;font-size:13px;padding:12px}
 #composer{padding:12px;border-top:1px solid #1f232b;gap:8px;background:#0f1115;display:flex}
 #composer textarea{flex:1;min-height:44px;max-height:160px;resize:vertical;background:#0f1115;border:1px solid #1f232b;color:#e6e8eb;padding:10px 12px;border-radius:10px}
