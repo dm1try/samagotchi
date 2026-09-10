@@ -7,6 +7,7 @@ require "yaml"
 
 require_relative "config"
 require_relative "model_profile"
+require_relative "thought_stream_splitter"
 require_relative "kernel_loop"
 require_relative "host_registry"
 require_relative "llm/backend"
@@ -1066,8 +1067,34 @@ module Samagotchi
     # turn-scoped +on_event+ sink (e.g. the -p/--resume paths and
     # SessionManager background workers). emit_event tolerates a nil on_event by
     # only notifying the observer.
+    # Wrap a raw kernel stream event and fan it out to the turn sink + observers.
+    #
+    # Phase 2 (web-stream-rendering): each :generation_chunk is enriched with two
+    # ADDITIVE fields derived from the raw `content` (which is left untouched —
+    # the TUI thinking spinner, analytics, and Bridge replay all rely on raw):
+    #   * :text     — visible prose (thinking AND tool_call blocks removed)
+    #   * :thinking — thinking-only content
+    # The splitter is profile-aware and resets on each :generation_started so a
+    # turn's multiple generations each start clean.
+    #
+    # Enrichment is profile-scoped:
+    #   * Splitting profiles (explicit think close, e.g. Qwen) ALWAYS emit
+    #     `text`/`thinking` on every :generation_chunk — even when empty — so the
+    #     web client can rely on them and never fall back to raw `content`.
+    #   * Non-splitting profiles (nil think close, e.g. Gemma) leave the event
+    #     unchanged; the web client then falls back to raw `content`, preserving
+    #     today's behavior (no regression).
     def build_stream_event_handler(on_event)
+      splitter = ThoughtStreamSplitter.for_profile(@profile)
+      enrich = @profile.thought_close ? :always : :never
       proc do |event|
+        case event[:type]
+        when :generation_started
+          splitter = ThoughtStreamSplitter.for_profile(@profile)
+        when :generation_chunk
+          delta = splitter.feed(event[:content])
+          event = event.merge(text: delta[:text], thinking: delta[:thinking]) if enrich == :always
+        end
         emit_event(on_event, event)
       end
     end
