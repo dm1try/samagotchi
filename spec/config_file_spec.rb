@@ -147,6 +147,84 @@ RSpec.describe Samagotchi::ConfigFile do
     end
   end
 
+  describe ".preloaded_memories" do
+    around do |example|
+      ENV.delete("XDG_CONFIG_HOME")
+      example.run
+    ensure
+      ENV.delete("XDG_CONFIG_HOME")
+    end
+
+    def write_memories_yaml(dir, body)
+      config_dir = File.join(dir, "samagotchi")
+      Dir.mkdir(config_dir)
+      File.write(File.join(config_dir, "config.yml"), body)
+      ENV["XDG_CONFIG_HOME"] = dir
+    end
+
+    it "returns [] when the file is missing" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        ENV["XDG_CONFIG_HOME"] = dir
+        expect(described_class.preloaded_memories).to eq([])
+      end
+    end
+
+    it "returns [] when the section is absent" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        write_memories_yaml(dir, "SAMAGOTCHI_DEFAULT_MODEL: Gemma-4B-it\n")
+        expect(described_class.preloaded_memories).to eq([])
+      end
+    end
+
+    it "returns [] when the section is false" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        write_memories_yaml(dir, "memories: false\n")
+        expect(described_class.preloaded_memories).to eq([])
+      end
+    end
+
+    it "parses a YAML list of strings, preserving order" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        write_memories_yaml(dir, <<~YAML)
+          memories:
+            - identity
+            - system/user_preferences
+        YAML
+        expect(described_class.preloaded_memories).to eq(%w[identity system/user_preferences])
+      end
+    end
+
+    it "accepts a single comma-separated string and splits commas inside list items" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        write_memories_yaml(dir, <<~YAML)
+          memories:
+            - "alpha, beta"
+            - gamma
+        YAML
+        expect(described_class.preloaded_memories).to eq(%w[alpha beta gamma])
+      end
+    end
+
+    it "accepts a bare scalar string (single entry)" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        write_memories_yaml(dir, "memories: solo\n")
+        expect(described_class.preloaded_memories).to eq(["solo"])
+      end
+    end
+
+    it "strips whitespace and drops empty items" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        write_memories_yaml(dir, <<~YAML)
+          memories:
+            - "  padded  "
+            - ""
+            - "a,,b"
+        YAML
+        expect(described_class.preloaded_memories).to eq(%w[padded a b])
+      end
+    end
+  end
+
   describe ".recap_config" do
     around do |example|
       recap_env_keys = %w[

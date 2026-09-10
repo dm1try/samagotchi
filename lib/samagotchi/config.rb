@@ -566,6 +566,22 @@ module Samagotchi
       }
     end
 
+    # Resolve the `memories:` section: the baseline list of memory entries
+    # preloaded into the system prompt. Same shape as CLI `--memory` values:
+    # bare names or `scope/name` refs. Accepts a YAML list of strings or a
+    # single comma-separated string (commas inside list items are split too).
+    # Returns [] when the section is absent, false, or malformed.
+    def preloaded_memories(env: ENV, path: global_path(env: env))
+      data = read_yaml(env: env, path: path)
+      raw = data["memories"] if data.is_a?(Hash)
+      return [] if raw.nil? || raw == false
+
+      items = raw.is_a?(Array) ? raw : [raw]
+      items.flat_map { |v| v.to_s.split(",") }.map(&:strip).reject(&:empty?)
+    rescue StandardError
+      []
+    end
+
     # Parse a model string that may be qualified as "host_alias:model"
     # Returns [host_alias_or_nil, bare_model]
     def parse_host_qualified_model(raw, hosts: nil)

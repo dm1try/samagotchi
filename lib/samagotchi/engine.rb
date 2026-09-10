@@ -48,7 +48,7 @@ module Samagotchi
     # @param session_id         [String, nil] resume an existing session
     # @param no_interrupt       [Boolean]
     # @param model_name         [String, nil] defaults from SAMAGOTCHI_DEFAULT_MODEL
-    # @param memories           [Array<String>] --memory preload list
+    # @param memories           [Array<String>] explicit --memory preload list (merged with the config.yml `memories:` baseline)
     DEFAULT_SYSTEM_MEMORIES = %w[identity].freeze
 
     def initialize(mode: :assist, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
@@ -130,7 +130,7 @@ module Samagotchi
         kernel: @kernel
       )
       @resume_session = session_id ? Session.load(session_id) : nil
-      @requested_memories = Array(memories)
+      @requested_memories = preload_memory_list(memories)
       @session = nil
       @session_observer = SessionObserver.new
       @metrics = SessionMetrics.new
@@ -1225,6 +1225,26 @@ module Samagotchi
 
     def read_memory_index(scope)
       Tools::MemoryRead.call("", scope: scope)
+    end
+
+    # Merge the config.yml `memories:` baseline with the explicit `--memory`
+    # list. Config entries come first (persistent baseline); CLI entries are
+    # comma-split and appended without duplicates (same ref shape as --memory:
+    # bare name or scope/name).
+    def preload_memory_list(cli_memories)
+      baseline = begin
+        ConfigFile.preloaded_memories
+      rescue StandardError
+        []
+      end
+
+      merged = Array(baseline).dup
+      Array(cli_memories).each do |raw|
+        raw.to_s.split(",").map(&:strip).reject(&:empty?).each do |name|
+          merged << name unless merged.include?(name)
+        end
+      end
+      merged
     end
 
     def explicit_memory_section

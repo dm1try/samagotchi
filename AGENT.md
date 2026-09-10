@@ -31,6 +31,9 @@ and `--resume`. Flag semantics (also in README's "CLI Usage" section):
   (breaking change vs the old one-shot-then-exit behavior).
 - `--memory` (repeatable), `--no-interrupt`, `--no-default-input`,
   `-v`/`--verbose`, `--help` also available; `SAMAGOTCHI_DEFAULT_INPUT` prefill (edit, not run).
+  The config.yml `memories:` list is the persistent baseline of preloaded memory
+  entries (same name shape as `--memory`); `--memory` values are appended after
+  it, deduped.
 - `--backend {native,ruby_llm}` selects the model backend (default: `native`; also
   `SAMAGOTCHI_BACKEND`). `:native` is the default and well-tested; `:ruby_llm` is
   the gem-backed path behind `SAMAGOTCHI_BACKEND` (Phase 4). The CLI flag exports

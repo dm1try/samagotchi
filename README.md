@@ -22,7 +22,7 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `-p`, `--prompt TEXT` | Feed `TEXT` as the first turn (also prefill-equivalent; `-p` feeds **and** runs). |
 | `--non-interactive` | Run a single turn then exit the REPL (sets a high iteration cap; implies `--no-interrupt`). Harmless no-op when given without `-p`. |
 | `--resume SESSION_ID` | Load a prior session's history instead of creating a fresh one. |
-| `--memory NAME` | Preload a memory entry into the system prompt (repeatable). |
+| `--memory NAME` | Preload a memory entry into the system prompt (repeatable). Merged under the config.yml `memories:` baseline. |
 | `--backend {native,ruby_llm}` | Choose the model backend (default: `native`). See below. |
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
 | `--no-default-input` | Skip prefilling the first REPL line from `SAMAGOTCHI_DEFAULT_INPUT`. |
@@ -230,6 +230,12 @@ recap:
 model_aliases:
   small: gemma4-small
   tiny: recap-box:gemma4-small  # alias may be bare or host:model (hybrid)
+
+# Baseline memories preloaded into the system prompt (same shape as --memory).
+# CLI --memory entries are appended after these, deduped.
+memories:
+  - system/user_preferences
+  - project/feature-env-template
 ```
 
 Behavior:
@@ -243,9 +249,13 @@ This lets you run `bin/chi` without repeating common defaults such as model
 and llama host/port on every invocation.
 
 Note: The global config file supports both flat scalar entries (for env vars)
-and nested sections like `hosts:`, `recap:`, `hooks:`, `model_aliases:`. Scalar entries are loaded as environment
+and nested sections like `hosts:`, `recap:`, `hooks:`, `model_aliases:`,
+`memories:`. Scalar entries are loaded as environment
 variables; non-scalar sections are skipped by the env-loader and parsed by
-their respective subsystems (e.g. the hooks system, `HostRegistry`).
+their respective subsystems (e.g. the hooks system, `HostRegistry`). The
+`memories:` list is the persistent baseline for preloaded memory entries —
+the same name shape as `--memory` (bare name or `scope/name`), merged under
+any per-run `--memory` values (config baseline first, deduped).
 
 ## Plugin Hooks
 

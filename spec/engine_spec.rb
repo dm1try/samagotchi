@@ -61,6 +61,10 @@ RSpec.describe Samagotchi::Engine do
   end
 
   describe "memory injection" do
+    before do
+      allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return([])
+    end
+
     it "injects requested memories into the system prompt" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil|
         name.to_s.empty? ? "" : "BODY-#{name}"
@@ -75,6 +79,32 @@ RSpec.describe Samagotchi::Engine do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       engine = build_engine(profile: "gemma4")
       expect(engine.send(:explicit_memory_section)).to be_nil
+    end
+
+    it "merges the config.yml memories baseline with the --memory list (config first, deduped)" do
+      allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return(%w[baseline_a baseline_b])
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil|
+        name.to_s.empty? ? "" : "BODY-#{name}"
+      end
+      engine = build_engine(profile: "gemma4", memories: ["baseline_b, cli_only"])
+
+      expect(engine.instance_variable_get(:@requested_memories)).to eq(%w[baseline_a baseline_b cli_only])
+
+      prompt = engine.system_prompt
+      expect(prompt).to include("memory name: baseline_a")
+      expect(prompt).to include("memory name: cli_only")
+      expect(prompt.scan("memory name: baseline_b").size).to eq(1)
+    end
+
+    it "uses only the config baseline when --memory is not given" do
+      allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return(%w[only_from_config])
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil|
+        name.to_s.empty? ? "" : "BODY-#{name}"
+      end
+      engine = build_engine(profile: "gemma4")
+
+      expect(engine.instance_variable_get(:@requested_memories)).to eq(%w[only_from_config])
+      expect(engine.system_prompt).to include("memory name: only_from_config")
     end
   end
 
