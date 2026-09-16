@@ -322,4 +322,85 @@ RSpec.describe Samagotchi::Web::App do
       expect(raw).to include("GET /session/s1/stream HTTP/1.1")
     end
   end
+
+  describe "POST /api/sessions/:id/answer" do
+    it "returns 400 when the question id is missing" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      status, _headers, body = app.call(
+        env_for("/api/sessions/s1/answer", method: "POST", body: '{"selected":["A"]}')
+      )
+
+      expect(status).to eq(400)
+      expect(JSON.parse(body.first)).to include("error" => "missing_fields")
+    end
+
+    it "returns 503 not_live when there is no live bridge for the session" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_sidecar_port).and_return(nil)
+      status, _headers, body = app.call(
+        env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-1","selected":["A"]}')
+      )
+
+      expect(status).to eq(503)
+      expect(JSON.parse(body.first)).to include("error" => "not_live")
+    end
+
+    it "proxies the answer to the live bridge and returns 200 on success" do
+      server = TCPServer.new("127.0.0.1", 0)
+      port = server.local_address.ip_port
+      received = nil
+      accept_thread = Thread.new do
+        conn = server.accept
+        request = +""
+        request << conn.readpartial(16_384) until request.include?("\r\n\r\n")
+        if (m = /Content-Length: (\d+)/i.match(request))
+          body_len = m[1].to_i
+          body_start = request.index("\r\n\r\n") + 4
+          request << conn.readpartial(16_384) while request.bytesize - body_start < body_len
+        end
+        received = request
+        conn.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}")
+        conn.close
+      end
+      accept_thread.report_on_exception = false
+
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_sidecar_port).and_return(port)
+      status, _headers, body = app.call(
+        env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-9","selected":["Cats"],"freeform":"meow"}')
+      )
+      server.close
+      accept_thread.join(1)
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body.first)).to include("status" => "answered", "id" => "q-9")
+      expect(received).to include("POST /session/s1/answer HTTP/1.1")
+      expect(received).to include(%q{"id":"q-9"})
+      expect(received).to include(%q{"selected":["Cats"]})
+      expect(received).to include(%q{"freeform":"meow"})
+    end
+
+    it "accepts the answer nested under an answer key" do
+      server = TCPServer.new("127.0.0.1", 0)
+      port = server.local_address.ip_port
+      accept_thread = Thread.new do
+        conn = server.accept
+        conn.readpartial(16_384)
+        conn.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}")
+        conn.close
+      end
+      accept_thread.report_on_exception = false
+
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_sidecar_port).and_return(port)
+      status, _headers, body = app.call(
+        env_for("/api/sessions/s1/answer", method: "POST", body: '{"answer":{"id":"q-7","selected":["Dogs"]}}')
+      )
+      server.close
+      accept_thread.join(1)
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body.first)).to include("status" => "answered", "id" => "q-7")
+    end
+  end
 end

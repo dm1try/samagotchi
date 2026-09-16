@@ -1,0 +1,245 @@
+# frozen_string_literal: true
+
+require "json"
+require "samagotchi/engine"
+require "samagotchi/session"
+
+# Covers the cross-thread ask_user_question path used by the Web UI / Bridge:
+# Engine#request_question blocks the turn thread until Engine#answer_question
+# is called from another thread (or the turn is cancelled).
+RSpec.describe "Engine ask_user_question (cross-thread path)" do
+  around do |example|
+    original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
+    original_thinking = ENV["THINKING_MODE"]
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
+    ENV["THINKING_MODE"] = "false"
+    example.run
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
+    ENV["THINKING_MODE"] = original_thinking
+  end
+
+  let(:client) { instance_double(Samagotchi::Client) }
+  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+
+  let(:payload) do
+    {
+      question: "Which option?",
+      options: %w[Cats Dogs],
+      header: "Pet preference",
+      multi_select: false,
+      allow_freeform: false
+    }
+  end
+
+  def build_engine(session: nil)
+    engine = Samagotchi::Engine.new(mode: :assist, client: client, kernel: kernel)
+    engine.session = session if session
+    engine
+  end
+
+  # Runs request_question on a turn-like thread and yields the engine so the
+  # caller can answer from "the UI thread" once the question event arrives.
+  def request_in_background(engine, payload)
+    events = []
+    engine.subscribe(observer: ->(e) { events << e })
+    result_box = {}
+    turn_thread = Thread.new do
+      result_box[:result] = engine.request_question(payload)
+    rescue StandardError => e
+      result_box[:error] = e
+    end
+    turn_thread.report_on_exception = false
+    # Wait until the question is pending (question_requested emitted)
+    deadline = mono + 2.0
+    sleep(0.005) while engine.pending_question.nil? && mono < deadline
+    [turn_thread, result_box, events]
+  end
+
+  def mono
+    Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  end
+
+  describe "Engine#request_question / #answer_question" do
+    it "emits question_requested with the normalized pending payload" do
+      engine = build_engine
+      turn_thread, result_box, events = request_in_background(engine, payload)
+
+      pending = engine.pending_question
+      expect(pending).not_to be_nil
+      expect(pending[:question]).to eq("Which option?")
+      expect(pending[:options]).to eq(%w[Cats Dogs])
+      expect(pending[:header]).to eq("Pet preference")
+      expect(pending[:multi_select]).to eq(false)
+      expect(pending[:status]).to eq("pending")
+      expect(pending[:id]).to be_a(String)
+
+      requested = events.find { |e| e[:type] == :question_requested }
+      expect(requested).not_to be_nil
+      expect(requested[:pending_question][:id]).to eq(pending[:id])
+
+      engine.answer_question(id: pending[:id], selected: ["Cats"])
+      turn_thread.join(2)
+      expect(result_box[:error]).to be_nil
+    end
+
+    it "strips wire control tokens from question, options, and header" do
+      engine = build_engine
+      dirty = payload.merge(
+        question: "<|channel|>Which option?<|",
+        options: ["|>Cats<|", "|>Dogs<|"],
+        header: "<|tool_call|>Pet preference|>"
+      )
+      turn_thread, result_box, _events = request_in_background(engine, dirty)
+
+      pending = engine.pending_question
+      expect(pending[:question]).to eq("Which option?")
+      expect(pending[:options]).to eq(%w[Cats Dogs])
+      expect(pending[:header]).to eq("Pet preference")
+
+      engine.answer_question(id: pending[:id], selected: ["Cats"])
+      turn_thread.join(2)
+      expect(result_box[:error]).to be_nil
+    end
+
+    it "persists pending_question to the session and clears it after answering" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd)
+      allow(session).to receive(:save)
+      engine = build_engine(session: session)
+      turn_thread, _result_box, _events = request_in_background(engine, payload)
+
+      expect(session.pending_question).not_to be_nil
+      expect(session.pending_question[:question]).to eq("Which option?")
+
+      engine.answer_question(id: session.pending_question[:id], selected: ["Dogs"])
+      turn_thread.join(2)
+      expect(session.pending_question).to be_nil
+    end
+
+    it "blocks until answer_question is called from another thread and returns answer JSON" do
+      engine = build_engine
+      turn_thread, result_box, events = request_in_background(engine, payload)
+      qid = engine.pending_question[:id]
+
+      engine.answer_question(id: qid, selected: ["Dogs"], freeform: nil)
+      turn_thread.join(2)
+
+      expect(result_box[:error]).to be_nil
+      answer = JSON.parse(result_box[:result])
+      expect(answer["id"]).to eq(qid)
+      expect(answer["selected"]).to eq(["Dogs"])
+      expect(answer["freeform"]).to be_nil
+      expect(answer["selected_indices"]).to eq([1])
+
+      answered = events.find { |e| e[:type] == :question_answered }
+      expect(answered).not_to be_nil
+      expect(answered[:id]).to eq(qid)
+    end
+
+    it "returns a cancelled error payload when the turn is cancelled while pending" do
+      engine = build_engine
+      ctrl = Samagotchi::Client::CancellationController.new
+      engine.instance_variable_set(:@active_cancel_controller, ctrl)
+
+      events = []
+      engine.subscribe(observer: ->(e) { events << e })
+      result_box = {}
+      turn_thread = Thread.new do
+        result_box[:result] = engine.request_question(payload)
+      end
+      turn_thread.report_on_exception = false
+      deadline = mono + 2.0
+      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+
+      ctrl.cancel!(:user)
+      turn_thread.join(2)
+
+      answer = JSON.parse(result_box[:result])
+      expect(answer["error"]).to eq("cancelled")
+      expect(answer["reason"]).to eq("user")
+      expect(engine.pending_question).to be_nil
+
+      cancelled = events.find { |e| e[:type] == :question_cancelled }
+      expect(cancelled).not_to be_nil
+    end
+
+    it "returns an error payload without blocking for an empty question" do
+      engine = build_engine
+      result = engine.request_question(question: "", options: %w[A B])
+      expect(JSON.parse(result)["error"]).to eq("invalid question")
+      expect(engine.pending_question).to be_nil
+    end
+
+    it "returns an error payload without blocking when options are missing" do
+      engine = build_engine
+      result = engine.request_question(question: "Pick", options: [])
+      expect(JSON.parse(result)["error"]).to eq("invalid question")
+      expect(engine.pending_question).to be_nil
+    end
+  end
+
+  describe "Engine#answer_question validation" do
+    it "raises when there is no pending question" do
+      engine = build_engine
+      expect { engine.answer_question(id: "q-1", selected: ["A"]) }
+        .to raise_error(ArgumentError, /no pending question/)
+    end
+
+    it "raises on id mismatch" do
+      engine = build_engine
+      turn_thread, _box, _events = request_in_background(engine, payload)
+      expect { engine.answer_question(id: "wrong-id", selected: ["Cats"]) }
+        .to raise_error(ArgumentError, /id mismatch/)
+      engine.answer_question(id: engine.pending_question[:id], selected: ["Cats"])
+      turn_thread.join(2)
+    end
+
+    it "raises when the selection is not a subset of the options" do
+      engine = build_engine
+      turn_thread, _box, _events = request_in_background(engine, payload)
+      expect { engine.answer_question(id: engine.pending_question[:id], selected: ["Birds"]) }
+        .to raise_error(ArgumentError, /invalid selection/)
+      engine.answer_question(id: engine.pending_question[:id], selected: ["Cats"])
+      turn_thread.join(2)
+    end
+
+    it "raises when multiple selections are given for a single-select question" do
+      engine = build_engine
+      turn_thread, _box, _events = request_in_background(engine, payload)
+      expect { engine.answer_question(id: engine.pending_question[:id], selected: %w[Cats Dogs]) }
+        .to raise_error(ArgumentError, /single-select/)
+      engine.answer_question(id: engine.pending_question[:id], selected: ["Cats"])
+      turn_thread.join(2)
+    end
+
+    it "raises when neither selection nor freeform is provided" do
+      engine = build_engine
+      turn_thread, _box, _events = request_in_background(engine, payload)
+      expect { engine.answer_question(id: engine.pending_question[:id], selected: [], freeform: nil) }
+        .to raise_error(ArgumentError, /selection required/)
+      engine.answer_question(id: engine.pending_question[:id], selected: ["Cats"])
+      turn_thread.join(2)
+    end
+
+    it "accepts multiple selections for a multi-select question" do
+      engine = build_engine
+      turn_thread, result_box, _events = request_in_background(engine, payload.merge(multi_select: true))
+      engine.answer_question(id: engine.pending_question[:id], selected: %w[Cats Dogs])
+      turn_thread.join(2)
+
+      answer = JSON.parse(result_box[:result])
+      expect(answer["selected"]).to eq(%w[Cats Dogs])
+      expect(answer["selected_indices"]).to eq([0, 1])
+    end
+
+    it "accepts freeform-only answers when allow_freeform is set" do
+      engine = build_engine
+      turn_thread, result_box, _events = request_in_background(engine, payload.merge(allow_freeform: true))
+      engine.answer_question(id: engine.pending_question[:id], selected: [], freeform: "Something else")
+      turn_thread.join(2)
+
+      answer = JSON.parse(result_box[:result])
+      expect(answer["selected"]).to eq([])
+      expect(answer["freeform"]).to eq("Something else")
+    end
+  end
+end

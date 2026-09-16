@@ -117,6 +117,9 @@ module Samagotchi
 
         # Remove surrounding quotes/brackets that dumb models include
         s = s.gsub(/\A["'\s\[\]]+|["'\s\[\]]+\z/, "").strip
+        # Drop wire control tokens (<|...|> and stray <| / |> fragments) that
+        # can bleed into labels when the model wraps options in tool_call markup.
+        s = s.gsub(/<\|[^|]*\|>/, "").gsub(/<\||\|>/, "")
         # Unescape inner
         s = s.gsub('\\"', '"').gsub("\\'", "'").gsub("\\\\", "\\")
         s = s.strip

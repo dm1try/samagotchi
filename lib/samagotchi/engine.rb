@@ -505,7 +505,9 @@ module Samagotchi
     # @param payload [Hash] {question:, options:, header:, multi_select:, allow_freeform:}
     # @return [String] normalized answer JSON
     def request_question(payload)
-      question = payload[:question].to_s.strip
+      # Strip wire control tokens (<|...|> / stray <|,|>) that can bleed into the
+      # question text when the model wraps the tool call in markup.
+      question = payload[:question].to_s.gsub(/<\|[^|]*\|>/, "").gsub(/<\||\|>/, "").strip
       options = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(payload[:options])
       # Fallback for string JSON that lenient missed
       if options.empty? && payload[:options].is_a?(String)
@@ -525,11 +527,12 @@ module Samagotchi
       end
 
       id = SecureRandom.uuid
+      clean_header = payload[:header].to_s.gsub(/<\|[^|]*\|>/, "").gsub(/<\||\|>/, "").strip
       pending = {
         id: id,
         question: question,
         options: options,
-        header: payload[:header].to_s.strip.empty? ? nil : payload[:header].to_s.strip,
+        header: clean_header.empty? ? nil : clean_header,
         multi_select: !!payload[:multi_select],
         allow_freeform: !!payload[:allow_freeform],
         status: "pending",
