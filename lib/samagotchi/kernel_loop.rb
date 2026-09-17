@@ -9,6 +9,8 @@ require_relative "prompt_literal_guard"
 require_relative "client"
 require_relative "debug_log"
 require_relative "hooks"
+require_relative "pending_input_queue"
+require_relative "thought_stream_splitter"
 require_relative "tools/execute"
 require_relative "tools/read"
 require_relative "tools/write"
@@ -164,8 +166,14 @@ module Samagotchi
     # @param model_name [String, nil]            optional per-run model override
     # @param max_tool_output_chars [Integer, nil] per-output char cap for the
     #   :tool_call_completed event's `output:` (nil → env/DEFAULT_MAX_TOOL_OUTPUT_CHARS)
+    # @param pending_input [#call, nil]  optional drain proc returning
+    #   Array<String> of user steering messages queued while the turn runs.
+    #   Drained at iteration boundaries (llama.cpp's /completion cannot accept
+    #   steering mid-stream); drained lines merge into ONE user message appended
+    #   at the conversation tail (prefix KV cache preserved) and a
+    #   :pending_input_merged stream event is emitted.
     # @return [Result] final visible response with continuation metadata
-    def run(messages, max_iterations: 100, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil)
+    def run(messages, max_iterations: 100, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil)
       resolved_model_name = completion_model_name(model_name)
       @profile = ModelProfile.from_model_name(resolved_model_name) unless @profile_explicit
 
@@ -177,10 +185,13 @@ module Samagotchi
       qwen_recovery_attempts = 0
       qwen_partial_tool_call = nil
       context_status = nil
+      stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
+      partial_assistant_buffer = +""
 
       effective_max_iterations = @no_interrupt ? 1000 : max_iterations
       effective_max_tool_output_chars = resolve_output_char_cap(max_tool_output_chars)
       effective_max_iterations.times do |iteration_index|
+        inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1)
         prompt = Prompt.format(conversation, profile: @profile)
         context_status = emit_context_status_event(on_stream_event, prompt, iteration_index: iteration_index, state: context_state) || context_status
         emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
@@ -194,6 +205,7 @@ module Samagotchi
             model_name: resolved_model_name,
             on_chunk: lambda { |chunk|
               capture_server_usage(chunk[:payload], context_state)
+              partial_assistant_buffer << stream_splitter.feed(chunk[:content])[:text]
               if on_stream_event
                 emit_stream_event(
                   on_stream_event,
@@ -245,7 +257,12 @@ module Samagotchi
           end
 
           pending_tool_calls = false
-          break
+          unless inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1)
+            break
+          end
+          # Queued steering keeps the turn going: loop again so the model
+          # answers the injected message instead of stopping here.
+          next
         end
 
         qwen_recovery_attempts = 0
@@ -311,7 +328,7 @@ module Samagotchi
           iteration: iteration_index + 1,
           reason: e.reason
         )
-        return cancelled_result(conversation, tool_activity: tool_activity, reason: e.reason)
+        return cancelled_result(conversation, tool_activity: tool_activity, reason: e.reason, partial_assistant_text: partial_assistant_buffer)
       end
 
       if pending_tool_calls && tool_response_turn?(conversation.last)
@@ -345,6 +362,34 @@ module Samagotchi
       callback&.call(event)
     rescue StandardError
       nil
+    end
+
+    # Drain the pending input queue (if any) and, when messages are waiting,
+    # append them as ONE merged user message at the conversation tail and emit
+    # :pending_input_merged. Tail-append only: head mutation would invalidate
+    # the server-side prefix KV cache. Returns true when a message was injected.
+    def inject_pending_input!(conversation, pending_input, on_stream_event, iteration)
+      return false unless pending_input
+
+      lines = begin
+        pending_input.call
+      rescue StandardError
+        nil
+      end
+      return false if lines.nil? || lines.empty?
+
+      content = lines.map { |line| line.to_s.strip }.reject(&:empty?).join("\n\n")
+      return false if content.empty?
+
+      conversation << { role: "user", content: content }
+      emit_stream_event(
+        on_stream_event,
+        type: :pending_input_merged,
+        iteration: iteration,
+        count: lines.length,
+        content: content
+      )
+      true
     end
 
     # ── Hook dispatch helper ───────────────────────────────────────────────────
@@ -419,10 +464,19 @@ module Samagotchi
       end
     end
 
-    def cancelled_result(conversation, tool_activity:, reason:)
+    def cancelled_result(conversation, tool_activity:, reason:, partial_assistant_text: "")
+      partial = partial_assistant_text.to_s.strip
+      conversation = duplicate_conversation(conversation)
+      # Salvage the already-streamed visible reply (thought/tool_call lanes
+      # were never routed into the buffer, so unterminated tool_call fragments
+      # cannot leak) so a follow-up steering message continues with the model's
+      # half-finished work in context instead of losing it.
+      unless partial.empty?
+        conversation << { role: "model", content: "#{partial}\n[interrupted]", interrupted: true }
+      end
       Result.new(
         output: "",
-        conversation: duplicate_conversation(conversation),
+        conversation: conversation,
         exhausted: false,
         pending_tool_calls: false,
         tool_activity: tool_activity,

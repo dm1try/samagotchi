@@ -28,7 +28,13 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble{background:#151821;border:1px solid #1f232b;border-radius:12px;padding:12px 14px;white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5}
 .bubble.output{border-left:3px solid #1f6feb}
 .bubble.output.streaming{border-left-color:#58a6ff;opacity:.95}
-.bubble.user{border-left:3px solid #7aa5ff;background:#1b2336;align-self:flex-end;max-width:85%;margin-left:auto}
+.bubble.user{border-left:3px solid #7aa5ff;background:#1b2336;align-self:flex-end;max-width:85%;margin-left:auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bubble.user.queued{border-left-style:dashed;opacity:.8}
+.bubble.user.steered{border-left-style:dashed;border-left-color:#8ec5ff;opacity:.9}
+.bubble.user .state-badge{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:2px 7px;border-radius:999px;background:rgba(255,255,255,.08);color:#dfe8ff;font-size:11px;line-height:1.2;white-space:nowrap;flex-shrink:0}
+.bubble.user .state-badge::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.8;box-shadow:0 0 0 1px rgba(255,255,255,.18)}
+.bubble.user.queued .state-badge::before{background:#9ecbff;box-shadow:0 0 0 1px rgba(158,203,255,.35)}
+.bubble.user.steered .state-badge::before{background:#8ec5ff;box-shadow:0 0 0 1px rgba(142,197,255,.4)}
 .bubble.tool{border-left:3px solid #238636;background:#0f1a12;font-size:13px;color:#c9d1d9}
 .bubble.cancel{border-left:3px solid #f85149;background:#1a0f0f;color:#ff7b72;font-size:13px}
 .bubble.activity{border-left:3px solid #388bfd;background:#0d1218;padding:8px 12px}

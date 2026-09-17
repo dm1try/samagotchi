@@ -17,7 +17,7 @@ module Samagotchi
     # ModelResult. This avoids keeping a dead class file around.
     class ModelBackend
       def complete(messages:, max_iterations: 100, on_stream_event: nil, cancel_controller: nil,
-                   model_name: nil, max_tool_output_chars: nil)
+                   model_name: nil, max_tool_output_chars: nil, pending_input: nil)
         raise NotImplementedError, "#{self.class}#complete must be implemented"
       end
     end

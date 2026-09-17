@@ -59,7 +59,7 @@ module Samagotchi
       end
 
       def complete(messages:, max_iterations: 100, on_stream_event: nil, cancel_controller: nil,
-                   model_name: nil, max_tool_output_chars: nil)
+                   model_name: nil, max_tool_output_chars: nil, pending_input: nil)
         # Fast path: a pre-set cancel means nothing ran, so the conversation is
         # simply the inbound messages unchanged (nothing was appended).
         if cancel_controller&.cancelled?
@@ -77,7 +77,8 @@ module Samagotchi
           on_stream_event: on_stream_event,
           cancel_controller: cancel_controller,
           model_name: model_name,
-          max_tool_output_chars: max_tool_output_chars
+          max_tool_output_chars: max_tool_output_chars,
+          pending_input: pending_input
         )
       end
 
@@ -87,7 +88,7 @@ module Samagotchi
       # loop lives INSIDE the backend; raw provider tool calls are never surfaced
       # — `tool_calls` is always `nil` downstream.
       def run_tool_loop(seed_messages, max_iterations:, on_stream_event:, cancel_controller:,
-                        model_name:, max_tool_output_chars:)
+                        model_name:, max_tool_output_chars:, pending_input: nil)
         effective_max_tool_output_chars = resolve_output_char_cap(max_tool_output_chars)
         conversation = seed_messages.map { |e| { role: e[:role], content: e[:content].to_s } }
         last_text = ""
@@ -105,6 +106,8 @@ module Samagotchi
             return build_result("", canceled: true, reason: cancel_controller.reason,
                                 conversation: conversation)
           end
+
+          inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1)
 
           emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
           outcome = generate_once(conversation, on_stream_event, cancel_controller, model_name)
@@ -125,6 +128,11 @@ module Samagotchi
           tool_calls = outcome[:tool_calls]
 
           if tool_calls.nil? || tool_calls.empty?
+            # Queued steering keeps the turn going: inject and loop again so the
+            # model answers the message instead of stopping at a clean answer.
+            if inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1)
+              next
+            end
             # Pure-text final generation: preserve the model's answer as a model
             # turn so the engine persists it in result.conversation (the tool
             # branch appends mixed-text turns earlier; this handles the terminal
@@ -153,6 +161,31 @@ module Samagotchi
 
         build_result(strip_model_thought(last_text), canceled: false, reason: nil,
                      conversation: conversation, exhausted: reached_cap)
+      end
+
+      # Drain the pending input queue (if any) and, when messages are waiting,
+      # append them as ONE merged user message at the conversation tail (prefix
+      # KV cache preserved) and emit :pending_input_merged. Returns true when a
+      # message was injected.
+      def inject_pending_input!(conversation, pending_input, on_stream_event, iteration)
+        return false unless pending_input
+
+        lines = begin
+          pending_input.call
+        rescue StandardError
+          nil
+        end
+        return false if lines.nil? || lines.empty?
+
+        content = lines.map { |line| line.to_s.strip }.reject(&:empty?).join("\n\n")
+        return false if content.empty?
+
+        conversation << { role: "user", content: content }
+        emit_stream_event(on_stream_event, type: :pending_input_merged,
+                                           iteration: iteration,
+                                           count: lines.length,
+                                           content: content)
+        true
       end
 
       # Issues ONE generation against the gem and parses the sync Message.

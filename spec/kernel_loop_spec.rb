@@ -821,6 +821,193 @@ Need to inspect the filesystem first.
     end
   end
 
+  describe "pending input injection" do
+    let(:queue) { Samagotchi::PendingInputQueue.new }
+
+    it "injects a queued message as one merged user message before the next iteration" do
+      responses = [
+        %(<|tool_call>call:execute{command: "true"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete) do
+        response = responses.shift
+        # Simulate the user queueing a steering message while the model's
+        # tool-call response is being dispatched, before the next iteration.
+        queue.push("also check the specs") if responses.length == 1
+        response
+      end
+
+      result = kernel.run(
+        [{ role: "user", content: "run tests" }],
+        pending_input: queue.method(:drain)
+      )
+
+      expect(result).to eq("done")
+      injected = result.conversation.select { |m| m[:role] == "user" && m[:content].include?("also check the specs") }
+      expect(injected.length).to eq(1)
+    end
+
+    it "merges multiple queued lines into a single user message" do
+      queue.push("first note")
+      queue.push("second note")
+      allow(client).to receive(:complete).and_return("done")
+
+      result = kernel.run(
+        [{ role: "user", content: "hi" }],
+        pending_input: queue.method(:drain)
+      )
+
+      merged = result.conversation.select { |m| m[:role] == "user" && m[:content].include?("first note") }
+      expect(merged.length).to eq(1)
+      expect(merged.first[:content]).to eq("first note\n\nsecond note")
+      expect(queue).to be_empty
+    end
+
+    it "emits :pending_input_merged with iteration, count and content" do
+      events = []
+      allow(client).to receive(:complete).and_return("done")
+      queue.push("steer me")
+
+      kernel.run(
+        [{ role: "user", content: "hi" }],
+        pending_input: queue.method(:drain),
+        on_stream_event: ->(event) { events << event }
+      )
+
+      merged = events.find { |event| event[:type] == :pending_input_merged }
+      expect(merged).not_to be_nil
+      expect(merged[:iteration]).to eq(1)
+      expect(merged[:count]).to eq(1)
+      expect(merged[:content]).to eq("steer me")
+    end
+
+    it "converts the no-tool-calls break into continue when input is queued" do
+      # First generation returns plain text (would normally end the turn), but
+      # a queued message must keep the turn alive for one more round.
+      steering = Samagotchi::PendingInputQueue.new
+      responses = ["first answer", "second answer"]
+      allow(client).to receive(:complete) do
+        response = responses.shift
+        # Steering arrives after the first plain-text answer, before the
+        # no-tool-calls break decision is made.
+        steering.push("follow-up question") if responses.length == 1
+        response
+      end
+
+      events = []
+      result = kernel.run(
+        [{ role: "user", content: "hi" }],
+        pending_input: steering.method(:drain),
+        on_stream_event: ->(event) { events << event }
+      )
+
+      expect(result).to eq("second answer")
+      expect(events.count { |event| event[:type] == :generation_started }).to eq(2)
+      conversation = result.conversation
+      follow_up = conversation.find_index { |m| m[:role] == "user" && m[:content] == "follow-up question" }
+      final_model = conversation.rindex { |m| m[:role] == "model" }
+      expect(follow_up).not_to be_nil
+      expect(final_model).to be > follow_up
+    end
+
+    it "survives a draining proc that raises" do
+      allow(client).to receive(:complete).and_return("done")
+      bad_drain = -> { raise "boom" }
+
+      result = kernel.run(
+        [{ role: "user", content: "hi" }],
+        pending_input: bad_drain
+      )
+      expect(result).to eq("done")
+    end
+
+    it "orders injected input after tool_response and before the next model reply" do
+      responses = [
+        %(<|tool_call>call:execute{command: "true"}<tool_call|>),
+        "done"
+      ]
+      allow(client).to receive(:complete) do
+        response = responses.shift
+        queue.push("steering") if responses.length == 1
+        response
+      end
+
+      result = kernel.run(
+        [{ role: "user", content: "hi" }],
+        pending_input: queue.method(:drain)
+      )
+
+      roles = result.conversation.map { |m| m[:role] }
+      tool_idx = roles.index("tool_response")
+      user_idx = result.conversation.index { |m| m[:role] == "user" && m[:content] == "steering" }
+      model_idx = roles.rindex("model")
+      expect(tool_idx).not_to be_nil
+      expect(user_idx).to eq(tool_idx + 1)
+      expect(model_idx).to be > user_idx
+    end
+  end
+
+  describe "cancel salvage" do
+    it "appends the partial visible reply marked interrupted to the conversation" do
+      allow(client).to receive(:complete) do |*_args, **kwargs|
+        kwargs[:on_chunk]&.call(content: "Let me check the fi", payload: {})
+        raise Samagotchi::Client::RequestCancelled.new(:ctrl_c)
+      end
+
+      result = kernel.run([{ role: "user", content: "hi" }])
+
+      expect(result).to be_canceled
+      salvaged = result.conversation.find { |m| m[:role] == "model" && m[:interrupted] }
+      expect(salvaged).not_to be_nil
+      expect(salvaged[:content]).to include("Let me check the fi")
+      expect(salvaged[:content]).to include("[interrupted]")
+    end
+
+    it "drops an unterminated tool_call fragment from the salvaged partial" do
+      allow(client).to receive(:complete) do |*_args, **kwargs|
+        # Visible prose followed by an OPEN tool_call block that never closes:
+        # the splitter must not route any of the fragment into the text lane.
+        kwargs[:on_chunk]&.call(content: "checking now. <|tool_call>call:execute{command: \"rm", payload: {})
+        raise Samagotchi::Client::RequestCancelled.new(:ctrl_c)
+      end
+
+      result = kernel.run([{ role: "user", content: "hi" }])
+
+      salvaged = result.conversation.find { |m| m[:interrupted] }
+      expect(salvaged[:content]).to include("checking now.")
+      expect(salvaged[:content]).not_to include("tool_call")
+      expect(salvaged[:content]).not_to include("rm")
+    end
+
+    it "keeps completed tool calls and responses in the salvaged conversation" do
+      call_count = 0
+      allow(client).to receive(:complete) do |*_args, **kwargs|
+        call_count += 1
+        if call_count == 1
+          %(<|tool_call>call:execute{command: "true"}<tool_call|>)
+        else
+          kwargs[:on_chunk]&.call(content: "partial", payload: {})
+          raise Samagotchi::Client::RequestCancelled.new(:ctrl_c)
+        end
+      end
+
+      result = kernel.run([{ role: "user", content: "hi" }])
+
+      roles = result.conversation.map { |m| m[:role] }
+      expect(roles).to include("tool_response")
+      expect(result.conversation.last[:interrupted]).to be(true)
+    end
+
+    it "returns an unsalvaged conversation when nothing visible streamed" do
+      allow(client).to receive(:complete).and_raise(Samagotchi::Client::RequestCancelled.new(:manual))
+
+      result = kernel.run([{ role: "user", content: "hi" }])
+
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }])
+      expect(result.conversation.none? { |m| m[:interrupted] }).to be(true)
+    end
+  end
+
   describe "verbose mode" do
     subject(:verbose_kernel) { described_class.new(client: client, verbose: true) }
 

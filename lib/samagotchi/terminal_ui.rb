@@ -34,6 +34,7 @@ module Samagotchi
     MODELS_COMMAND = "/models"
     STATS_COMMAND = "/stats"
     RECAP_COMMAND = "/recap"
+    ROLLBACK_COMMAND = "!rollback"
     SLASH_COMMANDS = %w[/continue /exit /model /models /recap /stats].freeze
     SHELL_BANG_PREFIX = "!"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
@@ -288,6 +289,11 @@ module Samagotchi
       awaiting_continue = false
       interrupted_turn_checkpoint = nil
       interrupted_turn_context = nil
+      # UI-agnostic steering queue. Nothing pushes mid-turn in the TUI yet
+      # (typed-during-generation input is intentionally out of scope — the tty
+      # render stack is too fragile), but wiring the drain here keeps the
+      # interface live and identical to the web/background hosts.
+      @pending_input_queue = PendingInputQueue.new
 
       loop do
         # Drain any pending ask_user_question first — it has priority over reminders and
@@ -451,6 +457,22 @@ module Samagotchi
         else
           next if input.empty?
 
+          # Explicit escape hatch after a Ctrl-C: discard the salvaged
+          # partial turn and restore the pre-turn checkpoint.
+          if input.strip == ROLLBACK_COMMAND
+            if interrupted_turn_checkpoint
+              messages = clone_messages(interrupted_turn_checkpoint)
+              interrupted_turn_checkpoint = nil
+              session.messages = messages
+              session.model_name = @effective_model_name
+              session.save
+              $stdout.puts "\nmodel> salvaged turn discarded; restored pre-turn state"
+            else
+              $stdout.puts "\nmodel> nothing to rollback"
+            end
+            next
+          end
+
           if shell_bang_command?(input)
             command = input.delete_prefix(SHELL_BANG_PREFIX).strip
             if command.empty?
@@ -516,10 +538,22 @@ module Samagotchi
           if continue_flow
             awaiting_continue = true
           else
-            # Ctrl-c on a fresh turn: cancel the open turn before abandoning it.
+            # Ctrl-C on a fresh turn. The kernel salvaged completed tool calls
+            # and the partial assistant reply (marked [interrupted]) into
+            # result.conversation, so progress is preserved by default — the
+            # user's next message continues from it. !rollback restores the
+            # pre-turn checkpoint for an explicit full discard.
             end_interactive_turn(canceled: true)
-            messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
+            if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
+              messages = result.conversation
+              session.messages = messages
+              session.model_name = @effective_model_name
+              session.save
+            else
+              messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
+            end
             awaiting_continue = false
+            $stdout.puts "\nmodel> turn cancelled; partial progress kept in context (type !rollback to discard it)"
           end
           interrupted_turn_checkpoint = nil unless awaiting_continue
           next
@@ -1567,7 +1601,8 @@ module Samagotchi
         max_iterations: max_iterations,
         on_stream_event: method(:handle_stream_event),
         cancel_controller: cancellation_controller,
-        model_name: @effective_model_name
+        model_name: @effective_model_name,
+        pending_input: @pending_input_queue&.method(:drain)
       )
       emit_cancellation_notice(result)
       result

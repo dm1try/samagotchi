@@ -292,13 +292,33 @@ module Samagotchi
       bridge_instance = start_bridge(engine:, state_dir: sd, session_id: session_id)
 
       begin
+        # Shared mid-turn steering drain: claims any input files that arrive
+        # while a turn is running and hands them to the agentic loop so
+        # follow-ups merge at the next iteration boundary instead of waiting
+        # for this outer 1s poll. claim_input_file is atomic (rename), so a
+        # file consumed mid-turn simply fails the outer loop's later claim
+        # with ENOENT → nil. No double-processing risk.
+        pending_input_drain = lambda do
+          find_new_input_files(session_dir).sort.filter_map do |input_file|
+            claimed_file = claim_input_file(input_file)
+            next unless claimed_file
+
+            begin
+              message = File.read(claimed_file).to_s.strip
+              message.empty? ? nil : message
+            ensure
+              FileUtils.rm_f(claimed_file)
+            end
+          end
+        end
+
         # Process the initial prompt
         unless session.last_prompt.to_s.strip.empty?
           prompt = session.last_prompt
           session.last_prompt = ""
           session.save(state_dir: sd)
 
-          result = engine.run_turn(session, prompt)
+          result = engine.run_turn(session, prompt, pending_input: pending_input_drain)
           response = result.respond_to?(:output) ? result.output : nil
           unless response.nil? || response.strip.empty?
             write_output(session_dir, response)
@@ -328,7 +348,7 @@ module Samagotchi
               message = File.read(claimed_file).to_s
               next if message.strip.empty?
 
-              result = engine.run_turn(session, message)
+              result = engine.run_turn(session, message, pending_input: pending_input_drain)
               response = result.respond_to?(:output) ? result.output : nil
               unless response.nil? || response.strip.empty?
                 write_output(session_dir, response)

@@ -743,7 +743,10 @@ module Samagotchi
     # @param max_tool_output_chars [Integer, nil] per-output char cap for the
     #   :tool_call_completed event's `output:` (nil → env/DEFAULT_MAX_TOOL_OUTPUT_CHARS)
     # @return [KernelLoop::Result]
-    def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil)
+    # @param pending_input [#call, nil] optional drain proc returning
+    #   Array<String> of steering messages queued while the turn runs; drained
+    #   by the agentic loop at iteration boundaries (see KernelLoop#run).
+    def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil)
       # Track the active session for recap and status snapshot.
       @session = session
       sync_used_memories_from_session(session)
@@ -812,7 +815,8 @@ module Samagotchi
             on_stream_event: build_stream_event_handler(on_event),
             cancel_controller: effective_controller,
             model_name: bare_for_backend,
-            max_tool_output_chars: max_tool_output_chars
+            max_tool_output_chars: max_tool_output_chars,
+            pending_input: pending_input
           )
         else
           # :native path — no wrapper backend; drive KernelLoop directly.
@@ -823,7 +827,8 @@ module Samagotchi
             on_stream_event: build_stream_event_handler(on_event),
             cancel_controller: effective_controller,
             model_name: bare_for_backend,
-            max_tool_output_chars: max_tool_output_chars
+            max_tool_output_chars: max_tool_output_chars,
+            pending_input: pending_input
           )
           Samagotchi::LLM::ModelResult.new(
             text: kernel_result.respond_to?(:output) ? kernel_result.output.to_s : kernel_result.to_s,
