@@ -79,6 +79,12 @@ RSpec.describe Samagotchi::TerminalUI do
   describe "#run with a one-off prompt" do
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      # Isolate from the developer's real ~/.config/samagotchi/config.yml
+      # `memories:` baseline. Engine#preload_memory_list merges that baseline
+      # into every prompt + sticky status line, so without this the personal
+      # baseline (e.g. user_preferences) leaks into the assertions.
+      # Mirrors spec/engine_spec.rb:65.
+      allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return([])
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
       # The prompt entrypoint runs one turn then drops into the REPL; stub
       # Reline to exit immediately so .run returns in tests.
@@ -280,7 +286,10 @@ file2.rb")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("missing", scope: nil).and_return("Error: memory not found: missing")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["missing"])
       expect { agent.run }.not_to raise_error
-      expect(received_prompt).not_to include("memory is required by the user")
+      # A missing entry is skipped (see Engine#explicit_memory_section), so its
+      # name/body must never leak into the prompt. Pinned to the actual marker
+      # rather than the weaker "required" text for a precise skip assertion.
+      expect(received_prompt).not_to include("memory name: missing")
     end
 
     it "does not inject an explicit memory section when no --memory flags are given" do
