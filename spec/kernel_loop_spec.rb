@@ -1043,6 +1043,13 @@ Need to inspect the filesystem first.
       expect { kernel.run([{ role: "user", content: "hi" }]) }
         .not_to output.to_stderr
     end
+
+    it "tags the verbose output with the resolved model id" do
+      model_kernel = described_class.new(client: client, verbose: true, model_name: "qwen36:latest")
+      allow(client).to receive(:complete).and_return("Hello!")
+      expect { model_kernel.run([{ role: "user", content: "hi" }])}
+        .to output(/\[model: .+\].*LLM response/m).to_stderr
+    end
   end
 
   describe "debug log file" do
@@ -1084,6 +1091,25 @@ Need to inspect the filesystem first.
 
       allow(client).to receive(:complete).and_return("Hello!")
       expect(kernel_with_bad_log.run([{ role: "user", content: "hi" }]).to_s).to eq("Hello!")
+    ensure
+      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+    end
+
+    it "tags each log line with the resolved model id" do
+      dir = Dir.mktmpdir("samagotchi-debug-log")
+      log_path = File.join(dir, "samagotchi.log")
+      kernel_with_log = described_class.new(
+        client: client, log_file: log_path, model_name: "gemma4:latest"
+      )
+
+      allow(client).to receive(:complete).and_return("Hello!")
+      expect { kernel_with_log.run([{ role: "user", content: "hi" }]) }.not_to output.to_stderr
+
+      content = File.read(log_path)
+      expect(content).to include("[model: ")
+      expect(content).to include("LLM response")
+      # The logged id is the resolved model, not the alias we passed in.
+      expect(content).not_to include("[model: gemma4:latest]")
     ensure
       FileUtils.remove_entry(dir) if dir && File.directory?(dir)
     end

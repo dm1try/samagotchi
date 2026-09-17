@@ -137,6 +137,10 @@ module Samagotchi
       @profile_explicit = !profile.nil?
       @no_interrupt = no_interrupt
       resolved_model_name = ModelProfile.required_model_name(model_name)
+      # The resolved model id actually used for this run (per-run override wins
+      # over the config alias); surfaced in debug/verbose logs so we can see
+      # exactly which model each request went to.
+      @current_model_name = resolved_model_name
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(resolved_model_name)
       @hooks = hooks
       @reminder_store = reminder_store
@@ -175,6 +179,7 @@ module Samagotchi
     # @return [Result] final visible response with continuation metadata
     def run(messages, max_iterations: 100, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil)
       resolved_model_name = completion_model_name(model_name)
+      @current_model_name = resolved_model_name
       @profile = ModelProfile.from_model_name(resolved_model_name) unless @profile_explicit
 
       conversation = prepare_conversation(messages)
@@ -486,10 +491,11 @@ module Samagotchi
     end
 
     def verbose_log(message)
-      @debug_log&.write(message)
+      tagged = "[model: #{@current_model_name}] #{message}"
+      @debug_log&.write(tagged)
       return unless @verbose
 
-      $stderr.puts "\n[verbose] #{message}"
+      $stderr.puts "\n[verbose] #{tagged}"
     end
 
     # Estimate context usage for this iteration's prompt and, when the emit
