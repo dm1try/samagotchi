@@ -553,7 +553,7 @@ module Samagotchi
               messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             end
             awaiting_continue = false
-            $stdout.puts "\nmodel> turn cancelled; partial progress kept in context (type !rollback to discard it)"
+            $stdout.puts "\nmodel> turn cancelled; partial progress kept in context; use !rollback immediately after cancellation to restore the pre-turn checkpoint"
           end
           interrupted_turn_checkpoint = nil unless awaiting_continue
           next
