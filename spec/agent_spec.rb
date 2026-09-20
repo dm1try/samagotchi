@@ -584,33 +584,40 @@ file2.rb")
 
   describe "#status_server_segment" do
     around do |example|
-      original_xdg = ENV["XDG_CONFIG_HOME"]
+      original_env = {
+        "XDG_CONFIG_HOME" => ENV["XDG_CONFIG_HOME"],
+        "SAMAGOTCHI_SERVER_HOST" => ENV["SAMAGOTCHI_SERVER_HOST"],
+        "SAMAGOTCHI_SERVER_PORT" => ENV["SAMAGOTCHI_SERVER_PORT"]
+      }
       Dir.mktmpdir("samagotchi-empty") do |dir|
         ENV["XDG_CONFIG_HOME"] = dir
         Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
         example.run
       ensure
-        ENV["XDG_CONFIG_HOME"] = original_xdg
+        original_env.each do |key, value|
+          ENV.delete(key) if value.nil?
+          ENV[key] = value
+        end
         Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
       end
     end
     let(:agent) { described_class.new(mode: "assist", client: client) }
 
     it "returns an empty string when host is localhost" do
-      ENV["LLAMA_HOST"] = "localhost"
-      ENV["LLAMA_PORT"] = "8080"
+      ENV["SAMAGOTCHI_SERVER_HOST"] = "localhost"
+      ENV["SAMAGOTCHI_SERVER_PORT"] = "8080"
       expect(agent.send(:status_server_segment)).to eq("")
     end
 
     it "returns an empty string when host is 127.0.0.1" do
-      ENV["LLAMA_HOST"] = "127.0.0.1"
-      ENV["LLAMA_PORT"] = "8080"
+      ENV["SAMAGOTCHI_SERVER_HOST"] = "127.0.0.1"
+      ENV["SAMAGOTCHI_SERVER_PORT"] = "8080"
       expect(agent.send(:status_server_segment)).to eq("")
     end
 
     it "returns the server segment when host is not localhost" do
-      ENV["LLAMA_HOST"] = "192.168.1.29"
-      ENV["LLAMA_PORT"] = "8080"
+      ENV["SAMAGOTCHI_SERVER_HOST"] = "192.168.1.29"
+      ENV["SAMAGOTCHI_SERVER_PORT"] = "8080"
       expect(agent.send(:status_server_segment)).to eq("server=192.168.1.29:8080")
     end
   end

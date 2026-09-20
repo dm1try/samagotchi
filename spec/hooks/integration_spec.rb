@@ -91,7 +91,7 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
     end
 
     # This is an integration test that requires LLM access.
-    # We use the :integration tag so it's skipped unless LLAMA_INTEGRATION=1.
+    # We use the :integration tag so it's skipped unless SAMAGOTCHI_INTEGRATION=1.
     context "with LLM access", :integration do
       let(:session) do
         Samagotchi::Session.new

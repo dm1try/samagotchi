@@ -17,7 +17,7 @@ RSpec.configure do |config|
   Kernel.srand config.seed
 
   config.before(:each, :integration) do
-    skip "Set LLAMA_INTEGRATION=1 to run integration tests" unless ENV["LLAMA_INTEGRATION"] == "1"
+    skip "Set SAMAGOTCHI_INTEGRATION=1 to run integration tests" unless ENV["SAMAGOTCHI_INTEGRATION"] == "1"
   end
 
 end

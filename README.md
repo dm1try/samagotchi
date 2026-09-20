@@ -203,8 +203,9 @@ Example:
 
 ```yaml
 SAMAGOTCHI_DEFAULT_MODEL: Qwen3-14B-Instruct
-LLAMA_HOST: 192.168.1.29
-LLAMA_PORT: 8081
+server:
+  host: 192.168.1.29
+  port: 8081
 SAMAGOTCHI_THINKING_UI: spinner
 
 # Multi-host (optional): aggregated /models and per-model routing.
@@ -468,18 +469,19 @@ Chi talks to a model server over HTTP and supports three transports:
   and `/v1/models` endpoints as `mlx`.
 
 Select the transport with `SAMAGOTCHI_SERVER_TRANSPORT` (`llama_cpp`, `mlx`, or
-`omlx`). `LLAMA_HOST`/`LLAMA_PORT` are reused for all three — only the
-request/response shape differs. oMLX's default server port is `8000` (not `8080`),
-so point `LLAMA_PORT` at it, e.g. `LLAMA_PORT=8000`. With `hosts:` each entry may
-set `transport: llama_cpp|mlx|omlx` to override the global transport per host
-(`lib/samagotchi/host_registry.rb:25`).
+`omlx`). `SAMAGOTCHI_SERVER_HOST`/`SAMAGOTCHI_SERVER_PORT` are reused for all three —
+only the request/response shape differs. oMLX's default server port is `8000` (not
+`8080`), so point `SAMAGOTCHI_SERVER_PORT` at it, e.g. `SAMAGOTCHI_SERVER_PORT=8000`.
+With `hosts:` each entry may set `transport: llama_cpp|mlx|omlx` to override the
+global transport per host (`lib/samagotchi/host_registry.rb:25`).
 
 Example for mlx-lm:
 
 ```yaml
 SAMAGOTCHI_SERVER_TRANSPORT: mlx
-LLAMA_HOST: 127.0.0.1
-LLAMA_PORT: 8080
+server:
+  host: 127.0.0.1
+  port: 8080
 ```
 
 ```shell
@@ -490,8 +492,9 @@ Example for oMLX:
 
 ```yaml
 SAMAGOTCHI_SERVER_TRANSPORT: omlx
-LLAMA_HOST: 192.168.1.29
-LLAMA_PORT: 8000
+server:
+  host: 192.168.1.29
+  port: 8000
 ```
 
 Both the `mlx` and `omlx` transports still send chi's own raw formatted prompt
@@ -530,15 +533,15 @@ To manually verify a live RubyLLM tool round trip, run the gated integration
 spec. It requires the model to call `execute` and return the current UTC date:
 
 ```shell
-LLAMA_INTEGRATION=1 \
-LLAMA_HOST=192.168.1.29 LLAMA_PORT=8000 \
+SAMAGOTCHI_INTEGRATION=1 \
+SAMAGOTCHI_SERVER_HOST=192.168.1.29 SAMAGOTCHI_SERVER_PORT=8000 \
 SAMAGOTCHI_DEFAULT_MODEL=incoai/Qwen3.8-27B-Splash \
 bundle exec rspec spec/integration/ruby_llm_backend_spec.rb -fd < /dev/null
 ```
 
 The same test works against a llama.cpp OpenAI-compatible server by changing
 the host, port, and model values. The test is skipped unless
-`LLAMA_INTEGRATION=1` is set.
+`SAMAGOTCHI_INTEGRATION=1` is set.
 
 oMLX's known tool-call limitation (a stream filter that strips markup) only
 affects its `/v1/chat/completions` endpoint, not the `/v1/completions` endpoint
@@ -672,8 +675,8 @@ rendered as `tool>` activity lines.
 Long-running llama.cpp completions can exceed Ruby's default HTTP read timeout.
 Configure these environment variables to avoid premature request failures:
 
-- `LLAMA_OPEN_TIMEOUT` (default: `10`) connection timeout in seconds.
-- `LLAMA_READ_TIMEOUT` (default: `600`) response read timeout in seconds.
+- `SAMAGOTCHI_SERVER_OPEN_TIMEOUT` (default: `10`) connection timeout in seconds.
+- `SAMAGOTCHI_SERVER_READ_TIMEOUT` (default: `600`) response read timeout in seconds.
 
 ## Llama Model Routing
 

@@ -193,8 +193,8 @@ RSpec.describe Samagotchi::Client do
     end
 
     it "reads timeout values from environment" do
-      ENV["LLAMA_OPEN_TIMEOUT"] = "3"
-      ENV["LLAMA_READ_TIMEOUT"] = "900"
+      ENV["SAMAGOTCHI_SERVER_OPEN_TIMEOUT"] = "3"
+      ENV["SAMAGOTCHI_SERVER_READ_TIMEOUT"] = "900"
 
       client = described_class.new(host: "localhost", port: 8080)
       http = instance_double(Net::HTTP)
@@ -208,8 +208,8 @@ RSpec.describe Samagotchi::Client do
 
       client.complete("prompt")
     ensure
-      ENV.delete("LLAMA_OPEN_TIMEOUT")
-      ENV.delete("LLAMA_READ_TIMEOUT")
+      ENV.delete("SAMAGOTCHI_SERVER_OPEN_TIMEOUT")
+      ENV.delete("SAMAGOTCHI_SERVER_READ_TIMEOUT")
     end
 
     it "raises a cancellation error when the cancel controller is already cancelled" do

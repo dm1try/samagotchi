@@ -54,8 +54,8 @@ module Samagotchi
       Entry.new(key: "default.model",            yaml_path: %w[default model],            type: :string, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "backend",                  yaml_path: %w[backend],                   type: :enum,   default: "native",        expose: %i[env config cli], enum_values: %w[native ruby_llm]),
       Entry.new(key: "server.transport",         yaml_path: %w[server transport],          type: :enum,   default: "llama_cpp",     expose: %i[env config cli], enum_values: %w[llama_cpp mlx omlx]),
-      Entry.new(key: "server.host",              yaml_path: %w[server host],               type: :string, default: "localhost",     expose: %i[env config cli], aliases: %w[LLAMA_HOST]),
-      Entry.new(key: "server.port",              yaml_path: %w[server port],               type: :integer, default: 8080,            expose: %i[env config cli], aliases: %w[LLAMA_PORT]),
+      Entry.new(key: "server.host",              yaml_path: %w[server host],               type: :string, default: "localhost",     expose: %i[env config cli]),
+      Entry.new(key: "server.port",              yaml_path: %w[server port],               type: :integer, default: 8080,            expose: %i[env config cli]),
       Entry.new(key: "server.open_timeout",      yaml_path: %w[server open_timeout],       type: :integer, default: 10,              expose: %i[env config cli]),
       Entry.new(key: "server.read_timeout",      yaml_path: %w[server read_timeout],       type: :integer, default: 600,            expose: %i[env config cli]),
 
@@ -221,18 +221,7 @@ module Samagotchi
 
         # ENV
         if entry.env_exposed?
-          env_val = nil
           env_val = env[entry.env_key] if env.key?(entry.env_key)
-          # aliases (e.g., LLAMA_HOST)
-          if env_val.nil? || env_val.to_s.strip.empty?
-            Array(entry.aliases).each do |a|
-              if env.key?(a) && !env[a].to_s.strip.empty?
-                env_val = env[a]
-                warn "Warning: #{a} is deprecated — use #{entry.env_key} (#{entry.key})" if a.start_with?("LLAMA_")
-                break
-              end
-            end
-          end
           unless env_val.nil? || env_val.to_s.strip.empty?
             return coerce(entry, env_val)
           end
@@ -353,7 +342,6 @@ module Samagotchi
         data.each_key do |k|
           next if %w[hosts hooks model_aliases].include?(k.to_s)
           next if legacy_keys.include?(k.to_s)
-          next if k.to_s == "LLAMA_HOST" || k.to_s == "LLAMA_PORT"
           # Sections are top-level keys that map to hashes (e.g., default, recap)
           # If key contains _ or -, suggest dotted form
           if k.to_s.include?("_")
@@ -522,11 +510,11 @@ module Samagotchi
         end
       end
 
-      # Backward compat: if no hosts defined, synthesize "default" from LLAMA_HOST/PORT
+      # If no hosts defined, synthesize "default" from SAMAGOTCHI_SERVER_HOST/PORT
       if normalized.empty?
-        default_host = env.fetch("LLAMA_HOST", "localhost").to_s.strip
+        default_host = env.fetch("SAMAGOTCHI_SERVER_HOST", "localhost").to_s.strip
         default_host = "localhost" if default_host.empty?
-        default_port = env.fetch("LLAMA_PORT", "8080").to_s.strip
+        default_port = env.fetch("SAMAGOTCHI_SERVER_PORT", "8080").to_s.strip
         default_port = default_port.empty? ? 8080 : default_port.to_i
         default_port = 8080 if default_port <= 0 || default_port > 65535
         transport_env = env.fetch("SAMAGOTCHI_SERVER_TRANSPORT", "").to_s.strip.downcase

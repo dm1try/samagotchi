@@ -602,10 +602,10 @@ module Samagotchi
           return "server=#{host}:#{port} (#{total} hosts)"
         end
       end
-      host = ENV.fetch("LLAMA_HOST", "localhost")
+      host = Samagotchi::Config.get("server.host")
       return "" if ["localhost", "127.0.0.1"].include?(host)
 
-      port = ENV.fetch("LLAMA_PORT", "8080")
+      port = Samagotchi::Config.get("server.port")
       "server=#{host}:#{port}"
     end
 

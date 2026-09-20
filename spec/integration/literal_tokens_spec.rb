@@ -11,16 +11,16 @@ require "fileutils"
 #
 # Prerequisites:
 #   - A llama.cpp server must be running (default: localhost:8080)
-#   - LLAMA_INTEGRATION=1 environment variable must be set
+#   - SAMAGOTCHI_INTEGRATION=1 environment variable must be set
 #
 # Run with:
-#   LLAMA_INTEGRATION=1 bundle exec rspec spec/integration/literal_tokens_spec.rb
+#   SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/literal_tokens_spec.rb
 #
 # Verbose output (shows raw LLM responses and tool calls):
-#   LLAMA_INTEGRATION=1 bundle exec rspec spec/integration/literal_tokens_spec.rb -v
+#   SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/literal_tokens_spec.rb -v
 #
 # Custom server:
-#   LLAMA_HOST=myhost LLAMA_PORT=9090 LLAMA_INTEGRATION=1 bundle exec rspec spec/integration/literal_tokens_spec.rb -v
+#   SAMAGOTCHI_SERVER_HOST=myhost SAMAGOTCHI_SERVER_PORT=9090 SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/literal_tokens_spec.rb -v
 RSpec.describe "read tool - literal control token integration", :integration do
   let(:kernel) { Samagotchi::KernelLoop.new(verbose: verbose, profile: profile) }
   let(:verbose) { false }

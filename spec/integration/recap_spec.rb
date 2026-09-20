@@ -10,22 +10,22 @@ require "samagotchi/idle_client"
 #
 # Prerequisites:
 #   - A llama.cpp server must be running (default: localhost:8080)
-#   - LLAMA_INTEGRATION=1 environment variable must be set
+#   - SAMAGOTCHI_INTEGRATION=1 environment variable must be set
 #   - SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL must be set
 #     (or use the default config from the server)
 #
 # Run with:
-#   LLAMA_INTEGRATION=1 SAMAGOTCHI_RECAP_BASE_URL=http://localhost:8080/v1 \
+#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_RECAP_BASE_URL=http://localhost:8080/v1 \
 #     SAMAGOTCHI_RECAP_MODEL=gemma4-small \
 #     bundle exec rspec spec/integration/recap_spec.rb
 #
 # Against the Qwen3.6-35B-A3B model (reasoning_content fallback test):
-#   LLAMA_INTEGRATION=1 SAMAGOTCHI_RECAP_BASE_URL=http://192.168.1.29:8081/v1 \
+#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_RECAP_BASE_URL=http://192.168.1.29:8081/v1 \
 #     SAMAGOTCHI_RECAP_MODEL=unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M \
 #     bundle exec rspec spec/integration/recap_spec.rb -v
 #
 # Verbose output:
-#   LLAMA_INTEGRATION=1 bundle exec rspec spec/integration/recap_spec.rb -v
+#   SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/recap_spec.rb -v
 #
 # Test scope:
 #   - Unit tests (spec/idle_client_spec.rb, spec/idle_recap_spec.rb) cover the

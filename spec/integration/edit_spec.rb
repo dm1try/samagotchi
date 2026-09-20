@@ -9,16 +9,16 @@ require "tmpdir"
 #
 # Prerequisites:
 #   - A llama.cpp server must be running (default: localhost:8080)
-#   - LLAMA_INTEGRATION=1 environment variable must be set
+#   - SAMAGOTCHI_INTEGRATION=1 environment variable must be set
 #
 # Run with:
-#   LLAMA_INTEGRATION=1 bundle exec rspec spec/integration/edit_spec.rb
+#   SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/edit_spec.rb
 #
 # Verbose output (shows raw LLM responses and tool calls):
-#   LLAMA_INTEGRATION=1 bundle exec rspec spec/integration/edit_spec.rb -v
+#   SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/edit_spec.rb -v
 #
 # Custom server:
-#   LLAMA_HOST=myhost LLAMA_PORT=9090 LLAMA_INTEGRATION=1 bundle exec rspec spec/integration/edit_spec.rb -v
+#   SAMAGOTCHI_SERVER_HOST=myhost SAMAGOTCHI_SERVER_PORT=9090 SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/edit_spec.rb -v
 RSpec.describe "edit tool - file editing integration", :integration do
   let(:kernel) { Samagotchi::KernelLoop.new(verbose: verbose) }
   let(:verbose) { false }

@@ -9,19 +9,19 @@ require "samagotchi/model_profile"
 #
 # Prerequisites:
 #   - An OpenAI-compatible server with /v1/chat/completions and tool support
-#   - The server must be reachable at LLAMA_HOST:LLAMA_PORT
+#   - The server must be reachable at SAMAGOTCHI_SERVER_HOST:SAMAGOTCHI_SERVER_PORT
 #   - SAMAGOTCHI_DEFAULT_MODEL must name the served model
-#   - LLAMA_INTEGRATION=1 must be set
+#   - SAMAGOTCHI_INTEGRATION=1 must be set
 #
 # Run against Splash, for example:
-#   LLAMA_INTEGRATION=1 \
-#   LLAMA_HOST=192.168.1.29 LLAMA_PORT=8000 \
+#   SAMAGOTCHI_INTEGRATION=1 \
+#   SAMAGOTCHI_SERVER_HOST=192.168.1.29 SAMAGOTCHI_SERVER_PORT=8000 \
 #   SAMAGOTCHI_DEFAULT_MODEL=incoai/Qwen3.8-27B-Splash \
 #   bundle exec rspec spec/integration/ruby_llm_backend_spec.rb -fd < /dev/null
 RSpec.describe "ruby_llm backend - live tool round trip", :integration do
   let(:model_name) { ENV.fetch("SAMAGOTCHI_DEFAULT_MODEL") }
   let(:base_url) do
-    ENV.fetch("SAMAGOTCHI_OPENAI_API_BASE", "http://#{ENV.fetch("LLAMA_HOST", "localhost")}:#{ENV.fetch("LLAMA_PORT", "8080")}/v1")
+    ENV.fetch("SAMAGOTCHI_OPENAI_API_BASE", "http://#{ENV.fetch("SAMAGOTCHI_SERVER_HOST", "localhost")}:#{ENV.fetch("SAMAGOTCHI_SERVER_PORT", "8080")}/v1")
   end
   let(:kernel) { Samagotchi::KernelLoop.new(model_name: model_name) }
   let(:backend) do

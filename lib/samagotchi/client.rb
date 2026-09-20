@@ -3,15 +3,16 @@
 require "net/http"
 require "json"
 require "uri"
+require_relative "config"
 
 module Samagotchi
   # Thin HTTP client for llama.cpp's native /completion endpoint, or an
   # OpenAI-compatible /v1/completions endpoint (e.g. mlx_lm.server or oMLX).
-  # Configure via environment variables:
-  #   LLAMA_HOST  (default: localhost)
-  #   LLAMA_PORT  (default: 8080; oMLX's default is 8000, set LLAMA_PORT to match)
-  #   LLAMA_OPEN_TIMEOUT (default: 10 seconds)
-  #   LLAMA_READ_TIMEOUT (default: 600 seconds)
+  # Configure via environment variables (see Samagotchi::Config):
+  #   SAMAGOTCHI_SERVER_HOST  (default: localhost)
+  #   SAMAGOTCHI_SERVER_PORT  (default: 8080; oMLX's default is 8000, set it to match)
+  #   SAMAGOTCHI_SERVER_OPEN_TIMEOUT (default: 10 seconds)
+  #   SAMAGOTCHI_SERVER_READ_TIMEOUT (default: 600 seconds)
   #   SAMAGOTCHI_SERVER_TRANSPORT (llama_cpp|mlx|omlx, default: llama_cpp)
   class Client
     class RequestCancelled < StandardError
@@ -180,20 +181,20 @@ module Samagotchi
 
     def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil)
       # Unified config precedence: CLI > ENV > file > default (via Samagotchi::Config)
-      # Fallback to ENV/legacy LLAMA_* for transition.
       cfg_host = nil; cfg_port = nil; cfg_transport_raw = nil
       begin
-        require_relative "config"
-        cfg_host = Samagotchi::Config.get("server.host") if Samagotchi::Config.find_by_key("server.host")
-        cfg_port = Samagotchi::Config.get("server.port") if Samagotchi::Config.find_by_key("server.port")
-        cfg_transport_raw = Samagotchi::Config.get("server.transport") if Samagotchi::Config.find_by_key("server.transport")
+        cfg_host       = Samagotchi::Config.get("server.host")
+        cfg_port       = Samagotchi::Config.get("server.port")
+        cfg_open_timeout = Samagotchi::Config.get("server.open_timeout")
+        cfg_read_timeout = Samagotchi::Config.get("server.read_timeout")
+        cfg_transport_raw = Samagotchi::Config.get("server.transport")
       rescue StandardError
         nil
       end
-      @host = host || cfg_host || ENV.fetch("LLAMA_HOST", "localhost")
-      @port = (port || cfg_port || ENV.fetch("LLAMA_PORT", "8080")).to_i
-      @open_timeout = (open_timeout || ENV.fetch("LLAMA_OPEN_TIMEOUT", "10")).to_i
-      @read_timeout = (read_timeout || ENV.fetch("LLAMA_READ_TIMEOUT", "600")).to_i
+      @host          = host || cfg_host
+      @port          = (port || cfg_port).to_i
+      @open_timeout  = (open_timeout || cfg_open_timeout).to_i
+      @read_timeout  = (read_timeout || cfg_read_timeout).to_i
       transport_fallback = cfg_transport_raw || ENV.fetch(SERVER_TRANSPORT_ENV, DEFAULT_TRANSPORT.to_s)
       @transport = build_transport(resolve_transport(transport || transport_fallback))
       @retry_max = begin

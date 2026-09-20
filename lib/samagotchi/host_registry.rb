@@ -8,7 +8,7 @@ module Samagotchi
   # provides lazy model discovery aggregation.
   #
   # - Hosts are defined in config.yml `hosts:` section or synthesized from
-  #   LLAMA_HOST/PORT env (backward compat).
+  #   SAMAGOTCHI_SERVER_HOST/PORT env (via Config).
   # - Discovery is lazy: list_all_models is the explicit trigger (called by
   #   /models), not on startup. Results are cached 60s with skip-on-error.
   # - Routing: client_for_model resolves a (possibly qualified) model string
@@ -20,7 +20,6 @@ module Samagotchi
     HostEntry = Struct.new(:name, :host, :port, :transport, :client, keyword_init: true)
 
     def initialize(hosts_config: nil, env: ENV)
-      @env = env
       raw = hosts_config || ConfigFile.hosts_config(env: env)
       @entries = {}
       raw.each do |key, cfg|
@@ -32,9 +31,9 @@ module Samagotchi
       end
       # Fallback single entry (should already be synthesized by hosts_config, but guard)
       if @entries.empty?
-        host = @env.fetch("LLAMA_HOST", "localhost").to_s.strip
+        host = Config.get("server.host")
         host = "localhost" if host.empty?
-        port = @env.fetch("LLAMA_PORT", "8080").to_i
+        port = Config.get("server.port").to_i
         port = 8080 if port <= 0
         @entries["default"] = HostEntry.new(name: "default", host: host, port: port, transport: nil, client: Client.new(host: host, port: port))
       end

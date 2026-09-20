@@ -46,7 +46,7 @@ log:
   disable: false
 ```
 
-Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `LLAMA_HOST`, `SAMAGOTCHI_N_PREDICT` etc. at top-level) are still read via fallback in `Config.lookup_yaml` (`lib/samagotchi/config.rb:244`) but warn `Warning: config key 'SAMAGOTCHI_DEFAULT_MODEL' is legacy UPPER — use 'default.model'` (`lib/samagotchi/config_file.rb:32`). Migrate them to nested form and remove the flat entry.
+Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top-level) are still read via fallback in `Config.lookup_yaml` (`lib/samagotchi/config.rb:244`) but warn `Warning: config key 'SAMAGOTCHI_DEFAULT_MODEL' is legacy UPPER — use 'default.model'` (`lib/samagotchi/config_file.rb:32`). Migrate them to nested form and remove the flat entry. The old `LLAMA_HOST`/`LLAMA_PORT` aliases were fully removed (Aug 2026); use `server.host`/`server.port` (nested) or `SAMAGOTCHI_SERVER_HOST`/`SAMAGOTCHI_SERVER_PORT`.
 
 **Excluded maps** (YAML-only, not part of the flat registry; skipped by scalar loader):
 

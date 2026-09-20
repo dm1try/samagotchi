@@ -11,15 +11,15 @@ RSpec.describe Samagotchi::ConfigFile do
     original_env = {
       "XDG_CONFIG_HOME" => ENV["XDG_CONFIG_HOME"],
       "SAMAGOTCHI_DEFAULT_MODEL" => ENV["SAMAGOTCHI_DEFAULT_MODEL"],
-      "LLAMA_HOST" => ENV["LLAMA_HOST"],
-      "LLAMA_PORT" => ENV["LLAMA_PORT"]
+      "SAMAGOTCHI_SERVER_HOST" => ENV["SAMAGOTCHI_SERVER_HOST"],
+      "SAMAGOTCHI_SERVER_PORT" => ENV["SAMAGOTCHI_SERVER_PORT"]
     }
 
     begin
       ENV.delete("XDG_CONFIG_HOME")
       ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
-      ENV.delete("LLAMA_HOST")
-      ENV.delete("LLAMA_PORT")
+      ENV.delete("SAMAGOTCHI_SERVER_HOST")
+      ENV.delete("SAMAGOTCHI_SERVER_PORT")
       example.run
     ensure
       original_env.each do |key, value|
@@ -45,18 +45,19 @@ RSpec.describe Samagotchi::ConfigFile do
   end
 
   describe ".load_global_env!" do
-    it "loads flat scalar values and leaves existing env untouched" do
+    it "loads nested scalar values and leaves existing env untouched" do
       Dir.mktmpdir("samagotchi-config") do |dir|
         config_dir = File.join(dir, "samagotchi")
         Dir.mkdir(config_dir)
         File.write(File.join(config_dir, "config.yml"), <<~YAML)
           SAMAGOTCHI_DEFAULT_MODEL: Qwen3-14B-Instruct
-          LLAMA_HOST: 192.168.1.29
-          LLAMA_PORT: 8081
+          server:
+            host: 192.168.1.29
+            port: 8081
         YAML
 
         ENV["XDG_CONFIG_HOME"] = dir
-        ENV["LLAMA_PORT"] = "9090"
+        ENV["SAMAGOTCHI_SERVER_PORT"] = "9090"
 
         expect(described_class.load_global_env!).to be(true)
         expect(Samagotchi::ModelProfile.from_env.name).to eq("qwen36")
