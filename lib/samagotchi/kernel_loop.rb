@@ -210,13 +210,15 @@ module Samagotchi
             model_name: resolved_model_name,
             on_chunk: lambda { |chunk|
               capture_server_usage(chunk[:payload], context_state)
-              partial_assistant_buffer << stream_splitter.feed(chunk[:content])[:text]
+              split = stream_splitter.feed(chunk[:content])
+              partial_assistant_buffer << split[:text]
               if on_stream_event
                 emit_stream_event(
                   on_stream_event,
                   type: :generation_chunk,
                   iteration: iteration_index + 1,
                   content: chunk[:content],
+                  thinking: split[:thinking],
                   payload: chunk[:payload]
                 )
               end

@@ -89,6 +89,7 @@ module Samagotchi
       Entry.new(key: "thinking.ui",              yaml_path: %w[thinking ui],              type: :string, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "thinking.preview_lines",   yaml_path: %w[thinking preview_lines],   type: :integer, default: 1,               expose: %i[env config cli]),
       Entry.new(key: "thinking.render_interval", yaml_path: %w[thinking render_interval], type: :float,   default: 0.08,            expose: %i[env config cli]),
+      Entry.new(key: "thinking.turn_preamble",   yaml_path: %w[thinking turn_preamble],   type: :bool,   default: true,             expose: %i[env config cli]),
 
       Entry.new(key: "default.n_predict",        yaml_path: %w[default n_predict],        type: :integer, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "max_tool_output_chars",    yaml_path: %w[max_tool_output_chars],    type: :integer, default: 10_000,          expose: %i[env config cli]),

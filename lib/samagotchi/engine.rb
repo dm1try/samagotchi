@@ -1162,11 +1162,21 @@ module Samagotchi
       end
     end
 
+    # Only Qwen has an explicit thinking-close marker, so only Qwen can
+    # reliably have this preamble parsed back out of its thinking block.
+    def turn_preamble_instruction
+      return "" unless @profile.name == "qwen36"
+      return "" if Samagotchi::Config.get("thinking.turn_preamble") == false
+
+      "\nTurn preamble: as the very first line of your thinking, write \"TURN: \" followed by a short present-tense action phrase (max 8 words) describing what you are about to do, e.g. \"TURN: reading project config\". Then continue reasoning normally.\n"
+    end
+
     # ── System prompts ─────────────────────────────────────────────────────────
 
     def assist_system_prompt
       declarations = tool_declarations
       hint = tool_call_hint
+      turn_preamble = turn_preamble_instruction
 
       <<~SYS
         You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant harness. You have access to the following tools:
@@ -1175,7 +1185,7 @@ module Samagotchi
 
         #{hint}
         You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
-
+        #{turn_preamble}
         #{ToolDeclarations::SMALL_CONTEXT_PROTOCOL}
 
         Editing workflow:

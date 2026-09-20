@@ -15,6 +15,7 @@ require_relative "session"
 require_relative "engine"
 require_relative "tools/memory"
 require_relative "output_formatter"
+require_relative "turn_preamble"
 
 module Samagotchi
   # TerminalUI encapsulates the single operating mode of the harness.
@@ -42,6 +43,7 @@ module Samagotchi
     THINKING_UI_SPINNER = "spinner"
     THINKING_UI_OFF = "off"
     THINKING_SPINNER_FRAMES = ["|", "/", "-", "\\"].freeze
+    TURN_PREAMBLE_SPINNER_COLOR = 36
     MEMORY_SPINNER_COLOR = "38;5;208"
     TOOL_SPINNER_COLOR = 32
     NETWORK_RETRY_SPINNER_COLOR = 31
@@ -1689,6 +1691,7 @@ module Samagotchi
         clear_retry_spinner_status
         @latest_server_context_status = nil
         reset_thinking_tail_preview
+        reset_turn_preamble
         start_thinking_spinner
       when :generation_retrying
         set_retry_spinner_status(event)
@@ -1697,6 +1700,7 @@ module Samagotchi
         clear_retry_spinner_status if retry_spinner_status_active?
         capture_server_context_status_from_payload(event[:payload])
         capture_thinking_tail_chunk(event[:content])
+        capture_turn_preamble_chunk(event[:thinking])
         tick_thinking_spinner
       when :tool_call_started
         clear_retry_spinner_status
@@ -1710,16 +1714,19 @@ module Samagotchi
         stop_cancel_hotkey_monitor
         clear_retry_spinner_status
         reset_thinking_tail_preview
+        reset_turn_preamble
         finish_thinking_spinner
       when :generation_cancelled
         stop_cancel_hotkey_monitor
         clear_retry_spinner_status
         reset_thinking_tail_preview
+        reset_turn_preamble
         finish_thinking_spinner
       when :tool_dispatch_started
         stop_cancel_hotkey_monitor
         clear_retry_spinner_status
         reset_thinking_tail_preview
+        reset_turn_preamble
         finish_thinking_spinner
       end
     end
@@ -1928,6 +1935,31 @@ module Samagotchi
         $stdout.print("\e[#{line_count - 1}A")
       end
       $stdout.print("\r")
+    end
+
+    # Only Qwen streams thinking cleanly enough (explicit close marker) for a
+    # reliable turn-preamble extraction; Gemma 4 keeps the raw preview instead.
+    def turn_preamble_enabled?
+      @profile&.name == "qwen36" && Samagotchi::Config.get("thinking.turn_preamble") != false
+    end
+
+    def reset_turn_preamble
+      @turn_preamble = TurnPreamble.new
+    end
+
+    def capture_turn_preamble_chunk(thinking_chunk)
+      return unless turn_preamble_enabled?
+
+      (@turn_preamble ||= TurnPreamble.new).feed(thinking_chunk)
+    end
+
+    def turn_preamble_status_base(frame)
+      return nil unless turn_preamble_enabled?
+
+      phrase = @turn_preamble&.phrase
+      return nil if phrase.nil? || phrase.empty?
+
+      "chi> #{phrase} #{frame}"
     end
 
     def capture_thinking_tail_chunk(chunk)
@@ -2545,7 +2577,7 @@ module Samagotchi
     def render_thinking_spinner
       frame = THINKING_SPINNER_FRAMES[@thinking_spinner_index % THINKING_SPINNER_FRAMES.length]
       spinner_lines = thinking_spinner_status_lines(frame)
-      preview_lines, preview_has_content = thinking_tail_preview_lines
+      preview_lines, preview_has_content = turn_preamble_enabled? ? [[], false] : thinking_tail_preview_lines
       if color_output?
         preview_lines = preview_lines.map { |text| paint(text, 90) }
       end
@@ -2576,14 +2608,16 @@ module Samagotchi
         return [retry_spinner_status_line(frame)]
       end
 
-      base = "model> thinking... #{frame}"
+      preamble_active = turn_preamble_status_base(frame)
+      base = preamble_active || "model> thinking... #{frame}"
       available_for_notification = [status_effective_width - base.length, 0].max
       memory_notification, tool_notification = thinking_notification_segments(available_for_notification)
       notification = "#{memory_notification}#{tool_notification}"
 
       return ["#{base}#{notification}"] unless color_output?
 
-      ["#{paint(base, 90)}#{paint_if_present(memory_notification, MEMORY_SPINNER_COLOR)}#{paint_if_present(tool_notification, TOOL_SPINNER_COLOR)}"]
+      base_color = preamble_active ? TURN_PREAMBLE_SPINNER_COLOR : 90
+      ["#{paint(base, base_color)}#{paint_if_present(memory_notification, MEMORY_SPINNER_COLOR)}#{paint_if_present(tool_notification, TOOL_SPINNER_COLOR)}"]
     end
 
     # ── Ask-user-question adapter (generic TUI renderer) ─────────────────────
