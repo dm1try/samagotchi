@@ -52,7 +52,7 @@ module Samagotchi
     # @param memories           [Array<String>] explicit --memory preload list (merged with the config.yml `memories:` baseline)
     DEFAULT_SYSTEM_MEMORIES = %w[identity].freeze
 
-    def initialize(mode: :assist, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
+    def initialize(mode: :assist, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil, backend: nil)
       @mode = mode.to_sym
       @default_model_name = ModelProfile.required_model_name(model_name)
       @effective_model_name = @default_model_name
@@ -120,16 +120,15 @@ module Samagotchi
         @pending_question = @resume_session.pending_question.dup
         @session = @resume_session
       end
-      # Resolve the backend provider at the Engine boundary: no `provider:` kwarg
-      # is required at the call sites, so the two `Engine.new` callers
-      # (TerminalUI, SessionManager) are untouched. Falls back to
-      # `ENV["SAMAGOTCHI_BACKEND"]` when unset/blank, defaulting to `:native`
-      # (Phase 4; see the provider-selection plan).
+      # Resolve the backend provider at the Engine boundary. An explicit CLI
+      # value wins; omitted callers still fall back to ENV/config resolution.
       @backend = LLM::Factory.factory(
-        provider: LLM::Factory.resolve_provider,
+        provider: backend,
         model_name: @default_model_name,
-        kernel: @kernel
+        kernel: @kernel,
+        base_url: ruby_llm_base_url
       )
+      warn "[verbose] backend=#{@backend ? "ruby_llm" : "native"}" if verbose
       @resume_session = session_id ? Session.load(session_id) : nil
       @requested_memories = preload_memory_list(memories)
       @session = nil
@@ -176,6 +175,8 @@ module Samagotchi
     def monotonic_now
       Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
+
+    attr_reader :backend
 
     # Record that activity happened (user input or a completed turn). Shared,
     # mutex-guarded seam for the idle recap detector. Idempotent-ish: each call
@@ -903,24 +904,8 @@ module Samagotchi
     # @param prompt   [String]
     # @return [String] model response text
     def process_prompt_through_kernel(session, prompt)
-      messages = session.messages.dup
-      system_message = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
-
-      if messages.empty?
-        messages = [system_message]
-      elsif messages.first[:role].to_s != "system"
-        messages.unshift(system_message)
-      else
-        messages[0] = system_message
-      end
-
-      messages << { role: "user", content: prompt }
-      session.last_prompt = prompt
-
-      result = @kernel.run(messages)
-      session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
-
-      response = result.respond_to?(:output) ? result.output.to_s : result.to_s
+      result = run_turn(session, prompt)
+      response = result.respond_to?(:text) ? result.text.to_s : result.to_s
       if response.strip.empty?
         session.messages << { role: "model", content: "[No response]" }
         "[No response]"
@@ -945,6 +930,15 @@ module Samagotchi
     end
 
     private
+
+    def ruby_llm_base_url
+      entry, = @host_registry.host_for_model(@default_model_name)
+      return nil unless entry
+
+      "http://#{entry.host}:#{entry.port}/v1"
+    rescue StandardError
+      nil
+    end
 
     # Load hooks from the global config file using the Hooks::Loader.
     # Returns a Registry with all plugins registered (or an empty Registry if

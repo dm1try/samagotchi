@@ -30,6 +30,11 @@ RSpec.describe Samagotchi::LLM::ModelResult do
     expect(described_class.new(text: "x").exhausted?).to be(false)
   end
 
+  it "exposes resumable? for renderer compatibility" do
+    expect(described_class.new(text: "x", exhausted: true).resumable?).to be(true)
+    expect(described_class.new(text: "x").resumable?).to be(false)
+  end
+
   it "stringifies via to_s as text" do
     expect(described_class.new(text: "hi").to_s).to eq("hi")
   end

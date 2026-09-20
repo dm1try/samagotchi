@@ -501,6 +501,45 @@ own chat template on this endpoint. Only the Gemma4 (`<|tool_call>…`) and Qwen
 (`[[…]]`/`<|tool_call>`) tool-call formats are in scope; GLM/Mistral/Kimi/MiniMax
 formats are not parsed.
 
+For an OpenAI Chat Completions server such as [Splash](https://github.com/incoai/splash),
+select the `ruby_llm` backend instead of an HTTP transport:
+
+```yaml
+backend: ruby_llm
+default:
+  model: incoai/Qwen3.6-35B-A3B-Splash
+hosts:
+  splash:
+    host: 192.168.1.29
+    port: 8000
+```
+
+`--backend ruby_llm` takes precedence over `SAMAGOTCHI_BACKEND` and the config
+file. RubyLLM reuses the host selected for the active model, derives its OpenAI
+base as `http://HOST:PORT/v1`, and posts messages plus function schemas to
+`/v1/chat/completions`. This works with Splash and with llama.cpp servers that
+expose the OpenAI-compatible chat endpoint. In verbose mode, Chi prints a safe
+endpoint diagnostic such as
+`[samagotchi] backend=ruby_llm POST http://HOST:PORT/v1/chat/completions`; the
+request body is intentionally not logged. The interactive REPL, `--prompt`,
+workers, and resumed sessions all use the selected backend. Without the backend
+flag, Chi keeps using the native `/completion`, `/v1/completions`, or oMLX
+transport path.
+
+To manually verify a live RubyLLM tool round trip, run the gated integration
+spec. It requires the model to call `execute` and return the current UTC date:
+
+```shell
+LLAMA_INTEGRATION=1 \
+LLAMA_HOST=192.168.1.29 LLAMA_PORT=8000 \
+SAMAGOTCHI_DEFAULT_MODEL=incoai/Qwen3.8-27B-Splash \
+bundle exec rspec spec/integration/ruby_llm_backend_spec.rb -fd < /dev/null
+```
+
+The same test works against a llama.cpp OpenAI-compatible server by changing
+the host, port, and model values. The test is skipped unless
+`LLAMA_INTEGRATION=1` is set.
+
 oMLX's known tool-call limitation (a stream filter that strips markup) only
 affects its `/v1/chat/completions` endpoint, not the `/v1/completions` endpoint
 chi uses, so raw `[[…]]`/`<|tool_call>` markers stream through untouched.

@@ -81,7 +81,7 @@ module Samagotchi
       Engine.system_prompt_for(profile)
     end
 
-    def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false)
+    def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false, backend: nil)
       @mode           = mode.to_sym
       @prompt         = prompt
       @default_model_name = ModelProfile.required_model_name(nil)
@@ -143,6 +143,7 @@ module Samagotchi
         model_name: @default_model_name,
         memories: @requested_memories,
         kernel: @kernel,
+        backend: backend,
         recap: recap_config,
         reminders: {
           callback: lambda { |due_names|
@@ -803,12 +804,11 @@ module Samagotchi
         end
         # intentionally suppress spinner/tool rendering
       end
-      result = @kernel.run(
+      result = run_selected_backend(
         messages,
         max_iterations: max_iterations,
         on_stream_event: muted_handler,
-        cancel_controller: cancellation_controller,
-        model_name: @effective_model_name
+        cancel_controller: cancellation_controller
       )
       result
     rescue Interrupt
@@ -1596,12 +1596,11 @@ module Samagotchi
       reset_thinking_memory_notification
       reset_thinking_memory_names
       reset_thinking_tool_notification
-      result = @kernel.run(
+      result = run_selected_backend(
         messages,
         max_iterations: max_iterations,
         on_stream_event: method(:handle_stream_event),
         cancel_controller: cancellation_controller,
-        model_name: @effective_model_name,
         pending_input: @pending_input_queue&.method(:drain)
       )
       emit_cancellation_notice(result)
@@ -1615,6 +1614,27 @@ module Samagotchi
       stop_cancel_hotkey_monitor
       @active_cancel_controller = nil
       finish_thinking_spinner
+    end
+
+    def run_selected_backend(messages, max_iterations:, on_stream_event:, cancel_controller:, pending_input: nil)
+      backend = @engine.backend
+      return @kernel.run(
+        messages,
+        max_iterations: max_iterations,
+        on_stream_event: on_stream_event,
+        cancel_controller: cancel_controller,
+        model_name: @effective_model_name,
+        pending_input: pending_input
+      ) unless backend
+
+      backend.complete(
+        messages: messages,
+        max_iterations: max_iterations,
+        on_stream_event: on_stream_event,
+        cancel_controller: cancel_controller,
+        model_name: bare_model_for(@effective_model_name),
+        pending_input: pending_input
+      )
     end
 
     # Turn lifecycle for the interactive REPL.

@@ -807,6 +807,7 @@ Samagotchi::TerminalUI.new(
   no_default_input: options[:no_default_input],
   memories: options[:memories] || [],
   non_interactive: options[:non_interactive],
-  model_name: options[:model]
+  model_name: options[:model],
+  backend: options[:backend]
 ).run
 

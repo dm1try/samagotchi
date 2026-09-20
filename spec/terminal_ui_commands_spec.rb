@@ -92,5 +92,28 @@ RSpec.describe Samagotchi::TerminalUI do
       agent.send(:end_interactive_turn, canceled: false)
       expect(metrics.snapshot[:turns]).to eq(2)
     end
+
+    it "routes interactive generation through the selected backend" do
+      backend = instance_double(Samagotchi::LLM::RubyLLMBackend)
+      engine = agent.instance_variable_get(:@engine)
+      engine.instance_variable_set(:@backend, backend)
+      allow(agent.instance_variable_get(:@kernel)).to receive(:run).and_raise("native path used")
+      allow(backend).to receive(:complete).and_return(
+        Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [])
+      )
+
+      agent.send(
+        :run_selected_backend,
+        [{ role: "user", content: "hello" }],
+        max_iterations: 1,
+        on_stream_event: nil,
+        cancel_controller: Samagotchi::Client::CancellationController.new
+      )
+
+      expect(backend).to have_received(:complete).with(hash_including(
+        messages: [{ role: "user", content: "hello" }],
+        max_iterations: 1
+      ))
+    end
   end
 end

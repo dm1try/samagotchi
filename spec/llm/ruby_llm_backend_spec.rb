@@ -493,5 +493,15 @@ RSpec.describe Samagotchi::LLM::RubyLLMBackend do
 
       expect(request_bodies.last[:model]).to eq("override-model")
     end
+
+    it "advertises usable parameters for the execute tool" do
+      install_provider!([body_with_text("ok")])
+
+      backend.complete(messages: [{ role: "user", content: "run date" }])
+
+      execute = request_bodies.last[:tools].find { |tool| tool[:function][:name] == "execute" }
+      expect(execute[:function][:parameters][:properties]).to include(:command)
+      expect(execute[:function][:parameters][:required]).to include("command")
+    end
   end
 end

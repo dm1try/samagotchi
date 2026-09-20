@@ -742,6 +742,7 @@ module Samagotchi
       message && message[:role] == "tool_response"
     end
 
+    public
     # Public entry point for executing an ALREADY-NORMALIZED internal tool call
     # (the {name:, content:, path:, scope:, …} shape).
     #
@@ -755,6 +756,7 @@ module Samagotchi
       dispatch(call)
     end
 
+    private
     def dispatch(call)
       tool = TOOLS.find { |t| t.name == call[:name] }
       unless tool

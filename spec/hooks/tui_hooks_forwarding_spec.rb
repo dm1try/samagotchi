@@ -47,6 +47,13 @@ RSpec.describe "TUI hooks forwarding regression" do
   end
 
   describe "TerminalUI (TUI) integration path" do
+    it "forwards the selected backend to Engine" do
+      tui = Samagotchi::TerminalUI.new(mode: :assist, client: client, backend: :ruby_llm)
+
+      expect(tui.instance_variable_get(:@engine).instance_variable_get(:@backend))
+        .to be_a(Samagotchi::LLM::RubyLLMBackend)
+    end
+
     it "TerminalUI's Engine and KernelLoop share the same hooks registry" do
       allow(client).to receive(:complete).and_return("hello")
       tui = Samagotchi::TerminalUI.new(mode: :assist, client: client)

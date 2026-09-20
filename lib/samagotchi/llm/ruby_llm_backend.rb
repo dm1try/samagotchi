@@ -51,11 +51,69 @@ module Samagotchi
     # and let completion finish (graceful degradation — no crash).
     class RubyLLMBackend < ModelBackend
       TOOL_RESPONSE_JOIN = "\n\n---\n\n".freeze
+      TOOL_PARAMETER_SCHEMAS = {
+        "execute" => {
+          type: "object",
+          properties: {
+            command: { type: "string", description: "Shell command to run" },
+            cwd: { type: "string", description: "Optional working directory" }
+          },
+          required: ["command"], additionalProperties: false
+        },
+        "read" => {
+          type: "object",
+          properties: {
+            path: { type: "string", description: "File path to read" },
+            start_line: { type: "integer" },
+            end_line: { type: "integer" }
+          },
+          required: ["path"], additionalProperties: false
+        },
+        "write" => {
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            content: { type: "string" }
+          },
+          required: ["path", "content"], additionalProperties: false
+        },
+        "memory_read" => {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            scope: { type: "string", enum: ["project", "system"] }
+          },
+          required: ["name"], additionalProperties: false
+        },
+        "memory_write" => {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            content: { type: "string" },
+            scope: { type: "string", enum: ["project", "system"] },
+            description: { type: "string" },
+            current_model_only: { type: "boolean" }
+          },
+          required: ["name", "content", "scope"], additionalProperties: false
+        },
+        "edit" => {
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            old_text: { type: "string" },
+            new_text: { type: "string" },
+            start_line: { type: "integer" },
+            end_line: { type: "integer" }
+          },
+          required: ["path", "old_text", "new_text"], additionalProperties: false
+        }
+      }.freeze
 
-      def initialize(model_name:, gem_provider: :openai, assume_model_exists: true, kernel: nil)
+      def initialize(model_name:, gem_provider: :openai, assume_model_exists: true, kernel: nil, base_url: nil)
         @model_name = model_name
         @assume_model_exists = assume_model_exists
         @kernel = kernel
+        @base_url = base_url.to_s.chomp("/") unless base_url.nil?
       end
 
       def complete(messages:, max_iterations: 100, on_stream_event: nil, cancel_controller: nil,
@@ -236,7 +294,8 @@ module Samagotchi
       def issue_generation(conversation, model_name)
         provider = gem_provider
         body = build_request_body(conversation, model_name)
-        response = provider.connection.post("#{provider.api_base}/chat/completions", body)
+        endpoint = "#{provider.api_base}/chat/completions"
+        response = provider.connection.post(endpoint, body)
         parse_sync_response(response)
       rescue Samagotchi::Client::RequestCancelled
         raise
@@ -302,12 +361,10 @@ module Samagotchi
             function: {
               name: tool_klass.const_get(:NAME),
               description: (tool_klass.respond_to?(:description) ? tool_klass.description : tool_klass.const_get(:NAME)),
-              parameters: {
-                type: "object",
-                properties: {},
-                required: [],
-                additionalProperties: true
-              }
+              parameters: TOOL_PARAMETER_SCHEMAS.fetch(
+                tool_klass.const_get(:NAME),
+                { type: "object", properties: {}, required: [], additionalProperties: true }
+              )
             }
           }
         end
@@ -401,7 +458,16 @@ module Samagotchi
       end
 
       def gem_provider
-        @gem_provider ||= RubyLLM::Providers::OpenAI.new(RubyLLM.config)
+        @gem_provider ||= RubyLLM::Providers::OpenAI.new(ruby_llm_config)
+      end
+
+      def ruby_llm_config
+        return RubyLLM.config if @base_url.nil? || @base_url.empty?
+
+        config = RubyLLM::Configuration.new
+        config.openai_api_base = @base_url
+        config.openai_api_key = RubyLLM.config.openai_api_key || "sk-local-dummy"
+        config
       end
 
       def resolve_output_char_cap(override)
@@ -411,7 +477,7 @@ module Samagotchi
       end
 
       def strip_model_thought(text)
-        @kernel&.strip_model_thought(text) || text
+        @kernel ? @kernel.send(:strip_model_thought, text) : text
       end
 
       def build_result(text, canceled:, reason:, conversation:, exhausted: false)

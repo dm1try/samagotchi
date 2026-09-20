@@ -105,6 +105,21 @@ RSpec.describe Samagotchi::LLM::Factory do
       expect(engine.instance_variable_get(:@backend)).to be_a(Samagotchi::LLM::RubyLLMBackend)
     end
 
+    it "uses an explicit backend and the selected host endpoint" do
+      ENV["SAMAGOTCHI_BACKEND"] = "native"
+      registry = Samagotchi::HostRegistry.new(
+        hosts_config: {
+          "splash" => { name: "splash", host: "192.168.1.29", port: 8000, transport: nil }
+        }
+      )
+
+      engine = build_engine(host_registry: registry, model_name: "Splash-Model", backend: :ruby_llm)
+      backend = engine.instance_variable_get(:@backend)
+
+      expect(backend).to be_a(Samagotchi::LLM::RubyLLMBackend)
+      expect(backend.instance_variable_get(:@base_url)).to eq("http://192.168.1.29:8000/v1")
+    end
+
     it "sets @backend to nil for a blank backend selection" do
       ENV["SAMAGOTCHI_BACKEND"] = ""
       engine = build_engine(model_name: "Gemma-4B-it")

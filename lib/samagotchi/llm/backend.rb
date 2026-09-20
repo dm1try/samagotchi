@@ -54,12 +54,12 @@ module Samagotchi
         raw.empty? ? DEFAULT_PROVIDER : raw.to_sym
       end
 
-      def self.factory(provider:, model_name:, kernel: nil, **_opts)
+      def self.factory(provider:, model_name:, kernel: nil, base_url: nil, **_opts)
         case resolve_provider(provider)
         when :native
           nil # The Engine drives KernelLoop#run directly
         when :ruby_llm
-          Samagotchi::LLM::RubyLLMBackend.new(model_name: model_name, kernel: kernel)
+          Samagotchi::LLM::RubyLLMBackend.new(model_name: model_name, kernel: kernel, base_url: base_url)
         else
           raise ArgumentError,
                 "Unsupported model backend provider: #{resolve_provider(provider).inspect} (known: :native, :ruby_llm)"

@@ -40,6 +40,10 @@ module Samagotchi
         !!exhausted
       end
 
+      def resumable?
+        exhausted?
+      end
+
       def to_s
         text.to_s
       end
