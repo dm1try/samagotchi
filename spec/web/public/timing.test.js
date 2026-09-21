@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   elapsedSince,
   formatDuration,
@@ -7,12 +9,19 @@ import {
   turnRecordAt,
 } from "../../../lib/samagotchi/web/public/timing.js";
 
+// Shared contract: spec/shared/timing_matrix.json. One source of truth for the
+// web (JS) and TUI (Ruby) suites — edit it to change either side's output.
+const matrix = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL("../../../spec/shared/timing_matrix.json", import.meta.url)),
+    "utf8",
+  ),
+);
+
 test("formatDuration renders compact elapsed values", () => {
-  assert.equal(formatDuration(0), "0.0s");
-  assert.equal(formatDuration(1_250), "1.3s");
-  assert.equal(formatDuration(12_400), "12s");
-  assert.equal(formatDuration(62_400), "1m 02s");
-  assert.equal(formatDuration(-1), "");
+  for (const { ms, expected } of matrix.cases) {
+    assert.equal(formatDuration(ms), expected, `timing for ${ms}ms`);
+  }
 });
 
 test("elapsedSince uses supplied time and rejects invalid dates", () => {

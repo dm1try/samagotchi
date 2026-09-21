@@ -1,0 +1,29 @@
+{
+  "description": "Canonical timing-formatting contract shared by the web (JS) and TUI (Ruby) suites. One source of truth: if either side's output for a given millisecond value should change, edit this file and BOTH suites must still pass. The 1250ms case pins round-half-up (1.25s -> 1.3s) on both sides.",
+  "unit": "milliseconds",
+  "cases": [
+    { "ms": 0,    "expected": "0ms" },
+    { "ms": 1,    "expected": "1ms" },
+    { "ms": 123,  "expected": "123ms" },
+    { "ms": 234,  "expected": "234ms" },
+    { "ms": 499,  "expected": "499ms" },
+    { "ms": 499.9,"expected": "500ms" },
+    { "ms": 500,  "expected": "0.5s" },
+    { "ms": 500.4,"expected": "0.5s" },
+    { "ms": 501,  "expected": "0.5s" },
+    { "ms": 600,  "expected": "0.6s" },
+    { "ms": 1000, "expected": "1.0s" },
+    { "ms": 1250, "expected": "1.3s" },
+    { "ms": 9000, "expected": "9.0s" },
+    { "ms": 9999, "expected": "10.0s" },
+    { "ms": 10000,"expected": "10s" },
+    { "ms": 10001,"expected": "10s" },
+    { "ms": 12400,"expected": "12s" },
+    { "ms": 30000,"expected": "30s" },
+    { "ms": 59999,"expected": "60s" },
+    { "ms": 60000,"expected": "1m 00s" },
+    { "ms": 62400,"expected": "1m 02s" },
+    { "ms": 120000,"expected": "2m 00s" },
+    { "ms": -1,   "expected": "" }
+  ]
+}
