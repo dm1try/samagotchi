@@ -15,7 +15,7 @@ module Samagotchi
       DEFAULT_PORT = 4567
       DEFAULT_HOST = "127.0.0.1"
 
-      def self.start(port: nil, host: nil, open_browser: false, state_dir: nil, manager: nil)
+      def self.start(port: nil, host: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false)
         port = resolve_port(port)
         host = (host || ENV.fetch("SAMAGOTCHI_WEB_HOST", DEFAULT_HOST)).to_s.strip
         host = DEFAULT_HOST if host.empty?
@@ -24,7 +24,7 @@ module Samagotchi
           host = DEFAULT_HOST
         end
 
-        app = App.new(manager: manager, state_dir: state_dir)
+        app = App.new(manager: manager, state_dir: state_dir, markdown: markdown)
         puts "Chi Web starting on http://#{host}:#{port} (public: #{File.expand_path("public", __dir__)})"
         puts "Press Ctrl-C to stop."
 

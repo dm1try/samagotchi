@@ -85,9 +85,15 @@ RSpec.describe Samagotchi::Web::App do
 
   # bridge_wait_timeout: 0 — no real worker is spawned in these specs, so the
   # create handler must not wait for a bridge sidecar.
-  def build_app(manager: nil, state_dir: nil)
+  def build_app(manager: nil, state_dir: nil, markdown: false, session_class: StubSessionLoader)
     manager ||= FakeResponsesManager.new
-    described_class.new(manager: manager, state_dir: state_dir, session_class: StubSessionLoader, bridge_wait_timeout: 0)
+    described_class.new(
+      manager: manager,
+      state_dir: state_dir,
+      session_class: session_class,
+      bridge_wait_timeout: 0,
+      markdown: markdown
+    )
   end
 
   def env_for(path, method: "GET", body: nil, headers: {})
@@ -166,6 +172,53 @@ RSpec.describe Samagotchi::Web::App do
   end
 
   describe "GET /api/sessions/:id" do
+    it "keeps Markdown disabled by default" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      status, _headers, body = app.call(env_for("/api/sessions/s1"))
+
+      expect(status).to eq(200)
+      message = JSON.parse(body.first).fetch("messages").last
+      expect(message).to include("role" => "assistant", "content" => "hi there")
+      expect(message).not_to have_key("html")
+      expect(JSON.parse(body.first)["markdown_warning"]).to be_nil
+    end
+
+    it "reports a warning when Markdown is enabled without commonmarker" do
+      renderer = Samagotchi::Web::MarkdownRenderer.new(enabled: true)
+      renderer.instance_variable_set(:@commonmarker_available, false)
+
+      expect(renderer.available?).to be(false)
+      expect(renderer.warning).to include("gem install commonmarker")
+    end
+
+    it "includes sanitized Markdown HTML for assistant messages when available" do
+      loader = Class.new do
+        class << self
+          def load(_id, state_dir: nil)
+            s = Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd)
+            s.messages = [
+              { role: "user", content: "hello" },
+              { role: "assistant", content: "see [example](https://example.test) here" }
+            ]
+            s
+          end
+
+          def session_dir(id, state_dir: nil)
+            File.join(state_dir.to_s, id)
+          end
+        end
+      end
+      app = build_app(state_dir: Dir.mktmpdir, markdown: true, session_class: loader)
+      status, _headers, body = app.call(env_for("/api/sessions/s1"))
+
+      expect(status).to eq(200)
+      message = JSON.parse(body.first).fetch("messages").last
+      expect(message).to include("role" => "assistant")
+      expect(message["html"]).to include('href="https://example.test"')
+      expect(message["html"]).to include('target="_blank"')
+      expect(message["html"]).to include('rel="noopener noreferrer"')
+    end
+
     it "includes last_event_seq = nil when no bridge is live" do
       manager = FakeResponsesManager.new(responses: %w[one two three])
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)

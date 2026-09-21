@@ -10,6 +10,7 @@ require "rack/request"
 require_relative "../session"
 require_relative "../session_manager"
 require_relative "../output_formatter"
+require_relative "markdown_renderer"
 
 module Samagotchi
   module Web
@@ -27,12 +28,13 @@ module Samagotchi
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
-                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT)
+                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false)
         @manager = manager || SessionManager
         @session_class = session_class || Session
         @state_dir = state_dir
         @public_dir = public_dir || File.expand_path("public", __dir__)
         @bridge_wait_timeout = bridge_wait_timeout
+        @markdown_renderer = MarkdownRenderer.new(enabled: markdown)
       end
 
       def call(env)
@@ -189,6 +191,7 @@ module Samagotchi
           session: session_to_json(session),
           history: history,
           messages: messages,
+          markdown_warning: @markdown_renderer.warning,
           pending_question: pending,
           last_event_seq: last_event_seq,
           timing: timing_payload(id, live_metrics: snapshot && snapshot["metrics"])
@@ -615,7 +618,9 @@ module Samagotchi
           norm_role = "user" if norm_role == "user"
           next unless %w[user assistant].include?(norm_role)
 
-          filtered << { role: norm_role, content: stripped }
+          message = { role: norm_role, content: stripped }
+          message[:html] = @markdown_renderer.render(stripped) if norm_role == "assistant" && @markdown_renderer.available?
+          filtered << message
         end
         filtered
       rescue StandardError

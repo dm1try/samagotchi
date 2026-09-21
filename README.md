@@ -10,6 +10,7 @@ Run with:
 - `bin/chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
 - `bin/chi --resume <session-id>` — resume a prior session in the REPL
 - `bin/chi web [--port 4567] [--open]` — start the Web UI (single localhost port session control plane)
+- `bin/chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
 - `bin/chi sessions list|prune|clean` — manage persisted sessions (retention + ordering, see below)
 
 ## CLI Usage
@@ -46,6 +47,30 @@ an unknown value is rejected at startup.
 | `bin/chi --resume ID` | Resume session `ID` and enter the REPL with its history. |
 | `bin/chi --resume ID -p "next step" --non-interactive` | Resume `ID`, run the prompt, save, exit. |
 | `bin/chi --resume ID -p "next step"` | Resume `ID`, run the prompt, **stay in the REPL** on that session. |
+
+### Web Markdown rendering
+
+Web responses are escaped text by default. To render completed assistant
+responses as HTML, install the optional renderer and enable it for the web
+server:
+
+```sh
+gem install kramdown
+bin/chi web --web-markdown
+```
+
+The setting also supports `SAMAGOTCHI_WEB_MARKDOWN=true` or the global config:
+
+```yaml
+web:
+  markdown: true
+```
+
+Only finalized assistant messages are rendered; user messages and live streaming
+chunks remain escaped text. Generated HTML is sanitized, raw HTML in model output
+is not trusted, and unsafe links are removed. If Markdown is enabled without
+Kramdown installed, Chi Web keeps the normal escaped-text display and shows a
+warning explaining how to install the optional gem.
 
 Notes:
 

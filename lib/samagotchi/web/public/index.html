@@ -30,6 +30,15 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.output.streaming{border-left-color:#58a6ff;opacity:.95}
 .turn-timing{margin-top:8px;color:#8b949e;font-size:11px;font-variant-numeric:tabular-nums}
 .turn-timing.live{color:#58a6ff}
+.bubble.output.markdown{white-space:normal}
+.bubble.output.markdown pre{overflow:auto;padding:10px;border-radius:8px;background:#0f1115}
+.bubble.output.markdown code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.bubble.output.markdown p,.bubble.output.markdown ul,.bubble.output.markdown ol,.bubble.output.markdown blockquote,.bubble.output.markdown table{margin:0 0 10px}
+.bubble.output.markdown p:last-child,.bubble.output.markdown ul:last-child,.bubble.output.markdown ol:last-child,.bubble.output.markdown blockquote:last-child,.bubble.output.markdown table:last-child{margin-bottom:0}
+.bubble.output.markdown blockquote{border-left:3px solid #484f58;padding-left:12px;color:#8b949e}
+.bubble.output.markdown table{border-collapse:collapse;display:block;max-width:100%;overflow:auto}
+.bubble.output.markdown th,.bubble.output.markdown td{border:1px solid #30363d;padding:5px 8px}
+.markdown-warning{margin:0 16px 4px;padding:8px 10px;border:1px solid #d29922;border-radius:8px;background:#2b2108;color:#f2cc60;font-size:12px;line-height:1.4}
 .bubble.user{border-left:3px solid #7aa5ff;background:#1b2336;align-self:flex-end;max-width:85%;margin-left:auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
 .bubble.user.queued{border-left-style:dashed;opacity:.8}
 .bubble.user.steered{border-left-style:dashed;border-left-color:#8ec5ff;opacity:.9}
@@ -160,6 +169,7 @@ a{color:#7aa5ff}
   <section id="center">
     <div id="firstPeek"></div>
     <div id="stage">
+      <div id="markdownWarning" class="markdown-warning" hidden></div>
       <div id="history"></div>
       <div id="empty"><div class="brand-start"><span>Chi</span> Web</div></div>
     </div>

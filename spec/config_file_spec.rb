@@ -39,6 +39,12 @@ RSpec.describe Samagotchi::ConfigFile do
       expect(described_class.global_path).to eq("/tmp/xdg-home/samagotchi/config.yml")
     end
 
+    describe Samagotchi::Config do
+      it "defaults web Markdown rendering to disabled" do
+        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.markdown")).to be(false)
+      end
+    end
+
     it "falls back to ~/.config" do
       expect(described_class.global_path(env: {})).to eq(File.expand_path("~/.config/samagotchi/config.yml"))
     end

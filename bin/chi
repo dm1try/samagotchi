@@ -691,7 +691,7 @@ if ARGV[0] == "bundle"
   exit 0
 end
 
-options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, web: false, web_port: nil, web_open: false }
+options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, web: false, web_port: nil, web_open: false, web_markdown: nil }
 cli_overrides = {}
 
 # Strict kebab enforcement: --recap_base_url is unknown (OptionParser would otherwise accept _ as -)
@@ -728,6 +728,7 @@ OptionParser.new do |opts|
     next if %w[backend no_interrupt no_default_input].include?(entry.key)
     next if entry.key == "web.port" # already handled as --port
     next if entry.key == "default.model" # alias --model above
+    next if entry.key == "web.markdown" # handled below with an explicit inverse flag
     case entry.type
     when :bool
       opts.on(entry.cli_flag, "Set #{entry.key} (bool) [env #{entry.env_key}]") { cli_overrides[entry.key] = true }
@@ -742,6 +743,8 @@ OptionParser.new do |opts|
       end
     end
   end
+  opts.on("--web-markdown", "Render finalized LLM Markdown in `chi web` (requires optional kramdown gem)") { options[:web_markdown] = true; cli_overrides["web.markdown"] = true }
+  opts.on("--no-web-markdown", "Disable Markdown rendering in `chi web`") { options[:web_markdown] = false; cli_overrides["web.markdown"] = false }
   # Strict underscore rejection: --recap_base_url etc. are not registered and will raise OptionParser::InvalidOption
   opts.on("-h", "--help", "Show help") { puts opts; exit }
 end.parse!
@@ -757,7 +760,7 @@ unless cli_overrides.empty?
   end
 end
 
-# Handle subcommands (support `chi web --port 4567 --open`)
+# Handle subcommands (support `chi web --port 4567 --open --web-markdown`)
 web_args = ARGV.dup
 case ARGV[0]
 when "web"
@@ -769,6 +772,10 @@ when "web"
       options[:web_port] = web_args[i + 1].to_i
     elsif arg == "--open"
       options[:web_open] = true
+    elsif arg == "--web-markdown"
+      options[:web_markdown] = true
+    elsif arg == "--no-web-markdown"
+      options[:web_markdown] = false
     elsif arg.start_with?("--port=")
       options[:web_port] = arg.split("=", 2).last.to_i
     end
@@ -780,7 +787,9 @@ if options[:web]
   port = options[:web_port] || Samagotchi::Config.get("web.port") || 4567
   # legacy env fallback
   port = ENV.fetch("SAMAGOTCHI_WEB_PORT", port.to_s).to_i rescue port.to_i
-  Samagotchi::Web::Server.start(port: port, open_browser: options[:web_open])
+  markdown = options[:web_markdown]
+  markdown = Samagotchi::Config.get("web.markdown") if markdown.nil?
+  Samagotchi::Web::Server.start(port: port, open_browser: options[:web_open], markdown: markdown)
   exit
 end
 
@@ -810,4 +819,3 @@ Samagotchi::TerminalUI.new(
   model_name: options[:model],
   backend: options[:backend]
 ).run
-

@@ -1,9 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { previewOf, escapeHtml, normalize } from "../../../lib/samagotchi/web/public/format.js";
+import { previewOf, escapeHtml, messageBodyHtml, normalize } from "../../../lib/samagotchi/web/public/format.js";
 
 test("escapeHtml escapes HTML metacharacters", () => {
   assert.equal(escapeHtml(`<a href="x">&`), "&lt;a href=&quot;x&quot;&gt;&amp;");
+});
+
+test("messageBodyHtml only uses explicitly rendered assistant HTML", () => {
+  assert.deepEqual(
+    messageBodyHtml({ role: "assistant", content: "**safe**", html: "<strong>safe</strong>" }),
+    { body: "<strong>safe</strong>", renderedMarkdown: true },
+  );
+  assert.deepEqual(
+    messageBodyHtml({ role: "user", content: "<img>", html: "<strong>ignored</strong>" }),
+    { body: "&lt;img&gt;", renderedMarkdown: false },
+  );
+  assert.deepEqual(
+    messageBodyHtml({ role: "assistant", content: "<img>" }),
+    { body: "&lt;img&gt;", renderedMarkdown: false },
+  );
 });
 
 test("normalize collapses whitespace", () => {
