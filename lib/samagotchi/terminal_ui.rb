@@ -685,8 +685,12 @@ module Samagotchi
     end
 
     def format_elapsed_duration(duration_ms)
-      seconds = duration_ms.to_f / 1000
-      return format("%.1fs", seconds) if seconds < 10
+      duration_ms = duration_ms.to_f
+      return "" if duration_ms.negative?
+      return "#{duration_ms.round}ms" if duration_ms < 500
+
+      seconds = duration_ms / 1000
+      return "#{seconds.round(1)}s" if seconds < 10
       return "#{seconds.round}s" if seconds < 60
 
       total_seconds = seconds.round

@@ -3,6 +3,7 @@
 require "samagotchi/terminal_ui"
 require "spec_helper"
 require "stringio"
+require "json"
 
 RSpec.describe Samagotchi::TerminalUI do
   let(:client) { instance_double(Samagotchi::Client) }
@@ -47,7 +48,7 @@ RSpec.describe Samagotchi::TerminalUI do
 
       expect(output).to include("tool>")
       expect(output).to include("ok")
-      expect(output).to include("(0.1s)")
+      expect(output).to include("(125ms)")
     end
 
     it "prints the completed interactive turn elapsed time" do
@@ -59,17 +60,27 @@ RSpec.describe Samagotchi::TerminalUI do
       agent.send(:begin_interactive_turn, session)
       agent.send(:end_interactive_turn, canceled: false)
 
-      expect(output.string).to match(/chi> turn completed \(0\.0s\)/)
+      expect(output.string).to match(/chi> turn completed \(0ms\)/)
     ensure
       $stdout = original_stdout
     end
 
-    it "formats longer elapsed durations compactly" do
-      expect(agent.send(:format_elapsed_duration, 12_400)).to eq("12s")
-      expect(agent.send(:format_elapsed_duration, 62_400)).to eq("1m 02s")
+    # Shared contract: spec/shared/timing_matrix.json. One source of truth for
+    # the web (JS) and TUI (Ruby) suites — edit it to change either side's output.
+    let(:timing_matrix) do
+      path = File.expand_path("shared/timing_matrix.json", __dir__)
+      JSON.parse(File.read(path))["cases"]
+    end
+
+    it "formats durations per the shared timing matrix" do
+      timing_matrix.each do |case_entry|
+        ms = case_entry["ms"]
+        expected = case_entry["expected"]
+        expect(agent.send(:format_elapsed_duration, ms)).to eq(expected),
+          "timing for #{ms}ms expected #{expected.inspect}"
+      end
     end
   end
-
   # Regression for the interactive /stats bug: the REPL drives KernelLoop
   # directly, bypassing Engine#run_turn, so it never emitted the :turn_started
   # event the collector needs. Without begin_interactive_turn, turns and output
