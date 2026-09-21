@@ -3,6 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 require "json"
+require "fileutils"
 require "stringio"
 require "rack/mock"
 require "rack/request"
@@ -204,6 +205,30 @@ RSpec.describe Samagotchi::Web::App do
       app.call(env_for("/api/sessions/s1"))
 
       expect(manager.resume_calls).to be_empty
+    end
+
+    it "includes persisted timing details without failing when analytics are absent" do
+      state_dir = Dir.mktmpdir
+      timing_dir = File.join(state_dir, "s1")
+      FileUtils.mkdir_p(timing_dir)
+      File.write(
+        File.join(timing_dir, "analytics.json"),
+        JSON.generate(
+          started_at: "2026-09-21T10:00:00.000Z",
+          last_activity_at: "2026-09-21T10:00:03.000Z",
+          turn_records: [{ id: "turn-1", duration_ms: 3000, status: "completed" }],
+          tool_records: [{ id: "tool-1", duration_ms: 50, tool: "read" }]
+        )
+      )
+      app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir)
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1"))
+
+      expect(status).to eq(200)
+      timing = JSON.parse(body.first).fetch("timing")
+      expect(timing["session_duration_ms"]).to eq(3000)
+      expect(timing["turn_records"]).to include(hash_including("id" => "turn-1"))
+      expect(timing["tool_records"]).to include(hash_including("id" => "tool-1"))
     end
   end
 

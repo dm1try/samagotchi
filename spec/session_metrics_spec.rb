@@ -114,6 +114,33 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:cancellations]).to eq(1)
   end
 
+  it "commits partial generation tokens when a generation is canceled" do
+    feed([
+      { type: :turn_started, session_id: "cancelled-generation", prompt: "x" },
+      { type: :generation_started, iteration: 1 },
+      { type: :generation_chunk, iteration: 1, content: "partial", payload: { "timings" => { "prompt_n" => 20, "predicted_n" => 4 } } },
+      { type: :generation_cancelled, iteration: 1, reason: :ctrl_c },
+      { type: :turn_canceled, cancellation_reason: :ctrl_c }
+    ])
+
+    snap = metrics.snapshot
+    expect(snap[:tokens_in]).to eq(20)
+    expect(snap[:tokens_out]).to eq(4)
+    expect(snap[:gen_latency_ms]).to be >= 0
+  end
+
+  it "estimates raw event content when a backend does not provide payload content" do
+    feed([
+      { type: :turn_started, session_id: "raw-content", prompt: "x" },
+      { type: :generation_started, iteration: 1 },
+      { type: :generation_chunk, iteration: 1, content: "thinking and answer", payload: nil },
+      { type: :generation_completed, iteration: 1 },
+      { type: :turn_completed, result: double(respond_to?: false) }
+    ])
+
+    expect(metrics.snapshot[:tokens_out]).to eq(5)
+  end
+
   it "persists a summary to the session directory" do
     metrics.session_id = "persist-sess"
     feed([
@@ -125,6 +152,48 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(metrics.persist(state_dir: state_dir)).to eq(true)
     dir = Samagotchi::Session.session_dir("persist-sess", state_dir: state_dir)
     expect(File.exist?(File.join(dir, "analytics.json"))).to be(true)
+  end
+
+  it "records completed turn and tool wall-clock durations with injected clocks" do
+    monotonic = 10.0
+    wall_time = Time.utc(2026, 9, 21, 10, 0, 0)
+    metrics = described_class.new(
+      clock: -> { monotonic },
+      wall_clock: -> { wall_time }
+    )
+
+    metrics.call(type: :turn_started, session_id: "timed", prompt: "x")
+    monotonic += 0.25
+    wall_time += 0.25
+    metrics.call(type: :tool_call_started, iteration: 1, call_index: 1, tool: "read")
+    monotonic += 0.5
+    wall_time += 0.5
+    metrics.call(type: :tool_call_completed, iteration: 1, call_index: 1, tool: "read", activity: { status: "ok" })
+    monotonic += 1.25
+    wall_time += 1.25
+    metrics.call(type: :turn_completed, result: double(respond_to?: false))
+
+    snap = metrics.snapshot
+    expect(snap[:turn_records]).to include(hash_including(status: "completed", duration_ms: 2000))
+    expect(snap[:tool_records]).to include(hash_including(tool: "read", status: "ok", duration_ms: 500))
+    expect(snap[:active_turn]).to be_nil
+    expect(snap[:active_tools]).to be_empty
+  end
+
+  it "merges completed timing records when a later worker persists analytics" do
+    state_dir = Dir.mktmpdir
+    first = described_class.new
+    first.call(type: :turn_started, session_id: "resumed", prompt: "one")
+    first.call(type: :turn_completed, result: double(respond_to?: false))
+    first.persist(state_dir: state_dir)
+
+    second = described_class.new
+    second.call(type: :turn_started, session_id: "resumed", prompt: "two")
+    second.call(type: :turn_completed, result: double(respond_to?: false))
+    second.persist(state_dir: state_dir)
+
+    path = File.join(Samagotchi::Session.session_dir("resumed", state_dir: state_dir), "analytics.json")
+    expect(JSON.parse(File.read(path)).fetch("turn_records").size).to eq(2)
   end
 
   it "is error-isolated and never raises on bad input" do

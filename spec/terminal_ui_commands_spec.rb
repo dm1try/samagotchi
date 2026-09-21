@@ -2,6 +2,7 @@
 
 require "samagotchi/terminal_ui"
 require "spec_helper"
+require "stringio"
 
 RSpec.describe Samagotchi::TerminalUI do
   let(:client) { instance_double(Samagotchi::Client) }
@@ -33,6 +34,39 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(output).to include("turns:")
       expect(output).to include("tokens in/out:")
       expect(output).to include("10/5")
+    end
+  end
+
+  describe "timing output" do
+    it "adds compact elapsed time to a completed tool activity line" do
+      output = agent.send(
+        :format_tool_activity_line,
+        { action: "reading file", tool: "read", params: "path=README.md", status: "ok" },
+        duration_ms: 125
+      )
+
+      expect(output).to include("tool>")
+      expect(output).to include("ok")
+      expect(output).to include("(0.1s)")
+    end
+
+    it "prints the completed interactive turn elapsed time" do
+      session = double(id: "timed-turn")
+      original_stdout = $stdout
+      output = StringIO.new
+      $stdout = output
+
+      agent.send(:begin_interactive_turn, session)
+      agent.send(:end_interactive_turn, canceled: false)
+
+      expect(output.string).to match(/chi> turn completed \(0\.0s\)/)
+    ensure
+      $stdout = original_stdout
+    end
+
+    it "formats longer elapsed durations compactly" do
+      expect(agent.send(:format_elapsed_duration, 12_400)).to eq("12s")
+      expect(agent.send(:format_elapsed_duration, 62_400)).to eq("1m 02s")
     end
   end
 

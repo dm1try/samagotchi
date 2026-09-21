@@ -66,5 +66,7 @@ RSpec.describe "SessionMetrics end-to-end (real KernelLoop flow)" do
     written = JSON.parse(File.read(path))
     expect(written["tokens_in"]).to eq(42)
     expect(written["token_source"]).to eq("server")
+    expect(written["turn_records"]).to include(hash_including("status" => "completed"))
+    expect(written["active_turn"]).to be_nil
   end
 end

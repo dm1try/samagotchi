@@ -182,13 +182,16 @@ module Samagotchi
         # replaying last_prompt and spamming workers on preview scrub.
         # last_event_seq is nil when no live bridge, so the frontend stays
         # silent until the first Send.
-        last_event_seq = bridge_event_seq(id)
+        live_state = bridge_get_json(id, "state")
+        snapshot = live_state && live_state["session_state_snapshot"]
+        last_event_seq = snapshot ? snapshot["event_seq"] : bridge_event_seq(id)
         json_response(200, {
           session: session_to_json(session),
           history: history,
           messages: messages,
           pending_question: pending,
-          last_event_seq: last_event_seq
+          last_event_seq: last_event_seq,
+          timing: timing_payload(id, live_metrics: snapshot && snapshot["metrics"])
         })
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
@@ -524,6 +527,57 @@ module Samagotchi
           used_memory_names: used,
           first_preview: first_preview_for(s)
         }
+      end
+
+      def timing_payload(session_id, live_metrics: nil)
+        persisted = read_analytics(session_id)
+        source = if live_metrics.is_a?(Hash)
+                   persisted.merge(live_metrics).merge(
+                     "started_at" => persisted["started_at"] || live_metrics["started_at"],
+                     "turn_records" => merge_timing_records(persisted["turn_records"], live_metrics["turn_records"]),
+                     "tool_records" => merge_timing_records(persisted["tool_records"], live_metrics["tool_records"])
+                   )
+                 else
+                   persisted
+                 end
+        started_at = source["started_at"]
+        last_activity_at = source["last_activity_at"]
+        {
+          started_at: started_at,
+          last_activity_at: last_activity_at,
+          session_duration_ms: session_duration_ms(started_at, last_activity_at, active: live_metrics.is_a?(Hash)),
+          turn_records: Array(source["turn_records"]),
+          tool_records: Array(source["tool_records"]),
+          active_turn: source["active_turn"],
+          active_tools: Array(source["active_tools"])
+        }
+      end
+
+      def read_analytics(session_id)
+        path = File.join(@session_class.session_dir(session_id, state_dir: default_state_dir), "analytics.json")
+        return {} unless File.file?(path)
+
+        data = JSON.parse(File.read(path))
+        data.is_a?(Hash) ? data : {}
+      rescue JSON::ParserError, SystemCallError
+        {}
+      end
+
+      def merge_timing_records(persisted, live)
+        (Array(persisted) + Array(live)).each_with_object({}) do |record, records|
+          next unless record.is_a?(Hash)
+
+          id = record["id"] || record[:id]
+          records[id] = record if id
+        end.values
+      end
+
+      def session_duration_ms(started_at, last_activity_at, active:)
+        started = Time.iso8601(started_at.to_s)
+        finished = active ? Time.now : Time.iso8601(last_activity_at.to_s)
+        [((finished - started) * 1000).round, 0].max
+      rescue ArgumentError
+        nil
       end
 
       def first_preview_for(session)

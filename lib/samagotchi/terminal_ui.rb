@@ -563,7 +563,7 @@ module Samagotchi
         end
 
         emit_result(result)
-        end_interactive_turn(canceled: false)
+        end_interactive_turn(canceled: false, announce: false)
 
         messages = result.conversation
         awaiting_continue = result.resumable?
@@ -658,12 +658,39 @@ module Samagotchi
       end
     end
 
-    def format_tool_activity_line(activity)
+    def format_tool_activity_line(activity, duration_ms: nil)
       params = activity[:params].to_s.strip
       params_suffix = params.empty? ? "" : " #{paint(params, 90)}"
       status = activity[:status].to_s
       status_color = status == "ok" ? 32 : 31
-      "#{paint('tool>', 36)} #{activity[:action]} (#{activity[:tool]}#{params_suffix}): #{paint(status, status_color)}"
+      elapsed_suffix = duration_ms.nil? ? "" : " (#{format_elapsed_duration(duration_ms)})"
+      "#{paint('tool>', 36)} #{activity[:action]} (#{activity[:tool]}#{params_suffix}): #{paint(status, status_color)}#{elapsed_suffix}"
+    end
+
+    def completed_tool_duration(event)
+      record = Array(@engine.metrics.snapshot[:tool_records]).reverse.find do |candidate|
+        candidate[:iteration].to_i == event[:iteration].to_i &&
+          candidate[:call_index].to_i == event[:call_index].to_i &&
+          candidate[:tool].to_s == event[:tool].to_s
+      end
+      record && record[:duration_ms]
+    end
+
+    def emit_interactive_turn_duration(canceled:)
+      record = Array(@engine.metrics.snapshot[:turn_records]).last
+      return unless record && record[:duration_ms]
+
+      state = canceled ? "canceled" : "completed"
+      $stdout.puts "#{paint('chi>', 36)} turn #{state} (#{format_elapsed_duration(record[:duration_ms])})"
+    end
+
+    def format_elapsed_duration(duration_ms)
+      seconds = duration_ms.to_f / 1000
+      return format("%.1fs", seconds) if seconds < 10
+      return "#{seconds.round}s" if seconds < 60
+
+      total_seconds = seconds.round
+      "#{total_seconds / 60}m #{format('%02d', total_seconds % 60)}s"
     end
 
     def paint(text, code)
@@ -782,7 +809,7 @@ module Samagotchi
           warn "[reminder muted] generation failed: #{e.class}: #{e.message}"
         ensure
           begin
-            end_interactive_turn(canceled: false)
+            end_interactive_turn(canceled: false, announce: false)
           rescue StandardError
             nil
           end
@@ -1666,7 +1693,7 @@ module Samagotchi
       @engine.metrics.call(type: :turn_started, session_id: session.id.to_s, prompt: nil)
     end
 
-    def end_interactive_turn(canceled:)
+    def end_interactive_turn(canceled:, announce: true)
       return unless @turn_open
 
       @turn_open = false
@@ -1676,6 +1703,7 @@ module Samagotchi
       else
         @engine.metrics.call(type: :turn_completed, result: nil)
       end
+      emit_interactive_turn_duration(canceled: canceled) if announce
     end
 
     def handle_stream_event(event)
@@ -1709,7 +1737,7 @@ module Samagotchi
         refresh_thinking_spinner_status
       when :tool_call_completed
         clear_retry_spinner_status
-        emit_streamed_tool_activity(event[:activity])
+        emit_streamed_tool_activity(event[:activity], duration_ms: completed_tool_duration(event))
       when :generation_completed
         stop_cancel_hotkey_monitor
         clear_retry_spinner_status
@@ -1731,11 +1759,11 @@ module Samagotchi
       end
     end
 
-    def emit_streamed_tool_activity(activity)
+    def emit_streamed_tool_activity(activity, duration_ms: nil)
       return if activity.nil?
 
       track_streamed_tool_activity(activity)
-      $stdout.puts format_tool_activity_line(activity)
+      $stdout.puts format_tool_activity_line(activity, duration_ms: duration_ms)
     end
 
     def reset_streamed_tool_activity_counts

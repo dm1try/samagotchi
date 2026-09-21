@@ -842,7 +842,6 @@ module Samagotchi
           )
         end
 
-        @metrics.persist
         session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
         # Persist deduped used memories onto the session for Web + reload.
         begin
@@ -873,6 +872,7 @@ module Samagotchi
             result: result
           })
         end
+        @metrics.persist
 
         response = result.respond_to?(:output) ? result.output.to_s : result.to_s
         if response.strip.empty?
