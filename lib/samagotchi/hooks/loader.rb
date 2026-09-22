@@ -22,7 +22,7 @@ module Samagotchi
     # Config format:
     #   hooks:
     #     hooks_dir: "~/my_hooks/"   # default: <config dir>/hooks/, next to config.yml
-    #     turn_start:
+    #     before_turn:
     #       - path: "my_hook.rb"
     #         on_error: skip  # or "log"
     #       - path: "another.rb"
