@@ -213,7 +213,9 @@ module Samagotchi
       raise OwnedByTUI, session.id if owner && owner["kind"] == "tui"
       return session if owner
 
-      session.status = Session::STATUS_RUNNING
+      # status is turn state, not liveness: a new worker runs no turn yet,
+      # and must not find the session stopped (it would exit).
+      session.status = Session::STATUS_IDLE
       session.save(state_dir: sd)
       spawn_worker_for_session(session, state_dir: sd)
       session
@@ -383,6 +385,9 @@ module Samagotchi
           end
 
           input_files.sort.each do |input_file|
+            # A stop between two queued turns leaves the rest queued.
+            break if stopped_on_disk?(session_id, state_dir: sd)
+
             claimed_file = claim_input_file(input_file)
             next unless claimed_file
 
@@ -390,6 +395,10 @@ module Samagotchi
               message, origin = read_input(claimed_file)
               next if message.to_s.strip.empty?
 
+              # Show the turn as running to readers of the file (the web's
+              # session list); the Engine resets it to idle when it ends.
+              session.status = Session::STATUS_RUNNING
+              session.save(state_dir: sd)
               result = engine.run_turn(session, message, pending_input: pending_input_drain, origin: origin)
               response = result.respond_to?(:output) ? result.output : nil
               unless response.nil? || response.strip.empty?

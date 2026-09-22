@@ -389,19 +389,40 @@ RSpec.describe Samagotchi::Session do
       expect(File.exist?(File.join(tmpdir, "#{s_new.id}.json"))).to be true
     end
 
-    it "keeps running sessions even if old" do
-      s_old = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      s_old.status = described_class::STATUS_RUNNING
-      s_old.save(state_dir: tmpdir)
-      path_old = File.join(tmpdir, "#{s_old.id}.json")
-      data = JSON.parse(File.read(path_old))
-      data["updated_at"] = (Time.now - 20 * 86_400).iso8601(3)
+    def save_aged(status:, days_old: 20)
+      s = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      s.status = status
+      s.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{s.id}.json")
+      data = JSON.parse(File.read(path))
+      data["updated_at"] = (Time.now - days_old * 86_400).iso8601(3)
       data["created_at"] = data["updated_at"]
-      File.write(path_old, JSON.generate(data))
+      File.write(path, JSON.generate(data))
+      [s, path]
+    end
+
+    # status is turn state; a live owner is what protects a session in use.
+    it "prunes an old session left 'running' by a dead worker" do
+      s_old, path_old = save_aged(status: described_class::STATUS_RUNNING)
 
       result = described_class.prune(state_dir: tmpdir, days: 14, max_count: 500)
+      expect(result[:deleted]).to include(s_old.id)
+      expect(File.exist?(path_old)).to be false
+    end
+
+    it "keeps an old session with a live owner" do
+      s_old, path_old = save_aged(status: described_class::STATUS_IDLE)
+
+      result = described_class.prune(state_dir: tmpdir, days: 14, max_count: 500, alive_check: ->(id) { id == s_old.id })
       expect(result[:kept]).to include(s_old.id)
       expect(File.exist?(path_old)).to be true
+    end
+
+    it "still honors an explicit keep_status" do
+      s_old, = save_aged(status: described_class::STATUS_RUNNING)
+
+      result = described_class.prune(state_dir: tmpdir, days: 14, max_count: 500, keep_status: ["running"])
+      expect(result[:kept]).to include(s_old.id)
     end
 
     it "respects max_count overflow (deletes beyond limit)" do

@@ -401,6 +401,47 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "session status" do
+    let(:state_dir) { Dir.mktmpdir("web-status-spec") }
+    let(:app) { build_app(manager: Samagotchi::SessionManager, state_dir: state_dir, session_class: Samagotchi::Session) }
+
+    after { FileUtils.rm_rf(state_dir) }
+
+    def saved_session(status)
+      Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd).tap do |s|
+        s.status = status
+        s.save(state_dir: state_dir)
+      end
+    end
+
+    it "shows a 'running' left behind by a dead worker as idle, in the list and the session view" do
+      session = saved_session("running")
+      allow(app).to receive(:bridge_get_json).and_return(nil)
+      allow(app).to receive(:bridge_event_seq).and_return(nil)
+
+      _, _, list = app.call(env_for("/api/sessions"))
+      _, _, show = app.call(env_for("/api/sessions/#{session.id}"))
+
+      expect(JSON.parse(list.first).map { |s| s["status"] }).to eq(["idle"])
+      expect(JSON.parse(show.first).dig("session", "status")).to eq("idle")
+    end
+
+    it "takes the turn state from the live worker when there is one" do
+      session = saved_session("running")
+      lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), kind: "worker")
+      allow(app).to receive(:bridge_get_json).and_return("session_state_snapshot" => { "status" => "idle", "event_seq" => 3 })
+
+      _, _, show = app.call(env_for("/api/sessions/#{session.id}"))
+      _, _, list = app.call(env_for("/api/sessions"))
+
+      expect(JSON.parse(show.first).dig("session", "status")).to eq("idle")
+      # The list trusts disk for a live worker (it saves "running" before each turn).
+      expect(JSON.parse(list.first).map { |s| s["status"] }).to eq(["running"])
+    ensure
+      lock&.release
+    end
+  end
+
   describe "POST /api/sessions/:id/turn" do
     it "enqueues through the live bridge, forwarding the client id and returning the bridge's enqueued_id" do
       manager = FakeResponsesManager.new

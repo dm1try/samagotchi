@@ -117,7 +117,7 @@ module Samagotchi
                    else
                      @manager.list_sessions(sort: sort, order: order, limit: limit, offset: offset)
                    end
-        payload = sessions.map { |s| session_to_json(s) }
+        payload = sessions.map { |s| session_to_json(s, status: displayed_status(s)) }
         # Expose total via header for pagination (total unordered count)
         headers = { "Content-Type" => "application/json; charset=utf-8", "Cache-Control" => "no-store", "Access-Control-Allow-Origin" => "*" }
         # Compute total without limit/offset for header
@@ -190,7 +190,7 @@ module Samagotchi
         snapshot = live_state && live_state["session_state_snapshot"]
         last_event_seq = snapshot ? snapshot["event_seq"] : bridge_event_seq(id)
         json_response(200, {
-          session: session_to_json(session),
+          session: session_to_json(session, status: displayed_status(session, snapshot)),
           history: history,
           messages: messages,
           markdown_warning: @markdown_renderer.warning,
@@ -506,11 +506,22 @@ module Samagotchi
         end
       end
 
-      def session_to_json(s)
+      # status is turn state (idle/running). The live worker's snapshot is the
+      # truth; on disk, a "running" with no live owner was left by a worker
+      # that died mid-turn.
+      def displayed_status(session, snapshot = nil)
+        return snapshot["status"] if snapshot.is_a?(Hash) && snapshot["status"]
+        return session.status unless session.status == Session::STATUS_RUNNING
+        return session.status unless @manager.respond_to?(:session_owner)
+
+        @manager.session_owner(session.id, state_dir: @state_dir) ? session.status : Session::STATUS_IDLE
+      end
+
+      def session_to_json(s, status: s.status)
         used = s.respond_to?(:used_memory_names) ? Array(s.used_memory_names) : []
         {
           id: s.id,
-          status: s.status,
+          status: status,
           mode: s.mode,
           model_name: s.model_name,
           working_directory: s.working_directory,

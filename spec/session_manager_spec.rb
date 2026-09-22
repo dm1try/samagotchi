@@ -90,8 +90,22 @@ RSpec.describe Samagotchi::SessionManager do
       described_class.attach_session(session.id, message: "wake up", state_dir: tmpdir)
 
       expect(Process).to have_received(:spawn)
+      # A live worker is not a running turn: the worker marks its turns.
       loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
-      expect(loaded.status).to eq(Samagotchi::Session::STATUS_RUNNING)
+      expect(loaded.status).to eq(Samagotchi::Session::STATUS_IDLE)
+    end
+
+    it "clears a stopped or stale running status when it wakes a worker" do
+      [Samagotchi::Session::STATUS_STOPPED, Samagotchi::Session::STATUS_ERROR, Samagotchi::Session::STATUS_RUNNING].each do |status|
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+        session.status = status
+        session.save(state_dir: tmpdir)
+        allow(Process).to receive(:spawn).and_return(20_002)
+
+        described_class.resume_session(session.id, state_dir: tmpdir)
+
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_IDLE)
+      end
     end
   end
 
@@ -441,6 +455,25 @@ RSpec.describe Samagotchi::SessionManager do
       run_worker_with(engine)
 
       expect(runs).to eq([["from web", { client_id: "web:1", enqueued_id: "e1" }], ["plain", nil]])
+    end
+
+    it "marks the session running on disk while a turn runs, and stops before the next queued turn" do
+      described_class.write_turn_input(session.id, prompt: "one", state_dir: tmpdir)
+      described_class.write_turn_input(session.id, prompt: "two", state_dir: tmpdir)
+      engine = instance_double(Samagotchi::Engine)
+      runs = []
+      allow(engine).to receive(:run_turn) do |_session, prompt, **|
+        runs << [prompt, Samagotchi::Session.load(session.id, state_dir: tmpdir).status]
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+        instance_double(Samagotchi::KernelLoop::Result, output: "")
+      end
+
+      run_worker_with(engine)
+
+      expect(runs).to eq([%w[one running]])
+      expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq("stopped")
+      # Still queued for whoever resumes the session.
+      expect(Dir.children(input_dir).map { |f| JSON.parse(File.read(File.join(input_dir, f)))["prompt"] }).to eq(["two"])
     end
 
     it "announces who sent input merged into a running turn" do

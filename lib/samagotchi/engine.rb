@@ -815,6 +815,9 @@ module Samagotchi
     def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false, origin: nil)
       # Track the active session for recap and status snapshot.
       @session = session
+      # status is turn state: running now, idle again before the turn's end
+      # is announced, so a UI reacting to that event reads the new state.
+      session.status = Session::STATUS_RUNNING
       sync_used_memories_from_session(session)
       # Mark the turn running before generating so the idle recap detector does
       # not fire (or render an invalidated recap) while the model is working.
@@ -936,6 +939,7 @@ module Samagotchi
         end
 
         # Emit turn_completed or turn_canceled
+        session.status = Session::STATUS_IDLE
         if result.respond_to?(:canceled?) && result.canceled?
           emit_event(on_event, with_origin.call({
             type: :turn_canceled,
@@ -968,10 +972,12 @@ module Samagotchi
       rescue Interrupt
         effective_controller.cancel!(:ctrl_c)
         replace_session_messages(session, messages) if messages
+        session.status = Session::STATUS_IDLE
         emit_event(on_event, with_origin.call({ type: :turn_canceled, cancellation_reason: :ctrl_c }))
         @metrics.persist
         raise
       rescue StandardError => e
+        session.status = Session::STATUS_IDLE
         emit_event(on_event, with_origin.call({ type: :turn_failed, error_class: e.class.name, message: e.message }))
         @metrics.persist
         raise

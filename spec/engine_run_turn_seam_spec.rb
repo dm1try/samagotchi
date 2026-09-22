@@ -84,6 +84,36 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     end
   end
 
+  describe "session status" do
+    it "is running during the turn and idle by the time its end is announced" do
+      seen = {}
+      allow(kernel).to receive(:run) do
+        seen[:during] = session.status
+        kernel_result
+      end
+      engine.subscribe(observer: ->(e) { seen[e[:type]] = session.status if e[:type] == :turn_completed })
+
+      engine.run_turn(session, "hi")
+
+      expect(seen).to eq(during: "running", turn_completed: "idle")
+      expect(engine.session_state_snapshot[:status]).to eq("idle")
+    end
+
+    it "goes back to idle after a cancel, a Ctrl-C and a failure" do
+      allow(kernel).to receive(:run).and_return(kernel_result(canceled: true, cancellation_reason: :manual))
+      engine.run_turn(session, "hi")
+      expect(session.status).to eq("idle")
+
+      allow(kernel).to receive(:run) { session.status.then { raise Interrupt } }
+      expect { engine.run_turn(session, "hi") }.to raise_error(Interrupt)
+      expect(session.status).to eq("idle")
+
+      allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
+      expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
+      expect(session.status).to eq("idle")
+    end
+  end
+
   describe "origin:" do
     let(:origin) { { client_id: "web:tab-1", enqueued_id: "e1" } }
 
