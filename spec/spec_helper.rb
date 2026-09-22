@@ -6,18 +6,18 @@ require "fileutils"
 require "tmpdir"
 
 # Isolate specs from the developer's ~/.config/samagotchi/config.yml (hosts,
-# memories, aliases...) with a minimal fixture config. Integration runs keep
-# the real config so they can reach the live model server.
-unless ENV["SAMAGOTCHI_INTEGRATION"] == "1"
-  spec_config_home = Dir.mktmpdir("samagotchi-spec-config")
-  FileUtils.mkdir_p(File.join(spec_config_home, "samagotchi"))
-  File.write(File.join(spec_config_home, "samagotchi", "config.yml"), <<~YAML)
-    default:
-      model: spec-model
-  YAML
-  ENV["XDG_CONFIG_HOME"] = spec_config_home
-  at_exit { FileUtils.remove_entry(spec_config_home) if File.directory?(spec_config_home) }
-end
+# memories, aliases...) with a minimal fixture config. Only :integration
+# examples see the real config, so they can reach the live model server; unit
+# specs stay isolated even under SAMAGOTCHI_INTEGRATION=1.
+REAL_XDG_CONFIG_HOME = ENV["XDG_CONFIG_HOME"]
+SPEC_XDG_CONFIG_HOME = Dir.mktmpdir("samagotchi-spec-config")
+FileUtils.mkdir_p(File.join(SPEC_XDG_CONFIG_HOME, "samagotchi"))
+File.write(File.join(SPEC_XDG_CONFIG_HOME, "samagotchi", "config.yml"), <<~YAML)
+  default:
+    model: spec-model
+YAML
+ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
+at_exit { FileUtils.remove_entry(SPEC_XDG_CONFIG_HOME) if File.directory?(SPEC_XDG_CONFIG_HOME) }
 
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
@@ -44,6 +44,17 @@ RSpec.configure do |config|
 
   config.before(:each, :integration) do
     skip "Set SAMAGOTCHI_INTEGRATION=1 to run integration tests" unless ENV["SAMAGOTCHI_INTEGRATION"] == "1"
+  end
+
+  # Point :integration examples at the real config, then restore the fixture.
+  # Config.store memoizes a snapshot, so drop it on both sides of the switch.
+  config.around(:each, :integration) do |example|
+    ENV["XDG_CONFIG_HOME"] = REAL_XDG_CONFIG_HOME
+    Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
+    example.run
+  ensure
+    ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
+    Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
   end
 
 end
