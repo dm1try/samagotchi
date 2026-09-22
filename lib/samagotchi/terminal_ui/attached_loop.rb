@@ -18,6 +18,55 @@ module Samagotchi
     class AttachedLoop
       include Formatting
 
+      STATS_COMMAND = "/stats"
+      RECAP_COMMAND = "/recap"
+      PROMPT = "> "
+      # Commands that need the local Engine (server APIs for them are v2).
+      UNAVAILABLE_COMMANDS = %w[/model /models /continue !rollback].freeze
+      DETACH_COMMANDS = %w[/exit /quit].freeze
+
+      # Reads input lines on its own thread, so events keep rendering while
+      # the user types, and hands each line (nil = Ctrl-D) or Ctrl-C to the
+      # loop's queue.
+      class LineReader
+        # @param read [#call, nil] prompt -> line; defaults to Reline on a
+        #   terminal, else $stdin
+        def initialize(queue, prompt:, read: nil)
+          @queue = queue
+          @prompt = prompt
+          @read = read || method(:read_line)
+        end
+
+        def start
+          @thread = Thread.new { run }
+          @thread.report_on_exception = false
+          self
+        end
+
+        def stop
+          @thread&.kill
+          @thread&.join(0.5)
+        end
+
+        private
+
+        def run
+          loop do
+            line = @read.call(@prompt)
+            @queue << [:line, line]
+            break if line.nil?
+          rescue Interrupt
+            @queue << [:interrupt]
+          end
+        end
+
+        def read_line(prompt)
+          return $stdin.gets&.chomp unless $stdin.tty?
+
+          Reline.readline(prompt, true)
+        end
+      end
+
       # Prompt labels by the sender's client_id prefix.
       CLIENT_LABELS = { "web" => "web", "tui" => "tui", "system" => "reminder" }.freeze
 
@@ -41,6 +90,27 @@ module Samagotchi
       end
 
       def running? = @running
+
+      # Follow the session and read input until Ctrl-D, /exit or the worker
+      # goes away. The worker keeps running after a detach.
+      # @param input [#call, nil] prompt -> line (nil = Ctrl-D, raising
+      #   Interrupt = Ctrl-C); defaults to Reline
+      def run(input: nil)
+        queue = Thread::Queue.new
+        stream = @client.follow { |event| queue << [:event, event] }
+        reader = LineReader.new(queue, prompt: paint(PROMPT, 92), read: input).start
+        loop do
+          kind, payload = next_item(queue)
+          case kind
+          when :event then break if safely_handle(payload) == :closed
+          when :line then break if submit(payload) == :detach
+          when :interrupt then interrupt
+          end
+        end
+      ensure
+        reader&.stop
+        stream&.close
+      end
 
       # Render one Bridge event (string keys).
       # @return [Symbol, nil] :closed when the stream ended
@@ -72,6 +142,65 @@ module Samagotchi
       end
 
       private
+
+      def next_item(queue)
+        queue.pop
+      rescue Interrupt
+        # Ctrl-C while no prompt is open (between two reads).
+        [:interrupt]
+      end
+
+      # A rendering bug must not end the session's UI.
+      def safely_handle(event)
+        handle_event(event)
+      rescue StandardError => e
+        @screen.print_line("(could not render #{event["type"] || event[:type]}: #{e.class}: #{e.message})")
+        nil
+      end
+
+      # @return [Symbol, nil] :detach to end the loop
+      def submit(line)
+        if line.nil?
+          @view.finish_thinking_spinner
+          @screen.print_line("Detached; the session keeps running. Re-attach with: chi --attach #{@client.session_id}")
+          return :detach
+        end
+
+        text = line.strip
+        return if text.empty?
+        return submit(nil) if DETACH_COMMANDS.include?(text)
+
+        command = text.split(/\s+/, 2).first
+        if command == STATS_COMMAND
+          show_stats
+        elsif command == RECAP_COMMAND
+          @screen.print_line(@recap || "no recap: worker sessions run without the idle recap for now")
+        elsif UNAVAILABLE_COMMANDS.include?(command) || text.start_with?("!")
+          @screen.print_line("#{command} is not available in attached mode yet")
+        else
+          send_prompt(text)
+        end
+        nil
+      end
+
+      def send_prompt(text)
+        reply = @client.post_turn(prompt: text, client_id: @client_id)
+        return if reply.status == 202
+
+        detail = reply.json&.fetch("error", nil)
+        @screen.print_line("could not send the prompt (#{[reply.status, detail].compact.join(" ")})")
+      end
+
+      def show_stats
+        metrics = @client.get_json("state")&.dig("session_state_snapshot", "metrics")
+        @screen.print_line(metrics ? format_session_metrics(EventRenderer.deep_symbolize_keys(metrics)) : "(no metrics: the worker did not answer)")
+      end
+
+      # Ctrl-C cancels the running turn (whoever started it); at an idle
+      # prompt it only clears the line.
+      def interrupt
+        @client.cancel(reason: "ctrl_c") if @running
+      end
 
       def render_snapshot(snapshot, reset:)
         @view.finish_thinking_spinner

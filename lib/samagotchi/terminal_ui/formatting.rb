@@ -17,6 +17,37 @@ module Samagotchi
 
       private
 
+      # Render the analytics snapshot as a compact, user-facing report. Raw event
+      # logs (debug-only) are intentionally excluded; this surface is for the REPL.
+      def format_session_metrics(snapshot)
+        return "(no metrics yet)" unless snapshot.is_a?(Hash)
+
+        # A symbol locally; a string when the snapshot came over the Bridge.
+        token_src = snapshot[:token_source]&.to_s
+        token_src_label = case token_src
+                          when "server" then "server-reported"
+                          when "estimate" then "estimated (chars/4)"
+                          else "n/a"
+                          end
+
+        lines = []
+        lines << "turns:            #{snapshot[:turns]}"
+        lines << "tool calls:       #{snapshot[:tool_calls_total]} (#{snapshot[:tool_errors]} errors)"
+        unless snapshot[:tool_calls_by_tool].to_a.empty?
+          by_tool = snapshot[:tool_calls_by_tool].sort_by { |_k, v| -v }
+          lines << "  by tool:        #{by_tool.map { |k, v| "#{k}=#{v}" }.join(", ")}"
+        end
+        lines << "iterations:       #{snapshot[:iterations_total]}"
+        lines << "tokens in/out:    #{snapshot[:tokens_in]}/#{snapshot[:tokens_out]} (total #{snapshot[:tokens_total]}, #{token_src_label})"
+        lines << "gen latency (ms): #{snapshot[:gen_latency_ms]}"
+        lines << "cancellations:    #{snapshot[:cancellations]}"
+        lines << "retries:          #{snapshot[:retries]}"
+        if snapshot[:context_window_tokens]
+          lines << "context window:   #{snapshot[:context_window_tokens]} tokens (#{snapshot[:context_window_source]})"
+        end
+        lines.join("\n")
+      end
+
       def format_elapsed_duration(duration_ms)
         duration_ms = duration_ms.to_f
         return "" if duration_ms.negative?

@@ -144,3 +144,89 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     expect(screen.lines.last).to eq("Lost the session's worker (unreachable). Resume it with: chi --shared --resume s-1234")
   end
 end
+
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
+  let(:screen) do
+    Class.new do
+      attr_reader :lines
+
+      def initialize = @lines = []
+      def print_line(text) = @lines << text
+      def status=(_text); end
+      def columns = 80
+    end.new
+  end
+  let(:stream) { double("stream", close: nil) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
+  let(:ack) { Samagotchi::BridgeClient::Response.new(status: 202, body: '{"enqueued_id":"e1"}') }
+
+  def snapshot(current_turn: nil)
+    { "type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => current_turn, "queued" => [], "event_seq" => 1 } }
+  end
+
+  # Joins with +first+, then reads +inputs+ in order (an :interrupt entry is a
+  # Ctrl-C); nil or running out of inputs is Ctrl-D.
+  def run_with(inputs, first: snapshot)
+    allow(client).to receive(:follow) do |&block|
+      block.call(first)
+      stream
+    end
+    attached.run(input: ->(_prompt) { (entry = inputs.shift) == :interrupt ? raise(Interrupt) : entry })
+  end
+
+  it "sends what the user types, with its client id, and detaches on Ctrl-D" do
+    allow(client).to receive(:post_turn).and_return(ack)
+
+    run_with(["hello", "  ", nil])
+
+    expect(client).to have_received(:post_turn).once.with(prompt: "hello", client_id: "tui:1")
+    expect(screen.lines.last).to eq("Detached; the session keeps running. Re-attach with: chi --attach s-1234")
+    expect(stream).to have_received(:close)
+  end
+
+  it "says so when the worker does not take the prompt" do
+    allow(client).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 409, body: '{"error":"owned_by_tui"}'))
+
+    run_with(["hello"])
+
+    expect(screen.lines).to include("could not send the prompt (409 owned_by_tui)")
+  end
+
+  it "shows /stats from the worker's live metrics" do
+    metrics = { turns: 2, tool_calls_total: 1, tool_errors: 0, tool_calls_by_tool: { read: 1 }, iterations_total: 3,
+                tokens_in: 10, tokens_out: 5, tokens_total: 15, token_source: :server, gen_latency_ms: 120,
+                cancellations: 0, retries: 0 }
+    allow(client).to receive(:get_json).with("state")
+      .and_return(JSON.parse(JSON.generate(session_state_snapshot: { metrics: metrics })))
+
+    run_with(["/stats"])
+
+    expect(screen.lines).to include(a_string_including("turns:            2"),
+                                    a_string_including("tokens in/out:    10/5 (total 15, server-reported)"))
+  end
+
+  it "has no recap to show while workers run without one" do
+    run_with(["/recap"])
+
+    expect(screen.lines).to include("no recap: worker sessions run without the idle recap for now")
+  end
+
+  it "declines the commands that need the local Engine" do
+    run_with(["/model x", "/models", "/continue", "!rollback", "!ls"])
+
+    expect(screen.lines.count { |l| l.end_with?("not available in attached mode yet") }).to eq(5)
+  end
+
+  it "cancels the running turn on Ctrl-C, and only then" do
+    allow(client).to receive(:cancel).and_return(Samagotchi::BridgeClient::Response.new(status: 202))
+
+    run_with([:interrupt], first: snapshot(current_turn: { "prompt" => "p", "parts" => [] }))
+    expect(client).to have_received(:cancel).once.with(reason: "ctrl_c")
+
+    idle = described_class.new(client: client, screen: screen, client_id: "tui:1")
+    allow(client).to receive(:follow) { |&b| b.call(snapshot) && stream }
+    idle.run(input: ->(_p) { (@idle_inputs ||= [:interrupt, nil]).shift.then { |e| e == :interrupt ? raise(Interrupt) : e } })
+    expect(client).to have_received(:cancel).once
+  end
+end
