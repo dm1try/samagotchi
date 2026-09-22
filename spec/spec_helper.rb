@@ -16,6 +16,15 @@ RSpec.configure do |config|
   config.order = :random
   Kernel.srand config.seed
 
+  # Never let a spec block on the developer's real terminal. Unstubbed Reline
+  # reads behave like EOF (Ctrl-D); specs that need input stub their own values.
+  config.before(:each) do
+    if defined?(Reline)
+      allow(Reline).to receive(:readmultiline).and_return(nil)
+      allow(Reline).to receive(:readline).and_return(nil)
+    end
+  end
+
   config.before(:each, :integration) do
     skip "Set SAMAGOTCHI_INTEGRATION=1 to run integration tests" unless ENV["SAMAGOTCHI_INTEGRATION"] == "1"
   end
