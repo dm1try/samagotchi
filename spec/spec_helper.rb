@@ -42,13 +42,14 @@ RSpec.configure do |config|
     end
   end
 
-  config.before(:each, :integration) do
-    skip "Set SAMAGOTCHI_INTEGRATION=1 to run integration tests" unless ENV["SAMAGOTCHI_INTEGRATION"] == "1"
-  end
-
   # Point :integration examples at the real config, then restore the fixture.
   # Config.store memoizes a snapshot, so drop it on both sides of the switch.
+  # Skip here, before the switch: this config-level around wraps the group's
+  # own around hooks and lets, so a skipped example runs none of its setup
+  # (e.g. Engine.new installing the bundle into the real memories).
   config.around(:each, :integration) do |example|
+    skip "Set SAMAGOTCHI_INTEGRATION=1 to run integration tests" unless ENV["SAMAGOTCHI_INTEGRATION"] == "1"
+
     ENV["XDG_CONFIG_HOME"] = REAL_XDG_CONFIG_HOME
     Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
     example.run
