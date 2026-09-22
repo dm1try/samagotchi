@@ -1,0 +1,34 @@
+Session: <session-id>
+\e[90mstatus> model=Qwen3-14B\e[0m
+\e[90mmodel> thinking... |\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[36mchi> hmm /\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K
+model> request cancelled (ctrl-c)
+\e[1A\e[0K
+\e[0K\e[1A\e[36mchi>\e[0m turn canceled (<elapsed>)
+
+model> turn cancelled; partial progress kept in context; use !rollback immediately after cancellation to restore the pre-turn checkpoint
+\e[90mstatus> model=Qwen3-14B\e[0m
+
+model> nothing to rollback
+\e[90mstatus> model=Qwen3-14B\e[0m
+\e[90mmodel> thinking... /\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[90mmodel> thinking... -\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[0K
+\e[0K\e[1A\e[90mstatus> model=Qwen3-14B\e[0m
+Finished.
+\e[90mstatus> model=Qwen3-14B\e[0m
+
+Continue session: chi --resume <session-id>
+--- kernel run 1 ---
+user: "go"
+--- kernel run 2 ---
+user: "go"
+model: "Partial\n[interrupted]"
+user: "again"
+--- session ---
+system: <prompt>
+user: "go"
+model: "Partial\n[interrupted]"
+user: "again"
+model: "Finished."

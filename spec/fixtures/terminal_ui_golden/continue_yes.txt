@@ -1,0 +1,29 @@
+Session: <session-id>
+\e[90mstatus> model=Qwen3-14B\e[0m
+\e[90mmodel> thinking... |\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[36mchi> need notes /\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[36mchi> need notes -\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[0K
+\e[0K\e[1A\e[36mtool>\e[0m loading memory (memory_read \e[90mname="notes"\e[0m): \e[32mok\e[0m (<elapsed>)
+\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+
+iteration limit reached
+\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+\e[90mmodel> thinking... -\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[90mmodel> thinking... \\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[0K
+\e[0K\e[1A\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+Finished.
+\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+
+Continue session: chi --resume <session-id>
+--- kernel run 1 ---
+user: "go"
+--- kernel run 2 ---
+user: "go"
+tool_response: "remember milk"
+--- session ---
+system: <prompt>
+user: "go"
+tool_response: "remember milk"
+model: "Finished."

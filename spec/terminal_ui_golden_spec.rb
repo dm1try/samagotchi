@@ -57,6 +57,13 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
   # +finish+ receives the messages the kernel got and returns its result (or
   # raises). Returns the normalized terminal output.
   def run_turn(model:, events:, tty: true, prompt: "hi", &finish)
+    run_session(model: model, tty: tty, prompts: [prompt], turns: [[events, finish]])
+  end
+
+  # Run a REPL session: +prompts+ feed the main prompt, +answers+ the
+  # continue(yes/no) prompt, and each kernel run consumes the next
+  # [events, finish] pair from +turns+. +setup+ gets the UI before it runs.
+  def run_session(model:, prompts:, turns:, answers: [], tty: true, setup: nil)
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = model
     ui = Samagotchi::TerminalUI.new(mode: :assist, client: client, no_default_input: true)
     allow(ui).to receive(:thinking_spinner_enabled?).and_return(tty)
@@ -64,11 +71,17 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     allow(ui).to receive(:thinking_render_min_interval).and_return(0.0)
     allow(ui).to receive(:status_effective_width).and_return(100)
     allow(ui).to receive(:status_server_segment).and_return("")
-    allow(Reline).to receive(:readmultiline).and_return(prompt, nil)
+    allow(Reline).to receive(:readmultiline).and_return(*prompts, nil)
+    allow(Reline).to receive(:readline).and_return(*answers, nil)
+    @kernel_inputs = []
+    pending = turns.dup
     allow(ui.instance_variable_get(:@kernel)).to receive(:run) do |messages, **kwargs|
+      @kernel_inputs << messages.drop(1).map { |m| "#{m[:role]}: #{m[:content].inspect}" }
+      events, finish = pending.shift
       events.each { |event| kwargs[:on_stream_event]&.call(event) }
       finish.call(messages)
     end
+    setup&.call(ui)
 
     out = StringIO.new
     original = $stdout
@@ -78,7 +91,15 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     ensure
       $stdout = original
     end
-    normalize(out.string + persisted_conversation)
+    normalize(out.string + kernel_inputs + persisted_conversation)
+  end
+
+  # What each kernel run was asked to continue from (leading system prompt
+  # elided).
+  def kernel_inputs
+    return "" if @kernel_inputs.to_a.length < 2
+
+    @kernel_inputs.each_with_index.map { |lines, i| "--- kernel run #{i + 1} ---\n#{lines.join("\n")}\n" }.join
   end
 
   # The saved session's conversation (system prompt elided), so the goldens
@@ -88,8 +109,8 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     return "--- no session saved ---\n" unless path
 
     messages = JSON.parse(File.read(path))["messages"]
-    lines = messages.map do |m|
-      m["role"] == "system" ? "system: <prompt>" : "#{m["role"]}: #{m["content"].inspect}"
+    lines = messages.each_with_index.map do |m, i|
+      i.zero? && m["role"] == "system" ? "system: <prompt>" : "#{m["role"]}: #{m["content"].inspect}"
     end
     "--- session ---\n#{lines.join("\n")}\n"
   end
@@ -201,6 +222,76 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     output = run_turn(model: "Qwen3-14B", events: events) { |_messages| raise Interrupt }
 
     expect_golden("interrupt", output)
+  end
+
+  def exhausted_result(messages)
+    Samagotchi::KernelLoop::Result.new(
+      output: "", conversation: messages + [{ role: "tool_response", content: "remember milk" }],
+      exhausted: true, pending_tool_calls: true, tool_activity: [memory_activity], canceled: false
+    )
+  end
+
+  describe "multi-turn REPL flows" do
+    let(:answer_turn) { [generation("qwen36", "Finished."), ->(messages) { result_for(messages, output: "Finished.") }] }
+
+    it "continues after the iteration limit on yes" do
+      output = run_session(model: "Qwen3-14B", prompts: ["go"], answers: ["yes"],
+                           turns: [[tool_round("qwen36"), method(:exhausted_result)], answer_turn])
+
+      expect_golden("continue_yes", output)
+    end
+
+    it "discards the interrupted turn on no" do
+      output = run_session(model: "Qwen3-14B", prompts: ["go"], answers: ["no"],
+                           turns: [[tool_round("qwen36"), method(:exhausted_result)]])
+
+      expect_golden("continue_no", output)
+    end
+
+    it "records the reason on no, <reason>" do
+      output = run_session(model: "Qwen3-14B", prompts: ["go", "next"], answers: ["no, too slow"],
+                           turns: [[tool_round("qwen36"), method(:exhausted_result)], answer_turn])
+
+      expect_golden("continue_no_reason", output)
+    end
+
+    it "keeps !cmd output in the next turn's context" do
+      allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi").and_return("hi\n")
+
+      output = run_session(model: "Qwen3-14B", prompts: ["!echo hi", "what did it print?"], turns: [answer_turn])
+
+      expect_golden("bang_command", output)
+    end
+
+    it "answers !rollback after a Ctrl-C" do
+      cancel = lambda do |messages|
+        Samagotchi::KernelLoop::Result.new(
+          output: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]", interrupted: true }],
+          exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: true, cancellation_reason: :ctrl_c
+        )
+      end
+
+      output = run_session(model: "Qwen3-14B", prompts: ["go", "!rollback", "again"],
+                           turns: [[generation("qwen36", "<think>hmm</think>").first(2), cancel], answer_turn])
+
+      expect_golden("ctrl_c_rollback", output)
+    end
+
+    it "runs a due reminder as a synthetic turn" do
+      setup = lambda do |ui|
+        engine = ui.instance_variable_get(:@engine)
+        engine.reminder_store.register({ name: "tick", description: "Say TICK", interval_minutes: 1 })
+        engine.reminder_store.instance_variable_get(:@mutex).synchronize do
+          engine.reminder_store.reminders["tick"][:next_fire_at] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 1
+        end
+        engine.note_due_reminders(["tick"])
+      end
+      tick = [generation("qwen36", "TICK"), ->(messages) { result_for(messages, output: "TICK") }]
+
+      output = run_session(model: "Qwen3-14B", prompts: [], turns: [tick], setup: setup)
+
+      expect_golden("reminder_turn", output)
+    end
   end
 
   it "restores the prompt after the network retries run out" do

@@ -1,0 +1,32 @@
+Session: <session-id>
+\e[90mstatus> model=Qwen3-14B\e[0m
+\e[90mmodel> thinking... |\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[36mchi> need notes /\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[36mchi> need notes -\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[0K
+\e[0K\e[1A\e[36mtool>\e[0m loading memory (memory_read \e[90mname="notes"\e[0m): \e[32mok\e[0m (<elapsed>)
+\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+
+iteration limit reached
+\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+
+model> interrupted turn cancelled; noted your explanation
+\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+\e[90mmodel> thinking... -\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[90mmodel> thinking... \\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[0K
+\e[0K\e[1A\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+Finished.
+\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+
+Continue session: chi --resume <session-id>
+--- kernel run 1 ---
+user: "go"
+--- kernel run 2 ---
+user: "I chose not to continue the interrupted turn because: too slow\n\nInterrupted turn summary:\n- original_prompt: go\n- interrupted_tools: memory_read status=ok params=name=\"notes\"\n- last_model_intent: (unavailable)\n\nPlease keep the original prompt context. If my next message does not provide a clear replacement request, ask what we should do instead."
+user: "next"
+--- session ---
+system: <prompt>
+user: "I chose not to continue the interrupted turn because: too slow\n\nInterrupted turn summary:\n- original_prompt: go\n- interrupted_tools: memory_read status=ok params=name=\"notes\"\n- last_model_intent: (unavailable)\n\nPlease keep the original prompt context. If my next message does not provide a clear replacement request, ask what we should do instead."
+user: "next"
+model: "Finished."

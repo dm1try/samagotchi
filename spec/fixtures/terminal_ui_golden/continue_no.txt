@@ -1,0 +1,18 @@
+Session: <session-id>
+\e[90mstatus> model=Qwen3-14B\e[0m
+\e[90mmodel> thinking... |\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[36mchi> need notes /\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[36mchi> need notes -\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[0K
+\e[0K\e[1A\e[36mtool>\e[0m loading memory (memory_read \e[90mname="notes"\e[0m): \e[32mok\e[0m (<elapsed>)
+\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+
+iteration limit reached
+\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+
+model> interrupted turn cancelled; enter your next prompt
+\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+
+Continue session: chi --resume <session-id>
+--- session ---
+system: <prompt>

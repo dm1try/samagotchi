@@ -1,0 +1,18 @@
+Session: <session-id>
+\e[90mstatus> model=Qwen3-14B\e[0m
+hi
+
+\e[90mstatus> model=Qwen3-14B\e[0m
+\e[90mmodel> thinking... |\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[90mmodel> thinking... /\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[0K
+\e[0K\e[1A\e[90mstatus> model=Qwen3-14B\e[0m
+Finished.
+\e[90mstatus> model=Qwen3-14B\e[0m
+
+Continue session: chi --resume <session-id>
+--- session ---
+system: <prompt>
+user: "!(echo hi)\nhi\n"
+user: "what did it print?"
+model: "Finished."

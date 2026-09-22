@@ -1,0 +1,14 @@
+Session: <session-id>
+\e[90mmodel> thinking... |\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[90mmodel> thinking... /\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[0K
+\e[0K\e[1A\e[36mchi>\e[0m turn completed (<elapsed>)
+\e[90mstatus> model=Qwen3-14B\e[0m
+TICK
+\e[90mstatus> model=Qwen3-14B\e[0m
+
+Continue session: chi --resume <session-id>
+--- session ---
+system: <prompt>
+system: "[SYSTEM: REMINDERS DUE]\n  tick: Say TICK (interval: 1m)\n[END REMINDERS]"
+model: "TICK"
