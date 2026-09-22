@@ -3,6 +3,9 @@
 require "json"
 require "socket"
 
+require_relative "bridge_client/sse_parser"
+require_relative "bridge_client/event_stream"
+
 module Samagotchi
   # Client side of a session worker's Bridge: the 127.0.0.1 HTTP + SSE server
   # each SessionManager worker runs for its Engine (see Bridge). Discovery goes
@@ -135,24 +138,14 @@ module Samagotchi
       # avoid the silent empty-200 that EventSource would otherwise keep
       # re-opening.
       STREAM_CONNECT_ATTEMPTS.times do |attempt|
-        begin
-          sock = TCPSocket.new(@host, @port)
-          break
-        rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ETIMEDOUT, SocketError, StandardError
-          sock = nil
-          sleep(0.15 * (attempt + 1))
-        end
+        sock, = connect_stream(query: query, last_event_id: last_event_id)
+        break if sock
+
+        sleep(0.15 * (attempt + 1))
       end
       return unless sock
 
       begin
-        lei = last_event_id.to_s.strip
-        last_event_line = lei.empty? ? "" : "Last-Event-ID: #{lei}\r\n"
-        sock.write("GET /session/#{@session_id}/stream#{query} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nAccept: text/event-stream\r\n#{last_event_line}Connection: keep-alive\r\n\r\n")
-        # Skip HTTP headers
-        while (line = sock.gets)
-          break if line.strip.empty?
-        end
         loop do
           chunk = sock.readpartial(4096)
           yield chunk
@@ -162,6 +155,35 @@ module Samagotchi
       ensure
         sock&.close rescue nil
       end
+    end
+
+    # Follow the session's events on a reader thread (see EventStream).
+    # @param snapshot [Boolean] join with a snapshot frame
+    # @yieldparam event [Hash] string-keyed event
+    # @return [EventStream] started
+    def follow(snapshot: true, reconnect_delays: EventStream::DEFAULT_RECONNECT_DELAYS, &on_event)
+      EventStream.new(self, snapshot: snapshot, reconnect_delays: reconnect_delays, &on_event).start
+    end
+
+    # Open GET /session/:id/stream and read past the response headers.
+    # @param timeout [Float, nil] give up when the headers don't start in time
+    # @return [Array(TCPSocket, Integer), nil] the socket positioned at the
+    #   body and the HTTP status, or nil when the Bridge can't be reached
+    def connect_stream(query: "", last_event_id: nil, timeout: nil)
+      sock = TCPSocket.new(@host, @port)
+      lei = last_event_id.to_s.strip
+      last_event_line = lei.empty? ? "" : "Last-Event-ID: #{lei}\r\n"
+      sock.write("GET /session/#{@session_id}/stream#{query} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nAccept: text/event-stream\r\n#{last_event_line}Connection: keep-alive\r\n\r\n")
+      raise Errno::ETIMEDOUT if timeout && !sock.wait_readable(timeout)
+
+      status = sock.gets.to_s[/\AHTTP\/1\.[01] (\d{3})/, 1].to_i
+      while (line = sock.gets)
+        break if line.strip.empty?
+      end
+      [sock, status]
+    rescue SystemCallError, SocketError, IOError
+      sock&.close rescue nil
+      nil
     end
 
     private

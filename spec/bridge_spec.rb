@@ -10,6 +10,7 @@ require "json"
 require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/bridge"
+require "samagotchi/bridge_client"
 
 # A tiny monotonic clock so the specs don't depend on Time.now.
 def mono
@@ -489,6 +490,31 @@ RSpec.describe Samagotchi::Bridge do
         expect(ids.first).to eq(first[:id].to_i + 1)
         expect(ids).to eq((ids.first..ids.last).to_a)
         expect(rest.map { |e| e[:data]["type"] }).to include("turn_completed")
+      end
+
+      it "is followed by BridgeClient#follow: snapshot first, then gap-free live events" do
+        start_bridge
+        release = hold_turn_after({ type: :generation_chunk, iteration: 1, content: "half " },
+                                  conversation: [{ role: "model", content: "done" }])
+        turn = Thread.new { run_turn_sync(@engine, @session, "mid turn") }
+        wait_until { @bridge.snapshot.dig(:current_turn, :parts)&.any? }
+
+        events = Queue.new
+        stream = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port).follow { |e| events << e }
+        snap = events.pop(timeout: 3)
+        release << true
+        turn.join
+        live = []
+        live << events.pop(timeout: 3) until live.last&.dig("type") == "turn_completed" || live.include?(nil)
+        stream.close
+
+        expect(snap["type"]).to eq("snapshot")
+        expect(snap.dig("snapshot", "current_turn", "prompt")).to eq("mid turn")
+        seqs = live.map { |e| e["event_seq"] }
+        expect(seqs.first).to eq(snap.dig("snapshot", "event_seq") + 1)
+        expect(seqs).to eq((seqs.first..seqs.last).to_a)
+        expect(stream.last_event_id).to eq(seqs.last.to_s)
+        expect(stream).not_to be_alive
       end
 
       it "shows a question that is waiting for an answer" do
