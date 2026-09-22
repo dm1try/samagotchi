@@ -51,11 +51,11 @@ an unknown value is rejected at startup.
 ### Web Markdown rendering
 
 Web responses are escaped text by default. To render completed assistant
-responses as HTML, install the optional renderer and enable it for the web
-server:
+responses as HTML, enable the renderer for the web server (it uses
+`commonmarker`, which `bundle install` pulls in from the Gemfile; outside
+Bundler, `gem install commonmarker`):
 
 ```sh
-gem install kramdown
 bin/chi web --web-markdown
 ```
 
@@ -69,7 +69,7 @@ web:
 Only finalized assistant messages are rendered; user messages and live streaming
 chunks remain escaped text. Generated HTML is sanitized, raw HTML in model output
 is not trusted, and unsafe links are removed. If Markdown is enabled without
-Kramdown installed, Chi Web keeps the normal escaped-text display and shows a
+commonmarker installed, Chi Web keeps the normal escaped-text display and shows a
 warning explaining how to install the optional gem.
 
 Notes:
