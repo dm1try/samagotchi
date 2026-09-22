@@ -237,3 +237,9 @@ module Samagotchi
     end
   end
 end
+
+# model_overlay.rb requires this file, and MemoryRead only needs ModelOverlay
+# at call time, so autoload it instead of a (circular) require.
+module Samagotchi
+  autoload :ModelOverlay, File.expand_path("../model_overlay", __dir__)
+end
