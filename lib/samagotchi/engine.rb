@@ -986,10 +986,11 @@ module Samagotchi
     # endpoint.
     #
     # Single precedence path: explicit `recap:` kwarg > Config registry
-    # (CLI > ENV > file > default). An explicit disable (`recap: false` in
-    # the config file, `recap: {enabled: false}`, or
+    # (CLI > ENV > file > default). An explicit disable (`recap: false` as
+    # the kwarg or in the config file, `recap: {enabled: false}`, or
     # SAMAGOTCHI_RECAP_ENABLED=false) always wins.
     def build_recap(recap)
+      return nil if recap == false
       return nil if Samagotchi::Config.get("recap.enabled") == false
 
       # Normalize kwarg (TerminalUI passes recap: recap_config hash or nil)

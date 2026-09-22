@@ -277,6 +277,9 @@ module Samagotchi
       engine = Samagotchi::Engine.new(
         mode: session.mode.to_sym,
         model_name: session.model_name,
+        # No web consumer for :recap_ready yet; without this a configured
+        # recap: section makes every worker spend summarizer calls nobody sees.
+        recap: false,
         reminders: {
           callback: lambda { |due_names|
             # SessionManager: when a reminder is due, write a synthetic input

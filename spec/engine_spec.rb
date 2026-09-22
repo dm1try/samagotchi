@@ -302,6 +302,25 @@ RSpec.describe Samagotchi::Engine do
     end
   end
 
+  describe "idle recap construction" do
+    around do |example|
+      saved = ENV.values_at("SAMAGOTCHI_RECAP_BASE_URL", "SAMAGOTCHI_RECAP_MODEL")
+      ENV["SAMAGOTCHI_RECAP_BASE_URL"] = "http://localhost:8080/v1"
+      ENV["SAMAGOTCHI_RECAP_MODEL"] = "gemma4-small"
+      example.run
+    ensure
+      ENV["SAMAGOTCHI_RECAP_BASE_URL"], ENV["SAMAGOTCHI_RECAP_MODEL"] = saved
+    end
+
+    it "builds the recap job from configured settings" do
+      expect(build_engine.recap).to be_a(Samagotchi::IdleRecap)
+    end
+
+    it "an explicit recap: false kwarg wins over configured settings" do
+      expect(build_engine(recap: false).recap).to be_nil
+    end
+  end
+
   describe "#subscribe / persistent observer" do
     let(:result) do
       Samagotchi::KernelLoop::Result.new(
