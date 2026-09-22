@@ -41,8 +41,13 @@ module Samagotchi
         parts << stderr_block unless stderr_block.nil?
         parts << "exit: #{status.exitstatus}"
         parts.join("\n")
-      rescue CommandTimedOut
-        "Error: command timed out after #{timeout_sec}s"
+      rescue CommandTimedOut => e
+        # Keep the "Error:" first line (callers classify on it) and return
+        # whatever the command printed before it was killed.
+        parts = ["Error: command timed out after #{timeout_sec}s"]
+        parts << output_block("stdout", e.stdout)
+        parts << output_block("stderr", e.stderr)
+        parts.compact.join("\n")
       rescue => e
         "Error: #{e.message}"
       end
@@ -79,7 +84,7 @@ module Samagotchi
           end
         end
 
-        raise CommandTimedOut if timed_out
+        raise CommandTimedOut.new(stdout_text, stderr_text) if timed_out
 
         [stdout_text, stderr_text, status]
       end
@@ -194,7 +199,15 @@ module Samagotchi
         )
       end
 
-      class CommandTimedOut < StandardError; end
+      class CommandTimedOut < StandardError
+        attr_reader :stdout, :stderr
+
+        def initialize(stdout, stderr)
+          @stdout = stdout
+          @stderr = stderr
+          super("command timed out")
+        end
+      end
     end
   end
 end
