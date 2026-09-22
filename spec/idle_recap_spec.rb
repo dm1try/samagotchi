@@ -126,7 +126,7 @@ RSpec.describe Samagotchi::IdleRecap do
       engine = stub_engine
       allow(Samagotchi::IdleClient).to receive(:new).with(model: model, base_url: base_url)
         .and_return(double(summarize: "recap"))
-      idle = described_class.new(engine: engine, model: model, base_url: base_url)
+      described_class.new(engine: engine, model: model, base_url: base_url)
       expect(Samagotchi::IdleClient).to have_received(:new).with(model: model, base_url: base_url)
     end
     it "uses a custom client when provided" do

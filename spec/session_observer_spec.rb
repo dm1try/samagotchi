@@ -95,7 +95,7 @@ RSpec.describe Samagotchi::SessionObserver do
     it "subscribed before emits see events; events before subscribe are not replayed" do
       late = []
       observer.notify(type: :past_event)
-      handle = observer.subscribe(observer: ->(event) { late << event })
+      observer.subscribe(observer: ->(event) { late << event })
       observer.notify(type: :future_event)
       expect(late.map { |e| e[:type] }).to eq([:future_event])
       expect(late.first[:event_seq]).to eq(2)

@@ -431,7 +431,7 @@ RSpec.describe Samagotchi::Session do
       s = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       s.save(state_dir: tmpdir)
       FileUtils.mkdir_p(File.join(tmpdir, "orphan-dir"))
-      result = described_class.prune(state_dir: tmpdir, days: 0, max_count: 0)
+      described_class.prune(state_dir: tmpdir, days: 0, max_count: 0)
       # orphan dir should not be counted as deleted/skipped as it's not a session
       expect(Dir.exist?(File.join(tmpdir, "orphan-dir"))).to be true
     end

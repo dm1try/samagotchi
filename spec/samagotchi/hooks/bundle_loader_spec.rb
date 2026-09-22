@@ -145,7 +145,6 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       hooks_dir = File.join(tmpdir, "hooks")
       write_hook(hooks_dir, "guardrails.rb", "class Guardrails; def call(e); e[:sym]=true; end; end")
       registry = Samagotchi::Hooks::Registry.new
-      meta = { "guardrails.rb": { event: "before_tool_call", on_error: "skip" } }
       # Simulate JSON.parse symbolize_names keys
       meta_sym = { :"guardrails.rb" => { event: "before_tool_call", on_error: "skip" } }
       loaded = described_class.load(bundle_name: "sym-bundle", hooks_dir: hooks_dir, metadata: meta_sym, registry: registry)
@@ -168,7 +167,7 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
     it "strips .rb extension for class name" do
       hooks_dir = File.join(tmpdir, "hooks")
       write_hook(hooks_dir, "my_hook.rb", "class MyHook; def call(e); end; end")
-      ns = described_class.namespace_for("test-inst")
+      described_class.namespace_for("test-inst")
       klass = described_class.instantiate("test-inst", "my_hook.rb", File.join(hooks_dir, "my_hook.rb"))
       expect(klass).to respond_to(:call)
     end

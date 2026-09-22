@@ -26,35 +26,35 @@ class SSEClient
     @port = port
     @session_id = session_id
     @last_event_id = last_event_id
-      @events = []
-      @mutex = Mutex.new
-      @cv = ConditionVariable.new
-      @done = false
-    end
+    @events = []
+    @mutex = Mutex.new
+    @cv = ConditionVariable.new
+    @done = false
+  end
 
-    def start
-      @socket = TCPSocket.new("127.0.0.1", @port)
-      @socket.binmode
-      query = @last_event_id ? "?from_seq=#{@last_event_id}" : ""
-      @socket.write(
-        "GET /session/#{@session_id}/stream#{query} HTTP/1.1\r\n" \
-        "Host: 127.0.0.1\r\n" \
-        "Connection: close\r\n" \
-        "User-Agent: bridge-spec\r\n\r\n"
-      )
-      @status_line, = read_headers(@socket)
-      @reader = Thread.new { read_loop }
-      self
-    end
+  def start
+    @socket = TCPSocket.new("127.0.0.1", @port)
+    @socket.binmode
+    query = @last_event_id ? "?from_seq=#{@last_event_id}" : ""
+    @socket.write(
+      "GET /session/#{@session_id}/stream#{query} HTTP/1.1\r\n" \
+      "Host: 127.0.0.1\r\n" \
+      "Connection: close\r\n" \
+      "User-Agent: bridge-spec\r\n\r\n"
+    )
+    @status_line, = read_headers(@socket)
+    @reader = Thread.new { read_loop }
+    self
+  end
 
-   def stop
-     @done = true
-     @socket&.close
-     @reader&.join(0.5)
-     @reader&.kill if @reader&.alive?
-   rescue StandardError
-     nil
-   end
+  def stop
+    @done = true
+    @socket&.close
+    @reader&.join(0.5)
+    @reader&.kill if @reader&.alive?
+  rescue StandardError
+    nil
+  end
 
   def status_code
     @status_line.to_s.split(" ")[1].to_i
@@ -78,10 +78,10 @@ class SSEClient
 
   private
 
-   def read_loop
-     until @done
-       event = read_event(@socket)
-       break if event.nil?
+  def read_loop
+    until @done
+      event = read_event(@socket)
+      break if event.nil?
 
       raw = event[:data]
       data = raw && !raw.strip.empty? ? JSON.parse(raw) : {}
@@ -96,50 +96,50 @@ class SSEClient
     @mutex.synchronize { @done = true; @cv.broadcast }
   end
 
-      def read_event(io)
+  def read_event(io)
+    event = { id: nil, data: nil }
+    loop do
+      line = io.gets("\n")
+      break if line.nil?
+
+      line = line.chomp
+      if line.empty?
+        # Blank line ends a frame. Only return it if it carried content;
+        # otherwise it's a heartbeat / comment block — keep reading.
+        return event if event[:id] || event[:data]
+
         event = { id: nil, data: nil }
-        loop do
-          line = io.gets("\n")
-          break if line.nil?
-
-          line = line.chomp
-          if line.empty?
-            # Blank line ends a frame. Only return it if it carried content;
-            # otherwise it's a heartbeat / comment block — keep reading.
-            return event if event[:id] || event[:data]
-
-            event = { id: nil, data: nil }
-            next
-          elsif line.start_with?(":")
-            next # heartbeat / comment
-          elsif line.start_with?("id:")
-            event[:id] = line[3..].strip
-          elsif line.start_with?("data:")
-            event[:data] = (event[:data] || "") + line[5..].strip
-          end
-        end
-        nil
+        next
+      elsif line.start_with?(":")
+        next # heartbeat / comment
+      elsif line.start_with?("id:")
+        event[:id] = line[3..].strip
+      elsif line.start_with?("data:")
+        event[:data] = (event[:data] || "") + line[5..].strip
       end
-
-    def read_headers(io)
-      status_line = nil
-      headers = {}
-      loop do
-        line = io.gets("\n")
-        break if line.nil?
-
-        line = line.chomp
-        if status_line.nil?
-          status_line = line
-        elsif line.empty?
-          break
-        else
-          key, value = line.split(":", 2)
-          headers[key.strip.downcase] = value.to_s.strip
-        end
-      end
-      [status_line, headers]
     end
+    nil
+  end
+
+  def read_headers(io)
+    status_line = nil
+    headers = {}
+    loop do
+      line = io.gets("\n")
+      break if line.nil?
+
+      line = line.chomp
+      if status_line.nil?
+        status_line = line
+      elsif line.empty?
+        break
+      else
+        key, value = line.split(":", 2)
+        headers[key.strip.downcase] = value.to_s.strip
+      end
+    end
+    [status_line, headers]
+  end
 end
 
 # A stand-in socket for SSEWriter unit tests where we can force the writer
@@ -258,7 +258,7 @@ RSpec.describe Samagotchi::Bridge do
       # seq 3 is before the cursor → dropped; seq 7 after → enqueued.
       writer.call(type: :x, event_seq: 3)
       writer.call(type: :x, event_seq: 7)
-      events = writer.instance_variable_get(:@queue).tap { |q| q.push(:sentinel) }
+      writer.instance_variable_get(:@queue).push(:sentinel)
       # The dropped event never enqueued: only the seq-7 event + sentinel remain.
       expect(writer.instance_variable_get(:@queue).size).to eq(2)
     end
