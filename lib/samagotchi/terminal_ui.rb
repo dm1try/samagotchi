@@ -16,6 +16,7 @@ require_relative "engine"
 require_relative "tools/memory"
 require_relative "output_formatter"
 require_relative "turn_preamble"
+require_relative "terminal_ui/event_renderer"
 
 module Samagotchi
   # TerminalUI encapsulates the single operating mode of the harness.
@@ -132,6 +133,13 @@ module Samagotchi
       @pending_reminder_banner_shown = false
       @last_keystroke_at = monotonic_time
       @last_line_buffer = ""
+      @renderer = EventRenderer.new(self)
+      # Engine swallows on_event errors to protect the turn; log ours instead.
+      @render_event = lambda do |event|
+        @renderer.call(event)
+      rescue StandardError => e
+        warn "[render] #{event[:type]}: #{e.class}: #{e.message}"
+      end
       @engine         = Engine.new(
         mode: :assist,
         client: client,
@@ -221,16 +229,17 @@ module Samagotchi
     # slot is replaced); fresh sessions start with just the system prompt.
     # Prints a one-line banner so the user sees which session they're in.
     def messages_for(session)
+      system_message = { role: "system", content: seed_system_prompt }
       if @resume_session
         messages = session.messages.dup
         if messages.empty?
-          messages = [{ role: "system", content: system_prompt_with_index(assist_system_prompt) }]
+          messages = [system_message]
         else
-          messages[0] = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
+          messages[0] = system_message
         end
         $stdout.puts "Resumed session: #{session.id}"
       else
-        messages = [{ role: "system", content: system_prompt_with_index(assist_system_prompt) }]
+        messages = [system_message]
         $stdout.puts "Session: #{session.id}"
       end
       messages
@@ -405,6 +414,9 @@ module Samagotchi
         break if input.nil?
         break if exit_command?(input)
         continue_flow = awaiting_continue
+        # Normal turns run through Engine#run_turn, which renders and records
+        # metrics itself; the continue path still drives the kernel directly.
+        engine_turn = false
 
         if awaiting_continue
           decision, reason = continue_decision(input)
@@ -512,18 +524,16 @@ module Samagotchi
           end
 
           interrupted_turn_checkpoint = clone_messages(messages)
-          # Inject due reminders as tail before the new user message to
-          # preserve prefix KV cache (head mutation invalidates cache).
-          @engine.collect_due_reminders(messages)
-          messages << { role: "user", content: normalize_model_input(input) }
           persist_recent_history(input)
           begin
-            begin_interactive_turn(session)
-            result = run_kernel_with_thinking_feedback(messages)
+            # Engine#run_turn injects due reminders as a tail message, appends
+            # the prompt, and renders through @renderer via on_event.
+            result = run_engine_turn(session, messages, normalize_model_input(input))
+            engine_turn = true
           rescue Client::RetryExhausted => e
-            # Terminal failure: close the turn so the flag doesn't leak open.
+            # Engine closed the turn (:turn_failed); show its duration.
             # Retries were already tallied via generation_retrying events.
-            end_interactive_turn(canceled: false)
+            emit_interactive_turn_duration(canceled: false)
             messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             awaiting_continue = false
             queue_input_prefill(input)
@@ -542,7 +552,11 @@ module Samagotchi
             # result.conversation, so progress is preserved by default — the
             # user's next message continues from it. !rollback restores the
             # pre-turn checkpoint for an explicit full discard.
-            end_interactive_turn(canceled: true)
+            if engine_turn
+              emit_interactive_turn_duration(canceled: true)
+            else
+              end_interactive_turn(canceled: true)
+            end
             if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
               messages = result.conversation
               session.messages = messages
@@ -558,8 +572,10 @@ module Samagotchi
           next
         end
 
-        emit_result(result)
-        end_interactive_turn(canceled: false, announce: false)
+        unless engine_turn
+          emit_result(result)
+          end_interactive_turn(canceled: false, announce: false)
+        end
 
         messages = result.conversation
         awaiting_continue = result.resumable?
@@ -577,9 +593,9 @@ module Samagotchi
         session.messages = messages
         session.model_name = @effective_model_name
         session.save
-        # Mirror engine.run_turn's persistence for the REPL path (which drives
-        # KernelLoop directly and bypasses the Engine observer's persist call).
-        @engine.metrics.persist
+        # Mirror engine.run_turn's persistence for the continue path (which
+        # drives KernelLoop directly and bypasses the Engine observer's persist).
+        @engine.metrics.persist unless engine_turn
       end
 
       $stdout.puts "\nContinue session: chi --resume #{session.id}"
@@ -605,6 +621,14 @@ module Samagotchi
       "server=#{host}:#{port}"
     end
 
+    # Engine's built-once system prompt (the one run_turn sends), plus the
+    # --memory activations it recorded for the sticky status line.
+    def seed_system_prompt
+      prompt = @engine.system_prompt
+      sync_engine_activated_memories
+      prompt
+    end
+
     # Appends the current memory index to the base system prompt so the agent
     # is always aware of stored memories without needing to call a tool first.
     # Delegates wholesale to Engine (single source of truth).
@@ -626,16 +650,14 @@ module Samagotchi
       end
     end
 
+    # Render a result from a turn that bypassed Engine#run_turn (continue,
+    # reminder turns) exactly as a :turn_completed would be rendered.
     def emit_result(result)
-      finish_thinking_spinner
-      capture_context_status_from_result(result)
-      emit_tool_activity(result)
-      emit_active_memories_line
-      $stdout.puts result.output
-      return unless result.resumable?
-
-      $stdout.puts "iteration limit reached"
+      @renderer.render_turn_summary(@engine.turn_summary(result))
     end
+
+    # ── Turn view: the drawing surface EventRenderer calls ──────────────────
+    public
 
     def emit_active_memories_line
       lines = sticky_status_lines
@@ -644,13 +666,56 @@ module Samagotchi
       lines.each { |line| $stdout.puts line }
     end
 
-    def emit_tool_activity(result)
-      activities = result.respond_to?(:tool_activity) ? Array(result.tool_activity) : []
-      activities.each do |activity|
-        next if consume_streamed_tool_activity(activity)
+    def print_line(text)
+      $stdout.puts text
+    end
 
-        $stdout.puts format_tool_activity_line(activity)
-      end
+    def reset_turn_feedback
+      clear_retry_spinner_status
+      reset_thinking_memory_notification
+      reset_thinking_memory_names
+      reset_thinking_tool_notification
+    end
+
+    def generation_feedback_started
+      start_cancel_hotkey_monitor(@active_cancel_controller)
+      clear_retry_spinner_status
+      @latest_server_context_status = nil
+      reset_thinking_tail_preview
+      reset_turn_preamble
+      start_thinking_spinner
+    end
+
+    def generation_feedback_retrying(event)
+      set_retry_spinner_status(event)
+      refresh_thinking_spinner_status
+    end
+
+    def generation_feedback_chunk(event)
+      clear_retry_spinner_status if retry_spinner_status_active?
+      capture_server_context_status_from_payload(event[:payload])
+      capture_thinking_tail_chunk(event[:content])
+      capture_turn_preamble_chunk(event[:thinking])
+      tick_thinking_spinner
+    end
+
+    def tool_call_feedback_started(event)
+      clear_retry_spinner_status
+      memory_loaded = capture_memory_tool_call(event)
+      capture_thinking_tool_call(event) if memory_loaded
+      refresh_thinking_spinner_status
+    end
+
+    def clear_generation_retry
+      clear_retry_spinner_status
+    end
+
+    def generation_feedback_finished
+      stop_cancel_hotkey_monitor
+      clear_retry_spinner_status
+      reset_thinking_tail_preview
+      reset_turn_preamble
+      finish_thinking_spinner
     end
 
     def format_tool_activity_line(activity, duration_ms: nil)
@@ -662,14 +727,18 @@ module Samagotchi
       "#{paint('tool>', 36)} #{activity[:action]} (#{activity[:tool]}#{params_suffix}): #{paint(status, status_color)}#{elapsed_suffix}"
     end
 
-    def completed_tool_duration(event)
-      record = Array(@engine.metrics.snapshot[:tool_records]).reverse.find do |candidate|
-        candidate[:iteration].to_i == event[:iteration].to_i &&
-          candidate[:call_index].to_i == event[:call_index].to_i &&
-          candidate[:tool].to_s == event[:tool].to_s
-      end
-      record && record[:duration_ms]
+    # The kernel reports the last emitted context status on the result; keep
+    # the previous one when a turn reports none.
+    def capture_context_status(status)
+      return unless status
+
+      @latest_context_status = {
+        est_pct: status[:est_pct],
+        bucket: status[:bucket]
+      }
     end
+
+    private
 
     def emit_interactive_turn_duration(canceled:)
       record = Array(@engine.metrics.snapshot[:turn_records]).last
@@ -1609,14 +1678,42 @@ module Samagotchi
       system("command -v rg", out: File::NULL, err: File::NULL)
     end
 
+    # Run one REPL turn through Engine#run_turn, rendering via @renderer. The
+    # REPL's working +messages+ become the session's conversation first (they
+    # can hold !cmd output the session has not seen yet).
+    def run_engine_turn(session, messages, prompt, continue: false, max_iterations: 100)
+      cancellation_controller = Client::CancellationController.new
+      @active_cancel_controller = cancellation_controller
+      # A new turn invalidates any in-flight recap.
+      @engine.recap&.invalidate!
+      session.messages = messages
+      result = @engine.run_turn(
+        session,
+        prompt,
+        on_event: @render_event,
+        max_iterations: max_iterations,
+        cancel_controller: cancellation_controller,
+        pending_input: @pending_input_queue&.method(:drain),
+        continue: continue
+      )
+      emit_cancellation_notice(result)
+      result
+    rescue Interrupt
+      # Engine kept the prompt in the session and emitted :turn_canceled.
+      cancellation_controller&.cancel!(:ctrl_c)
+      result = cancelled_result_from(session.messages, reason: :ctrl_c)
+      emit_cancellation_notice(result)
+      result
+    ensure
+      stop_cancel_hotkey_monitor
+      @active_cancel_controller = nil
+      finish_thinking_spinner
+    end
+
     def run_kernel_with_thinking_feedback(messages, max_iterations: 100)
       cancellation_controller = Client::CancellationController.new
       @active_cancel_controller = cancellation_controller
-      reset_streamed_tool_activity_counts
-      clear_retry_spinner_status
-      reset_thinking_memory_notification
-      reset_thinking_memory_names
-      reset_thinking_tool_notification
+      @renderer.begin_turn
       result = run_selected_backend(
         messages,
         max_iterations: max_iterations,
@@ -1698,88 +1795,12 @@ module Samagotchi
       emit_interactive_turn_duration(canceled: canceled) if announce
     end
 
+    # Stream sink for the REPL paths that drive the kernel directly
+    # (continue, reminder turns): they bypass Engine#run_turn, so feed the
+    # Engine's analytics collector here, then render like any turn event.
     def handle_stream_event(event)
-      # Forward REPL stream events into the Engine's shared analytics collector.
-      # The interactive loop drives KernelLoop directly (bypassing
-      # Engine#run_turn), so this is the only feed point for REPL sessions;
-      # -p/--resume/worker paths are covered by the Engine observer instead.
       @engine.metrics.call(event)
-
-      case event[:type]
-      when :generation_started
-        start_cancel_hotkey_monitor(@active_cancel_controller)
-        clear_retry_spinner_status
-        @latest_server_context_status = nil
-        reset_thinking_tail_preview
-        reset_turn_preamble
-        start_thinking_spinner
-      when :generation_retrying
-        set_retry_spinner_status(event)
-        refresh_thinking_spinner_status
-      when :generation_chunk
-        clear_retry_spinner_status if retry_spinner_status_active?
-        capture_server_context_status_from_payload(event[:payload])
-        capture_thinking_tail_chunk(event[:content])
-        capture_turn_preamble_chunk(event[:thinking])
-        tick_thinking_spinner
-      when :tool_call_started
-        clear_retry_spinner_status
-        memory_loaded = capture_memory_tool_call(event)
-        capture_thinking_tool_call(event) if memory_loaded
-        refresh_thinking_spinner_status
-      when :tool_call_completed
-        clear_retry_spinner_status
-        emit_streamed_tool_activity(event[:activity], duration_ms: completed_tool_duration(event))
-      when :generation_completed
-        stop_cancel_hotkey_monitor
-        clear_retry_spinner_status
-        reset_thinking_tail_preview
-        reset_turn_preamble
-        finish_thinking_spinner
-      when :generation_cancelled
-        stop_cancel_hotkey_monitor
-        clear_retry_spinner_status
-        reset_thinking_tail_preview
-        reset_turn_preamble
-        finish_thinking_spinner
-      when :tool_dispatch_started
-        stop_cancel_hotkey_monitor
-        clear_retry_spinner_status
-        reset_thinking_tail_preview
-        reset_turn_preamble
-        finish_thinking_spinner
-      end
-    end
-
-    def emit_streamed_tool_activity(activity, duration_ms: nil)
-      return if activity.nil?
-
-      track_streamed_tool_activity(activity)
-      $stdout.puts format_tool_activity_line(activity, duration_ms: duration_ms)
-    end
-
-    def reset_streamed_tool_activity_counts
-      @streamed_tool_activity_counts = Hash.new(0)
-    end
-
-    def track_streamed_tool_activity(activity)
-      @streamed_tool_activity_counts ||= Hash.new(0)
-      key = tool_activity_key(activity)
-      @streamed_tool_activity_counts[key] += 1
-    end
-
-    def consume_streamed_tool_activity(activity)
-      @streamed_tool_activity_counts ||= Hash.new(0)
-      key = tool_activity_key(activity)
-      count = @streamed_tool_activity_counts[key]
-      return false unless count.positive?
-
-      @streamed_tool_activity_counts[key] = count - 1
-      true
-    end
-
-    def tool_activity_key(activity)
-      [activity[:action], activity[:tool], activity[:params], activity[:status]].map(&:to_s).join("|")
+      @renderer.call(event)
     end
 
     def emit_cancellation_notice(result)
@@ -1920,6 +1941,8 @@ module Samagotchi
       @thinking_tail_preview_dirty && !@thinking_preview_has_content
     end
 
+    public
+
     def finish_thinking_spinner
       return unless @thinking_spinner_rendered
 
@@ -1946,6 +1969,8 @@ module Samagotchi
       @thinking_tail_preview_dirty = false
       @thinking_preview_has_content = false
     end
+
+    private
 
     def move_to_thinking_spinner_origin
       return unless @thinking_spinner_rendered
@@ -2237,16 +2262,7 @@ module Samagotchi
     end
 
     def capture_context_status_from_result(result)
-      # The kernel no longer injects CONTEXT_STATUS messages into the
-      # conversation; it reports the last emitted status on the Result
-      # (populated alongside the :context_status stream event).
-      status = result.respond_to?(:context_status) ? result.context_status : nil
-      return unless status
-
-      @latest_context_status = {
-        est_pct: status[:est_pct],
-        bucket: status[:bucket]
-      }
+      capture_context_status(result.respond_to?(:context_status) ? result.context_status : nil)
     end
 
     def capture_server_context_status_from_payload(payload)

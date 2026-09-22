@@ -776,7 +776,8 @@ module Samagotchi
     #
     # An Interrupt (SIGINT) cancels the turn: the pre-turn conversation plus
     # the prompt is kept in the session and :turn_canceled is emitted, then the
-    # Interrupt is re-raised so the caller still decides whether to exit.
+    # Interrupt is re-raised so the caller still decides whether to exit. Any
+    # other error (e.g. Client::RetryExhausted) emits :turn_failed and re-raises.
     def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false)
       # Track the active session for recap and status snapshot.
       @session = session
@@ -915,7 +916,9 @@ module Samagotchi
         response = result.respond_to?(:output) ? result.output.to_s : result.to_s
         canceled = result.respond_to?(:canceled?) && result.canceled?
         if response.strip.empty? && !canceled
-          session.messages << { role: "model", content: "[No response]" }
+          # A new array: session.messages is result.conversation here, and the
+          # placeholder must not leak into the result (continue resumes it).
+          replace_session_messages(session, session.messages + [{ role: "model", content: "[No response]" }])
         end
 
         # Fire :after_turn hook (runs even on cancel/success)
@@ -929,6 +932,10 @@ module Samagotchi
         effective_controller.cancel!(:ctrl_c)
         replace_session_messages(session, messages) if messages
         emit_event(on_event, { type: :turn_canceled, cancellation_reason: :ctrl_c })
+        @metrics.persist
+        raise
+      rescue StandardError => e
+        emit_event(on_event, { type: :turn_failed, error_class: e.class.name, message: e.message })
         @metrics.persist
         raise
       ensure

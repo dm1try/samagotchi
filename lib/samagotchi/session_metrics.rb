@@ -125,6 +125,8 @@ module Samagotchi
       when :turn_canceled
         @mutex.synchronize { @cancellations += 1 }
         end_turn(status: "canceled")
+      when :turn_failed
+        end_turn(status: "failed")
       end
 
       @mutex.synchronize { @last_activity_at = now.iso8601(3) }

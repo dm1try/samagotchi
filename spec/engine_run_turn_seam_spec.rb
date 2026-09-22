@@ -94,6 +94,17 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     expect(session.messages).to eq([{ role: "user", content: "hi" }])
   end
 
+  it "keeps the [No response] placeholder out of result.conversation" do
+    allow(kernel).to receive(:run).and_return(
+      kernel_result(output: "", conversation: [{ role: "tool_response", content: "r" }], exhausted: true, pending_tool_calls: true)
+    )
+
+    result = engine.run_turn(session, "hi")
+
+    expect(result.conversation).to eq([{ role: "tool_response", content: "r" }])
+    expect(session.messages.last).to eq({ role: "model", content: "[No response]" })
+  end
+
   describe "Interrupt" do
     it "keeps the prompt in the session, emits :turn_canceled and re-raises" do
       allow(kernel).to receive(:run).and_raise(Interrupt)
@@ -107,6 +118,17 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       expect(engine.turn_running?).to be(false)
       expect(engine.metrics.snapshot[:cancellations]).to eq(1)
     end
+  end
+
+  it "emits :turn_failed and closes the metrics turn when the kernel raises" do
+    error = Samagotchi::Client::RetryExhausted.new(attempts: 4, last_error: Errno::ECONNREFUSED.new)
+    allow(kernel).to receive(:run).and_raise(error)
+    events = []
+
+    expect { engine.run_turn(session, "hi", on_event: ->(e) { events << e }) }.to raise_error(error)
+
+    expect(events.last).to include(type: :turn_failed, error_class: "Samagotchi::Client::RetryExhausted")
+    expect(engine.metrics.snapshot[:turn_records].last).to include(status: "failed")
   end
 
   describe "system prompt stability" do

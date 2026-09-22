@@ -1,0 +1,79 @@
+# frozen_string_literal: true
+
+require "samagotchi/terminal_ui"
+
+RSpec.describe Samagotchi::TerminalUI::EventRenderer do
+  # Records the drawing calls; lines carry the duration for easy assertions.
+  let(:view) do
+    Class.new do
+      attr_reader :calls, :lines
+
+      def initialize
+        @calls = []
+        @lines = []
+      end
+
+      def format_tool_activity_line(activity, duration_ms: nil)
+        [activity[:tool], duration_ms].compact.join(" ")
+      end
+
+      def print_line(text) = @lines << text
+
+      def method_missing(name, *args)
+        @calls << name
+      end
+
+      def respond_to_missing?(*) = true
+    end.new
+  end
+  let(:now) { [10.0] }
+  let(:renderer) { described_class.new(view, clock: -> { now.first }) }
+  let(:activity) { { action: "reading file", tool: "read", params: "path=a", status: "ok" } }
+
+  def tool_events(activity, iteration: 1, call_index: 1)
+    base = { iteration: iteration, call_index: call_index, tool: activity[:tool] }
+    [base.merge(type: :tool_call_started, call: { name: activity[:tool] }), base.merge(type: :tool_call_completed, activity: activity)]
+  end
+
+  it "times each tool call from its own started/completed events" do
+    started, completed = tool_events(activity)
+    renderer.call(started)
+    now[0] = 10.25
+    renderer.call(completed)
+
+    expect(view.lines).to eq(["read 250.0"])
+  end
+
+  it "does not repeat streamed tool activity in the turn summary" do
+    other = activity.merge(tool: "execute")
+    tool_events(activity).each { |e| renderer.call(e) }
+
+    renderer.call(type: :turn_completed, turn_summary: { tool_activity: [activity, other], output: "done", resumable: false })
+
+    expect(view.lines).to eq(["read 0.0", "execute", "done"])
+  end
+
+  it "adds the iteration-limit notice to a resumable summary" do
+    renderer.render_turn_summary(tool_activity: [], output: "", resumable: true)
+
+    expect(view.lines).to eq(["", "iteration limit reached"])
+  end
+
+  it "resets its bookkeeping at :turn_started" do
+    tool_events(activity).each { |e| renderer.call(e) }
+    renderer.call(type: :turn_started)
+
+    renderer.render_turn_summary(tool_activity: [activity], output: "x", resumable: false)
+
+    expect(view.lines.last(2)).to eq(["read", "x"])
+    expect(view.calls).to include(:reset_turn_feedback)
+  end
+
+  it "ignores events it does not render" do
+    renderer.call(type: :reminder_injected, reminders: [])
+    renderer.call(type: :turn_completed, result: "no summary")
+
+    expect(view.lines).to be_empty
+    expect(view.calls).to be_empty
+  end
+end

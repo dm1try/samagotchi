@@ -15,7 +15,8 @@ module Samagotchi
   # same event, and does not break the running turn.
   #
   # Documented event vocabulary (subscribers match on `:type`):
-  #   * turn_started / turn_completed / turn_canceled — turn boundaries
+  #   * turn_started / turn_completed / turn_canceled / turn_failed — turn
+  #     boundaries (turn_completed also carries a JSON-safe `turn_summary:`)
   #   * generation_* / tool_call_* / tool_dispatch_* — raw kernel-loop events
   #   * session_activity — an activity tick was recorded (see Engine#record_activity)
   #   * recap_ready — an idle session-recap finished generating
