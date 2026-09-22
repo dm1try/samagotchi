@@ -770,7 +770,14 @@ module Samagotchi
     # @param pending_input [#call, nil] optional drain proc returning
     #   Array<String> of steering messages queued while the turn runs; drained
     #   by the agentic loop at iteration boundaries (see KernelLoop#run).
-    def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil)
+    # @param continue [Boolean] resume the conversation without appending a
+    #   user prompt (continue after the iteration limit, reminder turns);
+    #   +prompt+ is ignored and :turn_started carries `continue: true`
+    #
+    # An Interrupt (SIGINT) cancels the turn: the pre-turn conversation plus
+    # the prompt is kept in the session and :turn_canceled is emitted, then the
+    # Interrupt is re-raised so the caller still decides whether to exit.
+    def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false)
       # Track the active session for recap and status snapshot.
       @session = session
       sync_used_memories_from_session(session)
@@ -781,14 +788,14 @@ module Samagotchi
       effective_controller = cancel_controller || Client::CancellationController.new
       @activity_mutex.synchronize { @active_cancel_controller = effective_controller }
 
+      prompt = nil if continue
+      messages = nil
       begin
         # Emit turn_started event
         @metrics.session_id = session.id
-        emit_event(on_event, {
-          type: :turn_started,
-          session_id: session.id,
-          prompt: prompt
-        })
+        turn_started = { type: :turn_started, session_id: session.id, prompt: prompt }
+        turn_started[:continue] = true if continue
+        emit_event(on_event, turn_started)
 
         # Fire :session_start on the very first turn
         if @first_turn
@@ -800,7 +807,9 @@ module Samagotchi
         @hooks.fire(:before_turn, { type: :before_turn })
 
         messages = session.messages.dup
-        system_message = { role: "system", content: system_prompt_with_index(assist_system_prompt) }
+        # Built once per Engine (and again after a model switch) so the prompt
+        # prefix, and the model server's KV cache for it, stay stable.
+        system_message = { role: "system", content: system_prompt }
         if messages.empty?
           messages = [system_message]
         elsif messages.first[:role].to_s != "system"
@@ -823,8 +832,10 @@ module Samagotchi
           })
         end
 
-        messages << { role: "user", content: prompt }
-        session.last_prompt = prompt
+        unless continue
+          messages << { role: "user", content: prompt }
+          session.last_prompt = prompt
+        end
 
         sync_kernel_client!
         # Route model name as bare (without host prefix) to the transport;
@@ -861,7 +872,10 @@ module Samagotchi
             conversation: kernel_result.respond_to?(:conversation) ? kernel_result.conversation : nil,
             canceled: kernel_result.respond_to?(:canceled?) && kernel_result.canceled?,
             cancellation_reason: kernel_result.respond_to?(:cancellation_reason) ? kernel_result.cancellation_reason : nil,
-            exhausted: kernel_result.respond_to?(:exhausted) && kernel_result.exhausted
+            exhausted: kernel_result.respond_to?(:exhausted) && kernel_result.exhausted,
+            tool_activity: kernel_result.respond_to?(:tool_activity) ? kernel_result.tool_activity : [],
+            context_status: kernel_result.respond_to?(:context_status) ? kernel_result.context_status : nil,
+            pending_tool_calls: kernel_result.respond_to?(:pending_tool_calls) && kernel_result.pending_tool_calls
           )
         end
 
@@ -892,13 +906,15 @@ module Samagotchi
         else
           emit_event(on_event, {
             type: :turn_completed,
-            result: result
+            result: result,
+            turn_summary: turn_summary(result)
           })
         end
         @metrics.persist
 
         response = result.respond_to?(:output) ? result.output.to_s : result.to_s
-        if response.strip.empty?
+        canceled = result.respond_to?(:canceled?) && result.canceled?
+        if response.strip.empty? && !canceled
           session.messages << { role: "model", content: "[No response]" }
         end
 
@@ -909,6 +925,12 @@ module Samagotchi
         @hooks.fire(:session_end, { type: :session_end, session_id: session.id })
 
         result
+      rescue Interrupt
+        effective_controller.cancel!(:ctrl_c)
+        replace_session_messages(session, messages) if messages
+        emit_event(on_event, { type: :turn_canceled, cancellation_reason: :ctrl_c })
+        @metrics.persist
+        raise
       ensure
         # A completed turn is activity: release the turn flag and advance the
         # shared inactivity clock so the idle recap detector (shared with the REPL)
@@ -920,6 +942,51 @@ module Samagotchi
         # Clear hooks so they remain turn-scoped and never leak into the next turn.
         clear_hooks
       end
+    end
+
+    # JSON-safe digest of a finished turn for renderers (in-process or over the
+    # Bridge): the bits of the native loop's result a UI needs beyond `result:`.
+    # @param result [LLM::ModelResult]
+    # @return [Hash]
+    def turn_summary(result)
+      {
+        output: result.output.to_s,
+        exhausted: result.exhausted?,
+        resumable: result.resumable?,
+        pending_tool_calls: result.pending_tool_calls?,
+        tool_activity: Array(result.tool_activity).map(&:dup),
+        context_status: result.context_status&.dup
+      }
+    end
+
+    # ── Session messages API ───────────────────────────────────────────────
+    #
+    # Out-of-turn edits to the current session's conversation (`!cmd` output,
+    # rollback after Ctrl-C). Each replaces the array rather than mutating it,
+    # so the recap's lock-free snapshot never sees a half-applied edit.
+
+    # @return [Array<Hash>] a copy of the current session's messages to hand
+    #   back to #rollback_to later
+    def messages_checkpoint
+      clone_messages(@session&.messages)
+    end
+
+    # Append messages to the current session's conversation.
+    # @param messages [Array<Hash>]
+    # @return [Array<Hash>] the session's messages
+    def append_messages(messages)
+      raise ArgumentError, "no current session" unless @session
+
+      replace_session_messages(@session, Array(@session.messages) + clone_messages(messages))
+    end
+
+    # Restore the current session's conversation to a #messages_checkpoint.
+    # @param checkpoint [Array<Hash>]
+    # @return [Array<Hash>] the session's messages
+    def rollback_to(checkpoint)
+      raise ArgumentError, "no current session" unless @session
+
+      replace_session_messages(@session, clone_messages(checkpoint))
     end
 
     # Backward-compatible: runs a prompt through the kernel loop without event forwarding.
@@ -953,6 +1020,10 @@ module Samagotchi
     end
 
     private
+
+    def replace_session_messages(session, messages)
+      @activity_mutex.synchronize { session.messages = messages }
+    end
 
     def ruby_llm_base_url
       entry, = @host_registry.host_for_model(@default_model_name)
