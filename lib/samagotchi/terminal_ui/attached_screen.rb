@@ -28,6 +28,7 @@ module Samagotchi
           defined?(Reline::LineEditor) && Reline.respond_to?(:core) &&
             Reline::LineEditor.method_defined?(:render) &&
             Reline::LineEditor.method_defined?(:render_finished) &&
+            Reline::LineEditor.private_method_defined?(:handle_interrupted) &&
             Reline::LineEditor.private_method_defined?(:clear_rendered_screen_cache)
         end
 
@@ -74,8 +75,9 @@ module Samagotchi
       end
 
       # Prepended to Reline::LineEditor: its drawing runs under the attached
-      # screen's lock, and a finishing prompt first erases the status line so
-      # the submitted line takes its place instead of leaving it stale above.
+      # screen's lock, and a prompt that ends (a submitted line, or Ctrl-C,
+      # which leaves the prompt line behind) first erases the status line, so
+      # the prompt's last line takes its place instead of leaving it stale.
       module LineEditorHooks
         class << self
           attr_accessor :screen
@@ -91,6 +93,19 @@ module Samagotchi
         def render_finished
           screen = LineEditorHooks.screen
           return super unless screen
+
+          screen.synchronize do
+            screen.prompt_finishing(cursor_y: @rendered_screen.cursor_y)
+            super
+          end
+        end
+
+        private
+
+        # Ctrl-C: Reline redraws the prompt, moves below it and raises.
+        def handle_interrupted
+          screen = LineEditorHooks.screen
+          return super unless screen && @interrupted
 
           screen.synchronize do
             screen.prompt_finishing(cursor_y: @rendered_screen.cursor_y)
