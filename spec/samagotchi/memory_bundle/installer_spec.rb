@@ -174,7 +174,8 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           index_path = File.join(system_memories_dir, "index.md")
           expect(File.exist?(index_path)).to be true
           index_content = File.read(index_path)
-          expect(index_content).to include("**identity.md**")
+          expect(index_content).to include("- **identity** · system ·")
+          expect(index_content).not_to include("**identity.md**")
           expect(index_content).to include("· system ·")
         end
 
@@ -192,7 +193,21 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           index_path = File.join(system_memories_dir, "index.md")
           expect(File.exist?(index_path)).to be true
           index_content = File.read(index_path)
-          expect(index_content).to include("**identity.md**")
+          expect(index_content).to include("- **identity** · system ·")
+          expect(index_content).not_to include("**identity.md**")
+        end
+        it "replaces a legacy name.md index line with the entry name" do
+          FileUtils.mkdir_p(system_memories_dir)
+          File.write(File.join(system_memories_dir, "index.md"),
+                     "# Memory Index\n\n- **identity.md** · system · 2026-09-09 · 310\n- **notes** · system · 2026-09-01 · 5\n")
+
+          bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
+          installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
+
+          index_content = File.read(File.join(system_memories_dir, "index.md"))
+          expect(index_content).not_to include("**identity.md**")
+          expect(index_content.scan("- **identity** ").size).to eq(1)
+          expect(index_content).to include("- **notes** · system · 2026-09-01 · 5")
         end
       end
 

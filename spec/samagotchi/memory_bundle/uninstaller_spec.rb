@@ -64,6 +64,20 @@ RSpec.describe Samagotchi::MemoryBundle::Uninstaller do
     expect(uninstaller.removed_files).to include("hooks/guardrails.rb")
   end
 
+  it "removes the entry's index line, including a legacy name.md line" do
+    src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "index-uninstall")
+    install_bundle(src, "index-uninstall")
+    index_path = File.join(system_dir, "index.md")
+    File.write(index_path, File.read(index_path) + "- **identity.md** · system · 2026-09-09 · 310\n- **notes** · system · 2026-09-01 · 5\n")
+
+    described_class.new(name: "index-uninstall", force: false).run
+
+    index_content = File.read(index_path)
+    expect(index_content).not_to include("**identity**")
+    expect(index_content).not_to include("**identity.md**")
+    expect(index_content).to include("- **notes** ·")
+  end
+
   it "memory-only bundles unaffected" do
     src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "no-hook")
     install_bundle(src, "no-hook")

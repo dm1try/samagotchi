@@ -77,7 +77,8 @@ module Samagotchi
           end
           # Remove index line
           begin
-            IndexUpdater.remove_index(target_scope, file_key_str)
+            IndexUpdater.remove_index(target_scope, file_key_str.delete_suffix(".md"))
+            IndexUpdater.remove_index(target_scope, file_key_str) # legacy "name.md" line
           rescue => _e
           end
         end

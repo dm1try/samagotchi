@@ -394,8 +394,12 @@ module Samagotchi
 
       def update_target_index(scope, file_path, file_key)
         byte_count = File.exist?(file_path) ? File.size(file_path) : 0
+        entry_name = file_key.delete_suffix(".md")
         begin
-          IndexUpdater.update_index(scope, file_key, byte_count)
+          # Index lines use the entry name (as memory_write does); drop the
+          # legacy "name.md" line older installs wrote.
+          IndexUpdater.remove_index(scope, file_key) unless entry_name == file_key
+          IndexUpdater.update_index(scope, entry_name, byte_count)
         rescue => _e
           # Silently skip index updates — they're best-effort.
         end
