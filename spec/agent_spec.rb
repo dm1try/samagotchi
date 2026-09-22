@@ -3,7 +3,6 @@
 require "samagotchi/terminal_ui"
 require "fileutils"
 require "json"
-require "ostruct"
 require "stringio"
 require "tmpdir"
 
@@ -1700,7 +1699,7 @@ file2.rb")
     it "does not queue when resuming a session" do
       ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Hey Chi, "
       agent = described_class.new(mode: "assist", client: client)
-      agent.instance_variable_set(:@resume_session, OpenStruct.new(id: "abc-123"))
+      agent.instance_variable_set(:@resume_session, double("session", id: "abc-123"))
       expect(agent).not_to receive(:queue_input_prefill)
       agent.send(:queue_default_input)
     end
