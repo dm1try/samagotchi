@@ -314,7 +314,9 @@ module Samagotchi
         # the after-submit case (poll returned) and the case where a
         # background turn finished while we were busy.
         if drain_pending_muted_results?(session)
-          # pending drain already emitted/saved and updated the session
+          # pending drain already emitted/saved and updated the session; a
+          # !rollback now would drop that reminder turn too
+          interrupted_turn_checkpoint = nil unless awaiting_continue
           next if pending_reminder_results_pending?
           # continue to handle normal input below after draining
         end
@@ -355,6 +357,7 @@ module Samagotchi
                 # Treat retry exhaustion the same as other errors — continue loop
               end
               emit_interactive_turn_duration(canceled: false)
+              interrupted_turn_checkpoint = nil unless awaiting_continue
               # Persist the synthetic turn, then loop to check for more.
               if result && !(result.respond_to?(:canceled?) && result.canceled?)
                 session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
@@ -393,6 +396,7 @@ module Samagotchi
           if drain_pending_muted_results?(session)
             # The session was updated; the user's input is still in
             # `input` and will be processed next. Don't discard it.
+            interrupted_turn_checkpoint = nil unless awaiting_continue
           end
         end
         break if input.nil?
@@ -468,6 +472,8 @@ module Samagotchi
             $stdout.puts output
             $stdout.puts
             @engine.append_messages([{ role: "user", content: "!(#{command})\n#{output}" }])
+            # Rolling back past this would silently drop the command output.
+            interrupted_turn_checkpoint = nil
             persist_recent_history(input)
             next
           end
@@ -534,9 +540,10 @@ module Samagotchi
               @engine.rollback_to(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             end
             awaiting_continue = false
+            # Keep interrupted_turn_checkpoint: it is what !rollback restores,
+            # until the next turn or another change to the conversation.
             $stdout.puts "\nmodel> turn cancelled; partial progress kept in context; use !rollback immediately after cancellation to restore the pre-turn checkpoint"
           end
-          interrupted_turn_checkpoint = nil unless awaiting_continue
           next
         end
 

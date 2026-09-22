@@ -277,6 +277,21 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
       expect_golden("ctrl_c_rollback", output)
     end
 
+    it "has nothing to roll back once !cmd output followed the Ctrl-C" do
+      allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi").and_return("hi\n")
+      cancel = lambda do |messages|
+        Samagotchi::KernelLoop::Result.new(
+          output: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]", interrupted: true }],
+          exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: true, cancellation_reason: :ctrl_c
+        )
+      end
+
+      output = run_session(model: "Qwen3-14B", prompts: ["go", "!echo hi", "!rollback"],
+                           turns: [[generation("qwen36", "<think>hmm</think>").first(2), cancel]])
+
+      expect_golden("ctrl_c_bang_rollback", output)
+    end
+
     it "runs a due reminder as a synthetic turn" do
       setup = lambda do |ui|
         engine = ui.instance_variable_get(:@engine)

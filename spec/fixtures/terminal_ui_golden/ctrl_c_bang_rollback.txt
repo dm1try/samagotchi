@@ -9,22 +9,15 @@ model> request cancelled (ctrl-c)
 
 model> turn cancelled; partial progress kept in context; use !rollback immediately after cancellation to restore the pre-turn checkpoint
 \e[90mstatus> model=Qwen3-14B\e[0m
+hi
 
-model> salvaged turn discarded; restored pre-turn state
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[90mmodel> thinking... /\e[0m\e[0K
-\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[90mmodel> thinking... -\e[0m\e[0K
-\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[0K
-\e[0K\e[1A\e[90mstatus> model=Qwen3-14B\e[0m
-Finished.
+
+model> nothing to rollback
 \e[90mstatus> model=Qwen3-14B\e[0m
 
 Continue session: chi --resume <session-id>
---- kernel run 1 ---
-user: "go"
---- kernel run 2 ---
-user: "again"
 --- session ---
 system: <prompt>
-user: "again"
-model: "Finished."
+user: "go"
+model: "Partial\n[interrupted]"
