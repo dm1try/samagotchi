@@ -1,0 +1,11 @@
+Session: <session-id>
+\e[90mstatus> model=Qwen3-14B\e[0m
+\e[90mmodel> thinking... |\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[0K
+\e[0K\e[1A\e[36mchi>\e[0m turn completed (<elapsed>)
+
+model> network error after 4 attempts; prompt restored for retry
+\e[90mstatus> model=Qwen3-14B\e[0m
+
+Continue session: chi --resume <session-id>
+--- no session saved ---

@@ -1,0 +1,13 @@
+Session: <session-id>
+status> model=Qwen3-14B
+tool> loading memory (memory_read name="notes"): ok (<elapsed>)
+tool> running command (execute command="false"): error
+status> model=Qwen3-14B | mem: notes
+Done.
+status> model=Qwen3-14B | mem: notes
+
+Continue session: chi --resume <session-id>
+--- session ---
+system: <prompt>
+user: "hi"
+model: "Done."

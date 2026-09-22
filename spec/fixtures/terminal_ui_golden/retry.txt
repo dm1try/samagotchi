@@ -1,0 +1,15 @@
+Session: <session-id>
+\e[90mstatus> model=Qwen3-14B\e[0m
+\e[90mmodel> thinking... |\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[31mmodel> network error: retrying (1/4 in 0.5s) | Errno::ECONNREFUSED\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[90mmodel> thinking... /\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[0K
+\e[0K\e[1A\e[90mstatus> model=Qwen3-14B\e[0m
+ok
+\e[90mstatus> model=Qwen3-14B\e[0m
+
+Continue session: chi --resume <session-id>
+--- session ---
+system: <prompt>
+user: "hi"
+model: "ok"

@@ -1,0 +1,214 @@
+# frozen_string_literal: true
+
+require "stringio"
+require "tmpdir"
+require "samagotchi/terminal_ui"
+
+# Golden output for one interactive REPL turn, driven end to end: the real
+# assist loop reads a prompt, the kernel replays a fixture of stream events and
+# returns a result, and we capture everything written to the terminal. These
+# pin what the user sees while the turn plumbing underneath is refactored.
+#
+# Regenerate after an intended change with:
+#   UPDATE_GOLDEN=1 bundle exec rspec spec/terminal_ui_golden_spec.rb
+RSpec.describe "TerminalUI interactive turn output (golden)" do
+  def golden_dir = File.expand_path("fixtures/terminal_ui_golden", __dir__)
+
+  let(:client) { instance_double(Samagotchi::Client) }
+  let(:history_dir) { Dir.mktmpdir("golden-history") }
+
+  around do |example|
+    saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_HISTORY_FILE", "SAMAGOTCHI_THINKING_PREVIEW_LINES", "XDG_STATE_HOME")
+    ENV["SAMAGOTCHI_HISTORY_FILE"] = File.join(history_dir, "history.json")
+    ENV["XDG_STATE_HOME"] = history_dir
+    ENV.delete("SAMAGOTCHI_THINKING_PREVIEW_LINES")
+    example.run
+  ensure
+    %w[SAMAGOTCHI_DEFAULT_MODEL SAMAGOTCHI_HISTORY_FILE SAMAGOTCHI_THINKING_PREVIEW_LINES XDG_STATE_HOME].each { |k| ENV.delete(k) }
+    saved.each { |k, v| ENV[k] = v }
+    FileUtils.remove_entry(history_dir)
+  end
+
+  before { allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("") }
+
+  # Chunk events as KernelLoop emits them (thinking split by the profile).
+  def chunks(profile, *pieces, iteration: 1, payload: nil)
+    splitter = Samagotchi::ThoughtStreamSplitter.for_profile(Samagotchi::ModelProfile.normalize(profile))
+    pieces.map do |content|
+      { type: :generation_chunk, iteration: iteration, content: content,
+        thinking: splitter.feed(content)[:thinking], payload: payload || { "content" => content } }
+    end
+  end
+
+  def generation(profile, *pieces, iteration: 1, payload: nil)
+    [{ type: :generation_started, iteration: iteration }] +
+      chunks(profile, *pieces, iteration: iteration, payload: payload) +
+      [{ type: :generation_completed, iteration: iteration, content_length: pieces.join.length }]
+  end
+
+  def result_for(messages, output:, **overrides)
+    Samagotchi::KernelLoop::Result.new(
+      output: output, conversation: messages + [{ role: "model", content: output }],
+      exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false, **overrides
+    )
+  end
+
+  # Run one REPL turn: +events+ replay through the kernel's stream callback;
+  # +finish+ receives the messages the kernel got and returns its result (or
+  # raises). Returns the normalized terminal output.
+  def run_turn(model:, events:, tty: true, prompt: "hi", &finish)
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = model
+    ui = Samagotchi::TerminalUI.new(mode: :assist, client: client, no_default_input: true)
+    allow(ui).to receive(:thinking_spinner_enabled?).and_return(tty)
+    allow(ui).to receive(:color_output?).and_return(tty)
+    allow(ui).to receive(:thinking_render_min_interval).and_return(0.0)
+    allow(ui).to receive(:status_effective_width).and_return(100)
+    allow(ui).to receive(:status_server_segment).and_return("")
+    allow(Reline).to receive(:readmultiline).and_return(prompt, nil)
+    allow(ui.instance_variable_get(:@kernel)).to receive(:run) do |messages, **kwargs|
+      events.each { |event| kwargs[:on_stream_event]&.call(event) }
+      finish.call(messages)
+    end
+
+    out = StringIO.new
+    original = $stdout
+    $stdout = out
+    begin
+      ui.run
+    ensure
+      $stdout = original
+    end
+    normalize(out.string + persisted_conversation)
+  end
+
+  # The saved session's conversation (system prompt elided), so the goldens
+  # also pin what a turn leaves behind for --resume.
+  def persisted_conversation
+    path = Dir.glob(File.join(history_dir, "samagotchi", "sessions", "*.json")).first
+    return "--- no session saved ---\n" unless path
+
+    messages = JSON.parse(File.read(path))["messages"]
+    lines = messages.map do |m|
+      m["role"] == "system" ? "system: <prompt>" : "#{m["role"]}: #{m["content"].inspect}"
+    end
+    "--- session ---\n#{lines.join("\n")}\n"
+  end
+
+  def normalize(text)
+    text.gsub(/\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/, "<session-id>")
+      .gsub(/\((\d+(\.\d+)?(ms|s)|\d+m \d+s)\)/, "(<elapsed>)")
+      .gsub("\e", "\\e")
+  end
+
+  def expect_golden(name, actual)
+    path = File.join(golden_dir, "#{name}.txt")
+    if ENV["UPDATE_GOLDEN"] == "1"
+      FileUtils.mkdir_p(golden_dir)
+      File.write(path, actual)
+    end
+    expect(actual).to eq(File.read(path))
+  end
+
+  let(:memory_activity) { { action: "loading memory", tool: "memory_read", params: 'name="notes"', status: "ok" } }
+  let(:failed_activity) { { action: "running command", tool: "execute", params: 'command="false"', status: "error" } }
+
+  def tool_round(profile)
+    generation(profile, "<think>need notes</think>", "<tool_call><function=memory_read>…</function></tool_call>") + [
+      { type: :tool_dispatch_started, iteration: 1, call_count: 1 },
+      { type: :tool_call_started, iteration: 1, call_count: 1, call_index: 1, tool: "memory_read",
+        call: { name: "memory_read", content: "notes" }, params: 'name="notes"' },
+      { type: :tool_call_completed, iteration: 1, call_count: 1, call_index: 1, tool: "memory_read",
+        output: "remember milk", output_truncated: false, activity: memory_activity },
+      { type: :tool_dispatch_completed, iteration: 1, call_count: 1 }
+    ]
+  end
+
+  it "renders a Qwen answer with the turn preamble and server context" do
+    payload = { "content" => "x", "timings" => { "prompt_n" => 1200, "predicted_n" => 40 }, "n_ctx" => 32_000 }
+    events = generation("qwen36", "<think>TURN: checking the greeting\n", "some reasoning</think>", "Hello there", payload: payload)
+
+    output = run_turn(model: "Qwen3-14B", events: events) { |messages| result_for(messages, output: "Hello there") }
+
+    expect_golden("qwen_answer", output)
+  end
+
+  it "renders a Gemma answer with the thinking tail preview" do
+    events = generation("gemma4", "<|channel>thought\nweighing ", "options<channel|>", "Hi!")
+
+    output = run_turn(model: "gemma-4-e4b", events: events) { |messages| result_for(messages, output: "Hi!") }
+
+    expect_golden("gemma_answer", output)
+  end
+
+  it "renders streamed and end-of-turn tool activity plus the memory line" do
+    events = tool_round("qwen36") + generation("qwen36", "Done.", iteration: 2)
+
+    output = run_turn(model: "Qwen3-14B", events: events) do |messages|
+      result_for(messages, output: "Done.", tool_activity: [memory_activity, failed_activity])
+    end
+
+    expect_golden("tool_activity", output)
+  end
+
+  it "renders tool activity without a terminal (no spinner, no color)" do
+    events = tool_round("qwen36") + generation("qwen36", "Done.", iteration: 2)
+
+    output = run_turn(model: "Qwen3-14B", events: events, tty: false) do |messages|
+      result_for(messages, output: "Done.", tool_activity: [memory_activity, failed_activity])
+    end
+
+    expect_golden("tool_activity_plain", output)
+  end
+
+  it "renders a network retry in the spinner" do
+    events = [{ type: :generation_started, iteration: 1 },
+              { type: :generation_retrying, iteration: 1, attempt: 1, max_retries: 3, next_delay: 0.5, error_class: "Errno::ECONNREFUSED" }] +
+             chunks("qwen36", "ok") + [{ type: :generation_completed, iteration: 1, content_length: 2 }]
+
+    output = run_turn(model: "Qwen3-14B", events: events) { |messages| result_for(messages, output: "ok") }
+
+    expect_golden("retry", output)
+  end
+
+  it "stops at the iteration limit and offers to continue" do
+    output = run_turn(model: "Qwen3-14B", events: tool_round("qwen36")) do |messages|
+      Samagotchi::KernelLoop::Result.new(
+        output: "", conversation: messages + [{ role: "tool_response", content: "remember milk" }],
+        exhausted: true, pending_tool_calls: true, tool_activity: [memory_activity], canceled: false
+      )
+    end
+
+    expect_golden("iteration_limit", output)
+  end
+
+  it "reports a Ctrl-C cancel that kept partial progress" do
+    events = generation("qwen36", "<think>hmm</think>", "Partial").first(3) +
+             [{ type: :generation_cancelled, iteration: 1, reason: :ctrl_c }]
+
+    output = run_turn(model: "Qwen3-14B", events: events) do |messages|
+      Samagotchi::KernelLoop::Result.new(
+        output: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]", interrupted: true }],
+        exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: true, cancellation_reason: :ctrl_c
+      )
+    end
+
+    expect_golden("ctrl_c_cancel", output)
+  end
+
+  it "reports an Interrupt raised mid-turn" do
+    events = generation("qwen36", "<think>hmm").first(2)
+
+    output = run_turn(model: "Qwen3-14B", events: events) { |_messages| raise Interrupt }
+
+    expect_golden("interrupt", output)
+  end
+
+  it "restores the prompt after the network retries run out" do
+    events = [{ type: :generation_started, iteration: 1 }]
+    error = Samagotchi::Client::RetryExhausted.new(attempts: 4, last_error: Errno::ECONNREFUSED.new)
+
+    output = run_turn(model: "Qwen3-14B", events: events) { |_messages| raise error }
+
+    expect_golden("retry_exhausted", output)
+  end
+end

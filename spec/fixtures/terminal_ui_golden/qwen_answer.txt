@@ -1,0 +1,16 @@
+Session: <session-id>
+\e[90mstatus> model=Qwen3-14B\e[0m
+\e[90mmodel> thinking... |\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B\e[0m\e[0K\e[1A\e[36mchi> checking the greeting /\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B | ctx=3.9% (p=1200 c=40 t=1240)\e[0m\e[0K\e[1A\e[36mchi> checking the greeting -\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B | ctx=3.9% (p=1200 c=40 t=1240)\e[0m\e[0K\e[1A\e[36mchi> checking the greeting \\e[0m\e[0K
+\e[90mstatus> model=Qwen3-14B | ctx=3.9% (p=1200 c=40 t=1240)\e[0m\e[0K\e[1A\e[0K
+\e[0K\e[1A\e[90mstatus> model=Qwen3-14B | ctx=3.9% (p=1200 c=40 t=1240)\e[0m
+Hello there
+\e[90mstatus> model=Qwen3-14B | ctx=3.9% (p=1200 c=40 t=1240)\e[0m
+
+Continue session: chi --resume <session-id>
+--- session ---
+system: <prompt>
+user: "hi"
+model: "Hello there"
