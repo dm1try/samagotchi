@@ -19,6 +19,12 @@ YAML
 ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
 at_exit { FileUtils.remove_entry(SPEC_XDG_CONFIG_HOME) if File.directory?(SPEC_XDG_CONFIG_HOME) }
 
+# Likewise keep sessions/*.json and history.json out of the developer's
+# ~/.local/state/samagotchi. Unlike config, :integration examples stay here too.
+SPEC_XDG_STATE_HOME = Dir.mktmpdir("samagotchi-spec-state")
+ENV["XDG_STATE_HOME"] = SPEC_XDG_STATE_HOME
+at_exit { FileUtils.remove_entry(SPEC_XDG_STATE_HOME) if File.directory?(SPEC_XDG_STATE_HOME) }
+
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
     expectations.include_chain_clauses_in_custom_matcher_descriptions = true
