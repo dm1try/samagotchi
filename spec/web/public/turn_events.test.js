@@ -19,3 +19,78 @@ test("turnOutput is empty for a turn with no text", () => {
   assert.equal(turnOutput(null), "");
   assert.equal(turnOutput({ turn_summary: { output: "  " } }), "");
 });
+
+import { clientLabel, isOwn, newClientId, promptOps } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+const ME = "web:me";
+const none = { myId: ME, known: () => false };
+
+test("newClientId is web:<random>, different per call", () => {
+  const a = newClientId();
+  assert.match(a, /^web:[a-z0-9]{8,}$/);
+  assert.notEqual(a, newClientId());
+});
+
+test("clientLabel names the sender's kind; own/unknown have none", () => {
+  assert.equal(clientLabel("tui:123"), "tui");
+  assert.equal(clientLabel("web:abc"), "web");
+  assert.equal(clientLabel("system:reminder"), "reminder");
+  assert.equal(clientLabel(null), null);
+  assert.equal(isOwn(ME, ME), true);
+  assert.equal(isOwn(null, ME), false);
+});
+
+test("another client's turn_enqueued adds a queued bubble, once", () => {
+  const ev = { type: "turn_enqueued", enqueued_id: "e1", client_id: "tui:9", prompt: "hi" };
+  assert.deepEqual(promptOps(ev, none), [
+    { op: "add", enqueuedId: "e1", prompt: "hi", state: "queued", label: "tui" },
+  ]);
+  assert.deepEqual(promptOps(ev, { myId: ME, known: (id) => id === "e1" }), []);
+});
+
+test("own turn_enqueued tags the local echo instead of adding one", () => {
+  const ev = { type: "turn_enqueued", enqueued_id: "e2", client_id: ME, prompt: "mine" };
+  assert.deepEqual(promptOps(ev, none), [{ op: "tag", enqueuedId: "e2", prompt: "mine" }]);
+});
+
+test("turn_started starts a known bubble, or adds the prompt it never saw", () => {
+  const started = { type: "turn_started", prompt: "p", origin: { client_id: "tui:1", enqueued_id: "e3" } };
+  assert.deepEqual(promptOps(started, { myId: ME, known: (id) => id === "e3" }), [
+    { op: "start", enqueuedId: "e3", prompt: "p" },
+  ]);
+  assert.deepEqual(promptOps(started, none), [
+    { op: "add", enqueuedId: "e3", prompt: "p", state: "started", label: "tui" },
+  ]);
+});
+
+test("a reminder turn arrives only as turn_started", () => {
+  const ev = { type: "turn_started", prompt: "stand up", origin: { client_id: "system:reminder" } };
+  assert.deepEqual(promptOps(ev, none), [
+    { op: "add", enqueuedId: null, prompt: "stand up", state: "started", label: "reminder" },
+  ]);
+});
+
+test("own turn_started without a tag starts the echo by its text", () => {
+  const ev = { type: "turn_started", prompt: "mine", origin: { client_id: ME, enqueued_id: "e4" } };
+  assert.deepEqual(promptOps(ev, none), [{ op: "start", enqueuedId: "e4", prompt: "mine" }]);
+});
+
+test("a continue turn and a prompt-less start render no bubble", () => {
+  assert.deepEqual(promptOps({ type: "turn_started", prompt: "x", continue: true }, none), []);
+  assert.deepEqual(promptOps({ type: "turn_started", prompt: "" }, none), []);
+});
+
+test("input_merged steers every known origin; pending_input_merged adds the rest", () => {
+  const known = (id) => id === "e5";
+  const merged = { type: "input_merged", count: 2, origins: [{ client_id: "tui:1", enqueued_id: "e5" }, { enqueued_id: "e6" }] };
+  assert.deepEqual(promptOps(merged, { myId: ME, known }), [
+    { op: "steer", enqueuedId: "e5" },
+    { op: "steer", enqueuedId: "e6", unmatched: true },
+  ]);
+  // The merged text: shown only when some origin had no bubble.
+  const text = { type: "pending_input_merged", content: "a\nb" };
+  assert.deepEqual(promptOps(text, { myId: ME, known, unmatchedMerge: true }), [
+    { op: "add", enqueuedId: null, prompt: "a\nb", state: "steered", label: null },
+  ]);
+  assert.deepEqual(promptOps(text, { myId: ME, known, unmatchedMerge: false }), []);
+});

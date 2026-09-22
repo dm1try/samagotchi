@@ -92,6 +92,19 @@ test("sendTurn posts the prompt to the turn route", async () => {
   ]);
 });
 
+test("sendTurn sends the tab's client_id when given", async () => {
+  const calls = [];
+  await sendTurn("abc", "hi", {
+    clientId: "web:tab1",
+    fetchImpl: (path, opts) => {
+      calls.push(opts);
+      return Promise.resolve(okResponse({}));
+    },
+  });
+  assert.deepEqual(JSON.parse(calls[0].body), { prompt: "hi", client_id: "web:tab1" });
+  assert.equal(calls[0].clientId, undefined);
+});
+
 test("cancelTurn posts a user reason", async () => {
   const calls = [];
   await cancelTurn("abc", {
