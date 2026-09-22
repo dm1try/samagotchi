@@ -80,6 +80,14 @@ module Samagotchi
       post("answer", { id: id, selected: selected, freeform: freeform }, read_body: true)
     end
 
+    # POST /session/:id/turn. 202 = queued (body carries the enqueued_id the
+    # Bridge also announced in :turn_enqueued).
+    # @param client_id [String, nil] identifies the sending UI in the events
+    # @return [Response]
+    def post_turn(prompt:, client_id: nil)
+      post("turn", { session_id: @session_id, prompt: prompt, client_id: client_id }, read_body: true)
+    end
+
     # POST /session/:id/cancel. 202 = requested, 409 = no active turn.
     # @return [Response] (status only)
     def cancel(reason:)

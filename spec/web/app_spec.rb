@@ -401,6 +401,37 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "POST /api/sessions/:id/turn" do
+    it "enqueues through the live bridge, forwarding the client id and returning the bridge's enqueued_id" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(app).to receive(:live_bridge_client).with("s1").and_return(bridge)
+      allow(bridge).to receive(:post_turn).with(prompt: "hi", client_id: "web:tab-1").and_return(
+        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","enqueued_id":"e-bridge","session_id":"s1"}')
+      )
+      expect(manager).not_to receive(:write_turn_input)
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST", body: '{"prompt":"hi","client_id":"web:tab-1"}'))
+
+      expect(status).to eq(202)
+      expect(JSON.parse(body.first)).to include("status" => "accepted", "enqueued_id" => "e-bridge", "session_id" => "s1")
+      expect(manager.resume_calls.map(&:first)).to eq(["s1"])
+    end
+
+    it "falls back to the input file when no bridge comes up" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      allow(app).to receive(:live_bridge_client).and_return(nil)
+      expect(manager).to receive(:write_turn_input).with("s1", prompt: "hi", state_dir: anything).and_return(true)
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST", body: '{"prompt":"hi"}'))
+
+      expect(status).to eq(202)
+      expect(JSON.parse(body.first)).to include("status" => "accepted", "enqueued_id" => kind_of(String))
+    end
+  end
+
   describe "a session owned by the interactive TUI" do
     let(:state_dir) { Dir.mktmpdir("web-owner-spec") }
     let(:session) do

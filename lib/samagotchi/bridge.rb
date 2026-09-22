@@ -306,14 +306,30 @@ module Samagotchi
 
       sid = fetched(parsed, "session_id")
       prompt = fetched(parsed, "prompt")
+      client_id = fetched(parsed, "client_id")
       if sid.to_s.strip.empty? || prompt.to_s.strip.empty?
         return [{ "Allow" => "POST" }, 400,
                 { error: "missing_fields", detail: "session_id and prompt are required" }]
       end
 
       enqueued_id = SecureRandom.uuid
-      return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] \
-        unless enqueue_turn(session_id: sid, prompt: prompt)
+      enqueued =
+        if own_session?(sid)
+          # Write and announce with the event log held: the worker can't
+          # emit this turn's :turn_started (or merge it mid-turn) before
+          # :turn_enqueued, and a failed write announces nothing.
+          @engine.synchronize_events do
+            enqueue_turn(session_id: sid, prompt: prompt).tap do |ok|
+              next unless ok
+
+              @engine.announce(type: :turn_enqueued, enqueued_id: enqueued_id,
+                               client_id: client_id, prompt: prompt.to_s)
+            end
+          end
+        else
+          enqueue_turn(session_id: sid, prompt: prompt)
+        end
+      return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] unless enqueued
 
       [{}, 202, { status: "accepted", enqueued_id: enqueued_id, session_id: sid }]
     rescue StandardError => e

@@ -318,6 +318,29 @@ module Samagotchi
       @session_observer.event_count
     end
 
+    # Event types #announce accepts: facts about the session's input queue
+    # that live UIs need in the event log, emitted outside any turn's stream.
+    ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged].freeze
+
+    # Put a transport-level event into the ordered event log. Unlike turn
+    # events it reaches only persistent observers (no turn sink, no memory
+    # capture).
+    # @param event [Hash] with :type in ANNOUNCEABLE_EVENTS
+    # @raise [ArgumentError] for any other type
+    def announce(event)
+      unless ANNOUNCEABLE_EVENTS.include?(event[:type])
+        raise ArgumentError, "cannot announce #{event[:type].inspect} (allowed: #{ANNOUNCEABLE_EVENTS.join(", ")})"
+      end
+
+      @session_observer.notify(event)
+    end
+
+    # Run the block with the event log held: no event is numbered or
+    # delivered meanwhile, and events the block emits keep their order.
+    def synchronize_events(&block)
+      @session_observer.synchronize(&block)
+    end
+
     # ── Model switching ────────────────────────────────────────────────────────
 
     def switch_model!(model_name, persist_default: false)

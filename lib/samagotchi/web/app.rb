@@ -264,11 +264,19 @@ module Samagotchi
           return error_response(400, "invalid_json", "invalid JSON body")
         end
         prompt = body["prompt"] || body[:prompt]
+        client_id = body["client_id"] || body[:client_id]
         if prompt.to_s.strip.empty?
           return error_response(400, "missing_fields", "prompt is required")
         end
         # Ensure session exists and resume worker if needed
         @manager.resume_session(id, state_dir: @state_dir) if @manager.respond_to?(:resume_session)
+        # Through the worker's Bridge when it is up, so every live UI sees
+        # :turn_enqueued; otherwise straight into the input dir.
+        if (client = live_bridge_client(id))
+          reply = client.post_turn(prompt: prompt.to_s, client_id: client_id)
+          ack = reply.json
+          return json_response(202, ack) if reply.status == 202 && ack.is_a?(Hash)
+        end
         ok = @manager.write_turn_input(id, prompt: prompt.to_s, state_dir: @state_dir)
         unless ok
           return error_response(500, "enqueue_failed", "could not write turn input")
@@ -285,6 +293,13 @@ module Samagotchi
         error_response(409, "owned_by_tui", e.message)
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
+      end
+
+      # The session's Bridge, waiting briefly for one a resume just spawned.
+      # @return [BridgeClient, nil]
+      def live_bridge_client(id)
+        port = bridge_sidecar_port(id) || await_bridge_port(id, timeout: [@bridge_wait_timeout.to_f, 5.0].min)
+        port && BridgeClient.new(session_id: id, port: port, host: DEFAULT_HOST)
       end
 
       def owned_by_tui?(id)

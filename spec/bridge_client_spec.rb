@@ -63,6 +63,17 @@ RSpec.describe Samagotchi::BridgeClient do
     expect(finish.call).to start_with("POST /session/s1/answer HTTP/1.1\r\n").and include('{"id":"q1","selected":["A"],"freeform":null}')
   end
 
+  it "posts a turn with the client's id and returns the ACK" do
+    port, finish = serve_once(json_reply("202 Accepted", '{"status":"accepted","enqueued_id":"e1","session_id":"s1"}'))
+
+    reply = described_class.new(session_id: "s1", port: port).post_turn(prompt: "hi", client_id: "web:1")
+
+    expect(reply.status).to eq(202)
+    expect(reply.json).to include("enqueued_id" => "e1")
+    expect(finish.call).to start_with("POST /session/s1/turn HTTP/1.1\r\n")
+      .and include('{"session_id":"s1","prompt":"hi","client_id":"web:1"}')
+  end
+
   it "reads the live event cursor from /state" do
     port, finish = serve_once(json_reply("200 OK", '{"session_state_snapshot":{"event_seq":42}}'))
 

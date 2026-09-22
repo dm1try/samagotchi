@@ -462,6 +462,37 @@ RSpec.describe Samagotchi::Bridge do
       expect(resp).to have_key("enqueued_id")
     end
 
+    it "announces :turn_enqueued with the client's id and the ACK's enqueued_id" do
+      start_bridge
+      seen = []
+      @engine.subscribe(observer: ->(e) { seen << e })
+
+      status, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "hello there", client_id: "web:tab-1"))
+
+      expect(status).to eq(202)
+      expect(seen.map { |e| e.except(:event_seq) }).to eq([
+        { type: :turn_enqueued, enqueued_id: resp["enqueued_id"], client_id: "web:tab-1", prompt: "hello there" }
+      ])
+      input_dir = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input")
+      expect(Dir.children(input_dir).size).to eq(1)
+    end
+
+    it "announces nothing for a turn it forwards to another session, or fails to write" do
+      start_bridge
+      seen = []
+      @engine.subscribe(observer: ->(e) { seen << e })
+
+      other = make_session
+      status, = post_turn(JSON.generate(session_id: other.id, prompt: "for someone else"))
+      expect(status).to eq(202)
+
+      allow(Samagotchi::SessionManager).to receive(:write_turn_input).and_return(false)
+      status, = post_turn(JSON.generate(session_id: @session.id, prompt: "lost"))
+      expect(status).to eq(500)
+
+      expect(seen).to be_empty
+    end
+
     it "returns 400 for a malformed POST and creates no turn" do
       start_bridge
       status, = post_turn("")
