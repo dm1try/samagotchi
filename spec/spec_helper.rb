@@ -2,6 +2,23 @@
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 
+require "fileutils"
+require "tmpdir"
+
+# Isolate specs from the developer's ~/.config/samagotchi/config.yml (hosts,
+# memories, aliases...) with a minimal fixture config. Integration runs keep
+# the real config so they can reach the live model server.
+unless ENV["SAMAGOTCHI_INTEGRATION"] == "1"
+  spec_config_home = Dir.mktmpdir("samagotchi-spec-config")
+  FileUtils.mkdir_p(File.join(spec_config_home, "samagotchi"))
+  File.write(File.join(spec_config_home, "samagotchi", "config.yml"), <<~YAML)
+    default:
+      model: spec-model
+  YAML
+  ENV["XDG_CONFIG_HOME"] = spec_config_home
+  at_exit { FileUtils.remove_entry(spec_config_home) if File.directory?(spec_config_home) }
+end
+
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
     expectations.include_chain_clauses_in_custom_matcher_descriptions = true
