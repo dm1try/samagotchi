@@ -3,3 +3,4 @@ vendor/bundle/
 memories/
 tmp/
 *.gem
+.samagotchi_memories/
