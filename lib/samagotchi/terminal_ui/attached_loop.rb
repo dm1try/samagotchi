@@ -4,6 +4,7 @@ require "set"
 require_relative "event_renderer"
 require_relative "formatting"
 require_relative "attached_view"
+require_relative "question_prompt"
 require_relative "../bridge_client"
 
 module Samagotchi
@@ -27,20 +28,35 @@ module Samagotchi
 
       # Reads input lines on its own thread, so events keep rendering while
       # the user types, and hands each line (nil = Ctrl-D) or Ctrl-C to the
-      # loop's queue.
+      # loop's queue. #reprompt makes it drop the open read and start again
+      # with the current prompt (a question opened or closed).
       class LineReader
+        # Raised into the reader thread; only lands inside a read.
+        class Reprompt < StandardError; end
+
+        # @param prompt [#call] -> the prompt for the next read
         # @param read [#call, nil] prompt -> line; defaults to Reline on a
         #   terminal, else $stdin
         def initialize(queue, prompt:, read: nil)
           @queue = queue
           @prompt = prompt
           @read = read || method(:read_line)
+          @current = nil
         end
 
+        # @return [String, nil] the prompt of the read in progress
+        attr_reader :current
+
         def start
-          @thread = Thread.new { run }
+          # Created masked (threads inherit the mask), so a Reprompt raised
+          # before #run is entered waits for the first read too.
+          Thread.handle_interrupt(Reprompt => :never) { @thread = Thread.new { run } }
           @thread.report_on_exception = false
           self
+        end
+
+        def reprompt
+          @thread&.raise(Reprompt)
         end
 
         def stop
@@ -51,12 +67,20 @@ module Samagotchi
         private
 
         def run
-          loop do
-            line = @read.call(@prompt)
-            @queue << [:line, line]
-            break if line.nil?
-          rescue Interrupt
-            @queue << [:interrupt]
+          # A Reprompt may only interrupt the read itself; one that comes
+          # while a line is being handed over waits for the next read (and
+          # just restarts it). The mask is also inherited from #start.
+          Thread.handle_interrupt(Reprompt => :never) do
+            loop do
+              @current = @prompt.call
+              line = Thread.handle_interrupt(Reprompt => :immediate) { @read.call(@current) }
+              @queue << [:line, line]
+              break if line.nil?
+            rescue Reprompt
+              next
+            rescue Interrupt
+              @queue << [:interrupt]
+            end
           end
         end
 
@@ -70,7 +94,10 @@ module Samagotchi
       # Prompt labels by the sender's client_id prefix.
       CLIENT_LABELS = { "web" => "web", "tui" => "tui", "system" => "reminder" }.freeze
 
-      attr_reader :client_id, :recap, :pending_question
+      attr_reader :client_id, :recap
+
+      # @return [QuestionPrompt, nil] the question waiting for an answer
+      attr_reader :question
 
       # @param client [BridgeClient]
       # @param screen [AttachedScreen]
@@ -86,7 +113,9 @@ module Samagotchi
         @joined_mid_turn = false
         @attached = false
         @recap = nil
-        @pending_question = nil
+        @question = nil
+        @answered_ids = Set.new
+        @reader = nil
       end
 
       def running? = @running
@@ -98,7 +127,7 @@ module Samagotchi
       def run(input: nil)
         queue = Thread::Queue.new
         stream = @client.follow { |event| queue << [:event, event] }
-        reader = LineReader.new(queue, prompt: paint(PROMPT, 92), read: input).start
+        @reader = LineReader.new(queue, prompt: method(:prompt_text), read: input).start
         loop do
           kind, payload = next_item(queue)
           case kind
@@ -108,7 +137,7 @@ module Samagotchi
           end
         end
       ensure
-        reader&.stop
+        @reader&.stop
         stream&.close
       end
 
@@ -128,8 +157,10 @@ module Samagotchi
         when :input_merged
           count = event[:count].to_i
           @screen.print_line("(#{count} message#{"s" unless count == 1} merged into the running turn)")
-        when :question_requested then @pending_question = event[:pending_question]
-        when :question_answered, :question_cancelled then @pending_question = nil
+        when :question_requested then ask(event[:pending_question])
+        when :question_answered then question_answered(event)
+        when :question_cancelled
+          close_question("(question cancelled)") if @question
         when :recap_ready then @recap = event[:recap]
         when :stream_closed
           @view.finish_thinking_spinner
@@ -167,6 +198,7 @@ module Samagotchi
         end
 
         text = line.strip
+        return answer_question(text) if @question
         return if text.empty?
         return submit(nil) if DETACH_COMMANDS.include?(text)
 
@@ -194,6 +226,71 @@ module Samagotchi
       def show_stats
         metrics = @client.get_json("state")&.dig("session_state_snapshot", "metrics")
         @screen.print_line(metrics ? format_session_metrics(EventRenderer.deep_symbolize_keys(metrics)) : "(no metrics: the worker did not answer)")
+      end
+
+      def prompt_text
+        @question ? paint("choice> ", 33) : paint(PROMPT, 92)
+      end
+
+      # Show the question and switch the open prompt to answer it.
+      def ask(pending)
+        return unless pending
+
+        @view.finish_thinking_spinner
+        @question = QuestionPrompt.new(pending)
+        @question.lines(paint: method(:paint), color: color_output?).each { |line| @screen.print_line(line) }
+        sync_prompt
+      end
+
+      # An empty answer keeps the question open: unlike the REPL (which
+      # cancels it), the Bridge has no endpoint to dismiss a question, and
+      # Ctrl-C still cancels the turn.
+      def answer_question(text)
+        return if text.empty?
+
+        answer = @question.parse(text)
+        @screen.print_line(answer.note) if answer.note
+        return @screen.print_line(answer.error) unless answer.ok?
+
+        reply = @client.answer(id: @question.id, selected: answer.selected, freeform: answer.freeform)
+        case reply.status
+        when 200
+          @answered_ids << @question.id
+          close_question(nil)
+        when 409 then close_question("(already answered in another UI)")
+        else
+          detail = reply.json&.fetch("detail", nil) || reply.json&.fetch("error", nil)
+          @screen.print_line("could not answer (#{[reply.status, detail].compact.join(" ")})")
+        end
+        nil
+      end
+
+      def question_answered(event)
+        return unless @question
+        return close_question(nil) if @answered_ids.include?(event[:id])
+
+        answer = event[:answer] || {}
+        picked = [*Array(answer[:selected]), answer[:freeform]].compact.join(", ")
+        close_question("(answered in another UI: #{picked})")
+      end
+
+      def close_question(message)
+        @screen.print_line(message) if message
+        @question = nil
+        sync_prompt
+      end
+
+      # Restart the open read when its prompt no longer fits (a question
+      # opened or closed), first erasing the prompt Reline drew.
+      def sync_prompt
+        return unless @reader
+
+        @screen.synchronize do
+          next if @reader.current == prompt_text
+
+          @screen.erase_prompt
+          @reader.reprompt
+        end
       end
 
       # Ctrl-C cancels the running turn (whoever started it); at an idle
@@ -234,7 +331,6 @@ module Samagotchi
       def render_current_turn(turn)
         @running = !turn.nil?
         @joined_mid_turn = @running
-        @pending_question = turn && turn[:pending_question]
         return unless turn
 
         @screen.print_line(prompt_line(turn.dig(:origin, :client_id), turn[:prompt]))
@@ -253,6 +349,7 @@ module Samagotchi
           end
         end
         @view.resume(tail: tail, tool: running_tool)
+        ask(turn[:pending_question]) if turn[:pending_question]
       end
 
       def show_enqueued(event)
@@ -281,7 +378,7 @@ module Samagotchi
         @renderer.call(event)
         @running = false
         @joined_mid_turn = false
-        @pending_question = nil
+        close_question(nil) if @question
       end
 
       def end_turn(message)
@@ -289,7 +386,7 @@ module Samagotchi
         @screen.print_line(message)
         @running = false
         @joined_mid_turn = false
-        @pending_question = nil
+        close_question(nil) if @question
       end
 
       def own?(client_id) = !client_id.nil? && client_id == @client_id

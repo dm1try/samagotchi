@@ -157,6 +157,19 @@ module Samagotchi
         @status_shown = false
       end
 
+      # Erase the prompt Reline has drawn (its read is about to be dropped
+      # and started again with another prompt).
+      def erase_prompt
+        synchronize do
+          next unless @canvas.drawn?
+
+          up = @canvas.cursor_y
+          @out.write("#{"\e[#{up}A" if up.positive?}\r\e[J")
+          @out.flush
+          @canvas.forget_rendered!
+        end
+      end
+
       def detach
         LineEditorHooks.screen = nil if LineEditorHooks.screen.equal?(self)
       end

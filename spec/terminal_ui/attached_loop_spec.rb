@@ -230,3 +230,104 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
     expect(client).to have_received(:cancel).once
   end
 end
+
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
+  let(:screen) do
+    Class.new do
+      attr_reader :lines
+
+      def initialize = @lines = []
+      def print_line(text) = @lines << text
+      def status=(_text); end
+      def columns = 80
+      def synchronize = yield
+      def erase_prompt; end
+    end.new
+  end
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
+  let(:question) { { "id" => "q1", "question" => "Which one?", "options" => %w[Apple Banana Cherry] } }
+  let(:typed) { Queue.new }
+  let(:prompts) { [] }
+
+  def snapshot(pending_question: nil)
+    turn = { "prompt" => "p", "parts" => [], "pending_question" => pending_question }
+    { "type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => turn, "queued" => [], "event_seq" => 1 } }
+  end
+
+  # Runs the loop on a thread. The fake terminal blocks in each read, like
+  # Reline, until the spec types a line; events are pushed with #push.
+  def start(first: snapshot)
+    allow(client).to receive(:follow) do |&block|
+      @push = block
+      block.call(first)
+      double("stream", close: nil)
+    end
+    @thread = Thread.new { attached.run(input: ->(prompt) { prompts << prompt; typed.pop }) }
+    wait_for { prompts.any? }
+  end
+
+  def push(event) = @push.call(event)
+
+  def wait_for(timeout: 2)
+    deadline = Time.now + timeout
+    sleep 0.01 until yield || Time.now > deadline
+    expect(yield).to be_truthy
+  end
+
+  def finish
+    typed << nil
+    @thread.join(2)
+  end
+
+  it "asks a question at the choice prompt and sends the answer" do
+    allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
+    start
+    push("type" => "question_requested", "pending_question" => question)
+
+    wait_for { prompts.last == "choice> " }
+    expect(screen.lines).to include("? Which one?", "  2) Banana")
+    typed << "2"
+    wait_for { prompts.last == "> " }
+    finish
+
+    expect(client).to have_received(:answer).with(id: "q1", selected: ["Banana"], freeform: nil)
+  end
+
+  it "re-asks after an invalid answer, and closes when another UI answers first" do
+    start
+    push("type" => "question_requested", "pending_question" => question)
+    wait_for { prompts.last == "choice> " }
+
+    typed << "9"
+    wait_for { screen.lines.include?("Invalid choice '9': pick 1-3") }
+    push("type" => "question_answered", "id" => "q1", "answer" => { "selected" => ["Apple"], "freeform" => nil })
+    wait_for { prompts.last == "> " }
+    finish
+
+    expect(screen.lines).to include("(answered in another UI: Apple)")
+  end
+
+  it "says so when its answer came too late" do
+    allow(client).to receive(:answer)
+      .and_return(Samagotchi::BridgeClient::Response.new(status: 409, body: '{"error":"question_not_pending"}'))
+    start(first: snapshot(pending_question: question))
+    wait_for { prompts.last == "choice> " }
+
+    typed << "1"
+    wait_for { prompts.last == "> " }
+    finish
+
+    expect(screen.lines).to include("? Which one?", "(already answered in another UI)")
+  end
+
+  it "keeps waiting on an empty answer (there is no way to dismiss a question over the Bridge)" do
+    start(first: snapshot(pending_question: question))
+    wait_for { prompts.last == "choice> " }
+
+    typed << ""
+    finish
+
+    expect(prompts.last).to eq("choice> ")
+  end
+end
