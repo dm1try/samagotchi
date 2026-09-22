@@ -51,7 +51,8 @@ module Samagotchi
       end
     end
 
-    # Spawn a new background session that processes the given prompt.
+    # Spawn a new background session that processes the given prompt (or,
+    # with none, waits idle for input).
     #
     # Returns the session object with its ID. Every worker always starts its
     # per-session Bridge (the single live client transport), so external
@@ -63,7 +64,9 @@ module Samagotchi
         model_name: model_name || Samagotchi::ModelProfile.required_model_name,
         working_directory: working_directory || Dir.pwd
       )
-      session.status = Session::STATUS_RUNNING
+      # With no prompt there is no first turn to run (an attaching UI sends
+      # the prompts), so the session starts idle.
+      session.status = prompt.to_s.strip.empty? ? Session::STATUS_IDLE : Session::STATUS_RUNNING
       session.last_prompt = prompt
       session_dir = Session.session_dir(session.id, state_dir: sd)
       setup_session_directory(session_dir, session, state_dir: sd)

@@ -53,6 +53,34 @@ RSpec.describe Samagotchi::BridgeClient do
     end
   end
 
+  describe ".wait_for" do
+    let(:dir) { Dir.mktmpdir("bridge-client") }
+    after { FileUtils.remove_entry(dir) }
+
+    it "returns a client once the worker publishes a live sidecar" do
+      server = TCPServer.new("127.0.0.1", 0)
+      writer = Thread.new do
+        sleep 0.25
+        File.write(File.join(dir, "bridge.json"), JSON.generate(port: server.local_address.ip_port))
+      end
+
+      client = described_class.wait_for("s1", session_dir: dir, timeout: 3)
+
+      expect(client.port).to eq(server.local_address.ip_port)
+      expect(client.session_id).to eq("s1")
+    ensure
+      writer&.join
+      server&.close
+    end
+
+    it "gives up with nil at the deadline" do
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      expect(described_class.wait_for("s1", session_dir: dir, timeout: 0.3)).to be_nil
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be_between(0.3, 1.0)
+    end
+  end
+
   it "posts an answer and exposes the reply status and JSON body" do
     port, finish = serve_once(json_reply("409 Conflict", '{"error":"question_not_pending","detail":"already answered"}'))
 

@@ -110,6 +110,17 @@ RSpec.describe Samagotchi::SessionManager do
   end
 
   describe ".spawn_session" do
+    it "starts a session with no prompt idle, with nothing to run" do
+      allow(Process).to receive(:spawn).and_return(12_345)
+
+      session = described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+
+      loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      expect(loaded.status).to eq(Samagotchi::Session::STATUS_IDLE)
+      expect(loaded.last_prompt.to_s).to eq("")
+      expect(Process).to have_received(:spawn)
+    end
+
     it "spawns worker with explicit require for session manager" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       allow(Samagotchi::Session).to receive(:new_session).and_return(session)

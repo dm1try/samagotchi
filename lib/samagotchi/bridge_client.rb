@@ -68,6 +68,28 @@ module Samagotchi
       port && new(session_id: session_id, port: port, host: host)
     end
 
+    # Wait for a freshly spawned worker to publish its Bridge.
+    # @param timeout [Float] seconds
+    # @return [BridgeClient, nil] nil when no live sidecar appeared in time
+    def self.wait_for(session_id, session_dir:, timeout:, host: HOST)
+      port = poll(timeout) { sidecar_port(session_dir, host: host) }
+      port && new(session_id: session_id, port: port, host: host)
+    end
+
+    # Call the block every +interval+ seconds until it returns a truthy value
+    # or +timeout+ seconds have passed (it is always called at least once).
+    # @return [Object, nil] the block's first truthy value
+    def self.poll(timeout, interval: 0.1)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout.to_f
+      loop do
+        value = yield
+        return value if value
+        return nil if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+        sleep(interval)
+      end
+    end
+
     attr_reader :session_id, :port, :host
 
     def initialize(session_id:, port:, host: HOST)
