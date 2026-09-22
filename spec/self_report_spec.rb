@@ -46,8 +46,8 @@ RSpec.describe Samagotchi::SelfReport do
     expect(field("hooks dir")).to eq(File.join(tmp, "my_hooks/"))
   end
 
-  it "falls back to the default hooks dir" do
-    expect(field("hooks dir")).to eq(File.join(tmp, ".config/samagotchi/hooks/"))
+  it "falls back to the hooks dir next to config.yml" do
+    expect(field("hooks dir")).to eq(File.join(config_home, "samagotchi/hooks/"))
   end
 
   it "reports the configured model with its host" do

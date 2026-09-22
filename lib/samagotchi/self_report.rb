@@ -63,7 +63,7 @@ module Samagotchi
     def hooks_dir(env)
       data = ConfigFile.read_yaml(path: ConfigFile.global_path(env: env))
       configured = data.is_a?(Hash) && data["hooks"].is_a?(Hash) ? data["hooks"]["hooks_dir"] : nil
-      Hooks::Loader.expand_path(configured || Hooks::Loader::DEFAULT_HOOKS_DIR, env)
+      Hooks::Loader.expand_path(configured || Hooks::Loader.default_hooks_dir(env), env)
     end
 
     def model_name

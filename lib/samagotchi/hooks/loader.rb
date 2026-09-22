@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "registry"
+require_relative "../config"
 
 module Samagotchi
   module Hooks
@@ -20,7 +21,7 @@ module Samagotchi
     #
     # Config format:
     #   hooks:
-    #     hooks_dir: "~/.config/samagotchi/hooks/"
+    #     hooks_dir: "~/my_hooks/"   # default: <config dir>/hooks/, next to config.yml
     #     turn_start:
     #       - path: "my_hook.rb"
     #         on_error: skip  # or "log"
@@ -29,9 +30,12 @@ module Samagotchi
     # The loader creates a `Hooks::Registry` instance, loads plugins, and
     # registers each plugin's `call` method as a Proc under the specified event name.
     class Loader
-      DEFAULT_HOOKS_DIR = "~/.config/samagotchi/hooks/".freeze
-
       class << self
+        # $XDG_CONFIG_HOME/samagotchi/hooks/ or ~/.config/samagotchi/hooks/.
+        def default_hooks_dir(env = ENV)
+          File.join(ConfigFile.config_dir(env: env), "hooks", "")
+        end
+
         # Load hooks from a config hash and return a Registry with registered plugins.
         #
         # @param config_hash [Hash, nil] the hooks section from config.yml
@@ -41,7 +45,7 @@ module Samagotchi
           return Hooks::Registry.new unless config_hash&.key?("hooks")
 
           hooks_config = config_hash["hooks"]
-          hooks_dir = expand_path(hooks_config["hooks_dir"] || DEFAULT_HOOKS_DIR, env)
+          hooks_dir = expand_path(hooks_config["hooks_dir"] || default_hooks_dir(env), env)
 
           registry = Hooks::Registry.new
           definitions = parse_definitions(hooks_config)
