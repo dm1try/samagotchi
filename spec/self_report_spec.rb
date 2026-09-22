@@ -37,6 +37,12 @@ RSpec.describe Samagotchi::SelfReport do
     expect(field("sessions")).to eq(File.join(tmp, "state", "samagotchi", "sessions"))
   end
 
+  it "resolves the memory dirs from the XDG env it is given" do
+    memories = File.join(config_home, "samagotchi", "memories")
+    expect(field("memories")).to eq(memories)
+    expect(field("project memories")).to eq(File.join(memories, "projects", Samagotchi::MemoryPaths.project_key))
+  end
+
   it "flags a missing config file" do
     expect(field("config")).to end_with("config.yml (missing)")
   end

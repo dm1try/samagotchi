@@ -117,7 +117,7 @@ module Samagotchi
         File.join(memories_dir(scope), "#{entry_name}.md")
       end
 
-      def self.memories_dir(scope)
+      def self.memories_dir(scope, env: ENV)
         # Respect MemoryBundle overrides for test isolation (e.g. SystemBundle ensure in specs).
         if defined?(Samagotchi::MemoryBundle::Installer) &&
            Samagotchi::MemoryBundle::Installer.system_dir_override
@@ -128,7 +128,7 @@ module Samagotchi
             return Samagotchi::MemoryBundle::Installer.system_dir
           end
         end
-        scope == "project" ? MemoryPaths.project_dir : MemoryPaths.system_dir
+        scope == "project" ? MemoryPaths.project_dir(env: env) : MemoryPaths.system_dir(env: env)
       end
     end
 
