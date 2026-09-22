@@ -47,3 +47,15 @@ test("previewOf truncates at 40 chars with an ellipsis", () => {
 test("previewOf keeps short text unchanged", () => {
   assert.equal(previewOf("short"), "short");
 });
+import { ownerBadge } from "../../../lib/samagotchi/web/public/format.js";
+
+test("ownerBadge marks live sessions by who holds them", () => {
+  assert.deepEqual(ownerBadge("worker", "abc"), {
+    kind: "worker", text: "live", title: "A worker runs this session; a terminal joins with: chi --attach abc",
+  });
+  assert.deepEqual(ownerBadge("tui", "abc"), {
+    kind: "tui", text: "terminal", title: "A terminal chi owns this session and doesn't share it (chi --shared would)",
+  });
+  assert.equal(ownerBadge(null, "abc"), null);
+  assert.equal(ownerBadge(undefined, "abc"), null);
+});

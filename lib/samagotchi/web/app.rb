@@ -117,7 +117,10 @@ module Samagotchi
                    else
                      @manager.list_sessions(sort: sort, order: order, limit: limit, offset: offset)
                    end
-        payload = sessions.map { |s| session_to_json(s, status: displayed_status(s)) }
+        payload = sessions.map do |s|
+          owner = session_owner(s.id)
+          session_to_json(s, status: displayed_status(s, owner: owner), owner: owner)
+        end
         # Expose total via header for pagination (total unordered count)
         headers = { "Content-Type" => "application/json; charset=utf-8", "Cache-Control" => "no-store", "Access-Control-Allow-Origin" => "*" }
         # Compute total without limit/offset for header
@@ -198,8 +201,9 @@ module Samagotchi
                   elsif session.respond_to?(:pending_question)
                     session.pending_question
                   end
+        owner = session_owner(id)
         json_response(200, {
-          session: session_to_json(session, status: displayed_status(session, snapshot)),
+          session: session_to_json(session, status: displayed_status(session, snapshot, owner: owner), owner: owner),
           history: history,
           messages: messages_for_display(turn_snapshot ? turn_snapshot["messages"] : session.messages),
           current_turn: current_turn,
@@ -314,9 +318,17 @@ module Samagotchi
       end
 
       def owned_by_tui?(id)
-        return false unless @manager.respond_to?(:session_owner)
+        session_owner(id)&.fetch("kind", nil) == "tui"
+      end
 
-        @manager.session_owner(id, state_dir: @state_dir)&.fetch("kind", nil) == "tui"
+      # The process holding the session: {"pid", "kind" => "worker"|"tui"}, or
+      # nil. A worker always runs a Bridge; a TUI (plain `chi`) doesn't share.
+      def session_owner(id)
+        return nil unless @manager.respond_to?(:session_owner)
+
+        @manager.session_owner(id, state_dir: @state_dir)
+      rescue StandardError
+        nil
       end
 
       def handle_cancel(req, id)
@@ -513,15 +525,16 @@ module Samagotchi
       # status is turn state (idle/running). The live worker's snapshot is the
       # truth; on disk, a "running" with no live owner was left by a worker
       # that died mid-turn.
-      def displayed_status(session, snapshot = nil)
+      def displayed_status(session, snapshot = nil, owner: session_owner(session.id))
         return snapshot["status"] if snapshot.is_a?(Hash) && snapshot["status"]
         return session.status unless session.status == Session::STATUS_RUNNING
         return session.status unless @manager.respond_to?(:session_owner)
 
-        @manager.session_owner(session.id, state_dir: @state_dir) ? session.status : Session::STATUS_IDLE
+        owner ? session.status : Session::STATUS_IDLE
       end
 
-      def session_to_json(s, status: s.status)
+      # @param owner [Hash, nil] #session_owner; its kind is shown as `owner`
+      def session_to_json(s, status: s.status, owner: nil)
         used = s.respond_to?(:used_memory_names) ? Array(s.used_memory_names) : []
         {
           id: s.id,
@@ -535,7 +548,8 @@ module Samagotchi
           short_id: s.id.to_s[0, 8],
           test_run: !!s.test_run,
           used_memory_names: used,
-          first_preview: first_preview_for(s)
+          first_preview: first_preview_for(s),
+          owner: owner&.fetch("kind", nil)
         }
       end
 

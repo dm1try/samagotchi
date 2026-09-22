@@ -461,6 +461,24 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(show.first).dig("session", "status")).to eq("idle")
     end
 
+    it "names each session's owner (worker, tui or none) in the list and the session view" do
+      worker, tui, free = %w[idle idle idle].map { |st| saved_session(st) }
+      locks = { worker => "worker", tui => "tui" }.map do |session, kind|
+        Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), kind: kind)
+      end
+      allow(app).to receive(:bridge_get_json).and_return(nil)
+      allow(app).to receive(:bridge_event_seq).and_return(nil)
+
+      _, _, list = app.call(env_for("/api/sessions"))
+      owners = JSON.parse(list.first).to_h { |s| [s["id"], s["owner"]] }
+      _, _, show = app.call(env_for("/api/sessions/#{tui.id}"))
+
+      expect(owners).to eq(worker.id => "worker", tui.id => "tui", free.id => nil)
+      expect(JSON.parse(show.first).dig("session", "owner")).to eq("tui")
+    ensure
+      locks&.each(&:release)
+    end
+
     it "takes the turn state from the live worker when there is one" do
       session = saved_session("running")
       lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), kind: "worker")
