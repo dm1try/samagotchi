@@ -23,7 +23,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #stage{flex:1;display:flex;flex-direction:column;position:relative;min-height:260px;background:#0b0d11;overflow:hidden}
 #firstPeek{display:none;padding:8px 12px;background:#9fddd0;color:#0b0d11;font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #firstPeek.visible{display:block}
-#composer #actionBtn.cancel{background:#da3633}
+#composer #cancelBtn{background:#da3633;font-size:12px;padding:6px 10px;min-height:28px}
 #history{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px;background:#0b0d11;min-height:160px}
 .bubble{background:#151821;border:1px solid #1f232b;border-radius:12px;padding:12px 14px;white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5}
 .bubble.output{border-left:3px solid #1f6feb}
@@ -183,6 +183,7 @@ a{color:#7aa5ff}
           <button id="actionMenuBtn" class="ghost" title="More actions" style="padding:8px 10px">▾</button>
         </div>
         <button id="createAltBtn" class="ghost" style="visibility:hidden">Create new</button>
+        <button id="cancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Cancel</button>
       </div>
       <div id="actionMenu">
         <button data-action="send">Send to current session</button>
