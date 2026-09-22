@@ -24,7 +24,7 @@ module Samagotchi
         when :turn_started
           begin_turn
         when :generation_started
-          @view.generation_feedback_started
+          @view.generation_feedback_started(event)
         when :generation_retrying
           @view.generation_feedback_retrying(event)
         when :generation_chunk

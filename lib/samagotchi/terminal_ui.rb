@@ -10,6 +10,7 @@ require_relative "model_profile"
 require_relative "config"
 require_relative "host_registry"
 require_relative "context_usage"
+require_relative "context_window"
 require_relative "kernel_loop"
 require_relative "session"
 require_relative "owner_lock"
@@ -668,7 +669,8 @@ module Samagotchi
       reset_thinking_tool_notification
     end
 
-    def generation_feedback_started
+    def generation_feedback_started(event = {})
+      @context_window_tokens = event[:context_window_tokens] if event[:context_window_tokens]
       start_cancel_hotkey_monitor(@active_cancel_controller)
       clear_retry_spinner_status
       @latest_server_context_status = nil
@@ -1325,6 +1327,9 @@ module Samagotchi
       lines << "gen latency (ms): #{snapshot[:gen_latency_ms]}"
       lines << "cancellations:    #{snapshot[:cancellations]}"
       lines << "retries:          #{snapshot[:retries]}"
+      if snapshot[:context_window_tokens]
+        lines << "context window:   #{snapshot[:context_window_tokens]} tokens (#{snapshot[:context_window_source]})"
+      end
       lines.join("\n")
     end
 
@@ -2230,7 +2235,9 @@ module Samagotchi
     end
 
     def capture_server_context_status_from_payload(payload)
-      window_tokens = begin Samagotchi::Config.get("context.window_tokens") rescue nil end
+      # The window the kernel resolved for this generation (see
+      # :generation_started); the configured one before the first generation.
+      window_tokens = @context_window_tokens || ContextWindow.configured.tokens
       normalized = ContextUsage.normalize(payload, window_tokens: window_tokens)
       return unless normalized
 

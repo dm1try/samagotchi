@@ -850,6 +850,21 @@ file2.rb")
       expect(status).not_to include("20plus")
     end
 
+    it "computes ctx% against the window :generation_started resolved when the payload has no n_ctx" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:color_output?).and_return(false)
+
+      agent.send(:handle_stream_event, type: :generation_started, context_window_tokens: 1000, context_window_source: :server)
+      agent.send(
+        :handle_stream_event,
+        type: :generation_chunk,
+        content: "chunk",
+        payload: { "stop" => true, "tokens_evaluated" => 120, "tokens_predicted" => 30 }
+      )
+
+      expect(agent.send(:build_status_line, scope: :spinner)).to include("ctx=15.0%")
+    end
+
     it "falls back to estimated CONTEXT_STATUS when server usage is unavailable" do
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:color_output?).and_return(false)

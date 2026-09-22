@@ -30,9 +30,16 @@ module Samagotchi
     end
 
     # The window without asking a server: config, env, then the default.
-    def configured
+    # `env` resolves against that env's config file instead of the live
+    # process config (for `chi self`).
+    def configured(env: nil)
       value, origin = begin
-        Config.get_with_origin("context.window_tokens")
+        if env
+          file_data = ConfigFile.read_yaml(path: ConfigFile.global_path(env: env))
+          Config.resolve_with_origin("context.window_tokens", file_data: file_data, env: env)
+        else
+          Config.get_with_origin("context.window_tokens")
+        end
       rescue StandardError
         [nil, :default]
       end

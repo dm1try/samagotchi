@@ -36,6 +36,13 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(output).to include("tokens in/out:")
       expect(output).to include("10/5")
     end
+
+    it "shows the context window and where it came from in /stats" do
+      metrics = agent.instance_variable_get(:@engine).metrics
+      metrics.call(type: :generation_started, context_window_tokens: 128_000, context_window_source: :server)
+
+      expect(agent.send(:format_session_metrics, metrics.snapshot)).to include("context window:   128000 tokens (server)")
+    end
   end
 
   describe "idle activity hook" do

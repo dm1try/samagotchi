@@ -3,6 +3,7 @@
 require "json"
 require_relative "version"
 require_relative "config"
+require_relative "context_window"
 require_relative "session"
 require_relative "model_profile"
 require_relative "host_registry"
@@ -43,6 +44,7 @@ module Samagotchi
         ["model", model || "(not configured)"],
         ["host", model ? host_for(model, env) : "-"],
         ["backend", LLM::Factory.resolve_provider(nil, env: env).to_s],
+        ["context window", context_window(env)],
         ["bundles", bundles_summary]
       ]
     end
@@ -64,6 +66,12 @@ module Samagotchi
       data = ConfigFile.read_yaml(path: ConfigFile.global_path(env: env))
       configured = data.is_a?(Hash) && data["hooks"].is_a?(Hash) ? data["hooks"]["hooks_dir"] : nil
       Hooks::Loader.expand_path(configured || Hooks::Loader.default_hooks_dir(env), env)
+    end
+
+    # Offline, so only the fallback: the running server's n_ctx wins at runtime.
+    def context_window(env)
+      window = ContextWindow.configured(env: env)
+      "#{window.tokens} (#{window.source}; the server's n_ctx wins at runtime)"
     end
 
     def model_name

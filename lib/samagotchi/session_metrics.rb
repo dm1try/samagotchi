@@ -109,6 +109,10 @@ module Samagotchi
         record_tool_call_completed(event)
       when :generation_started
         @mutex.synchronize do
+          if event[:context_window_tokens]
+            @context_window_tokens = event[:context_window_tokens]
+            @context_window_source = event[:context_window_source]
+          end
           if @turn
             @turn.gen_started_at = monotonic_time
             @turn.gen_completion_max = 0
@@ -144,6 +148,8 @@ module Samagotchi
           tokens_out: @tokens_out,
           tokens_total: @tokens_total,
           token_source: @token_source,
+          context_window_tokens: @context_window_tokens,
+          context_window_source: @context_window_source,
           tool_calls_total: @tool_calls_total,
           tool_calls_by_tool: @tool_calls_by_tool.dup,
           tool_errors: @tool_errors,

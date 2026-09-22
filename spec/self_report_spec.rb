@@ -56,6 +56,16 @@ RSpec.describe Samagotchi::SelfReport do
     expect(field("hooks dir")).to eq(File.join(config_home, "samagotchi/hooks/"))
   end
 
+  it "reports the fallback context window and its source (the server's own window wins at runtime)" do
+    expect(field("context window")).to eq("256000 (default; the server's n_ctx wins at runtime)")
+
+    write_config("context:\n  window_tokens: 64000\n")
+    expect(field("context window")).to eq("64000 (config; the server's n_ctx wins at runtime)")
+
+    env["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"] = "32000"
+    expect(field("context window")).to eq("32000 (env; the server's n_ctx wins at runtime)")
+  end
+
   it "reports the configured model with its host" do
     write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
     allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model")

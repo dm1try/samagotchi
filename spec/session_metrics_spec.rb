@@ -51,6 +51,19 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:cancellations]).to eq(0)
   end
 
+  it "keeps the latest context window :generation_started reported" do
+    expect(metrics.snapshot).to include(context_window_tokens: nil, context_window_source: nil)
+
+    feed([
+      { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+      { type: :generation_started, iteration: 1, context_window_tokens: 256_000, context_window_source: :default },
+      { type: :generation_started, iteration: 2, context_window_tokens: 128_000, context_window_source: :server },
+      { type: :generation_started, iteration: 3 }
+    ])
+
+    expect(metrics.snapshot).to include(context_window_tokens: 128_000, context_window_source: :server)
+  end
+
   it "falls back to the chars/4 estimate when no server data is present" do
     feed([
       { type: :turn_started, session_id: "sess-2", prompt: "x" },
