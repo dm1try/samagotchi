@@ -82,6 +82,15 @@ module Samagotchi
         @screen.status = nil
       end
 
+      # Pick up a turn joined mid-way (from the Bridge snapshot): the model's
+      # text so far, or the tool it is running.
+      def resume(tail: nil, tool: nil)
+        @thinking = true
+        @tail = +tail.to_s
+        @tool = tool && "running #{tool}"
+        redraw_status
+      end
+
       def capture_context_status(status)
         @context_status = status if status
       end
