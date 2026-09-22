@@ -234,6 +234,32 @@ RSpec.describe Samagotchi::SessionManager do
         described_class.run_session_loop(session.id, state_dir: tmpdir)
       }.to raise_error(SystemExit)
     end
+
+    it "does not replay the last prompt when resuming a session with history" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.messages = [{ role: "user", content: "earlier" }, { role: "model", content: "answer" }]
+      session.last_prompt = "earlier"
+      session.save(state_dir: tmpdir)
+
+      engine = instance_double(Samagotchi::Engine)
+      allow(Samagotchi::Engine).to receive(:new).and_return(engine)
+      allow(engine).to receive(:start_idle)
+      allow(engine).to receive(:reminder_store).and_return(nil)
+      sub_handle = double("subscribe_handle")
+      allow(sub_handle).to receive(:unsubscribe)
+      allow(engine).to receive(:subscribe).and_return(sub_handle)
+      expect(engine).not_to receive(:run_turn)
+      # Stop on the first poll so the loop exits.
+      allow(described_class).to receive(:find_new_input_files) do
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+        []
+      end
+
+      expect {
+        described_class.run_session_loop(session.id, state_dir: tmpdir)
+      }.to raise_error(SystemExit)
+      expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).last_prompt).to eq("earlier")
+    end
   end
 
   describe ".read_responses" do

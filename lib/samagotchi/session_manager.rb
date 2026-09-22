@@ -318,8 +318,11 @@ module Samagotchi
           end
         end
 
-        # Process the initial prompt
-        unless session.last_prompt.to_s.strip.empty?
+        # Process the initial prompt. spawn_session hands it over in
+        # last_prompt, but last_prompt also records every later turn's prompt
+        # (and mark_error's reason), so only a session with no conversation yet
+        # has one pending; a resumed session must not replay its last turn.
+        if session.messages.empty? && !session.last_prompt.to_s.strip.empty?
           prompt = session.last_prompt
           session.last_prompt = ""
           session.save(state_dir: sd)
