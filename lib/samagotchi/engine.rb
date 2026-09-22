@@ -1249,7 +1249,7 @@ module Samagotchi
         "Project memories:\n#{project_index}",
         "System memories:\n#{system_index}"
       ].join("\n\n")
-      [thinking_token + base, rg_guidance, project_description, current_directory, memory_sections, system_identity_section, explicit_memory_section].compact.join("\n")
+      [thinking_token + base, rg_guidance, project_description, current_directory, current_session, memory_sections, system_identity_section, explicit_memory_section].compact.join("\n")
     end
 
     # B-light: auto-preload the built-in identity memory.
@@ -1360,6 +1360,15 @@ module Samagotchi
       "Current working directory:\n#{Dir.pwd}"
     rescue StandardError
       nil
+    end
+
+    # Fixed for the session's lifetime, so it doesn't churn the prompt cache.
+    # Omitted until a session is attached (run_turn / TerminalUI set it).
+    def current_session
+      id = @session&.id.to_s
+      return nil if id.empty?
+
+      "Current session id: #{id} (resume later with `chi --resume #{id}`)"
     end
 
     def skip_agent_description?

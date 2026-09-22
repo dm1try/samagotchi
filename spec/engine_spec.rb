@@ -58,6 +58,16 @@ RSpec.describe Samagotchi::Engine do
       allow(engine).to receive(:rg_available?).and_return(false)
       expect(engine.system_prompt).not_to include("prefer `rg` (ripgrep) over `grep`")
     end
+
+    it "names the attached session id so the agent can tell the user how to resume" do
+      engine = build_engine(profile: "gemma4")
+      expect(engine.system_prompt).not_to include("Current session id:")
+
+      session = make_session
+      engine.session = session
+      prompt = engine.send(:system_prompt_with_index, engine.send(:assist_system_prompt))
+      expect(prompt).to include("Current session id: #{session.id} (resume later with `chi --resume #{session.id}`)")
+    end
   end
 
   describe "memory injection" do

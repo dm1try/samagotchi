@@ -413,6 +413,29 @@ file2.rb")
       expect(received_prompt).to include(Dir.pwd)
     end
 
+    it "injects the current session id as context" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      out = StringIO.new
+      original_stdout = $stdout
+      begin
+        $stdout = out
+        agent.run
+      ensure
+        $stdout = original_stdout
+      end
+
+      id = out.string[/Session: (\S+)/, 1]
+      expect(id).not_to be_nil
+      expect(received_prompt).to include("Current session id: #{id}")
+    end
+
     it "skips AGENT.md injection when SAMAGOTCHI_SKIP_AGENT_MD=true" do
       ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = "true"
       received_prompt = nil

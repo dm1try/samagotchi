@@ -200,6 +200,8 @@ module Samagotchi
         model_name: @effective_model_name,
         working_directory: Dir.pwd
       )
+      # Attach before building the prompt so it can name the session id.
+      @engine.session = session
       messages = messages_for(session)
 
       if @prompt && @non_interactive
