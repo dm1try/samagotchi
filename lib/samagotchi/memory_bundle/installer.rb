@@ -192,8 +192,6 @@ module Samagotchi
 
             FileUtils.mkdir_p(hooks_target)
             FileUtils.cp(src, dest)
-            status = File.exist?(dest) && @upgrade ? "updated" : "installed"
-            # For fresh install, status is installed; for upgrade overwrite, mark updated
             if @upgrade && existing_provenance
               @results[basename] = { status: "updated" }
             else

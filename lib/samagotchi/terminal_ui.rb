@@ -789,7 +789,6 @@ module Samagotchi
       # Snapshot the current messages; muted thread injects and runs on the
       # copy so foreground `messages` is untouched until drain.
       snapshot = clone_messages(messages)
-      latched_due = due.dup
       @muted_reminder_thread = Thread.new do
         Thread.current.report_on_exception = false
         @engine.set_turn_running(true)

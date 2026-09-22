@@ -563,7 +563,7 @@ module Samagotchi
         end
       end
 
-       def qwen_param_value(params, *keys, strip: true)
+      def qwen_param_value(params, *keys, strip: true)
         value = keys.lazy.map { |key| params[key] }.find { |candidate| !candidate.nil? }
         return "" if value.nil?
 
