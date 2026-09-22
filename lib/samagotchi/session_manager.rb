@@ -315,6 +315,10 @@ module Samagotchi
           }
         }
       )
+      # Before the Bridge serves anything: a UI joining a resumed worker's
+      # stream gets the session's history and status in its snapshot, not
+      # an empty session until the first turn.
+      engine.session = session
       # Start the shared idle scheduler so the worker can trigger turns when
       # reminders are due (even with no user input).
       engine.start_idle
