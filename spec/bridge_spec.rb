@@ -333,16 +333,37 @@ RSpec.describe Samagotchi::Bridge do
       WebMock.disable_net_connect! if defined?(WebMock)
     end
 
-    def start_bridge
+    def start_bridge(input_format: nil)
       @engine = make_engine
       @session = make_session
       @bridge = described_class.new(
         engine: @engine, state_dir: state_dir, session_id: @session.id,
-        heartbeat_interval: 0.2
+        heartbeat_interval: 0.2, input_format: input_format
       )
       @bridge.start
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
       @bridge_port = JSON.parse(File.read(sidecar))["port"]
+    end
+
+    it "advertises the input format its worker reads in the sidecar" do
+      start_bridge
+      sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
+      expect(JSON.parse(File.read(sidecar))).not_to have_key("input_format")
+      @bridge.stop
+
+      @bridge = described_class.new(engine: @engine, state_dir: state_dir, session_id: @session.id, input_format: 2).start
+      expect(JSON.parse(File.read(sidecar))).to include("input_format" => 2)
+    end
+
+    it "writes the client's ids into the queued input" do
+      start_bridge(input_format: 2)
+      _, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "hi", client_id: "web:tab-1"))
+
+      input_dir = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input")
+      queued = Dir.glob(File.join(input_dir, "*.json"))
+      expect(queued.map { |f| JSON.parse(File.read(f)) }).to eq([
+        { "prompt" => "hi", "client_id" => "web:tab-1", "enqueued_id" => resp["enqueued_id"] }
+      ])
     end
 
     it "writes a discoverable port sidecar on start" do

@@ -277,7 +277,8 @@ module Samagotchi
           ack = reply.json
           return json_response(202, ack) if reply.status == 202 && ack.is_a?(Hash)
         end
-        ok = @manager.write_turn_input(id, prompt: prompt.to_s, state_dir: @state_dir)
+        enqueued_id = SecureRandom.uuid
+        ok = @manager.write_turn_input(id, prompt: prompt.to_s, client_id: client_id, enqueued_id: enqueued_id, state_dir: @state_dir)
         unless ok
           return error_response(500, "enqueue_failed", "could not write turn input")
         end
@@ -287,7 +288,6 @@ module Samagotchi
           FileUtils.rm_f(ok) if ok.is_a?(String)
           raise SessionManager::OwnedByTUI, id
         end
-        enqueued_id = SecureRandom.uuid
         json_response(202, { status: "accepted", enqueued_id: enqueued_id, session_id: id })
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)

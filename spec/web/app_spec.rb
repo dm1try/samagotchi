@@ -46,7 +46,7 @@ class FakeResponsesManager
   end
 
   def resume_session(id, state_dir: nil); @resume_calls << [id, state_dir]; nil; end
-  def write_turn_input(_id, prompt:, state_dir: nil); true; end
+  def write_turn_input(_id, prompt:, client_id: nil, enqueued_id: nil, state_dir: nil); true; end
   def stop_session(_id, state_dir: nil); nil; end
   def wait_for_session(_id, timeout: 30, state_dir: nil); nil; end
 end
@@ -423,12 +423,15 @@ RSpec.describe Samagotchi::Web::App do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
       allow(app).to receive(:live_bridge_client).and_return(nil)
-      expect(manager).to receive(:write_turn_input).with("s1", prompt: "hi", state_dir: anything).and_return(true)
+      queued = nil
+      expect(manager).to receive(:write_turn_input) { |id, **kw| queued = [id, kw]; true }
 
-      status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST", body: '{"prompt":"hi"}'))
+      status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST", body: '{"prompt":"hi","client_id":"web:tab-1"}'))
 
       expect(status).to eq(202)
-      expect(JSON.parse(body.first)).to include("status" => "accepted", "enqueued_id" => kind_of(String))
+      ack = JSON.parse(body.first)
+      expect(ack).to include("status" => "accepted", "enqueued_id" => kind_of(String))
+      expect(queued).to match(["s1", { prompt: "hi", client_id: "web:tab-1", enqueued_id: ack["enqueued_id"], state_dir: anything }])
     end
   end
 

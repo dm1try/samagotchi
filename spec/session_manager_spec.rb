@@ -300,9 +300,11 @@ RSpec.describe Samagotchi::SessionManager do
 
       expect { reminder_callback.call(["daily"]) }.not_to raise_error
       input_dir = File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), Samagotchi::SessionManager::INPUT_DIR)
-      queued = Dir.glob(File.join(input_dir, "*.txt"))
+      queued = Dir.glob(File.join(input_dir, "*.json"))
       expect(queued.size).to eq(1)
-      expect(File.read(queued.first)).to include("scheduled reminders are due")
+      input = JSON.parse(File.read(queued.first))
+      expect(input["prompt"]).to include("scheduled reminders are due")
+      expect(input["client_id"]).to eq("system:reminder")
     end
 
     it "atomically claims an input file for single-consumer processing" do
@@ -341,7 +343,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(sub_handle).to receive(:unsubscribe)
       allow(engine).to receive(:subscribe).and_return(sub_handle)
       expect(engine).to receive(:run_turn)
-        .with(instance_of(Samagotchi::Session), "hello", pending_input: kind_of(Proc)) do
+        .with(instance_of(Samagotchi::Session), "hello", pending_input: kind_of(Proc), origin: nil) do
           Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
           result
         end
@@ -375,6 +377,89 @@ RSpec.describe Samagotchi::SessionManager do
         described_class.run_session_loop(session.id, state_dir: tmpdir)
       }.to raise_error(SystemExit)
       expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).last_prompt).to eq("earlier")
+    end
+  end
+
+  describe "structured input" do
+    let(:session) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
+        s.save(state_dir: tmpdir)
+      end
+    end
+    let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
+    let(:input_dir) { File.join(session_dir, described_class::INPUT_DIR) }
+
+    def write_sidecar(record)
+      FileUtils.mkdir_p(session_dir)
+      File.write(File.join(session_dir, "bridge.json"), JSON.generate(record))
+    end
+
+    it "writes a JSON input file carrying the sender's ids" do
+      path = described_class.write_turn_input(session.id, prompt: "hi", client_id: "web:1", enqueued_id: "e1", state_dir: tmpdir)
+
+      expect(path).to end_with(".json")
+      expect(JSON.parse(File.read(path))).to eq("prompt" => "hi", "client_id" => "web:1", "enqueued_id" => "e1")
+    end
+
+    it "writes plain text for a live worker that predates structured input" do
+      write_sidecar("port" => 1, "session_id" => session.id)
+
+      path = described_class.write_turn_input(session.id, prompt: "hi", client_id: "web:1", state_dir: tmpdir)
+
+      expect(path).to end_with(".txt")
+      expect(File.read(path)).to eq("hi")
+    end
+
+    it "writes JSON for a worker that advertises input_format 2" do
+      write_sidecar("port" => 1, "session_id" => session.id, "input_format" => 2)
+
+      expect(described_class.write_turn_input(session.id, prompt: "hi", state_dir: tmpdir)).to end_with(".json")
+    end
+
+    def run_worker_with(engine)
+      allow(Samagotchi::Engine).to receive(:new).and_return(engine)
+      allow(engine).to receive(:start_idle)
+      allow(engine).to receive(:reminder_store).and_return(nil)
+      allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
+      expect {
+        described_class.run_session_loop(session.id, state_dir: tmpdir)
+      }.to raise_error(SystemExit)
+    end
+
+    it "runs queued turns with their origin, text or JSON" do
+      described_class.write_turn_input(session.id, prompt: "from web", client_id: "web:1", enqueued_id: "e1", state_dir: tmpdir)
+      write_sidecar("port" => 1, "session_id" => session.id) # an old worker's sidecar: next write is .txt
+      described_class.write_turn_input(session.id, prompt: "plain", state_dir: tmpdir)
+      engine = instance_double(Samagotchi::Engine)
+      runs = []
+      allow(engine).to receive(:run_turn) do |_session, prompt, origin:, **|
+        runs << [prompt, origin]
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir) if runs.size == 2
+        instance_double(Samagotchi::KernelLoop::Result, output: "")
+      end
+
+      run_worker_with(engine)
+
+      expect(runs).to eq([["from web", { client_id: "web:1", enqueued_id: "e1" }], ["plain", nil]])
+    end
+
+    it "announces who sent input merged into a running turn" do
+      engine = instance_double(Samagotchi::Engine)
+      announced = []
+      allow(engine).to receive(:announce) { |event| announced << event }
+      drained = nil
+      described_class.write_turn_input(session.id, prompt: "first", state_dir: tmpdir)
+      allow(engine).to receive(:run_turn) do |_session, _prompt, pending_input:, **|
+        described_class.write_turn_input(session.id, prompt: "steer", client_id: "tui:1", enqueued_id: "e2", state_dir: tmpdir)
+        drained = pending_input.call
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+        instance_double(Samagotchi::KernelLoop::Result, output: "")
+      end
+
+      run_worker_with(engine)
+
+      expect(drained).to eq(["steer"])
+      expect(announced).to eq([{ type: :input_merged, count: 1, origins: [{ client_id: "tui:1", enqueued_id: "e2" }] }])
     end
   end
 

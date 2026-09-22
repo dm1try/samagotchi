@@ -84,6 +84,40 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     end
   end
 
+  describe "origin:" do
+    let(:origin) { { client_id: "web:tab-1", enqueued_id: "e1" } }
+
+    it "tags the turn's boundary events with who queued it" do
+      allow(kernel).to receive(:run).and_return(kernel_result)
+
+      events = events_of(origin: origin)
+
+      expect(events.first).to eq(type: :turn_started, session_id: session.id, prompt: "hi", origin: origin)
+      expect(events.find { |e| e[:type] == :turn_completed }).to include(origin: origin)
+    end
+
+    it "tags :turn_canceled and :turn_failed too" do
+      allow(kernel).to receive(:run).and_return(kernel_result(canceled: true, cancellation_reason: :manual))
+      expect(events_of(origin: origin).last).to include(type: :turn_canceled, origin: origin)
+
+      allow(kernel).to receive(:run).and_raise(Interrupt)
+      events = []
+      expect { engine.run_turn(session, "hi", on_event: ->(e) { events << e }, origin: origin) }.to raise_error(Interrupt)
+      expect(events.last).to include(type: :turn_canceled, origin: origin)
+
+      allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
+      events = []
+      expect { engine.run_turn(session, "hi", on_event: ->(e) { events << e }, origin: origin) }.to raise_error(RuntimeError)
+      expect(events.last).to include(type: :turn_failed, origin: origin)
+    end
+
+    it "adds no origin key when none is given" do
+      allow(kernel).to receive(:run).and_return(kernel_result)
+
+      expect(events_of.select { |e| e.key?(:origin) }).to be_empty
+    end
+  end
+
   it "does not append [No response] to a canceled turn" do
     allow(kernel).to receive(:run).and_return(
       kernel_result(output: "", conversation: [{ role: "user", content: "hi" }], canceled: true, cancellation_reason: :ctrl_c)

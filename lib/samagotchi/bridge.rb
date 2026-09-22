@@ -43,10 +43,14 @@ module Samagotchi
     # @param port [Integer] port to bind (0 → OS-assigned, read back)
     # @param ring_capacity [Integer] shared ring-buffer capacity
     # @param heartbeat_interval [Float] idle `: ping` seconds
+    # @param input_format [Integer, nil] the input-file format the owning
+    #   worker reads, advertised in the sidecar for writers (see
+    #   SessionManager.write_turn_input); nil advertises none (plain text)
     def initialize(engine:, state_dir:, session_id:, bind: DEFAULT_BIND,
                    port: 0, ring_capacity: DEFAULT_RING_CAPACITY,
-                   heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL)
+                   heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, input_format: nil)
       @engine = engine
+      @input_format = input_format
       @state_dir = state_dir
       @session_id = session_id
       @bind = bind
@@ -319,7 +323,7 @@ module Samagotchi
           # emit this turn's :turn_started (or merge it mid-turn) before
           # :turn_enqueued, and a failed write announces nothing.
           @engine.synchronize_events do
-            enqueue_turn(session_id: sid, prompt: prompt).tap do |ok|
+            enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id).tap do |ok|
               next unless ok
 
               @engine.announce(type: :turn_enqueued, enqueued_id: enqueued_id,
@@ -327,7 +331,7 @@ module Samagotchi
             end
           end
         else
-          enqueue_turn(session_id: sid, prompt: prompt)
+          enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id)
         end
       return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] unless enqueued
 
@@ -357,10 +361,10 @@ module Samagotchi
 
     # Write a turn into the target session's input dir, reusing the file IPC
     # the worker polls. Never calls run_turn across the boundary.
-    def enqueue_turn(session_id:, prompt:)
+    def enqueue_turn(session_id:, prompt:, client_id: nil, enqueued_id: nil)
       require_relative "session_manager"
       Samagotchi::SessionManager.write_turn_input(
-        session_id, prompt: prompt, state_dir: @state_dir
+        session_id, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: @state_dir
       )
     rescue LoadError
       # SessionManager not available (e.g. bridge used standalone in a spec).
@@ -467,6 +471,7 @@ module Samagotchi
         "session_id" => @session_id,
         "started_at" => Time.now.iso8601(3)
       }
+      record["input_format"] = @input_format if @input_format
       path = File.join(session_dir, SIDECAR_FILE)
       FileUtils.mkdir_p(session_dir)
       temp = "#{path}.tmp"

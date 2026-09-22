@@ -804,12 +804,15 @@ module Samagotchi
     # @param continue [Boolean] resume the conversation without appending a
     #   user prompt (continue after the iteration limit, reminder turns);
     #   +prompt+ is ignored and :turn_started carries `continue: true`
+    # @param origin [Hash, nil] who queued the turn ({client_id:, enqueued_id:});
+    #   when given, the turn's boundary events (:turn_started, :turn_completed,
+    #   :turn_canceled, :turn_failed) carry it as `origin:`
     #
     # An Interrupt (SIGINT) cancels the turn: the pre-turn conversation plus
     # the prompt is kept in the session and :turn_canceled is emitted, then the
     # Interrupt is re-raised so the caller still decides whether to exit. Any
     # other error (e.g. Client::RetryExhausted) emits :turn_failed and re-raises.
-    def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false)
+    def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false, origin: nil)
       # Track the active session for recap and status snapshot.
       @session = session
       sync_used_memories_from_session(session)
@@ -822,12 +825,15 @@ module Samagotchi
 
       prompt = nil if continue
       messages = nil
+      # Boundary events carry the origin only when there is one, so payloads
+      # stay unchanged for callers that don't pass it.
+      with_origin = origin ? ->(event) { event.merge(origin: origin) } : ->(event) { event }
       begin
         # Emit turn_started event
         @metrics.session_id = session.id
         turn_started = { type: :turn_started, session_id: session.id, prompt: prompt }
         turn_started[:continue] = true if continue
-        emit_event(on_event, turn_started)
+        emit_event(on_event, with_origin.call(turn_started))
 
         # Fire :session_start on the very first turn
         if @first_turn
@@ -931,16 +937,16 @@ module Samagotchi
 
         # Emit turn_completed or turn_canceled
         if result.respond_to?(:canceled?) && result.canceled?
-          emit_event(on_event, {
+          emit_event(on_event, with_origin.call({
             type: :turn_canceled,
             cancellation_reason: result.cancellation_reason
-          })
+          }))
         else
-          emit_event(on_event, {
+          emit_event(on_event, with_origin.call({
             type: :turn_completed,
             result: result,
             turn_summary: turn_summary(result)
-          })
+          }))
         end
         @metrics.persist
 
@@ -962,11 +968,11 @@ module Samagotchi
       rescue Interrupt
         effective_controller.cancel!(:ctrl_c)
         replace_session_messages(session, messages) if messages
-        emit_event(on_event, { type: :turn_canceled, cancellation_reason: :ctrl_c })
+        emit_event(on_event, with_origin.call({ type: :turn_canceled, cancellation_reason: :ctrl_c }))
         @metrics.persist
         raise
       rescue StandardError => e
-        emit_event(on_event, { type: :turn_failed, error_class: e.class.name, message: e.message })
+        emit_event(on_event, with_origin.call({ type: :turn_failed, error_class: e.class.name, message: e.message }))
         @metrics.persist
         raise
       ensure

@@ -26,7 +26,8 @@ module Samagotchi
   #   └── <session_id>/
   #       ├── owner.lock          # flock held by the session's one owner (OwnerLock)
   #       ├── input/              # clients (web/terminal UI) write messages here
-  #       │   └── <timestamp>.txt # one file per user message
+  #       │   └── <timestamp>.json # one file per user message: {prompt, client_id,
+  #       │                        # enqueued_id} (plain <timestamp>.txt for old workers)
   #       ├── output/             # agent writes responses here
   #       │   └── <timestamp>.txt # one file per agent response
   #       ├── pid                 # PID of the owner, written by the owner itself
@@ -35,6 +36,12 @@ module Samagotchi
     INPUT_DIR  = "input"
     OUTPUT_DIR = "output"
     PID_FILE   = "pid"
+    # Input-file format this worker reads (JSON with the sender's ids, and
+    # plain text). Advertised in the Bridge sidecar: a worker that doesn't
+    # advertise it reads only .txt, and such workers never exit.
+    INPUT_FORMAT = 2
+    # Origin of the synthetic turn queued when reminders are due.
+    REMINDER_CLIENT_ID = "system:reminder"
 
     # Raised when the interactive TUI owns the session: it runs its own Engine
     # and reads no input files, so a worker must not be spawned or signalled.
@@ -301,7 +308,8 @@ module Samagotchi
             # Called directly: `self` here is SessionManager itself, so the
             # old `self.class.write_turn_input` resolved to Class and raised
             # (swallowed by IdleScheduler, latching the reminder for good).
-            write_turn_input(session_id, prompt: "[SYSTEM: Your scheduled reminders are due. Please check them.]", state_dir: sd)
+            write_turn_input(session_id, prompt: "[SYSTEM: Your scheduled reminders are due. Please check them.]",
+                                         client_id: REMINDER_CLIENT_ID, state_dir: sd)
           }
         }
       )
@@ -318,18 +326,26 @@ module Samagotchi
         # for this outer 1s poll. claim_input_file is atomic (rename), so a
         # file consumed mid-turn simply fails the outer loop's later claim
         # with ENOENT → nil. No double-processing risk.
+        #
+        # Runs on the turn thread; it announces who sent the merged input so
+        # every live UI can attribute it.
         pending_input_drain = lambda do
-          find_new_input_files(session_dir).sort.filter_map do |input_file|
+          merged = find_new_input_files(session_dir).sort.filter_map do |input_file|
             claimed_file = claim_input_file(input_file)
             next unless claimed_file
 
             begin
-              message = File.read(claimed_file).to_s.strip
-              message.empty? ? nil : message
+              prompt, origin = read_input(claimed_file)
+              prompt = prompt.to_s.strip
+              prompt.empty? ? nil : [prompt, origin]
             ensure
               FileUtils.rm_f(claimed_file)
             end
           end
+          unless merged.empty?
+            engine.announce(type: :input_merged, count: merged.size, origins: merged.filter_map(&:last))
+          end
+          merged.map(&:first)
         end
 
         # Process the initial prompt. spawn_session hands it over in
@@ -344,7 +360,7 @@ module Samagotchi
           session.last_prompt = ""
           session.save(state_dir: sd)
 
-          result = engine.run_turn(session, prompt, pending_input: pending_input_drain)
+          result = engine.run_turn(session, prompt, pending_input: pending_input_drain, origin: nil)
           response = result.respond_to?(:output) ? result.output : nil
           unless response.nil? || response.strip.empty?
             write_output(session_dir, response)
@@ -371,10 +387,10 @@ module Samagotchi
             next unless claimed_file
 
             begin
-              message = File.read(claimed_file).to_s
-              next if message.strip.empty?
+              message, origin = read_input(claimed_file)
+              next if message.to_s.strip.empty?
 
-              result = engine.run_turn(session, message, pending_input: pending_input_drain)
+              result = engine.run_turn(session, message, pending_input: pending_input_drain, origin: origin)
               response = result.respond_to?(:output) ? result.output : nil
               unless response.nil? || response.strip.empty?
                 write_output(session_dir, response)
@@ -430,7 +446,7 @@ module Samagotchi
     private_class_method def self.start_bridge(engine:, state_dir:, session_id:)
       require_relative "bridge"
       Samagotchi::Bridge.new(
-        engine: engine, state_dir: state_dir, session_id: session_id
+        engine: engine, state_dir: state_dir, session_id: session_id, input_format: INPUT_FORMAT
       ).start
     rescue StandardError => e
       warn "Bridge: failed to start for session #{session_id}: #{e.class}: #{e.message}"
@@ -442,16 +458,26 @@ module Samagotchi
     # Write a user turn into a session's input directory via the same file IPC
     # the worker polls. Reused by the bridge's POST surface so a turn is
     # fire-and-forget and never calls run_turn across the thread/process
-    # boundary. @return [String, false] the input file's path, or false.
-    def self.write_turn_input(session_id, prompt:, state_dir: nil)
+    # boundary. The file is JSON carrying the sender's ids, unless the
+    # session's live worker predates structured input (plain text then).
+    # @param client_id [String, nil] the sending UI
+    # @param enqueued_id [String, nil] the id its ACK / :turn_enqueued carry
+    # @return [String, false] the input file's path, or false.
+    def self.write_turn_input(session_id, prompt:, client_id: nil, enqueued_id: nil, state_dir: nil)
       sd = state_dir || Session.default_state_dir
       session_dir = Session.session_dir(session_id, state_dir: sd)
       input_dir = File.join(session_dir, INPUT_DIR)
       FileUtils.mkdir_p(input_dir)
 
       timestamp = Time.now.strftime("%Y%m%d%H%M%S%9N")
-      path = File.join(input_dir, "#{timestamp}.txt")
-      write_atomic(path, prompt.to_s)
+      if structured_input?(session_dir)
+        path = File.join(input_dir, "#{timestamp}.json")
+        record = { "prompt" => prompt.to_s, "client_id" => client_id, "enqueued_id" => enqueued_id }.compact
+        write_atomic(path, JSON.generate(record))
+      else
+        path = File.join(input_dir, "#{timestamp}.txt")
+        write_atomic(path, prompt.to_s)
+      end
       path
     rescue StandardError
       false
@@ -468,7 +494,31 @@ module Samagotchi
       input_dir = File.join(session_dir, INPUT_DIR)
       return [] unless Dir.exist?(input_dir)
 
-      Dir.glob(File.join(input_dir, "*.txt"))
+      Dir.glob(File.join(input_dir, "*.{txt,json}"))
+    end
+
+    # A worker's sidecar advertises the input format it reads; no sidecar
+    # means no worker yet, and the next one (this code) reads JSON.
+    private_class_method def self.structured_input?(session_dir)
+      sidecar = File.join(session_dir, "bridge.json")
+      return true unless File.file?(sidecar)
+
+      JSON.parse(File.read(sidecar))["input_format"].to_i >= INPUT_FORMAT
+    rescue JSON::ParserError, SystemCallError
+      true
+    end
+
+    # @return [Array(String, Hash|nil)] a claimed input file's prompt and
+    #   origin ({client_id:, enqueued_id:}, nil for plain text)
+    private_class_method def self.read_input(claimed_file)
+      raw = File.read(claimed_file).to_s
+      return [raw, nil] unless claimed_file.end_with?(".json.processing")
+
+      data = JSON.parse(raw)
+      origin = { client_id: data["client_id"], enqueued_id: data["enqueued_id"] }.compact
+      [data["prompt"].to_s, origin.empty? ? nil : origin]
+    rescue JSON::ParserError
+      [nil, nil]
     end
 
     private_class_method def self.claim_input_file(input_file)
