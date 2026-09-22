@@ -9,6 +9,19 @@ require "samagotchi/config"
 Samagotchi::ConfigFile.load_global_env!
 require "samagotchi"
 
+# `chi self`: print version, source dir, config/memory/session paths, model and
+# bundles (read-only, offline) — lets the agent find its own code and state.
+if ARGV[0] == "self"
+  if %w[-h --help help].include?(ARGV[1])
+    puts "Usage: bin/chi self"
+    puts "  Print version, source dir, config/memory/session paths, model/host and bundles."
+    exit 0
+  end
+  require "samagotchi/self_report"
+  puts Samagotchi::SelfReport.text
+  exit 0
+end
+
 # Early handle `sessions` subcommand before OptionParser (has its own flags like --dry-run)
 if ARGV[0] == "sessions"
   require "samagotchi/session"

@@ -12,6 +12,7 @@ Run with:
 - `bin/chi web [--port 4567] [--open]` — start the Web UI (single localhost port session control plane)
 - `bin/chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
 - `bin/chi sessions list|prune|clean` — manage persisted sessions (retention + ordering, see below)
+- `bin/chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles
 
 ## CLI Usage
 
