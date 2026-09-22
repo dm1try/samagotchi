@@ -71,6 +71,16 @@ RSpec.describe Samagotchi::IdleRecap do
         result = Samagotchi::IdleRecap::TranscriptFilter.build(messages)
         expect(result).to eq("Tell me something\n\nHere is info")
       end
+      it "drops inline tool-call markup (and its arguments) from model prose" do
+        messages = [
+          { "role" => "user", "content" => "write it" },
+          { "role" => "model", "content" => "Writing now <|tool_call>call:write_file{content:<|\"|>SECRET BODY<|\"|>}<tool_call|>" },
+          { "role" => "model", "content" => "<tool_call>\n<function=execute>\nls\n</function>\n</tool_call>" },
+          { "role" => "model", "content" => "Done." }
+        ]
+        result = Samagotchi::IdleRecap::TranscriptFilter.build(messages)
+        expect(result).to eq("write it\n\nWriting now\n\nDone.")
+      end
       it "rejects non-Hash entries" do
         messages = [nil, "string", { "role" => "user", "content" => "ok" }]
         expect(Samagotchi::IdleRecap::TranscriptFilter.build(messages)).to eq("ok")
@@ -85,12 +95,26 @@ RSpec.describe Samagotchi::IdleRecap do
     end
   end
 
+  describe "Samagotchi::IdleRecap::TranscriptFilter.tool_names" do
+    it "reads one name per call from both joined and per-call tool responses" do
+      messages = [
+        { "role" => "tool_response", "content" => "[execute]\nstdout:\nok\n\n---\n\n[read_file]\nbody" },
+        { "role" => "tool_response", "content" => "[execute] Error: boom" },
+        { "role" => "user", "content" => "[not_a_tool] hi" }
+      ]
+      expect(Samagotchi::IdleRecap::TranscriptFilter.tool_names(messages)).to eq(%w[execute read_file execute])
+    end
+  end
+
   describe Samagotchi::IdleRecap::RecapPrompt do
     describe ".build" do
       let(:transcript) { "User asked about X.\nAssistant answered." }
-      it "returns a minimal prompt when transcript is empty" do
-        result = Samagotchi::IdleRecap::RecapPrompt.build("", tool_count: 0)
-        expect(result).to eq("Summarize the session from scratch.")
+      it "returns nil when transcript is empty (nothing to summarize)" do
+        expect(Samagotchi::IdleRecap::RecapPrompt.build("", tool_count: 0)).to be_nil
+      end
+      it "tallies the tool names when the count is small" do
+        result = Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_names: %w[execute read_file execute])
+        expect(result).to include("3 tool calls (execute x2, read_file)")
       end
       it "includes tool count when small" do
         result = Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_count: 3)
@@ -104,6 +128,11 @@ RSpec.describe Samagotchi::IdleRecap do
       it "omits tool names when count is large (above threshold)" do
         result = Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_count: 50)
         expect(result).to include("50\ntool calls were made")
+        expect(result).to include("DO NOT enumerate them")
+      end
+      it "tallies the tool names even when the count is large" do
+        result = Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_names: ["execute"] * 11)
+        expect(result).to include("(execute x11)")
         expect(result).to include("DO NOT enumerate them")
       end
       it "includes overall goal, completion, facts, and pending in the prompt" do
@@ -432,6 +461,14 @@ RSpec.describe Samagotchi::IdleRecap do
       idle = idle_for(engine, err_client)
       5.times { idle.tick }
       expect(err_client).to have_received(:summarize).once
+    end
+
+    it "never sends an empty transcript to the summarizer" do
+      blank = JSON.generate([{ "role" => "user", "content" => " " }, { "role" => "user", "content" => "" }])
+      engine = stub_engine(messages: blank, last_activity: base_time.to_f - 5)
+      idle = idle_for(engine, client)
+      idle.tick
+      expect(client).not_to have_received(:summarize)
     end
 
     it "re-arms once new activity advances the seq" do

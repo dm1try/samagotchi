@@ -5,6 +5,7 @@ require "monitor"
 require "time"
 
 require_relative "idle_client"
+require_relative "output_formatter"
 
 module Samagotchi
   # Idle job for the session-recap feature — polled by the shared
@@ -33,11 +34,18 @@ module Samagotchi
     LARGE_TOOL_THRESHOLD = 10
 
     # Build a cleaned recap transcript + the prompt text from a JSON snapshot.
-    # Drops the system prompt and tool-call contents, keeps user turns and
-    # model prose (thoughts stripped), and counts tool calls for the prompt.
+    # Drops the system prompt and tool internals (call markup with its
+    # arguments, tool outputs), keeps user turns and model prose (thoughts
+    # stripped), and collects the tool names for the prompt.
     module TranscriptFilter
-      THINK_RE = /<\|think\|.*?\|think\|>/m
-      LITERAL_THINK_RE = /\[\[SAMAGOTCHI_LITERAL_THINK_OPEN\]\].*?\[\[SAMAGOTCHI_LITERAL_THINK_CLOSE\]\]/m
+      # A tool call as the model wrote it inline: gemma, qwen, or the qwen
+      # prompt-literal form. An unterminated gemma call runs to the end.
+      TOOL_CALL_RE = /<\|tool_call>(?:.*?<tool_call\|>|.*\z)|<tool_call>.*?<\/tool_call>|\[\[SAMAGOTCHI_LITERAL_TOOL_CALL_OPEN\]\].*?\[\[SAMAGOTCHI_LITERAL_TOOL_CALL_CLOSE\]\]/m
+      # Each dispatched call's output starts with "[name]"; the kernel loop
+      # joins one step's outputs into a single tool_response with this
+      # separator, while the ruby_llm backend writes one message per call.
+      TOOL_OUTPUT_SEPARATOR = "\n\n---\n\n"
+      TOOL_OUTPUT_HEADER_RE = /\A\[([\w.:-]+)\]/
 
       module_function
 
@@ -49,7 +57,7 @@ module Samagotchi
           when "user"
             message["content"].to_s
           when "model", "assistant"
-            strip_thought(message["content"].to_s)
+            strip_thought(message["content"].to_s.gsub(TOOL_CALL_RE, ""))
           else
             # Drop system prompt + tool_response contents + anything else.
             nil
@@ -57,12 +65,19 @@ module Samagotchi
         end.reject { |line| line.to_s.strip.empty? }.join("\n\n")
       end
 
+      # @return [Array<String>] one tool name per dispatched call, in order
+      def tool_names(messages)
+        Array(messages).flat_map do |message|
+          next [] unless message.is_a?(Hash) && message["role"] == "tool_response"
+
+          message["content"].to_s.split(TOOL_OUTPUT_SEPARATOR).filter_map do |chunk|
+            chunk[TOOL_OUTPUT_HEADER_RE, 1]
+          end
+        end
+      end
+
       def strip_thought(text)
-        text.to_s
-           .gsub(THINK_RE, "")
-           .gsub(LITERAL_THINK_RE, "")
-           .gsub(/\n\n+/, "\n")
-           .strip
+        OutputFormatter.strip(IdleClient.strip_thinking(text))
       end
     end
 
@@ -72,16 +87,18 @@ module Samagotchi
     module RecapPrompt
       module_function
 
-      def build(transcript, tool_count:)
+      # @return [String, nil] nil when there is no transcript to summarize
+      def build(transcript, tool_count: nil, tool_names: [])
         body = transcript.to_s.strip
-        return "Summarize the session from scratch." if body.empty?
+        return nil if body.empty?
 
-        if tool_count && tool_count > LARGE_TOOL_THRESHOLD
+        tool_count ||= tool_names.size
+        if tool_count > LARGE_TOOL_THRESHOLD
           <<~PROMPT.strip
             The user and assistant worked together for a session. Below is the
             cleaned transcript (the system prompt and tool internals were removed;
             only user turns and assistant prose remain). A total of #{tool_count}
-            tool calls were made — DO NOT enumerate them. Instead write a short
+            tool calls were made#{tools_used(tool_names)} — DO NOT enumerate them. Instead write a short
             (2-4 sentence) recap covering: the overall goal, what was completed,
             any key facts or project props the user mentioned, and anything still
             pending.
@@ -93,7 +110,7 @@ module Samagotchi
           <<~PROMPT.strip
             The user and assistant worked together for a session. Below is the
             cleaned transcript (the system prompt and tool internals were removed;
-            only user turns and assistant prose remain). About #{count_word}
+            only user turns and assistant prose remain). About #{count_word}#{tools_used(tool_names)}
             were made. Write a short (2-4 sentence) recap covering: the overall
             goal, what was completed, any key facts or project props the user
             mentioned, and anything still pending. You may briefly name the
@@ -102,6 +119,13 @@ module Samagotchi
             #{body}
           PROMPT
         end
+      end
+
+      # " (execute x3, read_file)", or "" when no names are known
+      def tools_used(names)
+        return "" if names.empty?
+
+        " (#{names.tally.map { |name, n| n > 1 ? "#{name} x#{n}" : name }.join(', ')})"
       end
     end
 
@@ -174,8 +198,8 @@ module Samagotchi
       user_turns = parsed.count { |message| message.is_a?(Hash) && message["role"] == "user" }
       return if user_turns < @min_user_turns
       transcript = TranscriptFilter.build(parsed)
-      tool_count = parsed.count { |message| message.is_a?(Hash) && message["role"] == "tool_response" }
-      prompt = RecapPrompt.build(transcript, tool_count: tool_count)
+      prompt = RecapPrompt.build(transcript, tool_names: TranscriptFilter.tool_names(parsed))
+      return if prompt.nil?
       worker = spawn_summarize(prompt)
       return unless wait_until_finished(worker, gen)
       return unless valid_generation?(gen)

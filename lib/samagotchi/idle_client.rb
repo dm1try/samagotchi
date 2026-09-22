@@ -36,6 +36,20 @@ module Samagotchi
       @timeout = timeout
     end
 
+    THINK_RE = /<\|think\|.*?\|think\|>/m
+    LITERAL_THINK_RE = /\[\[SAMAGOTCHI_LITERAL_THINK_OPEN\]\].*?\[\[SAMAGOTCHI_LITERAL_THINK_CLOSE\]\]/m
+
+    # Strip thinking blocks (gemma <|think|>…, qwen prompt literals) and
+    # collapse the blank lines they leave. Shared with IdleRecap's
+    # transcript filter.
+    def self.strip_thinking(text)
+      text.to_s
+          .gsub(THINK_RE, "")
+          .gsub(LITERAL_THINK_RE, "")
+          .gsub(/\n\n+/, "\n")
+          .strip
+    end
+
     # Summarize an already-built recap prompt. Returns the cleaned prose, or
     # nil when there is nothing to summarize. Any failure raises
     # SummarizeError (the caller isolates it).
@@ -123,19 +137,8 @@ module Samagotchi
       # Prefer content, fall back to reasoning_content
       text = content.empty? ? reasoning : content
       # Strip thinking tokens that some models (Qwen, Gemma) include in content
-      text = strip_thinking_tokens(text)
+      text = self.class.strip_thinking(text)
       text
-    end
-
-    THINK_RE = /<\|think\|.*?\|think\|>/m
-    LITERAL_THINK_RE = /\[\[SAMAGOTCHI_LITERAL_THINK_OPEN\]\].*?\[\[SAMAGOTCHI_LITERAL_THINK_CLOSE\]\]/m
-
-    def strip_thinking_tokens(text)
-      text.to_s
-         .gsub(THINK_RE, "")
-         .gsub(LITERAL_THINK_RE, "")
-         .gsub(/\n\n+/, "\n")
-         .strip
     end
   end
 end
