@@ -73,6 +73,20 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(attached).not_to be_running
     end
 
+    it "shows only the end of an answer made of long lines" do
+      feed(snapshot(messages: [{ role: "user", content: "essay" }, { role: "model", content: "#{"x" * 2000}END" }]))
+
+      expect(screen.lines.last).to start_with("(… earlier text)\n…x").and end_with("xEND")
+      expect(screen.lines.last.length).to be < 1250
+    end
+
+    it "shows only the end of a long last answer" do
+      answer = (1..30).map { |i| "line #{i}" }.join("\n")
+      feed(snapshot(messages: [{ role: "user", content: "essay" }, { role: "model", content: answer }]))
+
+      expect(screen.lines.last).to eq("(… 18 earlier lines)\n#{(19..30).map { |i| "line #{i}" }.join("\n")}")
+    end
+
     it "marks a resync after a reset frame" do
       feed(snapshot, snapshot(type: :reset))
 
@@ -154,6 +168,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
       def print_line(text) = @lines << text
       def status=(_text); end
       def columns = 80
+      def synchronize = yield
+      def erase_prompt; end
     end.new
   end
   let(:stream) { double("stream", close: nil) }
@@ -175,10 +191,14 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
     attached.run(input: ->(_prompt) { (entry = inputs.shift) == :interrupt ? raise(Interrupt) : entry })
   end
 
+  it "ends as closed when the worker goes away" do
+    expect(run_with([], first: { "type" => "stream_closed", "reason" => "unreachable" })).to eq(:closed)
+  end
+
   it "sends what the user types, with its client id, and detaches on Ctrl-D" do
     allow(client).to receive(:post_turn).and_return(ack)
 
-    run_with(["hello", "  ", nil])
+    expect(run_with(["hello", "  ", nil])).to eq(:detached)
 
     expect(client).to have_received(:post_turn).once.with(prompt: "hello", client_id: "tui:1")
     expect(screen.lines.last).to eq("Detached; the session keeps running. Re-attach with: chi --attach s-1234")

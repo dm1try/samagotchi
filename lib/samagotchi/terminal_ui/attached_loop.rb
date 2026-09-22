@@ -25,6 +25,9 @@ module Samagotchi
       # Commands that need the local Engine (server APIs for them are v2).
       UNAVAILABLE_COMMANDS = %w[/model /models /continue !rollback].freeze
       DETACH_COMMANDS = %w[/exit /quit].freeze
+      # How much of the last answer a join shows.
+      JOIN_ANSWER_LINES = 12
+      JOIN_ANSWER_CHARS = 1200
 
       # Reads input lines on its own thread, so events keep rendering while
       # the user types, and hands each line (nil = Ctrl-D) or Ctrl-C to the
@@ -33,6 +36,8 @@ module Samagotchi
       class LineReader
         # Raised into the reader thread; only lands inside a read.
         class Reprompt < StandardError; end
+        # Ends the reader from inside its read, so Reline restores the terminal.
+        class Stop < StandardError; end
 
         # @param prompt [#call] -> the prompt for the next read
         # @param read [#call, nil] prompt -> line; defaults to Reline on a
@@ -50,7 +55,7 @@ module Samagotchi
         def start
           # Created masked (threads inherit the mask), so a Reprompt raised
           # before #run is entered waits for the first read too.
-          Thread.handle_interrupt(Reprompt => :never) { @thread = Thread.new { run } }
+          Thread.handle_interrupt(Reprompt => :never, Stop => :never) { @thread = Thread.new { run } }
           @thread.report_on_exception = false
           self
         end
@@ -60,8 +65,10 @@ module Samagotchi
         end
 
         def stop
-          @thread&.kill
-          @thread&.join(0.5)
+          return unless @thread&.alive?
+
+          @thread.raise(Stop)
+          @thread.join(0.5) || (@thread.kill && @thread.join(0.5))
         end
 
         private
@@ -70,10 +77,10 @@ module Samagotchi
           # A Reprompt may only interrupt the read itself; one that comes
           # while a line is being handed over waits for the next read (and
           # just restarts it). The mask is also inherited from #start.
-          Thread.handle_interrupt(Reprompt => :never) do
+          Thread.handle_interrupt(Reprompt => :never, Stop => :never) do
             loop do
               @current = @prompt.call
-              line = Thread.handle_interrupt(Reprompt => :immediate) { @read.call(@current) }
+              line = Thread.handle_interrupt(Reprompt => :immediate, Stop => :immediate) { @read.call(@current) }
               @queue << [:line, line]
               break if line.nil?
             rescue Reprompt
@@ -82,6 +89,8 @@ module Samagotchi
               @queue << [:interrupt]
             end
           end
+        rescue Stop
+          nil
         end
 
         def read_line(prompt)
@@ -122,6 +131,7 @@ module Samagotchi
 
       # Follow the session and read input until Ctrl-D, /exit or the worker
       # goes away. The worker keeps running after a detach.
+      # @return [Symbol] :detached, or :closed when the worker went away
       # @param input [#call, nil] prompt -> line (nil = Ctrl-D, raising
       #   Interrupt = Ctrl-C); defaults to Reline
       def run(input: nil)
@@ -131,13 +141,17 @@ module Samagotchi
         loop do
           kind, payload = next_item(queue)
           case kind
-          when :event then break if safely_handle(payload) == :closed
-          when :line then break if submit(payload) == :detach
+          when :event then return :closed if safely_handle(payload) == :closed
+          when :line then return :detached if submit(payload) == :detach
           when :interrupt then interrupt
           end
         end
       ensure
-        @reader&.stop
+        # The loop is over: drop the prompt the reader still has open.
+        @screen.synchronize do
+          @screen.erase_prompt
+          @reader&.stop
+        end
         stream&.close
       end
 
@@ -325,7 +339,18 @@ module Samagotchi
 
         @screen.print_line(prompt_line(nil, exchange[last_user][:content]))
         answer = exchange[(last_user + 1)..].reverse.find { |m| m[:role].to_s != "user" }
-        @screen.print_line(answer[:content].to_s) if answer
+        @screen.print_line(last_lines(answer[:content].to_s)) if answer
+      end
+
+      # The end of a long answer; the whole of it is in the session.
+      def last_lines(text)
+        lines = text.split("\n", -1)
+        if lines.size > JOIN_ANSWER_LINES
+          text = "(… #{lines.size - JOIN_ANSWER_LINES} earlier lines)\n#{lines.last(JOIN_ANSWER_LINES).join("\n")}"
+        end
+        return text if text.length <= JOIN_ANSWER_CHARS
+
+        "(… earlier text)\n…#{text[-JOIN_ANSWER_CHARS..]}"
       end
 
       def render_current_turn(turn)
