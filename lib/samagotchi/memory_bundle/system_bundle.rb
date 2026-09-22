@@ -13,9 +13,10 @@ module Samagotchi
     # and is lazily installed into the user's system memories directory
     # (~/.config/samagotchi/memories) on first Engine creation.
     #
-    # Version is tied to Samagotchi::VERSION — a gem bump triggers a 3-way
-    # upgrade: fast-forward when not edited, keep when bundle unchanged, conflict
-    # keeps local edit with a warning.
+    # A newer shipped version (manifest.yml) triggers a 3-way upgrade:
+    # fast-forward when not edited, keep when bundle unchanged, conflict keeps
+    # local edit with a warning. An older shipped version is left alone, so an
+    # old checkout never downgrades the installed bundle.
     module SystemBundle
       BUNDLE_NAME = "samagotchi-system"
       SCOPE = "system"
@@ -43,6 +44,10 @@ module Samagotchi
 
         if data.nil?
           install_fresh(gem_manifest)
+        elsif installed_newer?(data[:version], gem_manifest.version)
+          # Running an older checkout/gem: never downgrade the user's system memories
+          # (not even to restore a missing file). `chi self` shows installed vs shipped.
+          false
         elsif data[:version].to_s != gem_manifest.version.to_s
           upgrade_existing(gem_manifest, data)
         else
@@ -57,6 +62,14 @@ module Samagotchi
       def skip?
         val = ENV[SKIP_ENV].to_s.strip.downcase
         val == "1" || val == "true"
+      end
+
+      # Unparseable versions fall back to the old "any difference upgrades" behaviour.
+      def installed_newer?(installed, shipped)
+        installed, shipped = installed.to_s, shipped.to_s
+        return false unless Gem::Version.correct?(installed) && Gem::Version.correct?(shipped)
+
+        Gem::Version.new(installed) > Gem::Version.new(shipped)
       end
 
       def install_fresh(gem_manifest)
