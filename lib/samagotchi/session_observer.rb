@@ -77,23 +77,26 @@ module Samagotchi
     #   copy with `event_seq:` merged in; never mutated in place)
     # @return [void]
     def notify(event)
-      # Snapshot the sequence number and observer list under the lock so the
-      # delivered payload carries a consistent event_seq even while delivering.
-      seq = @mutex.synchronize { @seq += 1 }
-      observers = @mutex.synchronize { @observers.dup }
+      # Number AND deliver under one lock. Events arrive from several threads
+      # (turn, idle scheduler, bridge HTTP); delivering outside the lock let
+      # seq N reach a subscriber after N+1 (the SSE writer then dropped it as
+      # below its high-water mark) and let a numbered event fall between a
+      # new connection's replay snapshot and its live queue. Subscribers must
+      # stay non-blocking (enqueue-only), so holding the lock is cheap. The
+      # Monitor is reentrant, so a subscriber that emits on the same thread
+      # does not deadlock.
+      @mutex.synchronize do
+        payload = event.merge(event_seq: @seq += 1)
 
-      payload = event.merge(event_seq: seq)
+        @observers.dup.each do |handle|
+          next if handle.unsubscribed?
 
-      observers.each do |handle|
-        # A subscriber that unsubscribed between the snapshot and delivery is
-        # skipped; a subscriber that raises is isolated so the turn survives.
-        next if handle.unsubscribed?
-
-        begin
-          handle.observer.call(payload)
-        rescue StandardError
-          # Error-isolate: a throwing subscriber must not stop others or break
-          # the running turn.
+          begin
+            handle.observer.call(payload)
+          rescue StandardError
+            # Error-isolate: a throwing subscriber must not stop others or break
+            # the running turn.
+          end
         end
       end
     end

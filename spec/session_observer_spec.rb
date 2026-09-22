@@ -131,5 +131,31 @@ RSpec.describe Samagotchi::SessionObserver do
       expect(first).to eq([])
       expect(second.map { |e| e[:type] }).to eq([:after_unsub])
     end
+
+    # Events come from the turn thread, the idle scheduler and the bridge's
+    # HTTP threads at once. Every subscriber must see them in event_seq order
+    # with no gaps, or the SSE writer drops the late one as already served.
+    it "delivers concurrent emits to every subscriber in event_seq order" do
+      seen = Queue.new
+      first_in_flight = Queue.new
+      # While delivering the first event, give a second thread a bounded
+      # window to emit. Numbering outside the delivery lock would let seq 2
+      # land before seq 1.
+      observer.subscribe(observer: lambda do |event|
+        if event[:type] == :first
+          first_in_flight << true
+          deadline = Time.now + 0.3
+          Thread.pass while seen.empty? && Time.now < deadline
+        end
+        seen << event[:event_seq]
+      end)
+
+      first = Thread.new { observer.notify(type: :first) }
+      first_in_flight.pop
+      second = Thread.new { observer.notify(type: :second) }
+      [first, second].each(&:join)
+
+      expect(Array.new(seen.size) { seen.pop }).to eq([1, 2])
+    end
   end
 end
