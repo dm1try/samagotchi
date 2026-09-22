@@ -395,7 +395,12 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
       end
 
       describe "write with current_model_only" do
+        def write_base(name = "my_memory", dir = project_memories_dir)
+          File.write(File.join(dir, "#{name}.md"), "base content")
+        end
+
         it "writes suffixed file" do
+          write_base
           result = described_class.call(
             "overlay body",
             path: "my_memory",
@@ -410,6 +415,7 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
         end
 
         it "includes the overlay file path in the success message" do
+          write_base
           result = described_class.call(
             "overlay body",
             path: "my_memory",
@@ -421,7 +427,8 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
           expect(result).to include(File.join(project_memories_dir, "my_memory.gemma4o.md"))
         end
 
-        it "does NOT create the base .md file" do
+        it "leaves the base entry untouched" do
+          write_base
           described_class.call(
             "overlay body",
             path: "my_memory",
@@ -429,10 +436,51 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
             current_model_only: true,
             model_key: "gemma4o"
           )
-          expect(File.exist?(File.join(project_memories_dir, "my_memory.md"))).to be false
+          expect(File.read(File.join(project_memories_dir, "my_memory.md"))).to eq("base content")
+        end
+
+        it "refuses when no base entry exists, writing nothing" do
+          result = described_class.call(
+            "overlay body",
+            path: "my_memory",
+            scope: "project",
+            current_model_only: true,
+            model_key: "gemma4o"
+          )
+          expect(result).to start_with("Error: no base entry 'my_memory' in project scope")
+          expect(result).to include("Write the base entry first")
+          expect(Dir.children(project_memories_dir).grep(/my_memory/)).to be_empty
+        end
+
+        it "refuses when the base exists only in the other scope" do
+          write_base("my_memory", system_memories_dir)
+          result = described_class.call(
+            "overlay body",
+            path: "my_memory",
+            scope: "project",
+            current_model_only: true,
+            model_key: "gemma4o"
+          )
+          expect(result).to start_with("Error: no base entry 'my_memory' in project scope")
+          expect(File.exist?(File.join(project_memories_dir, "my_memory.gemma4o.md"))).to be false
+        end
+
+        it "the written overlay is appended on the next read under that model" do
+          write_base
+          described_class.call(
+            "overlay body",
+            path: "my_memory",
+            scope: "project",
+            current_model_only: true,
+            model_key: "gemma4o"
+          )
+          result = mr.call("my_memory", scope: "project", model_key: "gemma4o")
+          expect(result).to include("base content")
+          expect(result).to include("overlay body")
         end
 
         it "skips index upsert — index.md byte-identical" do
+          write_base
           File.write(File.join(project_memories_dir, "index.md"), "- **existing**: entry\n")
           before = File.read(File.join(project_memories_dir, "index.md"))
           described_class.call(

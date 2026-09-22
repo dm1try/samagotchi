@@ -173,6 +173,14 @@ module Samagotchi
         FileUtils.mkdir_p(dir)
 
         if current_model_only && model_key
+          # Overlays are only read through their base entry (same scope), so an
+          # overlay without one would never load.
+          unless File.exist?(File.join(dir, "#{entry_name}.md"))
+            return "Error: no base entry '#{entry_name}' in #{resolved_scope} scope; a model overlay is only " \
+                   "loaded together with its base. Write the base entry first (without current_model_only), " \
+                   "then write the overlay."
+          end
+
           file_path = File.join(dir, "#{entry_name}.#{model_key}.md")
           File.write(file_path, body)
           bytes = body.bytesize
