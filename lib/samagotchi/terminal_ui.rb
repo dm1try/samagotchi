@@ -20,6 +20,7 @@ require_relative "output_formatter"
 require_relative "turn_preamble"
 require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
+require_relative "terminal_ui/question_prompt"
 
 module Samagotchi
   # TerminalUI encapsulates the single operating mode of the harness.
@@ -2616,50 +2617,26 @@ module Samagotchi
     end
 
     def render_question_widget(pending)
-      id = (pending[:id] || pending["id"]).to_s
-      question = (pending[:question] || pending["question"]).to_s
-      options = pending[:options] || pending["options"] || []
-      options = Array(options).map { |v| v.to_s.strip }.reject(&:empty?)
-      header = (pending[:header] || pending["header"]).to_s.strip
-      header = nil if header.empty?
-      multi = !!(pending[:multi_select] || pending["multi_select"])
-      free = !!(pending[:allow_freeform] || pending["allow_freeform"])
+      prompt = QuestionPrompt.new(pending)
 
       # Ensure spinner cleared and terminal in known state (same as reminder mute handling)
       finish_thinking_spinner rescue nil
 
       # Print widget (uses $stdout directly, not Reline buffer)
       $stdout.puts "" if $stdout.tty?
-      if header && !header.empty?
-        line = header
-        line = paint(line, 1) if color_output?
-        $stdout.puts line
-      end
-      q_line = "? #{question}"
-      q_line = paint(q_line, 94) if color_output?
-      $stdout.puts q_line
-      options.each_with_index do |opt, idx|
-        num = idx + 1
-        opt_str = "  #{num}) #{opt}"
-        opt_str = paint(opt_str, 92) if color_output?
-        $stdout.puts opt_str
-      end
-      hint = []
-      hint << (multi ? "Select one or more (e.g. 1,3)" : "Select one (e.g. 2)")
-      hint << "add '; freeform text' when Other/freeform needed" if free
-      $stdout.puts paint("  [#{hint.join('; ')}]", 90) if color_output?
-      $stdout.puts "  Enter empty to cancel." if !free # still allow cancel
+      prompt.lines(paint: method(:paint), color: color_output?).each { |line| $stdout.puts line }
+      $stdout.puts "  Enter empty to cancel." if !prompt.free? # still allow cancel
 
       # Loop until valid selection or cancel
       loop do
-        prompt = color_output? ? paint("choice> ", 33) : "choice> "
+        choice_prompt = color_output? ? paint("choice> ", 33) : "choice> "
         raw = nil
         begin
           # Use plain Reline.readline when tty, else $stdin.gets for non-tty/specs
           if $stdin.tty? && $stdout.tty?
-            raw = Reline.readline(prompt, true)
+            raw = Reline.readline(choice_prompt, true)
           else
-            $stdout.print(prompt)
+            $stdout.print(choice_prompt)
             $stdout.flush
             raw = $stdin.gets
           end
@@ -2678,66 +2655,15 @@ module Samagotchi
           return false
         end
 
-        # Split freeform: "1,3; my text" or "1; text" — first ';' separates selection vs freeform
-        sel_part, free_part = raw.split(";", 2).map { |s| s.to_s.strip } if raw.include?(";")
-        sel_part ||= raw
-        free_part = free_part ? free_part.strip : nil
-        free_part = nil if free_part && free_part.empty?
-        # Validate freeform allowed — dumb-model tolerant: accept freeform even if not flagged, just warn
-        if free_part && !free
-          $stdout.puts "(note: freeform not flagged but accepting '#{free_part}')"
-        end
-
-        # Parse selection indices: comma/space separated numbers or values
-        tokens = sel_part.split(/[,\s]+/).map(&:strip).reject(&:empty?)
-        # Also handle "1 3" etc
-        indices = []
-        labels = []
-        valid = true
-        tokens.each do |tok|
-          if tok.match?(/\A\d+\z/)
-            idx = tok.to_i - 1
-            if idx < 0 || idx >= options.size
-              $stdout.puts "Invalid choice '#{tok}': pick 1-#{options.size}"
-              valid = false
-              break
-            end
-            indices << idx
-            labels << options[idx]
-          else
-            # Allow value/label substring match (case-insensitive)
-            found = options.index { |o| o.downcase == tok.downcase || o.downcase.include?(tok.downcase) }
-            if found.nil?
-              $stdout.puts "Unknown option '#{tok}'. Use numbers 1-#{options.size} or exact labels."
-              valid = false
-              break
-            end
-            indices << found
-            labels << options[found]
-          end
-        end
-        next unless valid
-
-        labels.uniq!
-        indices = labels.map { |l| options.index(l) }.compact
-
-        if labels.empty? && free_part.nil?
-          $stdout.puts "No selection. Try again."
+        answer = prompt.parse(raw)
+        $stdout.puts answer.note if answer.note
+        unless answer.ok?
+          $stdout.puts answer.error
           next
         end
-        if !multi && labels.size > 1
-          $stdout.puts "This is single-select (pick one). Try again."
-          next
-        end
-        # Require freeform when 'Other' selected? Not enforced generically — harness accepts any.
-
-        # Deduplicate + preserve order
-        uniq_labels = []
-        seen = {}
-        labels.each { |l| unless seen[l]; uniq_labels << l; seen[l]=true; end }
 
         begin
-          @engine.answer_question(id: id, selected: uniq_labels, freeform: free_part)
+          @engine.answer_question(id: prompt.id, selected: answer.selected, freeform: answer.freeform)
           return true
         rescue ArgumentError => e
           $stdout.puts "Invalid: #{e.message}. Try again."
