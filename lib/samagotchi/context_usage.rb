@@ -6,9 +6,6 @@ module Samagotchi
   # usage) and the terminal UI (to render the status line) so both agree on
   # token accounting instead of duplicating the parsing logic.
   module ContextUsage
-    DEFAULT_CONTEXT_WINDOW_TOKENS = 256_000
-    CONTEXT_WINDOW_TOKENS_ENV = "SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"
-
     module_function
 
     def first_positive_integer(*values)
@@ -22,7 +19,11 @@ module Samagotchi
       nil
     end
 
-    def normalize(payload)
+    # `window_tokens` is the caller's resolved context window; a window the
+    # payload reports itself (n_ctx / context_window) wins over it. Without
+    # either, context_window_tokens and ctx_pct stay nil: the parser does not
+    # invent a default.
+    def normalize(payload, window_tokens: nil)
       payload_hash = payload.is_a?(Hash) ? payload : {}
       usage = payload_hash["usage"] || payload_hash[:usage]
       usage = {} unless usage.is_a?(Hash)
@@ -53,8 +54,7 @@ module Samagotchi
       context_window_tokens = first_positive_integer(
         payload_hash["n_ctx"], payload_hash[:n_ctx],
         payload_hash["context_window"], payload_hash[:context_window],
-        ENV[CONTEXT_WINDOW_TOKENS_ENV],
-        DEFAULT_CONTEXT_WINDOW_TOKENS
+        window_tokens
       )
 
       context_used_tokens = first_positive_integer(

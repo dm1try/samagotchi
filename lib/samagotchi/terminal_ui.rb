@@ -2230,7 +2230,8 @@ module Samagotchi
     end
 
     def capture_server_context_status_from_payload(payload)
-      normalized = ContextUsage.normalize(payload)
+      window_tokens = begin Samagotchi::Config.get("context.window_tokens") rescue nil end
+      normalized = ContextUsage.normalize(payload, window_tokens: window_tokens)
       return unless normalized
 
       @latest_server_context_status = normalized

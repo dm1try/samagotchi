@@ -202,6 +202,24 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(prompts.first).not_to include("CONTEXT_STATUS")
     end
 
+    it "uses the configured window when the server reports usage but no n_ctx" do
+      # llama.cpp's final /completion chunk carries token counts but no n_ctx.
+      ENV.delete("SAMAGOTCHI_CONTEXT_WINDOW_TOKENS")
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("context.window_tokens").and_return(200_000)
+      events = []
+      responses = [%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done"]
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        kwargs[:on_chunk]&.call(content: "", payload: { "stop" => true, "tokens_evaluated" => 120_000, "tokens_predicted" => 80 })
+        responses.shift
+      end
+
+      kernel.run([{ role: "user", content: "check" }], on_stream_event: ->(e) { events << e })
+      status = events.select { |e| e[:type] == :context_status }.map { |e| e[:status] }
+
+      expect(status.last).to include("src=server", "window_tokens=200000", "est_pct=60.0")
+    end
+
     it "still falls back to the synthetic estimate when the server reports no usage" do
       prompts = []
       events = []
