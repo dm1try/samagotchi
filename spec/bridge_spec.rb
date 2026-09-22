@@ -492,6 +492,28 @@ RSpec.describe Samagotchi::Bridge do
         expect(rest.map { |e| e[:data]["type"] }).to include("turn_completed")
       end
 
+      it "serves the same snapshot over GET /session/:id/snapshot, with the session state at its seq" do
+        start_bridge
+        release = hold_turn_after({ type: :generation_chunk, iteration: 1, content: "half " },
+                                  conversation: [{ role: "model", content: "done" }])
+        turn = Thread.new { run_turn_sync(@engine, @session, "mid turn") }
+        wait_until { @bridge.snapshot.dig(:current_turn, :parts)&.any? }
+
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+        body = client.get_json("snapshot")
+        missing = Samagotchi::BridgeClient.new(session_id: "nope", port: @bridge_port).get_json("snapshot")
+        release << true
+        turn.join
+
+        snap = body["snapshot"]
+        expect(snap["current_turn"]["prompt"]).to eq("mid turn")
+        expect(snap["current_turn"]["parts"].map { |p| p["text"] }).to eq(["half "])
+        expect(snap["messages"]).to eq([])
+        expect(snap["queued"]).to eq([])
+        expect(body["session_state_snapshot"]).to include("status" => "running", "event_seq" => snap["event_seq"])
+        expect(missing).to be_nil
+      end
+
       it "is followed by BridgeClient#follow: snapshot first, then gap-free live events" do
         start_bridge
         release = hold_turn_after({ type: :generation_chunk, iteration: 1, content: "half " },

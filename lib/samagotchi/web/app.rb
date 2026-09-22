@@ -178,21 +178,32 @@ module Samagotchi
       def handle_show(_req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
         history = read_history(id)
-        messages = messages_for_display(session)
-        pending = session.respond_to?(:pending_question) ? session.pending_question : nil
         # Read-only preview: selecting a session never spawns a worker.
         # The worker is woken only on POST /turn (handle_turn) via
         # SessionManager.resume_session + write_turn_input. This avoids
         # replaying last_prompt and spamming workers on preview scrub.
         # last_event_seq is nil when no live bridge, so the frontend stays
         # silent until the first Send.
-        live_state = bridge_get_json(id, "state")
-        snapshot = live_state && live_state["session_state_snapshot"]
+        #
+        # A live worker's snapshot is the truth (the session file lags its
+        # Engine): the messages, the turn in progress and the prompts queued
+        # behind it, all at one event_seq the client streams on from.
+        live = bridge_get_json(id, "snapshot")
+        turn_snapshot = live && live["snapshot"]
+        snapshot = live && live["session_state_snapshot"]
         last_event_seq = snapshot ? snapshot["event_seq"] : bridge_event_seq(id)
+        current_turn = turn_snapshot && turn_snapshot["current_turn"]
+        pending = if turn_snapshot
+                    current_turn && current_turn["pending_question"]
+                  elsif session.respond_to?(:pending_question)
+                    session.pending_question
+                  end
         json_response(200, {
           session: session_to_json(session, status: displayed_status(session, snapshot)),
           history: history,
-          messages: messages,
+          messages: messages_for_display(turn_snapshot ? turn_snapshot["messages"] : session.messages),
+          current_turn: current_turn,
+          queued: turn_snapshot ? Array(turn_snapshot["queued"]) : [],
           markdown_warning: @markdown_renderer.warning,
           pending_question: pending,
           last_event_seq: last_event_seq,
@@ -596,12 +607,13 @@ module Samagotchi
         []
       end
 
-      def messages_for_display(session)
-        msgs = session.messages || []
+      # @param msgs [Array<Hash>] a session's messages; symbol keys from disk,
+      #   string keys from a Bridge snapshot
+      def messages_for_display(msgs)
         filtered = []
-        msgs.each do |m|
-          role = m[:role].to_s
-          content = m[:content].to_s
+        Array(msgs).each do |m|
+          role = (m[:role] || m["role"]).to_s
+          content = (m[:content] || m["content"]).to_s
           next if role == "system"
           next if role == "tool_response"
 

@@ -195,6 +195,9 @@ module Samagotchi
         elsif (m = state_match(request[:path])) && method == "GET"
           payload, status, body = handle_state(m[1])
           write_json(io, status, payload, body)
+        elsif (m = snapshot_match(request[:path])) && method == "GET"
+          payload, status, body = handle_snapshot(m[1])
+          write_json(io, status, payload, body)
         else
           write_json(io, 404, { "Allow" => "GET, POST, OPTIONS" },
                      { error: "not_found", path: request[:path] })
@@ -253,6 +256,10 @@ module Samagotchi
 
     def state_match(path)
       %r|\A/session/([^/]+)/state\z|u.match(path.to_s)
+    end
+
+    def snapshot_match(path)
+      %r|\A/session/([^/]+)/snapshot\z|u.match(path.to_s)
     end
 
     def cancel_match(path)
@@ -371,6 +378,20 @@ module Samagotchi
       end
 
       [{}, 200, { session_id: @session_id, session_state_snapshot: @engine.session_state_snapshot }]
+    end
+
+    # The snapshot frame's content as one request, for a client that renders
+    # the messages elsewhere (the web server strips and formats them): it then
+    # streams from the snapshot's event_seq, and the ring replays what came
+    # after (or the stream resets). Returns [headers, status, body].
+    def handle_snapshot(session_id)
+      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
+
+      body = @engine.synchronize_events do
+        snap = snapshot
+        { snapshot: snap, session_state_snapshot: @engine.session_state_snapshot.merge(event_seq: snap[:event_seq]) }
+      end
+      [{}, 200, body]
     end
 
     # A per-session bridge only ever owns one Engine (for @session_id). The

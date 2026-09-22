@@ -230,6 +230,41 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["messages"].map { |m| m["content"] }).to eq(%w[hello hi\ there])
     end
 
+    it "renders a live session from the worker's snapshot: its messages, the turn in progress and its seq" do
+      app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
+      live = {
+        "snapshot" => {
+          "messages" => [
+            { "role" => "system", "content" => "sys" },
+            { "role" => "user", "content" => "first" },
+            { "role" => "model", "content" => "<think>hm</think>answer" },
+            { "role" => "tool_response", "content" => "raw" },
+            { "role" => "user", "content" => "second" }
+          ],
+          "current_turn" => { "prompt" => "second", "parts" => [{ "kind" => "text", "text" => "so far" }],
+                              "pending_question" => { "id" => "q1", "status" => "pending" } },
+          "queued" => [{ "enqueued_id" => "e1", "client_id" => "tui:1", "prompt" => "next" }],
+          "event_seq" => 40
+        },
+        "session_state_snapshot" => { "status" => "running", "event_seq" => 40 }
+      }
+      allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+      status, _headers, body = app.call(env_for("/api/sessions/s1"))
+
+      expect(status).to eq(200)
+      payload = JSON.parse(body.first)
+      expect(payload["messages"]).to eq([
+        { "role" => "user", "content" => "first" },
+        { "role" => "assistant", "content" => "answer" },
+        { "role" => "user", "content" => "second" }
+      ])
+      expect(payload["current_turn"]["parts"]).to eq([{ "kind" => "text", "text" => "so far" }])
+      expect(payload["queued"].map { |q| q["prompt"] }).to eq(["next"])
+      expect(payload["pending_question"]).to eq("id" => "q1", "status" => "pending")
+      expect(payload["last_event_seq"]).to eq(40)
+      expect(payload.dig("session", "status")).to eq("running")
+    end
+
     it "uses the bridge event_seq when a live bridge reports it" do
       app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
       allow(app).to receive(:bridge_event_seq).and_return(12)
