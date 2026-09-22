@@ -104,8 +104,10 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
 
 ## Session retention & ordering
 
-- **Files:** `~/.local/state/samagotchi/sessions/<uuid>.json` + `<uuid>/input|output|pid` (XDG-aware).
-- **Retention:** 14 days / 500 cap (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`/`MAX_COUNT`, `KEEP_STATUS=running`), live-worker guard, only when `*.json` present; lazy sweep ≤1/24h on `GET /api/sessions` & `Dashboard#render_list`, manual via `bin/chi sessions prune --dry-run`.
+- **Files:** `~/.local/state/samagotchi/sessions/<uuid>.json` + `<uuid>/input|output|pid|owner.lock|bridge.json` (XDG-aware).
+- **Single owner:** the process running a session's Engine (worker or in-process TUI) holds a flock on `owner.lock` (`OwnerLock`); a second owner backs off, and the web answers 409 for a TUI-owned session.
+- **Status:** `status` is turn state (`idle`/`running`); liveness is the lock.
+- **Retention:** 14 days / 500 cap (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`/`MAX_COUNT`, optional `KEEP_STATUS`), live-owner guard, only when `*.json` present; lazy sweep ≤1/24h on `GET /api/sessions` & `Dashboard#render_list`, manual via `bin/chi sessions prune --dry-run`.
 - **Ordering:** `Session.list(sort:,order:,limit:,offset:)` and `GET /api/sessions?sort=&order=&limit=&offset=` default `updated_at desc`; Web UI sort/filter/pagination.
 - **Test hygiene:** `test_run` flag when `SAMAGOTCHI_ENV=test`/`RACK_ENV=test`/`CI`, targetable via `prune --test-only` / `clean`.
 

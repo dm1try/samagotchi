@@ -176,10 +176,10 @@ Sessions are plain files — no DB. Each session is `~/.local/state/samagotchi/s
 |-----|---------|---------|
 | `SAMAGOTCHI_SESSION_RETENTION_DAYS` | `14` (`0`=forever) | Delete if `updated_at` older than N days |
 | `SAMAGOTCHI_SESSION_MAX_COUNT` | `500` (`0`=uncapped) | Keep newest N, prune overflow |
-| `SAMAGOTCHI_SESSION_KEEP_STATUS` | `running` | CSV of statuses never auto-pruned |
+| `SAMAGOTCHI_SESSION_KEEP_STATUS` | (none) | CSV of statuses never auto-pruned |
 | `SAMAGOTCHI_SESSION_SWEEP_INTERVAL_HOURS` | `24` | Throttle lazy sweep |
 
-A session is deleted if **expired by age OR overflow by count** (unless `keep_status` or live-worker guard). Orphan dirs without a `*.json` are never deleted. Deletion removes both `*.json` and sidecar dir atomically. Set both `DAYS=0` and `MAX=0` to retain forever.
+A session is deleted if **expired by age OR overflow by count** (unless `keep_status` or the live-owner guard: a session a worker or `chi` still has open is never pruned). A session's `status` is its turn state (`idle`/`running`), not whether a worker is alive. Orphan dirs without a `*.json` are never deleted. Deletion removes both `*.json` and sidecar dir atomically. Set both `DAYS=0` and `MAX=0` to retain forever.
 
 **Lazy sweep:** automatic prune runs at most once per 24h on `GET /api/sessions` (Web). No background thread or cron. Manual prune is always available.
 
