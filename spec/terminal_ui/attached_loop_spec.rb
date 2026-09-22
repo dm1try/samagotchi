@@ -144,11 +144,18 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     end
   end
 
-  it "keeps the latest recap for /recap" do
-    feed(snapshot, { type: :recap_ready, recap: "we fixed the bug", generation: 3 })
+  it "keeps the latest recap for /recap, from the join's snapshot or announced later, until a turn starts" do
+    joined = snapshot
+    joined[:snapshot][:recap] = "earlier recap"
+    feed(joined)
+    expect(attached.recap).to eq("earlier recap")
 
+    feed({ type: :recap_ready, recap: "we fixed the bug", generation: 3 })
     expect(attached.recap).to eq("we fixed the bug")
     expect(screen.lines.size).to eq(1)
+
+    feed({ type: :turn_started, prompt: "next", origin: { client_id: "web:1" } })
+    expect(attached.recap).to be_nil
   end
 
   it "ends on stream_closed, saying why" do
@@ -226,10 +233,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
                                     a_string_including("tokens in/out:    10/5 (total 15, server-reported)"))
   end
 
-  it "has no recap to show while workers run without one" do
+  it "says when there is no recap yet" do
     run_with(["/recap"])
 
-    expect(screen.lines).to include("no recap: worker sessions run without the idle recap for now")
+    expect(screen.lines).to include("no recap yet: one comes after a quiet stretch, when recap: is configured")
   end
 
   it "declines the commands that need the local Engine" do

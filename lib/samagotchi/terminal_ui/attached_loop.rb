@@ -220,7 +220,7 @@ module Samagotchi
         if command == STATS_COMMAND
           show_stats
         elsif command == RECAP_COMMAND
-          @screen.print_line(@recap || "no recap: worker sessions run without the idle recap for now")
+          @screen.print_line(@recap || "no recap yet: one comes after a quiet stretch, when recap: is configured")
         elsif UNAVAILABLE_COMMANDS.include?(command) || text.start_with?("!")
           @screen.print_line("#{command} is not available in attached mode yet")
         else
@@ -321,6 +321,7 @@ module Samagotchi
           @attached = true
           render_join_header(Array(snapshot[:messages]))
         end
+        @recap = snapshot[:recap]
         render_current_turn(snapshot[:current_turn])
         Array(snapshot[:queued]).each do |entry|
           next if own?(entry[:client_id])
@@ -385,6 +386,7 @@ module Samagotchi
       end
 
       def start_turn(event)
+        @recap = nil # the turn makes it stale
         @running = true
         @joined_mid_turn = false
         origin = event[:origin] || {}

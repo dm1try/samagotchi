@@ -287,13 +287,16 @@ RSpec.describe Samagotchi::SessionManager do
       }.to raise_error(SystemExit)
     end
 
-    it "disables the idle recap (no web consumer for :recap_ready yet)" do
+    it "leaves the idle recap to the config (the web and attached UIs show :recap_ready)" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.status = Samagotchi::Session::STATUS_STOPPED
       session.save(state_dir: tmpdir)
 
       engine = instance_double(Samagotchi::Engine, "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil)
-      expect(Samagotchi::Engine).to receive(:new).with(hash_including(recap: false)).and_return(engine)
+      expect(Samagotchi::Engine).to receive(:new) do |**kwargs|
+        expect(kwargs).not_to have_key(:recap)
+        engine
+      end
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
 
       expect {
