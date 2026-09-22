@@ -1218,7 +1218,7 @@ module Samagotchi
           Keep each scope's index.md updated when adding/updating entries.
           Each scope's `index.md` is auto-maintained by `memory_write` (one
           managed line per entry with name/scope/date/size); free-form sections
-          are preserved. The verbatim `index` write (`path: "index"`) is kept.
+          are preserved. The verbatim `index` write (`name: "index"`) is kept.
           Entries may have a model-specific companion <name>.<model>.md, auto-appended
           when read under the matching model — the base entry is the contract;
           overlays only add model-specific guidance and never contradict it.

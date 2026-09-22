@@ -22,16 +22,16 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 
 ### `memory_read` — read entries
 
-- `call("entry")` — project-first fallback: tries `project/<entry>.md`, then `system/<entry>.md`.
-- `call("entry", scope: "system"|"project")` — scoped read.
-- `call("a, b, c")` — comma-separated, concatenated with `\n\n---\n\n`.
-- `call("", scope: "system"|"project")` or `call("")` — reads the index. Empty name with no scope returns both indexes concatenated (`Project memories:` / `System memories:`). Use this at start to discover what exists.
+- `name: "entry"` — project-first fallback: tries `project/<entry>.md`, then `system/<entry>.md`.
+- `name: "entry", scope: "system"|"project"` — scoped read.
+- `name: "a, b, c"` — comma-separated, concatenated with `\n\n---\n\n`.
+- `name: ""` (optionally with `scope`) — reads the index. Empty name with no scope returns both indexes concatenated (`Project memories:` / `System memories:`). Use this at start to discover what exists.
 - Returns `Error: memory not found: …` on miss — treat as missing, not fatal.
 
 ### `memory_write` — write/update entries
 
-- `call(content, path: "entry_name", scope: "project"|"system", description: "optional one-liner")`
-- `path` is the entry name **without** `.md` (the tool adds it). `path: "index"` is verbatim write to `index.md` (no auto-index update) — rarely needed.
+- Parameters: `name: "entry_name"`, `content: "..."`, `scope: "project"|"system"`, optional `description: "one-liner"`, optional `current_model_only: true`.
+- `name` is the entry name **without** `.md` (the tool adds it). Use `name`, **not** `path` — `path` belongs to the file tools and is ignored here. `name: "index"` is a verbatim write to `index.md` (no auto-index update) — rarely needed.
 - `scope` is **required** — never omit. Prefer `project` for repo conventions, `system` for user preferences.
 - `description` is appended to the managed `index.md` line (`— description`). Replaces previous description if given; otherwise preserves existing one.
 - On success returns `Memory 'name' saved to <scope> scope (N bytes). Index updated: …` — confirm `bytes` and `scope`.
