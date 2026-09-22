@@ -83,6 +83,28 @@ RSpec.describe Samagotchi::Hooks::Registry do
       subject.clear_all
       expect(subject.size).to eq(0)
     end
+
+    it "spares persistent (config.yml) hooks" do
+      calls = []
+      subject.register_persistent(:a) { calls << :persistent }
+      subject.register(:a) { calls << :turn }
+      subject.clear_all
+      subject.fire(:a, {})
+      expect(calls).to eq([:persistent])
+    end
+  end
+
+  describe "#register_persistent" do
+    it "fires before turn-scoped hooks and can be unregistered by name" do
+      calls = []
+      subject.register(:a) { calls << :turn }
+      subject.register_persistent(:a) { calls << :persistent }
+      subject.fire(:a, {})
+      expect(calls).to eq(%i[persistent turn])
+
+      expect(subject.unregister(:a)).to be true
+      expect(subject.size).to eq(0)
+    end
   end
 end
 

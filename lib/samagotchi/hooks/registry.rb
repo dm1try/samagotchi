@@ -15,7 +15,8 @@ module Samagotchi
     class Registry
       def initialize
         @mutex = Monitor.new
-        @hooks = {} # name -> Array<Proc> (config.yml / manual hooks, run last)
+        @hooks = {} # name -> Array<Proc> (manual, turn-scoped hooks, run last)
+        @persistent_hooks = {} # name -> Array<Proc> (config.yml hooks, survive clear_all)
         @bundle_hooks = {} # name -> Array<{bundle:, hook_name:, priority:, proc:}>
       end
 
@@ -29,6 +30,18 @@ module Samagotchi
         raise ArgumentError, "hook name must be a Symbol" unless name.is_a?(Symbol)
         raise ArgumentError, "hook block is required" unless block_given?
         @mutex.synchronize { (@hooks[name] ||= []) << block }
+      end
+
+      # Register a process-scoped plain hook (config.yml). Unlike #register it
+      # survives the per-turn #clear_all, so configured hooks fire on every
+      # turn, not only the first. Fires after bundle hooks, before
+      # turn-scoped ones.
+      # @param name [Symbol] hook event identifier
+      # @return [void]
+      def register_persistent(name, &block)
+        raise ArgumentError, "hook name must be a Symbol" unless name.is_a?(Symbol)
+        raise ArgumentError, "hook block is required" unless block_given?
+        @mutex.synchronize { (@persistent_hooks[name] ||= []) << block }
       end
 
       # Register a bundle-owned hook. Bundle hooks are ordered by
@@ -82,12 +95,17 @@ module Samagotchi
       # @param name [Symbol]
       # @return [Boolean] true if it was removed, false if not found
       def unregister(name)
-        @mutex.synchronize { !!@hooks.delete(name) }
+        @mutex.synchronize do
+          removed_plain = @hooks.delete(name)
+          removed_persistent = @persistent_hooks.delete(name)
+          !!(removed_plain || removed_persistent)
+        end
       end
 
-      # Remove all registered hooks (plain only).
-      # Bundle hooks are process-scoped and teardown via #unregister_bundle;
-      # they survive the per-turn clear_all so guardrails protect every turn.
+      # Remove all turn-scoped hooks (registered via #register).
+      # Bundle hooks (#unregister_bundle) and config hooks (#register_persistent)
+      # are process-scoped and survive the per-turn clear_all, so guardrails
+      # and configured hooks apply to every turn.
       # @return [void]
       def clear_all
         @mutex.synchronize do
@@ -103,7 +121,8 @@ module Samagotchi
       # running turn.
       #
       # Ordering: bundle hooks (sorted by priority, then bundle, then hook
-      # name) fire first; plain hooks fire in registration order, last.
+      # name) fire first; config hooks next; turn-scoped hooks last, each in
+      # registration order.
       #
       # @param name [Symbol] the hook name to fire
       # @param event [Hash] the event payload (may be mutated by hooks)
@@ -123,20 +142,22 @@ module Samagotchi
 
       # @return [Integer] total number of registered hooks (bundle + plain)
       def size
-        @mutex.synchronize { @hooks.values.sum(&:size) + @bundle_hooks.values.sum(&:size) }
+        @mutex.synchronize do
+          @hooks.values.sum(&:size) + @persistent_hooks.values.sum(&:size) + @bundle_hooks.values.sum(&:size)
+        end
       end
 
       private
 
       # Returns the ordered list of procs for an event: bundle hooks sorted by
-      # (priority, bundle, hook_name), followed by plain hooks in registration
-      # order.
+      # (priority, bundle, hook_name), then config hooks, then turn-scoped
+      # hooks, each in registration order.
       def ordered_procs(name)
         @mutex.synchronize do
           bundle_procs = (@bundle_hooks[name] || [])
             .sort_by { |h| [h[:priority].to_i, h[:bundle].to_s, h[:hook_name].to_s] }
             .map { |h| h[:proc] }
-          bundle_procs + (@hooks[name] || [])
+          bundle_procs + (@persistent_hooks[name] || []) + (@hooks[name] || [])
         end
       end
     end

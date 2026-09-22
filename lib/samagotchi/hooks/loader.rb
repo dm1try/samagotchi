@@ -51,7 +51,9 @@ module Samagotchi
               plugin = load_plugin(hooks_dir, defn[:path])
               # Register a Proc that calls plugin.call(event)
               # Wrap in begin/rescue to handle plugins that don't respond_to :call
-              registry.register(defn[:event_type].to_sym) do |event|
+              # Persistent: config hooks must fire on every turn, not be wiped
+              # by Engine#run_turn's per-turn clear_hooks after turn 1.
+              registry.register_persistent(defn[:event_type].to_sym) do |event|
                 begin
                   plugin.call(event)
                 rescue StandardError => e
