@@ -119,4 +119,17 @@ RSpec.describe Samagotchi::IdleClient do
       expect { client.summarize("hi") }.not_to raise_error
     end
   end
+
+  describe "request budget" do
+    it "uses its own timeout and never retries" do
+      config = described_class.new(model: "m", base_url: "http://x/v1", timeout: 12.5).send(:build_config)
+      expect(config.request_timeout).to eq(12.5)
+      expect(config.max_retries).to eq(0)
+    end
+
+    it "defaults to a short timeout, not the chat's global one" do
+      config = described_class.new(model: "m", base_url: "http://x/v1").send(:build_config)
+      expect(config.request_timeout).to eq(described_class::DEFAULT_TIMEOUT_SECONDS)
+    end
+  end
 end

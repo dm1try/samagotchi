@@ -24,11 +24,16 @@ module Samagotchi
 
     DEFAULT_MODEL = "gemma4-small"
     DUMMY_API_KEY = "sk-local-dummy"
+    DEFAULT_TIMEOUT_SECONDS = 30.0
 
-    def initialize(model: DEFAULT_MODEL, base_url: nil, api_key: DUMMY_API_KEY)
+    # @param timeout [Numeric] HTTP request timeout. Kept to the recap's own
+    #   wait budget (not the chat's global request_timeout) so an abandoned
+    #   summarize thread can't outlive the recap attempt by minutes.
+    def initialize(model: DEFAULT_MODEL, base_url: nil, api_key: DUMMY_API_KEY, timeout: DEFAULT_TIMEOUT_SECONDS)
       @model = model
       @base_url = base_url.to_s.chomp("/") if base_url
       @api_key = api_key
+      @timeout = timeout
     end
 
     # Summarize an already-built recap prompt. Returns the cleaned prose, or
@@ -83,15 +88,11 @@ module Samagotchi
     end
 
     def build_config
-      # Derive from global RubyLLM.config so we inherit timeouts, middleware, etc.
-      # but override the OpenAI-specific settings for our local endpoint.
       config = RubyLLM::Configuration.new
-      # Inherit global settings via public API where available
-      config.request_timeout = RubyLLM.config.request_timeout || 300
-      config.max_retries = RubyLLM.config.max_retries || 3
-      config.retry_interval = RubyLLM.config.retry_interval || 0.1
-      config.retry_backoff_factor = RubyLLM.config.retry_backoff_factor || 2
-      config.retry_interval_randomness = RubyLLM.config.retry_interval_randomness || 0.5
+      # A recap is best-effort: one short attempt, no retries. The idle job
+      # tries again after the next activity, never on its own.
+      config.request_timeout = @timeout
+      config.max_retries = 0
       # Set our local endpoint settings
       config.openai_api_key = @api_key
       config.openai_api_base = @base_url if @base_url

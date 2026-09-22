@@ -122,12 +122,11 @@ RSpec.describe Samagotchi::IdleRecap do
         described_class.new(model: model, base_url: base_url)
       }.to raise_error(ArgumentError, /engine/)
     end
-    it "creates an IdleClient when none is provided" do
+    it "creates an IdleClient with the recap's timeout when none is provided" do
       engine = stub_engine
-      allow(Samagotchi::IdleClient).to receive(:new).with(model: model, base_url: base_url)
-        .and_return(double(summarize: "recap"))
-      described_class.new(engine: engine, model: model, base_url: base_url)
-      expect(Samagotchi::IdleClient).to have_received(:new).with(model: model, base_url: base_url)
+      allow(Samagotchi::IdleClient).to receive(:new).and_return(double(summarize: "recap"))
+      described_class.new(engine: engine, model: model, base_url: base_url, timeout: 7.0)
+      expect(Samagotchi::IdleClient).to have_received(:new).with(model: model, base_url: base_url, timeout: 7.0)
     end
     it "uses a custom client when provided" do
       client_double = double

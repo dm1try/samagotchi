@@ -121,7 +121,7 @@ module Samagotchi
       @inactivity = inactivity
       @min_user_turns = min_user_turns
       @timeout = timeout
-      @client = client || IdleClient.new(model: model, base_url: base_url)
+      @client = client || IdleClient.new(model: model, base_url: base_url, timeout: timeout)
       @clock = clock
 
       @mutex = Monitor.new
