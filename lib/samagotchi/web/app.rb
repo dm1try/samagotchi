@@ -7,6 +7,7 @@ require "uri"
 require "rack"
 require "rack/request"
 
+require_relative "../bridge_client"
 require_relative "../session"
 require_relative "../session_manager"
 require_relative "../output_formatter"
@@ -22,7 +23,7 @@ module Samagotchi
     # (the single live client transport); history for any session — including
     # dead ones — is served by GET /api/sessions/:id/output from output/ files.
     class App
-      DEFAULT_HOST = "127.0.0.1"
+      DEFAULT_HOST = BridgeClient::HOST
       BRIDGE_WAIT_TIMEOUT = 10.0
 
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
@@ -222,25 +223,17 @@ module Samagotchi
           return error_response(400, "missing_fields", "id is required")
         end
         # Try live Engine via Bridge first (in-process answer without file IPC)
-        bridge_port = bridge_sidecar_port(id)
-        if bridge_port
+        client = bridge_client(id)
+        if client
           begin
-            require "socket"
-            sock = TCPSocket.new(DEFAULT_HOST, bridge_port)
-            # POST to Bridge's /session/:id/answer (in-process, single transport)
-            json_body = JSON.generate({ id: qid, selected: selected, freeform: freeform })
-            sock.write("POST /session/#{id}/answer HTTP/1.1\r\nHost: #{DEFAULT_HOST}:#{bridge_port}\r\nContent-Type: application/json\r\nContent-Length: #{json_body.bytesize}\r\nConnection: close\r\n\r\n#{json_body}")
-            status_line = sock.gets
-            reply_body = sock.read.to_s.split("\r\n\r\n", 2)[1]
-            sock.close rescue nil
-            code = status_line.to_s[/\AHTTP\/1\.[01] (\d{3})/, 1].to_i
-            return json_response(200, { status: "answered", session_id: id, id: qid }) if code == 200
+            reply = client.answer(id: qid, selected: selected, freeform: freeform)
+            return json_response(200, { status: "answered", session_id: id, id: qid }) if reply.ok?
 
             # Pass the bridge's verdict through: 409 = another client answered
             # first (or the question was cancelled), 400 = invalid selection.
-            if [400, 409].include?(code)
-              detail = (JSON.parse(reply_body.to_s)["detail"] rescue nil) || "answer rejected"
-              return error_response(code, code == 409 ? "question_not_pending" : "invalid_answer", detail)
+            if [400, 409].include?(reply.status)
+              detail = reply.json&.dig("detail") || "answer rejected"
+              return error_response(reply.status, reply.status == 409 ? "question_not_pending" : "invalid_answer", detail)
             end
           rescue StandardError
             nil
@@ -304,22 +297,16 @@ module Samagotchi
         end
 
         # Try direct bridge cancel first (in-process, low latency)
-        bridge_port = bridge_sidecar_port(id)
-        if bridge_port
+        client = bridge_client(id)
+        if client
           begin
-            require "socket"
-            sock = TCPSocket.new(DEFAULT_HOST, bridge_port)
-            json_body = JSON.generate({ reason: reason })
-            sock.write("POST /session/#{id}/cancel HTTP/1.1\r\nHost: #{DEFAULT_HOST}:#{bridge_port}\r\nContent-Type: application/json\r\nContent-Length: #{json_body.bytesize}\r\nConnection: close\r\n\r\n#{json_body}")
-            status_line = sock.gets
-            sock.close rescue nil
-            if status_line && status_line.include?("202")
+            reply = client.cancel(reason: reason)
+            if reply.status == 202
               return json_response(202, { status: "cancel_requested", session_id: id, reason: reason, via: "bridge" })
             end
             # The bridge answers 409 when there is no active turn to cancel.
-            if status_line
-              code = status_line.split[1].to_i
-              return json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id }) if code == 409
+            if reply.status == 409
+              return json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id })
             end
           rescue StandardError
             nil
@@ -419,63 +406,29 @@ module Samagotchi
         nil
       end
 
+      # Port of the session's live Bridge (stale sidecars are removed), or nil.
       def bridge_sidecar_port(session_id)
         dir = @session_class.session_dir(session_id, state_dir: default_state_dir)
-        sidecar = File.join(dir, "bridge.json")
-        return nil unless File.file?(sidecar)
-
-        data = JSON.parse(File.read(sidecar))
-        port = data["port"]
-        port = port.is_a?(Integer) ? port : port.to_i
-        return nil unless port.to_i > 0
-
-        # Validate liveness: stale sidecar after worker death causes ECONNREFUSED
-        # which surfaces as WEBrick ERROR. Probe quickly and clean up if dead.
-        begin
-          require "socket"
-          Socket.tcp(DEFAULT_HOST, port, connect_timeout: 0.2).close
-        rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ETIMEDOUT, SocketError, IOError, StandardError
-          begin
-            File.unlink(sidecar)
-          rescue StandardError
-            nil
-          end
-          return nil
-        end
-        port
+        BridgeClient.sidecar_port(dir, host: DEFAULT_HOST)
       rescue StandardError
         nil
+      end
+
+      # @return [BridgeClient, nil] a client for the session's live Bridge
+      def bridge_client(session_id)
+        port = bridge_sidecar_port(session_id)
+        port && BridgeClient.new(session_id: session_id, port: port, host: DEFAULT_HOST)
       end
 
       # Read the live Engine state over the bridge (raw GET /session/:id/state).
       # @return [Hash, nil] parsed JSON body, or nil when no live bridge / timeout.
       def bridge_get_json(session_id, path)
-        port = bridge_sidecar_port(session_id)
-        return nil unless port
-
-        require "socket"
-        sock = TCPSocket.new(DEFAULT_HOST, port)
-        sock.write("GET /session/#{session_id}/#{path} HTTP/1.1\r\nHost: #{DEFAULT_HOST}:#{port}\r\nConnection: close\r\n\r\n")
-        response = sock.read
-        sock.close rescue nil
-        return nil unless response
-
-        status_line = response.lines.first.to_s
-        return nil unless status_line.include?("200")
-
-        body = response.split("\r\n\r\n", 2)[1] || ""
-        JSON.parse(body)
-      rescue StandardError
-        nil
+        bridge_client(session_id)&.get_json(path)
       end
 
       # Monotonic SSE cursor for a live bridge session, else nil.
       def bridge_event_seq(session_id)
-        state = bridge_get_json(session_id, "state")
-        seq = state && state.dig("session_state_snapshot", "event_seq")
-        seq.nil? ? nil : seq.to_i
-      rescue StandardError
-        nil
+        bridge_client(session_id)&.event_seq
       end
 
       def serve_index(_req)
@@ -676,52 +629,17 @@ module Samagotchi
       # Proxy body that streams from the per-session Bridge TCP server.
       class ProxyStreamBody
         def initialize(host:, port:, session_id:, query:, headers:)
-          @host = host
-          @port = port
-          @session_id = session_id
+          @client = BridgeClient.new(session_id: session_id, port: port, host: host)
           @query = query
           @headers = headers
         end
 
-        def each
-          require "socket"
-          sock = nil
-          # Absorb the probe→connect race around a resumed worker's bridge:
-          # the sidecar probe can succeed a moment before the worker dies (or
-          # the bridge socket briefly refuses). A few quick bounded retries
-          # avoid the silent empty-200 that EventSource would otherwise keep
-          # re-opening.
-          3.times do |attempt|
-            begin
-              sock = TCPSocket.new(@host, @port)
-              break
-            rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ETIMEDOUT, SocketError, StandardError
-              sock = nil
-              sleep(0.15 * (attempt + 1))
-            end
-          end
-          return unless sock
-          begin
-            # Forward the browser's auto-reconnect cursor: the bridge prefers the
-            # Last-Event-ID header over ?from_seq, and the reconnect URL carries a
-            # stale initial cursor — without this the bridge would replay content
-            # already delivered (duplicate bubbles).
-            lei = @headers["HTTP_LAST_EVENT_ID"].to_s.strip
-            last_event_line = lei.empty? ? "" : "Last-Event-ID: #{lei}\r\n"
-            sock.write("GET /session/#{@session_id}/stream#{@query} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nAccept: text/event-stream\r\n#{last_event_line}Connection: keep-alive\r\n\r\n")
-            # Skip HTTP headers
-            while (line = sock.gets)
-              break if line.strip.empty?
-            end
-            loop do
-              chunk = sock.readpartial(4096)
-              yield chunk
-            rescue EOFError, IOError, Errno::ECONNRESET, Errno::ECONNREFUSED
-              break
-            end
-          ensure
-            sock&.close rescue nil
-          end
+        def each(&block)
+          # Forward the browser's auto-reconnect cursor: the bridge prefers the
+          # Last-Event-ID header over ?from_seq, and the reconnect URL carries a
+          # stale initial cursor — without this the bridge would replay content
+          # already delivered (duplicate bubbles).
+          @client.stream(query: @query, last_event_id: @headers["HTTP_LAST_EVENT_ID"], &block)
         end
       end
     end
