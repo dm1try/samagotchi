@@ -205,8 +205,8 @@ RSpec.describe Samagotchi::KernelLoop do
     it "uses the configured window when the server reports usage but no n_ctx" do
       # llama.cpp's final /completion chunk carries token counts but no n_ctx.
       ENV.delete("SAMAGOTCHI_CONTEXT_WINDOW_TOKENS")
-      allow(Samagotchi::Config).to receive(:get).and_call_original
-      allow(Samagotchi::Config).to receive(:get).with("context.window_tokens").and_return(200_000)
+      Samagotchi::Config.set_cli_overrides("context.window_tokens" => 200_000)
+      allow(client).to receive(:context_window).and_return(nil)
       events = []
       responses = [%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done"]
       allow(client).to receive(:complete) do |_prompt, **kwargs|
@@ -217,7 +217,31 @@ RSpec.describe Samagotchi::KernelLoop do
       kernel.run([{ role: "user", content: "check" }], on_stream_event: ->(e) { events << e })
       status = events.select { |e| e[:type] == :context_status }.map { |e| e[:status] }
 
-      expect(status.last).to include("src=server", "window_tokens=200000", "est_pct=60.0")
+      expect(status.last).to include("src=server", "window_tokens=200000", "window_src=config", "est_pct=60.0")
+    ensure
+      Samagotchi::Config.set_cli_overrides({})
+    end
+
+    it "sizes context against the window the server reports, over config" do
+      Samagotchi::Config.set_cli_overrides("context.window_tokens" => 200_000)
+      allow(client).to receive(:context_window).with(model: "Gemma-4B-it").and_return(128_000)
+      events = []
+      responses = [%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done"]
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        kwargs[:on_chunk]&.call(content: "", payload: { "stop" => true, "tokens_evaluated" => 64_000, "tokens_predicted" => 80 })
+        responses.shift
+      end
+
+      kernel.run([{ role: "user", content: "check" }], on_stream_event: ->(e) { events << e })
+      started = events.select { |e| e[:type] == :generation_started }
+      status = events.select { |e| e[:type] == :context_status }
+
+      expect(started.map { |e| e.slice(:context_window_tokens, :context_window_source) }.uniq)
+        .to eq([{ context_window_tokens: 128_000, context_window_source: :server }])
+      expect(status.last[:status]).to include("window_tokens=128000", "window_src=server", "est_pct=50.0")
+      expect(status.last[:usage]).to include(window_tokens: 128_000, window_source: :server)
+    ensure
+      Samagotchi::Config.set_cli_overrides({})
     end
 
     it "still falls back to the synthetic estimate when the server reports no usage" do

@@ -355,6 +355,7 @@ module Samagotchi
       @kernel.sync_model_key!(@model_key) if @kernel.respond_to?(:sync_model_key!)
       @system_prompt = nil
       sync_kernel_client!
+      @client.invalidate_context_window! if @client.respond_to?(:invalidate_context_window!)
       if persist_default
         ConfigFile.write_default_model!(resolved)
         @default_model_name = resolved

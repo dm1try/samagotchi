@@ -4,6 +4,7 @@ require_relative "model_profile"
 require_relative "tool_call_parser"
 require_relative "config"
 require_relative "context_usage"
+require_relative "context_window"
 require_relative "prompt"
 require_relative "prompt_literal_guard"
 require_relative "client"
@@ -115,12 +116,10 @@ module Samagotchi
 
     CONTEXT_STATUS_PREFIX = "CONTEXT_STATUS"
     CONTEXT_STATUS_ENABLED_ENV = "SAMAGOTCHI_CONTEXT_STATUS"
-    CONTEXT_WINDOW_TOKENS_ENV = "SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"
     CONTEXT_CHARS_PER_TOKEN_ENV = "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"
     CONTEXT_THRESHOLDS_ENV = "SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"
     CONTEXT_CADENCE_ENV = "SAMAGOTCHI_CONTEXT_STATUS_CADENCE"
 
-    DEFAULT_CONTEXT_WINDOW_TOKENS = 256_000
     DEFAULT_CONTEXT_CHARS_PER_TOKEN = 4.0
     DEFAULT_CONTEXT_THRESHOLDS = [20, 40, 60, 80].freeze
     DEFAULT_CONTEXT_CADENCE = 0
@@ -198,8 +197,15 @@ module Samagotchi
       effective_max_iterations.times do |iteration_index|
         inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1)
         prompt = Prompt.format(conversation, profile: @profile)
-        context_status = emit_context_status_event(on_stream_event, prompt, iteration_index: iteration_index, state: context_state) || context_status
-        emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
+        context_window = ContextWindow.resolve(client: @client, model: resolved_model_name)
+        context_status = emit_context_status_event(on_stream_event, prompt, iteration_index: iteration_index, state: context_state, window: context_window) || context_status
+        emit_stream_event(
+          on_stream_event,
+          type: :generation_started,
+          iteration: iteration_index + 1,
+          context_window_tokens: context_window.tokens,
+          context_window_source: context_window.source
+        )
         # Fire :before_generation hook
         gen_event = { type: :before_generation, iteration: iteration_index + 1 }
         fire_hook(:before_generation, gen_event) if @hooks
@@ -505,10 +511,10 @@ module Samagotchi
     # The model no longer receives the telemetry (it used to be injected as a
     # synthetic system message); the returned {est_pct:, bucket:} hash feeds
     # the Result's context_status for UI status lines (nil when not emitted).
-    def emit_context_status_event(on_stream_event, prompt, iteration_index:, state:)
+    def emit_context_status_event(on_stream_event, prompt, iteration_index:, state:, window: nil)
       return nil unless context_status_enabled?
 
-      usage = estimate_context_usage(prompt, server_usage: state[:server_usage])
+      usage = estimate_context_usage(prompt, server_usage: state[:server_usage], window: window)
       bucket = context_status_bucket(usage[:estimated_pct])
       emit_status = should_emit_context_status?(state: state, bucket: bucket, iteration_index: iteration_index)
       state[:last_bucket] = bucket
@@ -558,15 +564,24 @@ module Samagotchi
       !(value == "0" || value.casecmp?("false"))
     end
 
-    def estimate_context_usage(prompt, server_usage: nil)
+    # `window` is this iteration's ContextWindow::Resolved (resolved here when
+    # not given). A window the stream payload reports itself still wins.
+    def estimate_context_usage(prompt, server_usage: nil, window: nil)
+      window ||= ContextWindow.resolve(client: @client, model: @current_model_name)
+      window_source = window.source
+      if server_usage && server_usage[:context_window_tokens]
+        window_source = :server
+      end
+
       if server_usage && server_usage[:prompt_tokens]
-        window_tokens = server_usage[:context_window_tokens] || context_window_tokens
+        window_tokens = server_usage[:context_window_tokens] || window.tokens
         estimated_used_tokens = server_usage[:prompt_tokens]
         estimated_remaining_tokens = [window_tokens - estimated_used_tokens, 0].max
         estimated_pct = (estimated_used_tokens.to_f / window_tokens) * 100.0
 
         return {
           window_tokens: window_tokens,
+          window_source: window_source,
           estimated_used_tokens: estimated_used_tokens,
           estimated_remaining_tokens: estimated_remaining_tokens,
           estimated_pct: estimated_pct,
@@ -574,28 +589,19 @@ module Samagotchi
         }
       end
 
-      window_tokens = context_window_tokens
+      window_tokens = window.tokens
       estimated_used_tokens = (prompt.length / context_chars_per_token).ceil
       estimated_remaining_tokens = [window_tokens - estimated_used_tokens, 0].max
       estimated_pct = (estimated_used_tokens.to_f / window_tokens) * 100.0
 
       {
         window_tokens: window_tokens,
+        window_source: window_source,
         estimated_used_tokens: estimated_used_tokens,
         estimated_remaining_tokens: estimated_remaining_tokens,
         estimated_pct: estimated_pct,
         source: "estimate"
       }
-    end
-
-    def context_window_tokens
-      cfg = begin Samagotchi::Config.get("context.window_tokens") rescue nil end
-      if cfg && cfg.to_i.positive?
-        v = cfg.to_i
-        return v.positive? ? v : DEFAULT_CONTEXT_WINDOW_TOKENS
-      end
-      value = ENV.fetch(CONTEXT_WINDOW_TOKENS_ENV, DEFAULT_CONTEXT_WINDOW_TOKENS.to_s).to_i
-      value.positive? ? value : DEFAULT_CONTEXT_WINDOW_TOKENS
     end
 
     def context_chars_per_token
@@ -650,9 +656,10 @@ module Samagotchi
 
     def context_status_message(usage:, bucket:, source:)
       format(
-        "%<prefix>s window_tokens=%<window>d est_used_tokens=%<used>d est_remaining_tokens=%<remaining>d est_pct=%<pct>.1f bucket=%<bucket>s thresholds=%<thresholds>s src=%<src>s guidance=%<guidance>s",
+        "%<prefix>s window_tokens=%<window>d window_src=%<window_src>s est_used_tokens=%<used>d est_remaining_tokens=%<remaining>d est_pct=%<pct>.1f bucket=%<bucket>s thresholds=%<thresholds>s src=%<src>s guidance=%<guidance>s",
         prefix: CONTEXT_STATUS_PREFIX,
         window: usage[:window_tokens],
+        window_src: usage[:window_source] || "default",
         used: usage[:estimated_used_tokens],
         remaining: usage[:estimated_remaining_tokens],
         pct: usage[:estimated_pct],

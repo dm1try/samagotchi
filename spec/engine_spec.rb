@@ -302,6 +302,18 @@ RSpec.describe Samagotchi::Engine do
     end
   end
 
+  describe "#switch_model!" do
+    it "drops the client's cached context window (the new model may run with another -c)" do
+      allow(kernel).to receive(:sync_profile_from_model!)
+      allow(kernel).to receive(:sync_model_key!)
+      allow(client).to receive(:invalidate_context_window!)
+
+      build_engine.switch_model!("Qwen3-14B")
+
+      expect(client).to have_received(:invalidate_context_window!)
+    end
+  end
+
   describe "idle recap construction" do
     around do |example|
       saved = ENV.values_at("SAMAGOTCHI_RECAP_BASE_URL", "SAMAGOTCHI_RECAP_MODEL")

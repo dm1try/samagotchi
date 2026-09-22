@@ -46,6 +46,8 @@ RSpec.configure do |config|
       allow(Reline).to receive(:readmultiline).and_return(nil)
       allow(Reline).to receive(:readline).and_return(nil)
     end
+    # ContextWindow remembers the last server-reported window process-wide.
+    Samagotchi::ContextWindow.reset! if defined?(Samagotchi::ContextWindow)
   end
 
   # Point :integration examples at the real config, then restore the fixture.

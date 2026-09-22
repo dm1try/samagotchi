@@ -842,7 +842,7 @@ Emission behavior:
 Configuration:
 
 - `SAMAGOTCHI_CONTEXT_STATUS` (`true` by default): set to `false` or `0` to disable telemetry.
-- `SAMAGOTCHI_CONTEXT_WINDOW_TOKENS` (default `256000`): estimated context window size.
+- `SAMAGOTCHI_CONTEXT_WINDOW_TOKENS` / `context.window_tokens`: context window size for when the server doesn't report one. chi asks llama.cpp for its real window first (`/props`, the per-slot `n_ctx`); this setting only fills in when it can't (mlx, oMLX, server down), and 256000 is the last resort.
 - `SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN` (default `4.0`): heuristic ratio for char-to-token estimation.
 - `SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS` (default `20,40,60,80`): comma-separated threshold percentages.
 - `SAMAGOTCHI_CONTEXT_STATUS_CADENCE` (default `0`): emit every N rounds in addition to threshold crossings.

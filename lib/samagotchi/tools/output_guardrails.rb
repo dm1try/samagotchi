@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../context_window"
+
 module Samagotchi
   module Tools
     # Shared output-guardrail helpers used by tools that can return large payloads.
@@ -7,7 +9,6 @@ module Samagotchi
       DEFAULT_TRUNCATE_AT_BYTES = 64 * 1024
       DEFAULT_PREVIEW_BYTES = 12 * 1024
       DEFAULT_TELEMETRY_THRESHOLD_PCT = 80.0
-      DEFAULT_CONTEXT_WINDOW_TOKENS = 256_000
       DEFAULT_CHARS_PER_TOKEN = 4.0
 
       module_function
@@ -58,7 +59,7 @@ module Samagotchi
 
       def telemetry_lines_for(content:, threshold_env:, threshold_default:, token_key:, pct_key:)
         chars_per_token = env_positive_float("SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN", DEFAULT_CHARS_PER_TOKEN)
-        window_tokens = env_positive_int("SAMAGOTCHI_CONTEXT_WINDOW_TOKENS", DEFAULT_CONTEXT_WINDOW_TOKENS)
+        window_tokens = ContextWindow.current.tokens
         telemetry_threshold_pct = env_positive_float(threshold_env, threshold_default)
 
         estimated_tokens = (content.length / chars_per_token).ceil

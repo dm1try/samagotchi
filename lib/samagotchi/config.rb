@@ -81,7 +81,7 @@ module Samagotchi
       Entry.new(key: "status.fixed_width",       yaml_path: %w[status fixed_width],       type: :integer, default: 120,             expose: %i[env config cli]),
 
       Entry.new(key: "context.status",           yaml_path: %w[context status],           type: :bool,   default: true,             expose: %i[env config cli]),
-      Entry.new(key: "context.window_tokens",    yaml_path: %w[context window_tokens],    type: :integer, default: 256_000,         expose: %i[env config cli]),
+      Entry.new(key: "context.window_tokens",    yaml_path: %w[context window_tokens],    type: :integer, default: nil,             expose: %i[env config cli]),
       Entry.new(key: "context.chars_per_token",  yaml_path: %w[context chars_per_token],  type: :float,   default: 4.0,             expose: %i[env config cli]),
       Entry.new(key: "context.status_thresholds", yaml_path: %w[context status_thresholds],type: :string, default: "20,40,60,80",    expose: %i[env config cli]),
       Entry.new(key: "context.status_cadence",   yaml_path: %w[context status_cadence],   type: :integer, default: 0,               expose: %i[env config cli]),
@@ -206,6 +206,12 @@ module Samagotchi
       # env: hash-like (ENV)
       # cli_overrides: { "key" => raw_or_coerced }
       def resolve(key, file_data: nil, env: ENV, cli_overrides: {})
+        resolve_with_origin(key, file_data: file_data, env: env, cli_overrides: cli_overrides).first
+      end
+
+      # Same as #resolve, plus the layer the value came from:
+      # :cli, :env, :file or :default.
+      def resolve_with_origin(key, file_data: nil, env: ENV, cli_overrides: {})
         entry = find_by_key(key)
         raise ArgumentError, "unknown config key: #{key}" unless entry
 
@@ -213,18 +219,18 @@ module Samagotchi
         if cli_overrides.key?(entry.key)
           raw = cli_overrides[entry.key]
           # cli_overrides may already be coerced; detect by type
-          return raw if already_coerced?(entry, raw)
-          return coerce(entry, raw)
+          return [raw, :cli] if already_coerced?(entry, raw)
+          return [coerce(entry, raw), :cli]
         end
         if cli_overrides.key?(entry.cli_flag)
-          return coerce(entry, cli_overrides[entry.cli_flag])
+          return [coerce(entry, cli_overrides[entry.cli_flag]), :cli]
         end
 
         # ENV
         if entry.env_exposed?
           env_val = env[entry.env_key] if env.key?(entry.env_key)
           unless env_val.nil? || env_val.to_s.strip.empty?
-            return coerce(entry, env_val)
+            return [coerce(entry, env_val), :env]
           end
         end
 
@@ -232,11 +238,11 @@ module Samagotchi
         if entry.config_exposed? && file_data.is_a?(Hash)
           file_val = lookup_yaml(file_data, entry.yaml_path)
           unless file_val.nil?
-            return coerce(entry, file_val)
+            return [coerce(entry, file_val), :file]
           end
         end
 
-        entry.default
+        [entry.default, :default]
       end
 
       def already_coerced?(entry, val)
@@ -320,6 +326,12 @@ module Samagotchi
       end
 
       def get(key)
+        get_with_origin(key).first
+      end
+
+      # [value, origin] for the live value #get returns; origin is one of
+      # :cli, :env, :file, :default.
+      def get_with_origin(key)
         entry = find_by_key(key)
         raise ArgumentError, "unknown config key: #{key}" unless entry
         # Live resolve so ENV changes (as in specs) are reflected without explicit reload
@@ -327,7 +339,7 @@ module Samagotchi
         # overrides captured via reload!
         path = Samagotchi::ConfigFile.global_path rescue nil
         file_data = Samagotchi::ConfigFile.read_yaml(path: path) if path
-        resolve(entry.key, file_data: file_data, env: ENV, cli_overrides: cli_overrides)
+        resolve_with_origin(entry.key, file_data: file_data, env: ENV, cli_overrides: cli_overrides)
       end
 
       def set_cli_overrides(overrides)
