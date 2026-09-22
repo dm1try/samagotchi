@@ -87,7 +87,7 @@ module Samagotchi
         # Installer already handled fast_forward/keep/noop. Conflicts are kept with warning.
         if installer.conflicts.any?
           installer.conflicts.each do |file_key, _info|
-            warn "[samagotchi-system] kept local edit in #{file_key} (bundle v#{gem_manifest.version} has update — run: chi memory status #{BUNDLE_NAME} / chi memory diff #{BUNDLE_NAME} #{file_key})"
+            warn "[samagotchi-system] kept local edit in #{file_key} (bundle v#{gem_manifest.version} has update — run: chi bundle status #{BUNDLE_NAME} / chi bundle diff #{BUNDLE_NAME} #{file_key})"
           end
         end
         installer.warnings.each { |w| warn "[samagotchi-system] #{w}" } unless installer.warnings.empty?
