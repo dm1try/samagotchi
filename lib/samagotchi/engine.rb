@@ -31,6 +31,11 @@ module Samagotchi
   # It exposes an event-based API (`on_event`) so that any UI can run
   # turns without coupling to terminal rendering.
   class Engine
+    # Raised by #answer_question when the question it targets is no longer
+    # open (never asked, superseded, already answered or cancelled). A subclass
+    # of ArgumentError for existing callers; transports map it to 409 Conflict.
+    class QuestionNotPending < ArgumentError; end
+
     AGENT_DESCRIPTION_FILE = "AGENT.md"
     SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
 
@@ -653,8 +658,13 @@ module Samagotchi
       fm = nil if fm.empty?
       @question_mutex.synchronize do
         pending = @pending_question
-        raise ArgumentError, "no pending question" unless pending
-        raise ArgumentError, "id mismatch" unless pending[:id].to_s == id.to_s
+        raise QuestionNotPending, "no pending question" unless pending
+        raise QuestionNotPending, "id mismatch" unless pending[:id].to_s == id.to_s
+        # First responder wins: after the first answer the turn thread clears
+        # @pending_question in a later lock block, so a second UI's answer can
+        # land in between and must not overwrite the first.
+        raise QuestionNotPending, "question already answered" if @question_answer
+        raise QuestionNotPending, "question #{pending[:status]}" unless pending[:status].to_s == "pending"
 
         opts = Array(pending[:options])
         # Validate selected subset of options (value == label in v1)

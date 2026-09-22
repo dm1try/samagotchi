@@ -231,9 +231,16 @@ module Samagotchi
             json_body = JSON.generate({ id: qid, selected: selected, freeform: freeform })
             sock.write("POST /session/#{id}/answer HTTP/1.1\r\nHost: #{DEFAULT_HOST}:#{bridge_port}\r\nContent-Type: application/json\r\nContent-Length: #{json_body.bytesize}\r\nConnection: close\r\n\r\n#{json_body}")
             status_line = sock.gets
+            reply_body = sock.read.to_s.split("\r\n\r\n", 2)[1]
             sock.close rescue nil
-            if status_line && status_line.include?("200")
-              return json_response(200, { status: "answered", session_id: id, id: qid })
+            code = status_line.to_s[/\AHTTP\/1\.[01] (\d{3})/, 1].to_i
+            return json_response(200, { status: "answered", session_id: id, id: qid }) if code == 200
+
+            # Pass the bridge's verdict through: 409 = another client answered
+            # first (or the question was cancelled), 400 = invalid selection.
+            if [400, 409].include?(code)
+              detail = (JSON.parse(reply_body.to_s)["detail"] rescue nil) || "answer rejected"
+              return error_response(code, code == 409 ? "question_not_pending" : "invalid_answer", detail)
             end
           rescue StandardError
             nil

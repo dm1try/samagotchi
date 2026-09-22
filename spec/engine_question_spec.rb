@@ -242,4 +242,40 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       expect(answer["freeform"]).to eq("Something else")
     end
   end
+
+  describe "first responder wins (several UIs answering the same question)" do
+    it "rejects a second answer that lands before the turn thread clears the question" do
+      engine = build_engine
+      turn_thread, result_box, _events = request_in_background(engine, payload)
+      qid = engine.pending_question[:id]
+
+      # Hold the question lock across both answers: this is exactly the window
+      # between the first answer and the turn thread clearing @pending_question.
+      engine.instance_variable_get(:@question_mutex).synchronize do
+        engine.answer_question(id: qid, selected: ["Cats"])
+        expect { engine.answer_question(id: qid, selected: ["Dogs"]) }
+          .to raise_error(Samagotchi::Engine::QuestionNotPending, /already answered/)
+      end
+      turn_thread.join(2)
+
+      expect(JSON.parse(result_box[:result])["selected"]).to eq(["Cats"])
+    end
+
+    it "rejects an answer to a cancelled question" do
+      engine = build_engine
+      turn_thread, _result_box, _events = request_in_background(engine, payload)
+      qid = engine.pending_question[:id]
+
+      engine.instance_variable_get(:@question_mutex).synchronize do
+        engine.cancel_question("other client")
+        expect { engine.answer_question(id: qid, selected: ["Cats"]) }
+          .to raise_error(Samagotchi::Engine::QuestionNotPending, /cancelled/)
+      end
+      turn_thread.join(2)
+    end
+
+    it "keeps QuestionNotPending an ArgumentError for existing callers" do
+      expect(Samagotchi::Engine::QuestionNotPending.ancestors).to include(ArgumentError)
+    end
+  end
 end

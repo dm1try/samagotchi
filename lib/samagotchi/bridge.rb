@@ -11,6 +11,7 @@ require_relative "bridge/bounded_queue"
 require_relative "bridge/ring_buffer"
 require_relative "bridge/sse_writer"
 require_relative "session"
+require_relative "engine"
 
 module Samagotchi
   # Bridge is an optional HTTP transport that lets an external web / desktop
@@ -286,6 +287,9 @@ module Samagotchi
       begin
         result = @engine.answer_question(id: qid, selected: selected, freeform: freeform)
         [{}, 200, { status: "answered", session_id: session_id, answer: result }]
+      rescue Engine::QuestionNotPending => e
+        # Another client answered first, or the question was cancelled.
+        [{}, 409, { error: "question_not_pending", detail: e.message }]
       rescue ArgumentError => e
         [{}, 400, { error: "invalid_answer", detail: e.message }]
       rescue StandardError => e
@@ -466,6 +470,7 @@ module Samagotchi
       204 => "No Content",
       400 => "Bad Request",
       404 => "Not Found",
+      409 => "Conflict",
       500 => "Internal Server Error"
     }.freeze
   end

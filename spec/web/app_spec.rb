@@ -480,5 +480,29 @@ RSpec.describe Samagotchi::Web::App do
       expect(status).to eq(200)
       expect(JSON.parse(body.first)).to include("status" => "answered", "id" => "q-7")
     end
+
+    it "passes the bridge's 409 through when another client answered first" do
+      server = TCPServer.new("127.0.0.1", 0)
+      port = server.local_address.ip_port
+      accept_thread = Thread.new do
+        conn = server.accept
+        conn.readpartial(16_384)
+        reply = '{"error":"question_not_pending","detail":"question already answered"}'
+        conn.write("HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nContent-Length: #{reply.bytesize}\r\n\r\n#{reply}")
+        conn.close
+      end
+      accept_thread.report_on_exception = false
+
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:bridge_sidecar_port).and_return(port)
+      status, _headers, body = app.call(
+        env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-7","selected":["Dogs"]}')
+      )
+      server.close
+      accept_thread.join(1)
+
+      expect(status).to eq(409)
+      expect(JSON.parse(body.first)).to include("error" => "question_not_pending", "detail" => "question already answered")
+    end
   end
 end

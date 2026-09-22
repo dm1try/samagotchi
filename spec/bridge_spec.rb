@@ -492,6 +492,14 @@ RSpec.describe Samagotchi::Bridge do
       status, = options_request
       expect(status).to eq(204)
     end
+
+    it "answers 409 Conflict when the question is no longer pending (another client won)" do
+      start_bridge
+      status, resp, reason = post_answer(JSON.generate(id: "q-gone", selected: ["Cats"]))
+      expect(status).to eq(409)
+      expect(reason).to eq("Conflict")
+      expect(resp["error"]).to eq("question_not_pending")
+    end
   end
 
   # Drive a turn on a fresh engine while the SSE client reads concurrently.
@@ -507,6 +515,15 @@ RSpec.describe Samagotchi::Bridge do
     req.body = body
     res = Net::HTTP.start("127.0.0.1", @bridge_port, open_timeout: 2, read_timeout: 2) { |h| h.request(req) }
     [res.code.to_i, JSON.parse(res.body)]
+  end
+
+  def post_answer(body)
+    uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/answer")
+    req = Net::HTTP::Post.new(uri)
+    req["Content-Type"] = "application/json"
+    req.body = body
+    res = Net::HTTP.start("127.0.0.1", @bridge_port, open_timeout: 2, read_timeout: 2) { |h| h.request(req) }
+    [res.code.to_i, JSON.parse(res.body), res.message]
   end
 
   def get_state
