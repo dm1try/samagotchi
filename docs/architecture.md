@@ -97,6 +97,9 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
 
 - `bin/chi` interactive → builds `TerminalUI`. `TerminalUI#run` is the single dispatch
   for the REPL, `-p`/`--prompt`, `--non-interactive`, and `--resume`.
+- `bin/chi --attach ID` / `--shared [--resume ID]` → `TerminalUI::AttachLauncher`: no `Engine`
+  and no `OwnerLock`; finds or starts the session's worker and runs `TerminalUI::AttachedLoop`
+  as a client of its Bridge (`BridgeClient#follow`, `post_turn`, `cancel`, `answer`).
 - `bin/chi web` → builds `Web::Server` (Rack+WEBrick on `127.0.0.1:4567`, `--port`/`SAMAGOTCHI_WEB_PORT`, `--open`).
 - `bin/chi sessions {list,prune,clean}` → retention & ordering (`Session.prune`, `updated_at desc`, dry-run, test-only).
 - `bin/chi dashboard` → deprecated, use `chi web`.

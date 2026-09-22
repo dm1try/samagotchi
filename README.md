@@ -9,6 +9,8 @@ Run with:
 - `bin/chi -p "your prompt"` — run a prompt, then stay in the REPL
 - `bin/chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
 - `bin/chi --resume <session-id>` — resume a prior session in the REPL
+- `bin/chi --shared [--resume <session-id>]` — run the session in a background worker and attach the terminal to it, so the Web UI (or another terminal) can share it
+- `bin/chi --attach <session-id>` — attach the terminal to a session a worker is already running (e.g. one started from the Web UI)
 - `bin/chi web [--port 4567] [--open]` — start the Web UI (single localhost port session control plane)
 - `bin/chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
 - `bin/chi sessions list|prune|clean` — manage persisted sessions (retention + ordering, see below)
@@ -24,6 +26,8 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `-p`, `--prompt TEXT` | Feed `TEXT` as the first turn (also prefill-equivalent; `-p` feeds **and** runs). |
 | `--non-interactive` | Run a single turn then exit the REPL (sets a high iteration cap; implies `--no-interrupt`). Harmless no-op when given without `-p`. |
 | `--resume SESSION_ID` | Load a prior session's history instead of creating a fresh one. |
+| `--shared` | Run the session (new, or `--resume`'s) in a background worker and attach to it. See [Sharing a session](#sharing-a-session). |
+| `--attach SESSION_ID` | Attach to a session a worker is already running. |
 | `--memory NAME` | Preload a memory entry into the system prompt (repeatable). Merged under the config.yml `memories:` baseline. |
 | `--backend {native,ruby_llm}` | Choose the model backend (default: `native`). See below. |
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
@@ -48,6 +52,24 @@ an unknown value is rejected at startup.
 | `bin/chi --resume ID` | Resume session `ID` and enter the REPL with its history. |
 | `bin/chi --resume ID -p "next step" --non-interactive` | Resume `ID`, run the prompt, save, exit. |
 | `bin/chi --resume ID -p "next step"` | Resume `ID`, run the prompt, **stay in the REPL** on that session. |
+
+### Sharing a session
+
+A session runs in one place: the REPL's own process (`bin/chi`, `--resume`), or a
+background worker (sessions started from the Web UI, or with `--shared`). A worker's
+session can have any number of UIs at once: the Web UI and attached terminals
+(`--shared`, `--attach`). They all see the same turns as they happen, and any of
+them can send a prompt, also while a turn runs (it merges into that turn as
+steering). The first answer to an `ask_user_question` wins; the other UIs close
+their widget.
+
+In an attached terminal, Ctrl-C cancels the running turn (whoever started it),
+and Ctrl-D or `/exit` detaches while the worker keeps running (re-attach with
+`--attach`). `/stats` works; `/model`, `/continue`, `!rollback` and `!commands`
+aren't available in attached mode yet. `--attach`/`--shared` can't be combined
+with `-p`, `--non-interactive`, `--model` or `--memory`. The attached view needs
+reline 0.6.x to draw around the open prompt; with another version it prints
+plainly. A session the REPL has open can't be shared (`--shared --resume` says so).
 
 ### Web Markdown rendering
 
@@ -104,6 +126,11 @@ See `docs/architecture.md` for a visual overview of the layers and turn flow.
   then either exits (`--non-interactive`) or drops into the REPL carrying the
   post-turn conversation.
 - `SessionManager` background workers build `Engine` directly (no terminal rendering).
+- `bin/chi --attach`/`--shared` builds no `Engine`: `TerminalUI::AttachLauncher` finds
+  or starts the worker, and `TerminalUI::AttachedLoop` is a client of its Bridge
+  (`BridgeClient#follow` for events, `post_turn`/`cancel`/`answer` for input). It
+  renders through the same `EventRenderer` as the REPL, on an `AttachedView` that
+  draws around the open Reline prompt (`AttachedScreen`).
 
 #### Using the core
 
