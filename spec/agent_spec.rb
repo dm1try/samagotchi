@@ -10,25 +10,18 @@ RSpec.describe Samagotchi::TerminalUI do
   let(:client) { instance_double(Samagotchi::Client) }
   let(:ansi_escape) { /\e\[[0-9;]+m/ }
 
-  # Build the [system, user] message pair the UI uses to seed a turn, so tests
-  # can drive the interactive rendering path (run_kernel_with_thinking_feedback +
-  # emit_result) directly — independent of the now-minimal prompt_mode.
-  def ui_turn_messages(agent, prompt:)
-    [
-      { role: "system", content: agent.send(:system_prompt_with_index, agent.send(:assist_system_prompt)) },
-      { role: "user", content: prompt }
-    ]
+  def repl_session
+    Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd)
   end
 
-  # Run the UI's streaming kernel run and render the result, capturing stdout.
-  # Mirrors what prompt_mode used to do before it became a minimal Engine run.
+  # Run one interactive REPL turn (Engine#run_turn, rendered by the UI's
+  # EventRenderer), capturing stdout.
   def run_and_render(agent, prompt:)
     original = $stdout
     buffer = StringIO.new
     $stdout = buffer
     begin
-      result = agent.send(:run_kernel_with_thinking_feedback, ui_turn_messages(agent, prompt: prompt))
-      agent.send(:emit_result, result)
+      agent.send(:run_engine_turn, repl_session, prompt)
     ensure
       $stdout = original
     end
@@ -1056,7 +1049,7 @@ file2.rb")
       expect(agent.send(:thinking_spinner_status_line, "/")).to include("memory_loaded: crawler_exploration_ideas")
 
       allow(agent).to receive(:handle_stream_event)
-      agent.send(:run_kernel_with_thinking_feedback, [{ role: "user", content: "hi" }])
+      agent.send(:run_engine_turn, repl_session, "hi")
 
       expect(agent.send(:thinking_spinner_status_line, "/")).not_to include("memory_loaded: crawler_exploration_ideas")
       expect(agent.send(:thinking_spinner_status_line, "/")).not_to include("last_tool: memory_read")

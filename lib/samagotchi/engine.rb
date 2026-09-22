@@ -148,9 +148,9 @@ module Samagotchi
       end
       # Shared inactivity clock + turn-running flag for the idle subsystems
       # (session recap + reminders), all polled by the shared IdleScheduler.
-      # `record_activity` is the single seam both the run_turn/worker path and
-      # the interactive REPL (which drives KernelLoop directly) call, so the
-      # idle layer's clock is identical across UIs.
+      # `record_activity` is the single seam every UI calls (run_turn itself,
+      # the REPL on keystrokes and after its muted reminder run), so the idle
+      # layer's clock is identical across UIs.
       @activity_mutex = Monitor.new
       @last_activity_at = monotonic_now
       @activity_seq = 0
@@ -172,9 +172,9 @@ module Samagotchi
         jobs: [@reminders, @recap].compact
       )
       # The metrics collector is a persistent observer so every run_turn event
-      # (covering -p/--non-interactive/--resume and SessionManager workers)
-      # feeds it automatically. The interactive REPL drives KernelLoop directly
-      # and forwards its stream events into the same instance.
+      # (the REPL, -p/--non-interactive/--resume and SessionManager workers)
+      # feeds it automatically. The REPL's muted reminder run drives KernelLoop
+      # directly and forwards its stream events into the same instance.
       @session_observer.subscribe(observer: @metrics)
     end
 
@@ -415,6 +415,13 @@ module Samagotchi
     end
     # Alias for backward compatibility.
     alias maybe_inject_reminders collect_due_reminders
+
+    # @return [Boolean] whether any reminder is due now (the store's view,
+    #   which #collect_due_reminders would inject), regardless of the REPL queue
+    def reminders_due?
+      due = @reminders&.due_reminders
+      !(due.nil? || due.empty?)
+    end
 
     # @return [ReminderStore] the reminder store for inspection
     attr_reader :reminder_store
@@ -727,7 +734,8 @@ module Samagotchi
       @session
     end
 
-    # Set the current session for recap tracking (used by REPL which bypasses run_turn)
+    # Set the current session outside a turn (the REPL does, before its first
+    # turn, so the messages API and recap see it)
     def session=(session)
       @session = session
       sync_used_memories_from_session(session)

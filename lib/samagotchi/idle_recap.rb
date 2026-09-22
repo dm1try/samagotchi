@@ -14,8 +14,8 @@ module Samagotchi
   # Owns the inactivity clock bookkeeping shared across UIs: it reads the
   # Engine's `last_activity_at` / `activity_seq` / `turn_running?` seam (the
   # single source of truth) rather than tracking its own timeline, so the
-  # clock behaves identically for the interactive REPL (which drives KernelLoop
-  # directly and never emits :turn_completed) and any Engine-backed worker.
+  # clock behaves identically for the interactive REPL, whose muted reminder
+  # run bypasses Engine#run_turn, and any Engine-backed worker.
   #
   # When the session has been idle for `@inactivity` seconds, no turn is
   # running, and there are >= `@min_user_turns` user turns, the job

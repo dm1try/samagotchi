@@ -15,8 +15,8 @@ module Samagotchi
   #   * Engine#run_turn (which forwards every event to its SessionObserver),
   #     covering the -p/--non-interactive/--resume paths and SessionManager
   #     background workers; and
-  #   * TerminalUI's own stream handler, which forwards REPL events into the
-  #     same instance because the interactive loop drives KernelLoop directly.
+  #   * TerminalUI's muted reminder run, which drives KernelLoop directly on a
+  #     snapshot and forwards its events into the same instance.
   #
   # Collected dimensions:
   #   - tokens (input/output/total), with a provenance flag (:server|:estimate)

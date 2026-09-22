@@ -127,10 +127,11 @@ RSpec.describe Samagotchi::TerminalUI do
       end
     end
   end
-  # Regression for the interactive /stats bug: the REPL drives KernelLoop
-  # directly, bypassing Engine#run_turn, so it never emitted the :turn_started
-  # event the collector needs. Without begin_interactive_turn, turns and output
-  # tokens stayed 0 even though the server reported completion tokens.
+  # Regression for the interactive /stats bug: a REPL run that drives KernelLoop
+  # directly (today only the muted reminder run) bypasses Engine#run_turn, so it
+  # never emits the :turn_started event the collector needs. Without
+  # begin_interactive_turn, turns and output tokens stayed 0 even though the
+  # server reported completion tokens.
   describe "interactive REPL turn lifecycle (KernelLoop bypass)" do
     let(:session) { double(id: "interactive-sess") }
     let(:metrics) { agent.instance_variable_get(:@engine).metrics }

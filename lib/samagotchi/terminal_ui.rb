@@ -134,12 +134,7 @@ module Samagotchi
       @last_keystroke_at = monotonic_time
       @last_line_buffer = ""
       @renderer = EventRenderer.new(self)
-      # Engine swallows on_event errors to protect the turn; log ours instead.
-      @render_event = lambda do |event|
-        @renderer.call(event)
-      rescue StandardError => e
-        warn "[render] #{event[:type]}: #{e.class}: #{e.message}"
-      end
+      @render_event = ->(event) { handle_stream_event(event) }
       @engine         = Engine.new(
         mode: :assist,
         client: client,
@@ -172,7 +167,7 @@ module Samagotchi
       @recap_handle = @engine.subscribe(observer: ->(event) { handle_recap_ready(event) })
       @question_handle = @engine.subscribe(observer: ->(event) { handle_question_event(event) })
       # Synchronous TUI handler for in-turn ask_user_question: the turn thread IS the
-      # REPL thread (run_kernel_with_thinking_feedback runs inline), so we must render
+      # REPL thread (run_engine_turn runs Engine#run_turn inline), so we must render
       # and collect input on the SAME thread without parking on a second thread.
       @engine.set_question_sync_handler do |pending|
         # render_question_widget records the choice via Engine#answer_question,
@@ -292,8 +287,12 @@ module Samagotchi
 
     # Interactive REPL loop. Session seed + messages are built by #run and
     # threaded in here (so --prompt / --resume share one code path). The
-    # working session is persisted at the end of every turn.
+    # session's conversation is the single working copy: turns go through
+    # Engine#run_turn and out-of-turn edits through Engine's messages API.
+    # The session is persisted at the end of every turn.
     def run_assist_loop(session:, messages:)
+      session.messages = messages
+      @engine.session = session
       awaiting_continue = false
       interrupted_turn_checkpoint = nil
       interrupted_turn_context = nil
@@ -314,8 +313,8 @@ module Samagotchi
         # render after a 2s pause or after submit. Draining here covers
         # the after-submit case (poll returned) and the case where a
         # background turn finished while we were busy.
-        if drain_pending_muted_results?(messages, session)
-          # pending drain already emitted/saved and updated messages
+        if drain_pending_muted_results?(session)
+          # pending drain already emitted/saved and updated the session
           next if pending_reminder_results_pending?
           # continue to handle normal input below after draining
         end
@@ -334,47 +333,33 @@ module Samagotchi
             # immediate sync for non-TTY / empty buffer.
             if typing_active?
               # Defer — ensure muted thread is started with current snapshot
-              start_muted_reminder_generation(messages, session) unless muted_reminder_pending? || muted_reminder_running?
+              start_muted_reminder_generation(session) unless muted_reminder_pending? || muted_reminder_running?
               # Don't consume latch yet — muted thread will consume via collect_due_reminders
               # Just notify once
               notify_pending_reminder_banner(due_names) unless @pending_reminder_banner_shown
               # fall through to poll (don't run sync now)
             else
               @engine.clear_due_reminder_names!
-              # Inject reminders into messages before running the kernel.
               # If the store was already drained by a normal-turn injection
               # (stale latch), skip the empty synthetic to avoid duplicate
               # generation (user observed 2 identical time outputs).
-              injected = @engine.collect_due_reminders(messages)
-              if injected.empty?
-                next
-              end
-              @engine.set_turn_running(true)
+              next unless @engine.reminders_due?
+
+              result = nil
               begin
-                begin_interactive_turn(session)
-                result = run_kernel_with_thinking_feedback(messages)
+                # run_turn injects the due reminders as a tail message.
+                result = run_engine_turn(session, nil, continue: true)
                 # Clear any pending prompt so we don't re-run
                 @prompt = nil
-                messages = result.conversation if result.respond_to?(:conversation)
               rescue Client::RetryExhausted
                 # Treat retry exhaustion the same as other errors — continue loop
-              ensure
-                end_interactive_turn(canceled: false)
-                @engine.set_turn_running(false)
               end
-              # Also handle the result lifecycle (emit, save) so the synthetic
-              # turn is visible. We persist & emit then loop to check for more.
-              unless result.nil?
-                if result.respond_to?(:canceled?) && result.canceled?
-                  # Don't loop forever on cancel
-                else
-                  emit_result(result)
-                  messages = result.conversation if result.respond_to?(:conversation)
-                  session.messages = messages
-                  session.model_name = @effective_model_name
-                  session.save
-                  @engine.metrics.persist
-                end
+              emit_interactive_turn_duration(canceled: false)
+              # Persist the synthetic turn, then loop to check for more.
+              if result && !(result.respond_to?(:canceled?) && result.canceled?)
+                session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
+                session.model_name = @effective_model_name
+                session.save
               end
               # Synthetic turn is activity for the idle detector — reset the
               # inactivity clock so the next reminder waits a full interval
@@ -389,7 +374,7 @@ module Samagotchi
         input = @prompt
         @prompt = nil if input
         if input.nil?
-          input = poll_input_with_reminder_check(awaiting_continue: awaiting_continue, messages: messages, session: session)
+          input = poll_input_with_reminder_check(awaiting_continue: awaiting_continue, session: session)
           # poll returns :due if a reminder became due while idle+empty;
           # loop again to run the synthetic turn at the top.
           if input == :due
@@ -405,30 +390,24 @@ module Samagotchi
           # finished while typing before handling the user turn — so order
           # is [history, tail SYSTEM DUE, model reply, user next] without
           # clobbering the just-typed line.
-          if drain_pending_muted_results?(messages, session)
-            # We have an updated messages; the user's input is still in
+          if drain_pending_muted_results?(session)
+            # The session was updated; the user's input is still in
             # `input` and will be processed next. Don't discard it.
-            # Fall through to normal turn handling with refreshed messages.
           end
         end
         break if input.nil?
         break if exit_command?(input)
         continue_flow = awaiting_continue
-        # Normal turns run through Engine#run_turn, which renders and records
-        # metrics itself; the continue path still drives the kernel directly.
-        engine_turn = false
 
         if awaiting_continue
           decision, reason = continue_decision(input)
 
           case decision
           when :resume
+            # A cancelled continue leaves the conversation as it was before it.
+            continue_checkpoint = @engine.messages_checkpoint
             begin
-              # Inject due reminders before the model call so the agent sees
-              # them in context (REPL bypasses Engine#run_turn, so this is
-              # the only injection point for interactive mode).
-              @engine.collect_due_reminders(messages)
-              result = run_kernel_with_thinking_feedback(messages)
+              result = run_engine_turn(session, nil, continue: true)
             rescue Client::RetryExhausted => e
               $stdout.puts "\nmodel> network error after #{e.attempts} attempts; continue prompt preserved"
               awaiting_continue = true
@@ -436,29 +415,25 @@ module Samagotchi
               next
             end
           when :abort
-            messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
+            @engine.rollback_to(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             interrupted_turn_checkpoint = nil
             interrupted_turn_context = nil
             awaiting_continue = false
-            session.messages = messages
             session.model_name = @effective_model_name
             session.save
-            end_interactive_turn(canceled: true)
             $stdout.puts "\nmodel> interrupted turn cancelled; enter your next prompt"
             next
           when :abort_with_reason
-            messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
+            @engine.rollback_to(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             interrupted_turn_checkpoint = nil
-            messages << {
+            @engine.append_messages([{
               role: "user",
               content: interrupted_turn_reason_message(reason: reason, context: interrupted_turn_context)
-            }
+            }])
             interrupted_turn_context = nil
             awaiting_continue = false
-            session.messages = messages
             session.model_name = @effective_model_name
             session.save
-            end_interactive_turn(canceled: true)
             $stdout.puts "\nmodel> interrupted turn cancelled; noted your explanation"
             next
           else
@@ -472,9 +447,8 @@ module Samagotchi
           # partial turn and restore the pre-turn checkpoint.
           if input.strip == ROLLBACK_COMMAND
             if interrupted_turn_checkpoint
-              messages = clone_messages(interrupted_turn_checkpoint)
+              @engine.rollback_to(interrupted_turn_checkpoint)
               interrupted_turn_checkpoint = nil
-              session.messages = messages
               session.model_name = @effective_model_name
               session.save
               $stdout.puts "\nmodel> salvaged turn discarded; restored pre-turn state"
@@ -493,7 +467,7 @@ module Samagotchi
             output = Samagotchi::Tools::Execute.call(command)
             $stdout.puts output
             $stdout.puts
-            messages << { role: "user", content: "!(#{command})\n#{output}" }
+            @engine.append_messages([{ role: "user", content: "!(#{command})\n#{output}" }])
             persist_recent_history(input)
             next
           end
@@ -523,18 +497,17 @@ module Samagotchi
             next
           end
 
-          interrupted_turn_checkpoint = clone_messages(messages)
+          interrupted_turn_checkpoint = @engine.messages_checkpoint
           persist_recent_history(input)
           begin
             # Engine#run_turn injects due reminders as a tail message, appends
             # the prompt, and renders through @renderer via on_event.
-            result = run_engine_turn(session, messages, normalize_model_input(input))
-            engine_turn = true
+            result = run_engine_turn(session, normalize_model_input(input))
           rescue Client::RetryExhausted => e
             # Engine closed the turn (:turn_failed); show its duration.
             # Retries were already tallied via generation_retrying events.
             emit_interactive_turn_duration(canceled: false)
-            messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
+            @engine.rollback_to(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             awaiting_continue = false
             queue_input_prefill(input)
             $stdout.puts "\nmodel> network error after #{e.attempts} attempts; prompt restored for retry"
@@ -545,6 +518,7 @@ module Samagotchi
 
         if result.respond_to?(:canceled?) && result.canceled?
           if continue_flow
+            @engine.rollback_to(continue_checkpoint)
             awaiting_continue = true
           else
             # Ctrl-C on a fresh turn. The kernel salvaged completed tool calls
@@ -552,18 +526,12 @@ module Samagotchi
             # result.conversation, so progress is preserved by default — the
             # user's next message continues from it. !rollback restores the
             # pre-turn checkpoint for an explicit full discard.
-            if engine_turn
-              emit_interactive_turn_duration(canceled: true)
-            else
-              end_interactive_turn(canceled: true)
-            end
+            emit_interactive_turn_duration(canceled: true)
             if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
-              messages = result.conversation
-              session.messages = messages
               session.model_name = @effective_model_name
               session.save
             else
-              messages = clone_messages(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
+              @engine.rollback_to(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             end
             awaiting_continue = false
             $stdout.puts "\nmodel> turn cancelled; partial progress kept in context; use !rollback immediately after cancellation to restore the pre-turn checkpoint"
@@ -572,30 +540,23 @@ module Samagotchi
           next
         end
 
-        unless engine_turn
-          emit_result(result)
-          end_interactive_turn(canceled: false, announce: false)
-        end
-
-        messages = result.conversation
+        # The REPL keeps the kernel's conversation as-is (no [No response]
+        # placeholder), so /continue resumes from the tool results.
+        session.messages = result.conversation
         awaiting_continue = result.resumable?
         interrupted_turn_context = if awaiting_continue
                                      build_interrupted_turn_context(
                                        result: result,
                                        checkpoint: interrupted_turn_checkpoint,
-                                       conversation: messages
+                                       conversation: session.messages
                                      )
                                    else
                                      nil
                                    end
         interrupted_turn_checkpoint = nil unless awaiting_continue
 
-        session.messages = messages
         session.model_name = @effective_model_name
         session.save
-        # Mirror engine.run_turn's persistence for the continue path (which
-        # drives KernelLoop directly and bypasses the Engine observer's persist).
-        @engine.metrics.persist unless engine_turn
       end
 
       $stdout.puts "\nContinue session: chi --resume #{session.id}"
@@ -844,14 +805,14 @@ module Samagotchi
       nil
     end
 
-    def start_muted_reminder_generation(messages, session)
+    def start_muted_reminder_generation(session)
       return if muted_reminder_running?
       return if muted_reminder_pending? # already have a pending to drain
       return if @engine.due_reminder_names.empty?
 
       # Snapshot the current messages; muted thread injects and runs on the
-      # copy so foreground `messages` is untouched until drain.
-      snapshot = clone_messages(messages)
+      # copy so the session's conversation is untouched until drain.
+      snapshot = clone_messages(session.messages)
       @muted_reminder_thread = Thread.new do
         Thread.current.report_on_exception = false
         @engine.set_turn_running(true)
@@ -886,8 +847,9 @@ module Samagotchi
     end
 
     def run_kernel_muted(messages, max_iterations: 100)
-      # Muted variant of run_kernel_with_thinking_feedback: no spinner,
-      # no tool-activity streaming to stdout. Still forwards to
+      # Muted background turn on a snapshot: no spinner, no tool-activity
+      # streaming to stdout, and not through Engine#run_turn (it must not
+      # overwrite the session from this thread). Still forwards to
       # Engine.metrics so /stats stays correct.
       cancellation_controller = Client::CancellationController.new
       @active_cancel_controller = cancellation_controller
@@ -914,7 +876,7 @@ module Samagotchi
       finish_thinking_spinner
     end
 
-    def drain_pending_muted_results?(messages, session)
+    def drain_pending_muted_results?(session)
       pending = nil
       @pending_reminder_mutex.synchronize do
         pending = @pending_reminder_results.dup
@@ -928,12 +890,11 @@ module Samagotchi
           next
         end
         # result.conversation already contains the injected SYSTEM DUE +
-        # model reply. Replace foreground messages with it.
+        # model reply. Replace the session's conversation with it.
         if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
-          messages.replace(Array(result.conversation).map(&:dup))
+          session.messages = Array(result.conversation).map(&:dup)
         end
         emit_result(result)
-        session.messages = messages.dup
         session.model_name = @effective_model_name
         session.save
         @engine.metrics.persist
@@ -951,7 +912,7 @@ module Samagotchi
     # (kill+prefill to show pending without losing keystrokes) or (b) after
     # submit at the top of the next loop. When prompt is empty / truly idle
     # we still return :due for the synchronous synthetic path.
-    def poll_input_with_reminder_check(awaiting_continue:, messages: nil, session: nil)
+    def poll_input_with_reminder_check(awaiting_continue:, session: nil)
       # Check due before any blocking so push-mode fires even in specs/non-TTY.
       return :due unless @engine.due_reminder_names.empty?
 
@@ -994,9 +955,9 @@ module Samagotchi
         unless due.empty?
           if typing_active?
             # Send+mute: generate in background, don't interrupt typing
-            if messages && session && !muted_reminder_running? && !muted_reminder_pending?
-              start_muted_reminder_generation(messages, session)
-            elsif messages.nil? || session.nil?
+            if session && !muted_reminder_running? && !muted_reminder_pending?
+              start_muted_reminder_generation(session)
+            elsif session.nil?
               # Fallback when poll was called without snapshot (e.g. /continue)
               # still notify, drain will happen after submit via top-of-loop
             end
@@ -1678,15 +1639,17 @@ module Samagotchi
       system("command -v rg", out: File::NULL, err: File::NULL)
     end
 
-    # Run one REPL turn through Engine#run_turn, rendering via @renderer. The
-    # REPL's working +messages+ become the session's conversation first (they
-    # can hold !cmd output the session has not seen yet).
-    def run_engine_turn(session, messages, prompt, continue: false, max_iterations: 100)
+    # Run one REPL turn (a prompt, or a continue/reminder turn with nil) through
+    # Engine#run_turn, rendering via @renderer.
+    def run_engine_turn(session, prompt, continue: false, max_iterations: 100)
       cancellation_controller = Client::CancellationController.new
       @active_cancel_controller = cancellation_controller
+      @renderer.begin_turn
+      # Build the (memoized) prompt now so --memory activations show in this
+      # turn's status lines, including after /model rebuilt it.
+      seed_system_prompt
       # A new turn invalidates any in-flight recap.
       @engine.recap&.invalidate!
-      session.messages = messages
       result = @engine.run_turn(
         session,
         prompt,
@@ -1702,30 +1665,6 @@ module Samagotchi
       # Engine kept the prompt in the session and emitted :turn_canceled.
       cancellation_controller&.cancel!(:ctrl_c)
       result = cancelled_result_from(session.messages, reason: :ctrl_c)
-      emit_cancellation_notice(result)
-      result
-    ensure
-      stop_cancel_hotkey_monitor
-      @active_cancel_controller = nil
-      finish_thinking_spinner
-    end
-
-    def run_kernel_with_thinking_feedback(messages, max_iterations: 100)
-      cancellation_controller = Client::CancellationController.new
-      @active_cancel_controller = cancellation_controller
-      @renderer.begin_turn
-      result = run_selected_backend(
-        messages,
-        max_iterations: max_iterations,
-        on_stream_event: method(:handle_stream_event),
-        cancel_controller: cancellation_controller,
-        pending_input: @pending_input_queue&.method(:drain)
-      )
-      emit_cancellation_notice(result)
-      result
-    rescue Interrupt
-      cancellation_controller&.cancel!(:ctrl_c)
-      result = cancelled_result_from(messages, reason: :ctrl_c)
       emit_cancellation_notice(result)
       result
     ensure
@@ -1755,20 +1694,17 @@ module Samagotchi
       )
     end
 
-    # Turn lifecycle for the interactive REPL.
+    # Turn lifecycle for the muted background reminder run.
     #
-    # The REPL drives KernelLoop directly via #run_kernel_with_thinking_feedback,
-    # bypassing Engine#run_turn. That means it never receives the :turn_started /
-    # :turn_completed / :turn_canceled events the SessionMetrics collector needs to
-    # tally a turn: without them the collector never opens a turn, so turns,
-    # output tokens (tokens out), iterations, and generation latency all stay 0
-    # even though the server did report completion tokens. begin/end_interactive_turn
-    # feed the same shared collector the Engine observer feeds for the -p /
-    # --non-interactive / --resume paths, so /stats reports real numbers.
+    # That run drives KernelLoop directly on a snapshot (see
+    # #start_muted_reminder_generation), bypassing Engine#run_turn, so it never
+    # emits the :turn_started / :turn_completed / :turn_canceled events the
+    # SessionMetrics collector needs to tally a turn. begin/end_interactive_turn
+    # feed the same shared collector the Engine observer feeds for every
+    # run_turn, so /stats reports real numbers.
     #
-    # An interrupted turn can be resumed in the next loop iteration, so the flag
-    # is idempotent (guard on @turn_open) and every terminal path calls end so the
-    # turn never leaks open.
+    # The flag is idempotent (guard on @turn_open) and every terminal path
+    # calls end so the turn never leaks open.
     def begin_interactive_turn(session)
       return if @turn_open
 
@@ -1795,12 +1731,12 @@ module Samagotchi
       emit_interactive_turn_duration(canceled: canceled) if announce
     end
 
-    # Stream sink for the REPL paths that drive the kernel directly
-    # (continue, reminder turns): they bypass Engine#run_turn, so feed the
-    # Engine's analytics collector here, then render like any turn event.
+    # The REPL's on_event sink for Engine#run_turn: render one event. Engine
+    # swallows on_event errors to protect the turn, so log ours instead.
     def handle_stream_event(event)
-      @engine.metrics.call(event)
       @renderer.call(event)
+    rescue StandardError => e
+      warn "[render] #{event[:type]}: #{e.class}: #{e.message}"
     end
 
     def emit_cancellation_notice(result)
