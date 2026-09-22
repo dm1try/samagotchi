@@ -53,8 +53,10 @@ module Samagotchi
         FileUtils.mkdir_p(bases_dir)
 
         # Read existing manifest to merge file entries and find stale files.
+        # read symbolizes keys; stringify them so incoming string keys replace
+        # them instead of sitting next to them as duplicates.
         existing = read
-        merged_entries = existing && existing[:files] ? existing[:files].dup : {}
+        merged_entries = existing && existing[:files] ? existing[:files].transform_keys(&:to_s) : {}
 
         files.each do |file_key, file_path|
           content = File.read(file_path)
@@ -71,7 +73,7 @@ module Samagotchi
             unless files.key?(old_key_str) || files.key?(old_key)
               old_base = File.join(bases_dir, old_key_str)
               FileUtils.rm_f(old_base) if File.exist?(old_base)
-              merged_entries.delete(old_key)
+              merged_entries.delete(old_key_str)
             end
           end
         end

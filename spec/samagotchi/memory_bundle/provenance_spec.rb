@@ -78,6 +78,18 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       expect(File.exist?(File.join(prov.bundle_dir, "bases", "b.md"))).to be false
     end
 
+    it "lists each file once after a re-install, with the new checksum" do
+      prov = described_class.new(name: "test-bundle")
+      base_dir = File.join(tmpdir, "sources")
+      prov.write(files: { "a.md" => make_file(base_dir, "a.md", "AAA") }, scope: "system", version: "1.0", source_path: "/x")
+      prov.write(files: { "a.md" => make_file(base_dir, "a.md", "AAA v2") }, scope: "system", version: "1.1", source_path: "/x")
+
+      # Parsing collapses duplicate keys, so count them in the raw JSON.
+      raw = File.read(prov.bundle_dir + "/manifest.json")
+      expect(raw.scan('"a.md"').size).to eq(1)
+      expect(prov.read[:files][:"a.md"][:checksum]).to eq(Digest::SHA256.hexdigest("AAA v2"))
+    end
+
     it "preserves untouched entries on merge" do
       prov = described_class.new(name: "test-bundle")
       base_dir = File.join(tmpdir, "sources")
