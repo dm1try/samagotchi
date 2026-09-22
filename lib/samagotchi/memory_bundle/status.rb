@@ -2,6 +2,7 @@
 require "digest"
 require_relative "provenance"
 require_relative "index_updater"
+require_relative "../memory_paths"
 
 module Samagotchi
   module MemoryBundle
@@ -50,7 +51,7 @@ module Samagotchi
           if Samagotchi::MemoryBundle::Installer.project_dir_base_override
             base
           else
-            File.join(base, "#{File.basename(Dir.pwd)}_#{Digest::MD5.hexdigest(Dir.pwd)[0..7]}")
+            File.join(base, MemoryPaths.project_key)
           end
         else
           Samagotchi::MemoryBundle::Installer.system_dir

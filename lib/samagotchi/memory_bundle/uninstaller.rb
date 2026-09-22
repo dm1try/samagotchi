@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 require "fileutils"
 require "digest"
+require_relative "../memory_paths"
 require_relative "provenance"
 require_relative "index_updater"
 require_relative "merger"
@@ -12,16 +13,13 @@ module Samagotchi
 
       attr_reader :warnings, :removed_files
 
-      DEFAULT_SYSTEM_DIR = File.join(Dir.home, ".config", "samagotchi", "memories")
-      DEFAULT_PROJECT_DIR_BASE = File.join(Dir.home, ".config", "samagotchi", "memories", "projects")
-
       class << self
         attr_accessor :system_dir_override, :project_dir_base_override
         def system_dir
-          system_dir_override || DEFAULT_SYSTEM_DIR
+          system_dir_override || MemoryPaths.system_dir
         end
         def project_dir_base
-          project_dir_base_override || DEFAULT_PROJECT_DIR_BASE
+          project_dir_base_override || MemoryPaths.projects_dir
         end
       end
 
@@ -117,10 +115,7 @@ module Samagotchi
           if self.class.project_dir_base_override
             self.class.project_dir_base
           else
-            File.join(
-              self.class.project_dir_base,
-              "#{File.basename(Dir.pwd)}_#{Digest::MD5.hexdigest(Dir.pwd)[0..7]}"
-            )
+            File.join(self.class.project_dir_base, MemoryPaths.project_key)
           end
         else
           raise UninstallError, "invalid scope: #{scope}"

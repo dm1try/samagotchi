@@ -1185,8 +1185,8 @@ module Samagotchi
 
     def memory_completion_dirs
       {
-        "project" => File.expand_path(Tools::PROJECT_MEMORIES_DIR, Dir.pwd),
-        "system" => File.expand_path(Tools::SYSTEM_MEMORIES_DIR)
+        "project" => File.expand_path(MemoryPaths.project_dir, Dir.pwd),
+        "system" => File.expand_path(MemoryPaths.system_dir)
       }
     end
 

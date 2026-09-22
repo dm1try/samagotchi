@@ -5,6 +5,7 @@ require "fileutils"
 require "tmpdir"
 require_relative "manifest"
 require_relative "placeholder"
+require_relative "../memory_paths"
 
 module Samagotchi
   module MemoryBundle
@@ -276,10 +277,7 @@ module Samagotchi
           if Samagotchi::MemoryBundle::Installer.project_dir_base_override
             Samagotchi::MemoryBundle::Installer.project_dir_base
           else
-            File.join(
-              Samagotchi::MemoryBundle::Installer.project_dir_base,
-              "#{File.basename(Dir.pwd)}_#{Digest::MD5.hexdigest(Dir.pwd)[0..7]}"
-            )
+            File.join(Samagotchi::MemoryBundle::Installer.project_dir_base, MemoryPaths.project_key)
           end
         else
           raise BuildError, "invalid scope: #{scope}"

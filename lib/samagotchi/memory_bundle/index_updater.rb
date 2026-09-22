@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 require "fileutils"
 require "digest"
+require_relative "../memory_paths"
 module Samagotchi
   module MemoryBundle
     # Atomically updates the scoped index.md for a single entry.
@@ -84,16 +85,12 @@ module Samagotchi
         normalized = "system" if normalized.empty?
         base_dir = case normalized
                    when "system"
-                     system_dir_override ||
-                       (defined?(Samagotchi::Tools::SYSTEM_MEMORIES_DIR) ? Samagotchi::Tools::SYSTEM_MEMORIES_DIR : File.join(Dir.home, ".config", "samagotchi", "memories"))
+                     system_dir_override || MemoryPaths.system_dir
                    when "project"
                      if project_dir_base_override
-                       File.join(
-                         project_dir_base_override,
-                         "#{File.basename(Dir.pwd)}_#{Digest::MD5.hexdigest(Dir.pwd)[0..7]}"
-                       )
+                       File.join(project_dir_base_override, MemoryPaths.project_key)
                      else
-                       (defined?(Samagotchi::Tools::PROJECT_MEMORIES_DIR) ? Samagotchi::Tools::PROJECT_MEMORIES_DIR : File.join(Dir.home, ".config", "samagotchi", "memories", "projects", "#{File.basename(Dir.pwd)}_#{Digest::MD5.hexdigest(Dir.pwd)[0..7]}"))
+                       MemoryPaths.project_dir
                      end
                    else
                      return nil

@@ -4,21 +4,20 @@ require "json"
 require "digest"
 require "date"
 require "fileutils"
+require_relative "../memory_paths"
 
 module Samagotchi
   module MemoryBundle
-    # Manages provenance storage at ~/.config/samagotchi/memories/.bundles/<name>/
+    # Manages provenance storage at <memories>/.bundles/<name>/ (see MemoryPaths)
     # Each installed bundle gets a directory with:
     #   manifest.json — metadata about the install (merged on reinstall)
     #   bases/        — snapshots of every file as installed (for 3-way merge later)
     class Provenance
-      DEFAULT_BUNDLES_DIR = File.join(Dir.home, ".config", "samagotchi", "memories", ".bundles")
-
       class << self
         attr_accessor :bundles_dir_override
 
         def bundles_dir
-          bundles_dir_override || DEFAULT_BUNDLES_DIR
+          bundles_dir_override || MemoryPaths.bundles_dir
         end
       end
 

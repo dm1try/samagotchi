@@ -444,10 +444,14 @@ module Samagotchi
       existed
     end
 
-    def global_path(env: ENV)
+    def config_dir(env: ENV)
       config_home = env.fetch(XDG_CONFIG_HOME_ENV, "").to_s.strip
       base_dir = config_home.empty? ? File.expand_path("~/.config") : config_home
-      File.join(base_dir, CONFIG_DIR, CONFIG_FILE)
+      File.join(base_dir, CONFIG_DIR)
+    end
+
+    def global_path(env: ENV)
+      File.join(config_dir(env: env), CONFIG_FILE)
     end
 
     HOSTS_KEY = "hosts"

@@ -1343,7 +1343,7 @@ Need to inspect the filesystem first.
         end
       end
 
-      stub_const("Samagotchi::Tools::PROJECT_MEMORIES_DIR", dir)
+      allow(Samagotchi::MemoryPaths).to receive(:project_dir).and_return(dir)
 
       result = qwen_kernel.run([{ role: "user", content: "save memory" }])
 

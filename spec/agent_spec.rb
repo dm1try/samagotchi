@@ -1341,12 +1341,13 @@ file2.rb")
 
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:skip?).and_return(true)
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
-      stub_const("Samagotchi::Tools::SYSTEM_MEMORIES_DIR", system_memories_dir)
+      allow(Samagotchi::MemoryPaths).to receive(:system_dir).and_return(system_memories_dir)
 
       project_memories_dir = File.join(tmpdir, "memories")
       FileUtils.mkdir_p(project_memories_dir)
-      stub_const("Samagotchi::Tools::PROJECT_MEMORIES_DIR", project_memories_dir)
+      allow(Samagotchi::MemoryPaths).to receive(:project_dir).and_return(project_memories_dir)
     end
 
     around do |example|

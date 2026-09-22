@@ -4,15 +4,10 @@
 require "fileutils"
 require "digest"
 require "date"
+require_relative "../memory_paths"
 
 module Samagotchi
   module Tools
-    SYSTEM_MEMORIES_DIR = File.join(Dir.home, ".config", "samagotchi", "memories")
-    PROJECT_MEMORIES_DIR = File.join(
-      SYSTEM_MEMORIES_DIR,
-      "projects",
-      "#{File.basename(Dir.pwd)}_#{Digest::MD5.hexdigest(Dir.pwd)[0..7]}"
-    )
     MEMORY_INDEX = "index"
     VALID_SCOPES = %w[project system].freeze
 
@@ -133,7 +128,7 @@ module Samagotchi
             return Samagotchi::MemoryBundle::Installer.system_dir
           end
         end
-        scope == "project" ? PROJECT_MEMORIES_DIR : SYSTEM_MEMORIES_DIR
+        scope == "project" ? MemoryPaths.project_dir : MemoryPaths.system_dir
       end
     end
 

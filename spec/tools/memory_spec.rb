@@ -10,8 +10,8 @@ RSpec.describe Samagotchi::Tools::MemoryRead do
   let(:system_memories_dir) { Dir.mktmpdir }
 
   before do
-    stub_const("Samagotchi::Tools::PROJECT_MEMORIES_DIR", project_memories_dir)
-    stub_const("Samagotchi::Tools::SYSTEM_MEMORIES_DIR", system_memories_dir)
+    allow(Samagotchi::MemoryPaths).to receive(:project_dir).and_return(project_memories_dir)
+    allow(Samagotchi::MemoryPaths).to receive(:system_dir).and_return(system_memories_dir)
   end
 
   after do
@@ -158,8 +158,8 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
   let(:system_memories_dir) { Dir.mktmpdir }
 
   before do
-    stub_const("Samagotchi::Tools::PROJECT_MEMORIES_DIR", project_memories_dir)
-    stub_const("Samagotchi::Tools::SYSTEM_MEMORIES_DIR", system_memories_dir)
+    allow(Samagotchi::MemoryPaths).to receive(:project_dir).and_return(project_memories_dir)
+    allow(Samagotchi::MemoryPaths).to receive(:system_dir).and_return(system_memories_dir)
   end
 
   after do
