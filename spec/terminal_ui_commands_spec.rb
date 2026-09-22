@@ -38,6 +38,30 @@ RSpec.describe Samagotchi::TerminalUI do
     end
   end
 
+  describe "idle activity hook" do
+    around do |example|
+      saved = Reline.pre_input_hook
+      example.run
+    ensure
+      Reline.pre_input_hook = saved
+    end
+
+    it "survives a prompt with no prefill (it used to be reset to nil)" do
+      hook = proc {}
+      Reline.pre_input_hook = hook
+      agent.send(:with_next_input_prefill) { :read }
+      expect(Reline.pre_input_hook).to be(hook)
+    end
+
+    it "is restored after a prefilled prompt" do
+      hook = proc {}
+      Reline.pre_input_hook = hook
+      agent.instance_variable_set(:@next_input_prefill, "Hey Chi, ")
+      agent.send(:with_next_input_prefill) { expect(Reline.pre_input_hook).not_to be(hook) }
+      expect(Reline.pre_input_hook).to be(hook)
+    end
+  end
+
   describe "timing output" do
     it "adds compact elapsed time to a completed tool activity line" do
       output = agent.send(

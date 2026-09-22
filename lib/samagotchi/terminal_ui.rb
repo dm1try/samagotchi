@@ -924,9 +924,10 @@ module Samagotchi
           current_buf = ""
         end
         if current_buf != @last_line_buffer
+          grew = current_buf.strip.length > @last_line_buffer.strip.length
           @last_line_buffer = current_buf
           @last_keystroke_at = monotonic_time
-          @engine.record_activity if current_buf.strip.length > @last_line_buffer.strip.length
+          @engine.record_activity if grew
         end
 
         due = @engine.instance_variable_get(:@due_reminder_names)
@@ -2586,9 +2587,14 @@ module Samagotchi
         end
         previous_hook.call if previous_hook
       end
-      yield
-    ensure
-      Reline.pre_input_hook = previous_hook
+      begin
+        yield
+      ensure
+        # Restore only what we replaced: a method-level ensure also ran on the
+        # no-prefill early return and reset the hook to nil, dropping the
+        # Engine activity hook (with_activity_hook) after the first prompt.
+        Reline.pre_input_hook = previous_hook
+      end
     end
 
     # Install a Reline.pre_input_hook that resets the Engine's shared inactivity
