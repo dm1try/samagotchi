@@ -162,6 +162,26 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       expect(cancelled).not_to be_nil
     end
 
+    it "cancel_question names the question it cancelled, and announces nothing with none pending" do
+      engine = build_engine
+      events = []
+      engine.subscribe(observer: ->(e) { events << e })
+      engine.cancel_question("user")
+      expect(events.map { |e| e[:type] }).not_to include(:question_cancelled)
+
+      turn_thread = Thread.new { engine.request_question(payload) }
+      turn_thread.report_on_exception = false
+      deadline = mono + 2.0
+      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+      id = engine.pending_question[:id]
+
+      engine.cancel_question("user")
+      turn_thread.join(2)
+
+      cancelled = events.select { |e| e[:type] == :question_cancelled }
+      expect(cancelled.map { |e| e.slice(:id, :reason) }).to eq([{ id: id, reason: "user" }])
+    end
+
     it "returns an error payload without blocking for an empty question" do
       engine = build_engine
       result = engine.request_question(question: "", options: %w[A B])

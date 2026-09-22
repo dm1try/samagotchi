@@ -736,15 +736,19 @@ module Samagotchi
       @question_sync_handler = block
     end
 
-    # Cancel the pending question (e.g. /cancel).
+    # Cancel the pending question (e.g. /cancel). Announces which one, so
+    # every UI closes it; with none pending there is nothing to announce.
     def cancel_question(reason = "user")
-      @question_mutex.synchronize do
-        if @pending_question
-          @pending_question[:status] = "cancelled"
-          @question_cv.broadcast
-        end
+      id = @question_mutex.synchronize do
+        next unless @pending_question
+
+        @pending_question[:status] = "cancelled"
+        @question_cv.broadcast
+        @pending_question[:id]
       end
-      emit_event(nil, { type: :question_cancelled, reason: reason.to_s }) rescue nil
+      return true unless id
+
+      emit_event(nil, { type: :question_cancelled, id: id, reason: reason.to_s }) rescue nil
       true
     end
 
