@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "model_profile"
 require_relative "prompt_literal_guard"
 
 module Samagotchi

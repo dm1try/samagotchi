@@ -21,13 +21,12 @@ module Samagotchi
         raise NotImplementedError, "#{self.class}#complete must be implemented"
       end
     end
-  end
-end
 
-require_relative "ruby_llm_backend"
+    # Loaded on first use so the ruby_llm gem is only pulled in when that
+    # backend is selected (ruby_llm_backend.rb requires this file for its
+    # superclass, so a plain require here would be circular).
+    autoload :RubyLLMBackend, File.expand_path("ruby_llm_backend", __dir__)
 
-module Samagotchi
-  module LLM
     # Provider-based factory. Phase 1 knows `:native` (returns `nil` — the
     # caller drives KernelLoop directly); Phase 2 adds `:ruby_llm` (and later
     # phases register others here) without touching callers.

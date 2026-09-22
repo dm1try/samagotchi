@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "output_guardrails"
 require_relative "tool_path"
 
 module Samagotchi

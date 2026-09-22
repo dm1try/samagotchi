@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "backend"
 require_relative "model_result"
 require_relative "../client"
 require_relative "native_tool_normalizer"
