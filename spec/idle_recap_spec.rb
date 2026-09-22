@@ -405,4 +405,46 @@ RSpec.describe Samagotchi::IdleRecap do
     end
   end
 
+  describe "one attempt per idle window" do
+    let(:two_turns) do
+      JSON.generate([
+        { "role" => "user", "content" => "Hello" },
+        { "role" => "model", "content" => "Hi there" },
+        { "role" => "user", "content" => "What about X?" }
+      ])
+    end
+
+    def idle_for(engine, client)
+      described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0,
+                          min_user_turns: 2, timeout: 1.0, client: client, clock: -> { base_time })
+    end
+
+    it "does not re-snapshot every tick while the history is too short" do
+      engine = stub_engine(messages: JSON.generate([{ "role" => "user", "content" => "Hello" }]), last_activity: base_time.to_f - 5)
+      idle = idle_for(engine, client)
+      5.times { idle.tick }
+      expect(engine).to have_received(:messages_json_for_recap).once
+    end
+
+    it "does not re-call a failing summarizer every tick" do
+      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 5)
+      err_client = double("err_client")
+      allow(err_client).to receive(:summarize).and_raise(Samagotchi::IdleClient::SummarizeError)
+      idle = idle_for(engine, err_client)
+      5.times { idle.tick }
+      expect(err_client).to have_received(:summarize).once
+    end
+
+    it "re-arms once new activity advances the seq" do
+      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 5, activity_seq: 1)
+      err_client = double("err_client")
+      allow(err_client).to receive(:summarize).and_raise(Samagotchi::IdleClient::SummarizeError)
+      idle = idle_for(engine, err_client)
+      idle.tick
+      allow(engine).to receive(:activity_seq).and_return(2)
+      idle.tick
+      idle.tick
+      expect(err_client).to have_received(:summarize).twice
+    end
+  end
 end

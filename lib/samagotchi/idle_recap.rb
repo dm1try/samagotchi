@@ -164,6 +164,10 @@ module Samagotchi
 
     def generate
       gen = bump_generation
+      # Latch the attempt, not the success: a short history, a failed or
+      # empty summary, or an invalidated run must not re-fire on every
+      # scheduler tick. The next recorded activity re-arms the window.
+      @last_fire_activity_seq = @engine.activity_seq
       snapshot = @engine.messages_json_for_recap
       parsed = safe_parse(snapshot)
       return if parsed.nil? || parsed.empty?
@@ -177,7 +181,6 @@ module Samagotchi
       return unless valid_generation?(gen)
       recap = safe_value(worker)
       return if recap.nil? || recap.to_s.strip.empty?
-      @last_fire_activity_seq = @engine.activity_seq
       @engine.emit_recap(recap: recap.to_s, generation: gen)
     rescue StandardError
       nil
@@ -212,8 +215,8 @@ module Samagotchi
     end
 
     def wait_until_finished(worker, gen)
-      @deadline = @clock.call + @timeout
-      until !worker.alive? || !valid_generation?(gen) || @clock.call >= @deadline
+      deadline = @clock.call + @timeout
+      until !worker.alive? || !valid_generation?(gen) || @clock.call >= deadline
         sleep(WAIT_TICK_SECONDS)
       end
       # Return true only if worker finished AND generation is still valid
