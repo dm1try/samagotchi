@@ -681,4 +681,87 @@ RSpec.describe Samagotchi::Client do
       end
     end
   end
+
+  describe "#context_window" do
+    # Recorded from llama.cpp started with `-c 128000 --parallel 4`: /props
+    # reports the per-slot n_ctx (the same value /slots shows per slot).
+    let(:props_body) { File.read(File.expand_path("fixtures/llama_cpp/props.json", __dir__)) }
+    let(:client) { described_class.new(host: "localhost", port: 8080) }
+    let(:http) { instance_double(Net::HTTP) }
+    let(:requests) { [] }
+
+    def stub_probe(body: props_body, code: "200")
+      response = instance_double(Net::HTTPResponse, code: code, body: body)
+      allow(Net::HTTP).to receive(:start)
+        .with("localhost", 8080, open_timeout: 1, read_timeout: 2)
+        .and_yield(http)
+      allow(http).to receive(:request) { |req| requests << req.path; response }
+    end
+
+    it "reads n_ctx from llama.cpp's /props" do
+      stub_probe
+
+      expect(client.context_window(model: "m")).to eq(128_000)
+      expect(requests).to eq(["/props"])
+    end
+
+    it "probes once per model and serves repeats from the cache" do
+      stub_probe
+
+      3.times { client.context_window(model: "m") }
+      client.context_window(model: "other")
+
+      expect(requests.size).to eq(2)
+    end
+
+    it "caches a server that answers without a window, as nil" do
+      stub_probe(code: "404", body: "not found")
+
+      2.times { expect(client.context_window(model: "m")).to be_nil }
+      expect(requests.size).to eq(1)
+    end
+
+    it "returns nil without retrying or caching when the probe fails" do
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
+
+      expect(client.context_window(model: "m")).to be_nil
+      expect(Net::HTTP).to have_received(:start).once
+
+      stub_probe
+      expect(client.context_window(model: "m")).to eq(128_000)
+    end
+
+    it "probes again after invalidate_context_window!" do
+      stub_probe
+      client.context_window(model: "m")
+
+      client.invalidate_context_window!
+      client.context_window(model: "m")
+
+      expect(requests.size).to eq(2)
+    end
+
+    it "drops the cache when a completion hits a connection error (the server may have restarted)" do
+      stub_probe
+      client.context_window(model: "m")
+      allow(client).to receive(:wait_with_cancellation)
+      allow(Net::HTTP).to receive(:start)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .and_raise(Errno::ECONNREFUSED)
+
+      expect { client.complete("prompt") }.to raise_error(described_class::RetryExhausted)
+      client.context_window(model: "m")
+
+      expect(requests.size).to eq(2)
+    end
+
+    it "does not probe mlx or omlx, which report no window" do
+      allow(Net::HTTP).to receive(:start)
+
+      %i[mlx omlx].each do |transport|
+        expect(described_class.new(host: "localhost", port: 8000, transport: transport).context_window(model: "m")).to be_nil
+      end
+      expect(Net::HTTP).not_to have_received(:start)
+    end
+  end
 end

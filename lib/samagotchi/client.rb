@@ -41,6 +41,11 @@ module Samagotchi
     DEFAULT_RETRY_BASE_DELAY = 0.5
     DEFAULT_RETRY_MAX_DELAY = 8.0
 
+    # The context-window probe runs before a turn's generation, so it gets a
+    # short budget and no retry (see #context_window).
+    CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT = 1
+    CONTEXT_WINDOW_PROBE_READ_TIMEOUT = 2
+
     SERVER_TRANSPORT_ENV = "SAMAGOTCHI_SERVER_TRANSPORT"
     DEFAULT_TRANSPORT = :llama_cpp
     VALID_TRANSPORTS = %i[llama_cpp mlx omlx].freeze
@@ -78,6 +83,19 @@ module Samagotchi
 
       def token_limit_key
         openai_compatible? ? :max_tokens : :n_predict
+      end
+
+      # Where the server reports the context window it was started with, or
+      # nil when it reports none. llama.cpp's /props carries the per-slot
+      # n_ctx (-c split across --parallel slots). mlx_lm.server and oMLX
+      # expose no such field.
+      def context_window_path
+        openai_compatible? ? nil : "/props"
+      end
+
+      def context_window_from(body)
+        n_ctx = body.is_a?(Hash) ? body.dig("default_generation_settings", "n_ctx") : nil
+        n_ctx.is_a?(Integer) && n_ctx.positive? ? n_ctx : nil
       end
 
       # Text content carried by one streamed `data:` payload.
@@ -197,6 +215,8 @@ module Samagotchi
       @read_timeout  = (read_timeout || cfg_read_timeout).to_i
       transport_fallback = cfg_transport_raw || ENV.fetch(SERVER_TRANSPORT_ENV, DEFAULT_TRANSPORT.to_s)
       @transport = build_transport(resolve_transport(transport || transport_fallback))
+      @context_window_cache = {}
+      @context_window_mutex = Mutex.new
       @retry_max = begin
         v = Samagotchi::Config.get("retry.max") rescue nil
         v.is_a?(Integer) && v >= 0 ? v : integer_config(RETRY_MAX_ENV, DEFAULT_RETRY_MAX)
@@ -279,6 +299,7 @@ module Samagotchi
         rescue RequestCancelled
           raise
         rescue StandardError => e
+          invalidate_context_window! if retryable_network_error?(e)
           retry_delay = retry_delay_for(attempts)
           if retryable_network_error?(e) && !retry_delay.nil?
             on_retry&.call(
@@ -342,7 +363,48 @@ module Samagotchi
       end
     end
 
+    # The context window (tokens) the running server was started with, or nil
+    # when the transport reports none or the probe fails. One GET with short
+    # timeouts and no retry: it runs before generation and must never hold up
+    # a turn. Answers (nil included) are cached per model; a failed probe is
+    # not, so the next call asks again.
+    def context_window(model: nil)
+      path = @transport.context_window_path
+      return nil unless path
+
+      key = model.to_s
+      @context_window_mutex.synchronize do
+        return @context_window_cache[key] if @context_window_cache.key?(key)
+      end
+
+      tokens = probe_context_window(path)
+      @context_window_mutex.synchronize { @context_window_cache[key] = tokens }
+    rescue StandardError
+      nil
+    end
+
+    # Forget cached windows: the server may have restarted with another -c,
+    # or a model switch may have loaded one with a different window.
+    def invalidate_context_window!
+      @context_window_mutex.synchronize { @context_window_cache.clear }
+    end
+
     private
+
+    def probe_context_window(path)
+      uri = URI("http://#{@host}:#{@port}#{path}")
+      response = Net::HTTP.start(
+        uri.host,
+        uri.port,
+        open_timeout: CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
+        read_timeout: CONTEXT_WINDOW_PROBE_READ_TIMEOUT
+      ) { |http| http.request(Net::HTTP::Get.new(uri)) }
+      return nil unless response.code.to_s == "200"
+
+      @transport.context_window_from(JSON.parse(response.body.to_s))
+    rescue JSON::ParserError
+      nil
+    end
 
     def resolve_transport(transport)
       value = (transport || ENV.fetch(SERVER_TRANSPORT_ENV, DEFAULT_TRANSPORT.to_s)).to_s.strip.downcase.to_sym
