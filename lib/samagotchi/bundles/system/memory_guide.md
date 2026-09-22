@@ -42,7 +42,7 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 - Never store secrets, tokens, or transient state. Memories are shared via bundles.
 
 **Placeholders:**
-- Content may contain placeholder hints written as double-curly braces around a name (e.g., test_command, language). Detected by `Placeholder` (`lib/samagotchi/memory_bundle/placeholder.rb:8`) — install warns but does not fail. Fill them when you write. The placeholder syntax is two opening braces, a name, two closing braces.
+- Content may contain placeholder hints written as double-curly braces around a name (e.g., test_command, language). Detected by `Placeholder` (`Placeholder::PLACEHOLDER_RE`) — install warns but does not fail. Fill them when you write. The placeholder syntax is two opening braces, a name, two closing braces.
 
 ## Memory Bundles — shareable packs
 
@@ -53,15 +53,15 @@ Bundles are versioned directories/zips/tar.gz/git URLs containing `manifest.yml`
 | Command | Purpose |
 |---------|---------|
 | `install <source> [--scope system\|project] [--force]` | Install from dir/zip/tar.gz/git URL. `--force` overwrites existing entries, otherwise skips. Writes provenance to `.bundles/<name>/` (base snapshots + `manifest.json`) and updates `index.md`. Warns on double-brace placeholders and checksum mismatches (strict mode). |
-| `upgrade <source> [--force] [--dry-run] [--agent]` | 3-way merge upgrade (base vs current vs incoming) per `Merger.classify` (`merger.rb:13`): `install` (new file), `noop` (current==incoming), `fast_forward` (current==base, not edited → auto-update), `keep` (incoming==base → preserve local edits), `conflict` (both edited → warn, needs `--force` or interactive `memory_write` resolution). Pruned files (removed from new bundle) are kept if locally edited, otherwise warned. |
+| `upgrade <source> [--force] [--dry-run] [--agent]` | 3-way merge upgrade (base vs current vs incoming) per `Merger.classify`: `install` (new file), `noop` (current==incoming), `fast_forward` (current==base, not edited → auto-update), `keep` (incoming==base → preserve local edits), `conflict` (both edited → warn, needs `--force` or interactive `memory_write` resolution). Pruned files (removed from new bundle) are kept if locally edited, otherwise warned. |
 | `uninstall <bundle> [--force]` | Removes bundle files (skips locally edited files unless `--force`) and `index.md` lines, deletes provenance dir. |
 | `status [<bundle>]` | Provenance + per-file `ok|modified|missing|no-index` vs stored checksum and base snapshot. |
 | `diff <bundle> [file]` | Prints `base` (provenance snapshot) vs `current` (on-disk) for each file. |
 | `bundles` | Lists installed bundles (`name v<version> scope files installed_at`). |
-| `build [--scope system\|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]` | **Inverse of install** — builds a shareable bundle from local memories and installed hooks. Infers `zip` vs `dir`/`tar.gz` from `--out` extension; default `chi_system_memories.zip` (system) or `chi_<project>_memories.zip` (project) v`1.0.0` in `Dir.pwd`. `FILES...` is an optional allowlist of memory basenames (`identity` or `identity.md`); if omitted, all `*.md` except `index.md`/hidden/non-md are included. Installed hooks are copied to `hooks/` with their manifest metadata. Computes `sha256:` via `Manifest.write` (`manifest.rb:49`). No provenance write. |
+| `build [--scope system\|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]` | **Inverse of install** — builds a shareable bundle from local memories and installed hooks. Infers `zip` vs `dir`/`tar.gz` from `--out` extension; default `chi_system_memories.zip` (system) or `chi_<project>_memories.zip` (project) v`1.0.0` in `Dir.pwd`. `FILES...` is an optional allowlist of memory basenames (`identity` or `identity.md`); if omitted, all `*.md` except `index.md`/hidden/non-md are included. Installed hooks are copied to `hooks/` with their manifest metadata. Computes `sha256:` checksums and writes `manifest.yml` via `Manifest.write`. No provenance write. |
 
 **Scope resolution for install/build:**
-- CLI `--scope` wins over `manifest.yml` `scope`. Default is `system` if none given (`installer.rb:80`). For `project`, target is `<system dir>/projects/<basename>_<hash>` (`installer.rb:294`).
+- CLI `--scope` wins over `manifest.yml` `scope`. Default is `system` if none given (`Installer#run`). For `project`, target is `<system dir>/projects/<basename>_<hash>` (`Installer#resolve_target_dir`).
 
 **Example flows:**
 ```bash
@@ -85,8 +85,8 @@ bin/chi bundle build --scope system --out updated.zip
 
 ### Provenance internals (for debugging)
 
-- Each installed bundle is recorded at `<system dir>/.bundles/<name>/manifest.json` + `bases/<file>.md` snapshots (`provenance.rb:15`). Used only for upgrade `Merger` and `status`/`diff`. Build does **not** write provenance.
-- `index.md` is best-effort — failures are swallowed (`installer.rb:283`).
+- Each installed bundle is recorded at `<system dir>/.bundles/<name>/manifest.json` + `bases/<file>.md` snapshots (`Provenance`). Used only for upgrade `Merger` and `status`/`diff`. Build does **not** write provenance.
+- `index.md` is best-effort — failures are swallowed (`Installer#update_target_index`).
 
 ## Best practices for the agent
 
@@ -99,4 +99,4 @@ bin/chi bundle build --scope system --out updated.zip
 
 ## Current system bundle
 
-`samagotchi-system` (`lib/samagotchi/bundles/system/manifest.yml`) ships `identity.md` + `config_modification_protocol.md` + this guide itself. It is auto-installed/upgrade on first `Engine` creation (`system_bundle.rb:30`) — no manual install needed. Bump `manifest.yml` `version` when editing bundled files so existing installs upgrade (3-way merge).
+`samagotchi-system` (`lib/samagotchi/bundles/system/manifest.yml`) ships `identity.md` + `self_map.md` + `config_modification_protocol.md` + this guide itself. It is auto-installed/upgraded on first `Engine` creation (`SystemBundle.ensure!`) — no manual install needed. Bump `manifest.yml` `version` when editing bundled files so existing installs upgrade (3-way merge).
