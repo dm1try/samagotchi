@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+# bundler/gem_tasks provides build/install/release; they all use pkg/.
 require "bundler/gem_tasks"
 
 namespace :gem do
@@ -17,34 +18,12 @@ namespace :gem do
     puts "✓ Gemspec is valid"
   end
 
-  desc "Clean built .gem files"
-  task :clean do
-    Dir.glob("*.gem").each do |f|
-      File.unlink(f)
-      puts "Removed #{f}"
-    end
-  end
+  desc "Clean built .gem files from pkg/"
+  task :clean => :clobber
 
-  desc "Build the samagotchi gem"
-  task :build do
-    sh "gem build samagotchi.gemspec"
-    gem_file = Dir.glob("samagotchi-*.gem").first
-    if gem_file
-      puts "\nBuilt: #{gem_file}"
-      puts "Install with: gem install #{gem_file}"
-    end
-  end
+  desc "Build the samagotchi gem into pkg/"
+  task :build => "rake:build"
 
   desc "Build and install the samagotchi gem locally"
-  task :install => [:validate, :build] do
-    gem_file = Dir.glob("samagotchi-*.gem").first
-    if gem_file
-      sh "gem install #{gem_file}"
-    end
-  end
-end
-
-# Allow `rake build` as shorthand for `rake gem:build`
-Rake::Task[:build].enhance do
-  Rake::Task["gem:build"].invoke
+  task :install => [:validate, "rake:install:local"]
 end
