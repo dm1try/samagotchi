@@ -22,6 +22,13 @@ module Samagotchi
     #   4. drain the live queue for `seq > snapshot`
     # which guarantees no gap and no overlap; a per-connection `event_seq`
     # high-water mark de-duplicates the subscribe→capture window.
+    #
+    # A client joining with `?snapshot=1` (and no cursor) instead gets one
+    # `snapshot` frame: the session's messages, the turn in progress and the
+    # event_seq they cover, taken with the event log held, together with the
+    # subscribe. Live events follow from the next seq. A `reset` frame (the
+    # cursor can't be replayed) carries the same snapshot, numbered with its
+    # own seq.
     class SSEWriter
       DEFAULT_MAX_QUEUE = 1024
       DEFAULT_HEARTBEAT_INTERVAL = 15.0
@@ -31,12 +38,17 @@ module Samagotchi
       # @param session_id [String]
       # @param last_event_id [String, nil] reconnect cursor (or ?from_seq=)
       # @param snapshot_provider [#call] -> {status:, message_count:,
-      #   last_prompt:, event_seq:}
+      #   last_prompt:, event_seq:} (Engine#session_state_snapshot)
+      # @param turn_snapshot_provider [#call, nil] -> {messages:, current_turn:,
+      #   queued:, event_seq:}; called with the event log held
+      #   (Bridge#snapshot). Defaults to just the event_seq.
+      # @param join_with_snapshot [Boolean] start with a snapshot frame rather
+      #   than a replay
       # @param bridge [Samagotchi::Bridge, nil] for stop signalling
       # @param max_queue [Integer] bounded-queue capacity
       # @param heartbeat_interval [Float] idle-seconds between `: ping` frames
       def initialize(engine:, ring:, session_id:, last_event_id: nil,
-                     snapshot_provider:, bridge: nil,
+                     snapshot_provider:, turn_snapshot_provider: nil, join_with_snapshot: false, bridge: nil,
                      max_queue: DEFAULT_MAX_QUEUE,
                      heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL)
         @engine = engine
@@ -44,6 +56,8 @@ module Samagotchi
         @session_id = session_id
         @last_event_id = last_event_id
         @snapshot_provider = snapshot_provider
+        @turn_snapshot_provider = turn_snapshot_provider || -> { { event_seq: @engine.event_count } }
+        @join_with_snapshot = join_with_snapshot
         @bridge = bridge
         @max_queue = max_queue
         @heartbeat_interval = heartbeat_interval
@@ -75,12 +89,21 @@ module Samagotchi
         @serving = true
         write_sse_headers(io)
         begin
-          # (1) subscribe the live queue FIRST.
-          @handle = @engine.subscribe(observer: self)
-          # (2) capture the snapshot sequence.
-          snapshot_seq = @engine.event_count
-          # (3) replay buffered (from_seq, snapshot].
-          replay!(io, snapshot_seq)
+          if @join_with_snapshot
+            # Subscribe and snapshot as one step of the event log, then go live.
+            snapshot = @engine.synchronize_events do
+              @handle = @engine.subscribe(observer: self)
+              take_snapshot
+            end
+            write_snapshot_frame(io, :snapshot, snapshot)
+          else
+            # (1) subscribe the live queue FIRST.
+            @handle = @engine.subscribe(observer: self)
+            # (2) capture the snapshot sequence.
+            snapshot_seq = @engine.event_count
+            # (3) replay buffered (from_seq, snapshot].
+            replay!(io, snapshot_seq)
+          end
           # (4) drain live events for seq > snapshot.
           drain!(io)
         rescue Errno::EPIPE, Errno::ECONNRESET, IOError
@@ -103,7 +126,7 @@ module Samagotchi
           # connect (from_seq == 0) replays the whole served window, and a
           # fully caught-up cursor (from_seq == snapshot_seq) is NOT a reset
           # case — it gets an empty replay and holds for live events.
-          emit_reset(io, snapshot_seq)
+          emit_reset(io)
         else
           @ring.events_in_range(after_seq: from_seq, to_seq: snapshot_seq).each { |record| write_event(io, record[:data]) }
         end
@@ -114,14 +137,14 @@ module Samagotchi
           payload = @queue.pop(@heartbeat_interval)
           if payload
             if payload.is_a?(Hash) && payload[:sse_reset]
-              emit_reset(io, payload[:event_seq])
+              emit_reset(io)
               next
             end
 
             write_event(io, payload)
             # A fresh overflow since the last drain => the client fell too far
             # behind; nudge a reconnect rather than flooding more events.
-            emit_reset(io, @engine.event_count) if @queue.overflow_dropped?
+            emit_reset(io) if @queue.overflow_dropped?
             @queue.clear_overflow!
           elsif @bridge&.stopped?
             break
@@ -182,11 +205,23 @@ module Samagotchi
 
       # Emit a control frame carrying the current snapshot so a client that
       # cannot replay can re-derive state, then continue live.
-      def emit_reset(io, current_seq)
-        snapshot = @snapshot_provider.call
-        write_frame(io, seq: current_seq, data: { type: :reset, session_state_snapshot: snapshot })
-      rescue Errno::EPIPE, Errno::ECONNRESET, IOError
-        raise
+      def emit_reset(io)
+        write_snapshot_frame(io, :reset, @engine.synchronize_events { take_snapshot })
+      end
+
+      # With the event log held: the snapshot, and the high-water mark moved
+      # to its seq (down too, for a cursor from before a worker restart), so
+      # events after it pass #call and events it covers are skipped.
+      def take_snapshot
+        snapshot = @turn_snapshot_provider.call
+        @high_water = snapshot[:event_seq].to_i
+        snapshot
+      end
+
+      def write_snapshot_frame(io, type, snapshot)
+        seq = snapshot[:event_seq]
+        state = @snapshot_provider.call.merge(event_seq: seq)
+        write_frame(io, seq: seq, data: { type: type, snapshot: snapshot, session_state_snapshot: state })
       end
 
       def closed?

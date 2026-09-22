@@ -1678,8 +1678,6 @@ module Samagotchi
       # Build the (memoized) prompt now so --memory activations show in this
       # turn's status lines, including after /model rebuilt it.
       seed_system_prompt
-      # A new turn invalidates any in-flight recap.
-      @engine.recap&.invalidate!
       result = @engine.run_turn(
         session,
         prompt,

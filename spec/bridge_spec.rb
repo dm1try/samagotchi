@@ -22,10 +22,11 @@ end
 class SSEClient
   attr_reader :events
 
-  def initialize(port, session_id, last_event_id: nil)
+  def initialize(port, session_id, last_event_id: nil, snapshot: false)
     @port = port
     @session_id = session_id
     @last_event_id = last_event_id
+    @snapshot = snapshot
     @events = []
     @mutex = Mutex.new
     @cv = ConditionVariable.new
@@ -36,6 +37,7 @@ class SSEClient
     @socket = TCPSocket.new("127.0.0.1", @port)
     @socket.binmode
     query = @last_event_id ? "?from_seq=#{@last_event_id}" : ""
+    query = "?snapshot=1" if @snapshot
     @socket.write(
       "GET /session/#{@session_id}/stream#{query} HTTP/1.1\r\n" \
       "Host: 127.0.0.1\r\n" \
@@ -438,6 +440,125 @@ RSpec.describe Samagotchi::Bridge do
       expect(ordered).to eq(ordered.uniq.sort)
       # The replayed/live ids are all reachable from the reconnect cursor.
       expect(ordered.first).to be >= last_seen.to_i
+    end
+
+    describe "joining with ?snapshot=1" do
+      # A kernel that emits +events+, then holds the turn open until released.
+      def hold_turn_after(*events, conversation: [])
+        release = Queue.new
+        allow(kernel).to receive(:run) do |messages, **kwargs|
+          events.each { |e| kwargs[:on_stream_event].call(e) }
+          yield if block_given?
+          release.pop
+          Samagotchi::KernelLoop::Result.new(
+            output: "done", conversation: messages + conversation, exhausted: false,
+            pending_tool_calls: false, tool_activity: []
+          )
+        end
+        release
+      end
+
+      def wait_until(timeout: 3)
+        deadline = mono + timeout
+        sleep(0.01) until yield || mono > deadline
+      end
+
+      it "gets the whole in-progress turn after more events than the ring holds, then the rest live" do
+        start_bridge
+        chunks = Array.new(300) { |i| { type: :generation_chunk, iteration: 1, content: "c#{i} " } }
+        release = hold_turn_after({ type: :generation_started, iteration: 1 }, *chunks,
+                                  conversation: [{ role: "model", content: "done" }])
+        turn = Thread.new { run_turn_sync(@engine, @session, "long one") }
+        wait_until { @engine.event_count >= 302 }
+
+        c = SSEClient.new(@bridge_port, @session.id, snapshot: true).start
+        @clients << c
+        first = c.wait_for(1).first
+        release << true
+        turn.join
+
+        expect(first[:data]["type"]).to eq("snapshot")
+        snap = first[:data]["snapshot"]
+        expect(first[:id].to_i).to eq(snap["event_seq"])
+        expect(snap["current_turn"]["prompt"]).to eq("long one")
+        expect(snap["current_turn"]["parts"].map { |p| p["text"] }.join).to eq(chunks.map { |e| e[:content] }.join)
+        expect(snap["messages"]).to eq([])
+
+        rest = c.wait_for(2 + 3, timeout: 3).drop(1) # completion events arrive live
+        ids = rest.map { |e| e[:id].to_i }
+        expect(ids.first).to eq(first[:id].to_i + 1)
+        expect(ids).to eq((ids.first..ids.last).to_a)
+        expect(rest.map { |e| e[:data]["type"] }).to include("turn_completed")
+      end
+
+      it "shows a question that is waiting for an answer" do
+        start_bridge
+        release = hold_turn_after do
+          @engine.request_question(question: "Which?", options: %w[A B])
+        end
+        turn = Thread.new { run_turn_sync(@engine, @session, "ask me") }
+        wait_until { @engine.pending_question }
+
+        c = SSEClient.new(@bridge_port, @session.id, snapshot: true).start
+        @clients << c
+        snap = c.wait_for(1).first[:data]["snapshot"]
+        @engine.answer_question(id: @engine.pending_question[:id], selected: ["A"])
+        release << true
+        turn.join
+
+        expect(snap["current_turn"]["pending_question"]).to include("question" => "Which?", "options" => %w[A B])
+      end
+
+      it "never shows a turn both in messages and as the current turn" do
+        start_bridge
+        turns = 30
+        allow(kernel).to receive(:run) do |messages, **kwargs|
+          prompt = messages.last[:content]
+          kwargs[:on_stream_event].call(type: :generation_chunk, iteration: 1, content: "x")
+          Samagotchi::KernelLoop::Result.new(
+            output: "r-#{prompt}", conversation: messages + [{ role: "model", content: "r-#{prompt}" }],
+            exhausted: false, pending_tool_calls: false, tool_activity: []
+          )
+        end
+        snapshots = []
+        done = false
+        # Thread.pass: Ruby mutexes are not fair, and a tight loop would starve the turn.
+        reader = Thread.new { (snapshots << @bridge.snapshot; Thread.pass) until done }
+        turns.times { |i| run_turn_sync(@engine, @session, "p#{i}") }
+        done = true
+        reader.join
+
+        expect(snapshots.size).to be > turns
+        snapshots.each do |snap|
+          replies = snap[:messages].select { |m| m[:role] == "model" }.map { |m| m[:content] }
+          if (turn = snap[:current_turn])
+            expect(replies).not_to include("r-#{turn[:prompt]}")
+          end
+          expect(replies.size).to eq(snap[:messages].count { |m| m[:role] == "user" }) unless snap[:current_turn]
+        end
+        expect(snapshots.map { |s| s[:event_seq] }).to eq(snapshots.map { |s| s[:event_seq] }.sort)
+      end
+    end
+
+    it "numbers a reset frame with its snapshot's own event_seq" do
+      start_bridge
+      stub_kernel_emit({ type: :generation_started, iteration: 1 })
+      run_turn_sync(@engine, @session, "hi")
+
+      c = SSEClient.new(@bridge_port, @session.id, last_event_id: "100000").start
+      @clients << c
+      reset = c.wait_for(1).first
+      expect(reset[:data]["type"]).to eq("reset")
+      expect(reset[:id].to_i).to eq(reset[:data]["snapshot"]["event_seq"])
+      expect(reset[:data]["session_state_snapshot"]["event_seq"]).to eq(reset[:id].to_i)
+      expect(reset[:data]["snapshot"]).to include("messages" => [], "current_turn" => nil)
+
+      # The cursor was ahead of this worker (it restarted): later events must
+      # still arrive, not be dropped as already seen.
+      run_turn_sync(@engine, @session, "after the reset")
+      after = c.wait_for(3).drop(1)
+      expect(after.first[:data]).to include("type" => "turn_started", "prompt" => "after the reset")
+      expect(after.first[:id].to_i).to eq(reset[:id].to_i + 1)
     end
 
     it "emits a reset marker (not a stall) when reconnecting past the served window" do

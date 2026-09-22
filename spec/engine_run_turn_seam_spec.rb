@@ -114,6 +114,42 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     end
   end
 
+  describe "when the turn's end is announced" do
+    it "has the session's messages already updated, placeholder included" do
+      allow(kernel).to receive(:run).and_return(
+        kernel_result(output: "", conversation: [{ role: "user", content: "hi" }])
+      )
+      seen = nil
+      engine.subscribe(observer: ->(e) { seen = session.messages.dup if e[:type] == :turn_completed })
+
+      engine.run_turn(session, "hi")
+
+      expect(seen).to eq([{ role: "user", content: "hi" }, { role: "model", content: "[No response]" }])
+    end
+
+    it "has the messages kept on a Ctrl-C" do
+      allow(kernel).to receive(:run).and_raise(Interrupt)
+      seen = nil
+      engine.subscribe(observer: ->(e) { seen = session.messages.map { |m| m[:content] } if e[:type] == :turn_canceled })
+
+      expect { engine.run_turn(session, "hi") }.to raise_error(Interrupt)
+
+      expect(seen.last).to eq("hi")
+    end
+  end
+
+  it "invalidates an in-flight recap when a turn starts, for every UI" do
+    engine = described_class.new(mode: :assist, client: client, kernel: kernel, profile: "gemma4",
+                                 recap: { base_url: "http://127.0.0.1:1", model: "m" })
+    allow(engine.recap).to receive(:invalidate!).and_call_original
+    allow(kernel).to receive(:run) do
+      expect(engine.recap).to have_received(:invalidate!)
+      kernel_result
+    end
+
+    engine.run_turn(session, "hi")
+  end
+
   describe "origin:" do
     let(:origin) { { client_id: "web:tab-1", enqueued_id: "e1" } }
 

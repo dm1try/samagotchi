@@ -10,6 +10,7 @@ require "time"
 require_relative "bridge/bounded_queue"
 require_relative "bridge/ring_buffer"
 require_relative "bridge/sse_writer"
+require_relative "bridge/turn_accumulator"
 require_relative "session"
 require_relative "engine"
 
@@ -56,6 +57,7 @@ module Samagotchi
       @bind = bind
       @port = port
       @ring = RingBuffer.new(capacity: ring_capacity)
+      @accumulator = TurnAccumulator.new
       @heartbeat_interval = heartbeat_interval
 
       @capture_handle = nil
@@ -79,6 +81,7 @@ module Samagotchi
       @server = TCPServer.new(@bind, @port)
       @port = @server.local_address.ip_port
       @capture_handle = @engine.subscribe(observer: capture_observer)
+      @accumulator_handle = @engine.subscribe(observer: @accumulator)
       @accept_thread = Thread.new { accept_loop }
       @accept_thread.report_on_exception = false
       write_sidecar
@@ -99,10 +102,27 @@ module Samagotchi
         nil
       end
       @capture_handle&.unsubscribe
+      @accumulator_handle&.unsubscribe
       @connection_threads.each { |t| t.kill rescue nil }
       @connection_threads.clear
       @accept_thread&.join(2)
       nil
+    end
+
+    # What a joining client needs to render the session now, consistent with
+    # the event log: the Engine's messages (not the lagging copy on disk),
+    # the turn in progress, turns queued behind it, and the event_seq it all
+    # covers. Taken with the log held, so no event is half-applied.
+    # @return [Hash] {messages:, current_turn:, queued:, event_seq:}
+    def snapshot
+      @engine.synchronize_events do
+        {
+          messages: @engine.messages_checkpoint,
+          current_turn: @accumulator.current_turn,
+          queued: @accumulator.queued,
+          event_seq: @engine.event_count
+        }
+      end
     end
 
     private
@@ -161,7 +181,7 @@ module Samagotchi
           write_json(io, 204, cors, {})
         elsif (m = stream_match(request[:path])) && method == "GET"
           cursor = reconnect_cursor(headers, request[:query])
-          serve_sse(io, m[1], last_event_id: cursor)
+          serve_sse(io, m[1], last_event_id: cursor, snapshot: snapshot_requested?(request[:query]))
           break # SSE owns the connection until the client disconnects.
         elsif (m = cancel_match(request[:path])) && method == "POST"
           payload, status, body = handle_cancel(m[1], request[:body])
@@ -194,7 +214,7 @@ module Samagotchi
 
     # Serve an SSE stream. Owns the connection until the client disconnects.
     # The connection thread IS the writer thread: serve! blocks until then.
-    def serve_sse(io, session_id, last_event_id:)
+    def serve_sse(io, session_id, last_event_id:, snapshot: false)
       unless own_session?(session_id)
         write_json(io, 404, {}, { error: "unknown_session" })
         return
@@ -206,6 +226,9 @@ module Samagotchi
         session_id: @session_id,
         last_event_id: last_event_id,
         snapshot_provider: -> { @engine.session_state_snapshot },
+        turn_snapshot_provider: -> { self.snapshot },
+        # A reconnect (with a cursor) replays; only a fresh join snapshots.
+        join_with_snapshot: snapshot && last_event_id.nil?,
         bridge: self,
         heartbeat_interval: @heartbeat_interval
       )
@@ -458,6 +481,15 @@ module Samagotchi
       URI.decode_www_form(query).to_h["from_seq"]
     rescue StandardError
       nil
+    end
+
+    # `?snapshot=1`: join with a snapshot frame instead of a replay.
+    def snapshot_requested?(query)
+      return false unless query
+
+      URI.decode_www_form(query).to_h["snapshot"].to_s == "1"
+    rescue StandardError
+      false
     end
 
     def close_after_request?(headers)

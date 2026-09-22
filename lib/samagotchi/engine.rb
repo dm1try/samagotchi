@@ -820,8 +820,10 @@ module Samagotchi
       session.status = Session::STATUS_RUNNING
       sync_used_memories_from_session(session)
       # Mark the turn running before generating so the idle recap detector does
-      # not fire (or render an invalidated recap) while the model is working.
+      # not fire (or render an invalidated recap) while the model is working,
+      # and drop a recap already in flight: the turn makes it stale.
       set_turn_running(true)
+      @recap&.invalidate!
       # Provide a cancellable controller for this turn (cross-process cancel via file flag)
       effective_controller = cancel_controller || Client::CancellationController.new
       @activity_mutex.synchronize { @active_cancel_controller = effective_controller }
@@ -920,7 +922,6 @@ module Samagotchi
           )
         end
 
-        session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
         # Persist deduped used memories onto the session for Web + reload.
         begin
           session.used_memory_names = used_memory_names
@@ -938,29 +939,35 @@ module Samagotchi
           end
         end
 
-        # Emit turn_completed or turn_canceled
-        session.status = Session::STATUS_IDLE
-        if result.respond_to?(:canceled?) && result.canceled?
-          emit_event(on_event, with_origin.call({
-            type: :turn_canceled,
-            cancellation_reason: result.cancellation_reason
-          }))
-        else
-          emit_event(on_event, with_origin.call({
-            type: :turn_completed,
-            result: result,
-            turn_summary: turn_summary(result)
-          }))
-        end
-        @metrics.persist
-
         response = result.respond_to?(:output) ? result.output.to_s : result.to_s
         canceled = result.respond_to?(:canceled?) && result.canceled?
-        if response.strip.empty? && !canceled
-          # A new array: session.messages is result.conversation here, and the
-          # placeholder must not leak into the result (continue resumes it).
-          replace_session_messages(session, session.messages + [{ role: "model", content: "[No response]" }])
+        conversation = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
+        # Bring the turn into the session and announce its end as one step of
+        # the event log: a snapshot taken meanwhile (the Bridge's) shows the
+        # turn either in progress or in the messages, never both or neither.
+        synchronize_events do
+          if response.strip.empty? && !canceled
+            # A new array: the placeholder must not leak into the result
+            # (continue resumes it).
+            replace_session_messages(session, (conversation || session.messages) + [{ role: "model", content: "[No response]" }])
+          elsif conversation
+            replace_session_messages(session, conversation)
+          end
+          session.status = Session::STATUS_IDLE
+          if canceled
+            emit_event(on_event, with_origin.call({
+              type: :turn_canceled,
+              cancellation_reason: result.cancellation_reason
+            }))
+          else
+            emit_event(on_event, with_origin.call({
+              type: :turn_completed,
+              result: result,
+              turn_summary: turn_summary(result)
+            }))
+          end
         end
+        @metrics.persist
 
         # Fire :after_turn hook (runs even on cancel/success)
         @hooks.fire(:after_turn, { type: :after_turn })
@@ -971,9 +978,11 @@ module Samagotchi
         result
       rescue Interrupt
         effective_controller.cancel!(:ctrl_c)
-        replace_session_messages(session, messages) if messages
-        session.status = Session::STATUS_IDLE
-        emit_event(on_event, with_origin.call({ type: :turn_canceled, cancellation_reason: :ctrl_c }))
+        synchronize_events do
+          replace_session_messages(session, messages) if messages
+          session.status = Session::STATUS_IDLE
+          emit_event(on_event, with_origin.call({ type: :turn_canceled, cancellation_reason: :ctrl_c }))
+        end
         @metrics.persist
         raise
       rescue StandardError => e
