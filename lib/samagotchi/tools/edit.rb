@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "tool_path"
+
 module Samagotchi
   module Tools
     # Replaces an exact block of text in an existing file.
@@ -26,7 +28,7 @@ module Samagotchi
       def self.description = DESCRIPTION
 
       def self.call(content, path:, start_line: nil, end_line: nil)
-        path = path.strip
+        path = ToolPath.normalize(path)
 
         if range_requested?(start_line, end_line)
           return call_range_mode(content, path: path, start_line: start_line, end_line: end_line)

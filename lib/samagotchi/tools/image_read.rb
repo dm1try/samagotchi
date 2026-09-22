@@ -2,6 +2,7 @@
 
 require "base64"
 require "json"
+require_relative "tool_path"
 
 module Samagotchi
   module Tools
@@ -28,7 +29,7 @@ module Samagotchi
       def self.description = DESCRIPTION
 
       def self.call(path)
-        path = path.to_s.strip
+        path = ToolPath.normalize(path)
         return "Error: path is required" if path.empty?
 
         unless File.exist?(path)

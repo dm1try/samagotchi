@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require_relative "tool_path"
 
 module Samagotchi
   module Tools
@@ -15,7 +16,7 @@ module Samagotchi
       def self.description = DESCRIPTION
 
       def self.call(content, path:)
-        path = path.strip
+        path = ToolPath.normalize(path)
         FileUtils.mkdir_p(File.dirname(path))
         File.write(path, content)
         "Written #{content.bytesize} bytes to #{path}"

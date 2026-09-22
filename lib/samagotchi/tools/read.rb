@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "output_guardrails"
+require_relative "tool_path"
 
 module Samagotchi
   module Tools
@@ -15,7 +16,7 @@ module Samagotchi
       def self.description = DESCRIPTION
 
       def self.call(path, start_line: nil, end_line: nil)
-        path = path.to_s.strip
+        path = ToolPath.normalize(path)
 
         if range_requested?(start_line, end_line)
           return read_range(path, start_line: start_line, end_line: end_line)
@@ -35,7 +36,7 @@ module Samagotchi
 
         build_truncated_preview(path: path, file_size: size, preview_bytes: preview_bytes)
       rescue Errno::ENOENT
-        "Error: file not found: #{path.strip}"
+        "Error: file not found: #{path}"
       rescue => e
         "Error: #{e.message}"
       end
