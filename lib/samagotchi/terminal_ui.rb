@@ -19,12 +19,15 @@ require_relative "tools/memory"
 require_relative "output_formatter"
 require_relative "turn_preamble"
 require_relative "terminal_ui/event_renderer"
+require_relative "terminal_ui/formatting"
 
 module Samagotchi
   # TerminalUI encapsulates the single operating mode of the harness.
   #
   # assist mode  — interactive REPL: user types, model responds, tools execute inline.
   class TerminalUI
+    include Formatting
+
     AGENT_DESCRIPTION_FILE = "AGENT.md"
     PROMPT_HISTORY_ENV = "SAMAGOTCHI_HISTORY_FILE"
     XDG_STATE_HOME_ENV = "XDG_STATE_HOME"
@@ -711,15 +714,6 @@ module Samagotchi
       finish_thinking_spinner
     end
 
-    def format_tool_activity_line(activity, duration_ms: nil)
-      params = activity[:params].to_s.strip
-      params_suffix = params.empty? ? "" : " #{paint(params, 90)}"
-      status = activity[:status].to_s
-      status_color = status == "ok" ? 32 : 31
-      elapsed_suffix = duration_ms.nil? ? "" : " (#{format_elapsed_duration(duration_ms)})"
-      "#{paint('tool>', 36)} #{activity[:action]} (#{activity[:tool]}#{params_suffix}): #{paint(status, status_color)}#{elapsed_suffix}"
-    end
-
     # The kernel reports the last emitted context status on the result; keep
     # the previous one when a turn reports none.
     def capture_context_status(status)
@@ -739,32 +733,6 @@ module Samagotchi
 
       state = canceled ? "canceled" : "completed"
       $stdout.puts "#{paint('chi>', 36)} turn #{state} (#{format_elapsed_duration(record[:duration_ms])})"
-    end
-
-    def format_elapsed_duration(duration_ms)
-      duration_ms = duration_ms.to_f
-      return "" if duration_ms.negative?
-      return "#{duration_ms.round}ms" if duration_ms < 500
-
-      seconds = duration_ms / 1000
-      return "#{seconds.round(1)}s" if seconds < 10
-      return "#{seconds.round}s" if seconds < 60
-
-      total_seconds = seconds.round
-      "#{total_seconds / 60}m #{format('%02d', total_seconds % 60)}s"
-    end
-
-    def paint(text, code)
-      return text unless color_output?
-
-      "\e[#{code}m#{text}\e[0m"
-    end
-
-    def color_output?
-      return false unless $stdout.tty?
-      return false if ENV.key?("NO_COLOR")
-
-      ENV.fetch("TERM", "") != "dumb"
     end
 
     def split_memory_scope(raw)
