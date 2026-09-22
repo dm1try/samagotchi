@@ -16,19 +16,22 @@ module Samagotchi
   # Each session runs in its own forked Ruby process, communicating via
   # file-based IPC in the session directory.
   #
-  # Directory layout per session:
-  #   ~/.local/state/samagotchi/sessions/<session_id>/
-  #   ├── session.json          # session metadata
-  #   ├── input/                # clients (web/terminal UI) write messages here
-  #   │   └── <timestamp>.txt   # one file per user message
-  #   ├── output/               # agent writes responses here
-  #   │   └── <timestamp>.txt   # one file per agent response
-  #   └── pid                   # PID of the session process
+  # The session itself (messages + metadata) is always saved by Session at
+  # <sessions dir>/<session_id>.json, for foreground chats too. A background
+  # worker also gets a sibling directory for its IPC files:
+  #   ~/.local/state/samagotchi/sessions/
+  #   ├── <session_id>.json       # the session (Session#save)
+  #   └── <session_id>/           # worker dir, only for spawned workers
+  #       ├── input/              # clients (web/terminal UI) write messages here
+  #       │   └── <timestamp>.txt # one file per user message
+  #       ├── output/             # agent writes responses here
+  #       │   └── <timestamp>.txt # one file per agent response
+  #       ├── pid                 # PID of the session process
+  #       └── bridge.json         # Bridge sidecar (how clients reach the worker)
   class SessionManager
     INPUT_DIR  = "input"
     OUTPUT_DIR = "output"
     PID_FILE   = "pid"
-    SESSION_JSON = "session.json"
 
     # Spawn a new background session that processes the given prompt.
     #

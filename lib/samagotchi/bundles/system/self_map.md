@@ -4,6 +4,8 @@
 - `chi self` (via `execute`) prints my version, **source dir**, config path, hooks dir,
   memory dirs, sessions dir, model/host and bundles. Use its source dir; don't hunt via `which`/`gem list`/`find /`.
 - My current session id is in the system prompt; resume with `chi --resume <id>`.
+- Sessions: each is one file, `<sessions dir>/<id>.json`. A `<id>/` dir beside it exists only
+  for background/web workers (input/, output/, pid). List them with `chi sessions list`.
 
 ## Where things live (relative to the source dir)
 - `README.md`: CLI flags, subcommands, config keys, the hook events table.
