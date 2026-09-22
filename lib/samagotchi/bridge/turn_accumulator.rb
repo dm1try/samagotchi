@@ -21,6 +21,7 @@ module Samagotchi
         @turn = nil
         @queued = []
         @merged_origins = []
+        @recap = nil
       end
 
       def call(event)
@@ -36,6 +37,11 @@ module Samagotchi
         @mutex.synchronize { @turn && Marshal.load(Marshal.dump(@turn)) }
       end
 
+      # @return [String, nil] the last idle recap, until a turn makes it stale
+      def recap
+        @mutex.synchronize { @recap }
+      end
+
       # @return [Array<Hash>] turns announced as queued that haven't started
       #   or been merged into a running turn yet
       def queued
@@ -49,7 +55,10 @@ module Samagotchi
         case type
         when :turn_enqueued
           @queued << { enqueued_id: event[:enqueued_id], client_id: event[:client_id], prompt: event[:prompt] }
+        when :recap_ready
+          @recap = event[:recap]
         when :turn_started
+          @recap = nil
           dequeue([event[:origin]])
           @turn = { prompt: event[:prompt], origin: event[:origin], continue: !!event[:continue],
                     parts: [], pending_question: nil }

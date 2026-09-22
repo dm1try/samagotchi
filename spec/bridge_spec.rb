@@ -510,6 +510,7 @@ RSpec.describe Samagotchi::Bridge do
         expect(snap["current_turn"]["parts"].map { |p| p["text"] }).to eq(["half "])
         expect(snap["messages"]).to eq([])
         expect(snap["queued"]).to eq([])
+        expect(snap).to have_key("recap")
         expect(body["session_state_snapshot"]).to include("status" => "running", "event_seq" => snap["event_seq"])
         expect(missing).to be_nil
       end

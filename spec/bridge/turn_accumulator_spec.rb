@@ -97,6 +97,16 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     end
   end
 
+  it "keeps the last idle recap until the next turn starts" do
+    expect(acc.recap).to be_nil
+    feed({ type: :recap_ready, recap: "We talked about cats.", generation: 1 })
+    expect(acc.recap).to eq("We talked about cats.")
+    expect(acc.current_turn).to be_nil
+
+    feed({ type: :turn_started, session_id: "s", prompt: "more" })
+    expect(acc.recap).to be_nil
+  end
+
   it "hands out copies that later events don't change" do
     feed({ type: :turn_started, prompt: "hi" }, { type: :generation_chunk, iteration: 1, content: "a" })
     snapshot = acc.current_turn

@@ -111,15 +111,17 @@ module Samagotchi
 
     # What a joining client needs to render the session now, consistent with
     # the event log: the Engine's messages (not the lagging copy on disk),
-    # the turn in progress, turns queued behind it, and the event_seq it all
-    # covers. Taken with the log held, so no event is half-applied.
-    # @return [Hash] {messages:, current_turn:, queued:, event_seq:}
+    # the turn in progress, turns queued behind it, the idle recap since the
+    # last turn, and the event_seq it all covers. Taken with the log held, so
+    # no event is half-applied.
+    # @return [Hash] {messages:, current_turn:, queued:, recap:, event_seq:}
     def snapshot
       @engine.synchronize_events do
         {
           messages: @engine.messages_checkpoint,
           current_turn: @accumulator.current_turn,
           queued: @accumulator.queued,
+          recap: @accumulator.recap,
           event_seq: @engine.event_count
         }
       end
