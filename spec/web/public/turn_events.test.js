@@ -94,3 +94,47 @@ test("input_merged steers every known origin; pending_input_merged adds the rest
   ]);
   assert.deepEqual(promptOps(text, { myId: ME, known, unmatchedMerge: false }), []);
 });
+
+import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+test("snapshotEvents replays the turn in progress as live events, then the queued prompts", () => {
+  const turn = {
+    prompt: "do it",
+    origin: { client_id: "tui:1", enqueued_id: "e1" },
+    parts: [
+      { kind: "thinking", iteration: 1, text: "hmm" },
+      { kind: "text", iteration: 1, text: "Let me look." },
+      { kind: "tool", iteration: 1, call_index: 0, tool: "execute", params: "ls", status: "ok", output: "a b", output_truncated: false },
+      { kind: "input", iteration: 2, text: "also this", origins: [{ client_id: "web:x", enqueued_id: "e2" }] },
+      { kind: "reminder", reminders: ["r"] },
+      { kind: "tool", iteration: 2, call_index: 0, tool: "read", params: "f", status: "running" },
+    ],
+  };
+  const queued = [{ enqueued_id: "e3", client_id: "web:y", prompt: "later" }];
+  assert.deepEqual(snapshotEvents({ current_turn: turn, queued, started_at: "T0" }), [
+    { type: "turn_started", prompt: "do it", origin: turn.origin, continue: false, started_at: "T0" },
+    { type: "generation_chunk", text: "", thinking: "hmm" },
+    { type: "generation_chunk", text: "Let me look.", thinking: "" },
+    { type: "generation_completed" },
+    { type: "tool_call_started", iteration: 1, call_index: 0, tool: "execute", params: "ls" },
+    { type: "tool_call_completed", iteration: 1, call_index: 0, tool: "execute", output: "a b", output_truncated: false, activity: { status: "ok", params: "ls" } },
+    { type: "merged_input", content: "also this", origins: [{ client_id: "web:x", enqueued_id: "e2" }] },
+    { type: "tool_call_started", iteration: 2, call_index: 0, tool: "read", params: "f" },
+    { type: "turn_enqueued", enqueued_id: "e3", client_id: "web:y", prompt: "later" },
+  ]);
+});
+
+test("snapshotEvents splits text by iteration and leaves the last one streaming", () => {
+  const turn = { prompt: "p", parts: [
+    { kind: "text", iteration: 1, text: "one" },
+    { kind: "text", iteration: 2, text: "two" },
+  ] };
+  assert.deepEqual(snapshotEvents({ current_turn: turn }).map((e) => e.type), [
+    "turn_started", "generation_chunk", "generation_completed", "generation_chunk",
+  ]);
+});
+
+test("snapshotEvents with no turn in progress is just the queue", () => {
+  assert.deepEqual(snapshotEvents({ current_turn: null, queued: [] }), []);
+  assert.deepEqual(snapshotEvents({}), []);
+});
