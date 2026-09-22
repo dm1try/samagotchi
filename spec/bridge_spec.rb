@@ -497,7 +497,9 @@ RSpec.describe Samagotchi::Bridge do
           @engine.request_question(question: "Which?", options: %w[A B])
         end
         turn = Thread.new { run_turn_sync(@engine, @session, "ask me") }
-        wait_until { @engine.pending_question }
+        # Not @engine.pending_question: it is set before :question_requested
+        # is emitted, and the snapshot follows the event log.
+        wait_until { @bridge.snapshot.dig(:current_turn, :pending_question) }
 
         c = SSEClient.new(@bridge_port, @session.id, snapshot: true).start
         @clients << c
