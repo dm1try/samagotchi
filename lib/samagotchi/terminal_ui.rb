@@ -12,6 +12,7 @@ require_relative "host_registry"
 require_relative "context_usage"
 require_relative "kernel_loop"
 require_relative "session"
+require_relative "owner_lock"
 require_relative "engine"
 require_relative "tools/memory"
 require_relative "output_formatter"
@@ -79,6 +80,10 @@ module Samagotchi
     REMINDER_TYPING_PAUSE_SECONDS = 2.0
     REMINDER_PENDING_POLL_INTERVAL = 0.5
 
+    # Raised when another process (a `chi web` worker or another chi) owns the
+    # session this TUI was asked to run.
+    class SessionBusy < StandardError; end
+
     # ── System prompts (delegated to Engine) ─────────────────────────────────
     def self.system_prompt_for(profile)
       Engine.system_prompt_for(profile)
@@ -103,6 +108,9 @@ module Samagotchi
         _cli, _bare, _entry = @host_registry.client_for_model(@effective_model_name)
         @client = _cli
       end
+      # Own the session before loading it, so a worker can't write a turn
+      # between the load and the lock that this TUI would later save over.
+      claim_session!(session_id) if session_id
       @resume_session = session_id ? Session.load(session_id) : nil
       if @resume_session
         # --model overrides resumed session's model (runtime only, default unchanged)
@@ -197,6 +205,7 @@ module Samagotchi
         model_name: @effective_model_name,
         working_directory: Dir.pwd
       )
+      claim_session!(session.id) unless @owner_lock
       # Attach before building the prompt so it can name the session id.
       @engine.session = session
       messages = messages_for(session)
@@ -216,6 +225,20 @@ module Samagotchi
       end
 
       assist_loop(session: session, messages: messages)
+    end
+
+    # Take the session's OwnerLock for this process's lifetime: the TUI runs
+    # its own Engine, so no worker may run the session meanwhile.
+    # @raise [SessionBusy] when a worker or another TUI owns it
+    def claim_session!(session_id)
+      session_dir = Session.session_dir(session_id)
+      @owner_lock = OwnerLock.acquire(session_dir, kind: "tui", wait: 1.0)
+      return @owner_lock if @owner_lock
+
+      owner = OwnerLock.owner(session_dir) || {}
+      where = owner["kind"] == "tui" ? "another chi" : "a `chi web` worker"
+      raise SessionBusy, "Session #{session_id} is open in #{where} (pid #{owner["pid"] || "unknown"}). " \
+                         "Close it there first."
     end
 
     # Build the seed messages for the working session.

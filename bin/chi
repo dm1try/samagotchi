@@ -820,15 +820,20 @@ log_file = begin
   end
 end
 
-Samagotchi::TerminalUI.new(
-  prompt: options[:prompt],
-  verbose: options[:verbose],
-  log_file: log_file,
-  session_id: options[:resume],
-  no_interrupt: options[:no_interrupt] || options[:non_interactive],
-  no_default_input: options[:no_default_input],
-  memories: options[:memories] || [],
-  non_interactive: options[:non_interactive],
-  model_name: options[:model],
-  backend: options[:backend]
-).run
+begin
+  Samagotchi::TerminalUI.new(
+    prompt: options[:prompt],
+    verbose: options[:verbose],
+    log_file: log_file,
+    session_id: options[:resume],
+    no_interrupt: options[:no_interrupt] || options[:non_interactive],
+    no_default_input: options[:no_default_input],
+    memories: options[:memories] || [],
+    non_interactive: options[:non_interactive],
+    model_name: options[:model],
+    backend: options[:backend]
+  ).run
+rescue Samagotchi::TerminalUI::SessionBusy => e
+  warn "Error: #{e.message}"
+  exit 1
+end

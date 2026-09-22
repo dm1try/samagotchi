@@ -8,6 +8,7 @@ require "securerandom"
 require "rbconfig"
 
 require_relative "session"
+require_relative "owner_lock"
 require_relative "terminal_ui"
 
 module Samagotchi
@@ -17,21 +18,31 @@ module Samagotchi
   # file-based IPC in the session directory.
   #
   # The session itself (messages + metadata) is always saved by Session at
-  # <sessions dir>/<session_id>.json, for foreground chats too. A background
-  # worker also gets a sibling directory for its IPC files:
+  # <sessions dir>/<session_id>.json, for foreground chats too. A sibling
+  # directory holds the owner lock (any owner, TUI included) and, for
+  # background workers, their IPC files:
   #   ~/.local/state/samagotchi/sessions/
   #   ├── <session_id>.json       # the session (Session#save)
-  #   └── <session_id>/           # worker dir, only for spawned workers
+  #   └── <session_id>/
+  #       ├── owner.lock          # flock held by the session's one owner (OwnerLock)
   #       ├── input/              # clients (web/terminal UI) write messages here
   #       │   └── <timestamp>.txt # one file per user message
   #       ├── output/             # agent writes responses here
   #       │   └── <timestamp>.txt # one file per agent response
-  #       ├── pid                 # PID of the session process
+  #       ├── pid                 # PID of the owner, written by the owner itself
   #       └── bridge.json         # Bridge sidecar (how clients reach the worker)
   class SessionManager
     INPUT_DIR  = "input"
     OUTPUT_DIR = "output"
     PID_FILE   = "pid"
+
+    # Raised when the interactive TUI owns the session: it runs its own Engine
+    # and reads no input files, so a worker must not be spawned or signalled.
+    class OwnedByTUI < StandardError
+      def initialize(session_id)
+        super("session #{session_id} is owned by an interactive TUI")
+      end
+    end
 
     # Spawn a new background session that processes the given prompt.
     #
@@ -49,28 +60,7 @@ module Samagotchi
       session.last_prompt = prompt
       session_dir = Session.session_dir(session.id, state_dir: sd)
       setup_session_directory(session_dir, session, state_dir: sd)
-
-      lib_path = File.expand_path("..", __dir__)
-      opts = spawn_options
-      env = opts.delete(:env)
-      pid = if env
-              Process.spawn(
-                env,
-                RbConfig.ruby,
-                "-I", lib_path,
-                "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{sd.inspect})",
-                **opts
-              )
-            else
-              Process.spawn(
-                RbConfig.ruby,
-                "-I", lib_path,
-                "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{sd.inspect})",
-                **opts
-              )
-            end
-
-      File.write(File.join(session_dir, PID_FILE), pid.to_s)
+      spawn_worker_for_session(session, state_dir: sd)
       session
     end
 
@@ -78,7 +68,9 @@ module Samagotchi
     # opts[:env] REPLACES the child ENV rather than merging it, so explicitly
     # thread through the values a worker needs (backend, hosts, default model).
     private_class_method def self.spawn_options
-      opts = { out: File::NULL, err: File::NULL }
+      # Own process group: workers outlive `chi web`, and a Ctrl-C in its
+      # terminal must not reach them.
+      opts = { out: File::NULL, err: File::NULL, pgroup: true }
       child_env = {}
       child_env["SAMAGOTCHI_BACKEND"] = ENV["SAMAGOTCHI_BACKEND"] if ENV["SAMAGOTCHI_BACKEND"]
       # Propagate hosts config for multi-host routing
@@ -206,10 +198,13 @@ module Samagotchi
 
     # Ensure an existing session has a live worker process.
     # Returns the loaded session after state reconciliation.
+    # @raise [OwnedByTUI] when the interactive TUI owns the session
     def self.resume_session(session_id, state_dir: nil)
       sd = state_dir || Session.default_state_dir
       session = Session.load(session_id, state_dir: sd)
-      return session if worker_alive_for_session?(session.id, state_dir: sd)
+      owner = session_owner(session.id, state_dir: sd)
+      raise OwnedByTUI, session.id if owner && owner["kind"] == "tui"
+      return session if owner
 
       session.status = Session::STATUS_RUNNING
       session.save(state_dir: sd)
@@ -234,17 +229,16 @@ module Samagotchi
     end
 
     # Stop a session by sending TERM to its process.
+    # @raise [OwnedByTUI] when the interactive TUI owns the session
     def self.stop_session(session_id, state_dir: nil)
       sd = state_dir || Session.default_state_dir
-      session_dir = Session.session_dir(session_id, state_dir: sd)
-      pid_file = File.join(session_dir, PID_FILE)
+      owner = session_owner(session_id, state_dir: sd)
+      raise OwnedByTUI, session_id if owner && owner["kind"] == "tui"
 
-      if File.exist?(pid_file)
-        pid = File.read(pid_file).strip.to_i
-        Process.kill("TERM", pid) if pid > 0
-      end
-
+      # Mark first: a worker that has not taken the lock yet sees it and exits.
       Session.mark_stopped(session_id, state_dir: sd)
+      pid = owner && owner["pid"].to_i
+      Process.kill("TERM", pid) if pid && pid > 0
     rescue Errno::ESRCH
       # Process already exited; still mark as stopped
       Session.mark_stopped(session_id, state_dir: sd)
@@ -273,10 +267,27 @@ module Samagotchi
     # exit. If the bridge fails to start the worker degrades: turns still flow
     # through the input-dir loop, but there is no live SSE or in-process
     # cancel/answer.
-    def self.run_session_loop(session_id, state_dir: nil)
+    #
+    # The worker first takes the session's OwnerLock; when another owner holds
+    # it (a racing resume spawned two workers, or the TUI has the session) it
+    # exits quietly.
+    def self.run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT)
       sd = state_dir || Session.default_state_dir
-      session = Session.load(session_id, state_dir: sd)
       session_dir = Session.session_dir(session_id, state_dir: sd)
+      # Kept in a class ivar so the lock's File lives as long as the worker.
+      @owner_lock = OwnerLock.acquire(session_dir, kind: "worker", wait: owner_wait)
+      exit(0) unless @owner_lock
+      begin
+        File.write(File.join(session_dir, PID_FILE), Process.pid.to_s)
+        run_owned_session_loop(session_id, state_dir: sd, session_dir: session_dir)
+      ensure
+        @owner_lock.release
+      end
+    end
+
+    private_class_method def self.run_owned_session_loop(session_id, state_dir:, session_dir:)
+      sd = state_dir
+      session = Session.load(session_id, state_dir: sd)
       engine = Samagotchi::Engine.new(
         mode: session.mode.to_sym,
         model_name: session.model_name,
@@ -325,6 +336,9 @@ module Samagotchi
         # last_prompt, but last_prompt also records every later turn's prompt
         # (and mark_error's reason), so only a session with no conversation yet
         # has one pending; a resumed session must not replay its last turn.
+        # Nor may a session stopped before this worker took the lock (e.g. a
+        # stop right after create) run it.
+        exit(0) if stopped_on_disk?(session_id, state_dir: sd)
         if session.messages.empty? && !session.last_prompt.to_s.strip.empty?
           prompt = session.last_prompt
           session.last_prompt = ""
@@ -395,24 +409,13 @@ module Samagotchi
       lib_path = File.expand_path("..", __dir__)
       opts = spawn_options
       env = opts.delete(:env)
-      pid = if env
-              Process.spawn(
-                env,
-                RbConfig.ruby,
-                "-I", lib_path,
-                "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{state_dir.inspect})",
-                **opts
-              )
-            else
-              Process.spawn(
-                RbConfig.ruby,
-                "-I", lib_path,
-                "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{state_dir.inspect})",
-                **opts
-              )
-            end
-      File.write(File.join(session_dir, PID_FILE), pid.to_s)
-      pid
+      command = [
+        RbConfig.ruby,
+        "-I", lib_path,
+        "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{state_dir.inspect})"
+      ]
+      # The worker writes the pid file itself once it owns the session.
+      env ? Process.spawn(env, *command, **opts) : Process.spawn(*command, **opts)
     end
 
     # Start the in-process Bridge transport for this worker. The bridge is
@@ -439,7 +442,7 @@ module Samagotchi
     # Write a user turn into a session's input directory via the same file IPC
     # the worker polls. Reused by the bridge's POST surface so a turn is
     # fire-and-forget and never calls run_turn across the thread/process
-    # boundary. @return [Boolean] true on success.
+    # boundary. @return [String, false] the input file's path, or false.
     def self.write_turn_input(session_id, prompt:, state_dir: nil)
       sd = state_dir || Session.default_state_dir
       session_dir = Session.session_dir(session_id, state_dir: sd)
@@ -447,8 +450,9 @@ module Samagotchi
       FileUtils.mkdir_p(input_dir)
 
       timestamp = Time.now.strftime("%Y%m%d%H%M%S%9N")
-      write_atomic(File.join(input_dir, "#{timestamp}.txt"), prompt.to_s)
-      true
+      path = File.join(input_dir, "#{timestamp}.txt")
+      write_atomic(path, prompt.to_s)
+      path
     rescue StandardError
       false
     end
@@ -487,19 +491,34 @@ module Samagotchi
       File.rename(temp_path, path)
     end
 
+    # The session's live owner: the OwnerLock holder, or a live pid-only
+    # worker started before the lock existed (such workers never exit).
+    # @return [Hash, nil] {"pid", "kind" ("worker"/"tui"), ...} or nil
+    def self.session_owner(session_id, state_dir: nil)
+      session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
+      return OwnerLock.owner(session_dir) if OwnerLock.lock_file?(session_dir)
+
+      pid = legacy_worker_pid(session_dir)
+      pid && { "pid" => pid, "kind" => "worker" }
+    end
+
     private_class_method def self.worker_alive_for_session?(session_id, state_dir:)
-      pid_file = File.join(Session.session_dir(session_id, state_dir: state_dir), PID_FILE)
-      return false unless File.exist?(pid_file)
+      !session_owner(session_id, state_dir: state_dir).nil?
+    end
+
+    private_class_method def self.legacy_worker_pid(session_dir)
+      pid_file = File.join(session_dir, PID_FILE)
+      return nil unless File.exist?(pid_file)
 
       pid = File.read(pid_file).strip.to_i
-      return false if pid <= 0
+      return nil if pid <= 0
 
       Process.kill(0, pid)
-      true
+      pid
     rescue Errno::EPERM
-      true
+      pid
     rescue Errno::ESRCH
-      false
+      nil
     end
   end
 end

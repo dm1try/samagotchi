@@ -117,8 +117,124 @@ RSpec.describe Samagotchi::SessionManager do
       expect(spawned_args[lib_path_index]).to end_with("/lib")
       expect(File.directory?(spawned_args[lib_path_index])).to be true
 
+      # The worker writes its own pid once it owns the session; a parent
+      # writing it raced a second spawn and could record the loser.
       pid_file = File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), Samagotchi::SessionManager::PID_FILE)
-      expect(File.read(pid_file)).to eq("12345")
+      expect(File.exist?(pid_file)).to be false
+    end
+
+    it "starts the worker in its own process group, so a Ctrl-C on `chi web` does not reach it" do
+      spawned_opts = nil
+      allow(Process).to receive(:spawn) do |*args, **opts|
+        spawned_opts = opts
+        12_345
+      end
+
+      described_class.spawn_session(prompt: "hello", mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+
+      expect(spawned_opts).to include(pgroup: true)
+    end
+  end
+
+  describe "single owner" do
+    let(:session) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
+        s.save(state_dir: tmpdir)
+      end
+    end
+    let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
+
+    after { @lock&.release }
+
+    it "does not spawn a second worker while one owns the session" do
+      @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
+      allow(Process).to receive(:spawn)
+
+      described_class.resume_session(session.id, state_dir: tmpdir)
+
+      expect(Process).not_to have_received(:spawn)
+    end
+
+    it "spawns a worker when the last owner is gone, even if its pid was reused" do
+      Samagotchi::OwnerLock.acquire(session_dir, kind: "worker").release
+      File.write(File.join(session_dir, described_class::PID_FILE), Process.pid.to_s)
+      allow(Process).to receive(:spawn).and_return(20_003)
+
+      described_class.resume_session(session.id, state_dir: tmpdir)
+
+      expect(Process).to have_received(:spawn)
+    end
+
+    it "treats a live pid-only worker (from before the owner lock) as the owner" do
+      FileUtils.mkdir_p(session_dir)
+      File.write(File.join(session_dir, described_class::PID_FILE), Process.pid.to_s)
+      allow(Process).to receive(:spawn)
+
+      described_class.resume_session(session.id, state_dir: tmpdir)
+
+      expect(Process).not_to have_received(:spawn)
+    end
+
+    it "refuses to resume, write input for, or stop a session the interactive TUI owns" do
+      @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
+      allow(Process).to receive(:spawn)
+      allow(Process).to receive(:kill)
+
+      expect { described_class.resume_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::OwnedByTUI)
+      expect { described_class.stop_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::OwnedByTUI)
+      expect(Process).not_to have_received(:spawn)
+      expect(Process).not_to have_received(:kill)
+      expect(described_class.session_owner(session.id, state_dir: tmpdir)).to include("kind" => "tui")
+    end
+
+    it "lets only one of two contending workers run the session" do
+      @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
+      expect(Samagotchi::Engine).not_to receive(:new)
+
+      expect {
+        described_class.run_session_loop(session.id, state_dir: tmpdir, owner_wait: 0.1)
+      }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+    end
+
+    it "does not run the initial prompt of a session stopped before the worker took it" do
+      session.last_prompt = "hello"
+      session.status = Samagotchi::Session::STATUS_STOPPED
+      session.save(state_dir: tmpdir)
+      engine = instance_double(Samagotchi::Engine, start_idle: nil, stop_idle: nil, reminder_store: nil)
+      allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
+      allow(Samagotchi::Engine).to receive(:new).and_return(engine)
+      expect(engine).not_to receive(:run_turn)
+
+      expect {
+        described_class.run_session_loop(session.id, state_dir: tmpdir)
+      }.to raise_error(SystemExit)
+    end
+
+    it "records the worker as owner, with its own pid, while it runs" do
+      engine = instance_double(Samagotchi::Engine, start_idle: nil, stop_idle: nil, reminder_store: nil)
+      allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
+      owner_seen = nil
+      pid_seen = nil
+      allow(Samagotchi::Engine).to receive(:new) do
+        owner_seen = Samagotchi::OwnerLock.owner(session_dir)
+        pid_seen = File.read(File.join(session_dir, described_class::PID_FILE))
+        engine
+      end
+      allow(described_class).to receive(:find_new_input_files) do
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+        []
+      end
+
+      expect {
+        described_class.run_session_loop(session.id, state_dir: tmpdir)
+      }.to raise_error(SystemExit)
+
+      expect(owner_seen).to include("kind" => "worker", "pid" => Process.pid)
+      expect(pid_seen).to eq(Process.pid.to_s)
+      # Released on the way out.
+      expect(Samagotchi::OwnerLock.owner(session_dir)).to be_nil
     end
   end
 

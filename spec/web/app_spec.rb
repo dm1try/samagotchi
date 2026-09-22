@@ -401,6 +401,63 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "a session owned by the interactive TUI" do
+    let(:state_dir) { Dir.mktmpdir("web-owner-spec") }
+    let(:session) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd).tap do |s|
+        s.save(state_dir: state_dir)
+      end
+    end
+    let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: state_dir) }
+    let(:app) { build_app(manager: Samagotchi::SessionManager, state_dir: state_dir, session_class: Samagotchi::Session) }
+
+    after do
+      @lock&.release
+      FileUtils.rm_rf(state_dir)
+    end
+
+    def input_files
+      Dir.glob(File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR, "*"))
+    end
+
+    it "answers POST /turn with 409 and queues nothing" do
+      @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
+      allow(Process).to receive(:spawn)
+
+      status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/turn", method: "POST", body: '{"prompt":"hi"}'))
+
+      expect(status).to eq(409)
+      expect(JSON.parse(body.first)).to include("error" => "owned_by_tui")
+      expect(Process).not_to have_received(:spawn)
+      expect(input_files).to be_empty
+    end
+
+    it "withdraws a turn written just as a TUI took the session" do
+      allow(Samagotchi::SessionManager).to receive(:resume_session) do
+        @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
+        session
+      end
+
+      status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/turn", method: "POST", body: '{"prompt":"hi"}'))
+
+      expect(status).to eq(409)
+      expect(JSON.parse(body.first)).to include("error" => "owned_by_tui")
+      expect(input_files).to be_empty
+    end
+
+    it "answers POST /stop with 409 and signals nothing" do
+      @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
+      allow(Process).to receive(:kill)
+
+      status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/stop", method: "POST"))
+
+      expect(status).to eq(409)
+      expect(JSON.parse(body.first)).to include("error" => "owned_by_tui")
+      expect(Process).not_to have_received(:kill)
+      expect(Samagotchi::Session.load(session.id, state_dir: state_dir).status).not_to eq("stopped")
+    end
+  end
+
   describe "POST /api/sessions/:id/answer" do
     it "returns 400 when the question id is missing" do
       app = build_app(state_dir: Dir.mktmpdir)

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "json"
 require "securerandom"
 require "time"
@@ -272,10 +273,24 @@ module Samagotchi
         unless ok
           return error_response(500, "enqueue_failed", "could not write turn input")
         end
+        # A TUI that took the session between the resume and the write never
+        # reads input files; a later worker would replay this one.
+        if owned_by_tui?(id)
+          FileUtils.rm_f(ok) if ok.is_a?(String)
+          raise SessionManager::OwnedByTUI, id
+        end
         enqueued_id = SecureRandom.uuid
         json_response(202, { status: "accepted", enqueued_id: enqueued_id, session_id: id })
+      rescue SessionManager::OwnedByTUI => e
+        error_response(409, "owned_by_tui", e.message)
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
+      end
+
+      def owned_by_tui?(id)
+        return false unless @manager.respond_to?(:session_owner)
+
+        @manager.session_owner(id, state_dir: @state_dir)&.fetch("kind", nil) == "tui"
       end
 
       def handle_cancel(req, id)
@@ -325,6 +340,8 @@ module Samagotchi
           @manager.wait_for_session(id, timeout: 2, state_dir: @state_dir)
         end
         json_response(200, { status: "stopped", session_id: id })
+      rescue SessionManager::OwnedByTUI => e
+        error_response(409, "owned_by_tui", e.message)
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
       end
