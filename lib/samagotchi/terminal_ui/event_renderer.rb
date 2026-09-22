@@ -11,6 +11,7 @@ module Samagotchi
     # can later render events that arrive over the Bridge. The renderer keeps
     # only per-turn bookkeeping that must come from the events themselves:
     # which tool lines were already streamed, and when each tool call started.
+    # Events that came over the Bridge as JSON (string keys) are symbolized first.
     class EventRenderer
       def initialize(view, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
         @view = view
@@ -19,7 +20,24 @@ module Samagotchi
         @tool_started_at = {}
       end
 
+      # Deep-convert a string-keyed event (JSON from the Bridge) to the local
+      # shape: symbol keys and a symbol :type. Other values stay as they are.
+      def self.symbolize(event)
+        event = deep_symbolize_keys(event)
+        event[:type] = event[:type].to_sym if event[:type].is_a?(String)
+        event
+      end
+
+      def self.deep_symbolize_keys(value)
+        case value
+        when Hash then value.to_h { |k, v| [k.is_a?(String) ? k.to_sym : k, deep_symbolize_keys(v)] }
+        when Array then value.map { |v| deep_symbolize_keys(v) }
+        else value
+        end
+      end
+
       def call(event)
+        event = self.class.symbolize(event) if event.key?("type")
         case event[:type]
         when :turn_started
           begin_turn

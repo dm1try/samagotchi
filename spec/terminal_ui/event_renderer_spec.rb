@@ -69,6 +69,44 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     expect(view.calls).to include(:reset_turn_feedback)
   end
 
+  describe "events that arrived over the Bridge (JSON, string keys)" do
+    def wire(event) = JSON.parse(JSON.generate(event))
+
+    it "renders them exactly as the local symbol-keyed events" do
+      events = [
+        { type: :turn_started, origin: { client_id: "web:1" } },
+        { type: :generation_started, iteration: 1 },
+        { type: :generation_chunk, iteration: 1, content: "hi", payload: { "usage" => nil } },
+        { type: :generation_retrying, attempt: 2 },
+        { type: :generation_completed, iteration: 1 },
+        *tool_events(activity),
+        { type: :turn_completed, turn_summary: { tool_activity: [activity], output: "done", resumable: true,
+                                                  context_status: { est_pct: 12, bucket: :low } } }
+      ]
+      local = view.class.new
+      wired = view.class.new
+      local_renderer = described_class.new(local, clock: -> { 10.0 })
+      wired_renderer = described_class.new(wired, clock: -> { 10.0 })
+
+      events.each do |e|
+        local_renderer.call(e)
+        wired_renderer.call(wire(e))
+      end
+
+      expect(wired.calls).to eq(local.calls)
+      expect(wired.lines).to eq(local.lines)
+      expect(wired.lines).to eq(["read 0.0", "done", "iteration limit reached"])
+    end
+
+    it "tolerates a chunk or tool call without an iteration or params (ruby_llm backend)" do
+      renderer.call(wire(type: :generation_chunk, content: "x"))
+      renderer.call(wire(type: :tool_call_started, tool: "read", params: nil))
+      renderer.call(wire(type: :tool_call_completed, tool: "read", activity: activity.merge(params: nil)))
+
+      expect(view.lines).to eq(["read 0.0"])
+    end
+  end
+
   it "ignores events it does not render" do
     renderer.call(type: :reminder_injected, reminders: [])
     renderer.call(type: :turn_completed, result: "no summary")
