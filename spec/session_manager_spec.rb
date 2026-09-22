@@ -146,6 +146,35 @@ RSpec.describe Samagotchi::SessionManager do
       }.to raise_error(SystemExit)
     end
 
+    it "wires a reminder callback that queues a synthetic turn in the session's state dir" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.status = Samagotchi::Session::STATUS_STOPPED
+      session.save(state_dir: tmpdir)
+
+      engine = instance_double(Samagotchi::Engine)
+      reminder_callback = nil
+      allow(Samagotchi::Engine).to receive(:new) do |**kwargs|
+        reminder_callback = kwargs.dig(:reminders, :callback)
+        engine
+      end
+      allow(engine).to receive(:start_idle)
+      allow(engine).to receive(:stop_idle)
+      allow(engine).to receive(:reminder_store).and_return(nil)
+      sub_handle = double("subscribe_handle")
+      allow(sub_handle).to receive(:unsubscribe)
+      allow(engine).to receive(:subscribe).and_return(sub_handle)
+
+      expect {
+        described_class.run_session_loop(session.id, state_dir: tmpdir)
+      }.to raise_error(SystemExit)
+
+      expect { reminder_callback.call(["daily"]) }.not_to raise_error
+      input_dir = File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), Samagotchi::SessionManager::INPUT_DIR)
+      queued = Dir.glob(File.join(input_dir, "*.txt"))
+      expect(queued.size).to eq(1)
+      expect(File.read(queued.first)).to include("scheduled reminders are due")
+    end
+
     it "atomically claims an input file for single-consumer processing" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session_dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)

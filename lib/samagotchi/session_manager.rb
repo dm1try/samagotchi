@@ -281,7 +281,10 @@ module Samagotchi
           callback: lambda { |due_names|
             # SessionManager: when a reminder is due, write a synthetic input
             # file via write_turn_input so the existing poll loop picks it up.
-            self.class.write_turn_input(session_id, prompt: "[SYSTEM: Your scheduled reminders are due. Please check them.]")
+            # Called directly: `self` here is SessionManager itself, so the
+            # old `self.class.write_turn_input` resolved to Class and raised
+            # (swallowed by IdleScheduler, latching the reminder for good).
+            write_turn_input(session_id, prompt: "[SYSTEM: Your scheduled reminders are due. Please check them.]", state_dir: sd)
           }
         }
       )
