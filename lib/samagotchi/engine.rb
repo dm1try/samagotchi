@@ -43,7 +43,7 @@ module Samagotchi
     # Used by specs and inspection.
     def self.system_prompt_for(profile)
       profile = ModelProfile.normalize(profile) unless profile.is_a?(ModelProfile)
-      new(mode: :assist, profile: profile).send(:assist_system_prompt)
+      new(mode: :assist, profile: profile).assist_system_prompt
     end
 
     # @param mode               [Symbol] :assist (harness is single-mode; memory-reliant; kwarg kept for compat, ignored)
@@ -156,6 +156,9 @@ module Samagotchi
       @activity_seq = 0
       @turn_running = false
       @active_cancel_controller = nil
+      # Reminder names the interactive REPL's IdleReminders callback marked due;
+      # the REPL polls them to decide when to run a synthetic reminder turn.
+      @due_reminder_names = []
       @question_mutex = Monitor.new
       @question_cv = @question_mutex.new_cond
       @pending_question = nil
@@ -216,6 +219,20 @@ module Samagotchi
       @activity_mutex.synchronize { @turn_running }
     end
 
+    # @return [Array<String>] reminder names queued for a synthetic REPL turn
+    def due_reminder_names
+      @activity_mutex.synchronize { @due_reminder_names.dup }
+    end
+
+    # Queue reminder names for a synthetic REPL turn (IdleReminders callback).
+    def note_due_reminders(names)
+      @activity_mutex.synchronize { @due_reminder_names = Array(names).dup }
+    end
+
+    def clear_due_reminder_names!
+      @activity_mutex.synchronize { @due_reminder_names = [] }
+    end
+
     # @return [Client::CancellationController, nil] active turn's cancellation controller
     def active_cancel_controller
       @activity_mutex.synchronize { @active_cancel_controller }
@@ -252,7 +269,7 @@ module Samagotchi
 
     # @return [SessionMetrics] the per-session analytics collector
     attr_reader :metrics
-    attr_reader :default_model_name, :effective_model_name
+    attr_reader :default_model_name, :effective_model_name, :profile
     attr_reader :host_registry, :client
 
     def bare_model_name(full_ref)
@@ -390,14 +407,10 @@ module Samagotchi
       # IdleReminders latch so the next interval can be detected.
       @reminder_store&.mark_fired_batch(due.map { |r| r[:name] })
       @reminders&.clear_due
-      # Also clear the TerminalUI queue latch (Engine#@due_reminder_names is
-      # set by the IdleReminders callback). Without this, a normal-turn
-      # injection (via collect_due_reminders at lib/terminal_ui.rb:732/818)
-      # leaves a stale @due_reminder_names entry, causing the next
-      # top-of-loop synthetic turn to fire empty and duplicate output.
-      if instance_variable_defined?(:@due_reminder_names)
-        instance_variable_set(:@due_reminder_names, [])
-      end
+      # Also clear the REPL's due-reminder queue (#note_due_reminders).
+      # Without this, a normal-turn injection leaves a stale entry, causing
+      # the next top-of-loop synthetic turn to fire empty and duplicate output.
+      clear_due_reminder_names!
       due
     end
     # Alias for backward compatibility.
@@ -1330,6 +1343,9 @@ module Samagotchi
     def activated_memory_names
       @activated_memory_names ||= []
     end
+
+    # System-prompt builders the TerminalUI seeds its conversation from.
+    public :tool_call_hint, :assist_system_prompt, :system_prompt_with_index, :activated_memory_names
 
     def split_memory_scope(raw)
       value = raw.to_s.strip

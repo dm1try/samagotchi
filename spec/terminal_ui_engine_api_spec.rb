@@ -1,0 +1,74 @@
+# frozen_string_literal: true
+
+require "samagotchi/terminal_ui"
+
+# The TUI reaches the Engine only through its public API; these pin the
+# behaviour that used to rely on instance_variable_get/set.
+RSpec.describe "TerminalUI ↔ Engine public API" do
+  let(:registry) do
+    Samagotchi::HostRegistry.new(hosts_config: {
+      "alpha" => { host: "alpha.test", port: 1111 },
+      "beta" => { host: "beta.test", port: 2222 }
+    })
+  end
+  let(:alpha_client) { registry.entries["alpha"].client }
+  let(:beta_client) { registry.entries["beta"].client }
+
+  around do |example|
+    previous = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "alpha:gemma4-small"
+    example.run
+  ensure
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = previous
+  end
+
+  def engine_of(ui) = ui.instance_variable_get(:@engine)
+  def kernel_of(ui) = ui.instance_variable_get(:@kernel)
+
+  describe "runtime /model across hosts" do
+    it "moves the Engine, kernel client and profile to the new host's model" do
+      ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry)
+      expect(kernel_of(ui).client).to be(alpha_client)
+
+      message = ui.send(:handle_model_command, "/model beta:Qwen3-14B")
+
+      engine = engine_of(ui)
+      expect(message).to eq("runtime model set to beta:Qwen3-14B (profile=qwen36)")
+      expect(engine.effective_model_name).to eq("beta:Qwen3-14B")
+      expect(engine.default_model_name).to eq("alpha:gemma4-small")
+      expect(engine.client).to be(beta_client)
+      expect(kernel_of(ui).client).to be(beta_client)
+      expect(engine.profile.name).to eq("qwen36")
+      expect(ui.instance_variable_get(:@profile).name).to eq("qwen36")
+    end
+
+    it "persists the default exactly once with --default" do
+      ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry)
+      expect(Samagotchi::ConfigFile).to receive(:write_default_model!).with("beta:Qwen3-14B").once
+
+      ui.send(:handle_model_command, "/model beta:Qwen3-14B --default")
+
+      expect(engine_of(ui).default_model_name).to eq("beta:Qwen3-14B")
+      expect(ui.instance_variable_get(:@default_model_name)).to eq("beta:Qwen3-14B")
+    end
+
+    it "starts on the --model host without changing the default" do
+      ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry, model_name: "beta:Qwen3-14B")
+
+      expect(kernel_of(ui).client).to be(beta_client)
+      expect(engine_of(ui).effective_model_name).to eq("beta:Qwen3-14B")
+      expect(engine_of(ui).default_model_name).to eq("alpha:gemma4-small")
+    end
+  end
+
+  describe "due-reminder queue" do
+    it "is filled by the IdleReminders callback and read through Engine" do
+      ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry)
+      engine = engine_of(ui)
+      engine.instance_variable_get(:@auto_turn_callback).call(%w[health])
+
+      expect(engine.due_reminder_names).to eq(%w[health])
+      expect(ui.send(:poll_input_with_reminder_check, awaiting_continue: false)).to eq(:due)
+    end
+  end
+end

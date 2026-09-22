@@ -91,7 +91,6 @@ module Samagotchi
       flag_model_name = aliased_model_name.to_s.strip.empty? ? nil : ModelProfile.required_model_name(aliased_model_name)
       @effective_model_name = flag_model_name || @default_model_name
       @host_registry  = host_registry || Samagotchi::HostRegistry.new
-      @client_injected = !client.nil?
       # Client is now registry-aware: resolve active host for effective model
       if client
         @client = client
@@ -135,7 +134,7 @@ module Samagotchi
       @last_line_buffer = ""
       @engine         = Engine.new(
         mode: :assist,
-        client: @client,
+        client: client,
         host_registry: @host_registry,
         verbose: verbose,
         log_file: log_file,
@@ -149,22 +148,17 @@ module Samagotchi
         recap: recap_config,
         reminders: {
           callback: lambda { |due_names|
-            # When a reminder is due, queue a synthetic turn by setting an
-            # instance variable that run_assist_loop checks before read_input.
-            # The synthetic turn uses an empty prompt so the agent can see
+            # When a reminder is due, queue a synthetic turn that
+            # run_assist_loop checks before read_input. The synthetic turn
+            # uses an empty prompt so the agent can see
             # [SYSTEM: REMINDERS DUE] and act on them.
-            @engine.instance_variable_set(:@due_reminder_names, due_names)
+            @engine.note_due_reminders(due_names)
           }
         }
       )
-      # Runtime --model flag or resumed session: sync effective model without persisting default
-      if @effective_model_name != @default_model_name
-        @engine.switch_model!(@effective_model_name)
-        # keep default distinct (switch_model! without persist leaves default as-is, but ensure)
-        @engine.instance_variable_set(:@default_model_name, @default_model_name)
-        @kernel.sync_profile_from_model!(bare_model_for(@effective_model_name))
-        sync_client_for_model!(@effective_model_name)
-      end
+      # Runtime --model flag or resumed session: switch the Engine (client,
+      # kernel profile) without persisting the default.
+      @engine.switch_model!(@effective_model_name) if @effective_model_name != @default_model_name
       # Render an idle session-recap via the cursor-safe background writer; the
       # detector itself is Engine-owned (see Engine#recap) and opt-in.
       @recap_handle = @engine.subscribe(observer: ->(event) { handle_recap_ready(event) })
@@ -173,10 +167,10 @@ module Samagotchi
       # REPL thread (run_kernel_with_thinking_feedback runs inline), so we must render
       # and collect input on the SAME thread without parking on a second thread.
       @engine.set_question_sync_handler do |pending|
+        # render_question_widget records the choice via Engine#answer_question,
+        # which Engine.request_question reads back once this handler returns.
         render_question_widget(pending)
-        # render_question_widget calls engine.answer_question which sets @question_answer;
-        # return it so Engine.request_question can short-circuit without CV wait.
-        @engine.instance_variable_get(:@question_answer)
+        nil
       end
     end
 
@@ -253,13 +247,13 @@ module Samagotchi
     # Generate profile-aware tool calling hint.
     # Kept as a one-line delegator to Engine (single source of truth).
     def tool_call_hint
-      return @engine.send(:tool_call_hint)
+      return @engine.tool_call_hint
     end
 
     # Assist system prompt — delegates wholesale to Engine so the two can
     # never drift apart. This single delegator fixes the 4-line regression.
     def assist_system_prompt
-      return @engine.send(:assist_system_prompt)
+      return @engine.assist_system_prompt
     end
 
     # Interactive REPL loop. Session seed + messages are built by #run and
@@ -322,8 +316,8 @@ module Samagotchi
         # If a muted background turn is already running, skip sync synthetic
         # and let the muted path finish; its result will be drained above.
         unless muted_reminder_running?
-          due_names = @engine.instance_variable_get(:@due_reminder_names)
-          if due_names && !due_names.empty?
+          due_names = @engine.due_reminder_names
+          unless due_names.empty?
             # If user is actively typing (line buffer non-empty) we defer
             # to send+mute instead of interrupting. The poll loop will
             # have started the muted thread; here we only run sync when
@@ -337,7 +331,7 @@ module Samagotchi
               notify_pending_reminder_banner(due_names) unless @pending_reminder_banner_shown
               # fall through to poll (don't run sync now)
             else
-              @engine.instance_variable_set(:@due_reminder_names, [])
+              @engine.clear_due_reminder_names!
               # Inject reminders into messages before running the kernel.
               # If the store was already drained by a normal-turn injection
               # (stale latch), skip the empty synthetic to avoid duplicate
@@ -614,9 +608,8 @@ module Samagotchi
     # Appends the current memory index to the base system prompt so the agent
     # is always aware of stored memories without needing to call a tool first.
     # Delegates wholesale to Engine (single source of truth).
-    # system_prompt_with_index is private on Engine, so we dispatch via send.
     def system_prompt_with_index(base)
-      result = @engine.send(:system_prompt_with_index, base)
+      result = @engine.system_prompt_with_index(base)
       # Mirror any --memory activations the Engine performed so the sticky
       # status line can surface them. The prompt body injection moved into
       # Engine; echoing the activated names here is purely a UI concern.
@@ -628,7 +621,7 @@ module Samagotchi
     # sticky status line is a UI concern. Mirror the activated names so they
     # appear in the status line.
     def sync_engine_activated_memories
-      @engine.send(:activated_memory_names).each do |name|
+      @engine.activated_memory_names.each do |name|
         add_unique_memory_name(:@session_memory_names, name)
       end
     end
@@ -785,8 +778,7 @@ module Samagotchi
     def start_muted_reminder_generation(messages, session)
       return if muted_reminder_running?
       return if muted_reminder_pending? # already have a pending to drain
-      due = @engine.instance_variable_get(:@due_reminder_names)
-      return if due.nil? || due.empty?
+      return if @engine.due_reminder_names.empty?
 
       # Snapshot the current messages; muted thread injects and runs on the
       # copy so foreground `messages` is untouched until drain.
@@ -892,8 +884,7 @@ module Samagotchi
     # we still return :due for the synchronous synthetic path.
     def poll_input_with_reminder_check(awaiting_continue:, messages: nil, session: nil)
       # Check due before any blocking so push-mode fires even in specs/non-TTY.
-      due = @engine.instance_variable_get(:@due_reminder_names)
-      return :due if due && !due.empty?
+      return :due unless @engine.due_reminder_names.empty?
 
       # Non-TTY (specs, pipes) — just block directly; no push needed there.
       unless STDIN.tty? && $stdin.tty?
@@ -930,8 +921,8 @@ module Samagotchi
           @engine.record_activity if grew
         end
 
-        due = @engine.instance_variable_get(:@due_reminder_names)
-        if due && !due.empty?
+        due = @engine.due_reminder_names
+        unless due.empty?
           if typing_active?
             # Send+mute: generate in background, don't interrupt typing
             if messages && session && !muted_reminder_running? && !muted_reminder_pending?
@@ -1495,24 +1486,13 @@ module Samagotchi
       end
     end
 
+    # Engine owns the switch (alias resolution, profile, kernel, client and the
+    # optional default persist); the UI mirrors the result for its status line.
     def apply_runtime_model!(model_name, persist_default: false)
-      aliased = ConfigFile.resolve_model_alias(model_name)
-      resolved_model_name = ModelProfile.required_model_name(aliased)
-      @effective_model_name = resolved_model_name
-      bare = bare_model_for(resolved_model_name)
-      @profile = ModelProfile.from_model_name(bare)
-      @kernel.sync_profile_from_model!(bare)
-      @engine.switch_model!(resolved_model_name, persist_default: false) if @engine.respond_to?(:switch_model!)
-      sync_client_for_model!(resolved_model_name)
-      # Keep engine's effective in sync without persisting via engine (persist handled here)
-      @engine.instance_variable_set(:@effective_model_name, resolved_model_name) if @engine
-      @engine.instance_variable_set(:@profile, @profile) if @engine
-      if persist_default
-        require_relative "config"
-        ConfigFile.write_default_model!(resolved_model_name)
-        @default_model_name = resolved_model_name
-        @engine.instance_variable_set(:@default_model_name, resolved_model_name) if @engine
-      end
+      resolved_model_name = @engine.switch_model!(model_name, persist_default: persist_default)
+      @effective_model_name = @engine.effective_model_name
+      @default_model_name = @engine.default_model_name
+      @profile = @engine.profile
       resolved_model_name
     end
 
@@ -2319,18 +2299,6 @@ module Samagotchi
     def bare_model_for(full_ref)
       _, bare = @host_registry.parse_qualified_model(full_ref)
       bare.to_s.strip.empty? ? full_ref.to_s.strip : bare
-    end
-
-    def sync_client_for_model!(full_ref)
-      return if @client_injected
-      cli, _bare, _entry = @host_registry.client_for_model(full_ref)
-      @client = cli
-      @engine.instance_variable_set(:@client, cli) if @engine
-      if @kernel.respond_to?(:client=)
-        @kernel.client = cli
-      elsif @kernel.instance_variable_defined?(:@client)
-        @kernel.instance_variable_set(:@client, cli)
-      end
     end
 
     def spinner_status_line
