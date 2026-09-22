@@ -244,6 +244,7 @@ RSpec.describe Samagotchi::Web::App do
           "current_turn" => { "prompt" => "second", "parts" => [{ "kind" => "text", "text" => "so far" }],
                               "pending_question" => { "id" => "q1", "status" => "pending" } },
           "queued" => [{ "enqueued_id" => "e1", "client_id" => "tui:1", "prompt" => "next" }],
+          "recap" => "We did things.",
           "event_seq" => 40
         },
         "session_state_snapshot" => { "status" => "running", "event_seq" => 40 }
@@ -262,6 +263,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["queued"].map { |q| q["prompt"] }).to eq(["next"])
       expect(payload["pending_question"]).to eq("id" => "q1", "status" => "pending")
       expect(payload["last_event_seq"]).to eq(40)
+      expect(payload["recap"]).to eq("We did things.")
       expect(payload.dig("session", "status")).to eq("running")
     end
 

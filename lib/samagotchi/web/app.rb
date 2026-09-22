@@ -208,6 +208,7 @@ module Samagotchi
           messages: messages_for_display(turn_snapshot ? turn_snapshot["messages"] : session.messages),
           current_turn: current_turn,
           queued: turn_snapshot ? Array(turn_snapshot["queued"]) : [],
+          recap: turn_snapshot && turn_snapshot["recap"],
           markdown_warning: @markdown_renderer.warning,
           pending_question: pending,
           last_event_seq: last_event_seq,
