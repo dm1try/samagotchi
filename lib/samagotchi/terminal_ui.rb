@@ -1477,12 +1477,18 @@ module Samagotchi
       "unable to list models: #{e.message}"
     end
 
-    # Handle /recap command - display the last generated recap or trigger a new one
+    # Handle /recap command - display the last generated recap
     def handle_recap_command
-      return "recap feature not enabled (set SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL)" unless @engine.recap
+      unless @engine.recap
+        return "recap feature not enabled (add recap: {host_ref:, model:} to config.yml, " \
+               "or set SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL)"
+      end
 
       if @last_recap
-        "session recap:\n#{@last_recap}"
+        # Any later turn (or recap attempt) bumps the generation, so a
+        # mismatch means the conversation moved on since this recap.
+        stale = @engine.recap.generation != @last_recap_generation
+        "session recap#{' (from before your latest turn)' if stale}:\n#{@last_recap}"
       else
         recap = @engine.recap
         "no recap available yet — the session needs at least #{recap.min_user_turns} user turns and #{recap.inactivity.to_i}s of inactivity to generate one automatically"

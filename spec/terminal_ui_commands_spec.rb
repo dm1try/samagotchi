@@ -62,6 +62,28 @@ RSpec.describe Samagotchi::TerminalUI do
     end
   end
 
+  describe "/recap command" do
+    let(:recap_job) { double("recap", generation: 3, min_user_turns: 2, inactivity: 180.0) }
+
+    before { allow(agent.instance_variable_get(:@engine)).to receive(:recap).and_return(recap_job) }
+
+    it "shows the latest recap as-is while the conversation hasn't moved on" do
+      agent.send(:handle_recap_ready, { type: :recap_ready, recap: "Did X.", generation: 3 })
+      expect(agent.send(:handle_recap_command)).to eq("session recap:\nDid X.")
+    end
+
+    it "labels the recap stale once a later turn bumped the generation" do
+      agent.send(:handle_recap_ready, { type: :recap_ready, recap: "Did X.", generation: 3 })
+      allow(recap_job).to receive(:generation).and_return(4)
+      expect(agent.send(:handle_recap_command)).to eq("session recap (from before your latest turn):\nDid X.")
+    end
+
+    it "points at both config.yml and the env vars when recap is disabled" do
+      allow(agent.instance_variable_get(:@engine)).to receive(:recap).and_return(nil)
+      expect(agent.send(:handle_recap_command)).to include("config.yml").and include("SAMAGOTCHI_RECAP_BASE_URL")
+    end
+  end
+
   describe "timing output" do
     it "adds compact elapsed time to a completed tool activity line" do
       output = agent.send(
