@@ -304,7 +304,7 @@ RSpec.describe Samagotchi::Engine do
 
   describe "#switch_model!" do
     it "drops the client's cached context window (the new model may run with another -c)" do
-      allow(kernel).to receive(:sync_profile_from_model!)
+      allow(kernel).to receive(:use_profile!)
       allow(kernel).to receive(:sync_model_key!)
       allow(client).to receive(:invalidate_context_window!)
 

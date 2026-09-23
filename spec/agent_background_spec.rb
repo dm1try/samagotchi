@@ -5,10 +5,12 @@ require "samagotchi/terminal_ui"
 
 RSpec.describe Samagotchi::TerminalUI do
   describe "#process_background_prompt" do
+    before { allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil) }
+
     it "uses KernelLoop#run and returns model output" do
       kernel = instance_double(Samagotchi::KernelLoop)
       allow(Samagotchi::KernelLoop).to receive(:new).and_return(kernel)
-      allow(kernel).to receive(:sync_profile_from_model!)
+      allow(kernel).to receive(:use_profile!)
 
       conversation = [
         { role: "user", content: "hello" },
@@ -40,7 +42,7 @@ RSpec.describe Samagotchi::TerminalUI do
     it "returns no-response fallback when kernel output is blank" do
       kernel = instance_double(Samagotchi::KernelLoop)
       allow(Samagotchi::KernelLoop).to receive(:new).and_return(kernel)
-      allow(kernel).to receive(:sync_profile_from_model!)
+      allow(kernel).to receive(:use_profile!)
 
       result = Samagotchi::KernelLoop::Result.new(
         output: "",

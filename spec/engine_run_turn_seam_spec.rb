@@ -301,7 +301,7 @@ end
     end
 
     it "rebuilds it after a model switch" do
-      allow(kernel).to receive(:sync_profile_from_model!)
+      allow(kernel).to receive(:use_profile!)
       allow(kernel).to receive(:sync_model_key!)
       sent = []
       allow(kernel).to receive(:run) { |messages, **| sent << messages.first[:content]; kernel_result(conversation: messages) }

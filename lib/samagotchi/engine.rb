@@ -69,7 +69,12 @@ module Samagotchi
       # An injected client (specs) stands in for every host's client.
       @host_registry.client_override = client if client
       @client = @host_registry.resolve(@effective_model_name).client
-      @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(bare_model_name(@default_model_name))
+      # A caller's profile pins it (until a model switch); otherwise
+      # #profile_resolution decides on first need (see there), so building an
+      # Engine makes no network call.
+      @given_profile = profile ? ModelProfile.normalize(profile) : nil
+      @model_lookup_names = [@default_model_name]
+      @profile_resolution = nil
       # Ensure the built-in system bundle is installed (lazy, warn-only).
       # This is the single seam for both TUI and non-TUI (web/worker) paths.
       begin
@@ -95,7 +100,7 @@ module Samagotchi
       @reminders = build_reminders(auto_turn_callback: callback)
       # Track whether this is the first turn in the session (for session_start event)
       @first_turn = true
-      @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, hooks: @hooks, reminder_store: @reminder_store)
+      @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @given_profile, no_interrupt: no_interrupt, hooks: @hooks, reminder_store: @reminder_store)
       sync_kernel_client!
       @model_key = ModelOverlay.key_for(bare_model_name(@effective_model_name))
       @kernel.sync_model_key!(@model_key) if @kernel.respond_to?(:sync_model_key!)
@@ -271,7 +276,22 @@ module Samagotchi
 
     # @return [SessionMetrics] the per-session analytics collector
     attr_reader :metrics
-    attr_reader :default_model_name, :effective_model_name, :profile
+    attr_reader :default_model_name, :effective_model_name
+
+    # The prompt profile for the effective model (see #profile_resolution).
+    # @return [ModelProfile]
+    def profile = profile_resolution.profile
+
+    # Which profile the effective model gets and where that came from
+    # (ModelProfile.resolve: --profile/env, models:, hosts.<name>.profile,
+    # the server's chat template, the name, qwen36). Resolved on first need
+    # and kept, so the system prompt and the server's KV prefix stay stable;
+    # #switch_model! starts over, and a failed server probe is retried before
+    # the next turn (#refresh_profile!). The kernel follows each resolution.
+    # @return [ModelProfile::Resolution]
+    def profile_resolution
+      @profile_resolution ||= apply_profile(resolve_profile)
+    end
     attr_reader :host_registry, :client
 
     def bare_model_name(full_ref)
@@ -344,8 +364,10 @@ module Samagotchi
       resolved = ModelProfile.required_model_name(aliased)
       @effective_model_name = resolved
       bare = bare_model_name(resolved)
-      @profile = ModelProfile.from_model_name(bare)
-      @kernel.sync_profile_from_model!(bare) if @kernel.respond_to?(:sync_profile_from_model!)
+      @model_lookup_names = [model_name, aliased, resolved]
+      # A profile given to .new was for the starting model.
+      @given_profile = nil
+      @profile_resolution = nil
       @model_key = ModelOverlay.key_for(bare)
       @kernel.sync_model_key!(@model_key) if @kernel.respond_to?(:sync_model_key!)
       @system_prompts = nil
@@ -853,6 +875,7 @@ module Samagotchi
       # cached across the turn's generations): a restart with another -c
       # between turns raises no error that would drop the cache.
       @client.invalidate_context_window! if @client.respond_to?(:invalidate_context_window!)
+      refresh_profile!
       # Provide a cancellable controller for this turn (cross-process cancel via file flag)
       effective_controller = cancel_controller || CancellationController.new
       @activity_mutex.synchronize { @active_cancel_controller = effective_controller }
@@ -1263,12 +1286,12 @@ module Samagotchi
     #     unchanged; the web client then falls back to raw `content`, preserving
     #     today's behavior (no regression).
     def build_stream_event_handler(on_event)
-      splitter = ThoughtStreamSplitter.for_profile(@profile)
-      enrich = @profile.thought_close ? :always : :never
+      splitter = ThoughtStreamSplitter.for_profile(profile)
+      enrich = profile.thought_close ? :always : :never
       proc do |event|
         case event[:type]
         when :generation_started
-          splitter = ThoughtStreamSplitter.for_profile(@profile)
+          splitter = ThoughtStreamSplitter.for_profile(profile)
         when :generation_chunk
           # The chat loop already splits its stream (reasoning arrives apart
           # from the answer); only raw native chunks are split here.
@@ -1304,10 +1327,43 @@ module Samagotchi
       @session_observer.notify(event)
     end
 
+    # ── Prompt profile ─────────────────────────────────────────────────────────
+
+    def resolve_profile
+      if @given_profile
+        return ModelProfile::Resolution.new(profile: @given_profile, source: :given, detail: nil, retry: false)
+      end
+
+      target = @host_registry.resolve(@effective_model_name)
+      # As typed (maybe an alias), the part after a host prefix, alias-resolved, bare.
+      typed = @model_lookup_names.first
+      names = @model_lookup_names + [@host_registry.parse_qualified_model(typed).last, target.bare_model]
+      ModelProfile.resolve(names: names.compact, entry: target.entry, client: target.client, bare_model: target.bare_model)
+    end
+
+    # Everything that holds a profile follows the resolution: the kernel's
+    # prompt format and parser, and the system prompts built for the old one.
+    def apply_profile(resolution)
+      @system_prompts = nil if @profile_resolution && @profile_resolution.profile.name != resolution.profile.name
+      @kernel.use_profile!(resolution) if @kernel.respond_to?(:use_profile!)
+      resolution
+    end
+
+    # Before a turn: resolve now if nothing has yet, or again if the last
+    # server probe failed (unreachable, or 503 while loading a model). A
+    # profile that changes here drops the cached system prompts.
+    def refresh_profile!
+      if @profile_resolution&.retry?
+        @profile_resolution = apply_profile(resolve_profile)
+      else
+        profile_resolution
+      end
+    end
+
     # ── Tool declarations ──────────────────────────────────────────────────────
 
     def tool_declarations
-      case @profile.name
+      case profile.name
       when "qwen36"
         ToolDeclarations.qwen_declarations
       else
@@ -1317,7 +1373,7 @@ module Samagotchi
     end
 
     def tool_call_hint
-      case @profile.name
+      case profile.name
       when "qwen36"
         ToolDeclarations::QWEN_TOOL_CALL_HINT
       else
@@ -1328,7 +1384,7 @@ module Samagotchi
     # Only Qwen has an explicit thinking-close marker, so only Qwen can
     # reliably have this preamble parsed back out of its thinking block.
     def turn_preamble_instruction
-      return "" unless @profile.name == "qwen36"
+      return "" unless profile.name == "qwen36"
       return "" if Samagotchi::Config.get("thinking.turn_preamble") == false
 
       "\nTurn preamble: as the very first line of your thinking, write \"TURN: \" followed by a short present-tense action phrase (max 8 words) describing what you are about to do, e.g. \"TURN: reading project config\". Then continue reasoning normally.\n"
@@ -1417,7 +1473,7 @@ module Samagotchi
       project_index = read_memory_index("project")
       system_index = read_memory_index("system")
       project_description = project_specific_description
-      thinking_token = if !chat && @profile.name == "gemma4" && ENV["THINKING_MODE"] != "false"
+      thinking_token = if !chat && profile.name == "gemma4" && ENV["THINKING_MODE"] != "false"
                          "<|think|>\n"
                        else
                          ""

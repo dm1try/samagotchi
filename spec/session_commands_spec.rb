@@ -7,6 +7,9 @@ require "samagotchi/turn_flow"
 require "samagotchi/kernel_loop"
 
 RSpec.describe Samagotchi::SessionCommands do
+  # /model and the first turn resolve the prompt profile; no /props probe here.
+  before { allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil) }
+
   let(:registry) do
     Samagotchi::HostRegistry.new(hosts_config: {
       "alpha" => { host: "alpha.test", port: 1111 },

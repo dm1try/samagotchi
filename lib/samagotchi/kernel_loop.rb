@@ -133,7 +133,6 @@ module Samagotchi
       @client = client || Client.new
       @verbose = verbose
       @debug_log = debug_log || DebugLog.new(path: log_file)
-      @profile_explicit = !profile.nil?
       @no_interrupt = no_interrupt
       resolved_model_name = ModelProfile.required_model_name(model_name)
       # The resolved model id actually used for this run (per-run override wins
@@ -142,8 +141,8 @@ module Samagotchi
       @current_model_name = resolved_model_name
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(resolved_model_name)
       # Where @profile came from, as /stats shows it (a Resolution's label
-      # once the Engine resolves one).
-      @profile_source = "name"
+      # once the Engine resolves one, see #use_profile!).
+      @profile_source = profile ? "given" : "name"
       @hooks = hooks
       @reminder_store = reminder_store
       @model_key = model_key
@@ -188,10 +187,6 @@ module Samagotchi
     def run(messages, max_iterations: 100, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil)
       resolved_model_name = completion_model_name(model_name)
       @current_model_name = resolved_model_name
-      unless @profile_explicit
-        @profile = ModelProfile.from_model_name(resolved_model_name)
-        @profile_source = "name"
-      end
 
       conversation = prepare_conversation(messages)
       context_state = initial_context_status_state(conversation)
@@ -335,17 +330,9 @@ module Samagotchi
       raise
     end
 
-    def sync_profile_from_model!(model_name)
-      @profile_explicit = false
-      @profile = ModelProfile.from_model_name(model_name)
-      @profile_source = "name"
-    end
-
-    # Pin a resolved profile (ModelProfile::Resolution): later runs keep it,
-    # whatever model name they carry, until the next use_profile! or
-    # sync_profile_from_model!.
+    # Use a resolved profile (ModelProfile::Resolution) from now on,
+    # whatever model name later runs carry.
     def use_profile!(resolution)
-      @profile_explicit = true
       @profile = resolution.profile
       @profile_source = resolution.label
     end
