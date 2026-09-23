@@ -144,8 +144,11 @@ REPL alike:
   `!rollback`, `/continue`, `/guardrails`) say `busy: wait for the turn to end`
   and go back into the prompt, so Enter runs them once the turn ends.
 - A question (`ask_user_question`, a guardrails approval) turns the prompt into
-  `choice>`; only a line submitted there answers it, and what you had typed
-  comes back once it closes.
+  a yellow `? ` and lists its choices under it, fitted to the terminal; only a
+  line submitted there answers it (a number, `1,3`, a label, `y`/`n` for an
+  approval, `; text` for a reason; Enter alone dismisses it), and what you had
+  typed comes back once it closes. The choices then go, and one line stays:
+  `? Pick a fruit → Banana`.
 - Ctrl-C cancels the turn and keeps what you typed.
 - In the plain REPL, Ctrl-D on an empty prompt (or `exit`, `/exit`) mid-turn
   exits once the turn ends: `(exits after this turn; Ctrl-C cancels it)`. In an
@@ -307,4 +310,4 @@ Behavior notes:
 - Tool side effects that already ran before the cap are not rolled back.
 - `Samagotchi::KernelLoop#run` now returns a resumable result object with the visible output plus the accumulated conversation.
 - If the cap is reached while tool calls are still pending, the result is marked resumable so callers can continue from the saved conversation instead of restarting from scratch.
-- In assist mode, the CLI now pauses at a compact continue prompt (`continue(yes/no/no_with_reason)>`), where `yes` (or `/continue`) resumes, `no` cancels, and `no, <explanation>` cancels while keeping the reason in conversation context.
+- In assist mode, the CLI then asks at the `? ` prompt, with the choices listed under it: `yes` (Enter alone, or `/continue`) resumes, `no` cancels, and `no, <explanation>` cancels while keeping the reason in conversation context. Once answered, one line stays: `? The turn ran out of iterations. Continue it? → no, too slow`.

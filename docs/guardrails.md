@@ -32,12 +32,15 @@ Approve tool call?
 In a terminal, answer with a number, the exact label, `y` (Allow once) or `n`
 (Deny); add `; reason` to tell the model why (`n; open a PR instead`). An empty
 answer, Ctrl-C, the web's Deny button or a cancelled turn deny it. The prompt stays open during turns: when the question comes up it turns
-into `choice>`, only a line submitted there answers it (never one typed before), and
-what you had typed comes back once it closes.
+into a yellow `? `, with the call and the options listed under it; only a line
+submitted there answers it (never one typed before), and what you had typed comes back
+once it closes. On a short terminal the list shrinks (the hint row, then the `in`/`why`
+lines, then the header go, then the options fold onto fewer rows). Once answered, one
+line stays in the scrollback: `! execute: git push origin main → Allow once`.
 
 Who answers:
 
-- REPL (`chi --no-shared`, `-p` without `--non-interactive`): at `choice>`.
+- REPL (`chi --no-shared`, `-p` without `--non-interactive`): at the `? ` prompt.
 - A shared session's worker: any attached TUI or web page. With none attached,
   the approval waits (in the session file) and shows on attach.
 - `-p … --non-interactive`: nobody; the call is denied ("No one to approve it
