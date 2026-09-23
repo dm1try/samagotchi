@@ -151,6 +151,12 @@ if ARGV[0] == "sessions"
   end
 end
 
+# `chi note`: a context note for sessions, before OptionParser (-m, --source, --all are its own)
+if ARGV[0] == "note"
+  require "samagotchi/note_command"
+  exit Samagotchi::NoteCommand.new(ARGV[1..] || []).run
+end
+
 # Handle `bundle` subcommand before OptionParser (has its own flags like --scope, --force)
 if ARGV[0] == "bundle"
   require "samagotchi/memory_bundle"
@@ -792,6 +798,7 @@ parser = OptionParser.new do |opts|
     Usage: bin/chi [options]
            bin/chi web [--port PORT] [--open]   the web UI
            bin/chi sessions <list|stop|prune|clean>
+           bin/chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
            bin/chi bundle <install|upgrade|uninstall|status|diff|bundles|build>
            bin/chi self                         version, paths, model and bundles
     (each subcommand takes --help)

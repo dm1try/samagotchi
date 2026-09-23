@@ -27,7 +27,7 @@ RSpec.describe "chi --help" do
   it "names the subcommands" do
     out, = Open3.capture3(RbConfig.ruby, chi, "--help", stdin_data: "")
 
-    %w[web sessions bundle self].each { |sub| expect(out).to include("bin/chi #{sub} ") }
+    %w[web sessions note bundle self].each { |sub| expect(out).to include("bin/chi #{sub} ") }
   end
 
   it "refuses an unknown flag with one line, not a backtrace" do
