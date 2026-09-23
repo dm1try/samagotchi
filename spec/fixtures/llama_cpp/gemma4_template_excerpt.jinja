@@ -1,0 +1,17 @@
+{#- Marker lines from Google's Gemma 4 chat template (not the whole template):
+    https://huggingface.co/google/gemma-4-31B-it/resolve/main/chat_template.jinja
+    (the same file ships with 12B-it and 26B-A4B-it; E4B-it and the unsloth
+    GGUF carry the same markers). -#}
+{{- bos_token -}}
+{%- if enable_thinking or tools or (messages and messages[0]['role'] in ['system', 'developer']) -%}
+    {{- '<|turn>system\n' -}}
+    {%- if enable_thinking -%}
+        {{- '<|think|>\n' -}}
+    {%- endif -%}
+{%- endif -%}
+        {{- '<|turn>' + role + '\n' }}
+        {{- '<|channel>thought\n' + thinking_text + '\n<channel|>' -}}
+                    {{- '<|tool_call>call:' + function['name'] + '{' -}}
+{%- if add_generation_prompt -%}
+        {{- '<|turn>model\n' -}}
+{%- endif -%}

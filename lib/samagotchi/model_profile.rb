@@ -133,6 +133,137 @@ module Samagotchi
       from_model_name(required_model_name(nil, env: ENV))
     end
 
+    # ── Resolution: which profile a model gets ───────────────────────────
+
+    NAMES = %w[qwen36 gemma4].freeze
+
+    # The last layer, when nothing else says.
+    DEFAULT_NAME = "gemma4"
+
+    # What the server's chat template must contain for each profile. The
+    # template tells the families apart where eos_token doesn't (Gemma 4's is
+    # <eos> or <turn|>, depending on who packed it). llama.cpp itself detects
+    # Gemma 4 by '<|tool_call>call:'.
+    FINGERPRINTS = {
+      "qwen36" => ["<|im_start|>", "<function="],
+      "gemma4" => ["<|turn>", "<|tool_call>"]
+    }.freeze
+
+    # A resolved profile and where it came from. source: :cli, :env,
+    # :config, :server, :name or :default; detail: the config key, the
+    # template evidence or the matched name. retry: the server probe failed
+    # (unreachable, or loading and answering 503), so the caller should
+    # resolve again before its next turn.
+    Resolution = Data.define(:profile, :source, :detail, :retry) do
+      def retry? = self.retry
+
+      # How /stats, /model and chi self name the source.
+      def label
+        case source
+        when :config then "config (#{detail})"
+        when :server then "server (chat_template)"
+        else source.to_s
+        end
+      end
+    end
+
+    # The profile called +value+, or nil (unlike .normalize, which always
+    # gives one).
+    def self.named(value)
+      name = value.to_s.strip.downcase
+      NAMES.include?(name) ? public_send(name) : nil
+    end
+
+    # [profile name, evidence] from a llama.cpp /props body, or nil when its
+    # chat template says neither family. A ChatML template without Qwen's
+    # <function= calls (older Qwen3, Hermes, ...) still gets qwen36: its
+    # <|im_end|> stops generation, where gemma4's stop sequences never occur.
+    def self.fingerprint(props)
+      template = props.is_a?(Hash) ? props["chat_template"].to_s : ""
+      FINGERPRINTS.each do |name, markers|
+        return [name, markers.join(" + ")] if markers.all? { |marker| template.include?(marker) }
+      end
+      return ["qwen36", "ChatML"] if template.include?("<|im_start|>")
+
+      nil
+    end
+
+    # Which profile a model gets, first match wins:
+    #   1. override: --profile / SAMAGOTCHI_MODEL_PROFILE ([value, origin];
+    #      a nil value is not set, whatever its origin)
+    #   2. models: in the config file, under any of +names+
+    #   3. hosts.<name>.profile of +entry+
+    #   4. the server's chat template (native llama.cpp hosts only)
+    #   5. the name: qwen → qwen36, gemma → gemma4
+    #   6. DEFAULT_NAME
+    # An unknown configured value warns and is skipped.
+    #
+    # @param names [Array<String>] the model as typed, alias-resolved, bare
+    # @param entry [HostRegistry::HostEntry, nil] the model's host
+    # @param client [#server_props, nil] the host's client (nil: no probe)
+    # @param bare_model [String, nil] the name the probe asks the server about
+    # @return [Resolution]
+    def self.resolve(names:, entry:, client:, bare_model:, override: nil, models: nil)
+      require_relative "config"
+      override ||= Samagotchi::Config.get_with_origin("model.profile")
+      models ||= Samagotchi::ConfigFile.model_settings
+      names = Array(names).map { |n| n.to_s.strip }.reject(&:empty?).uniq
+
+      value, origin = override
+      if (profile = named(value))
+        return Resolution.new(profile: profile, source: origin == :env ? :env : :cli, detail: nil, retry: false)
+      end
+
+      names.map(&:downcase).uniq.each do |key|
+        setting = models[key]
+        next unless setting && setting[:profile]
+
+        profile = configured(setting[:profile], "models: #{key}")
+        return Resolution.new(profile: profile, source: :config, detail: "models: #{key}", retry: false) if profile
+      end
+
+      if entry&.profile && (profile = configured(entry.profile, "hosts.#{entry.name}"))
+        return Resolution.new(profile: profile, source: :config, detail: "hosts.#{entry.name}", retry: false)
+      end
+
+      retry_later = false
+      if probe?(entry, client)
+        props = client.server_props(model: bare_model)
+        if props && !props.answered?
+          retry_later = true
+        elsif props && (found = fingerprint(props.body))
+          return Resolution.new(profile: named(found[0]), source: :server, detail: found[1], retry: false)
+        end
+      end
+
+      names.each do |name|
+        lowered = name.downcase
+        family = if lowered.include?("qwen") then "qwen36"
+                 elsif lowered.include?("gemma") then "gemma4"
+                 end
+        return Resolution.new(profile: named(family), source: :name, detail: name, retry: retry_later) if family
+      end
+
+      Resolution.new(profile: named(DEFAULT_NAME), source: :default, detail: nil, retry: retry_later)
+    end
+
+    def self.configured(value, where)
+      profile = named(value)
+      warn "Warning: unknown profile #{value.to_s.inspect} in #{where} (allowed: #{NAMES.join(', ')}) — ignored" unless profile
+      profile
+    end
+    private_class_method :configured
+
+    # Only a native llama.cpp host has /props with a chat template; a chat
+    # host (api: openai) barely uses a profile, and mlx/oMLX expose none.
+    def self.probe?(entry, client)
+      return false if client.nil? || !client.respond_to?(:server_props)
+      return false if entry&.chat?
+
+      !client.respond_to?(:transport) || client.transport.name == :llama_cpp
+    end
+    private_class_method :probe?
+
     # ── Thought channel support ──────────────────────────────────────────
 
     def thought_channel_open
