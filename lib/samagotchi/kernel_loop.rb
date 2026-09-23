@@ -168,6 +168,9 @@ module Samagotchi
     # The Guardrails::Gate ToolRunner asks before each call; the Engine sets
     # it (nil: ToolRunner's own, hooks only).
     attr_accessor :guardrail_gate
+    # The turn's VisionContext (images: capability, files, limits), set by
+    # the Engine per turn; nil sends no images (placeholders instead).
+    attr_accessor :vision
 
     # Run the conversation loop and return the final model response plus
     # resumable conversation state when execution stops at max_iterations.

@@ -16,8 +16,10 @@ module Samagotchi
             source: :server)
       end
 
-      def self.estimate(prompt_text:, completion_text:)
-        new(prompt_tokens: TokenUsage.estimate(prompt_text.to_s), completion_tokens: TokenUsage.estimate(completion_text.to_s),
+      # +extra_prompt_tokens+: what the prompt holds besides text (images).
+      def self.estimate(prompt_text:, completion_text:, extra_prompt_tokens: 0)
+        new(prompt_tokens: TokenUsage.estimate(prompt_text.to_s) + extra_prompt_tokens.to_i,
+            completion_tokens: TokenUsage.estimate(completion_text.to_s),
             source: :estimate)
       end
 
@@ -47,7 +49,8 @@ module Samagotchi
       end
 
       # @param prompt_text [String, nil] what an estimate counts as the prompt
-      def usage(prompt_text: nil)
+      # @param extra_prompt_tokens [Integer] estimated non-text prompt tokens
+      def usage(prompt_text: nil, extra_prompt_tokens: 0)
         server = @generations.select { |generation| generation[:server] }
         unless server.empty?
           return Usage.new(prompt_tokens: server.last[:prompt], completion_tokens: server.sum { |g| g[:completion] },
@@ -57,7 +60,7 @@ module Samagotchi
         text = @generations.sum("") { |generation| generation[:text] }
         return Usage.none if text.empty?
 
-        Usage.estimate(prompt_text: prompt_text, completion_text: text)
+        Usage.estimate(prompt_text: prompt_text, completion_text: text, extra_prompt_tokens: extra_prompt_tokens)
       end
 
       private

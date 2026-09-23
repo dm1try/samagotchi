@@ -11,6 +11,7 @@ require_relative "../kernel_loop"
 require_relative "../context_window"
 require_relative "../tool_runner"
 require_relative "../tool_declarations"
+require_relative "../vision_context"
 
 module Samagotchi
   module LLM
@@ -73,27 +74,50 @@ module Samagotchi
       # text instead: one broken turn must not fail every later request. A
       # tool result without an id (native or older chat history) goes as a
       # user message "[tool results]\n…", valid on every server.
+      #
+      # Images (+images:+ refs) go as image_url parts after the text. A tool
+      # message takes text only, so a run of tool results' images follows it
+      # as one user message "[images from tool results]". Images the request
+      # leaves out (ImagePlan) become placeholder lines in the text.
       def wire_messages(conversation)
         paired = paired_call_ids(conversation)
-        conversation.map do |entry|
+        plan = ImagePlan.new(conversation, vision)
+        tool_images = []
+        wire = []
+        conversation.each_with_index do |entry, index|
+          items = plan.items(entry, index)
           case entry[:role].to_s
           when "system"
-            { role: "system", content: entry[:content].to_s }
+            wire << { role: "system", content: entry[:content].to_s }
           when "user"
-            { role: "user", content: parts(entry[:content]) }
+            wire << { role: "user", content: parts(entry[:content], items) }
           when "model"
-            assistant_message(entry, paired)
+            wire << assistant_message(entry, paired)
           when "tool_response"
             id = entry[:tool_call_id]
             if id && paired.include?(id)
-              { role: "tool", content: entry[:content].to_s, tool_call_id: id }
+              wire << { role: "tool", content: with_placeholders(entry[:content].to_s, items), tool_call_id: id }
+              tool_images.concat(image_parts(items))
             else
-              { role: "user", content: "[tool results]\n#{entry[:content]}" }
+              text = "[tool results]\n#{entry[:content]}"
+              wire << { role: "user", content: items.empty? ? text : parts(text, items) }
             end
           else
-            { role: entry[:role].to_s, content: parts(entry[:content]) }
+            wire << { role: entry[:role].to_s, content: parts(entry[:content]) }
           end
+          next if conversation[index + 1]&.dig(:role).to_s == "tool_response" || tool_images.empty?
+
+          wire << { role: "user", content: [{ type: "text", text: TOOL_IMAGES_TEXT }, *tool_images] }
+          tool_images = []
         end
+        wire
+      end
+
+      TOOL_IMAGES_TEXT = "[images from tool results]"
+
+      # The turn's VisionContext (the Engine sets it on the kernel), or nil.
+      def vision
+        @kernel.respond_to?(:vision) ? @kernel.vision : nil
       end
 
       def strip_model_thought(text)
@@ -178,8 +202,28 @@ module Samagotchi
         arguments.is_a?(String) ? arguments : JSON.generate(arguments || {})
       end
 
-      def parts(content)
-        content.is_a?(Array) ? content : [{ type: "text", text: content.to_s }]
+      # User content as parts: the text first (scrubbed of invalid UTF-8,
+      # with a line per image left out), then the images.
+      def parts(content, items = [])
+        if content.is_a?(Array)
+          notes = with_placeholders("", items)
+          return content + (notes.empty? ? [] : [{ type: "text", text: notes }]) + image_parts(items)
+        end
+
+        [{ type: "text", text: scrub(with_placeholders(content.to_s, items)) }] + image_parts(items)
+      end
+
+      def image_parts(items)
+        items.select(&:sent?).map { |item| { type: "image_url", image_url: { url: item.data } } }
+      end
+
+      def with_placeholders(text, items)
+        notes = items.reject(&:sent?).map(&:placeholder)
+        notes.empty? ? text : [text, *notes].reject(&:empty?).join("\n")
+      end
+
+      def scrub(text)
+        text.encoding == Encoding::UTF_8 && !text.valid_encoding? ? text.scrub("?") : text
       end
 
       # One turn's state: the conversation, the stream sink, usage and tool
@@ -194,8 +238,10 @@ module Samagotchi
           @pending_input = pending_input
           @usage = UsageCollector.new
           @tool_activity = []
-          # What an estimate counts as the prompt when the server reports no usage.
+          # What an estimate counts as the prompt when the server reports no
+          # usage: the text, and each image's estimate (not its base64).
           @prompt_text = conversation.sum("") { |entry| entry[:content].to_s }
+          @image_tokens = ImagePlan.estimated_tokens(conversation)
         end
 
         EMPTY_ANSWER = "(the model returned an empty answer)"
@@ -319,7 +365,7 @@ module Samagotchi
         end
 
         def usage
-          @usage.usage(prompt_text: @prompt_text)
+          @usage.usage(prompt_text: @prompt_text, extra_prompt_tokens: @image_tokens)
         end
 
         def emit(event)
