@@ -52,10 +52,13 @@ module Samagotchi
     # @param input_format [Integer, nil] the input-file format the owning
     #   worker reads, advertised in the sidecar for writers (see
     #   SessionManager.write_turn_input); nil advertises none (plain text)
+    # @param on_input [#call, nil] called once a turn for this session is
+    #   queued, to wake the worker loop (Worker::Waker#wake)
     def initialize(engine:, state_dir:, session_id:, bind: DEFAULT_BIND,
                    port: 0, ring_capacity: DEFAULT_RING_CAPACITY,
-                   heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, input_format: nil)
+                   heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, input_format: nil, on_input: nil)
       @engine = engine
+      @on_input = on_input
       @input_format = input_format
       @state_dir = state_dir
       @session_id = session_id
@@ -419,6 +422,7 @@ module Samagotchi
 
               @engine.announce(type: :turn_enqueued, enqueued_id: enqueued_id,
                                client_id: client_id, prompt: prompt.to_s)
+              @on_input&.call
             end
           end
         else

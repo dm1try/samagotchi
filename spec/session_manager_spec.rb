@@ -243,7 +243,7 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       expect {
-        described_class.run_session_loop(session.id, state_dir: tmpdir)
+        described_class.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
       }.to raise_error(SystemExit)
 
       expect(owner_seen).to include("kind" => "worker", "pid" => Process.pid)
@@ -319,7 +319,7 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       expect {
-        described_class.run_session_loop(session.id, state_dir: tmpdir)
+        described_class.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
       }.to raise_error(SystemExit)
 
       expect(bridge_started).to be(true)
@@ -428,7 +428,7 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       expect {
-        described_class.run_session_loop(session.id, state_dir: tmpdir)
+        described_class.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
       }.to raise_error(SystemExit)
       expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).last_prompt).to eq("earlier")
     end

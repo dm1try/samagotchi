@@ -19,15 +19,46 @@ module Samagotchi
   # The file IPC stays behind SessionManager's class methods
   # (find_new_input_files, claim_input_file, start_bridge, ...), which specs
   # stub as seams.
+  #
+  # The loop sleeps on a Waker, which the Bridge wakes when it queues a turn
+  # and the reminder callback when it queues one. A fallback tick picks up
+  # input written by another process (the web's write_turn_input fallback)
+  # and runs the stop-on-disk and idle-exit checks.
   class Worker
+    FALLBACK_TICK_SECONDS = 5
+
+    # Wakes the worker loop. Whoever queues work writes it first and wakes
+    # after, and #wait drains every wake before the loop looks for work: a
+    # wake drained with the others was for work the loop is about to see,
+    # and one that comes later stays queued for the next #wait. So no wake is
+    # lost, and a burst of them costs one pass.
+    class Waker
+      def initialize
+        @queue = Thread::Queue.new
+      end
+
+      def wake
+        @queue << true
+        nil
+      end
+
+      # @return [Boolean] true when woken, false when the timeout passed
+      def wait(timeout)
+        woken = !@queue.pop(timeout: timeout).nil?
+        @queue.clear
+        woken
+      end
+    end
+
     # @param idle_exit_minutes [Numeric, nil] nil: session.idle_exit_minutes
-    # @param poll_interval [Numeric] seconds between input polls
-    def initialize(session_id:, state_dir:, session_dir:, idle_exit_minutes: nil, poll_interval: 1)
+    # @param poll_interval [Numeric, nil] seconds between fallback ticks
+    def initialize(session_id:, state_dir:, session_dir:, idle_exit_minutes: nil, poll_interval: nil)
       @session_id = session_id
       @state_dir = state_dir
       @session_dir = session_dir
       @idle_exit_minutes = idle_exit_minutes
-      @poll_interval = poll_interval
+      @poll_interval = poll_interval || FALLBACK_TICK_SECONDS
+      @waker = Waker.new
     end
 
     # @return [Symbol] :idle_exit
@@ -42,7 +73,8 @@ module Samagotchi
       # reminders are due (even with no user input).
       @engine.start_idle
 
-      @bridge = SessionManager.start_bridge(engine: @engine, state_dir: @state_dir, session_id: @session_id)
+      @bridge = SessionManager.start_bridge(engine: @engine, state_dir: @state_dir, session_id: @session_id,
+                                            on_input: -> { @waker.wake })
       @idle_exit = WorkerIdleExit.new(
         engine: @engine, bridge: @bridge,
         timeout_minutes: @idle_exit_minutes || SessionManager.config_idle_exit_minutes,
@@ -66,7 +98,7 @@ module Samagotchi
           if input_files.empty?
             return :idle_exit if @idle_exit.due? && leave_idle
 
-            sleep(@poll_interval)
+            @waker.wait(@poll_interval)
             next
           end
 
@@ -90,15 +122,17 @@ module Samagotchi
     def build_engine
       session_id = @session_id
       state_dir = @state_dir
+      waker = @waker
       Samagotchi::Engine.new(
         mode: @session.mode.to_sym,
         model_name: @session.model_name,
         reminders: {
           callback: lambda { |_due_names|
-            # When a reminder is due, write a synthetic input file so the
-            # poll loop picks it up.
+            # When a reminder is due, queue a synthetic turn and wake the
+            # loop for it.
             SessionManager.write_turn_input(session_id, prompt: "[SYSTEM: Your scheduled reminders are due. Please check them.]",
                                                         client_id: SessionManager::REMINDER_CLIENT_ID, state_dir: state_dir)
+            waker.wake
           }
         }
       )
@@ -147,7 +181,7 @@ module Samagotchi
     # Shared mid-turn steering drain: claims any input files that arrive
     # while a turn is running and hands them to the agentic loop so
     # follow-ups merge at the next iteration boundary instead of waiting
-    # for the outer poll. claim_input_file is atomic (rename), so a file
+    # for the turn to end. claim_input_file is atomic (rename), so a file
     # consumed mid-turn simply fails the outer loop's later claim with
     # ENOENT → nil. No double-processing risk.
     #

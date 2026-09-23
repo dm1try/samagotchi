@@ -264,10 +264,11 @@ module Samagotchi
     # A worker nobody uses returns once session.idle_exit_minutes have passed
     # (see WorkerIdleExit). The next send wakes a new one.
     # @param idle_exit_minutes [Numeric, nil] nil: session.idle_exit_minutes
-    # @param poll_interval [Numeric] seconds between input polls
+    # @param poll_interval [Numeric, nil] seconds between the loop's fallback
+    #   ticks (nil: Worker::FALLBACK_TICK_SECONDS); queued turns wake it at once
     # @return [Symbol] :idle_exit
     def self.run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT,
-                              idle_exit_minutes: nil, poll_interval: 1)
+                              idle_exit_minutes: nil, poll_interval: nil)
       sd = state_dir || Session.default_state_dir
       session_dir = Session.session_dir(session_id, state_dir: sd)
       # Kept in a class ivar so the lock's File lives as long as the worker.
@@ -327,10 +328,12 @@ module Samagotchi
     # @return [Samagotchi::Bridge, nil] nil when the transport failed to start
     #   (the worker degrades: turns still flow through the input-dir loop, but
     #   there is no live SSE or in-process cancel/answer).
-    def self.start_bridge(engine:, state_dir:, session_id:)
+    # @param on_input [#call, nil] called after the Bridge queues a turn
+    def self.start_bridge(engine:, state_dir:, session_id:, on_input: nil)
       require_relative "bridge"
       Samagotchi::Bridge.new(
-        engine: engine, state_dir: state_dir, session_id: session_id, input_format: INPUT_FORMAT
+        engine: engine, state_dir: state_dir, session_id: session_id, input_format: INPUT_FORMAT,
+        on_input: on_input
       ).start
     rescue StandardError => e
       warn "Bridge: failed to start for session #{session_id}: #{e.class}: #{e.message}"

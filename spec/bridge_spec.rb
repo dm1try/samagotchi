@@ -394,12 +394,12 @@ RSpec.describe Samagotchi::Bridge do
       WebMock.disable_net_connect! if defined?(WebMock)
     end
 
-    def start_bridge(input_format: nil)
+    def start_bridge(input_format: nil, on_input: nil)
       @engine = make_engine
       @session = make_session
       @bridge = described_class.new(
         engine: @engine, state_dir: state_dir, session_id: @session.id,
-        heartbeat_interval: 0.2, input_format: input_format
+        heartbeat_interval: 0.2, input_format: input_format, on_input: on_input
       )
       @bridge.start
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
@@ -842,6 +842,22 @@ RSpec.describe Samagotchi::Bridge do
       expect(status).to eq(500)
 
       expect(seen).to be_empty
+    end
+
+    it "wakes its worker after it queues a turn for its own session, and only then" do
+      wakes = []
+      start_bridge(on_input: -> { wakes << Dir.glob(File.join(state_dir, "*", "input", "*")).size })
+
+      post_turn(JSON.generate(session_id: @session.id, prompt: "mine"))
+      # Woken after the write: the worker then finds the file.
+      expect(wakes).to eq([1])
+
+      post_turn(JSON.generate(session_id: make_session.id, prompt: "for someone else"))
+      allow(Samagotchi::SessionManager).to receive(:write_turn_input).and_return(false)
+      status, = post_turn(JSON.generate(session_id: @session.id, prompt: "lost"))
+
+      expect(status).to eq(500)
+      expect(wakes).to eq([1])
     end
 
     it "returns 400 for a malformed POST and creates no turn" do
