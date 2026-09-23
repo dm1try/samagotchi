@@ -1,0 +1,4 @@
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":null}}],"object":"chat.completion.chunk"}
+
+error: {"code":500,"message":"slot unavailable","type":"server_error"}
+

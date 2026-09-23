@@ -1,0 +1,4 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"PO"}}],"object":"chat.completion.chunk"}
+
+data: {not json
+
