@@ -169,24 +169,28 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #composer #actionMenu.visible{display:flex}
 #composer #actionMenu button{justify-content:flex-start;background:transparent;color:#e6e8eb;padding:8px 10px;border-radius:6px;text-align:left}
 #composer #actionMenu button:hover{background:#22262f}
-#infoBar{display:flex;padding:10px 12px;border-top:1px solid #1f232b;background:#d4a72c;color:#0b0d11;gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;min-height:56px;transition:opacity 280ms ease, min-height 300ms ease}
+#infoBar{display:flex;padding:10px 12px;border-top:1px solid #1f232b;background:#0f1115;color:#c9d1d9;gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;min-height:56px;transition:opacity 280ms ease, min-height 300ms ease}
 #infoBar.visible{display:flex}
 #infoBar .idle{font-size:13px;line-height:1.4}
-#infoBar .idle small{font-size:11px;opacity:.85}
-#infoBar .idle code{font-family:ui-monospace,monospace;font-size:11px;background:#0002;padding:1px 4px;border-radius:4px}
+#infoBar .idle small{font-size:11px;color:#8b949e}
+#infoBar .idle code{font-family:ui-monospace,monospace;font-size:11px;background:#1b1f27;padding:1px 4px;border-radius:4px}
 #infoBar .info{flex:1;min-width:0;font-size:13px;line-height:1.4;word-break:break-word;display:flex;flex-direction:column;gap:2px}
-#infoBar .meta{font-size:11px;opacity:.9;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-#infoBar .meta .id{font-family:ui-monospace,monospace;font-weight:700;font-size:12px}
-#infoBar .meta .copy-attach{padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#0002;color:#0b0d11}
-#infoBar .meta .status{font-size:11px;padding:2px 6px;border-radius:999px;background:#0002;color:#0b0d11;border:1px solid #0001}
-#infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;opacity:.75;word-break:break-all}
-#infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:#0001}
-#infoBar .meta .model.served-mismatch{background:#f5a62333}
+#infoBar .meta{font-size:11px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#infoBar .meta .id{font-family:ui-monospace,monospace;font-weight:700;font-size:12px;color:#7aa5ff}
+#infoBar .meta .copy-attach{padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#22262f;color:#c9d1d9;border:1px solid #2d333f}
+#infoBar .meta .copy-attach:hover{color:#fff;border-color:#3d4450}
+#infoBar .meta .status{font-size:11px;padding:2px 6px;border-radius:999px}
+#infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;color:#8b949e;word-break:break-all}
+#infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:#1b1f27;color:#9aa4b2}
+#infoBar .meta .model.served-mismatch{background:#2b2108;color:#f2cc60;border:1px solid #6b5416}
 #infoBar .preview-line{font-size:13px;word-break:break-word;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;line-height:1.4;max-height:2.8em}
 #infoBar .preview-line .preview, #infoBar .preview-line .mem{word-break:break-word}
-#infoBar .mem{font-size:12px;opacity:.9}
+#infoBar .mem{font-size:12px;color:#8b949e}
 #infoBar button{padding:6px 14px;border-radius:8px;font-size:13px;font-weight:600}
-#infoBar button.ghost{color:#0b0d11;background:#fff3}
+#infoBar #infoStopBtn{background:#22262f;color:#e3b341;border:1px solid #2d333f}
+#infoBar #infoStopBtn:hover{background:#2e2a1a;border-color:#6b5416}
+#infoBar #infoDeleteBtn{background:transparent;color:#8b949e;border:1px solid transparent}
+#infoBar #infoDeleteBtn:hover{color:#fff;background:#da3633;border-color:#da3633}
 #empty{position:absolute;inset:0;display:grid;place-items:center;color:#8b949e;padding:24px;text-align:center;background:#0b0d11;z-index:1}
 #empty.hidden{display:none !important}
 #empty .brand-start{font-size:clamp(28px,5vw,38px);font-weight:700;letter-spacing:.02em;color:#e6e8eb;padding:0}
@@ -280,8 +284,8 @@ a{color:#7aa5ff}
     </div>
     <div id="infoBar">
       <div class="info" id="infoText"><div class="idle">No session selected — pick one above, or type a prompt to start a new session.</div></div>
-      <button class="danger" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop</button>
-      <button class="danger" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
+      <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop</button>
+      <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
     </div>
   </section>
   <section id="allView" aria-label="All sessions">
