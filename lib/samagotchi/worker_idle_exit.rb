@@ -14,19 +14,26 @@ module Samagotchi
   #   until the agent cancels them, so an exit would drop them for good;
   # * less than the timeout has passed since the worker started, the Engine's
   #   last activity, or the last client request or disconnect.
+  #
+  # A client can also ask the worker to exit now (`/exit` in the attached
+  # TUI, Bridge POST /exit): #hold_for_request applies the same rules without
+  # the timeout, leaves out the asking client's own stream, and also holds
+  # for a pending continue offer, which lives only in memory.
   class WorkerIdleExit
     # @param engine [Engine] #turn_running?, #last_activity_at, #reminder_store
     # @param bridge [Bridge, nil] #open_streams, #last_client_activity_at; nil
     #   when the worker's Bridge failed to start
     # @param timeout_minutes [Numeric, nil] 0 or nil: never exit
     # @param input_pending [#call] true while input files wait
+    # @param awaiting_continue [#call] true while a continue offer waits
     # @param clock [#call] monotonic seconds, the Engine's and Bridge's clock
-    def initialize(engine:, bridge:, timeout_minutes:, input_pending:,
+    def initialize(engine:, bridge:, timeout_minutes:, input_pending:, awaiting_continue: -> { false },
                    clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @engine = engine
       @bridge = bridge
       @timeout = timeout_minutes.to_f * 60
       @input_pending = input_pending
+      @awaiting_continue = awaiting_continue
       @clock = clock
       @started_at = clock.call
     end
@@ -46,6 +53,26 @@ module Samagotchi
       return :client_connected if @bridge && @bridge.open_streams.positive?
       return :reminders if @engine.reminder_store&.any?
       return :recent_activity if idle_seconds < @timeout
+
+      nil
+    end
+
+    # What keeps the worker up when a client asks it to exit now, or nil
+    # when nothing does. The timeout doesn't apply, even 0 ("never idle
+    # out"): the request is explicit.
+    # @param requester [String, nil] the asking client's id; its own streams
+    #   don't hold
+    # @param streams [Boolean] false: other clients' streams don't hold
+    #   either (the last check before leaving, when the asker's stream may
+    #   still be open, untagged)
+    # @return [Symbol, nil] :turn_running, :input_queued, :continue_offered,
+    #   :client_connected or :reminders
+    def hold_for_request(requester:, streams: true)
+      return :turn_running if @engine.turn_running?
+      return :input_queued if @input_pending.call
+      return :continue_offered if @awaiting_continue.call
+      return :client_connected if streams && @bridge && @bridge.open_streams_except(requester).positive?
+      return :reminders if @engine.reminder_store&.any?
 
       nil
     end

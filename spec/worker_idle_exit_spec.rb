@@ -13,10 +13,11 @@ RSpec.describe Samagotchi::WorkerIdleExit do
   end
   let(:bridge) { double("bridge", open_streams: 0, last_client_activity_at: 1000.0) }
   let(:queued) { [false] }
+  let(:offer) { [false] }
 
   def policy(minutes: 1.0, bridge: self.bridge)
     described_class.new(engine: engine, bridge: bridge, timeout_minutes: minutes,
-                        input_pending: -> { queued.first }, clock: clock)
+                        input_pending: -> { queued.first }, awaiting_continue: -> { offer.first }, clock: clock)
   end
 
   def advance(seconds)
@@ -91,6 +92,45 @@ RSpec.describe Samagotchi::WorkerIdleExit do
     p = policy(bridge: nil)
     advance(60)
     expect(p).to be_due
+  end
+
+  describe "#hold_for_request (a client asks the worker to exit now)" do
+    before { allow(bridge).to receive(:open_streams_except).and_return(0) }
+
+    it "lets it go at once, whatever the timeout and recent activity" do
+      expect(policy.hold).to eq(:recent_activity)
+      expect(policy.hold_for_request(requester: "tui:1")).to be_nil
+      expect(policy(minutes: 0).hold_for_request(requester: "tui:1")).to be_nil
+      expect(policy(bridge: nil).hold_for_request(requester: "tui:1")).to be_nil
+    end
+
+    it "holds while a turn runs" do
+      allow(engine).to receive(:turn_running?).and_return(true)
+      expect(policy.hold_for_request(requester: "tui:1")).to eq(:turn_running)
+    end
+
+    it "holds while input is queued" do
+      queued[0] = true
+      expect(policy.hold_for_request(requester: "tui:1")).to eq(:input_queued)
+    end
+
+    it "holds while a continue offer waits" do
+      offer[0] = true
+      expect(policy.hold_for_request(requester: "tui:1")).to eq(:continue_offered)
+      expect(policy.hold).to eq(:recent_activity) # the idle exit doesn't look at it
+    end
+
+    it "holds while anyone but the asker holds a stream" do
+      allow(bridge).to receive(:open_streams).and_return(1)
+      allow(bridge).to receive(:open_streams_except).with("tui:1").and_return(1)
+      expect(policy.hold_for_request(requester: "tui:1")).to eq(:client_connected)
+      expect(policy.hold_for_request(requester: "tui:1", streams: false)).to be_nil
+    end
+
+    it "holds while a reminder is registered" do
+      reminders.register(name: "stretch", description: "Remind me to stretch", interval_minutes: 60)
+      expect(policy.hold_for_request(requester: "tui:1")).to eq(:reminders)
+    end
   end
 
   it "reports the idle seconds" do
