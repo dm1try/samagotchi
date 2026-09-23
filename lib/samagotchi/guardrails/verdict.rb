@@ -82,13 +82,17 @@ module Samagotchi
       def legacy? = @legacy
 
       # What the model gets for a deny (after the "[tool] Error: " prefix):
-      # who decided, why, and not to route around it.
+      # who decided, why, and not to route around it. A user's deny leads
+      # with the user's answer, so it doesn't read as the rule refusing.
       def deny_text
         reason = @reason.to_s.strip
         reason += "." unless reason.empty? || reason.match?(/[.!?]\z/)
-        [
-          "denied by guardrail (#{decider}):", reason, @note || "The user was not asked.", DO_NOT_RETRY
-        ].reject(&:empty?).join(" ")
+        parts = if @decided_by == "user" && @note
+                  [@note, "It needed approval (#{decider}):", reason]
+                else
+                  ["denied by guardrail (#{decider}):", reason, @note || "The user was not asked."]
+                end
+        (parts << DO_NOT_RETRY).reject(&:empty?).join(" ")
       end
 
       # For the activity entry; an allowed ask notes how ("approved (repo)",

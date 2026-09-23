@@ -91,7 +91,7 @@ RSpec.describe "Engine: editing config.yml after an approval" do
 
   it "doesn't write when denied" do
     result, = write_config("Deny")
-    expect(result[:output]).to include("denied by guardrail (rule chi-config, core)")
+    expect(result[:output]).to include("The user declined this call. It needed approval (rule chi-config, core)")
     expect(File.read(config_path)).to eq(original)
   end
 end

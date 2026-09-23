@@ -140,7 +140,7 @@ RSpec.describe Samagotchi::ToolRunner do
     let(:runner) do
       approver = lambda do |verdict|
         asked << events.map { |e| e[:type] }
-        answer == :allow ? verdict.settle!(:allow).tap { verdict.scope = "once" } : verdict.settle!(:deny, note: "The user declined.")
+        answer == :allow ? verdict.settle!(:allow).tap { verdict.scope = "once" } : verdict.settle!(:deny, note: "The user declined this call.")
       end
       k = kernel
       gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: approver)
@@ -163,7 +163,8 @@ RSpec.describe Samagotchi::ToolRunner do
       it "does not run the call" do
         result = run
         expect(dispatched).to be_empty
-        expect(result[:output]).to include("sure? The user declined. Do not retry it")
+        expect(result[:output]).to eq("[execute] Error: The user declined this call. It needed approval (hook): sure? Do not retry it " \
+                                      "or reach the same result another way; ask the user how to proceed.")
       end
     end
   end

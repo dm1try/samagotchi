@@ -150,7 +150,8 @@ The older flag still works: `event[:blocked] = true` with an optional
 `event[:block_reason]`. It is folded into the verdict after each hook (so it
 is sticky too), and the model gets `[<tool>] Error: blocked by guardrail: <reason>`
 (default reason `blocked by hook`). A verdict's deny reads
-`[<tool>] Error: denied by guardrail (<rule or hook>): <reason>. … Do not retry it …`.
+`[<tool>] Error: denied by guardrail (<rule or hook>): <reason>. … Do not retry it …`
+(after a user's Deny on an ask: `[<tool>] Error: The user declined this call… It needed approval (<rule or hook>): <reason>. …`).
 Either way the activity status is `blocked`, and `:after_tool_call` still fires.
 Only `:before_tool_call` votes.
 

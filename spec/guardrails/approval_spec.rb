@@ -67,18 +67,26 @@ RSpec.describe Samagotchi::Guardrails::Approval do
     it "denies on Deny, with the user's reason when given" do
       v = described_class.settle(ask, { selected_indices: [2], freeform: "use a PR" }, scopes)
       expect(v).to be_deny
-      expect(v.deny_text).to include('The user declined: "use a PR".')
+      expect(v.deny_text).to eq('The user declined this call: "use a PR". It needed approval (rule git-push, bundle guardrails): ' \
+                                "git push publishes commits. Do not retry it or reach the same result another way; " \
+                                "ask the user how to proceed.")
+      expect(v.deny_text).not_to include("denied by guardrail")
+    end
+
+    it "says the user declined, without a reason when none was given" do
+      v = described_class.settle(ask, { selected_indices: [2] }, scopes)
+      expect(v.deny_text).to start_with("The user declined this call. It needed approval (rule git-push, bundle guardrails):")
     end
 
     it "denies a freeform-only answer with that reason" do
       v = described_class.settle(ask, { selected_indices: [], freeform: "not now" }, scopes)
-      expect(v.deny_text).to include('The user declined: "not now".')
+      expect(v.deny_text).to start_with('The user declined this call: "not now". It needed approval')
     end
 
     it "denies a cancelled or unanswered question" do
       v = described_class.settle(ask, { error: "cancelled" }, scopes)
-      expect(v.deny_text).to eq("denied by guardrail (rule git-push, bundle guardrails): git push publishes commits. " \
-                                "The approval was cancelled. Do not retry it or reach the same result another way; " \
+      expect(v.deny_text).to eq("The approval was cancelled. It needed approval (rule git-push, bundle guardrails): " \
+                                "git push publishes commits. Do not retry it or reach the same result another way; " \
                                 "ask the user how to proceed.")
       expect(described_class.settle(ask, "legacy text", scopes)).to be_deny
     end

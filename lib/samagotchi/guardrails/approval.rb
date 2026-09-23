@@ -58,7 +58,7 @@ module Samagotchi
         end
 
         freeform = answer[:freeform].to_s.strip
-        note = freeform.empty? ? "The user declined." : "The user declined: #{freeform.inspect}."
+        note = freeform.empty? ? "The user declined this call." : "The user declined this call: #{freeform.inspect}."
         verdict.settle!(:deny, decided_by: "user", note: note)
       end
 
