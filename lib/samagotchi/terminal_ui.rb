@@ -354,10 +354,8 @@ module Samagotchi
     def run_assist_loop(session:, messages:)
       session.messages = messages
       @engine.session = session
-      # UI-agnostic steering queue. Nothing pushes mid-turn in the TUI yet
-      # (typed-during-generation input is intentionally out of scope — the tty
-      # render stack is too fragile), but wiring the drain here keeps the
-      # interface live and identical to the web/background hosts.
+      # Steering: lines submitted at the open prompt during a turn
+      # (#steer_line), merged by the kernel (#drain_steering).
       @pending_input_queue = PendingInputQueue.new
       open_repl_input
 
@@ -830,15 +828,17 @@ module Samagotchi
       # Build the (memoized) prompt now so --memory activations show in this
       # turn's status lines, including after /model rebuilt it.
       seed_system_prompt
-      result = @engine.run_turn(
-        session,
-        prompt,
-        on_event: @render_event,
-        max_iterations: max_iterations,
-        cancel_controller: cancellation_controller,
-        pending_input: @pending_input_queue&.method(:drain),
-        continue: continue
-      )
+      result = with_steering do
+        @engine.run_turn(
+          session,
+          prompt,
+          on_event: @render_event,
+          max_iterations: max_iterations,
+          cancel_controller: cancellation_controller,
+          pending_input: method(:drain_steering),
+          continue: continue
+        )
+      end
       emit_cancellation_notice(result)
       result
     rescue Interrupt
@@ -850,6 +850,40 @@ module Samagotchi
     ensure
       @active_cancel_controller = nil
       finish_thinking_spinner
+    end
+
+    # While a turn runs, a line submitted at the open prompt steers it: it
+    # merges at the next iteration boundary (Kernel), and one that comes after
+    # the last runs as the next turn. Reminder turns too.
+    def with_steering(&block)
+      return yield unless @repl_input
+
+      @repl_input.during_turn(method(:steer_line), leftovers: -> { @pending_input_queue.drain }, &block)
+    end
+
+    # On the reader thread, from ReplInput: takes a line for the running turn.
+    # A line sent after Ctrl-C waits for the next turn (the kernel would not
+    # merge it into the cancelled one); so do commands and exit.
+    # @return [Boolean] whether the turn took it
+    def steer_line(line)
+      return false if line.nil? || @active_cancel_controller&.cancelled? || command_line?(line)
+      return true if line.strip.empty?
+
+      @pending_input_queue.push(line.strip)
+      true
+    end
+
+    def command_line?(line)
+      SessionCommands.command?(line) || stats_command?(line) || recap_command?(line) || exit_command?(line)
+    end
+
+    # The kernel's drain at an iteration boundary: queued lines, #memory
+    # shorthand made words as for a prompt, and saved in the history.
+    def drain_steering
+      @pending_input_queue.drain.map do |line|
+        persist_recent_history(line)
+        normalize_model_input(line)
+      end
     end
 
     # The REPL's on_event sink for Engine#run_turn: render one event. Engine

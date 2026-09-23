@@ -7,8 +7,9 @@ module Samagotchi
   class TerminalUI
     # The REPL's input on a terminal: one LineReader keeps a prompt open for
     # the whole session, turns included, and this routes what it reads. A
-    # line goes to a question waiting at the prompt (asked as choice>), else
-    # to the inbox the REPL loop takes its next line from.
+    # line goes to a question waiting at the prompt (asked as choice>), to
+    # the running turn when its handler takes it (steering), else to the
+    # inbox the REPL loop takes its next line from.
     class ReplInput
       # @param prompt [#call] -> the prompt when no question waits
       # @param read [#call] (prompt, prefill) -> line (nil = Ctrl-D)
@@ -19,6 +20,9 @@ module Samagotchi
         @read = read
         @surface = surface
         @inbox = Thread::Queue.new
+        # Lines a turn left over: they come before the inbox.
+        @front = []
+        @turn = nil
         @lock = Monitor.new
         @answers = nil
       end
@@ -37,12 +41,33 @@ module Samagotchi
 
       # From the reader thread: [:line, text] or [:interrupt, info].
       def <<(item)
-        @lock.synchronize { (@answers || @inbox) << item }
+        @lock.synchronize do
+          next @answers << item if @answers
+          next if @turn && item.first == :line && @turn.call(item.last)
+
+          @inbox << item
+        end
         self
       end
 
       # @return [Array, nil] the next item, nil after +timeout+ seconds
-      def pop(timeout:) = @inbox.pop(timeout: timeout)
+      def pop(timeout:)
+        @lock.synchronize { return @front.shift unless @front.empty? }
+        @inbox.pop(timeout: timeout)
+      end
+
+      # While a turn runs, +handler+ (line -> truthy when it took the line) sees
+      # each line first. Once it ends, +leftovers+ (-> lines it took that the
+      # turn never merged) come next, in order, before anything in the inbox.
+      def during_turn(handler, leftovers:)
+        @lock.synchronize { @turn = handler }
+        yield
+      ensure
+        @lock.synchronize do
+          @turn = nil
+          @front.concat(Array(leftovers.call).map { |line| [:line, line] })
+        end
+      end
 
       def prompt_text
         @lock.synchronize { @answers ? @choice_prompt : @prompt.call }

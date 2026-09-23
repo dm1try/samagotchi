@@ -81,3 +81,19 @@ RSpec.describe Samagotchi::TerminalUI::ReplInput do
     end
   end
 end
+
+RSpec.describe Samagotchi::TerminalUI::ReplInput, "#during_turn" do
+  let(:input) { described_class.new(prompt: -> { "> " }, read: ->(*) {}, surface: RecordingSurface.new) }
+
+  it "offers each line to the turn first; what it leaves over comes next, before the inbox" do
+    taken = []
+    input.during_turn(->(line) { line.start_with?("steer") && taken << line }, leftovers: -> { ["late"] }) do
+      input << [:line, "steer me"] << [:line, "/stats"] << [:interrupt, nil]
+    end
+    input << [:line, "after"]
+
+    expect(taken).to eq(["steer me"])
+    expect(Array.new(4) { input.pop(timeout: 0) })
+      .to eq([[:line, "late"], [:line, "/stats"], [:interrupt, nil], [:line, "after"]])
+  end
+end
