@@ -745,7 +745,16 @@ end
       stub_probe
 
       expect(client.context_window(model: "m")).to eq(128_000)
-      expect(requests).to eq(["/props"])
+      expect(requests).to eq(["/props?model=m"])
+    end
+
+    it "names the model in the probe (a router needs it; a single-model server ignores it)" do
+      stub_probe
+
+      client.context_window(model: "org/Some Model:Q4")
+      client.context_window(model: nil)
+
+      expect(requests).to eq(["/props?model=org%2FSome+Model%3AQ4", "/props"])
     end
 
     it "probes once per model and serves repeats from the cache" do
@@ -795,6 +804,50 @@ end
       client.context_window(model: "m")
 
       expect(requests.size).to eq(2)
+    end
+
+    it "serves server_props and context_window from one GET" do
+      stub_probe
+
+      props = client.server_props(model: "m")
+      expect(props).to be_answered
+      expect(props.body.dig("default_generation_settings", "n_ctx")).to eq(128_000)
+      expect(client.context_window(model: "m")).to eq(128_000)
+      expect(requests.size).to eq(1)
+    end
+
+    it "reports a non-200 (llama.cpp's 503 while loading) as a failure, not an answer" do
+      stub_probe(code: "503", body: '{"error":{"code":503,"message":"Loading model"}}')
+
+      props = client.server_props(model: "m")
+      expect(props).not_to be_answered
+      expect(props.body).to be_nil
+    end
+
+    it "reports a network failure as a failure and asks again next time" do
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
+
+      expect(client.server_props(model: "m")).not_to be_answered
+
+      stub_probe
+      expect(client.server_props(model: "m")).to be_answered
+    end
+
+    it "answers with a nil body when /props is not JSON" do
+      stub_probe(body: "<html>")
+
+      props = client.server_props(model: "m")
+      expect(props).to be_answered
+      expect(props.body).to be_nil
+    end
+
+    it "has no /props on mlx or omlx" do
+      allow(Net::HTTP).to receive(:start)
+
+      %i[mlx omlx].each do |transport|
+        expect(described_class.new(host: "localhost", port: 8000, transport: transport).server_props(model: "m")).to be_nil
+      end
+      expect(Net::HTTP).not_to have_received(:start)
     end
 
     it "does not probe mlx or omlx, which report no window" do

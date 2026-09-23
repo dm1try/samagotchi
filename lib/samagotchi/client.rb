@@ -21,8 +21,8 @@ module Samagotchi
     RequestCancelled = LLM::RequestCancelled
     RetryExhausted = LLM::RetryExhausted
 
-    # The context-window probe runs before a turn's generation, so it gets a
-    # short budget and no retry (see #context_window).
+    # The /props probe runs before a turn's generation, so it gets a short
+    # budget and no retry (see #server_props).
     CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT = 1
     CONTEXT_WINDOW_PROBE_READ_TIMEOUT = 2
 
@@ -65,11 +65,11 @@ module Samagotchi
         openai_compatible? ? :max_tokens : :n_predict
       end
 
-      # Where the server reports the context window it was started with, or
-      # nil when it reports none. llama.cpp's /props carries the per-slot
-      # n_ctx (-c split across --parallel slots). mlx_lm.server and oMLX
-      # expose no such field.
-      def context_window_path
+      # Where the server describes itself (context window, chat template), or
+      # nil when it has no such route. llama.cpp's /props carries the per-slot
+      # n_ctx (-c split across --parallel slots) and the chat template.
+      # mlx_lm.server and oMLX expose neither.
+      def props_path
         openai_compatible? ? nil : "/props"
       end
 
@@ -106,6 +106,16 @@ module Samagotchi
       end
     end
 
+    # One /props probe's outcome. `answered?` is false when the probe failed:
+    # a network error, a timeout or any non-200 (llama.cpp answers 503 while
+    # it loads a model). `body` is the parsed JSON of a 200, or nil when it
+    # isn't JSON.
+    ServerProps = Data.define(:body, :status) do
+      def answered?
+        status == :ok
+      end
+    end
+
     # Moved to its own file; the old name keeps working.
     CancellationController = Samagotchi::CancellationController
 
@@ -130,8 +140,8 @@ module Samagotchi
       @read_timeout  = (read_timeout || cfg_read_timeout).to_i
       transport_fallback = cfg_transport_raw || ENV.fetch(SERVER_TRANSPORT_ENV, DEFAULT_TRANSPORT.to_s)
       @transport = build_transport(resolve_transport(transport || transport_fallback))
-      @context_window_cache = {}
-      @context_window_mutex = Mutex.new
+      @props_cache = {}
+      @props_mutex = Mutex.new
       @http = LLM::HTTP.new(label: @transport.label, open_timeout: @open_timeout, read_timeout: @read_timeout,
                             sleeper: sleeper)
     end
@@ -194,42 +204,60 @@ module Samagotchi
       raise "#{@transport.label} model listing failed (#{@host}:#{@port}): #{e.message}"
     end
 
-    # The context window (tokens) the running server was started with, or nil
-    # when the transport reports none or the probe fails. One GET with short
+    # What the running server says about itself (/props), as a ServerProps,
+    # or nil when the transport has no such route. One GET with short
     # timeouts and no retry: it runs before generation and must never hold up
-    # a turn. Answers (nil included) are cached per model; a failed probe is
-    # not, so the next call asks again.
-    def context_window(model: nil)
-      path = @transport.context_window_path
+    # a turn. The probe names the model (`?model=`): a llama.cpp router
+    # answers a stub without it, and a single-model server ignores it.
+    # Whatever the server answers (a non-200 too) is cached per model; a
+    # network failure is not, so the next call asks again.
+    def server_props(model: nil)
+      path = @transport.props_path
       return nil unless path
 
       key = model.to_s
-      @context_window_mutex.synchronize do
-        return @context_window_cache[key] if @context_window_cache.key?(key)
+      @props_mutex.synchronize do
+        return @props_cache[key] if @props_cache.key?(key)
       end
 
-      tokens = probe_context_window(path)
-      @context_window_mutex.synchronize { @context_window_cache[key] = tokens }
+      props = probe_props(path, key)
+      @props_mutex.synchronize { @props_cache[key] = props } unless props.status == :network_error
+      props
+    end
+
+    # The context window (tokens) the running server was started with, or nil
+    # when the transport reports none or the probe fails (see #server_props).
+    def context_window(model: nil)
+      props = server_props(model: model)
+      props&.answered? ? @transport.context_window_from(props.body) : nil
     rescue StandardError
       nil
     end
 
-    # Forget cached windows: the server may have restarted with another -c,
-    # or a model switch may have loaded one with a different window.
+    # Forget cached /props answers: the server may have restarted with
+    # another -c, or a model switch may have loaded one with a different
+    # window.
     def invalidate_context_window!
-      @context_window_mutex.synchronize { @context_window_cache.clear }
+      @props_mutex.synchronize { @props_cache.clear }
     end
 
     private
 
-    def probe_context_window(path)
-      uri = URI("#{@scheme}://#{@host}:#{@port}#{path}")
+    def probe_props(path, model)
+      query = model.empty? ? "" : "?#{URI.encode_www_form(model: model)}"
+      uri = URI("#{@scheme}://#{@host}:#{@port}#{path}#{query}")
       response = @http.fetch(uri, Net::HTTP::Get.new(uri), retries: false, check_status: false,
                                   open_timeout: CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
                                   read_timeout: CONTEXT_WINDOW_PROBE_READ_TIMEOUT)
-      return nil unless response.code.to_s == "200"
+      return ServerProps.new(body: nil, status: :http_error) unless response.code.to_s == "200"
 
-      @transport.context_window_from(JSON.parse(response.body.to_s))
+      ServerProps.new(body: parse_props(response.body), status: :ok)
+    rescue StandardError
+      ServerProps.new(body: nil, status: :network_error)
+    end
+
+    def parse_props(body)
+      JSON.parse(body.to_s)
     rescue JSON::ParserError
       nil
     end
