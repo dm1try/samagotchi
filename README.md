@@ -69,8 +69,9 @@ stdin plus `-m` puts the stdin above the message as a `>` quote.
 ### Send to chi (macOS)
 
 `chi desktop install` builds a small native helper: select text in any app →
-Services → **Send to chi** (or ⌃⌥⌘N with the clipboard) → pick live sessions in a
-Spotlight-like panel → the text lands there as a context note. It needs the
+Services → **Send to chi** (or ⌃⌥⌘N with the clipboard) → pick sessions in a
+Spotlight-like panel → ⏎ sends it quoted under your question as a message, ⌘⏎ as a
+context note. It needs the
 Command Line Tools. See [Desktop helper](docs/desktop.md).
 
 ### Guardrails
