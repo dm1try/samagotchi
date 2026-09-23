@@ -152,6 +152,26 @@ RSpec.describe Samagotchi::LLM::RubyLLMBackend do
       expect(completed.length).to eq(1)
       expect(completed.first[:content_length]).to eq(12)
     end
+
+    # Bridge clients (web, attached TUI) key streamed text on iteration:, and
+    # SessionMetrics / the web's ctx% read the window off :generation_started.
+    it "tags generation events with iteration: and reports the context window, like native" do
+      events = []
+      install_provider!([
+        body_with_tool(id: "c1", name: "execute", arguments: '{"command":"x"}'),
+        body_with_text("done")
+      ])
+      kernel_client = double("client", context_window: 32_768)
+      allow(fake_kernel).to receive(:client).and_return(kernel_client)
+
+      backend.complete(messages: [{ role: "user", content: "hi" }], on_stream_event: ->(e) { events << e })
+
+      %i[generation_started generation_chunk generation_completed].each do |type|
+        expect(events.select { |e| e[:type] == type }.map { |e| e[:iteration] }).to eq([1, 2])
+      end
+      started = events.find { |e| e[:type] == :generation_started }
+      expect(started).to include(context_window_tokens: 32_768, context_window_source: :server)
+    end
   end
 
   describe "#complete — cancellation off the main thread" do

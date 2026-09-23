@@ -5,6 +5,7 @@ require_relative "model_result"
 require_relative "../client"
 require_relative "native_tool_normalizer"
 require_relative "../kernel_loop"
+require_relative "../context_window"
 
 require "ruby_llm"
 require "json"
@@ -169,7 +170,10 @@ module Samagotchi
 
           inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1)
 
-          emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1)
+          window = context_window(model_name)
+          emit_stream_event(on_stream_event, type: :generation_started, iteration: iteration_index + 1,
+                                             context_window_tokens: window&.tokens,
+                                             context_window_source: window&.source)
           outcome = generate_once(conversation, on_stream_event, cancel_controller, model_name)
 
           if outcome.is_a?(Array) && outcome.first == :canceled
@@ -184,8 +188,10 @@ module Samagotchi
           # One generation == one chunk + one completion, matching the kernel-loop
           # event contract the terminal consumes (thinking-spinner lifecycle:
           # :generation_started starts it, :generation_completed stops it).
-          emit_stream_event(on_stream_event, type: :generation_chunk, content: last_text, payload: nil)
-          emit_stream_event(on_stream_event, type: :generation_completed, content_length: last_text.length, payload: nil)
+          emit_stream_event(on_stream_event, type: :generation_chunk, iteration: iteration_index + 1,
+                                             content: last_text, payload: nil)
+          emit_stream_event(on_stream_event, type: :generation_completed, iteration: iteration_index + 1,
+                                             content_length: last_text.length, payload: nil)
           tool_calls = outcome[:tool_calls]
 
           if tool_calls.nil? || tool_calls.empty?
@@ -480,6 +486,16 @@ module Samagotchi
         config.openai_api_base = @base_url
         config.openai_api_key = RubyLLM.config.openai_api_key || "sk-local-dummy"
         config
+      end
+
+      # The same resolution native uses: the kernel's client probes the server
+      # it points at (Engine keeps it on the effective model's host), then
+      # config, env and the default.
+      def context_window(model_name)
+        client = @kernel.client if @kernel.respond_to?(:client)
+        ContextWindow.resolve(client: client, model: model_name || @model_name)
+      rescue StandardError
+        nil
       end
 
       def resolve_output_char_cap(override)
