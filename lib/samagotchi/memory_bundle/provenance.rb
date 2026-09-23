@@ -135,7 +135,14 @@ module Samagotchi
         manifest_data["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
         manifest_data["source_commit"] = source_commit.to_s if source_commit && !source_commit.to_s.empty?
 
-        File.write(File.join(@bundle_dir, "manifest.json"), JSON.pretty_generate(manifest_data))
+        # Write aside and rename, so a reader in another process (a parallel
+        # chi start) never parses a truncated manifest.json.
+        manifest_path = File.join(@bundle_dir, "manifest.json")
+        tmp_path = "#{manifest_path}.#{Process.pid}.tmp"
+        File.write(tmp_path, JSON.pretty_generate(manifest_data))
+        File.rename(tmp_path, manifest_path)
+      ensure
+        FileUtils.rm_f(tmp_path) if tmp_path
       end
 
       # Reads provenance data (returns nil if not installed).

@@ -90,6 +90,29 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       expect(prov.read[:files][:"a.md"][:checksum]).to eq(Digest::SHA256.hexdigest("AAA v2"))
     end
 
+    it "never lets a reader in another process see a half-written manifest.json" do
+      prov = described_class.new(name: "test-bundle")
+      source = make_file(File.join(tmpdir, "sources"), "a.md", "AAA")
+      write = -> { prov.write(files: { "a.md" => source }, scope: "system", version: "1.0", source_path: "/x") }
+      write.call
+
+      writer = fork do
+        200.times { write.call }
+        exit!(0)
+      end
+      partial = 0
+      until Process.waitpid(writer, Process::WNOHANG)
+        begin
+          prov.read
+        rescue JSON::ParserError
+          partial += 1
+        end
+      end
+
+      expect(partial).to eq(0)
+      expect(Dir.children(prov.bundle_dir)).to contain_exactly("manifest.json", "bases")
+    end
+
     it "preserves untouched entries on merge" do
       prov = described_class.new(name: "test-bundle")
       base_dir = File.join(tmpdir, "sources")
