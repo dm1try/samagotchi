@@ -104,17 +104,9 @@ module Samagotchi
       flag_model_name = aliased_model_name.to_s.strip.empty? ? nil : ModelProfile.required_model_name(aliased_model_name)
       @effective_model_name = flag_model_name || @default_model_name
       @host_registry  = host_registry || Samagotchi::HostRegistry.new
-      # Client is now registry-aware: resolve active host for effective model
-      if client
-        @client = client
-        # Ensure registry's default entry points to injected client so routing respects stub
-        if @host_registry.entries["default"]
-          @host_registry.entries["default"].client = client
-        end
-      else
-        _cli, _bare, _entry = @host_registry.client_for_model(@effective_model_name)
-        @client = _cli
-      end
+      # An injected client (specs) stands in for every host's client.
+      @host_registry.client_override = client if client
+      @client = @host_registry.resolve(@effective_model_name).client
       # Own the session before loading it, so a worker can't write a turn
       # between the load and the lock that this TUI would later save over.
       claim_session!(session_id) if session_id
@@ -127,10 +119,7 @@ module Samagotchi
           @effective_model_name = @resume_session.model_name.to_s.strip.empty? ? @default_model_name : @resume_session.model_name
         end
         # Re-resolve client after resume may change effective model
-        unless client
-          _cli2, _bare2, _entry2 = @host_registry.client_for_model(@effective_model_name)
-          @client = _cli2
-        end
+        @client = @host_registry.resolve(@effective_model_name).client
       end
       @profile        = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(bare_model_for(@effective_model_name))
       @kernel         = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
@@ -626,7 +615,7 @@ module Samagotchi
     def status_server_segment
       # Show per-host info when multi-host is configured
       if @host_registry && @host_registry.entries.size > 1
-        active = @host_registry.host_for_model(@effective_model_name)[0] rescue nil
+        active = @host_registry.resolve(@effective_model_name).entry rescue nil
         if active
           host = active.host
           port = active.port
@@ -1671,17 +1660,7 @@ module Samagotchi
     end
 
     def run_selected_backend(messages, max_iterations:, on_stream_event:, cancel_controller:, pending_input: nil)
-      backend = @engine.backend
-      return @kernel.run(
-        messages,
-        max_iterations: max_iterations,
-        on_stream_event: on_stream_event,
-        cancel_controller: cancel_controller,
-        model_name: @effective_model_name,
-        pending_input: pending_input
-      ) unless backend
-
-      backend.complete(
+      @engine.backend.complete(
         messages: messages,
         max_iterations: max_iterations,
         on_stream_event: on_stream_event,
@@ -2223,8 +2202,7 @@ module Samagotchi
     end
 
     def bare_model_for(full_ref)
-      _, bare = @host_registry.parse_qualified_model(full_ref)
-      bare.to_s.strip.empty? ? full_ref.to_s.strip : bare
+      @host_registry.bare_name(full_ref)
     end
 
     def spinner_status_line
