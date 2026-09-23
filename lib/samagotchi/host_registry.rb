@@ -20,12 +20,16 @@ module Samagotchi
     CACHE_TTL_SECONDS = 60
     REMOTE_CACHE_TTL_SECONDS = 600
     LIST_TIMEOUT_SECONDS = 3
+    # Seconds a remote host's stream may take to show something (a queued
+    # free model on OpenRouter can send only keep-alives for minutes).
+    REMOTE_FIRST_TOKEN_TIMEOUT = 120
 
     # url: the configured url, when the entry has one (host, port and scheme
     # come from it); api_key_env: the variable holding the host's API key;
-    # profile: the configured prompt profile name, if any.
+    # profile: the configured prompt profile name, if any;
+    # first_token_timeout: the configured first-token limit (see #first_token_limit).
     HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env, :profile,
-                           keyword_init: true) do
+                           :first_token_timeout, keyword_init: true) do
       # Talks the OpenAI chat API (the chat loop); nil and raw apis use the
       # raw-prompt loop.
       def chat? = api == :openai
@@ -43,6 +47,17 @@ module Samagotchi
       def remote? = !api_key_env.to_s.empty? || scheme == "https"
 
       def models_ttl = remote? ? REMOTE_CACHE_TTL_SECONDS : CACHE_TTL_SECONDS
+
+      # Seconds a streamed answer may take to show something, or nil: the
+      # host's first_token_timeout, else server.first_token_timeout, else
+      # 120 for a remote host (a local server's long prompt eval is normal,
+      # and read_timeout catches a dead one). 0 turns it off.
+      def first_token_limit
+        seconds = first_token_timeout
+        seconds = HostRegistry.configured_first_token_timeout if seconds.nil?
+        seconds = remote? ? REMOTE_FIRST_TOKEN_TIMEOUT : nil if seconds.nil?
+        seconds&.positive? ? seconds : nil
+      end
     end
 
     # Where a model's requests go: the host entry, the client to use and the
@@ -67,10 +82,11 @@ module Samagotchi
       raw.each do |key, cfg|
         # cfg: {name:, host:, port:, transport:, original_name:}
         transport = cfg[:transport]
-        client = Client.new(host: cfg[:host], port: cfg[:port], transport: transport, scheme: cfg[:scheme])
-        entry = HostEntry.new(name: key.to_s.downcase, host: cfg[:host], port: cfg[:port].to_i, transport: transport, client: client,
+        entry = HostEntry.new(name: key.to_s.downcase, host: cfg[:host], port: cfg[:port].to_i, transport: transport,
                               api: cfg[:api]&.to_sym, scheme: cfg[:scheme], url: cfg[:url], api_key_env: cfg[:api_key_env],
-                              profile: cfg[:profile])
+                              profile: cfg[:profile], first_token_timeout: cfg[:first_token_timeout])
+        entry.client = Client.new(host: cfg[:host], port: cfg[:port], transport: transport, scheme: cfg[:scheme],
+                                  first_token_timeout: entry.first_token_limit)
         @entries[entry.name] = entry
       end
       # Fallback single entry (should already be synthesized by hosts_config, but guard)
@@ -89,6 +105,13 @@ module Samagotchi
 
     def entries
       @entries
+    end
+
+    # server.first_token_timeout, or nil when unset or unreadable.
+    def self.configured_first_token_timeout
+      Config.get("server.first_token_timeout")
+    rescue StandardError
+      nil
     end
 
     def entry_names
@@ -185,7 +208,8 @@ module Samagotchi
     # @return [LLM::OpenAIChat]
     def adapter_for(entry)
       @mutex.synchronize do
-        @adapters[entry.name] ||= LLM::OpenAIChat.for(entry, models_ttl: entry.models_ttl)
+        @adapters[entry.name] ||= LLM::OpenAIChat.for(entry, models_ttl: entry.models_ttl,
+                                                             first_token_timeout: entry.first_token_limit)
       end
     end
 

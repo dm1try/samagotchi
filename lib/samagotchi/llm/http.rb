@@ -94,10 +94,13 @@ module Samagotchi
 
       # @param label [String] names the server in RetryExhausted messages
       # @param sleeper [#call] waits the given seconds (specs pass a no-op)
-      def initialize(label:, open_timeout:, read_timeout:, retry_policy: nil, sleeper: nil)
+      # @param first_token_timeout [Numeric, nil] seconds a stream may take to
+      #   show something (see #stream_lines); nil: no limit
+      def initialize(label:, open_timeout:, read_timeout:, retry_policy: nil, sleeper: nil, first_token_timeout: nil)
         @label = label
         @open_timeout = open_timeout
         @read_timeout = read_timeout
+        @first_token_timeout = first_token_timeout&.positive? ? first_token_timeout : nil
         @retry_policy = retry_policy || RetryPolicy.from_config
         @sleeper = sleeper || ->(seconds) { sleep(seconds) }
       end
@@ -114,29 +117,38 @@ module Samagotchi
       # is retried like the same failure as a status. Any other error is
       # raised as is.
       #
+      # With a first_token_timeout, an attempt that hasn't called +shown+
+      # when the limit passes is closed and raises FirstTokenTimeout, which
+      # is not retried. Keep-alive comments don't count: they reset the read
+      # timeout, so without this a queued request can wait silently for as
+      # long as the provider keeps it open.
+      #
       # @param on_retry [Proc, nil] called before each backoff wait with
       #   attempt:, max_retries:, next_delay:, error_class:, error_message:
       # @param on_network_error [Proc, nil] called with each network error
       # @raise [RequestCancelled] when +cancel_controller+ cancels
       # @raise [RetryExhausted] when the retries run out
       # @raise [ProviderError] for an error status
+      # @raise [FirstTokenTimeout] when nothing was shown in time
       def stream_lines(uri, request, cancel_controller: nil, on_retry: nil, on_network_error: nil, &on_line)
         identify(request)
         with_retries(cancel_controller, on_retry, on_network_error) do |current|
           shown = -> { current[:streamed] = true }
-          start(uri) do |http|
-            current[:http] = http
-            http.request(request) do |response|
-              check_status!(response)
-              buffer = +""
-              response.read_body do |chunk|
-                buffer << chunk
-                while (newline_index = buffer.index("\n"))
-                  on_line.call(buffer.slice!(0, newline_index + 1).strip, shown)
+          watch_first_token(current) do
+            start(uri) do |http|
+              current[:http] = http
+              http.request(request) do |response|
+                check_status!(response)
+                buffer = +""
+                response.read_body do |chunk|
+                  buffer << chunk
+                  while (newline_index = buffer.index("\n"))
+                    on_line.call(buffer.slice!(0, newline_index + 1).strip, shown)
+                  end
                 end
+                # A body that doesn't end in a newline still has a last line.
+                on_line.call(buffer.strip, shown) unless buffer.strip.empty?
               end
-              # A body that doesn't end in a newline still has a last line.
-              on_line.call(buffer.strip, shown) unless buffer.strip.empty?
             end
           end
         end
@@ -200,6 +212,7 @@ module Samagotchi
             retry_after(e, attempts, delay, on_retry, cancel_controller)
           rescue StandardError => e
             raise RequestCancelled.new(cancel_controller.reason) if cancel_controller&.cancelled?
+            raise first_token_timeout if current[:first_token_expired]
             raise unless self.class.network_error?(e)
 
             on_network_error&.call(e)
@@ -218,6 +231,43 @@ module Samagotchi
         current[:mutex].synchronize { current[:done] = true }
         cancel_controller&.remove_listener(listener_id)
       end
+
+      # Runs one attempt (the block) under the first-token limit: a watchdog
+      # thread closes the attempt's socket when the limit passes before
+      # anything was shown, so the read fails and #with_retries raises
+      # FirstTokenTimeout; while still connecting, it raises that in the
+      # requesting thread, as a cancel does.
+      def watch_first_token(current)
+        return yield unless @first_token_timeout
+
+        requesting_thread = Thread.current
+        current[:mutex].synchronize { current[:attempt_over] = false }
+        watchdog = Thread.new do
+          sleep(@first_token_timeout)
+          current[:mutex].synchronize do
+            next if current[:streamed] || current[:attempt_over] || current[:done]
+
+            current[:first_token_expired] = true
+            # No Net::HTTP yet: still connecting. One whose socket is closed
+            # has finished, and the attempt returns on its own.
+            if current[:http]
+              socket_io(current[:http])&.close
+            else
+              requesting_thread.raise(first_token_timeout)
+            end
+          end
+        rescue IOError
+          nil
+        end
+        yield
+      ensure
+        if watchdog
+          current[:mutex].synchronize { current[:attempt_over] = true }
+          watchdog.kill
+        end
+      end
+
+      def first_token_timeout = FirstTokenTimeout.new(limit: @first_token_timeout, host: @label)
 
       def retry_after(error, attempts, delay, on_retry, cancel_controller)
         on_retry&.call(attempt: attempts, max_retries: @retry_policy.max, next_delay: delay,

@@ -142,6 +142,31 @@ module Samagotchi
       def summary = "network error after #{attempts} attempts (host #{host}: #{last_error.class})"
     end
 
+    # A stream that showed nothing (no text, reasoning or tool call) within
+    # the host's first-token limit. A queued request can stay open for many
+    # minutes on keep-alive comments alone, which reset the read timeout.
+    # Not retried: the wait was already long, and a queue would likely
+    # queue the retry too.
+    class FirstTokenTimeout < ConnectionError
+      attr_reader :limit
+
+      def initialize(limit:, host:)
+        @limit = limit
+        super("#{host}: no answer within #{format_seconds(limit)}s", host: host, retryable: false)
+      end
+
+      def kind = :first_token_timeout
+
+      def summary
+        "no answer from host #{host} within #{format_seconds(limit)}s (first_token_timeout); " \
+          "try again later or pick another model (/model)"
+      end
+
+      private
+
+      def format_seconds(seconds) = seconds == seconds.to_i ? seconds.to_i.to_s : seconds.to_s
+    end
+
     # Builds the ProviderError for an HTTP error response or a server's error
     # event.
     module ProviderErrors

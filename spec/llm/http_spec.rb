@@ -85,6 +85,64 @@ RSpec.describe Samagotchi::LLM::HTTP do
       expect(server.requests.size).to eq(1)
     end
 
+    context "with a first-token limit" do
+      let(:limited) do
+        described_class.new(label: "fake", open_timeout: 2, read_timeout: 5, retry_policy: policy,
+                            sleeper: ->(seconds) { sleeps << seconds }, first_token_timeout: 0.3)
+      end
+      let(:keep_alives) { Array.new(40) { ": OPENROUTER PROCESSING\n\n" } }
+
+      # OpenRouter keeps a queued request alive with SSE comments, which
+      # reset the read timeout: only a wall-clock limit ends the wait.
+      it "fails a stream that sends only keep-alives, once, without a retry" do
+        server.enqueue("/v1/chat/completions", sse: keep_alives, delay: 0.05, hold: true)
+
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        expect { limited.stream_lines(uri, post_request) { nil } }
+          .to raise_error(Samagotchi::LLM::FirstTokenTimeout) { |error|
+            expect(error.kind).to eq(:first_token_timeout)
+            expect(error).not_to be_retryable
+            expect(error.summary).to eq("no answer from host fake within 0.3s (first_token_timeout); " \
+                                        "try again later or pick another model (/model)")
+          }
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1.5
+        expect(server.requests.size).to eq(1)
+        expect(sleeps).to be_empty
+      end
+
+      it "stops watching once the caller showed something" do
+        server.enqueue("/v1/chat/completions", sse: ["data: 1\n\n", "data: 2\n\n", "data: 3\n\n"], delay: 0.25)
+        lines = []
+
+        limited.stream_lines(uri, post_request) do |line, shown|
+          lines << line
+          shown.call if line == "data: 1"
+        end
+
+        expect(lines.reject(&:empty?)).to eq(["data: 1", "data: 2", "data: 3"])
+      end
+
+      it "is off without a limit" do
+        server.enqueue("/v1/chat/completions", sse: [": PROCESSING\n\n"] * 6 + ["data: ok\n\n"], delay: 0.1)
+        lines = []
+
+        http.stream_lines(uri, post_request) { |line| lines << line }
+
+        expect(lines.reject(&:empty?).last).to eq("data: ok")
+      end
+
+      it "lets a cancel win over the limit" do
+        controller = Samagotchi::CancellationController.new
+        server.enqueue("/v1/chat/completions", sse: keep_alives, delay: 0.05, hold: true)
+
+        expect {
+          limited.stream_lines(uri, post_request, cancel_controller: controller) do |_line|
+            controller.cancel!(:ctrl_c)
+          end
+        }.to raise_error(Samagotchi::LLM::RequestCancelled)
+      end
+    end
+
     context "with a cancel" do
       let(:controller) { Samagotchi::CancellationController.new }
 

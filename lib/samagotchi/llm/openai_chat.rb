@@ -32,7 +32,7 @@ module Samagotchi
       MAX_MODEL_PAGES = 20
       DEFAULT_MODELS_TTL = 60
 
-      attr_reader :base_url, :host_name, :api_key_env, :models_ttl
+      attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout
 
       # @param entry [HostRegistry::HostEntry]
       def self.for(entry, **options)
@@ -63,9 +63,13 @@ module Samagotchi
       #   server.read_timeout); the connect timeout is capped by it
       # @param models_ttl [Numeric] how long #context_window reuses the list
       # @param remote [Boolean] a provider on the network, not a local server
+      # @param first_token_timeout [Numeric, nil] seconds a streamed answer
+      #   may take to show something (LLM::HTTP); nil: no limit
       def initialize(base_url:, host_name:, api_key_env: nil, stream: true, retries: true, timeout: nil,
-                     env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL, remote: false)
+                     env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL, remote: false,
+                     first_token_timeout: nil)
         @remote = remote
+        @first_token_timeout = first_token_timeout
         @base_url = base_url.to_s.chomp("/")
         @host_name = host_name.to_s
         @api_key_env = api_key_env
@@ -76,7 +80,7 @@ module Samagotchi
         open_timeout, read_timeout = timeouts(timeout)
         policy = retry_policy || (retries ? nil : HTTP::RetryPolicy.none)
         @http = HTTP.new(label: @host_name, open_timeout: open_timeout, read_timeout: read_timeout,
-                         retry_policy: policy, sleeper: sleeper)
+                         retry_policy: policy, sleeper: sleeper, first_token_timeout: first_token_timeout)
       end
 
       # @param messages [Array<Hash>] wire messages (role, content, tool_calls,

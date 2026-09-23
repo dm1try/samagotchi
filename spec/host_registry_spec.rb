@@ -110,6 +110,26 @@ RSpec.describe Samagotchi::HostRegistry do
       expect(registry.adapter_for(registry.entries["oai"]).models_ttl).to eq(60)
     end
 
+    it "limits the wait for a first token on remote hosts only, unless configured" do
+      expect(registry.entries.transform_values(&:first_token_limit)).to eq("box" => nil, "oai" => nil, "fw" => 120)
+      expect(registry.adapter_for(registry.entries["fw"]).first_token_timeout).to eq(120)
+      expect(registry.adapter_for(registry.entries["oai"]).first_token_timeout).to be_nil
+    end
+
+    it "takes the host's first_token_timeout, then server.first_token_timeout; 0 turns it off" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("server.first_token_timeout").and_return(30)
+      configured = described_class.new(hosts_config: {
+        "box" => { name: "box", host: "box.test", port: 8081, first_token_timeout: 200 },
+        "oai" => { name: "oai", host: "oai.test", port: 8000, api: :openai },
+        "fw" => { name: "fw", host: "api.example.test", port: 443, scheme: "https", api: :openai,
+                  url: "https://api.example.test/v1", api_key_env: "FW_KEY", first_token_timeout: 0 }
+      })
+
+      expect(configured.entries.transform_values(&:first_token_limit)).to eq("box" => 200, "oai" => 30, "fw" => nil)
+      expect(configured.entries["box"].client.first_token_timeout).to eq(200)
+    end
+
     it "reuses a host's list within its TTL unless forced" do
       registry.list_all_models
       clock[0] += 120

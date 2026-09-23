@@ -43,17 +43,29 @@ RSpec.describe "hosts: url and api_key_env" do
     expect(result.keys).to eq(["ok"])
   end
 
+  it "reads first_token_timeout in seconds (0 = off) and ignores a bad one with a warning" do
+    result = nil
+    expect do
+      result = hosts("or" => { "url" => "https://or.test/v1", "first_token_timeout" => 90 },
+                     "off" => { "host" => "h", "first_token_timeout" => 0 },
+                     "bad" => { "host" => "h", "first_token_timeout" => "soon" })
+    end.to output(/'bad'.*first_token_timeout/).to_stderr
+    expect(result["or"][:first_token_timeout]).to eq(90)
+    expect(result["off"][:first_token_timeout]).to eq(0)
+    expect(result["bad"][:first_token_timeout]).to be_nil
+  end
+
   it "passes url and api_key_env to workers, never the key" do
     Dir.mktmpdir do |dir|
       path = File.join(dir, "config.yml")
       File.write(path, { "hosts" => { "fw" => { "url" => "https://api.example.test/v1", "api" => "openai",
-                                                "api_key_env" => "EXAMPLE_KEY" } } }.to_yaml)
+                                                "api_key_env" => "EXAMPLE_KEY", "first_token_timeout" => 45 } } }.to_yaml)
       json = Samagotchi::ConfigFile.hosts_json_for_env(env: { "EXAMPLE_KEY" => "sk-secret" }, path: path)
       worker = Samagotchi::ConfigFile.hosts_config(env: { "SAMAGOTCHI_HOSTS_JSON" => json }, path: File.join(dir, "none.yml"))
 
       expect(json).not_to include("sk-secret")
       expect(worker["fw"]).to include(url: "https://api.example.test/v1", host: "api.example.test", port: 443,
-                                      api_key_env: "EXAMPLE_KEY", api: :openai)
+                                      api_key_env: "EXAMPLE_KEY", api: :openai, first_token_timeout: 45)
     end
   end
 

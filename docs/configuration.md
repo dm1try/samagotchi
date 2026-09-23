@@ -265,6 +265,24 @@ Configure these environment variables to avoid premature request failures:
 - `SAMAGOTCHI_SERVER_OPEN_TIMEOUT` (default: `10`) connection timeout in seconds.
 - `SAMAGOTCHI_SERVER_READ_TIMEOUT` (default: `600`) response read timeout in seconds.
 
+A streamed answer also has a **first-token limit**: the seconds it may take to show its first text, reasoning or
+tool call. A remote provider can keep a queued request open for minutes with SSE keep-alive comments
+(OpenRouter's `: OPENROUTER PROCESSING`), which reset the read timeout, so only this limit ends the wait. The
+turn then fails with `no answer from host <name> within 120s (first_token_timeout); …` and is not retried.
+
+```yaml
+hosts:
+  openrouter:
+    url: https://openrouter.ai/api/v1
+    api: openai
+    api_key_env: OPENROUTER_API_KEY
+    first_token_timeout: 180   # seconds; 0 = off
+```
+
+`hosts.<name>.first_token_timeout` wins over `server.first_token_timeout` (`SAMAGOTCHI_SERVER_FIRST_TOKEN_TIMEOUT`),
+which applies to every host. With neither set, remote hosts (an API key or an https url) get 120 seconds and local
+servers no limit: a long prompt evaluation is normal there, and the read timeout catches a dead server.
+
 ## Llama Model Routing
 
 To explicitly route requests to a named model in llama.cpp, set:

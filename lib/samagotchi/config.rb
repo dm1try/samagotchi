@@ -62,6 +62,10 @@ module Samagotchi
       Entry.new(key: "server.port",              yaml_path: %w[server port],               type: :integer, default: 8080,            expose: %i[env config cli]),
       Entry.new(key: "server.open_timeout",      yaml_path: %w[server open_timeout],       type: :integer, default: 10,              expose: %i[env config cli]),
       Entry.new(key: "server.read_timeout",      yaml_path: %w[server read_timeout],       type: :integer, default: 600,            expose: %i[env config cli]),
+      # Seconds a streamed answer may take to show its first text, reasoning
+      # or tool call, for every host; 0 = off. Unset: 120 on remote hosts,
+      # off on local ones. hosts.<name>.first_token_timeout wins.
+      Entry.new(key: "server.first_token_timeout", yaml_path: %w[server first_token_timeout], type: :integer, default: nil,          expose: %i[env config]),
 
       Entry.new(key: "recap.enabled",            yaml_path: %w[recap enabled],             type: :bool,   default: nil,              expose: %i[env config]),
       Entry.new(key: "recap.model",              yaml_path: %w[recap model],               type: :string, default: nil,              expose: %i[env config cli]),
@@ -537,6 +541,11 @@ module Samagotchi
           api_key_env = (raw_cfg["api_key_env"] || raw_cfg[:api_key_env]).to_s.strip
           # Kept as written; ModelProfile.resolve warns about an unknown one.
           profile = (raw_cfg["profile"] || raw_cfg[:profile]).to_s.strip.downcase
+          first_token_timeout = raw_cfg.key?("first_token_timeout") ? raw_cfg["first_token_timeout"] : raw_cfg[:first_token_timeout]
+          unless first_token_timeout.nil? || (first_token_timeout.is_a?(Numeric) && !first_token_timeout.negative?)
+            warn_once "Warning: hosts entry '#{name}': first_token_timeout must be seconds (0 = off); using the default"
+            first_token_timeout = nil
+          end
           unless api_key_env.empty? || api_key_env.match?(ENV_NAME_RE)
             warn_once "Warning: ignoring hosts entry '#{name}': api_key_env must be an environment variable name"
             next
@@ -595,7 +604,7 @@ module Samagotchi
           normalized[lowered] = { name: lowered, host: host, port: port_val, transport: transport_val ? transport_val.to_sym : nil,
                                   api: api_val&.to_sym, original_name: name, scheme: scheme,
                                   url: url.empty? ? nil : url, api_key_env: api_key_env.empty? ? nil : api_key_env,
-                                  profile: profile.empty? ? nil : profile }
+                                  profile: profile.empty? ? nil : profile, first_token_timeout: first_token_timeout }
         end
       end
 
@@ -696,7 +705,7 @@ module Samagotchi
         # key stays in the environment, which workers inherit.
         location = v[:url] ? { "url" => v[:url] } : { "host" => v[:host], "port" => v[:port] }
         location.merge("transport" => v[:transport]&.to_s, "api" => v[:api]&.to_s, "api_key_env" => v[:api_key_env],
-                       "profile" => v[:profile]).compact
+                       "profile" => v[:profile], "first_token_timeout" => v[:first_token_timeout]).compact
       end
       JSON.generate(simple)
     rescue StandardError

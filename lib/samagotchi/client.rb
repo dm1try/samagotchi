@@ -121,7 +121,10 @@ module Samagotchi
 
     # @param sleeper [#call, nil] waits between retries (specs pass a no-op)
     # @param scheme [String, nil] "https" for a TLS server (default http)
-    def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil, sleeper: nil, scheme: nil)
+    # @param first_token_timeout [Numeric, nil] seconds a completion may take
+    #   to stream its first text (LLM::HTTP); nil: no limit
+    def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil, sleeper: nil, scheme: nil,
+                   first_token_timeout: nil)
       # Unified config precedence: CLI > ENV > file > default (via Samagotchi::Config)
       cfg_host = nil; cfg_port = nil; cfg_transport_raw = nil
       begin
@@ -142,9 +145,13 @@ module Samagotchi
       @transport = build_transport(resolve_transport(transport || transport_fallback))
       @props_cache = {}
       @props_mutex = Mutex.new
+      @first_token_timeout = first_token_timeout
       @http = LLM::HTTP.new(label: @transport.label, open_timeout: @open_timeout, read_timeout: @read_timeout,
-                            sleeper: sleeper)
+                            sleeper: sleeper, first_token_timeout: first_token_timeout)
     end
+
+    # Seconds a completion may take to stream its first text, or nil.
+    attr_reader :first_token_timeout
 
     # The wire-format strategy for this client's transport.
     def transport
