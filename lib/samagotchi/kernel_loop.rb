@@ -156,6 +156,9 @@ module Samagotchi
     attr_accessor :hooks
     attr_accessor :client
     attr_accessor :model_key
+    # @return [Proc, nil] answers ask_user_question (payload → answer string);
+    #   Engine sets it to its blocking request_question.
+    attr_accessor :question_handler
 
     # Run the conversation loop and return the final model response plus
     # resumable conversation state when execution stops at max_iterations.
@@ -833,22 +836,10 @@ module Samagotchi
         return "Error: ask_user_question requires 2-8 options (got #{options.size}). Provide e.g. options=[\"Cats\",\"Dogs\"]"
       end
 
-      # If an Engine-level blocking handler is registered (TUI/Web), delegate there.
-      # The handler is stored on the Engine via KernelLoop's engine reference set
-      # by Engine initializer (see Engine#initialize kernel coupling). Fallback to a
+      # If an Engine-level blocking handler is registered (TUI/Web), delegate
+      # there (Engine sets question_handler). Otherwise fall back to a
       # non-blocking JSON preview so the model can still see a structured response.
-      handler = nil
-      if defined?(@question_handler) && @question_handler
-        handler = @question_handler
-      elsif instance_variable_defined?(:@engine) && @engine && @engine.respond_to?(:request_question)
-        handler = proc { |payload| @engine.request_question(payload) }
-      elsif instance_variable_defined?(:@kernel) && @kernel && @kernel.respond_to?(:engine) && @kernel.engine.respond_to?(:request_question)
-        handler = proc { |payload| @kernel.engine.request_question(payload) }
-      end
-      # Also check if KernelLoop was constructed with an Engine-linked kernel that exposes request_question via injected Engine
-      if handler.nil? && defined?(@engine_request_question_handler) && @engine_request_question_handler
-        handler = @engine_request_question_handler
-      end
+      handler = @question_handler
 
       payload = {
         question: question,

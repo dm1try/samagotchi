@@ -107,19 +107,8 @@ module Samagotchi
       if kernel && @kernel.respond_to?(:hooks=)
         @kernel.hooks = @hooks
       end
-      # Cross-link kernel ↔ engine for ask_user_question blocking path (kernel needs to call back into engine)
-      if @kernel.instance_variable_defined?(:@engine) || @kernel.respond_to?(:engine=)
-        @kernel.instance_variable_set(:@engine, self) rescue nil
-        @kernel.instance_variable_set(:@engine_ref, self) rescue nil
-      else
-        @kernel.instance_variable_set(:@engine, self) rescue nil
-      end
-      # Also expose a direct handler proc on kernel for the fallback path
-      begin
-        @kernel.instance_variable_set(:@engine_request_question_handler, proc { |payload| request_question(payload) })
-      rescue StandardError
-        nil
-      end
+      # ask_user_question blocks on the Engine's question flow (TUI/Web answer it).
+      @kernel.question_handler = proc { |payload| request_question(payload) } if @kernel.respond_to?(:question_handler=)
       # If session was resumed and has a pending_question, hydrate engine state
       if @resume_session && @resume_session.pending_question
         @pending_question = @resume_session.pending_question.dup

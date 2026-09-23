@@ -299,3 +299,18 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     end
   end
 end
+
+RSpec.describe "Engine ↔ KernelLoop question link" do
+  # A real kernel (as the TUI builds it, before the Engine) must route
+  # ask_user_question into the Engine's blocking request_question.
+  it "the kernel's ask_user_question reaches Engine#request_question" do
+    kernel = Samagotchi::KernelLoop.new(client: double("client"))
+    engine = Samagotchi::Engine.new(mode: :assist, client: double("client"), kernel: kernel)
+    allow(engine).to receive(:request_question).and_return('{"selected":["Cats"]}')
+
+    result = kernel.dispatch_tool_call(name: "ask_user_question", question: "Pets?", options: %w[Cats Dogs])
+
+    expect(engine).to have_received(:request_question).with(include(question: "Pets?", options: %w[Cats Dogs]))
+    expect(result[:output]).to eq(%([ask_user_question]\n{"selected":["Cats"]}))
+  end
+end
