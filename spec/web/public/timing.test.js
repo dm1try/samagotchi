@@ -8,6 +8,7 @@ import {
   normalizeTiming,
   turnRecordAt,
   timedTurnIndexes,
+  appendAboveLiveTiming,
 } from "../../../lib/samagotchi/web/public/timing.js";
 
 // Shared contract: spec/shared/timing_matrix.json. One source of truth for the
@@ -55,4 +56,40 @@ test("timedTurnIndexes marks only each turn's last assistant message", () => {
   ];
 
   assert.deepEqual(timedTurnIndexes(items), [null, null, 0, null, 1, null]);
+});
+
+function fakeParent() {
+  const parent = {
+    children: [],
+    appendChild(el) { parent.children.push(el); el.parentNode = parent; },
+    insertBefore(el, ref) { parent.children.splice(parent.children.indexOf(ref), 0, el); el.parentNode = parent; },
+  };
+  return parent;
+}
+
+function fakeEl(name, classes = []) {
+  return { name, parentNode: null, classList: { contains: (c) => classes.includes(c) } };
+}
+
+test("appendAboveLiveTiming keeps a running turn's timing line last", () => {
+  const parent = fakeParent();
+  const timing = fakeEl("timing", ["turn-timing", "live"]);
+  parent.appendChild(fakeEl("prompt"));
+  parent.appendChild(timing);
+
+  appendAboveLiveTiming(parent, fakeEl("thinking"), timing);
+  appendAboveLiveTiming(parent, fakeEl("answer"), timing);
+
+  assert.deepEqual(parent.children.map((el) => el.name), ["prompt", "thinking", "answer", "timing"]);
+});
+
+test("appendAboveLiveTiming appends after a finished timing line, or with none", () => {
+  const parent = fakeParent();
+  const finished = fakeEl("timing", ["turn-timing"]);
+  parent.appendChild(finished);
+
+  appendAboveLiveTiming(parent, fakeEl("next prompt"), finished);
+  appendAboveLiveTiming(parent, fakeEl("recap"), null);
+
+  assert.deepEqual(parent.children.map((el) => el.name), ["timing", "next prompt", "recap"]);
 });
