@@ -190,9 +190,12 @@ engine.session_state_snapshot   # => { status:, message_count:, last_prompt:, ev
 is the **single live transport** and runs **inside the forked session worker** (the same
 process that already owns the `Engine`); every worker starts it, and it exposes:
 
-- `GET  /session/:id/stream` — SSE stream of engine + kernel events, each with an `id: <event_seq>`
-  cursor; resume via `Last-Event-ID` / `?from_seq=`; a `: ping` heartbeat keeps idle proxies alive;
-  too-old reconnects receive a `reset` marker carrying `session_state_snapshot`.
+- `GET  /session/:id/stream` — SSE stream of engine + kernel events, each with an
+  `id: <event_seq>-<epoch>` cursor (the epoch is drawn per worker's Bridge, since `event_seq` starts
+  over in each worker; snapshots and `/state` carry it as `event_id`); resume via `Last-Event-ID` /
+  `?from_seq=` (a plain `event_seq` is still accepted); a `: ping` heartbeat keeps idle proxies alive;
+  too-old reconnects, and cursors from another worker's epoch, receive a `reset` marker carrying
+  `session_state_snapshot`.
 - `POST /session/:id/turn` — fire-and-forget turn creation; returns `202` with an `enqueued_id`
   (delivery is at-least-once via the worker's file-IPC input path — it never calls `run_turn`
   across the HTTP boundary). Inspect results through the read surface, not the turn response.
