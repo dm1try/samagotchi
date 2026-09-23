@@ -40,7 +40,8 @@ RSpec.describe Samagotchi::LLM::HTTP do
     end
 
     it "retries a dropped connection and reports each retry" do
-      server.enqueue("/v1/chat/completions", sse: ["data: 1\n\n"], drop: true)
+      # Dropped before any line: nothing was shown, so the request is sent again.
+      server.enqueue("/v1/chat/completions", sse: [], drop: true)
       server.enqueue("/v1/chat/completions", sse: "data: 2\n\n")
       retries = []
       errors = []
@@ -49,7 +50,7 @@ RSpec.describe Samagotchi::LLM::HTTP do
       http.stream_lines(uri, post_request, on_retry: ->(**event) { retries << event },
                                            on_network_error: ->(error) { errors << error }) { |line| lines << line }
 
-      expect(lines).to eq(["data: 1", "", "data: 2", ""])
+      expect(lines).to eq(["data: 2", ""])
       expect(retries.map { |event| event.slice(:attempt, :max_retries, :next_delay) })
         .to eq([{ attempt: 1, max_retries: 2, next_delay: 0.5 }])
       expect(errors.size).to eq(1)
@@ -129,6 +130,123 @@ RSpec.describe Samagotchi::LLM::HTTP do
     end
   end
 
+  describe "HTTP status errors" do
+    def stream!(target = uri)
+      http.stream_lines(target, post_request(target)) { nil }
+    end
+
+    {
+      400 => [Samagotchi::LLM::BadRequest, false, :bad_request],
+      401 => [Samagotchi::LLM::AuthError, false, :auth],
+      403 => [Samagotchi::LLM::AuthError, false, :auth],
+      404 => [Samagotchi::LLM::BadRequest, false, :bad_request],
+      422 => [Samagotchi::LLM::BadRequest, false, :bad_request],
+      429 => [Samagotchi::LLM::RateLimited, true, :rate_limited],
+      500 => [Samagotchi::LLM::ServerError, true, :server],
+      501 => [Samagotchi::LLM::ServerError, false, :server],
+      503 => [Samagotchi::LLM::ServerError, true, :server]
+    }.each do |status, (klass, retryable, kind)|
+      it "maps HTTP #{status} to #{klass.name.split("::").last}#{retryable ? ", retried" : ""}" do
+        server.default("/v1/chat/completions", status: status, json: { error: { message: "nope #{status}" } })
+
+        expect { stream! }.to raise_error(klass) { |error|
+          expect(error.status).to eq(status)
+          expect(error.kind).to eq(kind)
+          expect(error.retryable?).to be(retryable)
+          expect(error.host).to eq("fake")
+          expect(error.message).to eq("fake: HTTP #{status}: nope #{status}")
+          expect(error.attempts).to eq(retryable ? 3 : 1)
+        }
+        expect(server.requests.size).to eq(retryable ? 3 : 1)
+        expect(klass.ancestors).to include(Samagotchi::LLM::ProviderError)
+      end
+    end
+
+    it "waits what Retry-After asks, then succeeds" do
+      server.enqueue("/v1/chat/completions", status: 429, json: FakeProviderServer.fixture("error_429.hand-written.json"),
+                                             headers: { "Retry-After" => "2" })
+      server.enqueue("/v1/chat/completions", sse: "data: ok\n\n")
+      lines = []
+
+      http.stream_lines(uri, post_request) { |line| lines << line }
+
+      expect(lines.first).to eq("data: ok")
+      expect(sleeps.sum.round(2)).to eq(2.0)
+    end
+
+    it "does not wait out a Retry-After longer than a minute" do
+      server.default("/v1/chat/completions", status: 429, json: { error: { message: "slow down" } },
+                                             headers: { "Retry-After" => "600" })
+
+      expect { stream! }.to raise_error(Samagotchi::LLM::RateLimited) { |error| expect(error.retry_after).to eq(600.0) }
+      expect(sleeps).to be_empty
+      expect(server.requests.size).to eq(1)
+    end
+
+    it "maps llama.cpp's context overflow 400 to a BadRequest it never retries" do
+      server.default("/v1/chat/completions", status: 400, json: FakeProviderServer.fixture("error_400.json"))
+
+      expect { stream! }.to raise_error(Samagotchi::LLM::BadRequest) { |error|
+        expect(error).to be_context_overflow
+        expect(error.message).to include("exceeds the available context size")
+      }
+      expect(server.requests.size).to eq(1)
+    end
+
+    it "treats a context overflow reported as a 500 as a BadRequest too" do
+      server.default("/v1/chat/completions", status: 500,
+                                             json: { error: { code: 500, message: "the request exceeds the available context size, try increasing it" } })
+
+      expect { stream! }.to raise_error(Samagotchi::LLM::BadRequest)
+      expect(server.requests.size).to eq(1)
+    end
+
+    it "does not retry a stream that already sent lines; the drop fails as a connection error" do
+      server.default("/v1/chat/completions", sse: ["data: 1\n\n"], drop: true)
+      lines = []
+
+      expect { http.stream_lines(uri, post_request) { |line| lines << line } }
+        .to raise_error(Samagotchi::LLM::RetryExhausted) { |error|
+          expect(error).to be_a(Samagotchi::LLM::ConnectionError)
+          expect(error.attempts).to eq(1)
+          expect(error.kind).to eq(:connection)
+        }
+      expect(lines.first).to eq("data: 1")
+      expect(server.requests.size).to eq(1)
+    end
+
+    it "stops a backoff wait after a 503" do
+      controller = Samagotchi::CancellationController.new
+      server.default("/v1/chat/completions", status: 503, json: { error: { message: "busy" } })
+      cancelling = described_class.new(label: "fake", open_timeout: 2, read_timeout: 5, retry_policy: policy,
+                                       sleeper: ->(_seconds) { controller.cancel!(:ctrl_c) })
+
+      expect { cancelling.stream_lines(uri, post_request, cancel_controller: controller) { nil } }
+        .to raise_error(Samagotchi::LLM::RequestCancelled)
+      expect(server.requests.size).to eq(1)
+    end
+  end
+
+  describe "SSE error events" do
+    it "maps llama.cpp's mid-stream error line to a ProviderError" do
+      error = described_class.sse_error('error: {"code":500,"message":"slot unavailable","type":"server_error"}', host: "box")
+
+      expect(error).to be_a(Samagotchi::LLM::ServerError)
+      expect(error.message).to eq("box: HTTP 500: slot unavailable")
+    end
+
+    it "reads an OpenAI-style error object in a data line" do
+      error = described_class.sse_error('data: {"error":{"message":"overloaded","type":"server_error"}}', host: "box")
+
+      expect(error).to be_a(Samagotchi::LLM::ServerError)
+    end
+
+    it "ignores ordinary lines" do
+      expect(described_class.sse_error('data: {"choices":[]}', host: "box")).to be_nil
+      expect(described_class.sse_error("", host: "box")).to be_nil
+    end
+  end
+
   describe "#fetch" do
     it "returns the response with its body" do
       server.enqueue("/v1/models", json: { data: [] })
@@ -139,7 +257,15 @@ RSpec.describe Samagotchi::LLM::HTTP do
       expect(response.body).to eq('{"data":[]}')
     end
 
-    it "makes one attempt with retries: false" do
+    it "raises the mapped error for a failed status, or returns it with check_status: false" do
+  models = URI("#{server.base_url}/models")
+  server.default("/v1/models", status: 401, json: { error: { message: "bad key" } })
+
+  expect { http.fetch(models, Net::HTTP::Get.new(models)) }.to raise_error(Samagotchi::LLM::AuthError)
+  expect(http.fetch(models, Net::HTTP::Get.new(models), check_status: false).code).to eq("401")
+end
+
+it "makes one attempt with retries: false" do
       dead = URI("http://127.0.0.1:#{closed_port}/props")
 
       expect { http.fetch(dead, Net::HTTP::Get.new(dead), retries: false) }.to raise_error(Errno::ECONNREFUSED)

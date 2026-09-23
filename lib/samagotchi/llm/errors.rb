@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "json"
+require "time"
+
 module Samagotchi
   module LLM
     # A request stopped by its CancellationController.
@@ -12,22 +15,178 @@ module Samagotchi
       end
     end
 
+    # A model server refused or failed a request. Subclasses name the kind
+    # (#kind): the UIs print one line per kind, and #retryable? says whether
+    # asking again could help.
+    #
+    #   ConnectionError  no answer (refused, reset, timeout); RetryExhausted
+    #   RateLimited      429, with retry_after when the server says
+    #   ServerError      5xx or a server's error event mid-stream
+    #   AuthError        401/403, or an API key variable that is not set
+    #   BadRequest       other 4xx (a context overflow is one, whatever status)
+    #   ProtocolError    a body that isn't what the API promises
+    class ProviderError < StandardError
+      attr_reader :host, :status, :retry_after
+      attr_accessor :attempts
+
+      # @param host [String, nil] the host (or server label) that failed
+      # @param status [Integer, nil] the HTTP status, when there was one
+      # @param retry_after [Float, nil] seconds the server asked to wait
+      def initialize(message = nil, host: nil, status: nil, retryable: nil, retry_after: nil, attempts: 1)
+        @host = host
+        @status = status
+        @retryable = retryable.nil? ? default_retryable? : retryable
+        @retry_after = retry_after
+        @attempts = attempts
+        super(message)
+      end
+
+      def retryable? = @retryable
+
+      def kind = :provider
+
+      private
+
+      def default_retryable? = false
+    end
+
+    class ConnectionError < ProviderError
+      def kind = :connection
+
+      private
+
+      def default_retryable? = true
+    end
+
+    class RateLimited < ProviderError
+      def kind = :rate_limited
+
+      private
+
+      def default_retryable? = true
+    end
+
+    class ServerError < ProviderError
+      def kind = :server
+    end
+
+    class AuthError < ProviderError
+      def kind = :auth
+    end
+
+    class BadRequest < ProviderError
+      def initialize(message = nil, context_overflow: false, **options)
+        @context_overflow = context_overflow
+        super(message, **options)
+      end
+
+      # The prompt is larger than the model's context window.
+      def context_overflow? = @context_overflow
+
+      def kind = :bad_request
+    end
+
+    class ProtocolError < ProviderError
+      def kind = :protocol
+    end
+
     # A request that kept failing on network errors until the retry budget
-    # ran out.
-    class RetryExhausted < StandardError
-      attr_reader :attempts, :last_error
+    # ran out (or failed mid-stream, where a retry would repeat output).
+    class RetryExhausted < ConnectionError
+      attr_reader :last_error
 
       def initialize(attempts:, last_error:, label: "llama.cpp")
-        @attempts = attempts
         @last_error = last_error
-        super("#{label} request failed after #{attempts} attempts: #{last_error.class}: #{last_error.message}")
+        super("#{label} request failed after #{attempts} attempts: #{last_error.class}: #{last_error.message}",
+              host: label, retryable: false, attempts: attempts)
       end
     end
-  end
-end
 
-module Samagotchi
-  module LLM
+    # Builds the ProviderError for an HTTP error response or a server's error
+    # event.
+    module ProviderErrors
+      CONTEXT_OVERFLOW_RE = /exceeds? (the )?(available )?context (size|length|window)|context[_ ]length[_ ]exceeded|exceed_context_size|maximum context length/i
+      RETRYABLE_SERVER_STATUSES = [500, 502, 503, 504, 529].freeze
+
+      module_function
+
+      # @param status [Integer]
+      # @param body [String] the response body (JSON or text)
+      # @param retry_after [String, nil] the Retry-After header
+      def from_response(status:, body:, host:, retry_after: nil)
+        message = error_message(body)
+        text = "#{host}: HTTP #{status}: #{message}"
+        options = { host: host, status: status }
+        if CONTEXT_OVERFLOW_RE.match?(message) || CONTEXT_OVERFLOW_RE.match?(body.to_s)
+          return BadRequest.new(text, context_overflow: true, **options)
+        end
+
+        case status
+        when 401, 403 then AuthError.new(text, **options)
+        when 429 then RateLimited.new(text, retry_after: parse_retry_after(retry_after), **options)
+        when 408 then ServerError.new(text, retryable: true, **options)
+        when 400..499 then BadRequest.new(text, **options)
+        when 500..599
+          ServerError.new(text, retryable: RETRYABLE_SERVER_STATUSES.include?(status),
+                                retry_after: parse_retry_after(retry_after), **options)
+        else ProtocolError.new(text, **options)
+        end
+      end
+
+      # The error an SSE line carries, or nil for any other line: llama.cpp's
+      # `error: {...}` event, or a `data:` line holding an `error` object.
+      def from_sse_line(line, host:)
+        if line.start_with?("error:")
+          raw = line.delete_prefix("error:").strip
+        elsif line.start_with?("data:") && line.include?('"error"')
+          raw = line.delete_prefix("data:").strip
+          parsed = parse_json(raw)
+          return nil unless parsed.is_a?(Hash) && parsed.key?("error")
+        else
+          return nil
+        end
+
+        parsed = parse_json(raw)
+        error = parsed.is_a?(Hash) && parsed["error"].is_a?(Hash) ? parsed["error"] : parsed
+        code = error.is_a?(Hash) ? error["code"] : nil
+        status = code.is_a?(Integer) && code.between?(400, 599) ? code : 500
+        from_response(status: status, body: raw, host: host)
+      end
+
+      # The human part of an error body: error.message, message, error (a
+      # string), or the body itself, shortened.
+      def error_message(body)
+        parsed = parse_json(body.to_s)
+        message =
+          if parsed.is_a?(Hash)
+            error = parsed["error"]
+            (error.is_a?(Hash) && error["message"]) || (error.is_a?(String) && error) || parsed["message"] || parsed["detail"]
+          end
+        message = body.to_s if message.nil? || message.to_s.strip.empty?
+        message = message.to_s.strip
+        message.empty? ? "(empty body)" : message[0, 500]
+      end
+
+      # Retry-After in seconds (delta-seconds or an HTTP date), or nil.
+      def parse_retry_after(value)
+        return nil if value.nil? || value.to_s.strip.empty?
+
+        text = value.to_s.strip
+        return text.to_f if text.match?(/\A\d+(\.\d+)?\z/)
+
+        seconds = Time.httpdate(text) - Time.now
+        seconds.positive? ? seconds : 0.0
+      rescue ArgumentError
+        nil
+      end
+
+      def parse_json(text)
+        JSON.parse(text)
+      rescue JSON::ParserError
+        nil
+      end
+    end
+
     # Marks an error that ended a turn with the conversation the loop had
     # built by then (the prompt plus completed tool iterations; a half
     # streamed reply is not kept), so the caller can keep it, as a cancel's

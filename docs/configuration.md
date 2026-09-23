@@ -182,7 +182,8 @@ differs by transport:
   short selector such as `gemma-3-4b-it-4bit` is what you set in
   `SAMAGOTCHI_DEFAULT_MODEL`. An unknown selector passes through raw and oMLX 404s,
   listing its available models; if `/v1/models` is unreachable, samagotchi falls
-  back to the raw selector and lets the server decide (its own 400/404). Runtime
+  back to the raw selector and lets the server decide (its own 400/404). Either
+  error fails the turn with the server's message (see "Server errors" below). Runtime
   model switch re-resolves each completion (the `/v1/models` id list is cached per
   client; the selector itself is re-resolved every time).
 
@@ -213,7 +214,10 @@ Transient network failures are retried automatically with exponential backoff.
 
 - Default retries: `5` (up to `6` total attempts including the first call).
 - Default backoff: `0.5s`, `1s`, `2s`, `4s`, `8s`.
-- Retry scope: transient network errors only (timeouts, refused/reset connections, EOF/socket reachability failures).
+- Retry scope: transient network errors (timeouts, refused/reset connections, EOF/socket reachability failures),
+  HTTP 429 and HTTP 500/502/503/504/529. A `Retry-After` header replaces the backoff delay; one longer than
+  60s is not waited out and the error is reported instead.
+- A stream that has already produced output is never retried (the retry would repeat it); it fails the turn.
 - Cancellation (`Ctrl-C`) is never retried.
 
 Configuration:
@@ -226,6 +230,23 @@ Assist-mode UX:
 
 - While waiting, retry notices are rendered in the existing thinking spinner area as a red `network error: retrying ...` status.
 - If retry attempts are exhausted, the submitted prompt is restored into the input editor so you can edit and resubmit.
+
+## Server errors
+
+An error status or a server's error event fails the turn with the server's
+message (before, a failed llama.cpp `/completion` ended the turn as
+`[No response]`). The error names its kind:
+
+| Kind | When | Retried |
+|---|---|---|
+| connection | refused, reset, timed out, dropped mid-stream | yes (network retry), not mid-stream |
+| rate limited | HTTP 429 | yes, honouring `Retry-After` |
+| server | HTTP 5xx, llama.cpp's mid-stream `error:` event | 500/502/503/504/529 only |
+| auth | HTTP 401/403 | no |
+| bad request | other 4xx; a prompt larger than the context window, whatever the status | no |
+| protocol | a body the API doesn't promise | no |
+
+The turn's prompt and its completed tool calls stay in the session.
 
 ## Debug Log File
 

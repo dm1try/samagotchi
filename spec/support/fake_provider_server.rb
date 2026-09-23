@@ -114,8 +114,8 @@ class FakeProviderServer
   end
 
   # The response +path+ answers when its queue is empty.
-  def default(path, status: 200, sse: nil, json: nil, body: nil, headers: {})
-    @mutex.synchronize { @defaults[path] = build(status, sse, json, body, headers, nil, false, false) }
+  def default(path, status: 200, sse: nil, json: nil, body: nil, headers: {}, delay: nil, hold: false, drop: false)
+    @mutex.synchronize { @defaults[path] = build(status, sse, json, body, headers, delay, hold, drop) }
     self
   end
 

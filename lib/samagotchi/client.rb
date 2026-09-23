@@ -175,7 +175,7 @@ module Samagotchi
         on_chunk&.call(content: content, payload: payload)
       end
       result
-    rescue RequestCancelled, RetryExhausted
+    rescue RequestCancelled, LLM::ProviderError
       raise
     rescue StandardError => e
       raise "#{@transport.label} request failed (#{@host}:#{@port}): #{e.message}"
@@ -186,7 +186,7 @@ module Samagotchi
       response = @http.fetch(uri, Net::HTTP::Get.new(uri))
       parsed = JSON.parse(response.body.to_s)
       parsed.fetch("data", parsed)
-    rescue RetryExhausted
+    rescue LLM::ProviderError
       raise
     rescue StandardError => e
       raise "#{@transport.label} model listing failed (#{@host}:#{@port}): #{e.message}"
@@ -222,7 +222,7 @@ module Samagotchi
 
     def probe_context_window(path)
       uri = URI("http://#{@host}:#{@port}#{path}")
-      response = @http.fetch(uri, Net::HTTP::Get.new(uri), retries: false,
+      response = @http.fetch(uri, Net::HTTP::Get.new(uri), retries: false, check_status: false,
                                   open_timeout: CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
                                   read_timeout: CONTEXT_WINDOW_PROBE_READ_TIMEOUT)
       return nil unless response.code.to_s == "200"
@@ -327,7 +327,10 @@ module Samagotchi
 
     # Returns [content, payload] for a streamed SSE line, or nil to skip
     # (blank lines, non-data lines, and the mlx/oMLX `[DONE]` sentinel).
+    # Raises the ProviderError of a server's error event.
     def parse_stream_line(line)
+      error = LLM::HTTP.sse_error(line, host: @transport.label)
+      raise error if error
       return nil if line.empty? || !line.start_with?("data: ")
 
       data = line.delete_prefix("data: ")

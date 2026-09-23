@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/client"
+require_relative "support/fake_provider_server"
 
 RSpec.describe Samagotchi::Client do
   describe Samagotchi::Client::Transport do
@@ -46,7 +47,7 @@ RSpec.describe Samagotchi::Client do
     it "joins streamed completion chunks into a single response" do
       client = described_class.new(host: "localhost", port: 8080)
       http = instance_double(Net::HTTP)
-      response = double("response")
+      response = double("response", code: "200")
       request = nil
 
       allow(Net::HTTP).to receive(:start)
@@ -72,7 +73,7 @@ RSpec.describe Samagotchi::Client do
     it "scrubs invalid UTF-8 bytes in the prompt before serializing so a stray bad byte can't abort the turn" do
       client = described_class.new(host: "localhost", port: 8080)
       http = instance_double(Net::HTTP)
-      response = double("response")
+      response = double("response", code: "200")
       request = nil
 
       # A tool response that carried a garbled (truncated) em-dash byte is the
@@ -99,7 +100,7 @@ RSpec.describe Samagotchi::Client do
     it "includes n_predict when provided" do
       client = described_class.new(host: "localhost", port: 8080)
       http = instance_double(Net::HTTP)
-      response = double("response")
+      response = double("response", code: "200")
       request = nil
 
       allow(Net::HTTP).to receive(:start)
@@ -120,7 +121,7 @@ RSpec.describe Samagotchi::Client do
     it "includes model when provided" do
       client = described_class.new(host: "localhost", port: 8080)
       http = instance_double(Net::HTTP)
-      response = double("response")
+      response = double("response", code: "200")
       request = nil
 
       allow(Net::HTTP).to receive(:start)
@@ -141,7 +142,7 @@ RSpec.describe Samagotchi::Client do
     it "omits model when blank" do
       client = described_class.new(host: "localhost", port: 8080)
       http = instance_double(Net::HTTP)
-      response = double("response")
+      response = double("response", code: "200")
       request = nil
 
       allow(Net::HTTP).to receive(:start)
@@ -162,7 +163,7 @@ RSpec.describe Samagotchi::Client do
     it "uses configured timeout values" do
       client = described_class.new(host: "localhost", port: 8080, open_timeout: 2, read_timeout: 1200)
       http = instance_double(Net::HTTP)
-      response = double("response")
+      response = double("response", code: "200")
 
       allow(Net::HTTP).to receive(:start)
         .with("localhost", 8080, open_timeout: 2, read_timeout: 1200)
@@ -176,7 +177,7 @@ RSpec.describe Samagotchi::Client do
     it "invokes on_chunk for each streamed content fragment" do
       client = described_class.new(host: "localhost", port: 8080)
       http = instance_double(Net::HTTP)
-      response = double("response")
+      response = double("response", code: "200")
       chunks = []
 
       allow(Net::HTTP).to receive(:start)
@@ -198,7 +199,7 @@ RSpec.describe Samagotchi::Client do
 
       client = described_class.new(host: "localhost", port: 8080)
       http = instance_double(Net::HTTP)
-      response = double("response")
+      response = double("response", code: "200")
 
       allow(Net::HTTP).to receive(:start)
         .with("localhost", 8080, open_timeout: 3, read_timeout: 900)
@@ -226,7 +227,7 @@ RSpec.describe Samagotchi::Client do
       client = described_class.new(host: "localhost", port: 8080)
       cancel_controller = described_class::CancellationController.new
       http = instance_double(Net::HTTP)
-      response = double("response")
+      response = double("response", code: "200")
 
       allow(Net::HTTP).to receive(:start)
         .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
@@ -241,7 +242,7 @@ RSpec.describe Samagotchi::Client do
     it "retries transient network errors and emits retry metadata" do
       client = described_class.new(host: "localhost", port: 8080, sleeper: ->(_seconds) {})
       http = instance_double(Net::HTTP)
-      response = double("response")
+      response = double("response", code: "200")
       retries = []
       call_count = 0
 
@@ -291,7 +292,7 @@ RSpec.describe Samagotchi::Client do
       it "posts a raw prompt to /v1/completions and joins streamed text" do
         client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
         http = instance_double(Net::HTTP)
-        response = double("response")
+        response = double("response", code: "200")
         request = nil
 
         allow(Net::HTTP).to receive(:start)
@@ -319,7 +320,7 @@ RSpec.describe Samagotchi::Client do
       it "omits max_tokens when n_predict is not provided" do
         client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
         http = instance_double(Net::HTTP)
-        response = double("response")
+        response = double("response", code: "200")
         request = nil
 
         allow(Net::HTTP).to receive(:start)
@@ -338,7 +339,7 @@ RSpec.describe Samagotchi::Client do
       it "never forwards model, since mlx-lm treats it as a path/repo to (re)load" do
         client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
         http = instance_double(Net::HTTP)
-        response = double("response")
+        response = double("response", code: "200")
         request = nil
 
         allow(Net::HTTP).to receive(:start)
@@ -357,7 +358,7 @@ RSpec.describe Samagotchi::Client do
       it "emits chunk callbacks and ignores the [DONE] sentinel" do
         client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
         http = instance_double(Net::HTTP)
-        response = double("response")
+        response = double("response", code: "200")
         chunks = []
 
         allow(Net::HTTP).to receive(:start)
@@ -378,7 +379,7 @@ RSpec.describe Samagotchi::Client do
         ENV["SAMAGOTCHI_SERVER_TRANSPORT"] = "mlx"
         client = described_class.new(host: "localhost", port: 8080)
         http = instance_double(Net::HTTP)
-        response = double("response")
+        response = double("response", code: "200")
         request = nil
 
         allow(Net::HTTP).to receive(:start)
@@ -414,7 +415,7 @@ RSpec.describe Samagotchi::Client do
         # second Net::HTTP.start.
         allow(client).to receive(:list_models).and_return(["mlx-community--gemma-3-4b-it-4bit"])
         http = instance_double(Net::HTTP)
-        response = double("response")
+        response = double("response", code: "200")
         request = nil
 
         allow(Net::HTTP).to receive(:start)
@@ -444,7 +445,7 @@ RSpec.describe Samagotchi::Client do
       it "omits max_tokens when n_predict is not provided" do
         client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
         http = instance_double(Net::HTTP)
-        response = double("response")
+        response = double("response", code: "200")
         request = nil
 
         allow(Net::HTTP).to receive(:start)
@@ -471,7 +472,7 @@ RSpec.describe Samagotchi::Client do
         end
 
         http = instance_double(Net::HTTP)
-        response = double("response")
+        response = double("response", code: "200")
         built = nil
         allow(Net::HTTP).to receive(:start)
           .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
@@ -522,7 +523,7 @@ RSpec.describe Samagotchi::Client do
       it "ignores a leading keepalive chunk and still joins text correctly" do
         client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
         http = instance_double(Net::HTTP)
-        response = double("response")
+        response = double("response", code: "200")
         chunks = []
 
         allow(Net::HTTP).to receive(:start)
@@ -543,7 +544,7 @@ RSpec.describe Samagotchi::Client do
       it "preserves raw tool-call markers verbatim for KernelLoop parsing" do
         client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
         http = instance_double(Net::HTTP)
-        response = double("response")
+        response = double("response", code: "200")
 
         allow(Net::HTTP).to receive(:start)
           .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
@@ -563,7 +564,7 @@ RSpec.describe Samagotchi::Client do
         ENV["SAMAGOTCHI_SERVER_TRANSPORT"] = "omlx"
         client = described_class.new(host: "localhost", port: 8000)
         http = instance_double(Net::HTTP)
-        response = double("response")
+        response = double("response", code: "200")
         request = nil
 
         allow(Net::HTTP).to receive(:start)
@@ -603,7 +604,7 @@ RSpec.describe Samagotchi::Client do
     it "returns the discovered models from /models" do
       client = described_class.new(host: "localhost", port: 8080)
       http = instance_double(Net::HTTP)
-      response = instance_double(Net::HTTPResponse, body: '{"data":[{"id":"ggml-org/gemma-4-26b-a4b-it-GGUF:Q4_K_M","status":"loaded"}]}')
+      response = instance_double(Net::HTTPResponse, code: "200", body: '{"data":[{"id":"ggml-org/gemma-4-26b-a4b-it-GGUF:Q4_K_M","status":"loaded"}]}')
 
       allow(Net::HTTP).to receive(:start)
         .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
@@ -635,7 +636,7 @@ RSpec.describe Samagotchi::Client do
         client = described_class.new(host: "localhost", port: 8080, transport: :mlx)
         http = instance_double(Net::HTTP)
         request = nil
-        response = instance_double(Net::HTTPResponse, body: '{"object":"list","data":[{"id":"mlx-community/Qwen3-14B-Instruct","object":"model","created":1}]}')
+        response = instance_double(Net::HTTPResponse, code: "200", body: '{"object":"list","data":[{"id":"mlx-community/Qwen3-14B-Instruct","object":"model","created":1}]}')
 
         allow(Net::HTTP).to receive(:start)
           .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
@@ -659,7 +660,7 @@ RSpec.describe Samagotchi::Client do
         client = described_class.new(host: "localhost", port: 8000, transport: :omlx)
         http = instance_double(Net::HTTP)
         request = nil
-        response = instance_double(Net::HTTPResponse, body: '{"object":"list","data":[{"id":"omlx-community/Qwen3.6","object":"model","created":1}]}')
+        response = instance_double(Net::HTTPResponse, code: "200", body: '{"object":"list","data":[{"id":"omlx-community/Qwen3.6","object":"model","created":1}]}')
 
         allow(Net::HTTP).to receive(:start)
           .with("localhost", 8000, open_timeout: 10, read_timeout: 600)
@@ -678,6 +679,51 @@ RSpec.describe Samagotchi::Client do
       end
     end
   end
+
+# The raw path against a real (fake) server: statuses and llama.cpp's
+# mid-stream error event now fail the turn instead of ending it as "".
+describe "server errors" do
+  around { |example| FakeProviderServer.without_webmock { example.run } }
+
+  let(:server) { FakeProviderServer.start }
+  let(:client) { described_class.new(host: "127.0.0.1", port: server.port, sleeper: ->(_seconds) {}) }
+
+  after { server.stop }
+
+  it "raises BadRequest for llama.cpp's context overflow, without retrying" do
+    server.default("/completion", status: 400, json: FakeProviderServer.fixture("error_400.json"))
+
+    expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::BadRequest) { |error|
+      expect(error).to be_context_overflow
+      expect(error.host).to eq("llama.cpp")
+    }
+    expect(server.requests.size).to eq(1)
+  end
+
+  it "retries a 500, then raises ServerError with the attempts" do
+    server.default("/completion", status: 500, json: FakeProviderServer.fixture("error_500.hand-written.json"))
+
+    expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::ServerError) { |error|
+      expect(error.attempts).to eq(6)
+    }
+  end
+
+  it "raises the error llama.cpp sends mid-stream" do
+    server.default("/completion", sse: "data: {\"content\":\"Hel\"}\n\nerror: {\"code\":500,\"message\":\"slot unavailable\",\"type\":\"server_error\"}\n\n")
+    chunks = []
+
+    expect { client.complete("prompt", on_chunk: ->(event) { chunks << event[:content] }) }
+      .to raise_error(Samagotchi::LLM::ServerError, /slot unavailable/)
+    expect(chunks).to eq(["Hel"])
+    expect(server.requests.size).to eq(1)
+  end
+
+  it "raises AuthError when listing models is refused" do
+    server.default("/models", status: 401, json: FakeProviderServer.fixture("error_401.hand-written.json"))
+
+    expect { client.list_models }.to raise_error(Samagotchi::LLM::AuthError)
+  end
+end
 
   describe "#context_window" do
     # Recorded from llama.cpp started with `-c 128000 --parallel 4`: /props

@@ -27,6 +27,9 @@ module Samagotchi
 
       # How often a backoff wait checks for a cancel.
       WAIT_TICK = 0.05
+      # A Retry-After longer than this is not waited out: the error goes to
+      # the user, who can try again later.
+      MAX_RETRY_AFTER = 60.0
 
       NETWORK_ERRORS = [
         Timeout::Error, EOFError, SocketError, IO::TimeoutError,
@@ -80,6 +83,12 @@ module Samagotchi
         NETWORK_ERRORS.any? { |klass| error.is_a?(klass) }
       end
 
+      # The ProviderError an SSE line carries (llama.cpp's `error:` event, a
+      # `data:` line with an `error` object), or nil.
+      def self.sse_error(line, host:)
+        ProviderErrors.from_sse_line(line, host: host)
+      end
+
       attr_reader :label, :retry_policy
 
       # @param label [String] names the server in RetryExhausted messages
@@ -93,24 +102,31 @@ module Samagotchi
       end
 
       # Send +request+ and yield each line of the streamed body (stripped,
-      # blank lines included) as it arrives. A network error retries the
-      # request per the retry policy; any other error is raised as is.
+      # blank lines included) as it arrives. An error status raises its
+      # ProviderError. Network errors and retryable statuses retry the request
+      # per the retry policy (a Retry-After wins over the backoff), unless a
+      # line was already yielded: the caller has shown it, and a retry would
+      # repeat it. Any other error is raised as is.
       #
       # @param on_retry [Proc, nil] called before each backoff wait with
       #   attempt:, max_retries:, next_delay:, error_class:, error_message:
       # @param on_network_error [Proc, nil] called with each network error
       # @raise [RequestCancelled] when +cancel_controller+ cancels
       # @raise [RetryExhausted] when the retries run out
+      # @raise [ProviderError] for an error status
       def stream_lines(uri, request, cancel_controller: nil, on_retry: nil, on_network_error: nil, &on_line)
         with_retries(cancel_controller, on_retry, on_network_error) do |current|
           start(uri) do |http|
             current[:http] = http
             http.request(request) do |response|
+              check_status!(response)
               buffer = +""
               response.read_body do |chunk|
                 buffer << chunk
                 while (newline_index = buffer.index("\n"))
-                  on_line.call(buffer.slice!(0, newline_index + 1).strip)
+                  line = buffer.slice!(0, newline_index + 1).strip
+                  current[:streamed] = true unless line.empty?
+                  on_line.call(line)
                 end
               end
             end
@@ -120,11 +136,14 @@ module Samagotchi
 
       # Send +request+ and return the response with its body read.
       # @param retries [Boolean] false: one attempt, network errors raised as is
-      def fetch(uri, request, retries: true, open_timeout: nil, read_timeout: nil, cancel_controller: nil)
+      # @param check_status [Boolean] false: return an error response instead
+      #   of raising its ProviderError
+      def fetch(uri, request, retries: true, check_status: true, open_timeout: nil, read_timeout: nil,
+                cancel_controller: nil)
         attempt = lambda do |current|
           start(uri, open_timeout: open_timeout, read_timeout: read_timeout) do |http|
             current[:http] = http
-            http.request(request)
+            http.request(request).tap { |response| check_status!(response) if check_status }
           end
         end
         return attempt.call({ mutex: Mutex.new }) unless retries
@@ -156,17 +175,25 @@ module Samagotchi
             return yield(current)
           rescue RequestCancelled
             raise
+          rescue ProviderError => e
+            raise RequestCancelled.new(cancel_controller.reason) if cancel_controller&.cancelled?
+
+            e.attempts = attempts
+            raise if !e.retryable? || current[:streamed]
+
+            delay = e.retry_after || @retry_policy.delay_for(attempts)
+            raise if delay.nil? || attempts > @retry_policy.max || delay > MAX_RETRY_AFTER
+
+            retry_after(e, attempts, delay, on_retry, cancel_controller)
           rescue StandardError => e
             raise RequestCancelled.new(cancel_controller.reason) if cancel_controller&.cancelled?
             raise unless self.class.network_error?(e)
 
             on_network_error&.call(e)
-            delay = @retry_policy.delay_for(attempts)
+            delay = current[:streamed] ? nil : @retry_policy.delay_for(attempts)
             raise RetryExhausted.new(attempts: attempts, last_error: e, label: @label) if delay.nil?
 
-            on_retry&.call(attempt: attempts, max_retries: @retry_policy.max, next_delay: delay,
-                           error_class: e.class.name, error_message: e.message)
-            wait(delay, cancel_controller)
+            retry_after(e, attempts, delay, on_retry, cancel_controller)
           ensure
             current.delete(:http)
           end
@@ -177,6 +204,20 @@ module Samagotchi
         # raising into this thread once the request is over.
         current[:mutex].synchronize { current[:done] = true }
         cancel_controller&.remove_listener(listener_id)
+      end
+
+      def retry_after(error, attempts, delay, on_retry, cancel_controller)
+        on_retry&.call(attempt: attempts, max_retries: @retry_policy.max, next_delay: delay,
+                       error_class: error.class.name, error_message: error.message)
+        wait(delay, cancel_controller)
+      end
+
+      def check_status!(response)
+        status = response.code.to_i
+        return if status.between?(200, 299)
+
+        raise ProviderErrors.from_response(status: status, body: response.body.to_s, host: @label,
+                                           retry_after: response["Retry-After"])
       end
 
       def abort_request(current, requesting_thread, reason)
