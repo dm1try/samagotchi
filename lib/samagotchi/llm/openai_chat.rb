@@ -1,0 +1,327 @@
+# frozen_string_literal: true
+
+require "json"
+require "uri"
+require_relative "../config"
+require_relative "errors"
+require_relative "http"
+require_relative "usage"
+
+module Samagotchi
+  module LLM
+    # A model a host lists. Unknown fields are nil.
+    ModelInfo = Data.define(:id, :context_window, :supports_tools, :raw)
+
+    # A tool call the model made. arguments: the parsed Hash, or the raw
+    # String when it isn't valid JSON (the tool then reports the error).
+    ToolCall = Data.define(:id, :name, :arguments)
+
+    # One chat completion: text and reasoning ("" when none), tool calls
+    # ([] when none), usage (never nil) and the finish reason.
+    ChatResponse = Data.define(:text, :reasoning, :tool_calls, :usage, :finish_reason)
+
+    # The OpenAI Chat Completions API (llama.cpp's /v1, and any compatible
+    # provider) on our own HTTP layer: one request per #chat, streamed by
+    # default, with errors mapped to ProviderError. It speaks the wire format
+    # only; the chat loop owns the conversation and the tools.
+    class OpenAIChat
+      MAX_MODEL_PAGES = 20
+      DEFAULT_MODELS_TTL = 60
+
+      attr_reader :base_url, :host_name, :api_key_env
+
+      # @param entry [HostRegistry::HostEntry]
+      def self.for(entry, **options)
+        new(base_url: entry.openai_base_url, host_name: entry.name, api_key_env: entry.api_key_env, **options)
+      end
+
+      # Tool arguments as a Hash; "" is {}, invalid JSON stays a String.
+      def self.parse_arguments(raw)
+        return raw if raw.is_a?(Hash)
+
+        text = raw.to_s
+        return {} if text.strip.empty?
+
+        parsed = JSON.parse(text)
+        parsed.is_a?(Hash) ? parsed : text
+      rescue JSON::ParserError
+        text
+      end
+
+      # @param base_url [String] the API base, e.g. http://host:8081/v1
+      # @param host_name [String] names the host in errors
+      # @param api_key_env [String, nil] the variable holding the API key;
+      #   nil sends no Authorization header (a local server)
+      # @param stream [Boolean] stream the reply (false: one JSON body)
+      # @param retries [Boolean] false: one attempt
+      # @param timeout [Numeric, nil] read timeout in seconds (default
+      #   server.read_timeout); the connect timeout is capped by it
+      # @param models_ttl [Numeric] how long #context_window reuses the list
+      def initialize(base_url:, host_name:, api_key_env: nil, stream: true, retries: true, timeout: nil,
+                     env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL)
+        @base_url = base_url.to_s.chomp("/")
+        @host_name = host_name.to_s
+        @api_key_env = api_key_env
+        @stream = stream
+        @env = env
+        @models_ttl = models_ttl
+        @models_mutex = Mutex.new
+        open_timeout, read_timeout = timeouts(timeout)
+        policy = retry_policy || (retries ? nil : HTTP::RetryPolicy.none)
+        @http = HTTP.new(label: @host_name, open_timeout: open_timeout, read_timeout: read_timeout,
+                         retry_policy: policy, sleeper: sleeper)
+      end
+
+      # @param messages [Array<Hash>] wire messages (role, content, tool_calls,
+      #   tool_call_id); content is a String or an Array of parts
+      # @param tools [Array<Hash>] function definitions ({type:, function:})
+      # @param options [Hash] extra request fields (max_tokens, ...)
+      # @param on_delta [Proc, nil] called per streamed chunk with content:,
+      #   reasoning: and payload: (the parsed chunk)
+      # @param on_retry [Proc, nil] see LLM::HTTP#stream_lines
+      # @return [ChatResponse]
+      def chat(messages:, model:, tools: [], cancel_controller: nil, on_delta: nil, on_retry: nil, options: {})
+        request = post_request("#{@base_url}/chat/completions", request_body(messages, tools, model, options))
+        return chat_once(request, cancel_controller) unless @stream
+
+        assembly = Assembly.new
+        @http.stream_lines(URI(request.uri.to_s), request, cancel_controller: cancel_controller, on_retry: on_retry) do |line|
+          payload = parse_line(line)
+          next unless payload
+
+          content, reasoning = assembly.add(payload)
+          on_delta&.call(content: content, reasoning: reasoning, payload: payload)
+        end
+        assembly.response
+      end
+
+      # @return [Array<ModelInfo>] the host's models (every page)
+      def list_models
+        models = []
+        after = nil
+        MAX_MODEL_PAGES.times do
+          uri = URI("#{@base_url}/models#{after ? "?after=#{URI.encode_www_form_component(after)}" : ""}")
+          body = parse_json(@http.fetch(uri, get_request(uri)).body, "model list")
+          models.concat(model_entries(body).map { |raw| model_info(raw) })
+          break unless body.is_a?(Hash) && body["has_more"] && body["last_id"]
+
+          after = body["last_id"].to_s
+        end
+        models
+      end
+
+      # The window (tokens) the host lists for +model+, or nil. The list is
+      # read once per models_ttl; a failed listing answers nil.
+      def context_window(model:)
+        info = cached_models.find { |m| m.id == model.to_s } ||
+               cached_models.find { |m| m.id.casecmp?(model.to_s) }
+        info&.context_window
+      rescue StandardError
+        nil
+      end
+
+      private
+
+      def timeouts(timeout)
+        open_timeout = config_integer("server.open_timeout", 10)
+        read_timeout = config_integer("server.read_timeout", 600)
+        return [open_timeout, read_timeout] unless timeout
+
+        [[open_timeout, timeout].min, timeout]
+      end
+
+      def config_integer(key, default)
+        value = Samagotchi::Config.get(key).to_i
+        value.positive? ? value : default
+      rescue StandardError
+        default
+      end
+
+      def request_body(messages, tools, model, options)
+        body = {
+          model: model,
+          messages: Array(messages).map { |message| wire_message(message) },
+          temperature: 0.0,
+          stream: @stream
+        }
+        body[:stream_options] = { include_usage: true } if @stream
+        unless Array(tools).empty?
+          body[:tools] = tools
+          body[:tool_choice] = "auto"
+        end
+        body.merge(options || {})
+      end
+
+      # A String stays a String; an Array of parts passes as given.
+      def wire_message(message)
+        wire = message.to_h.transform_keys(&:to_sym)
+        wire[:content] = format_content(wire[:content]) if wire.key?(:content)
+        wire
+      end
+
+      def format_content(content)
+        return content if content.is_a?(Array) || content.nil?
+
+        scrub(content.to_s)
+      end
+
+      # Invalid UTF-8 (a tool's garbled output) would make to_json raise.
+      def scrub(text)
+        text.encoding == Encoding::UTF_8 && !text.valid_encoding? ? text.scrub("?") : text
+      end
+
+      def chat_once(request, cancel_controller)
+        response = @http.fetch(URI(request.uri.to_s), request, cancel_controller: cancel_controller)
+        body = parse_json(response.body, "chat response")
+        message = body.is_a?(Hash) ? body.dig("choices", 0, "message") : nil
+        raise ProtocolError.new("#{@host_name}: no message in the chat response", host: @host_name) unless message.is_a?(Hash)
+
+        calls = Array(message["tool_calls"]).map do |call|
+          function = call["function"] || {}
+          ToolCall.new(id: call["id"], name: function["name"].to_s, arguments: self.class.parse_arguments(function["arguments"]))
+        end
+        ChatResponse.new(text: message["content"].to_s,
+                         reasoning: (message["reasoning_content"] || message["reasoning"]).to_s,
+                         tool_calls: calls, usage: Usage.from_payload(body) || Usage.none,
+                         finish_reason: body.dig("choices", 0, "finish_reason"))
+      end
+
+      # The parsed payload of a `data:` line; nil for blank lines, comments
+      # and [DONE]. Error events raise their ProviderError.
+      def parse_line(line)
+        error = HTTP.sse_error(line, host: @host_name)
+        raise error if error
+        return nil unless line.start_with?("data:")
+
+        data = line.delete_prefix("data:").strip
+        return nil if data.empty? || data == "[DONE]"
+
+        payload = parse_json(data, "stream chunk")
+        payload.is_a?(Hash) ? payload : nil
+      end
+
+      def parse_json(text, what)
+        JSON.parse(text.to_s)
+      rescue JSON::ParserError => e
+        raise ProtocolError.new("#{@host_name}: malformed #{what}: #{e.message[0, 200]}", host: @host_name)
+      end
+
+      def post_request(url, body)
+        uri = URI(url)
+        Net::HTTP::Post.new(uri).tap do |request|
+          request["Content-Type"] = "application/json"
+          authorize(request)
+          request.body = JSON.generate(body)
+        end
+      end
+
+      def get_request(uri)
+        Net::HTTP::Get.new(uri).tap { |request| authorize(request) }
+      end
+
+      def authorize(request)
+        return unless @api_key_env
+
+        key = @env[@api_key_env].to_s
+        if key.strip.empty?
+          raise AuthError.new("#{@host_name}: set #{@api_key_env} (the API key for host #{@host_name})",
+                              host: @host_name)
+        end
+        request["Authorization"] = "Bearer #{key}"
+      end
+
+      def model_entries(body)
+        return [] unless body.is_a?(Hash)
+
+        entries = body["data"].is_a?(Array) ? body["data"] : body["models"]
+        Array(entries).select { |entry| entry.is_a?(Hash) }
+      end
+
+      def model_info(raw)
+        id = (raw["id"] || raw["model"] || raw["name"]).to_s
+        ModelInfo.new(id: id, context_window: window_of(raw), supports_tools: tools_support(raw), raw: raw)
+      end
+
+      # The running window when the list says: context_length, context_window,
+      # max_model_len, or llama.cpp's meta.n_ctx (not n_ctx_train).
+      def window_of(raw)
+        [raw["context_length"], raw["context_window"], raw["max_model_len"], raw.dig("meta", "n_ctx")].each do |value|
+          return value if value.is_a?(Integer) && value.positive?
+        end
+        nil
+      end
+
+      def tools_support(raw)
+        listed = raw["supported_parameters"] || raw["capabilities"]
+        return nil unless listed.is_a?(Array)
+
+        listed.include?("tools") ? true : nil
+      end
+
+      def cached_models
+        @models_mutex.synchronize do
+          fresh = @models_at && (monotonic - @models_at) < @models_ttl
+          return @models if fresh
+        end
+        models = list_models
+        @models_mutex.synchronize do
+          @models = models
+          @models_at = monotonic
+        end
+        models
+      end
+
+      def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      # Streamed deltas put together: text, reasoning, tool calls by index,
+      # the finish reason and the usage chunk.
+      class Assembly
+        def initialize
+          @text = +""
+          @reasoning = +""
+          @calls = {}
+          @finish_reason = nil
+          @usage = nil
+        end
+
+        # @return [Array(String, String)] this chunk's content and reasoning
+        def add(payload)
+          @usage = Usage.from_payload(payload) || @usage if payload.key?("usage")
+          choice = payload["choices"].is_a?(Array) ? payload["choices"].first : nil
+          return ["", ""] unless choice.is_a?(Hash)
+
+          @finish_reason = choice["finish_reason"] if choice["finish_reason"]
+          delta = choice["delta"].is_a?(Hash) ? choice["delta"] : {}
+          content = delta["content"].to_s
+          reasoning = (delta["reasoning_content"] || delta["reasoning"]).to_s
+          @text << content
+          @reasoning << reasoning
+          Array(delta["tool_calls"]).each { |call| add_call(call) }
+          [content, reasoning]
+        end
+
+        def response
+          calls = @calls.sort_by { |index, _| index }.map do |_, call|
+            ToolCall.new(id: call[:id], name: call[:name].to_s, arguments: OpenAIChat.parse_arguments(call[:arguments]))
+          end
+          ChatResponse.new(text: @text, reasoning: @reasoning, tool_calls: calls, usage: @usage || Usage.none,
+                           finish_reason: @finish_reason)
+        end
+
+        private
+
+        def add_call(delta)
+          return unless delta.is_a?(Hash)
+
+          index = delta["index"].is_a?(Integer) ? delta["index"] : @calls.size
+          call = (@calls[index] ||= { id: nil, name: nil, arguments: +"" })
+          call[:id] ||= delta["id"]
+          function = delta["function"].is_a?(Hash) ? delta["function"] : {}
+          call[:name] ||= function["name"] unless function["name"].to_s.empty?
+          call[:arguments] << function["arguments"].to_s
+        end
+      end
+      private_constant :Assembly
+    end
+  end
+end
