@@ -119,6 +119,23 @@ RSpec.describe Samagotchi::TurnFlow do
       expect(flow.offer[:context][:original_prompt]).to eq("the task")
       expect(flow.offer[:context][:last_model_intent]).to eq("still going")
     end
+
+    it "keeps the model's thinking and tool-call markup out of last_model_intent" do
+      tool_call = "<tool_call>\n<function=execute>\n<parameter=command>\nls\n</parameter>\n</function>\n</tool_call>"
+      run_prompt("list it", [{ role: "model", content: "<think>\nI should list.\n</think>\n\nListing now.\n#{tool_call}" }])
+
+      flow.after_turn(result(engine.messages, exhausted: true, pending: true))
+
+      expect(flow.offer[:context][:last_model_intent]).to eq("Listing now.")
+    end
+
+    it "falls back to the thinking text when the model wrote nothing else" do
+      run_prompt("list it", [{ role: "model", content: "<think>\nI should list.\n</think>\n<tool_call>\n<function=execute>\n</function>\n</tool_call>" }])
+
+      flow.after_turn(result(engine.messages, exhausted: true, pending: true))
+
+      expect(flow.offer[:context][:last_model_intent]).to eq("I should list.")
+    end
   end
 
   describe "#prompt_turn_failed" do

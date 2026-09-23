@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "output_formatter"
+
 module Samagotchi
   # The state around turns that the REPL and a session worker share, kept out
   # of either loop: the pre-turn checkpoint (what !rollback and a failed turn
@@ -149,7 +151,7 @@ module Samagotchi
       {
         original_prompt: preview_text(messages.find { |m| m[:role] == "user" }&.dig(:content), SUMMARY_PROMPT_LIMIT),
         tool_trace: tool_trace(result),
-        last_model_intent: preview_text(messages.reverse.find { |m| m[:role] == "model" }&.dig(:content), SUMMARY_MODEL_LIMIT)
+        last_model_intent: preview_text(model_intent(messages.reverse.find { |m| m[:role] == "model" }&.dig(:content)), SUMMARY_MODEL_LIMIT)
       }
     end
 
@@ -199,6 +201,15 @@ module Samagotchi
       lines << ""
       lines << "Please keep the original prompt context. If my next message does not provide a clear replacement request, ask what we should do instead."
       lines.join("\n")
+    end
+
+    # The model's words without its thinking and tool-call markup; when it
+    # wrote nothing else, its thinking says what it was about to do.
+    def model_intent(content)
+      text = OutputFormatter.strip(content)
+      return text unless text.empty?
+
+      OutputFormatter.strip(content.to_s.gsub(%r{</?think>}, ""))
     end
 
     def preview_text(text, limit)
