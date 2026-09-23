@@ -197,6 +197,58 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     end
   end
 
+  # The REPL answers on the turn thread itself, through a sync handler.
+  describe "a synchronous handler (REPL)" do
+    it "returns the answer the handler recorded and announces it" do
+      engine = build_engine
+      events = []
+      engine.subscribe(observer: ->(e) { events << e })
+      engine.set_question_sync_handler do |pending|
+        engine.answer_question(id: pending[:id], selected: ["Cats"])
+        nil
+      end
+      answer = JSON.parse(engine.request_question(payload))
+      expect(answer).to include("selected" => ["Cats"], "selected_indices" => [0])
+      expect(engine.pending_question).to be_nil
+      expect(events.map { |e| e[:type] }).to eq(%i[question_requested question_answered])
+    end
+
+    it "returns a no-answer error when the handler records nothing" do
+      engine = build_engine
+      engine.set_question_sync_handler { |_pending| nil }
+      answer = JSON.parse(engine.request_question(payload))
+      expect(answer["error"]).to eq("no answer")
+      expect(engine.pending_question).to be_nil
+    end
+  end
+
+  describe "Engine#open_question" do
+    it "carries extra keys through to pending_question and returns the answer hash" do
+      engine = build_engine
+      result = nil
+      thread = Thread.new do
+        result = engine.open_question(question: "Run it?", options: %w[Yes No], kind: "approval",
+                                      approval: { tool: "execute" })
+      end
+      deadline = mono + 2.0
+      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+      pending = engine.pending_question
+      expect(pending).to include(kind: "approval", approval: { tool: "execute" }, status: "pending")
+      engine.answer_question(id: pending[:id], selected: ["No"])
+      thread.join(2)
+      expect(result).to include(id: pending[:id], selected: ["No"], selected_indices: [1])
+    end
+
+    it "shows the question text as given (no wire-token stripping)" do
+      engine = build_engine
+      engine.set_question_sync_handler { |_pending| nil }
+      seen = nil
+      engine.subscribe(observer: ->(e) { seen = e[:pending_question] if e[:type] == :question_requested })
+      engine.open_question(question: "echo '<|x|>'", options: %w[Yes No])
+      expect(seen[:question]).to eq("echo '<|x|>'")
+    end
+  end
+
   describe "Engine#answer_question validation" do
     it "raises when there is no pending question" do
       engine = build_engine

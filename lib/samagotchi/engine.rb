@@ -618,15 +618,15 @@ module Samagotchi
     end
 
     # Request a structured question from the user. Called from KernelLoop's
-    # turn thread (via dispatch). Emits :question_requested, persists to session,
-    # and BLOCKS until answer_question / cancel_question wakes it (or controller
-    # cancels). Returns a normalized JSON string for the tool_response.
+    # turn thread (via dispatch): validates and cleans the model's payload,
+    # then #open_question. Returns a normalized JSON string for the
+    # tool_response.
     # @param payload [Hash] {question:, options:, header:, multi_select:, allow_freeform:}
     # @return [String] normalized answer JSON
     def request_question(payload)
       # Strip wire control tokens (<|...|> / stray <|,|>) that can bleed into the
       # question text when the model wraps the tool call in markup.
-      question = payload[:question].to_s.gsub(/<\|[^|]*\|>/, "").gsub(/<\||\|>/, "").strip
+      question = strip_wire_tokens(payload[:question])
       options = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(payload[:options])
       # Fallback for string JSON that lenient missed
       if options.empty? && payload[:options].is_a?(String)
@@ -645,18 +645,28 @@ module Samagotchi
         options = options.first(8)
       end
 
-      id = SecureRandom.uuid
-      clean_header = payload[:header].to_s.gsub(/<\|[^|]*\|>/, "").gsub(/<\||\|>/, "").strip
-      pending = {
-        id: id,
+      clean_header = strip_wire_tokens(payload[:header])
+      result = open_question(
         question: question,
         options: options,
         header: clean_header.empty? ? nil : clean_header,
         multi_select: !!payload[:multi_select],
-        allow_freeform: !!payload[:allow_freeform],
-        status: "pending",
-        created_at: Time.now.iso8601(3)
-      }.compact
+        allow_freeform: !!payload[:allow_freeform]
+      )
+      result.is_a?(String) ? result : JSON.generate(result)
+    end
+
+    # Open a question for the UIs and wait for its answer. Emits
+    # :question_requested, persists it to the session, and BLOCKS until
+    # answer_question / cancel_question wakes it (or the turn is cancelled).
+    # The fields go to pending_question as given (no cleaning), extra keys
+    # included, so a caller can add its own (kind:, approval:).
+    # @param fields [Hash] question:, options:, header:, multi_select:, allow_freeform:, …
+    # @return [Hash, String] the answer {id:, selected:, freeform:, selected_indices:},
+    #   or {error:, …}; a String when a sync handler returned text itself
+    def open_question(fields)
+      id = SecureRandom.uuid
+      pending = { id: id, **fields, status: "pending", created_at: Time.now.iso8601(3) }.compact
 
       @question_mutex.synchronize do
         @pending_question = pending
@@ -691,7 +701,7 @@ module Samagotchi
                 begin; @session.save; rescue StandardError; nil; end
               end
               emit_event(nil, { type: :question_answered, id: id, answer: ans })
-              return JSON.generate(ans)
+              return ans
             end
             if sync_res.is_a?(Hash) && sync_res[:selected]
               # Treat returned hash as answer (handler rendered and parsed)
@@ -702,7 +712,7 @@ module Samagotchi
                 begin; @session.save; rescue StandardError; nil; end
               end
               emit_event(nil, { type: :question_answered, id: id, answer: sync_res })
-              return JSON.generate(sync_res)
+              return sync_res
             elsif sync_res.is_a?(String) && !sync_res.strip.empty?
               return sync_res
             end
@@ -719,7 +729,7 @@ module Samagotchi
           @session.pending_question = nil
           begin; @session.save; rescue StandardError; nil; end
         end
-        return JSON.generate({ error: "no answer", detail: "handler failed to capture selection", id: id })
+        return { error: "no answer", detail: "handler failed to capture selection", id: id }
       end
 
       # Block until answered/cancelled (cross-thread path: WEB/Bridge/background worker)
@@ -742,7 +752,7 @@ module Samagotchi
             begin; @session.save; rescue StandardError; nil; end
           end
           emit_event(nil, { type: :question_cancelled, id: id, reason: active_cancel_controller.reason.to_s })
-          return JSON.generate({ error: "cancelled", reason: active_cancel_controller.reason.to_s, id: id })
+          return { error: "cancelled", reason: active_cancel_controller.reason.to_s, id: id }
         end
       end
 
@@ -754,9 +764,9 @@ module Samagotchi
       end
       if answer
         emit_event(nil, { type: :question_answered, id: id, answer: answer })
-        JSON.generate(answer)
+        answer
       else
-        JSON.generate({ error: "no answer", id: id })
+        { error: "no answer", id: id }
       end
     end
 
@@ -800,6 +810,11 @@ module Samagotchi
         answer
       end
     end
+
+    def strip_wire_tokens(text)
+      text.to_s.gsub(/<\|[^|]*\|>/, "").gsub(/<\||\|>/, "").strip
+    end
+    private :strip_wire_tokens
 
     def set_question_sync_handler(&block)
       @question_sync_handler = block
