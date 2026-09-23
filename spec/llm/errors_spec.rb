@@ -16,9 +16,39 @@ RSpec.describe Samagotchi::LLM::ProviderError do
       expect(from(401, "Invalid API key").summary).to eq("auth failed for host fw: HTTP 401: Invalid API key")
     end
 
-    it "says how long a rate limit asks to wait" do
-      expect(from(429, "slow down", retry_after: "20").summary).to eq("rate limited by host fw; retry after 20s")
+    it "gives a rate limit's reason and how long it asks to wait" do
+      expect(from(429, "slow down", retry_after: "20").summary).to eq("rate limited by host fw: HTTP 429: slow down; retry after 20s")
       expect(from(429, "slow down").summary).to eq("rate limited by host fw: HTTP 429: slow down")
+    end
+
+    it "reads the upstream reason and provider from error.metadata (OpenRouter's recorded 429)" do
+      error = Samagotchi::LLM::ProviderErrors.from_response(
+        status: 429, body: File.read(File.expand_path("../fixtures/providers/openai/openrouter_error_429.json", __dir__)),
+        host: "openrouter", retry_after: "5"
+      )
+
+      expect(error.summary).to eq(
+        "rate limited by host openrouter: HTTP 429: Provider returned error (Decart): z-ai/glm-5.2:free is temporarily " \
+        "rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: " \
+        "https://openrouter.ai/settings/integrations; retry after 5s"
+      )
+    end
+
+    it "reads a metadata.raw that is itself a JSON error body, and keeps a plain message as is" do
+      body = JSON.generate(error: { message: "Provider returned error",
+                                    metadata: { raw: JSON.generate(error: { message: "model overloaded" }) } })
+
+      expect(Samagotchi::LLM::ProviderErrors.error_message(body)).to eq("Provider returned error: model overloaded")
+      expect(Samagotchi::LLM::ProviderErrors.error_message(JSON.generate(error: { message: "plain", metadata: {} })))
+        .to eq("plain")
+    end
+
+    it "carries the reason of an in-stream error event too" do
+      line = 'data: {"choices":[],"error":{"code":429,"message":"Provider returned error",' \
+             '"metadata":{"raw":"shared pool busy","provider_name":"Up"}}}'
+
+      expect(Samagotchi::LLM::ProviderErrors.from_sse_line(line, host: "or").summary)
+        .to eq("rate limited by host or: HTTP 429: Provider returned error (Up): shared pool busy")
     end
 
     it "reports connection failures with the attempts" do

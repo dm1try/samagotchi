@@ -72,7 +72,7 @@ module Samagotchi
       def kind = :rate_limited
 
       def summary
-        retry_after ? "rate limited by host #{host}; retry after #{retry_after.ceil}s" : "rate limited by host #{host}: #{detail}"
+        "rate limited by host #{host}: #{detail}#{"; retry after #{retry_after.ceil}s" if retry_after}"
       end
 
       private
@@ -184,7 +184,10 @@ module Samagotchi
       end
 
       # The human part of an error body: error.message, message, error (a
-      # string), or the body itself, shortened.
+      # string), or the body itself, shortened. A gateway that passes on an
+      # upstream failure (OpenRouter) often says only "Provider returned
+      # error" and puts the upstream's words in error.metadata.raw and its
+      # name in metadata.provider_name; both are added when present.
       def error_message(body)
         parsed = parse_json(body.to_s)
         message =
@@ -194,7 +197,22 @@ module Samagotchi
           end
         message = body.to_s if message.nil? || message.to_s.strip.empty?
         message = message.to_s.strip
+        message = with_upstream(message, parsed["error"]["metadata"]) if parsed.is_a?(Hash) && parsed["error"].is_a?(Hash)
         message.empty? ? "(empty body)" : message[0, 500]
+      end
+
+      # +message+ followed by the upstream provider's name and words from
+      # +metadata+ (raw may be text or a JSON error body of its own).
+      def with_upstream(message, metadata)
+        return message unless metadata.is_a?(Hash)
+
+        provider = metadata["provider_name"].to_s.strip
+        raw = metadata["raw"]
+        raw = JSON.generate(raw) if raw.is_a?(Hash)
+        raw = raw.to_s.strip
+        raw = error_message(raw) if raw.start_with?("{")
+        message += " (#{provider})" unless provider.empty?
+        raw.empty? || message.include?(raw) ? message : "#{message}: #{raw}"
       end
 
       # Retry-After in seconds (delta-seconds or an HTTP date), or nil.

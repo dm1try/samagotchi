@@ -248,7 +248,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     expect { engine.run_turn(session, "hi", on_event: ->(e) { events << e }) }.to raise_error(error)
 
     expect(events.last).to include(type: :turn_failed, error_kind: :rate_limited, retryable: true, host: "fw",
-                                   summary: "rate limited by host fw; retry after 20s")
+                                   summary: "rate limited by host fw: HTTP 429: slow down; retry after 20s")
   end
 
   it "adds no provider fields for other errors" do
