@@ -122,6 +122,19 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(events.select { |e| e[:type] == :generation_completed }.last[:content_length]).to eq(4)
     end
 
+    it "takes a remote host's window from its model list, without probing a /props it doesn't have" do
+      remote = FakeChatAdapter.new(text("ok"))
+      remote.define_singleton_method(:remote?) { true }
+      remote.define_singleton_method(:context_window) { |model:| model == "m" ? 131_072 : nil }
+      backend.adapter = remote
+      allow(fake_kernel).to receive(:client).and_return(double("client", context_window: 8192))
+
+      run
+
+      expect(events.find { |e| e[:type] == :generation_started })
+        .to include(context_window_tokens: 131_072, context_window_source: :model_list)
+    end
+
     it "reports retries as generation_retrying" do
       backend.adapter = FakeChatAdapter.new(lambda { |on_retry:, **|
         on_retry.call(attempt: 1, max_retries: 5, next_delay: 0.5, error_class: "Errno::ECONNREFUSED", error_message: "refused")

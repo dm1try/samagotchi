@@ -1086,8 +1086,7 @@ module Samagotchi
 
       @chat_backend_mutex.synchronize do
         @chat_backend ||= LLM::ChatLoop.new(kernel: @kernel)
-        @chat_adapters ||= {}
-        @chat_backend.adapter = (@chat_adapters[target.entry.name] ||= LLM::OpenAIChat.for(target.entry))
+        @chat_backend.adapter = @host_registry.adapter_for(target.entry)
         @chat_backend
       end
     end

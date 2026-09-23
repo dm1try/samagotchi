@@ -2,6 +2,7 @@
 
 require_relative "config"
 require_relative "client"
+require_relative "llm/openai_chat"
 
 module Samagotchi
   # HostRegistry manages multiple model hosts (llama.cpp / mlx / oMLX) and
@@ -10,11 +11,14 @@ module Samagotchi
   # - Hosts are defined in config.yml `hosts:` section or synthesized from
   #   SAMAGOTCHI_SERVER_HOST/PORT env (via Config).
   # - Discovery is lazy: list_all_models is the explicit trigger (called by
-  #   /models), not on startup. Results are cached 60s with skip-on-error.
+  #   /models), not on startup. Each host's list is cached (60s, 10 minutes
+  #   for a remote host) with skip-on-error; lists are LLM::ModelInfo.
   # - Routing: client_for_model resolves a (possibly qualified) model string
-  #   to the appropriate Client instance.
+  #   to the appropriate Client instance. A remote host is chosen only by
+  #   exact model id, host:model or an alias, never by a substring.
   class HostRegistry
     CACHE_TTL_SECONDS = 60
+    REMOTE_CACHE_TTL_SECONDS = 600
     LIST_TIMEOUT_SECONDS = 3
 
     # url: the configured url, when the entry has one (host, port and scheme
@@ -31,6 +35,13 @@ module Samagotchi
       # The OpenAI-compatible API base the chat loop talks to: the url as
       # configured, else the root's /v1.
       def openai_base_url = url || "#{root_url}/v1"
+
+      # A provider on the network rather than a local server: it needs a key
+      # or speaks https. Its model list is cached longer and it is never
+      # picked by a substring of a model name.
+      def remote? = !api_key_env.to_s.empty? || scheme == "https"
+
+      def models_ttl = remote? ? REMOTE_CACHE_TTL_SECONDS : CACHE_TTL_SECONDS
     end
 
     # Where a model's requests go: the host entry, the client to use and the
@@ -44,8 +55,12 @@ module Samagotchi
     # a stub this way; the Engine/TUI `client:` keyword sets it).
     attr_accessor :client_override
 
-    def initialize(hosts_config: nil, env: ENV, client_override: nil)
+    # @param clock [#call, nil] monotonic seconds (specs)
+    def initialize(hosts_config: nil, env: ENV, client_override: nil, clock: nil)
       @client_override = client_override
+      @clock = clock || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+      @adapters = {}
+      @host_lists = {}
       raw = hosts_config || ConfigFile.hosts_config(env: env)
       @entries = {}
       raw.each do |key, cfg|
@@ -136,14 +151,13 @@ module Samagotchi
         return [entry, bare] if entry
       end
       # Fallback: try substring match in cached aggregated results if available
-      # (lightweight: scan cached model lists)
+      # (lightweight: scan cached model lists). Remote hosts match exactly only.
       cached = @mutex.synchronize { @cache }
       if cached
         cached.each do |hname, data|
           next unless data[:models]
           data[:models].each do |m|
-            mid = (m["id"] || m[:id] || "").to_s
-            if mid.downcase == bare_down
+            if m.id.downcase == bare_down
               entry = find_entry(hname)
               return [entry, bare] if entry
             end
@@ -151,9 +165,10 @@ module Samagotchi
         end
         cached.each do |hname, data|
           next unless data[:models]
+          next if find_entry(hname)&.remote?
+
           data[:models].each do |m|
-            mid = (m["id"] || m[:id] || "").to_s
-            if mid.downcase.include?(bare_down)
+            if m.id.downcase.include?(bare_down)
               entry = find_entry(hname)
               return [entry, bare] if entry
             end
@@ -161,6 +176,30 @@ module Samagotchi
         end
       end
       [default_entry, bare]
+    end
+
+    # The chat adapter for a host (one per host, so its cached model list
+    # serves the context window). Only chat hosts use it for turns.
+    # @return [LLM::OpenAIChat]
+    def adapter_for(entry)
+      @mutex.synchronize do
+        @adapters[entry.name] ||= LLM::OpenAIChat.for(entry, models_ttl: entry.models_ttl)
+      end
+    end
+
+    # A host's models as ModelInfo: a chat host's from its adapter, a raw
+    # host's from its Client (ids from the server's own list shape).
+    def list_models_for(entry)
+      return adapter_for(entry).list_models if entry.chat? && !@client_override
+
+      Array(client_for(entry).list_models).map do |raw|
+        if raw.is_a?(Hash)
+          id = raw["id"] || raw[:id] || raw["model"] || raw["name"]
+          LLM::ModelInfo.new(id: id.to_s, context_window: nil, supports_tools: nil, raw: raw)
+        else
+          LLM::ModelInfo.new(id: raw.to_s, context_window: nil, supports_tools: nil, raw: {})
+        end
+      end
     end
 
     def client_for_model(raw_model)
@@ -189,43 +228,35 @@ module Samagotchi
     end
 
     # List models on all hosts in parallel. On error per-host, skip with error entry (no failover).
-    # Returns { host_name => { host:, port:, models: [...], error: nil|String } }
-    # Also populates model_index cache (TTL 60s).
+    # Returns { host_name => { host:, port:, transport:, models: [LLM::ModelInfo], error: nil|String } }
+    # Also populates the model index. Unless forced, a host's list is reused
+    # for its TTL (60s; 10 minutes for a remote host).
     def list_all_models(force: true)
-      # Return cached if fresh and not forced
-      if !force
-        cached = @mutex.synchronize do
-          if @cache && @cache_at && (Process.clock_gettime(Process::CLOCK_MONOTONIC) - @cache_at) < CACHE_TTL_SECONDS
-            @cache.dup
-          end
-        end
-        return cached if cached
-      end
-
       results = {}
       results_mutex = Mutex.new
       threads = @entries.map do |name, entry|
+        fresh = !force && fresh_list(name, entry)
+        next results_mutex.synchronize { results[name] = fresh } if fresh
+
         Thread.new do
           begin
-            # Use a short-lived client timeout for listing to avoid blocking
-            # We reuse entry.client but list_models honors retry; for aggregation we want fail-fast per host.
-            # So temporarily reduce retry by using a 3s open_timeout-style? Instead just call list_models and rescue RetryExhausted.
-            models = client_for(entry).list_models
-            models = Array(models)
-            results_mutex.synchronize { results[name] = { host: entry.host, port: entry.port, transport: entry.transport, models: models, error: nil } }
+            models = list_models_for(entry)
+            data = { host: entry.host, port: entry.port, transport: entry.transport, models: models, error: nil }
+            @mutex.synchronize { @host_lists[name] = { data: data, at: @clock.call } }
           rescue StandardError => e
-            results_mutex.synchronize { results[name] = { host: entry.host, port: entry.port, transport: entry.transport, models: [], error: e.message } }
+            data = { host: entry.host, port: entry.port, transport: entry.transport, models: [], error: e.message }
           end
+          results_mutex.synchronize { results[name] = data }
         end
       end
-      threads.each(&:join)
+      threads.each { |thread| thread.join if thread.is_a?(Thread) }
 
       # Build model index: model_id downcased -> host_name (first host wins)
       index = {}
       results.each do |hname, data|
         next if data[:error]
         Array(data[:models]).each do |m|
-          mid = (m["id"] || m[:id]).to_s
+          mid = m.id.to_s
           next if mid.strip.empty?
           down = mid.downcase
           index[down] = hname unless index.key?(down)
@@ -234,7 +265,7 @@ module Samagotchi
 
       @mutex.synchronize do
         @cache = results
-        @cache_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        @cache_at = @clock.call
         @model_index = index
       end
       results
@@ -242,6 +273,15 @@ module Samagotchi
 
     def cached_results
       @mutex.synchronize { @cache }
+    end
+
+    private
+
+    def fresh_list(name, entry)
+      @mutex.synchronize do
+        cached = @host_lists[name]
+        cached[:data] if cached && (@clock.call - cached[:at]) < entry.models_ttl
+      end
     end
   end
 end

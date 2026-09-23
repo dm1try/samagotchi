@@ -1195,8 +1195,8 @@ module Samagotchi
         end
         lines << "#{host_label}:"
         models.each do |entry|
-          identifier = entry["id"] || entry[:id] || "unknown"
-          raw_status = entry["status"] || entry[:status]
+          identifier = entry.id.to_s.empty? ? "unknown" : entry.id
+          raw_status = entry.raw["status"] || entry.raw[:status]
           status = raw_status.is_a?(Hash) ? (raw_status["value"] || raw_status[:value] || raw_status["status"] || raw_status[:status]) : raw_status
           seen << identifier.to_s.downcase
           # also track host-qualified seen for orphan logic

@@ -71,3 +71,22 @@ RSpec.describe Samagotchi::ContextWindow do
     expect(described_class.current.to_h).to eq(tokens: 128_000, source: :server)
   end
 end
+
+RSpec.describe Samagotchi::ContextWindow, ".resolve with a host's model list" do
+  let(:adapter) { double("adapter", context_window: 131_072) }
+
+  it "takes the window the model list gives when the server reports none" do
+    expect(described_class.resolve(client: nil, adapter: adapter, model: "m"))
+      .to have_attributes(tokens: 131_072, source: :model_list)
+  end
+
+  it "prefers the running server's window" do
+    client = double("client", context_window: 128_000)
+
+    expect(described_class.resolve(client: client, adapter: adapter, model: "m").tokens).to eq(128_000)
+  end
+
+  it "falls back to config and the default when the list has nothing" do
+    expect(described_class.resolve(client: nil, adapter: double(context_window: nil), model: "m").source).to eq(:default)
+  end
+end

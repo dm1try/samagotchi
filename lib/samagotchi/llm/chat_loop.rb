@@ -105,11 +105,13 @@ module Samagotchi
       end
 
       # The window for +model+: the kernel's client probes the server it
-      # points at (Engine keeps it on the effective model's host), then
-      # config, env and the default.
+      # points at (Engine keeps it on the effective model's host; a local
+      # llama.cpp answers /props), then the host's model list, config, env
+      # and the default. A remote provider has no /props to probe.
       def context_window(model)
-        client = @kernel.client if @kernel.respond_to?(:client)
-        ContextWindow.resolve(client: client, model: model)
+        remote = @adapter.respond_to?(:remote?) && @adapter.remote?
+        client = @kernel.client if !remote && @kernel.respond_to?(:client)
+        ContextWindow.resolve(client: client, model: model, adapter: @adapter)
       rescue StandardError
         nil
       end

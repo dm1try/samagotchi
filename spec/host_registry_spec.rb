@@ -59,7 +59,65 @@ RSpec.describe Samagotchi::HostRegistry do
       registry.client_override = stub
       allow(stub).to receive(:list_models).and_return([{ "id" => "m" }])
 
-      expect(registry.list_all_models.values.map { |r| r[:models] }).to all(eq([{ "id" => "m" }]))
+      expect(registry.list_all_models.values.map { |r| r[:models].map(&:id) }).to all(eq(["m"]))
+    end
+  end
+
+  describe "model lists from each host's adapter" do
+    let(:registry) do
+      described_class.new(hosts_config: {
+        "box" => { name: "box", host: "box.test", port: 8081 },
+        "oai" => { name: "oai", host: "oai.test", port: 8000, api: :openai },
+        "fw" => { name: "fw", host: "api.example.test", port: 443, scheme: "https", api: :openai,
+                  url: "https://api.example.test/v1", api_key_env: "FW_KEY" }
+      }, clock: -> { clock.first })
+    end
+    let(:clock) { [1000.0] }
+
+    before do
+      allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({})
+      allow(registry.entries["box"].client).to receive(:list_models)
+        .and_return([{ "id" => "gemma-4-26b", "status" => "loaded" }])
+      allow(registry.adapter_for(registry.entries["oai"])).to receive(:list_models)
+        .and_return([Samagotchi::LLM::ModelInfo.new(id: "qwen-local", context_window: 32_768, supports_tools: nil, raw: {})])
+      allow(registry.adapter_for(registry.entries["fw"])).to receive(:list_models)
+        .and_return([Samagotchi::LLM::ModelInfo.new(id: "accounts/x/models/llama-v3", context_window: 131_072, supports_tools: true, raw: {})])
+    end
+
+    it "lists every host's models as ModelInfo, raw hosts' hashes included" do
+      results = registry.list_all_models
+
+      expect(results["box"][:models].first).to have_attributes(id: "gemma-4-26b", raw: { "id" => "gemma-4-26b", "status" => "loaded" })
+      expect(results["oai"][:models].map(&:id)).to eq(["qwen-local"])
+      expect(results["fw"][:models].first.context_window).to eq(131_072)
+    end
+
+    it "calls a host remote when it has an API key variable or an https url" do
+      expect(registry.entries.transform_values(&:remote?)).to eq("box" => false, "oai" => false, "fw" => true)
+    end
+
+    it "routes to a remote host only by exact id, never by a substring" do
+      registry.list_all_models
+
+      expect(registry.resolve("accounts/x/models/llama-v3").entry.name).to eq("fw")
+      expect(registry.resolve("llama-v3").entry.name).not_to eq("fw")
+      expect(registry.resolve("gemma-4").entry.name).to eq("box")
+    end
+
+    it "keeps one adapter per host, which remembers a remote list for 10 minutes and a local one for a minute" do
+      expect(registry.adapter_for(registry.entries["fw"])).to be(registry.adapter_for(registry.entries["fw"]))
+      expect(registry.adapter_for(registry.entries["fw"]).models_ttl).to eq(600)
+      expect(registry.adapter_for(registry.entries["oai"]).models_ttl).to eq(60)
+    end
+
+    it "reuses a host's list within its TTL unless forced" do
+      registry.list_all_models
+      clock[0] += 120
+
+      registry.list_all_models(force: false)
+
+      expect(registry.adapter_for(registry.entries["fw"])).to have_received(:list_models).once
+      expect(registry.entries["box"].client).to have_received(:list_models).twice
     end
   end
 end

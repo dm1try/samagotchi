@@ -28,11 +28,12 @@ module Samagotchi
       MAX_MODEL_PAGES = 20
       DEFAULT_MODELS_TTL = 60
 
-      attr_reader :base_url, :host_name, :api_key_env
+      attr_reader :base_url, :host_name, :api_key_env, :models_ttl
 
       # @param entry [HostRegistry::HostEntry]
       def self.for(entry, **options)
-        new(base_url: entry.openai_base_url, host_name: entry.name, api_key_env: entry.api_key_env, **options)
+        new(base_url: entry.openai_base_url, host_name: entry.name, api_key_env: entry.api_key_env,
+            remote: entry.respond_to?(:remote?) && entry.remote?, **options)
       end
 
       # Tool arguments as a Hash; "" is {}, invalid JSON stays a String.
@@ -57,8 +58,10 @@ module Samagotchi
       # @param timeout [Numeric, nil] read timeout in seconds (default
       #   server.read_timeout); the connect timeout is capped by it
       # @param models_ttl [Numeric] how long #context_window reuses the list
+      # @param remote [Boolean] a provider on the network, not a local server
       def initialize(base_url:, host_name:, api_key_env: nil, stream: true, retries: true, timeout: nil,
-                     env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL)
+                     env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL, remote: false)
+        @remote = remote
         @base_url = base_url.to_s.chomp("/")
         @host_name = host_name.to_s
         @api_key_env = api_key_env
@@ -102,6 +105,9 @@ module Samagotchi
 
         assembly.response
       end
+
+      # A provider on the network: no llama.cpp /props to ask for the window.
+      def remote? = @remote
 
       # @return [Array<ModelInfo>] the host's models (every page)
       def list_models
