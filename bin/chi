@@ -776,8 +776,8 @@ OptionParser.new do |opts|
     next if entry.key == "web.markdown" # handled below with an explicit inverse flag
     case entry.type
     when :bool
-      opts.on(entry.cli_flag, "Set #{entry.key} (bool) [env #{entry.env_key}]") { cli_overrides[entry.key] = true }
-      opts.on("--no-#{entry.cli_flag.sub(/^--/, '')}", "Disable #{entry.key}") { cli_overrides[entry.key] = false } if entry.key.start_with?("no_")
+      # --[no-]: a bool that defaults to on is only useful switched off.
+      opts.on("--[no-]#{entry.cli_flag.delete_prefix('--')}", "Set #{entry.key} (bool, default #{entry.default ? 'on' : 'off'}) [env #{entry.env_key}]") { |v| cli_overrides[entry.key] = v }
     when :integer, :float, :string, :enum
       desc = "Set #{entry.key} [env #{entry.env_key}]"
       desc += " (#{entry.enum_values.join('|')})" if entry.type == :enum
