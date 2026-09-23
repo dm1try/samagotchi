@@ -173,11 +173,13 @@ module Samagotchi
                          .reject { |s| (!include_tests && s.test_run) || s.id == exclude }
                          .select { |s| root.nil? || in_folder?(s.working_directory, root) }
                          .filter_map do |s|
-        owned = session_owner(s.id, state_dir: sd)&.fetch("kind", nil) == "worker"
+        owner = session_owner(s.id, state_dir: sd)&.fetch("kind", nil)
+        owned = owner == "worker"
         next if live && !owned
 
         { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), preview: summary_preview(s), cwd: s.working_directory,
-          updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING }
+          updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING,
+          owner: owner }
       end
       (limit ? summaries.first(limit) : summaries.to_a)
     end

@@ -93,7 +93,9 @@ if ARGV[0] == "sessions"
       )
       case format
       when "json"
-        keys = %i[id short_id desc cwd updated_at live busy]
+        # owner: "worker", "tui" (a chi REPL: it takes no notes or messages)
+        # or nil
+        keys = %i[id short_id desc cwd updated_at live busy owner]
         puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
       when "tsv"
         summaries.each { |summary| puts "#{summary[:id]}\t#{summary[:desc]}" }

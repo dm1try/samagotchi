@@ -27,12 +27,12 @@ RSpec.describe "chi sessions list" do
     Open3.capture3(env, RbConfig.ruby, chi, "sessions", "list", *args, stdin_data: "")
   end
 
-  def make(prompt, cwd: "/work/app", live: false, test_run: false)
+  def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil)
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd).tap do |s|
       s.last_prompt = prompt
       s.test_run = test_run
       s.save(state_dir: state_dir)
-      locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(s.id, state_dir: state_dir), kind: "worker") if live
+      locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(s.id, state_dir: state_dir), kind: owner) if owner
       sleep(0.01) # distinct updated_at
     end
   end
@@ -68,7 +68,21 @@ RSpec.describe "chi sessions list" do
     expect(status.exitstatus).to eq(0), err
     expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
                                      "cwd" => "/work/app", "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
-                                     "live" => true, "busy" => false }])
+                                     "live" => true, "busy" => false, "owner" => "worker" }])
+  end
+
+  it "--format json: owner is worker, tui (a chi REPL) or null; the text and tsv lines don't change" do
+    stopped = make("stopped")
+    repl = make("in a repl", owner: "tui")
+    live = make("live", live: true)
+
+    out, err, status = run_chi("--format", "json")
+
+    expect(status.exitstatus).to eq(0), err
+    expect(JSON.parse(out).to_h { |row| [row["id"], row["owner"]] }).to eq(live.id => "worker", repl.id => "tui", stopped.id => nil)
+    expect(run_chi("--format", "tsv").first.lines).to eq(["#{live.id}\tapp · live\n", "#{repl.id}\tapp · in a repl\n",
+                                                          "#{stopped.id}\tapp · stopped\n"])
+    expect(run_chi("--cwd", "/work").first).not_to include("tui", "worker")
   end
 
   it "prints an empty JSON array when nothing matches" do
