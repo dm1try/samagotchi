@@ -1631,6 +1631,39 @@ end
       kernel = described_class.new(client: client, profile: Samagotchi::ModelProfile.qwen36)
       expect(kernel.instance_variable_get(:@profile).name).to eq("qwen36")
     end
+
+    def started_events(kernel, model_name: nil)
+      allow(client).to receive(:context_window).and_return(nil)
+      allow(client).to receive(:complete).and_return("done")
+      events = []
+      kernel.run([{ role: "user", content: "hi" }], model_name: model_name, on_stream_event: ->(e) { events << e })
+      events.select { |e| e[:type] == :generation_started }
+    end
+
+    it "names the profile in :generation_started, from the name until one is resolved" do
+      ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
+
+      expect(started_events(described_class.new(client: client)).first)
+        .to include(profile: "gemma4", profile_source: "name")
+    end
+
+    it "keeps a resolved profile (use_profile!) across runs with another model name, and reports its source" do
+      ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
+      kernel = described_class.new(client: client)
+      kernel.use_profile!(Samagotchi::ModelProfile::Resolution.new(profile: Samagotchi::ModelProfile.qwen36, source: :server,
+                                                                   detail: "<|im_start|> + <function=", retry: false))
+
+      prompts = []
+      allow(client).to receive(:context_window).and_return(nil)
+      allow(client).to receive(:complete) { |prompt, **| prompts << prompt; "done" }
+      events = []
+      kernel.run([{ role: "user", content: "hi" }], model_name: "gemma-other", on_stream_event: ->(e) { events << e })
+
+      expect(events.find { |e| e[:type] == :generation_started })
+        .to include(profile: "qwen36", profile_source: "server (chat_template)")
+      expect(prompts.first).to include("<|im_start|>user")
+      expect(kernel.profile.name).to eq("qwen36")
+    end
   end
 
   describe "model_key" do

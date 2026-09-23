@@ -43,6 +43,13 @@ RSpec.describe Samagotchi::TerminalUI do
 
       expect(agent.send(:format_session_metrics, metrics.snapshot)).to include("context window:   128000 tokens (server)")
     end
+
+    it "shows the prompt profile and where it came from in /stats" do
+      metrics = agent.instance_variable_get(:@engine).metrics
+      metrics.call(type: :generation_started, profile: "qwen36", profile_source: "config (models: ista)")
+
+      expect(agent.send(:format_session_metrics, metrics.snapshot)).to include("prompt profile:   qwen36 (config (models: ista))")
+    end
   end
 
   describe "idle activity hook" do

@@ -45,6 +45,7 @@ module Samagotchi
         if snapshot[:context_window_tokens]
           lines << "context window:   #{snapshot[:context_window_tokens]} tokens (#{snapshot[:context_window_source]})"
         end
+        lines << "prompt profile:   #{snapshot[:profile]} (#{snapshot[:profile_source]})" if snapshot[:profile]
         lines.join("\n")
       end
 

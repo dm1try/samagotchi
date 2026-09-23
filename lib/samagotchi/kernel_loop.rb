@@ -141,6 +141,9 @@ module Samagotchi
       # exactly which model each request went to.
       @current_model_name = resolved_model_name
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(resolved_model_name)
+      # Where @profile came from, as /stats shows it (a Resolution's label
+      # once the Engine resolves one).
+      @profile_source = "name"
       @hooks = hooks
       @reminder_store = reminder_store
       @model_key = model_key
@@ -150,6 +153,9 @@ module Samagotchi
     #   Engine to share the same store with the KernelLoop when TerminalUI
     #   creates both).
     attr_reader :reminder_store
+
+    # @return [ModelProfile] the active prompt profile
+    attr_reader :profile
 
     # @return [Samagotchi::Hooks::Registry, nil] hooks registry shared with Engine.
     #   Engine owns the registry; KernelLoop only fires events. Accessor allows
@@ -182,7 +188,10 @@ module Samagotchi
     def run(messages, max_iterations: 100, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil)
       resolved_model_name = completion_model_name(model_name)
       @current_model_name = resolved_model_name
-      @profile = ModelProfile.from_model_name(resolved_model_name) unless @profile_explicit
+      unless @profile_explicit
+        @profile = ModelProfile.from_model_name(resolved_model_name)
+        @profile_source = "name"
+      end
 
       conversation = prepare_conversation(messages)
       context_state = initial_context_status_state(conversation)
@@ -207,7 +216,9 @@ module Samagotchi
           type: :generation_started,
           iteration: iteration_index + 1,
           context_window_tokens: context_window.tokens,
-          context_window_source: context_window.source
+          context_window_source: context_window.source,
+          profile: @profile.name,
+          profile_source: @profile_source
         )
         # Fire :before_generation hook
         gen_event = { type: :before_generation, iteration: iteration_index + 1 }
@@ -327,6 +338,16 @@ module Samagotchi
     def sync_profile_from_model!(model_name)
       @profile_explicit = false
       @profile = ModelProfile.from_model_name(model_name)
+      @profile_source = "name"
+    end
+
+    # Pin a resolved profile (ModelProfile::Resolution): later runs keep it,
+    # whatever model name they carry, until the next use_profile! or
+    # sync_profile_from_model!.
+    def use_profile!(resolution)
+      @profile_explicit = true
+      @profile = resolution.profile
+      @profile_source = resolution.label
     end
 
     def sync_model_key!(key)

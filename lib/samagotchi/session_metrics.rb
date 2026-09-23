@@ -109,6 +109,10 @@ module Samagotchi
             @context_window_tokens = event[:context_window_tokens]
             @context_window_source = event[:context_window_source]
           end
+          if event[:profile]
+            @profile = event[:profile]
+            @profile_source = event[:profile_source]
+          end
           if @turn
             @turn.gen_started_at = monotonic_time
             @turn.gen_completion_max = 0
@@ -146,6 +150,8 @@ module Samagotchi
           token_source: @token_source,
           context_window_tokens: @context_window_tokens,
           context_window_source: @context_window_source,
+          profile: @profile,
+          profile_source: @profile_source,
           tool_calls_total: @tool_calls_total,
           tool_calls_by_tool: @tool_calls_by_tool.dup,
           tool_errors: @tool_errors,
