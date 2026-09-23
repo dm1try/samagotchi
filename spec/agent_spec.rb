@@ -6,6 +6,8 @@ require "json"
 require "stringio"
 require "tmpdir"
 
+require_relative "support/recording_surface"
+
 RSpec.describe Samagotchi::TerminalUI do
   let(:client) { instance_double(Samagotchi::Client) }
   let(:ansi_escape) { /\e\[[0-9;]+m/ }
@@ -637,6 +639,9 @@ file2.rb")
     end
   end
 
+  # These capture $stdout (not a terminal), so the spinner draws on
+  # LegacySurface, the REPL's fallback. The live region's layout is pinned by
+  # terminal_ui_live_region_spec and the goldens.
   describe "thinking spinner" do
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
@@ -756,6 +761,20 @@ file2.rb")
 
       expect(agent.send(:thinking_tail_preview_line)).not_to be_nil
       expect(agent.send(:thinking_tail_preview_line)).to include("preview me")
+    end
+
+    it "hands the surface the spinner rows for above the prompt and the status rows for below it" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client, surface: RecordingSurface.new)
+      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
+      allow(agent).to receive(:color_output?).and_return(false)
+      allow(agent).to receive(:status_server_segment).and_return("")
+
+      agent.send(:handle_stream_event, type: :generation_started)
+      agent.send(:handle_stream_event, type: :generation_chunk, content: "hello")
+
+      slots = agent.instance_variable_get(:@surface).slots
+      expect(slots[:activity]).to match([a_string_starting_with("model> thinking..."), "model> … hello"])
+      expect(slots[:status]).to match([a_string_starting_with("status> model=")])
     end
 
     it "does not render spinner in non-TTY mode" do
