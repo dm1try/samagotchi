@@ -674,3 +674,60 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input parity with the REPL
     expect(run_loop([nil], default_input: false)).to eq([nil])
   end
 end
+
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "idle status line" do
+  let(:screen) { RecordingSurface.new(columns: 120) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
+
+  around do |example|
+    saved = ENV.to_h.slice("SAMAGOTCHI_STATUS_LINE", "SAMAGOTCHI_DEFAULT_MODEL")
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "m1"
+    example.run
+  ensure
+    %w[SAMAGOTCHI_STATUS_LINE SAMAGOTCHI_DEFAULT_MODEL].each { |k| ENV.delete(k) }
+    saved.each { |k, v| ENV[k] = v }
+  end
+
+  def feed(*events)
+    events.each { |e| attached.handle_event(JSON.parse(JSON.generate(e))) }
+  end
+
+  def join(model_name: "m1", used_memory_names: [])
+    { type: :snapshot, snapshot: { messages: [], current_turn: nil, queued: [], event_seq: 1 },
+      session_state_snapshot: { status: "idle", model_name: model_name, used_memory_names: used_memory_names } }
+  end
+
+  def status = screen.slots[:status]&.first
+
+  it "shows the REPL's segments: the worker's model and the session's memories, from the join" do
+    feed(join(used_memory_names: %w[notes todo]))
+
+    expect(status).to eq("status> model=m1 | mem: notes, todo")
+  end
+
+  it "names the default when the worker runs another model, and follows /model" do
+    feed(join(model_name: "m2"))
+    expect(status).to eq("status> model=m2 (default: m1)")
+
+    feed({ type: :command_ran, command_id: "c", client_id: "web:1", line: "/model clear", status: "ok",
+           output: "runtime model reset to m1", changed: ["model"], model_name: "m1" })
+    expect(status).to eq("status> model=m1")
+  end
+
+  it "adds the context estimate and the memories a turn used" do
+    feed(join,
+         { type: :context_status, usage: { estimated_pct: 12.5 }, bucket: "low" },
+         { type: :used_memories_updated, used_memory_names: ["notes"] })
+
+    expect(status).to eq("status> model=m1 | ctx=12.5% (low) | mem: notes")
+  end
+
+  it "draws none with SAMAGOTCHI_STATUS_LINE=off" do
+    ENV["SAMAGOTCHI_STATUS_LINE"] = "off"
+
+    feed(join)
+
+    expect(screen.slots).not_to have_key(:status)
+  end
+end

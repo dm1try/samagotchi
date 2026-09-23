@@ -17,6 +17,74 @@ module Samagotchi
 
       private
 
+      # ── The status line (the REPL's, and attached mode's idle one) ────────
+
+      # SAMAGOTCHI_STATUS_LINE=off hides it.
+      def status_line_enabled?
+        value = ENV.fetch(STATUS_LINE_ENV, STATUS_LINE_ON).to_s.strip.downcase
+        !(value.empty? || value == STATUS_LINE_OFF || value == "0" || value == "false")
+      end
+
+      # @return [Array<String>] the "status> a | b" row, cut to +width+
+      def status_rows(segments, width)
+        return [] if segments.empty? || width <= 0
+
+        row = cap_preview_text("status> #{segments.join(' | ')}", width)
+        [color_output? ? paint(row, 90) : row]
+      end
+
+      def status_model_text(model, default_model)
+        return "model=#{model}" if default_model.nil? || model == default_model
+
+        "model=#{model} (default: #{default_model})"
+      end
+
+      # @param server [Hash, nil] the server's own numbers ({ctx_pct:, prompt_tokens:, ...})
+      # @param estimate [Hash, nil] the kernel's estimate ({est_pct:, bucket:})
+      def status_context_text(server: nil, estimate: nil)
+        return format_server_context_segment(server) if server.is_a?(Hash)
+        return "" unless estimate.is_a?(Hash)
+
+        pct = format("%.1f", estimate[:est_pct].to_f)
+        bucket = estimate[:bucket].to_s
+        return "ctx=#{pct}%" if bucket.empty?
+
+        "ctx=#{pct}% (#{bucket})"
+      end
+
+      def format_server_context_segment(status)
+        pct = status[:ctx_pct]
+        base = pct ? "ctx=#{format('%.1f', pct)}%" : "ctx=srv"
+
+        tokens = []
+        prompt_tokens = status[:prompt_tokens]
+        completion_tokens = status[:completion_tokens]
+        total_tokens = status[:total_tokens]
+        tokens << "p=#{prompt_tokens}" if prompt_tokens
+        tokens << "c=#{completion_tokens}" if completion_tokens
+        tokens << "t=#{total_tokens}" if total_tokens
+
+        return base if tokens.empty?
+
+        "#{base} (#{tokens.join(' ')})"
+      end
+
+      def status_memory_text(names, limit)
+        names = Array(names)
+        return "" if names.empty?
+
+        visible = names.first(limit)
+        suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
+        "mem: #{visible.join(', ')}#{suffix}"
+      end
+
+      def cap_preview_text(text, width)
+        return "" if width <= 0
+
+        value = text.to_s
+        value.length > width ? value[0, width] : value
+      end
+
       # Render the analytics snapshot as a compact, user-facing report. Raw event
       # logs (debug-only) are intentionally excluded; this surface is for the REPL.
       def format_session_metrics(snapshot)

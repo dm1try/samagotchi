@@ -1068,12 +1068,6 @@ module Samagotchi
       [width, THINKING_PREVIEW_WIDTH].min
     end
 
-    def cap_preview_text(text, width)
-      return "" if width <= 0
-
-      value = text.to_s
-      value.length > width ? value[0, width] : value
-    end
 
     def thinking_preview_lines_count
       raw = ENV.fetch(THINKING_PREVIEW_LINES_ENV, THINKING_PREVIEW_LINES_DEFAULT.to_s).to_s.strip
@@ -1250,10 +1244,6 @@ module Samagotchi
       @latest_server_context_status = normalized
     end
 
-    def status_line_enabled?
-      value = ENV.fetch(STATUS_LINE_ENV, STATUS_LINE_ON).to_s.strip.downcase
-      !(value.empty? || value == STATUS_LINE_OFF || value == "0" || value == "false")
-    end
 
     def emit_idle_status_line
       return unless status_line_enabled?
@@ -1340,23 +1330,9 @@ module Samagotchi
 
     # The status rows for +scope+ (:spinner, :sticky or :idle), cut to +width+.
     def build_status_lines(scope:, width: status_effective_width)
-      segments = status_segments(scope)
-      return [] if segments.empty?
-
-      body = "status> #{segments.join(' | ')}"
-      lines = status_body_lines(body, width)
-      if color_output?
-        lines.map { |line| paint(line, 90) }
-      else
-        lines
-      end
+      status_rows(status_segments(scope), width)
     end
 
-    def status_body_lines(body, width)
-      return [] if width <= 0
-
-      [cap_preview_text(body, width)]
-    end
 
     def status_width_mode
       mode = ENV.fetch(STATUS_WIDTH_MODE_ENV, STATUS_WIDTH_MODE_TERMINAL_CAP).to_s.strip.downcase
@@ -1411,42 +1387,11 @@ module Samagotchi
     end
 
     def status_model_segment
-      if @effective_model_name == @default_model_name
-        "model=#{@effective_model_name}"
-      else
-        "model=#{@effective_model_name} (default: #{@default_model_name})"
-      end
+      status_model_text(@effective_model_name, @default_model_name)
     end
 
     def status_context_segment
-      server_status = @latest_server_context_status
-      return format_server_context_segment(server_status) if server_status.is_a?(Hash)
-
-      status = @latest_context_status
-      return "" unless status.is_a?(Hash)
-
-      pct = format("%.1f", status[:est_pct].to_f)
-      bucket = status[:bucket].to_s
-      return "ctx=#{pct}%" if bucket.empty?
-
-      "ctx=#{pct}% (#{bucket})"
-    end
-
-    def format_server_context_segment(status)
-      pct = status[:ctx_pct]
-      base = pct ? "ctx=#{format('%.1f', pct)}%" : "ctx=srv"
-
-      tokens = []
-      prompt_tokens = status[:prompt_tokens]
-      completion_tokens = status[:completion_tokens]
-      total_tokens = status[:total_tokens]
-      tokens << "p=#{prompt_tokens}" if prompt_tokens
-      tokens << "c=#{completion_tokens}" if completion_tokens
-      tokens << "t=#{total_tokens}" if total_tokens
-
-      return base if tokens.empty?
-
-      "#{base} (#{tokens.join(' ')})"
+      status_context_text(server: @latest_server_context_status, estimate: @latest_context_status)
     end
 
     def status_memory_segment(scope)
@@ -1456,11 +1401,7 @@ module Samagotchi
                      else
                        [Array(@session_memory_names), MEMORY_STICKY_PREVIEW_LIMIT]
                      end
-      return "" if names.empty?
-
-      visible = names.first(limit)
-      suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
-      "mem: #{visible.join(', ')}#{suffix}"
+      status_memory_text(names, limit)
     end
 
     def thinking_memory_notification_suffix

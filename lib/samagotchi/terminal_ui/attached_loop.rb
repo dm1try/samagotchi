@@ -7,6 +7,7 @@ require_relative "attached_view"
 require_relative "input_support"
 require_relative "question_prompt"
 require_relative "../bridge_client"
+require_relative "../model_profile"
 require_relative "../session_commands"
 
 module Samagotchi
@@ -172,6 +173,10 @@ module Samagotchi
         @continue_offer = nil
         @model_name = nil
         @turn_continues = false
+        # The idle status line's data (the REPL's segments).
+        @memory_names = []
+        @context_estimate = nil
+        @status_rows = nil
       end
 
       def running? = @running
@@ -214,7 +219,9 @@ module Samagotchi
       def handle_event(event)
         event = EventRenderer.symbolize(event)
         case event[:type]
-        when :snapshot, :reset then return render_snapshot(event[:snapshot] || {}, reset: event[:type] == :reset)
+        when :snapshot, :reset
+          take_session_state(event[:session_state_snapshot] || {})
+          return render_snapshot(event[:snapshot] || {}, reset: event[:type] == :reset)
         when :turn_enqueued then show_enqueued(event)
         when :turn_started then start_turn(event)
         when :turn_completed then complete_turn(event)
@@ -227,6 +234,12 @@ module Samagotchi
         when :turn_failed
           end_turn("turn failed: #{event[:summary] || "#{event[:message]} (#{event[:error_class]})"}")
         when :prompt_restored then restore_prompt(event)
+        when :context_status
+          @context_estimate = { est_pct: event.dig(:usage, :estimated_pct), bucket: event[:bucket] }
+          refresh_status
+        when :used_memories_updated
+          @memory_names = Array(event[:used_memory_names])
+          refresh_status
         when :command_ran
           command_ran(event)
           return first_command_ran(event) if @first_command_id && event[:command_id] == @first_command_id
@@ -315,18 +328,20 @@ module Samagotchi
       end
 
       def command_ran(event)
-        @model_name = event[:model_name] if event[:model_name]
         @screen.commit(prompt_line(event[:client_id], event[:line])) unless own?(event[:client_id])
         output = event[:output].to_s
-        return if output.empty?
-
-        if event[:status] == "busy"
-          @screen.commit(output)
-        elsif shell_line?(event[:line])
+        if output.empty?
+          nil
+        elsif event[:status] == "busy" || shell_line?(event[:line])
           @screen.commit(output)
         else
           @screen.commit("#{paint("model>", 36)} #{output}")
         end
+        return unless event[:model_name]
+
+        # After the output, so the status row changes with the line saying why.
+        @model_name = event[:model_name]
+        refresh_status
       end
 
       def shell_line?(line)
@@ -638,6 +653,9 @@ module Samagotchi
           event = event.merge(turn_summary: event[:turn_summary].merge(tool_activity: []))
         end
         @renderer.call(event)
+        # The turn's summary carries its last context estimate.
+        @context_estimate = @view.context_status if @view.context_status
+        refresh_status
         @running = false
         @joined_mid_turn = false
         close_question(nil) if @question
@@ -652,6 +670,36 @@ module Samagotchi
       end
 
       def own?(client_id) = !client_id.nil? && client_id == @client_id
+
+      # The joining snapshot's session state: the worker's model and the
+      # memories the session used.
+      def take_session_state(state)
+        @model_name = state[:model_name] if state[:model_name]
+        @memory_names = Array(state[:used_memory_names]) if state.key?(:used_memory_names)
+        refresh_status
+      end
+
+      # The REPL's idle status line (model · ctx · memories) in the status
+      # row, redrawn when its text changes.
+      def refresh_status
+        return unless status_line_enabled?
+
+        segments = [@model_name ? status_model_text(@model_name, default_model_name) : "",
+                    status_context_text(estimate: @context_estimate),
+                    status_memory_text(@memory_names, MEMORY_STICKY_PREVIEW_LIMIT)].reject(&:empty?)
+        rows = status_rows(segments, @screen.columns - 1)
+        return if rows == @status_rows
+
+        @status_rows = rows
+        rows.empty? ? @screen.clear_slot(:status) : @screen.set_slot(:status, rows)
+      end
+
+      # The config's default model, as the worker's /model names it.
+      def default_model_name
+        @default_model_name ||= ModelProfile.required_model_name(nil)
+      rescue StandardError
+        nil
+      end
 
       def reminder_origin?(origin) = origin[:client_id].to_s.start_with?("system:")
 
