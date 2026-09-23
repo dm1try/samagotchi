@@ -93,6 +93,9 @@ module Samagotchi
       end
       # Also propagate current default model (may be host-qualified)
       child_env["SAMAGOTCHI_DEFAULT_MODEL"] = ENV["SAMAGOTCHI_DEFAULT_MODEL"] if ENV["SAMAGOTCHI_DEFAULT_MODEL"]
+      # A worker gets no CLI args: pass on an idle exit set by any layer.
+      idle_exit = begin Samagotchi::Config.get("session.idle_exit_minutes") rescue nil end
+      child_env["SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES"] = idle_exit.to_s unless idle_exit.nil?
       opts[:env] = child_env unless child_env.empty?
       opts
     end

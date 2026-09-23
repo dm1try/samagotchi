@@ -121,6 +121,21 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Process).to have_received(:spawn)
     end
 
+    it "hands the worker an idle exit set on the command line" do
+      Samagotchi::Config.set_cli_overrides("session.idle_exit_minutes" => "0.5")
+      spawned_env = nil
+      allow(Process).to receive(:spawn) do |*args, **_opts|
+        spawned_env = args.first if args.first.is_a?(Hash)
+        12_345
+      end
+
+      described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", state_dir: tmpdir)
+
+      expect(spawned_env).to include("SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES" => "0.5")
+    ensure
+      Samagotchi::Config.set_cli_overrides({})
+    end
+
     it "spawns worker with explicit require for session manager" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       allow(Samagotchi::Session).to receive(:new_session).and_return(session)

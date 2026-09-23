@@ -43,6 +43,12 @@ RSpec.describe Samagotchi::ConfigFile do
       it "defaults web Markdown rendering to disabled" do
         expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.markdown")).to be(false)
       end
+
+      it "defaults a worker's idle exit to 30 minutes, overridable in fractions" do
+        expect(described_class.resolve("session.idle_exit_minutes", file_data: {}, env: {})).to eq(30.0)
+        expect(described_class.resolve("session.idle_exit_minutes", file_data: {},
+                                       env: { "SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES" => "0.2" })).to eq(0.2)
+      end
     end
 
     it "falls back to ~/.config" do

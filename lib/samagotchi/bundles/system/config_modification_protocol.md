@@ -18,7 +18,7 @@ Single registry `Samagotchi::Config` (`lib/samagotchi/config.rb:22`) defines the
 
 Sections forbid `_`/`-` (`SECTION_RE` `/\A[a-z0-9]+\z/`); leaves keep `snake_case` in YAML (`base_url`) and become kebab in CLI (`base-url`) via registry derivation — no generic string split, registry lookup avoids flat vs nested collision.
 
-**Universal entries** (`expose: [:env,:config,:cli]`): `default.model`, `backend`, `server.host/port/transport/open_timeout/read_timeout`, `recap.model/base_url/host_ref/inactivity/timeout/min_user_turns`, `session.retention_days/max_count/keep_status/sweep_interval_hours`, `log.file/disable`, `status.line/width_mode/max_width/fixed_width`, `context.status/window_tokens/chars_per_token/status_thresholds/status_cadence`, `thinking.ui/preview_lines/render_interval`, `n_predict`, `max_tool_output_chars`, `retry.max/base_delay/max_delay`, `read.*`, `execute.*`, `web.port/host`, `no_interrupt`, `no_default_input` etc. (`lib/samagotchi/config.rb:22-75`). Precedence is `CLI > ENV > file > default`.
+**Universal entries** (`expose: [:env,:config,:cli]`): `default.model`, `backend`, `server.host/port/transport/open_timeout/read_timeout`, `recap.model/base_url/host_ref/inactivity/timeout/min_user_turns`, `session.retention_days/max_count/keep_status/sweep_interval_hours/idle_exit_minutes`, `log.file/disable`, `status.line/width_mode/max_width/fixed_width`, `context.status/window_tokens/chars_per_token/status_thresholds/status_cadence`, `thinking.ui/preview_lines/render_interval`, `n_predict`, `max_tool_output_chars`, `retry.max/base_delay/max_delay`, `read.*`, `execute.*`, `web.port/host`, `no_interrupt`, `no_default_input` etc. (`lib/samagotchi/config.rb:22-75`). Precedence is `CLI > ENV > file > default`.
 
 Example `config.yml` (new nested form, preferred):
 
@@ -41,6 +41,7 @@ session:
   max_count: 500
   keep_status: running
   sweep_interval_hours: 24
+  idle_exit_minutes: 30   # a background worker nobody uses exits; 0 = never
 log:
   file: ./tmp/samagotchi.log
   disable: false
