@@ -191,6 +191,20 @@ RSpec.describe "Engine#stats_snapshot" do
     expect(engine.stats_snapshot).to include(context_window_tokens: 4096, profile: "gemma4", profile_source: "env")
   end
 
+  # What a turn reported belongs to the model it ran on: after /model to
+  # another native model, /stats resolves the new model's profile and window.
+  it "drops the profile and window a turn reported for the model before /model" do
+    engine = engine_with(FakeResolvingClient.new(nil))
+    engine.metrics.call(type: :generation_started, iteration: 1, context_window_tokens: 4096, context_window_source: :server,
+                        profile: "gemma4", profile_source: "env")
+    engine.switch_model!("other-qwen-model")
+
+    snapshot = engine.stats_snapshot
+    expect(snapshot).to include(profile: "qwen36")
+    expect(snapshot[:profile_source]).not_to eq("env")
+    expect(snapshot[:context_window_tokens]).not_to eq(4096)
+  end
+
   # A single-model llama.cpp answers any name with the model it loaded.
   it "names the served model from /props before the first turn, for the name asked" do
     engine = engine_with(FakeResolvingClient.new(Samagotchi::Client::ServerProps.new(body: ornith_props, status: :ok)))

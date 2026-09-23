@@ -395,6 +395,7 @@ module Samagotchi
       @system_prompts = nil
       sync_kernel_client!
       @client.invalidate_context_window! if @client.respond_to?(:invalidate_context_window!)
+      @metrics.forget_model_reports!
       if persist_default
         ConfigFile.write_default_model!(resolved)
         @default_model_name = resolved

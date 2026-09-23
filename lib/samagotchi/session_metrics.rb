@@ -74,6 +74,15 @@ module Samagotchi
       @tool_records = []
     end
 
+    # /model: the window and prompt profile a turn reported were the old
+    # model's; /stats resolves the new one's until its first turn reports.
+    def forget_model_reports!
+      @mutex.synchronize do
+        @context_window_tokens = @context_window_source = nil
+        @profile = @profile_source = nil
+      end
+    end
+
     # Set the session id the collector is aggregating for. Safe to call multiple
     # times; the first non-empty id wins so later turns don't clobber it.
     # @param id [String, nil]
