@@ -23,4 +23,11 @@ RSpec.describe "chi --help" do
     expect(shared_line).to include("the default")
     expect(shared_line).to include("--no-shared runs a plain in-process REPL")
   end
+
+  it "refuses an unknown flag with one line, not a backtrace" do
+    _out, err, status = Open3.capture3(RbConfig.ruby, chi, "--bogus", stdin_data: "")
+
+    expect(status.exitstatus).to eq(1)
+    expect(err).to eq("Error: invalid option: --bogus (see chi --help)\n")
+  end
 end

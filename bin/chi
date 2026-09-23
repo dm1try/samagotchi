@@ -751,7 +751,7 @@ ARGV.each do |arg|
   end
 end
 
-OptionParser.new do |opts|
+parser = OptionParser.new do |opts|
   opts.banner = "Usage: bin/chi [options] [subcommand]"
   opts.on("-p", "--prompt PROMPT", "Run PROMPT as the first turn, then stay in the REPL") { |p| options[:prompt] = p }
   opts.on("--resume SESSION_ID", "Resume a previous session by its ID") { |s| options[:resume] = s }
@@ -792,7 +792,13 @@ OptionParser.new do |opts|
   opts.on("--no-web-markdown", "Disable Markdown rendering in `chi web`") { options[:web_markdown] = false; cli_overrides["web.markdown"] = false }
   # Strict underscore rejection: --recap_base_url etc. are not registered and will raise OptionParser::InvalidOption
   opts.on("-h", "--help", "Show help") { puts opts; exit }
-end.parse!
+end
+begin
+  parser.parse!
+rescue OptionParser::ParseError => e
+  warn "Error: #{e.message} (see chi --help)"
+  exit 1
+end
 
 # Apply CLI precedence: CLI > ENV > file
 unless cli_overrides.empty?
