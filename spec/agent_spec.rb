@@ -1065,6 +1065,34 @@ file2.rb")
       expect(observed).to eq([:cbreak, :inside])
     end
 
+    describe "Ctrl-C with a prompt open" do
+      let(:agent) { described_class.new(mode: "assist", prompt: "hi", client: client) }
+      let(:seam) { Samagotchi::TerminalUI::RelineSeam }
+
+      after { seam.interrupt_handler = nil }
+
+      it "cancels the running turn and keeps the prompt" do
+        controller = Samagotchi::Client::CancellationController.new
+        agent.instance_variable_set(:@active_cancel_controller, controller)
+
+        agent.send(:with_interrupt_arbiter) do
+          expect(seam.interrupt_handler.call).to be(true)
+        end
+
+        expect(controller.reason).to eq(:ctrl_c)
+      end
+
+      it "leaves Ctrl-C to Reline with no turn running, and puts the handler back after" do
+        seam.interrupt_handler = previous = -> { :previous }
+
+        agent.send(:with_interrupt_arbiter) do
+          expect(seam.interrupt_handler.call).to be(false)
+        end
+
+        expect(seam.interrupt_handler).to be(previous)
+      end
+    end
+
     it "resets spinner memory notification on a new run" do
       result = Samagotchi::KernelLoop::Result.new(
         output: "done",

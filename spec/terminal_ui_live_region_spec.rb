@@ -116,6 +116,20 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
     expect(at_third_prompt.last).to eq("status> model=Qwen3-14B")
   end
 
+  it "takes Ctrl-C at the prompt while the REPL runs, on a plain surface too" do
+    ui = build_ui(surface: nil)
+    handler_at_prompt = nil
+    allow(Reline).to receive(:readmultiline) do
+      handler_at_prompt = Samagotchi::TerminalUI::RelineSeam.interrupt_handler
+      nil
+    end
+
+    expect { ui.run }.to output.to_stdout
+
+    expect(handler_at_prompt).to respond_to(:call)
+    expect(Samagotchi::TerminalUI::RelineSeam.interrupt_handler).to be_nil
+  end
+
   describe "choosing the surface" do
     it "opens a live region for the REPL and closes it at exit" do
       allow(Samagotchi::TerminalUI::LiveRegion).to receive(:open).and_return(screen)

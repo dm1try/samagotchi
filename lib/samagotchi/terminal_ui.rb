@@ -301,13 +301,41 @@ module Samagotchi
       # installs a Reline.pre_input_hook that resets the shared inactivity
       # clock on the first keystroke.
       with_live_region do
-        @engine.start_idle
-        with_activity_hook do
-          run_assist_loop(session: session, messages: messages)
-        ensure
-          @engine.stop_idle
+        with_interrupt_arbiter do
+          @engine.start_idle
+          with_activity_hook do
+            run_assist_loop(session: session, messages: messages)
+          ensure
+            @engine.stop_idle
+          end
         end
       end
+    end
+
+    # Ctrl-C while a Reline read owns stdin: Reline's INT trap catches it, so
+    # the REPL hears of it through RelineSeam. A running turn is cancelled and
+    # the prompt stays as typed; with no turn running it is Reline's Ctrl-C.
+    # (With no read open, Ctrl-C stays an Interrupt on the turn's thread.)
+    def with_interrupt_arbiter
+      return yield unless RelineSeam.supported?
+
+      RelineSeam.install
+      previous = RelineSeam.interrupt_handler
+      RelineSeam.interrupt_handler = method(:cancel_turn_from_prompt)
+      begin
+        yield
+      ensure
+        RelineSeam.interrupt_handler = previous
+      end
+    end
+
+    # @return [Boolean] a running turn was cancelled
+    def cancel_turn_from_prompt
+      controller = @active_cancel_controller
+      return false unless controller
+
+      controller.cancel!(:ctrl_c)
+      true
     end
 
     # Draw the REPL on a live region (a Screen, with Reline's prompt in it)
