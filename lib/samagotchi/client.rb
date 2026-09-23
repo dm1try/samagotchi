@@ -5,6 +5,7 @@ require "json"
 require "uri"
 require_relative "config"
 require_relative "cancellation_controller"
+require_relative "llm/http"
 
 module Samagotchi
   # Thin HTTP client for llama.cpp's native /completion endpoint, or an
@@ -16,31 +17,9 @@ module Samagotchi
   #   SAMAGOTCHI_SERVER_READ_TIMEOUT (default: 600 seconds)
   #   SAMAGOTCHI_SERVER_TRANSPORT (llama_cpp|mlx|omlx, default: llama_cpp)
   class Client
-    class RequestCancelled < StandardError
-      attr_reader :reason
-
-      def initialize(reason = nil)
-        @reason = reason
-        super("request cancelled")
-      end
-    end
-
-    class RetryExhausted < StandardError
-      attr_reader :attempts, :last_error
-
-      def initialize(attempts:, last_error:, label: "llama.cpp")
-        @attempts = attempts
-        @last_error = last_error
-        super("#{label} request failed after #{attempts} attempts: #{last_error.class}: #{last_error.message}")
-      end
-    end
-
-    RETRY_MAX_ENV = "SAMAGOTCHI_RETRY_MAX"
-    RETRY_BASE_DELAY_ENV = "SAMAGOTCHI_RETRY_BASE_DELAY"
-    RETRY_MAX_DELAY_ENV = "SAMAGOTCHI_RETRY_MAX_DELAY"
-    DEFAULT_RETRY_MAX = 5
-    DEFAULT_RETRY_BASE_DELAY = 0.5
-    DEFAULT_RETRY_MAX_DELAY = 8.0
+    # The shared HTTP layer's errors, under their old names.
+    RequestCancelled = LLM::RequestCancelled
+    RetryExhausted = LLM::RetryExhausted
 
     # The context-window probe runs before a turn's generation, so it gets a
     # short budget and no retry (see #context_window).
@@ -130,7 +109,8 @@ module Samagotchi
     # Moved to its own file; the old name keeps working.
     CancellationController = Samagotchi::CancellationController
 
-    def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil)
+    # @param sleeper [#call, nil] waits between retries (specs pass a no-op)
+    def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil, sleeper: nil)
       # Unified config precedence: CLI > ENV > file > default (via Samagotchi::Config)
       cfg_host = nil; cfg_port = nil; cfg_transport_raw = nil
       begin
@@ -150,18 +130,8 @@ module Samagotchi
       @transport = build_transport(resolve_transport(transport || transport_fallback))
       @context_window_cache = {}
       @context_window_mutex = Mutex.new
-      @retry_max = begin
-        v = Samagotchi::Config.get("retry.max") rescue nil
-        v.is_a?(Integer) && v >= 0 ? v : integer_config(RETRY_MAX_ENV, DEFAULT_RETRY_MAX)
-      end
-      @retry_base_delay = begin
-        v = Samagotchi::Config.get("retry.base_delay") rescue nil
-        v.is_a?(Numeric) && v.positive? ? v.to_f : float_config(RETRY_BASE_DELAY_ENV, DEFAULT_RETRY_BASE_DELAY)
-      end
-      @retry_max_delay = begin
-        v = Samagotchi::Config.get("retry.max_delay") rescue nil
-        v.is_a?(Numeric) && v.positive? ? v.to_f : float_config(RETRY_MAX_DELAY_ENV, DEFAULT_RETRY_MAX_DELAY)
-      end
+      @http = LLM::HTTP.new(label: @transport.label, open_timeout: @open_timeout, read_timeout: @read_timeout,
+                            sleeper: sleeper)
     end
 
     # The wire-format strategy for this client's transport.
@@ -189,111 +159,37 @@ module Samagotchi
       request["Content-Type"] = "application/json"
       request.body = completion_payload(scrub_utf8(prompt), stop: stop, n_predict: n_predict, model: model).to_json
 
-      attempts = 0
-
-      loop do
-        attempts += 1
+      result = +""
+      reset_on_retry = lambda do |event|
+        # The retry streams the answer from the start again.
         result = +""
-        buffer = +""
-        request_thread = Thread.current
-        cancel_listener_id = cancel_controller&.on_cancel do |reason|
-          request_thread.raise(RequestCancelled.new(reason))
-        end
-
-        if cancel_controller&.cancelled?
-          raise RequestCancelled.new(cancel_controller.reason)
-        end
-
-        begin
-          Net::HTTP.start(
-            uri.host,
-            uri.port,
-            open_timeout: @open_timeout,
-            read_timeout: @read_timeout
-          ) do |http|
-            http.request(request) do |response|
-              response.read_body do |chunk|
-                buffer << chunk
-
-                while (newline_index = buffer.index("\n"))
-                  line = buffer.slice!(0, newline_index + 1).strip
-                  parsed_chunk = parse_stream_line(line)
-                  next unless parsed_chunk
-
-                  content, payload = parsed_chunk
-                  result << content
-                  on_chunk&.call(content: content, payload: payload)
-                end
-              end
-            end
-          end
-
-          return result
-        rescue RequestCancelled
-          raise
-        rescue StandardError => e
-          invalidate_context_window! if retryable_network_error?(e)
-          retry_delay = retry_delay_for(attempts)
-          if retryable_network_error?(e) && !retry_delay.nil?
-            on_retry&.call(
-              attempt: attempts,
-              max_retries: @retry_max,
-              next_delay: retry_delay,
-              error_class: e.class.name,
-              error_message: e.message
-            )
-            wait_with_cancellation(retry_delay, cancel_controller)
-            next
-          end
-
-          if retryable_network_error?(e)
-            raise RetryExhausted.new(attempts: attempts, last_error: e, label: @transport.label)
-          end
-
-          raise "#{@transport.label} request failed (#{@host}:#{@port}): #{e.message}"
-        ensure
-          cancel_controller&.remove_listener(cancel_listener_id)
-        end
+        on_retry&.call(**event)
       end
+      @http.stream_lines(uri, request, cancel_controller: cancel_controller, on_retry: reset_on_retry,
+                                       on_network_error: ->(_error) { invalidate_context_window! }) do |line|
+        parsed_chunk = parse_stream_line(line)
+        next unless parsed_chunk
+
+        content, payload = parsed_chunk
+        result << content
+        on_chunk&.call(content: content, payload: payload)
+      end
+      result
+    rescue RequestCancelled, RetryExhausted
+      raise
+    rescue StandardError => e
+      raise "#{@transport.label} request failed (#{@host}:#{@port}): #{e.message}"
     end
 
     def list_models
       uri = URI("http://#{@host}:#{@port}#{@transport.models_path}")
-      request = Net::HTTP::Get.new(uri)
-
-      attempts = 0
-
-      loop do
-        attempts += 1
-
-        begin
-          response_body = nil
-          Net::HTTP.start(
-            uri.host,
-            uri.port,
-            open_timeout: @open_timeout,
-            read_timeout: @read_timeout
-          ) do |http|
-            response = http.request(request)
-            response_body = response.body.to_s
-          end
-
-          parsed = JSON.parse(response_body)
-          return parsed.fetch("data", parsed)
-        rescue StandardError => e
-          retry_delay = retry_delay_for(attempts)
-          if retryable_network_error?(e) && !retry_delay.nil?
-            wait_with_cancellation(retry_delay, nil)
-            next
-          end
-
-          if retryable_network_error?(e)
-            raise RetryExhausted.new(attempts: attempts, last_error: e, label: @transport.label)
-          end
-
-          raise "#{@transport.label} model listing failed (#{@host}:#{@port}): #{e.message}"
-        end
-      end
+      response = @http.fetch(uri, Net::HTTP::Get.new(uri))
+      parsed = JSON.parse(response.body.to_s)
+      parsed.fetch("data", parsed)
+    rescue RetryExhausted
+      raise
+    rescue StandardError => e
+      raise "#{@transport.label} model listing failed (#{@host}:#{@port}): #{e.message}"
     end
 
     # The context window (tokens) the running server was started with, or nil
@@ -326,12 +222,9 @@ module Samagotchi
 
     def probe_context_window(path)
       uri = URI("http://#{@host}:#{@port}#{path}")
-      response = Net::HTTP.start(
-        uri.host,
-        uri.port,
-        open_timeout: CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
-        read_timeout: CONTEXT_WINDOW_PROBE_READ_TIMEOUT
-      ) { |http| http.request(Net::HTTP::Get.new(uri)) }
+      response = @http.fetch(uri, Net::HTTP::Get.new(uri), retries: false,
+                                  open_timeout: CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
+                                  read_timeout: CONTEXT_WINDOW_PROBE_READ_TIMEOUT)
       return nil unless response.code.to_s == "200"
 
       @transport.context_window_from(JSON.parse(response.body.to_s))
@@ -443,52 +336,6 @@ module Samagotchi
       payload = JSON.parse(data)
       content = @transport.content_from_payload(payload)
       [content, payload]
-    end
-
-    def retryable_network_error?(error)
-      return false if error.is_a?(RequestCancelled)
-
-      error.is_a?(Timeout::Error) ||
-        error.is_a?(EOFError) ||
-        error.is_a?(SocketError) ||
-        error.is_a?(Errno::ECONNREFUSED) ||
-        error.is_a?(Errno::ECONNRESET) ||
-        error.is_a?(Errno::EHOSTUNREACH) ||
-        error.is_a?(Errno::ENETUNREACH) ||
-        error.is_a?(Errno::ETIMEDOUT) ||
-        error.is_a?(IO::TimeoutError)
-    end
-
-    def retry_delay_for(attempt)
-      return nil if attempt > @retry_max
-
-      raw_delay = @retry_base_delay * (2**(attempt - 1))
-      [raw_delay, @retry_max_delay].min
-    end
-
-    def wait_with_cancellation(seconds, cancel_controller)
-      return if seconds <= 0
-      return sleep(seconds) unless cancel_controller
-
-      remaining = seconds
-      tick = 0.05
-      while remaining.positive?
-        raise RequestCancelled.new(cancel_controller.reason) if cancel_controller.cancelled?
-
-        slice = [remaining, tick].min
-        sleep(slice)
-        remaining -= slice
-      end
-    end
-
-    def integer_config(name, default)
-      value = ENV.fetch(name, default.to_s).to_i
-      value.negative? ? default : value
-    end
-
-    def float_config(name, default)
-      value = ENV.fetch(name, default.to_s).to_f
-      value.positive? ? value : default
     end
   end
 end

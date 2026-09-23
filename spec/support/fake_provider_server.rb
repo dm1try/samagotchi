@@ -90,10 +90,11 @@ class FakeProviderServer
     self
   end
 
+  # WEBrick notices a shutdown on its next 2s select tick; don't wait for it.
   def stop
     release
     @server&.shutdown
-    @thread&.join(2)
+    @thread&.join(0.2) || @thread&.kill
   end
 
   def root_url = "http://127.0.0.1:#{@port}"

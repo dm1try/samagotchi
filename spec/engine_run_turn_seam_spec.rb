@@ -227,7 +227,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
     expect { engine.run_turn(session, "hi", on_event: ->(e) { events << e }) }.to raise_error(error)
 
-    expect(events.last).to include(type: :turn_failed, error_class: "Samagotchi::Client::RetryExhausted")
+    expect(events.last).to include(type: :turn_failed, error_class: "Samagotchi::LLM::RetryExhausted")
     expect(engine.metrics.snapshot[:turn_records].last).to include(status: "failed")
   end
 

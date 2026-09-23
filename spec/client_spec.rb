@@ -239,13 +239,12 @@ RSpec.describe Samagotchi::Client do
     end
 
     it "retries transient network errors and emits retry metadata" do
-      client = described_class.new(host: "localhost", port: 8080)
+      client = described_class.new(host: "localhost", port: 8080, sleeper: ->(_seconds) {})
       http = instance_double(Net::HTTP)
       response = double("response")
       retries = []
       call_count = 0
 
-      allow(client).to receive(:wait_with_cancellation)
       allow(Net::HTTP).to receive(:start).with("localhost", 8080, open_timeout: 10, read_timeout: 600) do |_host, _port, open_timeout:, read_timeout:, &block|
         call_count += 1
         raise Errno::ECONNREFUSED if call_count == 1
@@ -266,8 +265,7 @@ RSpec.describe Samagotchi::Client do
     end
 
     it "raises RetryExhausted after retry budget is exhausted" do
-      client = described_class.new(host: "localhost", port: 8080)
-      allow(client).to receive(:wait_with_cancellation)
+      client = described_class.new(host: "localhost", port: 8080, sleeper: ->(_seconds) {})
       allow(Net::HTTP).to receive(:start)
         .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
         .and_raise(Net::OpenTimeout)
@@ -620,8 +618,7 @@ RSpec.describe Samagotchi::Client do
     end
 
     it "raises RetryExhausted after retry budget is exhausted" do
-      client = described_class.new(host: "localhost", port: 8080)
-      allow(client).to receive(:wait_with_cancellation)
+      client = described_class.new(host: "localhost", port: 8080, sleeper: ->(_seconds) {})
       allow(Net::HTTP).to receive(:start)
         .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
         .and_raise(Net::OpenTimeout)
@@ -686,7 +683,7 @@ RSpec.describe Samagotchi::Client do
     # Recorded from llama.cpp started with `-c 128000 --parallel 4`: /props
     # reports the per-slot n_ctx (the same value /slots shows per slot).
     let(:props_body) { File.read(File.expand_path("fixtures/llama_cpp/props.json", __dir__)) }
-    let(:client) { described_class.new(host: "localhost", port: 8080) }
+    let(:client) { described_class.new(host: "localhost", port: 8080, sleeper: ->(_seconds) {}) }
     let(:http) { instance_double(Net::HTTP) }
     let(:requests) { [] }
 
@@ -744,7 +741,6 @@ RSpec.describe Samagotchi::Client do
     it "drops the cache when a completion hits a connection error (the server may have restarted)" do
       stub_probe
       client.context_window(model: "m")
-      allow(client).to receive(:wait_with_cancellation)
       allow(Net::HTTP).to receive(:start)
         .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
         .and_raise(Errno::ECONNREFUSED)
