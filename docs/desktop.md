@@ -4,7 +4,11 @@
 session as a [context note](sessions.md#context-notes): the model sees it on its next turn, and no turn starts.
 
 - **Services menu:** select text → right-click → Services → **Send to chi**.
-- **Hotkey ⌃⌥⌘N:** opens the panel with the clipboard, for apps whose Services menu lacks the item.
+- **Hotkey ⌃⌥⌘N:** opens the panel with the **clipboard** (not the selection), for apps whose Services menu lacks
+  the item.
+- **A shortcut for the selection:** give "Send to chi" its own shortcut in System Settings → Keyboard → Keyboard
+  Shortcuts… → Services → Text (pick one other than ⌃⌥⌘N). It goes through the Services menu route, so the panel
+  opens with the selected text. If it doesn't fire at once, see Troubleshooting below.
 
 The panel shows the text (editable, with its size against the 16 KB note cap), where it came from (the app's name,
 editable), and the sessions a worker runs now. Click a session or press ⌘1…⌘9 to tick it. The last choice is
