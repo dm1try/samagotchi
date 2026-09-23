@@ -898,6 +898,66 @@ RSpec.describe Samagotchi::Bridge do
       expect(reason).to eq("Conflict")
       expect(resp["error"]).to eq("question_not_pending")
     end
+
+    describe "POST /session/:id/question/dismiss" do
+      def post_dismiss(body)
+        res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/question/dismiss"),
+                             body, "Content-Type" => "application/json")
+        [res.code.to_i, JSON.parse(res.body)]
+      end
+
+      # A turn whose tool asks a question and waits; returns what the tool got.
+      def ask_in_turn
+        tool_result = Queue.new
+        allow(kernel).to receive(:run) do |messages, **_kwargs|
+          tool_result << @engine.request_question(question: "Which?", options: %w[A B])
+          Samagotchi::KernelLoop::Result.new(output: "done", conversation: messages, exhausted: false,
+                                             pending_tool_calls: false, tool_activity: [])
+        end
+        @turn = Thread.new { run_turn_sync(@engine, @session, "ask me") }
+        deadline = mono + 3
+        sleep(0.01) until @engine.pending_question || mono > deadline
+        tool_result
+      end
+
+      after { @turn&.join(2) }
+
+      it "dismisses the question it names: the tool returns and every UI is told" do
+        start_bridge
+        seen = []
+        @engine.subscribe(observer: ->(e) { seen << e })
+        tool_result = ask_in_turn
+        id = @engine.pending_question[:id]
+
+        status, resp = post_dismiss(JSON.generate(id: id))
+
+        expect(status).to eq(200)
+        expect(resp).to include("status" => "dismissed", "id" => id)
+        expect(JSON.parse(tool_result.pop(timeout: 2))).to include("id" => id)
+        expect(seen).to include(hash_including(type: :question_cancelled, id: id, reason: "dismissed"))
+      end
+
+      it "answers 409 and leaves the question open for a stale id" do
+        start_bridge
+        tool_result = ask_in_turn
+        id = @engine.pending_question[:id]
+
+        status, resp = post_dismiss(JSON.generate(id: "an-older-question"))
+
+        expect(status).to eq(409)
+        expect(resp["error"]).to eq("question_not_pending")
+        expect(@engine.pending_question).to include(id: id, status: "pending")
+        @engine.answer_question(id: id, selected: ["A"])
+        expect(JSON.parse(tool_result.pop(timeout: 2))).to include("selected" => ["A"])
+      end
+
+      it "answers 409 with no question pending, and 400 without an id" do
+        start_bridge
+
+        expect(post_dismiss(JSON.generate(id: "q1")).first).to eq(409)
+        expect(post_dismiss(JSON.generate({})).first).to eq(400)
+      end
+    end
   end
 
   # Drive a turn on a fresh engine while the SSE client reads concurrently.

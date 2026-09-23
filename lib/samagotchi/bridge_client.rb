@@ -105,6 +105,14 @@ module Samagotchi
       post("answer", { id: id, selected: selected, freeform: freeform }, read_body: true)
     end
 
+    # POST /session/:id/question/dismiss: leave the question unanswered.
+    # 200 = dismissed, 409 = no longer pending (answered, cancelled, or
+    # another question), 404 = a worker older than the route.
+    # @return [Response]
+    def dismiss_question(id:)
+      post("question/dismiss", { id: id }, read_body: true)
+    end
+
     # POST /session/:id/turn. 202 = queued (body carries the enqueued_id the
     # Bridge also announced in :turn_enqueued).
     # @param client_id [String, nil] identifies the sending UI in the events

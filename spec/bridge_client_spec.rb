@@ -91,6 +91,16 @@ RSpec.describe Samagotchi::BridgeClient do
     expect(finish.call).to start_with("POST /session/s1/answer HTTP/1.1\r\n").and include('{"id":"q1","selected":["A"],"freeform":null}')
   end
 
+  it "dismisses a question by its id" do
+    port, finish = serve_once(json_reply("200 OK", '{"status":"dismissed","id":"q1"}'))
+
+    reply = described_class.new(session_id: "s1", port: port).dismiss_question(id: "q1")
+
+    expect(reply.status).to eq(200)
+    expect(reply.json).to include("status" => "dismissed")
+    expect(finish.call).to start_with("POST /session/s1/question/dismiss HTTP/1.1\r\n").and include('{"id":"q1"}')
+  end
+
   it "posts a turn with the client's id and returns the ACK" do
     port, finish = serve_once(json_reply("202 Accepted", '{"status":"accepted","enqueued_id":"e1","session_id":"s1"}'))
 

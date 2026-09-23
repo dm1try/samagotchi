@@ -263,11 +263,8 @@ module Samagotchi
         sync_prompt
       end
 
-      # An empty answer keeps the question open: unlike the REPL (which
-      # cancels it), the Bridge has no endpoint to dismiss a question, and
-      # Ctrl-C still cancels the turn.
       def answer_question(text)
-        return if text.empty?
+        return dismiss_question if text.empty?
 
         answer = @question.parse(text)
         @screen.commit(answer.note) if answer.note
@@ -282,6 +279,22 @@ module Samagotchi
         else
           detail = reply.json&.fetch("detail", nil) || reply.json&.fetch("error", nil)
           @screen.commit("could not answer (#{[reply.status, detail].compact.join(" ")})")
+        end
+        nil
+      end
+
+      # An empty answer dismisses the question, as in the REPL: the tool
+      # returns unanswered and the turn goes on. The :question_cancelled
+      # every UI gets finds it already closed here.
+      def dismiss_question
+        reply = @client.dismiss_question(id: @question.id)
+        case reply.status
+        when 200 then close_question("(cancelled)")
+        when 409 then close_question("(question already closed in another UI)")
+        else
+          # e.g. 404 from a worker older than the route: the question stays.
+          detail = reply.json&.fetch("error", nil)
+          @screen.commit("could not dismiss the question (#{[reply.status, detail].compact.join(" ")}); Ctrl-C cancels the turn")
         end
         nil
       end

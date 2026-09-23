@@ -236,6 +236,9 @@ module Samagotchi
         elsif (m = answer_match(request[:path])) && method == "POST"
           payload, status, body = handle_answer(m[1], request[:body])
           write_json(io, status, payload, body)
+        elsif (m = dismiss_match(request[:path])) && method == "POST"
+          payload, status, body = handle_dismiss_question(m[1], request[:body])
+          write_json(io, status, payload, body)
         elsif (m = turn_match(request[:path])) && method == "POST"
           payload, status, body = handle_post_turn(m[1], request[:body])
           write_json(io, status, payload, body)
@@ -334,6 +337,10 @@ module Samagotchi
       %r|\A/session/([^/]+)/answer\z|u.match(path.to_s)
     end
 
+    def dismiss_match(path)
+      %r|\A/session/([^/]+)/question/dismiss\z|u.match(path.to_s)
+    end
+
     # Cancel the active turn on this session's engine, if any.
     # Returns [headers, status, body].
     def handle_cancel(session_id, body)
@@ -393,6 +400,36 @@ module Samagotchi
       rescue StandardError => e
         [{}, 500, { error: "bridge_error", detail: e.message }]
       end
+    end
+
+    # Dismiss the pending question (an empty answer, as in the REPL): the
+    # tool returns without an answer and every UI gets :question_cancelled.
+    # Only the question the client saw: the id is checked with the event
+    # log held, so one asked after the client's :question_requested isn't
+    # dismissed by mistake. An answer recorded but not yet taken by the turn
+    # still wins in the Engine (it reads the answer first), though the
+    # cancel is announced too; an id guard in Engine#cancel_question is
+    # planned (attached-default slice B). Returns [headers, status, body].
+    def handle_dismiss_question(session_id, body)
+      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
+
+      parsed = parse_json(body)
+      return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }] unless parsed.is_a?(Hash)
+
+      qid = fetched(parsed, "id").to_s
+      return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "id required" }] if qid.strip.empty?
+
+      dismissed = @engine.synchronize_events do
+        pending = @engine.pending_question
+        next false unless pending && pending[:id].to_s == qid && pending[:status].to_s == "pending"
+
+        @engine.cancel_question("dismissed")
+      end
+      return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless dismissed
+
+      [{}, 200, { status: "dismissed", id: qid, session_id: @session_id }]
+    rescue StandardError => e
+      [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 
     # Create a turn via file IPC (fire-and-forget). Returns [headers, status, body].

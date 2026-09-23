@@ -733,4 +733,69 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)).to include("error" => "question_not_pending", "detail" => "question already answered")
     end
   end
+
+  describe "POST /api/sessions/:id/question/dismiss" do
+    # A one-request Bridge: answers with +status_line+ and +reply+, and
+    # records the request it got.
+    def serve_bridge_once(status_line, reply)
+      server = TCPServer.new("127.0.0.1", 0)
+      received = +""
+      thread = Thread.new do
+        conn = server.accept
+        received << conn.readpartial(16_384) until received.include?("\r\n\r\n") && received.end_with?("}")
+        conn.write("HTTP/1.1 #{status_line}\r\nContent-Type: application/json\r\nContent-Length: #{reply.bytesize}\r\n\r\n#{reply}")
+        conn.close
+      end
+      thread.report_on_exception = false
+      [server, thread, received]
+    end
+
+    def dismiss(app, body = '{"id":"q-3"}')
+      status, _headers, resp = app.call(env_for("/api/sessions/s1/question/dismiss", method: "POST", body: body))
+      [status, JSON.parse(resp.first)]
+    end
+
+    def app_with_bridge(port)
+      build_app(state_dir: Dir.mktmpdir).tap { |app| allow(app).to receive(:bridge_sidecar_port).and_return(port) }
+    end
+
+    it "returns 400 without a question id, and 503 with no live bridge" do
+      expect(dismiss(app_with_bridge(nil), "{}")).to match([400, hash_including("error" => "missing_fields")])
+      expect(dismiss(app_with_bridge(nil))).to match([503, hash_including("error" => "not_live")])
+    end
+
+    it "proxies the dismiss to the live bridge" do
+      server, thread, received = serve_bridge_once("200 OK", '{"status":"dismissed","id":"q-3"}')
+
+      status, resp = dismiss(app_with_bridge(server.local_address.ip_port))
+      thread.join(1)
+      server.close
+
+      expect(status).to eq(200)
+      expect(resp).to include("status" => "dismissed", "id" => "q-3")
+      expect(received).to start_with("POST /session/s1/question/dismiss HTTP/1.1").and include('{"id":"q-3"}')
+    end
+
+    it "passes the bridge's 409 through when the question is no longer pending" do
+      server, thread, = serve_bridge_once("409 Conflict", '{"error":"question_not_pending","detail":"no pending question q-3"}')
+
+      status, resp = dismiss(app_with_bridge(server.local_address.ip_port))
+      thread.join(1)
+      server.close
+
+      expect(status).to eq(409)
+      expect(resp).to include("error" => "question_not_pending")
+    end
+
+    it "says so when the session's worker is older than the route" do
+      server, thread, = serve_bridge_once("404 Not Found", '{"error":"not_found"}')
+
+      status, resp = dismiss(app_with_bridge(server.local_address.ip_port))
+      thread.join(1)
+      server.close
+
+      expect(status).to eq(501)
+      expect(resp).to include("error" => "not_supported")
+    end
+  end
 end

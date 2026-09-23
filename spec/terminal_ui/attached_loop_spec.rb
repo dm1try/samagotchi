@@ -329,13 +329,46 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     expect(screen.lines).to include("(already answered in another UI)")
   end
 
-  it "keeps waiting on an empty answer (there is no way to dismiss a question over the Bridge)" do
+  it "dismisses the question on an empty answer, as the REPL does" do
+    allow(client).to receive(:dismiss_question).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
+    start(first: snapshot(pending_question: question))
+    wait_for { prompts.last == "choice> " }
+
+    typed << "  "
+    wait_for { prompts.last == "> " }
+    # Every UI gets the cancel, this one too: it is already closed here.
+    push("type" => "question_cancelled", "id" => "q1", "reason" => "dismissed")
+    finish
+
+    expect(client).to have_received(:dismiss_question).with(id: "q1")
+    expect(screen.lines).to include("(cancelled)")
+    expect(screen.lines).not_to include("(question cancelled)")
+  end
+
+  it "closes the question when it was answered or cancelled before the dismiss" do
+    allow(client).to receive(:dismiss_question)
+      .and_return(Samagotchi::BridgeClient::Response.new(status: 409, body: '{"error":"question_not_pending"}'))
     start(first: snapshot(pending_question: question))
     wait_for { prompts.last == "choice> " }
 
     typed << ""
+    wait_for { prompts.last == "> " }
     finish
 
+    expect(screen.lines).to include("(question already closed in another UI)")
+  end
+
+  it "keeps the question open when the worker can't dismiss it" do
+    allow(client).to receive(:dismiss_question)
+      .and_return(Samagotchi::BridgeClient::Response.new(status: 404, body: '{"error":"not_found"}'))
+    start(first: snapshot(pending_question: question))
+    wait_for { prompts.last == "choice> " }
+
+    typed << ""
+    wait_for { screen.lines.last.to_s.start_with?("could not dismiss") }
+    finish
+
+    expect(screen.lines).to include("could not dismiss the question (404 not_found); Ctrl-C cancels the turn")
     expect(prompts.last).to eq("choice> ")
   end
 end

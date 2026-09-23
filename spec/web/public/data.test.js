@@ -8,6 +8,7 @@ import {
   sendTurn,
   cancelTurn,
   stopSession,
+  dismissQuestion,
 } from "../../../lib/samagotchi/web/public/data.js";
 
 function okResponse(body, status = 200) {
@@ -103,6 +104,21 @@ test("sendTurn sends the tab's client_id when given", async () => {
   });
   assert.deepEqual(JSON.parse(calls[0].body), { prompt: "hi", client_id: "web:tab1" });
   assert.equal(calls[0].clientId, undefined);
+});
+
+test("dismissQuestion posts the question id to the dismiss route", async () => {
+  const calls = [];
+  await dismissQuestion("abc", "q1", {
+    fetchImpl: (path, opts) => {
+      calls.push([path, opts.method, opts.body]);
+      return Promise.resolve(okResponse({ status: "dismissed" }));
+    },
+  });
+  assert.deepEqual(calls[0], [
+    "/api/sessions/abc/question/dismiss",
+    "POST",
+    JSON.stringify({ id: "q1" }),
+  ]);
 });
 
 test("cancelTurn posts a user reason", async () => {

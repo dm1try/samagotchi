@@ -70,6 +70,9 @@ module Samagotchi
           if (m = %r{\A/api/sessions/([^/]+)/answer\z}.match(req.path_info)) && req.post?
             return handle_question_answer(req, m[1])
           end
+          if (m = %r{\A/api/sessions/([^/]+)/question/dismiss\z}.match(req.path_info)) && req.post?
+            return handle_question_dismiss(req, m[1])
+          end
           if (m = %r{\A/api/sessions/([^/]+)\z}.match(req.path_info)) && req.get?
             return handle_show(req, m[1])
           end
@@ -259,6 +262,30 @@ module Samagotchi
         error_response(503, "not_live", "no live bridge for session #{id}")
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
+      end
+
+      # Leave the pending question unanswered (the card's Dismiss). A question
+      # only exists while its worker waits on it, so this needs a live bridge.
+      def handle_question_dismiss(req, id)
+        body = parse_json(req.body.read)
+        return error_response(400, "invalid_json", "invalid JSON body") unless body.is_a?(Hash)
+
+        qid = body["id"].to_s
+        return error_response(400, "missing_fields", "id is required") if qid.strip.empty?
+
+        client = bridge_client(id)
+        return error_response(503, "not_live", "no live bridge for session #{id}") unless client
+
+        reply = client.dismiss_question(id: qid)
+        case reply.status
+        when 200 then json_response(200, { status: "dismissed", session_id: id, id: qid })
+        when 409 then error_response(409, "question_not_pending", reply.json&.dig("detail") || "question not pending")
+        when 404
+          error_response(501, "not_supported", "this session's worker runs an older chi: restart it to dismiss questions")
+        else error_response(503, "not_live", "no live bridge for session #{id}")
+        end
+      rescue StandardError
+        error_response(503, "not_live", "no live bridge for session #{id}")
       end
 
       def handle_output(req, id)
