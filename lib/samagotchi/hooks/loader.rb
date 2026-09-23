@@ -26,6 +26,10 @@ module Samagotchi
     #       - path: "my_hook.rb"
     #         on_error: skip  # or "log"
     #       - path: "another.rb"
+    #     before_tool_call:
+    #       - path: "guard.rb"
+    #         required: true  # fail closed: if it can't load, or raises,
+    #                         # tool calls are denied
     #
     # The loader creates a `Hooks::Registry` instance, loads plugins, and
     # registers each plugin's `call` method as a Proc under the specified event name.
@@ -40,8 +44,10 @@ module Samagotchi
         #
         # @param config_hash [Hash, nil] the hooks section from config.yml
         # @param env [Hash] environment variables (default: ENV)
+        # @param failures [Guardrails::LoadFailures, nil] collects hooks that
+        #   failed to load
         # @return [Samagotchi::Hooks::Registry] the registry with all plugins registered
-        def load(config_hash, env: ENV)
+        def load(config_hash, env: ENV, failures: nil)
           return Hooks::Registry.new unless config_hash&.key?("hooks")
 
           hooks_config = config_hash["hooks"]
@@ -53,20 +59,23 @@ module Samagotchi
           definitions.each do |defn|
             begin
               plugin = load_plugin(hooks_dir, defn[:path])
-              # Register a Proc that calls plugin.call(event)
-              # Wrap in begin/rescue to handle plugins that don't respond_to :call
               # Persistent: config hooks must fire on every turn, not be wiped
               # by Engine#run_turn's per-turn clear_hooks after turn 1.
               registry.register_persistent(defn[:event_type].to_sym) do |event|
                 begin
                   plugin.call(event)
                 rescue StandardError => e
-                  handle_error(defn[:on_error] || "skip", defn[:path], e)
+                  if defn[:required] && defn[:event_type] == "before_tool_call"
+                    deny_for_raise(event, defn[:path], e)
+                  else
+                    handle_error(defn[:on_error] || "skip", defn[:path], e)
+                  end
                 end
               end
-            rescue LoadError, StandardError => e
-              warn "DEBUG: Hook load failed for #{defn[:path]}: #{e.class}: #{e.message}"
-              handle_error(defn[:on_error] || "skip", defn[:path], e)
+            rescue ScriptError, StandardError => e
+              # ScriptError: a SyntaxError (or LoadError) from `require`.
+              warn "[samagotchi:hooks] hook #{defn[:path]} failed to load: #{e.class}: #{e.message}"
+              failures&.add("hook #{defn[:path]} (config)", "#{e.class}: #{e.message}", required: defn[:required])
             end
           end
 
@@ -92,7 +101,8 @@ module Samagotchi
             definitions << {
               event_type: event_type.to_s,
               path: cfg["path"],
-              on_error: (cfg["on_error"] || "skip").to_s
+              on_error: (cfg["on_error"] || "skip").to_s,
+              required: cfg["required"] == true
             }
           end
         end
@@ -119,6 +129,16 @@ module Samagotchi
           raise ArgumentError, "Plugin #{class_name} does not respond to #call" unless instance.respond_to?(:call)
           instance
         end
+      end
+
+      # A required before_tool_call hook that raises denies the call.
+      def self.deny_for_raise(event, hook_path, error)
+        return unless event.is_a?(Hash)
+
+        reason = "required hook #{hook_path} raised #{error.class}: #{error.message}"
+        event[:guardrail]&.deny!(reason, rule: "guardrail-load", source: "core", decided_by: "core")
+        event[:blocked] = true
+        event[:block_reason] ||= reason
       end
 
       # Handle a hook error based on the on_error config.

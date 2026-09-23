@@ -70,15 +70,17 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
     expect(e[:hit]).to be true
   end
 
-  it "warns (not swallows) on a broken bundle" do
+  it "warns (not swallows) on a hook edited after install, and doesn't load it" do
     src = write_bundle("broken-hooks", { "identity.md" => "# Id\n" }, { "bad.rb" => "class Bad; def call(e); end; end" }, trust_level: "reviewed")
     Samagotchi::MemoryBundle::Installer.new(source: src, name: "broken-hooks", scope: "system", force: false, strict: true).run
     # Corrupt the installed hook to raise at load time (runtime error)
     bad_path = File.join(bundles_dir, "broken-hooks", "hooks", "bad.rb")
     File.write(bad_path, "raise \"boom during load\"")
+    engine = nil
     expect {
-      described_class.new(mode: :assist, client: client)
-    }.to output(/broken-hooks.*failed to load/).to_stderr
+      engine = described_class.new(mode: :assist, client: client)
+    }.to output(/broken-hooks.*not loaded: its sha256/).to_stderr
+    expect(engine.guardrail_failures.list.map(&:what)).to eq(["hook bad.rb (bundle broken-hooks)"])
   end
 
   it "empty bundles dir is a no-op" do

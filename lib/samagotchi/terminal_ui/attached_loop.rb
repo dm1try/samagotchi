@@ -271,6 +271,7 @@ module Samagotchi
         when :question_cancelled
           close_question("(question cancelled)") if @question
         when :recap_ready then @recap = event[:recap]
+        when :guardrail_warning then @screen.commit("guardrails> #{event[:message]}")
         when :generation_completed
           take_served_model(event[:served_model], event[:requested_model])
           @renderer.call(event)

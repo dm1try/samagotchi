@@ -150,6 +150,11 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     expect(attached.recap).to be_nil
   end
 
+  it "shows a guardrail load warning" do
+    feed({ type: :guardrail_warning, message: "hook g.rb (config) failed to load (LoadError: x)" })
+    expect(screen.lines.last).to eq("guardrails> hook g.rb (config) failed to load (LoadError: x)")
+  end
+
   it "ends on stream_closed, saying why" do
     results = feed(snapshot, { type: "stream_closed", reason: "unreachable" })
 

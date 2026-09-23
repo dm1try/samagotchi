@@ -139,6 +139,45 @@ RSpec.describe Samagotchi::Hooks::Loader do
     end
   end
 
+  describe "fail-closed loading" do
+    require "samagotchi/guardrails"
+    let(:failures) { Samagotchi::Guardrails::LoadFailures.new }
+    let(:tmpdir) { Dir.mktmpdir("loader-fc") }
+    after { FileUtils.rm_rf(tmpdir) }
+
+    def load_hooks(entries)
+      described_class.load({ "hooks" => { "hooks_dir" => tmpdir, "before_tool_call" => entries } }, failures: failures)
+    end
+
+    it "reports a required hook that is missing as a required failure, with a normal warning" do
+      expect { load_hooks([{ "path" => "nope_hook.rb", "required" => true }]) }
+        .to output(/\[samagotchi:hooks\] hook nope_hook.rb failed to load: LoadError/).to_stderr
+      expect(failures.required.map(&:what)).to eq(["hook nope_hook.rb (config)"])
+    end
+
+    it "rescues a syntax error instead of letting it escape" do
+      File.write(File.join(tmpdir, "broken_guard_hook.rb"), "class BrokenGuardHook\n  def call(e)\n")
+      expect { load_hooks([{ "path" => "broken_guard_hook.rb", "required" => true }]) }.to output(/SyntaxError/).to_stderr
+      expect(failures.required.size).to eq(1)
+    end
+
+    it "keeps a non-required hook fail-open: reported, not required" do
+      expect { load_hooks([{ "path" => "missing_plain_hook.rb" }]) }.to output(/failed to load/).to_stderr
+      expect([failures.any?, failures.required]).to eq([true, []])
+    end
+
+    it "denies the call when a required hook raises" do
+      File.write(File.join(tmpdir, "raising_guard_hook.rb"), "class RaisingGuardHook; def call(e) = raise('boom'); end")
+      registry = load_hooks([{ "path" => "raising_guard_hook.rb", "required" => true }])
+      verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "execute" })
+      event = { guardrail: verdict }
+      registry.fire(:before_tool_call, event)
+      expect(verdict).to be_deny
+      expect(verdict.reason).to eq("required hook raising_guard_hook.rb raised RuntimeError: boom")
+      expect(event[:blocked]).to be(true)
+    end
+  end
+
   describe ".parse_definitions" do
     it "parses hook definitions from config" do
       hooks_config = {
@@ -154,9 +193,9 @@ RSpec.describe Samagotchi::Hooks::Loader do
 
       definitions = described_class.parse_definitions(hooks_config)
       expect(definitions).to be_an(Array).and(have_attributes(size: 3))
-      expect(definitions[0]).to eq({ event_type: "turn_start", path: "hook1.rb", on_error: "log" })
-      expect(definitions[1]).to eq({ event_type: "turn_start", path: "hook2.rb", on_error: "skip" })
-      expect(definitions[2]).to eq({ event_type: "turn_end", path: "hook3.rb", on_error: "skip" })
+      expect(definitions[0]).to eq({ event_type: "turn_start", path: "hook1.rb", on_error: "log", required: false })
+      expect(definitions[1]).to eq({ event_type: "turn_start", path: "hook2.rb", on_error: "skip", required: false })
+      expect(definitions[2]).to eq({ event_type: "turn_end", path: "hook3.rb", on_error: "skip", required: false })
     end
 
     it "skips non-array configs" do

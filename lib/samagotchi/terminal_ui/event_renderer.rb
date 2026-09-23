@@ -57,6 +57,8 @@ module Samagotchi
           @view.generation_feedback_finished
         when :turn_completed
           render_turn_summary(event[:turn_summary]) if event[:turn_summary]
+        when :guardrail_warning
+          @view.print_line("guardrails> #{event[:message]}")
         end
       end
 

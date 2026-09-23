@@ -86,7 +86,10 @@ module Samagotchi
       rescue StandardError
         nil
       end
-      # Load hooks from config (plugins) and create the registry
+      # Load hooks from config (plugins) and create the registry; what fails
+      # to load is announced, and a required guardrail's failure denies
+      # every tool call.
+      @guardrail_failures = Guardrails::LoadFailures.new
       @hooks = load_hooks_from_config
       load_hooks_from_bundles
       # Use the KernelLoop's reminder_store if provided (TerminalUI path),
@@ -651,8 +654,11 @@ module Samagotchi
 
     # The gate's core checks, in order.
     def guardrail_checks
-      [guardrail_protected_paths]
+      [@guardrail_failures, guardrail_protected_paths]
     end
+
+    # @return [Guardrails::LoadFailures]
+    attr_reader :guardrail_failures
 
     def guardrail_protected_paths
       @guardrail_protected ||= begin
@@ -670,6 +676,17 @@ module Samagotchi
 
     # @return [Guardrails::Approvals]
     attr_reader :guardrail_approvals
+
+    # Once per Engine, on its first turn: what failed to load, so every UI
+    # (REPL, attached TUI, web) shows it.
+    def announce_guardrail_failures(on_event)
+      return if @guardrail_failures_announced
+
+      @guardrail_failures_announced = true
+      message = @guardrail_failures.message
+      emit_event(on_event, { type: :guardrail_warning, message: message }) if message
+    end
+    private :announce_guardrail_failures
 
     # The context the gate sees for a tool call now.
     # @return [Guardrails::Context]
@@ -1037,6 +1054,7 @@ module Samagotchi
         turn_started = { type: :turn_started, session_id: session.id, prompt: prompt }
         turn_started[:continue] = true if continue
         emit_event(on_event, with_origin.call(turn_started))
+        announce_guardrail_failures(on_event)
 
         # Fire :session_start on the very first turn
         if @first_turn
@@ -1286,7 +1304,7 @@ module Samagotchi
     def load_hooks_from_config
       config_path = Samagotchi::ConfigFile.global_path
       data = Samagotchi::ConfigFile.read_yaml(path: config_path)
-      return Hooks::Loader.load(data) if data.is_a?(Hash)
+      return Hooks::Loader.load(data, failures: @guardrail_failures) if data.is_a?(Hash)
       Hooks::Registry.new
     end
 
@@ -1299,7 +1317,8 @@ module Samagotchi
           warn "[hooks] Bundle '#{bundle_name}' is experimental — its hooks may change or misbehave."
         end
         begin
-          Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: data[:hooks], registry: @hooks)
+          Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: data[:hooks], registry: @hooks,
+                                   failures: @guardrail_failures)
         rescue Exception => e
           warn "[samagotchi:hooks] bundle '#{bundle_name}' failed to load hooks: #{e.class}: #{e.message}"
         end

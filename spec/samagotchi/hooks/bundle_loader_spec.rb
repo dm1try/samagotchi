@@ -21,7 +21,8 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       hooks_dir = File.join(tmpdir, "hooks")
       write_hook(hooks_dir, "guardrails.rb", "class Guardrails; def call(e); e[:called]=true; end; end")
       registry = Samagotchi::Hooks::Registry.new
-      metadata = { "guardrails.rb" => { "event" => "before_tool_call", "on_error" => "skip", "priority" => 10, "sha256" => "sha256:abc" } }
+      sha = Digest::SHA256.hexdigest(File.read(File.join(hooks_dir, "guardrails.rb")))
+      metadata = { "guardrails.rb" => { "event" => "before_tool_call", "on_error" => "skip", "priority" => 10, "sha256" => "sha256:#{sha}" } }
       loaded = described_class.load(bundle_name: "test-bundle", hooks_dir: hooks_dir, metadata: metadata, registry: registry)
       expect(loaded).to eq(1)
       expect(registry.size).to eq(1)
@@ -95,7 +96,8 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       hooks_dir = File.join(tmpdir, "hooks")
       write_hook(hooks_dir, "guardrails.rb", "class Guardrails; def call(e); raise \"boom\"; end; end")
       registry = Samagotchi::Hooks::Registry.new
-      meta = { "guardrails.rb" => { "event" => "before_tool_call", "on_error" => "fail_closed" } }
+      sha = Digest::SHA256.hexdigest(File.read(File.join(hooks_dir, "guardrails.rb")))
+      meta = { "guardrails.rb" => { "event" => "before_tool_call", "on_error" => "fail_closed", "sha256" => sha } }
       described_class.load(bundle_name: "fail-bundle", hooks_dir: hooks_dir, metadata: meta, registry: registry)
       e = { tool_name: "bad" }
       registry.fire(:before_tool_call, e)
@@ -170,6 +172,67 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       described_class.namespace_for("test-inst")
       klass = described_class.instantiate("test-inst", "my_hook.rb", File.join(hooks_dir, "my_hook.rb"))
       expect(klass).to respond_to(:call)
+    end
+  end
+
+  describe "fail-closed loading" do
+    require "samagotchi/guardrails/load_failures"
+    let(:failures) { Samagotchi::Guardrails::LoadFailures.new }
+    let(:hooks_dir) { File.join(tmpdir, "hooks") }
+    let(:registry) { Samagotchi::Hooks::Registry.new }
+    let(:code) { "class Guard; def call(e); e[:hit] = true; end; end" }
+
+    def load_with(meta)
+      described_class.load(bundle_name: "g", hooks_dir: hooks_dir, metadata: { "guard.rb" => meta }, registry: registry,
+                           failures: failures)
+    end
+
+    def sha = Digest::SHA256.hexdigest(code)
+
+    before { write_hook(hooks_dir, "guard.rb", code) }
+
+    it "doesn't load a hook whose file changed since install, and a required one fails" do
+      File.write(File.join(hooks_dir, "guard.rb"), "#{code}\n# edited")
+      expect { load_with("event" => "before_tool_call", "on_error" => "fail_closed", "sha256" => "sha256:#{sha}") }
+        .to output(/hook 'guard.rb' not loaded: its sha256 .* differs/).to_stderr
+      expect(registry.size).to eq(0)
+      expect(failures.required.map(&:what)).to eq(["hook guard.rb (bundle g)"])
+    end
+
+    it "reports a changed non-required hook without failing closed" do
+      expect { load_with("event" => "after_turn", "sha256" => "0" * 64) }.to output(/not loaded/).to_stderr
+      expect(failures.list.size).to eq(1)
+      expect(failures.required).to be_empty
+    end
+
+    it "loads a required hook whose sha matches" do
+      expect(load_with("event" => "before_tool_call", "on_error" => "fail_closed", "sha256" => "sha256:#{sha}")).to eq(1)
+      expect(failures).not_to be_any
+    end
+
+    it "fails a required hook with no recorded sha, but loads a plain one" do
+      load_with("event" => "before_tool_call", "on_error" => "fail_closed")
+      expect(failures.required.first.reason).to include("no sha256 recorded")
+      failures2 = Samagotchi::Guardrails::LoadFailures.new
+      loaded = described_class.load(bundle_name: "g", hooks_dir: hooks_dir, registry: registry, failures: failures2,
+                                    metadata: { "guard.rb" => { "event" => "after_turn" } })
+      expect([loaded, failures2.any?]).to eq([1, false])
+    end
+
+    it "fails a required hook that is missing or doesn't load" do
+      FileUtils.rm_f(File.join(hooks_dir, "guard.rb"))
+      load_with("event" => "before_tool_call", "on_error" => "fail_closed", "sha256" => sha)
+      expect(failures.required.first.reason).to eq("the file is missing")
+
+      bad = "class Guard; def call(e)\n"
+      write_hook(hooks_dir, "guard.rb", bad)
+      failures2 = Samagotchi::Guardrails::LoadFailures.new
+      expect do
+        described_class.load(bundle_name: "g", hooks_dir: hooks_dir, registry: registry, failures: failures2,
+                             metadata: { "guard.rb" => { "event" => "before_tool_call", "on_error" => "fail_closed",
+                                                         "sha256" => Digest::SHA256.hexdigest(bad) } })
+      end.to output(/failed to load: SyntaxError/).to_stderr
+      expect(failures2.required.first.reason).to start_with("SyntaxError")
     end
   end
 end

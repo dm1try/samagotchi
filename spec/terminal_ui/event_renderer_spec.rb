@@ -35,6 +35,11 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     [base.merge(type: :tool_call_started, call: { name: activity[:tool] }), base.merge(type: :tool_call_completed, activity: activity)]
   end
 
+  it "prints a guardrail load warning" do
+    renderer.call({ type: :guardrail_warning, message: "hook g.rb (config) failed to load (x)" })
+    expect(view.lines).to eq(["guardrails> hook g.rb (config) failed to load (x)"])
+  end
+
   it "times each tool call from its own started/completed events" do
     started, completed = tool_events(activity)
     renderer.call(started)
