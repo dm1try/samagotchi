@@ -47,9 +47,8 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(repl_input.pop(timeout: 0)).to eq([:line, "too late to merge"])
   end
 
-  it "leaves Ctrl-D, exit and a line sent after Ctrl-C (even a command) for after the turn" do
+  it "leaves a line sent after Ctrl-C (even a command) for after the turn" do
     allow(engine).to receive(:run_turn) do |*, cancel_controller:, **|
-      repl_input << [:line, nil] << [:line, "exit"]
       cancel_controller.cancel!(:ctrl_c)
       repl_input << [:line, "next"] << [:line, "!ls"]
       result
@@ -57,7 +56,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
 
     agent.send(:run_engine_turn, session, "go")
 
-    expect(Array.new(4) { repl_input.pop(timeout: 0).last }).to eq([nil, "exit", "next", "!ls"])
+    expect(Array.new(2) { repl_input.pop(timeout: 0).last }).to eq(["next", "!ls"])
   end
 
   it "runs /stats at once and puts another command back into the prompt, busy" do
@@ -75,5 +74,44 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(surface.lines).to include("\nmodel> session stats:\nturns: 1", "busy: wait for the turn to end")
     expect(reader).to have_received(:prefill_next).with("!ls")
     expect(repl_input.pop(timeout: 0)).to be_nil
+  end
+
+  %w[Ctrl-D exit].each do |key|
+    it "exits after the turn on #{key}, and says so" do
+      line = key == "exit" ? "/exit" : nil
+      allow(engine).to receive(:run_turn) do
+        repl_input << [:line, line]
+        result
+      end
+
+      agent.send(:run_engine_turn, session, "go")
+
+      expect(surface.lines).to include("(exits after this turn; Ctrl-C cancels it)")
+      expect(agent.instance_variable_get(:@exit_after_turn)).to be(true)
+      expect(repl_input.pop(timeout: 0)).to be_nil
+    end
+  end
+
+  it "ends the loop after the turn instead of reading on" do
+    allow(agent).to receive(:poll_input_with_reminder_check).and_return("go", "never read", nil)
+    allow(agent).to receive(:run_input_line) { agent.instance_variable_set(:@exit_after_turn, true) }
+    allow(agent).to receive(:drain_pending_question?)
+
+    agent.send(:run_assist_loop, session: instance_double(Samagotchi::Session, id: "s1", "messages=": nil), messages: [])
+
+    expect(agent).to have_received(:run_input_line).once
+    expect(surface.lines.last).to include("Continue session: chi --resume s1")
+  end
+
+  it "still runs the lines sent before Ctrl-D, then exits" do
+    agent.instance_variable_set(:@exit_after_turn, true)
+    repl_input << [:line, "sent before"]
+    allow(agent).to receive(:run_input_line)
+    allow(agent).to receive(:poll_input_with_reminder_check)
+
+    agent.send(:run_assist_loop, session: instance_double(Samagotchi::Session, id: "s1", "messages=": nil), messages: [])
+
+    expect(agent).to have_received(:run_input_line).once.with(anything, "sent before")
+    expect(agent).not_to have_received(:poll_input_with_reminder_check)
   end
 end

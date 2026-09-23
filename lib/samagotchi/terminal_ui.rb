@@ -362,24 +362,31 @@ module Samagotchi
       open_repl_input
 
       loop do
-        # Drain any pending ask_user_question first — it has priority over reminders and
-        # must be rendered on the REPL thread (turn thread is parked on Engine Monitor).
-        drain_pending_question?
+        if @exit_after_turn
+          # Ctrl-D or exit came during a turn: the lines sent before it still
+          # run (all queued: the prompt closed at Ctrl-D), then the REPL ends.
+          input = queued_line
+          break if input.nil?
+        else
+          # Drain any pending ask_user_question first — it has priority over reminders and
+          # must be rendered on the REPL thread (turn thread is parked on Engine Monitor).
+          drain_pending_question?
 
-        # A due reminder runs its turn now, with the prompt open (on a
-        # terminal): the turn's output commits above it and whatever is typed
-        # there stays.
-        unless @engine.due_reminder_names.empty?
-          run_reminder_turn(session)
-          @turn_flow.after_reminder_turn
-          next
-        end
-        input = @prompt
-        @prompt = nil if input
-        if input.nil?
-          input = poll_input_with_reminder_check(awaiting_continue: @turn_flow.awaiting_continue?)
-          # A reminder fell due: run it at the top, with the prompt still open.
-          next if input == :due
+          # A due reminder runs its turn now, with the prompt open (on a
+          # terminal): the turn's output commits above it and whatever is typed
+          # there stays.
+          unless @engine.due_reminder_names.empty?
+            run_reminder_turn(session)
+            @turn_flow.after_reminder_turn
+            next
+          end
+          input = @prompt
+          @prompt = nil if input
+          if input.nil?
+            input = poll_input_with_reminder_check(awaiting_continue: @turn_flow.awaiting_continue?)
+            # A reminder fell due: run it at the top, with the prompt still open.
+            next if input == :due
+          end
         end
         break if input.nil?
         break if exit_command?(input)
@@ -865,16 +872,30 @@ module Samagotchi
 
     # On the reader thread, from ReplInput: takes a line for the running turn.
     # A line sent after Ctrl-C waits for the next turn (the kernel would not
-    # merge it into the cancelled one); so does exit. /stats and /recap run
-    # now; other commands wait, back in the prompt.
+    # merge it into the cancelled one). Ctrl-D or exit ends the REPL after
+    # the turn. /stats and /recap run now; other commands wait, back in the
+    # prompt.
     # @return [Boolean, :back] whether the turn took it, :back to put it back
     def steer_line(line)
-      return false if line.nil? || @active_cancel_controller&.cancelled? || exit_command?(line)
+      return exit_after_turn if line.nil? || exit_command?(line)
+      return false if @active_cancel_controller&.cancelled?
       return command_during_turn(line) if command_line?(line)
       return true if line.strip.empty?
 
       @pending_input_queue.push(line.strip)
       true
+    end
+
+    def exit_after_turn
+      @exit_after_turn = true
+      @surface.commit("(exits after this turn; Ctrl-C cancels it)")
+      true
+    end
+
+    # A line already queued (none waits for input), or nil.
+    def queued_line
+      kind, line = @repl_input&.pop(timeout: 0)
+      kind == :line ? line : nil
     end
 
     # @return [true, :back]
