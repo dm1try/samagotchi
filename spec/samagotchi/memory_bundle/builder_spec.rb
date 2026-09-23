@@ -69,4 +69,18 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     manifest = YAML.load_file(File.join(out, "manifest.yml"))
     expect(manifest["hooks"]).to be_nil
   end
+
+  it "names a project bundle after the repository, also from a linked worktree" do
+    repo = File.join(File.realpath(tmpdir), "My Repo")
+    FileUtils.mkdir_p(repo)
+    git = %w[git -c user.name=x -c user.email=x@x -c init.defaultBranch=main]
+    system(*git, "-C", repo, "init", "-q", exception: true)
+    system(*git, "-C", repo, "commit", "-q", "--allow-empty", "-m", "init", exception: true)
+    tree = File.join(File.realpath(tmpdir), "my-repo-feature")
+    system(*git, "-C", repo, "worktree", "add", "-q", "-b", "feature", tree, exception: true)
+
+    builder = described_class.new(scope: "project", version: "1.0.0")
+    names = [repo, tree].map { |dir| Dir.chdir(dir) { builder.send(:default_name, "project") } }
+    expect(names).to eq(%w[chi_my-repo_memories chi_my-repo_memories])
+  end
 end

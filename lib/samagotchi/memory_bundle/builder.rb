@@ -252,7 +252,7 @@ module Samagotchi
 
       def default_name(scope)
         if scope == "project"
-          base = File.basename(Dir.pwd).gsub(/[^A-Za-z0-9_-]/, "-").downcase
+          base = File.basename(MemoryPaths.project_root).gsub(/[^A-Za-z0-9_-]/, "-").downcase
           base = base.gsub(/-+/, "-").gsub(/\A-+|-+\z/, "")
           base = "project" if base.empty?
           "chi_#{base}_memories"
