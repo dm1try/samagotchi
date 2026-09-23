@@ -63,9 +63,14 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
   # Run a REPL session: +prompts+ feed the main prompt, +answers+ the
   # continue(yes/no) prompt, and each kernel run consumes the next
   # [events, finish] pair from +turns+. +setup+ gets the UI before it runs.
+  #
+  # On a terminal (+tty+) the UI draws on a live region, a 24x100 Screen, so
+  # the goldens pin its frames; without one it prints plainly to $stdout.
   def run_session(model:, prompts:, turns:, answers: [], tty: true, setup: nil)
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = model
-    ui = Samagotchi::TerminalUI.new(mode: :assist, client: client, no_default_input: true)
+    out = StringIO.new
+    surface = Samagotchi::TerminalUI::Screen.new(out: out, size: -> { [24, 100] }) if tty
+    ui = Samagotchi::TerminalUI.new(mode: :assist, client: client, no_default_input: true, surface: surface)
     allow(ui).to receive(:thinking_spinner_enabled?).and_return(tty)
     allow(ui).to receive(:color_output?).and_return(tty)
     allow(ui).to receive(:thinking_render_min_interval).and_return(0.0)
@@ -83,7 +88,6 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     end
     setup&.call(ui)
 
-    out = StringIO.new
     original = $stdout
     $stdout = out
     begin
@@ -119,6 +123,7 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     text.gsub(/\h{8}-\h{4}-\h{4}-\h{4}-\h{12}/, "<session-id>")
       .gsub(/\((\d+(\.\d+)?(ms|s)|\d+m \d+s)\)/, "(<elapsed>)")
       .gsub("\e", "\\e")
+      .gsub("\r\n", "\n").gsub("\r", "\\r")
   end
 
   def expect_golden(name, actual)

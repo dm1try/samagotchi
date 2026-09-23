@@ -1,21 +1,26 @@
-Session: <session-id>
+\e[?2026h\e[?25l\r\e[JSession: <session-id>
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[J\e[90mstatus> model=gemma-4-e4b\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mmodel> thinking... |\e[0m
+\e[90mmodel> … \e[0m
 \e[90mstatus> model=gemma-4-e4b\e[0m
-\e[90mmodel> thinking... |\e[0m\e[0K
-\e[90mmodel> … \e[0m\e[0K
-\e[90mstatus> model=gemma-4-e4b\e[0m\e[0K\e[2A\e[90mmodel> thinking... /\e[0m\e[0K
-\e[90mmodel> … weighing\e[0m\e[0K
-\e[90mstatus> model=gemma-4-e4b\e[0m\e[0K\e[2A\e[90mmodel> thinking... -\e[0m\e[0K
-\e[90mmodel> … weighing options\e[0m\e[0K
-\e[90mstatus> model=gemma-4-e4b\e[0m\e[0K\e[2A\e[90mmodel> thinking... \\e[0m\e[0K
-\e[90mmodel> … weighing optionsHi!\e[0m\e[0K
-\e[90mstatus> model=gemma-4-e4b\e[0m\e[0K\e[2A\e[0K
-\e[0K
-\e[0K\e[2A\e[90mstatus> model=gemma-4-e4b\e[0m
-Hi!
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J\e[90mmodel> thinking... /\e[0m
+\e[90mmodel> … weighing\e[0m
 \e[90mstatus> model=gemma-4-e4b\e[0m
-
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J\e[90mmodel> thinking... -\e[0m
+\e[90mmodel> … weighing options\e[0m
+\e[90mstatus> model=gemma-4-e4b\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J\e[90mmodel> thinking... \\e[0m
+\e[90mmodel> … weighing optionsHi!\e[0m
+\e[90mstatus> model=gemma-4-e4b\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J\e[90mstatus> model=gemma-4-e4b\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mstatus> model=gemma-4-e4b\e[0m
+\e[90mstatus> model=gemma-4-e4b\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[JHi!
+\e[90mstatus> model=gemma-4-e4b\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J
 Continue session: chi --resume <session-id>
---- session ---
+\e[90mstatus> model=gemma-4-e4b\e[0m
+\e[?25h\e[?2026l--- session ---
 system: <prompt>
 user: "hi"
 model: "Hi!"
