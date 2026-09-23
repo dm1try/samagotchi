@@ -9,6 +9,7 @@ require_relative "config"
 require_relative "model_profile"
 require_relative "thought_stream_splitter"
 require_relative "cancellation_controller"
+require_relative "context_window"
 require_relative "kernel_loop"
 require_relative "host_registry"
 require_relative "llm/backend"
@@ -466,6 +467,25 @@ module Samagotchi
 
     # @return [ReminderStore] the reminder store for inspection
     attr_reader :reminder_store
+
+    # The metrics for /stats. Before the first generation reports them, the
+    # context window and (on a native host) the prompt profile come from the
+    # effective model's server, so this may make one short /props GET; the
+    # cheap #session_state_snapshot never does.
+    # @return [Hash] @metrics.snapshot, filled in
+    def stats_snapshot
+      snapshot = @metrics.snapshot
+      target = @host_registry.resolve(@effective_model_name)
+      unless snapshot[:context_window_tokens]
+        window = current_context_window(target)
+        snapshot = snapshot.merge(context_window_tokens: window.tokens, context_window_source: window.source) if window
+      end
+      unless snapshot[:profile] || target.entry.chat?
+        resolution = profile_resolution
+        snapshot = snapshot.merge(profile: resolution.profile.name, profile_source: resolution.label)
+      end
+      snapshot
+    end
 
     # Read-only snapshot of the engine's view of the current session plus the
     # live event sequence. Cheap primitive used by the bridge's reconnect-too-
@@ -1325,6 +1345,20 @@ module Samagotchi
       # Persistent subscribers: receive a copy with a locally-monotonic
       # `event_seq`, fan out with per-subscriber error isolation.
       @session_observer.notify(event)
+    end
+
+    # The window as the target's loop would see it (see ChatLoop#context_window:
+    # a remote chat host has no /props, only its model list).
+    def current_context_window(target)
+      client = target.client
+      adapter = nil
+      if target.entry.chat?
+        adapter = @host_registry.adapter_for(target.entry)
+        client = nil if adapter.respond_to?(:remote?) && adapter.remote?
+      end
+      ContextWindow.resolve(client: client, model: target.bare_model, adapter: adapter)
+    rescue StandardError
+      nil
     end
 
     # ── Prompt profile ─────────────────────────────────────────────────────────

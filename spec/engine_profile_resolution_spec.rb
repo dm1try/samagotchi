@@ -144,3 +144,50 @@ RSpec.describe "Engine prompt profile resolution" do
     expect(engine.profile_resolution.label).to eq("config (models: ista)")
   end
 end
+
+RSpec.describe "Engine#stats_snapshot" do
+  around do |example|
+    saved = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "house-blend-35b"
+    example.run
+  ensure
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = saved
+  end
+
+  before { allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({}) }
+
+  let(:ornith_props) { JSON.parse(File.read(File.expand_path("fixtures/llama_cpp/props_ornith.json", __dir__))) }
+
+  def engine_with(client, hosts: { "main" => { host: "h.test", port: 8081 } })
+    registry = Samagotchi::HostRegistry.new(hosts_config: hosts)
+    registry.client_override = client
+    Samagotchi::Engine.new(mode: :assist, host_registry: registry)
+  end
+
+  # /stats before the first turn: no generation has reported the window or
+  # the profile yet, so the snapshot asks the server.
+  it "fills the context window and the prompt profile before the first turn" do
+    client = FakeResolvingClient.new(Samagotchi::Client::ServerProps.new(body: ornith_props, status: :ok))
+    def client.context_window(model: nil) = 131_072
+
+    snapshot = engine_with(client).stats_snapshot
+
+    expect(snapshot).to include(context_window_tokens: 131_072, context_window_source: :server,
+                                profile: "qwen36", profile_source: "server (chat_template)")
+  end
+
+  it "falls back to the configured window when the server has none" do
+    snapshot = engine_with(FakeResolvingClient.new(nil)).stats_snapshot
+
+    expect(snapshot[:context_window_tokens]).to be_a(Integer)
+    expect(snapshot[:context_window_source]).not_to eq(:server)
+  end
+
+  it "keeps what a turn reported" do
+    engine = engine_with(FakeResolvingClient.new(nil))
+    engine.metrics.call(type: :generation_started, iteration: 1, context_window_tokens: 4096, context_window_source: :server,
+                          profile: "gemma4", profile_source: "env")
+
+    expect(engine.stats_snapshot).to include(context_window_tokens: 4096, profile: "gemma4", profile_source: "env")
+  end
+end

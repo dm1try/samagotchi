@@ -890,6 +890,15 @@ RSpec.describe Samagotchi::Bridge do
       expect(resp["session_state_snapshot"]).to include("status", "message_count", "event_seq")
     end
 
+    it "answers /stats with the Engine's stats snapshot" do
+      start_bridge
+      allow(@engine).to receive(:stats_snapshot).and_return({ turns: 0, context_window_tokens: 4096 })
+
+      res = Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"))
+
+      expect([res.code, JSON.parse(res.body)["metrics"]]).to eq(["200", { "turns" => 0, "context_window_tokens" => 4096 }])
+    end
+
     it "rejects an unknown session on the read surface with 404" do
       start_bridge
       _status, resp = get_state_for("does-not-exist")

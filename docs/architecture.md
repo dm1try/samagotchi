@@ -197,6 +197,7 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   (delivery is at-least-once via the worker's file-IPC input path — it never calls `run_turn`
   across the HTTP boundary). Inspect results through the read surface, not the turn response.
 - `GET  /session/:id/state` — `session_state_snapshot` (JSON).
+- `GET  /session/:id/stats` — `Engine#stats_snapshot` for attached `/stats`: the metrics, with the context window and prompt profile asked from the server before the first turn.
 - `OPTIONS *` — CORS preflight (`Access-Control-Allow-Origin: *`).
 
 The per-session port is OS-assigned (bound to `0`) and published to a `bridge.json` sidecar

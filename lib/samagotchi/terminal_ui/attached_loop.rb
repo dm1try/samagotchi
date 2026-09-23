@@ -398,7 +398,8 @@ module Samagotchi
       end
 
       def show_stats
-        metrics = @client.get_json("state")&.dig("session_state_snapshot", "metrics")
+        # A worker from before the stats route answers only /state.
+        metrics = @client.get_json("stats")&.dig("metrics") || @client.get_json("state")&.dig("session_state_snapshot", "metrics")
         @screen.commit(metrics ? format_session_metrics(EventRenderer.deep_symbolize_keys(metrics)) : "(no metrics: the worker did not answer)")
       end
 

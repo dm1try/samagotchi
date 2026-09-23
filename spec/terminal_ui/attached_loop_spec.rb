@@ -220,13 +220,24 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
     metrics = { turns: 2, tool_calls_total: 1, tool_errors: 0, tool_calls_by_tool: { read: 1 }, iterations_total: 3,
                 tokens_in: 10, tokens_out: 5, tokens_total: 15, token_source: :server, gen_latency_ms: 120,
                 cancellations: 0, retries: 0 }
-    allow(client).to receive(:get_json).with("state")
-      .and_return(JSON.parse(JSON.generate(session_state_snapshot: { metrics: metrics })))
+    allow(client).to receive(:get_json).with("stats")
+      .and_return(JSON.parse(JSON.generate(metrics: metrics.merge(context_window_tokens: 128_000, context_window_source: :server))))
 
     run_with(["/stats"])
 
     expect(screen.lines).to include(a_string_including("turns:            2"),
-                                    a_string_including("tokens in/out:    10/5 (total 15, server-reported)"))
+                                    a_string_including("tokens in/out:    10/5 (total 15, server-reported)"),
+                                    a_string_including("context window:   128000 tokens (server)"))
+  end
+
+  it "reads /stats from /state on a worker without the stats route" do
+    allow(client).to receive(:get_json).with("stats").and_return(nil)
+    allow(client).to receive(:get_json).with("state")
+      .and_return(JSON.parse(JSON.generate(session_state_snapshot: { metrics: { turns: 4 } })))
+
+    run_with(["/stats"])
+
+    expect(screen.lines).to include(a_string_including("turns:            4"))
   end
 
   describe "/recap, with the REPL's words" do

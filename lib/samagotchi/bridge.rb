@@ -255,6 +255,9 @@ module Samagotchi
         elsif (m = state_match(request[:path])) && method == "GET"
           payload, status, body = handle_state(m[1])
           write_json(io, status, payload, body)
+        elsif (m = stats_match(request[:path])) && method == "GET"
+          payload, status, body = handle_stats(m[1])
+          write_json(io, status, payload, body)
         elsif (m = snapshot_match(request[:path])) && method == "GET"
           payload, status, body = handle_snapshot(m[1])
           write_json(io, status, payload, body)
@@ -333,6 +336,10 @@ module Samagotchi
 
     def state_match(path)
       %r|\A/session/([^/]+)/state\z|u.match(path.to_s)
+    end
+
+    def stats_match(path)
+      %r|\A/session/([^/]+)/stats\z|u.match(path.to_s)
     end
 
     def snapshot_match(path)
@@ -518,6 +525,15 @@ module Samagotchi
       end
 
       [{}, 200, { session_id: @session_id, session_state_snapshot: @engine.session_state_snapshot }]
+    end
+
+    # /stats for an attached client: the metrics, with the window and prompt
+    # profile asked from the server when no turn has reported them yet (so,
+    # unlike /state, it may wait on one short /props GET).
+    def handle_stats(session_id)
+      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
+
+      [{}, 200, { session_id: @session_id, metrics: @engine.stats_snapshot }]
     end
 
     # The snapshot frame's content as one request, for a client that renders

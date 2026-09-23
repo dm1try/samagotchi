@@ -406,7 +406,7 @@ module Samagotchi
         persist_recent_history(input) if command.shell
         return
       end
-      return @surface.commit("\nmodel> session stats:\n#{format_session_metrics(@engine.metrics.snapshot)}") if stats_command?(input)
+      return @surface.commit("\nmodel> session stats:\n#{format_session_metrics(@engine.stats_snapshot)}") if stats_command?(input)
       return @surface.commit("\nmodel> #{handle_recap_command}") if recap_command?(input)
 
       @turn_flow.before_prompt_turn
