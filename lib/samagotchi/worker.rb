@@ -5,6 +5,7 @@ require "fileutils"
 require_relative "session"
 require_relative "worker_idle_exit"
 require_relative "session_manager"
+require_relative "log_path"
 require_relative "turn_flow"
 require_relative "session_commands"
 require_relative "model_profile"
@@ -171,6 +172,7 @@ module Samagotchi
       engine = Samagotchi::Engine.new(
         mode: @session.mode.to_sym,
         model_name: @session.model_name,
+        log_file: LogPath.resolve,
         reminders: {
           callback: lambda { |due_names|
             # A reminder is due: the loop runs a reminder turn for it once

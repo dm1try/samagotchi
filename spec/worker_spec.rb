@@ -85,6 +85,7 @@ RSpec.describe Samagotchi::Worker do
       FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR))
       allow(Samagotchi::Engine).to receive(:new) do |**kwargs|
         @reminder_callback = kwargs.dig(:reminders, :callback)
+        @engine_log_file = kwargs[:log_file]
         engine
       end
       allow(engine).to receive(:start_idle)
@@ -135,6 +136,14 @@ RSpec.describe Samagotchi::Worker do
     it "tells its Engine it is a worker, so approvals wait for an attached UI" do
       start_worker
       expect(engine.interface).to eq(:worker)
+    end
+
+    it "gives its Engine the debug log, as the REPL has" do
+      Samagotchi::Config.set_cli_overrides("log.file" => File.join(tmpdir, "chi.log"))
+      start_worker
+      expect(@engine_log_file).to eq(File.join(tmpdir, "chi.log"))
+    ensure
+      Samagotchi::Config.set_cli_overrides({})
     end
 
     it "starts a turn posted to its Bridge at once, not on the next tick" do
