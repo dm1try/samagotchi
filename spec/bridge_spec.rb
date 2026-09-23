@@ -399,6 +399,51 @@ RSpec.describe Samagotchi::Bridge do
       end
     end
 
+    describe "client tracking" do
+      def wait_until(timeout: 3)
+        deadline = mono + timeout
+        sleep(0.02) until yield || mono > deadline
+        yield
+      end
+
+      it "counts the open streams" do
+        start_bridge
+        expect(@bridge.open_streams).to eq(0)
+
+        client = SSEClient.new(@bridge_port, @session.id).start
+        @clients << client
+        expect(wait_until { @bridge.open_streams == 1 }).to be(true)
+
+        client.stop
+        # The writer notices the hang-up on its next heartbeat (0.2s here).
+        expect(wait_until { @bridge.open_streams.zero? }).to be(true)
+      end
+
+      it "notes client activity on a request and when a stream closes" do
+        start_bridge
+        before = @bridge.last_client_activity_at
+        get_state
+        after_request = @bridge.last_client_activity_at
+        expect(after_request).to be > before
+
+        client = SSEClient.new(@bridge_port, @session.id).start
+        wait_until { @bridge.open_streams == 1 }
+        client.stop
+        wait_until { @bridge.open_streams.zero? }
+        expect(@bridge.last_client_activity_at).to be > after_request
+      end
+
+      it "ignores a bare connect that sends no request (a liveness probe)" do
+        start_bridge
+        before = @bridge.last_client_activity_at
+        expect(Samagotchi::BridgeClient.sidecar_port(
+          Samagotchi::Session.session_dir(@session.id, state_dir: state_dir)
+        )).to eq(@bridge_port)
+        sleep(0.1)
+        expect(@bridge.last_client_activity_at).to eq(before)
+      end
+    end
+
     it "streams every event type with a monotonic event_seq + id (via replay from a cold connect)" do
       start_bridge
       # Drive a turn first so the shared capture observer fills the ring.

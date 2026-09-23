@@ -66,11 +66,26 @@ module Samagotchi
       @connection_threads = []
       @stopped = false
       @mutex = Monitor.new
+      @open_streams = 0
+      @last_client_activity_at = monotonic_now
     end
 
     # @return [Boolean] whether the server has been stopped.
     def stopped?
       @mutex.synchronize { @stopped }
+    end
+
+    # @return [Integer] SSE streams open now: one per attached TUI or web tab
+    def open_streams
+      @mutex.synchronize { @open_streams }
+    end
+
+    # Monotonic time of the last request, stream open or stream close. The
+    # worker's idle exit counts from it. A connect that sends no request (the
+    # sidecar liveness probe) doesn't count.
+    # @return [Float]
+    def last_client_activity_at
+      @mutex.synchronize { @last_client_activity_at }
     end
 
     # Bind the listen socket (OS-assigned when port == 0), register the shared
@@ -178,6 +193,8 @@ module Samagotchi
         request = read_request(io)
         break if request.nil?
 
+        note_client_activity
+
         method = request[:method].to_s.upcase
         headers = request[:headers]
 
@@ -239,7 +256,22 @@ module Samagotchi
         bridge: self,
         heartbeat_interval: @heartbeat_interval
       )
-      writer.serve!(io)
+      @mutex.synchronize { @open_streams += 1 }
+      begin
+        writer.serve!(io)
+      ensure
+        @mutex.synchronize { @open_streams -= 1 }
+        note_client_activity
+      end
+    end
+
+    # Never takes the event log: the lock order is events, then @mutex.
+    def note_client_activity
+      @mutex.synchronize { @last_client_activity_at = monotonic_now }
+    end
+
+    def monotonic_now
+      Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
     def cors
