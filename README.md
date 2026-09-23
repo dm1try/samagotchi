@@ -45,6 +45,7 @@ bin/chi --resume <session-id>                 # continue a saved session
 bin/chi web --open                            # web UI on http://127.0.0.1:4567
 bin/chi sessions list                         # saved sessions
 pbpaste | bin/chi note --source slack <id>    # background context for a session (no turn)
+pbpaste | bin/chi send -m "same bug?" <id>    # a message to a session, the clipboard quoted above it
 ```
 
 `@shot.png` in a prompt (or a pasted/dropped image in the web UI) shows the model an image, when it can see them; see [Images](docs/cli.md#images).
@@ -60,6 +61,10 @@ never takes orders from. The web and the attached terminal show it as a dim
 "note from …" line. `chi sessions list --live --format tsv` lists the sessions
 a note reaches (`id<TAB>description`). Agents can do the same: `list_sessions`
 finds another session, `send_note` tells it something.
+
+`chi send` is the other half: the text goes in as your message, the same as
+typing it in the attached terminal or the web composer, and a turn runs. Piped
+stdin plus `-m` puts the stdin above the message as a `>` quote.
 
 ### Send to chi (macOS)
 

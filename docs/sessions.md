@@ -78,6 +78,25 @@ OSA
 [ -n "$picked" ] && pbpaste | "$chi" note --source clipboard $(print -r -- "$picked" | cut -f1)
 ```
 
+## Sending a message
+
+`chi send` is the other half of `chi note`: the text goes in as your message, the same as typing it in the attached terminal or the web composer, so a turn runs.
+
+```sh
+bin/chi send [-m TEXT] (ID|PREFIX)...
+bin/chi send -m "is this the same bug?" 3fa2           # a message
+pbpaste | bin/chi send -m "is this the same bug?" 3fa2  # the clipboard quoted above the message
+pbpaste | bin/chi send 3fa2                             # the clipboard is the message
+```
+
+- With both stdin and `-m`, stdin is context: each line becomes a `> ` quote (as web annotations quote a selection), then a blank line, then the message. With only one, it goes in as is. A terminal on stdin is ignored. Both empty is a usage error; over 16 KiB is refused, never cut.
+- It goes through the same path as the web composer (`SessionManager.deliver_turn`): the worker's Bridge when it is up, so every attached UI shows it as your message (client id `cli:send`, shown like any user message); the input file when the worker is on its way out. During a running turn it is merged into that turn at the next step, like a message typed then.
+- A session with no worker gets one started (like `--attach` or the web composer). A session open in a plain REPL (`--no-shared`) refuses it. Only sessions on this machine: Bridges listen on 127.0.0.1.
+- Fire and forget: it returns once the message is queued and never prints the answer; that shows in whatever is attached. A guardrail "ask" waits for a UI to answer it, so with nothing attached the turn stalls there until one attaches (`chi --attach ID`).
+- One line per session: `sent`, `sent (the running turn picks it up)`, `sent (started its worker)`, `refused: …` or `failed: …`. Exit 0 when all were sent, 1 when any was refused, failed or not found, 2 for a usage error. There is no `--all`.
+
+The Automator action above works for messages too: swap its last line for `pbpaste | "$chi" send -m "what do you make of this?" $(print -r -- "$picked" | cut -f1)`.
+
 **Ordering:**
 
 - `Session.list` / `SessionManager.list_sessions` / `GET /api/sessions?sort=&order=&limit=&offset=` default to `updated_at desc` (newest activity first). Also supports `created_at`, `asc`. `X-Total-Count` header when paginated.

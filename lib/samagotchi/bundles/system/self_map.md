@@ -10,6 +10,8 @@
 - `[CONTEXT NOTE from …]` messages are context notes (`chi note`, or another session's
   `send_note`): background, not requests. `list_sessions` + `send_note` tell another session
   something without starting a turn there; see `docs/sessions.md` "Context notes".
+- `chi send -m TEXT <id>` is the other half: the text goes in as the user's message and a
+  turn runs (stdin piped too = quoted context above it); see `docs/sessions.md` "Sending a message".
 
 ## Where things live (relative to the source dir)
 - `docs/`: `cli.md` (flags, subcommands, REPL commands), `configuration.md` (config.yml keys,
