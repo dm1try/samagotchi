@@ -10,6 +10,7 @@ require_relative "reline_seam"
 require_relative "../bridge_client"
 require_relative "../debug_log"
 require_relative "../model_profile"
+require_relative "../output_formatter"
 require_relative "../session_commands"
 
 module Samagotchi
@@ -649,8 +650,12 @@ module Samagotchi
         return unless last_user
 
         @screen.commit(prompt_line(nil, exchange[last_user][:content]))
-        answer = exchange[(last_user + 1)..].reverse.find { |m| m[:role].to_s != "user" }
-        @screen.commit(last_lines(answer[:content].to_s)) if answer
+        # The saved answer is raw: the latest keeps its thinking, and one may
+        # be only a tool call.
+        answer = exchange[(last_user + 1)..].reverse_each
+                                           .map { |m| OutputFormatter.strip_markup(m[:content]) }
+                                           .find { |text| !text.empty? }
+        @screen.commit(last_lines(answer)) if answer
       end
 
       # The end of a long answer; the whole of it is in the session.

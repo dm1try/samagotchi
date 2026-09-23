@@ -15,6 +15,17 @@ RSpec.describe Samagotchi::OutputFormatter do
     "[[SAMAGOTCHI_LITERAL_" + name + "]]"
   end
 
+  describe ".strip_markup" do
+    it "removes thinking and tool-call blocks but keeps the text's layout" do
+      text = "<think>\nhm\n</think>\n\nSee:\n\n\n\n    indented  twice\n<tool_call>\n<function=read>\n</function>\n</tool_call>"
+      expect(described_class.strip_markup(text)).to eq("See:\n\n    indented  twice")
+    end
+
+    it "returns an empty string for markup only" do
+      expect(described_class.strip_markup("<think>x</think><tool_call>y</tool_call>")).to eq("")
+    end
+  end
+
   describe ".strip" do
     it "removes Gemma control tokens without dropping surrounding text" do
       result = strip("hello <|think|> world")

@@ -71,19 +71,30 @@ module Samagotchi
     # so a multi-line response stays readable. Blank / token-only input returns "".
     def strip(text)
       cleaned =
-        text.to_s
-        .gsub(QWEN_THINK_RE, '')
-        .gsub(QWEN_TOOL_CALL_RE, '')
-        .gsub(LITERALS_RE, '')
-        .gsub(INDIVIDUAL_RE, '')
-        .gsub(PROMPT_LITERALS, '')
-        # orphaned closing tags that may remain after block removal
-        .gsub(/<\/?think>/, '')
-        .gsub(/<\/?tool_call>/, '')
+        remove_tokens(text)
         .gsub(/[ \t]+/, " ")
         .gsub(/ *\n */, "\n")
         .strip
       cleaned.empty? ? '' : cleaned
+    end
+
+    # The same tokens as #strip, but the text keeps its layout (indentation,
+    # runs of spaces); only the blank lines removed blocks leave collapse.
+    # For showing a whole saved answer (the attached TUI's join).
+    def strip_markup(text)
+      remove_tokens(text).gsub(/\n[ \t]*\n(?:[ \t]*\n)+/, "\n\n").strip
+    end
+
+    def remove_tokens(text)
+      text.to_s
+          .gsub(QWEN_THINK_RE, '')
+          .gsub(QWEN_TOOL_CALL_RE, '')
+          .gsub(LITERALS_RE, '')
+          .gsub(INDIVIDUAL_RE, '')
+          .gsub(PROMPT_LITERALS, '')
+          # orphaned closing tags that may remain after block removal
+          .gsub(/<\/?think>/, '')
+          .gsub(/<\/?tool_call>/, '')
     end
   end
 end

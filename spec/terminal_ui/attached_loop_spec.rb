@@ -58,6 +58,21 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(attached).not_to be_running
     end
 
+    it "leaves the last answer's thinking and tool-call markup out, keeping its layout" do
+      answer = "<think>\nplan it\n</think>\n\nHere:\n```\ndef a\n    b = 1\nend\n```"
+      feed(snapshot(messages: [{ role: "user", content: "code" }, { role: "model", content: answer }]))
+
+      expect(screen.lines).to eq(["user> code", "Here:\n```\ndef a\n    b = 1\nend\n```"])
+    end
+
+    it "shows the last model message with text when the latest is only a tool call" do
+      feed(snapshot(messages: [{ role: "user", content: "go" }, { role: "model", content: "<think>a</think>Looking." },
+                               { role: "tool_response", content: "r" },
+                               { role: "model", content: "<think>b</think>\n<tool_call>\n<function=read>\n</function>\n</tool_call>" }]))
+
+      expect(screen.lines).to eq(["user> go", "Looking."])
+    end
+
     it "shows only the end of an answer made of long lines" do
       feed(snapshot(messages: [{ role: "user", content: "essay" }, { role: "model", content: "#{"x" * 2000}END" }]))
 
