@@ -162,7 +162,13 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #empty .brand-start{font-size:clamp(28px,5vw,38px);font-weight:700;letter-spacing:.02em;color:#e6e8eb;padding:0}
 #empty .brand-start span{color:#7aa5ff}
 #empty .brand-start small{display:none}
-#allTile{flex-direction:column;justify-content:center;align-items:flex-start;text-align:left;color:#c9d1d9;font-size:13px;font-weight:600;width:100%}
+.strip-side{display:flex;flex-direction:column;gap:6px;min-width:0}
+.strip-toggle{font-size:11px;padding:3px 10px;background:transparent;color:#8b949e;border:1px solid #1f232b;border-radius:999px}
+.strip-toggle:hover{color:#c9d1d9;border-color:#2d333f}
+#stripShow{display:none;align-self:flex-start}
+body.strip-hidden #stripShow{display:block}
+body.strip-hidden #topStrip, body.all-view #stripShow{display:none}
+#allTile{flex:1;flex-direction:column;justify-content:center;align-items:flex-start;text-align:left;color:#c9d1d9;font-size:13px;font-weight:600;width:100%}
 #allTile .count{font-size:11px;font-weight:400;color:#8b949e}
 #allView{display:none;flex:1;min-height:0;flex-direction:column;gap:12px}
 body.all-view #allView{display:flex}
@@ -204,17 +210,12 @@ body.all-view #center, body.all-view #topStrip{display:none}
   #composer .actions-col{width:auto}
   #composer #actionBtn{min-width:72px}
 }
-body.zen #topStrip, body.zen #firstPeek{display:none !important}
-body.zen #topStrip[style], body.zen #firstPeek[style]{display:none !important}
-body.zen #center{flex:1;min-height:0;overflow:hidden}
-body.zen main{padding:8px;gap:8px;overflow:hidden;min-height:0}
-body.zen #stage{flex:1;min-height:0;overflow:hidden}
-body.zen #history{flex:1;min-height:0;overflow:auto}
 a{color:#7aa5ff}
 </style>
 </head>
 <body>
 <main>
+  <button type="button" class="strip-toggle" id="stripShow" title="Show the latest sessions">▾ sessions</button>
   <section id="topStrip" aria-label="Latest sessions" class="loading"><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div></section>
   <section id="center">
     <div id="firstPeek"></div>
@@ -241,7 +242,6 @@ a{color:#7aa5ff}
     <div id="infoBar">
       <div class="info" id="infoText"><div class="idle">No session selected — pick one above, or type a prompt to start a new session.</div></div>
       <button class="danger" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop</button>
-      <button class="ghost" id="zenBtn" title="Zen mode (z / Esc)">zen</button>
     </div>
   </section>
   <section id="allView" aria-label="All sessions">
