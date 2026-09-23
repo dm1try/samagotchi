@@ -30,10 +30,19 @@ module Samagotchi
       STATS_COMMAND = "/stats"
       RECAP_COMMAND = "/recap"
       PROMPT = "> "
-      DETACH_COMMANDS = %w[/exit /quit].freeze
+      # Detach and leave the worker up.
+      DETACH_COMMANDS = %w[/detach].freeze
+      # Detach and ask the worker to exit (bare `exit` too, as in the REPL).
+      EXIT_COMMANDS = %w[/exit /quit].freeze
       # A second Ctrl-C at an empty idle prompt within this many seconds detaches.
       DETACH_WINDOW = 2.0
-      DETACH_HINT = "Ctrl-C again or Ctrl-D to detach"
+      DETACH_HINT = "Ctrl-D to detach, /exit stops the worker"
+      # Why the worker stayed up after /exit, by the reason it gave.
+      HELD_REASONS = {
+        "turn_running" => "a turn is running", "input_queued" => "prompts are queued",
+        "continue_offered" => "a continue offer is pending", "client_connected" => "another UI is attached",
+        "reminders" => "reminders are set", "starting" => "the worker is still starting"
+      }.freeze
       ROLLBACK_HINT = "partial progress kept in context; !rollback restores the pre-turn state"
       # How much of the last answer a join shows.
       JOIN_ANSWER_LINES = 12
@@ -104,8 +113,9 @@ module Samagotchi
 
       def running? = @running
 
-      # Follow the session and read input until Ctrl-D, /exit or the worker
-      # goes away. The worker keeps running after a detach.
+      # Follow the session and read input until Ctrl-D, /detach, /exit or
+      # the worker goes away. The worker keeps running after a detach; /exit
+      # asks it to exit too, and it does unless something still needs it.
       # @return [Symbol] :detached, :closed when the worker went away, or
       #   :failed when the first command (--model) didn't go through
       # @param input [#call, nil] prompt -> line (nil = Ctrl-D, raising
@@ -117,7 +127,9 @@ module Samagotchi
         # there; declining lets the read end with Interrupt as before.
         previous_interrupt_handler = RelineSeam.interrupt_handler
         RelineSeam.interrupt_handler = method(:note_interrupted_line)
-        stream = @client.follow { |event| queue << [:event, event] }
+        # Tagged, so the worker doesn't count this stream as another UI
+        # when this UI asks it to exit.
+        stream = @client.follow(client_id: @client_id) { |event| queue << [:event, event] }
         @reader = LineReader.new(queue, prompt: method(:prompt_text), read: input || method(:read_input_line),
                                         prefill: default_input_text).start
         loop do
@@ -216,15 +228,13 @@ module Samagotchi
 
       # @return [Symbol, nil] :detach to end the loop
       def submit(line)
-        if line.nil?
-          @view.finish_thinking_spinner
-          @screen.commit("Detached; the session keeps running. Re-attach with: chi --attach #{@client.session_id}")
-          return :detach
-        end
+        return detach("Detached; the session keeps running. Re-attach with: chi --attach #{@client.session_id}") if line.nil?
 
         text = line.strip
         return answer_question(text) if @question
-        return submit(nil) if DETACH_COMMANDS.include?(text) || text.casecmp?("exit")
+        # Before the continue offer: neither is an answer to it.
+        return submit(nil) if DETACH_COMMANDS.include?(text.downcase)
+        return exit_worker if EXIT_COMMANDS.include?(text.downcase) || text.casecmp?("exit")
         return send_command(continue_line(text)) if @continue_offer && !SessionCommands.command?(text)
         return if text.empty?
 
@@ -241,6 +251,44 @@ module Samagotchi
           send_prompt(text)
         end
         nil
+      end
+
+      # @return [Symbol] :detach
+      def detach(line)
+        @view.finish_thinking_spinner
+        @screen.commit(line)
+        :detach
+      end
+
+      # Detach, and ask the worker to exit now. The worker decides: it stays
+      # up while anything still needs it (a turn, queued input, a continue
+      # offer, another UI, reminders), and the line says which.
+      # @return [Symbol] :detach
+      def exit_worker
+        detach(exit_line(@client.request_exit(client_id: @client_id)))
+      rescue SystemCallError, IOError => e
+        detach(exit_failed_line(e.message))
+      end
+
+      def exit_line(reply)
+        id = @client.session_id
+        error = reply.json&.fetch("error", nil)
+        case reply.status
+        when 200 then "Detached; the session's worker is stopping. Resume with: chi --resume #{id}"
+        when 409
+          reason = reply.json&.fetch("reason", nil).to_s
+          "Detached; the session keeps running (#{HELD_REASONS.fetch(reason, reason)}). Re-attach with: chi --attach #{id}"
+        when 0 then exit_failed_line("no reply")
+        else
+          # A worker from before the route answers the Bridge's plain 404.
+          return "Detached; this worker runs an older chi and can't be stopped from here: chi sessions stop #{id}" if error == "not_found"
+
+          exit_failed_line([reply.status, reply.json&.fetch("detail", nil) || error].compact.join(" "))
+        end
+      end
+
+      def exit_failed_line(why)
+        "Detached (could not ask the worker to stop: #{why}). Re-attach with: chi --attach #{@client.session_id}"
       end
 
       # A bare answer at the continue prompt, as the REPL reads it (an empty
@@ -344,7 +392,7 @@ module Samagotchi
       end
 
       # The attached TUI's commands, for Tab.
-      def slash_commands = (InputSupport::SLASH_COMMANDS + DETACH_COMMANDS).uniq.sort
+      def slash_commands = (InputSupport::SLASH_COMMANDS + EXIT_COMMANDS + DETACH_COMMANDS).uniq.sort
 
       # The recap from the join or a :recap_ready (dropped when a turn starts,
       # so never stale), with the REPL's words; the settings from the worker.

@@ -56,7 +56,7 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(described_class.command?("/model beta:x --default")).to be(true)
       expect(described_class.command?("/continue no, too slow")).to be(true)
       expect(described_class.command?("!ls -la")).to be(true)
-      expect(%w[/stats /recap /exit hello ! /modelx].map { |c| described_class.command?(c) }).to all(be(false))
+      expect(%w[/stats /recap /exit /detach hello ! /modelx].map { |c| described_class.command?(c) }).to all(be(false))
     end
   end
 
