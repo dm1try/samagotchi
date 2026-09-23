@@ -1,6 +1,6 @@
 ---
 name: samagotchi-system
-version: 0.1.21
+version: 0.1.22
 scope: system
 description: Default system memories — identity, self map, config modification protocol and memory guide
 files:
