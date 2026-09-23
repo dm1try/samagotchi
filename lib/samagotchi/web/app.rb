@@ -226,6 +226,9 @@ module Samagotchi
           markdown_warning: @markdown_renderer.warning,
           pending_question: pending,
           last_event_seq: last_event_seq,
+          # The stream cursor `<seq>-<epoch>`: a later worker resets it
+          # instead of taking the seq as its own. Only the snapshot has it.
+          last_event_id: turn_snapshot && turn_snapshot["event_id"],
           timing: timing_payload(id, live_metrics: snapshot && snapshot["metrics"])
         })
       rescue ArgumentError => e

@@ -143,6 +143,20 @@ test("non-integer from_seq defaults to 0", () => {
   assert.equal(esHolder.es.url, "/api/sessions/abc/stream?from_seq=0");
 });
 
+// A cursor from a worker's snapshot (`<seq>-<epoch>`): a Bridge of another
+// worker answers it with a reset instead of skipping events.
+test("streams from a string event id as it is", () => {
+  const esHolder = {};
+  const Fake = class extends FakeEventSource {
+    constructor(u) {
+      super(u);
+      esHolder.es = this;
+    }
+  };
+  openStream("abc", "40-1a2b3c4d", {}, { EventSourceImpl: Fake });
+  assert.equal(esHolder.es.url, "/api/sessions/abc/stream?from_seq=40-1a2b3c4d");
+});
+
 test("onStreamError fires when connection closes before any events", () => {
   const esHolder = {};
   const Fake = class extends FakeEventSource {

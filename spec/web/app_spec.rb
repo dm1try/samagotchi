@@ -227,6 +227,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(status).to eq(200)
       payload = JSON.parse(body.first)
       expect(payload["last_event_seq"]).to be_nil
+      expect(payload["last_event_id"]).to be_nil
       expect(payload["messages"].map { |m| m["content"] }).to eq(%w[hello hi\ there])
     end
 
@@ -246,7 +247,8 @@ RSpec.describe Samagotchi::Web::App do
           "queued" => [{ "enqueued_id" => "e1", "client_id" => "tui:1", "prompt" => "next" }],
           "recap" => "We did things.",
           "continue_offer" => { "context" => { "original_prompt" => "first" }, "no_interrupt" => false },
-          "event_seq" => 40
+          "event_seq" => 40,
+          "event_id" => "40-e1"
         },
         "session_state_snapshot" => { "status" => "running", "event_seq" => 40, "model_name" => "Qwen3-14B",
                                       "served_model" => "ornith-1.5", "served_model_for" => "Qwen3-14B" }
@@ -265,6 +267,8 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["queued"].map { |q| q["prompt"] }).to eq(["next"])
       expect(payload["pending_question"]).to eq("id" => "q1", "status" => "pending")
       expect(payload["last_event_seq"]).to eq(40)
+      # The cursor to stream on from: it names the worker (its epoch).
+      expect(payload["last_event_id"]).to eq("40-e1")
       expect(payload["recap"]).to eq("We did things.")
       expect(payload["continue_offer"]).to eq("context" => { "original_prompt" => "first" }, "no_interrupt" => false)
       expect(payload.dig("session", "status")).to eq("running")
@@ -437,6 +441,13 @@ RSpec.describe Samagotchi::Web::App do
       raw = capture_bridge_request(headers: { "HTTP_LAST_EVENT_ID" => "7" }, query: "?from_seq=0")
       expect(raw).to include("Last-Event-ID: 7\r\n")
       expect(raw).to include("GET /session/s1/stream?from_seq=0 HTTP/1.1")
+    end
+
+    # The browser's cursor names its worker; the Bridge, not the proxy,
+    # decides whether it replays or resets.
+    it "forwards an epoch-bearing Last-Event-ID unchanged" do
+      raw = capture_bridge_request(headers: { "HTTP_LAST_EVENT_ID" => "25-1a2b3c4d" }, query: "?from_seq=0")
+      expect(raw).to include("Last-Event-ID: 25-1a2b3c4d\r\n")
     end
 
     it "omits the header when the client sent no Last-Event-ID" do
