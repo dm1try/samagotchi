@@ -211,4 +211,15 @@ RSpec.describe "Engine#stats_snapshot" do
 
     expect(engine.stats_snapshot).to include(served_model: nil, served_model_for: nil)
   end
+
+  it "puts only a reported served model in the cheap session state (no probe)" do
+    client = FakeResolvingClient.new(Samagotchi::Client::ServerProps.new(body: ornith_props, status: :ok))
+    engine = engine_with(client)
+
+    expect(engine.session_state_snapshot).to include(served_model: nil, served_model_for: nil)
+    expect(client.asked).to eq([])
+
+    engine.metrics.call(type: :generation_completed, served_model: "ornith-x", requested_model: "house-blend-35b")
+    expect(engine.session_state_snapshot).to include(served_model: "ornith-x", served_model_for: "house-blend-35b")
+  end
 end

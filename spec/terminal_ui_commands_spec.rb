@@ -55,6 +55,16 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(output.call(served_model: nil, served_model_for: nil)).not_to include("served model")
     end
 
+    it "shows the served model in the status line once a turn reported another one" do
+      engine = agent.instance_variable_get(:@engine)
+      expect(agent.send(:status_model_segment)).to start_with("model=#{engine.effective_model_name}")
+
+      engine.metrics.call(type: :generation_completed, served_model: "ornith-x",
+                          requested_model: engine.send(:bare_model_name, engine.effective_model_name))
+
+      expect(agent.send(:status_model_segment)).to start_with("model=ornith-x (served; asked ")
+    end
+
     it "shows the prompt profile and where it came from in /stats" do
       metrics = agent.instance_variable_get(:@engine).metrics
       metrics.call(type: :generation_started, profile: "qwen36", profile_source: "config (models: ista)")

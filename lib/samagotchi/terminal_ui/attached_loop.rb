@@ -268,6 +268,9 @@ module Samagotchi
         when :question_cancelled
           close_question("(question cancelled)") if @question
         when :recap_ready then @recap = event[:recap]
+        when :generation_completed
+          take_served_model(event[:served_model], event[:requested_model])
+          @renderer.call(event)
         when :stream_closed
           @view.finish_thinking_spinner
           @screen.commit("Lost the session's worker (#{event[:reason]}). " \
@@ -354,6 +357,7 @@ module Samagotchi
         return unless event[:model_name]
 
         # After the output, so the status row changes with the line saying why.
+        @served_model = nil if @model_name != event[:model_name]
         @model_name = event[:model_name]
         refresh_status
       end
@@ -730,6 +734,8 @@ module Samagotchi
       # memories the session used.
       def take_session_state(state)
         @model_name = state[:model_name] if state[:model_name]
+        @served_model = nil
+        take_served_model(state[:served_model], state[:served_model_for], refresh: false)
         @memory_names = Array(state[:used_memory_names]) if state.key?(:used_memory_names)
         refresh_status
       end
@@ -739,7 +745,8 @@ module Samagotchi
       def refresh_status
         return unless status_line_enabled?
 
-        segments = [@model_name ? status_model_text(@model_name, default_model_name) : "",
+        served, served_for = @served_model
+        segments = [@model_name ? status_model_text(@model_name, default_model_name, served: served, served_for: served_for) : "",
                     status_context_text(estimate: @context_estimate),
                     status_memory_text(@memory_names, MEMORY_STICKY_PREVIEW_LIMIT)].reject(&:empty?)
         rows = status_rows(segments, @screen.columns - 1)
@@ -747,6 +754,15 @@ module Samagotchi
 
         @status_rows = rows
         rows.empty? ? @screen.clear_slot(:status) : @screen.set_slot(:status, rows)
+      end
+
+      # What the worker's server said it served for a name (a generation, or
+      # the join's session state); dropped when /model switches.
+      def take_served_model(served, served_for, refresh: true)
+        return unless served
+
+        @served_model = [served, served_for]
+        refresh_status if refresh
       end
 
       # The config's default model, as the worker's /model names it.

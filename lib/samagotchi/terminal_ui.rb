@@ -1382,7 +1382,8 @@ module Samagotchi
     end
 
     def status_model_segment
-      status_model_text(@effective_model_name, @default_model_name)
+      served, served_for = @engine.respond_to?(:served_model) ? @engine.served_model(probe: false) : nil
+      status_model_text(@effective_model_name, @default_model_name, served: served, served_for: served_for)
     end
 
     def status_context_segment

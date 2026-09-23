@@ -49,7 +49,17 @@ module Samagotchi
         [color_output? ? paint(row, 90) : row]
       end
 
-      def status_model_text(model, default_model)
+      # Longest asked-for name the status line keeps next to a served one.
+      STATUS_ASKED_MAX = 24
+
+      # +served+ / +served_for+: the model the server said it served for the
+      # name asked (see Engine#served_model); shown first when it's another
+      # model.
+      def status_model_text(model, default_model, served: nil, served_for: nil)
+        if ServedModel.differs?(served_for, served)
+          asked = model.to_s.length > STATUS_ASKED_MAX ? "#{model.to_s[0, STATUS_ASKED_MAX - 1]}…" : model
+          return "model=#{served} (served; asked #{asked})"
+        end
         return "model=#{model}" if default_model.nil? || model == default_model
 
         "model=#{model} (default: #{default_model})"

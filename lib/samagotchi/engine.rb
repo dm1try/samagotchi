@@ -477,7 +477,7 @@ module Samagotchi
     def stats_snapshot
       snapshot = @metrics.snapshot
       target = @host_registry.resolve(@effective_model_name)
-      served, served_for = served_model_for(target, snapshot)
+      served, served_for = served_model_for(snapshot, target: target)
       snapshot = snapshot.merge(served_model: served, served_model_for: served_for)
       unless snapshot[:context_window_tokens]
         window = current_context_window(target)
@@ -492,10 +492,11 @@ module Samagotchi
 
     # The model the server serves for the current model, and the name asked
     # for: what the last generation of that name reported, else llama.cpp's
-    # model_alias (/props, one short cached probe), else [nil, nil].
+    # model_alias (/props, one short cached probe; not with probe: false),
+    # else [nil, nil].
     # @return [Array(String, String), Array(nil, nil)]
-    def served_model
-      served_model_for(@host_registry.resolve(@effective_model_name), @metrics.snapshot)
+    def served_model(probe: true)
+      served_model_for(@metrics.snapshot, target: probe ? @host_registry.resolve(@effective_model_name) : nil)
     end
 
     # Read-only snapshot of the engine's view of the current session plus the
@@ -512,9 +513,13 @@ module Samagotchi
     #   :pending_question [Hash, nil] current pending structured question
     #   :used_memory_names [Array<String>] deduped memory names active this session
     #   :model_name    [String]    the model turns run on now (after /model)
+    #   :served_model, :served_model_for [String, nil] what a generation of
+    #     that model reported serving, and the name asked (#served_model
+    #     without the probe)
     #   :recap_enabled [Boolean]   whether an idle recap is configured, with
     #     :recap_min_user_turns and :recap_inactivity_seconds (nil when not)
     def session_state_snapshot
+      served_pair = served_model(probe: false)
       {
         status: @session&.status,
         message_count: (@session&.messages || []).size,
@@ -524,6 +529,8 @@ module Samagotchi
         pending_question: @question_mutex.synchronize { @pending_question&.dup },
         used_memory_names: @used_memory_mutex.synchronize { @used_memory_names.dup },
         model_name: @effective_model_name,
+        served_model: served_pair[0],
+        served_model_for: served_pair[1],
         recap_enabled: !@recap.nil?,
         recap_min_user_turns: @recap&.min_user_turns,
         recap_inactivity_seconds: @recap&.inactivity&.to_i
@@ -1373,10 +1380,12 @@ module Samagotchi
     end
 
     # See #served_model. A report for another name (before a /model switch)
-    # doesn't count. A remote chat host has no /props: nil until a turn.
-    def served_model_for(target, snapshot)
+    # doesn't count. Without a target, no probe. A remote chat host has no
+    # /props: nil until a turn.
+    def served_model_for(snapshot, target: nil)
       asked = bare_model_name(@effective_model_name)
       return [snapshot[:served_model], asked] if snapshot[:served_model] && snapshot[:served_model_for] == asked
+      return [nil, nil] unless target
 
       client = target.client
       if target.entry.chat?

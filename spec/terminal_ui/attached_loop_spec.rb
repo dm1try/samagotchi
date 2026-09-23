@@ -760,6 +760,29 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "idle status line" do
     expect(status).to eq("status> model=m1")
   end
 
+  it "shows the served model first when the server serves another one, until /model" do
+    feed(join.merge(session_state_snapshot: { status: "idle", model_name: "m1", served_model: "ornith-1.5-35b",
+                                              served_model_for: "m1" }))
+    expect(status).to eq("status> model=ornith-1.5-35b (served; asked m1)")
+
+    feed({ type: :command_ran, command_id: "c", client_id: "web:1", line: "/model m2", status: "ok",
+           output: "runtime model set to m2", changed: ["model"], model_name: "m2" })
+    expect(status).to eq("status> model=m2 (default: m1)")
+
+    feed({ type: :generation_completed, iteration: 1, served_model: "m2-2026-01-01", requested_model: "m2" })
+    expect(status).to eq("status> model=m2 (default: m1)")
+    feed({ type: :generation_completed, iteration: 1, served_model: "ornith-1.5-35b", requested_model: "m2" })
+    expect(status).to eq("status> model=ornith-1.5-35b (served; asked m2)")
+  end
+
+  it "cuts a long asked-for name in the status line" do
+    feed(join(model_name: "unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M").tap do |event|
+      event[:session_state_snapshot].merge!(served_model: "ornith", served_model_for: "unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M")
+    end)
+
+    expect(status).to start_with("status> model=ornith (served; asked unsloth/Qwen3.6-35B-A3B…)")
+  end
+
   it "adds the context estimate and the memories a turn used" do
     feed(join,
          { type: :context_status, usage: { estimated_pct: 12.5 }, bucket: "low" },
