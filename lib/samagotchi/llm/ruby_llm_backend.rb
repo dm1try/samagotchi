@@ -444,6 +444,11 @@ module Samagotchi
           output_truncated = true
           completed_output = completed_output[0, max_tool_output_chars]
         end
+        # Fire :after_tool_call hook (after tool execution, before result injection)
+        if @kernel && @kernel.respond_to?(:hooks) && @kernel.hooks
+          after_event = { type: :after_tool_call, iteration: iteration, tool: call[:name], output: completed_output }
+          @kernel.send(:fire_hook, :after_tool_call, after_event) rescue nil
+        end
         emit_stream_event(
           on_stream_event,
           type: :tool_call_completed,

@@ -79,7 +79,7 @@ RSpec.describe "Tool call wrapper parity" do
       expect(result.tool_activity).to eq([completed[:activity]])
     end
 
-    it "ruby_llm: params are filled; today after_tool_call never fires and tool_activity stays empty" do
+    it "ruby_llm: params are filled and both hooks fire; today tool_activity stays empty" do
       result, seen = run_chat
       expect(seen).to start_with("[read]\n")
       expect(seen).not_to include("[read]\n[read]")
@@ -87,7 +87,7 @@ RSpec.describe "Tool call wrapper parity" do
       expect(started[:params]).to start_with(%(path="#{dir[0, 20]}))
       expect(completed[:output]).to eq(seen)
       expect(completed[:activity]).to include(tool: "read", status: "ok")
-      expect(fired.map(&:first)).to eq(%i[before_tool_call])
+      expect(fired.map(&:first)).to eq(%i[before_tool_call after_tool_call])
       expect(fired.first.last).to start_with(%(path="#{dir[0, 20]}))
       expect(result.tool_activity).to eq([])
     end
@@ -107,7 +107,7 @@ RSpec.describe "Tool call wrapper parity" do
       _result, seen = run_chat
       expect(seen).to eq("[read] Error: blocked by guardrail: nope")
       expect(completed[:activity]).to include(tool: "read", status: "blocked")
-      expect(fired.map(&:first)).to eq(%i[before_tool_call])
+      expect(fired.map(&:first)).to eq(%i[before_tool_call after_tool_call])
     end
   end
 
@@ -141,6 +141,7 @@ RSpec.describe "Tool call wrapper parity" do
       expect(completed[:output].length).to eq(10)
       expect(completed[:output_truncated]).to be(true)
       expect(seen).to eq(completed[:output])
+      expect(fired.last).to eq([:after_tool_call, completed[:output]])
     end
   end
 end
