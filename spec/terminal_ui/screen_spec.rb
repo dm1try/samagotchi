@@ -253,4 +253,23 @@ RSpec.describe Samagotchi::TerminalUI::Screen do
 
     expect(out.string).to include("whole").and end_with("\e[?2026l")
   end
+
+  # The REPL's reminder poll kills its reader thread (Thread#kill) when a
+  # raise didn't stop it; a frame must not be cut short by that either.
+  it "finishes a frame even when the thread is killed" do
+    out = StringIO.new
+    slow = described_class.new(out: out, size: -> { [10, 20] })
+    started = Queue.new
+    allow(out).to receive(:write).and_wrap_original do |original, bytes|
+      started << true
+      sleep 0.1
+      original.call(bytes)
+    end
+    thread = Thread.new { slow.commit("whole") }
+    started.pop
+    thread.kill
+    thread.join
+
+    expect(out.string).to include("whole").and end_with("\e[?2026l")
+  end
 end
