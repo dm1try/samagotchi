@@ -81,3 +81,15 @@ RSpec.describe Samagotchi::Hooks::Registry do
     end
   end
 end
+
+RSpec.describe Samagotchi::Hooks::Registry, "#fire_each" do
+  it "yields the event after each hook, in firing order, and skips a raising hook" do
+    registry = described_class.new
+    registry.register(:e) { |ev| ev[:n] << :plain }
+    registry.register(:e) { |_ev| raise "boom" }
+    registry.register_bundle("b", :e, hook_name: "h") { |ev| ev[:n] << :bundle }
+    seen = []
+    registry.fire_each(:e, { n: [] }) { |ev| seen << ev[:n].dup }
+    expect(seen).to eq([[:bundle], %i[bundle plain], %i[bundle plain]])
+  end
+end

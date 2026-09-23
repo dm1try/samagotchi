@@ -140,6 +140,22 @@ module Samagotchi
         end
       end
 
+      # Like #fire, and yields the event after each hook (a raising one
+      # too), so the caller can fold what that hook did before the next one
+      # runs (the guardrail gate keeps a deny sticky this way).
+      # @yieldparam event [Hash]
+      # @return [void]
+      def fire_each(name, event)
+        ordered_procs(name).each do |hook_proc|
+          begin
+            hook_proc.call(event)
+          rescue StandardError
+            # A failing hook must not break the turn.
+          end
+          yield event
+        end
+      end
+
       # @return [Integer] total number of registered hooks (bundle + plain)
       def size
         @mutex.synchronize do

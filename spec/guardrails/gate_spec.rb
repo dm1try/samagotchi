@@ -37,4 +37,51 @@ RSpec.describe Samagotchi::Guardrails::Gate do
     evaluate
     expect(call[:content]).to eq("ls")
   end
+
+  describe "votes" do
+    it "keeps the strictest vote: deny beats a later ask" do
+      hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("no") }
+      hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("maybe") }
+      verdict = evaluate
+      expect(verdict.decision).to eq(:deny)
+      expect(verdict.reason).to eq("no")
+    end
+
+    it "lets a deny override an earlier ask" do
+      hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("maybe", scopes: %w[once]) }
+      hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("no", rule: "r1") }
+      verdict = evaluate
+      expect([verdict.decision, verdict.reason, verdict.rule]).to eq([:deny, "no", "r1"])
+    end
+
+    it "keeps the first of two equal votes" do
+      hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("first") }
+      hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("second") }
+      expect(evaluate.reason).to eq("first")
+    end
+
+    it "carries the ask's scopes" do
+      hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("maybe", scopes: %w[once session]) }
+      expect(evaluate.scopes).to eq(%w[once session])
+    end
+
+    it "folds the legacy flag in after each hook, as a legacy deny" do
+      hooks.register(:before_tool_call) { |e| e[:blocked] = true; e[:block_reason] = "old" }
+      hooks.register(:before_tool_call) { |e| e[:blocked] = false }
+      verdict = evaluate
+      expect(verdict).to be_deny
+      expect(verdict).to be_legacy
+      expect(verdict.reason).to eq("old")
+    end
+
+    it "counts a fail_closed bundle hook that raises as a deny" do
+      hooks.register_bundle("b", :before_tool_call, hook_name: "g.rb") do |e|
+        raise "boom"
+      rescue StandardError => err
+        Samagotchi::Hooks::BundleLoader.handle_error("b", "g.rb", "fail_closed", true, e, err)
+      end
+      hooks.register(:before_tool_call) { |e| e[:blocked] = false }
+      expect(evaluate).to be_deny
+    end
+  end
 end

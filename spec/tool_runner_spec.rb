@@ -66,24 +66,71 @@ RSpec.describe Samagotchi::ToolRunner do
     expect(dispatched).to eq([call])
   end
 
-  # Pinned before the guardrail work (G0a); G1 changes both on purpose.
-  describe "today's behaviour, changed by G1" do
-    it "lets a later hook undo an earlier veto" do
+  describe "sticky verdict" do
+    it "keeps a veto a later hook tries to undo" do
       hooks.register(:before_tool_call) { |e| e[:blocked] = true; e[:block_reason] = "nope" }
-      hooks.register(:before_tool_call) { |e| e[:blocked] = false }
-      run
-      expect(dispatched).to eq([call])
+      hooks.register(:before_tool_call) { |e| e[:blocked] = false; e[:block_reason] = nil }
+      result = run
+      expect(dispatched).to be_empty
+      expect(result[:output]).to eq("[execute] Error: blocked by guardrail: nope")
     end
 
-    it "emits tool_call_started before the hooks, with the original call" do
+    it "denies through the verdict API with the deny text for the model" do
+      hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("no listing today") }
+      result = run
+      expect(dispatched).to be_empty
+      expect(result[:output]).to eq(
+        "[execute] Error: denied by guardrail (hook): no listing today. The user was not asked. " \
+        "Do not retry it or reach the same result another way; ask the user how to proceed."
+      )
+      expect(result[:activity]).to include(status: "blocked", guardrail: { verdict: "deny", decided_by: "hook" })
+    end
+
+    it "names the rule and its source in the deny text" do
+      hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("pushes commits", rule: "git-push", source: "bundle guardrails") }
+      expect(run[:output]).to start_with("[execute] Error: denied by guardrail (rule git-push, bundle guardrails): pushes commits.")
+    end
+
+    it "denies an ask when no one can approve it" do
+      hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("really?") }
+      result = run
+      expect(dispatched).to be_empty
+      expect(result[:output]).to include("denied by guardrail (hook): really? No one to approve it.")
+    end
+
+    it "lets hooks see the verdict so far" do
+      seen = nil
+      hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("x") }
+      hooks.register(:before_tool_call) { |e| seen = [e[:guardrail].decision, e[:blocked]] }
+      run
+      expect(seen).to eq([:deny, true])
+    end
+  end
+
+  it "denies the call when the gate itself fails" do
+    allow_any_instance_of(Samagotchi::Guardrails::Gate).to receive(:evaluate).and_raise(RuntimeError, "bug")
+    result = run
+    expect(dispatched).to be_empty
+    expect(result[:output]).to start_with("[execute] Error: denied by guardrail (core): the guardrail check failed: RuntimeError: bug.")
+  end
+
+  describe "tool_call_started" do
+    it "is emitted after the hooks, with the call they replaced" do
       order = []
       hooks.register(:before_tool_call) do |e|
         order << (events.any? { |ev| ev[:type] == :tool_call_started } ? :started_before : :started_after)
         e[:call] = { name: "execute", content: "pwd" }
       end
       run
-      expect(order).to eq([:started_before])
-      expect(events.first).to include(type: :tool_call_started, call: call)
+      expect(order).to eq([:started_after])
+      expect(events.first).to include(type: :tool_call_started, call: { name: "execute", content: "pwd" })
+      expect(events.first[:params]).to include("pwd")
+    end
+
+    it "is emitted for a denied call too, before tool_call_completed" do
+      hooks.register(:before_tool_call) { |e| e[:blocked] = true }
+      run
+      expect(events.map { |e| e[:type] }).to eq(%i[tool_call_started tool_call_completed])
     end
   end
 end

@@ -4,11 +4,12 @@ require_relative "verdict"
 
 module Samagotchi
   module Guardrails
-    # Decides whether a tool call may run. Today the only voters are
-    # before_tool_call hooks, through the legacy veto: a hook sets
-    # event[:blocked] = true with an optional event[:block_reason], and may
-    # replace event[:call]. The hooks share one event hash, so the last
-    # write to :blocked wins.
+    # Decides whether a tool call may run. The voters are before_tool_call
+    # hooks: through event[:guardrail] (#deny!, #ask!) or the legacy flag
+    # (event[:blocked] = true, optional event[:block_reason]). The flag is
+    # folded into the verdict after each hook, so a later hook can't undo a
+    # deny. A hook may replace event[:call]; the verdict carries the final
+    # call.
     class Gate
       # @param hooks_lookup [#call] returns the Hooks::Registry (or nil);
       #   read per call, since the Engine sets the kernel's hooks after
@@ -22,22 +23,23 @@ module Samagotchi
       # @param params [String] the call's one-line preview
       # @return [Verdict]
       def evaluate(call, iteration:, params:)
+        verdict = Verdict.new(call: call)
         before = { type: :before_tool_call, iteration: iteration, call: call.dup, params: params,
-                   blocked: false, block_reason: nil }
-        fire(:before_tool_call, before)
-        final = before[:call] || call
-        return Verdict.new(:deny, call: final, reason: before[:block_reason]) if before[:blocked]
-
-        Verdict.new(:allow, call: final)
+                   blocked: false, block_reason: nil, guardrail: verdict }
+        fire_each(:before_tool_call, before) do |event|
+          verdict.legacy_deny!(event[:block_reason]) if event[:blocked]
+          event[:blocked] = verdict.deny?
+          event[:block_reason] = verdict.reason if verdict.deny?
+        end
+        verdict.call = before[:call] || call
+        verdict
       end
 
       private
 
-      # A failing hook must not break the turn.
-      def fire(name, event)
-        @hooks_lookup.call&.fire(name, event)
-      rescue StandardError
-        nil
+      # Registry#fire_each rescues a raising hook itself.
+      def fire_each(name, event, &after_each)
+        @hooks_lookup.call&.fire_each(name, event, &after_each)
       end
     end
   end
