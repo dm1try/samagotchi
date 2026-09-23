@@ -389,19 +389,22 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     @thread.join(2)
   end
 
-  it "asks a question at the choice prompt and sends the answer" do
+  it "asks a question at the ? prompt, its choices in the notes slot, and sends the answer" do
     allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
     start
     push("type" => "question_requested", "pending_question" => question)
 
-    wait_for { prompts.last == "choice> " }
-    expect(screen.lines.last).to include("? Which one?", "  2) Banana")
+    wait_for { prompts.last == "? " }
+    wait_for { screen.slots[:notes] }
+    expect(screen.slots[:notes]).to include("? Which one?", "  2) Banana")
     typed << "2"
     wait_for { prompts.last == "> " }
     finish
 
-    # The question stays in the output, above the answer typed at choice>.
+    # The choices go; one line stays: the question and the answer.
     expect(screen.slots).not_to have_key(:notes)
+    expect(screen.lines).to include("? Which one? → Banana")
+    expect(screen.lines.join("\n")).not_to include("2) Banana")
     expect(client).to have_received(:answer).with(id: "q1", selected: ["Banana"], freeform: nil)
   end
 
@@ -411,7 +414,7 @@ it "puts what was typed at the prompt aside for the question and back after it" 
   start
   push("type" => "question_requested", "pending_question" => question)
 
-  wait_for { prompts.last == "choice> " }
+  wait_for { prompts.last == "? " }
   expect(prefills.last).to be_nil
   typed << "2"
   wait_for { prompts.last == "> " }
@@ -431,13 +434,15 @@ end
     it "shows the call and takes y (also when it was pending before the attach)" do
       allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
       start(first: snapshot(pending_question: approval))
-      wait_for { prompts.last == "choice> " }
-      expect(screen.lines.last).to include("Approve tool call?", "! execute: git push", "  why: pushes (rule git-push, config)",
-                                           "  3) Deny")
+      wait_for { prompts.last == "? " }
+      wait_for { screen.slots[:notes] }
+      expect(screen.slots[:notes]).to include("Approve tool call?", "! execute: git push", "  why: pushes (rule git-push, config)",
+                                              "  3) Deny")
       typed << "y"
       wait_for { prompts.last == "> " }
       finish
       expect(client).to have_received(:answer).with(id: "a1", selected: ["Allow once"], freeform: nil)
+      expect(screen.lines).to include("! execute: git push → Allow once")
     end
 
     it "sends n with a reason, and says denied on an empty answer" do
@@ -445,24 +450,24 @@ end
       allow(client).to receive(:dismiss_question).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
       start
       push("type" => "question_requested", "pending_question" => approval)
-      wait_for { prompts.last == "choice> " }
+      wait_for { prompts.last == "? " }
       typed << "n; use a PR"
       wait_for { prompts.last == "> " }
       push("type" => "question_requested", "pending_question" => approval.merge("id" => "a2"))
-      wait_for { prompts.last == "choice> " }
+      wait_for { prompts.last == "? " }
       typed << ""
       wait_for { prompts.last == "> " }
       finish
       expect(client).to have_received(:answer).with(id: "a1", selected: ["Deny"], freeform: "use a PR")
       expect(client).to have_received(:dismiss_question).with(id: "a2")
-      expect(screen.lines).to include("(denied)")
+      expect(screen.lines).to include("! execute: git push → Deny: use a PR", "! execute: git push → (denied)")
     end
   end
 
   it "re-asks after an invalid answer, and closes when another UI answers first" do
     start
     push("type" => "question_requested", "pending_question" => question)
-    wait_for { prompts.last == "choice> " }
+    wait_for { prompts.last == "? " }
 
     typed << "9"
     wait_for { screen.lines.include?("Invalid choice '9': pick 1-3") }
@@ -470,27 +475,50 @@ end
     wait_for { prompts.last == "> " }
     finish
 
-    expect(screen.lines).to include("(answered in another UI: Apple)")
+    expect(screen.lines).to include("? Which one? → Apple (in another UI)")
+  end
+
+  it "clears the choices and says so when the turn ends with the question open" do
+    start
+    push("type" => "question_requested", "pending_question" => question)
+    wait_for { screen.slots[:notes] }
+
+    push("type" => "turn_canceled", "cancellation_reason" => "ctrl_c")
+    wait_for { prompts.last == "> " }
+    finish
+
+    expect(screen.slots).not_to have_key(:notes)
+    expect(screen.lines).to include("? Which one? → (the turn ended)")
+  end
+
+  it "reads the answer without echo (only the summary line stays)" do
+    echo = []
+    allow(Reline).to receive(:readline) { echo << !Thread.current[:samagotchi_reline_no_echo]; "2" }
+    allow($stdin).to receive(:tty?).and_return(true)
+    attached.instance_variable_set(:@question, Samagotchi::TerminalUI::QuestionPrompt.new(question))
+
+    attached.send(:read_input_line, "? ", nil)
+
+    expect(echo).to eq([false])
   end
 
   it "says so when its answer came too late" do
     allow(client).to receive(:answer)
       .and_return(Samagotchi::BridgeClient::Response.new(status: 409, body: '{"error":"question_not_pending"}'))
     start(first: snapshot(pending_question: question))
-    wait_for { prompts.last == "choice> " }
+    wait_for { prompts.last == "? " }
 
     typed << "1"
     wait_for { prompts.last == "> " }
     finish
 
-    expect(screen.lines).to include(a_string_including("? Which one?"))
-    expect(screen.lines).to include("(already answered in another UI)")
+    expect(screen.lines).to include("? Which one? → (already answered in another UI)")
   end
 
   it "dismisses the question on an empty answer, as the REPL does" do
     allow(client).to receive(:dismiss_question).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
     start(first: snapshot(pending_question: question))
-    wait_for { prompts.last == "choice> " }
+    wait_for { prompts.last == "? " }
 
     typed << "  "
     wait_for { prompts.last == "> " }
@@ -499,28 +527,28 @@ end
     finish
 
     expect(client).to have_received(:dismiss_question).with(id: "q1")
-    expect(screen.lines).to include("(cancelled)")
-    expect(screen.lines).not_to include("(question cancelled)")
+    expect(screen.lines).to include("? Which one? → (cancelled)")
+    expect(screen.lines.join("\n")).not_to include("(question cancelled)")
   end
 
   it "closes the question when it was answered or cancelled before the dismiss" do
     allow(client).to receive(:dismiss_question)
       .and_return(Samagotchi::BridgeClient::Response.new(status: 409, body: '{"error":"question_not_pending"}'))
     start(first: snapshot(pending_question: question))
-    wait_for { prompts.last == "choice> " }
+    wait_for { prompts.last == "? " }
 
     typed << ""
     wait_for { prompts.last == "> " }
     finish
 
-    expect(screen.lines).to include("(question already closed in another UI)")
+    expect(screen.lines).to include("? Which one? → (question already closed in another UI)")
   end
 
   it "keeps the question open when the worker can't dismiss it" do
     allow(client).to receive(:dismiss_question)
       .and_return(Samagotchi::BridgeClient::Response.new(status: 404, body: '{"error":"not_found"}'))
     start(first: snapshot(pending_question: question))
-    wait_for { prompts.last == "choice> " }
+    wait_for { prompts.last == "? " }
 
     typed << ""
     wait_for { screen.lines.last.to_s.end_with?("Ctrl-C cancels the turn") }
@@ -529,7 +557,7 @@ end
     expect(screen.lines).to include("this session's worker runs an older chi and can't dismiss questions; " \
                                     "restart it: chi sessions stop s-1234 && chi --resume s-1234 (its turns still work); " \
                                     "Ctrl-C cancels the turn")
-    expect(prompts.last).to eq("choice> ")
+    expect(prompts.last).to eq("? ")
   end
 end
 
@@ -1114,7 +1142,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     question = { "id" => "q1", "question" => "Pick", "options" => %w[a b] }
     turn = { "prompt" => "p", "parts" => [], "pending_question" => question }
 
-    run_lines("/exit", nil, snapshot: idle.merge("current_turn" => turn), at: "choice>")
+    run_lines("/exit", nil, snapshot: idle.merge("current_turn" => turn), at: "? ")
 
     expect(screen.lines).to include("Unknown option '/exit'. Use numbers 1-2 or exact labels.")
     expect(client).not_to have_received(:request_exit)

@@ -385,7 +385,9 @@ module Samagotchi
       # or the continue offer's answer.
       def read_input_line(prompt, prefill)
         return $stdin.gets&.chomp unless $stdin.tty?
-        return Reline.readline(prompt, true) if @question || @continue_offer
+        # A question's answer leaves only its summary line.
+        return RelineSeam.without_echo { Reline.readline(prompt, true) } if @question
+        return Reline.readline(prompt, true) if @continue_offer
 
         queue_input_prefill(prefill) if prefill
         read_prompt_line(prompt)
@@ -406,16 +408,15 @@ module Samagotchi
       end
 
       def prompt_text
-        return paint("choice> ", 33) if @question
+        return paint(QUESTION_PROMPT, 33) if @question
         return paint(CONTINUE_PROMPT, 33) if @continue_offer
 
         paint(PROMPT, 92)
       end
 
-      # Show the question and switch the open prompt to answer it. The
-      # question is output, not the notes slot: it stays in the scrollback
-      # above the answer typed at choice> (the live question widget is a
-      # later phase of the live-region plan).
+      # Switch the open prompt to ? for the answer and show the choices in
+      # the notes slot, fitted to the terminal. Once the question closes,
+      # one line (the question and what became of it) stays.
       def ask(pending)
         return unless pending
 
@@ -423,8 +424,9 @@ module Samagotchi
         # What was typed at the prompt waits for the question to close.
         @set_aside = @reader&.typed_text unless @question
         @question = QuestionPrompt.new(pending)
-        @screen.commit(@question.lines(paint: method(:paint), color: color_output?).join("\n"))
+        # The prompt first, so the choices never show under the typed text.
         sync_prompt(keep_text: false)
+        @screen.set_slot(:notes, @question.slot(paint: method(:paint)))
       end
 
       def answer_question(text)
@@ -438,7 +440,7 @@ module Samagotchi
         case reply.status
         when 200
           @answered_ids << @question.id
-          close_question(nil)
+          close_question(@question.answer_text(answer))
         when 409 then close_question("(already answered in another UI)")
         else
           detail = reply.json&.fetch("detail", nil) || reply.json&.fetch("error", nil)
@@ -487,11 +489,14 @@ module Samagotchi
 
         answer = event[:answer] || {}
         picked = [*Array(answer[:selected]), answer[:freeform]].compact.join(", ")
-        close_question("(answered in another UI: #{picked})")
+        close_question("#{picked.empty? ? "(answered)" : picked} (in another UI)")
       end
 
-      def close_question(message)
-        @screen.commit(message) if message
+      # @param outcome [String, nil] what became of it, for the line that
+      #   stays in the scrollback (nil: none, it was closed already)
+      def close_question(outcome)
+        @screen.clear_slot(:notes)
+        @screen.commit(@question.summary(outcome, paint: method(:paint))) if outcome
         @question = nil
         set_aside = @set_aside
         @set_aside = nil
@@ -714,7 +719,7 @@ module Samagotchi
         refresh_status
         @running = false
         @joined_mid_turn = false
-        close_question(nil) if @question
+        close_question("(the turn ended)") if @question
       end
 
       def end_turn(message)
@@ -722,7 +727,7 @@ module Samagotchi
         @screen.commit(message)
         @running = false
         @joined_mid_turn = false
-        close_question(nil) if @question
+        close_question("(the turn ended)") if @question
       end
 
       def own?(client_id) = !client_id.nil? && client_id == @client_id
