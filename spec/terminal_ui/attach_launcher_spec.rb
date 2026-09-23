@@ -92,6 +92,53 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
   end
 end
 
+RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".open_surface" do
+  let(:tty) { instance_double(IO, tty?: true) }
+  let(:pipe) { instance_double(IO, tty?: false) }
+
+  after { Samagotchi::TerminalUI::RelineSeam.detach(Samagotchi::TerminalUI::RelineSeam.screen) }
+
+  before { allow(Reline).to receive(:ambiguous_width).and_return(1) }
+
+  it "draws a live region with Reline's prompt in it on a terminal" do
+    surface = described_class.open_surface(out: tty, input: tty, env: { "TERM" => "xterm-256color" })
+
+    expect(surface).to be_a(Samagotchi::TerminalUI::Screen)
+    expect(Samagotchi::TerminalUI::RelineSeam.screen).to be(surface)
+  end
+
+  {
+    "output is not a terminal" => [:pipe, :tty, "xterm"],
+    "input is not a terminal" => [:tty, :pipe, "xterm"],
+    "TERM is dumb" => [:tty, :tty, "dumb"]
+  }.each do |why, (out, input, term)|
+    it "prints plainly when #{why}" do
+      surface = described_class.open_surface(out: send(out), input: send(input), env: { "TERM" => term })
+
+      expect(surface).to be_a(Samagotchi::TerminalUI::PlainSurface)
+      expect(Samagotchi::TerminalUI::RelineSeam.screen).to be_nil
+    end
+  end
+
+  it "prints plainly when the installed Reline doesn't have what the seam needs" do
+    allow(Samagotchi::TerminalUI::RelineSeam).to receive(:supported?).and_return(false)
+
+    surface = described_class.open_surface(out: tty, input: tty, env: { "TERM" => "xterm" })
+
+    expect(surface).to be_a(Samagotchi::TerminalUI::PlainSurface)
+  end
+
+  it "hands Reline its own drawing back when the surface closes" do
+    surface = described_class.open_surface(out: tty, input: tty, env: { "TERM" => "xterm" })
+    allow(surface).to receive(:close)
+
+    described_class.close_surface(surface)
+
+    expect(Samagotchi::TerminalUI::RelineSeam.screen).to be_nil
+    expect(surface).to have_received(:close)
+  end
+end
+
 RSpec.describe "bin/chi --attach / --shared flags" do
   let(:chi) { File.expand_path("../../bin/chi", __dir__) }
 

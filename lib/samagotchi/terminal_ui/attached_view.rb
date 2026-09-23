@@ -5,8 +5,8 @@ require_relative "../output_formatter"
 
 module Samagotchi
   class TerminalUI
-    # EventRenderer's view in attached mode, drawn on an AttachedScreen: the
-    # thinking feedback is the activity slot, the screen's one status line
+    # EventRenderer's view in attached mode, drawn on a Screen: the
+    # thinking feedback is the activity slot, one row right above the prompt
     # (spinner frame, then the running tool or the tail of the model's text),
     # and every finished line is committed output. The local REPL's
     # multi-line spinner redraws in place, which can't share the terminal
@@ -21,7 +21,7 @@ module Samagotchi
 
       attr_reader :context_status
 
-      # @param screen [Surface] with #columns (an AttachedScreen)
+      # @param screen [Surface] with #columns (a Screen)
       def initialize(screen, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
         @screen = screen
         @clock = clock

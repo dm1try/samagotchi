@@ -275,11 +275,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     push("type" => "question_requested", "pending_question" => question)
 
     wait_for { prompts.last == "choice> " }
-    expect(screen.slots[:notes]).to include("? Which one?", "  2) Banana")
+    expect(screen.lines.last).to include("? Which one?", "  2) Banana")
     typed << "2"
     wait_for { prompts.last == "> " }
     finish
 
+    # The question stays in the output, above the answer typed at choice>.
     expect(screen.slots).not_to have_key(:notes)
     expect(client).to have_received(:answer).with(id: "q1", selected: ["Banana"], freeform: nil)
   end
@@ -308,7 +309,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     wait_for { prompts.last == "> " }
     finish
 
-    expect(screen.events).to include([:set_slot, :notes, a_collection_including("? Which one?")])
+    expect(screen.lines).to include(a_string_including("? Which one?"))
     expect(screen.lines).to include("(already answered in another UI)")
   end
 

@@ -3,7 +3,9 @@
 require_relative "../session"
 require_relative "../session_manager"
 require_relative "../bridge_client"
-require_relative "attached_screen"
+require_relative "screen"
+require_relative "reline_seam"
+require_relative "plain_surface"
 require_relative "attached_loop"
 
 module Samagotchi
@@ -24,12 +26,32 @@ module Samagotchi
       # @return [Symbol] :detached, or :closed when the worker went away
       def run(attach: nil, shared: false, resume: nil)
         client = connect(attach: attach, shared: shared, resume: resume)
-        screen = AttachedScreen.attach
+        surface = open_surface
         begin
-          AttachedLoop.new(client: client, screen: screen, client_id: "tui:#{Process.pid}").run
+          AttachedLoop.new(client: client, screen: surface, client_id: "tui:#{Process.pid}").run
         ensure
-          screen.detach
+          close_surface(surface)
         end
+      end
+
+      # A live region (Screen, with Reline drawing into it) on a terminal
+      # that can show one, else plain append-only output.
+      # @return [Screen, PlainSurface]
+      def open_surface(out: $stdout, input: $stdin, env: ENV)
+        return PlainSurface.new(out: out) unless live_region?(out: out, input: input, env: env)
+
+        screen = Screen.new(out: out)
+        RelineSeam.attach(screen)
+        screen
+      end
+
+      def close_surface(surface)
+        RelineSeam.detach(surface)
+        surface.close
+      end
+
+      def live_region?(out:, input:, env:)
+        out.tty? && input.tty? && env["TERM"] != "dumb" && RelineSeam.supported?
       end
 
       # @return [BridgeClient] a client for the live Bridge of the session

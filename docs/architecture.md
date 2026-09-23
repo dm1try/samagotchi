@@ -138,7 +138,10 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
   or starts the worker, and `TerminalUI::AttachedLoop` is a client of its Bridge
   (`BridgeClient#follow` for events, `post_turn`/`cancel`/`answer` for input). It
   renders through the same `EventRenderer` as the REPL, on an `AttachedView` that
-  draws around the open Reline prompt (`AttachedScreen`).
+  draws on a `Screen`: a live region at the bottom of the terminal (activity row,
+  prompt, status/notes/hints) under normal scrollback. Reline still reads the input,
+  but `RelineSeam` (prepended to `Reline::LineEditor`) sends its drawing to the
+  `Screen`. Without a capable terminal it falls back to `PlainSurface` (append-only).
 
 #### Using the core
 

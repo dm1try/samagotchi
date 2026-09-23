@@ -109,7 +109,8 @@ module Samagotchi
       attr_reader :question
 
       # @param client [BridgeClient]
-      # @param screen [AttachedScreen]
+      # @param screen [Surface] with #synchronize and #columns (a Screen, or a
+      #   PlainSurface when the terminal can't show a live region)
       # @param client_id [String] this UI's id in the events ("tui:<pid>")
       def initialize(client:, screen:, client_id:)
         @client = client
@@ -147,11 +148,12 @@ module Samagotchi
           end
         end
       ensure
-        # The loop is over: drop the prompt the reader still has open.
-        @screen.synchronize do
-          @screen.clear_slot(:editor)
-          @reader&.stop
-        end
+        # The loop is over: end the read the reader still has open. Not under
+        # the screen's lock: the reader may be waiting for it to draw. The
+        # read takes its prompt away as it ends; clearing the editor slot
+        # covers a reader that had to be killed.
+        @reader&.stop
+        @screen.clear_slot(:editor)
         stream&.close
       end
 
@@ -246,13 +248,16 @@ module Samagotchi
         @question ? paint("choice> ", 33) : paint(PROMPT, 92)
       end
 
-      # Show the question and switch the open prompt to answer it.
+      # Show the question and switch the open prompt to answer it. The
+      # question is output, not the notes slot: it stays in the scrollback
+      # above the answer typed at choice> (the live question widget is a
+      # later phase of the live-region plan).
       def ask(pending)
         return unless pending
 
         @view.finish_thinking_spinner
         @question = QuestionPrompt.new(pending)
-        @screen.set_slot(:notes, @question.lines(paint: method(:paint), color: color_output?))
+        @screen.commit(@question.lines(paint: method(:paint), color: color_output?).join("\n"))
         sync_prompt
       end
 
@@ -289,7 +294,6 @@ module Samagotchi
       end
 
       def close_question(message)
-        @screen.clear_slot(:notes)
         @screen.commit(message) if message
         @question = nil
         sync_prompt
