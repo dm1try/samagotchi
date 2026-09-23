@@ -606,11 +606,13 @@ module Samagotchi
 
     private
 
+    # The last turn's line: completed, canceled or failed, as the Engine
+    # closed it (a provider error closes it with :turn_failed).
     def emit_interactive_turn_duration(canceled:)
       record = Array(@engine.metrics.snapshot[:turn_records]).last
       return unless record && record[:duration_ms]
 
-      state = canceled ? "canceled" : "completed"
+      state = record[:status] == "failed" ? "failed" : (canceled ? "canceled" : "completed")
       @surface.commit("#{paint('chi>', 36)} turn #{state} (#{format_elapsed_duration(record[:duration_ms])})")
     end
 
