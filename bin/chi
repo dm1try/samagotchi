@@ -837,6 +837,21 @@ if options[:web]
   exit
 end
 
+# Log file resolved via unified Config (CLI > ENV > file). Legacy ENV fallback kept.
+# The REPL's and the attached TUI's.
+log_file = begin
+  disable = Samagotchi::Config.get("log.disable")
+  disable = true if ["1", "true"].include?(ENV.fetch("SAMAGOTCHI_DISABLE_LOG_FILE", "").downcase) rescue false
+  if disable
+    nil
+  else
+    cfg_file = Samagotchi::Config.get("log.file")
+    cfg_file = ENV["SAMAGOTCHI_LOG_FILE"] if cfg_file.nil? || cfg_file.to_s.strip.empty?
+    cfg_file = File.expand_path("../tmp/samagotchi.log", __dir__) if cfg_file.to_s.strip.empty?
+    cfg_file
+  end
+end
+
 require "samagotchi/launch_mode"
 launch, launch_note = Samagotchi::LaunchMode.resolve(options, shared_config: Samagotchi::Config.get("session.shared"))
 warn launch_note if launch_note
@@ -861,26 +876,13 @@ if launch == :attached
     ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], shared: !options[:attach], resume: options[:resume],
                                                        prompt: options[:prompt], model: options[:model],
                                                        no_interrupt: !!options[:no_interrupt],
-                                                       default_input: !options[:no_default_input])
+                                                       default_input: !options[:no_default_input],
+                                                       log_file: log_file)
   rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
     warn "Error: #{e.message}"
     exit 1
   end
   exit(ended == :detached ? 0 : 1)
-end
-
-# Log file resolved via unified Config (CLI > ENV > file). Legacy ENV fallback kept.
-log_file = begin
-  disable = Samagotchi::Config.get("log.disable")
-  disable = true if ["1", "true"].include?(ENV.fetch("SAMAGOTCHI_DISABLE_LOG_FILE", "").downcase) rescue false
-  if disable
-    nil
-  else
-    cfg_file = Samagotchi::Config.get("log.file")
-    cfg_file = ENV["SAMAGOTCHI_LOG_FILE"] if cfg_file.nil? || cfg_file.to_s.strip.empty?
-    cfg_file = File.expand_path("../tmp/samagotchi.log", __dir__) if cfg_file.to_s.strip.empty?
-    cfg_file
-  end
 end
 
 begin

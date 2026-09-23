@@ -8,6 +8,7 @@ require_relative "input_support"
 require_relative "question_prompt"
 require_relative "reline_seam"
 require_relative "../bridge_client"
+require_relative "../debug_log"
 require_relative "../model_profile"
 require_relative "../session_commands"
 
@@ -150,9 +151,12 @@ module Samagotchi
       # @param default_input [Boolean] type SAMAGOTCHI_DEFAULT_INPUT into
       #   the first read (a new session with no -p, as the REPL)
       # @param clock [#call] monotonic seconds (the Ctrl-C detach window)
+      # @param log [#write] the debug log (the REPL's), for lines kept off the screen
       def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false,
-                     default_input: false, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
+                     default_input: false, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
+                     log: DebugLog.new(path: nil))
         @client = client
+        @log = log
         @screen = screen
         @client_id = client_id
         @view = AttachedView.new(screen)
@@ -637,8 +641,8 @@ module Samagotchi
 
       def render_join_header(messages)
         exchange = messages.select { |m| %w[user model assistant].include?(m[:role].to_s) }
-        @screen.commit("Attached to session #{@client.session_id} (#{exchange.size} messages). " \
-                           "Ctrl-D detaches; the session keeps running.")
+        # The id stays findable: the detach line and chi sessions list show it.
+        @log.write("[attached] joined session #{@client.session_id} (#{exchange.size} messages)")
         last_user = exchange.rindex { |m| m[:role].to_s == "user" }
         return unless last_user
 

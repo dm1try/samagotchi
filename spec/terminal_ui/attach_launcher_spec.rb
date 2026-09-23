@@ -114,11 +114,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     allow(described_class).to receive(:close_surface)
     allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_return(attached)
 
-    expect(described_class.run(shared: true, prompt: "hi")).to eq(:detached)
+    expect(described_class.run(shared: true, prompt: "hi", log_file: "/tmp/chi.log")).to eq(:detached)
 
     expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new)
       .with(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: "hi",
-            first_command: nil, no_interrupt: false, default_input: false)
+            first_command: nil, no_interrupt: false, default_input: false,
+            log: an_instance_of(Samagotchi::DebugLog))
     expect(described_class).to have_received(:close_surface).with(surface)
   end
 
