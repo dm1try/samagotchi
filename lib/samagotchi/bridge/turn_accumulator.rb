@@ -61,7 +61,9 @@ module Samagotchi
         type = event[:type]
         case type
         when :turn_enqueued
-          @queued << { enqueued_id: event[:enqueued_id], client_id: event[:client_id], prompt: event[:prompt] }
+          queued = { enqueued_id: event[:enqueued_id], client_id: event[:client_id], prompt: event[:prompt] }
+          queued[:images] = event[:images] if event[:images]
+          @queued << queued
         when :recap_ready
           @recap = event[:recap]
         when :continue_offered
@@ -73,6 +75,7 @@ module Samagotchi
           dequeue([event[:origin]])
           @turn = { prompt: event[:prompt], origin: event[:origin], continue: !!event[:continue],
                     parts: [], pending_question: nil }
+          @turn[:images] = event[:images] if event[:images]
         when :input_merged
           @merged_origins = Array(event[:origins])
           dequeue(@merged_origins)
@@ -113,6 +116,7 @@ module Samagotchi
           tool[:status] = (event.dig(:activity, :status) || "ok").to_s
           tool[:output] = capped ? output[0, @max_output_chars] : output.dup
           tool[:output_truncated] = capped || !!event[:output_truncated]
+          tool[:images] = event[:images] if event[:images]
         when :pending_input_merged
           parts << { kind: "input", iteration: event[:iteration], text: event[:content].to_s.dup, origins: @merged_origins }
           @merged_origins = []

@@ -212,8 +212,8 @@ module Samagotchi
       return unless claimed_file
 
       begin
-        message, origin, no_interrupt = SessionManager.read_input(claimed_file)
-        run_prompt(message, origin, no_interrupt: !!no_interrupt) unless message.to_s.strip.empty?
+        message, origin, no_interrupt, images = SessionManager.read_input(claimed_file)
+        run_prompt(message, origin, no_interrupt: !!no_interrupt, images: images || []) unless message.to_s.strip.empty?
       ensure
         FileUtils.rm_f(claimed_file)
       end
@@ -221,7 +221,8 @@ module Samagotchi
 
     # @param no_interrupt [Boolean] an offer this turn makes keeps it for
     #   its continue turn
-    def run_prompt(prompt, origin, no_interrupt: false)
+    # @param images [Array<Hash>] the prompt's image refs ({file:, name:})
+    def run_prompt(prompt, origin, no_interrupt: false, images: [])
       # Show the turn as running to readers of the file (the web's session
       # list); the Engine resets it to idle when it ends.
       @session.status = Session::STATUS_RUNNING
@@ -231,10 +232,10 @@ module Samagotchi
       @merged_this_turn = []
       begin
         result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, origin: origin,
-                                                    max_iterations: max_iterations(no_interrupt))
+                                                    max_iterations: max_iterations(no_interrupt), images: images)
       rescue StandardError
         # The Engine announced :turn_failed (with the error's one line).
-        restore_failed_turn([[prompt, origin], *@merged_this_turn])
+        restore_failed_turn([[prompt, origin, images], *@merged_this_turn])
         return
       ensure
         refuse_queued_commands
@@ -390,11 +391,16 @@ module Samagotchi
     # sender, who can send it again. The rollback and the announcements are
     # one step of the event log: a snapshot shows the failed turn's messages
     # or the restored ones, never the one without the other.
-    # @param prompts [Array<Array(String, Hash|nil)>] [prompt, origin] pairs
+    # @param prompts [Array<Array(String, Hash|nil, Array|nil)>] [prompt,
+    #   origin, images] (a web client gets its image chips back)
     def restore_failed_turn(prompts)
       @engine.synchronize_events do
         @turn_flow.prompt_turn_failed
-        prompts.each { |prompt, origin| @engine.announce(type: :prompt_restored, prompt: prompt, origin: origin) }
+        prompts.each do |prompt, origin, images|
+          restored = { type: :prompt_restored, prompt: prompt, origin: origin }
+          restored[:images] = images unless Array(images).empty?
+          @engine.announce(restored)
+        end
       end
       @session.save(state_dir: @state_dir) unless stopped_on_disk?
     end
@@ -412,7 +418,11 @@ module Samagotchi
       @pending_input_drain ||= lambda do
         # An iteration boundary: tell whoever sent a command now that it waits.
         refuse_queued_commands(mid_turn: true)
-        merged = SessionManager.find_new_input_files(@session_dir).sort.filter_map do |input_file|
+        # A line with images runs as its own next turn (steering merges text
+        # only), and so does anything queued after it, to keep the order.
+        files = SessionManager.find_new_input_files(@session_dir).sort
+                              .take_while { |input_file| !SessionManager.input_has_images?(input_file) }
+        merged = files.filter_map do |input_file|
           claimed_file = SessionManager.claim_input_file(input_file)
           next unless claimed_file
 

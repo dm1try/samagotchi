@@ -15,6 +15,7 @@ require_relative "bridge/turn_accumulator"
 require_relative "session"
 require_relative "engine"
 require_relative "session_commands"
+require_relative "image_store"
 
 module Samagotchi
   # Bridge is an optional HTTP transport that lets an external web / desktop
@@ -42,6 +43,9 @@ module Samagotchi
     CANCEL_REASONS = %w[manual user ctrl_c].freeze
     # How long #stop waits for requests it is answering (not open streams).
     REQUEST_GRACE_SECONDS = 1.0
+    # The largest request body read (images travel as refs, never bytes).
+    MAX_BODY_BYTES = 1_000_000
+    MAX_TURN_IMAGES = 20
 
     # @param engine [Samagotchi::Engine] the owning engine (must already live
     #   in this process)
@@ -258,7 +262,10 @@ module Samagotchi
         # thread; a stream never ends on its own.
         Thread.current[:bridge_answering] = !(stream_match(request[:path]) && method == "GET")
 
-        if method == "OPTIONS"
+        if request[:too_large]
+          write_json(io, 413, { "Connection" => "close" }, { error: "too_large", detail: "request body over #{MAX_BODY_BYTES} bytes" })
+          break
+        elsif method == "OPTIONS"
           write_json(io, 204, cors, {})
         elsif (m = stream_match(request[:path])) && method == "GET"
           cursor = reconnect_cursor(headers, request[:query])
@@ -555,6 +562,8 @@ module Samagotchi
         return [{ "Allow" => "POST" }, 400,
                 { error: "missing_fields", detail: "session_id and prompt are required" }]
       end
+      images = turn_images(sid, fetched(parsed, "images"))
+      return [{}, 400, { error: "bad_images", detail: images }] if images.is_a?(String)
 
       enqueued_id = SecureRandom.uuid
       enqueued =
@@ -564,22 +573,28 @@ module Samagotchi
           # :turn_enqueued, and a failed write announces nothing.
           @engine.synchronize_events do
             enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                         no_interrupt: no_interrupt).tap do |ok|
+                         no_interrupt: no_interrupt, images: images).tap do |ok|
               next unless ok
 
-              @engine.announce(type: :turn_enqueued, enqueued_id: enqueued_id,
-                               client_id: client_id, prompt: prompt.to_s)
+              enqueued_event = { type: :turn_enqueued, enqueued_id: enqueued_id, client_id: client_id, prompt: prompt.to_s }
+              enqueued_event[:images] = images unless images.empty?
+              @engine.announce(enqueued_event)
               @on_input&.call
             end
           end
         else
           enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                       no_interrupt: no_interrupt)
+                       no_interrupt: no_interrupt, images: images)
         end
       return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] unless enqueued
 
       [{}, 202, { status: "accepted", enqueued_id: enqueued_id, session_id: sid }]
     rescue StandardError => e
+      # SessionManager loads lazily (enqueue_turn).
+      if defined?(SessionManager::ImagesUnsupported) && e.is_a?(SessionManager::ImagesUnsupported)
+        return [{}, 409, { error: "images_unsupported", detail: e.message }]
+      end
+
       [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 
@@ -634,15 +649,35 @@ module Samagotchi
 
     # Write a turn into the target session's input dir, reusing the file IPC
     # the worker polls. Never calls run_turn across the boundary.
-    def enqueue_turn(session_id:, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false)
+    def enqueue_turn(session_id:, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [])
       require_relative "session_manager"
       Samagotchi::SessionManager.write_turn_input(
         session_id, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, no_interrupt: no_interrupt,
-                    state_dir: @state_dir
+                    state_dir: @state_dir, images: images
       )
     rescue LoadError
       # SessionManager not available (e.g. bridge used standalone in a spec).
       false
+    end
+
+    # A turn's images as [{file:, name:}], or a String saying what's wrong.
+    # Only refs to files already in that session's images/ pass (a web
+    # upload): never a path, so no client can make the worker read a file.
+    def turn_images(session_id, raw)
+      return [] if raw.nil?
+      return "images must be a list" unless raw.is_a?(Array)
+      return "at most #{MAX_TURN_IMAGES} images" if raw.size > MAX_TURN_IMAGES
+
+      session_dir = Session.session_dir(session_id, state_dir: @state_dir || Session.default_state_dir)
+      raw.map do |image|
+        return "each image must be {file:, name:}" unless image.is_a?(Hash)
+
+        ref = ImageStore.symbolize(image)
+        return "images are refs to uploaded files, not paths" if ref.key?(:path)
+        return "unknown image #{ref[:file].to_s[0, 80]}" unless ImageStore.valid_ref?(session_dir, ref)
+
+        { file: ref[:file].to_s, name: File.basename(ref[:name].to_s)[0, 120] }
+      end
     end
 
     # ── HTTP plumbing ────────────────────────────────────────────────────────
@@ -666,11 +701,25 @@ module Samagotchi
         content_length = value.to_s.to_i if key.strip.downcase == "content-length"
       end
 
-      body = content_length > 0 ? io.read(content_length) : nil
+      # Nothing a client sends is this big (images travel as refs): the body
+      # is skipped, not kept, so the client reads a 413 rather than a reset.
+      too_large = content_length > MAX_BODY_BYTES
+      skip_body(io, content_length) if too_large
+      body = content_length > 0 && !too_large ? io.read(content_length) : nil
       path, query = split_target(target)
-      { method: method, path: path, query: query, headers: headers, body: body }
+      { method: method, path: path, query: query, headers: headers, body: body, too_large: too_large }
     rescue Errno::EPIPE, Errno::ECONNRESET, IOError
       nil
+    end
+
+    def skip_body(io, length)
+      left = [length, 32 * MAX_BODY_BYTES].min
+      while left.positive?
+        chunk = io.read([left, 65_536].min)
+        break if chunk.nil? || chunk.empty?
+
+        left -= chunk.bytesize
+      end
     end
 
     def split_target(target)

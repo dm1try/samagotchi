@@ -41,10 +41,20 @@ module Samagotchi
     INPUT_DIR  = "input"
     OUTPUT_DIR = "output"
     PID_FILE   = "pid"
-    # Input-file format this worker reads (JSON with the sender's ids, and
-    # plain text). Advertised in the Bridge sidecar: a worker that doesn't
-    # advertise it reads only .txt, and such workers never exit.
-    INPUT_FORMAT = 2
+    # Input-file format this worker reads, advertised in the Bridge sidecar:
+    #   2  JSON with the sender's ids (and plain text)
+    #   3  images: refs too
+    # A worker that doesn't advertise one reads only .txt, and such workers
+    # never exit.
+    INPUT_FORMAT = 3
+    STRUCTURED_INPUT_FORMAT = 2
+    IMAGES_INPUT_FORMAT = 3
+
+    # A turn with images for a worker older than IMAGES_INPUT_FORMAT, which
+    # would drop them.
+    class ImagesUnsupported < StandardError
+      def initialize(msg = "this session's worker predates images: restart it (/exit, then resume)") = super
+    end
     # Origin of the synthetic turn queued when reminders are due.
     REMINDER_CLIENT_ID = "system:reminder"
 
@@ -399,10 +409,20 @@ module Samagotchi
     # session's live worker predates structured input (plain text then).
     # @param client_id [String, nil] the sending UI
     # @param enqueued_id [String, nil] the id its ACK / :turn_enqueued carry
+    # @param images [Array<Hash>] image refs ({file:, name:}) in the
+    #   session's images/ (raises ImagesUnsupported for an older worker)
     # @return [String, false] the input file's path, or false.
-    def self.write_turn_input(session_id, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, state_dir: nil)
+    def self.write_turn_input(session_id, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, state_dir: nil,
+                              images: [])
       sd = state_dir || Session.default_state_dir
       session_dir = Session.session_dir(session_id, state_dir: sd)
+      images = Array(images)
+      raise ImagesUnsupported if !images.empty? && !images_input?(session_dir)
+
+      write_input_file(session_dir, prompt, client_id, enqueued_id, no_interrupt, images)
+    end
+
+    private_class_method def self.write_input_file(session_dir, prompt, client_id, enqueued_id, no_interrupt, images)
       input_dir = File.join(session_dir, INPUT_DIR)
       FileUtils.mkdir_p(input_dir)
 
@@ -410,7 +430,8 @@ module Samagotchi
       if structured_input?(session_dir)
         path = File.join(input_dir, "#{timestamp}.json")
         record = { "prompt" => prompt.to_s, "client_id" => client_id, "enqueued_id" => enqueued_id,
-                   "no_interrupt" => (no_interrupt ? true : nil) }.compact
+                   "no_interrupt" => (no_interrupt ? true : nil),
+                   "images" => (images.empty? ? nil : images.map { |image| image.transform_keys(&:to_s) }) }.compact
         write_atomic(path, JSON.generate(record))
       else
         path = File.join(input_dir, "#{timestamp}.txt")
@@ -438,26 +459,50 @@ module Samagotchi
     # A worker's sidecar advertises the input format it reads; no sidecar
     # means no worker yet, and the next one (this code) reads JSON.
     private_class_method def self.structured_input?(session_dir)
-      sidecar = File.join(session_dir, "bridge.json")
-      return true unless File.file?(sidecar)
-
-      JSON.parse(File.read(sidecar))["input_format"].to_i >= INPUT_FORMAT
-    rescue JSON::ParserError, SystemCallError
-      true
+      worker_input_format(session_dir) >= STRUCTURED_INPUT_FORMAT
     end
 
-    # @return [Array(String, Hash|nil, Boolean)] a claimed input file's
-    #   prompt, origin ({client_id:, enqueued_id:}, nil for plain text) and
-    #   whether its turn runs with the raised iteration limit (--no-interrupt)
+    # Whether the session's worker (or the next one) reads images: refs.
+    def self.images_input?(session_dir)
+      worker_input_format(session_dir) >= IMAGES_INPUT_FORMAT
+    end
+
+    # The input format the session's worker advertises; no sidecar means no
+    # worker yet, and the next one (this code) reads INPUT_FORMAT.
+    private_class_method def self.worker_input_format(session_dir)
+      sidecar = File.join(session_dir, "bridge.json")
+      return INPUT_FORMAT unless File.file?(sidecar)
+
+      JSON.parse(File.read(sidecar))["input_format"].to_i
+    rescue JSON::ParserError, SystemCallError
+      INPUT_FORMAT
+    end
+
+    # @return [Array(String, Hash|nil, Boolean, Array<Hash>)] a claimed input
+    #   file's prompt, origin ({client_id:, enqueued_id:}, nil for plain
+    #   text), whether its turn runs with the raised iteration limit
+    #   (--no-interrupt), and its image refs ({file:, name:})
     def self.read_input(claimed_file)
       raw = File.read(claimed_file).to_s
-      return [raw, nil] unless claimed_file.end_with?(".json.processing")
+      return [raw, nil, false, []] unless claimed_file.end_with?(".json.processing")
 
       data = JSON.parse(raw)
       origin = { client_id: data["client_id"], enqueued_id: data["enqueued_id"] }.compact
-      [data["prompt"].to_s, origin.empty? ? nil : origin, data["no_interrupt"] == true]
+      images = Array(data["images"]).select { |image| image.is_a?(Hash) }.map { |image| image.transform_keys(&:to_sym) }
+      [data["prompt"].to_s, origin.empty? ? nil : origin, data["no_interrupt"] == true, images]
     rescue JSON::ParserError
-      [nil, nil]
+      [nil, nil, false, []]
+    end
+
+    # Whether an unclaimed input file carries images (a mid-turn drain
+    # leaves it for its own turn).
+    def self.input_has_images?(input_file)
+      return false unless input_file.end_with?(".json")
+
+      data = JSON.parse(File.read(input_file))
+      data.is_a?(Hash) && Array(data["images"]).any?
+    rescue JSON::ParserError, SystemCallError
+      false
     end
 
     def self.claim_input_file(input_file)
