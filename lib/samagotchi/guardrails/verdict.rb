@@ -16,6 +16,8 @@ module Samagotchi
       attr_accessor :call
       # The Context and the final call's Targets (set by the Gate).
       attr_accessor :context, :targets
+      # The scope the user allowed an ask for ("once", "session", …).
+      attr_accessor :scope
 
       def initialize(call:)
         @call = call
@@ -81,7 +83,7 @@ module Samagotchi
 
       # For the activity entry.
       def to_activity
-        { rule: @rule, verdict: @decision.to_s, decided_by: @decided_by }.compact
+        { rule: @rule, verdict: @decision.to_s, decided_by: @decided_by, scope: @scope }.compact
       end
 
       private

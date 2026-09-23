@@ -133,4 +133,38 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(events.map { |e| e[:type] }).to eq(%i[tool_call_started tool_call_completed])
     end
   end
+
+  describe "an ask with an approver" do
+    let(:asked) { [] }
+    let(:answer) { :allow }
+    let(:runner) do
+      approver = lambda do |verdict|
+        asked << events.map { |e| e[:type] }
+        answer == :allow ? verdict.settle!(:allow).tap { verdict.scope = "once" } : verdict.settle!(:deny, note: "The user declined.")
+      end
+      k = kernel
+      gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: approver)
+      k.define_singleton_method(:guardrail_gate) { gate }
+      described_class.new(k)
+    end
+
+    before { hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("sure?") } }
+
+    it "asks after tool_call_started, then runs the allowed call and notes who allowed it" do
+      result = run
+      expect(asked).to eq([%i[tool_call_started]])
+      expect(dispatched).to eq([call])
+      expect(result[:activity]).to include(guardrail: { verdict: "allow", decided_by: "user", scope: "once" })
+    end
+
+    context "when the user declines" do
+      let(:answer) { :deny }
+
+      it "does not run the call" do
+        result = run
+        expect(dispatched).to be_empty
+        expect(result[:output]).to include("sure? The user declined. Do not retry it")
+      end
+    end
+  end
 end

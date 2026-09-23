@@ -29,9 +29,11 @@ module Samagotchi
            type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
            tool: call[:name], call: call.dup, params: params)
 
-      # Nothing can approve an ask yet: it is denied.
-      verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it.") if verdict.ask?
+      # The ask comes after tool_call_started: the UI shows the tool line,
+      # then the approval under it.
+      settle_ask(verdict) if verdict.ask?
       result = verdict.deny? ? denied(call, verdict) : dispatch(call)
+      result = approved(result, verdict) if verdict.allow? && verdict.decided_by
 
       output = result[:output].to_s
       capped = output
@@ -64,6 +66,19 @@ module Samagotchi
     rescue StandardError => e
       Guardrails::Verdict.new(call: call).deny!("the guardrail check failed: #{e.class}: #{e.message}",
                                                 decided_by: "core")
+    end
+
+    def settle_ask(verdict)
+      gate.settle_ask(verdict)
+    rescue StandardError => e
+      verdict.settle!(:deny, decided_by: "core", note: "The approval failed (#{e.class}: #{e.message}).")
+    end
+
+    # An allowed ask: the activity says who allowed it, and for what scope.
+    def approved(result, verdict)
+      activity = result[:activity]
+      activity = activity.merge(guardrail: verdict.to_activity) if activity.is_a?(Hash)
+      result.merge(activity: activity)
     end
 
     # A legacy veto keeps its old text; a verdict's deny tells the model

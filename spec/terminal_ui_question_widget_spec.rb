@@ -156,4 +156,47 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       line << nil
     end
   end
+
+  describe "an approval" do
+    let(:approval) do
+      { id: "a1", kind: "approval", header: "Approve tool call?",
+        question: "execute: git push\n  in /r (repo r, branch main)\n  why: publishes (rule git-push, config)",
+        options: ["Allow once", "Allow this call for the session", "Deny"],
+        multi_select: false, allow_freeform: true, approval: { scopes: %w[once session] } }
+    end
+
+    it "shows the call, the options and how to answer, and takes y" do
+      allow(engine).to receive(:answer_question)
+      result, out = answer_with("y\n", approval)
+      expect(result).to be(true)
+      expect(out).to start_with("Approve tool call?\n! execute: git push\n  in /r (repo r, branch main)\n" \
+                                "  why: publishes (rule git-push, config)\n  1) Allow once\n")
+      expect(out).to include("  Enter empty to deny.\n")
+      expect(engine).to have_received(:answer_question).with(id: "a1", selected: ["Allow once"], freeform: nil)
+    end
+
+    it "takes n with a reason, and rejects a substring" do
+      allow(engine).to receive(:answer_question)
+      _, out = answer_with("allow\nn; too risky\n", approval)
+      expect(out).to include("Answer with 1-3, y (Allow once) or n (Deny).")
+      expect(engine).to have_received(:answer_question).with(id: "a1", selected: ["Deny"], freeform: "too risky")
+    end
+
+    it "denies on an empty line" do
+      allow(engine).to receive(:cancel_question)
+      result, = answer_with("\n", approval)
+      expect(result).to be(false)
+      expect(engine).to have_received(:cancel_question)
+    end
+
+    it "puts a line from the open prompt that isn't an answer back into the prompt, and asks at choice>" do
+      allow(engine).to receive(:answer_question)
+      agent.instance_variable_set(:@prompt_reader, Thread.new { "what does this do?" })
+      _, out = answer_with("2\n", approval)
+      expect(out).to include("(not an answer; your line is back in the prompt)", "choice> ")
+      expect(agent.instance_variable_get(:@next_input_prefill)).to eq("what does this do?")
+      expect(engine).to have_received(:answer_question).with(id: "a1", selected: ["Allow this call for the session"],
+                                                             freeform: nil)
+    end
+  end
 end

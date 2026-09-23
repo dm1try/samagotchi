@@ -1654,7 +1654,11 @@ module Samagotchi
       at_prompt = @prompt_reader&.alive?
       rows = prompt.lines(paint: method(:paint), color: color_output?)
       rows.unshift("") if $stdout.tty?
-      rows << "  Enter empty to cancel." if !prompt.free? # still allow cancel
+      if prompt.approval?
+        rows << "  Enter empty to deny."
+      elsif !prompt.free?
+        rows << "  Enter empty to cancel." # still allow cancel
+      end
       rows << "  Answer at the prompt." if at_prompt
       @surface.commit(rows.join("\n"))
 
@@ -1662,9 +1666,11 @@ module Samagotchi
       loop do
         choice_prompt = color_output? ? paint("choice> ", 33) : "choice> "
         raw = nil
+        from_open_prompt = false
         begin
           if at_prompt
             at_prompt = false # a retry after an invalid answer reads choice>
+            from_open_prompt = true
             raw = take_open_prompt_line
             if raw == :canceled
               @engine.cancel_question("user") rescue nil
@@ -1688,13 +1694,20 @@ module Samagotchi
         raw = raw.to_s.strip
         if raw.empty?
           @engine.cancel_question("user") rescue nil
-          @surface.commit("(cancelled)") if $stdout.tty?
+          @surface.commit(prompt.approval? ? "(denied)" : "(cancelled)") if $stdout.tty?
           return false
         end
 
         answer = prompt.parse(raw)
         @surface.commit(answer.note) if answer.note
         unless answer.ok?
+          # A line typed at the open prompt that doesn't answer an approval
+          # was probably meant as a message: it goes back into the prompt
+          # (not sent, not lost) and the approval asks at choice>.
+          if from_open_prompt && prompt.approval?
+            queue_input_prefill(raw)
+            @surface.commit("(not an answer; your line is back in the prompt)")
+          end
           @surface.commit(answer.error)
           next
         end

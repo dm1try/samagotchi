@@ -125,7 +125,8 @@ module Samagotchi
         @kernel.guardrail_gate = Guardrails::Gate.new(
           -> { @hooks },
           context_lookup: -> { guardrail_context },
-          model_key_lookup: -> { @model_key }
+          model_key_lookup: -> { @model_key },
+          approver: ->(verdict) { request_approval(verdict) }
         )
       end
       # If session was resumed and has a pending_question, hydrate engine state
@@ -642,6 +643,21 @@ module Samagotchi
     def guardrail_context
       Guardrails::Context.new(cwd: Dir.pwd, session_id: @session&.id, interface: interface,
                               origin: @turn_origin, git: @guardrail_git)
+    end
+
+    # Ask the user to approve a call the gate voted `ask` on, through the
+    # question flow (REPL sync handler, attached TUI, web). Settles the
+    # verdict: allow with the picked scope, or deny with a note for the
+    # model. A --non-interactive run has no one to ask and denies at once.
+    # @param verdict [Guardrails::Verdict]
+    # @return [Guardrails::Verdict]
+    def request_approval(verdict)
+      if interface == :non_interactive
+        return verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it (non-interactive run).")
+      end
+
+      payload = Guardrails::Approval.payload(verdict)
+      Guardrails::Approval.settle(verdict, open_question(payload), payload[:approval][:scopes])
     end
 
     # ── Ask-user-question (structured qualification) ──────────────────────────

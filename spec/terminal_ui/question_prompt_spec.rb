@@ -43,3 +43,33 @@ RSpec.describe Samagotchi::TerminalUI::QuestionPrompt do
     expect(multi.parse("1 3; ripe").to_h.compact).to eq(selected: %w[Apple Cherry], freeform: "ripe")
   end
 end
+
+RSpec.describe Samagotchi::TerminalUI::QuestionPrompt, "approval" do
+  let(:prompt) do
+    described_class.new(id: "a", kind: "approval", question: "execute: rm -rf x",
+                        options: ["Allow once", "Allow this call in this repo", "Deny"], allow_freeform: true)
+  end
+
+  def pick(raw) = prompt.parse(raw)
+
+  it "takes y/n, numbers and exact labels (any case)" do
+    expect(pick("y").selected).to eq(["Allow once"])
+    expect(pick("YES").selected).to eq(["Allow once"])
+    expect(pick("n").selected).to eq(["Deny"])
+    expect(pick("2").selected).to eq(["Allow this call in this repo"])
+    expect(pick("allow this call in this repo").selected).to eq(["Allow this call in this repo"])
+    expect(pick("deny").selected).to eq(["Deny"])
+  end
+
+  it "rejects substrings and numbers out of range" do
+    expect(pick("allow")).not_to be_ok
+    expect(pick("en")).not_to be_ok
+    expect(pick("4")).not_to be_ok
+    expect(pick("0").error).to eq("Answer with 1-3, y (Allow once) or n (Deny).")
+  end
+
+  it "keeps a reason after ';', also with no pick (a deny with that reason)" do
+    expect(pick("n; not now").to_h).to include(selected: ["Deny"], freeform: "not now")
+    expect(pick("; use a branch").to_h).to include(selected: [], freeform: "use a branch")
+  end
+end

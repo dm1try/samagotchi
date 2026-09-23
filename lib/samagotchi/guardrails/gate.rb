@@ -19,10 +19,13 @@ module Samagotchi
       # @param context_lookup [#call] returns the Context for this call
       #   (the Engine's: session, interface, origin, per-turn git cache)
       # @param model_key_lookup [#call] the model key (memory overlays)
-      def initialize(hooks_lookup, context_lookup: -> { Context.new }, model_key_lookup: -> {})
+      # @param approver [#call, nil] settles an ask (Engine#request_approval);
+      #   without one an ask is denied
+      def initialize(hooks_lookup, context_lookup: -> { Context.new }, model_key_lookup: -> {}, approver: nil)
         @hooks_lookup = hooks_lookup
         @context_lookup = context_lookup
         @model_key_lookup = model_key_lookup
+        @approver = approver
       end
 
       # @param call [Hash] the parsed tool call
@@ -44,6 +47,18 @@ module Samagotchi
         verdict.context = context
         verdict.targets = targets_for(verdict.call, context)
         verdict
+      end
+
+      # Settle an ask: the approver asks the user; with none, or one that
+      # fails, it is denied.
+      # @return [Verdict]
+      def settle_ask(verdict)
+        return verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it.") unless @approver
+
+        @approver.call(verdict)
+        verdict.ask? ? verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it.") : verdict
+      rescue StandardError => e
+        verdict.settle!(:deny, decided_by: "core", note: "The approval failed (#{e.class}: #{e.message}).")
       end
 
       private

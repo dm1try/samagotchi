@@ -6,7 +6,10 @@ module Samagotchi
     # lines and the parsing of a typed answer ("2", "1,3", "1 3; text",
     # option labels). No I/O: callers print the lines and messages, and
     # record the answer (the REPL on its Engine, an attached UI over the
-    # Bridge).
+    # Bridge). An approval (kind "approval") takes only a number, an exact
+    # label, y (the first option, Allow once) or n (the last, Deny), plus
+    # an optional "; reason"; a substring would pick the wrong one ("y" is
+    # in "Deny").
     class QuestionPrompt
       # A parsed answer. +error+ set: re-ask. +note+: print, then accept.
       Answer = Struct.new(:selected, :freeform, :error, :note, keyword_init: true) do
@@ -25,14 +28,18 @@ module Samagotchi
         @header = header.empty? ? nil : header
         @multi = !!field.(:multi_select)
         @free = !!field.(:allow_freeform)
+        @approval = field.(:kind).to_s == "approval"
       end
 
       def multi? = @multi
       def free? = @free
+      def approval? = @approval
 
       # The widget, top down; +paint+ colours a string (text, code).
       # @return [Array<String>]
       def lines(paint: ->(text, _code) { text }, color: false)
+        return approval_lines(paint) if approval?
+
         lines = []
         lines << paint.(header, 1) if header
         lines << paint.("? #{question}", 94)
@@ -46,6 +53,8 @@ module Samagotchi
       # @param raw [String] the typed line, not empty
       # @return [Answer]
       def parse(raw)
+        return parse_approval(raw) if approval?
+
         raw = raw.to_s.strip
         # "1,3; my text": the first ';' separates the selection from freeform text.
         sel_part, free_part = raw.include?(";") ? raw.split(";", 2).map(&:strip) : [raw, nil]
@@ -69,6 +78,43 @@ module Samagotchi
       end
 
       private
+
+      # The question text is several lines (tool, where, why); shown in the
+      # warning colour, with the answers the prompt takes.
+      def approval_lines(paint)
+        lines = [paint.(header || "Approve tool call?", 1)]
+        question.lines.map(&:chomp).each_with_index do |line, idx|
+          lines << paint.(idx.zero? ? "! #{line}" : line, 33)
+        end
+        options.each_with_index { |opt, idx| lines << paint.("  #{idx + 1}) #{opt}", 92) }
+        lines << paint.("  [1-#{options.size}, y = #{options.first}, n = #{options.last}; add '; reason' to tell the model why]", 90)
+        lines
+      end
+
+      def parse_approval(raw)
+        sel_part, free_part = raw.to_s.strip.split(";", 2).map { |part| part.to_s.strip }
+        free_part = nil if free_part.to_s.empty?
+        return Answer.new(selected: [], freeform: free_part) if sel_part.to_s.empty? && free_part
+
+        label = approval_option(sel_part.to_s)
+        unless label
+          return Answer.new(error: "Answer with 1-#{options.size}, y (#{options.first}) or n (#{options.last}).")
+        end
+
+        Answer.new(selected: [label], freeform: free_part)
+      end
+
+      def approval_option(token)
+        down = token.downcase
+        return options.first if %w[y yes].include?(down)
+        return options.last if %w[n no].include?(down)
+
+        if token.match?(/\A\d+\z/)
+          idx = token.to_i - 1
+          return idx.between?(0, options.size - 1) ? options[idx] : nil
+        end
+        options.find { |o| o.downcase == down }
+      end
 
       # A number, or an option label (exact or substring, any case).
       def option_for(tok)

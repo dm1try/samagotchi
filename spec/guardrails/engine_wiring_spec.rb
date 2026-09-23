@@ -27,4 +27,48 @@ RSpec.describe "Engine guardrail wiring" do
     gate = engine.instance_variable_get(:@kernel).guardrail_gate
     expect(gate.evaluate({ name: "execute", content: "ls" }, iteration: 1, params: "")).to be_deny
   end
+
+  describe "#request_approval" do
+    def asking(engine)
+      v = Samagotchi::Guardrails::Verdict.new(call: { name: "execute", content: "git push" })
+      v.ask!("pushes", rule: "git-push", source: "config", scopes: %w[once repo])
+      v.context = engine.guardrail_context
+      v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context)
+      v
+    end
+
+    def mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    it "denies at once in a non-interactive run" do
+      v = engine.request_approval(asking(engine))
+      expect(v).to be_deny
+      expect(v.deny_text).to include("No one to approve it (non-interactive run).")
+      expect(engine.pending_question).to be_nil
+    end
+
+    it "asks through the question flow in a worker and allows the picked scope" do
+      engine.interface = :worker
+      result = nil
+      thread = Thread.new { result = engine.request_approval(asking(engine)) }
+      deadline = mono + 2
+      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+      pending = engine.pending_question
+      expect(pending).to include(kind: "approval", header: "Approve tool call?")
+      expect(pending[:approval]).to include(command: "git push", rule: "git-push", scopes: %w[once repo])
+      engine.answer_question(id: pending[:id], selected: [pending[:options][1]])
+      thread.join(2)
+      expect([result.decision, result.scope]).to eq([:allow, "repo"])
+    end
+
+    it "denies when the worker's question is dismissed" do
+      engine.interface = :worker
+      result = nil
+      thread = Thread.new { result = engine.request_approval(asking(engine)) }
+      deadline = mono + 2
+      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+      engine.cancel_question("dismissed", id: engine.pending_question[:id])
+      thread.join(2)
+      expect(result.deny_text).to include("The approval was cancelled.")
+    end
+  end
 end

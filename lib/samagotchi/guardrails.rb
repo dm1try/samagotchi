@@ -3,6 +3,7 @@
 require_relative "guardrails/verdict"
 require_relative "guardrails/context"
 require_relative "guardrails/targets"
+require_relative "guardrails/approval"
 require_relative "guardrails/gate"
 
 module Samagotchi
