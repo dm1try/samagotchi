@@ -339,6 +339,14 @@ module Samagotchi
       }
     }.freeze
 
+    # What only the chat path's JSON Schemas carry (F3): enums the prompt
+    # text states in words. Adding them to TOOL_SCHEMAS would change the
+    # Qwen prompt, which renders the table as JSON.
+    CHAT_PARAM_OVERRIDES = {
+      "memory_read" => { scope: { enum: %w[project system] } },
+      "memory_write" => { scope: { enum: %w[project system] } }
+    }.freeze
+
     GEMMA_QUOTE = '<|"|>'
 
     module_function
@@ -362,6 +370,20 @@ module Samagotchi
       end
       params = lines.empty? ? "  parameters:{}" : "  parameters:{\n#{lines.join(",\n")}\n  }"
       "<|tool>declaration:#{schema[:name]}{\n  description:#{q}#{schema[:description]}#{q},\n#{params}\n}<tool|>"
+    end
+
+    # The schemas for the chat path's tools: array: TOOL_SCHEMAS with
+    # CHAT_PARAM_OVERRIDES merged in and each tool's parameters closed
+    # (additionalProperties: false), so a strict provider rejects made-up
+    # parameters instead of the tool ignoring them.
+    def chat_schemas
+      TOOL_SCHEMAS.map do |schema|
+        overrides = CHAT_PARAM_OVERRIDES.fetch(schema[:name], {})
+        properties = schema[:parameters][:properties].to_h do |name, param|
+          [name, param.merge(overrides.fetch(name, {}))]
+        end
+        schema.merge(parameters: schema[:parameters].merge(properties: properties, additionalProperties: false))
+      end
     end
 
     # Qwen 3.6 <tools> block: the schemas as pretty-printed JSON.

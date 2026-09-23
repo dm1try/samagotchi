@@ -56,9 +56,9 @@ module Samagotchi
       end
 
       # Tool definitions for the request: the schemas the native prompts are
-      # rendered from.
+      # rendered from, with the chat-only enums and closed parameters.
       def tool_definitions
-        ToolDeclarations::TOOL_SCHEMAS.map do |schema|
+        ToolDeclarations.chat_schemas.map do |schema|
           { type: "function", function: schema.slice(:name, :description, :parameters) }
         end
       end

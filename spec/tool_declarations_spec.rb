@@ -19,3 +19,26 @@ RSpec.describe Samagotchi::ToolDeclarations do
     end
   end
 end
+
+# The chat loop's tools: the shared schemas plus what only a JSON Schema
+# consumer uses (F3); the native prompts render the shared table unchanged.
+RSpec.describe Samagotchi::ToolDeclarations, ".chat_schemas" do
+  let(:schemas) { described_class.chat_schemas }
+
+  it "limits the memory scopes to project and system" do
+    %w[memory_read memory_write].each do |name|
+      scope = schemas.find { |schema| schema[:name] == name }[:parameters][:properties][:scope]
+      expect(scope[:enum]).to eq(%w[project system])
+    end
+  end
+
+  it "closes every tool's parameters with additionalProperties: false" do
+    expect(schemas.map { |schema| schema[:parameters][:additionalProperties] }.uniq).to eq([false])
+  end
+
+  it "leaves the shared schemas and the Qwen declarations without them" do
+    schemas
+    expect(JSON.generate(described_class::TOOL_SCHEMAS)).not_to include("enum", "additionalProperties")
+    expect(described_class.qwen_declarations).not_to include("enum", "additionalProperties")
+  end
+end

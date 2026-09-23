@@ -18,7 +18,8 @@
         },
         "required": [
           "command"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   },
@@ -45,7 +46,8 @@
         },
         "required": [
           "path"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   },
@@ -69,7 +71,8 @@
         "required": [
           "path",
           "content"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   },
@@ -105,7 +108,8 @@
         "required": [
           "path",
           "new_text"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   },
@@ -123,9 +127,14 @@
           },
           "scope": {
             "type": "string",
-            "description": "Optional scope: project or system"
+            "description": "Optional scope: project or system",
+            "enum": [
+              "project",
+              "system"
+            ]
           }
-        }
+        },
+        "additionalProperties": false
       }
     }
   },
@@ -147,7 +156,11 @@
           },
           "scope": {
             "type": "string",
-            "description": "Scope to write into: project or system"
+            "description": "Scope to write into: project or system",
+            "enum": [
+              "project",
+              "system"
+            ]
           },
           "description": {
             "type": "string",
@@ -162,7 +175,8 @@
           "name",
           "content",
           "scope"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   },
@@ -189,7 +203,8 @@
         },
         "required": [
           "command"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   },
@@ -208,7 +223,8 @@
         },
         "required": [
           "id"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   },
@@ -219,7 +235,8 @@
       "description": "List all background tasks in the current workspace with current status.",
       "parameters": {
         "type": "object",
-        "properties": {}
+        "properties": {},
+        "additionalProperties": false
       }
     }
   },
@@ -238,7 +255,8 @@
         },
         "required": [
           "id"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   },
@@ -269,7 +287,8 @@
         },
         "required": [
           "task_id"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   },
@@ -288,7 +307,8 @@
         },
         "required": [
           "url"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   },
@@ -317,7 +337,8 @@
           "name",
           "description",
           "interval_minutes"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   },
@@ -336,7 +357,8 @@
         },
         "required": [
           "name"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   },
@@ -347,7 +369,8 @@
       "description": "List all active registered reminders.",
       "parameters": {
         "type": "object",
-        "properties": {}
+        "properties": {},
+        "additionalProperties": false
       }
     }
   },
@@ -386,7 +409,8 @@
         "required": [
           "question",
           "options"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   }
