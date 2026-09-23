@@ -225,6 +225,7 @@ module Samagotchi
           queued: turn_snapshot ? Array(turn_snapshot["queued"]) : [],
           recap: turn_snapshot && turn_snapshot["recap"],
           continue_offer: turn_snapshot && turn_snapshot["continue_offer"],
+          guardrail_warning: turn_snapshot && turn_snapshot["guardrail_warning"],
           markdown_warning: @markdown_renderer.warning,
           pending_question: pending,
           last_event_seq: last_event_seq,

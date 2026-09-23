@@ -580,6 +580,7 @@ module Samagotchi
         else
           @attached = true
           render_join_header(Array(snapshot[:messages]))
+          @screen.commit("guardrails> #{snapshot[:guardrail_warning]}") if snapshot[:guardrail_warning]
         end
         @recap = snapshot[:recap]
         offer = snapshot[:continue_offer]

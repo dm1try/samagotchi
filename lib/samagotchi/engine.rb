@@ -757,6 +757,12 @@ module Samagotchi
     end
     private :announce_guardrail_failures
 
+    # The warning the first turn announced (nil before it, or with nothing
+    # failed), for a UI that joins later (Bridge#snapshot).
+    def guardrail_warning
+      @guardrail_failures.message if @guardrail_failures_announced
+    end
+
     # The context the gate sees for a tool call now.
     # @return [Guardrails::Context]
     def guardrail_context

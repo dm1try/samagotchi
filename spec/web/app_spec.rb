@@ -246,6 +246,7 @@ RSpec.describe Samagotchi::Web::App do
           "queued" => [{ "enqueued_id" => "e1", "client_id" => "tui:1", "prompt" => "next" }],
           "recap" => "We did things.",
           "continue_offer" => { "context" => { "original_prompt" => "first" }, "no_interrupt" => false },
+          "guardrail_warning" => "hook g.rb (config) failed to load (x)",
           "event_seq" => 40,
           "event_id" => "40-e1"
         },
@@ -270,6 +271,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["last_event_id"]).to eq("40-e1")
       expect(payload["recap"]).to eq("We did things.")
       expect(payload["continue_offer"]).to eq("context" => { "original_prompt" => "first" }, "no_interrupt" => false)
+      expect(payload["guardrail_warning"]).to eq("hook g.rb (config) failed to load (x)")
       expect(payload.dig("session", "status")).to eq("running")
       # The model turns run on now (after a /model), not the file's.
       expect(payload.dig("session", "model_name")).to eq("Qwen3-14B")
