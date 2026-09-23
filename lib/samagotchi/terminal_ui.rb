@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "monitor"
 require "json"
 require "fileutils"
 require "io/console"
@@ -58,6 +59,11 @@ module Samagotchi
     THINKING_TAIL_PREVIEW_BUFFER_LIMIT = 4096
     THINKING_TOOL_PREVIEW_LIMIT = 56
     THINKING_RENDER_MIN_INTERVAL = 0.08
+    # The spinner also turns with time: a ticker redraws it when no chunk
+    # did for this long, and after THINKING_WAIT_NOTICE_AFTER seconds with no
+    # chunk it says how long the first token has taken.
+    THINKING_TICK_INTERVAL = 0.25
+    THINKING_WAIT_NOTICE_AFTER = 2.0
     THINKING_RENDER_INTERVAL_ENV = "SAMAGOTCHI_THINKING_RENDER_INTERVAL"
     STATUS_LINE_ENV = "SAMAGOTCHI_STATUS_LINE"
     STATUS_LINE_ON = "on"
@@ -81,8 +87,12 @@ module Samagotchi
       Engine.system_prompt_for(profile)
     end
 
-    def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false, surface: nil)
+    def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false, surface: nil,
+                   spinner_tick_interval: THINKING_TICK_INTERVAL)
       @mode           = mode.to_sym
+      # nil: no ticker thread (specs that compare exact frames).
+      @spinner_tick_interval = spinner_tick_interval
+      @spinner_lock = Monitor.new
       @prompt         = prompt
       @default_model_name = ModelProfile.required_model_name(nil)
       aliased_model_name = model_name.to_s.strip.empty? ? nil : ConfigFile.resolve_model_alias(model_name)
@@ -558,39 +568,51 @@ module Samagotchi
       @latest_server_context_status = nil
       reset_thinking_tail_preview
       reset_turn_preamble
-      start_thinking_spinner
+      @spinner_lock.synchronize { start_thinking_spinner }
     end
 
     def generation_feedback_retrying(event)
-      set_retry_spinner_status(event)
-      refresh_thinking_spinner_status
+      @spinner_lock.synchronize do
+        # The retry streams from the start: wait for its first token again.
+        @thinking_waiting_since = monotonic_time if @thinking_spinner_active
+        set_retry_spinner_status(event)
+        refresh_thinking_spinner_status
+      end
     end
 
     def generation_feedback_chunk(event)
-      clear_retry_spinner_status if retry_spinner_status_active?
-      capture_server_context_status_from_payload(event[:payload])
-      capture_thinking_tail_chunk(event[:content])
-      capture_turn_preamble_chunk(event[:thinking])
-      tick_thinking_spinner
+      @spinner_lock.synchronize do
+        @thinking_waiting_since = nil
+        clear_retry_spinner_status if retry_spinner_status_active?
+        capture_server_context_status_from_payload(event[:payload])
+        capture_thinking_tail_chunk(event[:content])
+        capture_turn_preamble_chunk(event[:thinking])
+        tick_thinking_spinner
+      end
     end
 
     def tool_call_feedback_started(event)
-      clear_retry_spinner_status
-      memory_loaded = capture_memory_tool_call(event)
-      capture_thinking_tool_call(event) if memory_loaded
-      refresh_thinking_spinner_status
+      @spinner_lock.synchronize do
+        @thinking_waiting_since = nil
+        clear_retry_spinner_status
+        memory_loaded = capture_memory_tool_call(event)
+        capture_thinking_tool_call(event) if memory_loaded
+        refresh_thinking_spinner_status
+      end
     end
 
     def clear_generation_retry
-      clear_retry_spinner_status
+      @spinner_lock.synchronize { clear_retry_spinner_status }
     end
 
     def generation_feedback_finished
       stop_cancel_hotkey_monitor
-      clear_retry_spinner_status
-      reset_thinking_tail_preview
-      reset_turn_preamble
-      finish_thinking_spinner
+      @spinner_lock.synchronize do
+        clear_retry_spinner_status
+        reset_thinking_tail_preview
+        reset_turn_preamble
+        finish_thinking_spinner
+      end
     end
 
     # The kernel reports the last emitted context status on the result; keep
@@ -907,7 +929,40 @@ module Samagotchi
       @thinking_spinner_last_render_at = nil
       @thinking_tail_preview_dirty = false
       @thinking_preview_has_content = false
+      @thinking_waiting_since = monotonic_time
       render_thinking_spinner
+      start_thinking_ticker
+    end
+
+    # One thread per spinner; it ends when the spinner does.
+    def start_thinking_ticker
+      return unless @spinner_tick_interval
+      return if @thinking_ticker&.alive?
+
+      @thinking_ticker = Thread.new do
+        loop do
+          sleep(@spinner_tick_interval)
+          break unless tick_thinking_spinner_on_timer
+        end
+      rescue StandardError
+        nil
+      end
+      @thinking_ticker.report_on_exception = false
+    end
+
+    # Turn the spinner when no chunk did for a tick.
+    # @return [Boolean] whether the spinner is still shown
+    def tick_thinking_spinner_on_timer
+      @spinner_lock.synchronize do
+        return false unless @thinking_spinner_active
+
+        last = @thinking_spinner_last_render_at
+        if last.nil? || (monotonic_time - last) >= @spinner_tick_interval
+          @thinking_spinner_index = (@thinking_spinner_index + 1) % THINKING_SPINNER_FRAMES.length
+          render_thinking_spinner
+        end
+        true
+      end
     end
 
     def tick_thinking_spinner
@@ -941,12 +996,16 @@ module Samagotchi
 
     # Erase the spinner rows; nothing to do when none are shown.
     def finish_thinking_spinner
-      return unless @surface.clear_slot(:activity)
+      @spinner_lock.synchronize do
+        # Off even when the rows are gone already, so the ticker ends.
+        @thinking_spinner_active = false
+        @thinking_waiting_since = nil
+        next unless @surface.clear_slot(:activity)
 
-      @thinking_spinner_active = false
-      @thinking_spinner_last_render_at = nil
-      @thinking_tail_preview_dirty = false
-      @thinking_preview_has_content = false
+        @thinking_spinner_last_render_at = nil
+        @thinking_tail_preview_dirty = false
+        @thinking_preview_has_content = false
+      end
     end
 
     private
@@ -1490,6 +1549,17 @@ module Samagotchi
       @thinking_preview_has_content = preview_has_content
     end
 
+    # "model> waiting for the first token... 5s |" once a generation has
+    # shown nothing for THINKING_WAIT_NOTICE_AFTER seconds, else nil.
+    def first_token_wait_status(frame)
+      return nil unless @thinking_waiting_since
+
+      waited = monotonic_time - @thinking_waiting_since
+      return nil if waited < THINKING_WAIT_NOTICE_AFTER
+
+      "model> waiting for the first token... #{waited.floor}s #{frame}"
+    end
+
     def thinking_spinner_status_line(frame)
       lines = thinking_spinner_status_lines(frame)
       lines.empty? ? "" : lines.first
@@ -1501,7 +1571,7 @@ module Samagotchi
       end
 
       preamble_active = turn_preamble_status_base(frame)
-      base = preamble_active || "model> thinking... #{frame}"
+      base = preamble_active || first_token_wait_status(frame) || "model> thinking... #{frame}"
       available_for_notification = [width - base.length, 0].max
       memory_notification, tool_notification = thinking_notification_segments(available_for_notification)
       notification = "#{memory_notification}#{tool_notification}"

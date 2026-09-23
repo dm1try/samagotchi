@@ -34,8 +34,9 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
   end
 
-  def build_ui(surface: screen, **options)
-    ui = described_class.new(mode: :assist, client: client, no_default_input: true, surface: surface, **options)
+  def build_ui(surface: screen, spinner_tick_interval: nil, **options)
+    ui = described_class.new(mode: :assist, client: client, no_default_input: true, surface: surface,
+                             spinner_tick_interval: spinner_tick_interval, **options)
     allow(ui).to receive(:thinking_spinner_enabled?).and_return(true)
     allow(ui).to receive(:color_output?).and_return(false)
     allow(ui).to receive(:thinking_render_min_interval).and_return(0.0)
@@ -73,6 +74,48 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
       )
     end
     ui.run
+  end
+
+  describe "the spinner while no chunks come" do
+    let(:clock) { [100.0] }
+
+    def spinner_rows = term.lines.grep(/model> /)
+
+    it "turns with time, then says how long it has waited for the first token" do
+      ui = build_ui(spinner_tick_interval: 0.02)
+      allow(ui).to receive(:monotonic_time) { clock.first }
+      seen = []
+      waiting = nil
+
+      run_repl(ui, prompts: ["hi"], events: [{ type: :generation_started, iteration: 1 },
+                                             { type: :generation_completed, iteration: 1, content_length: 0 }],
+                   on_event: lambda { |event|
+                     next unless event[:type] == :generation_started
+
+                     4.times do
+                       clock[0] += 0.3
+                       sleep 0.06
+                       seen.concat(spinner_rows)
+                     end
+                     clock[0] += 2.0
+                     sleep 0.06
+                     waiting = spinner_rows.first
+                   })
+
+      expect(seen.map { |row| row.strip[-1] }.uniq.size).to be >= 3
+      expect(waiting).to match(/model> waiting for the first token\.\.\. 3s [|\/\\-]/)
+      expect(spinner_rows).to be_empty
+    end
+
+    it "leaves no ticker drawing after the turn" do
+      ui = build_ui(spinner_tick_interval: 0.02)
+      run_repl(ui, prompts: ["hi"], events: generation("PONG"))
+      before = term.lines.dup
+      sleep 0.08
+
+      expect(term.lines).to eq(before)
+      expect(spinner_rows).to be_empty
+    end
   end
 
   it "shows the spinner row above the status rows while a turn runs, and drops it after" do
