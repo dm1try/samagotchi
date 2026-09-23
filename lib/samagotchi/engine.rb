@@ -23,6 +23,7 @@ require_relative "idle_recap"
 require_relative "idle_reminders"
 require_relative "idle_scheduler"
 require_relative "hooks"
+require_relative "guardrails"
 require_relative "reminder_store"
 require_relative "tools/memory"
 require_relative "model_overlay"
@@ -117,6 +118,16 @@ module Samagotchi
       end
       # ask_user_question blocks on the Engine's question flow (TUI/Web answer it).
       @kernel.question_handler = proc { |payload| request_question(payload) } if @kernel.respond_to?(:question_handler=)
+      # Every tool call asks this gate first. The kernel is never rebuilt, so
+      # it holds across model switches.
+      @guardrail_git = Guardrails::GitInfo.new
+      if @kernel.respond_to?(:guardrail_gate=)
+        @kernel.guardrail_gate = Guardrails::Gate.new(
+          -> { @hooks },
+          context_lookup: -> { guardrail_context },
+          model_key_lookup: -> { @model_key }
+        )
+      end
       # If session was resumed and has a pending_question, hydrate engine state
       if @resume_session && @resume_session.pending_question
         @pending_question = @resume_session.pending_question.dup
@@ -610,6 +621,29 @@ module Samagotchi
       add_used_memory_names(names)
     end
 
+    # ── Guardrails ─────────────────────────────────────────────────────────────
+
+    # Who can answer an approval: :repl, :worker or :non_interactive (the
+    # default, so a bare Engine denies instead of waiting for nobody). Set
+    # by the host (TerminalUI, Worker).
+    def interface
+      @interface || :non_interactive
+    end
+
+    def interface=(value)
+      value = value.to_sym
+      raise ArgumentError, "unknown interface #{value}" unless Guardrails::Context::INTERFACES.include?(value)
+
+      @interface = value
+    end
+
+    # The context the gate sees for a tool call now.
+    # @return [Guardrails::Context]
+    def guardrail_context
+      Guardrails::Context.new(cwd: Dir.pwd, session_id: @session&.id, interface: interface,
+                              origin: @turn_origin, git: @guardrail_git)
+    end
+
     # ── Ask-user-question (structured qualification) ──────────────────────────
 
     # @return [Hash, nil] current pending question (thread-safe copy)
@@ -939,6 +973,9 @@ module Samagotchi
       # Provide a cancellable controller for this turn (cross-process cancel via file flag)
       effective_controller = cancel_controller || CancellationController.new
       @activity_mutex.synchronize { @active_cancel_controller = effective_controller }
+      # The gate's context: who queued this turn, and git asked afresh.
+      @turn_origin = origin
+      @guardrail_git = Guardrails::GitInfo.new
 
       prompt = nil if continue
       messages = nil

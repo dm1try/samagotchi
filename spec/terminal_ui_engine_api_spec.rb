@@ -28,6 +28,16 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
   def engine_of(ui) = ui.instance_variable_get(:@engine)
   def kernel_of(ui) = ui.instance_variable_get(:@kernel)
 
+  describe "guardrail interface" do
+    it "is :repl for the REPL and -p without --non-interactive, :non_interactive with it" do
+      expect(engine_of(Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry)).interface).to eq(:repl)
+      expect(engine_of(Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry, prompt: "hi")).interface)
+        .to eq(:repl)
+      ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry, prompt: "hi", non_interactive: true)
+      expect(engine_of(ui).interface).to eq(:non_interactive)
+    end
+  end
+
   describe "runtime /model across hosts" do
     it "moves the Engine, kernel client and profile to the new host's model" do
       ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry)

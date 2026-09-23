@@ -173,6 +173,10 @@ module Samagotchi
           }
         }
       )
+      # The attached TUI and the web answer approvals; with none attached
+      # one waits, like ask_user_question.
+      engine.interface = :worker
+      engine
     end
 
     # spawn_session hands the first prompt over in last_prompt, but

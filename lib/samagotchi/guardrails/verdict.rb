@@ -14,6 +14,8 @@ module Samagotchi
       attr_reader :decision, :reason, :rule, :source, :scopes, :decided_by
       # The call to dispatch; a hook may have replaced the original one.
       attr_accessor :call
+      # The Context and the final call's Targets (set by the Gate).
+      attr_accessor :context, :targets
 
       def initialize(call:)
         @call = call

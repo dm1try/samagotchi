@@ -51,8 +51,11 @@ module Samagotchi
 
     private
 
+    # The Engine sets the kernel's gate (its context, later the approval
+    # flow); a bare kernel (specs) gets one that only runs the hooks.
     def gate
-      @gate ||= Guardrails::Gate.new(-> { @kernel.hooks if @kernel.respond_to?(:hooks) })
+      given = @kernel.guardrail_gate if @kernel.respond_to?(:guardrail_gate)
+      given || (@gate ||= Guardrails::Gate.new(-> { @kernel.hooks if @kernel.respond_to?(:hooks) }))
     end
 
     # A gate that fails denies the call (fail closed).

@@ -154,6 +154,9 @@ module Samagotchi
           }
         }
       )
+      # -p without --non-interactive drops into the REPL, which can answer
+      # an approval; --non-interactive can't, so an approval there denies.
+      @engine.interface = @non_interactive ? :non_interactive : :repl
       @turn_flow = TurnFlow.new(engine: @engine)
       @commands = SessionCommands.new(engine: @engine, turn_flow: @turn_flow, default_model: @default_model_name)
       # Runtime --model flag or resumed session: switch the Engine (client,

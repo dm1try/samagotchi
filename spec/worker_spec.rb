@@ -130,6 +130,11 @@ RSpec.describe Samagotchi::Worker do
       turns.pop(timeout: timeout)
     end
 
+    it "tells its Engine it is a worker, so approvals wait for an attached UI" do
+      start_worker
+      expect(engine.interface).to eq(:worker)
+    end
+
     it "starts a turn posted to its Bridge at once, not on the next tick" do
       start_worker(poll_interval: 5)
 

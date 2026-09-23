@@ -165,6 +165,9 @@ module Samagotchi
     # @return [Proc, nil] answers ask_user_question (payload → answer string);
     #   Engine sets it to its blocking request_question.
     attr_accessor :question_handler
+    # The Guardrails::Gate ToolRunner asks before each call; the Engine sets
+    # it (nil: ToolRunner's own, hooks only).
+    attr_accessor :guardrail_gate
 
     # Run the conversation loop and return the final model response plus
     # resumable conversation state when execution stops at max_iterations.

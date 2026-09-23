@@ -85,3 +85,24 @@ RSpec.describe Samagotchi::Guardrails::Gate do
     end
   end
 end
+
+RSpec.describe Samagotchi::Guardrails::Gate, "context and targets" do
+  let(:hooks) { Samagotchi::Hooks::Registry.new }
+  let(:context) { Samagotchi::Guardrails::Context.new(cwd: "/tmp", session_id: "s1", interface: :worker) }
+  let(:gate) { described_class.new(-> { hooks }, context_lookup: -> { context }) }
+
+  it "gives hooks the context and the call's targets" do
+    seen = nil
+    hooks.register(:before_tool_call) { |e| seen = e.slice(:context, :targets) }
+    gate.evaluate({ name: "execute", content: "ls", cwd: "sub" }, iteration: 1, params: "")
+    expect(seen[:context]).to include(cwd: "/tmp", session_id: "s1", interface: :worker)
+    expect(seen[:targets]).to include(command: "ls", cwd: "/tmp/sub")
+  end
+
+  it "rebuilds the targets from a replaced call" do
+    hooks.register(:before_tool_call) { |e| e[:call] = { name: "execute", content: "pwd" } }
+    verdict = gate.evaluate({ name: "execute", content: "ls" }, iteration: 1, params: "")
+    expect(verdict.targets.command).to eq("pwd")
+    expect(verdict.context).to be(context)
+  end
+end
