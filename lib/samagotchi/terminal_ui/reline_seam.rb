@@ -37,6 +37,18 @@ module Samagotchi
         # @return [Screen, nil] where Reline draws, nil for Reline's own drawing
         attr_reader :screen
 
+        # Asked first on Ctrl-C during a read, with or without a screen: a
+        # truthy answer means it handled the key (the REPL cancelled a running
+        # turn) and the read goes on with the typed text as it is.
+        # @return [#call, nil]
+        attr_accessor :interrupt_handler
+
+        # @return [Boolean] a Reline read is open (it owns stdin)
+        def reading? = @reading == true
+
+        # @api private
+        attr_writer :reading
+
         # @return [Boolean] this Reline has every method the seam relies on
         def supported?
           defined?(Reline::LineEditor::RenderedScreen) &&
@@ -51,8 +63,14 @@ module Samagotchi
           # now, before the Screen measures rows from other threads while a
           # read owns stdin.
           Reline.ambiguous_width
-          Reline::LineEditor.prepend(self) unless Reline::LineEditor.include?(self)
+          install
           @screen = screen
+        end
+
+        # Put the seam in Reline without a screen: Reline draws as usual, and
+        # reading? and the interrupt handler work.
+        def install
+          Reline::LineEditor.prepend(self) unless Reline::LineEditor.include?(self)
         end
 
         def detach(screen)
@@ -73,6 +91,7 @@ module Samagotchi
 
       def reset(...)
         super
+        RelineSeam.reading = true
         @rendered_screen.base_y = 0 if RelineSeam.screen
       end
 
@@ -97,6 +116,7 @@ module Samagotchi
           screen.finish_editor
           clear_rendered_screen_cache
         end
+        RelineSeam.reading = false
         super
       end
 
@@ -112,11 +132,18 @@ module Samagotchi
         @rendered_screen.cursor_y = cursor_y
       end
 
-      # Ctrl-C: the typed text stays in scrollback with ^C, then Reline's
-      # own handling of the trap it replaced (raise Interrupt by default).
+      # Ctrl-C: the interrupt handler's if it takes it. Otherwise the typed
+      # text stays in scrollback with ^C, then Reline's own handling of the
+      # trap it replaced (raise Interrupt by default).
       def handle_interrupted
+        return unless @interrupted
+
+        if RelineSeam.interrupt_handler&.call
+          @interrupted = false
+          return
+        end
         screen = RelineSeam.screen
-        return super unless screen && @interrupted
+        return super unless screen
 
         @interrupted = false
         clear_dialogs

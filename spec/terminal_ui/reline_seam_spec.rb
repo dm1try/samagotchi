@@ -22,7 +22,11 @@ RSpec.describe Samagotchi::TerminalUI::RelineSeam do
     described_class.attach(screen)
   end
 
-  after { described_class.detach(screen) }
+  # Examples leave their read open; a real read always finalizes.
+  after do
+    described_class.detach(screen)
+    described_class.reading = false
+  end
 
   # LineEditor#finalize puts back the INT trap a read replaced (@old_trap):
   # keep RSpec's own.
@@ -150,6 +154,59 @@ RSpec.describe Samagotchi::TerminalUI::RelineSeam do
     expect { editor.send(:handle_interrupted) }.to raise_error(Interrupt)
     editor.finalize
     expect(term.lines).to eq(["> oops^C"])
+  end
+
+  describe "Ctrl-C with an interrupt handler" do
+    after { described_class.interrupt_handler = nil }
+
+    def ctrl_c
+      editor.instance_variable_set(:@old_trap, "DEFAULT")
+      editor.instance_variable_set(:@interrupted, true)
+      editor.send(:handle_interrupted)
+    end
+
+    it "keeps the read and the typed text when the handler takes it" do
+      calls = 0
+      described_class.interrupt_handler = -> { (calls += 1).positive? }
+      screen.set_slot(:status, ["ctx 12%"])
+      open_prompt
+      type("half")
+
+      expect { ctrl_c }.not_to raise_error
+      type(" more")
+
+      expect(calls).to eq(1)
+      expect(term.lines).to eq(["> half more", "ctx 12%"])
+    end
+
+    it "is Reline's Ctrl-C when the handler declines" do
+      described_class.interrupt_handler = -> { false }
+      open_prompt
+      type("oops")
+
+      expect { ctrl_c }.to raise_error(Interrupt)
+      editor.finalize
+      expect(term.lines).to eq(["> oops^C"])
+    end
+
+    it "asks the handler with no screen attached too" do
+      described_class.detach(screen)
+      allow(Reline::IOGate).to receive(:write)
+      described_class.interrupt_handler = -> { true }
+      open_prompt
+      type("x")
+
+      expect { ctrl_c }.not_to raise_error
+      expect(editor.line).to eq("x")
+    end
+  end
+
+  it "knows when a read is open" do
+    expect(described_class).not_to be_reading
+    open_prompt
+    expect(described_class).to be_reading
+    editor.finalize
+    expect(described_class).not_to be_reading
   end
 
   it "clears the screen on Ctrl-L and draws the prompt at the top" do
