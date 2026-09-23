@@ -4,11 +4,12 @@ require "digest"
 require_relative "../memory_paths"
 module Samagotchi
   module MemoryBundle
-    # Atomically updates the scoped index.md for a single entry.
+    # Updates the scoped index.md for a single entry, locked and atomically.
     # Used by Installer (P3) to keep index.md in sync.
     # Delegates to MemoryRead.memories_dir for test-isolated paths.
     module IndexUpdater
       MEMORY_INDEX = "index"
+      LOCK_FILE = ".index.lock"
       def self.system_dir_override
         @system_dir_override
       end
@@ -24,23 +25,19 @@ module Samagotchi
       def self.update_index(scope, entry_name, byte_count, description = nil)
         index_path = index_path_for(scope)
         return true unless index_path
-        new_line = managed_line(entry_name, scope, byte_count, description)
-        content = File.exist?(index_path) ? File.read(index_path) : nil
-        if content.nil? || content.strip.empty?
-          File.write(index_path, auto_index_header + "\n\n" + new_line + "\n")
-          return true
+        locked_write(File.dirname(index_path)) do |content|
+          new_line = managed_line(entry_name, scope, byte_count, description)
+          next auto_index_header + "\n\n" + new_line + "\n" if content.nil? || content.strip.empty?
+
+          pattern = managed_pattern(entry_name)
+          if content.match?(pattern)
+            existing_desc = extract_description(content[pattern].to_s)
+            resolved_desc = description&.to_s&.strip || existing_desc
+            new_line = managed_line(entry_name, scope, byte_count, resolved_desc)
+            next content.sub(pattern) { new_line + $1 }
+          end
+          content.end_with?("\n") ? "#{content}#{new_line}\n" : "#{content}\n#{new_line}\n"
         end
-        pattern = managed_pattern(entry_name)
-        if content.match?(pattern)
-          existing_desc = extract_description(content[pattern].to_s)
-          resolved_desc = description&.to_s&.strip || existing_desc
-          new_line = managed_line(entry_name, scope, byte_count, resolved_desc)
-          updated = content.sub(pattern) { new_line + $1 }
-          File.write(index_path, updated)
-          return true
-        end
-        updated = content.end_with?("\n") ? "#{content}#{new_line}\n" : "#{content}\n#{new_line}\n"
-        File.write(index_path, updated)
         true
       end
       def self.managed_pattern(name)
@@ -49,14 +46,38 @@ module Samagotchi
       def self.remove_index(scope, entry_name)
         index_path = index_path_for(scope)
         return true unless index_path && File.exist?(index_path)
-        content = File.read(index_path)
-        pattern = managed_pattern(entry_name)
-        return true unless content.match?(pattern)
-        updated = content.gsub(pattern, "")
-        # Clean up extra blank lines: collapse 3+ newlines to 2
-        updated = updated.gsub(/\n{3,}/, "\n\n")
-        File.write(index_path, updated)
+        locked_write(File.dirname(index_path)) do |content|
+          pattern = managed_pattern(entry_name)
+          next nil unless content&.match?(pattern)
+          # Clean up extra blank lines: collapse 3+ newlines to 2
+          content.gsub(pattern, "").gsub(/\n{3,}/, "\n\n")
+        end
         true
+      end
+      # Read-modify-write of <dir>/index.md under an exclusive flock on a sidecar
+      # <dir>/.index.lock, so sessions in several worktrees of one repository
+      # (one shared project folder) don't drop each other's lines. Yields the
+      # current content (nil when there is no index.md); the block returns the
+      # new content, or nil to leave the file alone. The dir is not created here:
+      # a missing one raises Errno::ENOENT, as the plain write did.
+      def self.locked_write(dir)
+        index_path = File.join(dir, "#{MEMORY_INDEX}.md")
+        File.open(File.join(dir, LOCK_FILE), File::RDWR | File::CREAT, 0o644) do |lock|
+          lock.flock(File::LOCK_EX)
+          content = File.exist?(index_path) ? File.read(index_path) : nil
+          updated = yield content
+          atomic_write(index_path, updated) unless updated.nil?
+        end
+      end
+      # Write aside and rename, so a reader never sees a half-written file. The
+      # temp name must not end in .md, or it would be listed as a memory. A
+      # symlinked target is replaced by a regular file (accepted).
+      def self.atomic_write(path, body)
+        tmp_path = "#{path}.#{Process.pid}.#{Thread.current.object_id}.tmp"
+        File.write(tmp_path, body)
+        File.rename(tmp_path, path)
+      ensure
+        FileUtils.rm_f(tmp_path) if tmp_path
       end
       def self.managed_line(name, scope, byte_count, description)
         line = "- **#{name}** · #{scope} · #{date_str} · #{byte_count}"

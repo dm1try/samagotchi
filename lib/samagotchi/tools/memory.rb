@@ -161,6 +161,7 @@ module Samagotchi
 
         dir = MemoryRead.memories_dir(resolved_scope)
         FileUtils.mkdir_p(dir)
+        require_relative "../memory_bundle/index_updater"
 
         if current_model_only && model_key
           # Overlays are only read through their base entry (same scope), so an
@@ -172,13 +173,17 @@ module Samagotchi
           end
 
           file_path = File.join(dir, "#{entry_name}.#{model_key}.md")
-          File.write(file_path, body)
+          Samagotchi::MemoryBundle::IndexUpdater.atomic_write(file_path, body)
           bytes = body.bytesize
           return "Model overlay '#{entry_name}' for #{model_key} saved to #{resolved_scope} scope (#{bytes} bytes). File written: #{file_path}"
         end
 
         file_path = File.join(dir, "#{entry_name}.md")
-        File.write(file_path, body)
+        if entry_name == MEMORY_INDEX
+          Samagotchi::MemoryBundle::IndexUpdater.locked_write(dir) { body }
+        else
+          Samagotchi::MemoryBundle::IndexUpdater.atomic_write(file_path, body)
+        end
         bytes = body.bytesize
         message = "Memory '#{entry_name}' saved to #{resolved_scope} scope (#{bytes} bytes). File written: #{file_path}"
 

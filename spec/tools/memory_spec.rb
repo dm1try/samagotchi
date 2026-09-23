@@ -529,4 +529,26 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
       end
     end
   end
+
+  describe "concurrent writers sharing one project folder" do
+    it "keeps every entry's index line when several processes write at once" do
+      names = (1..8).map { |i| "entry_#{i}" }
+      pids = names.map do |name|
+        fork do
+          result = described_class.call("body of #{name}\n" * 50, path: name, scope: "project", description: name)
+          exit!(result.start_with?("Memory ") ? 0 : 1)
+        end
+      end
+      statuses = pids.map { |pid| Process.wait2(pid).last }
+      expect(statuses).to all(be_success)
+
+      index = File.read(File.join(project_memories_dir, "index.md"))
+      expect(index).to start_with("# Memory Index")
+      names.each { |name| expect(index).to match(/^- \*\*#{name}\*\* · project · .* — #{name}$/) }
+      expect(Dir.children(project_memories_dir).grep(/\.tmp\z/)).to be_empty
+      expect(Dir.glob(File.join(project_memories_dir, "*.md")).map { |f| File.basename(f, ".md") })
+        .to match_array(names + ["index"])
+    end
+  end
 end
+
