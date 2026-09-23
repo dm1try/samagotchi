@@ -70,6 +70,11 @@ module Samagotchi
       end
     end
 
+    # @return [Boolean] whether any reminder is registered
+    def any?
+      @mutex.synchronize { !@reminders.empty? }
+    end
+
     # List all active reminders.
     # @return [String] formatted list
     def list

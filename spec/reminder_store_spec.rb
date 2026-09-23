@@ -5,6 +5,16 @@ require "samagotchi/reminder_store"
 RSpec.describe Samagotchi::ReminderStore do
   subject(:store) { described_class.new }
 
+  describe "#any?" do
+    it "tells whether any reminder is registered" do
+      expect(store.any?).to be(false)
+      store.register({ name: "health", description: "Check API", interval_minutes: 5 })
+      expect(store.any?).to be(true)
+      store.cancel("health")
+      expect(store.any?).to be(false)
+    end
+  end
+
   describe "#register" do
     it "registers a reminder and returns confirmation" do
       result = store.register({ name: "health", description: "Check API", interval_minutes: 5 })

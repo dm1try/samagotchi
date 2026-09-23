@@ -1,0 +1,101 @@
+# frozen_string_literal: true
+
+require "spec_helper"
+require "samagotchi/worker_idle_exit"
+require "samagotchi/reminder_store"
+
+RSpec.describe Samagotchi::WorkerIdleExit do
+  let(:now) { [1000.0] }
+  let(:clock) { -> { now.first } }
+  let(:reminders) { Samagotchi::ReminderStore.new }
+  let(:engine) do
+    double("engine", turn_running?: false, last_activity_at: 1000.0, reminder_store: reminders)
+  end
+  let(:bridge) { double("bridge", open_streams: 0, last_client_activity_at: 1000.0) }
+  let(:queued) { [false] }
+
+  def policy(minutes: 1.0, bridge: self.bridge)
+    described_class.new(engine: engine, bridge: bridge, timeout_minutes: minutes,
+                        input_pending: -> { queued.first }, clock: clock)
+  end
+
+  def advance(seconds)
+    now[0] += seconds
+  end
+
+  it "is due once nothing has happened for the timeout" do
+    p = policy
+    advance(59)
+    expect(p.hold).to eq(:recent_activity)
+    advance(1)
+    expect(p.hold).to be_nil
+    expect(p).to be_due
+  end
+
+  it "counts from the worker's start" do
+    advance(3600)
+    p = policy
+    expect(p.hold).to eq(:recent_activity)
+    advance(60)
+    expect(p).to be_due
+  end
+
+  it "counts from the Engine's last activity" do
+    p = policy
+    allow(engine).to receive(:last_activity_at).and_return(1030.0)
+    advance(60)
+    expect(p.hold).to eq(:recent_activity)
+    advance(30)
+    expect(p).to be_due
+  end
+
+  it "counts from the last client request or disconnect" do
+    p = policy
+    allow(bridge).to receive(:last_client_activity_at).and_return(1045.0)
+    advance(60)
+    expect(p.hold).to eq(:recent_activity)
+    advance(45)
+    expect(p).to be_due
+  end
+
+  describe "keeps the worker up" do
+    before { advance(3600) }
+
+    it "while a turn runs" do
+      allow(engine).to receive(:turn_running?).and_return(true)
+      expect(policy(minutes: 0.001).hold).to eq(:turn_running)
+    end
+
+    it "while input is queued" do
+      queued[0] = true
+      expect(policy(minutes: 0.001).hold).to eq(:input_queued)
+    end
+
+    it "while a client holds a stream (an attached TUI or a web tab)" do
+      allow(bridge).to receive(:open_streams).and_return(1)
+      expect(policy(minutes: 0.001).hold).to eq(:client_connected)
+    end
+
+    it "while a reminder is registered" do
+      reminders.register(name: "stretch", description: "Remind me to stretch", interval_minutes: 60)
+      expect(policy(minutes: 0.001).hold).to eq(:reminders)
+    end
+
+    it "for good with a timeout of 0" do
+      expect(policy(minutes: 0).hold).to eq(:disabled)
+      expect(policy(minutes: nil).hold).to eq(:disabled)
+    end
+  end
+
+  it "does without a Bridge (a worker whose Bridge failed to start)" do
+    p = policy(bridge: nil)
+    advance(60)
+    expect(p).to be_due
+  end
+
+  it "reports the idle seconds" do
+    p = policy
+    advance(75)
+    expect(p.idle_seconds).to eq(75.0)
+  end
+end
