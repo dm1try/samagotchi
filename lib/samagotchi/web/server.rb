@@ -12,6 +12,19 @@ module Samagotchi
     #
     # Binds strictly to 127.0.0.1 (localhost-only). Use `bin/chi web` to start.
     class Server
+      # WEBrick logs every exception out of its request loop as an ERROR with
+      # a backtrace, among them a browser dropping a kept-alive connection
+      # (sock.eof? raising ECONNRESET): harmless, so not logged.
+      class Log < WEBrick::Log
+        DROPPED = [Errno::ECONNRESET, Errno::EPIPE, Errno::ECONNABORTED].freeze
+
+        def error(msg)
+          return if DROPPED.any? { |klass| msg.is_a?(klass) }
+
+          super
+        end
+      end
+
       DEFAULT_PORT = 4567
       DEFAULT_HOST = "127.0.0.1"
 
@@ -35,7 +48,7 @@ module Samagotchi
           end
         end
 
-        Rackup::Handler::WEBrick.run(app, Host: host, Port: port, AccessLog: [], Logger: WEBrick::Log.new($stderr, WEBrick::Log::WARN))
+        Rackup::Handler::WEBrick.run(app, Host: host, Port: port, AccessLog: [], Logger: Log.new($stderr, WEBrick::Log::WARN))
       end
 
       def self.resolve_port(port)
