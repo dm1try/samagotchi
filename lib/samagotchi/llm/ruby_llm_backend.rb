@@ -6,6 +6,7 @@ require_relative "../client"
 require_relative "native_tool_normalizer"
 require_relative "../kernel_loop"
 require_relative "../context_window"
+require_relative "../tool_activity"
 
 require "ruby_llm"
 require "json"
@@ -406,7 +407,7 @@ module Samagotchi
       end
 
       def dispatch_one(call, on_stream_event, iteration, call_count, call_index, max_tool_output_chars, tool_activity)
-        params = (@kernel.send(:tool_activity_params, call[:name], call) rescue nil) if @kernel.respond_to?(:tool_activity_params, true)
+        params = ToolActivity.tool_activity_params(call[:name], call)
         emit_stream_event(
           on_stream_event,
           type: :tool_call_started,
@@ -431,11 +432,7 @@ module Samagotchi
                    reason = before_event[:block_reason].to_s.strip
                    reason = "blocked by hook" if reason.empty?
                    synthetic_output = "[#{call[:name]}] Error: blocked by guardrail: #{reason}"
-                   activity = begin
-                                @kernel.send(:tool_activity_event, call[:name], call, synthetic_output).merge(status: "blocked")
-                              rescue StandardError
-                                { action: "blocked", tool: call[:name], params: before_event[:params].to_s, status: "blocked" }
-                              end
+                   activity = ToolActivity.tool_activity_event(call[:name], call, synthetic_output).merge(status: "blocked")
                    { output: synthetic_output, activity: activity }
                  else
                    begin
