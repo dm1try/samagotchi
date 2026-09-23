@@ -16,9 +16,9 @@ button.ghost{background:#22262f;color:#c9d1d9}
 button.danger{background:#da3633}
 button:disabled{opacity:.5;cursor:not-allowed}
 main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:auto;background:#0b0d11;min-height:0}
-#topStrip{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;min-height:88px;align-content:start;transition:opacity 280ms ease, transform 280ms ease}
+#topStrip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) 150px;gap:12px;min-height:88px;align-content:start;transition:opacity 280ms ease, transform 280ms ease}
 #topStrip:empty{display:grid}
-#topStrip.loading, #gridList.loading{opacity:.75}
+#topStrip.loading, #allList.loading{opacity:.75}
 #center{flex:1;display:flex;flex-direction:column;min-height:45vh;background:#151821;border:1px solid #1f232b;border-radius:12px;overflow:hidden}
 #stage{flex:1;display:flex;flex-direction:column;position:relative;min-height:260px;background:#0b0d11;overflow:hidden}
 #firstPeek{display:none;padding:8px 12px;background:#9fddd0;color:#0b0d11;font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -162,12 +162,15 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #empty .brand-start{font-size:clamp(28px,5vw,38px);font-weight:700;letter-spacing:.02em;color:#e6e8eb;padding:0}
 #empty .brand-start span{color:#7aa5ff}
 #empty .brand-start small{display:none}
-#bottomArea{display:flex;flex-direction:column;gap:8px}
-#bottomHead{display:flex;gap:8px;align-items:center}
-#bottomHead input{flex:1;background:#151821;border:1px solid #1f232b;color:#e6e8eb;padding:8px 10px;border-radius:8px}
-#bottomHead .count{font-size:11px;color:#8b949e;white-space:nowrap;min-width:72px;text-align:right;font-variant-numeric:tabular-nums}
-#gridList{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-height:216px;min-height:80px;overflow:auto;padding:2px;transition:opacity 300ms ease}
-#gridList:empty::after{content:"No sessions";color:#8b949e;font-size:13px;padding:12px}
+#allTile{flex-direction:column;justify-content:center;align-items:flex-start;text-align:left;color:#c9d1d9;font-size:13px;font-weight:600;width:100%}
+#allTile .count{font-size:11px;font-weight:400;color:#8b949e}
+#allView{display:none;flex:1;min-height:0;flex-direction:column;gap:12px}
+body.all-view #allView{display:flex}
+body.all-view #center, body.all-view #topStrip{display:none}
+#allHead{display:flex;gap:8px;align-items:center}
+#allHead input{flex:1;min-width:0;background:#151821;border:1px solid #1f232b;color:#e6e8eb;padding:8px 10px;border-radius:8px}
+#allHead .count{font-size:11px;color:#8b949e;white-space:nowrap;font-variant-numeric:tabular-nums}
+#allList{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-content:start;padding:2px}
 .card.skeleton{pointer-events:none;border-style:dashed;opacity:.9;animation:skeleton-pulse 1.2s ease-in-out infinite}
 .card.skeleton .line{height:10px;background:#22262f;border-radius:6px}
 .card.skeleton .line.short{width:42%}
@@ -176,14 +179,14 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .card.skeleton .line.tiny{width:30%;height:8px}
 @keyframes skeleton-pulse{0%,100%{opacity:1}50%{opacity:.55}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-#topStrip:not(.loading) .card, #gridList:not(.loading) .card{animation:fadeIn .28s ease}
+#topStrip:not(.loading) .card, #allList .card{animation:fadeIn .28s ease}
 .card{padding:12px;border-radius:10px;background:#151821;border:1px solid #1f232b;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:72px}
 .card:hover{border-color:#2d333f;background:#1a1f2b}
 .card.active{background:#1b2336;border-color:#223150}
 .card .id{font-family:ui-monospace,monospace;font-size:11px;color:#8b949e}
 .card .preview{font-size:13px;color:#e6e8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #topStrip .card .preview{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#gridList .card .preview{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;word-break:break-word;line-height:1.4}
+#allList .card .preview{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;word-break:break-word;line-height:1.4}
 .card .meta{font-size:11px;color:#8b949e;display:flex;gap:6px;align-items:center}
 .card .status{font-size:11px;padding:2px 6px;border-radius:999px;background:#22262f;color:#8b949e}
 .status.running{background:#1a2e1a;color:#7ee787}
@@ -194,14 +197,14 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .card .owner.worker{background:#1a2e1a;color:#7ee787}
 .card .owner.tui{background:#2e2a1a;color:#e3b341}
 @media(max-width:900px){
-  #topStrip{grid-template-columns:1fr}
-  #gridList{grid-template-columns:1fr;max-height:216px}
+  #topStrip{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:72%;overflow-x:auto;min-height:0}
+  #topStrip #allTile{width:auto}
 }
 @media(max-width:600px){
   #composer .actions-col{width:auto}
   #composer #actionBtn{min-width:72px}
 }
-body.zen #topStrip, body.zen #bottomArea, body.zen #firstPeek{display:none !important}
+body.zen #topStrip, body.zen #firstPeek{display:none !important}
 body.zen #topStrip[style], body.zen #firstPeek[style]{display:none !important}
 body.zen #center{flex:1;min-height:0;overflow:hidden}
 body.zen main{padding:8px;gap:8px;overflow:hidden;min-height:0}
@@ -236,17 +239,18 @@ a{color:#7aa5ff}
       </div>
     </div>
     <div id="infoBar">
-      <div class="info" id="infoText"><div class="idle">No session selected — select one above or type a prompt below to start a new session.</div></div>
+      <div class="info" id="infoText"><div class="idle">No session selected — pick one above, or type a prompt to start a new session.</div></div>
       <button class="danger" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop</button>
       <button class="ghost" id="zenBtn" title="Zen mode (z / Esc)">zen</button>
     </div>
   </section>
-  <section id="bottomArea">
-    <div id="bottomHead">
-      <input id="filter" placeholder="Search… (preview / id / status)">
-      <span class="count" id="count">loading…</span>
+  <section id="allView" aria-label="All sessions">
+    <div id="allHead">
+      <button class="ghost" id="allBack" title="Back to the chat (Esc)">← Back</button>
+      <input id="filter" type="search" placeholder="Search… (preview / id / status)" autocomplete="off">
+      <span class="count" id="count"></span>
     </div>
-    <div id="gridList" class="loading"><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="line long2"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="line long2"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="line long2"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="line long2"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="line long2"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="line long2"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div></div>
+    <div id="allList"></div>
   </section>
 </main>
 <script type="module" src="/assets/app.js"></script>
