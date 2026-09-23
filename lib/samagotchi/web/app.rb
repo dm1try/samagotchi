@@ -13,6 +13,7 @@ require_relative "../session"
 require_relative "../session_manager"
 require_relative "../output_formatter"
 require_relative "../image_store"
+require_relative "../context_note"
 require_relative "markdown_renderer"
 
 module Samagotchi
@@ -804,6 +805,10 @@ module Samagotchi
         Array(msgs).each do |m|
           role = (m[:role] || m["role"]).to_s
           content = (m[:content] || m["content"]).to_s
+          if Samagotchi::ContextNote.note?(m)
+            filtered << { role: "note", content: Samagotchi::ContextNote.text_of(m), label: Samagotchi::ContextNote.label_of(m) }
+            next
+          end
           next if role == "system"
           next if role == "tool_response"
 

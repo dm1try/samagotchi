@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { previewOf, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml } from "../../../lib/samagotchi/web/public/format.js";
+import { previewOf, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml } from "../../../lib/samagotchi/web/public/format.js";
+
+test("noteHtml: who sent the context note, then its text, both escaped", () => {
+  assert.equal(
+    noteHtml({ label: "session 3f2a1c (~/p/<x>)", content: "a <b>\nc" }),
+    '<div class="note-line">note from session 3f2a1c (~/p/&lt;x&gt;)</div><div class="note-text">a &lt;b&gt;\nc</div>',
+  );
+  assert.equal(noteHtml({ content: "x" }), '<div class="note-line">note</div><div class="note-text">x</div>');
+});
 
 test("escapeHtml escapes HTML metacharacters", () => {
   assert.equal(escapeHtml(`<a href="x">&`), "&lt;a href=&quot;x&quot;&gt;&amp;");

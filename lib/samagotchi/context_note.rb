@@ -24,14 +24,33 @@ module Samagotchi
     end
 
     def frame(text, source:, created_at: nil, from_session: nil, from_cwd: nil)
-      from = from_session ? "session #{from_session.to_s[0, 6]}" : source.to_s
-      from += " (#{home_relative(from_cwd)})" if from_session && from_cwd
       time = clock(created_at)
+      from = label(source: source, from_session: from_session, from_cwd: from_cwd)
       "[CONTEXT NOTE from #{from}#{", #{time}" if time}]\n#{text}\n[END NOTE]"
     end
 
+    # Who sent a note: its source, or the sending session and its folder.
+    def label(source:, from_session: nil, from_cwd: nil)
+      return source.to_s unless from_session
+
+      "session #{from_session.to_s[0, 6]}#{" (#{home_relative(from_cwd)})" if from_cwd}"
+    end
+
+    def label_of(message)
+      label(source: fetch(message, :source), from_session: fetch(message, :from_session), from_cwd: fetch(message, :from_cwd))
+    end
+
+    # The note's own text, without its frame.
+    def text_of(message)
+      fetch(message, :content).to_s.sub(/\A\[CONTEXT NOTE[^\n]*\n/, "").sub(/\n\[END NOTE\]\z/, "")
+    end
+
+    def fetch(message, key)
+      message.key?(key) ? message[key] : message[key.to_s]
+    end
+
     def note?(message)
-      (message[:kind] || message["kind"]).to_s == KIND
+      fetch(message, :kind).to_s == KIND
     end
 
     # The conversation with +system_message+ at its head: an old system
@@ -39,7 +58,7 @@ module Samagotchi
     # first turn included) stays and the prompt goes before it.
     def with_system_head(messages, system_message)
       first = messages.first
-      replace = first && (first[:role] || first["role"]).to_s == "system" && !note?(first)
+      replace = first && fetch(first, :role).to_s == "system" && !note?(first)
       [system_message] + (replace ? messages.drop(1) : messages)
     end
 

@@ -27,6 +27,18 @@ RSpec.describe Samagotchi::ContextNote do
     end
   end
 
+  describe ".label and .text_of" do
+    it "names the sender and gives the note's own text back" do
+      message = described_class.message(note_id: "n", text: "line one\nline two", source: "session", created_at: at,
+                                        from_session: "3f2a1c00-aa", from_cwd: "/w/foo")
+
+      expect(described_class.label(source: "slack")).to eq("slack")
+      expect(described_class.label_of(message)).to eq("session 3f2a1c (/w/foo)")
+      expect(described_class.text_of(message)).to eq("line one\nline two")
+      expect(described_class.text_of(message.transform_keys(&:to_s))).to eq("line one\nline two")
+    end
+  end
+
   describe ".note?" do
     it "knows a note by its kind, with symbol or string keys" do
       expect(described_class.note?({ role: "system", kind: "note" })).to be true

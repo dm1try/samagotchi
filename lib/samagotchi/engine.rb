@@ -399,7 +399,8 @@ module Samagotchi
         message = ContextNote.message(**note)
         replace_session_messages(session, Array(session.messages) + [message])
         announce({ type: :context_added, session_id: session.id, note_id: note[:note_id], source: note[:source],
-                   from_session: note[:from_session], from_cwd: note[:from_cwd], text: note[:text],
+                   label: ContextNote.label_of(message), from_session: note[:from_session],
+                   from_cwd: note[:from_cwd], text: note[:text],
                    created_at: note[:created_at] }.compact)
         message
       end

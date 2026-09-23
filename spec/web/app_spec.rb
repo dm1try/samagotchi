@@ -231,6 +231,30 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)["messages"].map { |m| m["content"] }).to eq(["fix:\n    x  = 1", answer])
     end
 
+    it "shows a context note as a note, with who sent it, from a live snapshot or the file" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      note = Samagotchi::ContextNote.message(note_id: "n1", text: "deploy frozen", source: "slack")
+      peer = Samagotchi::ContextNote.message(note_id: "n2", text: "api moved", source: "session",
+                                             from_session: "3f2a1c00-aaaa", from_cwd: "/work/foo")
+      live = { "snapshot" => { "messages" => [
+        { "role" => "system", "content" => "sys" },
+        { "role" => "user", "content" => "hi" },
+        note.transform_keys(&:to_s),
+        { "role" => "system", "content" => "[SYSTEM: REMINDERS DUE]\n  x\n[END REMINDERS]" },
+        peer.transform_keys(&:to_s)
+      ] } }
+      allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+
+      _status, _headers, body = app.call(env_for("/api/sessions/s1"))
+
+      expect(JSON.parse(body.first)["messages"]).to eq([
+        { "role" => "user", "content" => "hi" },
+        { "role" => "note", "content" => "deploy frozen", "label" => "slack" },
+        { "role" => "note", "content" => "api moved", "label" => "session 3f2a1c (/work/foo)" }
+      ])
+      expect(app.send(:messages_for_display, [note])).to eq([{ role: "note", content: "deploy frozen", label: "slack" }])
+    end
+
     it "includes last_event_seq = nil when no bridge is live" do
       manager = FakeResponsesManager.new(responses: %w[one two three])
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)

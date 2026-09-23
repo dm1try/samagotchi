@@ -47,7 +47,7 @@ RSpec.describe Samagotchi::Engine, "context notes" do
       expect(message).to include(role: "system", kind: "note", note_id: note[:note_id], source: "slack")
       expect(message[:content]).to eq("[CONTEXT NOTE from slack, 14:02]\ndeploy frozen\n[END NOTE]")
       added = events.find { |e| e[:type] == :context_added }
-      expect(added).to include(session_id: session.id, note_id: note[:note_id], source: "slack",
+      expect(added).to include(session_id: session.id, note_id: note[:note_id], source: "slack", label: "slack",
                                text: "deploy frozen", created_at: note[:created_at])
     end
 

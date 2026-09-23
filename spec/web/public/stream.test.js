@@ -229,3 +229,20 @@ test("openStream delivers the command and continue-offer events", () => {
 
   assert.deepEqual(seen, ["command_ran", "continue_offered", "continue_resolved"]);
 });
+
+test("openStream hands a context_added (a note joined the conversation) to its handler", () => {
+  let es;
+  const seen = [];
+  openStream("abc", 0, { context_added: (data) => seen.push(data.label) }, {
+    EventSourceImpl: class extends FakeEventSource {
+      constructor(url) {
+        super(url);
+        es = this;
+      }
+    },
+  });
+
+  es.dispatch("context_added", { data: JSON.stringify({ label: "slack", text: "x" }) });
+
+  assert.deepEqual(seen, ["slack"]);
+});
