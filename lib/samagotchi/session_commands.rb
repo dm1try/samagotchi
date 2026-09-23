@@ -161,7 +161,8 @@ module Samagotchi
           lines << "  #{f.what}: #{f.reason}#{" (required: every tool call is denied)" if f.required}"
         end
       end
-      lines << "rules (#{rules.rules.size}):"
+      disabled = rules.rules.count { |rule| rules.disabled?(rule) }
+      lines << "rules (#{rules.rules.size}#{", #{disabled} disabled" if disabled.positive?}):"
       lines << "  (none; add them under guardrails.rules in config.yml, or install a bundle that ships them)" if rules.rules.empty?
       rules.rules.each_with_index do |rule, idx|
         match = [
@@ -169,8 +170,10 @@ module Samagotchi
           ("command /#{rule.command.source}/" if rule.command),
           ("path #{rule.path}" if rule.path)
         ].compact.join(", ")
-        lines << "  #{idx + 1}. #{rule.id}: #{rule.verdict} (#{match}) — #{rule.reason} [#{rule.source}]"
+        off = "disabled (guardrails.disable) — " if rules.disabled?(rule)
+        lines << "  #{idx + 1}. #{rule.id}: #{off}#{rule.verdict} (#{match}) — #{rule.reason} [#{rule.source}]"
       end
+      rules.unmatched_disables.each { |entry| lines << "  guardrails.disable: #{entry} matches no rule" }
       lines << "  core: deny writes to the approval store and installed bundles; ask before editing config.yml or the hooks dir"
       lines << "approvals (#{approvals.size}):"
       lines << "  (none)" if approvals.empty?

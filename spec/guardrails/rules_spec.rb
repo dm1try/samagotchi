@@ -107,6 +107,41 @@ RSpec.describe Samagotchi::Guardrails::Rules do
     end
   end
 
+  describe "disable" do
+    let(:parsed) do
+      described_class.parse([{ "id" => "push", "tool" => "shell", "command" => "push", "verdict" => "ask" },
+                             { "id" => "rm", "tool" => "shell", "command" => "rm", "verdict" => "deny" }], source: "config") +
+        described_class.parse([{ "id" => "rm", "tool" => "shell", "command" => "rm", "verdict" => "ask" }],
+                              source: "bundle guardrails")
+    end
+
+    it "switches off every rule with a plain id, whatever its source" do
+      set = described_class.new(parsed, disable: %w[rm])
+      expect(verdict_for({ name: "execute", content: "rm x" }, set)).to be_allow
+      expect(verdict_for({ name: "execute", content: "push" }, set)).to be_ask
+      expect(set.rules.map { |r| set.disabled?(r) }).to eq([false, true, true])
+    end
+
+    it "switches off only that bundle's rule with bundle:id" do
+      set = described_class.new(parsed, disable: %w[guardrails:rm])
+      v = verdict_for({ name: "execute", content: "rm x" }, set)
+      expect([v.decision, v.source]).to eq([:deny, "config"])
+      expect(set.rules.map { |r| set.disabled?(r) }).to eq([false, false, true])
+    end
+
+    it "names the entries that match no rule" do
+      expect(described_class.new(parsed, disable: %w[rm nope other:rm]).unmatched_disables).to eq(%w[nope other:rm])
+    end
+
+    it "parses a list of ids and rejects anything else" do
+      expect(described_class.parse_disable(nil)).to eq([])
+      expect(described_class.parse_disable(["git-push", "guardrails:rm"])).to eq(%w[git-push guardrails:rm])
+      expect(described_class.parse_disable("git-push")).to eq(%w[git-push])
+      expect { described_class.parse_disable([{ "id" => "x" }]) }.to raise_error(described_class::ParseError, /disable/)
+      expect { described_class.parse_disable([""]) }.to raise_error(described_class::ParseError, /disable/)
+    end
+  end
+
   describe "enabled: false" do
     it "applies no rules and drops a hook's ask, but keeps a deny" do
       set = rules({ id: "all", tool: "shell", verdict: "deny" }, enabled: false)
@@ -170,6 +205,24 @@ RSpec.describe "Engine: YAML guardrail rules from config.yml" do
     v = evaluate(engine, { name: "read", content: "README.md" })
     expect([v.decision, v.rule]).to eq([:deny, "guardrail-load"])
     expect(v.reason).to eq("required guardrail rules in config.yml failed to load: rule typo: unknown key(s) comand")
+  end
+
+  it "reads guardrails.disable" do
+    engine = engine_with(<<~YAML)
+      guardrails:
+        disable: [no-rm]
+        rules:
+          - id: no-rm
+            tool: shell
+            verdict: deny
+    YAML
+    expect(evaluate(engine, { name: "execute", content: "rm x" })).to be_allow
+  end
+
+  it "denies every call when guardrails.disable isn't a list of ids" do
+    engine = nil
+    expect { engine = engine_with("guardrails:\n  disable: {no-rm: true}\n") }.to output(/disable/).to_stderr
+    expect(evaluate(engine, { name: "read", content: "README.md" }).rule).to eq("guardrail-load")
   end
 
   it "reads guardrails.enabled" do

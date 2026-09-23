@@ -660,23 +660,26 @@ module Samagotchi
       [@guardrail_failures, rules.hook_asks, guardrail_protected_paths, rules]
     end
 
-    # The YAML rules: config.yml's `guardrails:` section. One that doesn't
-    # parse is a required load failure (every call is denied).
+    # The YAML rules: config.yml's `guardrails:` section (rules, disable) and
+    # installed bundles'. One that doesn't parse is a required load failure
+    # (every call is denied).
     # @return [Guardrails::Rules]
     def guardrail_rules
       @guardrail_rules ||= begin
         section = Samagotchi::ConfigFile.read_yaml(path: Samagotchi::ConfigFile.global_path)
         section = section["guardrails"] if section.is_a?(Hash)
         rules = []
+        disable = []
         begin
           raise Guardrails::Rules::ParseError, "guardrails must be a mapping" unless section.nil? || section.is_a?(Hash)
 
           rules = Guardrails::Rules.parse(section && section["rules"], source: "config")
+          disable = Guardrails::Rules.parse_disable(section && section["disable"])
         rescue Guardrails::Rules::ParseError => e
           warn "[samagotchi:guardrails] config.yml guardrails rules: #{e.message}"
           @guardrail_failures.add("rules in config.yml", e.message, required: true)
         end
-        Guardrails::Rules.new(rules + bundle_guardrail_rules,
+        Guardrails::Rules.new(rules + bundle_guardrail_rules, disable: disable,
                               enabled: Samagotchi::Config.get("guardrails.enabled") != false)
       end
     end

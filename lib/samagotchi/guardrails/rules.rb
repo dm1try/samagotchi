@@ -13,6 +13,7 @@ module Samagotchi
     #            or "**/…" globs match the absolute path; others the path
     #            relative to the repo root, the cwd outside one)
     # verdict ask|deny, reason, scopes (for an ask; default all).
+    # `guardrails.disable` switches single rules off (#parse_disable).
     # A rule that doesn't parse raises ParseError: the Engine then denies
     # every call (a rule set that silently vanished is what this guards
     # against). Unknown keys are errors for the same reason (a typo).
@@ -115,22 +116,48 @@ module Samagotchi
         scopes
       end
 
+      # config.yml's `guardrails.disable`: rule ids ("git-rebase", any
+      # source) or "<bundle>:<id>" (that bundle's rule only).
+      # @return [Array<String>]
+      def self.parse_disable(value)
+        return [] if value.nil?
+
+        ids = Array(value)
+        unless ids.all? { |id| id.is_a?(String) && !id.strip.empty? }
+          raise ParseError, "disable must be a list of rule ids (id or bundle:id)"
+        end
+
+        ids.map(&:strip)
+      end
+
       attr_reader :rules
 
       # @param rules [Array<Rule>] in order: config first, then bundles by name
       # @param enabled [Boolean] false: no rules, and hooks' asks are dropped
-      def initialize(rules = [], enabled: true)
+      # @param disable [Array<String>] from #parse_disable: rules that don't vote
+      def initialize(rules = [], enabled: true, disable: [])
         @rules = rules
         @enabled = enabled
+        @disable = disable
       end
 
       def enabled? = @enabled
+
+      def disabled?(rule)
+        @disable.any? { |entry| disables?(entry, rule) }
+      end
+
+      # The disable entries no loaded rule has (a typo, or an uninstalled bundle).
+      def unmatched_disables
+        @disable.reject { |entry| @rules.any? { |rule| disables?(entry, rule) } }
+      end
 
       # A core check: every matching rule votes (strictest wins).
       def check(verdict)
         return verdict unless @enabled
 
         @rules.each do |rule|
+          next if disabled?(rule)
           next unless rule.matches?(verdict.targets)
 
           if rule.verdict == :deny
@@ -141,6 +168,12 @@ module Samagotchi
         end
         verdict
       end
+
+      def disables?(entry, rule)
+        bundle, id = entry.include?(":") ? entry.split(":", 2) : [nil, entry]
+        id == rule.id && (bundle.nil? || rule.source == "bundle #{bundle}")
+      end
+      private :disables?
 
       # A core check that runs right after the hooks: with guardrails
       # disabled, a hook's ask is dropped (a deny still applies).

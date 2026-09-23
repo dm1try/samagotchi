@@ -97,9 +97,21 @@ All the fields a rule gives must match. Absolute and `**/` globs match the
 resolved path; other globs match the path relative to the repo root. Paths
 resolve the way the tools resolve them (against the cwd; `~` expanded).
 
+To switch off single rules (a bundle's, say) without editing its files, list
+them under `disable:`. A plain id switches off every rule with that id; `bundle:id`
+only that bundle's:
+
+```yaml
+guardrails:
+  disable: [git-rebase, guardrails:git-push]
+```
+
+`/guardrails` marks them `disabled (guardrails.disable)` and names entries that
+match no rule. `disable:` only removes rules; hooks and the core checks still vote.
+
 Rules load when chi starts (a long-running worker picks up changes after its
 next start). A rule that doesn't parse (an unknown key, a bad regex, no
-verdict) makes chi **deny every tool call** and say why, rather than run
+verdict, a `disable:` that isn't a list of ids) makes chi **deny every tool call** and say why, rather than run
 without it.
 
 ## The guardrails bundle

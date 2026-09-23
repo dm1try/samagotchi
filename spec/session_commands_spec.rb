@@ -306,6 +306,20 @@ RSpec.describe Samagotchi::SessionCommands do
                              "  core: deny writes", "approvals (0):\n  (none)")
     end
 
+    it "lists disabled rules as such, and disable entries that match nothing" do
+      rules = Samagotchi::Guardrails::Rules.parse(
+        [{ "id" => "git-push", "tool" => "shell", "command" => "git push", "verdict" => "ask", "reason" => "publishes" }],
+        source: "bundle guardrails"
+      )
+      engine.instance_variable_set(:@guardrail_rules,
+                                   Samagotchi::Guardrails::Rules.new(rules, disable: %w[guardrails:git-push typo]))
+      out = commands.run("/guardrails").output
+      expect(out).to include("rules (1, 1 disabled):",
+                             "  1. git-push: disabled (guardrails.disable) — ask (tool execute,task_create, command /git push/) " \
+                             "— publishes [bundle guardrails]",
+                             "  guardrails.disable: typo matches no rule")
+    end
+
     it "lists what failed to load" do
       engine.guardrail_failures.add("hook g.rb (config)", "LoadError: x", required: true)
       expect(commands.run("/guardrails").output).to include("failed to load:\n  hook g.rb (config): LoadError: x (required: every tool call is denied)")
