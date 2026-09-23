@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "question_slot"
+
 module Samagotchi
   class TerminalUI
     # An ask_user_question prompt as the terminal shows it: the widget's
@@ -50,6 +52,36 @@ module Samagotchi
         lines
       end
 
+      # The widget as slot content, fitted to the rows it gets (QuestionSlot).
+      # @return [QuestionSlot]
+      def slot(paint: ->(text, _code) { text })
+        first, *rest = question.lines.map(&:chomp)
+        keys = options.each_index.map { |idx| (idx + 1).to_s }
+        QuestionSlot.new(header: approval? ? (header || "Approve tool call?") : header,
+                         question: first.to_s, mark: mark, details: rest,
+                         options: keys.zip(options).map { |key, label| QuestionSlot::Option.new(key, label) },
+                         hint: slot_hint, question_code: approval? ? 33 : 94, paint: paint)
+      end
+
+      # The one line that stays in the scrollback once the question closes:
+      # the question and what became of it.
+      # @param outcome [String] the answer (#answer_text) or what closed it
+      def summary(outcome, paint: ->(text, _code) { text })
+        "#{paint.("#{mark}#{question.lines.first.to_s.chomp}", approval? ? 33 : 94)} → #{outcome}"
+      end
+
+      # @param answer [Answer] an accepted one
+      # @return [String] "Banana", "Apple, Cherry; ripe ones", "Deny: use a PR"
+      def answer_text(answer)
+        picked = answer.selected.to_a
+        if approval?
+          choice = picked.first || options.last
+          return answer.freeform ? "#{choice}: #{answer.freeform}" : choice
+        end
+
+        [picked.join(", "), answer.freeform].reject { |part| part.to_s.empty? }.join("; ")
+      end
+
       # @param raw [String] the typed line, not empty
       # @return [Answer]
       def parse(raw)
@@ -78,6 +110,20 @@ module Samagotchi
       end
 
       private
+
+      def mark = approval? ? "! " : "? "
+
+      def slot_hint
+        if approval?
+          return "1-#{options.size}, y = #{options.first}, n = #{options.last}; add '; reason' to tell the model why; " \
+                 "Enter alone denies"
+        end
+
+        hint = [multi? ? "Select one or more (e.g. 1,3)" : "Select one (e.g. 2)"]
+        hint << "add '; text' for your own answer" if free?
+        hint << "Enter alone cancels"
+        hint.join("; ")
+      end
 
       # The question text is several lines (tool, where, why); shown in the
       # warning colour, with the answers the prompt takes.
