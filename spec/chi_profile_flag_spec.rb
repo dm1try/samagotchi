@@ -13,8 +13,8 @@ RSpec.describe "chi --profile" do
   let(:chi) { File.expand_path("../bin/chi", __dir__) }
 
   # One --non-interactive turn against a fake llama.cpp; returns the prompt
-  # chi sent. The name "spec-model" says neither family, so only the flag
-  # can make it qwen36.
+  # chi sent. The name "spec-model" says neither family and the fake server
+  # has no /props, so without the flag it gets the default, qwen36.
   def sent_prompt(*args)
     server = FakeProviderServer.start
     server.default("/completion", sse: ["data: #{JSON.generate(content: "ok", stop: true)}\n\n"])
@@ -32,10 +32,9 @@ RSpec.describe "chi --profile" do
   end
 
   it "sets the profile for the run, and --model-profile does too" do
-    pending "W1: the Engine resolves the profile (waits for attached slice B)"
-    expect(sent_prompt).not_to include("<|im_start|>")
-    expect(sent_prompt("--profile", "qwen36")).to start_with("<|im_start|>system")
-    expect(sent_prompt("--model-profile", "qwen36")).to start_with("<|im_start|>system")
+    expect(sent_prompt).to start_with("<|im_start|>system")
+    expect(sent_prompt("--profile", "gemma4")).not_to include("<|im_start|>")
+    expect(sent_prompt("--model-profile", "gemma4")).not_to include("<|im_start|>")
   end
 
   it "refuses an unknown profile" do

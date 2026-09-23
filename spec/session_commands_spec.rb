@@ -67,14 +67,14 @@ RSpec.describe Samagotchi::SessionCommands do
       result = commands.run("/model")
 
       expect(result.status).to eq(:ok)
-      expect(result.output).to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma4-small, profile=qwen36)")
+      expect(result.output).to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma4-small, profile=qwen36, name)")
       expect(result.changed).to eq([])
     end
 
     it "switches the Engine's model and saves it on the session" do
       result = commands.run("/model alpha:gemma4-small")
 
-      expect(result.output).to eq("runtime model set to alpha:gemma4-small (profile=gemma4)")
+      expect(result.output).to eq("runtime model set to alpha:gemma4-small (profile=gemma4, name)")
       expect(result.changed).to eq([:model])
       expect(result.model_name).to eq("alpha:gemma4-small")
       expect(engine.effective_model_name).to eq("alpha:gemma4-small")
@@ -83,7 +83,7 @@ RSpec.describe Samagotchi::SessionCommands do
     end
 
     it "resets to the given default on clear" do
-      expect(commands.run("/model clear").output).to eq("runtime model reset to alpha:gemma4-small (profile=gemma4)")
+      expect(commands.run("/model clear").output).to eq("runtime model reset to alpha:gemma4-small (profile=gemma4, name)")
       expect(engine.effective_model_name).to eq("alpha:gemma4-small")
     end
 
@@ -93,7 +93,7 @@ RSpec.describe Samagotchi::SessionCommands do
       commands.run("/model beta:Qwen3-14B --default")
 
       expect(commands.default_model).to eq("beta:Qwen3-14B")
-      expect(commands.run("/model").output).to eq("runtime model: beta:Qwen3-14B (profile=qwen36)")
+      expect(commands.run("/model").output).to eq("runtime model: beta:Qwen3-14B (profile=qwen36, name)")
     end
 
     it "refuses a bad alias before switching" do

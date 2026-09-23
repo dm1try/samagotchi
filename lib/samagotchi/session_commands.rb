@@ -151,9 +151,9 @@ module Samagotchi
     def model_command(input)
       suffix = input.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
-        return ["runtime model: #{model_name} (profile=#{profile_name})", false] if model_name == @default_model
+        return ["runtime model: #{model_name} (profile=#{profile_note})", false] if model_name == @default_model
 
-        return ["runtime model: #{model_name} (default: #{@default_model}, profile=#{profile_name})", false]
+        return ["runtime model: #{model_name} (default: #{@default_model}, profile=#{profile_note})", false]
       end
 
       # Parse flags: --default and --alias <name> / --alias=<name> (tolerant order)
@@ -207,14 +207,14 @@ module Samagotchi
         begin
           previous = ConfigFile.write_model_alias!(alias_name, model_name)
         rescue ArgumentError => e
-          return ["invalid alias: #{e.message} (runtime model set to #{model_name} (profile=#{profile_name}))", true]
+          return ["invalid alias: #{e.message} (runtime model set to #{model_name} (profile=#{profile_note}))", true]
         rescue StandardError => e
-          return ["runtime model set to #{model_name} (profile=#{profile_name}) but failed to persist alias: #{e.message}", true]
+          return ["runtime model set to #{model_name} (profile=#{profile_note}) but failed to persist alias: #{e.message}", true]
         end
 
         key = alias_name.strip.downcase
         warn_prefix = previous ? "warning: overwriting alias '#{key}' (#{previous} -> #{model_name}); " : ""
-        base = persist_default ? "runtime model set to #{model_name} (profile=#{profile_name}) and default updated" : "runtime model set to #{model_name} (profile=#{profile_name})"
+        base = persist_default ? "runtime model set to #{model_name} (profile=#{profile_note}) and default updated" : "runtime model set to #{model_name} (profile=#{profile_note})"
         ["#{warn_prefix}#{base}; alias '#{key}' -> '#{model_name}' persisted", true]
       else
         return ["--default requires a model name: usage /model --default <name> or /model <name> [--default]", false] if arg.empty?
@@ -223,14 +223,14 @@ module Samagotchi
           return ["--default cannot be combined with clear/default/none/off", false] if persist_default
 
           switch_model(@default_model)
-          return ["runtime model reset to #{model_name} (profile=#{profile_name})", true]
+          return ["runtime model reset to #{model_name} (profile=#{profile_note})", true]
         end
 
         switch_model(arg, persist_default: persist_default)
         if persist_default
-          ["runtime model set to #{model_name} (profile=#{profile_name}) and default updated", true]
+          ["runtime model set to #{model_name} (profile=#{profile_note}) and default updated", true]
         else
-          ["runtime model set to #{model_name} (profile=#{profile_name})", true]
+          ["runtime model set to #{model_name} (profile=#{profile_note})", true]
         end
       end
     end
@@ -272,7 +272,11 @@ module Samagotchi
       end
     end
 
-    def profile_name = @engine.profile.name
+    # "qwen36, server (chat_template)": the profile and where it came from.
+    def profile_note
+      resolution = @engine.profile_resolution
+      "#{resolution.profile.name}, #{resolution.label}"
+    end
 
     def models_listing
       registry = @engine.host_registry

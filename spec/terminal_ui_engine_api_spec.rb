@@ -5,6 +5,9 @@ require "samagotchi/terminal_ui"
 # The TUI reaches the Engine only through its public API; these pin the
 # behaviour that used to rely on instance_variable_get/set.
 RSpec.describe "TerminalUI ↔ Engine public API" do
+  # /model and the first turn resolve the prompt profile; no /props probe here.
+  before { allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil) }
+
   let(:registry) do
     Samagotchi::HostRegistry.new(hosts_config: {
       "alpha" => { host: "alpha.test", port: 1111 },
@@ -33,13 +36,13 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
       message = ui.send(:handle_model_command, "/model beta:Qwen3-14B")
 
       engine = engine_of(ui)
-      expect(message).to eq("runtime model set to beta:Qwen3-14B (profile=qwen36)")
+      expect(message).to eq("runtime model set to beta:Qwen3-14B (profile=qwen36, name)")
       expect(engine.effective_model_name).to eq("beta:Qwen3-14B")
       expect(engine.default_model_name).to eq("alpha:gemma4-small")
       expect(engine.client).to be(beta_client)
       expect(kernel_of(ui).client).to be(beta_client)
       expect(engine.profile.name).to eq("qwen36")
-      expect(ui.instance_variable_get(:@profile).name).to eq("qwen36")
+      expect(kernel_of(ui).profile.name).to eq("qwen36")
     end
 
     it "persists the default exactly once with --default" do

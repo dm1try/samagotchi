@@ -446,7 +446,7 @@ RSpec.describe Samagotchi::Worker do
         command_id = JSON.parse(reply.body)["command_id"]
         done = ran(command_id)
         expect(done).to include(client_id: "tui:9", line: "/model", status: "ok", changed: [], model_name: "Gemma-4B-it",
-                                output: "runtime model: Gemma-4B-it (profile=gemma4)")
+                                output: "runtime model: Gemma-4B-it (profile=gemma4, name)")
         queued = seen.find { |e| e[:type] == :command_queued }
         expect(queued).to include(command_id: command_id, client_id: "tui:9", line: "/model")
         expect(queued[:event_seq]).to be < done[:event_seq]

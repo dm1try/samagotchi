@@ -103,7 +103,7 @@ file2.rb")
       )
       kernel = instance_double(Samagotchi::KernelLoop, run: result)
       expect(Samagotchi::KernelLoop).to receive(:new)
-        .with(client: client, verbose: false, log_file: "tmp/custom.log", profile: instance_of(Samagotchi::ModelProfile), no_interrupt: false, reminder_store: instance_of(Samagotchi::ReminderStore))
+        .with(client: client, verbose: false, log_file: "tmp/custom.log", profile: nil, no_interrupt: false, reminder_store: instance_of(Samagotchi::ReminderStore))
         .and_return(kernel)
 
       agent = described_class.new(mode: "assist", prompt: "hi", client: client, log_file: "tmp/custom.log")
@@ -1255,7 +1255,7 @@ file2.rb")
       agent = described_class.new(mode: "assist", client: client)
 
       expect { agent.run }
-        .to output(/runtime model set to Qwen3-14B-Instruct \(profile=qwen36\).*done/m).to_stdout
+        .to output(/runtime model set to Qwen3-14B-Instruct \(profile=qwen36, name\).*done/m).to_stdout
       expect(captured_kwargs[:model]).to eq("Qwen3-14B-Instruct")
     end
 

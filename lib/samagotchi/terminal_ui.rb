@@ -106,8 +106,9 @@ module Samagotchi
         # Re-resolve client after resume may change effective model
         @client = @host_registry.resolve(@effective_model_name).client
       end
-      @profile        = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(bare_model_for(@effective_model_name))
-      @kernel         = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
+      # Only a caller's profile goes in; otherwise the Engine resolves one
+      # for the effective model and hands it to the kernel.
+      @kernel         = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
       @no_default_input = no_default_input
       @non_interactive = non_interactive
       @requested_memories = Array(memories)
@@ -126,7 +127,7 @@ module Samagotchi
         host_registry: @host_registry,
         verbose: verbose,
         log_file: log_file,
-        profile: @profile,
+        profile: profile,
         session_id: session_id,
         no_interrupt: no_interrupt,
         model_name: @default_model_name,
@@ -472,7 +473,6 @@ module Samagotchi
     def sync_model_mirrors
       @effective_model_name = @engine.effective_model_name
       @default_model_name = @commands.default_model
-      @profile = @engine.profile
     end
 
     def status_server_segment
@@ -952,7 +952,7 @@ module Samagotchi
     # Only Qwen streams thinking cleanly enough (explicit close marker) for a
     # reliable turn-preamble extraction; Gemma 4 keeps the raw preview instead.
     def turn_preamble_enabled?
-      @profile&.name == "qwen36" && Samagotchi::Config.get("thinking.turn_preamble") != false
+      @engine.profile.name == "qwen36" && Samagotchi::Config.get("thinking.turn_preamble") != false
     end
 
     def reset_turn_preamble

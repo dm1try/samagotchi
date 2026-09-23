@@ -249,7 +249,7 @@ warns too (the CLI refuses it). The profile is resolved at start and on `/model`
 system prompt stays the same; a server that swaps models between turns goes unnoticed until `/model` or a new chi. If
 `/props` could not be read at start (server down, or 503 while loading), chi asks again before the next turn.
 
-`/stats` shows the profile and its source (`cli`, `env`, `config (models: …)`, `config (hosts.<name>)`,
+`/stats` and `/model` show the profile and its source (`cli`, `env`, `config (models: …)`, `config (hosts.<name>)`,
 `server (chat_template)`, `name`, `default`); `chi self` shows what config says without asking the server. A chat
 host (`api: openai`) formats nothing itself: its profile comes from the name and only strips thought tags.
 
