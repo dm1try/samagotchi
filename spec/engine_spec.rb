@@ -314,6 +314,23 @@ RSpec.describe Samagotchi::Engine do
     end
   end
 
+  describe "context window per turn" do
+    before { allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("") }
+
+    it "drops the cached window before the turn generates (the server may have restarted with another -c)" do
+      calls = []
+      allow(client).to receive(:invalidate_context_window!) { calls << :invalidate }
+      allow(kernel).to receive(:run) do
+        calls << :run
+        Samagotchi::KernelLoop::Result.new(output: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: [])
+      end
+
+      build_engine(profile: "gemma4").run_turn(make_session, "hi")
+
+      expect(calls).to eq(%i[invalidate run])
+    end
+  end
+
   describe "idle recap construction" do
     around do |example|
       saved = ENV.values_at("SAMAGOTCHI_RECAP_BASE_URL", "SAMAGOTCHI_RECAP_MODEL")

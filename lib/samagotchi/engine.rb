@@ -821,6 +821,10 @@ module Samagotchi
       # and drop a recap already in flight: the turn makes it stale.
       set_turn_running(true)
       @recap&.invalidate!
+      # Ask the server for its window again each turn (one short /props GET,
+      # cached across the turn's generations): a restart with another -c
+      # between turns raises no error that would drop the cache.
+      @client.invalidate_context_window! if @client.respond_to?(:invalidate_context_window!)
       # Provide a cancellable controller for this turn (cross-process cancel via file flag)
       effective_controller = cancel_controller || Client::CancellationController.new
       @activity_mutex.synchronize { @active_cancel_controller = effective_controller }
