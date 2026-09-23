@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "uri"
 
 module Samagotchi
   class BridgeClient
@@ -25,12 +26,17 @@ module Samagotchi
 
       # @param client [BridgeClient]
       # @param snapshot [Boolean] join with a snapshot frame rather than a replay
+      # @param client_id [String, nil] names the stream, so the worker can
+      #   tell this client's stream from others' (Bridge#open_streams_except)
       # @param reconnect_delays [Array<Float>] sleeps between failed attempts;
       #   one more failure than there are delays gives up
       # @yieldparam event [Hash] string-keyed event
-      def initialize(client, snapshot: true, reconnect_delays: DEFAULT_RECONNECT_DELAYS, &on_event)
+      def initialize(client, snapshot: true, client_id: nil, reconnect_delays: DEFAULT_RECONNECT_DELAYS, &on_event)
         @client = client
-        @query = snapshot ? "?snapshot=1" : ""
+        params = []
+        params << ["snapshot", "1"] if snapshot
+        params << ["client_id", client_id] if client_id
+        @query = params.empty? ? "" : "?#{URI.encode_www_form(params)}"
         @reconnect_delays = reconnect_delays
         @on_event = on_event
         @last_event_id = nil

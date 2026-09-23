@@ -23,7 +23,8 @@ end
 class SSEClient
   attr_reader :events
 
-  def initialize(port, session_id, last_event_id: nil, snapshot: false)
+  def initialize(port, session_id, last_event_id: nil, snapshot: false, client_id: nil)
+    @client_id = client_id
     @port = port
     @session_id = session_id
     @last_event_id = last_event_id
@@ -39,6 +40,7 @@ class SSEClient
     @socket.binmode
     query = @last_event_id ? "?from_seq=#{@last_event_id}" : ""
     query = "?snapshot=1" if @snapshot
+    query = "#{query.empty? ? "?" : "#{query}&"}client_id=#{URI.encode_www_form_component(@client_id)}" if @client_id
     @socket.write(
       "GET /session/#{@session_id}/stream#{query} HTTP/1.1\r\n" \
       "Host: 127.0.0.1\r\n" \
@@ -555,6 +557,32 @@ RSpec.describe Samagotchi::Bridge do
         client.stop
         # The writer notices the hang-up on its next heartbeat (0.2s here).
         expect(wait_until { @bridge.open_streams.zero? }).to be(true)
+      end
+
+      it "counts the streams of everyone but a given client" do
+        start_bridge
+        own = SSEClient.new(@bridge_port, @session.id, client_id: "tui:1").start
+        @clients << own
+        expect(wait_until { @bridge.open_streams == 1 }).to be(true)
+        expect(@bridge.open_streams_except("tui:1")).to eq(0)
+        expect(@bridge.open_streams_except("tui:2")).to eq(1)
+        expect(@bridge.open_streams_except(nil)).to eq(1)
+
+        # A reconnect overlapping the old stream, and a web tab (no client_id).
+        @clients << SSEClient.new(@bridge_port, @session.id, client_id: "tui:1").start
+        web = SSEClient.new(@bridge_port, @session.id).start
+        @clients << web
+        expect(wait_until { @bridge.open_streams == 3 }).to be(true)
+        expect(@bridge.open_streams_except("tui:1")).to eq(1)
+
+        web.stop
+        expect(wait_until { @bridge.open_streams == 2 }).to be(true)
+        expect(@bridge.open_streams_except("tui:1")).to eq(0)
+
+        own.stop
+        expect(wait_until { @bridge.open_streams == 1 }).to be(true)
+        expect(@bridge.open_streams_except("tui:1")).to eq(0)
+        expect(@bridge.open_streams_except("tui:2")).to eq(1)
       end
 
       it "notes client activity on a request and when a stream closes" do

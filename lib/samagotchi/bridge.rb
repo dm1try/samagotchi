@@ -83,6 +83,9 @@ module Samagotchi
       @stopped = false
       @mutex = Monitor.new
       @open_streams = 0
+      # Open streams by the client_id a stream named (`?client_id=`); web
+      # tabs, through the `chi web` proxy, name none.
+      @streams_by_client = Hash.new(0)
       @last_client_activity_at = monotonic_now
     end
 
@@ -99,6 +102,14 @@ module Samagotchi
     # @return [Integer] SSE streams open now: one per attached TUI or web tab
     def open_streams
       @mutex.synchronize { @open_streams }
+    end
+
+    # Streams held by anyone but +client_id+: a client's own stream (or two,
+    # while it reconnects and the old one isn't noticed dead yet) doesn't
+    # count. A closed stream counts until its next write fails (heartbeat).
+    # @return [Integer]
+    def open_streams_except(client_id)
+      @mutex.synchronize { @open_streams - (client_id ? @streams_by_client[client_id] : 0) }
     end
 
     # Monotonic time of the last request, stream open or stream close. The
@@ -246,7 +257,8 @@ module Samagotchi
           write_json(io, 204, cors, {})
         elsif (m = stream_match(request[:path])) && method == "GET"
           cursor = reconnect_cursor(headers, request[:query])
-          serve_sse(io, m[1], last_event_id: cursor, snapshot: snapshot_requested?(request[:query]))
+          serve_sse(io, m[1], last_event_id: cursor, snapshot: snapshot_requested?(request[:query]),
+                              client_id: stream_client_id(request[:query]))
           break # SSE owns the connection until the client disconnects.
         elsif (m = cancel_match(request[:path])) && method == "POST"
           payload, status, body = handle_cancel(m[1], request[:body])
@@ -293,7 +305,7 @@ module Samagotchi
 
     # Serve an SSE stream. Owns the connection until the client disconnects.
     # The connection thread IS the writer thread: serve! blocks until then.
-    def serve_sse(io, session_id, last_event_id:, snapshot: false)
+    def serve_sse(io, session_id, last_event_id:, snapshot: false, client_id: nil)
       unless own_session?(session_id)
         write_json(io, 404, {}, { error: "unknown_session" })
         return
@@ -312,11 +324,20 @@ module Samagotchi
         bridge: self,
         heartbeat_interval: @heartbeat_interval
       )
-      @mutex.synchronize { @open_streams += 1 }
+      @mutex.synchronize do
+        @open_streams += 1
+        @streams_by_client[client_id] += 1 if client_id
+      end
       begin
         writer.serve!(io)
       ensure
-        @mutex.synchronize { @open_streams -= 1 }
+        @mutex.synchronize do
+          @open_streams -= 1
+          if client_id
+            @streams_by_client[client_id] -= 1
+            @streams_by_client.delete(client_id) unless @streams_by_client[client_id].positive?
+          end
+        end
         note_client_activity
       end
     end
@@ -687,6 +708,16 @@ module Samagotchi
       URI.decode_www_form(query).to_h["snapshot"].to_s == "1"
     rescue StandardError
       false
+    end
+
+    # `?client_id=`: whose stream it is (see #open_streams_except).
+    def stream_client_id(query)
+      return nil unless query
+
+      id = URI.decode_www_form(query).to_h["client_id"].to_s
+      id.empty? ? nil : id
+    rescue StandardError
+      nil
     end
 
     def close_after_request?(headers)

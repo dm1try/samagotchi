@@ -71,6 +71,13 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
       expect(head).not_to include("Last-Event-ID")
     end
 
+    it "names the stream with the client_id it was given" do
+      follow(client_id: "tui:42")
+
+      collect(events, 1)
+      expect(bridge.requests.pop).to start_with("GET /session/s1/stream?snapshot=1&client_id=tui%3A42 HTTP/1.1\r\n")
+    end
+
     it "stops promptly on close while the stream is quiet" do
       follow
       collect(events, 2)
