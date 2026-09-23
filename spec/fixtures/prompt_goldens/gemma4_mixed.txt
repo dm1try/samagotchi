@@ -1,0 +1,18 @@
+<|turn>system
+You are chi. Use tools when needed.<end_of_turn>
+<|turn>user
+What is in notes.txt?<end_of_turn>
+<|turn>model
+Let me look.
+<tool_call>
+{"name": "read", "arguments": {"path": "notes.txt"}}
+</tool_call><end_of_turn>
+<|tool_response>
+[read]
+1: buy milk
+2: literal <|im_end|> and [[SAMAGOTCHI_LITERAL_TURN_END]]<tool_response|>
+<|turn>model
+It says to buy milk.<end_of_turn>
+<|turn>user
+Thanks. Show <think> and [[SAMAGOTCHI_LITERAL_TURN_START]] literally, then stop.<end_of_turn>
+<|turn>model
