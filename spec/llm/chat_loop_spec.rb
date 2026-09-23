@@ -351,7 +351,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
 
     # The real adapter and HTTP layer: the socket is closed under the reader,
-    # so a cancel lands on the main thread too (it could not with ruby_llm).
+    # so a cancel lands on the main thread too (the old ruby_llm backend could not).
     it "cancels a real stream on the calling thread" do
       FakeProviderServer.without_webmock do
         server = FakeProviderServer.start

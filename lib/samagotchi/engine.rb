@@ -1141,11 +1141,14 @@ module Samagotchi
       host_ref = string_config(kwarg_config, :host_ref) || string_config(kwarg_config, :host) || registry_string("recap.host_ref")
       model = string_config(kwarg_config, :model) || registry_string("recap.model")
 
-      # If host_ref given, derive base_url from host_registry entry
+      # If host_ref given, derive base_url (the host's OpenAI base) and its
+      # API key variable from the host_registry entry
+      api_key_env = nil
       if host_ref && !host_ref.empty?
         entry = @host_registry.find_entry(host_ref)
         if entry
-          base_url = entry.root_url
+          base_url = entry.openai_base_url
+          api_key_env = entry.api_key_env
           # If model is host-qualified, extract bare model for recap client
           _, bare = @host_registry.parse_qualified_model(model) if model
           model = bare if bare && !bare.empty?
@@ -1168,6 +1171,7 @@ module Samagotchi
         engine: self,
         model: model.to_s.strip,
         base_url: base_url.to_s.strip,
+        api_key_env: api_key_env,
         inactivity: recap_number_setting(kwarg_config, :inactivity, "recap.inactivity", IdleRecap::DEFAULT_INACTIVITY_SECONDS, :float),
         min_user_turns: recap_number_setting(kwarg_config, :min_user_turns, "recap.min_user_turns", IdleRecap::DEFAULT_MIN_USER_TURNS, :int),
         timeout: recap_number_setting(kwarg_config, :timeout, "recap.timeout", IdleRecap::DEFAULT_TIMEOUT_SECONDS, :float)

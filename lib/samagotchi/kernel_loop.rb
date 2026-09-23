@@ -668,7 +668,7 @@ module Samagotchi
 
     public
 
-    # Public wrapper so other loops (e.g. the ruby_llm backend) can strip
+    # Public wrapper so other loops (e.g. the chat loop) can strip
     # per-profile thought blocks from finished model text without duplicating the
     # Gemma 4 / Qwen 3.6 logic. Mirrors the native loop's "strip before deciding
     # whether the model called a tool / returning the final answer".
@@ -729,7 +729,7 @@ module Samagotchi
     # Public entry point for executing an ALREADY-NORMALIZED internal tool call
     # (the {name:, content:, path:, scope:, …} shape).
     #
-    # Other agentic loops — notably the ruby_llm backend's native tool-round loop
+    # Other agentic loops — notably the chat loop's native tool calls
     # — need to execute tool calls through this single path so tool execution,
     # unknown-tool handling, and activity events are shared, not duplicated. Callers
     # are responsible for normalizing the provider's native call into this shape

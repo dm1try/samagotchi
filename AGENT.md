@@ -34,10 +34,10 @@ and `--resume`. Flag semantics (also in `docs/cli.md`):
   The config.yml `memories:` list is the persistent baseline of preloaded memory
   entries (same name shape as `--memory`); `--memory` values are appended after
   it, deduped.
-- `--backend {native,ruby_llm}` selects the model backend (default: `native`; also
-  `SAMAGOTCHI_BACKEND`). `:native` is the default and well-tested; `:ruby_llm` is
-  the gem-backed path behind `SAMAGOTCHI_BACKEND` (Phase 4). The CLI flag exports
-  `SAMAGOTCHI_BACKEND` and overrides any `config.yml` value.
+- The loop follows the model's host: a host with `api: openai` uses the chat loop
+  (`LLM::ChatLoop` on the `LLM::OpenAIChat` adapter, `/v1/chat/completions`), every
+  other host chi's own raw-prompt loop (`KernelLoop`). `--backend` and
+  `SAMAGOTCHI_BACKEND` are gone (see docs/configuration.md).
 
 ## Core Principles
 - **Memory-Centric**: The harness relies heavily on memory (project/system scopes) for persistent cognition; tools operate on code/memories but the core is not self-modifying.

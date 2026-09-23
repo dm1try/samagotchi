@@ -11,7 +11,7 @@ module Samagotchi
   # reminders and signals the Engine to auto-create a turn when one is due.
   #
   # The store is owned by the Engine and injected into KernelLoop so both
-  # backends (native + ruby_llm) use the same dispatch path for tool calls.
+  # loops (native and chat) use the same dispatch path for tool calls.
   #
   # Reminder lifecycle:
   #   1. Agent calls register_reminder → store adds entry

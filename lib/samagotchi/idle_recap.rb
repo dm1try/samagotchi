@@ -43,7 +43,7 @@ module Samagotchi
       TOOL_CALL_RE = /<\|tool_call>(?:.*?<tool_call\|>|.*\z)|<tool_call>.*?<\/tool_call>|\[\[SAMAGOTCHI_LITERAL_TOOL_CALL_OPEN\]\].*?\[\[SAMAGOTCHI_LITERAL_TOOL_CALL_CLOSE\]\]/m
       # Each dispatched call's output starts with "[name]"; the kernel loop
       # joins one step's outputs into a single tool_response with this
-      # separator, while the ruby_llm backend writes one message per call.
+      # separator, while the chat loop writes one message per call.
       TOOL_OUTPUT_SEPARATOR = "\n\n---\n\n"
       TOOL_OUTPUT_HEADER_RE = /\A\[([\w.:-]+)\]/
 
@@ -131,7 +131,9 @@ module Samagotchi
 
     attr_reader :generation, :inactivity, :min_user_turns
 
-    def initialize(engine:, model:, base_url:,
+    # @param base_url [String] the OpenAI API base the recap asks
+    # @param api_key_env [String, nil] the variable holding its key
+    def initialize(engine:, model:, base_url:, api_key_env: nil,
                    inactivity: DEFAULT_INACTIVITY_SECONDS,
                    min_user_turns: DEFAULT_MIN_USER_TURNS,
                    timeout: DEFAULT_TIMEOUT_SECONDS,
@@ -145,7 +147,7 @@ module Samagotchi
       @inactivity = inactivity
       @min_user_turns = min_user_turns
       @timeout = timeout
-      @client = client || IdleClient.new(model: model, base_url: base_url, timeout: timeout)
+      @client = client || IdleClient.new(model: model, base_url: base_url, api_key_env: api_key_env, timeout: timeout)
       @clock = clock
 
       @mutex = Monitor.new
