@@ -7,6 +7,7 @@ require_relative "native_tool_normalizer"
 require_relative "../kernel_loop"
 require_relative "../context_window"
 require_relative "../tool_activity"
+require_relative "../tool_runner"
 
 require "ruby_llm"
 require "json"
@@ -407,69 +408,16 @@ module Samagotchi
       end
 
       def dispatch_one(call, on_stream_event, iteration, call_count, call_index, max_tool_output_chars, tool_activity)
-        params = ToolActivity.tool_activity_params(call[:name], call)
-        emit_stream_event(
-          on_stream_event,
-          type: :tool_call_started,
-          iteration: iteration,
-          call_count: call_count,
-          call_index: call_index + 1,
-          tool: call[:name],
-          call: call.dup,
-          params: params
-        )
-        # Fire :before_tool_call hook (guardrail veto) via KernelLoop if available.
-        # Only this hook supports veto; event[:blocked]=true with optional :block_reason prevents dispatch.
-        before_event = { type: :before_tool_call, iteration: iteration, call: call.dup, params: params, blocked: false, block_reason: nil }
-        if @kernel && @kernel.respond_to?(:hooks) && @kernel.hooks
-          begin
-            @kernel.send(:fire_hook, :before_tool_call, before_event)
-          rescue StandardError
-            nil
-          end
-        end
-        result = if before_event[:blocked]
-                   reason = before_event[:block_reason].to_s.strip
-                   reason = "blocked by hook" if reason.empty?
-                   synthetic_output = "[#{call[:name]}] Error: blocked by guardrail: #{reason}"
-                   activity = ToolActivity.tool_activity_event(call[:name], call, synthetic_output).merge(status: "blocked")
-                   { output: synthetic_output, activity: activity }
-                 else
-                   begin
-                     @kernel.dispatch_tool_call(before_event[:call] || call)
-                   rescue StandardError => e
-                     # A failing tool is captured as the tool_response output (fed
-                     # back to the model) rather than crashing the loop.
-                     { output: "[#{call[:name]}] Error: #{e.class}: #{e.message}", activity: nil }
-                   end
-                 end
-        activity = result[:activity]
-        tool_activity << activity if activity
-        completed_output = result[:output].to_s
-        output_truncated = false
-        if max_tool_output_chars && completed_output.length > max_tool_output_chars
-          output_truncated = true
-          completed_output = completed_output[0, max_tool_output_chars]
-        end
-        # Fire :after_tool_call hook (after tool execution, before result injection)
-        if @kernel && @kernel.respond_to?(:hooks) && @kernel.hooks
-          after_event = { type: :after_tool_call, iteration: iteration, tool: call[:name], output: completed_output }
-          @kernel.send(:fire_hook, :after_tool_call, after_event) rescue nil
-        end
-        emit_stream_event(
-          on_stream_event,
-          type: :tool_call_completed,
-          iteration: iteration,
-          call_count: call_count,
-          call_index: call_index + 1,
-          tool: call[:name],
-          output: completed_output,
-          output_truncated: output_truncated,
-          activity: activity
-        )
-        # KernelLoop#dispatch already prefixes its output with "[name]", as
-        # the native loop feeds it; the veto and rescue texts above match.
-        completed_output
+        run = tool_runner.run(call, iteration: iteration, call_index: call_index + 1, call_count: call_count,
+                                    on_stream_event: on_stream_event, max_tool_output_chars: max_tool_output_chars)
+        tool_activity << run[:activity] if run[:activity]
+        # The chat loop feeds the model the capped output (native feeds the
+        # full one); unifying the cap is a P2 decision.
+        run[:capped_output]
+      end
+
+      def tool_runner
+        @tool_runner ||= ToolRunner.new(@kernel)
       end
 
       def gem_provider

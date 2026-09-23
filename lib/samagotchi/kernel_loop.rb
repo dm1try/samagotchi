@@ -28,6 +28,7 @@ require_relative "tools/cancel_reminder"
 require_relative "tools/list_reminders"
 require_relative "tools/ask_user_question"
 require_relative "tool_activity"
+require_relative "tool_runner"
 
 module Samagotchi
   # The KernelLoop drives the model ↔ tool interaction cycle.
@@ -281,53 +282,11 @@ module Samagotchi
 
         emit_stream_event(on_stream_event, type: :tool_dispatch_started, iteration: iteration_index + 1, call_count: calls.length)
         results = calls.map.with_index do |call, call_index|
-          emit_stream_event(
-            on_stream_event,
-            type: :tool_call_started,
-            iteration: iteration_index + 1,
-            call_count: calls.length,
-            call_index: call_index + 1,
-            tool: call[:name],
-            call: call.dup,
-            params: ToolActivity.tool_activity_params(call[:name], call)
-          )
-          # Fire :before_tool_call hook (before tool dispatch, can mutate params or veto)
-          # Veto protocol (minimal guardrail): a hook may set event[:blocked]=true with optional
-          # event[:block_reason]="..." to prevent dispatch. Only this hook supports veto; other
-          # hooks ignore :blocked. When blocked, we synthesize an error output without calling dispatch.
-          before_tool_event = { type: :before_tool_call, iteration: iteration_index + 1, call: call.dup, params: ToolActivity.tool_activity_params(call[:name], call), blocked: false, block_reason: nil }
-          fire_hook(:before_tool_call, before_tool_event) if @hooks
-          dispatch_result = if before_tool_event[:blocked]
-                              reason = before_tool_event[:block_reason].to_s.strip
-                              reason = "blocked by hook" if reason.empty?
-                              synthetic = "[#{call[:name]}] Error: blocked by guardrail: #{reason}"
-                              { output: synthetic, activity: ToolActivity.tool_activity_event(call[:name], call, synthetic).merge(status: "blocked") }
-                            else
-                              dispatch(before_tool_event[:call])
-                            end
-          activity = dispatch_result[:activity]
-          tool_activity << activity
-          output_truncated = false
-          completed_output = dispatch_result[:output]
-          if effective_max_tool_output_chars && completed_output.length > effective_max_tool_output_chars
-            output_truncated = true
-            completed_output = completed_output[0, effective_max_tool_output_chars]
-          end
-          # Fire :after_tool_call hook (after tool execution, before result injection)
-          after_tool_event = { type: :after_tool_call, iteration: iteration_index + 1, tool: call[:name], output: completed_output }
-          fire_hook(:after_tool_call, after_tool_event) if @hooks
-          emit_stream_event(
-            on_stream_event,
-            type: :tool_call_completed,
-            iteration: iteration_index + 1,
-            call_count: calls.length,
-            call_index: call_index + 1,
-            tool: call[:name],
-            output: completed_output,
-            output_truncated: output_truncated,
-            activity: activity
-          )
-          dispatch_result[:output]
+          run = tool_runner.run(call, iteration: iteration_index + 1, call_index: call_index + 1,
+                                      call_count: calls.length, on_stream_event: on_stream_event,
+                                      max_tool_output_chars: effective_max_tool_output_chars)
+          tool_activity << run[:activity]
+          run[:output]
         end.join("\n\n---\n\n")
         emit_stream_event(on_stream_event, type: :tool_dispatch_completed, iteration: iteration_index + 1, call_count: calls.length)
         conversation << { role: "tool_response", content: results }
@@ -408,6 +367,10 @@ module Samagotchi
     # Fire a named hook on the registry (if present).
     # Hooks are dispatched synchronously; the event hash is passed by reference
     # so hooks can mutate fields (e.g. :before_tool_call can modify :call).
+    def tool_runner
+      @tool_runner ||= ToolRunner.new(self)
+    end
+
     def fire_hook(name, event)
       return unless @hooks
       @hooks.fire(name, event)
