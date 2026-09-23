@@ -79,12 +79,12 @@ RSpec.describe "Tool call wrapper parity" do
       expect(result.tool_activity).to eq([completed[:activity]])
     end
 
-    it "ruby_llm: today params are nil, after_tool_call never fires, tool_activity stays empty" do
+    it "ruby_llm: params are filled; today after_tool_call never fires and tool_activity stays empty" do
       result, seen = run_chat
       expect(seen).to start_with("[read]\n")
       expect(seen).not_to include("[read]\n[read]")
       expect(seen).to include("hello from the file")
-      expect(started[:params]).to be_nil
+      expect(started[:params]).to start_with(%(path="#{dir[0, 20]}))
       expect(completed[:output]).to eq(seen)
       expect(completed[:activity]).to include(tool: "read", status: "ok")
       expect(fired.map(&:first)).to eq(%i[before_tool_call])

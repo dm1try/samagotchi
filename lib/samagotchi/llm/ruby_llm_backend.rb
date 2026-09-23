@@ -397,6 +397,7 @@ module Samagotchi
       end
 
       def dispatch_one(call, on_stream_event, iteration, call_count, call_index, max_tool_output_chars)
+        params = (@kernel.send(:tool_activity_params, call[:name], call) rescue nil) if @kernel.respond_to?(:tool_activity_params, true)
         emit_stream_event(
           on_stream_event,
           type: :tool_call_started,
@@ -405,14 +406,13 @@ module Samagotchi
           call_index: call_index + 1,
           tool: call[:name],
           call: call.dup,
-          params: nil
+          params: params
         )
         # Fire :before_tool_call hook (guardrail veto) via KernelLoop if available.
         # Only this hook supports veto; event[:blocked]=true with optional :block_reason prevents dispatch.
-        before_event = { type: :before_tool_call, iteration: iteration, call: call.dup, params: nil, blocked: false, block_reason: nil }
+        before_event = { type: :before_tool_call, iteration: iteration, call: call.dup, params: params, blocked: false, block_reason: nil }
         if @kernel && @kernel.respond_to?(:hooks) && @kernel.hooks
           begin
-            before_event[:params] = @kernel.send(:tool_activity_params, call[:name], call) rescue nil
             @kernel.send(:fire_hook, :before_tool_call, before_event)
           rescue StandardError
             nil
