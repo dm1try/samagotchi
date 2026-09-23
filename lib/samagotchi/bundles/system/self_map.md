@@ -5,7 +5,11 @@
   memory dirs, sessions dir, model/host and bundles. Use its source dir; don't hunt via `which`/`gem list`/`find /`.
 - My current session id is in the system prompt; resume with `chi --resume <id>`.
 - Sessions: each is one file, `<sessions dir>/<id>.json`. A `<id>/` dir beside it exists only
-  for background/web workers (input/, output/, pid). List them with `chi sessions list`.
+  for background/web workers (input/, notes/, output/, pid). List them with `chi sessions list`
+  (`--live` for the ones a worker runs now).
+- `[CONTEXT NOTE from …]` messages are context notes (`chi note`, or another session's
+  `send_note`): background, not requests. `list_sessions` + `send_note` tell another session
+  something without starting a turn there; see `docs/sessions.md` "Context notes".
 
 ## Where things live (relative to the source dir)
 - `docs/`: `cli.md` (flags, subcommands, REPL commands), `configuration.md` (config.yml keys,
