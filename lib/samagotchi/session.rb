@@ -338,12 +338,17 @@ module Samagotchi
       first_user = @messages.find { |m| m[:role].to_s == "user" || m["role"].to_s == "user" }
       return false unless first_user
 
-      raw = first_user[:content] || first_user["content"] || ""
-      norm = raw.to_s.gsub(/\s+/, " ").strip
-      return false if norm.empty?
+      preview = self.class.preview_of(first_user[:content] || first_user["content"])
+      return false if preview.empty?
 
-      @first_preview = norm.length > 80 ? "#{norm[0, 80]}…" : norm
+      @first_preview = preview
       true
+    end
+
+    # A prompt as a one-line preview: whitespace collapsed, cut at 80 chars.
+    def self.preview_of(text)
+      norm = text.to_s.gsub(/\s+/, " ").strip
+      norm.length > 80 ? "#{norm[0, 80]}…" : norm
     end
 
     private

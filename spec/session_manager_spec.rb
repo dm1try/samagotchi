@@ -154,6 +154,15 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Process).to have_received(:spawn)
     end
 
+    it "records the first prompt as the preview, before the worker takes it" do
+      allow(Process).to receive(:spawn).and_return(12_345)
+
+      session = described_class.spawn_session(prompt: "  fix the\n  bug " + ("x" * 90), model_name: "gemma4", state_dir: tmpdir)
+
+      loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      expect(loaded.first_preview).to eq("fix the bug #{"x" * 68}…")
+    end
+
     it "hands the worker an idle exit set on the command line" do
       Samagotchi::Config.set_cli_overrides("session.idle_exit_minutes" => "0.5")
       spawned_env = nil

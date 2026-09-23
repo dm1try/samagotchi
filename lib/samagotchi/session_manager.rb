@@ -72,6 +72,9 @@ module Samagotchi
       # the prompts), so the session starts idle.
       session.status = prompt.to_s.strip.empty? ? Session::STATUS_IDLE : Session::STATUS_RUNNING
       session.last_prompt = prompt
+      # The worker takes last_prompt and clears it, and messages are saved at
+      # the turn's end: until then this is the only preview a list has.
+      session.first_preview = Session.preview_of(prompt)
       session_dir = Session.session_dir(session.id, state_dir: sd)
       setup_session_directory(session_dir, session, state_dir: sd)
       spawn_worker_for_session(session, state_dir: sd)
