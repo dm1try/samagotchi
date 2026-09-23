@@ -25,6 +25,7 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `--non-interactive` | Run a single turn then exit the REPL (sets a high iteration cap; implies `--no-interrupt`). Harmless no-op when given without `-p`. |
 | `--resume SESSION_ID` | Load a prior session's history instead of creating a fresh one. |
 | `--shared` | Run the session (new, or `--resume`'s) in a background worker and attach to it. See [Sharing a session](#sharing-a-session). |
+| `--no-shared` | Run the plain REPL for this run, even with `session.shared` on. |
 | `--attach SESSION_ID` | Attach to a session's worker, waking one if it has exited. |
 | `--model NAME` | Use this model for the run (overrides the configured default and a resumed session's model). |
 | `--memory NAME` | Preload a memory entry into the system prompt (repeatable). Merged under the config.yml `memories:` baseline. |
@@ -79,8 +80,9 @@ their widget.
 In an attached terminal, Ctrl-C cancels the running turn (whoever started it),
 and Ctrl-D or `/exit` detaches while the worker keeps running (re-attach with
 `--attach`). `/stats` works; `/model`, `/continue`, `!rollback` and `!commands`
-aren't available in attached mode yet. `--attach`/`--shared` can't be combined
-with `-p`, `--non-interactive`, `--model` or `--memory`. The attached view needs
+aren't available in attached mode yet. `-p` sends its prompt once attached, then
+the terminal stays attached. `--attach`/`--shared` can't be combined with
+`--non-interactive`, `--model` or `--memory`. The attached view needs
 reline 0.6.x to draw around the open prompt; with another version it prints
 plainly. A session the REPL has open can't be shared (`--shared --resume` says so).
 
@@ -89,6 +91,19 @@ for never): no turn running or queued, no UI attached (an open web tab or an
 attached terminal counts, even an idle one) and no reminder registered. The next
 prompt or `--attach` wakes a new worker with the conversation intact; `/stats`
 counters and the last idle recap start over.
+
+**Attached by default.** With `session.shared: true` in the config (or
+`SAMAGOTCHI_SESSION_SHARED=1`; default `false`), plain `bin/chi` runs like
+`bin/chi --shared`: `bin/chi` starts a new session in a worker,
+`bin/chi --resume ID` resumes that session in a worker (or joins the worker that
+already runs it), and `bin/chi -p TEXT` attaches and sends `TEXT`. Some launches
+still use the plain REPL:
+
+- `--no-shared`, for this run.
+- `--non-interactive`, a one-shot with no REPL.
+- `--model`, `--memory`, `--verbose` and `--no-interrupt`, which attached mode
+  can't honor yet. They print a one-line note, e.g.
+  `(session.shared: --model runs in a plain REPL)`.
 
 ### Web Markdown rendering
 

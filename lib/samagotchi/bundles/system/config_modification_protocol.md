@@ -42,6 +42,7 @@ session:
   keep_status: running
   sweep_interval_hours: 24
   idle_exit_minutes: 30   # a background worker nobody uses exits; 0 = never
+  shared: false           # true: plain `chi` runs like `chi --shared` (env SAMAGOTCHI_SESSION_SHARED; no CLI flag, `--no-shared` opts out per run)
 log:
   file: ./tmp/samagotchi.log
   disable: false

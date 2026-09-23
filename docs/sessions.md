@@ -15,6 +15,8 @@ A session is deleted if **expired by age OR overflow by count** (unless `keep_st
 
 **Worker idle exit:** a background worker (Web UI sessions, `--shared`) exits after `SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES` (`session.idle_exit_minutes`, default `30`, `0`=never) with no turn running or queued, no client on its stream (an open web tab or attached terminal keeps it) and no reminder registered. It removes `bridge.json` and frees `owner.lock`; the next prompt or `--attach` wakes a new worker (`WorkerIdleExit`, `SessionManager.run_session_loop`).
 
+**Attached by default:** with `SAMAGOTCHI_SESSION_SHARED=1` (`session.shared`, default `false`), plain `chi` and `chi --resume ID` run their session in a worker and attach to it, as `--shared` does; `--no-shared` opts out for one run (see [CLI: Sharing a session](cli.md#sharing-a-session)).
+
 **Lazy sweep:** automatic prune runs at most once per 24h on `GET /api/sessions` (Web). No background thread or cron. Manual prune is always available.
 
 **CLI:**
