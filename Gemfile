@@ -4,7 +4,7 @@ source "https://rubygems.org"
 
 ruby ">= 3.0"
 
-gem "reline"
+gem "reline", "~> 0.6.3" # the TUI seam uses private LineEditor methods (terminal_ui/reline_seam.rb)
 gem "nokogiri"
 gem "commonmarker"
 gem "ruby_llm"
