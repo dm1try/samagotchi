@@ -91,9 +91,10 @@ module Samagotchi
       raise e
     end
 
-    # Stop the acceptor and release the socket. Does not stop the owning turn.
-    # Joins the acceptor thread so the process can exit cleanly (Ruby waits for
-    # a thread blocked in IO.select at VM shutdown).
+    # Stop the acceptor, release the socket and remove the sidecar, so clients
+    # don't have to find it stale. Does not stop the owning turn. Joins the
+    # acceptor thread so the process can exit cleanly (Ruby waits for a thread
+    # blocked in IO.select at VM shutdown). Safe to call again.
     def stop
       @mutex.synchronize { @stopped = true }
       begin
@@ -106,6 +107,7 @@ module Samagotchi
       @connection_threads.each { |t| t.kill rescue nil }
       @connection_threads.clear
       @accept_thread&.join(2)
+      remove_sidecar
       nil
     end
 
@@ -534,6 +536,17 @@ module Samagotchi
       File.rename(temp, path)
     rescue StandardError => e
       warn "Bridge: failed to write #{SIDECAR_FILE}: #{e.class}: #{e.message}"
+    end
+
+    # Only while it still names this bridge: a racing worker for the same
+    # session may have written its own since.
+    def remove_sidecar
+      path = File.join(session_dir, SIDECAR_FILE)
+      return unless @server && File.file?(path)
+
+      File.unlink(path) if JSON.parse(File.read(path))["port"].to_i == @port
+    rescue StandardError
+      nil
     end
 
     def session_dir

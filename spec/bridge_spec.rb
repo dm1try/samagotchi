@@ -374,6 +374,31 @@ RSpec.describe Samagotchi::Bridge do
       expect(@bridge_port).to be > 0
     end
 
+    describe "#stop" do
+      def sidecar
+        File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
+      end
+
+      it "removes its sidecar" do
+        start_bridge
+        @bridge.stop
+        expect(File.exist?(sidecar)).to be(false)
+      end
+
+      it "keeps a sidecar that another worker's bridge rewrote" do
+        start_bridge
+        File.write(sidecar, JSON.generate("port" => @bridge_port + 1, "session_id" => @session.id))
+        @bridge.stop
+        expect(JSON.parse(File.read(sidecar))["port"]).to eq(@bridge_port + 1)
+      end
+
+      it "can be called twice" do
+        start_bridge
+        @bridge.stop
+        expect { @bridge.stop }.not_to raise_error
+      end
+    end
+
     it "streams every event type with a monotonic event_seq + id (via replay from a cold connect)" do
       start_bridge
       # Drive a turn first so the shared capture observer fills the ring.
