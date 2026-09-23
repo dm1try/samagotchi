@@ -471,6 +471,9 @@ module Samagotchi
 
     HOSTS_KEY = "hosts"
     VALID_TRANSPORTS_FOR_CONFIG = %w[llama_cpp mlx omlx].freeze
+    # How chi talks to a host: a raw-prompt api (also the Client transport) or
+    # openai, the chat loop against <host>/v1.
+    VALID_APIS_FOR_CONFIG = (VALID_TRANSPORTS_FOR_CONFIG + %w[openai]).freeze
     HOST_NAME_RE = /\A[a-z0-9][a-z0-9._-]*\z/i
 
     def hosts_config(env: ENV, path: global_path(env: env))
@@ -505,6 +508,7 @@ module Samagotchi
           host = raw_cfg["host"] || raw_cfg[:host]
           port = raw_cfg["port"] || raw_cfg[:port]
           transport = raw_cfg["transport"] || raw_cfg[:transport]
+          api = raw_cfg["api"] || raw_cfg[:api]
           enabled = raw_cfg.key?("enabled") ? raw_cfg["enabled"] : (raw_cfg.key?(:enabled) ? raw_cfg[:enabled] : true)
           if enabled == false || enabled.to_s.strip.downcase == "false"
             next
@@ -526,7 +530,22 @@ module Samagotchi
             warn "Warning: ignoring hosts entry '#{name}': unknown transport '#{transport_val}'"
             next
           end
-          normalized[lowered] = { name: lowered, host: host, port: port_val, transport: transport_val ? transport_val.to_sym : nil, original_name: name }
+          api_val = api.to_s.strip.downcase
+          if api_val.empty?
+            api_val = nil
+          elsif !VALID_APIS_FOR_CONFIG.include?(api_val)
+            warn "Warning: ignoring hosts entry '#{name}': unknown api '#{api_val}'"
+            next
+          elsif VALID_TRANSPORTS_FOR_CONFIG.include?(api_val)
+            # A raw-prompt api is the transport; a different transport contradicts it.
+            if transport_val && transport_val != api_val
+              warn "Warning: ignoring hosts entry '#{name}': api '#{api_val}' conflicts with transport '#{transport_val}'"
+              next
+            end
+            transport_val = api_val
+          end
+          normalized[lowered] = { name: lowered, host: host, port: port_val, transport: transport_val ? transport_val.to_sym : nil,
+                                  api: api_val&.to_sym, original_name: name }
         end
       end
 
@@ -622,7 +641,9 @@ module Samagotchi
       # include when hosts file exists with hosts: section or when workers need propagation
       return nil if hosts.nil? || hosts.empty?
       # Serialize to JSON with string keys
-      simple = hosts.transform_values { |v| { "host" => v[:host], "port" => v[:port], "transport" => v[:transport]&.to_s } }
+      simple = hosts.transform_values do |v|
+        { "host" => v[:host], "port" => v[:port], "transport" => v[:transport]&.to_s, "api" => v[:api]&.to_s }.compact
+      end
       JSON.generate(simple)
     rescue StandardError
       nil

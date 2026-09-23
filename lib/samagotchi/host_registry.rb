@@ -17,7 +17,11 @@ module Samagotchi
     CACHE_TTL_SECONDS = 60
     LIST_TIMEOUT_SECONDS = 3
 
-    HostEntry = Struct.new(:name, :host, :port, :transport, :client, keyword_init: true) do
+    HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, keyword_init: true) do
+      # Talks the OpenAI chat API (the chat loop); nil and raw apis use the
+      # raw-prompt loop.
+      def chat? = api == :openai
+
       # The server root, e.g. for llama.cpp's own endpoints and recap.
       def root_url = "http://#{host}:#{port}"
 
@@ -44,7 +48,8 @@ module Samagotchi
         # cfg: {name:, host:, port:, transport:, original_name:}
         transport = cfg[:transport]
         client = Client.new(host: cfg[:host], port: cfg[:port], transport: transport)
-        entry = HostEntry.new(name: key.to_s.downcase, host: cfg[:host], port: cfg[:port].to_i, transport: transport, client: client)
+        entry = HostEntry.new(name: key.to_s.downcase, host: cfg[:host], port: cfg[:port].to_i, transport: transport, client: client,
+                              api: cfg[:api]&.to_sym)
         @entries[entry.name] = entry
       end
       # Fallback single entry (should already be synthesized by hosts_config, but guard)
