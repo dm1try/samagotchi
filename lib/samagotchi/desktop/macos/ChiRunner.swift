@@ -30,12 +30,21 @@ enum ChiError: Error, CustomStringConvertible {
   }
 }
 
-/// One live session from `chi sessions list --live --format json`.
+/// One session from `chi sessions list --format json`: a live one, or a
+/// recent stopped one (listed below the live ones; a message wakes it).
 struct LiveSession: Decodable, Identifiable, Equatable {
   let id: String
   let desc: String?
   let cwd: String?
   let busy: Bool?
+  let owner: String?
+  let updatedAt: String?
+  var recent = false
+
+  enum CodingKeys: String, CodingKey {
+    case id, desc, cwd, busy, owner
+    case updatedAt = "updated_at"
+  }
 
   /// Only UUID-shaped ids go into chi's argv, so nothing can turn into a flag.
   var valid: Bool { UUID(uuidString: id) != nil }
@@ -44,6 +53,22 @@ struct LiveSession: Decodable, Identifiable, Equatable {
     guard let cwd else { return "" }
     let home = NSHomeDirectory()
     return cwd.hasPrefix(home) ? "~" + cwd.dropFirst(home.count) : cwd
+  }
+
+  /// "just now", "5m ago", "2h ago", "yesterday", "3d ago", or "".
+  func age(now: Date = Date()) -> String {
+    guard let updatedAt else { return "" }
+    let precise = ISO8601DateFormatter()
+    precise.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    guard let date = precise.date(from: updatedAt) ?? ISO8601DateFormatter().date(from: updatedAt) else { return "" }
+    let seconds = max(0, now.timeIntervalSince(date))
+    switch seconds {
+    case ..<60: return "just now"
+    case ..<3600: return "\(Int(seconds / 60))m ago"
+    case ..<86_400: return "\(Int(seconds / 3600))h ago"
+    case ..<172_800: return "yesterday"
+    default: return "\(Int(seconds / 86_400))d ago"
+    }
   }
 }
 
@@ -138,8 +163,25 @@ final class ChiRunner {
     }
   }
 
-  func liveSessions(completion: @escaping (Result<[LiveSession], ChiError>) -> Void) {
-    run(["sessions", "list", "--live", "--format", "json"]) { result in
+  /// The live sessions, then up to +recentCount+ stopped ones, newest
+  /// first. A session a chi REPL holds is in neither: it takes no notes or
+  /// messages. A failed second call just leaves "recent" empty.
+  func sessions(recentCount: Int = 3, completion: @escaping (Result<[LiveSession], ChiError>) -> Void) {
+    list(["--live"]) { result in
+      guard case .success(let live) = result else { completion(result); return }
+      self.list(["--limit", "20"]) { recent in
+        let liveIds = Set(live.map(\.id))
+        let stopped = ((try? recent.get()) ?? [])
+          .filter { $0.owner == nil && !liveIds.contains($0.id) }
+          .prefix(recentCount)
+          .map { session -> LiveSession in var session = session; session.recent = true; return session }
+        completion(.success(live + stopped))
+      }
+    }
+  }
+
+  private func list(_ flags: [String], completion: @escaping (Result<[LiveSession], ChiError>) -> Void) {
+    run(["sessions", "list"] + flags + ["--format", "json"]) { result in
       switch result {
       case .failure(let error): completion(.failure(error))
       case .success(let r):
