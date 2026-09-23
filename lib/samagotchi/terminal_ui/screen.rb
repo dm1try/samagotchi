@@ -3,6 +3,7 @@
 require "io/console"
 require "monitor"
 require "reline"
+require "stringio"
 require_relative "surface"
 
 module Samagotchi
@@ -132,13 +133,88 @@ module Samagotchi
         synchronize { frame }
       end
 
-      # Erase the region and leave the cursor where it began.
+      # Take over what else writes to the terminal while the screen is on:
+      # $stderr (warnings from background threads would cross the region)
+      # and SIGWINCH outside a read (Reline traps it only during one, and
+      # chains to this trap then). #close gives both back.
+      # @return [self]
+      def start
+        @stderr_was = $stderr
+        $stderr = ErrorOutput.new(self)
+        # A trap handler can't take the lock: redraw from a thread.
+        @winch_was = Signal.trap("WINCH") { Thread.new { redraw } }
+        self
+      rescue ArgumentError
+        self # no SIGWINCH on this platform
+      end
+
+      # Erase the region and leave the cursor where it began; put back what
+      # #start took over.
       def close
+        if @stderr_was
+          $stderr.flush
+          $stderr = @stderr_was
+          @stderr_was = nil
+        end
+        Signal.trap("WINCH", @winch_was) if @winch_was
+        @winch_was = nil
         synchronize do
           @slots.clear
           @editor = []
           frame
         end
+      end
+
+      # $stderr while a Screen is on: each line written goes above the region
+      # as committed output. A line without its newline waits for the rest.
+      class ErrorOutput
+        def initialize(screen)
+          @screen = screen
+          @pending = +""
+          @lock = Mutex.new
+        end
+
+        def write(*parts)
+          text = parts.join
+          lines = @lock.synchronize do
+            @pending << text
+            *done, @pending = @pending.split("\n", -1)
+            @pending = +@pending.to_s
+            done
+          end
+          lines.each { |line| @screen.commit(line) }
+          text.bytesize
+        end
+
+        def print(*parts)
+          write(*parts)
+          nil
+        end
+
+        def puts(*items)
+          io = StringIO.new
+          io.puts(*items)
+          write(io.string)
+          nil
+        end
+
+        def <<(item)
+          write(item)
+          self
+        end
+
+        # Commit a line still waiting for its newline.
+        def flush
+          line = @lock.synchronize { @pending.empty? ? nil : @pending.dup.tap { @pending.clear } }
+          @screen.commit(line) if line
+          self
+        end
+
+        def sync = true
+        def sync=(_value); end
+        def tty? = false
+        alias isatty tty?
+        def fileno = nil
       end
 
       private

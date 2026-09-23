@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "open3"
+require "stringio"
 require "samagotchi/session_manager"
 require "samagotchi/terminal_ui/attach_launcher"
 
@@ -93,10 +94,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 end
 
 RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".open_surface" do
-  let(:tty) { instance_double(IO, tty?: true) }
-  let(:pipe) { instance_double(IO, tty?: false) }
+  let(:tty) { StringIO.new.tap { |io| io.define_singleton_method(:tty?) { true } } }
+  let(:pipe) { StringIO.new }
 
-  after { Samagotchi::TerminalUI::RelineSeam.detach(Samagotchi::TerminalUI::RelineSeam.screen) }
+  after do
+    screen = Samagotchi::TerminalUI::RelineSeam.screen
+    described_class.close_surface(screen) if screen
+  end
 
   before { allow(Reline).to receive(:ambiguous_width).and_return(1) }
 
@@ -128,14 +132,15 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".open_surface" do
     expect(surface).to be_a(Samagotchi::TerminalUI::PlainSurface)
   end
 
-  it "hands Reline its own drawing back when the surface closes" do
+  it "hands Reline its own drawing and $stderr back when the surface closes" do
+    stderr = $stderr
     surface = described_class.open_surface(out: tty, input: tty, env: { "TERM" => "xterm" })
-    allow(surface).to receive(:close)
+    expect($stderr).to be_a(Samagotchi::TerminalUI::Screen::ErrorOutput)
 
     described_class.close_surface(surface)
 
     expect(Samagotchi::TerminalUI::RelineSeam.screen).to be_nil
-    expect(surface).to have_received(:close)
+    expect($stderr).to be(stderr)
   end
 end
 

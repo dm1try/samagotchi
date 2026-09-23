@@ -40,7 +40,7 @@ module Samagotchi
       def open_surface(out: $stdout, input: $stdin, env: ENV)
         return PlainSurface.new(out: out) unless live_region?(out: out, input: input, env: env)
 
-        screen = Screen.new(out: out)
+        screen = Screen.new(out: out).start
         RelineSeam.attach(screen)
         screen
       end

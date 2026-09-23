@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "stringio"
+require "timeout"
 require "samagotchi/terminal_ui/screen"
 require_relative "../support/virtual_terminal"
 
@@ -177,6 +178,52 @@ RSpec.describe Samagotchi::TerminalUI::Screen do
 
     expect(term.lines).to eq(["kept"])
     expect(cursor).to eq([1, 0])
+  end
+
+  describe "#start" do
+    around do |example|
+      stderr = $stderr
+      winch = Signal.trap("WINCH", "DEFAULT")
+      Signal.trap("WINCH", winch)
+      example.run
+    ensure
+      $stderr = stderr
+      Signal.trap("WINCH", winch)
+    end
+
+    it "puts what background threads warn above the region" do
+      screen.start
+      screen.set_slot(:status, ["ctx 12%"])
+      screen.draw_editor([prompt_row("> ", "typing")], 8, 0)
+
+      Thread.new { warn "[hook] slow" }.join
+      $stderr.print("no newline yet")
+      expect(term.lines).to eq(["[hook] slow", "> typing", "ctx 12%"])
+
+      screen.close
+      expect(term.lines).to eq(["[hook] slow", "no newline yet"])
+    end
+
+    it "gives $stderr and the WINCH trap back on close" do
+      stderr = $stderr
+      screen.start
+      screen.close
+
+      expect($stderr).to be(stderr)
+      expect(Signal.trap("WINCH", "DEFAULT")).not_to be_a(Proc)
+    end
+
+    it "redraws the region when the terminal is resized outside a read" do
+      screen.start
+      screen.set_slot(:status, ["ctx 12%"])
+      redrawn = Queue.new
+      allow(screen).to receive(:redraw).and_wrap_original { |original| original.call.tap { redrawn << true } }
+
+      Process.kill("WINCH", Process.pid)
+
+      expect(Timeout.timeout(2) { redrawn.pop }).to be(true)
+      screen.close
+    end
   end
 
   it "wraps each frame in synchronized output with the cursor hidden" do
