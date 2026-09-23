@@ -199,11 +199,45 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
         .to raise_error(Samagotchi::LLM::ProtocolError, /no stream events.*\{not json/)
     end
 
-    it "raises the server's mid-stream error" do
-      server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("stream_error.hand-written.sse"))
+    it "raises the server's mid-stream error once the retries run out" do
+      server.default("/v1/chat/completions", sse: FakeProviderServer.fixture("stream_error.hand-written.sse"))
 
       expect { adapter.chat(messages: messages, tools: [], model: "m") }
-        .to raise_error(Samagotchi::LLM::ServerError, /slot unavailable/)
+        .to raise_error(Samagotchi::LLM::ServerError, /slot unavailable/) { |error| expect(error.attempts).to eq(2) }
+    end
+
+    it "retries an upstream error sent as the first event of a 200 (OpenRouter), then answers" do
+      replay("openrouter_stream_error_503.hand-written.sse")
+      replay("text_stream.sse")
+      retries = []
+
+      response = adapter.chat(messages: messages, tools: [], model: "m", on_retry: ->(**event) { retries << event })
+
+      expect(response.text).to eq("PONG")
+      expect(retries.map { |event| event[:error_class] }).to eq(["Samagotchi::LLM::ServerError"])
+      expect(server.requests.size).to eq(2)
+    end
+
+    it "retries an in-stream 429 as a rate limit" do
+      server.enqueue("/v1/chat/completions", sse: "data: {\"choices\":[],\"error\":{\"code\":429,\"message\":\"slow down\"}}\n\n")
+      replay("text_stream.sse")
+      retries = []
+
+      adapter.chat(messages: messages, tools: [], model: "m", on_retry: ->(**event) { retries << event })
+
+      expect(retries.map { |event| event[:error_class] }).to eq(["Samagotchi::LLM::RateLimited"])
+    end
+
+    it "does not retry an error that follows streamed text; the retry would repeat it" do
+      text = FakeProviderServer.sse_events(FakeProviderServer.fixture("text_stream.sse"))
+                               .find { |event| event.include?('"content":"P') }
+      server.default("/v1/chat/completions", sse: [text, "data: {\"choices\":[],\"error\":{\"code\":503,\"message\":\"gone\"}}\n\n"])
+      deltas = []
+
+      expect { adapter.chat(messages: messages, tools: [], model: "m", on_delta: ->(content:, **) { deltas << content }) }
+        .to raise_error(Samagotchi::LLM::ServerError, /gone/) { |error| expect(error.attempts).to eq(1) }
+      expect(deltas.join).not_to be_empty
+      expect(server.requests.size).to eq(1)
     end
 
     it "cancels a stream in flight" do

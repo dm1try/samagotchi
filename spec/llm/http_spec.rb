@@ -210,17 +210,63 @@ RSpec.describe Samagotchi::LLM::HTTP do
       expect(server.requests.size).to eq(1)
     end
 
-    it "does not retry a stream that already sent lines; the drop fails as a connection error" do
+    it "does not retry a stream whose lines the caller showed; the drop fails as a connection error" do
       server.default("/v1/chat/completions", sse: ["data: 1\n\n"], drop: true)
       lines = []
 
-      expect { http.stream_lines(uri, post_request) { |line| lines << line } }
+      expect {
+        http.stream_lines(uri, post_request) do |line, shown|
+          lines << line
+          shown.call
+        end
+      }
         .to raise_error(Samagotchi::LLM::RetryExhausted) { |error|
           expect(error).to be_a(Samagotchi::LLM::ConnectionError)
           expect(error.attempts).to eq(1)
           expect(error.kind).to eq(:connection)
         }
       expect(lines.first).to eq("data: 1")
+      expect(server.requests.size).to eq(1)
+    end
+
+    it "retries a drop when the caller showed none of the lines yet" do
+      server.enqueue("/v1/chat/completions", sse: [": PROCESSING\n\n", "data: role only\n\n"], drop: true)
+      server.enqueue("/v1/chat/completions", sse: "data: ok\n\n")
+      lines = []
+
+      http.stream_lines(uri, post_request) { |line| lines << line }
+
+      expect(lines.reject(&:empty?).last).to eq("data: ok")
+      expect(server.requests.size).to eq(2)
+    end
+
+    it "retries an error line raised before anything was shown, by its kind" do
+      server.enqueue("/v1/chat/completions", sse: "data: {\"choices\":[],\"error\":{\"code\":429,\"message\":\"busy\"}}\n\n")
+      server.enqueue("/v1/chat/completions", sse: "data: ok\n\n")
+      retries = []
+
+      http.stream_lines(uri, post_request, on_retry: ->(**event) { retries << event }) do |line, shown|
+        error = described_class.sse_error(line, host: "fake")
+        raise error if error
+
+        shown.call unless line.empty?
+      end
+
+      expect(retries.map { |event| event[:error_class] }).to eq(["Samagotchi::LLM::RateLimited"])
+      expect(server.requests.size).to eq(2)
+    end
+
+    it "does not retry an error line after the caller showed a line" do
+      server.default("/v1/chat/completions", sse: "data: hi\n\ndata: {\"error\":{\"code\":503,\"message\":\"gone\"}}\n\n")
+
+      expect {
+        http.stream_lines(uri, post_request) do |line, shown|
+          error = described_class.sse_error(line, host: "fake")
+          raise error if error
+
+          shown.call unless line.empty?
+        end
+      }.to raise_error(Samagotchi::LLM::ServerError, /gone/) { |error| expect(error.attempts).to eq(1) }
       expect(server.requests.size).to eq(1)
     end
 

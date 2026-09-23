@@ -178,11 +178,12 @@ module Samagotchi
         on_retry&.call(**event)
       end
       @http.stream_lines(uri, request, cancel_controller: cancel_controller, on_retry: reset_on_retry,
-                                       on_network_error: ->(_error) { invalidate_context_window! }) do |line|
+                                       on_network_error: ->(_error) { invalidate_context_window! }) do |line, shown|
         parsed_chunk = parse_stream_line(line)
         next unless parsed_chunk
 
         content, payload = parsed_chunk
+        shown.call unless content.to_s.empty?
         result << content
         on_chunk&.call(content: content, payload: payload)
       end

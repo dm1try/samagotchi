@@ -90,13 +90,19 @@ module Samagotchi
         assembly = Assembly.new
         events = 0
         other = +""
-        @http.stream_lines(URI(request.uri.to_s), request, cancel_controller: cancel_controller, on_retry: on_retry) do |line|
+        # A retry streams the answer from the start again.
+        restart = lambda do |**event|
+          assembly = Assembly.new
+          on_retry&.call(**event)
+        end
+        @http.stream_lines(URI(request.uri.to_s), request, cancel_controller: cancel_controller, on_retry: restart) do |line, shown|
           events += 1 if line.start_with?("data:")
           other << line[0, 200] if !line.start_with?("data:") && other.length < 200
           payload = parse_line(line)
           next unless payload
 
           content, reasoning = assembly.add(payload)
+          shown.call if !content.empty? || !reasoning.empty? || Assembly.tool_call_delta?(payload)
           on_delta&.call(content: content, reasoning: reasoning, payload: payload)
         end
         # A server that ignores stream: true, or answers with something else
@@ -290,6 +296,12 @@ module Samagotchi
       # Streamed deltas put together: text, reasoning, tool calls by index,
       # the finish reason and the usage chunk.
       class Assembly
+        # The chunk carries part of a tool call.
+        def self.tool_call_delta?(payload)
+          choice = payload["choices"].is_a?(Array) ? payload["choices"].first : nil
+          choice.is_a?(Hash) && choice["delta"].is_a?(Hash) && !Array(choice["delta"]["tool_calls"]).empty?
+        end
+
         def initialize
           @text = +""
           @reasoning = +""

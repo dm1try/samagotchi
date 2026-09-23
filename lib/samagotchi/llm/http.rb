@@ -102,11 +102,16 @@ module Samagotchi
       end
 
       # Send +request+ and yield each line of the streamed body (stripped,
-      # blank lines included) as it arrives. An error status raises its
-      # ProviderError. Network errors and retryable statuses retry the request
-      # per the retry policy (a Retry-After wins over the backoff), unless a
-      # line was already yielded: the caller has shown it, and a retry would
-      # repeat it. Any other error is raised as is.
+      # blank lines included) as it arrives, with a +shown+ proc. An error
+      # status raises its ProviderError. Network errors and retryable errors
+      # (a status, or a ProviderError the block raises for an error line)
+      # retry the request per the retry policy (a Retry-After wins over the
+      # backoff), unless the block called +shown+: it passed something on
+      # (text, a tool call), and a retry would repeat it. Lines it only
+      # skipped (SSE comments, a role-only chunk, an error event) don't count,
+      # so an upstream failure a provider sends as the first event of a 200
+      # is retried like the same failure as a status. Any other error is
+      # raised as is.
       #
       # @param on_retry [Proc, nil] called before each backoff wait with
       #   attempt:, max_retries:, next_delay:, error_class:, error_message:
@@ -116,6 +121,7 @@ module Samagotchi
       # @raise [ProviderError] for an error status
       def stream_lines(uri, request, cancel_controller: nil, on_retry: nil, on_network_error: nil, &on_line)
         with_retries(cancel_controller, on_retry, on_network_error) do |current|
+          shown = -> { current[:streamed] = true }
           start(uri) do |http|
             current[:http] = http
             http.request(request) do |response|
@@ -124,13 +130,11 @@ module Samagotchi
               response.read_body do |chunk|
                 buffer << chunk
                 while (newline_index = buffer.index("\n"))
-                  line = buffer.slice!(0, newline_index + 1).strip
-                  current[:streamed] = true unless line.empty?
-                  on_line.call(line)
+                  on_line.call(buffer.slice!(0, newline_index + 1).strip, shown)
                 end
               end
               # A body that doesn't end in a newline still has a last line.
-              on_line.call(buffer.strip) unless buffer.strip.empty?
+              on_line.call(buffer.strip, shown) unless buffer.strip.empty?
             end
           end
         end

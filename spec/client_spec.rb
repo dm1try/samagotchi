@@ -718,6 +718,14 @@ describe "server errors" do
     expect(server.requests.size).to eq(1)
   end
 
+  it "retries an error event sent before any content, then answers" do
+    server.enqueue("/completion", sse: "error: {\"code\":503,\"message\":\"loading model\",\"type\":\"unavailable_error\"}\n\n")
+    server.enqueue("/completion", sse: "data: {\"content\":\"Hi\"}\n\ndata: {\"content\":\"\",\"stop\":true}\n\n")
+
+    expect(client.complete("prompt")).to eq("Hi")
+    expect(server.requests.size).to eq(2)
+  end
+
   it "raises AuthError when listing models is refused" do
     server.default("/models", status: 401, json: FakeProviderServer.fixture("error_401.hand-written.json"))
 
