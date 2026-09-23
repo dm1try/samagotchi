@@ -2170,7 +2170,7 @@ module Samagotchi
       lines = idle_status_lines
       return if lines.empty?
 
-      lines.each { |line| $stdout.puts line }
+      @surface.set_slot(:status, lines)
     end
 
     # ── Idle session recap ───────────────────────────────────────────────────
