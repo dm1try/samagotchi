@@ -687,6 +687,42 @@ end
     expect(screen.slots[:notes].first).to eq("? The turn ran out of iterations. Continue it?")
   end
 
+  describe "context notes" do
+    let(:note) { Samagotchi::ContextNote.message(note_id: "n1", text: "deploy frozen", source: "slack") }
+
+    # This group has already joined: a join header needs a fresh UI.
+    def join_fresh(messages)
+      other = described_class.new(client: client, screen: screen, client_id: "tui:2")
+      other.handle_event(JSON.parse(JSON.generate(joined.tap { |event| event[:snapshot][:messages] = messages })))
+    end
+
+    it "shows a note as one line: who sent it and its first line" do
+      feed({ type: :context_added, label: "slack", text: "deploy frozen" },
+           { type: :context_added, label: "session 3f2a1c (~/w/foo)", text: "api moved\nsee the wiki" },
+           { type: :context_added, label: "cli", text: "x" * 100 },
+           { type: :context_added, label: "cli", text: "#{"y" * 100}\nmore" })
+
+      expect(screen.lines).to eq(["note from slack: deploy frozen",
+                                  "note from session 3f2a1c (~/w/foo): api moved …",
+                                  "note from cli: #{"x" * 59}…",
+                                  "note from cli: #{"y" * 59}…"])
+    end
+
+    it "shows on join the notes that came after the last exchange, not older ones" do
+      old = Samagotchi::ContextNote.message(note_id: "n0", text: "old news", source: "cli")
+      join_fresh([{ role: "system", content: "sys" }, old, { role: "user", content: "hi" },
+                  { role: "model", content: "hello there" }, note])
+
+      expect(screen.lines).to eq(["user> hi", "hello there", "note from slack: deploy frozen"])
+    end
+
+    it "shows the notes of a session that has no exchange yet" do
+      join_fresh([{ role: "system", content: "sys" }, note])
+
+      expect(screen.lines).to eq(["note from slack: deploy frozen"])
+    end
+  end
+
   it "renders a reminder turn by its reminders, live and from a join" do
     feed({ type: :turn_started, prompt: nil, continue: true, origin: { client_id: "system:reminder" } },
          { type: :reminder_injected, reminders: [{ name: "stretch", description: "Stand up", interval_minutes: 1 }] })

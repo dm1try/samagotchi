@@ -11,6 +11,7 @@ require_relative "question_prompt"
 require_relative "reline_seam"
 require_relative "../bridge_client"
 require_relative "../debug_log"
+require_relative "../context_note"
 require_relative "../model_profile"
 require_relative "../output_formatter"
 require_relative "../session_commands"
@@ -186,6 +187,9 @@ module Samagotchi
           command_ran(event)
           return first_command_ran(event) if @first_command_id && event[:command_id] == @first_command_id
         when :reminder_injected then @screen.commit(reminder_line(event[:reminders]))
+        # A context note joined the conversation (between turns). One dim
+        # line in the scrollback; the notes slot is for question choices.
+        when :context_added then @screen.commit(context_note_line(event[:label], event[:text]))
         when :continue_offered then offer_continue(event)
         when :continue_resolved then continue_resolved(event)
         # The note comes with the kernel's :pending_input_merged (EventRenderer),
@@ -698,6 +702,7 @@ module Samagotchi
         # The id stays findable: the detach line and chi sessions list show it.
         @log.write("[attached] joined session #{@client.session_id} (#{exchange.size} messages)")
         last_user = exchange.rindex { |m| m[:role].to_s == "user" }
+        render_join_notes(messages)
         return unless last_user
 
         @screen.commit(prompt_line(nil, exchange[last_user][:content]))
@@ -708,6 +713,18 @@ module Samagotchi
                                            .map { |m| OutputFormatter.strip_markup(m[:content]) }
                                            .find { |text| !text.empty? }
         @screen.commit(last_lines(answer)) if answer
+        render_join_notes(messages, after_exchange: true)
+      end
+
+      # The context notes that came since the last prompt (all of them in a
+      # session with none), after the exchange the header shows.
+      def render_join_notes(messages, after_exchange: false)
+        last_user = messages.rindex { |m| m[:role].to_s == "user" }
+        return if after_exchange != !last_user.nil?
+
+        messages[(last_user ? last_user + 1 : 0)..].select { |m| ContextNote.note?(m) }.each do |m|
+          @screen.commit(context_note_line(ContextNote.label_of(m), ContextNote.text_of(m)))
+        end
       end
 
       # The end of a long answer; the whole of it is in the session.
@@ -841,6 +858,20 @@ module Samagotchi
       end
 
       def reminder_origin?(origin) = origin[:client_id].to_s.start_with?("system:")
+
+      CONTEXT_NOTE_PREVIEW = 60
+
+      # "note from slack: <first line>", cut to one line.
+      def context_note_line(label, text)
+        lines = text.to_s.strip.split("\n")
+        first = lines.first.to_s
+        if first.length > CONTEXT_NOTE_PREVIEW
+          first = "#{first[0, CONTEXT_NOTE_PREVIEW - 1]}…"
+        elsif lines.size > 1
+          first += " …"
+        end
+        paint("note from #{label || "?"}: #{first}", 2)
+      end
 
       def reminder_line(reminders)
         names = Array(reminders).filter_map { |r| r.is_a?(Hash) ? r[:name] : r }
