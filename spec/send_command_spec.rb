@@ -225,6 +225,9 @@ RSpec.describe Samagotchi::SendCommand do
 
     it "is wired before the main option parser, and keeps non-ASCII text without a locale" do
       a = make(owner: "worker")
+      # A history with non-ASCII in it, read with no locale.
+      a.messages = [{ role: "user", content: "caf\u00E9 \u2615" }, { role: "model", content: "\u2014 ok" }]
+      a.save(state_dir: tmpdir)
       events = serve(a)
 
       # No locale at all, as an app started from Finder or launchd has it.
