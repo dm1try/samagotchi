@@ -15,6 +15,8 @@ require_relative "tools/web_fetch"
 require_relative "tools/register_reminder"
 require_relative "tools/cancel_reminder"
 require_relative "tools/list_reminders"
+require_relative "tools/list_sessions"
+require_relative "tools/send_note"
 require_relative "tools/ask_user_question"
 
 module Samagotchi
@@ -251,6 +253,12 @@ module Samagotchi
           { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil }
         when Tools::ListReminders::NAME
           { name: name, content: "", path: nil, scope: nil }
+        when Tools::ListSessions::NAME
+          cwd = params["cwd"] || strip_param_prefix(params_raw, "cwd")
+          { name: name, content: "", path: nil, scope: nil, cwd: cwd && strip_gemma_delimiters(cwd) }
+        when Tools::SendNote::NAME
+          { name: name, content: strip_gemma_delimiters(params["text"].to_s), path: nil, scope: nil,
+            session: strip_gemma_delimiters(params["session"].to_s) }
         when Tools::AskUserQuestion::NAME
           { name: name, content: params["question"] ? strip_gemma_delimiters(params["question"]) : strip_gemma_delimiters(params_raw),
             path: nil, scope: nil,
@@ -545,6 +553,11 @@ module Samagotchi
           { name: name, content: qwen_param_value(params, "name"), path: nil, scope: nil }
         when Tools::ListReminders::NAME
            { name: name, content: "", path: nil, scope: nil }
+        when Tools::ListSessions::NAME
+          { name: name, content: "", path: nil, scope: nil, cwd: qwen_param_value(params, "cwd") }
+        when Tools::SendNote::NAME
+          { name: name, content: qwen_param_value(params, "text"), path: nil, scope: nil,
+            session: qwen_param_value(params, "session") }
         when Tools::AskUserQuestion::NAME
            opts_raw = qwen_param_value(params, "options", strip: false)
            opts = qwen_ask_options(opts_raw)

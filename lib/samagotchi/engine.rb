@@ -131,6 +131,8 @@ module Samagotchi
       # it holds across model switches.
       @guardrail_git = Guardrails::GitInfo.new
       self.guardrail_state_dir = Session.default_state_dir
+      # list_sessions and send_note speak for whichever session runs now.
+      @kernel.peers = PeerView.new(self) if @kernel.respond_to?(:peers=)
       if @kernel.respond_to?(:guardrail_gate=)
         @kernel.guardrail_gate = Guardrails::Gate.new(
           -> { @hooks },
@@ -682,6 +684,8 @@ module Samagotchi
     def session_state_dir = @session_state_dir || Session.default_state_dir
 
     def guardrail_state_dir=(state_dir)
+      # Also where list_sessions and send_note look for other sessions.
+      @state_dir = state_dir
       @guardrail_approvals = Guardrails::Approvals.new(dir: Guardrails::Approvals.dir_for(state_dir))
       @guardrail_protected = nil
     end
@@ -1068,6 +1072,16 @@ module Samagotchi
     def session
       @session
     end
+
+    # The kernel's Tools::Peers, following the current session.
+    PeerView = Struct.new(:engine) do
+      def session_id = engine.session&.id
+      def cwd = engine.session&.working_directory
+      def state_dir = engine.peer_state_dir
+    end
+
+    # @return [String] the state dir holding this Engine's sessions
+    def peer_state_dir = @state_dir
 
     # Set the current session outside a turn (the REPL does, before its first
     # turn, so the messages API and recap see it)

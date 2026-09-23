@@ -162,8 +162,8 @@ module Samagotchi
     # @param limit [Integer, nil] taken after the filters
     # @param include_tests [Boolean] false leaves out test runs
     # @param exclude [String, nil] a session id to leave out (the asker)
-    # @return [Array<Hash>] {id:, short_id:, desc:, cwd:, updated_at:,
-    #   status:, live:, busy:}; busy = live with a turn running
+    # @return [Array<Hash>] {id:, short_id:, desc:, preview:, cwd:,
+    #   updated_at:, status:, live:, busy:}; busy = live with a turn running
     def self.session_summaries(live: false, cwd: nil, limit: nil, include_tests: true, exclude: nil, state_dir: nil)
       sd = state_dir || Session.default_state_dir
       root = cwd && folder_path(cwd)
@@ -174,17 +174,31 @@ module Samagotchi
         owned = session_owner(s.id, state_dir: sd)&.fetch("kind", nil) == "worker"
         next if live && !owned
 
-        { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), cwd: s.working_directory, updated_at: s.updated_at,
-          status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING }
+        { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), preview: summary_preview(s), cwd: s.working_directory,
+          updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING }
       end
       (limit ? summaries.first(limit) : summaries.to_a)
     end
 
+    SUMMARY_PREVIEW_LIMIT = 120
+
     # "<cwd basename> · <last prompt, or the first preview>", one line.
     private_class_method def self.summary_desc(session)
+      desc = [File.basename(session.working_directory.to_s), summary_text(session)].reject(&:empty?).join(" · ")
+      cut(desc, SUMMARY_DESC_LIMIT)
+    end
+
+    private_class_method def self.summary_preview(session)
+      cut(summary_text(session), SUMMARY_PREVIEW_LIMIT)
+    end
+
+    private_class_method def self.summary_text(session)
       text = session.last_prompt.to_s.strip.empty? ? session.first_preview.to_s : session.last_prompt.to_s
-      desc = [File.basename(session.working_directory.to_s), text.gsub(/\s+/, " ").strip].reject(&:empty?).join(" · ")
-      desc.length > SUMMARY_DESC_LIMIT ? "#{desc[0, SUMMARY_DESC_LIMIT - 1]}…" : desc
+      text.gsub(/\s+/, " ").strip
+    end
+
+    private_class_method def self.cut(text, limit)
+      text.length > limit ? "#{text[0, limit - 1]}…" : text
     end
 
     private_class_method def self.folder_path(path)

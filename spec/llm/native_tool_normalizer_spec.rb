@@ -102,6 +102,16 @@ RSpec.describe Samagotchi::LLM::NativeToolNormalizer do
       expect(mapped[:content]).to eq("abc123")
     end
 
+    it "maps send_note's session and text" do
+      mapped = described_class.normalize(tool_call(name: "send_note", arguments: { "session" => "3f2a1c", "text" => "moved" }))
+      expect(mapped).to include(name: "send_note", content: "moved", session: "3f2a1c")
+    end
+
+    it "maps list_sessions with an optional folder" do
+      expect(described_class.normalize(tool_call(name: "list_sessions", arguments: {}))).to include(name: "list_sessions", cwd: nil)
+      expect(described_class.normalize(tool_call(name: "list_sessions", arguments: { "cwd" => "/w" }))).to include(cwd: "/w")
+    end
+
     it "maps a TaskList call (no args needed)" do
       mapped = described_class.normalize(tool_call(name: "task_list", arguments: {}))
       expect(mapped[:name]).to eq("task_list")

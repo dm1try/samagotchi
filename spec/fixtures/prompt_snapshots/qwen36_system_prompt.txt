@@ -310,6 +310,40 @@ You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant 
     }
   },
   {
+    "name": "list_sessions",
+    "description": "List the other chi sessions (newest first, up to 20): id, whether a worker runs it, its folder and last prompt. Use it to find the session send_note should go to.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "cwd": {
+          "type": "string",
+          "description": "Only sessions in this folder or below it (optional)"
+        }
+      }
+    }
+  },
+  {
+    "name": "send_note",
+    "description": "Send a context note to another chi session: background information it sees on its next turn, attributed to this session. It does not start a turn there or ask it to do anything.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "description": "The target session's id or a unique prefix of it (from list_sessions)"
+        },
+        "text": {
+          "type": "string",
+          "description": "The note: what the other session should know (up to 16 KiB)"
+        }
+      },
+      "required": [
+        "session",
+        "text"
+      ]
+    }
+  },
+  {
     "name": "ask_user_question",
     "description": "Ask the user a structured qualification question. Supports single/multi selection plus optional freeform/Other input. Prefer this over plain numbered lists when you need a clear choice. The harness renders it natively and returns {selected, freeform}.",
     "parameters": {

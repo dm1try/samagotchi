@@ -27,6 +27,8 @@ require_relative "tools/web_fetch"
 require_relative "tools/register_reminder"
 require_relative "tools/cancel_reminder"
 require_relative "tools/list_reminders"
+require_relative "tools/list_sessions"
+require_relative "tools/send_note"
 require_relative "tools/ask_user_question"
 require_relative "tool_activity"
 require_relative "tool_runner"
@@ -112,6 +114,8 @@ module Samagotchi
       Tools::RegisterReminder,
       Tools::CancelReminder,
       Tools::ListReminders,
+      Tools::ListSessions,
+      Tools::SendNote,
       Tools::AskUserQuestion
     ].freeze
 
@@ -171,6 +175,9 @@ module Samagotchi
     # The turn's VisionContext (images: capability, files, limits), set by
     # the Engine per turn; nil sends no images (placeholders instead).
     attr_accessor :vision
+    # Tools::Peers (or the Engine's live view of it): the session
+    # list_sessions and send_note speak for; nil outside a session.
+    attr_accessor :peers
 
     # Run the conversation loop and return the final model response plus
     # resumable conversation state when execution stops at max_iterations.
@@ -825,6 +832,10 @@ module Samagotchi
                  tool.call(call[:content], reminder_store: @reminder_store)
                 when Tools::ListReminders::NAME
                   tool.call(call[:content], reminder_store: @reminder_store)
+                when Tools::ListSessions::NAME
+                  tool.call(call[:content], peers: @peers, cwd: call[:cwd])
+                when Tools::SendNote::NAME
+                  tool.call(call[:content], session: call[:session], peers: @peers)
                 when Tools::AskUserQuestion::NAME
                   handle_ask_user_question(call)
                 else

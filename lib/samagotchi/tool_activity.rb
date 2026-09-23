@@ -12,6 +12,8 @@ require_relative "tools/task_stop"
 require_relative "tools/task_wait"
 require_relative "tools/web_fetch"
 require_relative "tools/ask_user_question"
+require_relative "tools/list_sessions"
+require_relative "tools/send_note"
 
 module Samagotchi
   # The one-line summary of a tool call that the UIs show ("reading file",
@@ -46,6 +48,8 @@ module Samagotchi
       when Tools::TaskWait::NAME then "waiting for task"
       when Tools::WebFetch::NAME then "fetching URL"
       when Tools::AskUserQuestion::NAME then "asking user"
+      when Tools::ListSessions::NAME then "listing sessions"
+      when Tools::SendNote::NAME then "sending a note"
       else "calling tool"
       end
     end
@@ -108,6 +112,10 @@ module Samagotchi
         nil
       when Tools::WebFetch::NAME
         "url=#{preview_tool_param(call[:content])}"
+      when Tools::ListSessions::NAME
+        call[:cwd].to_s.strip.empty? ? nil : "cwd=#{preview_tool_param(call[:cwd])}"
+      when Tools::SendNote::NAME
+        "session=#{preview_tool_param(call[:session])} text=#{preview_tool_param(call[:content])}"
       when Tools::AskUserQuestion::NAME
         parts = ["question=#{preview_tool_param(call[:question] || call[:content])}"]
         opts = call[:options]

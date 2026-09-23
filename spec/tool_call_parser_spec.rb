@@ -20,4 +20,28 @@ RSpec.describe Samagotchi::ToolCallParser do
       expect(calls.first[:current_model_only]).to eq("false")
     end
   end
+
+  describe "send_note and list_sessions" do
+    it "parses them in the Gemma format" do
+      parser = described_class::Gemma.new(Samagotchi::ModelProfile.normalize(:gemma4))
+
+      note = parser.parse("<|tool_call>call:send_note{session:<|\"|>3f2a1c<|\"|>,text:<|\"|>the API moved<|\"|>}<tool_call|>").first
+      list = parser.parse("<|tool_call>call:list_sessions{cwd:<|\"|>/work/foo<|\"|>}<tool_call|>").first
+
+      expect(note).to include(name: "send_note", content: "the API moved", session: "3f2a1c")
+      expect(list).to include(name: "list_sessions", cwd: "/work/foo")
+    end
+
+    it "parses them in the Qwen format" do
+      parser = described_class::Qwen.new(Samagotchi::ModelProfile.normalize(:qwen36))
+
+      note = parser.parse("<tool_call>\n<function=send_note>\n<parameter=session>\n3f2a1c\n</parameter>\n" \
+                          "<parameter=text>\nthe API moved\n</parameter>\n</function>\n</tool_call>").first
+      list = parser.parse("<tool_call>\n<function=list_sessions>\n</function>\n</tool_call>").first
+
+      expect(note).to include(name: "send_note", content: "the API moved", session: "3f2a1c")
+      expect(list).to include(name: "list_sessions")
+      expect(list[:cwd].to_s).to eq("")
+    end
+  end
 end
