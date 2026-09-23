@@ -1065,6 +1065,17 @@ file2.rb")
       expect(observed).to eq([:cbreak, :inside])
     end
 
+    it "never starts the cancel hotkey monitor while a Reline read owns stdin" do
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      allow(agent).to receive(:cancel_hotkey_monitor_enabled?).and_return(true)
+      allow(Samagotchi::TerminalUI::RelineSeam).to receive(:reading?).and_return(true)
+      expect(Thread).not_to receive(:new)
+
+      agent.send(:start_cancel_hotkey_monitor, Samagotchi::Client::CancellationController.new)
+
+      expect(agent.instance_variable_get(:@cancel_hotkey_thread)).to be_nil
+    end
+
     describe "Ctrl-C with a prompt open" do
       let(:agent) { described_class.new(mode: "assist", prompt: "hi", client: client) }
       let(:seam) { Samagotchi::TerminalUI::RelineSeam }

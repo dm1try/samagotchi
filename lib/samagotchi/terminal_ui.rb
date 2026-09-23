@@ -1776,6 +1776,9 @@ module Samagotchi
     def start_cancel_hotkey_monitor(cancellation_controller)
       return unless cancellation_controller
       return unless cancel_hotkey_monitor_enabled?
+      # Reline has stdin (and its own tty mode) while a read is open, and the
+      # seam hands its Ctrl-C to the turn; a second reader would steal keys.
+      return if RelineSeam.reading?
 
       stop_cancel_hotkey_monitor
       @cancel_hotkey_stop_requested = false
