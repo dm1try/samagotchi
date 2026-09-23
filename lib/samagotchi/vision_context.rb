@@ -6,15 +6,39 @@ require_relative "image_store"
 module Samagotchi
   # What a turn's loops need to send images, set on the kernel by the
   # Engine for one turn:
-  #   capability  VisionSupport::Answer (nil: unknown, send)
+  #   capability  VisionSupport::Answer (nil: unknown, send), or a callable
+  #               that answers it on first need (a probe only when a turn
+  #               has images)
   #   session_dir where the session's images/ are (refs resolve against it)
   #   limits      ImageStore::Limits
   #   resizer     ImageResizer for images a tool returns (nil: detect)
-  VisionContext = Data.define(:capability, :session_dir, :limits, :resizer) do
-    def initialize(capability: nil, session_dir: nil, limits: ImageStore::Limits.from_config, resizer: nil) = super
+  class VisionContext
+    attr_reader :session_dir, :limits, :resizer
+
+    def initialize(capability: nil, session_dir: nil, limits: ImageStore::Limits.from_config, resizer: nil)
+      @capability = capability
+      @session_dir = session_dir
+      @limits = limits
+      @resizer = resizer
+      @mutex = Mutex.new
+    end
+
+    def capability
+      @mutex.synchronize do
+        @capability = @capability.call if @capability.respond_to?(:call)
+        @capability
+      end
+    end
+
+    def with(**changes)
+      self.class.new(capability: @capability, session_dir: session_dir, limits: limits, resizer: resizer, **changes)
+    end
 
     # False only when the model is known not to see images.
     def sendable? = capability.nil? || capability.value != false
+
+    # Why images aren't sent, for a line or a refusal.
+    def refusal_reason = capability&.reason || ImagePlan::CANT_SEE
 
     # The ref's base64, or nil when it isn't a valid ref of this session.
     def base64(ref)

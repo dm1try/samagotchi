@@ -249,6 +249,35 @@ module Samagotchi
       File.file?(path) && !File.symlink?(path)
     end
 
+    # A ref for an image already stored in this session (a web upload),
+    # rebuilt from the file itself: only its name comes from the caller.
+    def self.ref_for(session_dir, file:, name: nil, source: "user")
+      raise Error, "unknown image #{file.to_s[0, 80]}" unless valid_ref?(session_dir, { file: file })
+
+      bytes = File.binread(File.join(session_dir.to_s, file.to_s))
+      info = ImageHeader.read(bytes)
+      raise Error, "unknown image #{file}" unless info && MIME.key?(info.format) && info.width
+
+      name = File.basename(name.to_s).gsub(/[[:cntrl:]]/, "")[0, 120]
+      { file: file.to_s, mime: MIME.fetch(info.format), width: info.width, height: info.height,
+        bytes: bytes.bytesize, name: name.empty? ? File.basename(file.to_s) : name, source: source.to_s }
+    end
+
+    # The refs for a turn's images: {path:} is read and stored (only callers
+    # on this machine pass it), {file:} must already be in this session.
+    def self.resolve_all(session_dir, images, **options)
+      Array(images).map do |image|
+        image = symbolize(image)
+        raise Error, "bad image #{image.inspect[0, 80]}" unless image.is_a?(Hash)
+
+        if image[:path]
+          ingest(session_dir, path: image[:path], name: image[:name], source: "user", **options)
+        else
+          ref_for(session_dir, file: image[:file], name: image[:name])
+        end
+      end
+    end
+
     def self.path_for(session_dir, ref)
       raise Error, "bad image ref" unless valid_ref?(session_dir, ref)
 

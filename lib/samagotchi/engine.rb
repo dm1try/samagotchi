@@ -29,6 +29,9 @@ require_relative "reminder_store"
 require_relative "tools/memory"
 require_relative "model_overlay"
 require_relative "served_model"
+require_relative "image_store"
+require_relative "vision_context"
+require_relative "vision_support"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -650,6 +653,12 @@ module Samagotchi
     # Where the approval store lives: beside Session's state dir
     # ($XDG_STATE_HOME/samagotchi/guardrails/). A Worker with its own state
     # dir passes it.
+    # Where sessions live (a session's images/ are under it); a worker sets
+    # its own.
+    attr_writer :session_state_dir
+
+    def session_state_dir = @session_state_dir || Session.default_state_dir
+
     def guardrail_state_dir=(state_dir)
       @guardrail_approvals = Guardrails::Approvals.new(dir: Guardrails::Approvals.dir_for(state_dir))
       @guardrail_protected = nil
@@ -1088,6 +1097,12 @@ module Samagotchi
     # @param origin [Hash, nil] who queued the turn ({client_id:, enqueued_id:});
     #   when given, the turn's boundary events (:turn_started, :turn_completed,
     #   :turn_canceled, :turn_failed) carry it as `origin:`
+    # @param images [Array<Hash>] the prompt's images: {path:} (a file on this
+    #   machine; in-process and attached-TUI callers only) or {file:, name:}
+    #   (already in the session's images/, e.g. a web upload). They are
+    #   stored/validated before :turn_started (which carries their refs), and
+    #   a model known not to see images fails the turn before anything of it
+    #   is kept (VisionUnsupported).
     #
     # An Interrupt (SIGINT) cancels the turn: the pre-turn conversation plus
     # the prompt is kept in the session and :turn_canceled is emitted, then the
@@ -1095,7 +1110,8 @@ module Samagotchi
     # other error (e.g. an LLM::ProviderError) emits :turn_failed and
     # re-raises; a provider error adds error_kind:, retryable:, host: and a
     # one-line summary:.
-    def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false, origin: nil)
+    def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false, origin: nil,
+                 images: [])
       # Track the active session for recap and status snapshot.
       @session = session
       # status is turn state: running now, idle again before the turn's end
@@ -1125,11 +1141,19 @@ module Samagotchi
       # stay unchanged for callers that don't pass it.
       with_origin = origin ? ->(event) { event.merge(origin: origin) } : ->(event) { event }
       begin
+        image_refs, image_error = turn_image_refs(session, continue ? [] : images)
         # Emit turn_started event
         @metrics.session_id = session.id
         turn_started = { type: :turn_started, session_id: session.id, prompt: prompt }
         turn_started[:continue] = true if continue
+        turn_started[:images] = image_refs unless image_refs.empty?
         emit_event(on_event, with_origin.call(turn_started))
+        raise image_error if image_error
+
+        # Before anything of the turn is kept or a reminder is used up.
+        vision = turn_vision(session)
+        @kernel.vision = vision if @kernel.respond_to?(:vision=)
+        refuse_images!(vision) unless image_refs.empty?
         announce_guardrail_failures(on_event)
 
         # Fire :session_start on the very first turn
@@ -1168,7 +1192,9 @@ module Samagotchi
         end
 
         unless continue
-          messages << { role: "user", content: prompt }
+          user_message = { role: "user", content: prompt }
+          user_message[:images] = image_refs unless image_refs.empty?
+          messages << user_message
           session.last_prompt = prompt
         end
 
@@ -1279,6 +1305,38 @@ module Samagotchi
         # Clear hooks so they remain turn-scoped and never leak into the next turn.
         clear_hooks
       end
+    end
+
+    # [refs, nil] for a turn's images, or [[], error] when one can't be used
+    # (the turn then fails right after :turn_started).
+    def turn_image_refs(session, images)
+      return [[], nil] if Array(images).empty?
+
+      [ImageStore.resolve_all(Session.session_dir(session.id, state_dir: session_state_dir), images), nil]
+    rescue ImageStore::Error => e
+      [[], e]
+    end
+
+    # The turn's VisionContext: the session's images folder, and whether the
+    # effective model can see images, asked only when a request carries one.
+    def turn_vision(session)
+      target = @host_registry.resolve(@effective_model_name)
+      VisionContext.new(session_dir: Session.session_dir(session.id, state_dir: session_state_dir),
+                        capability: -> { VisionSupport.for(target, profile: profile, adapter: vision_adapter(target)) })
+    end
+
+    def vision_adapter(target)
+      target.entry.chat? ? @host_registry.adapter_for(target.entry) : nil
+    rescue StandardError
+      nil
+    end
+
+    # A model known not to see images fails a turn with images up front.
+    def refuse_images!(vision)
+      return if vision.sendable?
+
+      host = @host_registry.resolve(@effective_model_name).entry.name
+      raise LLM::VisionUnsupported.new("#{host}: #{vision.refusal_reason}", host: host)
     end
 
     # JSON-safe digest of a finished turn for renderers (in-process or over the

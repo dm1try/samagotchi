@@ -186,6 +186,7 @@ module Samagotchi
       # one waits, like ask_user_question.
       engine.interface = :worker
       engine.guardrail_state_dir = @state_dir if @state_dir
+      engine.session_state_dir = @state_dir if @state_dir
       engine
     end
 
