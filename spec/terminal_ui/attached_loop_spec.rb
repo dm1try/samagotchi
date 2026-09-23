@@ -351,6 +351,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
   let(:question) { { "id" => "q1", "question" => "Which one?", "options" => %w[Apple Banana Cherry] } }
   let(:typed) { Queue.new }
   let(:prompts) { [] }
+  let(:prefills) { [] }
 
   def snapshot(pending_question: nil)
     turn = { "prompt" => "p", "parts" => [], "pending_question" => pending_question }
@@ -365,7 +366,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
       block.call(first)
       double("stream", close: nil)
     end
-    @thread = Thread.new { attached.run(input: ->(prompt, _prefill) { prompts << prompt; typed.pop }) }
+    @thread = Thread.new do
+      attached.run(input: lambda { |prompt, prefill|
+        prompts << prompt
+        prefills << prefill
+        typed.pop
+      })
+    end
     wait_for { prompts.any? }
   end
 
@@ -397,6 +404,21 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     expect(screen.slots).not_to have_key(:notes)
     expect(client).to have_received(:answer).with(id: "q1", selected: ["Banana"], freeform: nil)
   end
+
+it "puts what was typed at the prompt aside for the question and back after it" do
+  allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
+  allow_any_instance_of(Samagotchi::TerminalUI::LineReader).to receive(:typed_text).and_return("half typed")
+  start
+  push("type" => "question_requested", "pending_question" => question)
+
+  wait_for { prompts.last == "choice> " }
+  expect(prefills.last).to be_nil
+  typed << "2"
+  wait_for { prompts.last == "> " }
+  finish
+
+  expect(prefills.last).to eq("half typed")
+end
 
   describe "an approval" do
     let(:approval) do

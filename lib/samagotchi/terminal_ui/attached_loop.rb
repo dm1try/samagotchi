@@ -372,9 +372,11 @@ module Samagotchi
         return unless pending
 
         @view.finish_thinking_spinner
+        # What was typed at the prompt waits for the question to close.
+        @set_aside = @reader&.typed_text unless @question
         @question = QuestionPrompt.new(pending)
         @screen.commit(@question.lines(paint: method(:paint), color: color_output?).join("\n"))
-        sync_prompt
+        sync_prompt(keep_text: false)
       end
 
       def answer_question(text)
@@ -443,19 +445,22 @@ module Samagotchi
       def close_question(message)
         @screen.commit(message) if message
         @question = nil
-        sync_prompt
+        set_aside = @set_aside
+        @set_aside = nil
+        sync_prompt(keep_text: false, prefill: set_aside)
       end
 
       # Restart the open read when its prompt no longer fits (a question or a
       # continue offer opened or closed), first erasing the prompt Reline drew.
-      def sync_prompt
+      # What is typed there goes along (+keep_text+), or +prefill+ goes in.
+      def sync_prompt(keep_text: true, prefill: nil)
         return unless @reader
 
         @screen.synchronize do
           next if @reader.current == prompt_text
 
           @screen.clear_slot(:editor)
-          @reader.reprompt
+          @reader.reprompt(keep_text: keep_text, prefill: prefill)
         end
       end
 
