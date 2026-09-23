@@ -1,0 +1,188 @@
+# frozen_string_literal: true
+
+require "samagotchi/session_commands"
+require "samagotchi/engine"
+require "samagotchi/session"
+require "samagotchi/turn_flow"
+require "samagotchi/kernel_loop"
+
+RSpec.describe Samagotchi::SessionCommands do
+  let(:registry) do
+    Samagotchi::HostRegistry.new(hosts_config: {
+      "alpha" => { host: "alpha.test", port: 1111 },
+      "beta" => { host: "beta.test", port: 2222 }
+    })
+  end
+  # A worker's Engine starts on the session's model, which isn't the
+  # config default the commands are given.
+  let(:engine) { Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "beta:Qwen3-14B") }
+  let(:turn_flow) { Samagotchi::TurnFlow.new(engine: engine) }
+  let(:saved) { [] }
+  let(:commands) do
+    described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma4-small",
+                        save: ->(session) { saved << session.model_name })
+  end
+  let(:session) do
+    Samagotchi::Session.new_session(mode: "assist", model_name: "beta:Qwen3-14B", working_directory: Dir.pwd).tap do |s|
+      s.messages = [{ role: "system", content: "sys" }, { role: "user", content: "old" }]
+    end
+  end
+
+  before { engine.session = session }
+
+  def cancelled_turn
+    turn_flow.before_prompt_turn
+    engine.append_messages([{ role: "user", content: "go" }, { role: "model", content: "Partial\n[interrupted]" }])
+    turn_flow.after_turn(Samagotchi::KernelLoop::Result.new(output: "", conversation: session.messages, exhausted: false,
+                                                             pending_tool_calls: false, tool_activity: [], canceled: true))
+  end
+
+  def offered_continue
+    turn_flow.before_prompt_turn
+    engine.append_messages([{ role: "user", content: "the task" }, { role: "tool_response", content: "r1" }])
+    turn_flow.after_turn(Samagotchi::KernelLoop::Result.new(output: "", conversation: session.messages, exhausted: true,
+                                                             pending_tool_calls: true, tool_activity: [], canceled: false))
+  end
+
+  describe ".command?" do
+    it "knows the commands a worker runs, and nothing else" do
+      expect(%w[/model /models !rollback /continue].map { |c| described_class.command?(c) }).to all(be(true))
+      expect(described_class.command?("/model beta:x --default")).to be(true)
+      expect(described_class.command?("/continue no, too slow")).to be(true)
+      expect(described_class.command?("!ls -la")).to be(true)
+      expect(%w[/stats /recap /exit hello ! /modelx].map { |c| described_class.command?(c) }).to all(be(false))
+    end
+  end
+
+  it "answers nil for a line that isn't one of its commands" do
+    expect(commands.run("hello")).to be_nil
+    expect(commands.run("/stats")).to be_nil
+  end
+
+  describe "/model" do
+    it "names the default it was given, not the Engine's starting model (F12)" do
+      result = commands.run("/model")
+
+      expect(result.status).to eq(:ok)
+      expect(result.output).to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma4-small, profile=qwen36)")
+      expect(result.changed).to eq([])
+    end
+
+    it "switches the Engine's model and saves it on the session" do
+      result = commands.run("/model alpha:gemma4-small")
+
+      expect(result.output).to eq("runtime model set to alpha:gemma4-small (profile=gemma4)")
+      expect(result.changed).to eq([:model])
+      expect(result.model_name).to eq("alpha:gemma4-small")
+      expect(engine.effective_model_name).to eq("alpha:gemma4-small")
+      expect(session.model_name).to eq("alpha:gemma4-small")
+      expect(saved).to eq(["alpha:gemma4-small"])
+    end
+
+    it "resets to the given default on clear" do
+      expect(commands.run("/model clear").output).to eq("runtime model reset to alpha:gemma4-small (profile=gemma4)")
+      expect(engine.effective_model_name).to eq("alpha:gemma4-small")
+    end
+
+    it "moves its default along with --default" do
+      expect(Samagotchi::ConfigFile).to receive(:write_default_model!).with("beta:Qwen3-14B").once
+
+      commands.run("/model beta:Qwen3-14B --default")
+
+      expect(commands.default_model).to eq("beta:Qwen3-14B")
+      expect(commands.run("/model").output).to eq("runtime model: beta:Qwen3-14B (profile=qwen36)")
+    end
+
+    it "refuses a bad alias before switching" do
+      result = commands.run("/model alpha:gemma4-small --alias bad/name")
+
+      expect(result.output).to eq("invalid alias: alias name must not contain '/'")
+      expect(engine.effective_model_name).to eq("beta:Qwen3-14B")
+    end
+  end
+
+  it "lists every host's models with /models" do
+    allow(registry).to receive(:list_all_models).and_return("alpha" => { host: "alpha.test", port: 1111, error: "refused" })
+
+    expect(commands.run("/models").output).to eq("alpha (alpha.test:1111) — unreachable: refused")
+  end
+
+  describe "!rollback" do
+    it "has nothing to roll back before a cancelled turn" do
+      result = commands.run("!rollback")
+
+      expect(result.output).to eq("nothing to rollback")
+      expect(result.changed).to eq([])
+      expect(saved).to be_empty
+    end
+
+    it "restores the pre-turn conversation after a cancelled turn, and saves it" do
+      cancelled_turn
+
+      result = commands.run("!rollback")
+
+      expect(result.output).to eq("salvaged turn discarded; restored pre-turn state")
+      expect(result.changed).to eq([:messages])
+      expect(session.messages.map { |m| m[:content] }).to eq(%w[sys old])
+      expect(saved).to eq(["beta:Qwen3-14B"])
+    end
+  end
+
+  describe "!cmd" do
+    it "runs the command, adds its output to the conversation and ends the rollback window" do
+      allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi").and_return("hi\n")
+      cancelled_turn
+
+      result = commands.run("!echo hi")
+
+      expect(result).to have_attributes(status: :ok, output: "hi\n", shell: true, changed: [:messages])
+      expect(session.messages.last).to eq(role: "user", content: "!(echo hi)\nhi\n")
+      expect(commands.run("!rollback").output).to eq("nothing to rollback")
+      # As in the REPL, the next turn saves it.
+      expect(saved).to be_empty
+    end
+  end
+
+  describe "/continue" do
+    it "has nothing to continue without an offer" do
+      expect(commands.run("/continue").output).to eq("nothing to continue")
+      expect(commands.run("/continue no").output).to eq("nothing to continue")
+    end
+
+    it "asks the host to run the continue turn on yes" do
+      offered_continue
+
+      expect(commands.run("/continue").resume).to be(true)
+      expect(commands.run("/continue yes").resume).to be(true)
+      expect(turn_flow.awaiting_continue?).to be(true)
+    end
+
+    it "discards the interrupted turn on no" do
+      offered_continue
+
+      result = commands.run("/continue no")
+
+      expect(result.output).to eq("interrupted turn cancelled; enter your next prompt")
+      expect(result.changed).to eq([:messages])
+      expect(session.messages.map { |m| m[:content] }).to eq(%w[sys old])
+      expect(turn_flow.awaiting_continue?).to be(false)
+      expect(saved.size).to eq(1)
+    end
+
+    it "notes the reason on no, <reason>" do
+      offered_continue
+
+      expect(commands.continue_answer("no, too slow").output).to eq("interrupted turn cancelled; noted your explanation")
+      expect(session.messages.last[:content]).to start_with("I chose not to continue the interrupted turn because: too slow")
+    end
+
+    it "asks again on anything else" do
+      offered_continue
+
+      result = commands.continue_answer("maybe")
+
+      expect(result).to have_attributes(status: :error, output: "answer yes, no, or no, <reason>")
+      expect(turn_flow.awaiting_continue?).to be(true)
+    end
+  end
+end

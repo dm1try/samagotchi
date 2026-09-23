@@ -4,7 +4,6 @@ require "json"
 require "fileutils"
 require "io/console"
 require "reline"
-require "set"
 
 require_relative "model_profile"
 require_relative "config"
@@ -21,6 +20,7 @@ require_relative "tools/memory"
 require_relative "output_formatter"
 require_relative "turn_preamble"
 require_relative "turn_flow"
+require_relative "session_commands"
 require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
 require_relative "terminal_ui/legacy_surface"
@@ -42,14 +42,9 @@ module Samagotchi
     PROMPT_HISTORY_LIMIT = 20
     DEFAULT_INPUT_ENV = "SAMAGOTCHI_DEFAULT_INPUT"
     SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
-    CONTINUE_COMMAND = TurnFlow::CONTINUE_COMMAND
-    MODEL_COMMAND = "/model"
-    MODELS_COMMAND = "/models"
     STATS_COMMAND = "/stats"
     RECAP_COMMAND = "/recap"
-    ROLLBACK_COMMAND = "!rollback"
     SLASH_COMMANDS = %w[/continue /exit /model /models /recap /stats].freeze
-    SHELL_BANG_PREFIX = "!"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
     THINKING_UI_ENV = "SAMAGOTCHI_THINKING_UI"
     THINKING_UI_SPINNER = "spinner"
@@ -157,6 +152,7 @@ module Samagotchi
         }
       )
       @turn_flow = TurnFlow.new(engine: @engine)
+      @commands = SessionCommands.new(engine: @engine, turn_flow: @turn_flow, default_model: @default_model_name)
       # Runtime --model flag or resumed session: switch the Engine (client,
       # kernel profile) without persisting the default.
       @engine.switch_model!(@effective_model_name) if @effective_model_name != @default_model_name
@@ -394,65 +390,29 @@ module Samagotchi
 
     # An answer at the continue(yes/no/no_with_reason) prompt.
     def answer_continue_offer(session, input)
-      decision, reason = TurnFlow.continue_decision(input)
+      answer = @commands.continue_answer(input)
+      return show_command_result(answer) unless answer.resume
 
-      case decision
-      when :resume
-        @turn_flow.before_continue_turn
-        begin
-          result = run_engine_turn(session, nil, continue: true)
-        rescue LLM::ProviderError => e
-          @surface.commit("\nmodel> #{e.summary}; continue prompt preserved")
-          return
-        end
-        finish_turn(session, result, continue: true)
-      when :abort
-        @turn_flow.abort_continue!
-        save_session(session)
-        @surface.commit("\nmodel> interrupted turn cancelled; enter your next prompt")
-      when :abort_with_reason
-        @turn_flow.abort_continue!(reason: reason)
-        save_session(session)
-        @surface.commit("\nmodel> interrupted turn cancelled; noted your explanation")
-      else
-        @surface.commit("\nmodel> answer yes, no, or no, <reason>")
+      @turn_flow.before_continue_turn
+      begin
+        result = run_engine_turn(session, nil, continue: true)
+      rescue LLM::ProviderError => e
+        @surface.commit("\nmodel> #{e.summary}; continue prompt preserved")
+        return
       end
+      finish_turn(session, result, continue: true)
     end
 
     # A line at the main prompt: a command, or a prompt for a turn.
     def run_input_line(session, input)
       return if input.empty?
 
-      # Explicit escape hatch after a Ctrl-C: discard the salvaged
-      # partial turn and restore the pre-turn checkpoint.
-      if input.strip == ROLLBACK_COMMAND
-        if @turn_flow.rollback!
-          save_session(session)
-          @surface.commit("\nmodel> salvaged turn discarded; restored pre-turn state")
-        else
-          @surface.commit("\nmodel> nothing to rollback")
-        end
+      # /model, /models, !rollback, !cmd, /continue (shared with workers)
+      if (command = @commands.run(input))
+        show_command_result(command)
+        persist_recent_history(input) if command.shell
         return
       end
-
-      if shell_bang_command?(input)
-        command = input.delete_prefix(SHELL_BANG_PREFIX).strip
-        if command.empty?
-          @surface.commit("\nmodel> !: please provide a shell command after '!'")
-          return
-        end
-        output = Samagotchi::Tools::Execute.call(command)
-        @surface.commit(output)
-        @surface.commit("")
-        @engine.append_messages([{ role: "user", content: "!(#{command})\n#{output}" }])
-        @turn_flow.note_conversation_changed
-        persist_recent_history(input)
-        return
-      end
-
-      return @surface.commit("\nmodel> nothing to continue") if continue_request?(input)
-      return @surface.commit("\nmodel> #{handle_models_command}") if models_command?(input)
-      return @surface.commit("\nmodel> #{handle_model_command(input)}") if model_command?(input)
       return @surface.commit("\nmodel> session stats:\n#{format_session_metrics(@engine.metrics.snapshot)}") if stats_command?(input)
       return @surface.commit("\nmodel> #{handle_recap_command}") if recap_command?(input)
 
@@ -503,6 +463,24 @@ module Samagotchi
     def save_session(session)
       session.model_name = @effective_model_name
       session.save
+    end
+
+    # A !cmd shows its own output; everything else is the model> line.
+    def show_command_result(result)
+      if result.shell
+        @surface.commit(result.output)
+        @surface.commit("")
+      else
+        @surface.commit("\nmodel> #{result.output}")
+      end
+      sync_model_mirrors if result.changed.include?(:model)
+    end
+
+    # The status line and the next session save read these.
+    def sync_model_mirrors
+      @effective_model_name = @engine.effective_model_name
+      @default_model_name = @commands.default_model
+      @profile = @engine.profile
     end
 
     def status_server_segment
@@ -949,20 +927,8 @@ module Samagotchi
       Array(entries).map { |entry| entry.to_s.gsub(/\r\n?/, "\n").strip }.reject(&:empty?)
     end
 
-    def continue_request?(input)
-      input == CONTINUE_COMMAND
-    end
-
-    def model_command?(input)
-      input.to_s.strip.match?(/\A\/model(?:\s+.*)?\z/)
-    end
-
     def shell_bang_command?(input)
       input.to_s.match?(/\A!\s*\S/)
-    end
-
-    def models_command?(input)
-      input.to_s.strip == MODELS_COMMAND
     end
 
     def stats_command?(input)
@@ -973,204 +939,15 @@ module Samagotchi
       input.to_s.strip == RECAP_COMMAND
     end
 
+    # SessionCommands runs /model; the REPL mirrors the result.
     def handle_model_command(input)
-      suffix = input.to_s.strip.delete_prefix(MODEL_COMMAND).strip
-      if suffix.empty?
-        if @effective_model_name == @default_model_name
-          return "runtime model: #{current_model_label} (profile=#{@profile.name})"
-        else
-          return "runtime model: #{current_model_label} (default: #{@default_model_name}, profile=#{@profile.name})"
-        end
-      end
-
-      # Parse flags: --default and --alias <name> / --alias=<name> (tolerant order)
-      tokens = suffix.split(/\s+/)
-      persist_default = false
-      alias_name = nil
-      alias_seen = false
-      model_parts = []
-      i = 0
-      while i < tokens.length
-        tok = tokens[i]
-        if tok == "--default"
-          persist_default = true
-          i += 1
-        elsif tok == "--alias"
-          if alias_seen
-            return "multiple --alias flags are not supported: usage /model <model> --alias <name> [--default]"
-          end
-          alias_seen = true
-          nxt = tokens[i + 1]
-          if nxt.nil? || nxt.strip.empty? || nxt.start_with?("-")
-            return "--alias requires a name: usage /model <model> --alias <name> [--default]"
-          end
-          alias_name = nxt.strip
-          i += 2
-        elsif tok.start_with?("--alias=")
-          if alias_seen
-            return "multiple --alias flags are not supported: usage /model <model> --alias <name> [--default]"
-          end
-          alias_seen = true
-          val = tok.delete_prefix("--alias=").strip
-          if val.empty? || val.start_with?("-")
-            return "--alias requires a name: usage /model <model> --alias <name> [--default]"
-          end
-          alias_name = val
-          i += 1
-        else
-          model_parts << tok
-          i += 1
-        end
-      end
-
-      arg = model_parts.join(" ").strip
-
-      if alias_name
-        if arg.empty?
-          return "--alias requires a model name: usage /model <model> --alias <name> [--default]"
-        end
-        lowered_arg = arg.downcase
-        if ["clear", "default", "none", "off"].include?(lowered_arg)
-          return "--alias cannot be combined with clear/default/none/off"
-        end
-        # Pre-validate alias name before switching runtime (so invalid alias doesn't change model)
-        begin
-          # Reuse ConfigFile validation without IO by attempting a dry-run via the writer's checks
-          # Inline quick checks mirroring ConfigFile.write_model_alias! to avoid switching on invalid name
-          ak = alias_name.strip
-          raise ArgumentError, "alias name is required" if ak.empty?
-          lk = ak.downcase
-          if %w[clear default none off].include?(lk)
-            raise ArgumentError, "alias name '#{ak}' is reserved"
-          end
-          raise ArgumentError, "alias name must not contain whitespace" if ak.match?(/\s/)
-          raise ArgumentError, "alias name must not start with '-'" if ak.start_with?("-")
-          raise ArgumentError, "alias name must not contain '/'" if ak.include?("/")
-          unless ak.match?(/\A[a-z0-9][a-z0-9._-]*\z/i)
-            raise ArgumentError, "alias name must match /[a-z0-9][a-z0-9._-]*/i (got '#{ak}')"
-          end
-          raise ArgumentError, "alias must not point to itself" if lk == arg.strip.downcase
-        rescue ArgumentError => e
-          return "invalid alias: #{e.message}"
-        end
-
-        apply_runtime_model!(arg, persist_default: !!persist_default)
-        persist_session_model
-
-        begin
-          previous = ConfigFile.write_model_alias!(alias_name, @effective_model_name)
-        rescue ArgumentError => e
-          return "invalid alias: #{e.message} (runtime model set to #{@effective_model_name} (profile=#{@profile.name}))"
-        rescue StandardError => e
-          return "runtime model set to #{@effective_model_name} (profile=#{@profile.name}) but failed to persist alias: #{e.message}"
-        end
-
-        key = alias_name.strip.downcase
-        warn_prefix = previous ? "warning: overwriting alias '#{key}' (#{previous} -> #{@effective_model_name}); " : ""
-        base = persist_default ? "runtime model set to #{@effective_model_name} (profile=#{@profile.name}) and default updated" : "runtime model set to #{@effective_model_name} (profile=#{@profile.name})"
-        "#{warn_prefix}#{base}; alias '#{key}' -> '#{@effective_model_name}' persisted"
-      else
-        if arg.empty?
-          return "--default requires a model name: usage /model --default <name> or /model <name> [--default]"
-        end
-
-        lowered = arg.downcase
-        if ["clear", "default", "none", "off"].include?(lowered)
-          if persist_default
-            return "--default cannot be combined with clear/default/none/off"
-          end
-          apply_runtime_model!(@default_model_name)
-          persist_session_model
-          return "runtime model reset to #{@effective_model_name} (profile=#{@profile.name})"
-        end
-
-        apply_runtime_model!(arg, persist_default: !!persist_default)
-        persist_session_model
-        if persist_default
-          "runtime model set to #{@effective_model_name} (profile=#{@profile.name}) and default updated"
-        else
-          "runtime model set to #{@effective_model_name} (profile=#{@profile.name})"
-        end
-      end
-    end
-
-    def current_model_label
-      @effective_model_name
-    end
-
-    def persist_session_model
-      # If engine has an active session, keep it in sync immediately
-      sess = @engine.session if @engine.respond_to?(:session)
-      sess ||= @resume_session
-      if sess && sess.respond_to?(:model_name=)
-        sess.model_name = @effective_model_name
-        begin
-          sess.save
-        rescue StandardError
-          nil
-        end
-      end
+      result = @commands.run(input)
+      sync_model_mirrors
+      result.output
     end
 
     def handle_models_command
-      # Aggregate across all hosts (lazy discovery, skip-on-error)
-      results = @host_registry.list_all_models
-      if results.nil? || results.empty?
-        return "no hosts configured"
-      end
-      aliases = ConfigFile.model_aliases
-      by_model = Hash.new { |h, k| h[k] = [] }
-      aliases.each do |alias_name, model_id|
-        # normalize bare comparison for orphan detection (strip host prefix if present)
-        _, bare = @host_registry.parse_qualified_model(model_id)
-        key = (bare.empty? ? model_id : bare).to_s.downcase
-        by_model[key] << alias_name
-        # also index full ref for exact alias display
-        by_model[model_id.downcase] << alias_name unless key == model_id.downcase
-      end
-      by_model.each_value { |v| v.uniq!; v.sort! }
-
-      seen = Set.new
-      lines = []
-      # Sort hosts for deterministic output
-      results.keys.sort.each do |hname|
-        data = results[hname]
-        host_label = "#{hname} (#{data[:host]}:#{data[:port]})"
-        if data[:error]
-          lines << "#{host_label} — unreachable: #{data[:error]}"
-          next
-        end
-        models = Array(data[:models])
-        if models.empty?
-          lines << "#{host_label} — no models discovered"
-          next
-        end
-        lines << "#{host_label}:"
-        models.each do |entry|
-          identifier = entry.id.to_s.empty? ? "unknown" : entry.id
-          raw_status = entry.raw["status"] || entry.raw[:status]
-          status = raw_status.is_a?(Hash) ? (raw_status["value"] || raw_status[:value] || raw_status["status"] || raw_status[:status]) : raw_status
-          seen << identifier.to_s.downcase
-          # also track host-qualified seen for orphan logic
-          seen << "#{hname}:#{identifier}".downcase
-          seen << "#{hname}/#{identifier}".downcase
-          base = status.to_s.empty? ? "  #{identifier}" : "  #{identifier} (#{status})"
-          alias_list = (by_model[identifier.to_s.downcase] || []) + (by_model["#{hname}:#{identifier}".downcase] || [])
-          alias_list.uniq!
-          lines << (alias_list.empty? ? base : "#{base} (alias: #{alias_list.join(", ")})")
-        end
-      end
-      # Warnings for unreachable hosts are already in lines; no failover
-      orphans = aliases.reject { |_, model_id| seen.include?(model_id.downcase) || seen.include?(bare_model_for(model_id).downcase) }
-      unless orphans.empty?
-        lines << ""
-        lines << "orphan aliases (target not discovered):"
-        orphans.sort.each { |alias_name, model_id| lines << "  #{alias_name} -> #{model_id}" }
-      end
-      lines = ["no models discovered"] if lines.empty?
-      lines.join("\n")
-    rescue StandardError => e
-      "unable to list models: #{e.message}"
+      @commands.run(SessionCommands::MODELS_COMMAND).output
     end
 
     # Handle /recap command - display the last generated recap
@@ -1189,16 +966,6 @@ module Samagotchi
         recap = @engine.recap
         "no recap available yet — the session needs at least #{recap.min_user_turns} user turns and #{recap.inactivity.to_i}s of inactivity to generate one automatically"
       end
-    end
-
-    # Engine owns the switch (alias resolution, profile, kernel, client and the
-    # optional default persist); the UI mirrors the result for its status line.
-    def apply_runtime_model!(model_name, persist_default: false)
-      resolved_model_name = @engine.switch_model!(model_name, persist_default: persist_default)
-      @effective_model_name = @engine.effective_model_name
-      @default_model_name = @engine.default_model_name
-      @profile = @engine.profile
-      resolved_model_name
     end
 
     def exit_command?(input)
