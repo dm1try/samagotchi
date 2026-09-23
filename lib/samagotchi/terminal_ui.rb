@@ -2591,10 +2591,12 @@ module Samagotchi
       # Ensure spinner cleared and terminal in known state (same as reminder mute handling)
       finish_thinking_spinner rescue nil
 
-      # Print widget (uses $stdout directly, not Reline buffer)
-      $stdout.puts "" if $stdout.tty?
-      prompt.lines(paint: method(:paint), color: color_output?).each { |line| $stdout.puts line }
-      $stdout.puts "  Enter empty to cancel." if !prompt.free? # still allow cancel
+      # The choices stay in the notes slot while the answer is read (not in
+      # Reline's buffer); cleared when the widget returns.
+      rows = prompt.lines(paint: method(:paint), color: color_output?)
+      rows.unshift("") if $stdout.tty?
+      rows << "  Enter empty to cancel." if !prompt.free? # still allow cancel
+      @surface.set_slot(:notes, rows)
 
       # Loop until valid selection or cancel
       loop do
@@ -2605,8 +2607,7 @@ module Samagotchi
           if $stdin.tty? && $stdout.tty?
             raw = Reline.readline(choice_prompt, true)
           else
-            $stdout.print(choice_prompt)
-            $stdout.flush
+            @surface.set_slot(:editor, [choice_prompt])
             raw = $stdin.gets
           end
         rescue Interrupt
@@ -2620,14 +2621,14 @@ module Samagotchi
         raw = raw.to_s.strip
         if raw.empty?
           @engine.cancel_question("user") rescue nil
-          $stdout.puts "(cancelled)" if $stdout.tty?
+          @surface.commit("(cancelled)") if $stdout.tty?
           return false
         end
 
         answer = prompt.parse(raw)
-        $stdout.puts answer.note if answer.note
+        @surface.commit(answer.note) if answer.note
         unless answer.ok?
-          $stdout.puts answer.error
+          @surface.commit(answer.error)
           next
         end
 
@@ -2635,13 +2636,15 @@ module Samagotchi
           @engine.answer_question(id: prompt.id, selected: answer.selected, freeform: answer.freeform)
           return true
         rescue ArgumentError => e
-          $stdout.puts "Invalid: #{e.message}. Try again."
+          @surface.commit("Invalid: #{e.message}. Try again.")
           next
         rescue StandardError => e
-          $stdout.puts "Error: #{e.message}"
+          @surface.commit("Error: #{e.message}")
           return false
         end
       end
+    ensure
+      @surface.clear_slot(:notes)
     end
 
     # Process a prompt through the kernel loop and return the model response.
