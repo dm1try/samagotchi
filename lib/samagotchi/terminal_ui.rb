@@ -20,6 +20,7 @@ require_relative "engine"
 require_relative "tools/memory"
 require_relative "output_formatter"
 require_relative "turn_preamble"
+require_relative "turn_flow"
 require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
 require_relative "terminal_ui/legacy_surface"
@@ -41,7 +42,7 @@ module Samagotchi
     PROMPT_HISTORY_LIMIT = 20
     DEFAULT_INPUT_ENV = "SAMAGOTCHI_DEFAULT_INPUT"
     SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
-    CONTINUE_COMMAND = "/continue"
+    CONTINUE_COMMAND = TurnFlow::CONTINUE_COMMAND
     MODEL_COMMAND = "/model"
     MODELS_COMMAND = "/models"
     STATS_COMMAND = "/stats"
@@ -77,10 +78,6 @@ module Samagotchi
     STATUS_FIXED_WIDTH_ENV = "SAMAGOTCHI_STATUS_FIXED_WIDTH"
     STATUS_MAX_WIDTH_ENV = "SAMAGOTCHI_STATUS_MAX_WIDTH"
     STATUS_MAX_WIDTH_DEFAULT = 160
-    INTERRUPTED_SUMMARY_PROMPT_LIMIT = 600
-    INTERRUPTED_SUMMARY_MODEL_LIMIT = 360
-    INTERRUPTED_SUMMARY_PARAMS_LIMIT = 80
-    INTERRUPTED_SUMMARY_TOOLS_LIMIT = 5
     AT_PATH_COMPLETION_PREFIX = "@"
     MEMORY_COMPLETION_PREFIX = "#"
     AT_PATH_COMPLETION_MAX_CANDIDATES = 200
@@ -159,6 +156,7 @@ module Samagotchi
           }
         }
       )
+      @turn_flow = TurnFlow.new(engine: @engine)
       # Runtime --model flag or resumed session: switch the Engine (client,
       # kernel profile) without persisting the default.
       @engine.switch_model!(@effective_model_name) if @effective_model_name != @default_model_name
@@ -350,13 +348,11 @@ module Samagotchi
     # threaded in here (so --prompt / --resume share one code path). The
     # session's conversation is the single working copy: turns go through
     # Engine#run_turn and out-of-turn edits through Engine's messages API.
-    # The session is persisted at the end of every turn.
+    # The checkpoint and continue state live in @turn_flow (shared with
+    # session workers). The session is persisted at the end of every turn.
     def run_assist_loop(session:, messages:)
       session.messages = messages
       @engine.session = session
-      awaiting_continue = false
-      interrupted_turn_checkpoint = nil
-      interrupted_turn_context = nil
       # UI-agnostic steering queue. Nothing pushes mid-turn in the TUI yet
       # (typed-during-generation input is intentionally out of scope — the tty
       # render stack is too fragile), but wiring the drain here keeps the
@@ -373,184 +369,140 @@ module Samagotchi
         # commits above it and whatever is typed there stays.
         unless @engine.due_reminder_names.empty?
           run_reminder_turn(session)
-          interrupted_turn_checkpoint = nil unless awaiting_continue
+          @turn_flow.after_reminder_turn
           next
         end
         input = @prompt
         @prompt = nil if input
         if input.nil?
-          input = poll_input_with_reminder_check(awaiting_continue: awaiting_continue)
+          input = poll_input_with_reminder_check(awaiting_continue: @turn_flow.awaiting_continue?)
           # A reminder fell due: run it at the top, with the prompt still open.
           next if input == :due
         end
         break if input.nil?
         break if exit_command?(input)
-        continue_flow = awaiting_continue
 
-        if awaiting_continue
-          decision, reason = continue_decision(input)
-
-          case decision
-          when :resume
-            # A cancelled continue leaves the conversation as it was before it.
-            continue_checkpoint = @engine.messages_checkpoint
-            begin
-              result = run_engine_turn(session, nil, continue: true)
-            rescue LLM::ProviderError => e
-              @surface.commit("\nmodel> #{e.summary}; continue prompt preserved")
-              awaiting_continue = true
-              interrupted_turn_checkpoint = nil unless awaiting_continue
-              next
-            end
-          when :abort
-            @engine.rollback_to(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
-            interrupted_turn_checkpoint = nil
-            interrupted_turn_context = nil
-            awaiting_continue = false
-            session.model_name = @effective_model_name
-            session.save
-            @surface.commit("\nmodel> interrupted turn cancelled; enter your next prompt")
-            next
-          when :abort_with_reason
-            @engine.rollback_to(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
-            interrupted_turn_checkpoint = nil
-            @engine.append_messages([{
-              role: "user",
-              content: interrupted_turn_reason_message(reason: reason, context: interrupted_turn_context)
-            }])
-            interrupted_turn_context = nil
-            awaiting_continue = false
-            session.model_name = @effective_model_name
-            session.save
-            @surface.commit("\nmodel> interrupted turn cancelled; noted your explanation")
-            next
-          else
-            @surface.commit("\nmodel> answer yes, no, or no, <reason>")
-            next
-          end
+        if @turn_flow.awaiting_continue?
+          answer_continue_offer(session, input)
         else
-          next if input.empty?
-
-          # Explicit escape hatch after a Ctrl-C: discard the salvaged
-          # partial turn and restore the pre-turn checkpoint.
-          if input.strip == ROLLBACK_COMMAND
-            if interrupted_turn_checkpoint
-              @engine.rollback_to(interrupted_turn_checkpoint)
-              interrupted_turn_checkpoint = nil
-              session.model_name = @effective_model_name
-              session.save
-              @surface.commit("\nmodel> salvaged turn discarded; restored pre-turn state")
-            else
-              @surface.commit("\nmodel> nothing to rollback")
-            end
-            next
-          end
-
-          if shell_bang_command?(input)
-            command = input.delete_prefix(SHELL_BANG_PREFIX).strip
-            if command.empty?
-              @surface.commit("\nmodel> !: please provide a shell command after '!'")
-              next
-            end
-            output = Samagotchi::Tools::Execute.call(command)
-            @surface.commit(output)
-            @surface.commit("")
-            @engine.append_messages([{ role: "user", content: "!(#{command})\n#{output}" }])
-            # Rolling back past this would silently drop the command output.
-            interrupted_turn_checkpoint = nil
-            persist_recent_history(input)
-            next
-          end
-
-          if continue_request?(input)
-            @surface.commit("\nmodel> nothing to continue")
-            next
-          end
-
-          if models_command?(input)
-            @surface.commit("\nmodel> #{handle_models_command}")
-            next
-          end
-
-          if model_command?(input)
-            @surface.commit("\nmodel> #{handle_model_command(input)}")
-            next
-          end
-
-          if stats_command?(input)
-            @surface.commit("\nmodel> session stats:\n#{format_session_metrics(@engine.metrics.snapshot)}")
-            next
-          end
-
-          if recap_command?(input)
-            @surface.commit("\nmodel> #{handle_recap_command}")
-            next
-          end
-
-          interrupted_turn_checkpoint = @engine.messages_checkpoint
-          persist_recent_history(input)
-          begin
-            # Engine#run_turn injects due reminders as a tail message, appends
-            # the prompt, and renders through @renderer via on_event.
-            result = run_engine_turn(session, normalize_model_input(input))
-          rescue LLM::ProviderError => e
-            # Engine closed the turn (:turn_failed); show its duration.
-            # Retries were already tallied via generation_retrying events.
-            emit_interactive_turn_duration(canceled: false)
-            @engine.rollback_to(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
-            awaiting_continue = false
-            queue_input_prefill(input)
-            @surface.commit("\nmodel> #{e.summary}; prompt restored for retry")
-            interrupted_turn_checkpoint = nil unless awaiting_continue
-            next
-          end
+          run_input_line(session, input)
         end
-
-        if result.respond_to?(:canceled?) && result.canceled?
-          if continue_flow
-            @engine.rollback_to(continue_checkpoint)
-            awaiting_continue = true
-          else
-            # Ctrl-C on a fresh turn. The kernel salvaged completed tool calls
-            # and the partial assistant reply (marked [interrupted]) into
-            # result.conversation, so progress is preserved by default — the
-            # user's next message continues from it. !rollback restores the
-            # pre-turn checkpoint for an explicit full discard.
-            emit_interactive_turn_duration(canceled: true)
-            if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
-              session.model_name = @effective_model_name
-              session.save
-            else
-              @engine.rollback_to(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
-            end
-            awaiting_continue = false
-            # Keep interrupted_turn_checkpoint: it is what !rollback restores,
-            # until the next turn or another change to the conversation.
-            @surface.commit("\nmodel> turn cancelled; partial progress kept in context; use !rollback immediately after cancellation to restore the pre-turn checkpoint")
-          end
-          next
-        end
-
-        # The REPL keeps the kernel's conversation as-is (no [No response]
-        # placeholder), so /continue resumes from the tool results.
-        session.messages = result.conversation
-        awaiting_continue = result.resumable?
-        interrupted_turn_context = if awaiting_continue
-                                     build_interrupted_turn_context(
-                                       result: result,
-                                       checkpoint: interrupted_turn_checkpoint,
-                                       conversation: session.messages
-                                     )
-                                   else
-                                     nil
-                                   end
-        interrupted_turn_checkpoint = nil unless awaiting_continue
-
-        session.model_name = @effective_model_name
-        session.save
       end
 
       @surface.commit("\nContinue session: chi --resume #{session.id}")
+    end
+
+    # An answer at the continue(yes/no/no_with_reason) prompt.
+    def answer_continue_offer(session, input)
+      decision, reason = TurnFlow.continue_decision(input)
+
+      case decision
+      when :resume
+        @turn_flow.before_continue_turn
+        begin
+          result = run_engine_turn(session, nil, continue: true)
+        rescue LLM::ProviderError => e
+          @surface.commit("\nmodel> #{e.summary}; continue prompt preserved")
+          return
+        end
+        finish_turn(session, result, continue: true)
+      when :abort
+        @turn_flow.abort_continue!
+        save_session(session)
+        @surface.commit("\nmodel> interrupted turn cancelled; enter your next prompt")
+      when :abort_with_reason
+        @turn_flow.abort_continue!(reason: reason)
+        save_session(session)
+        @surface.commit("\nmodel> interrupted turn cancelled; noted your explanation")
+      else
+        @surface.commit("\nmodel> answer yes, no, or no, <reason>")
+      end
+    end
+
+    # A line at the main prompt: a command, or a prompt for a turn.
+    def run_input_line(session, input)
+      return if input.empty?
+
+      # Explicit escape hatch after a Ctrl-C: discard the salvaged
+      # partial turn and restore the pre-turn checkpoint.
+      if input.strip == ROLLBACK_COMMAND
+        if @turn_flow.rollback!
+          save_session(session)
+          @surface.commit("\nmodel> salvaged turn discarded; restored pre-turn state")
+        else
+          @surface.commit("\nmodel> nothing to rollback")
+        end
+        return
+      end
+
+      if shell_bang_command?(input)
+        command = input.delete_prefix(SHELL_BANG_PREFIX).strip
+        if command.empty?
+          @surface.commit("\nmodel> !: please provide a shell command after '!'")
+          return
+        end
+        output = Samagotchi::Tools::Execute.call(command)
+        @surface.commit(output)
+        @surface.commit("")
+        @engine.append_messages([{ role: "user", content: "!(#{command})\n#{output}" }])
+        @turn_flow.note_conversation_changed
+        persist_recent_history(input)
+        return
+      end
+
+      return @surface.commit("\nmodel> nothing to continue") if continue_request?(input)
+      return @surface.commit("\nmodel> #{handle_models_command}") if models_command?(input)
+      return @surface.commit("\nmodel> #{handle_model_command(input)}") if model_command?(input)
+      return @surface.commit("\nmodel> session stats:\n#{format_session_metrics(@engine.metrics.snapshot)}") if stats_command?(input)
+      return @surface.commit("\nmodel> #{handle_recap_command}") if recap_command?(input)
+
+      @turn_flow.before_prompt_turn
+      persist_recent_history(input)
+      begin
+        # Engine#run_turn injects due reminders as a tail message, appends
+        # the prompt, and renders through @renderer via on_event.
+        result = run_engine_turn(session, normalize_model_input(input))
+      rescue LLM::ProviderError => e
+        # Engine closed the turn (:turn_failed); show its duration.
+        # Retries were already tallied via generation_retrying events.
+        emit_interactive_turn_duration(canceled: false)
+        @turn_flow.prompt_turn_failed
+        queue_input_prefill(input)
+        @surface.commit("\nmodel> #{e.summary}; prompt restored for retry")
+        return
+      end
+      finish_turn(session, result, continue: false)
+    end
+
+    # After a prompt or continue turn: TurnFlow keeps the checkpoint and the
+    # continue offer; the REPL saves and tells the user.
+    def finish_turn(session, result, continue:)
+      if result.respond_to?(:canceled?) && result.canceled?
+        outcome = @turn_flow.after_turn(result, continue: continue)
+        # A cancelled continue is back where it started, the offer still open.
+        return if outcome == :continue_cancelled
+
+        # Ctrl-C on a fresh turn. The kernel salvaged completed tool calls
+        # and the partial assistant reply (marked [interrupted]) into
+        # result.conversation, so progress is preserved by default — the
+        # user's next message continues from it. !rollback restores the
+        # pre-turn checkpoint for an explicit full discard.
+        emit_interactive_turn_duration(canceled: true)
+        save_session(session) if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
+        @surface.commit("\nmodel> turn cancelled; partial progress kept in context; use !rollback immediately after cancellation to restore the pre-turn checkpoint")
+        return
+      end
+
+      # The REPL keeps the kernel's conversation as-is (no [No response]
+      # placeholder), so /continue resumes from the tool results.
+      session.messages = result.conversation
+      @turn_flow.after_turn(result, continue: continue)
+      save_session(session)
+    end
+
+    def save_session(session)
+      session.model_name = @effective_model_name
+      session.save
     end
 
     def status_server_segment
@@ -1254,103 +1206,8 @@ module Samagotchi
       normalized == "exit" || normalized == "/exit"
     end
 
-    def continue_decision(input)
-      normalized = input.to_s.strip
-      return [:resume, nil] if normalized.empty?
-
-      lowered = normalized.downcase
-      return [:resume, nil] if lowered == CONTINUE_COMMAND || lowered == "yes" || lowered == "y"
-      return [:abort, nil] if lowered == "no" || lowered == "n"
-
-      reason_match = normalized.match(/\A(?:no|n)\s*[,:\-]\s*(.+)\z/i)
-      if reason_match
-        reason = reason_match[1].to_s.strip
-        return [:abort, nil] if reason.empty?
-
-        return [:abort_with_reason, reason]
-      end
-
-      [:invalid, nil]
-    end
-
     def clone_messages(messages)
       Array(messages).map(&:dup)
-    end
-
-    def build_interrupted_turn_context(result:, checkpoint:, conversation:)
-      interrupted_messages = extract_interrupted_turn_messages(checkpoint: checkpoint, conversation: conversation)
-      {
-        original_prompt: summarized_interrupted_prompt(interrupted_messages),
-        tool_trace: summarized_interrupted_tool_trace(result),
-        last_model_intent: summarized_interrupted_model_excerpt(interrupted_messages)
-      }
-    end
-
-    def extract_interrupted_turn_messages(checkpoint:, conversation:)
-      checkpoint_messages = Array(checkpoint)
-      conversation_messages = Array(conversation)
-      return [] if checkpoint_messages.empty? || conversation_messages.length < checkpoint_messages.length
-      return [] unless conversation_messages.first(checkpoint_messages.length) == checkpoint_messages
-
-      conversation_messages[checkpoint_messages.length..] || []
-    end
-
-    def summarized_interrupted_prompt(messages)
-      prompt = Array(messages).find { |message| message[:role] == "user" }
-      preview_text(prompt && prompt[:content], INTERRUPTED_SUMMARY_PROMPT_LIMIT)
-    end
-
-    def summarized_interrupted_tool_trace(result)
-      activities = if result.respond_to?(:tool_activity)
-                     Array(result.tool_activity)
-                   else
-                     []
-                   end
-      return [] if activities.empty?
-
-      activities.last(INTERRUPTED_SUMMARY_TOOLS_LIMIT).map do |activity|
-        tool = activity[:tool].to_s.strip
-        status = activity[:status].to_s.strip
-        params = preview_text(activity[:params], INTERRUPTED_SUMMARY_PARAMS_LIMIT)
-        parts = [tool]
-        parts << "status=#{status}" unless status.empty?
-        parts << "params=#{params}" unless params.empty?
-        parts.join(" ")
-      end
-    end
-
-    def summarized_interrupted_model_excerpt(messages)
-      model_message = Array(messages).reverse.find { |message| message[:role] == "model" }
-      preview_text(model_message && model_message[:content], INTERRUPTED_SUMMARY_MODEL_LIMIT)
-    end
-
-    def interrupted_turn_reason_message(reason:, context:)
-      lines = ["I chose not to continue the interrupted turn because: #{reason}"]
-      lines << ""
-      lines << "Interrupted turn summary:"
-      original_prompt = context && context[:original_prompt]
-      lines << "- original_prompt: #{original_prompt.to_s.empty? ? "(unavailable)" : original_prompt}"
-
-      tool_trace = context ? Array(context[:tool_trace]) : []
-      if tool_trace.empty?
-        lines << "- interrupted_tools: (none)"
-      else
-        lines << "- interrupted_tools: #{tool_trace.join("; ")}"
-      end
-
-      model_intent = context && context[:last_model_intent]
-      lines << "- last_model_intent: #{model_intent.to_s.empty? ? "(unavailable)" : model_intent}"
-      lines << ""
-      lines << "Please keep the original prompt context. If my next message does not provide a clear replacement request, ask what we should do instead."
-      lines.join("\n")
-    end
-
-    def preview_text(text, limit)
-      normalized = text.to_s.gsub(/\s+/, " ").strip
-      return "" if normalized.empty?
-      return normalized if normalized.length <= limit
-
-      normalized[0, limit].rstrip + "..."
     end
 
     def skip_agent_description?

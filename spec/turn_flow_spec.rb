@@ -1,0 +1,164 @@
+# frozen_string_literal: true
+
+require "samagotchi/turn_flow"
+require "samagotchi/kernel_loop"
+
+RSpec.describe Samagotchi::TurnFlow do
+  # Engine's out-of-turn messages API over a plain array.
+  let(:engine_class) do
+    Class.new do
+      attr_accessor :messages
+
+      def initialize(messages) = @messages = messages
+      def messages_checkpoint = @messages.map(&:dup)
+      def rollback_to(checkpoint) = @messages = checkpoint.map(&:dup)
+      def append_messages(extra) = @messages += extra.map(&:dup)
+    end
+  end
+  let(:before) { [{ role: "system", content: "sys" }, { role: "user", content: "old" }, { role: "model", content: "ok" }] }
+  let(:engine) { engine_class.new(before.map(&:dup)) }
+  let(:flow) { described_class.new(engine: engine) }
+
+  def result(conversation, canceled: false, exhausted: false, pending: false, activity: [])
+    Samagotchi::KernelLoop::Result.new(output: "", conversation: conversation, exhausted: exhausted,
+                                       pending_tool_calls: pending, tool_activity: activity, canceled: canceled,
+                                       cancellation_reason: canceled ? :ctrl_c : nil)
+  end
+
+  # What a prompt turn leaves in the engine (Engine#run_turn replaces the
+  # session's messages with the kernel's conversation).
+  def run_prompt(text, tail)
+    flow.before_prompt_turn
+    engine.messages = engine.messages + [{ role: "user", content: text }] + tail
+  end
+
+  describe "#after_turn" do
+    it "completes a turn and forgets the checkpoint" do
+      run_prompt("go", [{ role: "model", content: "done" }])
+
+      expect(flow.after_turn(result(engine.messages))).to eq(:completed)
+      expect(flow.rollback!).to be(false)
+      expect(flow.awaiting_continue?).to be(false)
+    end
+
+    it "offers to continue an exhausted turn, with a summary of it, and keeps the checkpoint" do
+      activity = [{ tool: "execute", status: "ok", params: 'command="ls"' }]
+      run_prompt("list it", [{ role: "model", content: "calling ls" }, { role: "tool_response", content: "a b" }])
+
+      outcome = flow.after_turn(result(engine.messages, exhausted: true, pending: true, activity: activity), no_interrupt: true)
+
+      expect(outcome).to eq(:continue_offered)
+      expect(flow.awaiting_continue?).to be(true)
+      expect(flow.offer[:context]).to eq(original_prompt: "list it", tool_trace: ['execute status=ok params=command="ls"'],
+                                         last_model_intent: "calling ls")
+      expect(flow.offer[:no_interrupt]).to be(true)
+      expect(flow.rollback!).to be(true)
+      expect(engine.messages).to eq(before)
+    end
+
+    it "keeps a cancelled turn's partial progress and the checkpoint for !rollback" do
+      run_prompt("go", [{ role: "model", content: "Partial\n[interrupted]" }])
+
+      expect(flow.after_turn(result(engine.messages, canceled: true))).to eq(:cancelled)
+      expect(engine.messages.last[:content]).to eq("Partial\n[interrupted]")
+      expect(flow.rollback!).to be(true)
+      expect(engine.messages).to eq(before)
+    end
+
+    it "rolls a cancelled continue back to where it started and keeps the offer" do
+      run_prompt("go", [{ role: "tool_response", content: "r1" }])
+      flow.after_turn(result(engine.messages, exhausted: true, pending: true))
+      offered = engine.messages_checkpoint
+
+      flow.before_continue_turn
+      engine.messages = engine.messages + [{ role: "tool_response", content: "r2" }]
+      expect(flow.after_turn(result(engine.messages, canceled: true), continue: true)).to eq(:continue_cancelled)
+
+      expect(engine.messages).to eq(offered)
+      expect(flow.awaiting_continue?).to be(true)
+    end
+
+    it "summarizes a continue that runs out again against the original prompt" do
+      run_prompt("the task", [{ role: "tool_response", content: "r1" }])
+      flow.after_turn(result(engine.messages, exhausted: true, pending: true))
+
+      flow.before_continue_turn
+      engine.messages = engine.messages + [{ role: "model", content: "still going" }]
+      expect(flow.after_turn(result(engine.messages, exhausted: true, pending: true), continue: true)).to eq(:continue_offered)
+
+      expect(flow.offer[:context][:original_prompt]).to eq("the task")
+      expect(flow.offer[:context][:last_model_intent]).to eq("still going")
+    end
+  end
+
+  describe "#prompt_turn_failed" do
+    it "restores the pre-turn conversation and drops the checkpoint" do
+      run_prompt("go", [{ role: "tool_response", content: "partial" }])
+
+      flow.prompt_turn_failed
+
+      expect(engine.messages).to eq(before)
+      expect(flow.rollback!).to be(false)
+      expect(flow.awaiting_continue?).to be(false)
+    end
+  end
+
+  describe "#abort_continue!" do
+    before do
+      run_prompt("the task", [{ role: "model", content: "working" }, { role: "tool_response", content: "r1" }])
+      flow.after_turn(result(engine.messages, exhausted: true, pending: true))
+    end
+
+    it "discards the interrupted turn" do
+      flow.abort_continue!
+
+      expect(engine.messages).to eq(before)
+      expect(flow.awaiting_continue?).to be(false)
+      expect(flow.rollback!).to be(false)
+    end
+
+    it "notes the reason with a summary of the interrupted turn" do
+      flow.abort_continue!(reason: "too slow")
+
+      expect(engine.messages[0...-1]).to eq(before)
+      note = engine.messages.last
+      expect(note[:role]).to eq("user")
+      expect(note[:content]).to start_with("I chose not to continue the interrupted turn because: too slow")
+      expect(note[:content]).to include("- original_prompt: the task", "- interrupted_tools: (none)", "- last_model_intent: working")
+      expect(flow.awaiting_continue?).to be(false)
+    end
+  end
+
+  describe ".continue_decision" do
+    {
+      "" => [:resume, nil], "yes" => [:resume, nil], "Y" => [:resume, nil], "/continue" => [:resume, nil],
+      "no" => [:abort, nil], "n" => [:abort, nil], "no, too slow" => [:abort_with_reason, "too slow"],
+      "N: wrong file" => [:abort_with_reason, "wrong file"], "maybe" => [:invalid, nil]
+    }.each do |answer, decision|
+      it "reads #{answer.inspect} as #{decision.first}" do
+        expect(described_class.continue_decision(answer)).to eq(decision)
+      end
+    end
+  end
+
+  it "forgets the checkpoint once the conversation changed outside a turn" do
+    run_prompt("go", [{ role: "model", content: "Partial" }])
+    flow.after_turn(result(engine.messages, canceled: true))
+
+    flow.note_conversation_changed
+
+    expect(flow.rollback!).to be(false)
+  end
+
+  it "keeps the checkpoint across a reminder turn only while a continue is offered" do
+    run_prompt("go", [{ role: "tool_response", content: "r1" }])
+    flow.after_turn(result(engine.messages, exhausted: true, pending: true))
+    flow.after_reminder_turn
+    expect(flow.rollback!).to be(true)
+
+    run_prompt("go", [{ role: "model", content: "Partial" }])
+    flow.after_turn(result(engine.messages, canceled: true))
+    flow.after_reminder_turn
+    expect(flow.rollback!).to be(false)
+  end
+end
