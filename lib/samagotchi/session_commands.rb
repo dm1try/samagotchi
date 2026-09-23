@@ -341,12 +341,15 @@ module Samagotchi
           next
         end
         shown = []
+        batch_variants = batch_variant_ids(models, needle)
         models.each do |entry|
           identifier = entry.id.to_s.empty? ? "unknown" : entry.id
           seen << identifier.to_s.downcase
           # also track host-qualified seen for orphan logic
           seen << "#{hname}:#{identifier}".downcase
           seen << "#{hname}/#{identifier}".downcase
+          next if batch_variants.include?(identifier)
+
           shown << [entry, identifier] if needle.empty? || identifier.to_s.downcase.include?(needle)
         end
         next if shown.empty?
@@ -361,7 +364,14 @@ module Samagotchi
           alias_list.uniq!
           lines << (alias_list.empty? ? base : "#{base} (alias: #{alias_list.join(", ")})")
         end
-        lines << "  … and #{hidden} more; /models <text> lists the ids containing <text>" if hidden.positive?
+        batch = batch_variants.count { |id| needle.empty? || id.downcase.include?(needle) }
+        batch_note = "#{batch} :batch variant#{"s" unless batch == 1}"
+        if hidden.positive?
+          more = batch.positive? ? "#{hidden} more, plus #{batch_note}" : "#{hidden} more"
+          lines << "  … and #{more}; /models <text> lists the ids containing <text>"
+        elsif batch.positive?
+          lines << "  … plus #{batch_note}; /models :batch lists them"
+        end
       end
       # Warnings for unreachable hosts are already in lines; no failover
       orphans = aliases.reject { |_, model_id| seen.include?(model_id.downcase) || seen.include?(registry.bare_name(model_id).downcase) }
@@ -374,6 +384,17 @@ module Samagotchi
       lines.join("\n")
     rescue StandardError => e
       "unable to list models: #{e.message}"
+    end
+
+    # OpenRouter lists a "<id>:batch" variant next to many ids (71 of 457 on
+    # 2026-09-23), which only repeats the model. The ids of such variants
+    # whose plain id is listed too, unless the filter asks for batch.
+    def batch_variant_ids(models, needle)
+      return Set.new if needle.include?("batch")
+
+      ids = models.map { |entry| entry.id.to_s }
+      plain = ids.to_set
+      ids.select { |id| id.end_with?(":batch") && plain.include?(id.delete_suffix(":batch")) }.to_set
     end
   end
 end

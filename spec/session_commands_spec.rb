@@ -154,6 +154,33 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(commands.run("/models nothing-like-it").output).to eq('no model ids contain "nothing-like-it"')
     end
 
+    context "with OpenRouter's :batch variants" do
+      def info(id) = Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {})
+
+      let(:catalog) do
+        ids = (1..25).map { |i| format("vendor/model-%02d", i) }
+        ids += ["vendor/model-01:batch", "vendor/model-24:batch", "lonely/only:batch"]
+        { "remote" => { host: "openrouter.ai", port: 443, models: ids.map { |id| info(id) } } }
+      end
+
+      it "hides a :batch variant of a listed id and says how many" do
+        lines = commands.run("/models").output.lines(chomp: true)
+
+        expect(lines[1..20]).to eq((1..20).map { |i| format("  vendor/model-%02d", i) })
+        expect(lines[21..]).to eq(["  … and 6 more, plus 2 :batch variants; /models <text> lists the ids containing <text>"])
+      end
+
+      it "names the hidden variants when the filter shows everything else" do
+        expect(commands.run("/models model-24").output.lines(chomp: true))
+          .to eq(["remote (openrouter.ai:443):", "  vendor/model-24", "  … plus 1 :batch variant; /models :batch lists them"])
+      end
+
+      it "lists them when the filter asks for batch" do
+        expect(commands.run("/models :batch").output.lines(chomp: true))
+          .to eq(["remote (openrouter.ai:443):", "  vendor/model-01:batch", "  vendor/model-24:batch", "  lonely/only:batch"])
+      end
+    end
+
     it "is a command with an argument too" do
       expect(described_class.command?("/models qwen")).to be(true)
       expect(described_class.command?("/modelsx")).to be(false)
