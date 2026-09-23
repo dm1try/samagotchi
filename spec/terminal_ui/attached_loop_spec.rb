@@ -501,6 +501,18 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
     expect(other.send(:prompt_text)).to eq(Samagotchi::TerminalUI::CONTINUE_PROMPT)
   end
 
+  it "renders a reminder turn by its reminders, live and from a join" do
+    feed({ type: :turn_started, prompt: nil, continue: true, origin: { client_id: "system:reminder" } },
+         { type: :reminder_injected, reminders: [{ name: "stretch", description: "Stand up", interval_minutes: 1 }] })
+    expect(screen.lines.drop(1)).to eq(["reminder: stretch"])
+
+    other = described_class.new(client: client, screen: screen, client_id: "tui:2")
+    turn = { prompt: nil, continue: true, origin: { client_id: "system:reminder" },
+             parts: [{ kind: "reminder", reminders: [{ name: "stretch" }, { name: "water" }] }] }
+    other.handle_event(JSON.parse(JSON.generate(joined.merge(snapshot: joined[:snapshot].merge(current_turn: turn)))))
+    expect(screen.lines.last).to eq("reminder: stretch, water")
+  end
+
   it "renders a continue turn as (continuing), not as an empty prompt line" do
     feed({ type: :turn_started, prompt: nil, continue: true, origin: { client_id: "web:tab" } })
 

@@ -225,6 +225,7 @@ module Samagotchi
           end_turn("turn failed: #{event[:summary] || "#{event[:message]} (#{event[:error_class]})"}")
         when :prompt_restored then restore_prompt(event)
         when :command_ran then command_ran(event)
+        when :reminder_injected then @screen.commit(reminder_line(event[:reminders]))
         when :continue_offered then offer_continue(event)
         when :continue_resolved then continue_resolved(event)
         when :input_merged
@@ -525,7 +526,9 @@ module Samagotchi
         return unless turn
 
         @turn_continues = turn[:prompt].nil?
-        @screen.commit(prompt_line(turn.dig(:origin, :client_id), turn[:prompt] || "(continuing)"))
+        unless @turn_continues && reminder_origin?(turn[:origin] || {})
+          @screen.commit(prompt_line(turn.dig(:origin, :client_id), turn[:prompt] || "(continuing)"))
+        end
         tail = nil
         running_tool = nil
         Array(turn[:parts]).each do |part|
@@ -538,6 +541,7 @@ module Samagotchi
               @screen.commit(snapshot_tool_line(part))
             end
           when "input" then @screen.commit("input> #{part[:text]}")
+          when "reminder" then @screen.commit(reminder_line(part[:reminders]))
           end
         end
         @view.resume(tail: tail, tool: running_tool)
@@ -558,8 +562,9 @@ module Samagotchi
         @turn_continues = event[:prompt].nil?
         origin = event[:origin] || {}
         if @turn_continues
-          # A continue turn (after the offer's yes) has no prompt to show.
-          @screen.commit(prompt_line(origin[:client_id], "(continuing)"))
+          # A continue turn (after the offer's yes) has no prompt to show; a
+          # reminder turn shows its reminders (:reminder_injected).
+          @screen.commit(prompt_line(origin[:client_id], "(continuing)")) unless reminder_origin?(origin)
         elsif !(own?(origin[:client_id]) || @shown_enqueued.include?(origin[:enqueued_id]))
           @screen.commit(prompt_line(origin[:client_id], event[:prompt]))
         end
@@ -587,6 +592,13 @@ module Samagotchi
       end
 
       def own?(client_id) = !client_id.nil? && client_id == @client_id
+
+      def reminder_origin?(origin) = origin[:client_id].to_s.start_with?("system:")
+
+      def reminder_line(reminders)
+        names = Array(reminders).filter_map { |r| r.is_a?(Hash) ? r[:name] : r }
+        names.empty? ? "reminder" : "reminder: #{names.join(", ")}"
+      end
 
       def prompt_line(client_id, prompt)
         label = client_id ? CLIENT_LABELS.fetch(client_id.to_s.split(":", 2).first, "user") : "user"

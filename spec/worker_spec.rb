@@ -88,8 +88,8 @@ RSpec.describe Samagotchi::Worker do
       end
       allow(engine).to receive(:start_idle)
       allow(engine).to receive(:stop_idle)
-      allow(engine).to receive(:run_turn) do |_session, prompt, **|
-        turns << [prompt, mono]
+      allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+        turns << [prompt, mono, kwargs]
         result
       end
     end
@@ -149,15 +149,29 @@ RSpec.describe Samagotchi::Worker do
       expect(next_turn&.first).to eq("from another process")
     end
 
-    it "starts a reminder turn as soon as the reminder callback runs" do
+    it "runs a due reminder at once, as a continue turn with no user message (as the REPL)" do
+      allow(engine).to receive(:reminders_due?).and_return(true)
       start_worker(poll_interval: 5)
 
       called_at = mono
       @reminder_callback.call(["stretch"])
 
-      prompt, started_at = next_turn
-      expect(prompt).to include("scheduled reminders are due")
+      prompt, started_at, kwargs = next_turn
+      expect(prompt).to be_nil
+      expect(kwargs).to include(continue: true, origin: { client_id: "system:reminder" })
       expect(started_at - called_at).to be < 0.3
+      expect(Dir.children(File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR))).to be_empty
+      expect(engine.due_reminder_names).to be_empty
+    end
+
+    it "runs no reminder turn when a prompt's turn already took the due reminders (a stale latch)" do
+      allow(engine).to receive(:reminders_due?).and_return(false)
+      start_worker(poll_interval: 5)
+
+      @reminder_callback.call(["stretch"])
+
+      expect(next_turn(timeout: 0.5)).to be_nil
+      expect(engine.due_reminder_names).to be_empty
     end
 
     it "runs a turn posted while another runs right after it" do

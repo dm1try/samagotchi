@@ -119,6 +119,7 @@ test("snapshotEvents replays the turn in progress as live events, then the queue
     { type: "tool_call_started", iteration: 1, call_index: 0, tool: "execute", params: "ls" },
     { type: "tool_call_completed", iteration: 1, call_index: 0, tool: "execute", output: "a b", output_truncated: false, activity: { status: "ok", params: "ls" } },
     { type: "merged_input", content: "also this", origins: [{ client_id: "web:x", enqueued_id: "e2" }] },
+    { type: "reminder_injected", reminders: ["r"] },
     { type: "tool_call_started", iteration: 2, call_index: 0, tool: "read", params: "f" },
     { type: "turn_enqueued", enqueued_id: "e3", client_id: "web:y", prompt: "later" },
   ]);
@@ -187,4 +188,21 @@ test("commandView: who ran what, what it said, and whether the conversation must
                    { label: null, line: "!rollback", text: "busy: wait for the turn to end", busy: true, failed: false,
                      resync: false, modelName: "m1" });
   assert.equal(commandView({ ...ran, status: "error" }, ME).failed, true);
+});
+
+test("snapshotEvents replays a reminder turn's reminders (its prompt is empty)", () => {
+  const turn = { prompt: null, continue: true, origin: { client_id: "system:reminder" },
+                 parts: [{ kind: "reminder", reminders: [{ name: "stretch" }] }, { kind: "text", iteration: 1, text: "Time to stretch" }] };
+
+  const events = snapshotEvents({ current_turn: turn });
+
+  assert.deepEqual(events.slice(0, 2).map((e) => e.type), ["turn_started", "reminder_injected"]);
+  assert.deepEqual(events[1].reminders, [{ name: "stretch" }]);
+});
+
+import { reminderText } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+test("reminderText names the reminders a turn got", () => {
+  assert.equal(reminderText({ reminders: [{ name: "stretch" }, { name: "water" }] }), "reminder: stretch, water");
+  assert.equal(reminderText({}), "reminder");
 });

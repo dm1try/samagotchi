@@ -134,6 +134,7 @@ module Samagotchi
 
           input_files = SessionManager.find_new_input_files(@session_dir)
           if input_files.empty?
+            next if run_due_reminders
             return :idle_exit if @idle_exit.due? && leave_idle
 
             @waker.wait(@poll_interval)
@@ -158,18 +159,16 @@ module Samagotchi
     private
 
     def build_engine
-      session_id = @session_id
-      state_dir = @state_dir
       waker = @waker
-      Samagotchi::Engine.new(
+      engine = nil
+      engine = Samagotchi::Engine.new(
         mode: @session.mode.to_sym,
         model_name: @session.model_name,
         reminders: {
-          callback: lambda { |_due_names|
-            # When a reminder is due, queue a synthetic turn and wake the
-            # loop for it.
-            SessionManager.write_turn_input(session_id, prompt: "[SYSTEM: Your scheduled reminders are due. Please check them.]",
-                                                        client_id: SessionManager::REMINDER_CLIENT_ID, state_dir: state_dir)
+          callback: lambda { |due_names|
+            # A reminder is due: the loop runs a reminder turn for it once
+            # nothing else is queued (#run_due_reminders).
+            engine.note_due_reminders(due_names)
             waker.wake
           }
         }
@@ -229,6 +228,37 @@ module Samagotchi
       response = result.respond_to?(:output) ? result.output : nil
       SessionManager.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
       @session.save(state_dir: @state_dir) unless stopped_on_disk?
+    end
+
+    # A due reminder runs as a continue turn, as in the REPL: Engine#run_turn
+    # injects the reminders as a tail system message, and no user message is
+    # added. A prompt's turn may have injected them already (a stale latch):
+    # then there is nothing to run.
+    # @return [Boolean] whether a reminder turn ran
+    def run_due_reminders
+      return false if @engine.due_reminder_names.empty?
+
+      @engine.clear_due_reminder_names!
+      return false unless @engine.reminders_due?
+
+      @session.status = Session::STATUS_RUNNING
+      @session.save(state_dir: @state_dir)
+      begin
+        result = @engine.run_turn(@session, nil, continue: true, pending_input: pending_input_drain,
+                                                 origin: { client_id: SessionManager::REMINDER_CLIENT_ID },
+                                                 max_iterations: DEFAULT_MAX_ITERATIONS)
+        response = result.respond_to?(:output) ? result.output : nil
+        SessionManager.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
+      rescue StandardError
+        nil # the Engine announced :turn_failed; there is no prompt to hand back
+      ensure
+        refuse_queued_commands
+      end
+      # A pending continue offer stays (the REPL rule); otherwise the
+      # rollback window closes.
+      @turn_flow.after_reminder_turn
+      @session.save(state_dir: @state_dir) unless stopped_on_disk?
+      true
     end
 
     def max_iterations(no_interrupt) = no_interrupt ? NO_INTERRUPT_MAX_ITERATIONS : DEFAULT_MAX_ITERATIONS
