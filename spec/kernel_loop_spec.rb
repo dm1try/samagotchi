@@ -573,33 +573,37 @@ Need to inspect the filesystem first.
     end
 
     it "emits tool_call_completed events with activity details" do
-      events = []
-      responses = [
-        %(<|tool_call>call:read{path: "README.md"}<tool_call|>),
-        "done"
-      ]
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "big.md")
+        File.write(path, "x" * (Samagotchi::KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS + 100))
+        events = []
+        responses = [
+          %(<|tool_call>call:read{path: "#{path}"}<tool_call|>),
+          "done"
+        ]
 
-      allow(client).to receive(:complete).and_return(*responses)
+        allow(client).to receive(:complete).and_return(*responses)
 
-      kernel.run(
-        [{ role: "user", content: "read readme" }],
-        on_stream_event: ->(event) { events << event }
-      )
+        kernel.run(
+          [{ role: "user", content: "read the file" }],
+          on_stream_event: ->(event) { events << event }
+        )
 
-      tool_event = events.find { |event| event[:type] == :tool_call_completed }
-      expect(tool_event).not_to be_nil
-      expect(tool_event).to include(tool: "read", call_index: 1, call_count: 1)
-      # README.md exceeds the default 10000-char cap, so the emitted output is
-      # capped and flagged as truncated; the activity summary is unaffected.
-      expect(tool_event[:output]).to start_with("[read]\n")
-      expect(tool_event[:output].length).to be <= Samagotchi::KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS
-      expect(tool_event[:output_truncated]).to be(true)
-      expect(tool_event[:activity]).to include(
-        action: "reading file",
-        tool: "read",
-        params: 'path="README.md"',
-        status: "ok"
-      )
+        tool_event = events.find { |event| event[:type] == :tool_call_completed }
+        expect(tool_event).not_to be_nil
+        expect(tool_event).to include(tool: "read", call_index: 1, call_count: 1)
+        # The file exceeds the default cap, so the emitted output is capped and
+        # flagged as truncated; the activity summary is unaffected.
+        expect(tool_event[:output]).to start_with("[read]\n")
+        expect(tool_event[:output].length).to be <= Samagotchi::KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS
+        expect(tool_event[:output_truncated]).to be(true)
+        expect(tool_event[:activity]).to include(
+          action: "reading file",
+          tool: "read",
+          params: %(path="#{path}"),
+          status: "ok"
+        )
+      end
     end
 
     describe ":tool_call_completed output and output_truncated" do
