@@ -29,7 +29,9 @@ module Samagotchi
     # @!attribute model_name [String] the Engine's model after the command
     # @!attribute resume [Boolean] the host must now run the continue turn
     # @!attribute shell [Boolean] output is a !cmd's own output
-    Result = Struct.new(:status, :output, :changed, :model_name, :resume, :shell, keyword_init: true)
+    # @!attribute decision [Symbol, nil] an answer to the continue offer:
+    #   :resume, :abort, :abort_with_reason or :invalid
+    Result = Struct.new(:status, :output, :changed, :model_name, :resume, :shell, :decision, keyword_init: true)
 
     # @return [Boolean] whether +line+ is one of these commands
     def self.command?(line)
@@ -81,19 +83,21 @@ module Samagotchi
     # @return [Result] resume: true on yes
     def continue_answer(text)
       decision, reason = TurnFlow.continue_decision(text)
-      case decision
-      when :resume then Result.new(status: :ok, changed: [], model_name: model_name, resume: true)
-      when :abort
-        @turn_flow.abort_continue!
-        save_session
-        reply("interrupted turn cancelled; enter your next prompt", changed: [:messages])
-      when :abort_with_reason
-        @turn_flow.abort_continue!(reason: reason)
-        save_session
-        reply("interrupted turn cancelled; noted your explanation", changed: [:messages])
-      else
-        reply("answer yes, no, or no, <reason>", status: :error)
-      end
+      result = case decision
+               when :resume then Result.new(status: :ok, changed: [], model_name: model_name, resume: true, shell: false)
+               when :abort
+                 @turn_flow.abort_continue!
+                 save_session
+                 reply("interrupted turn cancelled; enter your next prompt", changed: [:messages])
+               when :abort_with_reason
+                 @turn_flow.abort_continue!(reason: reason)
+                 save_session
+                 reply("interrupted turn cancelled; noted your explanation", changed: [:messages])
+               else
+                 reply("answer yes, no, or no, <reason>", status: :error)
+               end
+      result.decision = decision
+      result
     end
 
     private

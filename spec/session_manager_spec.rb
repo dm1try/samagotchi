@@ -430,7 +430,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(sub_handle).to receive(:unsubscribe)
       allow(engine).to receive(:subscribe).and_return(sub_handle)
       expect(engine).to receive(:run_turn)
-        .with(instance_of(Samagotchi::Session), "hello", pending_input: kind_of(Proc), origin: nil) do
+        .with(instance_of(Samagotchi::Session), "hello", pending_input: kind_of(Proc), origin: nil, max_iterations: 100) do
           Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
           result
         end

@@ -6,6 +6,8 @@ require_relative "session"
 require_relative "worker_idle_exit"
 require_relative "session_manager"
 require_relative "turn_flow"
+require_relative "session_commands"
+require_relative "model_profile"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
@@ -23,11 +25,22 @@ module Samagotchi
   # stub as seams.
   #
   # The loop sleeps on a Waker, which the Bridge wakes when it queues a turn
-  # and the reminder callback when it queues one. A fallback tick picks up
-  # input written by another process (the web's write_turn_input fallback)
-  # and runs the stop-on-disk and idle-exit checks.
+  # or a command, and the reminder callback when it queues one. A fallback
+  # tick picks up input written by another process (the web's
+  # write_turn_input fallback) and runs the stop-on-disk and idle-exit checks.
+  #
+  # Session commands (SessionCommands: /model, /models, !rollback, !cmd,
+  # /continue) run on the loop between turns, before any queued prompt. One
+  # taken while a turn runs (at an iteration boundary, or right after the
+  # turn) is refused as busy.
   class Worker
     FALLBACK_TICK_SECONDS = 5
+    # How much of a command's output goes into its :command_ran.
+    COMMAND_OUTPUT_LIMIT = 4096
+    BUSY_OUTPUT = "busy: wait for the turn to end"
+    TURN_END_EVENTS = %i[turn_completed turn_canceled turn_failed].freeze
+    DEFAULT_MAX_ITERATIONS = 100
+    NO_INTERRUPT_MAX_ITERATIONS = 1000
 
     # Wakes the worker loop. Whoever queues work writes it first and wakes
     # after, and #wait drains every wake before the loop looks for work: a
@@ -61,6 +74,7 @@ module Samagotchi
       @idle_exit_minutes = idle_exit_minutes
       @poll_interval = poll_interval || FALLBACK_TICK_SECONDS
       @waker = Waker.new
+      @command_queue = Thread::Queue.new
     end
 
     # @return [Symbol] :idle_exit
@@ -72,16 +86,33 @@ module Samagotchi
       # an empty session until the first turn.
       @engine.session = @session
       @turn_flow = TurnFlow.new(engine: @engine)
+      # The seq of the last turn's end event: a command queued before it was
+      # queued while that turn ran.
+      @turn_end_seq = 0
+      @engine.subscribe(observer: lambda { |event|
+        @turn_end_seq = event[:event_seq] if TURN_END_EVENTS.include?(event[:type])
+      })
+      # /model's default is the config's, as in the REPL; the Engine started
+      # on the session's model.
+      @commands = SessionCommands.new(engine: @engine, turn_flow: @turn_flow,
+                                      default_model: ModelProfile.required_model_name(nil),
+                                      save: ->(session) { session.save(state_dir: @state_dir) })
       # Start the shared idle scheduler so the worker can trigger turns when
       # reminders are due (even with no user input).
       @engine.start_idle
 
       @bridge = SessionManager.start_bridge(engine: @engine, state_dir: @state_dir, session_id: @session_id,
-                                            on_input: -> { @waker.wake })
+                                            on_input: -> { @waker.wake },
+                                            on_command: lambda { |command|
+                                              # Called with the event log held: the
+                                              # count says which turn ends came before it.
+                                              @command_queue << command.merge(after_seq: @engine.event_count)
+                                              @waker.wake
+                                            })
       @idle_exit = WorkerIdleExit.new(
         engine: @engine, bridge: @bridge,
         timeout_minutes: @idle_exit_minutes || SessionManager.config_idle_exit_minutes,
-        input_pending: -> { !SessionManager.find_new_input_files(@session_dir).empty? }
+        input_pending: -> { !@command_queue.empty? || !SessionManager.find_new_input_files(@session_dir).empty? }
       )
 
       begin
@@ -91,6 +122,10 @@ module Samagotchi
         loop do
           # Check if the session was externally marked as stopped
           exit(0) if Session.load(@session_id, state_dir: @state_dir).status == Session::STATUS_STOPPED
+
+          # Commands queued before a prompt run first (a /continue sent
+          # before a new prompt still answers the offer).
+          next if run_queued_commands
 
           if (prompt = take_initial_prompt)
             run_prompt(prompt, nil)
@@ -181,13 +216,102 @@ module Samagotchi
       @turn_flow.before_prompt_turn
       @merged_this_turn = []
       begin
-        result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, origin: origin)
+        result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, origin: origin,
+                                                    max_iterations: max_iterations(no_interrupt))
       rescue StandardError
         # The Engine announced :turn_failed (with the error's one line).
         restore_failed_turn([[prompt, origin], *@merged_this_turn])
         return
+      ensure
+        refuse_queued_commands
       end
       after_turn(result, no_interrupt: no_interrupt)
+      response = result.respond_to?(:output) ? result.output : nil
+      SessionManager.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
+      @session.save(state_dir: @state_dir) unless stopped_on_disk?
+    end
+
+    def max_iterations(no_interrupt) = no_interrupt ? NO_INTERRUPT_MAX_ITERATIONS : DEFAULT_MAX_ITERATIONS
+
+    # @return [Boolean] whether any command ran
+    def run_queued_commands
+      ran = false
+      while (command = next_command)
+        run_command(command)
+        ran = true
+      end
+      ran
+    end
+
+    # A command queued while a turn ran is refused (S1), not run after it:
+    # at the turn's iteration boundaries (mid_turn: all of them), and when
+    # it ends (the ones queued before its end event; later ones run next).
+    def refuse_queued_commands(mid_turn: false)
+      later = []
+      while (command = next_command)
+        if mid_turn || command[:after_seq].to_i < @turn_end_seq
+          announce_command(command, status: "busy", output: BUSY_OUTPUT, changed: [])
+        else
+          later << command
+        end
+      end
+      later.each { |command| @command_queue << command }
+    end
+
+    def next_command
+      @command_queue.pop(true)
+    rescue ThreadError
+      nil
+    end
+
+    def run_command(command)
+      awaiting = @turn_flow.awaiting_continue?
+      result = begin
+        @commands.run(command[:line])
+      rescue StandardError => e
+        SessionCommands::Result.new(status: :error, output: "#{command[:line].split.first}: #{e.message}", changed: [])
+      end
+      result ||= SessionCommands::Result.new(status: :error, output: "not a session command", changed: [])
+      resolved = awaiting && result.decision && result.decision != :invalid
+      @engine.synchronize_events do
+        if resolved
+          @engine.announce(type: :continue_resolved, decision: result.decision.to_s, client_id: command[:client_id])
+        end
+        announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed))
+      end
+      @session.save(state_dir: @state_dir) unless Array(result.changed).empty? || stopped_on_disk?
+      run_continue_turn(command) if result.resume
+    end
+
+    def announce_command(command, status:, output:, changed:)
+      text = output.to_s
+      event = { type: :command_ran, command_id: command[:command_id], client_id: command[:client_id], line: command[:line],
+                status: status, output: text[0, COMMAND_OUTPUT_LIMIT], changed: changed.map(&:to_s),
+                model_name: @engine.effective_model_name }
+      event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
+      @engine.announce(event)
+    end
+
+    # The continue offer was answered yes: resume the conversation without a
+    # user message, with the iteration limit the offer's turn had. A failure
+    # keeps the offer, as the REPL does ("continue prompt preserved").
+    def run_continue_turn(command)
+      offer = @turn_flow.offer
+      @turn_flow.before_continue_turn
+      @session.status = Session::STATUS_RUNNING
+      @session.save(state_dir: @state_dir)
+      begin
+        result = @engine.run_turn(@session, nil, continue: true, pending_input: pending_input_drain,
+                                                 origin: { client_id: command[:client_id] }.compact,
+                                                 max_iterations: max_iterations(offer[:no_interrupt]))
+      rescue StandardError
+        @engine.announce(type: :continue_offered, context: offer[:context], no_interrupt: offer[:no_interrupt])
+        @session.save(state_dir: @state_dir) unless stopped_on_disk?
+        return
+      ensure
+        refuse_queued_commands
+      end
+      after_turn(result, continue: true, no_interrupt: offer[:no_interrupt])
       response = result.respond_to?(:output) ? result.output : nil
       SessionManager.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
       @session.save(state_dir: @state_dir) unless stopped_on_disk?
@@ -241,6 +365,8 @@ module Samagotchi
     # every live UI can attribute it.
     def pending_input_drain
       @pending_input_drain ||= lambda do
+        # An iteration boundary: tell whoever sent a command now that it waits.
+        refuse_queued_commands(mid_turn: true)
         merged = SessionManager.find_new_input_files(@session_dir).sort.filter_map do |input_file|
           claimed_file = SessionManager.claim_input_file(input_file)
           next unless claimed_file

@@ -314,7 +314,8 @@ module Samagotchi
     # Event types #announce accepts: facts about the session's input queue,
     # a failed turn's prompt handed back and the continue offer, which live
     # UIs need in the event log, emitted outside any turn's stream.
-    ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged prompt_restored continue_offered continue_resolved].freeze
+    ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged prompt_restored continue_offered continue_resolved
+                             command_queued command_ran].freeze
 
     # Put a transport-level event into the ordered event log. Unlike turn
     # events it reaches only persistent observers (no turn sink, no memory
@@ -457,6 +458,7 @@ module Samagotchi
     #   :metrics       [Hash]      @metrics.snapshot (per-session analytics)
     #   :pending_question [Hash, nil] current pending structured question
     #   :used_memory_names [Array<String>] deduped memory names active this session
+    #   :model_name    [String]    the model turns run on now (after /model)
     def session_state_snapshot
       {
         status: @session&.status,
@@ -465,7 +467,8 @@ module Samagotchi
         event_seq: @session_observer&.event_count,
         metrics: @metrics.snapshot,
         pending_question: @question_mutex.synchronize { @pending_question&.dup },
-        used_memory_names: @used_memory_mutex.synchronize { @used_memory_names.dup }
+        used_memory_names: @used_memory_mutex.synchronize { @used_memory_names.dup },
+        model_name: @effective_model_name
       }
     end
 

@@ -13,6 +13,7 @@ require_relative "bridge/sse_writer"
 require_relative "bridge/turn_accumulator"
 require_relative "session"
 require_relative "engine"
+require_relative "session_commands"
 
 module Samagotchi
   # Bridge is an optional HTTP transport that lets an external web / desktop
@@ -54,11 +55,16 @@ module Samagotchi
     #   SessionManager.write_turn_input); nil advertises none (plain text)
     # @param on_input [#call, nil] called once a turn for this session is
     #   queued, to wake the worker loop (Worker::Waker#wake)
+    # @param on_command [#call, nil] takes a session command
+    #   ({command_id:, client_id:, line:}) for the worker loop to run; without
+    #   one, POST /command answers 501
     def initialize(engine:, state_dir:, session_id:, bind: DEFAULT_BIND,
                    port: 0, ring_capacity: DEFAULT_RING_CAPACITY,
-                   heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, input_format: nil, on_input: nil)
+                   heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, input_format: nil, on_input: nil,
+                   on_command: nil)
       @engine = engine
       @on_input = on_input
+      @on_command = on_command
       @input_format = input_format
       @state_dir = state_dir
       @session_id = session_id
@@ -243,6 +249,9 @@ module Samagotchi
         elsif (m = turn_match(request[:path])) && method == "POST"
           payload, status, body = handle_post_turn(m[1], request[:body])
           write_json(io, status, payload, body)
+        elsif (m = command_match(request[:path])) && method == "POST"
+          payload, status, body = handle_command(m[1], request[:body])
+          write_json(io, status, payload, body)
         elsif (m = state_match(request[:path])) && method == "GET"
           payload, status, body = handle_state(m[1])
           write_json(io, status, payload, body)
@@ -342,6 +351,10 @@ module Samagotchi
       %r|\A/session/([^/]+)/question/dismiss\z|u.match(path.to_s)
     end
 
+    def command_match(path)
+      %r|\A/session/([^/]+)/command\z|u.match(path.to_s)
+    end
+
     # Cancel the active turn on this session's engine, if any.
     # Returns [headers, status, body].
     def handle_cancel(session_id, body)
@@ -421,6 +434,34 @@ module Samagotchi
       return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless dismissed
 
       [{}, 200, { status: "dismissed", id: qid, session_id: @session_id }]
+    rescue StandardError => e
+      [{}, 500, { error: "bridge_error", detail: e.message }]
+    end
+
+    # Queue a session command (/model, /models, !rollback, !cmd, /continue)
+    # for the worker loop, which runs it between turns and announces
+    # :command_ran (busy while a turn runs). Answers at once: the queueing
+    # and its :command_queued are one step of the event log, so the
+    # :command_ran always comes after. Only the syntax is checked here.
+    # Returns [headers, status, body].
+    def handle_command(session_id, body)
+      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
+      return [{}, 501, { error: "commands_unavailable" }] unless @on_command
+
+      parsed = parse_json(body)
+      return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }] unless parsed.is_a?(Hash)
+
+      line = fetched(parsed, "line").to_s.strip
+      unless SessionCommands.command?(line)
+        return [{ "Allow" => "POST" }, 400, { error: "unknown_command", detail: "not a session command: #{line[0, 80]}" }]
+      end
+
+      command = { command_id: SecureRandom.uuid, client_id: fetched(parsed, "client_id"), line: line }
+      @engine.synchronize_events do
+        @on_command.call(command)
+        @engine.announce(type: :command_queued, **command)
+      end
+      [{}, 202, { status: "accepted", command_id: command[:command_id], session_id: @session_id }]
     rescue StandardError => e
       [{}, 500, { error: "bridge_error", detail: e.message }]
     end
@@ -651,7 +692,8 @@ module Samagotchi
       400 => "Bad Request",
       404 => "Not Found",
       409 => "Conflict",
-      500 => "Internal Server Error"
+      500 => "Internal Server Error",
+      501 => "Not Implemented"
     }.freeze
   end
 end

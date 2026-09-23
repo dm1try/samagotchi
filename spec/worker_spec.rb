@@ -367,5 +367,189 @@ RSpec.describe Samagotchi::Worker do
         expect(wait_until { saved_messages == ["long task", "calling ls", "a b", "something else", "OK"] }).to be(true)
       end
     end
+
+    describe "commands (POST /session/:id/command)" do
+      let(:kernel) { engine.instance_variable_get(:@kernel) }
+      let(:events) { Queue.new }
+      let(:seen) { [] }
+      let(:release) { Queue.new }
+
+      before do
+        allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+        allow(engine).to receive(:run_turn).and_call_original
+        allow(kernel).to receive(:run) do |messages, **kwargs|
+          prompt = messages.last[:role] == "user" ? messages.last[:content] : :continue
+          turns << [prompt, mono, kwargs]
+          case prompt
+          when "slow"
+            release.pop
+            kwargs[:pending_input]&.call # an iteration boundary
+          when "slow, no boundary"
+            release.pop
+          end
+          if prompt == "long task"
+            Samagotchi::KernelLoop::Result.new(output: "", conversation: messages + [{ role: "tool_response", content: "r1" }],
+                                               exhausted: true, pending_tool_calls: true, tool_activity: [], canceled: false)
+          elsif prompt == "cancel me"
+            Samagotchi::KernelLoop::Result.new(output: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]" }],
+                                               exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: true,
+                                               cancellation_reason: :manual)
+          else
+            Samagotchi::KernelLoop::Result.new(output: "OK", conversation: messages + [{ role: "model", content: "OK" }],
+                                               exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+          end
+        end
+        engine.subscribe(observer: ->(event) { events << event })
+      end
+
+      def port = JSON.parse(File.read(sidecar))["port"]
+
+      def post_command(line, client_id: "tui:9", session_id: session.id)
+        Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session_id}/command"),
+                       JSON.generate(line: line, client_id: client_id), "Content-Type" => "application/json")
+      end
+
+      def events_seen
+        seen << events.pop until events.empty?
+        seen
+      end
+
+      def ran(command_id, timeout: 2)
+        wait_until(timeout: timeout) { events_seen.any? { |e| e[:type] == :command_ran && e[:command_id] == command_id } }
+        seen.find { |e| e[:type] == :command_ran && e[:command_id] == command_id }
+      end
+
+      def saved_messages
+        Samagotchi::Session.load(session.id, state_dir: tmpdir).messages.drop(1).map { |m| m[:content] }
+      end
+
+      it "runs a command on the worker and tells every UI: command_queued at once, then command_ran" do
+        start_worker(poll_interval: 5)
+
+        reply = post_command("/model")
+
+        expect(reply.code).to eq("202")
+        command_id = JSON.parse(reply.body)["command_id"]
+        done = ran(command_id)
+        expect(done).to include(client_id: "tui:9", line: "/model", status: "ok", changed: [], model_name: "Gemma-4B-it",
+                                output: "runtime model: Gemma-4B-it (profile=gemma4)")
+        queued = seen.find { |e| e[:type] == :command_queued }
+        expect(queued).to include(command_id: command_id, client_id: "tui:9", line: "/model")
+        expect(queued[:event_seq]).to be < done[:event_seq]
+      end
+
+      it "refuses lines that aren't commands, and other sessions" do
+        start_worker(poll_interval: 5)
+
+        expect(post_command("hello").code).to eq("400")
+        expect(post_command("/stats").code).to eq("400")
+        expect(post_command("/model", session_id: "other").code).to eq("404")
+      end
+
+      it "switches the model, saves it on the session and reports it" do
+        start_worker(poll_interval: 5)
+
+        done = ran(JSON.parse(post_command("/model Qwen3-14B").body)["command_id"])
+
+        expect(done).to include(status: "ok", changed: ["model"], model_name: "Qwen3-14B")
+        expect(engine.effective_model_name).to eq("Qwen3-14B")
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).model_name).to eq("Qwen3-14B")
+        expect(engine.session_state_snapshot[:model_name]).to eq("Qwen3-14B")
+      end
+
+      it "runs !cmd in the worker and keeps its output for the next turn" do
+        allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi").and_return("hi\n")
+        start_worker(poll_interval: 5)
+
+        done = ran(JSON.parse(post_command("!echo hi").body)["command_id"])
+
+        expect(done).to include(status: "ok", output: "hi\n", changed: ["messages"])
+        saved = -> { Samagotchi::Session.load(session.id, state_dir: tmpdir).messages.map { |m| m[:content] } }
+        expect(wait_until { saved.call == ["!(echo hi)\nhi\n"] }).to be(true)
+      end
+
+      it "rolls a cancelled turn back with !rollback" do
+        start_worker(poll_interval: 5)
+        post_turn("cancel me")
+        expect(wait_until { events_seen.any? { |e| e[:type] == :turn_canceled } }).to be(true)
+
+        done = ran(JSON.parse(post_command("!rollback").body)["command_id"])
+
+        expect(done).to include(output: "salvaged turn discarded; restored pre-turn state", changed: ["messages"])
+        expect(wait_until { saved_messages.empty? }).to be(true)
+      end
+
+      it "is busy while a turn runs: at the turn's next iteration boundary" do
+        start_worker(poll_interval: 5)
+        post_turn("slow")
+        expect(next_turn&.first).to eq("slow")
+
+        command_id = JSON.parse(post_command("/model").body)["command_id"]
+        release << true
+
+        done = ran(command_id)
+        expect(done).to include(status: "busy", output: "busy: wait for the turn to end")
+        types = seen.map { |e| e[:type] }
+        expect(types.index(:command_ran)).to be < types.index(:turn_completed)
+      end
+
+      it "is busy while a turn runs: at the latest when it ends" do
+        start_worker(poll_interval: 5)
+        post_turn("slow, no boundary")
+        expect(next_turn&.first).to eq("slow, no boundary")
+
+        command_id = JSON.parse(post_command("/model").body)["command_id"]
+        release << true
+
+        expect(ran(command_id)).to include(status: "busy")
+      end
+
+      it "runs commands queued before a prompt first" do
+        start_worker(poll_interval: 5)
+        # Written without a wake (another process); the command wakes the loop.
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "after", state_dir: tmpdir)
+        command_id = JSON.parse(post_command("/model").body)["command_id"]
+
+        expect(next_turn&.first).to eq("after")
+        types = events_seen.map { |e| e[:type] }
+        expect(ran(command_id)).to include(status: "ok")
+        expect(types.index(:command_ran)).to be < types.index(:turn_started)
+      end
+
+      describe "/continue" do
+        before do
+          start_worker(poll_interval: 5)
+          post_turn("long task")
+          expect(wait_until { events_seen.any? { |e| e[:type] == :continue_offered } }).to be(true)
+        end
+
+        it "runs the continue turn on yes, for whoever answered" do
+          done = ran(JSON.parse(post_command("/continue yes", client_id: "web:2").body)["command_id"])
+
+          expect(done).to include(status: "ok")
+          expect(wait_until { turns.size >= 2 && events_seen.count { |e| e[:type] == :turn_completed } == 2 }).to be(true)
+          resolved = seen.find { |e| e[:type] == :continue_resolved }
+          expect(resolved).to include(decision: "resume", client_id: "web:2")
+          started = seen.select { |e| e[:type] == :turn_started }.last
+          expect(started).to include(continue: true, prompt: nil, origin: { client_id: "web:2" })
+          expect(wait_until { saved_messages == ["long task", "r1", "OK"] }).to be(true)
+        end
+
+        it "discards the interrupted turn on no" do
+          done = ran(JSON.parse(post_command("/continue no").body)["command_id"])
+
+          expect(done).to include(output: "interrupted turn cancelled; enter your next prompt", changed: ["messages"])
+          expect(seen.find { |e| e[:type] == :continue_resolved }).to include(decision: "abort", client_id: "tui:9")
+          expect(wait_until { saved_messages.empty? }).to be(true)
+        end
+
+        it "asks again on anything else, with the offer still open" do
+          done = ran(JSON.parse(post_command("/continue maybe").body)["command_id"])
+
+          expect(done).to include(status: "error", output: "answer yes, no, or no, <reason>")
+          expect(seen.map { |e| e[:type] }).not_to include(:continue_resolved)
+        end
+      end
+    end
   end
 end

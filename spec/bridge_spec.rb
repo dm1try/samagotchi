@@ -394,12 +394,12 @@ RSpec.describe Samagotchi::Bridge do
       WebMock.disable_net_connect! if defined?(WebMock)
     end
 
-    def start_bridge(input_format: nil, on_input: nil)
+    def start_bridge(input_format: nil, on_input: nil, on_command: nil)
       @engine = make_engine
       @session = make_session
       @bridge = described_class.new(
         engine: @engine, state_dir: state_dir, session_id: @session.id,
-        heartbeat_interval: 0.2, input_format: input_format, on_input: on_input
+        heartbeat_interval: 0.2, input_format: input_format, on_input: on_input, on_command: on_command
       )
       @bridge.start
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
@@ -898,6 +898,45 @@ RSpec.describe Samagotchi::Bridge do
       expect(status).to eq(409)
       expect(reason).to eq("Conflict")
       expect(resp["error"]).to eq("question_not_pending")
+    end
+
+    describe "POST /session/:id/command" do
+      def post_command(body)
+        res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/command"),
+                             body, "Content-Type" => "application/json")
+        [res.code.to_i, JSON.parse(res.body)]
+      end
+
+      it "queues a command for the worker and announces it, answering at once" do
+        queued = []
+        start_bridge(on_command: ->(command) { queued << command })
+        seen = []
+        @engine.subscribe(observer: ->(e) { seen << e })
+
+        status, body = post_command(JSON.generate(line: " /model x ", client_id: "tui:1"))
+
+        expect(status).to eq(202)
+        expect(queued).to eq([{ command_id: body["command_id"], client_id: "tui:1", line: "/model x" }])
+        expect(seen).to eq([{ type: :command_queued, command_id: body["command_id"], client_id: "tui:1", line: "/model x",
+                              event_seq: 1 }])
+      end
+
+      it "refuses what isn't a session command, bad JSON and other sessions" do
+        start_bridge(on_command: ->(_) { raise "must not be called" })
+
+        expect(post_command(JSON.generate(line: "hello")).first).to eq(400)
+        expect(post_command(JSON.generate(line: "/recap")).first).to eq(400)
+        expect(post_command("{nope").first).to eq(400)
+        res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/other/command"),
+                             JSON.generate(line: "/model"), "Content-Type" => "application/json")
+        expect(res.code).to eq("404")
+      end
+
+      it "answers 501 when nothing runs commands (a Bridge without a worker loop)" do
+        start_bridge
+
+        expect(post_command(JSON.generate(line: "/model"))).to eq([501, { "error" => "commands_unavailable" }])
+      end
     end
 
     describe "POST /session/:id/question/dismiss" do
