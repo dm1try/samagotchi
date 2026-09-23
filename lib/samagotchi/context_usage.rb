@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "token_usage"
+
 module Samagotchi
   # Normalizes raw model-server stream payloads into a uniform context-usage
   # snapshot. Shared by the kernel loop (to inform the model of real token
@@ -8,15 +10,10 @@ module Samagotchi
   module ContextUsage
     module_function
 
+    # Numbers read like TokenUsage's: integers, floats and numeric strings,
+    # decimal ("010" is 10).
     def first_positive_integer(*values)
-      values.each do |value|
-        integer = Integer(value)
-        return integer if integer.positive?
-      rescue ArgumentError, TypeError
-        next
-      end
-
-      nil
+      TokenUsage.first_positive(*values)
     end
 
     # `window_tokens` is the caller's resolved context window; a window the
@@ -28,21 +25,10 @@ module Samagotchi
       usage = payload_hash["usage"] || payload_hash[:usage]
       usage = {} unless usage.is_a?(Hash)
 
-      prompt_tokens = first_positive_integer(
-        usage["prompt_tokens"], usage[:prompt_tokens],
-        payload_hash["prompt_tokens"], payload_hash[:prompt_tokens],
-        payload_hash["prompt_n"], payload_hash[:prompt_n],
-        payload_hash["tokens_evaluated"], payload_hash[:tokens_evaluated],
-        payload_hash.dig("timings", "prompt_n"), payload_hash.dig(:timings, :prompt_n)
-      )
-
-      completion_tokens = first_positive_integer(
-        usage["completion_tokens"], usage[:completion_tokens],
-        payload_hash["completion_tokens"], payload_hash[:completion_tokens],
-        payload_hash["predicted_n"], payload_hash[:predicted_n],
-        payload_hash["tokens_predicted"], payload_hash[:tokens_predicted],
-        payload_hash.dig("timings", "predicted_n"), payload_hash.dig(:timings, :predicted_n)
-      )
+      # The token counts come from the same parser SessionMetrics uses.
+      counts = TokenUsage.from_payload(payload_hash) || {}
+      prompt_tokens = counts[:prompt_tokens]
+      completion_tokens = counts[:completion_tokens]
 
       total_tokens = first_positive_integer(
         usage["total_tokens"], usage[:total_tokens],

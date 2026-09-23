@@ -28,16 +28,11 @@ RSpec.describe "Usage parsing" do
     expect(context({})).to be_nil
   end
 
-  describe "where they disagree today" do
-    let(:payload) { { "usage" => { "prompt_tokens" => "010", "completion_tokens" => "50.0" } } }
-
-    it "TokenUsage reads numeric strings as decimal" do
-      expect(tokens(payload)).to eq([10, 50])
-    end
-
-    it "ContextUsage reads \"010\" as octal and skips \"50.0\"" do
-      expect(context(payload).values_at(:prompt_tokens, :completion_tokens)).to eq([8, nil])
-    end
+  # ContextUsage used Integer() and read "010" as octal 8 and skipped "50.0".
+  it "reads numeric strings as decimal in both" do
+    payload = { "usage" => { "prompt_tokens" => "010", "completion_tokens" => "50.0", "total_tokens" => "060" } }
+    expect(tokens(payload)).to eq([10, 50])
+    expect(context(payload)).to include(prompt_tokens: 10, completion_tokens: 50, total_tokens: 60)
   end
 
   describe "ContextUsage's own fields" do

@@ -67,9 +67,8 @@ module Samagotchi
         (text.length / CHARS_PER_TOKEN).ceil
       end
 
-      private
-
-      # Coerce each candidate to an integer, accepting integers, numeric strings,
+      # Coerce each candidate to an integer (ContextUsage reads its own fields
+      # with this too), accepting integers, numeric strings,
       # and floats (e.g. a JSON backend emitting 50.0). Truncates via to_i so a
       # float never raises RangeError; non-numeric values are skipped.
       def first_positive(*values)
