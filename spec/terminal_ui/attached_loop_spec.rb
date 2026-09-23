@@ -229,10 +229,44 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
                                     a_string_including("tokens in/out:    10/5 (total 15, server-reported)"))
   end
 
-  it "says when there is no recap yet" do
-    run_with(["/recap"])
+  describe "/recap, with the REPL's words" do
+    def state(**fields) = JSON.parse(JSON.generate(session_state_snapshot: fields))
 
-    expect(screen.lines).to include("no recap yet: one comes after a quiet stretch, when recap: is configured")
+    it "says how to turn recap on when it's off" do
+      allow(client).to receive(:get_json).with("state").and_return(state(recap_enabled: false))
+
+      run_with(["/recap"])
+
+      expect(screen.lines).to include(a_string_starting_with("recap feature not enabled (add recap: {host_ref:, model:} to config.yml"))
+    end
+
+    it "says when one would come, while there is none yet" do
+      allow(client).to receive(:get_json).with("state")
+        .and_return(state(recap_enabled: true, recap_min_user_turns: 2, recap_inactivity_seconds: 300))
+
+      run_with(["/recap"])
+
+      expect(screen.lines).to include("no recap available yet — the session needs at least 2 user turns and 300s " \
+                                      "of inactivity to generate one automatically")
+    end
+
+    it "shows the latest recap" do
+      allow(client).to receive(:get_json).with("state").and_return(state(recap_enabled: true))
+      joined = snapshot
+      joined["snapshot"]["recap"] = "We fixed the bug."
+
+      run_with(["/recap"], first: joined)
+
+      expect(screen.lines).to include("session recap:\nWe fixed the bug.")
+    end
+
+    it "says so when the worker doesn't answer" do
+      allow(client).to receive(:get_json).with("state").and_return(nil)
+
+      run_with(["/recap"])
+
+      expect(screen.lines).to include("(no recap settings: the worker did not answer)")
+    end
   end
 
   it "sends session commands to the worker, which runs them" do

@@ -25,6 +25,16 @@ RSpec.describe "Engine recap on a configured host" do
       .with(hash_including(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY", model: "small"))
   end
 
+  it "says in the session state whether recap is on, and when it would run (for an attached /recap)" do
+    engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m",
+                                    recap: { host_ref: "box", model: "box:small" })
+    off = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m")
+
+    expect(engine.session_state_snapshot).to include(recap_enabled: true, recap_min_user_turns: engine.recap.min_user_turns,
+                                                     recap_inactivity_seconds: engine.recap.inactivity.to_i)
+    expect(off.session_state_snapshot).to include(recap_enabled: false, recap_min_user_turns: nil)
+  end
+
   it "uses a local host's /v1" do
     expect(recap_for("box")).to have_received(:new).with(hash_including(base_url: "http://box.test:8081/v1", api_key_env: nil))
   end

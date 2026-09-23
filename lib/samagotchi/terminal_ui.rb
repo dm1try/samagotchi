@@ -724,20 +724,13 @@ module Samagotchi
 
     # Handle /recap command - display the last generated recap
     def handle_recap_command
-      unless @engine.recap
-        return "recap feature not enabled (add recap: {host_ref:, model:} to config.yml, " \
-               "or set SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL)"
-      end
+      recap = @engine.recap
+      return recap_command_text(enabled: false, recap: nil) unless recap
 
-      if @last_recap
-        # Any later turn (or recap attempt) bumps the generation, so a
-        # mismatch means the conversation moved on since this recap.
-        stale = @engine.recap.generation != @last_recap_generation
-        "session recap#{' (from before your latest turn)' if stale}:\n#{@last_recap}"
-      else
-        recap = @engine.recap
-        "no recap available yet — the session needs at least #{recap.min_user_turns} user turns and #{recap.inactivity.to_i}s of inactivity to generate one automatically"
-      end
+      # Any later turn (or recap attempt) bumps the generation, so a
+      # mismatch means the conversation moved on since this recap.
+      recap_command_text(enabled: true, recap: @last_recap, stale: @last_recap && recap.generation != @last_recap_generation,
+                         min_user_turns: recap.min_user_turns, inactivity_seconds: recap.inactivity.to_i)
     end
 
     # A resumed session doesn't get the default input either.

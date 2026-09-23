@@ -459,6 +459,8 @@ module Samagotchi
     #   :pending_question [Hash, nil] current pending structured question
     #   :used_memory_names [Array<String>] deduped memory names active this session
     #   :model_name    [String]    the model turns run on now (after /model)
+    #   :recap_enabled [Boolean]   whether an idle recap is configured, with
+    #     :recap_min_user_turns and :recap_inactivity_seconds (nil when not)
     def session_state_snapshot
       {
         status: @session&.status,
@@ -468,7 +470,10 @@ module Samagotchi
         metrics: @metrics.snapshot,
         pending_question: @question_mutex.synchronize { @pending_question&.dup },
         used_memory_names: @used_memory_mutex.synchronize { @used_memory_names.dup },
-        model_name: @effective_model_name
+        model_name: @effective_model_name,
+        recap_enabled: !@recap.nil?,
+        recap_min_user_turns: @recap&.min_user_turns,
+        recap_inactivity_seconds: @recap&.inactivity&.to_i
       }
     end
 

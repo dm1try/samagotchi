@@ -313,7 +313,7 @@ module Samagotchi
         if command == STATS_COMMAND
           show_stats
         elsif command == RECAP_COMMAND
-          @screen.commit(@recap || "no recap yet: one comes after a quiet stretch, when recap: is configured")
+          show_recap
         elsif SessionCommands.command?(text)
           # The history keeps !cmds, as the REPL's does (prompts: #send_prompt).
           persist_recent_history(text) if shell_line?(text)
@@ -415,6 +415,17 @@ module Samagotchi
 
       # The attached TUI's commands, for Tab.
       def slash_commands = (InputSupport::SLASH_COMMANDS + DETACH_COMMANDS).uniq.sort
+
+      # The recap from the join or a :recap_ready (dropped when a turn starts,
+      # so never stale), with the REPL's words; the settings from the worker.
+      def show_recap
+        state = @client.get_json("state")&.dig("session_state_snapshot")
+        return @screen.commit("(no recap settings: the worker did not answer)") unless state
+
+        @screen.commit(recap_command_text(enabled: state["recap_enabled"], recap: @recap,
+                                          min_user_turns: state["recap_min_user_turns"],
+                                          inactivity_seconds: state["recap_inactivity_seconds"]))
+      end
 
       def prompt_text
         return paint("choice> ", 33) if @question

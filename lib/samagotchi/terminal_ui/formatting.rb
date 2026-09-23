@@ -17,6 +17,20 @@ module Samagotchi
 
       private
 
+      # What /recap says (the REPL's words, attached mode's too).
+      # @param recap [String, nil] the latest recap
+      # @param stale [Boolean] the conversation moved on since it
+      def recap_command_text(enabled:, recap:, stale: false, min_user_turns: nil, inactivity_seconds: nil)
+        unless enabled
+          return "recap feature not enabled (add recap: {host_ref:, model:} to config.yml, " \
+                 "or set SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL)"
+        end
+        return "session recap#{' (from before your latest turn)' if stale}:\n#{recap}" if recap
+
+        "no recap available yet — the session needs at least #{min_user_turns} user turns and " \
+          "#{inactivity_seconds}s of inactivity to generate one automatically"
+      end
+
       # ── The status line (the REPL's, and attached mode's idle one) ────────
 
       # SAMAGOTCHI_STATUS_LINE=off hides it.
