@@ -109,11 +109,17 @@ module Samagotchi
             end
           end
         end
-        # Save base snapshots for hooks where a file path was provided
+        # Save base snapshots for hooks where a file path was provided, and
+        # record the sha256 of the installed file itself: the load-time check
+        # compares against it, and a declared sha can be wrong (installing
+        # only warns about that).
         hooks_files = {} unless hooks_files.is_a?(Hash)
         normalized_hooks.each do |k, meta|
-          hooks_map[k] = meta.transform_keys(&:to_s)
           src = hooks_files[k] || hooks_files[k.to_sym]
+          if src && File.exist?(src.to_s)
+            meta = meta.merge(sha256: "sha256:#{Digest::SHA256.hexdigest(File.read(src.to_s))}")
+          end
+          hooks_map[k] = meta.transform_keys(&:to_s)
           if src && File.exist?(src.to_s)
             begin
               File.write(File.join(bases_dir, k), File.read(src.to_s))

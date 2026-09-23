@@ -184,6 +184,20 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       expect(data[:source_commit]).to eq("deadbeef")
     end
 
+    it "records the sha256 of the installed hook file, not the declared one" do
+      Dir.mktmpdir do |dir|
+        hook = File.join(dir, "guard.rb").tap { |p| File.write(p, "class Guard; def call(e); end; end\n") }
+        prov = described_class.new(name: "sha-bundle")
+        prov.write(files: {}, scope: "system", version: "1.0", source_path: "/src",
+                   hooks: { "guard.rb" => { "sha256" => "sha256:wrong", "event" => "before_tool_call" },
+                            "gone.rb" => { "sha256" => "abc", "event" => "before_tool_call" } },
+                   hooks_files: { "guard.rb" => hook })
+        hooks = prov.read[:hooks]
+        expect(hooks[:"guard.rb"][:sha256]).to eq("sha256:#{Digest::SHA256.hexdigest(File.read(hook))}")
+        expect(hooks[:"gone.rb"][:sha256]).to eq("sha256:abc")
+      end
+    end
+
     it "each_installed_holding_hooks yields only hook-bearing bundles" do
       p1 = described_class.new(name: "with-hooks")
       p1.write(files: {}, scope: "system", version: "1.0", source_path: "/src",
