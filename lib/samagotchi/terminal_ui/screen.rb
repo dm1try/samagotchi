@@ -57,15 +57,20 @@ module Samagotchi
       end
 
       # The editor slot is Reline's: RelineSeam feeds it with #draw_editor.
-      def set_slot(name, rows)
-        check_slot!(name)
-        raise ArgumentError, "Reline draws the editor slot" if name == :editor
+      def set_slot(name, rows) = set_slots(name => rows)
 
-        rows = Array(rows).map { |row| one_row(row) }
+      # One frame for all the slots given, none when nothing changed.
+      def set_slots(**rows_by_slot)
+        rows_by_slot = rows_by_slot.to_h do |name, rows|
+          check_slot!(name)
+          raise ArgumentError, "Reline draws the editor slot" if name == :editor
+
+          [name, Array(rows).map { |row| one_row(row) }]
+        end
         synchronize do
-          next if slot(name) == rows
+          next if rows_by_slot.all? { |name, rows| slot(name) == rows }
 
-          rows.empty? ? @slots.delete(name) : (@slots[name] = rows)
+          rows_by_slot.each { |name, rows| rows.empty? ? @slots.delete(name) : (@slots[name] = rows) }
           frame
         end
         nil

@@ -87,6 +87,26 @@ RSpec.describe Samagotchi::TerminalUI::Screen do
     expect(screen.clear_slot(:notes)).to be(false)
   end
 
+  it "changes several slots in one frame" do
+    out = StringIO.new
+    both = described_class.new(out: out, size: -> { [10, 20] })
+
+    both.set_slots(activity: ["| thinking"], status: ["ctx 12%"])
+    both.set_slots(activity: ["/ thinking"], status: ["ctx 12%"])
+    both.set_slots(activity: ["/ thinking"], status: ["ctx 12%"])
+
+    expect(out.string.scan("\e[?2026h").size).to eq(2)
+    expect(out.string).to end_with("/ thinking\r\nctx 12%\r\n\e[?25h\e[?2026l")
+  end
+
+  it "clears a slot set to no rows in the same frame" do
+    screen.set_slots(activity: ["| thinking"], status: ["ctx 12%"])
+    screen.set_slots(activity: ["/ thinking"], status: [])
+
+    expect(term.lines).to eq(["/ thinking"])
+    expect { screen.set_slots(editor: ["> "]) }.to raise_error(ArgumentError, /Reline draws/)
+  end
+
   it "leaves the editor slot to Reline and rejects unknown slots" do
     expect { screen.set_slot(:editor, ["> "]) }.to raise_error(ArgumentError, /Reline draws/)
     expect { screen.set_slot(:banner, ["x"]) }.to raise_error(ArgumentError, /unknown slot/)

@@ -80,6 +80,23 @@ RSpec.describe Samagotchi::TerminalUI::LegacySurface do
     end
   end
 
+  describe "#set_slots" do
+    it "draws the status rows as the activity block's last rows, as one redraw" do
+      surface.set_slots(activity: ["| thinking"], status: ["status> model=x"])
+      surface.set_slots(activity: ["/ thinking"], status: ["status> model=x"])
+
+      expect(written).to eq("| thinking\e[0K\nstatus> model=x\e[0K\e[1A\r/ thinking\e[0K\nstatus> model=x\e[0K")
+      expect(surface.clear_slot(:activity)).to be(true)
+      expect(written).to eq("\e[1A\r\e[0K\n\e[0K\e[1A\r")
+    end
+
+    it "prints the status rows as lines without an activity block" do
+      surface.set_slots(status: ["status> model=x"])
+
+      expect(written).to eq("status> model=x\n")
+    end
+  end
+
   describe "the editor slot" do
     it "prints a plain prompt without a newline, and erases the line Reline drew" do
       surface.set_slot(:editor, ["choice> "])

@@ -9,7 +9,8 @@ module Samagotchi
     # moving back up over the rows it drew last (ESC[nA), which works only
     # while nothing else writes below it. The editor slot prints a prompt
     # for a plain read, and clearing it erases the line Reline drew. The other
-    # slots just print their rows.
+    # slots just print their rows, except status rows set together with the
+    # activity rows (#set_slots): those are the activity block's last rows.
     class LegacySurface
       include Surface
 
@@ -34,6 +35,15 @@ module Samagotchi
           out.flush
         else rows.each { |row| out.puts(row) }
         end
+      end
+
+      def set_slots(**rows_by_slot)
+        return super unless rows_by_slot.key?(:activity)
+
+        activity = rows_by_slot.delete(:activity)
+        status = rows_by_slot.delete(:status)
+        set_slot(:activity, Array(activity) + Array(status))
+        super(**rows_by_slot)
       end
 
       def clear_slot(name)

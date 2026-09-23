@@ -9,7 +9,9 @@ module Samagotchi
     # - Slots: named groups of rows that the UI replaces as its state changes.
     #   +set_slot(name, rows)+ shows +rows+ in the slot, replacing what it
     #   held, and +clear_slot(name)+ removes them. clear_slot returns whether
-    #   it erased anything.
+    #   it erased anything. +set_slots(name => rows, ...)+ changes several
+    #   at once (empty rows clear a slot); a live region draws them as one
+    #   frame.
     #
     # The slots, top down around the prompt: +activity+ (spinner, thinking
     # preview), +editor+ (the prompt), +status+, +notes+ (question choices),
@@ -19,6 +21,11 @@ module Samagotchi
     # Implementations include this module for the slot names.
     module Surface
       SLOTS = %i[activity editor status notes hints].freeze
+
+      def set_slots(**rows_by_slot)
+        rows_by_slot.each { |name, rows| set_slot(name, rows) }
+        nil
+      end
 
       private
 
