@@ -33,6 +33,8 @@ hosts:
     port: 8080
 
 # Idle recap now generalized via host_ref (preferred) or base_url fallback.
+# host_ref asks that host's OpenAI API (its url:, else http://host:port/v1) with
+# its api_key_env; base_url is an OpenAI API base as given (e.g. http://h:8081/v1).
 recap:
   host_ref: recap-box
   model: gemma4-small
@@ -225,6 +227,15 @@ Profile inference uses the model name:
 - all others map to the `gemma4` profile
 
 When `SAMAGOTCHI_DEFAULT_MODEL` is unset or blank, Samagotchi fails fast with a clear startup/configuration error.
+
+With several `hosts:`, an unqualified model name goes to the host whose `/models`
+list has it (after `/models` ran), by exact id first, then by substring. A
+**remote** host (one with `api_key_env:` or an `https` url) is only chosen by exact
+id, `host:model` or an alias, never by a substring, and its model list is kept for
+10 minutes (60s for local hosts). For a chat host the context window comes from
+the running server (llama.cpp's `/props`), else the window the host's model list
+gives (`context_length`, `context_window`, `max_model_len` or llama.cpp's
+`meta.n_ctx`), else `context.window_tokens`.
 
 ## Llama Network Retry Behavior
 

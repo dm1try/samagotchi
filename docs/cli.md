@@ -38,8 +38,8 @@ flag also works as `--kebab-case VALUE`, e.g. `--server-host`, `--server-port`,
 `--read-truncate-at-bytes`. `bin/chi --help` lists them all.
 
 **Which loop runs.** There is no backend flag: the model's host decides. A host with
-`api: openai` in config.yml is driven through the OpenAI chat API; every other host
-gets chi's own raw-prompt loop. `/model` and `--model host:model` switch hosts, and
+`api: openai` in config.yml is driven through the OpenAI chat API (streamed; a remote
+provider via `url:` and `api_key_env:`); every other host gets chi's own raw-prompt loop. `/model` and `--model host:model` switch hosts, and
 the loop with them. See [Configuration](configuration.md) (`hosts:` and `api:`).
 `--backend`, `SAMAGOTCHI_BACKEND` and a `backend:` key were removed; chi says so if
 it sees one.
@@ -138,7 +138,7 @@ In interactive assist mode, you can switch the request model without restarting:
 - `/model <name> --alias <alias>`: create alias for current effective model (alias value may be bare or `host:model`).
 - `/model`: show the effective model (and default when diverged: `runtime model: <effective> (default: <default>, profile=...)`).
 - `/model clear` (or `default`/`none`/`off`): clear the session override, reverting to the configured default.
-- `/models`: list model ids aggregated across all `hosts:` (grouped `host (host:port):` with per-host `unreachable` warnings, 60s cache, lazy — no startup prefill).
+- `/models`: list model ids aggregated across all `hosts:` (grouped `host (host:port):` with per-host `unreachable` warnings, e.g. an unset `api_key_env`; lists cached 60s, 10 minutes for a remote host; lazy — no startup prefill).
 
 Notes:
 

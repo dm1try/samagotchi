@@ -87,7 +87,8 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
 |-------|-----------|----------------|
 | Core | `Samagotchi::Engine` | System prompt, memory injection, tool declarations, session lifecycle, model↔tool loop (`run_turn`). No terminal coupling. |
 | UI | `Samagotchi::TerminalUI` | REPL (Reline), rendering, REPL commands. Delegates all core work to an `Engine`. |
-| Transport | `Samagotchi::Client`, `KernelLoop`, `Session` | HTTP transport, model↔tool loop, session data model. |
+| Model loops | `KernelLoop` (via `LLM::NativeBackend`), `LLM::ChatLoop` | The model↔tool loop: raw prompt or OpenAI chat API, chosen per host (see below). |
+| Adapters | `Samagotchi::Client`, `LLM::OpenAIChat`, `LLM::HTTP` | Raw-prompt servers, the OpenAI chat API, and the HTTP both share. |
 | Tools | `lib/samagotchi/tools/*` | Execute, read, edit, write, memory, task_*, web_fetch, plus runtime/output-guardrails. |
 | Background | `Samagotchi::SessionManager` | Builds `Engine` directly (no terminal rendering) for workers. |
 | Web | `Samagotchi::Web::App`, `Samagotchi::Web::Server` | Rack+WEBrick single-port `127.0.0.1:4567` (index.html + `/api/*` + SSE). Replicates dashboard via file IPC. |
@@ -123,7 +124,7 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
 |-------|-------|----------------|
 | Core | `Samagotchi::Engine` | System prompt, memory injection, tool declarations, session lifecycle, the model↔tool loop (`run_turn`). No terminal coupling. |
 | UI | `Samagotchi::TerminalUI` | Interactive REPL (Reline), rendering (ANSI, spinner, status line), REPL commands. Delegates all core work to an `Engine`. |
-| Transport | `Samagotchi::Client`, `KernelLoop`, `Session` | HTTP transport, model↔tool loop, session data model (already clean). |
+| Model loops and adapters | `KernelLoop`, `LLM::ChatLoop`, `Samagotchi::Client`, `LLM::OpenAIChat`, `LLM::HTTP` | The model↔tool loops and the HTTP adapters they talk through (see "Model loops and adapters"). |
 | Bridge (SSE/HTTP) | `Samagotchi::Bridge`, `SessionManager` | The **single live client transport**: an SSE read stream + HTTP POST turn/cancel/answer surface that attaches to a worker's existing `Engine` via `Engine#subscribe`. Every session worker starts it (bound `127.0.0.1`, no auth, localhost-only). |
 | Web (Rack) | `Samagotchi::Web::App`, `SessionManager` | Single-port `127.0.0.1:4567` control plane via `rack`+`webrick` (serve `index.html` + `/api/*`; `/stream` proxies each session's Bridge). `bin/chi web` entrypoint. |
 | Sessions | `Samagotchi::Session`, `SessionManager` | File-based `~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar `input/`/`output/`/`pid`; retention (14d/500) + ordering (`updated_at desc`). |
@@ -203,3 +204,43 @@ for client discovery. `chi web`'s `GET /api/sessions/:id/stream` proxies this br
 (503 `not_live` when the worker is not running; full history of any session is served by
 `GET /api/sessions/:id/output`). Resume/ring-buffer state is **in-memory** (v1) — durable
 cross-process resume is a staged next step, not part of v1.
+
+## Model loops and adapters
+
+Engine picks the loop from the effective model's host (`HostRegistry#resolve`):
+
+| Loop | Class | Host | Talks through |
+|---|---|---|---|
+| Raw prompt | `KernelLoop`, wrapped by `LLM::NativeBackend` | no `api:`, or `llama_cpp`/`mlx`/`omlx` | `Client` (`/completion` or `/v1/completions`), chi's own Gemma/Qwen prompt and tool-call parsing |
+| Chat | `LLM::ChatLoop` | `api: openai` | `LLM::OpenAIChat` (`/v1/chat/completions`, streamed, native tool calls) |
+
+Both return an `LLM::ModelResult` and emit the same stream events; tool calls in
+both go through `ToolRunner` (events, hooks, veto, output cap) and
+`KernelLoop#dispatch_tool_call`. The chat loop's `generation_chunk` carries
+`thinking:` (the server's `reasoning_content`), `text:` and `content:` (both);
+its model turns keep their `tool_calls` and tool results their `tool_call_id`,
+so later requests and resumed sessions pair them. It has its own system prompt
+(no raw-prompt tool declarations; the tools go as JSON schemas).
+
+**Adapters.** `Client` (raw-prompt servers) and `LLM::OpenAIChat` (one per host,
+`HostRegistry#adapter_for`) share `LLM::HTTP`: timeouts, TLS for https, a line
+reader for streamed bodies, the retry loop (`retry.*`; network errors, 429 and
+500/502/503/504/529, honouring `Retry-After`; never after a stream has produced
+output) and cancel. Cancel closes the in-flight socket from the
+`CancellationController` listener, so it works on any thread.
+
+**Errors.** A failed request raises an `LLM::ProviderError` of one kind:
+`ConnectionError` (`RetryExhausted`), `RateLimited`, `ServerError`, `AuthError`,
+`BadRequest` (`context_overflow?`) or `ProtocolError`. Engine keeps the turn's
+conversation (the prompt plus completed tool iterations) and emits
+`:turn_failed` with `error_kind:`, `retryable:`, `host:` and a one-line
+`summary:`, which the REPL, the attached TUI and the web show.
+
+**Usage and models.** `ModelResult#usage` is an `LLM::Usage` (server counts, else
+a chars/4 estimate, else zeros; never nil). Model lists are `LLM::ModelInfo`
+(`HostRegistry#list_all_models`); the context window comes from the running
+server (`/props`), then the host's model list, then config.
+
+**Keys.** A host's API key comes only from the environment variable its
+`api_key_env:` names; it never reaches config.yml, `HOSTS_JSON`, `chi self`,
+logs or events.

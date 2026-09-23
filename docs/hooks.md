@@ -48,8 +48,8 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 | `:session_start` | First turn of the session | `{ type: :session_start, session_id: "..." }` |
 | `:before_turn` | Before each turn starts | `{ type: :before_turn }` |
 | `:after_turn` | After each turn completes | `{ type: :after_turn }` |
-| `:before_generation` | Before LLM API call | `{ type: :before_generation, iteration: N }` |
-| `:after_generation` | After LLM returns | `{ type: :after_generation, iteration: N, response: "..." }` |
+| `:before_generation` | Before each LLM API call (both loops) | `{ type: :before_generation, iteration: N }` |
+| `:after_generation` | After LLM returns (both loops) | `{ type: :after_generation, iteration: N, response: "..." }` |
 | `:before_tool_call` | Before tool dispatch | `{ type: :before_tool_call, iteration: N, call: {...}, params: {...} }` |
 | `:after_tool_call` | After tool execution | `{ type: :after_tool_call, iteration: N, tool: "read", output: "..." }` |
 | `:session_end` | After every turn (turn-level lifecycle) | `{ type: :session_end, session_id: "..." }` |
@@ -127,7 +127,7 @@ class Safety
 end
 ```
 
-When `event[:blocked] = true`, the tool is not dispatched. The model receives `Error: blocked by guardrail: <reason>` as the tool output (with `block_reason` or default `blocked by hook`), activity status is `blocked`, and `:after_tool_call` still fires. Only `:before_tool_call` supports veto — `blocked` is ignored on other hooks.
+When `event[:blocked] = true`, the tool is not dispatched. The model receives `[<tool>] Error: blocked by guardrail: <reason>` as the tool output (in both loops) (with `block_reason` or default `blocked by hook`), activity status is `blocked`, and `:after_tool_call` still fires. Only `:before_tool_call` supports veto — `blocked` is ignored on other hooks.
 
 **Mutating params (legacy):**
 
