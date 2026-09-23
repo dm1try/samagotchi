@@ -83,6 +83,13 @@ module Samagotchi
       # Plain `chi` runs like `chi --shared` (bin/chi, LaunchMode); false, or --no-shared per run, keeps the plain REPL. No CLI flag: that would duplicate --shared.
       Entry.new(key: "session.shared",                yaml_path: %w[session shared],                type: :bool,    default: true,  expose: %i[env config]),
 
+      # Images sent to a model (ImageStore): the long side they are downscaled
+      # to, the most bytes one may take (bigger → re-encoded as jpeg), and how
+      # many one request carries (older ones become placeholders).
+      Entry.new(key: "image.max_side",           yaml_path: %w[image max_side],           type: :integer, default: 1568,            expose: %i[env config]),
+      Entry.new(key: "image.max_bytes",          yaml_path: %w[image max_bytes],          type: :integer, default: 3_750_000,       expose: %i[env config]),
+      Entry.new(key: "image.max_per_request",    yaml_path: %w[image max_per_request],    type: :integer, default: 20,              expose: %i[env config]),
+
       Entry.new(key: "guardrails.enabled",       yaml_path: %w[guardrails enabled],       type: :bool,   default: true,             expose: %i[env config]),
 
       Entry.new(key: "log.file",                 yaml_path: %w[log file],                 type: :string, default: nil,              expose: %i[env config cli]),
