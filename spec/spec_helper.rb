@@ -48,6 +48,8 @@ RSpec.configure do |config|
     end
     # ContextWindow remembers the last server-reported window process-wide.
     Samagotchi::ContextWindow.reset! if defined?(Samagotchi::ContextWindow)
+    # ConfigFile prints each config warning once per process.
+    Samagotchi::ConfigFile.reset_warnings! if defined?(Samagotchi::ConfigFile)
   end
 
   # Point :integration examples at the real config, then restore the fixture.

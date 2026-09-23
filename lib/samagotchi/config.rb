@@ -4,6 +4,7 @@ require "yaml"
 require "json"
 require "fileutils"
 require "uri"
+require "set"
 
 module Samagotchi
   # Unified configuration registry implementing the implicit convention:
@@ -416,6 +417,20 @@ module Samagotchi
       data
     end
 
+    # Print +message+ to stderr unless this process already did. The config
+    # is read again for every HostRegistry, worker env and model lookup, so a
+    # warning about the file would otherwise repeat several times per run.
+    def warn_once(message)
+      @warn_once_mutex ||= Mutex.new
+      first = @warn_once_mutex.synchronize { (@warned ||= Set.new).add?(message) }
+      warn(message) if first
+    end
+
+    # Forget the warnings already printed (specs).
+    def reset_warnings!
+      @warned = nil
+    end
+
     # Invalidate the parsed-YAML cache (called after writers modify the file).
     def clear_yaml_cache!(path = nil)
       cache = @yaml_cache
@@ -502,12 +517,12 @@ module Samagotchi
           name = raw_name.to_s.strip
           next if name.empty?
           unless name.match?(HOST_NAME_RE)
-            warn "Warning: ignoring hosts entry '#{name}': must match /[a-z0-9][a-z0-9._-]*/i"
+            warn_once "Warning: ignoring hosts entry '#{name}': must match /[a-z0-9][a-z0-9._-]*/i"
             next
           end
           lowered = name.downcase
           unless raw_cfg.is_a?(Hash)
-            warn "Warning: ignoring hosts entry '#{name}': expected mapping"
+            warn_once "Warning: ignoring hosts entry '#{name}': expected mapping"
             next
           end
           host = raw_cfg["host"] || raw_cfg[:host]
@@ -523,13 +538,13 @@ module Samagotchi
           # Kept as written; ModelProfile.resolve warns about an unknown one.
           profile = (raw_cfg["profile"] || raw_cfg[:profile]).to_s.strip.downcase
           unless api_key_env.empty? || api_key_env.match?(ENV_NAME_RE)
-            warn "Warning: ignoring hosts entry '#{name}': api_key_env must be an environment variable name"
+            warn_once "Warning: ignoring hosts entry '#{name}': api_key_env must be an environment variable name"
             next
           end
           scheme = "http"
           unless url.empty?
             unless host.to_s.strip.empty? && port.to_s.strip.empty?
-              warn "Warning: ignoring hosts entry '#{name}': give url or host/port, not both"
+              warn_once "Warning: ignoring hosts entry '#{name}': give url or host/port, not both"
               next
             end
             uri = begin
@@ -538,7 +553,7 @@ module Samagotchi
               nil
             end
             unless uri.is_a?(URI::HTTP) && !uri.host.to_s.empty?
-              warn "Warning: ignoring hosts entry '#{name}': url must be an http(s) URL"
+              warn_once "Warning: ignoring hosts entry '#{name}': url must be an http(s) URL"
               next
             end
             host = uri.host
@@ -548,31 +563,31 @@ module Samagotchi
           end
           host = host.to_s.strip
           if host.empty?
-            warn "Warning: ignoring hosts entry '#{name}': host is required"
+            warn_once "Warning: ignoring hosts entry '#{name}': host is required"
             next
           end
           port_val = port.to_s.strip.empty? ? 8080 : port.to_i
           if port_val <= 0 || port_val > 65535
-            warn "Warning: ignoring hosts entry '#{name}': invalid port"
+            warn_once "Warning: ignoring hosts entry '#{name}': invalid port"
             next
           end
           transport_val = transport.to_s.strip.downcase
           if transport_val.empty?
             transport_val = nil
           elsif !VALID_TRANSPORTS_FOR_CONFIG.include?(transport_val)
-            warn "Warning: ignoring hosts entry '#{name}': unknown transport '#{transport_val}'"
+            warn_once "Warning: ignoring hosts entry '#{name}': unknown transport '#{transport_val}'"
             next
           end
           api_val = api.to_s.strip.downcase
           if api_val.empty?
             api_val = nil
           elsif !VALID_APIS_FOR_CONFIG.include?(api_val)
-            warn "Warning: ignoring hosts entry '#{name}': unknown api '#{api_val}'"
+            warn_once "Warning: ignoring hosts entry '#{name}': unknown api '#{api_val}'"
             next
           elsif VALID_TRANSPORTS_FOR_CONFIG.include?(api_val)
             # A raw-prompt api is the transport; a different transport contradicts it.
             if transport_val && transport_val != api_val
-              warn "Warning: ignoring hosts entry '#{name}': api '#{api_val}' conflicts with transport '#{transport_val}'"
+              warn_once "Warning: ignoring hosts entry '#{name}': api '#{api_val}' conflicts with transport '#{transport_val}'"
               next
             end
             transport_val = api_val

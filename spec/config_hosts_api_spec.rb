@@ -45,6 +45,13 @@ RSpec.describe "hosts: api" do
     expect(result.keys).to eq(["c"])
   end
 
+  it "prints each warning once per process, however often the hosts are read" do
+    bad = { "a" => { "host" => "h", "api" => "grpc" } }
+
+    expect { 3.times { hosts(bad) } }.to output(/\A[^\n]*ignoring hosts entry 'a'[^\n]*\n\z/).to_stderr
+    expect { hosts("b" => { "host" => "h", "api" => "grpc" }) }.to output(/ignoring hosts entry 'b'/).to_stderr
+  end
+
   it "passes api to workers through SAMAGOTCHI_HOSTS_JSON" do
     Dir.mktmpdir do |dir|
       path = File.join(dir, "config.yml")
