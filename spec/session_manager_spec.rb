@@ -11,6 +11,40 @@ RSpec.describe Samagotchi::SessionManager do
 
   after { FileUtils.rm_rf(tmpdir) }
 
+  # A stand-in worker: another process holding the owner lock (needs the
+  # example group's session and session_dir).
+  def spawn_owner(ignore_term: false)
+    lib = File.expand_path("../lib", __dir__)
+    script = <<~RUBY
+      require "samagotchi/owner_lock"
+      trap("TERM") {} if #{ignore_term}
+      lock = Samagotchi::OwnerLock.acquire(ARGV[0], kind: "worker")
+      sleep 30
+    RUBY
+    @owner_pid = Process.spawn(RbConfig.ruby, "-I", lib, "-e", script, session_dir)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
+    until described_class.session_owner(session.id, state_dir: tmpdir)
+      raise "owner never took the lock" if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+
+      sleep 0.02
+    end
+  end
+
+  after do
+    if @owner_pid
+      begin
+        Process.kill("KILL", @owner_pid)
+      rescue Errno::ESRCH
+        nil
+      end
+      begin
+        Process.wait(@owner_pid)
+      rescue Errno::ECHILD
+        nil
+      end
+    end
+  end
+
   describe ".list_sessions" do
     it "returns all sessions" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
@@ -40,39 +74,6 @@ RSpec.describe Samagotchi::SessionManager do
       end
       let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
 
-      # A stand-in worker: another process holding the owner lock.
-      def spawn_owner(ignore_term: false)
-        lib = File.expand_path("../lib", __dir__)
-        script = <<~RUBY
-          require "samagotchi/owner_lock"
-          trap("TERM") {} if #{ignore_term}
-          lock = Samagotchi::OwnerLock.acquire(ARGV[0], kind: "worker")
-          sleep 30
-        RUBY
-        @owner_pid = Process.spawn(RbConfig.ruby, "-I", lib, "-e", script, session_dir)
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
-        until described_class.session_owner(session.id, state_dir: tmpdir)
-          raise "owner never took the lock" if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-
-          sleep 0.02
-        end
-      end
-
-      after do
-        if @owner_pid
-          begin
-            Process.kill("KILL", @owner_pid)
-          rescue Errno::ESRCH
-            nil
-          end
-          begin
-            Process.wait(@owner_pid)
-          rescue Errno::ECHILD
-            nil
-          end
-        end
-      end
-
       it "returns true once the owner has let go of the session" do
         spawn_owner
 
@@ -90,6 +91,111 @@ RSpec.describe Samagotchi::SessionManager do
       it "returns true at once when nothing owns the session" do
         expect(described_class.stop_session(session.id, state_dir: tmpdir, wait: 5)).to be true
       end
+    end
+  end
+
+  describe ".delete_session" do
+    let(:session) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
+        s.save(state_dir: tmpdir)
+      end
+    end
+    let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
+    let(:session_file) { File.join(tmpdir, "#{session.id}.json") }
+
+    def fill_session_dir
+      %w[input output notes images].each { |sub| FileUtils.mkdir_p(File.join(session_dir, sub)) }
+      File.write(File.join(session_dir, "notes", "1.json"), "{}")
+      File.write(File.join(session_dir, "images", "ab.png"), "png")
+      File.write(File.join(session_dir, "output", "1.txt"), "answer")
+    end
+
+    it "removes the session file and its whole directory, and says what it removed" do
+      fill_session_dir
+
+      result = described_class.delete_session(session.id, state_dir: tmpdir)
+
+      expect(result).to eq(id: session.id, removed: [session_file, session_dir], stopped: false)
+      expect(File.exist?(session_file)).to be false
+      expect(Dir.exist?(session_dir)).to be false
+    end
+
+    it "takes a unique id prefix" do
+      result = described_class.delete_session(session.id[0, 6], state_dir: tmpdir)
+
+      expect(result[:id]).to eq(session.id)
+      expect(File.exist?(session_file)).to be false
+    end
+
+    it "refuses an ambiguous prefix and removes nothing" do
+      now = Time.now.utc.iso8601
+      Samagotchi::Session.new(id: "#{session.id[0, 4]}-other", mode: "assist", model_name: "gemma4",
+                              working_directory: "/tmp", messages: [], created_at: now, updated_at: now)
+                         .save(state_dir: tmpdir)
+
+      expect { described_class.delete_session(session.id[0, 4], state_dir: tmpdir) }
+        .to raise_error(Samagotchi::Session::AmbiguousId)
+      expect(File.exist?(session_file)).to be true
+    end
+
+    it "refuses an unknown id, and one that is not an id" do
+      FileUtils.mkdir_p(File.join(tmpdir, "keep"))
+
+      expect { described_class.delete_session("nope", state_dir: tmpdir) }
+        .to raise_error(ArgumentError, "no session nope")
+      expect { described_class.delete_session("../#{File.basename(tmpdir)}", state_dir: tmpdir) }
+        .to raise_error(ArgumentError, /no session/)
+      expect { described_class.delete_session("", state_dir: tmpdir) }.to raise_error(ArgumentError)
+      expect(Dir.exist?(File.join(tmpdir, "keep"))).to be true
+    end
+
+    it "refuses while a worker owns the session, and removes nothing" do
+      fill_session_dir
+      spawn_owner
+
+      expect { described_class.delete_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::DeleteRefused) { |e| expect(e.reason).to eq(:worker_running) }
+      expect(File.exist?(session_file)).to be true
+      expect(described_class.session_owner(session.id, state_dir: tmpdir)).not_to be_nil
+    end
+
+    it "with stop: stops the worker first, then deletes" do
+      fill_session_dir
+      spawn_owner
+
+      result = described_class.delete_session(session.id, state_dir: tmpdir, stop: true, wait: 5)
+
+      expect(result).to include(id: session.id, stopped: true)
+      expect(File.exist?(session_file)).to be false
+      expect(Dir.exist?(session_dir)).to be false
+    end
+
+    it "with stop: removes nothing when the worker outlives the wait" do
+      spawn_owner(ignore_term: true)
+
+      expect { described_class.delete_session(session.id, state_dir: tmpdir, stop: true, wait: 0.3) }
+        .to raise_error(described_class::DeleteRefused) { |e| expect(e.reason).to eq(:still_stopping) }
+      expect(Dir.exist?(session_dir)).to be true
+      expect(File.exist?(session_file)).to be true
+    end
+
+    it "refuses a session a chi REPL owns, even with stop:" do
+      lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
+      allow(Process).to receive(:kill)
+
+      expect { described_class.delete_session(session.id, state_dir: tmpdir, stop: true) }
+        .to raise_error(described_class::OwnedByTUI)
+      expect(Process).not_to have_received(:kill)
+      expect(File.exist?(session_file)).to be true
+    ensure
+      lock&.release
+    end
+
+    it "removes a directory left without its session file" do
+      FileUtils.mkdir_p(session_dir)
+      FileUtils.rm_f(session_file)
+
+      expect(described_class.delete_session(session.id, state_dir: tmpdir)[:removed]).to eq([session_dir])
     end
   end
 

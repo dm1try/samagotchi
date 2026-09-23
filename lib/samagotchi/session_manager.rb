@@ -78,6 +78,19 @@ module Samagotchi
     # NOTE_MAX_BYTES.
     class NoteRejected < ArgumentError; end
 
+    # A delete that would pull the session from under its live worker.
+    # reason: :worker_running (not asked to stop it) or :still_stopping
+    # (stopped, but the worker outlived the wait).
+    class DeleteRefused < StandardError
+      attr_reader :session_id, :reason
+
+      def initialize(session_id, reason)
+        @session_id = session_id
+        @reason = reason
+        super(reason == :still_stopping ? "session #{session_id}'s worker is still shutting down" : "session #{session_id}'s worker is running")
+      end
+    end
+
     # Spawn a new background session that processes the given prompt (or,
     # with none, waits idle for input).
     #
@@ -346,6 +359,46 @@ module Samagotchi
         nil # already exited
       end
       wait_for_owner_release(session_id, timeout: wait, state_dir: sd) if wait
+    end
+
+    # Delete one session: its <id>.json and the whole <id>/ directory
+    # (history sidecars, input, output, notes, images). The CLI, the TUI's
+    # /exit --delete and the web all come here.
+    # @param id_or_prefix [String] a session id or a unique prefix of one
+    # @param stop [Boolean] stop a live worker first (waits +wait+ seconds)
+    # @return [Hash] {id:, removed: [paths], stopped: whether a worker was stopped}
+    # @raise [ArgumentError] unknown id (Session::AmbiguousId for a prefix of several)
+    # @raise [OwnedByTUI] a chi REPL owns it (never stopped from here)
+    # @raise [DeleteRefused] a worker owns it and +stop+ is false, or it
+    #   outlived the wait
+    def self.delete_session(id_or_prefix, state_dir: nil, stop: false, wait: 10)
+      sd = state_dir || Session.default_state_dir
+      given = id_or_prefix.to_s
+      # Only a plain id: anything else could name a path outside the state dir.
+      raise ArgumentError, "no session #{given}" unless given.match?(/\A[\w-]+\z/)
+
+      id = Session.resolve_id(given, state_dir: sd)
+      path = File.join(sd, "#{id}#{Session::FILE_EXT}")
+      dir = Session.session_dir(id, state_dir: sd)
+      raise ArgumentError, "no session #{given}" unless File.exist?(path) || Dir.exist?(dir)
+
+      owner = session_owner(id, state_dir: sd)
+      if owner
+        raise OwnedByTUI, id if owner["kind"] == "tui"
+        raise DeleteRefused.new(id, :worker_running) unless stop
+        raise DeleteRefused.new(id, :still_stopping) unless stop_session(id, state_dir: sd, wait: wait)
+      end
+
+      removed = []
+      if File.exist?(path)
+        FileUtils.rm_f(path)
+        removed << path
+      end
+      if Dir.exist?(dir)
+        FileUtils.rm_rf(dir)
+        removed << dir
+      end
+      { id: id, removed: removed, stopped: !owner.nil? }
     end
 
     # @return [Boolean] whether the session had no owner within +timeout+ seconds
