@@ -32,8 +32,8 @@ RSpec.describe Samagotchi::LaunchMode do
       expect(resolve(true, prompt: "hi", non_interactive: true)).to eq([:repl, nil])
     end
 
-    it "keeps -p in a plain REPL" do
-      expect(resolve(true, prompt: "hi")).to eq([:repl, nil])
+    it "attaches -p, which then sends the prompt" do
+      expect(resolve(true, prompt: "hi")).to eq([:attached, nil])
     end
 
     {

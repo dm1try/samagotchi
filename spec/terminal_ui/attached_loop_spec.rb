@@ -185,6 +185,22 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
     expect(stream).to have_received(:close)
   end
 
+  it "sends a first prompt (chi -p) once it has joined, shown as the user's own line" do
+    allow(client).to receive(:post_turn).and_return(ack)
+    loop_with_prompt = described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "hello")
+    allow(client).to receive(:follow) do |&block|
+      block.call(snapshot)
+      block.call(snapshot.merge("type" => "reset"))
+      stream
+    end
+
+    expect(loop_with_prompt.run(input: ->(_prompt) {})).to eq(:detached)
+
+    expect(client).to have_received(:post_turn).once.with(prompt: "hello", client_id: "tui:1")
+    expect(screen.lines[0..1]).to eq(["Attached to session s-1234 (0 messages). Ctrl-D detaches; the session keeps running.",
+                                      "> hello"])
+  end
+
   it "says so when the worker does not take the prompt" do
     allow(client).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 409, body: '{"error":"owned_by_tui"}'))
 

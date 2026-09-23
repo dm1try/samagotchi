@@ -112,7 +112,8 @@ module Samagotchi
       # @param screen [Surface] with #synchronize and #columns (a Screen, or a
       #   PlainSurface when the terminal can't show a live region)
       # @param client_id [String] this UI's id in the events ("tui:<pid>")
-      def initialize(client:, screen:, client_id:)
+      # @param first_prompt [String, nil] sent once joined (`chi -p`)
+      def initialize(client:, screen:, client_id:, first_prompt: nil)
         @client = client
         @screen = screen
         @client_id = client_id
@@ -126,6 +127,7 @@ module Samagotchi
         @question = nil
         @answered_ids = Set.new
         @reader = nil
+        @first_prompt = first_prompt
       end
 
       def running? = @running
@@ -334,6 +336,19 @@ module Samagotchi
           @shown_enqueued << entry[:enqueued_id]
           @screen.commit("queued #{prompt_line(entry[:client_id], entry[:prompt])}")
         end
+        send_first_prompt
+      end
+
+      # After the join, so it lands below what the session already had. Our
+      # own prompts are never echoed from events (a typed one stays on screen),
+      # so it is shown here as if typed.
+      def send_first_prompt
+        text = @first_prompt.to_s.strip
+        @first_prompt = nil
+        return if text.empty?
+
+        @screen.commit("#{paint(PROMPT, 92)}#{text}")
+        send_prompt(text)
       end
 
       def render_join_header(messages)

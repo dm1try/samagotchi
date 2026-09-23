@@ -93,6 +93,24 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
   end
 end
 
+RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
+  it "hands -p to the attached loop as its first prompt" do
+    client = instance_double(Samagotchi::BridgeClient)
+    surface = instance_double(Samagotchi::TerminalUI::PlainSurface)
+    attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
+    allow(described_class).to receive(:connect).with(attach: nil, shared: true, resume: nil).and_return(client)
+    allow(described_class).to receive(:open_surface).and_return(surface)
+    allow(described_class).to receive(:close_surface)
+    allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_return(attached)
+
+    expect(described_class.run(shared: true, prompt: "hi")).to eq(:detached)
+
+    expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new)
+      .with(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: "hi")
+    expect(described_class).to have_received(:close_surface).with(surface)
+  end
+end
+
 RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".open_surface" do
   let(:tty) { StringIO.new.tap { |io| io.define_singleton_method(:tty?) { true } } }
 
@@ -122,7 +140,7 @@ RSpec.describe "bin/chi --attach / --shared flags" do
   let(:chi) { File.expand_path("../../bin/chi", __dir__) }
 
   {
-    %w[--attach s1 -p hi] => "--attach/--shared can't be combined with --prompt",
+    %w[--attach s1 -p hi --non-interactive] => "--attach/--shared can't be combined with --non-interactive",
     %w[--shared --non-interactive] => "--attach/--shared can't be combined with --non-interactive",
     %w[--shared --model m] => "--attach/--shared can't be combined with --model",
     %w[--attach s1 --shared] => "use either --attach ID or --shared",

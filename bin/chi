@@ -813,7 +813,7 @@ launch, launch_note = Samagotchi::LaunchMode.resolve(options, shared_config: Sam
 warn launch_note if launch_note
 
 if launch == :attached
-  conflict = { prompt: "--prompt", non_interactive: "--non-interactive", model: "--model", memories: "--memory" }
+  conflict = { non_interactive: "--non-interactive", model: "--model", memories: "--memory" }
              .find { |key, _flag| options[key] }
   error = if options[:attach] && options[:shared]
             "use either --attach ID or --shared"
@@ -829,7 +829,7 @@ if launch == :attached
 
   require "samagotchi/terminal_ui/attach_launcher"
   begin
-    ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], shared: !options[:attach], resume: options[:resume])
+    ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], shared: !options[:attach], resume: options[:resume], prompt: options[:prompt])
   rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
     warn "Error: #{e.message}"
     exit 1

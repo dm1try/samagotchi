@@ -22,12 +22,13 @@ module Samagotchi
       module_function
 
       # Attach until the user detaches or the worker goes away.
+      # @param prompt [String, nil] sent as the first prompt once attached (`-p`)
       # @return [Symbol] :detached, or :closed when the worker went away
-      def run(attach: nil, shared: false, resume: nil)
+      def run(attach: nil, shared: false, resume: nil, prompt: nil)
         client = connect(attach: attach, shared: shared, resume: resume)
         surface = open_surface
         begin
-          AttachedLoop.new(client: client, screen: surface, client_id: "tui:#{Process.pid}").run
+          AttachedLoop.new(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: prompt).run
         ensure
           close_surface(surface)
         end

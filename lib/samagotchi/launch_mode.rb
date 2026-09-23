@@ -21,7 +21,7 @@ module Samagotchi
       # --no-shared, or nobody asked for attached mode.
       return [:repl, nil] if options[:shared] == false || !shared_config
       # A one-shot with no REPL: nothing to attach.
-      return [:repl, nil] if options[:non_interactive] || options[:prompt]
+      return [:repl, nil] if options[:non_interactive]
 
       flag = REPL_ONLY.find { |key, _flag| options[key] }&.last
       return [:repl, "(session.shared: #{flag} runs in a plain REPL)"] if flag
