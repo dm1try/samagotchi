@@ -392,6 +392,14 @@ RSpec.describe Samagotchi::Web::App do
       expect(body.first).not_to include("startPoll")
       expect(body.first).to include("/assets/app.js")
     end
+
+    it "tells the page where the sessions are stored, ~ for the home folder" do
+      status, _headers, body = build_app(state_dir: File.join(Dir.home, "st<a>", "sessions")).call(env_for("/"))
+
+      expect(status).to eq(200)
+      expect(body.first).to include('<body data-sessions-dir="~/st&lt;a&gt;/sessions">')
+      expect(body.first).not_to include(".local/state")
+    end
   end
 
   describe "session_to_json" do

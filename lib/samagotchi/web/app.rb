@@ -561,7 +561,7 @@ module Samagotchi
       def serve_index(_req)
         path = File.join(@public_dir, "index.html")
         if File.file?(path)
-          body = File.read(path)
+          body = File.read(path).sub("<body>", %(<body data-sessions-dir="#{Rack::Utils.escape_html(sessions_dir_label)}">))
           [200, {
             "Content-Type" => "text/html; charset=utf-8",
             "Content-Length" => body.bytesize.to_s,
@@ -751,6 +751,13 @@ module Samagotchi
 
       def default_state_dir
         @state_dir || Session.default_state_dir
+      end
+
+      # The sessions folder as the page shows it: ~ for the home folder.
+      def sessions_dir_label
+        dir = File.expand_path(default_state_dir)
+        home = Dir.home
+        dir.start_with?("#{home}/") ? "~#{dir.delete_prefix(home)}" : dir
       end
 
       def json_response(status, payload)
