@@ -297,7 +297,7 @@ module Samagotchi
         when 200 then json_response(200, { status: "dismissed", session_id: id, id: qid })
         when 409 then error_response(409, "question_not_pending", reply.json&.dig("detail") || "question not pending")
         when 404
-          error_response(501, "not_supported", "this session's worker runs an older chi: restart it to dismiss questions")
+          error_response(501, "not_supported", BridgeClient.stale_worker_message(id, cant: "dismiss questions"))
         else error_response(503, "not_live", "no live bridge for session #{id}")
         end
       rescue StandardError
@@ -323,7 +323,7 @@ module Samagotchi
         when 202 then json_response(202, reply.json || { status: "accepted" })
         when 400 then error_response(400, reply.json&.dig("error") || "unknown_command", reply.json&.dig("detail") || "not a session command")
         when 404
-          error_response(501, "not_supported", "this session's worker runs an older chi: restart it to run commands")
+          error_response(501, "not_supported", BridgeClient.stale_worker_message(id, cant: "run commands"))
         else error_response(503, "not_live", "no live bridge for session #{id}")
         end
       rescue SessionManager::OwnedByTUI => e

@@ -824,6 +824,7 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(status).to eq(501)
       expect(resp).to include("error" => "not_supported")
+      expect(resp["detail"]).to match(/restart it: chi sessions stop \S+ && chi --resume \S+/)
     end
   end
 
@@ -889,6 +890,7 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(status).to eq(501)
       expect(resp).to include("error" => "not_supported")
+      expect(resp["detail"]).to match(/restart it: chi sessions stop \S+ && chi --resume \S+/)
     end
 
     it "answers 409 while a plain chi owns the session" do

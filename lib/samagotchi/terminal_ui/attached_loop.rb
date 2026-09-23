@@ -31,8 +31,6 @@ module Samagotchi
       # A second Ctrl-C at an empty idle prompt within this many seconds detaches.
       DETACH_WINDOW = 2.0
       DETACH_HINT = "Ctrl-C again or Ctrl-D to detach"
-      STALE_WORKER = "this session's worker runs an older chi and can't run commands; " \
-                     "restart it to use them (its turns still work)"
       ROLLBACK_HINT = "partial progress kept in context; !rollback restores the pre-turn state"
       # How much of the last answer a join shows.
       JOIN_ANSWER_LINES = 12
@@ -339,7 +337,7 @@ module Samagotchi
       def send_command(line)
         reply = @client.post_command(line: line, client_id: @client_id)
         return if reply.status == 202
-        return @screen.commit(STALE_WORKER) if reply.status == 404
+        return @screen.commit(stale_worker("run commands")) if reply.status == 404
 
         detail = reply.json&.fetch("detail", nil) || reply.json&.fetch("error", nil)
         @screen.commit("could not run the command (#{[reply.status, detail].compact.join(" ")})")
@@ -481,12 +479,17 @@ module Samagotchi
         case reply.status
         when 200 then close_question("(cancelled)")
         when 409 then close_question("(question already closed in another UI)")
+        when 404 then @screen.commit("#{stale_worker("dismiss questions")}; Ctrl-C cancels the turn")
         else
-          # e.g. 404 from a worker older than the route: the question stays.
+          # The question stays open (after a 404 too).
           detail = reply.json&.fetch("error", nil)
           @screen.commit("could not dismiss the question (#{[reply.status, detail].compact.join(" ")}); Ctrl-C cancels the turn")
         end
         nil
+      end
+
+      def stale_worker(cant)
+        BridgeClient.stale_worker_message(@client.session_id, cant: cant)
       end
 
       # The worker rolled a failed turn back and handed its prompt back: ours
@@ -603,7 +606,7 @@ module Samagotchi
           return nil if @first_command_id
         end
 
-        why = reply.status == 404 ? STALE_WORKER : "the worker answered #{reply.status}"
+        why = reply.status == 404 ? stale_worker("run commands") : "the worker answered #{reply.status}"
         @screen.commit("could not switch to the --model: #{why}")
         :failed
       end

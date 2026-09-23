@@ -297,7 +297,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
     run_with(["/model x"])
 
     expect(screen.lines).to include("this session's worker runs an older chi and can't run commands; " \
-                                    "restart it to use them (its turns still work)")
+                                    "restart it: chi sessions stop s-1234 && chi --resume s-1234 (its turns still work)")
   end
 
   it "cancels the running turn on Ctrl-C, and only then" do
@@ -431,10 +431,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     wait_for { prompts.last == "choice> " }
 
     typed << ""
-    wait_for { screen.lines.last.to_s.start_with?("could not dismiss") }
+    wait_for { screen.lines.last.to_s.end_with?("Ctrl-C cancels the turn") }
     finish
 
-    expect(screen.lines).to include("could not dismiss the question (404 not_found); Ctrl-C cancels the turn")
+    expect(screen.lines).to include("this session's worker runs an older chi and can't dismiss questions; " \
+                                    "restart it: chi sessions stop s-1234 && chi --resume s-1234 (its turns still work); " \
+                                    "Ctrl-C cancels the turn")
     expect(prompts.last).to eq("choice> ")
   end
 end
@@ -645,6 +647,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "launch flags" do
 
     expect(attached.handle_event(joined)).to eq(:failed)
     expect(screen.lines.last).to start_with("could not switch to the --model: this session's worker runs an older chi")
+    expect(screen.lines.last).to include("chi sessions stop s-1234 && chi --resume s-1234")
   end
 
   it "posts every prompt with no_interrupt under --no-interrupt" do

@@ -31,6 +31,14 @@ module Samagotchi
       end
     end
 
+    # What a UI says when the Bridge answers a route with 404: the worker runs
+    # code from before the route. Restarting it picks up the installed chi.
+    # @param cant [String] what the old worker can't do, e.g. "run commands"
+    def self.stale_worker_message(session_id, cant:)
+      "this session's worker runs an older chi and can't #{cant}; " \
+        "restart it: chi sessions stop #{session_id} && chi --resume #{session_id} (its turns still work)"
+    end
+
     # Port of the live Bridge advertised in +session_dir+'s sidecar, or nil.
     # A sidecar whose port refuses a quick connect is stale (its worker died)
     # and is removed.
