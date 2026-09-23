@@ -36,6 +36,22 @@ module Samagotchi
         end
       end
 
+      # The bundles shipped with chi (lib/samagotchi/bundles/<name>).
+      SHIPPED_DIR = File.expand_path("../bundles", __dir__)
+
+      # A bare name (no path separator) that isn't a path here names a
+      # shipped bundle: `chi bundle install guardrails`. A directory or file
+      # of that name in the cwd wins.
+      # @return [String, nil] the shipped bundle's dir
+      def self.shipped_bundle_dir(source, cwd: Dir.pwd)
+        name = source.to_s.strip
+        return nil unless name.match?(/\A[A-Za-z0-9][A-Za-z0-9_-]*\z/)
+        return nil if File.exist?(File.join(cwd, name))
+
+        dir = File.join(SHIPPED_DIR, name)
+        File.file?(File.join(dir, "manifest.yml")) ? dir : nil
+      end
+
       def self.git_url?(str)
         s = str.to_s.strip
         return false if s.empty?

@@ -154,7 +154,7 @@ if ARGV[0] == "bundle"
   # helpers for bundle_name derivation
   def chi_expand_source(src)
     return src if Samagotchi::MemoryBundle::SourceNormalizer.git_url?(src)
-    File.expand_path(src)
+    Samagotchi::MemoryBundle::SourceNormalizer.shipped_bundle_dir(src) || File.expand_path(src)
   end
 
   def chi_bundle_name_for(expanded_src)
@@ -243,7 +243,8 @@ if ARGV[0] == "bundle"
           puts "Usage: bin/chi bundle install <source> [--scope system|project] [--force]"
           puts ""
           puts "  install <source> [--scope system|project] [--force]"
-          puts "    Install a memory bundle from a directory, zip, tar archive, or git URL."
+          puts "    Install a memory bundle from a directory, zip, tar archive, or git URL,"
+          puts "    or a bundle shipped with chi by name (e.g. guardrails)."
           puts "    --force overwrites existing entries; default skips them."
           exit 0
         elsif arg == "--scope" && nxt

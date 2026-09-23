@@ -168,3 +168,23 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
     end
   end
 end
+
+RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer, ".shipped_bundle_dir" do
+  it "resolves a bare name to a bundle shipped with chi" do
+    Dir.mktmpdir do |cwd|
+      dir = described_class.shipped_bundle_dir("guardrails", cwd: cwd)
+      expect(dir).to end_with("lib/samagotchi/bundles/guardrails")
+      expect(File).to exist(File.join(dir, "manifest.yml"))
+    end
+  end
+
+  it "lets a path of that name in the cwd win, and ignores paths and unknown names" do
+    Dir.mktmpdir do |cwd|
+      FileUtils.mkdir_p(File.join(cwd, "guardrails"))
+      expect(described_class.shipped_bundle_dir("guardrails", cwd: cwd)).to be_nil
+      expect(described_class.shipped_bundle_dir("./guardrails", cwd: "/")).to be_nil
+      expect(described_class.shipped_bundle_dir("no-such-bundle", cwd: "/")).to be_nil
+      expect(described_class.shipped_bundle_dir("../bundles/system", cwd: "/")).to be_nil
+    end
+  end
+end
