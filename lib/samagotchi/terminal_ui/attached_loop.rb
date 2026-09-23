@@ -267,6 +267,7 @@ module Samagotchi
           nil
         elsif event[:status] == "busy" || shell_line?(event[:line])
           @screen.commit(output)
+          put_back_busy_command(event) if event[:status] == "busy"
         else
           @screen.commit("#{paint("model>", 36)} #{output}")
         end
@@ -276,6 +277,14 @@ module Samagotchi
         @served_model = nil if @model_name != event[:model_name]
         @model_name = event[:model_name]
         refresh_status
+      end
+
+      # Our command the worker couldn't run yet goes back into the prompt, for
+      # Enter once the turn ends (not the launch's --model: that ends the launch).
+      def put_back_busy_command(event)
+        return unless own?(event[:client_id]) && event[:command_id] != @first_command_id
+
+        @screen.commit("(the command is in the input history: ↑)") unless @reader&.prefill(event[:line].to_s)
       end
 
       def shell_line?(line)

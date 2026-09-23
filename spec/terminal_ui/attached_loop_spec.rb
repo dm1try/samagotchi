@@ -592,11 +592,24 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
     expect(attached.model_name).to eq("m1")
   end
 
-  it "says a command waits for the turn to end" do
-    feed(ran(status: "busy", output: "busy: wait for the turn to end"))
+it "says a command waits for the turn to end, and puts ours back into the prompt" do
+  reader = double("reader", prefill: true)
+  attached.instance_variable_set(:@reader, reader)
 
-    expect(screen.lines.last).to eq("busy: wait for the turn to end")
-  end
+  feed(ran(status: "busy", line: "!ls", output: "busy: wait for the turn to end"),
+       ran(status: "busy", client_id: "web:tab", line: "/model x", output: "busy: wait for the turn to end"))
+
+  expect(screen.lines.last(2)).to eq(["web> /model x", "busy: wait for the turn to end"])
+  expect(reader).to have_received(:prefill).once.with("!ls")
+end
+
+it "points to the history when the prompt already holds text" do
+  attached.instance_variable_set(:@reader, double("reader", prefill: false))
+
+  feed(ran(status: "busy", line: "!ls", output: "busy: wait for the turn to end"))
+
+  expect(screen.lines.last).to eq("(the command is in the input history: ↑)")
+end
 
   it "asks at the continue prompt while an offer is pending, from the join too" do
     expect(attached.send(:prompt_text)).to eq("> ")

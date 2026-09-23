@@ -43,7 +43,10 @@ module Samagotchi
       def <<(item)
         @lock.synchronize do
           next @answers << item if @answers
-          next if @turn && item.first == :line && @turn.call(item.last)
+          taken = @turn && item.first == :line && @turn.call(item.last)
+          # Not now: the line goes back into the prompt.
+          next @reader&.prefill_next(item.last) if taken == :back
+          next if taken
 
           @inbox << item
         end
@@ -56,8 +59,8 @@ module Samagotchi
         @inbox.pop(timeout: timeout)
       end
 
-      # While a turn runs, +handler+ (line -> truthy when it took the line) sees
-      # each line first. Once it ends, +leftovers+ (-> lines it took that the
+      # While a turn runs, +handler+ (line -> truthy when it took the line,
+      # :back to put it back into the prompt) sees each line first. Once it ends, +leftovers+ (-> lines it took that the
       # turn never merged) come next, in order, before anything in the inbox.
       def during_turn(handler, leftovers:)
         @lock.synchronize { @turn = handler }

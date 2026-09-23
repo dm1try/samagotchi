@@ -47,16 +47,33 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(repl_input.pop(timeout: 0)).to eq([:line, "too late to merge"])
   end
 
-  it "leaves Ctrl-D, commands, exit and a line sent after Ctrl-C for after the turn" do
+  it "leaves Ctrl-D, exit and a line sent after Ctrl-C (even a command) for after the turn" do
     allow(engine).to receive(:run_turn) do |*, cancel_controller:, **|
-      repl_input << [:line, nil] << [:line, "/stats"] << [:line, "!ls"] << [:line, "exit"]
+      repl_input << [:line, nil] << [:line, "exit"]
       cancel_controller.cancel!(:ctrl_c)
-      repl_input << [:line, "next"]
+      repl_input << [:line, "next"] << [:line, "!ls"]
       result
     end
 
     agent.send(:run_engine_turn, session, "go")
 
-    expect(Array.new(5) { repl_input.pop(timeout: 0).last }).to eq([nil, "/stats", "!ls", "exit", "next"])
+    expect(Array.new(4) { repl_input.pop(timeout: 0).last }).to eq([nil, "exit", "next", "!ls"])
+  end
+
+  it "runs /stats at once and puts another command back into the prompt, busy" do
+    reader = double("reader", prefill_next: nil)
+    repl_input.instance_variable_set(:@reader, reader)
+    allow(engine).to receive(:stats_snapshot).and_return({})
+    allow(agent).to receive(:format_session_metrics).and_return("turns: 1")
+    allow(engine).to receive(:run_turn) do
+      repl_input << [:line, "/stats"] << [:line, "!ls"]
+      result
+    end
+
+    agent.send(:run_engine_turn, session, "go")
+
+    expect(surface.lines).to include("\nmodel> session stats:\nturns: 1", "busy: wait for the turn to end")
+    expect(reader).to have_received(:prefill_next).with("!ls")
+    expect(repl_input.pop(timeout: 0)).to be_nil
   end
 end

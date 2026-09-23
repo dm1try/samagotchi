@@ -49,6 +49,11 @@ module Samagotchi
         @thread&.raise(Reprompt)
       end
       
+      # Type +text+ into the next read (from the sink, between two reads).
+      def prefill_next(text)
+        @prefill = text
+      end
+
       # @return [String, nil] what the open read holds
       def typed_text
         return nil unless $stdin.tty?

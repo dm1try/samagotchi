@@ -76,6 +76,8 @@ module Samagotchi
     STATUS_MAX_WIDTH_ENV = "SAMAGOTCHI_STATUS_MAX_WIDTH"
     STATUS_MAX_WIDTH_DEFAULT = 160
     REMINDER_PENDING_POLL_INTERVAL = 0.5
+    # What a command sent during a turn gets, as from a worker (Worker::BUSY_OUTPUT).
+    COMMAND_BUSY = "busy: wait for the turn to end"
 
     # Raised when another process (a `chi web` worker or another chi) owns the
     # session this TUI was asked to run.
@@ -863,13 +865,28 @@ module Samagotchi
 
     # On the reader thread, from ReplInput: takes a line for the running turn.
     # A line sent after Ctrl-C waits for the next turn (the kernel would not
-    # merge it into the cancelled one); so do commands and exit.
-    # @return [Boolean] whether the turn took it
+    # merge it into the cancelled one); so does exit. /stats and /recap run
+    # now; other commands wait, back in the prompt.
+    # @return [Boolean, :back] whether the turn took it, :back to put it back
     def steer_line(line)
-      return false if line.nil? || @active_cancel_controller&.cancelled? || command_line?(line)
+      return false if line.nil? || @active_cancel_controller&.cancelled? || exit_command?(line)
+      return command_during_turn(line) if command_line?(line)
       return true if line.strip.empty?
 
       @pending_input_queue.push(line.strip)
+      true
+    end
+
+    # @return [true, :back]
+    def command_during_turn(line)
+      if stats_command?(line)
+        @surface.commit("\nmodel> session stats:\n#{format_session_metrics(@engine.stats_snapshot)}")
+      elsif recap_command?(line)
+        @surface.commit("\nmodel> #{handle_recap_command}")
+      else
+        @surface.commit(COMMAND_BUSY)
+        return :back
+      end
       true
     end
 
