@@ -6,10 +6,11 @@ require_relative "../output_formatter"
 module Samagotchi
   class TerminalUI
     # EventRenderer's view in attached mode, drawn on an AttachedScreen: the
-    # thinking feedback is the screen's one status line (spinner frame, then
-    # the running tool or the tail of the model's text), and every finished
-    # line is permanent output. The local REPL's multi-line spinner redraws
-    # in place, which can't share the terminal with an open prompt.
+    # thinking feedback is the activity slot, the screen's one status line
+    # (spinner frame, then the running tool or the tail of the model's text),
+    # and every finished line is committed output. The local REPL's
+    # multi-line spinner redraws in place, which can't share the terminal
+    # with an open prompt.
     class AttachedView
       include Formatting
 
@@ -20,7 +21,7 @@ module Samagotchi
 
       attr_reader :context_status
 
-      # @param screen [AttachedScreen]
+      # @param screen [Surface] with #columns (an AttachedScreen)
       def initialize(screen, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
         @screen = screen
         @clock = clock
@@ -29,7 +30,7 @@ module Samagotchi
       end
 
       def print_line(text)
-        @screen.print_line(text)
+        @screen.commit(text)
       end
 
       def reset_turn_feedback
@@ -79,7 +80,7 @@ module Samagotchi
 
       def finish_thinking_spinner
         reset_turn_feedback
-        @screen.status = nil
+        @screen.clear_slot(:activity)
       end
 
       # Pick up a turn joined mid-way (from the Bridge snapshot): the model's
@@ -105,7 +106,8 @@ module Samagotchi
         return if throttle && @last_redraw && (now - @last_redraw) < MIN_REDRAW_INTERVAL
 
         @last_redraw = now
-        @screen.status = status_text
+        text = status_text
+        text ? @screen.set_slot(:activity, [text]) : @screen.clear_slot(:activity)
       end
 
       def status_text

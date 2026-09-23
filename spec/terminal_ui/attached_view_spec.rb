@@ -3,25 +3,10 @@
 require "json"
 require "samagotchi/terminal_ui"
 require "samagotchi/terminal_ui/attached_view"
+require_relative "../support/recording_surface"
 
 RSpec.describe Samagotchi::TerminalUI::AttachedView do
-  let(:screen) do
-    Class.new do
-      attr_reader :lines, :statuses
-
-      def initialize
-        @lines = []
-        @statuses = []
-      end
-
-      def print_line(text) = @lines << text
-      def status=(text)
-        @statuses << text
-      end
-
-      def columns = 40
-    end.new
-  end
+  let(:screen) { RecordingSurface.new(columns: 40) }
   let(:now) { [0.0] }
   let(:view) { described_class.new(screen, clock: -> { now.first }) }
   let(:renderer) { Samagotchi::TerminalUI::EventRenderer.new(view, clock: -> { now.first }) }

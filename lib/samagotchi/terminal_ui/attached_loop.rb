@@ -149,7 +149,7 @@ module Samagotchi
       ensure
         # The loop is over: drop the prompt the reader still has open.
         @screen.synchronize do
-          @screen.erase_prompt
+          @screen.clear_slot(:editor)
           @reader&.stop
         end
         stream&.close
@@ -170,7 +170,7 @@ module Samagotchi
           end_turn("turn failed: #{event[:message]} (#{event[:error_class]})")
         when :input_merged
           count = event[:count].to_i
-          @screen.print_line("(#{count} message#{"s" unless count == 1} merged into the running turn)")
+          @screen.commit("(#{count} message#{"s" unless count == 1} merged into the running turn)")
         when :question_requested then ask(event[:pending_question])
         when :question_answered then question_answered(event)
         when :question_cancelled
@@ -178,7 +178,7 @@ module Samagotchi
         when :recap_ready then @recap = event[:recap]
         when :stream_closed
           @view.finish_thinking_spinner
-          @screen.print_line("Lost the session's worker (#{event[:reason]}). " \
+          @screen.commit("Lost the session's worker (#{event[:reason]}). " \
                              "Resume it with: chi --shared --resume #{@client.session_id}")
           return :closed
         else @renderer.call(event)
@@ -199,7 +199,7 @@ module Samagotchi
       def safely_handle(event)
         handle_event(event)
       rescue StandardError => e
-        @screen.print_line("(could not render #{event["type"] || event[:type]}: #{e.class}: #{e.message})")
+        @screen.commit("(could not render #{event["type"] || event[:type]}: #{e.class}: #{e.message})")
         nil
       end
 
@@ -207,7 +207,7 @@ module Samagotchi
       def submit(line)
         if line.nil?
           @view.finish_thinking_spinner
-          @screen.print_line("Detached; the session keeps running. Re-attach with: chi --attach #{@client.session_id}")
+          @screen.commit("Detached; the session keeps running. Re-attach with: chi --attach #{@client.session_id}")
           return :detach
         end
 
@@ -220,9 +220,9 @@ module Samagotchi
         if command == STATS_COMMAND
           show_stats
         elsif command == RECAP_COMMAND
-          @screen.print_line(@recap || "no recap yet: one comes after a quiet stretch, when recap: is configured")
+          @screen.commit(@recap || "no recap yet: one comes after a quiet stretch, when recap: is configured")
         elsif UNAVAILABLE_COMMANDS.include?(command) || text.start_with?("!")
-          @screen.print_line("#{command} is not available in attached mode yet")
+          @screen.commit("#{command} is not available in attached mode yet")
         else
           send_prompt(text)
         end
@@ -234,12 +234,12 @@ module Samagotchi
         return if reply.status == 202
 
         detail = reply.json&.fetch("error", nil)
-        @screen.print_line("could not send the prompt (#{[reply.status, detail].compact.join(" ")})")
+        @screen.commit("could not send the prompt (#{[reply.status, detail].compact.join(" ")})")
       end
 
       def show_stats
         metrics = @client.get_json("state")&.dig("session_state_snapshot", "metrics")
-        @screen.print_line(metrics ? format_session_metrics(EventRenderer.deep_symbolize_keys(metrics)) : "(no metrics: the worker did not answer)")
+        @screen.commit(metrics ? format_session_metrics(EventRenderer.deep_symbolize_keys(metrics)) : "(no metrics: the worker did not answer)")
       end
 
       def prompt_text
@@ -252,7 +252,7 @@ module Samagotchi
 
         @view.finish_thinking_spinner
         @question = QuestionPrompt.new(pending)
-        @question.lines(paint: method(:paint), color: color_output?).each { |line| @screen.print_line(line) }
+        @screen.set_slot(:notes, @question.lines(paint: method(:paint), color: color_output?))
         sync_prompt
       end
 
@@ -263,8 +263,8 @@ module Samagotchi
         return if text.empty?
 
         answer = @question.parse(text)
-        @screen.print_line(answer.note) if answer.note
-        return @screen.print_line(answer.error) unless answer.ok?
+        @screen.commit(answer.note) if answer.note
+        return @screen.commit(answer.error) unless answer.ok?
 
         reply = @client.answer(id: @question.id, selected: answer.selected, freeform: answer.freeform)
         case reply.status
@@ -274,7 +274,7 @@ module Samagotchi
         when 409 then close_question("(already answered in another UI)")
         else
           detail = reply.json&.fetch("detail", nil) || reply.json&.fetch("error", nil)
-          @screen.print_line("could not answer (#{[reply.status, detail].compact.join(" ")})")
+          @screen.commit("could not answer (#{[reply.status, detail].compact.join(" ")})")
         end
         nil
       end
@@ -289,7 +289,8 @@ module Samagotchi
       end
 
       def close_question(message)
-        @screen.print_line(message) if message
+        @screen.clear_slot(:notes)
+        @screen.commit(message) if message
         @question = nil
         sync_prompt
       end
@@ -302,7 +303,7 @@ module Samagotchi
         @screen.synchronize do
           next if @reader.current == prompt_text
 
-          @screen.erase_prompt
+          @screen.clear_slot(:editor)
           @reader.reprompt
         end
       end
@@ -316,7 +317,7 @@ module Samagotchi
       def render_snapshot(snapshot, reset:)
         @view.finish_thinking_spinner
         if @attached
-          @screen.print_line("(resynced with the session)") if reset
+          @screen.commit("(resynced with the session)") if reset
         else
           @attached = true
           render_join_header(Array(snapshot[:messages]))
@@ -327,20 +328,20 @@ module Samagotchi
           next if own?(entry[:client_id])
 
           @shown_enqueued << entry[:enqueued_id]
-          @screen.print_line("queued #{prompt_line(entry[:client_id], entry[:prompt])}")
+          @screen.commit("queued #{prompt_line(entry[:client_id], entry[:prompt])}")
         end
       end
 
       def render_join_header(messages)
         exchange = messages.select { |m| %w[user model assistant].include?(m[:role].to_s) }
-        @screen.print_line("Attached to session #{@client.session_id} (#{exchange.size} messages). " \
+        @screen.commit("Attached to session #{@client.session_id} (#{exchange.size} messages). " \
                            "Ctrl-D detaches; the session keeps running.")
         last_user = exchange.rindex { |m| m[:role].to_s == "user" }
         return unless last_user
 
-        @screen.print_line(prompt_line(nil, exchange[last_user][:content]))
+        @screen.commit(prompt_line(nil, exchange[last_user][:content]))
         answer = exchange[(last_user + 1)..].reverse.find { |m| m[:role].to_s != "user" }
-        @screen.print_line(last_lines(answer[:content].to_s)) if answer
+        @screen.commit(last_lines(answer[:content].to_s)) if answer
       end
 
       # The end of a long answer; the whole of it is in the session.
@@ -359,7 +360,7 @@ module Samagotchi
         @joined_mid_turn = @running
         return unless turn
 
-        @screen.print_line(prompt_line(turn.dig(:origin, :client_id), turn[:prompt]))
+        @screen.commit(prompt_line(turn.dig(:origin, :client_id), turn[:prompt]))
         tail = nil
         running_tool = nil
         Array(turn[:parts]).each do |part|
@@ -369,9 +370,9 @@ module Samagotchi
             if part[:status] == "running"
               running_tool = part[:tool]
             else
-              @screen.print_line(snapshot_tool_line(part))
+              @screen.commit(snapshot_tool_line(part))
             end
-          when "input" then @screen.print_line("input> #{part[:text]}")
+          when "input" then @screen.commit("input> #{part[:text]}")
           end
         end
         @view.resume(tail: tail, tool: running_tool)
@@ -382,7 +383,7 @@ module Samagotchi
         return if own?(event[:client_id])
 
         @shown_enqueued << event[:enqueued_id]
-        @screen.print_line(prompt_line(event[:client_id], event[:prompt]))
+        @screen.commit(prompt_line(event[:client_id], event[:prompt]))
       end
 
       def start_turn(event)
@@ -391,7 +392,7 @@ module Samagotchi
         @joined_mid_turn = false
         origin = event[:origin] || {}
         unless own?(origin[:client_id]) || @shown_enqueued.include?(origin[:enqueued_id])
-          @screen.print_line(prompt_line(origin[:client_id], event[:prompt]))
+          @screen.commit(prompt_line(origin[:client_id], event[:prompt]))
         end
         @renderer.call(event)
       end
@@ -410,7 +411,7 @@ module Samagotchi
 
       def end_turn(message)
         @view.finish_thinking_spinner
-        @screen.print_line(message)
+        @screen.commit(message)
         @running = false
         @joined_mid_turn = false
         close_question(nil) if @question

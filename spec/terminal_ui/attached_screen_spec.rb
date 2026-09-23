@@ -26,21 +26,37 @@ RSpec.describe Samagotchi::TerminalUI::AttachedScreen do
 
   context "with no prompt on screen" do
     it "prints lines as they come" do
-      screen.print_line("hello")
-      screen.print_line("two\nlines")
+      screen.commit("hello")
+      screen.commit("two\nlines")
 
       expect(written).to eq("\r\e[Jhello\r\n\r\e[Jtwo\r\nlines\r\n")
     end
 
     it "keeps one status line under the output, replacing it on each change" do
-      screen.status = "thinking"
+      screen.set_slot(:activity, ["thinking"])
       expect(written).to eq("\r\e[Jthinking\r\n")
 
-      screen.print_line("tool> read")
+      screen.commit("tool> read")
       expect(written).to eq("\e[1A\r\e[Jtool> read\r\nthinking\r\n")
 
-      screen.status = nil
+      screen.clear_slot(:activity)
       expect(written).to eq("\e[1A\r\e[J")
+    end
+
+    it "says whether clearing the status line erased one" do
+      expect(screen.clear_slot(:activity)).to be(false)
+
+      screen.set_slot(:activity, ["thinking"])
+
+      expect(screen.clear_slot(:activity)).to be(true)
+    end
+
+    it "prints the notes slot's rows as output, with nothing left to clear" do
+      screen.set_slot(:notes, ["? Which one?", "  1) Apple"])
+
+      expect(written).to eq("\r\e[J? Which one?\r\n\r\e[J  1) Apple\r\n")
+      expect(screen.clear_slot(:notes)).to be(false)
+      expect(written).to eq("")
     end
   end
 
@@ -51,37 +67,50 @@ RSpec.describe Samagotchi::TerminalUI::AttachedScreen do
     end
 
     it "moves over the prompt, prints above it, and has the prompt redrawn" do
-      screen.print_line("event")
+      screen.commit("event")
 
       expect(written).to eq("\e[1A\r\e[Jevent\r\n")
       expect(canvas.redraws).to eq(1)
     end
 
     it "also moves over the status line" do
-      screen.status = "thinking"
+      screen.set_slot(:activity, ["thinking"])
       written
 
-      screen.print_line("event")
+      screen.commit("event")
 
       expect(written).to eq("\e[2A\r\e[Jevent\r\nthinking\r\n")
       expect(canvas.redraws).to eq(2)
     end
 
     it "erases the status line before the prompt's final line is written" do
-      screen.status = "thinking"
+      screen.set_slot(:activity, ["thinking"])
       written
 
       screen.prompt_finishing(cursor_y: 1)
 
       expect(written).to eq("\e[2A\r\e[J")
       # The turn is still running: the status line comes back under the next output.
-      screen.print_line("next")
+      screen.commit("next")
       expect(written).to eq("\r\e[Jnext\r\nthinking\r\n")
+    end
+
+    it "erases the prompt Reline drew when the editor slot is cleared" do
+      expect(screen.clear_slot(:editor)).to be(true)
+
+      expect(written).to eq("\e[1A\r\e[J")
+      expect(canvas.drawn).to be(false)
+      expect(screen.clear_slot(:editor)).to be(false)
     end
   end
 
+  it "leaves the editor slot to Reline and rejects unknown slots" do
+    expect { screen.set_slot(:editor, ["> "]) }.to raise_error(ArgumentError, /Reline draws/)
+    expect { screen.set_slot(:banner, ["x"]) }.to raise_error(ArgumentError, /unknown slot/)
+  end
+
   it "cuts the status to the terminal width so it never wraps" do
-    screen.status = "x" * 50
+    screen.set_slot(:activity, ["x" * 50])
 
     expect(written).to eq("\r\e[J#{"x" * 19}\r\n")
   end

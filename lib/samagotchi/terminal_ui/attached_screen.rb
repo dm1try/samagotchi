@@ -3,6 +3,7 @@
 require "io/console"
 require "monitor"
 require "reline"
+require_relative "surface"
 
 module Samagotchi
   class TerminalUI
@@ -10,8 +11,9 @@ module Samagotchi
     # arrive while the user may be typing at a Reline prompt.
     #
     # The screen, bottom up: the prompt (when Reline has one drawn), one
-    # optional status line right above it (thinking tail, running tool), and
-    # the permanent output above that. Every change is one flush: move up
+    # optional status line right above it (the activity slot: thinking tail,
+    # running tool), and the permanent output above that. It is attached
+    # mode's Surface. Every change is one flush: move up
     # over the status line and the prompt, clear to the end of the screen,
     # print the new lines and the status line, and have Reline redraw the
     # prompt with the typed text below them.
@@ -22,6 +24,8 @@ module Samagotchi
     # interleave. Without a compatible Reline the screen prints plainly, and
     # output may cross an open prompt.
     class AttachedScreen
+      include Surface
+
       # Reline's line editor, seen as the region the prompt occupies.
       class RelineCanvas
         def self.supported?
@@ -145,18 +149,30 @@ module Samagotchi
       def columns = @width.call.to_i
 
       # Print permanent output (may hold several lines).
-      def print_line(text)
+      def commit(text)
         flush(text.to_s.split("\n", -1))
       end
 
-      # Show +text+ as the status line, or remove it with nil.
-      def status=(text)
-        text = text && fit(text.to_s)
-        synchronize do
-          next if text == @status
+      # The activity slot is the status line (its first row). Reline draws
+      # the editor slot. The other slots print their rows as output.
+      def set_slot(name, rows)
+        check_slot!(name)
+        case name
+        when :activity then show_status(rows.first)
+        when :editor then raise ArgumentError, "Reline draws the editor slot"
+        else rows.each { |row| commit(row) }
+        end
+      end
 
-          @status = text
-          flush([])
+      # Clearing the editor slot erases the prompt Reline drew (its read is
+      # about to be dropped and started again with another prompt).
+      # @return [Boolean] whether anything was erased
+      def clear_slot(name)
+        check_slot!(name)
+        case name
+        when :activity then show_status(nil)
+        when :editor then erase_prompt
+        else false
         end
       end
 
@@ -172,24 +188,36 @@ module Samagotchi
         @status_shown = false
       end
 
-      # Erase the prompt Reline has drawn (its read is about to be dropped
-      # and started again with another prompt).
-      def erase_prompt
-        synchronize do
-          next unless @canvas.drawn?
-
-          up = @canvas.cursor_y
-          @out.write("#{"\e[#{up}A" if up.positive?}\r\e[J")
-          @out.flush
-          @canvas.forget_rendered!
-        end
-      end
-
       def detach
         LineEditorHooks.screen = nil if LineEditorHooks.screen.equal?(self)
       end
 
       private
+
+      # Show +text+ as the status line, or remove it with nil.
+      # @return [Boolean] whether the status line changed
+      def show_status(text)
+        text = text && fit(text.to_s)
+        synchronize do
+          next false if text == @status
+
+          @status = text
+          flush([])
+          true
+        end
+      end
+
+      def erase_prompt
+        synchronize do
+          next false unless @canvas.drawn?
+
+          up = @canvas.cursor_y
+          @out.write("#{"\e[#{up}A" if up.positive?}\r\e[J")
+          @out.flush
+          @canvas.forget_rendered!
+          true
+        end
+      end
 
       def flush(lines)
         synchronize do

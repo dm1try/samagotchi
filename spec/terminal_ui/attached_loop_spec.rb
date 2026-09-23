@@ -3,26 +3,10 @@
 require "json"
 require "samagotchi/terminal_ui"
 require "samagotchi/terminal_ui/attached_loop"
+require_relative "../support/recording_surface"
 
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
-  let(:screen) do
-    Class.new do
-      attr_reader :lines, :statuses
-
-      def initialize
-        @lines = []
-        @statuses = []
-      end
-
-      def print_line(text) = @lines << text
-
-      def status=(text)
-        @statuses << text
-      end
-
-      def columns = 80
-    end.new
-  end
+  let(:screen) { RecordingSurface.new(columns: 80) }
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
   let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
 
@@ -167,18 +151,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
 end
 
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
-  let(:screen) do
-    Class.new do
-      attr_reader :lines
-
-      def initialize = @lines = []
-      def print_line(text) = @lines << text
-      def status=(_text); end
-      def columns = 80
-      def synchronize = yield
-      def erase_prompt; end
-    end.new
-  end
+  let(:screen) { RecordingSurface.new(columns: 80) }
   let(:stream) { double("stream", close: nil) }
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
   let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
@@ -259,18 +232,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
 end
 
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
-  let(:screen) do
-    Class.new do
-      attr_reader :lines
-
-      def initialize = @lines = []
-      def print_line(text) = @lines << text
-      def status=(_text); end
-      def columns = 80
-      def synchronize = yield
-      def erase_prompt; end
-    end.new
-  end
+  let(:screen) { RecordingSurface.new(columns: 80) }
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
   let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
   let(:question) { { "id" => "q1", "question" => "Which one?", "options" => %w[Apple Banana Cherry] } }
@@ -313,11 +275,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     push("type" => "question_requested", "pending_question" => question)
 
     wait_for { prompts.last == "choice> " }
-    expect(screen.lines).to include("? Which one?", "  2) Banana")
+    expect(screen.slots[:notes]).to include("? Which one?", "  2) Banana")
     typed << "2"
     wait_for { prompts.last == "> " }
     finish
 
+    expect(screen.slots).not_to have_key(:notes)
     expect(client).to have_received(:answer).with(id: "q1", selected: ["Banana"], freeform: nil)
   end
 
@@ -345,7 +308,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     wait_for { prompts.last == "> " }
     finish
 
-    expect(screen.lines).to include("? Which one?", "(already answered in another UI)")
+    expect(screen.events).to include([:set_slot, :notes, a_collection_including("? Which one?")])
+    expect(screen.lines).to include("(already answered in another UI)")
   end
 
   it "keeps waiting on an empty answer (there is no way to dismiss a question over the Bridge)" do
