@@ -1,13 +1,15 @@
 # frozen_string_literal: true
 
 require_relative "tool_activity"
+require_relative "guardrails"
 
 module Samagotchi
   # The single per-call path both loops use: the tool_call_started and
-  # tool_call_completed events, the before/after_tool_call hooks with the
-  # veto, dispatch through KernelLoop, and the output cap. Each loop picks
-  # what the model gets back: native feeds the full `output:`, the chat
-  # loop feeds `capped_output:` (the cap on the event applies to both).
+  # tool_call_completed events, the guardrail gate (before_tool_call hooks
+  # and their veto), dispatch through KernelLoop, the after_tool_call hook
+  # and the output cap. Each loop picks what the model gets back: native
+  # feeds the full `output:`, the chat loop feeds `capped_output:` (the cap
+  # on the event applies to both).
   class ToolRunner
     # @param kernel [KernelLoop] read lazily: Engine sets its hooks after
     #   the kernel is built.
@@ -23,14 +25,8 @@ module Samagotchi
            type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
            tool: call[:name], call: call.dup, params: params)
 
-      # Veto protocol (minimal guardrail): a before_tool_call hook may set
-      # event[:blocked]=true with an optional event[:block_reason]. Only this
-      # hook supports veto. A blocked call gets a synthetic error output and is
-      # never dispatched.
-      before = { type: :before_tool_call, iteration: iteration, call: call.dup, params: params,
-                 blocked: false, block_reason: nil }
-      fire(:before_tool_call, before)
-      result = before[:blocked] ? blocked(call, before[:block_reason]) : dispatch(before[:call] || call)
+      verdict = gate.evaluate(call, iteration: iteration, params: params)
+      result = verdict.deny? ? blocked(call, verdict.reason) : dispatch(verdict.call)
 
       output = result[:output].to_s
       capped = output
@@ -49,6 +45,10 @@ module Samagotchi
     end
 
     private
+
+    def gate
+      @gate ||= Guardrails::Gate.new(-> { @kernel.hooks if @kernel.respond_to?(:hooks) })
+    end
 
     def blocked(call, reason)
       reason = reason.to_s.strip
