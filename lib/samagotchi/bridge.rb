@@ -38,6 +38,8 @@ module Samagotchi
     # Cancel reasons a client may name (the web sends user, an attached TUI
     # ctrl_c); anything else is :manual, so client input never mints symbols.
     CANCEL_REASONS = %w[manual user ctrl_c].freeze
+    # How long #stop waits for requests it is answering (not open streams).
+    REQUEST_GRACE_SECONDS = 1.0
 
     # @param engine [Samagotchi::Engine] the owning engine (must already live
     #   in this process)
@@ -122,6 +124,9 @@ module Samagotchi
       end
       @capture_handle&.unsubscribe
       @accumulator_handle&.unsubscribe
+      # A turn post killed between its enqueue and its reply looks failed to
+      # the web, which then queues the prompt again from the input file.
+      await_answers(REQUEST_GRACE_SECONDS)
       @connection_threads.each { |t| t.kill rescue nil }
       @connection_threads.clear
       @accept_thread&.join(2)
@@ -156,6 +161,18 @@ module Samagotchi
         @ring.push(seq: event[:event_seq], data: event)
       rescue StandardError
         nil
+      end
+    end
+
+    # Wait up to +timeout+ seconds for connection threads still answering a
+    # request (see handle_connection).
+    def await_answers(timeout)
+      deadline = monotonic_now + timeout
+      while monotonic_now < deadline
+        busy = @connection_threads.any? { |t| t != Thread.current && t.alive? && t[:bridge_answering] }
+        break unless busy
+
+        sleep(0.01)
       end
     end
 
@@ -200,6 +217,9 @@ module Samagotchi
 
         method = request[:method].to_s.upcase
         headers = request[:headers]
+        # Every request but a stream gets its answer before #stop kills this
+        # thread; a stream never ends on its own.
+        Thread.current[:bridge_answering] = !(stream_match(request[:path]) && method == "GET")
 
         if method == "OPTIONS"
           write_json(io, 204, cors, {})
@@ -227,11 +247,13 @@ module Samagotchi
                      { error: "not_found", path: request[:path] })
         end
 
+        Thread.current[:bridge_answering] = false
         break if close_after_request?(headers)
       end
     rescue Errno::EPIPE, Errno::ECONNRESET, IOError
       nil
     ensure
+      Thread.current[:bridge_answering] = false
       begin
         io.close
       rescue StandardError

@@ -455,6 +455,36 @@ RSpec.describe Samagotchi::Bridge do
         @bridge.stop
         expect { @bridge.stop }.not_to raise_error
       end
+
+      # A post that enqueued but got no reply looks failed to the web, which
+      # would queue the prompt again from the input file.
+      it "lets a turn post it is answering finish before it closes" do
+        start_bridge(input_format: 2)
+        enqueued = Queue.new
+        # The prompt is queued; the reply hasn't gone out yet.
+        allow(@bridge).to receive(:write_json).and_wrap_original do |original, *args|
+          enqueued << true
+          sleep(0.3)
+          original.call(*args)
+        end
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
+        post = Thread.new { client.post_turn(prompt: "hi") }
+
+        enqueued.pop
+        @bridge.stop
+
+        expect(post.value.status).to eq(202)
+      end
+
+      it "doesn't wait on an open stream" do
+        start_bridge
+        @clients << SSEClient.new(@bridge_port, @session.id).start
+        sleep(0.2)
+
+        started = mono
+        @bridge.stop
+        expect(mono - started).to be < 0.5
+      end
     end
 
     describe "client tracking" do
