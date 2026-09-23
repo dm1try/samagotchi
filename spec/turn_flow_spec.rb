@@ -229,4 +229,42 @@ RSpec.describe Samagotchi::TurnFlow do
     flow.after_reminder_turn
     expect(flow.rollback!).to be(false)
   end
+
+  # D11: a note absorbed after the checkpoint (between turns) survives
+  # every restore of it.
+  describe "context notes" do
+    let(:note) { { role: "system", kind: "note", note_id: "n1", content: "[CONTEXT NOTE from cli]\nx\n[END NOTE]" } }
+
+    def absorb_note = engine.append_messages([note])
+
+    it "keeps a note on !rollback after a cancelled turn" do
+      run_prompt("go", [{ role: "model", content: "Partial\n[interrupted]" }])
+      flow.after_turn(result(engine.messages, canceled: true))
+      absorb_note
+
+      expect(flow.rollback!).to be(true)
+      expect(engine.messages).to eq(before + [note])
+    end
+
+    it "keeps a note when a continue offer is answered no" do
+      run_prompt("list it", [{ role: "model", content: "calling ls" }])
+      flow.after_turn(result(engine.messages, exhausted: true, pending: true))
+      absorb_note
+
+      flow.abort_continue!(reason: "too slow")
+
+      expect(engine.messages.first(4)).to eq(before + [note])
+      expect(engine.messages.last[:role]).to eq("user")
+    end
+
+    it "doesn't duplicate a note the checkpoint already holds" do
+      absorb_note
+      run_prompt("go", [{ role: "model", content: "Partial\n[interrupted]" }])
+      flow.after_turn(result(engine.messages, canceled: true))
+
+      flow.rollback!
+
+      expect(engine.messages).to eq(before + [note])
+    end
+  end
 end

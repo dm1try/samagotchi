@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "output_formatter"
+require_relative "context_note"
 
 module Samagotchi
   # The state around turns that the REPL and a session worker share, kept out
@@ -72,13 +73,13 @@ module Samagotchi
     def after_turn(result, continue: false, no_interrupt: false)
       if result.respond_to?(:canceled?) && result.canceled?
         if continue
-          @engine.rollback_to(@continue_checkpoint)
+          restore(@continue_checkpoint)
           return :continue_cancelled
         end
 
         # The kernel salvaged the completed tool calls and the partial reply
         # into the conversation; without one, the turn leaves nothing.
-        @engine.rollback_to(@checkpoint) if @checkpoint && !conversation_of(result)
+        restore(@checkpoint) if @checkpoint && !conversation_of(result)
         @offer = nil
         return :cancelled
       end
@@ -95,7 +96,7 @@ module Samagotchi
 
     # A prompt turn failed: back to the conversation before it.
     def prompt_turn_failed
-      @engine.rollback_to(@checkpoint) if @checkpoint
+      restore(@checkpoint) if @checkpoint
       @offer = nil
       @checkpoint = nil
     end
@@ -103,7 +104,7 @@ module Samagotchi
     # Answer the offer with no: the interrupted turn is discarded, and a
     # reason (with a summary of that turn) is left for the model to read.
     def abort_continue!(reason: nil)
-      @engine.rollback_to(@checkpoint) if @checkpoint
+      restore(@checkpoint) if @checkpoint
       @checkpoint = nil
       @engine.append_messages([{ role: "user", content: reason_message(reason) }]) if reason
       @offer = nil
@@ -123,7 +124,7 @@ module Samagotchi
     def rollback!
       return false unless @checkpoint
 
-      @engine.rollback_to(@checkpoint)
+      restore(@checkpoint)
       @checkpoint = nil
       @offer = nil
       true
@@ -141,6 +142,15 @@ module Samagotchi
     end
 
     private
+
+    # Back to +checkpoint+, keeping the context notes that arrived since:
+    # notes land between turns, after the checkpoint was taken, and a
+    # rollback must not drop them.
+    def restore(checkpoint)
+      kept = Array(checkpoint).filter_map { |m| m[:note_id] }
+      arrived = @engine.messages_checkpoint.select { |m| ContextNote.note?(m) && !kept.include?(m[:note_id]) }
+      @engine.rollback_to(Array(checkpoint) + arrived)
+    end
 
     def conversation_of(result)
       result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)

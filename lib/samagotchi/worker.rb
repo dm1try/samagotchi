@@ -3,6 +3,7 @@
 require "fileutils"
 
 require_relative "session"
+require_relative "context_note"
 require_relative "worker_idle_exit"
 require_relative "session_manager"
 require_relative "log_path"
@@ -134,6 +135,9 @@ module Samagotchi
           # before a new prompt still answers the offer).
           next if run_queued_commands
 
+          # Between turns, so the next turn (the first one too) sees them.
+          absorb_notes
+
           if (prompt = take_initial_prompt)
             run_prompt(prompt, nil)
             next
@@ -153,6 +157,7 @@ module Samagotchi
             # A stop between two queued turns leaves the rest queued.
             break if stopped_on_disk?
 
+            absorb_notes
             run_input_file(input_file)
           end
         end
@@ -199,12 +204,31 @@ module Samagotchi
       return nil if @initial_prompt_taken
 
       @initial_prompt_taken = true
-      return nil unless @session.messages.empty? && !@session.last_prompt.to_s.strip.empty?
+      # A context note may have come before the first prompt ran.
+      return nil unless @session.messages.all? { |m| ContextNote.note?(m) } && !@session.last_prompt.to_s.strip.empty?
 
       prompt = @session.last_prompt
       @session.last_prompt = ""
       @session.save(state_dir: @state_dir)
       prompt
+    end
+
+    # Add the queued context notes to the conversation (between turns only,
+    # on this thread), save, then delete their files: a crash before the
+    # delete leaves them claimed, and Engine#add_context_note skips a note
+    # the saved conversation already holds. Not activity: a note alone
+    # neither starts a turn nor keeps an idle worker up.
+    def absorb_notes
+      files = SessionManager.find_new_note_files(@session_dir)
+      return if files.empty? || stopped_on_disk?
+
+      claimed = files.filter_map { |file| SessionManager.claim_note_file(file) }
+      claimed.each do |file|
+        note = SessionManager.read_note(file)
+        @engine.add_context_note(@session, note) if note
+      end
+      @session.save(state_dir: @state_dir)
+      claimed.each { |file| FileUtils.rm_f(file) }
     end
 
     def run_input_file(input_file)
