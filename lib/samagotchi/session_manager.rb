@@ -9,8 +9,6 @@ require "rbconfig"
 
 require_relative "session"
 require_relative "owner_lock"
-require_relative "worker_idle_exit"
-require_relative "debug_log"
 require_relative "terminal_ui"
 
 module Samagotchi
@@ -34,6 +32,9 @@ module Samagotchi
   #       │   └── <timestamp>.txt # one file per agent response
   #       ├── pid                 # PID of the owner, written by the owner itself
   #       └── bridge.json         # Bridge sidecar (how clients reach the worker)
+  # Needed only at call time (run_session_loop); worker.rb requires this file.
+  autoload :Worker, File.expand_path("worker", __dir__)
+
   class SessionManager
     INPUT_DIR  = "input"
     OUTPUT_DIR = "output"
@@ -274,8 +275,8 @@ module Samagotchi
       exit(0) unless @owner_lock
       result = begin
         File.write(File.join(session_dir, PID_FILE), Process.pid.to_s)
-        run_owned_session_loop(session_id, state_dir: sd, session_dir: session_dir,
-                                           idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
+        Worker.new(session_id: session_id, state_dir: sd, session_dir: session_dir,
+                   idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval).run
       ensure
         @owner_lock.release
       end
@@ -286,167 +287,10 @@ module Samagotchi
       result
     end
 
-    private_class_method def self.run_owned_session_loop(session_id, state_dir:, session_dir:,
-                                                         idle_exit_minutes: nil, poll_interval: 1)
-      sd = state_dir
-      session = Session.load(session_id, state_dir: sd)
-      engine = Samagotchi::Engine.new(
-        mode: session.mode.to_sym,
-        model_name: session.model_name,
-        reminders: {
-          callback: lambda { |due_names|
-            # SessionManager: when a reminder is due, write a synthetic input
-            # file via write_turn_input so the existing poll loop picks it up.
-            # Called directly: `self` here is SessionManager itself, so the
-            # old `self.class.write_turn_input` resolved to Class and raised
-            # (swallowed by IdleScheduler, latching the reminder for good).
-            write_turn_input(session_id, prompt: "[SYSTEM: Your scheduled reminders are due. Please check them.]",
-                                         client_id: REMINDER_CLIENT_ID, state_dir: sd)
-          }
-        }
-      )
-      # Before the Bridge serves anything: a UI joining a resumed worker's
-      # stream gets the session's history and status in its snapshot, not
-      # an empty session until the first turn.
-      engine.session = session
-      # Start the shared idle scheduler so the worker can trigger turns when
-      # reminders are due (even with no user input).
-      engine.start_idle
-
-      bridge_instance = start_bridge(engine:, state_dir: sd, session_id: session_id)
-      idle_exit = WorkerIdleExit.new(
-        engine: engine, bridge: bridge_instance,
-        timeout_minutes: idle_exit_minutes || config_idle_exit_minutes,
-        input_pending: -> { !find_new_input_files(session_dir).empty? }
-      )
-
-      begin
-        # Shared mid-turn steering drain: claims any input files that arrive
-        # while a turn is running and hands them to the agentic loop so
-        # follow-ups merge at the next iteration boundary instead of waiting
-        # for this outer 1s poll. claim_input_file is atomic (rename), so a
-        # file consumed mid-turn simply fails the outer loop's later claim
-        # with ENOENT → nil. No double-processing risk.
-        #
-        # Runs on the turn thread; it announces who sent the merged input so
-        # every live UI can attribute it.
-        pending_input_drain = lambda do
-          merged = find_new_input_files(session_dir).sort.filter_map do |input_file|
-            claimed_file = claim_input_file(input_file)
-            next unless claimed_file
-
-            begin
-              prompt, origin = read_input(claimed_file)
-              prompt = prompt.to_s.strip
-              prompt.empty? ? nil : [prompt, origin]
-            ensure
-              FileUtils.rm_f(claimed_file)
-            end
-          end
-          unless merged.empty?
-            engine.announce(type: :input_merged, count: merged.size, origins: merged.filter_map(&:last))
-          end
-          merged.map(&:first)
-        end
-
-        # Process the initial prompt. spawn_session hands it over in
-        # last_prompt, but last_prompt also records every later turn's prompt
-        # (and mark_error's reason), so only a session with no conversation yet
-        # has one pending; a resumed session must not replay its last turn.
-        # Nor may a session stopped before this worker took the lock (e.g. a
-        # stop right after create) run it.
-        exit(0) if stopped_on_disk?(session_id, state_dir: sd)
-        if session.messages.empty? && !session.last_prompt.to_s.strip.empty?
-          prompt = session.last_prompt
-          session.last_prompt = ""
-          session.save(state_dir: sd)
-
-          result = engine.run_turn(session, prompt, pending_input: pending_input_drain, origin: nil)
-          response = result.respond_to?(:output) ? result.output : nil
-          unless response.nil? || response.strip.empty?
-            write_output(session_dir, response)
-          end
-          session.save(state_dir: sd) unless stopped_on_disk?(session_id, state_dir: sd)
-        end
-
-        # Poll for new input files
-        loop do
-          # Check if the session was externally marked as stopped
-          session_from_disk = Session.load(session_id, state_dir: sd)
-          if session_from_disk.status == Session::STATUS_STOPPED
-            exit(0)
-          end
-
-          input_files = find_new_input_files(session_dir)
-          if input_files.empty?
-            return :idle_exit if idle_exit.due? && leave_idle(engine, bridge_instance, idle_exit)
-
-            sleep(poll_interval)
-            next
-          end
-
-          input_files.sort.each do |input_file|
-            # A stop between two queued turns leaves the rest queued.
-            break if stopped_on_disk?(session_id, state_dir: sd)
-
-            claimed_file = claim_input_file(input_file)
-            next unless claimed_file
-
-            begin
-              message, origin = read_input(claimed_file)
-              next if message.to_s.strip.empty?
-
-              # Show the turn as running to readers of the file (the web's
-              # session list); the Engine resets it to idle when it ends.
-              session.status = Session::STATUS_RUNNING
-              session.save(state_dir: sd)
-              result = engine.run_turn(session, message, pending_input: pending_input_drain, origin: origin)
-              response = result.respond_to?(:output) ? result.output : nil
-              unless response.nil? || response.strip.empty?
-                write_output(session_dir, response)
-              end
-              session.save(state_dir: sd) unless stopped_on_disk?(session_id, state_dir: sd)
-            ensure
-              FileUtils.rm_f(claimed_file)
-            end
-          end
-        end
-      rescue StandardError => e
-        Session.mark_error(session_id, reason: e.message, state_dir: sd)
-        exit(1)
-      ensure
-        bridge_instance&.stop
-      end
-    end
-
-    # Check again with the event log held, which the Bridge holds while it
-    # queues a POST /turn, then close the Bridge so no client can queue one
-    # after the check, and stop the idle jobs (reminder callback, recap).
-    # A client connecting from here on finds no worker: `chi --attach` fails
-    # and the web stream answers 503 (a small window, left as is).
-    # @return [Boolean] false when something came in since #due?
-    private_class_method def self.leave_idle(engine, bridge, idle_exit)
-      engine.synchronize_events do
-        next false unless idle_exit.due?
-
-        bridge&.stop
-        engine.stop_idle
-        log_idle_exit(idle_exit)
-        true
-      end
-    end
-
-    private_class_method def self.config_idle_exit_minutes
+    def self.config_idle_exit_minutes
       Samagotchi::Config.get("session.idle_exit_minutes")
     rescue StandardError
       nil
-    end
-
-    private_class_method def self.log_idle_exit(idle_exit)
-      path = begin Samagotchi::Config.get("log.file") rescue nil end
-      log = DebugLog.new(path: path)
-      log.write("[worker] pid #{Process.pid} idle-exits after #{idle_exit.idle_seconds.round}s unused")
-      log.close
     end
 
     private_class_method def self.setup_session_directory(session_dir, session, state_dir:)
@@ -478,12 +322,12 @@ module Samagotchi
     # the single live client transport, so every worker starts it. Bridge
     # creation happens *before* the loop so the capture observer is in place
     # for the whole session; the caller stops the returned instance on exit
-    # (see run_session_loop's ensure).
+    # (see Worker#run's ensure).
     #
     # @return [Samagotchi::Bridge, nil] nil when the transport failed to start
     #   (the worker degrades: turns still flow through the input-dir loop, but
     #   there is no live SSE or in-process cancel/answer).
-    private_class_method def self.start_bridge(engine:, state_dir:, session_id:)
+    def self.start_bridge(engine:, state_dir:, session_id:)
       require_relative "bridge"
       Samagotchi::Bridge.new(
         engine: engine, state_dir: state_dir, session_id: session_id, input_format: INPUT_FORMAT
@@ -523,14 +367,14 @@ module Samagotchi
       false
     end
 
-    private_class_method def self.write_output(session_dir, response)
+    def self.write_output(session_dir, response)
       output_dir = File.join(session_dir, OUTPUT_DIR)
       FileUtils.mkdir_p(output_dir)
       timestamp = Time.now.strftime("%Y%m%d%H%M%S%9N")
       write_atomic(File.join(output_dir, "#{timestamp}.txt"), response.to_s)
     end
 
-    private_class_method def self.find_new_input_files(session_dir)
+    def self.find_new_input_files(session_dir)
       input_dir = File.join(session_dir, INPUT_DIR)
       return [] unless Dir.exist?(input_dir)
 
@@ -550,7 +394,7 @@ module Samagotchi
 
     # @return [Array(String, Hash|nil)] a claimed input file's prompt and
     #   origin ({client_id:, enqueued_id:}, nil for plain text)
-    private_class_method def self.read_input(claimed_file)
+    def self.read_input(claimed_file)
       raw = File.read(claimed_file).to_s
       return [raw, nil] unless claimed_file.end_with?(".json.processing")
 
@@ -561,7 +405,7 @@ module Samagotchi
       [nil, nil]
     end
 
-    private_class_method def self.claim_input_file(input_file)
+    def self.claim_input_file(input_file)
       processing_path = "#{input_file}.processing"
       File.rename(input_file, processing_path)
       processing_path
@@ -569,7 +413,7 @@ module Samagotchi
       nil
     end
 
-    private_class_method def self.stopped_on_disk?(session_id, state_dir:)
+    def self.stopped_on_disk?(session_id, state_dir:)
       Session.load(session_id, state_dir: state_dir).status == Session::STATUS_STOPPED
     rescue ArgumentError
       false
