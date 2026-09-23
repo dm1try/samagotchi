@@ -418,7 +418,7 @@ RSpec.describe Samagotchi::SessionManager do
       session.last_prompt = "hello"
       session.save(state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, "session=": nil)
+      engine = instance_double(Samagotchi::Engine, "session=": nil, messages_checkpoint: [])
       result = instance_double(Samagotchi::KernelLoop::Result, output: "hi")
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       allow(engine).to receive(:start_idle)
@@ -479,7 +479,8 @@ RSpec.describe Samagotchi::SessionManager do
     let(:reminders) { Samagotchi::ReminderStore.new }
     let(:engine) do
       instance_double(Samagotchi::Engine, "session=": nil, start_idle: nil, stop_idle: nil,
-                                          reminder_store: reminders, turn_running?: false, last_activity_at: 0.0)
+                                          reminder_store: reminders, turn_running?: false, last_activity_at: 0.0,
+                                          messages_checkpoint: [])
     end
 
     before do
@@ -594,7 +595,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       allow(engine).to receive(:start_idle)
       allow(engine).to receive(:reminder_store).and_return(nil)
-      allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0)
+      allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0, messages_checkpoint: [])
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       expect {
         described_class.run_session_loop(session.id, state_dir: tmpdir)

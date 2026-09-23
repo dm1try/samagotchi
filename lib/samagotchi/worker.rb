@@ -5,6 +5,7 @@ require "fileutils"
 require_relative "session"
 require_relative "worker_idle_exit"
 require_relative "session_manager"
+require_relative "turn_flow"
 
 module Samagotchi
   # The loop of a background session worker, once it owns the session (see
@@ -12,8 +13,10 @@ module Samagotchi
   #
   # It runs the session's Engine and Bridge, takes queued prompts from the
   # input dir one turn at a time, and returns when nobody has used it for the
-  # idle-exit timeout. A stop marked on disk exits the process; an error
-  # outside the Engine's own handling marks the session and exits with 1.
+  # idle-exit timeout. A failed turn is rolled back and its prompt handed back
+  # (:prompt_restored), as in the REPL, and the loop goes on. A stop marked on
+  # disk exits the process; an error outside a turn marks the session and
+  # exits with 1.
   #
   # The file IPC stays behind SessionManager's class methods
   # (find_new_input_files, claim_input_file, start_bridge, ...), which specs
@@ -68,6 +71,7 @@ module Samagotchi
       # stream gets the session's history and status in its snapshot, not
       # an empty session until the first turn.
       @engine.session = @session
+      @turn_flow = TurnFlow.new(engine: @engine)
       # Start the shared idle scheduler so the worker can trigger turns when
       # reminders are due (even with no user input).
       @engine.start_idle
@@ -171,9 +175,32 @@ module Samagotchi
       # list); the Engine resets it to idle when it ends.
       @session.status = Session::STATUS_RUNNING
       @session.save(state_dir: @state_dir)
-      result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, origin: origin)
+      @turn_flow.before_prompt_turn
+      @merged_this_turn = []
+      begin
+        result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, origin: origin)
+      rescue StandardError
+        # The Engine announced :turn_failed (with the error's one line).
+        restore_failed_turn([[prompt, origin], *@merged_this_turn])
+        return
+      end
       response = result.respond_to?(:output) ? result.output : nil
       SessionManager.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
+      @session.save(state_dir: @state_dir) unless stopped_on_disk?
+    end
+
+    # Back to the conversation before the failed turn, as the REPL does (so
+    # failed prompts don't pile up as consecutive user messages), and each
+    # prompt it took (its own and any merged into it) goes back to its
+    # sender, who can send it again. The rollback and the announcements are
+    # one step of the event log: a snapshot shows the failed turn's messages
+    # or the restored ones, never the one without the other.
+    # @param prompts [Array<Array(String, Hash|nil)>] [prompt, origin] pairs
+    def restore_failed_turn(prompts)
+      @engine.synchronize_events do
+        @turn_flow.prompt_turn_failed
+        prompts.each { |prompt, origin| @engine.announce(type: :prompt_restored, prompt: prompt, origin: origin) }
+      end
       @session.save(state_dir: @state_dir) unless stopped_on_disk?
     end
 
@@ -202,6 +229,7 @@ module Samagotchi
         end
         unless merged.empty?
           @engine.announce(type: :input_merged, count: merged.size, origins: merged.filter_map(&:last))
+          @merged_this_turn.concat(merged)
         end
         merged.map(&:first)
       end

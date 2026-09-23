@@ -194,5 +194,105 @@ RSpec.describe Samagotchi::Worker do
       expect(@thread.join(2)&.value).to eq(:idle_exit)
       expect(File.exist?(sidecar)).to be(false)
     end
+
+    describe "a failed turn" do
+      let(:kernel) { engine.instance_variable_get(:@kernel) }
+      let(:events) { Queue.new }
+      let(:earlier) { [{ role: "system", content: "sys" }, { role: "user", content: "earlier" }, { role: "model", content: "ok" }] }
+
+      before do
+        allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+        allow(engine).to receive(:run_turn).and_call_original
+        # The Engine keeps the failed prompt in the session (and saves it);
+        # the worker must take it out again.
+        allow(kernel).to receive(:run) do |messages, **|
+          prompt = messages.last[:content]
+          turns << [prompt, mono]
+          sleep(@boom_delay) if @boom_delay && prompt == "boom"
+          raise Samagotchi::LLM::ServerError.new("main: HTTP 500: boom", host: "main", status: 500) unless prompt == "fine"
+
+          Samagotchi::KernelLoop::Result.new(output: "FINE", conversation: messages + [{ role: "model", content: "FINE" }],
+                                             exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+        end
+        session.messages = earlier
+        session.save(state_dir: tmpdir)
+        engine.subscribe(observer: ->(event) { events << event })
+      end
+
+      def drain_events
+        list = []
+        list << events.pop until events.empty?
+        list
+      end
+
+      def saved_messages
+        Samagotchi::Session.load(session.id, state_dir: tmpdir).messages.map { |m| m[:content] }
+      end
+
+      def conversation = engine.messages_checkpoint.map { |m| m[:content] }
+
+      it "keeps the worker up, puts the conversation back and gives the prompt back to its sender" do
+        start_worker(poll_interval: 5)
+
+        post_turn("boom")
+        expect(next_turn&.first).to eq("boom")
+        seen = []
+        expect(wait_until { (seen += drain_events).any? { |e| e[:type] == :prompt_restored } }).to be(true)
+
+        types = seen.map { |e| e[:type] }
+        expect(types.index(:turn_failed)).to be < types.index(:prompt_restored)
+        restored = seen.find { |e| e[:type] == :prompt_restored }
+        expect(restored).to include(prompt: "boom")
+        expect(restored[:origin]).to include(:enqueued_id)
+        expect(conversation).to eq(%w[sys earlier ok])
+        expect(wait_until { saved_messages == %w[sys earlier ok] }).to be(true)
+        expect(@thread).to be_alive
+
+        post_turn("fine")
+        expect(next_turn&.first).to eq("fine")
+        expect(wait_until { saved_messages.drop(1) == %w[earlier ok fine FINE] }).to be(true)
+      end
+
+      it "rolls back with the event log held, so a snapshot sees the failed turn or its restore, not half of it" do
+        held = []
+        allow(engine).to receive(:rollback_to).and_wrap_original do |original, checkpoint|
+          held << engine.instance_variable_get(:@session_observer).instance_variable_get(:@mutex).mon_owned?
+          original.call(checkpoint)
+        end
+        start_worker(poll_interval: 5)
+
+        post_turn("boom")
+
+        expect(wait_until { held.any? }).to be(true)
+        expect(held).to eq([true])
+      end
+
+      it "runs a prompt queued behind the failed one" do
+        @boom_delay = 0.2
+        start_worker(poll_interval: 5)
+
+        post_turn("boom")
+        expect(next_turn&.first).to eq("boom")
+        post_turn("fine")
+
+        expect(next_turn&.first).to eq("fine")
+        expect(wait_until { saved_messages.drop(1) == %w[earlier ok fine FINE] }).to be(true)
+      end
+
+      it "survives a failed initial prompt too" do
+        session.messages = []
+        session.last_prompt = "boom"
+        session.save(state_dir: tmpdir)
+
+        start_worker(poll_interval: 5)
+
+        expect(next_turn&.first).to eq("boom")
+        seen = []
+        expect(wait_until { (seen += drain_events).any? { |e| e[:type] == :prompt_restored } }).to be(true)
+        expect(seen.find { |e| e[:type] == :prompt_restored }).to include(prompt: "boom", origin: nil)
+        expect(@thread).to be_alive
+        expect(wait_until { saved_messages.empty? }).to be(true)
+      end
+    end
   end
 end

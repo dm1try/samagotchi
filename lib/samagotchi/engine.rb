@@ -312,8 +312,9 @@ module Samagotchi
     end
 
     # Event types #announce accepts: facts about the session's input queue
-    # that live UIs need in the event log, emitted outside any turn's stream.
-    ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged].freeze
+    # (and a failed turn's prompt handed back) that live UIs need in the
+    # event log, emitted outside any turn's stream.
+    ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged prompt_restored].freeze
 
     # Put a transport-level event into the ordered event log. Unlike turn
     # events it reaches only persistent observers (no turn sink, no memory

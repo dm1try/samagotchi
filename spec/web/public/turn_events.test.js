@@ -138,3 +138,25 @@ test("snapshotEvents with no turn in progress is just the queue", () => {
   assert.deepEqual(snapshotEvents({ current_turn: null, queued: [] }), []);
   assert.deepEqual(snapshotEvents({}), []);
 });
+
+import { restoreAction } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+test("restoreAction refills an empty composer with this tab's own failed prompt", () => {
+  const event = { type: "prompt_restored", prompt: "boom", origin: { client_id: ME, enqueued_id: "e1" } };
+  const sentIds = new Set(["e1"]);
+
+  assert.deepEqual(restoreAction(event, { myId: ME, sentIds, composerEmpty: true }), { refill: "boom", own: true, label: null });
+  // Something typed there already stays.
+  assert.deepEqual(restoreAction(event, { myId: ME, sentIds, composerEmpty: false }), { refill: null, own: true, label: null });
+});
+
+test("restoreAction never refills a prompt this page didn't send (a replay after reload, another client)", () => {
+  const replayed = { type: "prompt_restored", prompt: "old", origin: { client_id: ME, enqueued_id: "e-old" } };
+  const theirs = { type: "prompt_restored", prompt: "theirs", origin: { client_id: "tui:42", enqueued_id: "e2" } };
+  const initial = { type: "prompt_restored", prompt: "first", origin: null };
+  const opts = { myId: ME, sentIds: new Set(["e1"]), composerEmpty: true };
+
+  assert.deepEqual(restoreAction(replayed, opts), { refill: null, own: true, label: null });
+  assert.deepEqual(restoreAction(theirs, opts), { refill: null, own: false, label: "tui" });
+  assert.deepEqual(restoreAction(initial, opts), { refill: null, own: false, label: null });
+});

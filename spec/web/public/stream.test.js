@@ -191,3 +191,14 @@ test("onStreamError does not fire after explicit close", () => {
   esHolder.es.fireError();
   assert.equal(errorFired, 0);
 });
+test("openStream delivers prompt_restored (a failed turn's prompt handed back)", () => {
+  let es;
+  let seen = null;
+  openStream("abc", 0, { prompt_restored: (data) => { seen = data; } }, {
+    EventSourceImpl: class extends FakeEventSource { constructor(url) { super(url); es = this; } },
+  });
+
+  es.dispatch("prompt_restored", { data: JSON.stringify({ prompt: "boom", origin: null }) });
+
+  assert.deepEqual(seen, { prompt: "boom", origin: null });
+});

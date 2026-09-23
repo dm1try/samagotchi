@@ -175,7 +175,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
       block.call(first)
       stream
     end
-    attached.run(input: ->(_prompt) { (entry = inputs.shift) == :interrupt ? raise(Interrupt) : entry })
+    attached.run(input: ->(_prompt, _prefill) { (entry = inputs.shift) == :interrupt ? raise(Interrupt) : entry })
   end
 
   it "ends as closed when the worker goes away" do
@@ -201,7 +201,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
       stream
     end
 
-    expect(loop_with_prompt.run(input: ->(_prompt) {})).to eq(:detached)
+    expect(loop_with_prompt.run(input: ->(_prompt, _prefill) {})).to eq(:detached)
 
     expect(client).to have_received(:post_turn).once.with(prompt: "hello", client_id: "tui:1")
     expect(screen.lines[0..1]).to eq(["Attached to session s-1234 (0 messages). Ctrl-D detaches; the session keeps running.",
@@ -249,7 +249,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
 
     idle = described_class.new(client: client, screen: screen, client_id: "tui:1")
     allow(client).to receive(:follow) { |&b| b.call(snapshot) && stream }
-    idle.run(input: ->(_p) { (@idle_inputs ||= [:interrupt, nil]).shift.then { |e| e == :interrupt ? raise(Interrupt) : e } })
+    idle.run(input: ->(_p, _prefill) { (@idle_inputs ||= [:interrupt, nil]).shift.then { |e| e == :interrupt ? raise(Interrupt) : e } })
     expect(client).to have_received(:cancel).once
   end
 end
@@ -275,7 +275,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
       block.call(first)
       double("stream", close: nil)
     end
-    @thread = Thread.new { attached.run(input: ->(prompt) { prompts << prompt; typed.pop }) }
+    @thread = Thread.new { attached.run(input: ->(prompt, _prefill) { prompts << prompt; typed.pop }) }
     wait_for { prompts.any? }
   end
 
@@ -377,5 +377,53 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
 
     expect(screen.lines).to include("could not dismiss the question (404 not_found); Ctrl-C cancels the turn")
     expect(prompts.last).to eq("choice> ")
+  end
+end
+
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a failed turn's prompt" do
+  let(:screen) { RecordingSurface.new(columns: 80) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
+  let(:typed) { Queue.new }
+  let(:reads) { Queue.new }
+
+  before do
+    allow(client).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"enqueued_id":"e1"}'))
+    allow(client).to receive(:follow) do |&block|
+      @push = block
+      block.call("type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => nil, "queued" => [], "event_seq" => 1 })
+      double("stream", close: nil)
+    end
+    # Each read reports its prefill, then blocks until the spec types.
+    @thread = Thread.new { attached.run(input: ->(_prompt, prefill) { reads << prefill; typed.pop }) }
+    expect(reads.pop(timeout: 2)).to be_nil
+  end
+
+  after do
+    typed << nil
+    @thread.join(2)
+  end
+
+  def fail_turn(enqueued_id)
+    @push.call("type" => "turn_failed", "error_class" => "Samagotchi::LLM::ServerError", "summary" => "server error from host main: HTTP 500")
+    @push.call("type" => "prompt_restored", "prompt" => "boom", "origin" => { "client_id" => "tui:1", "enqueued_id" => enqueued_id })
+  end
+
+  it "puts its own prompt back in the input, as the REPL does" do
+    typed << "boom"
+    expect(reads.pop(timeout: 2)).to be_nil
+
+    fail_turn("e1")
+
+    expect(reads.pop(timeout: 2)).to eq("boom")
+    expect(screen.lines).to include("turn failed: server error from host main: HTTP 500", "(prompt restored for retry)")
+  end
+
+  it "leaves the input alone for a prompt it didn't send in this run (a replayed event, another UI)" do
+    fail_turn("e-old")
+    @push.call("type" => "prompt_restored", "prompt" => "theirs", "origin" => { "client_id" => "web:1", "enqueued_id" => "e2" })
+
+    expect(reads.pop(timeout: 0.3)).to be_nil
+    expect(screen.lines).not_to include("(prompt restored for retry)")
   end
 end

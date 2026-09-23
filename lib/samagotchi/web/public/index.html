@@ -42,10 +42,12 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.user{border-left:3px solid #7aa5ff;background:#1b2336;align-self:flex-end;max-width:85%;margin-left:auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
 .bubble.user.queued{border-left-style:dashed;opacity:.8}
 .bubble.user.steered{border-left-style:dashed;border-left-color:#8ec5ff;opacity:.9}
+.bubble.user.failed{border-left-color:#f85149;opacity:.8}
 .bubble.user .state-badge{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:2px 7px;border-radius:999px;background:rgba(255,255,255,.08);color:#dfe8ff;font-size:11px;line-height:1.2;white-space:nowrap;flex-shrink:0}
 .bubble.user .state-badge::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.8;box-shadow:0 0 0 1px rgba(255,255,255,.18)}
 .bubble.user.queued .state-badge::before{background:#9ecbff;box-shadow:0 0 0 1px rgba(158,203,255,.35)}
 .bubble.user.steered .state-badge::before{background:#8ec5ff;box-shadow:0 0 0 1px rgba(142,197,255,.4)}
+.bubble.user.failed .state-badge::before{background:#f85149;box-shadow:0 0 0 1px rgba(248,81,73,.4)}
 .bubble.user .origin-label{font-size:11px;color:#9aa4b2;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0}
 .bubble.user .user-message{flex:1}
 .bubble.tool{border-left:3px solid #238636;background:#0f1a12;font-size:13px;color:#c9d1d9}

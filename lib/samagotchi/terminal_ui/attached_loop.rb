@@ -32,7 +32,8 @@ module Samagotchi
       # Reads input lines on its own thread, so events keep rendering while
       # the user types, and hands each line (nil = Ctrl-D) or Ctrl-C to the
       # loop's queue. #reprompt makes it drop the open read and start again
-      # with the current prompt (a question opened or closed).
+      # with the current prompt (a question opened or closed); #prefill
+      # starts it again with text already typed in (a failed prompt).
       class LineReader
         # Raised into the reader thread; only lands inside a read.
         class Reprompt < StandardError; end
@@ -40,13 +41,14 @@ module Samagotchi
         class Stop < StandardError; end
 
         # @param prompt [#call] -> the prompt for the next read
-        # @param read [#call, nil] prompt -> line; defaults to Reline on a
-        #   terminal, else $stdin
+        # @param read [#call, nil] (prompt, prefill) -> line; defaults to
+        #   Reline on a terminal, else $stdin
         def initialize(queue, prompt:, read: nil)
           @queue = queue
           @prompt = prompt
           @read = read || method(:read_line)
           @current = nil
+          @prefill = nil
         end
 
         # @return [String, nil] the prompt of the read in progress
@@ -62,6 +64,17 @@ module Samagotchi
 
         def reprompt
           @thread&.raise(Reprompt)
+        end
+
+        # Start the read again with +text+ in it, unless something is typed
+        # there already (that would be lost).
+        # @return [Boolean] whether the text went in
+        def prefill(text)
+          return false unless line_empty?
+
+          @prefill = text
+          reprompt
+          true
         end
 
         def stop
@@ -80,7 +93,9 @@ module Samagotchi
           Thread.handle_interrupt(Reprompt => :never, Stop => :never) do
             loop do
               @current = @prompt.call
-              line = Thread.handle_interrupt(Reprompt => :immediate, Stop => :immediate) { @read.call(@current) }
+              prefill = @prefill
+              @prefill = nil
+              line = Thread.handle_interrupt(Reprompt => :immediate, Stop => :immediate) { @read.call(@current, prefill) }
               @queue << [:line, line]
               break if line.nil?
             rescue Reprompt
@@ -93,10 +108,29 @@ module Samagotchi
           nil
         end
 
-        def read_line(prompt)
+        def read_line(prompt, prefill)
           return $stdin.gets&.chomp unless $stdin.tty?
+          return Reline.readline(prompt, true) unless prefill
 
-          Reline.readline(prompt, true)
+          previous_hook = Reline.pre_input_hook
+          Reline.pre_input_hook = proc do
+            Reline.insert_text(prefill)
+            Reline.pre_input_hook = previous_hook
+            previous_hook&.call
+          end
+          begin
+            Reline.readline(prompt, true)
+          ensure
+            Reline.pre_input_hook = previous_hook
+          end
+        end
+
+        def line_empty?
+          return true unless $stdin.tty?
+
+          Reline.line_buffer.to_s.strip.empty?
+        rescue StandardError
+          true
         end
       end
 
@@ -128,6 +162,9 @@ module Samagotchi
         @answered_ids = Set.new
         @reader = nil
         @first_prompt = first_prompt
+        # Prompts this run sent, by enqueued_id: only those come back into
+        # the input when their turn fails (a replayed event must not).
+        @sent_ids = Set.new
       end
 
       def running? = @running
@@ -172,6 +209,7 @@ module Samagotchi
           end_turn("turn cancelled (#{event[:cancellation_reason]})")
         when :turn_failed
           end_turn("turn failed: #{event[:summary] || "#{event[:message]} (#{event[:error_class]})"}")
+        when :prompt_restored then restore_prompt(event)
         when :input_merged
           count = event[:count].to_i
           @screen.commit("(#{count} message#{"s" unless count == 1} merged into the running turn)")
@@ -235,7 +273,11 @@ module Samagotchi
 
       def send_prompt(text)
         reply = @client.post_turn(prompt: text, client_id: @client_id)
-        return if reply.status == 202
+        if reply.status == 202
+          enqueued_id = reply.json&.fetch("enqueued_id", nil)
+          @sent_ids << enqueued_id if enqueued_id
+          return
+        end
 
         detail = reply.json&.fetch("error", nil)
         @screen.commit("could not send the prompt (#{[reply.status, detail].compact.join(" ")})")
@@ -297,6 +339,19 @@ module Samagotchi
           @screen.commit("could not dismiss the question (#{[reply.status, detail].compact.join(" ")}); Ctrl-C cancels the turn")
         end
         nil
+      end
+
+      # The worker rolled a failed turn back and handed its prompt back: ours
+      # goes back into the input, as the REPL restores it for a retry.
+      def restore_prompt(event)
+        origin = event[:origin] || {}
+        return unless own?(origin[:client_id]) && @sent_ids.include?(origin[:enqueued_id])
+
+        if @reader&.prefill(event[:prompt].to_s)
+          @screen.commit("(prompt restored for retry)")
+        else
+          @screen.commit("(the failed prompt is in the input history: ↑)")
+        end
       end
 
       def question_answered(event)
