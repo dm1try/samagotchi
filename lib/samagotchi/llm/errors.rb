@@ -23,7 +23,8 @@ module Samagotchi
     #   RateLimited      429, with retry_after when the server says
     #   ServerError      5xx or a server's error event mid-stream
     #   AuthError        401/403, or an API key variable that is not set
-    #   BadRequest       other 4xx (a context overflow is one, whatever status)
+    #   BadRequest       other 4xx (a context overflow is one, whatever status;
+    #                    so is a model that can't take tools)
     #   ProtocolError    a body that isn't what the API promises
     class ProviderError < StandardError
       attr_reader :host, :status, :retry_after
@@ -93,19 +94,28 @@ module Samagotchi
     end
 
     class BadRequest < ProviderError
-      def initialize(message = nil, context_overflow: false, **options)
+      TOOLS_HINT = "this model can't use tools, and chi needs them: pick another model (/model) or host"
+
+      def initialize(message = nil, context_overflow: false, tools_unsupported: false, **options)
         @context_overflow = context_overflow
+        @tools_unsupported = tools_unsupported
         super(message, **options)
       end
 
       # The prompt is larger than the model's context window.
       def context_overflow? = @context_overflow
 
+      # The model (or every endpoint serving it) refuses requests with tools,
+      # and chi always sends them.
+      def tools_unsupported? = @tools_unsupported
+
       def kind = :bad_request
 
       def summary
         if context_overflow?
           "the conversation is too long for host #{host}'s context window: #{detail}"
+        elsif tools_unsupported?
+          "host #{host} rejected the request: #{detail}; #{TOOLS_HINT}"
         else
           "host #{host} rejected the request: #{detail}"
         end
@@ -136,6 +146,10 @@ module Samagotchi
     # event.
     module ProviderErrors
       CONTEXT_OVERFLOW_RE = /exceeds? (the )?(available )?context (size|length|window)|context[_ ]length[_ ]exceeded|exceed_context_size|maximum context length/i
+      # A model that takes no tools: OpenRouter when no endpoint of the model
+      # does ("No endpoints found that support tool use", 404), Ollama ("…
+      # does not support tools"), vLLM started without a tool parser.
+      TOOLS_UNSUPPORTED_RE = /support tool use|(does not|doesn't) support tools|tool choice requires --enable-auto-tool-choice/i
       RETRYABLE_SERVER_STATUSES = [500, 502, 503, 504, 529].freeze
 
       module_function
@@ -155,7 +169,7 @@ module Samagotchi
         when 401, 403 then AuthError.new(text, **options)
         when 429 then RateLimited.new(text, retry_after: parse_retry_after(retry_after), **options)
         when 408 then ServerError.new(text, retryable: true, **options)
-        when 400..499 then BadRequest.new(text, **options)
+        when 400..499 then BadRequest.new(text, tools_unsupported: TOOLS_UNSUPPORTED_RE.match?(message), **options)
         when 500..599
           ServerError.new(text, retryable: RETRYABLE_SERVER_STATUSES.include?(status),
                                 retry_after: parse_retry_after(retry_after), **options)

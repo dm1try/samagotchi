@@ -34,6 +34,34 @@ RSpec.describe Samagotchi::LLM::ProviderError do
       )
     end
 
+    it "adds a hint when the model has no tool-capable endpoint (OpenRouter's recorded 404)" do
+      error = Samagotchi::LLM::ProviderErrors.from_response(
+        status: 404, body: File.read(File.expand_path("../fixtures/providers/openai/openrouter_error_404_no_tools.json", __dir__)),
+        host: "openrouter"
+      )
+
+      expect(error).to be_a(Samagotchi::LLM::BadRequest)
+      expect(error).to be_tools_unsupported
+      expect(error.summary).to start_with("host openrouter rejected the request: HTTP 404: No endpoints found that support tool use.")
+      expect(error.summary).to end_with(
+        "; this model can't use tools, and chi needs them: pick another model (/model) or host"
+      )
+      expect(error.summary).not_to include("\n")
+    end
+
+    it "recognises other servers' words for a model without tools, and nothing else" do
+      tools_error = lambda do |status, message|
+        Samagotchi::LLM::ProviderErrors.from_response(status: status, body: JSON.generate(error: { message: message }),
+                                                      host: "h")
+      end
+
+      expect(tools_error.call(400, "registry.ollama.ai/library/gemma:2b does not support tools")).to be_tools_unsupported
+      expect(tools_error.call(400, '"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set'))
+        .to be_tools_unsupported
+      expect(tools_error.call(404, "No endpoints found for foo/bar:free.")).not_to be_tools_unsupported
+      expect(tools_error.call(404, "No endpoints found for foo/bar:free.").summary).not_to include("can't use tools")
+    end
+
     it "reads a metadata.raw that is itself a JSON error body, and keeps a plain message as is" do
       body = JSON.generate(error: { message: "Provider returned error",
                                     metadata: { raw: JSON.generate(error: { message: "model overloaded" }) } })

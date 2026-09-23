@@ -1,0 +1,1 @@
+{"error":{"message":"No endpoints found that support tool use. Try disabling \"execute\". To learn more about provider routing, visit: https://openrouter.ai/docs/guides/routing/provider-selection","code":404,"metadata":{"routing_funnel":[{"step":"Initial Endpoints","endpoint_count":1}],"failed_routing_step":"Filter by Tool Compatibility"}}}
