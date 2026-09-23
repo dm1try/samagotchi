@@ -28,6 +28,7 @@ require_relative "terminal_ui/input_support"
 require_relative "terminal_ui/legacy_surface"
 require_relative "terminal_ui/live_region"
 require_relative "terminal_ui/question_prompt"
+require_relative "terminal_ui/repl_input"
 
 module Samagotchi
   # TerminalUI encapsulates the single operating mode of the harness.
@@ -358,15 +359,16 @@ module Samagotchi
       # render stack is too fragile), but wiring the drain here keeps the
       # interface live and identical to the web/background hosts.
       @pending_input_queue = PendingInputQueue.new
+      open_repl_input
 
       loop do
         # Drain any pending ask_user_question first — it has priority over reminders and
         # must be rendered on the REPL thread (turn thread is parked on Engine Monitor).
         drain_pending_question?
 
-        # A due reminder runs its turn now. The prompt may be open (a read
-        # left running by #poll_input_with_reminder_check): the turn's output
-        # commits above it and whatever is typed there stays.
+        # A due reminder runs its turn now, with the prompt open (on a
+        # terminal): the turn's output commits above it and whatever is typed
+        # there stays.
         unless @engine.due_reminder_names.empty?
           run_reminder_turn(session)
           @turn_flow.after_reminder_turn
@@ -389,6 +391,7 @@ module Samagotchi
         end
       end
 
+      close_repl_input
       @surface.commit("\nContinue session: chi --resume #{session.id}")
     end
 
@@ -431,8 +434,7 @@ module Samagotchi
         # Retries were already tallied via generation_retrying events.
         emit_interactive_turn_duration(canceled: false)
         @turn_flow.prompt_turn_failed
-        queue_input_prefill(input)
-        @surface.commit("\nmodel> #{e.summary}; prompt restored for retry")
+        @surface.commit("\nmodel> #{e.summary}; #{restore_prompt_for_retry(input)}")
         return
       end
       finish_turn(session, result, continue: false)
@@ -697,29 +699,71 @@ module Samagotchi
     end
 
     # The next line from the prompt, or :due when a reminder falls due first.
-    # On a terminal the read runs on its own thread and stays open across a
-    # :due: the reminder turn runs with the prompt (and anything typed in it)
-    # still there, and a line submitted meanwhile is returned afterwards.
-    # Ctrl-C during that turn reaches #cancel_turn_from_prompt.
+    # On a terminal the prompt stays open the whole session (#open_repl_input):
+    # a reminder turn runs with it (and anything typed in it) still there, and
+    # a line submitted meanwhile comes next. Ctrl-C during a turn reaches
+    # #cancel_turn_from_prompt.
     def poll_input_with_reminder_check(awaiting_continue:)
       return :due unless @engine.due_reminder_names.empty?
       # Specs and pipes: a plain blocking read.
-      return read_input(awaiting_continue: awaiting_continue) unless STDIN.tty? && $stdin.tty?
+      return read_input(awaiting_continue: awaiting_continue) unless @repl_input
 
-      @prompt_reader ||= Thread.new do
-        Thread.current.report_on_exception = false
-        read_input(awaiting_continue: awaiting_continue)
+      if @idle_status_due
+        @idle_status_due = false
+        emit_idle_status_line
       end
+      @repl_input.sync_prompt
       loop do
-        unless @prompt_reader.alive?
-          reader = @prompt_reader
-          @prompt_reader = nil
-          return reader.value
+        kind, line = @repl_input.pop(timeout: REMINDER_PENDING_POLL_INTERVAL)
+        if kind
+          # What the line does may change the status (/model, a turn).
+          @idle_status_due = true
+          # Ctrl-C at an idle prompt ends the REPL, as Ctrl-D does.
+          return kind == :line ? line : nil
         end
         return :due unless @engine.due_reminder_names.empty?
-
-        @prompt_reader.join(REMINDER_PENDING_POLL_INTERVAL)
       end
+    end
+
+    # On a terminal: one read for the whole session, on a LineReader.
+    def open_repl_input
+      return unless STDIN.tty? && $stdin.tty?
+
+      @idle_status_due = false
+      emit_idle_status_line
+      @repl_input = ReplInput.new(prompt: method(:repl_prompt_text), read: method(:read_repl_line), surface: @surface).start
+    end
+
+    def close_repl_input
+      @repl_input&.stop
+      @repl_input = nil
+    end
+
+    # The main prompt, or the continue offer's when one waits and no turn runs.
+    def repl_prompt_text
+      return paint("> ", 92) if @active_cancel_controller || !@turn_flow.awaiting_continue?
+
+      color_output? ? paint(CONTINUE_PROMPT, 33) : CONTINUE_PROMPT
+    end
+
+    # One read on the reader thread (ReplInput): the multiline read with Tab
+    # completion at the main prompt, a plain line for the continue offer and
+    # a question's choice>. +prefill+ is typed in first.
+    def read_repl_line(prompt, prefill)
+      queue_input_prefill(prefill) if prefill
+      return read_prompt_line(prompt) if prompt == paint("> ", 92)
+
+      with_next_input_prefill { Reline.readline(prompt, true) }&.strip
+    end
+
+    # A failed prompt goes back into the input for a retry.
+    # @return [String] what the failed-turn line says about it
+    def restore_prompt_for_retry(input)
+      unless @repl_input
+        queue_input_prefill(input)
+        return "prompt restored for retry"
+      end
+      @repl_input.prefill(input) ? "prompt restored for retry" : "the failed prompt is in the input history (↑)"
     end
 
     def shell_bang_command?(input)
@@ -1572,9 +1616,6 @@ module Samagotchi
 
       # The question is output, not the notes slot: on a live region the slot
       # would vanish when cleared, and the question must stay above its answer.
-      # A reminder turn asks with the prompt open: Reline reads one line at a
-      # time, so the next line submitted there is the answer.
-      at_prompt = @prompt_reader&.alive?
       rows = prompt.lines(paint: method(:paint), color: color_output?)
       rows.unshift("") if $stdout.tty?
       if prompt.approval?
@@ -1582,35 +1623,31 @@ module Samagotchi
       elsif !prompt.free?
         rows << "  Enter empty to cancel." # still allow cancel
       end
-      rows << "  Answer at the prompt." if at_prompt
       @surface.commit(rows.join("\n"))
 
-      # Loop until valid selection or cancel
+      choice_prompt = color_output? ? paint("choice> ", 33) : "choice> "
+      # On a terminal the prompt is open (a turn runs with it): it turns into
+      # choice> for the answer. Only a line submitted there answers, never one
+      # typed before the question came.
+      return answer_question_widget(prompt) { read_choice_line(choice_prompt) } unless @repl_input&.open?
+
+      @repl_input.ask(choice_prompt) do |answers|
+        answer_question_widget(prompt) { take_open_prompt_answer(answers) }
+      end
+    end
+
+    # Loop until a valid selection or a cancel. The block reads one answer:
+    # a line, nil (Ctrl-D, or Ctrl-C with no turn), or :canceled (the turn
+    # was cancelled).
+    def answer_question_widget(prompt)
       loop do
-        choice_prompt = color_output? ? paint("choice> ", 33) : "choice> "
-        raw = nil
-        from_open_prompt = false
-        begin
-          if at_prompt
-            at_prompt = false # a retry after an invalid answer reads choice>
-            from_open_prompt = true
-            raw = take_open_prompt_line
-            if raw == :canceled
-              @engine.cancel_question("user") rescue nil
-              return false
-            end
-          # Use plain Reline.readline when tty, else $stdin.gets for non-tty/specs
-          elsif $stdin.tty? && $stdout.tty?
-            raw = with_choice_interrupt { Reline.readline(choice_prompt, true) }
-          else
-            @surface.set_slot(:editor, [choice_prompt])
-            raw = $stdin.gets
-          end
+        raw = begin
+          yield
         rescue Interrupt
-          raw = nil
+          nil
         end
-        if raw.nil?
-          # EOF / Ctrl-D -> cancel
+        if raw.nil? || raw == :canceled
+          # EOF / Ctrl-D / Ctrl-C -> cancel
           @engine.cancel_question("user") rescue nil
           return false
         end
@@ -1624,13 +1661,6 @@ module Samagotchi
         answer = prompt.parse(raw)
         @surface.commit(answer.note) if answer.note
         unless answer.ok?
-          # A line typed at the open prompt that doesn't answer an approval
-          # was probably meant as a message: it goes back into the prompt
-          # (not sent, not lost) and the approval asks at choice>.
-          if from_open_prompt && prompt.approval?
-            queue_input_prefill(raw)
-            @surface.commit("(not an answer; your line is back in the prompt)")
-          end
           @surface.commit(answer.error)
           next
         end
@@ -1646,6 +1676,15 @@ module Samagotchi
           return false
         end
       end
+    end
+
+    # A choice> read of its own: Reline on a terminal, else $stdin.gets
+    # (specs, pipes).
+    def read_choice_line(choice_prompt)
+      return with_choice_interrupt { Reline.readline(choice_prompt, true) } if $stdin.tty? && $stdout.tty?
+
+      @surface.set_slot(:editor, [choice_prompt])
+      $stdin.gets
     end
 
     # Ctrl-C at choice> cancels the running turn, as at the prompt, and ends
@@ -1666,16 +1705,16 @@ module Samagotchi
       end
     end
 
-    # The line submitted at the open prompt, or :canceled when the running
-    # turn is cancelled first (Ctrl-C there); the prompt then stays open.
-    def take_open_prompt_line
+    # The next line submitted at the open prompt (choice>), nil for Ctrl-D
+    # or a Ctrl-C with no turn running, or :canceled when Ctrl-C cancels the
+    # running turn first (the read goes on; the question closes).
+    def take_open_prompt_answer(answers)
       controller = @active_cancel_controller
-      until @prompt_reader.join(REMINDER_PENDING_POLL_INTERVAL)
+      loop do
+        kind, line = answers.pop(timeout: REMINDER_PENDING_POLL_INTERVAL)
+        return kind == :line ? line : nil if kind
         return :canceled if controller&.cancelled?
       end
-      reader = @prompt_reader
-      @prompt_reader = nil
-      reader.value
     end
 
     # Process a prompt through the kernel loop and return the model response.

@@ -38,8 +38,24 @@ module Samagotchi
         self
       end
 
-      def reprompt
+      def alive? = @thread&.alive? || false
+      
+      # Drop the open read and start it again with the current prompt.
+      # @param keep_text [Boolean] with what is typed there now
+      # @param prefill [String, nil] with this text instead
+      def reprompt(keep_text: false, prefill: nil)
+        text = keep_text ? typed_text : prefill
+        @prefill = text unless text.to_s.empty?
         @thread&.raise(Reprompt)
+      end
+      
+      # @return [String, nil] what the open read holds
+      def typed_text
+        return nil unless $stdin.tty?
+      
+        Reline.line_buffer.to_s
+      rescue StandardError
+        nil
       end
 
       # Start the read again with +text+ in it, unless something is typed
@@ -86,13 +102,7 @@ module Samagotchi
         nil
       end
 
-      def line_empty?
-        return true unless $stdin.tty?
-
-        Reline.line_buffer.to_s.strip.empty?
-      rescue StandardError
-        true
-      end
+      def line_empty? = typed_text.to_s.strip.empty?
     end
   end
 end

@@ -121,27 +121,50 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     $stdin, $stdout = old_stdin, old_stdout if old_stdin
   end
 
-  # A reminder turn runs with the prompt open (its read on @prompt_reader);
-  # Reline reads one line at a time, so there is no choice> read then.
+  # On a terminal the prompt stays open during turns (ReplInput): the
+  # question turns it into choice> and takes the lines submitted there.
   describe "asked while the prompt is open" do
-    it "takes the next line submitted there as the answer" do
+    let(:answers) { Thread::Queue.new }
+    let(:repl_input) do
+      double("repl input", open?: true).tap do |input|
+        allow(input).to receive(:ask) { |_prompt, &block| block.call(answers) }
+      end
+    end
+
+    before { agent.instance_variable_set(:@repl_input, repl_input) }
+
+    it "takes the next line submitted at choice> as the answer" do
       allow(engine).to receive(:answer_question)
-      agent.instance_variable_set(:@prompt_reader, Thread.new { "2" })
+      answers << [:line, "2"]
 
       result, out = answer_with("")
 
       expect(result).to be(true)
+      expect(repl_input).to have_received(:ask).with("choice> ")
       expect(engine).to have_received(:answer_question).with(id: "q1", selected: ["Banana"], freeform: nil)
-      expect(out).to include("  Answer at the prompt.\n")
-      expect(out).not_to include("choice> ")
-      expect(agent.instance_variable_get(:@prompt_reader)).to be_nil
+      expect(out).to include("Which one?")
     end
 
-    it "cancels the question and keeps the prompt when Ctrl-C cancels the turn" do
+    it "asks again at the same prompt after an invalid answer" do
+      allow(engine).to receive(:answer_question)
+      answers << [:line, "banana split"] << [:line, "3"]
+
+      _, out = answer_with("")
+
+      expect(out).to include("Unknown option")
+      expect(engine).to have_received(:answer_question).with(id: "q1", selected: ["Cherry"], freeform: nil)
+    end
+
+    it "cancels the question on Ctrl-D" do
       allow(engine).to receive(:cancel_question)
-      line = Queue.new
-      reader = Thread.new { line.pop }
-      agent.instance_variable_set(:@prompt_reader, reader)
+      answers << [:line, nil]
+
+      expect(answer_with("").first).to be(false)
+      expect(engine).to have_received(:cancel_question)
+    end
+
+    it "cancels the question when Ctrl-C cancels the turn" do
+      allow(engine).to receive(:cancel_question)
       controller = Samagotchi::Client::CancellationController.new
       controller.cancel!(:ctrl_c)
       agent.instance_variable_set(:@active_cancel_controller, controller)
@@ -151,9 +174,6 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       expect(result).to be(false)
       expect(out).not_to include("choice> ")
       expect(engine).to have_received(:cancel_question)
-      expect(agent.instance_variable_get(:@prompt_reader)).to be(reader)
-    ensure
-      line << nil
     end
   end
 
@@ -187,16 +207,6 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       result, = answer_with("\n", approval)
       expect(result).to be(false)
       expect(engine).to have_received(:cancel_question)
-    end
-
-    it "puts a line from the open prompt that isn't an answer back into the prompt, and asks at choice>" do
-      allow(engine).to receive(:answer_question)
-      agent.instance_variable_set(:@prompt_reader, Thread.new { "what does this do?" })
-      _, out = answer_with("2\n", approval)
-      expect(out).to include("(not an answer; your line is back in the prompt)", "choice> ")
-      expect(agent.instance_variable_get(:@next_input_prefill)).to eq("what does this do?")
-      expect(engine).to have_received(:answer_question).with(id: "a1", selected: ["Allow this call for the session"],
-                                                             freeform: nil)
     end
   end
 end
