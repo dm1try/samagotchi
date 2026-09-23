@@ -24,6 +24,12 @@ RSpec.describe "chi --help" do
     expect(shared_line).to include("--no-shared runs a plain in-process REPL")
   end
 
+  it "names the subcommands" do
+    out, = Open3.capture3(RbConfig.ruby, chi, "--help", stdin_data: "")
+
+    %w[web sessions bundle self].each { |sub| expect(out).to include("bin/chi #{sub} ") }
+  end
+
   it "refuses an unknown flag with one line, not a backtrace" do
     _out, err, status = Open3.capture3(RbConfig.ruby, chi, "--bogus", stdin_data: "")
 

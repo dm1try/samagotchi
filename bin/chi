@@ -752,21 +752,32 @@ ARGV.each do |arg|
 end
 
 parser = OptionParser.new do |opts|
-  opts.banner = "Usage: bin/chi [options] [subcommand]"
+  opts.banner = <<~BANNER
+    Usage: bin/chi [options]
+           bin/chi web [--port PORT] [--open]   the web UI
+           bin/chi sessions <list|stop|prune|clean>
+           bin/chi bundle <install|upgrade|uninstall|status|diff|bundles|build>
+           bin/chi self                         version, paths, model and bundles
+    (each subcommand takes --help)
+
+  BANNER
   opts.on("-p", "--prompt PROMPT", "Run PROMPT as the first turn, then stay in the REPL") { |p| options[:prompt] = p }
   opts.on("--resume SESSION_ID", "Resume a previous session by its ID") { |s| options[:resume] = s }
-  opts.on("--attach SESSION_ID", "Attach to a session's worker (e.g. one `chi web` started), waking one if it has exited") { |s| options[:attach] = s }
+  opts.on("--attach SESSION_ID", "Attach to a session's worker, waking one if it has exited") { |s| options[:attach] = s }
   opts.on("--[no-]shared", "Run the session in a background worker and attach to it, so `chi web` can share it (the default, config session.shared; with --resume: that session); --no-shared runs a plain in-process REPL") { |v| options[:shared] = v }
   opts.on("--model NAME", "Model selector (runtime only, overrides --resume) [alias for --default-model]") { |m| options[:model] = m; cli_overrides["default.model"] = m }
   opts.on("--profile NAME", Samagotchi::ModelProfile::NAMES,
           "Prompt profile for every model in this run (#{Samagotchi::ModelProfile::NAMES.join('|')}) [alias for --model-profile]") { |p| cli_overrides["model.profile"] = p }
-  opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable)") { |m| (options[:memories] ||= []) << m }
+  opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable; runs a plain REPL, not attached)") { |m| (options[:memories] ||= []) << m }
   opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true; cli_overrides["no_interrupt"] = true }
   opts.on("--non-interactive", "Run a single prompt and exit (no REPL, implies --no-interrupt)") { options[:non_interactive] = true }
-  opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results") { options[:verbose] = true }
+  opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results (runs a plain REPL, not attached)") { options[:verbose] = true }
   opts.on("--no-default-input", "Skip default REPL input prefill") { options[:no_default_input] = true; cli_overrides["no_default_input"] = true }
   opts.on("--port PORT", "Port for `chi web` (default: 4567, env SAMAGOTCHI_WEB_PORT)") { |p| options[:web_port] = p.to_i; cli_overrides["web.port"] = p.to_s }
   opts.on("--open", "Open browser for `chi web`") { options[:web_open] = true }
+  # Accepted values of string entries that the registry doesn't type as enums.
+  value_hints = { "thinking.ui" => "spinner|off", "status.line" => "on|off", "status.width_mode" => "terminal_cap|fixed",
+                  "web.host" => "127.0.0.1|::1|localhost" }
   # Universal config flags (implicit convention: ENV SAMAGOTCHI_* ↔ YAML dotted ↔ CLI --kebab)
   # Generated from Samagotchi::Config registry — Option A: snake leaf in YAML, kebab in CLI.
   Samagotchi::Config.cli_entries.each do |entry|
@@ -781,6 +792,9 @@ parser = OptionParser.new do |opts|
     when :integer, :float, :string, :enum
       desc = "Set #{entry.key} [env #{entry.env_key}]"
       desc += " (#{entry.enum_values.join('|')})" if entry.type == :enum
+      desc += " (#{value_hints[entry.key]})" if value_hints.key?(entry.key)
+      desc += "; only without a hosts: config" if %w[server.host server.port].include?(entry.key)
+      desc += "; hosts: entries without a transport use it" if entry.key == "server.transport"
       if entry.type == :enum
         opts.on("#{entry.cli_flag} VALUE", entry.enum_values, desc) { |v| cli_overrides[entry.key] = v }
       else
