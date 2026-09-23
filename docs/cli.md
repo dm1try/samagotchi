@@ -1,5 +1,19 @@
 # CLI and REPL
 
+## Commands
+
+- `bin/chi` — start the interactive REPL
+- `bin/chi -p "your prompt"` — run a prompt, then stay in the REPL
+- `bin/chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
+- `bin/chi --resume <session-id>` — resume a prior session in the REPL
+- `bin/chi --shared [--resume <session-id>]` — run the session in a background worker and attach the terminal to it, so the Web UI (or another terminal) can share it
+- `bin/chi --attach <session-id>` — attach the terminal to a session a worker is already running (e.g. one started from the Web UI)
+- `bin/chi web [--port 4567] [--open]` — start the Web UI (single localhost port session control plane)
+- `bin/chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
+- `bin/chi sessions list|prune|clean` — manage persisted sessions (see [Sessions](sessions.md))
+- `bin/chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles
+- `bin/chi bundle install|upgrade|uninstall|status|diff|bundles|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle))
+
 ## Flags
 
 Samagotchi exposes one flag that feeds a prompt (`-p`, `--prompt`) and one that
@@ -12,11 +26,16 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `--resume SESSION_ID` | Load a prior session's history instead of creating a fresh one. |
 | `--shared` | Run the session (new, or `--resume`'s) in a background worker and attach to it. See [Sharing a session](#sharing-a-session). |
 | `--attach SESSION_ID` | Attach to a session a worker is already running. |
+| `--model NAME` | Use this model for the run (overrides the configured default and a resumed session's model). |
 | `--memory NAME` | Preload a memory entry into the system prompt (repeatable). Merged under the config.yml `memories:` baseline. |
 | `--backend {native,ruby_llm}` | Choose the model backend (default: `native`). See below. |
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
 | `--no-default-input` | Skip prefilling the first REPL line from `SAMAGOTCHI_DEFAULT_INPUT`. |
 | `-v`, `--verbose` | Print raw LLM responses and tool call/result payloads to stderr. |
+
+Every setting in the config registry (`lib/samagotchi/config.rb`) that exposes a CLI
+flag also works as `--kebab-case VALUE`, e.g. `--server-host`, `--server-port`,
+`--read-truncate-at-bytes`. `bin/chi --help` lists them all.
 
 **Backend selection.** `--backend ruby_llm` (or `SAMAGOTCHI_BACKEND=ruby_llm`) runs
 through the ruby_llm gem backend (an OpenAI-compatible endpoint); the default

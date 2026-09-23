@@ -32,7 +32,7 @@ bin/chi sessions prune --days 14 --keep 500          # actually delete
 bin/chi sessions clean --dry-run --days 7            # only test sessions
 ```
 
-`--dry-run` is the safe preview (your choice #5). Web has no prune endpoint; use the CLI.
+`--dry-run` is the safe preview. Web has no prune endpoint; use the CLI.
 
 **Ordering:**
 
