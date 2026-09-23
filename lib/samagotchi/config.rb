@@ -52,7 +52,6 @@ module Samagotchi
     ENTRIES = [
       # universal – env+config+cli
       Entry.new(key: "default.model",            yaml_path: %w[default model],            type: :string, default: nil,              expose: %i[env config cli]),
-      Entry.new(key: "backend",                  yaml_path: %w[backend],                   type: :enum,   default: "native",        expose: %i[env config cli], enum_values: %w[native ruby_llm]),
       Entry.new(key: "server.transport",         yaml_path: %w[server transport],          type: :enum,   default: "llama_cpp",     expose: %i[env config cli], enum_values: %w[llama_cpp mlx omlx]),
       Entry.new(key: "server.host",              yaml_path: %w[server host],               type: :string, default: "localhost",     expose: %i[env config cli]),
       Entry.new(key: "server.port",              yaml_path: %w[server port],               type: :integer, default: 8080,            expose: %i[env config cli]),

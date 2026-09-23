@@ -23,7 +23,6 @@ RSpec.describe "idle session-recap CLI integration", :integration do
       "SAMAGOTCHI_RECAP_MIN_USER_TURNS" => recap_min_user_turns,
       "SAMAGOTCHI_RECAP_TIMEOUT" => recap_timeout,
       "SAMAGOTCHI_THINKING_UI" => "off",
-      "SAMAGOTCHI_BACKEND" => "native",
       "PATH" => ENV.fetch("PATH")
     }
   end

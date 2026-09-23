@@ -7,7 +7,6 @@ require_relative "context_window"
 require_relative "session"
 require_relative "model_profile"
 require_relative "host_registry"
-require_relative "llm/backend"
 require_relative "tools/memory"
 require_relative "hooks/loader"
 require_relative "memory_bundle/provenance"
@@ -43,7 +42,7 @@ module Samagotchi
         ["sessions", Session.default_state_dir(env: env)],
         ["model", model || "(not configured)"],
         ["host", model ? host_for(model, env) : "-"],
-        ["backend", LLM::Factory.resolve_provider(nil, env: env).to_s],
+        ["loop", model ? loop_for(model, env) : "-"],
         ["context window", context_window(env)],
         ["bundles", bundles_summary]
       ]
@@ -78,6 +77,15 @@ module Samagotchi
       ModelProfile.required_model_name
     rescue ArgumentError
       nil
+    end
+
+    # Routed without model discovery, so an unqualified name may land on
+    # another host at runtime after /models.
+    def loop_for(model, env)
+      entry, = HostRegistry.new(env: env).host_for_model(model)
+      return "-" unless entry
+
+      entry.chat? ? "chat (api: openai)" : "native (raw prompt)"
     end
 
     def host_for(model, env)

@@ -86,7 +86,7 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
 
     def build_engine_with_backend(**overrides)
       engine = build_engine(**overrides)
-      engine.instance_variable_set(:@backend, backend)
+      allow(engine).to receive(:backend).and_return(backend)
       engine
     end
 

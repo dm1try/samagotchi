@@ -15,9 +15,11 @@ RSpec.describe "Engine picks the loop from the host's api" do
 
   around do |example|
     previous = ENV.delete("SAMAGOTCHI_BACKEND")
+    Samagotchi::Engine.instance_variable_set(:@warned_removed_backend, nil)
     example.run
   ensure
     ENV["SAMAGOTCHI_BACKEND"] = previous if previous
+    Samagotchi::Engine.instance_variable_set(:@warned_removed_backend, nil)
   end
 
   def engine(model) = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: model)
@@ -43,6 +45,28 @@ RSpec.describe "Engine picks the loop from the host's api" do
 
     e.switch_model!("oai:other")
     expect(e.backend).to be(chat)
+  end
+
+  # 7b: the chat backend's endpoint was fixed from the default model at
+  # construction, so /model, --model host:x and resumed sessions kept talking
+  # to the default model's host.
+  it "moves the chat backend to the new openai host on switch_model!" do
+    registry = Samagotchi::HostRegistry.new(hosts_config: {
+      "alpha" => { host: "alpha.test", port: 1111, api: :openai },
+      "beta" => { host: "beta.test", port: 2222, api: :openai }
+    })
+    e = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "alpha:gemma4-small")
+    expect(e.backend.base_url).to eq("http://alpha.test:1111/v1")
+
+    e.switch_model!("beta:Qwen3-14B")
+
+    expect(e.backend.base_url).to eq("http://beta.test:2222/v1")
+  end
+
+  it "warns once that SAMAGOTCHI_BACKEND is ignored, and still follows the host" do
+    ENV["SAMAGOTCHI_BACKEND"] = "ruby_llm"
+    expect { engine("box:gemma4-small") }.to output(/backend setting .* was removed and is ignored/).to_stderr
+    expect { expect(engine("box:gemma4-small").backend).to be_a(Samagotchi::LLM::NativeBackend) }.not_to output.to_stderr
   end
 
   it "runs a turn through the chosen backend with the bare model name" do

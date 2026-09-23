@@ -195,7 +195,7 @@ RSpec.describe Samagotchi::TerminalUI do
     it "routes interactive generation through the selected backend" do
       backend = instance_double(Samagotchi::LLM::RubyLLMBackend)
       engine = agent.instance_variable_get(:@engine)
-      engine.instance_variable_set(:@backend, backend)
+      allow(engine).to receive(:backend).and_return(backend)
       allow(agent.instance_variable_get(:@kernel)).to receive(:run).and_raise("native path used")
       allow(backend).to receive(:complete).and_return(
         Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [])

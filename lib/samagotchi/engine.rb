@@ -57,7 +57,7 @@ module Samagotchi
     # @param memories           [Array<String>] explicit --memory preload list (merged with the config.yml `memories:` baseline)
     DEFAULT_SYSTEM_MEMORIES = %w[identity].freeze
 
-    def initialize(mode: :assist, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil, backend: nil)
+    def initialize(mode: :assist, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
       @mode = mode.to_sym
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
@@ -114,11 +114,10 @@ module Samagotchi
         @session = @resume_session
       end
       # The loop follows the effective model's host (its api:): the raw-prompt
-      # NativeBackend, or the chat backend for openai hosts. An explicit
-      # backend: / SAMAGOTCHI_BACKEND still overrides that for now.
+      # NativeBackend, or the chat backend for openai hosts.
       @native_backend = LLM::NativeBackend.new(kernel: @kernel)
-      @backend = explicit_backend(backend)
-      warn "[verbose] backend=#{self.backend.provider}" if verbose
+      self.class.warn_removed_backend_setting
+      warn "[verbose] backend=#{backend.provider}" if verbose
       @resume_session = session_id ? Session.load(session_id) : nil
       @requested_memories = preload_memory_list(memories)
       @session = nil
@@ -169,10 +168,23 @@ module Samagotchi
       Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
-    # The backend for the next turn: the override if one was chosen,
-    # otherwise the loop the effective model's host speaks.
+    # The backend for the next turn: the loop the effective model's host speaks.
     def backend
-      @backend || backend_for(@host_registry.resolve(@effective_model_name))
+      backend_for(@host_registry.resolve(@effective_model_name))
+    end
+
+    # The global backend switch (SAMAGOTCHI_BACKEND, config backend:) is gone;
+    # a host's api: decides. Say so once per process if it is still set.
+    def self.warn_removed_backend_setting
+      return if @warned_removed_backend
+
+      data = ConfigFile.read_yaml rescue nil
+      in_file = data.is_a?(Hash) && data.key?("backend")
+      return unless in_file || !ENV["SAMAGOTCHI_BACKEND"].to_s.strip.empty?
+
+      @warned_removed_backend = true
+      warn "Warning: the backend setting (SAMAGOTCHI_BACKEND / backend: in config.yml) was removed and is ignored; " \
+           "set api: openai on a host to use the chat API (see docs/configuration.md)."
     end
 
     # Record that activity happened (user input or a completed turn). Shared,
@@ -271,7 +283,6 @@ module Samagotchi
       target = @host_registry.resolve(@effective_model_name)
       @client = target.client
       @kernel.client = target.client if @kernel.respond_to?(:client=) && @kernel.client != target.client
-      @backend.base_url = target.openai_base_url if @backend.respond_to?(:base_url=)
       backend_for(target)
     end
 
@@ -1043,13 +1054,6 @@ module Samagotchi
       @activity_mutex.synchronize { session.messages = messages }
     end
 
-    def explicit_backend(provider)
-      explicit = !provider.nil? || !ENV["SAMAGOTCHI_BACKEND"].to_s.strip.empty?
-      return nil unless explicit
-
-      LLM::Factory.factory(provider: provider, model_name: @default_model_name, kernel: @kernel, base_url: ruby_llm_base_url)
-    end
-
     # Pick the loop for a target; a chat backend is pointed at the target's /v1.
     def backend_for(target)
       return @native_backend unless target.entry.chat?
@@ -1060,12 +1064,6 @@ module Samagotchi
       end
       chat.base_url = target.openai_base_url
       chat
-    end
-
-    def ruby_llm_base_url
-      @host_registry.resolve(@effective_model_name).openai_base_url
-    rescue StandardError
-      nil
     end
 
     # Load hooks from the global config file using the Hooks::Loader.

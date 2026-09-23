@@ -78,13 +78,12 @@ module Samagotchi
 
     # Build the opts hash passed to Process.spawn for a forked worker. Setting
     # opts[:env] REPLACES the child ENV rather than merging it, so explicitly
-    # thread through the values a worker needs (backend, hosts, default model).
+    # thread through the values a worker needs (hosts, default model).
     private_class_method def self.spawn_options
       # Own process group: workers outlive `chi web`, and a Ctrl-C in its
       # terminal must not reach them.
       opts = { out: File::NULL, err: File::NULL, pgroup: true }
       child_env = {}
-      child_env["SAMAGOTCHI_BACKEND"] = ENV["SAMAGOTCHI_BACKEND"] if ENV["SAMAGOTCHI_BACKEND"]
       # Propagate hosts config for multi-host routing
       begin
         require_relative "config"

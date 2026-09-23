@@ -707,6 +707,12 @@ end
 options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, web: false, web_port: nil, web_open: false, web_markdown: nil }
 cli_overrides = {}
 
+if ARGV.any? { |arg| arg == "--backend" || arg.start_with?("--backend=") }
+  warn "Error: --backend was removed. A host's api: in config.yml picks the loop " \
+       "(api: openai for the chat API; see docs/configuration.md)."
+  exit 1
+end
+
 # Strict kebab enforcement: --recap_base_url is unknown (OptionParser would otherwise accept _ as -)
 ARGV.each do |arg|
   next unless arg.start_with?("--") && arg.include?("_")
@@ -715,7 +721,7 @@ ARGV.each do |arg|
   base = arg.split("=", 2).first
   # If dashed version is a known flag (registry or hardcoded), reject underscore variant
   dashed = base.tr("_", "-")
-  known = %w[--prompt --resume --attach --shared --no-shared --model --memory --backend --no-interrupt --non-interactive --verbose --no-default-input --port --open] + Samagotchi::Config.cli_entries.map(&:cli_flag)
+  known = %w[--prompt --resume --attach --shared --no-shared --model --memory --no-interrupt --non-interactive --verbose --no-default-input --port --open] + Samagotchi::Config.cli_entries.map(&:cli_flag)
   if known.include?(dashed) || known.include?(base)
     warn "Unknown option: #{arg} (did you mean #{dashed}?)"
     exit 1
@@ -730,7 +736,6 @@ OptionParser.new do |opts|
   opts.on("--[no-]shared", "Run the session in a background worker and attach to it, so `chi web` can share it (with --resume: that session); --no-shared runs a plain REPL even when session.shared is on") { |v| options[:shared] = v }
   opts.on("--model NAME", "Model selector (runtime only, overrides --resume) [alias for --default-model]") { |m| options[:model] = m; cli_overrides["default.model"] = m }
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable)") { |m| (options[:memories] ||= []) << m }
-  opts.on("--backend NAME", %w[native ruby_llm], "Model backend to use (default: native)") { |b| options[:backend] = b; cli_overrides["backend"] = b }
   opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true; cli_overrides["no_interrupt"] = true }
   opts.on("--non-interactive", "Run a single prompt and exit (no REPL, implies --no-interrupt)") { options[:non_interactive] = true }
   opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results") { options[:verbose] = true }
@@ -740,7 +745,7 @@ OptionParser.new do |opts|
   # Universal config flags (implicit convention: ENV SAMAGOTCHI_* ↔ YAML dotted ↔ CLI --kebab)
   # Generated from Samagotchi::Config registry — Option A: snake leaf in YAML, kebab in CLI.
   Samagotchi::Config.cli_entries.each do |entry|
-    next if %w[backend no_interrupt no_default_input].include?(entry.key)
+    next if %w[no_interrupt no_default_input].include?(entry.key)
     next if entry.key == "web.port" # already handled as --port
     next if entry.key == "default.model" # alias --model above
     next if entry.key == "web.markdown" # handled below with an explicit inverse flag
@@ -861,8 +866,7 @@ begin
     no_default_input: options[:no_default_input],
     memories: options[:memories] || [],
     non_interactive: options[:non_interactive],
-    model_name: options[:model],
-    backend: options[:backend]
+    model_name: options[:model]
   ).run
 rescue Samagotchi::TerminalUI::SessionBusy => e
   warn "Error: #{e.message}"
