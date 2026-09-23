@@ -35,7 +35,7 @@ module Samagotchi
       },
       {
         name: "read",
-        description: "Read a file from disk. Large files may be truncated to a head+tail preview with metadata. Optionally pass start_line and end_line (1-based, inclusive) to read only a specific line range.",
+        description: "Read a file from disk. Large files may be truncated to a head+tail preview with metadata. Optionally pass start_line and end_line (1-based, inclusive) to read only a specific line range. An image file (png, jpeg, gif, webp) comes back as the picture itself: read it to see it.",
         parameters: {
           type: "object",
           properties: {
