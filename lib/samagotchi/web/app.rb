@@ -710,7 +710,7 @@ module Samagotchi
           next if role == "system"
           next if role == "tool_response"
 
-          stripped = Samagotchi::OutputFormatter.strip(content)
+          stripped = Samagotchi::OutputFormatter.strip_markup(content)
           next if stripped.empty?
 
           norm_role = role == "model" ? "assistant" : role

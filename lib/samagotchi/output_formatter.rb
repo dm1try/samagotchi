@@ -80,7 +80,7 @@ module Samagotchi
 
     # The same tokens as #strip, but the text keeps its layout (indentation,
     # runs of spaces); only the blank lines removed blocks leave collapse.
-    # For showing a whole saved answer (the attached TUI's join).
+    # For showing a whole saved message (the attached TUI's join, the web history).
     def strip_markup(text)
       remove_tokens(text).gsub(/\n[ \t]*\n(?:[ \t]*\n)+/, "\n\n").strip
     end

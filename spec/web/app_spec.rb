@@ -218,6 +218,19 @@ RSpec.describe Samagotchi::Web::App do
       expect(message["html"]).to include('rel="noopener noreferrer"')
     end
 
+    it "keeps the history's layout: code indentation and nested lists" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      answer = "- a\n  - nested\n\n```python\ndef f(x):\n    return  1\n```"
+      live = { "snapshot" => { "messages" => [
+        { "role" => "user", "content" => "fix:\n    x  = 1" },
+        { "role" => "model", "content" => "<think>hm</think>#{answer}" }
+      ] } }
+      allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+      _status, _headers, body = app.call(env_for("/api/sessions/s1"))
+
+      expect(JSON.parse(body.first)["messages"].map { |m| m["content"] }).to eq(["fix:\n    x  = 1", answer])
+    end
+
     it "includes last_event_seq = nil when no bridge is live" do
       manager = FakeResponsesManager.new(responses: %w[one two three])
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
