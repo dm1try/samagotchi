@@ -171,7 +171,7 @@ module Samagotchi
         when :turn_canceled
           end_turn("turn cancelled (#{event[:cancellation_reason]})")
         when :turn_failed
-          end_turn("turn failed: #{event[:message]} (#{event[:error_class]})")
+          end_turn("turn failed: #{event[:summary] || "#{event[:message]} (#{event[:error_class]})"}")
         when :input_merged
           count = event[:count].to_i
           @screen.commit("(#{count} message#{"s" unless count == 1} merged into the running turn)")

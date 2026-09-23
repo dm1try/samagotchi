@@ -126,6 +126,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(screen.lines.last).to eq("turn failed: server down (Samagotchi::Client::RetryExhausted)")
       expect(attached).not_to be_running
     end
+
+    it "shows a provider error's one-line summary" do
+      feed({ type: :turn_failed, error_class: "Samagotchi::LLM::AuthError", message: "fw: set FW_KEY",
+             error_kind: :auth, retryable: false, host: "fw", summary: "auth failed for host fw: set FW_KEY" })
+
+      expect(screen.lines.last).to eq("turn failed: auth failed for host fw: set FW_KEY")
+    end
   end
 
   it "keeps the latest recap for /recap, from the join's snapshot or announced later, until a turn starts" do

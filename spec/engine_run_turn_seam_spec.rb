@@ -231,6 +231,26 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     expect(engine.metrics.snapshot[:turn_records].last).to include(status: "failed")
   end
 
+  it "says in :turn_failed what kind of provider error ended the turn" do
+    error = Samagotchi::LLM::RateLimited.new("fw: HTTP 429: slow down", host: "fw", status: 429, retry_after: 20.0)
+    allow(kernel).to receive(:run).and_raise(error)
+    events = []
+
+    expect { engine.run_turn(session, "hi", on_event: ->(e) { events << e }) }.to raise_error(error)
+
+    expect(events.last).to include(type: :turn_failed, error_kind: :rate_limited, retryable: true, host: "fw",
+                                   summary: "rate limited by host fw; retry after 20s")
+  end
+
+  it "adds no provider fields for other errors" do
+    allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
+    events = []
+
+    expect { engine.run_turn(session, "hi", on_event: ->(e) { events << e }) }.to raise_error(RuntimeError)
+
+    expect(events.last.keys).to contain_exactly(:type, :error_class, :message)
+  end
+
 describe "a failed turn" do
   it "keeps the prompt and the loop's completed iterations in the session, and saves it" do
     partial = [{ role: "system", content: "sys" }, { role: "user", content: "hi" },

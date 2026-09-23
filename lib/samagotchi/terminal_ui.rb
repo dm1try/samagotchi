@@ -9,6 +9,7 @@ require "set"
 require_relative "model_profile"
 require_relative "config"
 require_relative "cancellation_controller"
+require_relative "llm/errors"
 require_relative "host_registry"
 require_relative "context_usage"
 require_relative "context_window"
@@ -395,8 +396,8 @@ module Samagotchi
             continue_checkpoint = @engine.messages_checkpoint
             begin
               result = run_engine_turn(session, nil, continue: true)
-            rescue Client::RetryExhausted => e
-              @surface.commit("\nmodel> network error after #{e.attempts} attempts; continue prompt preserved")
+            rescue LLM::ProviderError => e
+              @surface.commit("\nmodel> #{e.summary}; continue prompt preserved")
               awaiting_continue = true
               interrupted_turn_checkpoint = nil unless awaiting_continue
               next
@@ -492,14 +493,14 @@ module Samagotchi
             # Engine#run_turn injects due reminders as a tail message, appends
             # the prompt, and renders through @renderer via on_event.
             result = run_engine_turn(session, normalize_model_input(input))
-          rescue Client::RetryExhausted => e
+          rescue LLM::ProviderError => e
             # Engine closed the turn (:turn_failed); show its duration.
             # Retries were already tallied via generation_retrying events.
             emit_interactive_turn_duration(canceled: false)
             @engine.rollback_to(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             awaiting_continue = false
             queue_input_prefill(input)
-            @surface.commit("\nmodel> network error after #{e.attempts} attempts; prompt restored for retry")
+            @surface.commit("\nmodel> #{e.summary}; prompt restored for retry")
             interrupted_turn_checkpoint = nil unless awaiting_continue
             next
           end
@@ -741,8 +742,9 @@ module Samagotchi
       begin
         result = run_engine_turn(session, nil, continue: true)
         @prompt = nil
-      rescue Client::RetryExhausted
-        nil # like other failed turns: back to the prompt
+      rescue LLM::ProviderError => e
+        # like other failed turns: back to the prompt
+        @surface.commit("\nmodel> #{e.summary}")
       ensure
         @surface.clear_slot(:hints)
       end

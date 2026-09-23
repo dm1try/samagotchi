@@ -192,6 +192,13 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       expect { adapter.chat(messages: messages, tools: [], model: "m") }.to raise_error(Samagotchi::LLM::ProtocolError)
     end
 
+    it "raises ProtocolError for a 200 whose body has no stream events" do
+      server.enqueue("/v1/chat/completions", json: "{not json")
+
+      expect { adapter.chat(messages: messages, tools: [], model: "m") }
+        .to raise_error(Samagotchi::LLM::ProtocolError, /no stream events.*\{not json/)
+    end
+
     it "raises the server's mid-stream error" do
       server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("stream_error.hand-written.sse"))
 

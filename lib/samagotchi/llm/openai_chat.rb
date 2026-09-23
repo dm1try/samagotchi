@@ -85,13 +85,21 @@ module Samagotchi
         return chat_once(request, cancel_controller) unless @stream
 
         assembly = Assembly.new
+        events = 0
+        other = +""
         @http.stream_lines(URI(request.uri.to_s), request, cancel_controller: cancel_controller, on_retry: on_retry) do |line|
+          events += 1 if line.start_with?("data:")
+          other << line[0, 200] if !line.start_with?("data:") && other.length < 200
           payload = parse_line(line)
           next unless payload
 
           content, reasoning = assembly.add(payload)
           on_delta&.call(content: content, reasoning: reasoning, payload: payload)
         end
+        # A server that ignores stream: true, or answers with something else
+        # entirely, would otherwise end the turn with no answer and no error.
+        raise ProtocolError.new("#{@host_name}: the response had no stream events: #{other}", host: @host_name) if events.zero?
+
         assembly.response
       end
 

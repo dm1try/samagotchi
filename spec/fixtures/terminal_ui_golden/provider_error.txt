@@ -6,7 +6,7 @@
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[36mchi>\e[0m turn completed (<elapsed>)
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J
-model> network error after 4 attempts (host llama.cpp: Errno::ECONNREFUSED); prompt restored for retry
+model> auth failed for host fw: set FW_KEY (the API key for host fw); prompt restored for retry
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J
 Continue session: chi --resume <session-id>

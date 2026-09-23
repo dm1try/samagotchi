@@ -816,7 +816,9 @@ module Samagotchi
     # An Interrupt (SIGINT) cancels the turn: the pre-turn conversation plus
     # the prompt is kept in the session and :turn_canceled is emitted, then the
     # Interrupt is re-raised so the caller still decides whether to exit. Any
-    # other error (e.g. Client::RetryExhausted) emits :turn_failed and re-raises.
+    # other error (e.g. an LLM::ProviderError) emits :turn_failed and
+    # re-raises; a provider error adds error_kind:, retryable:, host: and a
+    # one-line summary:.
     def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false, origin: nil)
       # Track the active session for recap and status snapshot.
       @session = session
@@ -975,7 +977,12 @@ module Samagotchi
         replace_session_messages(session, kept) if kept
         session.status = Session::STATUS_IDLE
         begin; session.save; rescue StandardError; nil; end
-        emit_event(on_event, with_origin.call({ type: :turn_failed, error_class: e.class.name, message: e.message }))
+        failed = { type: :turn_failed, error_class: e.class.name, message: e.message }
+        # A provider error says what kind it is, for one line per kind in the UIs.
+        if e.is_a?(LLM::ProviderError)
+          failed.merge!(error_kind: e.kind, retryable: e.retryable?, host: e.host, summary: e.summary)
+        end
+        emit_event(on_event, with_origin.call(failed))
         @metrics.persist
         raise
       ensure

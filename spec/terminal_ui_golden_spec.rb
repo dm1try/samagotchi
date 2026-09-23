@@ -322,4 +322,14 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
 
     expect_golden("retry_exhausted", output)
   end
+
+  it "prints a provider error's one line and restores the prompt" do
+    events = [{ type: :generation_started, iteration: 1 }]
+    error = Samagotchi::LLM::AuthError.new("fw: set FW_KEY (the API key for host fw)", host: "fw")
+
+    output = run_turn(model: "Qwen3-14B", events: events) { |_messages| raise error }
+
+    expect(output).to include("model> auth failed for host fw: set FW_KEY (the API key for host fw); prompt restored for retry")
+    expect_golden("provider_error", output)
+  end
 end

@@ -68,6 +68,15 @@ RSpec.describe Samagotchi::LLM::HTTP do
       expect(sleeps.sum.round(2)).to eq(1.5)
     end
 
+    it "yields a last line that has no newline" do
+      server.enqueue("/v1/chat/completions", sse: ["data: 1\n\ndata: 2"])
+      lines = []
+
+      http.stream_lines(uri, post_request) { |line| lines << line }
+
+      expect(lines).to eq(["data: 1", "", "data: 2"])
+    end
+
     it "raises other errors without retrying" do
       server.enqueue("/v1/chat/completions", sse: "data: x\n\n")
 

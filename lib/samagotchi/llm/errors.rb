@@ -45,13 +45,23 @@ module Samagotchi
 
       def kind = :provider
 
+      # One line for the UIs, e.g. "auth failed for host fw: set FW_KEY".
+      def summary = "error from host #{host}: #{detail}"
+
       private
 
       def default_retryable? = false
+
+      # The message without its leading "host: ".
+      def detail
+        host && message.start_with?("#{host}: ") ? message.delete_prefix("#{host}: ") : message
+      end
     end
 
     class ConnectionError < ProviderError
       def kind = :connection
+
+      def summary = "can't reach host #{host}: #{detail}"
 
       private
 
@@ -61,6 +71,10 @@ module Samagotchi
     class RateLimited < ProviderError
       def kind = :rate_limited
 
+      def summary
+        retry_after ? "rate limited by host #{host}; retry after #{retry_after.ceil}s" : "rate limited by host #{host}: #{detail}"
+      end
+
       private
 
       def default_retryable? = true
@@ -68,10 +82,14 @@ module Samagotchi
 
     class ServerError < ProviderError
       def kind = :server
+
+      def summary = "server error from host #{host}: #{detail}"
     end
 
     class AuthError < ProviderError
       def kind = :auth
+
+      def summary = "auth failed for host #{host}: #{detail}"
     end
 
     class BadRequest < ProviderError
@@ -84,10 +102,20 @@ module Samagotchi
       def context_overflow? = @context_overflow
 
       def kind = :bad_request
+
+      def summary
+        if context_overflow?
+          "the conversation is too long for host #{host}'s context window: #{detail}"
+        else
+          "host #{host} rejected the request: #{detail}"
+        end
+      end
     end
 
     class ProtocolError < ProviderError
       def kind = :protocol
+
+      def summary = "unexpected response from host #{host}: #{detail}"
     end
 
     # A request that kept failing on network errors until the retry budget
@@ -100,6 +128,8 @@ module Samagotchi
         super("#{label} request failed after #{attempts} attempts: #{last_error.class}: #{last_error.message}",
               host: label, retryable: false, attempts: attempts)
       end
+
+      def summary = "network error after #{attempts} attempts (host #{host}: #{last_error.class})"
     end
 
     # Builds the ProviderError for an HTTP error response or a server's error

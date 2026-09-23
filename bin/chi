@@ -871,4 +871,8 @@ begin
 rescue Samagotchi::TerminalUI::SessionBusy => e
   warn "Error: #{e.message}"
   exit 1
+rescue Samagotchi::LLM::ProviderError => e
+  # -p --non-interactive: the turn failed; its prompt is in the session.
+  warn "Error: #{e.summary}"
+  exit 1
 end

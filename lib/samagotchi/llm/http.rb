@@ -129,6 +129,8 @@ module Samagotchi
                   on_line.call(line)
                 end
               end
+              # A body that doesn't end in a newline still has a last line.
+              on_line.call(buffer.strip) unless buffer.strip.empty?
             end
           end
         end

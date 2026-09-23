@@ -1384,7 +1384,7 @@ file2.rb")
 
       agent = described_class.new(mode: "assist", client: client)
       expect(agent).to receive(:queue_input_prefill).with("retry me").and_call_original
-      expect { agent.run }.to output(/network error after 6 attempts; prompt restored for retry/m).to_stdout
+      expect { agent.run }.to output(/network error after 6 attempts \(host llama.cpp: Errno::ECONNREFUSED\); prompt restored for retry/m).to_stdout
     end
 
     it "injects queued prefill text into the next multiline input" do

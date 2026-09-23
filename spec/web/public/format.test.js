@@ -59,3 +59,13 @@ test("ownerBadge marks live sessions by who holds them", () => {
   assert.equal(ownerBadge(null, "abc"), null);
   assert.equal(ownerBadge(undefined, "abc"), null);
 });
+
+test("failedTurnText shows the error's one-line summary, else its message and class", async () => {
+  const { failedTurnText } = await import("../../../lib/samagotchi/web/public/format.js");
+  assert.equal(
+    failedTurnText({ summary: "auth failed for host fw: set FW_KEY", message: "fw: set FW_KEY", error_class: "Samagotchi::LLM::AuthError" }),
+    "✕ turn failed: auth failed for host fw: set FW_KEY"
+  );
+  assert.equal(failedTurnText({ message: "boom", error_class: "RuntimeError" }), "✕ turn failed: boom (RuntimeError)");
+  assert.equal(failedTurnText({}), "✕ turn failed: error");
+});

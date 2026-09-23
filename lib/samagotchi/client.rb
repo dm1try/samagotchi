@@ -338,7 +338,11 @@ module Samagotchi
       data = line.delete_prefix("data: ")
       return nil if data == "[DONE]"
 
-      payload = JSON.parse(data)
+      payload = begin
+        JSON.parse(data)
+      rescue JSON::ParserError => e
+        raise LLM::ProtocolError.new("#{@transport.label}: malformed stream chunk: #{e.message[0, 200]}", host: @transport.label)
+      end
       content = @transport.content_from_payload(payload)
       [content, payload]
     end
