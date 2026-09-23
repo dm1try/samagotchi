@@ -135,4 +135,12 @@ RSpec.describe "bin/chi --attach / --shared flags" do
       expect(err).to include(message)
     end
   end
+
+  it "keeps rejecting explicit conflicts with session.shared on" do
+    _out, err, status = Open3.capture3({ "SAMAGOTCHI_SESSION_SHARED" => "1" }, RbConfig.ruby, chi, "--shared", "--model", "m", stdin_data: "")
+
+    expect(status.exitstatus).to eq(1)
+    expect(err).to include("--attach/--shared can't be combined with --model")
+    expect(err).not_to include("session.shared:")
+  end
 end

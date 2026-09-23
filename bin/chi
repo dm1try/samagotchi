@@ -808,7 +808,11 @@ if options[:web]
   exit
 end
 
-if options[:attach] || options[:shared]
+require "samagotchi/launch_mode"
+launch, launch_note = Samagotchi::LaunchMode.resolve(options, shared_config: Samagotchi::Config.get("session.shared"))
+warn launch_note if launch_note
+
+if launch == :attached
   conflict = { prompt: "--prompt", non_interactive: "--non-interactive", model: "--model", memories: "--memory" }
              .find { |key, _flag| options[key] }
   error = if options[:attach] && options[:shared]
@@ -825,7 +829,7 @@ if options[:attach] || options[:shared]
 
   require "samagotchi/terminal_ui/attach_launcher"
   begin
-    ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], shared: options[:shared], resume: options[:resume])
+    ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], shared: !options[:attach], resume: options[:resume])
   rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
     warn "Error: #{e.message}"
     exit 1
