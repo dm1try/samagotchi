@@ -2,6 +2,8 @@
 
 require "samagotchi/llm/backend"
 require "samagotchi/llm/native_tool_normalizer"
+require "samagotchi/kernel_loop"
+require "samagotchi/reminder_store"
 
 RSpec.describe Samagotchi::LLM::NativeToolNormalizer do
   # A gem RubyLLM::ToolCall is {id:, name:, arguments: <Hash>}. We stand in for it
@@ -113,6 +115,37 @@ RSpec.describe Samagotchi::LLM::NativeToolNormalizer do
       expect(mapped[:name]).to eq("task_wait")
       expect(mapped[:timeout]).to eq("5")
       expect(mapped[:done_pattern]).to eq("done")
+    end
+
+    # 7c: these used to pass through, losing description and interval_minutes.
+    it "maps register_reminder: the name is the content, description and interval are kept" do
+      call = tool_call(name: "register_reminder",
+                       arguments: { "name" => "api_health", "description" => "check the API", "interval_minutes" => 15 })
+      mapped = described_class.normalize(call)
+
+      expect(mapped).to include(name: "register_reminder", content: "api_health",
+                                description: "check the API", interval_minutes: 15)
+    end
+
+    it "maps cancel_reminder and list_reminders" do
+      expect(described_class.normalize(tool_call(name: "cancel_reminder", arguments: { "name" => "api_health" })))
+        .to include(name: "cancel_reminder", content: "api_health")
+      expect(described_class.normalize(tool_call(name: "list_reminders")))
+        .to include(name: "list_reminders", content: "")
+    end
+
+    it "registers a real reminder end to end through KernelLoop#dispatch" do
+      store = Samagotchi::ReminderStore.new
+      kernel = Samagotchi::KernelLoop.new(client: double("client"), reminder_store: store)
+      call = tool_call(name: "register_reminder",
+                       arguments: { "name" => "api_health", "description" => "check the API", "interval_minutes" => 15 })
+
+      result = kernel.dispatch_tool_call(described_class.normalize(call))
+
+      expect(result[:output]).not_to include("Error")
+      expect(store.reminders.values).to contain_exactly(
+        include(name: "api_health", description: "check the API", interval_minutes: 15)
+      )
     end
 
     it "passes an unknown tool name through unchanged so dispatch renders the standard error" do

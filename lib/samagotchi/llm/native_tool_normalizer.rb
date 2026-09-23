@@ -12,6 +12,9 @@ require_relative "../tools/task_list"
 require_relative "../tools/task_stop"
 require_relative "../tools/task_wait"
 require_relative "../tools/web_fetch"
+require_relative "../tools/register_reminder"
+require_relative "../tools/cancel_reminder"
+require_relative "../tools/list_reminders"
 require_relative "../tools/ask_user_question"
 
 module Samagotchi
@@ -157,6 +160,21 @@ module Samagotchi
             start_line: nil, end_line: nil,
             cwd: nil, env: nil, description: nil
           }
+        },
+        Tools::RegisterReminder::NAME => lambda { |args|
+          {
+            name: Tools::RegisterReminder::NAME,
+            content: args["name"].to_s,
+            path: nil, scope: nil,
+            description: args["description"],
+            interval_minutes: args["interval_minutes"]
+          }
+        },
+        Tools::CancelReminder::NAME => lambda { |args|
+          { name: Tools::CancelReminder::NAME, content: args["name"].to_s, path: nil, scope: nil }
+        },
+        Tools::ListReminders::NAME => lambda { |_args|
+          { name: Tools::ListReminders::NAME, content: "", path: nil, scope: nil }
         },
         Tools::AskUserQuestion::NAME => lambda { |args|
           raw_opts = args["options"]
