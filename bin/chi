@@ -758,7 +758,7 @@ OptionParser.new do |opts|
       end
     end
   end
-  opts.on("--web-markdown", "Render finalized LLM Markdown in `chi web` (requires optional kramdown gem)") { options[:web_markdown] = true; cli_overrides["web.markdown"] = true }
+  opts.on("--web-markdown", "Render finalized LLM Markdown in `chi web` (requires optional commonmarker gem)") { options[:web_markdown] = true; cli_overrides["web.markdown"] = true }
   opts.on("--no-web-markdown", "Disable Markdown rendering in `chi web`") { options[:web_markdown] = false; cli_overrides["web.markdown"] = false }
   # Strict underscore rejection: --recap_base_url etc. are not registered and will raise OptionParser::InvalidOption
   opts.on("-h", "--help", "Show help") { puts opts; exit }
