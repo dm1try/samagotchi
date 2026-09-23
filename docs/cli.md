@@ -84,6 +84,12 @@ with `-p`, `--non-interactive`, `--model` or `--memory`. The attached view needs
 reline 0.6.x to draw around the open prompt; with another version it prints
 plainly. A session the REPL has open can't be shared (`--shared --resume` says so).
 
+A worker nobody uses exits after `session.idle_exit_minutes` (30 by default, `0`
+for never): no turn running or queued, no UI attached (an open web tab or an
+attached terminal counts, even an idle one) and no reminder registered. The next
+prompt or `--attach` wakes a new worker with the conversation intact; `/stats`
+counters and the last idle recap start over.
+
 ### Web Markdown rendering
 
 Web responses are escaped text by default. To render completed assistant

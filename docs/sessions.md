@@ -13,6 +13,8 @@ Sessions are plain files — no DB. Each session is `~/.local/state/samagotchi/s
 
 A session is deleted if **expired by age OR overflow by count** (unless `keep_status` or the live-owner guard: a session a worker or `chi` still has open is never pruned). A session's `status` is its turn state (`idle`/`running`), not whether a worker is alive. Orphan dirs without a `*.json` are never deleted. Deletion removes both `*.json` and sidecar dir atomically. Set both `DAYS=0` and `MAX=0` to retain forever.
 
+**Worker idle exit:** a background worker (Web UI sessions, `--shared`) exits after `SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES` (`session.idle_exit_minutes`, default `30`, `0`=never) with no turn running or queued, no client on its stream (an open web tab or attached terminal keeps it) and no reminder registered. It removes `bridge.json` and frees `owner.lock`; the next prompt or `--attach` wakes a new worker (`WorkerIdleExit`, `SessionManager.run_session_loop`).
+
 **Lazy sweep:** automatic prune runs at most once per 24h on `GET /api/sessions` (Web). No background thread or cron. Manual prune is always available.
 
 **CLI:**
