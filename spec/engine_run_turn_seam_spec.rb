@@ -231,6 +231,31 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     expect(engine.metrics.snapshot[:turn_records].last).to include(status: "failed")
   end
 
+describe "a failed turn" do
+  it "keeps the prompt and the loop's completed iterations in the session, and saves it" do
+    partial = [{ role: "system", content: "sys" }, { role: "user", content: "hi" },
+               { role: "model", content: "calling" }, { role: "tool_response", content: "[execute]\nok" }]
+    error = Samagotchi::LLM::FailedTurn.attach(RuntimeError.new("boom"), partial)
+    allow(kernel).to receive(:run).and_raise(error)
+    allow(session).to receive(:save)
+
+    expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError, "boom")
+
+    expect(session.messages).to eq(partial)
+    expect(session).to have_received(:save)
+  end
+
+  it "keeps at least the prompt when the loop hands nothing back" do
+    allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
+    allow(session).to receive(:save)
+
+    expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
+
+    expect(session.messages.map { |m| m[:role] }).to eq(%w[system user])
+    expect(session.messages.last[:content]).to eq("hi")
+  end
+end
+
   describe "system prompt stability" do
     it "reuses the first turn's system prompt even when the memory index changes" do
       index = "v1"

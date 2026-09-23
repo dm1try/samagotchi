@@ -960,7 +960,13 @@ module Samagotchi
         @metrics.persist
         raise
       rescue StandardError => e
+        # Keep what the turn got to (the prompt plus the loop's completed
+        # tool iterations) like a cancel does, and save it: a worker exits
+        # after a failed turn. The REPL still rolls back to its checkpoint.
+        kept = e.respond_to?(:partial_conversation) && e.partial_conversation.is_a?(Array) ? e.partial_conversation : messages
+        replace_session_messages(session, kept) if kept
         session.status = Session::STATUS_IDLE
+        begin; session.save; rescue StandardError; nil; end
         emit_event(on_event, with_origin.call({ type: :turn_failed, error_class: e.class.name, message: e.message }))
         @metrics.persist
         raise

@@ -25,3 +25,23 @@ module Samagotchi
     end
   end
 end
+
+module Samagotchi
+  module LLM
+    # Marks an error that ended a turn with the conversation the loop had
+    # built by then (the prompt plus completed tool iterations; a half
+    # streamed reply is not kept), so the caller can keep it, as a cancel's
+    # salvage does.
+    module FailedTurn
+      attr_accessor :partial_conversation
+
+      # The innermost loop's conversation wins.
+      # @return [Exception] +error+
+      def self.attach(error, conversation)
+        error.extend(self) unless error.is_a?(self)
+        error.partial_conversation ||= conversation
+        error
+      end
+    end
+  end
+end

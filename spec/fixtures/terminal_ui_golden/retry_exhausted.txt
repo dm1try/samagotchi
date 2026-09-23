@@ -11,4 +11,6 @@ model> network error after 4 attempts; prompt restored for retry
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J
 Continue session: chi --resume <session-id>
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l--- no session saved ---
+\e[?25h\e[?2026l--- session ---
+system: <prompt>
+user: "hi"

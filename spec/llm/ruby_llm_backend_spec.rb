@@ -292,6 +292,25 @@ RSpec.describe Samagotchi::LLM::RubyLLMBackend do
     end
   end
 
+describe "#complete — a failed turn" do
+  it "hands the conversation built so far back on the error" do
+    install_provider!([body_with_tool(id: "c1", name: "execute", arguments: '{"command":"true"}')])
+    connection = backend.send(:gem_provider).connection
+    calls = 0
+    allow(connection).to receive(:post) do
+      calls += 1
+      raise Faraday::ServerError, "boom" if calls == 2
+
+      body_with_tool(id: "c1", name: "execute", arguments: '{"command":"true"}')
+    end
+
+    expect { backend.complete(messages: [{ role: "user", content: "go" }]) }
+      .to raise_error(Faraday::ServerError) { |error|
+        expect(error.partial_conversation.map { |m| m[:role] }).to eq(%w[user tool_response])
+      }
+  end
+end
+
   describe "statelessness" do
     it "issues a fresh request from messages: each call (no gem Chat retained across calls)" do
       install_provider!([body_with_text("one"), body_with_text("two")])

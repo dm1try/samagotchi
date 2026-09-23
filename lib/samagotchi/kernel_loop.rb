@@ -8,6 +8,7 @@ require_relative "context_window"
 require_relative "prompt"
 require_relative "prompt_literal_guard"
 require_relative "client"
+require_relative "llm/errors"
 require_relative "debug_log"
 require_relative "hooks"
 require_relative "pending_input_queue"
@@ -318,6 +319,9 @@ module Samagotchi
         cancellation_reason: nil,
         context_status: context_status
       )
+    rescue StandardError => e
+      LLM::FailedTurn.attach(e, conversation && duplicate_conversation(conversation))
+      raise
     end
 
     def sync_profile_from_model!(model_name)

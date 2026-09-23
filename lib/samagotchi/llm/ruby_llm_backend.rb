@@ -3,6 +3,7 @@
 require_relative "backend"
 require_relative "model_result"
 require_relative "../client"
+require_relative "errors"
 require_relative "native_tool_normalizer"
 require_relative "../kernel_loop"
 require_relative "../context_window"
@@ -188,6 +189,9 @@ module Samagotchi
 
         build_result(strip_model_thought(last_text), canceled: false, reason: nil,
                      conversation: conversation, exhausted: reached_cap, tool_activity: tool_activity)
+      rescue StandardError => e
+        FailedTurn.attach(e, conversation&.map { |entry| { role: entry[:role], content: entry[:content].to_s } })
+        raise
       end
 
       # Drain the pending input queue (if any) and, when messages are waiting,
