@@ -4,6 +4,7 @@
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/session_manager"
+require "samagotchi/reminder_store"
 
 RSpec.describe Samagotchi::SessionManager do
   let(:tmpdir) { Dir.mktmpdir("session-manager-spec") }
@@ -242,7 +243,8 @@ RSpec.describe Samagotchi::SessionManager do
       session.last_prompt = "hello"
       session.status = Samagotchi::Session::STATUS_STOPPED
       session.save(state_dir: tmpdir)
-      engine = instance_double(Samagotchi::Engine, "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil)
+      engine = instance_double(Samagotchi::Engine, "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
+                                              turn_running?: false, last_activity_at: 0.0)
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       expect(engine).not_to receive(:run_turn)
@@ -253,7 +255,8 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     it "records the worker as owner, with its own pid, while it runs" do
-      engine = instance_double(Samagotchi::Engine, "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil)
+      engine = instance_double(Samagotchi::Engine, "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
+                                              turn_running?: false, last_activity_at: 0.0)
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       owner_seen = nil
       pid_seen = nil
@@ -292,6 +295,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:start_idle)
       allow(engine).to receive(:stop_idle)
       allow(engine).to receive(:reminder_store).and_return(nil)
+      allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0)
       # The worker always starts its Bridge, which subscribes a capture observer.
       sub_handle = double("subscribe_handle")
       allow(sub_handle).to receive(:unsubscribe)
@@ -307,7 +311,8 @@ RSpec.describe Samagotchi::SessionManager do
       session.status = Samagotchi::Session::STATUS_STOPPED
       session.save(state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil)
+      engine = instance_double(Samagotchi::Engine, "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
+                                              turn_running?: false, last_activity_at: 0.0)
       expect(Samagotchi::Engine).to receive(:new) do |**kwargs|
         expect(kwargs).not_to have_key(:recap)
         engine
@@ -324,7 +329,8 @@ RSpec.describe Samagotchi::SessionManager do
       session.messages = [{ role: "user", content: "earlier" }, { role: "model", content: "reply" }]
       session.save(state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, start_idle: nil, stop_idle: nil, reminder_store: nil)
+      engine = instance_double(Samagotchi::Engine, start_idle: nil, stop_idle: nil, reminder_store: nil,
+                                              turn_running?: false, last_activity_at: 0.0)
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       given = nil
@@ -363,6 +369,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:start_idle)
       allow(engine).to receive(:stop_idle)
       allow(engine).to receive(:reminder_store).and_return(nil)
+      allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0)
       sub_handle = double("subscribe_handle")
       allow(sub_handle).to receive(:unsubscribe)
       allow(engine).to receive(:subscribe).and_return(sub_handle)
@@ -411,6 +418,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:start_idle)
       allow(engine).to receive(:stop_idle)
       allow(engine).to receive(:reminder_store).and_return(nil)
+      allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0)
       # The worker always starts its Bridge, which subscribes a capture observer.
       sub_handle = double("subscribe_handle")
       allow(sub_handle).to receive(:unsubscribe)
@@ -436,6 +444,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       allow(engine).to receive(:start_idle)
       allow(engine).to receive(:reminder_store).and_return(nil)
+      allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0)
       sub_handle = double("subscribe_handle")
       allow(sub_handle).to receive(:unsubscribe)
       allow(engine).to receive(:subscribe).and_return(sub_handle)
@@ -450,6 +459,92 @@ RSpec.describe Samagotchi::SessionManager do
         described_class.run_session_loop(session.id, state_dir: tmpdir)
       }.to raise_error(SystemExit)
       expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).last_prompt).to eq("earlier")
+    end
+  end
+
+  describe "idle exit" do
+    let(:session) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
+        s.save(state_dir: tmpdir)
+      end
+    end
+    let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
+    let(:sidecar) { File.join(session_dir, "bridge.json") }
+    let(:reminders) { Samagotchi::ReminderStore.new }
+    let(:engine) do
+      instance_double(Samagotchi::Engine, "session=": nil, start_idle: nil, stop_idle: nil,
+                                          reminder_store: reminders, turn_running?: false, last_activity_at: 0.0)
+    end
+
+    before do
+      allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
+      allow(engine).to receive(:synchronize_events) { |&block| block.call }
+      allow(Samagotchi::Engine).to receive(:new).and_return(engine)
+    end
+
+    def run_worker
+      described_class.run_session_loop(session.id, state_dir: tmpdir, idle_exit_minutes: 0.002, poll_interval: 0.01)
+    end
+
+    def input_files
+      Dir.glob(File.join(session_dir, described_class::INPUT_DIR, "*.json"))
+    end
+
+    it "returns once nobody has used the worker for the timeout, freeing the session" do
+      sidecar_seen = nil
+      allow(described_class).to receive(:find_new_input_files).and_wrap_original do |original, *args|
+        sidecar_seen ||= File.exist?(sidecar)
+        original.call(*args)
+      end
+
+      expect(run_worker).to eq(:idle_exit)
+
+      expect(sidecar_seen).to be(true)
+      expect(File.exist?(sidecar)).to be(false)
+      expect(Samagotchi::OwnerLock.owner(session_dir)).to be_nil
+      expect(engine).to have_received(:stop_idle)
+    end
+
+    it "stays up while a reminder is registered" do
+      reminders.register(name: "stretch", description: "Remind me to stretch", interval_minutes: 60)
+      polls = 0
+      allow(described_class).to receive(:find_new_input_files).and_wrap_original do |original, *args|
+        polls += 1
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir) if polls == 60
+        original.call(*args)
+      end
+
+      expect { run_worker }.to raise_error(SystemExit)
+      expect(polls).to be >= 60
+    end
+
+    it "stays up for input that came in while it checked with the event log held" do
+      calls = 0
+      allow(engine).to receive(:synchronize_events) do |&block|
+        calls += 1
+        described_class.write_turn_input(session.id, prompt: "late", state_dir: tmpdir) if calls == 1
+        block.call
+      end
+      allow(engine).to receive(:run_turn) do
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+        nil
+      end
+
+      expect { run_worker }.to raise_error(SystemExit)
+      expect(engine).to have_received(:run_turn).with(anything, "late", hash_including(:pending_input))
+    end
+
+    it "wakes a new worker for input queued after its last check" do
+      # Written after the check, while this worker still holds the lock.
+      allow(engine).to receive(:stop_idle) do
+        described_class.write_turn_input(session.id, prompt: "late", state_dir: tmpdir)
+      end
+      allow(Process).to receive(:spawn).and_return(40_004)
+
+      expect(run_worker).to eq(:idle_exit)
+
+      expect(Process).to have_received(:spawn)
+      expect(input_files.size).to eq(1)
     end
   end
 
@@ -493,6 +588,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       allow(engine).to receive(:start_idle)
       allow(engine).to receive(:reminder_store).and_return(nil)
+      allow(engine).to receive_messages(turn_running?: false, last_activity_at: 0.0)
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       expect {
         described_class.run_session_loop(session.id, state_dir: tmpdir)

@@ -9,6 +9,8 @@ require "rbconfig"
 
 require_relative "session"
 require_relative "owner_lock"
+require_relative "worker_idle_exit"
+require_relative "debug_log"
 require_relative "terminal_ui"
 
 module Samagotchi
@@ -94,7 +96,7 @@ module Samagotchi
       # Also propagate current default model (may be host-qualified)
       child_env["SAMAGOTCHI_DEFAULT_MODEL"] = ENV["SAMAGOTCHI_DEFAULT_MODEL"] if ENV["SAMAGOTCHI_DEFAULT_MODEL"]
       # A worker gets no CLI args: pass on an idle exit set by any layer.
-      idle_exit = begin Samagotchi::Config.get("session.idle_exit_minutes") rescue nil end
+      idle_exit = config_idle_exit_minutes
       child_env["SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES"] = idle_exit.to_s unless idle_exit.nil?
       opts[:env] = child_env unless child_env.empty?
       opts
@@ -286,21 +288,35 @@ module Samagotchi
     # The worker first takes the session's OwnerLock; when another owner holds
     # it (a racing resume spawned two workers, or the TUI has the session) it
     # exits quietly.
-    def self.run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT)
+    #
+    # A worker nobody uses returns once session.idle_exit_minutes have passed
+    # (see WorkerIdleExit). The next send wakes a new one.
+    # @param idle_exit_minutes [Numeric, nil] nil: session.idle_exit_minutes
+    # @param poll_interval [Numeric] seconds between input polls
+    # @return [Symbol] :idle_exit
+    def self.run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT,
+                              idle_exit_minutes: nil, poll_interval: 1)
       sd = state_dir || Session.default_state_dir
       session_dir = Session.session_dir(session_id, state_dir: sd)
       # Kept in a class ivar so the lock's File lives as long as the worker.
       @owner_lock = OwnerLock.acquire(session_dir, kind: "worker", wait: owner_wait)
       exit(0) unless @owner_lock
-      begin
+      result = begin
         File.write(File.join(session_dir, PID_FILE), Process.pid.to_s)
-        run_owned_session_loop(session_id, state_dir: sd, session_dir: session_dir)
+        run_owned_session_loop(session_id, state_dir: sd, session_dir: session_dir,
+                                           idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
       ensure
         @owner_lock.release
       end
+      # Only after the release: a writer that still saw this worker as the
+      # owner may have queued input since the last check. Either it finds no
+      # owner after its write and wakes one, or this finds its input.
+      resume_session(session_id, state_dir: sd) if result == :idle_exit && !find_new_input_files(session_dir).empty?
+      result
     end
 
-    private_class_method def self.run_owned_session_loop(session_id, state_dir:, session_dir:)
+    private_class_method def self.run_owned_session_loop(session_id, state_dir:, session_dir:,
+                                                         idle_exit_minutes: nil, poll_interval: 1)
       sd = state_dir
       session = Session.load(session_id, state_dir: sd)
       engine = Samagotchi::Engine.new(
@@ -327,6 +343,11 @@ module Samagotchi
       engine.start_idle
 
       bridge_instance = start_bridge(engine:, state_dir: sd, session_id: session_id)
+      idle_exit = WorkerIdleExit.new(
+        engine: engine, bridge: bridge_instance,
+        timeout_minutes: idle_exit_minutes || config_idle_exit_minutes,
+        input_pending: -> { !find_new_input_files(session_dir).empty? }
+      )
 
       begin
         # Shared mid-turn steering drain: claims any input files that arrive
@@ -387,7 +408,9 @@ module Samagotchi
 
           input_files = find_new_input_files(session_dir)
           if input_files.empty?
-            sleep(1)
+            return :idle_exit if idle_exit.due? && leave_idle(engine, bridge_instance, idle_exit)
+
+            sleep(poll_interval)
             next
           end
 
@@ -423,6 +446,36 @@ module Samagotchi
       ensure
         bridge_instance&.stop
       end
+    end
+
+    # Check again with the event log held, which the Bridge holds while it
+    # queues a POST /turn, then close the Bridge so no client can queue one
+    # after the check, and stop the idle jobs (reminder callback, recap).
+    # A client connecting from here on finds no worker: `chi --attach` fails
+    # and the web stream answers 503 (a small window, left as is).
+    # @return [Boolean] false when something came in since #due?
+    private_class_method def self.leave_idle(engine, bridge, idle_exit)
+      engine.synchronize_events do
+        next false unless idle_exit.due?
+
+        bridge&.stop
+        engine.stop_idle
+        log_idle_exit(idle_exit)
+        true
+      end
+    end
+
+    private_class_method def self.config_idle_exit_minutes
+      Samagotchi::Config.get("session.idle_exit_minutes")
+    rescue StandardError
+      nil
+    end
+
+    private_class_method def self.log_idle_exit(idle_exit)
+      path = begin Samagotchi::Config.get("log.file") rescue nil end
+      log = DebugLog.new(path: path)
+      log.write("[worker] pid #{Process.pid} idle-exits after #{idle_exit.idle_seconds.round}s unused")
+      log.close
     end
 
     private_class_method def self.setup_session_directory(session_dir, session, state_dir:)
