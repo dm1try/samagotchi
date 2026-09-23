@@ -74,8 +74,6 @@ module Samagotchi
     STATUS_FIXED_WIDTH_ENV = "SAMAGOTCHI_STATUS_FIXED_WIDTH"
     STATUS_MAX_WIDTH_ENV = "SAMAGOTCHI_STATUS_MAX_WIDTH"
     STATUS_MAX_WIDTH_DEFAULT = 160
-    CANCEL_MONITOR_POLL_INTERVAL = 0.05
-    CTRL_C_BYTE = "\u0003"
     REMINDER_PENDING_POLL_INTERVAL = 0.5
 
     # Raised when another process (a `chi web` worker or another chi) owns the
@@ -566,7 +564,6 @@ module Samagotchi
 
     def generation_feedback_started(event = {})
       @context_window_tokens = event[:context_window_tokens] if event[:context_window_tokens]
-      start_cancel_hotkey_monitor(@active_cancel_controller)
       clear_retry_spinner_status
       @latest_server_context_status = nil
       reset_thinking_tail_preview
@@ -609,7 +606,6 @@ module Samagotchi
     end
 
     def generation_feedback_finished
-      stop_cancel_hotkey_monitor
       @spinner_lock.synchronize do
         clear_retry_spinner_status
         reset_thinking_tail_preview
@@ -808,7 +804,6 @@ module Samagotchi
       emit_cancellation_notice(result)
       result
     ensure
-      stop_cancel_hotkey_monitor
       @active_cancel_controller = nil
       finish_thinking_spinner
     end
@@ -849,78 +844,6 @@ module Samagotchi
         "ctrl-c"
       else
         reason.to_s
-      end
-    end
-
-    def start_cancel_hotkey_monitor(cancellation_controller)
-      return unless cancellation_controller
-      return unless cancel_hotkey_monitor_enabled?
-      # Reline has stdin (and its own tty mode) while a read is open, and the
-      # seam hands its Ctrl-C to the turn; a second reader would steal keys.
-      return if RelineSeam.reading?
-
-      stop_cancel_hotkey_monitor
-      @cancel_hotkey_stop_requested = false
-
-      @cancel_hotkey_thread = Thread.new do
-        Thread.current.report_on_exception = false
-        stdin = $stdin
-
-        begin
-          with_cancel_hotkey_input_mode(stdin) do
-            loop do
-              break if @cancel_hotkey_stop_requested
-              break if cancellation_controller.cancelled?
-
-              readable = IO.select([stdin], nil, nil, CANCEL_MONITOR_POLL_INTERVAL)
-              next unless readable
-
-              key = begin
-                stdin.read_nonblock(1)
-              rescue IO::WaitReadable, EOFError
-                nil
-              end
-              next if key.nil?
-
-              process_cancel_hotkey_char(key, at: monotonic_time, controller: cancellation_controller)
-              break if cancellation_controller.cancelled?
-            end
-          end
-        rescue StandardError
-          nil
-        end
-      end
-    end
-
-    def stop_cancel_hotkey_monitor
-      thread = @cancel_hotkey_thread
-      @cancel_hotkey_thread = nil
-      @cancel_hotkey_stop_requested = true
-      return unless thread
-      return if thread == Thread.current
-
-      thread.join(CANCEL_MONITOR_POLL_INTERVAL * 3)
-    rescue StandardError
-      nil
-    end
-
-    def with_cancel_hotkey_input_mode(stdin)
-      stdin.cbreak do
-        yield
-      end
-    end
-
-    def cancel_hotkey_monitor_enabled?
-      return false unless @mode == :assist
-      return false unless $stdin.tty?
-      return false unless $stdout.tty?
-
-      ENV.fetch("TERM", "") != "dumb"
-    end
-
-    def process_cancel_hotkey_char(char, at:, controller:)
-      if char == CTRL_C_BYTE
-        controller.cancel!(:ctrl_c)
       end
     end
 
