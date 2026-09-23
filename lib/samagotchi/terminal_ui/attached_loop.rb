@@ -5,6 +5,7 @@ require_relative "event_renderer"
 require_relative "formatting"
 require_relative "attached_view"
 require_relative "input_support"
+require_relative "image_input"
 require_relative "line_reader"
 require_relative "question_prompt"
 require_relative "reline_seam"
@@ -393,11 +394,13 @@ module Samagotchi
         persist_recent_history(text)
         # #memory shorthand becomes words the model reads, as in the REPL.
         prompt = normalize_model_input(text)
-        reply = if @no_interrupt
-                  @client.post_turn(prompt: prompt, client_id: @client_id, no_interrupt: true)
-                else
-                  @client.post_turn(prompt: prompt, client_id: @client_id)
-                end
+        images = attach_images(text)
+        return if images.nil?
+
+        options = { prompt: prompt, client_id: @client_id }
+        options[:no_interrupt] = true if @no_interrupt
+        options[:images] = images unless images.empty?
+        reply = @client.post_turn(**options)
         if reply.status == 202
           enqueued_id = reply.json&.fetch("enqueued_id", nil)
           @sent_ids << enqueued_id if enqueued_id
@@ -405,7 +408,25 @@ module Samagotchi
         end
 
         detail = reply.json&.fetch("error", nil)
-        @screen.commit("could not send the prompt (#{[reply.status, detail].compact.join(" ")})")
+        explained = reply.json&.fetch("detail", nil) if detail == "images_unsupported"
+        @screen.commit("could not send the prompt (#{[reply.status, detail].compact.join(" ")})#{": #{explained}" if explained}")
+      end
+
+      # The prompt's `@path` images, stored in the session's images/ here
+      # (this machine, the worker's state dir) and sent as refs: the Bridge
+      # never takes a path. nil (after a line saying why) when one can't be.
+      def attach_images(text)
+        paths = ImageInput.extract(text)
+        return [] if paths.empty?
+
+        session_dir = Session.session_dir(@client.session_id)
+        paths.map do |image|
+          ref = ImageStore.ingest(session_dir, path: image[:path])
+          { file: ref[:file], name: ref[:name] }
+        end
+      rescue ImageStore::Error => e
+        @screen.commit("could not attach the image: #{e.message}")
+        nil
       end
 
       def show_stats
@@ -680,6 +701,7 @@ module Samagotchi
         return unless last_user
 
         @screen.commit(prompt_line(nil, exchange[last_user][:content]))
+        Array(exchange[last_user][:images]).each { |ref| @screen.commit(format_image_line(ref)) }
         # The saved answer is raw: the latest keeps its thinking, and one may
         # be only a tool call.
         answer = exchange[(last_user + 1)..].reverse_each
@@ -708,6 +730,7 @@ module Samagotchi
         unless @turn_continues && reminder_origin?(turn[:origin] || {})
           @screen.commit(prompt_line(turn.dig(:origin, :client_id), turn[:prompt] || "(continuing)"))
         end
+        Array(turn[:images]).each { |ref| @screen.commit(format_image_line(ref)) }
         tail = nil
         running_tool = nil
         Array(turn[:parts]).each do |part|
@@ -834,7 +857,8 @@ module Samagotchi
         params = part[:params].to_s.strip
         params_suffix = params.empty? ? "" : " #{paint(params, 90)}"
         status = part[:status].to_s
-        "#{paint('tool>', 36)} #{part[:tool]}#{params_suffix}: #{paint(status, status == "ok" ? 32 : 31)}"
+        "#{paint('tool>', 36)} #{part[:tool]}#{params_suffix}: #{paint(status, status == "ok" ? 32 : 31)}" \
+          "#{format_tool_image_suffix(part[:images])}"
       end
     end
   end

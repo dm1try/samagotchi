@@ -41,6 +41,7 @@ module Samagotchi
         case event[:type]
         when :turn_started
           begin_turn
+          Array(event[:images]).each { |ref| @view.print_line(@view.format_image_line(ref)) }
         when :generation_started
           @view.generation_feedback_started(event)
         when :generation_retrying
@@ -52,7 +53,7 @@ module Samagotchi
           @view.tool_call_feedback_started(event)
         when :tool_call_completed
           @view.clear_generation_retry
-          render_streamed_tool_activity(event[:activity], duration_ms: tool_duration_ms(event))
+          render_streamed_tool_activity(event[:activity], duration_ms: tool_duration_ms(event), images: event[:images])
         when :generation_completed, :generation_cancelled, :tool_dispatch_started
           @view.generation_feedback_finished
         when :pending_input_merged
@@ -100,11 +101,13 @@ end
 
 private
 
-      def render_streamed_tool_activity(activity, duration_ms:)
+      def render_streamed_tool_activity(activity, duration_ms:, images: nil)
         return if activity.nil?
 
         @streamed_tool_activity[tool_activity_key(activity)] += 1
-        @view.print_line(@view.format_tool_activity_line(activity, duration_ms: duration_ms))
+        line = @view.format_tool_activity_line(activity, duration_ms: duration_ms)
+        line += @view.format_tool_image_suffix(images) if images&.any?
+        @view.print_line(line)
       end
 
       def consume_streamed_tool_activity(activity)

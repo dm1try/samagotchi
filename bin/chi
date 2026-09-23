@@ -923,4 +923,8 @@ rescue Samagotchi::LLM::ProviderError => e
   # -p --non-interactive: the turn failed; its prompt is in the session.
   warn "Error: #{e.summary}"
   exit 1
+rescue Samagotchi::ImageStore::Error => e
+  # -p --non-interactive: an @path image that can't be used.
+  warn "Error: #{e.message}"
+  exit 1
 end

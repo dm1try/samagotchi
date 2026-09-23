@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../served_model"
+require_relative "../image_store"
 
 module Samagotchi
   class TerminalUI
@@ -15,6 +16,19 @@ module Samagotchi
         status_color = status == "ok" ? 32 : 31
         elapsed_suffix = duration_ms.nil? ? "" : " (#{format_elapsed_duration(duration_ms)})"
         "#{paint('tool>', 36)} #{activity[:action]} (#{activity[:tool]}#{params_suffix}): #{paint(status, status_color)}#{elapsed_suffix}"
+      end
+
+      # "[image shot.png 1280×800 · ~1.3k tokens]", dim: a turn's image.
+      def format_image_line(ref)
+        paint("[image #{ImageRef.label(ImageStore.symbolize(ref))}]", 90)
+      end
+
+      # " → image 1280×800" after a tool line whose tool read an image.
+      def format_tool_image_suffix(images)
+        refs = Array(images).map { |ref| ImageStore.symbolize(ref) }
+        return "" if refs.empty?
+
+        " #{paint(refs.map { |ref| "→ image #{ref[:width]}×#{ref[:height]}" }.join(", "), 90)}"
       end
 
       private

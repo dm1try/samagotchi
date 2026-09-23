@@ -25,6 +25,7 @@ require_relative "session_commands"
 require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
 require_relative "terminal_ui/input_support"
+require_relative "terminal_ui/image_input"
 require_relative "terminal_ui/legacy_surface"
 require_relative "terminal_ui/live_region"
 require_relative "terminal_ui/question_prompt"
@@ -82,6 +83,7 @@ module Samagotchi
     COMMAND_BUSY = "busy: wait for the turn to end"
     # /detach is the attached terminal's; the REPL owns its session.
     REPL_DETACH_NOTE = "(not attached: this session runs in this terminal; /exit ends it)"
+    IMAGE_LINE_WAITS = "(a line with images runs as the next turn)"
 
     # Raised when another process (a `chi web` worker or another chi) owns the
     # session this TUI was asked to run.
@@ -214,7 +216,8 @@ module Samagotchi
           @prompt,
           on_event: nil,
           max_iterations: 1000,
-          cancel_controller: nil
+          cancel_controller: nil,
+          images: ImageInput.extract(@prompt)
         )
         @surface.commit(result.output)
         session.save
@@ -449,13 +452,15 @@ module Samagotchi
       begin
         # Engine#run_turn injects due reminders as a tail message, appends
         # the prompt, and renders through @renderer via on_event.
-        result = run_engine_turn(session, normalize_model_input(input))
-      rescue LLM::ProviderError => e
+        result = run_engine_turn(session, normalize_model_input(input), images: ImageInput.extract(input))
+      rescue LLM::ProviderError, ImageStore::Error => e
         # Engine closed the turn (:turn_failed); show its duration.
         # Retries were already tallied via generation_retrying events.
+        # An @path image that can't be used fails the turn the same way.
         emit_interactive_turn_duration(canceled: false)
         @turn_flow.prompt_turn_failed
-        @surface.commit("\nmodel> #{e.summary}; #{restore_prompt_for_retry(input)}")
+        summary = e.respond_to?(:summary) ? e.summary : e.message
+        @surface.commit("\nmodel> #{summary}; #{restore_prompt_for_retry(input)}")
         return
       end
       finish_turn(session, result, continue: false)
@@ -862,7 +867,8 @@ module Samagotchi
 
     # Run one REPL turn (a prompt, or a continue/reminder turn with nil) through
     # Engine#run_turn, rendering via @renderer.
-    def run_engine_turn(session, prompt, continue: false, max_iterations: 100)
+    # @param images [Array<Hash>] the prompt's `@path` images ({path:})
+    def run_engine_turn(session, prompt, continue: false, max_iterations: 100, images: [])
       cancellation_controller = CancellationController.new
       @active_cancel_controller = cancellation_controller
       @renderer.begin_turn
@@ -877,7 +883,8 @@ module Samagotchi
           max_iterations: max_iterations,
           cancel_controller: cancellation_controller,
           pending_input: method(:drain_steering),
-          continue: continue
+          continue: continue,
+          images: images
         )
       end
       emit_cancellation_notice(result)
@@ -914,9 +921,16 @@ module Samagotchi
       return false if @active_cancel_controller&.cancelled?
       return command_during_turn(line) if command_line?(line)
       return true if line.strip.empty?
+      # Steering merges text only: a line with images runs as the next turn.
+      return image_line_waits if ImageInput.extract(line).any?
 
       @pending_input_queue.push(line.strip)
       true
+    end
+
+    def image_line_waits
+      @surface.commit(IMAGE_LINE_WAITS)
+      false
     end
 
     def detach_note
