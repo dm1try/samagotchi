@@ -22,8 +22,9 @@ module Samagotchi
     LIST_TIMEOUT_SECONDS = 3
 
     # url: the configured url, when the entry has one (host, port and scheme
-    # come from it); api_key_env: the variable holding the host's API key.
-    HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env,
+    # come from it); api_key_env: the variable holding the host's API key;
+    # profile: the configured prompt profile name, if any.
+    HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env, :profile,
                            keyword_init: true) do
       # Talks the OpenAI chat API (the chat loop); nil and raw apis use the
       # raw-prompt loop.
@@ -68,7 +69,8 @@ module Samagotchi
         transport = cfg[:transport]
         client = Client.new(host: cfg[:host], port: cfg[:port], transport: transport, scheme: cfg[:scheme])
         entry = HostEntry.new(name: key.to_s.downcase, host: cfg[:host], port: cfg[:port].to_i, transport: transport, client: client,
-                              api: cfg[:api]&.to_sym, scheme: cfg[:scheme], url: cfg[:url], api_key_env: cfg[:api_key_env])
+                              api: cfg[:api]&.to_sym, scheme: cfg[:scheme], url: cfg[:url], api_key_env: cfg[:api_key_env],
+                              profile: cfg[:profile])
         @entries[entry.name] = entry
       end
       # Fallback single entry (should already be synthesized by hosts_config, but guard)

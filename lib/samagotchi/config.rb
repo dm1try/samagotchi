@@ -53,6 +53,9 @@ module Samagotchi
     ENTRIES = [
       # universal – env+config+cli
       Entry.new(key: "default.model",            yaml_path: %w[default model],            type: :string, default: nil,              expose: %i[env config cli]),
+      # The prompt profile for every model in this process (ModelProfile::NAMES).
+      # No config key: per-model and per-host profiles live in models: and hosts:.
+      Entry.new(key: "model.profile",            yaml_path: %w[model profile],            type: :enum,   default: nil,              expose: %i[env cli], enum_values: %w[qwen36 gemma4]),
       Entry.new(key: "server.transport",         yaml_path: %w[server transport],          type: :enum,   default: "llama_cpp",     expose: %i[env config cli], enum_values: %w[llama_cpp mlx omlx]),
       Entry.new(key: "server.host",              yaml_path: %w[server host],               type: :string, default: "localhost",     expose: %i[env config cli]),
       Entry.new(key: "server.port",              yaml_path: %w[server port],               type: :integer, default: 8080,            expose: %i[env config cli]),
@@ -356,7 +359,7 @@ module Samagotchi
         # Legacy flat UPPER keys are handled separately — don't flag them here
         legacy_keys = BY_ENV.keys
         data.each_key do |k|
-          next if %w[hosts hooks model_aliases].include?(k.to_s)
+          next if %w[hosts hooks model_aliases models].include?(k.to_s)
           next if legacy_keys.include?(k.to_s)
           # Sections are top-level keys that map to hashes (e.g., default, recap)
           # If key contains _ or -, suggest dotted form
@@ -383,6 +386,7 @@ module Samagotchi
     CONFIG_FILE = "config.yml"
     DEFAULT_MODEL_KEY = "SAMAGOTCHI_DEFAULT_MODEL"
     MODEL_ALIASES_KEY = "model_aliases"
+    MODELS_KEY = "models"
 
     module_function
 
@@ -516,6 +520,8 @@ module Samagotchi
           end
           url = (raw_cfg["url"] || raw_cfg[:url]).to_s.strip
           api_key_env = (raw_cfg["api_key_env"] || raw_cfg[:api_key_env]).to_s.strip
+          # Kept as written; ModelProfile.resolve warns about an unknown one.
+          profile = (raw_cfg["profile"] || raw_cfg[:profile]).to_s.strip.downcase
           unless api_key_env.empty? || api_key_env.match?(ENV_NAME_RE)
             warn "Warning: ignoring hosts entry '#{name}': api_key_env must be an environment variable name"
             next
@@ -573,7 +579,8 @@ module Samagotchi
           end
           normalized[lowered] = { name: lowered, host: host, port: port_val, transport: transport_val ? transport_val.to_sym : nil,
                                   api: api_val&.to_sym, original_name: name, scheme: scheme,
-                                  url: url.empty? ? nil : url, api_key_env: api_key_env.empty? ? nil : api_key_env }
+                                  url: url.empty? ? nil : url, api_key_env: api_key_env.empty? ? nil : api_key_env,
+                                  profile: profile.empty? ? nil : profile }
         end
       end
 
@@ -673,7 +680,8 @@ module Samagotchi
         # A url entry travels as its url (host/port come from it); the API
         # key stays in the environment, which workers inherit.
         location = v[:url] ? { "url" => v[:url] } : { "host" => v[:host], "port" => v[:port] }
-        location.merge("transport" => v[:transport]&.to_s, "api" => v[:api]&.to_s, "api_key_env" => v[:api_key_env]).compact
+        location.merge("transport" => v[:transport]&.to_s, "api" => v[:api]&.to_s, "api_key_env" => v[:api_key_env],
+                       "profile" => v[:profile]).compact
       end
       JSON.generate(simple)
     rescue StandardError
@@ -733,6 +741,26 @@ module Samagotchi
         next if val.empty?
 
         result[key.downcase] = val
+      end
+    rescue StandardError
+      {}
+    end
+
+    # The top-level `models:` map: per-model settings keyed by model id or
+    # alias (downcased), e.g. `models: {ista: {profile: qwen36}}`. Values are
+    # kept as written (profile downcased; ModelProfile.resolve validates it);
+    # an entry that is not a map is skipped.
+    def model_settings(env: ENV, path: global_path(env: env))
+      data = read_yaml(env: env, path: path)
+      raw = data[MODELS_KEY] if data.is_a?(Hash)
+      return {} unless raw.is_a?(Hash)
+
+      raw.each_with_object({}) do |(k, v), result|
+        key = k.to_s.strip.downcase
+        next if key.empty? || !v.is_a?(Hash)
+
+        profile = (v["profile"] || v[:profile]).to_s.strip.downcase
+        result[key] = { profile: profile.empty? ? nil : profile }
       end
     rescue StandardError
       {}
