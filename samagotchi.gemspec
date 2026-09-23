@@ -13,7 +13,7 @@ Gem::Specification.new do |spec|
   spec.description   = "An agent harness which heavily relies on memory. Includes Engine, TerminalUI, memory system, and agentic tool execution."
   spec.authors       = ["samagotchi"]
   spec.email         = [""]
-  spec.homepage      = "https://github.com/dmitrydedov/samagotchi"
+  spec.homepage      = "https://github.com/dm1try/samagotchi"
   spec.license       = "MIT"
   spec.required_ruby_version = ">= 3.0"
 
