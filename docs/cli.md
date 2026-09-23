@@ -7,7 +7,7 @@
 - `bin/chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
 - `bin/chi --resume <session-id>` — resume a prior session in the REPL
 - `bin/chi --shared [--resume <session-id>]` — run the session in a background worker and attach the terminal to it, so the Web UI (or another terminal) can share it
-- `bin/chi --attach <session-id>` — attach the terminal to a session a worker is already running (e.g. one started from the Web UI)
+- `bin/chi --attach <session-id>` — attach the terminal to a session's worker (e.g. one started from the Web UI), waking one if it has exited
 - `bin/chi web [--port 4567] [--open]` — start the Web UI (single localhost port session control plane)
 - `bin/chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
 - `bin/chi sessions list|prune|clean` — manage persisted sessions (see [Sessions](sessions.md))
@@ -25,7 +25,7 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `--non-interactive` | Run a single turn then exit the REPL (sets a high iteration cap; implies `--no-interrupt`). Harmless no-op when given without `-p`. |
 | `--resume SESSION_ID` | Load a prior session's history instead of creating a fresh one. |
 | `--shared` | Run the session (new, or `--resume`'s) in a background worker and attach to it. See [Sharing a session](#sharing-a-session). |
-| `--attach SESSION_ID` | Attach to a session a worker is already running. |
+| `--attach SESSION_ID` | Attach to a session's worker, waking one if it has exited. |
 | `--model NAME` | Use this model for the run (overrides the configured default and a resumed session's model). |
 | `--memory NAME` | Preload a memory entry into the system prompt (repeatable). Merged under the config.yml `memories:` baseline. |
 | `--backend {native,ruby_llm}` | Choose the model backend (default: `native`). See below. |

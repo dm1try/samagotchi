@@ -32,11 +32,22 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       expect(connect(attach: session.id)).to be(client)
     end
 
-    it "explains how to start a worker when none is running" do
+    it "wakes a worker when none is running (it idle-exited)" do
       allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil)
+      allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+
+      expect(connect(attach: session.id)).to be(client)
+      expect(Samagotchi::SessionManager).to have_received(:resume_session).with(session.id, state_dir: state_dir)
+    end
+
+    it "refuses a session a chi REPL has open" do
+      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(nil)
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+        .and_raise(Samagotchi::SessionManager::OwnedByTUI, session.id)
 
       expect { connect(attach: session.id) }
-        .to raise_error(described_class::Error, "no worker is running session #{session.id}; start one with: chi --shared --resume #{session.id}")
+        .to raise_error(described_class::Error, "session #{session.id} is open in a chi REPL; close it there first")
     end
 
     it "rejects an unknown session" do

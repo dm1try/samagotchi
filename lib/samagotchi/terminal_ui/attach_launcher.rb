@@ -36,7 +36,13 @@ module Samagotchi
       # @raise [Error]
       def connect(attach: nil, shared: false, resume: nil, state_dir: nil, wait: BRIDGE_WAIT)
         sd = state_dir || Session.default_state_dir
-        return connect_existing(attach, sd) if attach
+        if attach
+          live = connect_existing(attach, sd)
+          return live if live
+
+          # Its worker exited when nobody used it (or never ran): wake one.
+          resume = attach
+        end
 
         session = if resume
                     SessionManager.resume_session(resume, state_dir: sd)
@@ -51,10 +57,10 @@ module Samagotchi
         raise Error, e.message
       end
 
+      # @return [BridgeClient, nil] the running worker's, or nil when none runs
       def connect_existing(session_id, state_dir)
         Session.load(session_id, state_dir: state_dir)
-        client = BridgeClient.discover(session_id, session_dir: Session.session_dir(session_id, state_dir: state_dir))
-        client || raise(Error, "no worker is running session #{session_id}; start one with: chi --shared --resume #{session_id}")
+        BridgeClient.discover(session_id, session_dir: Session.session_dir(session_id, state_dir: state_dir))
       end
     end
   end
