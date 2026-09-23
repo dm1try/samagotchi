@@ -59,6 +59,8 @@ module Samagotchi
 
     def initialize(mode: :assist, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil, backend: nil)
       @mode = mode.to_sym
+      @chat_backend = nil
+      @chat_backend_mutex = Mutex.new
       @default_model_name = ModelProfile.required_model_name(model_name)
       @effective_model_name = @default_model_name
       @host_registry = host_registry || HostRegistry.new
@@ -111,15 +113,12 @@ module Samagotchi
         @pending_question = @resume_session.pending_question.dup
         @session = @resume_session
       end
-      # Resolve the backend provider at the Engine boundary. An explicit CLI
-      # value wins; omitted callers still fall back to ENV/config resolution.
-      @backend = LLM::Factory.factory(
-        provider: backend,
-        model_name: @default_model_name,
-        kernel: @kernel,
-        base_url: ruby_llm_base_url
-      )
-      warn "[verbose] backend=#{@backend.provider}" if verbose
+      # The loop follows the effective model's host (its api:): the raw-prompt
+      # NativeBackend, or the chat backend for openai hosts. An explicit
+      # backend: / SAMAGOTCHI_BACKEND still overrides that for now.
+      @native_backend = LLM::NativeBackend.new(kernel: @kernel)
+      @backend = explicit_backend(backend)
+      warn "[verbose] backend=#{self.backend.provider}" if verbose
       @resume_session = session_id ? Session.load(session_id) : nil
       @requested_memories = preload_memory_list(memories)
       @session = nil
@@ -170,7 +169,11 @@ module Samagotchi
       Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
-    attr_reader :backend
+    # The backend for the next turn: the override if one was chosen,
+    # otherwise the loop the effective model's host speaks.
+    def backend
+      @backend || backend_for(@host_registry.resolve(@effective_model_name))
+    end
 
     # Record that activity happened (user input or a completed turn). Shared,
     # mutex-guarded seam for the idle recap detector. Idempotent-ish: each call
@@ -269,6 +272,7 @@ module Samagotchi
       @client = target.client
       @kernel.client = target.client if @kernel.respond_to?(:client=) && @kernel.client != target.client
       @backend.base_url = target.openai_base_url if @backend.respond_to?(:base_url=)
+      backend_for(target)
     end
 
     # Subscribe a persistent observer to engine events.
@@ -867,7 +871,7 @@ module Samagotchi
         # host selection already done via active client.
         bare_for_backend = bare_model_name(@effective_model_name)
 
-        result = @backend.complete(
+        result = backend.complete(
           messages: messages,
           max_iterations: max_iterations,
           on_stream_event: build_stream_event_handler(on_event),
@@ -1037,6 +1041,25 @@ module Samagotchi
 
     def replace_session_messages(session, messages)
       @activity_mutex.synchronize { session.messages = messages }
+    end
+
+    def explicit_backend(provider)
+      explicit = !provider.nil? || !ENV["SAMAGOTCHI_BACKEND"].to_s.strip.empty?
+      return nil unless explicit
+
+      LLM::Factory.factory(provider: provider, model_name: @default_model_name, kernel: @kernel, base_url: ruby_llm_base_url)
+    end
+
+    # Pick the loop for a target; a chat backend is pointed at the target's /v1.
+    def backend_for(target)
+      return @native_backend unless target.entry.chat?
+
+      chat = @chat_backend_mutex.synchronize do
+        # Built on first use so the ruby_llm gem loads only when a chat host is used.
+        @chat_backend ||= LLM::RubyLLMBackend.new(model_name: @default_model_name, kernel: @kernel)
+      end
+      chat.base_url = target.openai_base_url
+      chat
     end
 
     def ruby_llm_base_url
