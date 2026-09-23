@@ -702,6 +702,69 @@ RSpec.describe Samagotchi::Web::App do
       expect(Process).not_to have_received(:kill)
       expect(Samagotchi::Session.load(session.id, state_dir: state_dir).status).not_to eq("stopped")
     end
+
+    describe "DELETE /api/sessions/:id" do
+      let(:session_file) { File.join(state_dir, "#{session.id}.json") }
+
+      it "deletes the session's file and directory" do
+        FileUtils.mkdir_p(File.join(session_dir, "notes"))
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}", method: "DELETE"))
+
+        expect(status).to eq(200)
+        expect(JSON.parse(body.first)).to eq("status" => "deleted", "session_id" => session.id, "stopped" => false)
+        expect(File.exist?(session_file)).to be false
+        expect(Dir.exist?(session_dir)).to be false
+      end
+
+      it "stops a live worker first (bounded wait), then deletes" do
+        allow(Samagotchi::SessionManager).to receive(:delete_session).and_call_original
+        @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
+        allow(Samagotchi::SessionManager).to receive(:stop_session) do
+          @lock.release
+          true
+        end
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}", method: "DELETE"))
+
+        expect(status).to eq(200)
+        expect(JSON.parse(body.first)).to include("stopped" => true)
+        expect(Samagotchi::SessionManager).to have_received(:delete_session)
+          .with(session.id, state_dir: state_dir, stop: true, wait: Samagotchi::Web::App::STOP_WAIT_SECONDS)
+        expect(File.exist?(session_file)).to be false
+      end
+
+      it "answers 409 when the worker is still shutting down, and keeps the session" do
+        @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
+        allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(false)
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}", method: "DELETE"))
+
+        expect(status).to eq(409)
+        expect(JSON.parse(body.first)).to include("error" => "still_stopping")
+        expect(File.exist?(session_file)).to be true
+      end
+
+      it "answers 409 for a session a chi REPL has open, and signals nothing" do
+        @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
+        allow(Process).to receive(:kill)
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}", method: "DELETE"))
+
+        expect(status).to eq(409)
+        expect(JSON.parse(body.first)).to include("error" => "owned_by_tui",
+                                                  "detail" => "session #{session.id} is open in a chi REPL; close it there first")
+        expect(Process).not_to have_received(:kill)
+        expect(File.exist?(session_file)).to be true
+      end
+
+      it "answers 404 for an unknown session" do
+        status, _headers, body = app.call(env_for("/api/sessions/nope", method: "DELETE"))
+
+        expect(status).to eq(404)
+        expect(JSON.parse(body.first)).to include("error" => "not_found")
+      end
+    end
   end
 
   describe "POST /api/sessions/:id/answer" do

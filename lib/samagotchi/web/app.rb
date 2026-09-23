@@ -94,6 +94,9 @@ module Samagotchi
           if (m = %r{\A/api/sessions/([^/]+)\z}.match(req.path_info)) && req.get?
             return handle_show(req, m[1])
           end
+          if (m = %r{\A/api/sessions/([^/]+)\z}.match(req.path_info)) && req.delete?
+            return handle_delete(req, m[1])
+          end
           if req.path_info.start_with?("/assets/") || req.path_info.start_with?("/public/")
             return serve_static(req)
           end
@@ -522,6 +525,20 @@ module Samagotchi
         json_response(200, { status: "stopped", session_id: id })
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      # DELETE /api/sessions/:id: the session for good. A live worker is
+      # stopped first (the page's confirm says so); a chi REPL's session is
+      # refused.
+      def handle_delete(_req, id)
+        result = @manager.delete_session(id, state_dir: @state_dir, stop: true, wait: STOP_WAIT_SECONDS)
+        json_response(200, { status: "deleted", session_id: result[:id], stopped: result[:stopped] })
+      rescue SessionManager::OwnedByTUI
+        error_response(409, "owned_by_tui", "session #{id} is open in a chi REPL; close it there first")
+      rescue SessionManager::DeleteRefused => e
+        error_response(409, e.reason.to_s, "#{e.message}; try again in a moment")
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
       end
