@@ -2283,9 +2283,13 @@ module Samagotchi
 
       # The question is output, not the notes slot: on a live region the slot
       # would vanish when cleared, and the question must stay above its answer.
+      # A reminder turn asks with the prompt open: Reline reads one line at a
+      # time, so the next line submitted there is the answer.
+      at_prompt = @prompt_reader&.alive?
       rows = prompt.lines(paint: method(:paint), color: color_output?)
       rows.unshift("") if $stdout.tty?
       rows << "  Enter empty to cancel." if !prompt.free? # still allow cancel
+      rows << "  Answer at the prompt." if at_prompt
       @surface.commit(rows.join("\n"))
 
       # Loop until valid selection or cancel
@@ -2293,8 +2297,15 @@ module Samagotchi
         choice_prompt = color_output? ? paint("choice> ", 33) : "choice> "
         raw = nil
         begin
+          if at_prompt
+            at_prompt = false # a retry after an invalid answer reads choice>
+            raw = take_open_prompt_line
+            if raw == :canceled
+              @engine.cancel_question("user") rescue nil
+              return false
+            end
           # Use plain Reline.readline when tty, else $stdin.gets for non-tty/specs
-          if $stdin.tty? && $stdout.tty?
+          elsif $stdin.tty? && $stdout.tty?
             raw = Reline.readline(choice_prompt, true)
           else
             @surface.set_slot(:editor, [choice_prompt])
@@ -2333,6 +2344,18 @@ module Samagotchi
           return false
         end
       end
+    end
+
+    # The line submitted at the open prompt, or :canceled when the running
+    # turn is cancelled first (Ctrl-C there); the prompt then stays open.
+    def take_open_prompt_line
+      controller = @active_cancel_controller
+      until @prompt_reader.join(REMINDER_PENDING_POLL_INTERVAL)
+        return :canceled if controller&.cancelled?
+      end
+      reader = @prompt_reader
+      @prompt_reader = nil
+      reader.value
     end
 
     # Process a prompt through the kernel loop and return the model response.

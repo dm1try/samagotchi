@@ -94,4 +94,40 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     expect(answer_with("").first).to be(false)
     expect(engine).to have_received(:cancel_question).with("user").twice
   end
+
+  # A reminder turn runs with the prompt open (its read on @prompt_reader);
+  # Reline reads one line at a time, so there is no choice> read then.
+  describe "asked while the prompt is open" do
+    it "takes the next line submitted there as the answer" do
+      allow(engine).to receive(:answer_question)
+      agent.instance_variable_set(:@prompt_reader, Thread.new { "2" })
+
+      result, out = answer_with("")
+
+      expect(result).to be(true)
+      expect(engine).to have_received(:answer_question).with(id: "q1", selected: ["Banana"], freeform: nil)
+      expect(out).to include("  Answer at the prompt.\n")
+      expect(out).not_to include("choice> ")
+      expect(agent.instance_variable_get(:@prompt_reader)).to be_nil
+    end
+
+    it "cancels the question and keeps the prompt when Ctrl-C cancels the turn" do
+      allow(engine).to receive(:cancel_question)
+      line = Queue.new
+      reader = Thread.new { line.pop }
+      agent.instance_variable_set(:@prompt_reader, reader)
+      controller = Samagotchi::Client::CancellationController.new
+      controller.cancel!(:ctrl_c)
+      agent.instance_variable_set(:@active_cancel_controller, controller)
+
+      result, out = answer_with("")
+
+      expect(result).to be(false)
+      expect(out).not_to include("choice> ")
+      expect(engine).to have_received(:cancel_question)
+      expect(agent.instance_variable_get(:@prompt_reader)).to be(reader)
+    ensure
+      line << nil
+    end
+  end
 end
