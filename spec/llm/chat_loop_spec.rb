@@ -97,6 +97,22 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(result.conversation).to eq([{ role: "user", content: "hi" }, { role: "model", content: "hello back" }])
     end
 
+    it "says so when the model returns an empty answer, and keeps it out of the conversation" do
+      backend.adapter = FakeChatAdapter.new(text(""))
+
+      result = run([{ role: "user", content: "hi" }])
+
+      expect(result.text).to eq("(the model returned an empty answer)")
+      expect(result).not_to be_exhausted
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }])
+    end
+
+    it "calls an answer that was only thinking empty too" do
+      backend.adapter = FakeChatAdapter.new(text("<|think|>hm<|think|>"))
+
+      expect(run.text).to eq("(the model returned an empty answer)")
+    end
+
     it "strips thought blocks from the answer" do
       adapter = FakeChatAdapter.new(text("<|think|>let me reason<|think|>\nthe answer"))
       backend.adapter = adapter

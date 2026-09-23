@@ -196,6 +196,8 @@ module Samagotchi
           @prompt_text = conversation.sum("") { |entry| entry[:content].to_s }
         end
 
+        EMPTY_ANSWER = "(the model returned an empty answer)"
+
         def call(max_iterations:, cap:)
           last_text = ""
           exhausted = true
@@ -212,6 +214,9 @@ module Samagotchi
               next if inject_pending_input(iteration)
 
               @conversation << { role: "model", content: last_text } unless last_text.empty?
+              # Shown, not saved: an empty answer (content "" + stop, seen from
+              # a remote host) would otherwise end the turn with nothing.
+              last_text = EMPTY_ANSWER if last_text.empty?
               exhausted = false
               break
             end
