@@ -60,6 +60,16 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(Reline.pre_input_hook).to be(hook)
     end
 
+    it "counts each key typed as activity while the REPL runs" do
+      engine = agent.instance_variable_get(:@engine)
+      allow(engine).to receive(:record_activity)
+
+      agent.send(:with_activity_hook) { Samagotchi::TerminalUI::RelineSeam.key_handler.call }
+
+      expect(engine).to have_received(:record_activity).once
+      expect(Samagotchi::TerminalUI::RelineSeam.key_handler).to be_nil
+    end
+
     it "is restored after a prefilled prompt" do
       hook = proc {}
       Reline.pre_input_hook = hook
@@ -110,10 +120,12 @@ RSpec.describe Samagotchi::TerminalUI do
       output = StringIO.new
       $stdout = output
 
-      agent.send(:begin_interactive_turn, session)
-      agent.send(:end_interactive_turn, canceled: false)
+      metrics = agent.instance_variable_get(:@engine).metrics
+      metrics.call(type: :turn_started, session_id: session.id, prompt: nil)
+      metrics.call(type: :turn_completed, result: nil)
+      agent.send(:emit_interactive_turn_duration, canceled: false)
 
-      expect(output.string).to match(/chi> turn completed \(0ms\)/)
+      expect(output.string).to match(/chi> turn completed \(\d+ms\)/)
     ensure
       $stdout = original_stdout
     end
@@ -132,87 +144,6 @@ RSpec.describe Samagotchi::TerminalUI do
         expect(agent.send(:format_elapsed_duration, ms)).to eq(expected),
           "timing for #{ms}ms expected #{expected.inspect}"
       end
-    end
-  end
-  # Regression for the interactive /stats bug: a REPL run that drives KernelLoop
-  # directly (today only the muted reminder run) bypasses Engine#run_turn, so it
-  # never emits the :turn_started event the collector needs. Without
-  # begin_interactive_turn, turns and output tokens stayed 0 even though the
-  # server reported completion tokens.
-  describe "interactive REPL turn lifecycle (KernelLoop bypass)" do
-    let(:session) { double(id: "interactive-sess") }
-    let(:metrics) { agent.instance_variable_get(:@engine).metrics }
-
-    def feed_generation(metrics, prompt_n:, predicted_n:)
-      metrics.call(type: :generation_started)
-      metrics.call(
-        type: :generation_chunk,
-        payload: { "timings" => { "prompt_n" => prompt_n, "predicted_n" => predicted_n } }
-      )
-      metrics.call(type: :generation_completed)
-    end
-
-    it "opens a turn so turns and output tokens are counted" do
-      agent.send(:begin_interactive_turn, session)
-      feed_generation(metrics, prompt_n: 120, predicted_n: 10)
-      agent.send(:end_interactive_turn, canceled: false)
-
-      snap = metrics.snapshot
-      expect(snap[:turns]).to eq(1)
-      expect(snap[:tokens_in]).to eq(120)
-      expect(snap[:tokens_out]).to eq(10)
-      expect(snap[:tokens_total]).to eq(130)
-      expect(snap[:cancellations]).to eq(0)
-    end
-
-    it "counts a turn_canceled when an interrupted turn is aborted or Ctrl-c'd" do
-      agent.send(:begin_interactive_turn, session)
-      agent.send(:end_interactive_turn, canceled: true)
-      expect(metrics.snapshot[:cancellations]).to eq(1)
-    end
-
-    it "keeps an interrupted/continued turn as a single logical turn, then opens a new one" do
-      # Turn 1 (a tool-call loop that the user interrupts, then resumes).
-      agent.send(:begin_interactive_turn, session)
-      feed_generation(metrics, prompt_n: 120, predicted_n: 10)
-      # Continue path calls begin again; must be a no-op while the turn is open.
-      agent.send(:begin_interactive_turn, session)
-      feed_generation(metrics, prompt_n: 200, predicted_n: 25)
-      agent.send(:end_interactive_turn, canceled: false)
-
-      snap = metrics.snapshot
-      expect(snap[:turns]).to eq(1)           # one logical turn, not two
-      expect(snap[:tokens_out]).to eq(35)      # 10 + 25 summed across generations
-      expect(snap[:tokens_in]).to eq(200)      # running max of the growing prompt
-
-      # The flag reset on completion, so the next turn opens fresh.
-      agent.send(:begin_interactive_turn, session)
-      feed_generation(metrics, prompt_n: 300, predicted_n: 40)
-      agent.send(:end_interactive_turn, canceled: false)
-      expect(metrics.snapshot[:turns]).to eq(2)
-    end
-
-    it "routes interactive generation through the selected backend" do
-      backend = instance_double(Samagotchi::LLM::RubyLLMBackend)
-      engine = agent.instance_variable_get(:@engine)
-      allow(engine).to receive(:backend).and_return(backend)
-      allow(agent.instance_variable_get(:@kernel)).to receive(:run).and_raise("native path used")
-      allow(backend).to receive(:complete).and_return(
-        Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [])
-      )
-
-      agent.send(
-        :run_selected_backend,
-        [{ role: "user", content: "hello" }],
-        max_iterations: 1,
-        on_stream_event: nil,
-        cancel_controller: Samagotchi::Client::CancellationController.new
-      )
-
-      expect(backend).to have_received(:complete).with(hash_including(
-        messages: [{ role: "user", content: "hello" }],
-        max_iterations: 1
-      ))
     end
   end
 end

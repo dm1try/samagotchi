@@ -10,13 +10,9 @@ require_relative "session"
 module Samagotchi
   # SessionMetrics is a persistent, error-isolated collector of per-session
   # analytics. It implements the same #call(event) sink contract as
-  # SessionObserver subscribers, so it can be fed by both:
-  #
-  #   * Engine#run_turn (which forwards every event to its SessionObserver),
-  #     covering the -p/--non-interactive/--resume paths and SessionManager
-  #     background workers; and
-  #   * TerminalUI's muted reminder run, which drives KernelLoop directly on a
-  #     snapshot and forwards its events into the same instance.
+  # SessionObserver subscribers, so Engine#run_turn feeds it (it forwards every
+  # event to its SessionObserver): the REPL, the -p/--non-interactive/--resume
+  # paths and SessionManager background workers.
   #
   # Collected dimensions:
   #   - tokens (input/output/total), with a provenance flag (:server|:estimate)

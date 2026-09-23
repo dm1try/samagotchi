@@ -130,6 +130,78 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
     expect(Samagotchi::TerminalUI::RelineSeam.interrupt_handler).to be_nil
   end
 
+  describe "a reminder due while the prompt is open" do
+    let(:ui) { build_ui }
+    let(:engine) { ui.instance_variable_get(:@engine) }
+    let(:typed) { Queue.new }
+    let(:kernel_calls) { [] }
+
+    before do
+      allow($stdin).to receive(:tty?).and_return(true)
+      allow(STDIN).to receive(:tty?).and_return(true)
+      allow(engine).to receive(:reminders_due?).and_return(true)
+      reads = 0
+      # The first prompt stays open (like a Reline read with text typed in
+      # it) until the spec submits a line; the reminder falls due meanwhile.
+      allow(Reline).to receive(:readmultiline) do
+        reads += 1
+        next nil if reads > 1
+
+        engine.note_due_reminders(%w[stretch])
+        typed.pop
+      end
+      @reads = -> { reads }
+    end
+
+    def kernel_replies(&during)
+      allow(ui.instance_variable_get(:@kernel)).to receive(:run) do |messages, **kwargs|
+        kernel_calls << messages
+        canceled = during&.call(kwargs[:cancel_controller], kernel_calls.size) || false
+        Samagotchi::KernelLoop::Result.new(
+          output: "PONG #{kernel_calls.size}", conversation: messages + [{ role: "model", content: "PONG" }],
+          exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: canceled,
+          cancellation_reason: (canceled ? :ctrl_c : nil)
+        )
+      end
+    end
+
+    it "runs its turn with the prompt kept open, then takes the line typed there" do
+      during_reminder = nil
+      kernel_replies do |_controller, call|
+        if call == 1
+          during_reminder = { reads: @reads.call, lines: term.lines.dup }
+          typed << "hi" # submitted while the reminder turn runs
+        end
+        false
+      end
+
+      ui.run
+
+      expect(during_reminder[:reads]).to eq(1)
+      expect(during_reminder[:lines]).to include("reminder: stretch · Ctrl-C cancels it")
+      expect(kernel_calls.last).to include(hash_including(role: "user", content: "hi"))
+      expect(shown).to include("PONG 1", "PONG 2")
+      expect(shown.grep(/reminder: stretch/)).to be_empty
+    end
+
+    it "cancels only the reminder turn on Ctrl-C and keeps the prompt" do
+      kernel_replies do |controller, call|
+        next false unless call == 1
+
+        # Ctrl-C with the prompt open: Reline's trap -> the seam's handler.
+        handled = Samagotchi::TerminalUI::RelineSeam.interrupt_handler.call
+        typed << "hi"
+        handled && controller.cancelled?
+      end
+
+      ui.run
+
+      expect(@reads.call).to eq(2) # the open prompt, then the one after "hi"
+      expect(shown).to include("model> request cancelled (ctrl-c)")
+      expect(kernel_calls.last).to include(hash_including(role: "user", content: "hi"))
+    end
+  end
+
   describe "choosing the surface" do
     it "opens a live region for the REPL and closes it at exit" do
       allow(Samagotchi::TerminalUI::LiveRegion).to receive(:open).and_return(screen)

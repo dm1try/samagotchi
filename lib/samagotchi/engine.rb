@@ -133,7 +133,7 @@ module Samagotchi
       # Shared inactivity clock + turn-running flag for the idle subsystems
       # (session recap + reminders), all polled by the shared IdleScheduler.
       # `record_activity` is the single seam every UI calls (run_turn itself,
-      # the REPL on keystrokes and after its muted reminder run), so the idle
+      # the REPL on keystrokes and after a reminder turn), so the idle
       # layer's clock is identical across UIs.
       @activity_mutex = Monitor.new
       @last_activity_at = monotonic_now
@@ -157,8 +157,7 @@ module Samagotchi
       )
       # The metrics collector is a persistent observer so every run_turn event
       # (the REPL, -p/--non-interactive/--resume and SessionManager workers)
-      # feeds it automatically. The REPL's muted reminder run drives KernelLoop
-      # directly and forwards its stream events into the same instance.
+      # feeds it automatically.
       @session_observer.subscribe(observer: @metrics)
     end
 
