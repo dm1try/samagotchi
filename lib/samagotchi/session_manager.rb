@@ -150,6 +150,55 @@ module Samagotchi
     end
 
     # Prune sessions per retention policy. Delegates to Session.prune with live-worker guard.
+    SUMMARY_DESC_LIMIT = 60
+
+    # Short summaries of sessions, newest first: the picker behind
+    # `chi sessions list --live --format json|tsv` (chi note from a script)
+    # and the agent's list_sessions tool.
+    # @param live [Boolean] only sessions a worker owns now (the owner lock,
+    #   not the saved status, which a dead worker leaves at "running"); a
+    #   REPL-owned session is left out: it can't take notes
+    # @param cwd [String, nil] only sessions in this folder or below it
+    # @param limit [Integer, nil] taken after the filters
+    # @param include_tests [Boolean] false leaves out test runs
+    # @param exclude [String, nil] a session id to leave out (the asker)
+    # @return [Array<Hash>] {id:, short_id:, desc:, cwd:, updated_at:,
+    #   status:, live:, busy:}; busy = live with a turn running
+    def self.session_summaries(live: false, cwd: nil, limit: nil, include_tests: true, exclude: nil, state_dir: nil)
+      sd = state_dir || Session.default_state_dir
+      root = cwd && folder_path(cwd)
+      summaries = Session.list(state_dir: sd, sort: "updated_at", order: "desc").lazy
+                         .reject { |s| (!include_tests && s.test_run) || s.id == exclude }
+                         .select { |s| root.nil? || in_folder?(s.working_directory, root) }
+                         .filter_map do |s|
+        owned = session_owner(s.id, state_dir: sd)&.fetch("kind", nil) == "worker"
+        next if live && !owned
+
+        { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), cwd: s.working_directory, updated_at: s.updated_at,
+          status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING }
+      end
+      (limit ? summaries.first(limit) : summaries.to_a)
+    end
+
+    # "<cwd basename> · <last prompt, or the first preview>", one line.
+    private_class_method def self.summary_desc(session)
+      text = session.last_prompt.to_s.strip.empty? ? session.first_preview.to_s : session.last_prompt.to_s
+      desc = [File.basename(session.working_directory.to_s), text.gsub(/\s+/, " ").strip].reject(&:empty?).join(" · ")
+      desc.length > SUMMARY_DESC_LIMIT ? "#{desc[0, SUMMARY_DESC_LIMIT - 1]}…" : desc
+    end
+
+    private_class_method def self.folder_path(path)
+      File.realpath(path)
+    rescue SystemCallError
+      File.expand_path(path)
+    end
+
+    private_class_method def self.in_folder?(dir, root)
+      dir = dir.to_s.chomp("/")
+      root = root.chomp("/")
+      dir == root || dir.start_with?("#{root}/")
+    end
+
     def self.prune_sessions(state_dir: nil, days: nil, max_count: nil, keep_status: nil, dry_run: false, test_only: false)
       sd = state_dir || Session.default_state_dir
       days = resolve_retention_days(days)

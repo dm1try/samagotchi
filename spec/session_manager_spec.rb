@@ -916,4 +916,91 @@ RSpec.describe Samagotchi::SessionManager do
       expect(described_class.read_note(broken)).to be_nil
     end
   end
+
+  describe ".session_summaries" do
+    let(:locks) { [] }
+
+    after { locks.each(&:release) }
+
+    def make(cwd: "/work/app", prompt: "hello", updated: "2026-09-24T10:00:00Z", status: nil, test_run: false, preview: "")
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd).tap do |s|
+        s.last_prompt = prompt
+        s.first_preview = preview
+        s.status = status if status
+        s.test_run = test_run
+        s.save(state_dir: tmpdir)
+        # save stamps updated_at; set it after for a fixed order
+        data = JSON.parse(File.read(File.join(tmpdir, "#{s.id}.json")))
+        File.write(File.join(tmpdir, "#{s.id}.json"), JSON.generate(data.merge("updated_at" => updated)))
+      end
+    end
+
+    def own(session, kind: "worker")
+      locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), kind: kind)
+    end
+
+    def ids(**opts) = described_class.session_summaries(state_dir: tmpdir, **opts).map { |s| s[:id] }
+
+    it "sums a session up: short id, a one-line description, cwd, liveness and whether a turn runs" do
+      session = make(cwd: "/work/app", prompt: "fix   the\nlogin page", status: Samagotchi::Session::STATUS_RUNNING)
+      own(session)
+
+      summary = described_class.session_summaries(state_dir: tmpdir).first
+
+      expect(summary).to include(id: session.id, short_id: session.id[0, 8], desc: "app · fix the login page",
+                                 cwd: "/work/app", updated_at: "2026-09-24T10:00:00Z", live: true, busy: true)
+    end
+
+    it "cuts a long description to 60 characters and falls back to the first preview" do
+      long = make(prompt: "x" * 100)
+      preview = make(prompt: "", preview: "from the preview", updated: "2026-09-23T10:00:00Z")
+
+      by_id = described_class.session_summaries(state_dir: tmpdir).to_h { |s| [s[:id], s[:desc]] }
+
+      expect(by_id[long.id].length).to eq(60)
+      expect(by_id[long.id]).to end_with("…")
+      expect(by_id[preview.id]).to eq("app · from the preview")
+    end
+
+    it "live: only sessions a worker owns now, not a REPL's and not a stale running status" do
+      worker = make(updated: "2026-09-24T10:00:00Z")
+      repl = make(updated: "2026-09-24T11:00:00Z")
+      stale = make(updated: "2026-09-24T12:00:00Z", status: Samagotchi::Session::STATUS_RUNNING)
+      own(worker)
+      own(repl, kind: "tui")
+
+      expect(ids(live: true)).to eq([worker.id])
+      expect(ids).to eq([stale.id, repl.id, worker.id])
+      expect(described_class.session_summaries(state_dir: tmpdir).find { |s| s[:id] == stale.id })
+        .to include(live: false, busy: false)
+    end
+
+    it "filters before it takes the limit" do
+      live_one = make(updated: "2026-09-24T09:00:00Z")
+      make(updated: "2026-09-24T10:00:00Z")
+      make(updated: "2026-09-24T11:00:00Z")
+      own(live_one)
+
+      expect(ids(live: true, limit: 1)).to eq([live_one.id])
+      expect(ids(limit: 2).size).to eq(2)
+    end
+
+    it "cwd: the folder or below it, not a sibling that shares its prefix" do
+      top = make(cwd: "/work/app", updated: "2026-09-24T12:00:00Z")
+      below = make(cwd: "/work/app/web", updated: "2026-09-24T11:00:00Z")
+      make(cwd: "/work/apple", updated: "2026-09-24T10:00:00Z")
+
+      expect(ids(cwd: "/work/app")).to eq([top.id, below.id])
+      expect(ids(cwd: "/work/app/")).to eq([top.id, below.id])
+    end
+
+    it "leaves out test runs on request, and a given session (the asking one)" do
+      mine = make(updated: "2026-09-24T12:00:00Z")
+      test = make(test_run: true, updated: "2026-09-24T11:00:00Z")
+      other = make(updated: "2026-09-24T10:00:00Z")
+
+      expect(ids).to include(test.id)
+      expect(ids(include_tests: false, exclude: mine.id)).to eq([other.id])
+    end
+  end
 end
