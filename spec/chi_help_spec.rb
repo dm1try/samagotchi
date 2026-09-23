@@ -15,4 +15,12 @@ RSpec.describe "chi --help" do
     expect(prompt_line).not_to include("exit")
     expect(out.lines.find { |l| l.include?("--non-interactive ") }).to include("exit")
   end
+
+  it "says plain chi runs attached by default and --no-shared opts out" do
+    out, _err, _status = Open3.capture3(RbConfig.ruby, chi, "--help", stdin_data: "")
+
+    shared_line = out.lines.find { |l| l.include?("--[no-]shared") }
+    expect(shared_line).to include("the default")
+    expect(shared_line).to include("--no-shared runs a plain in-process REPL")
+  end
 end

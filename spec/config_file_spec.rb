@@ -50,10 +50,10 @@ RSpec.describe Samagotchi::ConfigFile do
                                        env: { "SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES" => "0.2" })).to eq(0.2)
       end
 
-      it "keeps plain chi in a plain REPL unless session.shared is on" do
-        expect(described_class.resolve("session.shared", file_data: {}, env: {})).to be(false)
-        expect(described_class.resolve("session.shared", file_data: {}, env: { "SAMAGOTCHI_SESSION_SHARED" => "1" })).to be(true)
-        expect(described_class.resolve("session.shared", file_data: { "session" => { "shared" => true } }, env: {})).to be(true)
+      it "runs plain chi attached unless session.shared is turned off" do
+        expect(described_class.resolve("session.shared", file_data: {}, env: {})).to be(true)
+        expect(described_class.resolve("session.shared", file_data: {}, env: { "SAMAGOTCHI_SESSION_SHARED" => "0" })).to be(false)
+        expect(described_class.resolve("session.shared", file_data: { "session" => { "shared" => false } }, env: {})).to be(false)
         expect(described_class.cli_entries.map(&:key)).not_to include("session.shared")
       end
     end

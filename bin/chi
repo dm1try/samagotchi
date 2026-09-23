@@ -755,7 +755,7 @@ OptionParser.new do |opts|
   opts.on("-p", "--prompt PROMPT", "Run PROMPT as the first turn, then stay in the REPL") { |p| options[:prompt] = p }
   opts.on("--resume SESSION_ID", "Resume a previous session by its ID") { |s| options[:resume] = s }
   opts.on("--attach SESSION_ID", "Attach to a session's worker (e.g. one `chi web` started), waking one if it has exited") { |s| options[:attach] = s }
-  opts.on("--[no-]shared", "Run the session in a background worker and attach to it, so `chi web` can share it (with --resume: that session); --no-shared runs a plain REPL even when session.shared is on") { |v| options[:shared] = v }
+  opts.on("--[no-]shared", "Run the session in a background worker and attach to it, so `chi web` can share it (the default, config session.shared; with --resume: that session); --no-shared runs a plain in-process REPL") { |v| options[:shared] = v }
   opts.on("--model NAME", "Model selector (runtime only, overrides --resume) [alias for --default-model]") { |m| options[:model] = m; cli_overrides["default.model"] = m }
   opts.on("--profile NAME", Samagotchi::ModelProfile::NAMES,
           "Prompt profile for every model in this run (#{Samagotchi::ModelProfile::NAMES.join('|')}) [alias for --model-profile]") { |p| cli_overrides["model.profile"] = p }
