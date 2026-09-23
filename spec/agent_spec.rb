@@ -1677,6 +1677,13 @@ file2.rb")
       expect(agent.send(:exit_command?, "no exit")).to be(false)
       expect(agent.send(:exit_command?, "xit")).to be(false)
     end
+
+    it "takes --delete after it (delete the session on the way out)" do
+      expect(agent.send(:exit_command?, "/exit --delete")).to be(true)
+      expect(agent.send(:exit_command?, "EXIT --DELETE")).to be(true)
+      expect(agent.send(:exit_command?, "/exit --delete now")).to be(false)
+      expect(agent.send(:exit_command?, "/exit --force")).to be(false)
+    end
   end
 
   describe "#assist_loop exits with session id" do

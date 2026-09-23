@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "samagotchi/terminal_ui"
+require_relative "support/recording_surface"
 
 # The in-process TUI runs its own Engine, so it owns its session like a worker
 # does: a session a worker owns can't be resumed here, and while the TUI runs
@@ -42,5 +43,30 @@ RSpec.describe "TerminalUI session ownership" do
     expect(Samagotchi::OwnerLock.owner(session_dir)).to include("kind" => "tui", "pid" => Process.pid)
     expect(Samagotchi::OwnerLock.acquire(session_dir, kind: "worker", wait: 0)).to be_nil
     expect(ui).to be_a(Samagotchi::TerminalUI)
+  end
+
+  describe "/exit --delete, after the loop" do
+    let(:surface) { RecordingSurface.new }
+
+    it "lets go of the session, then deletes it" do
+      FileUtils.mkdir_p(File.join(session_dir, "notes"))
+      ui = Samagotchi::TerminalUI.new(client: client, session_id: session.id, surface: surface)
+
+      ui.send(:delete_after_exit, session)
+
+      expect(File.exist?(File.join(Samagotchi::Session.default_state_dir, "#{session.id}.json"))).to be false
+      expect(Dir.exist?(session_dir)).to be false
+      expect(surface.lines.last).to eq("Deleted session #{session.id}.")
+    end
+
+    it "says how to finish when the delete fails" do
+      ui = Samagotchi::TerminalUI.new(client: client, session_id: session.id, surface: surface)
+      allow(Samagotchi::SessionManager).to receive(:delete_session).and_raise(Errno::EACCES, session_dir)
+
+      ui.send(:delete_after_exit, session)
+
+      expect(surface.lines.last).to start_with("Session #{session.id} was not deleted (Permission denied")
+      expect(surface.lines.last).to end_with("chi sessions delete #{session.id}")
+    end
   end
 end

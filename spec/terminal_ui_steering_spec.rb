@@ -92,6 +92,31 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     end
   end
 
+  it "exits after the turn on /exit --delete, and deletes the session then" do
+    allow(engine).to receive(:run_turn) do
+      repl_input << [:line, "/exit --delete"]
+      result
+    end
+
+    agent.send(:run_engine_turn, session, "go")
+
+    expect(surface.lines).to include("(exits after this turn and deletes the session; Ctrl-C cancels the turn)")
+    expect(agent.instance_variable_get(:@exit_after_turn)).to be(true)
+    expect(agent.instance_variable_get(:@delete_on_exit)).to be(true)
+  end
+
+  it "ends the loop on /exit --delete without the resume line" do
+    allow(agent).to receive(:poll_input_with_reminder_check).and_return("/exit --delete", nil)
+    allow(agent).to receive(:run_input_line)
+    allow(agent).to receive(:drain_pending_question?)
+
+    agent.send(:run_assist_loop, session: instance_double(Samagotchi::Session, id: "s1", "messages=": nil), messages: [])
+
+    expect(agent).not_to have_received(:run_input_line)
+    expect(agent.instance_variable_get(:@delete_on_exit)).to be(true)
+    expect(surface.lines.join("\n")).not_to include("Continue session")
+  end
+
   it "says /detach has nothing to detach from, during a turn too, and sends nothing" do
     drained = nil
     allow(engine).to receive(:run_turn) do |*, pending_input:, **|

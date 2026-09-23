@@ -23,6 +23,7 @@ require_relative "output_formatter"
 require_relative "turn_preamble"
 require_relative "turn_flow"
 require_relative "session_commands"
+require_relative "session_manager"
 require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
 require_relative "terminal_ui/input_support"
@@ -43,6 +44,8 @@ module Samagotchi
     AGENT_DESCRIPTION_FILE = "AGENT.md"
     SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
     STATS_COMMAND = "/stats"
+    # /exit --delete: delete the session on the way out.
+    EXIT_DELETE_FLAG = "--delete"
     RECAP_COMMAND = "/recap"
     # The prompt while a question waits for its answer (its choices are in
     # the notes slot).
@@ -226,6 +229,18 @@ module Samagotchi
       end
 
       assist_loop(session: session, messages: messages)
+      # After the idle layer has stopped: nothing writes the session now.
+      delete_after_exit(session) if @delete_on_exit
+    end
+
+    # /exit --delete: give up the session, then delete it for good.
+    def delete_after_exit(session)
+      @owner_lock&.release
+      @owner_lock = nil
+      SessionManager.delete_session(session.id)
+      @surface.commit("Deleted session #{session.id}.")
+    rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, ArgumentError, SystemCallError => e
+      @surface.commit("Session #{session.id} was not deleted (#{e.message}): chi sessions delete #{session.id}")
     end
 
     # Take the session's OwnerLock for this process's lifetime: the TUI runs
@@ -392,7 +407,10 @@ module Samagotchi
           end
         end
         break if input.nil?
-        break if exit_command?(input)
+        if exit_command?(input)
+          @delete_on_exit ||= delete_on_exit?(input)
+          break
+        end
         # Not an answer to a continue offer either.
         next detach_note if detach_command?(input)
 
@@ -404,7 +422,7 @@ module Samagotchi
       end
 
       close_repl_input
-      @surface.commit("\nContinue session: chi --resume #{session.id}")
+      @surface.commit("\nContinue session: chi --resume #{session.id}") unless @delete_on_exit
     end
 
     # An answer at the ? prompt of a continue offer. A valid one closes the
@@ -841,10 +859,13 @@ module Samagotchi
     # A resumed session doesn't get the default input either.
     def default_input_wanted? = !@resume_session && !@no_default_input
 
+    # exit or /exit, with --delete to delete the session on the way out.
     def exit_command?(input)
-      normalized = input.to_s.strip.downcase
-      normalized == "exit" || normalized == "/exit"
+      words = input.to_s.strip.downcase.split
+      %w[exit /exit].include?(words.first) && (words.size == 1 || words == [words.first, EXIT_DELETE_FLAG])
     end
+
+    def delete_on_exit?(input) = input.to_s.strip.downcase.split.last == EXIT_DELETE_FLAG
 
     def detach_command?(input) = input.to_s.strip.casecmp?("/detach")
 
@@ -912,7 +933,7 @@ module Samagotchi
     # prompt.
     # @return [Boolean, :back] whether the turn took it, :back to put it back
     def steer_line(line)
-      return exit_after_turn if line.nil? || exit_command?(line)
+      return exit_after_turn(delete: delete_on_exit?(line)) if line.nil? || exit_command?(line)
       return detach_note if detach_command?(line)
       return false if @active_cancel_controller&.cancelled?
       return command_during_turn(line) if command_line?(line)
@@ -934,9 +955,10 @@ module Samagotchi
       true
     end
 
-    def exit_after_turn
+    def exit_after_turn(delete: false)
       @exit_after_turn = true
-      @surface.commit("(exits after this turn; Ctrl-C cancels it)")
+      @delete_on_exit = true if delete
+      @surface.commit(delete ? "(exits after this turn and deletes the session; Ctrl-C cancels the turn)" : "(exits after this turn; Ctrl-C cancels it)")
       true
     end
 

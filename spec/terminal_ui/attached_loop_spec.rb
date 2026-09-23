@@ -1163,6 +1163,69 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     expect(screen.lines.last).to end_with("Re-attach with: chi --attach s-1234")
   end
 
+  describe "/exit --delete" do
+    let(:deleted) { [] }
+    let(:delete_session) { ->(id) { deleted << id } }
+    let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", delete_session: delete_session) }
+
+    %w[/exit /quit exit].each do |command|
+      it "asks the worker to exit, then deletes the session (#{command} --delete)" do
+        allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting"}'))
+
+        expect(run_lines("#{command} --delete")).to eq(:detached)
+
+        expect(client).to have_received(:request_exit).with(client_id: "tui:1")
+        expect(deleted).to eq(["s-1234"])
+        expect(screen.lines.last).to eq("Detached; deleted session s-1234.")
+      end
+    end
+
+    it "deletes nothing when the worker stays up, and says why" do
+      allow(client).to receive(:request_exit).and_return(response(409, '{"status":"held","reason":"client_connected"}'))
+
+      run_lines("/exit --delete")
+
+      expect(deleted).to be_empty
+      expect(screen.lines.last).to eq("Detached; not deleted: the session keeps running (another UI is attached). " \
+                                      "Re-attach with: chi --attach s-1234")
+    end
+
+    it "deletes nothing when the exit request fails" do
+      allow(client).to receive(:request_exit).and_raise(Errno::ECONNREFUSED)
+
+      run_lines("/exit --delete")
+
+      expect(deleted).to be_empty
+      expect(screen.lines.last).to start_with("Detached (could not ask the worker to stop: Connection refused")
+      expect(screen.lines.last).to end_with("Not deleted.")
+    end
+
+    it "says how to finish when the delete is refused after the exit" do
+      allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting"}'))
+      refusing = ->(id) { raise Samagotchi::SessionManager::DeleteRefused.new(id, :still_stopping) }
+      loop_ui = described_class.new(client: client, screen: screen, client_id: "tui:1", delete_session: refusing)
+      allow(client).to receive(:follow) do |**, &block|
+        block.call("type" => "snapshot", "snapshot" => idle)
+        stream
+      end
+
+      loop_ui.run(input: ->(_prompt, _prefill) { "/exit --delete" })
+
+      expect(screen.lines.last).to eq("Detached; the worker is stopping, but session s-1234 was not deleted " \
+                                      "(session s-1234's worker is still shutting down): chi sessions delete s-1234")
+    end
+
+    it "takes any other /exit argument as a prompt, not an exit" do
+      allow(client).to receive(:request_exit)
+      allow(client).to receive(:post_turn).and_return(response(202, '{"status":"accepted","enqueued_id":"e1"}'))
+
+      run_lines("/exit --now", nil)
+
+      expect(client).not_to have_received(:request_exit)
+      expect(deleted).to be_empty
+    end
+  end
+
   it "only detaches on /detach (any case) and Ctrl-D, leaving the worker up" do
     allow(client).to receive(:request_exit)
     allow(client).to receive(:post_turn)

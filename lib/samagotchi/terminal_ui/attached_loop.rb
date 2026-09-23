@@ -15,6 +15,7 @@ require_relative "../context_note"
 require_relative "../model_profile"
 require_relative "../output_formatter"
 require_relative "../session_commands"
+require_relative "../session_manager"
 
 module Samagotchi
   class TerminalUI
@@ -36,6 +37,10 @@ module Samagotchi
       DETACH_COMMANDS = %w[/detach].freeze
       # Detach and ask the worker to exit (bare `exit` too, as in the REPL).
       EXIT_COMMANDS = %w[/exit /quit].freeze
+      # After an exit command: delete the session once the worker has gone.
+      DELETE_FLAG = "--delete"
+      # How long /exit --delete waits for the worker to let go.
+      DELETE_WAIT = 10
       # A second Ctrl-C at an empty idle prompt within this many seconds detaches.
       DETACH_WINDOW = 2.0
       DETACH_HINT = "Ctrl-D to detach, /exit stops the worker"
@@ -74,11 +79,14 @@ module Samagotchi
       # @param default_input [Boolean] type SAMAGOTCHI_DEFAULT_INPUT into
       #   the first read (a new session with no -p, as the REPL)
       # @param clock [#call] monotonic seconds (the Ctrl-C detach window)
+      # @param delete_session [#call] session id -> deletes it (/exit --delete)
       # @param log [#write] the debug log (the REPL's), for lines kept off the screen
       def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false,
                      default_input: false, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
-                     log: DebugLog.new(path: nil))
+                     log: DebugLog.new(path: nil),
+                     delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) })
         @client = client
+        @delete_session = delete_session
         @log = log
         @screen = screen
         @client_id = client_id
@@ -239,7 +247,8 @@ module Samagotchi
         return answer_question(text) if @question
         # Before the continue offer: neither is an answer to it.
         return submit(nil) if DETACH_COMMANDS.include?(text.downcase)
-        return exit_worker if EXIT_COMMANDS.include?(text.downcase) || text.casecmp?("exit")
+        return exit_worker if exit_command?(text)
+        return exit_and_delete if exit_command?(text.delete_suffix(DELETE_FLAG).rstrip) && text.end_with?(" #{DELETE_FLAG}")
         if @continue_offer
           return answer_continue(text) unless SessionCommands.command?(text)
 
@@ -278,6 +287,28 @@ module Samagotchi
         detach(exit_line(@client.request_exit(client_id: @client_id)))
       rescue SystemCallError, IOError => e
         detach(exit_failed_line(e.message))
+      end
+
+      def exit_command?(text) = EXIT_COMMANDS.include?(text.downcase) || text.casecmp?("exit")
+
+      # /exit --delete: the worker exits as for /exit, then the session is
+      # deleted. When the worker stays up (another UI, queued input, ...),
+      # nothing is deleted.
+      def exit_and_delete
+        reply = @client.request_exit(client_id: @client_id)
+        id = @client.session_id
+        unless reply.status == 200
+          line = exit_line(reply)
+          return detach(line.sub("Detached; the session keeps running", "Detached; not deleted: the session keeps running")) if reply.status == 409
+
+          return detach("#{line} Not deleted.")
+        end
+        @delete_session.call(id)
+        detach("Detached; deleted session #{id}.")
+      rescue SystemCallError, IOError => e
+        detach("#{exit_failed_line(e.message)} Not deleted.")
+      rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, ArgumentError => e
+        detach("Detached; the worker is stopping, but session #{id} was not deleted (#{e.message}): chi sessions delete #{id}")
       end
 
       def exit_line(reply)
