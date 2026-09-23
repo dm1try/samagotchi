@@ -7,6 +7,7 @@ require "time"
 require "yaml"
 
 require_relative "config"
+require_relative "context_note"
 require_relative "model_profile"
 require_relative "thought_stream_splitter"
 require_relative "cancellation_controller"
@@ -360,7 +361,7 @@ module Samagotchi
     # a failed turn's prompt handed back and the continue offer, which live
     # UIs need in the event log, emitted outside any turn's stream.
     ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged prompt_restored continue_offered continue_resolved
-                             command_queued command_ran].freeze
+                             command_queued command_ran context_added].freeze
 
     # Put a transport-level event into the ordered event log. Unlike turn
     # events it reaches only persistent observers (no turn sink, no memory
@@ -379,6 +380,27 @@ module Samagotchi
     # delivered meanwhile, and events the block emits keep their order.
     def synchronize_events(&block)
       @session_observer.synchronize(&block)
+    end
+
+    # Add a context note to the session's conversation, between turns: a
+    # tail system message the next turn sees, announced as :context_added.
+    # The array is replaced, not mutated, and the append and the event
+    # happen under the event lock, so a joining UI sees both or neither.
+    # The caller saves the session.
+    # @param note [Hash] SessionManager.read_note's shape
+    # @return [Hash, nil] the message, or nil when the conversation already
+    #   holds this note (a note file re-read after a crash)
+    def add_context_note(session, note)
+      synchronize_events do
+        next nil if Array(session.messages).any? { |m| m[:note_id] == note[:note_id] }
+
+        message = ContextNote.message(**note)
+        replace_session_messages(session, Array(session.messages) + [message])
+        announce({ type: :context_added, session_id: session.id, note_id: note[:note_id], source: note[:source],
+                   from_session: note[:from_session], from_cwd: note[:from_cwd], text: note[:text],
+                   created_at: note[:created_at] }.compact)
+        message
+      end
     end
 
     # ── Model switching ────────────────────────────────────────────────────────
@@ -1168,14 +1190,7 @@ module Samagotchi
         messages = session.messages.dup
         # Built once per Engine (and again after a model switch) so the prompt
         # prefix, and the model server's KV cache for it, stay stable.
-        system_message = { role: "system", content: system_prompt }
-        if messages.empty?
-          messages = [system_message]
-        elsif messages.first[:role].to_s != "system"
-          messages.unshift(system_message)
-        else
-          messages[0] = system_message
-        end
+        messages = ContextNote.with_system_head(messages, { role: "system", content: system_prompt })
         # Explicit --memory preloads are now known after system prompt build.
         add_used_memory_names(activated_memory_names)
         sync_used_memories_from_session(session)

@@ -9,6 +9,7 @@ require_relative "openai_chat"
 require_relative "native_tool_normalizer"
 require_relative "../kernel_loop"
 require_relative "../context_window"
+require_relative "../context_note"
 require_relative "../tool_runner"
 require_relative "../tool_declarations"
 require_relative "../vision_context"
@@ -158,6 +159,7 @@ module Samagotchi
           message[:tool_calls] = entry[:tool_calls] if entry[:tool_calls].is_a?(Array) && !entry[:tool_calls].empty?
           message[:tool_call_id] = entry[:tool_call_id] if entry[:tool_call_id]
           message[:images] = entry[:images] if entry[:images].is_a?(Array) && !entry[:images].empty?
+          ContextNote::KEYS.each { |key| message[key] = entry[key] if entry.key?(key) }
           message
         end
       end

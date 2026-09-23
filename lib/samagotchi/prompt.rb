@@ -106,7 +106,10 @@ module Samagotchi
     def self.prompt_content_for(message, profile)
       return message[:content].to_s if message[:preserve_literals]
 
-      PromptLiteralGuard.escape(message[:content], profile: profile, role: message[:role])
+      # A context note is system-framed but its text is untrusted (Slack, a
+      # peer session): escaped like user content so it can't close its turn.
+      role = message[:kind].to_s == "note" ? "user" : message[:role]
+      PromptLiteralGuard.escape(message[:content], profile: profile, role: role)
     end
   end
 end

@@ -8,6 +8,7 @@ require "reline"
 
 require_relative "model_profile"
 require_relative "config"
+require_relative "context_note"
 require_relative "cancellation_controller"
 require_relative "llm/errors"
 require_relative "host_registry"
@@ -249,12 +250,7 @@ module Samagotchi
     def messages_for(session)
       system_message = { role: "system", content: seed_system_prompt }
       if @resume_session
-        messages = session.messages.dup
-        if messages.empty?
-          messages = [system_message]
-        else
-          messages[0] = system_message
-        end
+        messages = ContextNote.with_system_head(session.messages.dup, system_message)
         @surface.commit("Resumed session: #{session.id}")
       else
         messages = [system_message]

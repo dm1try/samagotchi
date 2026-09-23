@@ -462,4 +462,19 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       }
     end
   end
+
+  describe "a context note" do
+    let(:note) do
+      { role: "system", kind: "note", note_id: "n1", source: "session", from_session: "abc", from_cwd: "/w",
+        content: "[CONTEXT NOTE from session abc (/w)]\nx\n[END NOTE]" }
+    end
+
+    it "keeps the note's keys in the conversation it hands back" do
+      expect(backend.plain([note])).to eq([note])
+    end
+
+    it "sends it as a plain system message" do
+      expect(backend.send(:wire_messages, [note])).to eq([{ role: "system", content: note[:content] }])
+    end
+  end
 end
