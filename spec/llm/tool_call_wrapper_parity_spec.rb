@@ -3,13 +3,14 @@
 require "tmpdir"
 require "samagotchi/kernel_loop"
 require "samagotchi/hooks"
-require "samagotchi/llm/ruby_llm_backend"
+require "samagotchi/llm/chat_loop"
+require_relative "../support/fake_chat_adapter"
 
 # How each loop wraps a single tool call: the text the model gets back, the
 # tool_call_started/completed events, the before/after hooks, the veto and
 # the output cap. Both loops run a REAL KernelLoop dispatch (not a fake
-# kernel), so wrapping bugs show up. Native is the reference; the ruby_llm
-# expectations document where the chat loop differs from it.
+# kernel), so wrapping bugs show up. Native is the reference; the chat loop
+# expectations document where it differs from native.
 RSpec.describe "Tool call wrapper parity" do
   let(:dir) { Dir.mktmpdir("wrapper-parity") }
   let(:file) { File.join(dir, "notes.txt").tap { |p| File.write(p, "hello from the file\n") } }
@@ -42,24 +43,12 @@ RSpec.describe "Tool call wrapper parity" do
     [result, tool_response[:content]]
   end
 
-  # ── ruby_llm (chat loop) ──────────────────────────────────────────────────
+  # ── Chat loop ─────────────────────────────────────────────────────────────
 
   def run_chat(max_tool_output_chars: nil)
     kernel = Samagotchi::KernelLoop.new(client: double("client", context_window: nil), hooks: hooks, profile: "gemma4")
-    responses = [
-      { "choices" => [{ "message" => { "content" => "", "tool_calls" => [
-        { "id" => "c1", "type" => "function",
-          "function" => { "name" => "read", "arguments" => JSON.generate(path: file) } }
-      ] } }] },
-      { "choices" => [{ "message" => { "content" => "done" } }] }
-    ]
-    provider = instance_double(RubyLLM::Providers::OpenAI)
-    connection = instance_double("Connection")
-    allow(provider).to receive(:api_base).and_return("http://localhost:8081/v1")
-    allow(provider).to receive(:connection).and_return(connection)
-    allow(connection).to receive(:post) { Struct.new(:body).new(responses.shift) }
-    backend = Samagotchi::LLM::RubyLLMBackend.new(model_name: "m", kernel: kernel)
-    allow(backend).to receive(:gem_provider).and_return(provider)
+    adapter = FakeChatAdapter.new(FakeChatAdapter.tools(["c1", "read", { "path" => file }]), FakeChatAdapter.text("done"))
+    backend = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
     result = backend.complete(messages: [{ role: "user", content: "read it" }], on_stream_event: on_event,
                               max_tool_output_chars: max_tool_output_chars)
     tool_response = result.conversation.find { |m| m[:role] == "tool_response" }
@@ -79,7 +68,7 @@ RSpec.describe "Tool call wrapper parity" do
       expect(result.tool_activity).to eq([completed[:activity]])
     end
 
-    it "ruby_llm: the same params, hooks and tool_activity" do
+    it "chat: the same params, hooks and tool_activity" do
       result, seen = run_chat
       expect(seen).to start_with("[read]\n")
       expect(seen).not_to include("[read]\n[read]")
@@ -103,7 +92,7 @@ RSpec.describe "Tool call wrapper parity" do
       expect(fired.map(&:first)).to eq(%i[before_tool_call after_tool_call])
     end
 
-    it "ruby_llm: the same veto text" do
+    it "chat: the same veto text" do
       _result, seen = run_chat
       expect(seen).to eq("[read] Error: blocked by guardrail: nope")
       expect(completed[:activity]).to include(tool: "read", status: "blocked")
@@ -120,7 +109,7 @@ RSpec.describe "Tool call wrapper parity" do
       expect(completed[:activity]).to include(tool: "read", status: "error")
     end
 
-    it "ruby_llm: the same prefixed error" do
+    it "chat: the same prefixed error" do
       _result, seen = run_chat
       expect(seen).to eq("[read] Error: boom")
       expect(completed[:activity]).to include(tool: "read", status: "error")
@@ -146,7 +135,7 @@ RSpec.describe "Tool call wrapper parity" do
       expect([native_cap, completed[:output].length]).to eq([12, 12])
     end
 
-    it "ruby_llm: the model gets the capped output (a per-loop choice, kept)" do
+    it "chat: the model gets the capped output (a per-loop choice, kept)" do
       _result, seen = run_chat(max_tool_output_chars: 10)
       expect(completed[:output].length).to eq(10)
       expect(completed[:output_truncated]).to be(true)

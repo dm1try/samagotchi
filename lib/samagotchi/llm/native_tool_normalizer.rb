@@ -19,13 +19,13 @@ require_relative "../tools/ask_user_question"
 
 module Samagotchi
   module LLM
-    # Bridges a ruby_llm gem native `ToolCall` (as emitted by an OpenAI-compatible
-    # server and parsed by the gem) into samagotchi's internal tool-call shape that
+    # Bridges a native tool call (an LLM::ToolCall from the chat adapter; any
+    # object with #name and #arguments) into samagotchi's internal tool-call shape that
     # `KernelLoop#dispatch` consumes:
     #
     #   { name:, content:, path:, scope:, start_line:, end_line:, cwd:, env:, description: }
     #
-    # The gem hands you a *structured* `arguments` Hash (`.arguments` is a parsed
+    # The adapter hands you a *structured* `arguments` Hash (`.arguments` is a parsed
     # Hash), while the internal `content` is a per-tool serialized text blob
     # (e.g. `Edit` wants "<old>…</old><new>…</new>"; `Read` wants a `path`;
     # `Execute` wants the command). Rather than re-architect every tool to accept
@@ -36,11 +36,11 @@ module Samagotchi
     # "unknown tool … available: …" error — the loop feeds that back like any tool
     # result.
     #
-    # This is the Phase-3 crux from Spike #4: the gem→internal mapping is
+    # This is the Phase-3 crux from Spike #4: the native→internal mapping is
     # independent of how tools were driven in the request body.
     class NativeToolNormalizer
       # Map each known tool NAME to a proc(args => internal-call-hash).
-      # Each proc receives the gem ToolCall (`.arguments` is a Hash of string→value)
+      # Each proc receives the tool call's arguments (`.arguments` is a Hash of string→value)
       # and returns the internal dispatch shape with every expected key present
       # (missing values are nil).
       #
@@ -194,7 +194,7 @@ module Samagotchi
       }.freeze
 
       class << self
-        # Map a single gem `RubyLLM::ToolCall` to the internal call hash.
+        # Map a single native tool call (LLM::ToolCall) to the internal call hash.
         #
         # `call.arguments` is a parsed Hash (string keys). If it is nil or a bare
         # string we defensively coerce (string → JSON.parse when possible) so the
@@ -210,14 +210,14 @@ module Samagotchi
           proc.call(args).merge(name: name)
         end
 
-        # Map an Array of gem ToolCalls to internal call hashes (nils dropped).
+        # Map an Array of tool calls to internal call hashes (nils dropped).
         def normalize_all(calls)
           Array(calls).map { |call| normalize(call) }.compact
         end
 
         private
 
-        # args_for: gem arguments is normally a Hash. Defensively handle nil /
+        # args_for: arguments is normally a Hash. Defensively handle nil /
         # JSON-string / other shapes without raising.
         def args_for(call)
           raw = call.respond_to?(:arguments) ? call.arguments : nil

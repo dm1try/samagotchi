@@ -12,8 +12,7 @@ module Samagotchi
     # streaming seam, Ctrl-C, model override, and tool-output cap unchanged. Any
     # extra surface lives on backend-specific subclasses, never on this interface.
     #
-    # The raw-prompt KernelLoop is NativeBackend; the chat loop is
-    # RubyLLMBackend.
+    # The raw-prompt KernelLoop is NativeBackend; the chat loop is ChatLoop.
     class ModelBackend
       def complete(messages:, max_iterations: 100, on_stream_event: nil, cancel_controller: nil,
                    model_name: nil, max_tool_output_chars: nil, pending_input: nil)
@@ -21,10 +20,9 @@ module Samagotchi
       end
     end
 
-    # Loaded on first use so the ruby_llm gem is only pulled in when that
-    # backend is selected (ruby_llm_backend.rb requires this file for its
-    # superclass, so a plain require here would be circular).
-    autoload :RubyLLMBackend, File.expand_path("ruby_llm_backend", __dir__)
+    # Autoloaded: both require this file for their superclass, so a plain
+    # require here would be circular.
+    autoload :ChatLoop, File.expand_path("chat_loop", __dir__)
     autoload :NativeBackend, File.expand_path("native_backend", __dir__)
   end
 end

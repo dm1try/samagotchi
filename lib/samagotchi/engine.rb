@@ -12,6 +12,7 @@ require_relative "cancellation_controller"
 require_relative "kernel_loop"
 require_relative "host_registry"
 require_relative "llm/backend"
+require_relative "llm/openai_chat"
 require_relative "session"
 require_relative "session_observer"
 require_relative "tool_declarations"
@@ -1064,16 +1065,17 @@ module Samagotchi
       @activity_mutex.synchronize { session.messages = messages }
     end
 
-    # Pick the loop for a target; a chat backend is pointed at the target's /v1.
+    # Pick the loop for a target; the chat loop is pointed at the target
+    # host's adapter (one per host, kept for its cached model list).
     def backend_for(target)
       return @native_backend unless target.entry.chat?
 
-      chat = @chat_backend_mutex.synchronize do
-        # Built on first use so the ruby_llm gem loads only when a chat host is used.
-        @chat_backend ||= LLM::RubyLLMBackend.new(model_name: @default_model_name, kernel: @kernel)
+      @chat_backend_mutex.synchronize do
+        @chat_backend ||= LLM::ChatLoop.new(kernel: @kernel)
+        @chat_adapters ||= {}
+        @chat_backend.adapter = (@chat_adapters[target.entry.name] ||= LLM::OpenAIChat.for(target.entry))
+        @chat_backend
       end
-      chat.base_url = target.openai_base_url
-      chat
     end
 
     # Load hooks from the global config file using the Hooks::Loader.
@@ -1231,8 +1233,12 @@ module Samagotchi
         when :generation_started
           splitter = ThoughtStreamSplitter.for_profile(@profile)
         when :generation_chunk
-          delta = splitter.feed(event[:content])
-          event = event.merge(text: delta[:text], thinking: delta[:thinking]) if enrich == :always
+          # The chat loop already splits its stream (reasoning arrives apart
+          # from the answer); only raw native chunks are split here.
+          unless event.key?(:text)
+            delta = splitter.feed(event[:content])
+            event = event.merge(text: delta[:text], thinking: delta[:thinking]) if enrich == :always
+          end
         end
         emit_event(on_event, event)
       end

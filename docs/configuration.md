@@ -157,24 +157,25 @@ hosts:
 
 `chi self` shows the variable and whether it is set (`api key  FIREWORKS_API_KEY (set)`).
 
-For models on that host, chi uses the chat loop (through the ruby_llm gem): it
-derives the OpenAI base as `http://HOST:PORT/v1` and posts messages plus function
-schemas to `/v1/chat/completions`. This works with Splash and with llama.cpp servers that
+For models on that host, chi uses the chat loop (its own OpenAI chat adapter): it
+takes the OpenAI base (`url:`, else `http://HOST:PORT/v1`) and streams messages plus
+function schemas from `/v1/chat/completions`; the model's reasoning (`reasoning_content`)
+shows as thinking. This works with Splash and with llama.cpp servers that
 expose the OpenAI-compatible chat endpoint. In verbose mode (`-v`), chi prints the loop the
-starting model uses (`[verbose] backend=ruby_llm` or `backend=native`); request
+starting model uses (`[verbose] backend=chat` or `backend=native`); request
 bodies are not logged. The interactive REPL, `--prompt`,
 workers, and resumed sessions all use the loop of the model's host. Hosts without
 `api: openai` keep using the native `/completion`, `/v1/completions`, or oMLX
 transport path.
 
-To manually verify a live RubyLLM tool round trip, run the gated integration
+To manually verify a live chat-loop tool round trip, run the gated integration
 spec. It requires the model to call `execute` and return the current UTC date:
 
 ```shell
 SAMAGOTCHI_INTEGRATION=1 \
 SAMAGOTCHI_SERVER_HOST=192.168.1.29 SAMAGOTCHI_SERVER_PORT=8000 \
 SAMAGOTCHI_DEFAULT_MODEL=incoai/Qwen3.8-27B-Splash \
-bundle exec rspec spec/integration/ruby_llm_backend_spec.rb -fd < /dev/null
+bundle exec rspec spec/integration/chat_loop_spec.rb -fd < /dev/null
 ```
 
 The same test works against a llama.cpp OpenAI-compatible server by changing

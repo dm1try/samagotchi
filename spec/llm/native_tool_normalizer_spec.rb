@@ -2,14 +2,14 @@
 
 require "samagotchi/llm/backend"
 require "samagotchi/llm/native_tool_normalizer"
+require "samagotchi/llm/openai_chat"
 require "samagotchi/kernel_loop"
 require "samagotchi/reminder_store"
 
 RSpec.describe Samagotchi::LLM::NativeToolNormalizer do
-  # A gem RubyLLM::ToolCall is {id:, name:, arguments: <Hash>}. We stand in for it
-  # with a double so the spec never touches the gem's network parsing.
+  # The chat loop hands over LLM::ToolCall values (arguments parsed).
   def tool_call(name:, arguments: {})
-    double(id: "call_#{name}", name: name, arguments: arguments)
+    Samagotchi::LLM::ToolCall.new(id: "call_#{name}", name: name, arguments: arguments)
   end
 
   describe ".normalize" do

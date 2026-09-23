@@ -30,15 +30,15 @@ RSpec.describe "Engine picks the loop from the host's api" do
 
   it "uses the chat backend against the host's /v1 for api: openai" do
     backend = engine("oai:some-model").backend
-    expect(backend).to be_a(Samagotchi::LLM::RubyLLMBackend)
-    expect(backend.base_url).to eq("http://oai.test:8000/v1")
+    expect(backend).to be_a(Samagotchi::LLM::ChatLoop)
+    expect(backend.adapter.base_url).to eq("http://oai.test:8000/v1")
   end
 
   it "follows switch_model! both ways, keeping one chat backend" do
     e = engine("box:gemma4-small")
     e.switch_model!("oai:some-model")
     chat = e.backend
-    expect(chat).to be_a(Samagotchi::LLM::RubyLLMBackend)
+    expect(chat).to be_a(Samagotchi::LLM::ChatLoop)
 
     e.switch_model!("box:gemma4-small")
     expect(e.backend).to be_a(Samagotchi::LLM::NativeBackend)
@@ -56,11 +56,11 @@ RSpec.describe "Engine picks the loop from the host's api" do
       "beta" => { host: "beta.test", port: 2222, api: :openai }
     })
     e = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "alpha:gemma4-small")
-    expect(e.backend.base_url).to eq("http://alpha.test:1111/v1")
+    expect(e.backend.adapter.base_url).to eq("http://alpha.test:1111/v1")
 
     e.switch_model!("beta:Qwen3-14B")
 
-    expect(e.backend.base_url).to eq("http://beta.test:2222/v1")
+    expect(e.backend.adapter.base_url).to eq("http://beta.test:2222/v1")
   end
 
   it "warns once that SAMAGOTCHI_BACKEND is ignored, and still follows the host" do

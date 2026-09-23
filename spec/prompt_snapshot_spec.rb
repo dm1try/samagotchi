@@ -2,11 +2,11 @@
 
 require "json"
 require "samagotchi/engine"
-require "samagotchi/llm/ruby_llm_backend"
+require "samagotchi/llm/chat_loop"
 
 # Byte-for-byte snapshots of what each model is told about its tools: the
 # native base system prompt per profile (tool declarations + call hint + the
-# fixed guidance around them) and the tools: array the chat (ruby_llm) path
+# fixed guidance around them) and the tools: array the chat loop
 # sends. These pin the prompt while tool schemas and dispatch are refactored;
 # a change here must be deliberate.
 #
@@ -36,7 +36,7 @@ RSpec.describe "Prompt snapshots" do
   end
 
   it "keeps the chat path's tool definitions" do
-    backend = Samagotchi::LLM::RubyLLMBackend.new(model_name: "m")
-    expect_snapshot("chat_tools.json", JSON.pretty_generate(backend.send(:tool_definitions)) + "\n")
+    backend = Samagotchi::LLM::ChatLoop.new(kernel: instance_double(Samagotchi::KernelLoop))
+    expect_snapshot("chat_tools.json", JSON.pretty_generate(backend.tool_definitions) + "\n")
   end
 end

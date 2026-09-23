@@ -81,8 +81,8 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
     end
   end
 
-  describe ":ruby_llm path (backend is RubyLLMBackend)" do
-    let(:backend) { instance_double(Samagotchi::LLM::RubyLLMBackend) }
+  describe "chat path (backend is ChatLoop)" do
+    let(:backend) { instance_double(Samagotchi::LLM::ChatLoop) }
 
     def build_engine_with_backend(**overrides)
       engine = build_engine(**overrides)
@@ -93,7 +93,7 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
     it "delegates to @backend.complete and returns the ModelResult" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       model_result = Samagotchi::LLM::ModelResult.new(
-        text: "cloud response", tool_calls: nil, provider: :ruby_llm,
+        text: "cloud response", tool_calls: nil, provider: :chat,
         conversation: [{ role: "user", content: "hi" }, { role: "model", content: "cloud response" }]
       )
       allow(backend).to receive(:complete).and_return(model_result)
@@ -101,13 +101,13 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
       returned = build_engine_with_backend(profile: "gemma4").run_turn(make_session, "hi")
 
       expect(returned).to eq(model_result)
-      expect(returned.provider).to eq(:ruby_llm)
+      expect(returned.provider).to eq(:chat)
     end
 
     it "emits turn_canceled for a canceled backend result" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       model_result = Samagotchi::LLM::ModelResult.new(
-        text: "", tool_calls: nil, provider: :ruby_llm,
+        text: "", tool_calls: nil, provider: :chat,
         canceled: true, cancellation_reason: :user_interrupt,
         conversation: []
       )

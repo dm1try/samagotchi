@@ -98,7 +98,7 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
       expect(wired.lines).to eq(["read 0.0", "done", "iteration limit reached"])
     end
 
-    it "tolerates a chunk or tool call without an iteration or params (ruby_llm backend)" do
+    it "tolerates a chunk or tool call without an iteration or params (the old chat backend)" do
       renderer.call(wire(type: :generation_chunk, content: "x"))
       renderer.call(wire(type: :tool_call_started, tool: "read", params: nil))
       renderer.call(wire(type: :tool_call_completed, tool: "read", activity: activity.merge(params: nil)))
