@@ -112,6 +112,16 @@ RSpec.describe Samagotchi::BridgeClient do
       .and include('{"line":"/model x","client_id":"tui:1"}')
   end
 
+  it "asks the worker to exit, naming the client" do
+    port, finish = serve_once(json_reply("409 Conflict", '{"status":"held","reason":"turn_running","session_id":"s1"}'))
+
+    reply = described_class.new(session_id: "s1", port: port).request_exit(client_id: "tui:1")
+
+    expect(reply.status).to eq(409)
+    expect(reply.json).to include("reason" => "turn_running")
+    expect(finish.call).to start_with("POST /session/s1/exit HTTP/1.1\r\n").and include('{"client_id":"tui:1"}')
+  end
+
   it "posts a turn with the client's id and returns the ACK" do
     port, finish = serve_once(json_reply("202 Accepted", '{"status":"accepted","enqueued_id":"e1","session_id":"s1"}'))
 

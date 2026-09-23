@@ -75,9 +75,13 @@ module Samagotchi
       @poll_interval = poll_interval || FALLBACK_TICK_SECONDS
       @waker = Waker.new
       @command_queue = Thread::Queue.new
+      # The client_id of a client that asked the worker to exit (POST /exit).
+      @exit_requested = nil
+      @exit_requested_by = nil
     end
 
-    # @return [Symbol] :idle_exit
+    # @return [Symbol] :idle_exit, or :exit_requested when a client asked it
+    #   to exit (Bridge POST /exit)
     def run
       @session = Session.load(@session_id, state_dir: @state_dir)
       @engine = build_engine
@@ -108,11 +112,13 @@ module Samagotchi
                                               # count says which turn ends came before it.
                                               @command_queue << command.merge(after_seq: @engine.event_count)
                                               @waker.wake
-                                            })
+                                            },
+                                            on_exit_request: method(:exit_request))
       @idle_exit = WorkerIdleExit.new(
         engine: @engine, bridge: @bridge,
         timeout_minutes: @idle_exit_minutes || SessionManager.config_idle_exit_minutes,
-        input_pending: -> { !@command_queue.empty? || !SessionManager.find_new_input_files(@session_dir).empty? }
+        input_pending: -> { !@command_queue.empty? || !SessionManager.find_new_input_files(@session_dir).empty? },
+        awaiting_continue: -> { @turn_flow.awaiting_continue? }
       )
 
       begin
@@ -136,6 +142,7 @@ module Samagotchi
           if input_files.empty?
             next if run_due_reminders
             return :idle_exit if @idle_exit.due? && leave_idle
+            return :exit_requested if @exit_requested && leave_on_request
 
             @waker.wait(@poll_interval)
             next
@@ -435,6 +442,43 @@ module Samagotchi
         @bridge&.stop
         @engine.stop_idle
         log_idle_exit
+        true
+      end
+    end
+
+    # Bridge POST /exit, on a Bridge thread with the event log held.
+    # @return [Symbol, nil] what keeps the worker up, nil when it will leave
+    def exit_request(client_id)
+      # The Bridge serves before the idle-exit policy exists.
+      return :starting unless @idle_exit
+
+      hold = @idle_exit.hold_for_request(requester: client_id)
+      return hold if hold
+
+      @exit_requested = true
+      @exit_requested_by = client_id
+      @waker.wake
+      nil
+    end
+
+    # #leave_idle for an exit a client asked for: check again with the event
+    # log held (a prompt may have come in since), then close the Bridge and
+    # stop the idle jobs. Other clients' streams no longer hold: the asker's
+    # may not have closed yet, and a UI joining now finds the worker gone
+    # (:stream_closed), the window #leave_idle has too.
+    # @return [Boolean] false when something came in since the request
+    def leave_on_request
+      @engine.synchronize_events do
+        hold = @idle_exit.hold_for_request(requester: @exit_requested_by, streams: false)
+        if hold
+          @exit_requested = nil
+          SessionManager.debug_log("[worker] pid #{Process.pid} stays up after an exit request (#{hold})")
+          next false
+        end
+
+        @bridge&.stop
+        @engine.stop_idle
+        SessionManager.debug_log("[worker] pid #{Process.pid} exits on request of #{@exit_requested_by || "a client"}")
         true
       end
     end

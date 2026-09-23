@@ -436,12 +436,13 @@ RSpec.describe Samagotchi::Bridge do
       WebMock.disable_net_connect! if defined?(WebMock)
     end
 
-    def start_bridge(input_format: nil, on_input: nil, on_command: nil)
+    def start_bridge(input_format: nil, on_input: nil, on_command: nil, on_exit_request: nil)
       @engine = make_engine
       @session = make_session
       @bridge = described_class.new(
         engine: @engine, state_dir: state_dir, session_id: @session.id,
-        heartbeat_interval: 0.2, input_format: input_format, on_input: on_input, on_command: on_command
+        heartbeat_interval: 0.2, input_format: input_format, on_input: on_input, on_command: on_command,
+        on_exit_request: on_exit_request
       )
       @bridge.start
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
@@ -1068,6 +1069,45 @@ RSpec.describe Samagotchi::Bridge do
         start_bridge
 
         expect(post_command(JSON.generate(line: "/model"))).to eq([501, { "error" => "commands_unavailable" }])
+      end
+    end
+
+    describe "POST /session/:id/exit" do
+      def post_exit(body, session_id: @session.id)
+        res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{session_id}/exit"),
+                             body, "Content-Type" => "application/json")
+        [res.code.to_i, JSON.parse(res.body)]
+      end
+
+      it "asks the worker with the event log held and answers exiting" do
+        asked = []
+        start_bridge(on_exit_request: ->(client_id) { asked << client_id && nil })
+        allow(@engine).to receive(:synchronize_events).and_call_original
+
+        expect(post_exit(JSON.generate(client_id: "tui:1"))).to eq([200, { "status" => "exiting", "session_id" => @session.id }])
+        expect(asked).to eq(["tui:1"])
+        expect(@engine).to have_received(:synchronize_events)
+      end
+
+      it "answers 409 with what keeps the worker up" do
+        start_bridge(on_exit_request: ->(_) { :client_connected })
+
+        expect(post_exit(JSON.generate(client_id: "tui:1")))
+          .to eq([409, { "status" => "held", "reason" => "client_connected", "session_id" => @session.id }])
+      end
+
+      it "refuses bad JSON and other sessions" do
+        start_bridge(on_exit_request: ->(_) { raise "must not be called" })
+
+        expect(post_exit("{nope").first).to eq(400)
+        expect(post_exit(JSON.generate(client_id: "tui:1"), session_id: "other"))
+          .to eq([404, { "error" => "unknown_session" }])
+      end
+
+      it "answers 501 when no worker loop takes the request" do
+        start_bridge
+
+        expect(post_exit(JSON.generate(client_id: "tui:1"))).to eq([501, { "error" => "exit_unavailable" }])
       end
     end
 

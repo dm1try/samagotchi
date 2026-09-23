@@ -141,6 +141,15 @@ module Samagotchi
       post("command", { line: line, client_id: client_id }, read_body: true)
     end
 
+    # POST /session/:id/exit: ask the worker to exit now. 200 = it will
+    # (status "exiting"), 409 = something keeps it up (reason), 404 with
+    # error "not_found" = a worker older than the route.
+    # @param client_id [String] the asking UI, whose own streams don't hold
+    # @return [Response]
+    def request_exit(client_id:)
+      post("exit", { client_id: client_id }, read_body: true)
+    end
+
     # POST /session/:id/cancel. 202 = requested, 409 = no active turn.
     # @return [Response] (status only)
     def cancel(reason:)

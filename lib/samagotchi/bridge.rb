@@ -59,13 +59,18 @@ module Samagotchi
     # @param on_command [#call, nil] takes a session command
     #   ({command_id:, client_id:, line:}) for the worker loop to run; without
     #   one, POST /command answers 501
+    # @param on_exit_request [#call, nil] a client asks the worker to exit
+    #   now: takes the client_id, returns nil when the worker will leave or
+    #   the Symbol that keeps it up (WorkerIdleExit#hold_for_request); called
+    #   with the event log held. Without one, POST /exit answers 501
     def initialize(engine:, state_dir:, session_id:, bind: DEFAULT_BIND,
                    port: 0, ring_capacity: DEFAULT_RING_CAPACITY,
                    heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, input_format: nil, on_input: nil,
-                   on_command: nil)
+                   on_command: nil, on_exit_request: nil)
       @engine = engine
       @on_input = on_input
       @on_command = on_command
+      @on_exit_request = on_exit_request
       @input_format = input_format
       @state_dir = state_dir
       @session_id = session_id
@@ -275,6 +280,9 @@ module Samagotchi
         elsif (m = command_match(request[:path])) && method == "POST"
           payload, status, body = handle_command(m[1], request[:body])
           write_json(io, status, payload, body)
+        elsif (m = exit_match(request[:path])) && method == "POST"
+          payload, status, body = handle_exit_request(m[1], request[:body])
+          write_json(io, status, payload, body)
         elsif (m = state_match(request[:path])) && method == "GET"
           payload, status, body = handle_state(m[1])
           write_json(io, status, payload, body)
@@ -395,6 +403,10 @@ module Samagotchi
       %r|\A/session/([^/]+)/command\z|u.match(path.to_s)
     end
 
+    def exit_match(path)
+      %r|\A/session/([^/]+)/exit\z|u.match(path.to_s)
+    end
+
     # Cancel the active turn on this session's engine, if any.
     # Returns [headers, status, body].
     def handle_cancel(session_id, body)
@@ -502,6 +514,27 @@ module Samagotchi
         @engine.announce(type: :command_queued, **command)
       end
       [{}, 202, { status: "accepted", command_id: command[:command_id], session_id: @session_id }]
+    rescue StandardError => e
+      [{}, 500, { error: "bridge_error", detail: e.message }]
+    end
+
+    # A client asks the worker to exit now (`/exit` in the attached TUI). The
+    # worker decides with the event log held, so no POST /turn lands between
+    # its check and its answer; it leaves from its loop after this reply.
+    # 200 {status: "exiting"}, or 409 {status: "held", reason:} naming what
+    # keeps it up. Returns [headers, status, body].
+    def handle_exit_request(session_id, body)
+      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
+      return [{}, 501, { error: "exit_unavailable" }] unless @on_exit_request
+
+      parsed = parse_json(body)
+      return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }] unless parsed.is_a?(Hash)
+
+      client_id = fetched(parsed, "client_id")
+      reason = @engine.synchronize_events { @on_exit_request.call(client_id) }
+      return [{}, 200, { status: "exiting", session_id: @session_id }] if reason.nil?
+
+      [{}, 409, { status: "held", reason: reason.to_s, session_id: @session_id }]
     rescue StandardError => e
       [{}, 500, { error: "bridge_error", detail: e.message }]
     end

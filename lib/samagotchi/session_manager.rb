@@ -292,11 +292,12 @@ module Samagotchi
     # exits quietly.
     #
     # A worker nobody uses returns once session.idle_exit_minutes have passed
-    # (see WorkerIdleExit). The next send wakes a new one.
+    # (see WorkerIdleExit), and one a client asked to exit (Bridge POST /exit)
+    # returns as soon as nothing keeps it. The next send wakes a new one.
     # @param idle_exit_minutes [Numeric, nil] nil: session.idle_exit_minutes
     # @param poll_interval [Numeric, nil] seconds between the loop's fallback
     #   ticks (nil: Worker::FALLBACK_TICK_SECONDS); queued turns wake it at once
-    # @return [Symbol] :idle_exit
+    # @return [Symbol] :idle_exit or :exit_requested
     def self.run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT,
                               idle_exit_minutes: nil, poll_interval: nil)
       sd = state_dir || Session.default_state_dir
@@ -314,7 +315,9 @@ module Samagotchi
       # Only after the release: a writer that still saw this worker as the
       # owner may have queued input since the last check. Either it finds no
       # owner after its write and wakes one, or this finds its input.
-      resume_session(session_id, state_dir: sd) if result == :idle_exit && !find_new_input_files(session_dir).empty?
+      if %i[idle_exit exit_requested].include?(result) && !find_new_input_files(session_dir).empty?
+        resume_session(session_id, state_dir: sd)
+      end
       result
     end
 
@@ -367,11 +370,11 @@ module Samagotchi
     #   (the worker degrades: turns still flow through the input-dir loop, but
     #   there is no live SSE or in-process cancel/answer).
     # @param on_input [#call, nil] called after the Bridge queues a turn
-    def self.start_bridge(engine:, state_dir:, session_id:, on_input: nil, on_command: nil)
+    def self.start_bridge(engine:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil)
       require_relative "bridge"
       Samagotchi::Bridge.new(
         engine: engine, state_dir: state_dir, session_id: session_id, input_format: INPUT_FORMAT,
-        on_input: on_input, on_command: on_command
+        on_input: on_input, on_command: on_command, on_exit_request: on_exit_request
       ).start
     rescue StandardError => e
       warn "Bridge: failed to start for session #{session_id}: #{e.class}: #{e.message}"

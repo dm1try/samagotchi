@@ -7,6 +7,7 @@ require "json"
 
 require "samagotchi/engine"
 require "samagotchi/bridge"
+require "samagotchi/bridge_client"
 require "samagotchi/worker"
 
 RSpec.describe Samagotchi::Worker do
@@ -108,6 +109,7 @@ RSpec.describe Samagotchi::Worker do
     def start_worker(poll_interval: 5, idle_exit_minutes: 0)
       worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
                                    idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
+      @worker = worker
       @thread = Thread.new { worker.run }
       @thread.report_on_exception = false
       expect(wait_until { File.exist?(sidecar) }).to be(true)
@@ -212,6 +214,70 @@ RSpec.describe Samagotchi::Worker do
 
       expect(@thread.join(2)&.value).to eq(:idle_exit)
       expect(File.exist?(sidecar)).to be(false)
+    end
+
+    describe "an exit request (POST /exit)" do
+      def post_exit(client_id: "tui:1")
+        port = JSON.parse(File.read(sidecar))["port"]
+        res = Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
+                             JSON.generate(client_id: client_id), "Content-Type" => "application/json")
+        [res.code.to_i, JSON.parse(res.body)]
+      end
+
+      it "leaves at once when nothing keeps it, even with idle exit off, and the session isn't stopped" do
+        start_worker(poll_interval: 5, idle_exit_minutes: 0)
+
+        expect(post_exit.first).to eq(200)
+        expect(@thread.join(2)&.value).to eq(:exit_requested)
+        expect(File.exist?(sidecar)).to be(false)
+        expect(engine).to have_received(:stop_idle)
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).not_to eq(Samagotchi::Session::STATUS_STOPPED)
+      end
+
+      it "stays up while a turn runs" do
+        start_worker(poll_interval: 0.05)
+        allow(engine).to receive(:turn_running?).and_return(true)
+
+        expect(post_exit).to eq([409, { "status" => "held", "reason" => "turn_running", "session_id" => session.id }])
+        sleep(0.2)
+        expect(@thread).to be_alive
+      end
+
+      def follow(client_id: nil)
+        port = JSON.parse(File.read(sidecar))["port"]
+        stream = Samagotchi::BridgeClient.new(session_id: session.id, port: port).follow(client_id: client_id) { |_| nil }
+        (@streams ||= []) << stream
+        stream
+      end
+
+      def open_streams = @worker.instance_variable_get(:@bridge).open_streams
+
+      after { Array(@streams).each(&:close) }
+
+      it "leaves while the asker's own stream is open" do
+        start_worker(poll_interval: 0.05)
+        follow(client_id: "tui:1")
+        expect(wait_until { open_streams == 1 }).to be(true)
+
+        expect(post_exit.first).to eq(200)
+        expect(@thread.join(2)&.value).to eq(:exit_requested)
+      end
+
+      it "stays up while another client holds a stream" do
+        start_worker(poll_interval: 0.05)
+        follow(client_id: "tui:1")
+        follow # a web tab
+        expect(wait_until { open_streams == 2 }).to be(true)
+
+        expect(post_exit.last).to include("reason" => "client_connected")
+        sleep(0.2)
+        expect(@thread).to be_alive
+      end
+
+      it "answers :starting before the idle-exit policy exists" do
+        worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir)
+        expect(worker.send(:exit_request, "tui:1")).to eq(:starting)
+      end
     end
 
     describe "a failed turn" do

@@ -619,6 +619,19 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Process).to have_received(:spawn)
       expect(input_files.size).to eq(1)
     end
+
+    it "wakes a new worker for input queued as it left on a client's request too" do
+      allow_any_instance_of(Samagotchi::Worker).to receive(:run) do
+        described_class.write_turn_input(session.id, prompt: "late", state_dir: tmpdir)
+        :exit_requested
+      end
+      allow(Process).to receive(:spawn).and_return(40_005)
+
+      expect(run_worker).to eq(:exit_requested)
+
+      expect(Process).to have_received(:spawn)
+      expect(Samagotchi::OwnerLock.owner(session_dir)).to be_nil
+    end
   end
 
   describe "structured input" do
