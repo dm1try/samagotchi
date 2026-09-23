@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "open3"
+require "rbconfig"
 require "socket"
 require "stringio"
 require "timeout"
@@ -211,5 +213,30 @@ RSpec.describe Samagotchi::SendCommand do
   it "prints help" do
     expect(run("--help")).to eq(0)
     expect(out.string).to include("Usage: chi send", "-m TEXT", "chi sessions list --live")
+  end
+
+  describe "bin/chi send" do
+    let(:chi) { File.expand_path("../bin/chi", __dir__) }
+
+    let(:xdg) { Dir.mktmpdir("chi-send") }
+    let(:tmpdir) { FileUtils.mkdir_p(Samagotchi::Session.default_state_dir(env: { "XDG_STATE_HOME" => xdg })).first }
+
+    after { FileUtils.rm_rf(xdg) }
+
+    it "is wired before the main option parser, and keeps non-ASCII text without a locale" do
+      a = make(owner: "worker")
+      events = serve(a)
+
+      # No locale at all, as an app started from Finder or launchd has it.
+      bare = { "XDG_STATE_HOME" => xdg, "HOME" => Dir.home, "PATH" => "#{File.dirname(RbConfig.ruby)}:/usr/bin:/bin" }
+      stdout, stderr, status = Open3.capture3(bare, RbConfig.ruby, chi, "send", "-m", "caf\u00E9?", short(a),
+                                              stdin_data: "h\u00E9llo", unsetenv_others: true)
+
+      expect(status.exitstatus).to eq(0), stderr
+      expect(stdout).to eq("#{short(a)}  sent\n")
+      expect(stderr).not_to include("warning")
+      expect(events.map { |e| e.slice(:type, :client_id, :prompt) })
+        .to eq([{ type: :turn_enqueued, client_id: "cli:send", prompt: "> héllo\n\ncafé?" }])
+    end
   end
 end

@@ -157,6 +157,12 @@ if ARGV[0] == "note"
   exit Samagotchi::NoteCommand.new(ARGV[1..] || []).run
 end
 
+# `chi send`: a message into sessions as the user's, before OptionParser (-m is its own)
+if ARGV[0] == "send"
+  require "samagotchi/send_command"
+  exit Samagotchi::SendCommand.new(ARGV[1..] || []).run
+end
+
 # `chi desktop`: the native "Send to chi" helper, before OptionParser (its own flags)
 if ARGV[0] == "desktop"
   require "samagotchi/desktop_command"
@@ -805,6 +811,7 @@ parser = OptionParser.new do |opts|
            bin/chi web [--port PORT] [--open]   the web UI
            bin/chi sessions <list|stop|prune|clean>
            bin/chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
+           bin/chi send [-m TEXT] ID...         a message into sessions, as if typed there
            bin/chi bundle <install|upgrade|uninstall|status|diff|bundles|build>
            bin/chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
            bin/chi self                         version, paths, model and bundles
