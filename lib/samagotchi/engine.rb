@@ -1516,7 +1516,7 @@ module Samagotchi
           6. Use write for full-file rewrites or creating new files.
 
         Memory convention:
-          Project scope: ~/.config/samagotchi/memories/projects/<name>_<hash>/ (project-local)
+          Project scope: one folder per git repository, shared by its worktrees and subdirectories (path shown above)
           System scope:  ~/.config/samagotchi/memories/ (cross-project)
           memory_read accepts optional scope (project|system).
           memory_write requires explicit scope and entry name.
@@ -1560,7 +1560,7 @@ module Samagotchi
         "Project memories:\n#{project_index}",
         "System memories:\n#{system_index}"
       ].join("\n\n")
-      [thinking_token + base, rg_guidance, project_description, current_directory, current_session, memory_sections, system_identity_section, explicit_memory_section].compact.join("\n")
+      [thinking_token + base, rg_guidance, project_description, project_location, current_session, memory_sections, system_identity_section, explicit_memory_section].compact.join("\n")
     end
 
     # B-light: auto-preload the built-in identity memory.
@@ -1670,10 +1670,28 @@ module Samagotchi
       nil
     end
 
-    def current_directory
-      "Current working directory:\n#{Dir.pwd}"
+    # Where the session runs and which project memory folder it uses. The root
+    # line appears only when it differs from the cwd (a worktree or subdir).
+    def project_location
+      cwd = Dir.pwd
+      root = MemoryPaths.project_root(cwd)
+      lines = ["Current working directory:", cwd]
+      unless root == cwd
+        lines << "Project root (project memories are shared by all worktrees and subdirectories of this repository):"
+        lines << root
+      end
+      lines << "Project memories folder:"
+      lines << home_relative(Tools::MemoryRead.memories_dir("project"))
+      lines.join("\n")
     rescue StandardError
       nil
+    end
+
+    def home_relative(path)
+      home = Dir.home
+      path.start_with?("#{home}/") ? "~#{path.delete_prefix(home)}" : path
+    rescue ArgumentError
+      path
     end
 
     # Fixed for the session's lifetime, so it doesn't churn the prompt cache.

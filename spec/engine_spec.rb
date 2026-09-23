@@ -2,6 +2,7 @@
 
 require "samagotchi/engine"
 require "samagotchi/session"
+require "tmpdir"
 
 RSpec.describe Samagotchi::Engine do
   around do |example|
@@ -67,6 +68,66 @@ RSpec.describe Samagotchi::Engine do
       engine.session = session
       prompt = engine.send(:system_prompt_with_index, engine.send(:assist_system_prompt))
       expect(prompt).to include("Current session id: #{session.id} (resume later with `chi --resume #{session.id}`)")
+    end
+  end
+
+  describe "project location in the system prompt" do
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+    end
+
+    around do |example|
+      Dir.mktmpdir { |tmp| @tmp = File.realpath(tmp); example.run }
+    end
+
+    def git(*args)
+      system("git", "-c", "user.name=x", "-c", "user.email=x@x", "-c", "init.defaultBranch=main", *args,
+             exception: true, out: File::NULL, err: File::NULL)
+    end
+
+    def project_prompt_in(dir)
+      Dir.chdir(dir) { build_engine(profile: "gemma4").system_prompt }
+    end
+
+    let(:repo) { File.join(@tmp, "repo") }
+
+    before do
+      git("init", "-q", repo)
+      git("-C", repo, "commit", "-q", "--allow-empty", "-m", "init")
+    end
+
+    it "shows the project root and memories folder from a linked worktree" do
+      tree = File.join(@tmp, "repo-flip")
+      git("-C", repo, "worktree", "add", "-q", "-b", "flip", tree)
+      folder = Dir.chdir(repo) { Samagotchi::Tools::MemoryRead.memories_dir("project") }
+
+      expect(project_prompt_in(tree)).to include(<<~TEXT.chomp)
+        Current working directory:
+        #{tree}
+        Project root (project memories are shared by all worktrees and subdirectories of this repository):
+        #{repo}
+        Project memories folder:
+        #{folder}
+      TEXT
+    end
+
+    it "shows no root line at the repository root" do
+      prompt = project_prompt_in(repo)
+      expect(prompt).to include("Current working directory:\n#{repo}\nProject memories folder:\n")
+      expect(prompt).not_to include("Project root (")
+    end
+
+    it "shortens a memories folder under the home directory with ~" do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:memories_dir).with("project")
+        .and_return(File.join(Dir.home, ".config", "samagotchi", "memories", "projects", "repo_abc"))
+      expect(project_prompt_in(repo))
+        .to include("Project memories folder:\n~/.config/samagotchi/memories/projects/repo_abc")
+    end
+
+    it "points the memory convention at the shown folder instead of a path pattern" do
+      prompt = project_prompt_in(repo)
+      expect(prompt).to include("Project scope: one folder per git repository, shared by its worktrees and subdirectories (path shown above)")
+      expect(prompt).not_to include("<name>_<hash>")
     end
   end
 
