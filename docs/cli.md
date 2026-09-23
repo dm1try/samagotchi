@@ -83,8 +83,16 @@ In an attached terminal:
 
 - Ctrl-C cancels the running turn (whoever started it) and leaves what you typed
   in the prompt. At an idle prompt it clears the line; a second Ctrl-C within
-  2 s, Ctrl-D or `/exit` detaches. The worker keeps running; the detach line
+  2 s, Ctrl-D or `/detach` detaches. The worker keeps running; the detach line
   prints `chi --attach ID` to come back.
+- `/exit` (also `/quit`, `exit`) detaches and asks the worker to exit now, so it
+  doesn't wait out the idle timeout. It stays up while something still needs
+  it, and the detach line says what: a turn is running (Ctrl-C cancels it
+  first), prompts are queued, a continue offer is pending, another UI is
+  attached, or reminders are set. A web tab you just closed can count as
+  attached for about 30 s. When the worker exits, `chi --resume ID` or
+  `chi --attach ID` starts a new one with the conversation. A worker from an
+  older chi can't be asked; the line says to use `chi sessions stop ID`.
 - The prompt stays open while a turn runs; see [Typing during a turn](#typing-during-a-turn).
 - `/model`, `/models`, `/guardrails`, `/continue`, `!rollback` and `!commands` run in the
   worker, and every UI sees their output; `/stats` and `/recap` work too. The
@@ -141,7 +149,8 @@ REPL alike:
 - Ctrl-C cancels the turn and keeps what you typed.
 - In the plain REPL, Ctrl-D on an empty prompt (or `exit`, `/exit`) mid-turn
   exits once the turn ends: `(exits after this turn; Ctrl-C cancels it)`. In an
-  attached terminal it detaches at once and the turn goes on in the worker.
+  attached terminal it detaches at once and the turn goes on in the worker
+  (`/exit` then says the worker stays up: a turn is running).
 
 With stdin that isn't a terminal (a pipe), the REPL reads a line only between
 turns.

@@ -46,7 +46,7 @@ bin/chi web --open                            # web UI on http://127.0.0.1:4567
 bin/chi sessions list                         # saved sessions
 ```
 
-`/model` switches models, Ctrl-C cancels a turn, and Ctrl-D detaches (the session keeps running; `chi --attach ID` comes back).
+`/model` switches models, Ctrl-C cancels a turn, and Ctrl-D or `/detach` detaches (the session keeps running; `chi --attach ID` comes back). `/exit` detaches and stops the session's worker too, unless something still needs it (a running turn, another UI); `chi --resume ID` picks the conversation up again.
 
 ### Guardrails
 
