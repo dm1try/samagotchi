@@ -44,6 +44,8 @@ module Samagotchi
         if names.empty?
           return "Error: no memory names provided"
         end
+        bad = names.find { |name| invalid_name?(name) }
+        return invalid_name_error(bad) if bad
 
         resolved_scopes = scope ? [scope] : %w[project system]
 
@@ -82,6 +84,16 @@ module Samagotchi
         "Error: #{e.message}"
       rescue => e
         "Error: #{e.message}"
+      end
+
+      # A memory is a flat file in its scope dir: a name with a path in it
+      # ("../../x") would read or write outside the memories.
+      def self.invalid_name?(name)
+        name.include?("/") || name.include?("\\") || name.include?("..")
+      end
+
+      def self.invalid_name_error(name)
+        "Error: invalid memory name '#{name}': use a plain name (no /, \\ or ..)"
       end
 
       def self.parse_names(entry_name)
@@ -149,6 +161,7 @@ module Samagotchi
         entry_name = path.to_s.strip
         body = content.to_s
         return "Error: entry name is required" if entry_name.empty?
+        return MemoryRead.invalid_name_error(entry_name) if MemoryRead.invalid_name?(entry_name)
         return "Error: scope is required" if scope.to_s.strip.empty?
         return "Error: content is required" if body.empty?
         resolved_scope = MemoryRead.normalize_scope(scope)

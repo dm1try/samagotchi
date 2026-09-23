@@ -25,6 +25,19 @@ RSpec.describe Samagotchi::Tools::MemoryRead do
     end
   end
 
+  describe "names with a path in them" do
+    it "refuses them instead of reading outside the memories" do
+      outside = File.join(File.dirname(project_memories_dir), "secret.md")
+      File.write(outside, "outside")
+      name = "../#{File.basename(outside, ".md")}"
+      expect(described_class.call(name, scope: "project")).to eq("Error: invalid memory name '#{name}': use a plain name (no /, \\ or ..)")
+      expect(described_class.call("notes, a/b")).to start_with("Error: invalid memory name 'a/b'")
+      expect(described_class.call("a\\b")).to start_with("Error: invalid memory name")
+    ensure
+      FileUtils.rm_f(outside)
+    end
+  end
+
   describe ".call" do
     it "reads an existing memory entry" do
       File.write(File.join(project_memories_dir, "notes.md"), "# Notes\nRemember this.")
@@ -170,6 +183,18 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
   describe ".name" do
     it "is 'memory_write'" do
       expect(described_class.name).to eq("memory_write")
+    end
+  end
+
+  describe "names with a path in them" do
+    it "refuses them and writes nothing (../../x wrote x.md outside the memories)" do
+      parent = File.dirname(project_memories_dir)
+      escaped = "escaped-#{File.basename(project_memories_dir)}"
+      ["../#{escaped}", "a/b", "a\\b", ".."].each do |name|
+        expect(described_class.call("x", path: name, scope: "project")).to start_with("Error: invalid memory name")
+      end
+      expect(File.exist?(File.join(parent, "#{escaped}.md"))).to be(false)
+      expect(Dir.children(project_memories_dir)).to eq([])
     end
   end
 
