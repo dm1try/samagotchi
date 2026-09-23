@@ -127,3 +127,25 @@ RSpec.describe Samagotchi::LLM::Factory do
     end
   end
 end
+
+# 7b: the chat backend's endpoint was fixed from the default model at
+# construction, so /model, --model host:x and resumed sessions kept talking
+# to the default model's host.
+RSpec.describe "RubyLLMBackend follows the effective model's host" do
+  let(:registry) do
+    Samagotchi::HostRegistry.new(hosts_config: {
+      "alpha" => { host: "alpha.test", port: 1111 },
+      "beta" => { host: "beta.test", port: 2222 }
+    })
+  end
+
+  it "moves to the new host on switch_model!" do
+    engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "alpha:gemma4-small",
+                                    backend: :ruby_llm)
+    expect(engine.backend.base_url).to eq("http://alpha.test:1111/v1")
+
+    engine.switch_model!("beta:Qwen3-14B")
+
+    expect(engine.backend.base_url).to eq("http://beta.test:2222/v1")
+  end
+end

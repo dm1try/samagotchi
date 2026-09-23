@@ -66,6 +66,18 @@ module Samagotchi
 
       def provider = :ruby_llm
 
+      attr_reader :base_url
+
+      # Engine points the backend at the effective model's host each turn and
+      # on /model; the gem provider is rebuilt for a new endpoint.
+      def base_url=(url)
+        url = url.to_s.chomp("/") unless url.nil?
+        return if url == @base_url
+
+        @base_url = url
+        @gem_provider = nil
+      end
+
       def complete(messages:, max_iterations: 100, on_stream_event: nil, cancel_controller: nil,
                    model_name: nil, max_tool_output_chars: nil, pending_input: nil)
         # Fast path: a pre-set cancel means nothing ran, so the conversation is

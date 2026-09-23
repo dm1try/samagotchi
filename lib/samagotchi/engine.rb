@@ -262,11 +262,13 @@ module Samagotchi
       @host_registry.bare_name(full_ref)
     end
 
-    # Point the kernel at the effective model's host (after /model, resume).
+    # Point the kernel (and a chat backend) at the effective model's host
+    # (after /model, --model, resume).
     def sync_kernel_client!
-      active = @host_registry.resolve(@effective_model_name).client
-      @client = active
-      @kernel.client = active if @kernel.respond_to?(:client=) && @kernel.client != active
+      target = @host_registry.resolve(@effective_model_name)
+      @client = target.client
+      @kernel.client = target.client if @kernel.respond_to?(:client=) && @kernel.client != target.client
+      @backend.base_url = target.openai_base_url if @backend.respond_to?(:base_url=)
     end
 
     # Subscribe a persistent observer to engine events.
@@ -1038,7 +1040,7 @@ module Samagotchi
     end
 
     def ruby_llm_base_url
-      @host_registry.resolve(@default_model_name).openai_base_url
+      @host_registry.resolve(@effective_model_name).openai_base_url
     rescue StandardError
       nil
     end
