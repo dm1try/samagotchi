@@ -659,7 +659,7 @@ module Samagotchi
     public
 
     def emit_active_memories_line
-      lines = sticky_status_lines
+      lines = sticky_status_lines(width: status_effective_width)
       return if lines.empty?
 
       lines.each { |line| @surface.commit(line) }
@@ -1911,16 +1911,18 @@ module Samagotchi
       lines.first
     end
 
-    def thinking_tail_preview_lines
+    # @param width [Integer] the status width (#status_effective_width)
+    def thinking_tail_preview_lines(width: status_effective_width)
       line_count = thinking_preview_lines_count
       prefix = "model> … "
       continuation = " " * prefix.length
-      preview_width = thinking_preview_width
+      preview_width = thinking_preview_width(width)
       first_width = [preview_width - prefix.length, 1].max
       continuation_width = [preview_width - continuation.length, 1].max
 
       text = thinking_tail_preview_text
-      text = text[-thinking_tail_preview_capacity, thinking_tail_preview_capacity] || text
+      capacity = thinking_tail_preview_capacity(width)
+      text = text[-capacity, capacity] || text
       chunks = [text.slice(0, first_width).to_s]
       offset = first_width
       (line_count - 1).times do
@@ -1928,9 +1930,9 @@ module Samagotchi
         offset += continuation_width
       end
 
-      lines = [cap_preview_line("#{prefix}#{chunks[0]}")]
+      lines = [cap_preview_line("#{prefix}#{chunks[0]}", width)]
       chunks.drop(1).each do |chunk|
-        lines << cap_preview_line("#{continuation}#{chunk}")
+        lines << cap_preview_line("#{continuation}#{chunk}", width)
       end
 
       [lines, !text.empty?]
@@ -1952,7 +1954,7 @@ module Samagotchi
       @thinking_preview_has_content = false
     end
 
-    def retry_spinner_status_line(frame)
+    def retry_spinner_status_line(frame, width)
       data = @retry_spinner_status || {}
       attempt = data[:attempt].to_i
       max_retries = data[:max_retries].to_i
@@ -1961,16 +1963,15 @@ module Samagotchi
       error_class = data[:error_class].to_s
       message = "model> network error: retrying (#{attempt}/#{total_attempts} in #{delay}s) #{frame}"
       message += " #{error_class}" unless error_class.empty?
-      capped = cap_preview_line(message)
+      capped = cap_preview_line(message, width)
       color_output? ? paint(capped, NETWORK_RETRY_SPINNER_COLOR) : capped
     end
 
-    def cap_preview_line(text)
-      cap_preview_text(text, thinking_preview_width)
+    def cap_preview_line(text, width)
+      cap_preview_text(text, thinking_preview_width(width))
     end
 
-    def thinking_preview_width
-      width = status_effective_width
+    def thinking_preview_width(width)
       return THINKING_PREVIEW_WIDTH if width <= 0
 
       [width, THINKING_PREVIEW_WIDTH].min
@@ -1992,9 +1993,9 @@ module Samagotchi
       THINKING_PREVIEW_LINES_DEFAULT
     end
 
-    def thinking_tail_preview_capacity
+    def thinking_tail_preview_capacity(width)
       prefix_length = "model> … ".length
-      preview_width = thinking_preview_width
+      preview_width = thinking_preview_width(width)
       first_width = [preview_width - prefix_length, 1].max
       continuation_width = first_width
       first_width + ((thinking_preview_lines_count - 1) * continuation_width)
@@ -2166,7 +2167,7 @@ module Samagotchi
     def emit_idle_status_line
       return unless status_line_enabled?
 
-      lines = idle_status_lines
+      lines = idle_status_lines(width: status_effective_width)
       return if lines.empty?
 
       @surface.set_slot(:status, lines)
@@ -2210,10 +2211,10 @@ module Samagotchi
       lines.empty? ? "" : lines.first
     end
 
-    def spinner_status_lines
+    def spinner_status_lines(width: status_effective_width)
       return [] unless status_line_enabled?
 
-      build_status_lines(scope: :spinner)
+      build_status_lines(scope: :spinner, width: width)
     end
 
     def sticky_status_line
@@ -2223,10 +2224,10 @@ module Samagotchi
       lines.empty? ? "" : lines.first
     end
 
-    def sticky_status_lines
+    def sticky_status_lines(width: status_effective_width)
       return [] unless status_line_enabled?
 
-      build_status_lines(scope: :sticky)
+      build_status_lines(scope: :sticky, width: width)
     end
 
     def idle_status_line
@@ -2236,10 +2237,10 @@ module Samagotchi
       lines.empty? ? "" : lines.first
     end
 
-    def idle_status_lines
+    def idle_status_lines(width: status_effective_width)
       return [] unless status_line_enabled?
 
-      build_status_lines(scope: :idle)
+      build_status_lines(scope: :idle, width: width)
     end
 
     def build_status_line(scope:)
@@ -2247,12 +2248,13 @@ module Samagotchi
       lines.empty? ? "" : lines.first
     end
 
-    def build_status_lines(scope:)
+    # The status rows for +scope+ (:spinner, :sticky or :idle), cut to +width+.
+    def build_status_lines(scope:, width: status_effective_width)
       segments = status_segments(scope)
       return [] if segments.empty?
 
       body = "status> #{segments.join(' | ')}"
-      lines = status_body_lines(body)
+      lines = status_body_lines(body, width)
       if color_output?
         lines.map { |line| paint(line, 90) }
       else
@@ -2260,8 +2262,7 @@ module Samagotchi
       end
     end
 
-    def status_body_lines(body)
-      width = status_effective_width
+    def status_body_lines(body, width)
       return [] if width <= 0
 
       [cap_preview_text(body, width)]
@@ -2491,13 +2492,14 @@ module Samagotchi
 
     def render_thinking_spinner
       frame = THINKING_SPINNER_FRAMES[@thinking_spinner_index % THINKING_SPINNER_FRAMES.length]
-      spinner_lines = thinking_spinner_status_lines(frame)
-      preview_lines, preview_has_content = turn_preamble_enabled? ? [[], false] : thinking_tail_preview_lines
+      width = status_effective_width
+      spinner_lines = thinking_spinner_status_lines(frame, width: width)
+      preview_lines, preview_has_content = turn_preamble_enabled? ? [[], false] : thinking_tail_preview_lines(width: width)
       if color_output?
         preview_lines = preview_lines.map { |text| paint(text, 90) }
       end
       lines = spinner_lines + preview_lines
-      status_lines = spinner_status_lines
+      status_lines = spinner_status_lines(width: width)
       lines.concat(status_lines) unless status_lines.empty?
 
       @surface.set_slot(:activity, lines)
@@ -2511,14 +2513,14 @@ module Samagotchi
       lines.empty? ? "" : lines.first
     end
 
-    def thinking_spinner_status_lines(frame)
+    def thinking_spinner_status_lines(frame, width: status_effective_width)
       if retry_spinner_status_active?
-        return [retry_spinner_status_line(frame)]
+        return [retry_spinner_status_line(frame, width)]
       end
 
       preamble_active = turn_preamble_status_base(frame)
       base = preamble_active || "model> thinking... #{frame}"
-      available_for_notification = [status_effective_width - base.length, 0].max
+      available_for_notification = [width - base.length, 0].max
       memory_notification, tool_notification = thinking_notification_segments(available_for_notification)
       notification = "#{memory_notification}#{tool_notification}"
 
