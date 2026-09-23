@@ -196,6 +196,10 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
   #topStrip{grid-template-columns:1fr}
   #gridList{grid-template-columns:1fr;max-height:216px}
 }
+@media(max-width:600px){
+  #composer .actions-col{width:auto}
+  #composer #actionBtn{min-width:72px}
+}
 body.zen #topStrip, body.zen #bottomArea, body.zen #firstPeek{display:none !important}
 body.zen #topStrip[style], body.zen #firstPeek[style]{display:none !important}
 body.zen #center{flex:1;min-height:0;overflow:hidden}
