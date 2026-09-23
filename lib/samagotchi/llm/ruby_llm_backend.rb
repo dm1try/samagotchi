@@ -151,6 +151,7 @@ module Samagotchi
         effective_max_tool_output_chars = resolve_output_char_cap(max_tool_output_chars)
         conversation = seed_messages.map { |e| { role: e[:role], content: e[:content].to_s } }
         last_text = ""
+        tool_activity = []
         # Default true: if we never hit the no-tool-call `break`, the loop stopped
         # because max_iterations was reached (criterion #7 → exhausted, not errored).
         reached_cap = true
@@ -163,7 +164,7 @@ module Samagotchi
                                                iteration: iteration_index + 1,
                                                reason: cancel_controller.reason)
             return build_result("", canceled: true, reason: cancel_controller.reason,
-                                conversation: conversation)
+                                conversation: conversation, tool_activity: tool_activity)
           end
 
           inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1)
@@ -175,7 +176,8 @@ module Samagotchi
             emit_stream_event(on_stream_event, type: :generation_cancelled,
                                                iteration: iteration_index + 1,
                                                reason: outcome[1])
-            return build_result("", canceled: true, reason: outcome[1], conversation: conversation)
+            return build_result("", canceled: true, reason: outcome[1], conversation: conversation,
+                                    tool_activity: tool_activity)
           end
 
           last_text = outcome[:content]
@@ -210,7 +212,7 @@ module Samagotchi
           conversation << { role: "model", content: text } unless text.empty?
 
           output_by_id = dispatch_tool_calls(tool_calls, on_stream_event,
-                                             iteration_index + 1, effective_max_tool_output_chars)
+                                             iteration_index + 1, effective_max_tool_output_chars, tool_activity)
 
           # Feed each result back as a gem tool-response keyed by its tool_call_id.
           output_by_id.each do |call_id, output|
@@ -219,7 +221,7 @@ module Samagotchi
         end
 
         build_result(strip_model_thought(last_text), canceled: false, reason: nil,
-                     conversation: conversation, exhausted: reached_cap)
+                     conversation: conversation, exhausted: reached_cap, tool_activity: tool_activity)
       end
 
       # Drain the pending input queue (if any) and, when messages are waiting,
@@ -384,19 +386,20 @@ module Samagotchi
       # Dispatch each normalized call through the shared KernelLoop path, applying
       # the per-output char cap and emitting the tool-call events. Returns a
       # {call_id => output_string} map keyed by the gem tool_call id.
-      def dispatch_tool_calls(tool_calls, on_stream_event, iteration, max_tool_output_chars)
+      def dispatch_tool_calls(tool_calls, on_stream_event, iteration, max_tool_output_chars, tool_activity)
         calls = NativeToolNormalizer.normalize_all(tool_calls.values)
         emit_stream_event(on_stream_event, type: :tool_dispatch_started, iteration: iteration, call_count: calls.length)
         output_by_id = {}
         calls.each_with_index do |call, call_index|
           call_id, _tool_call = tool_calls.to_a[call_index]
-          output_by_id[call_id] = dispatch_one(call, on_stream_event, iteration, calls.length, call_index, max_tool_output_chars)
+          output_by_id[call_id] = dispatch_one(call, on_stream_event, iteration, calls.length, call_index,
+                                               max_tool_output_chars, tool_activity)
         end
         emit_stream_event(on_stream_event, type: :tool_dispatch_completed, iteration: iteration, call_count: calls.length)
         output_by_id
       end
 
-      def dispatch_one(call, on_stream_event, iteration, call_count, call_index, max_tool_output_chars)
+      def dispatch_one(call, on_stream_event, iteration, call_count, call_index, max_tool_output_chars, tool_activity)
         params = (@kernel.send(:tool_activity_params, call[:name], call) rescue nil) if @kernel.respond_to?(:tool_activity_params, true)
         emit_stream_event(
           on_stream_event,
@@ -438,6 +441,7 @@ module Samagotchi
                    end
                  end
         activity = result[:activity]
+        tool_activity << activity if activity
         completed_output = result[:output].to_s
         output_truncated = false
         if max_tool_output_chars && completed_output.length > max_tool_output_chars
@@ -488,7 +492,7 @@ module Samagotchi
         @kernel ? @kernel.send(:strip_model_thought, text) : text
       end
 
-      def build_result(text, canceled:, reason:, conversation:, exhausted: false)
+      def build_result(text, canceled:, reason:, conversation:, exhausted: false, tool_activity: [])
         Samagotchi::LLM::ModelResult.new(
           text: text,
           tool_calls: nil,
@@ -498,7 +502,8 @@ module Samagotchi
           conversation: conversation.map { |e| { role: e[:role], content: e[:content].to_s } },
           canceled: canceled,
           cancellation_reason: reason,
-          exhausted: exhausted
+          exhausted: exhausted,
+          tool_activity: tool_activity
         )
       end
 
