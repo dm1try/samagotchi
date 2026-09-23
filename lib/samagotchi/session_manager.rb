@@ -182,34 +182,6 @@ module Samagotchi
       raw.split(",").map(&:strip).reject(&:empty?)
     end
 
-    # Attach to a session: write a message to its input directory and read output.
-    #
-    # Returns an array of output lines from the session.
-    def self.attach_session(session_id, message:, state_dir: nil)
-      return [] if message.to_s.strip.empty?
-
-      sd = state_dir || Session.default_state_dir
-      resume_session(session_id, state_dir: sd)
-      session_dir = Session.session_dir(session_id, state_dir: sd)
-      input_path = File.join(session_dir, INPUT_DIR)
-      FileUtils.mkdir_p(input_path)
-
-      timestamp = Time.now.strftime("%Y%m%d%H%M%S%9N")
-      input_file = File.join(input_path, "#{timestamp}.txt")
-      write_atomic(input_file, message)
-
-      output_path = File.join(session_dir, OUTPUT_DIR)
-      responses = []
-      sleep(0.1) # brief delay for the session process to process
-      if Dir.exist?(output_path)
-        Dir.glob(File.join(output_path, "*.txt")).sort.each do |f|
-          # Only read files newer than the input file
-          responses << File.read(f) if File.mtime(f) > File.mtime(input_file)
-        end
-      end
-      responses
-    end
-
     # Ensure an existing session has a live worker process.
     # Returns the loaded session after state reconciliation.
     # @raise [OwnedByTUI] when the interactive TUI owns the session

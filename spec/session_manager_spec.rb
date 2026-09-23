@@ -53,42 +53,14 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
-  describe ".attach_session" do
-    it "writes a message to the input directory" do
-      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      session.save(state_dir: tmpdir)
-      session_dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
-      FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR))
-      FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionManager::OUTPUT_DIR))
-      allow(Process).to receive(:spawn).and_return(10_001)
-
-      described_class.attach_session(session.id, message: "hello world", state_dir: tmpdir)
-
-      input_files = Dir.glob(File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR, "*.txt"))
-      expect(input_files.length).to be >= 1
-      expect(File.read(input_files.last)).to eq("hello world")
-    end
-
-    it "ignores empty messages" do
-      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      session.save(state_dir: tmpdir)
-      session_dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
-      FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR))
-
-      responses = described_class.attach_session(session.id, message: "   ", state_dir: tmpdir)
-
-      input_files = Dir.glob(File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR, "*.txt"))
-      expect(responses).to eq([])
-      expect(input_files).to be_empty
-    end
-
-    it "auto-resumes idle sessions by spawning a worker" do
+  describe ".resume_session" do
+    it "wakes an idle session by spawning a worker" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.status = Samagotchi::Session::STATUS_IDLE
       session.save(state_dir: tmpdir)
       allow(Process).to receive(:spawn).and_return(20_002)
 
-      described_class.attach_session(session.id, message: "wake up", state_dir: tmpdir)
+      described_class.resume_session(session.id, state_dir: tmpdir)
 
       expect(Process).to have_received(:spawn)
       # A live worker is not a running turn: the worker marks its turns.
