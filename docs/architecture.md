@@ -199,12 +199,28 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   over in each worker; snapshots and `/state` carry it as `event_id`); resume via `Last-Event-ID` /
   `?from_seq=` (a plain `event_seq` is still accepted); a `: ping` heartbeat keeps idle proxies alive;
   too-old reconnects, and cursors from another worker's epoch, receive a `reset` marker carrying
-  `session_state_snapshot`.
+  `session_state_snapshot`. `?snapshot=1` joins with a snapshot frame instead of a replay;
+  `?client_id=` names whose stream it is (`Bridge#open_streams_except`, used by `POST /exit`).
 - `POST /session/:id/turn` — fire-and-forget turn creation; returns `202` with an `enqueued_id`
   (delivery is at-least-once via the worker's file-IPC input path — it never calls `run_turn`
   across the HTTP boundary). Inspect results through the read surface, not the turn response.
+- `POST /session/:id/cancel` — cancel the running turn; `202`, or `409` when none runs.
+- `POST /session/:id/answer` — answer the pending question; `200`, `409` when another client
+  answered first or it is gone, `400` for an invalid selection.
+- `POST /session/:id/question/dismiss` — leave the question unanswered (an approval: denied);
+  `200`, or `409` when it is no longer pending.
+- `POST /session/:id/command` — a session command (`/model`, `/models`, `!rollback`, `!cmd`,
+  `/continue`) for the worker loop; `202` with a `command_id` its `:command_ran` names, `400` when
+  the line isn't one.
+- `POST /session/:id/exit` — ask the worker to exit now (`{client_id:}`). The worker checks with
+  the event log held (`WorkerIdleExit#hold_for_request`): `200 {status: "exiting"}` and it leaves
+  like an idle exit, or `409 {status: "held", reason:}` with `turn_running`, `input_queued`,
+  `continue_offered`, `client_connected` (a stream not named by the asker), `reminders` or
+  `starting`.
 - `GET  /session/:id/state` — `session_state_snapshot` (JSON).
 - `GET  /session/:id/stats` — `Engine#stats_snapshot` for attached `/stats`: the metrics, with the context window and prompt profile asked from the server before the first turn.
+- `GET  /session/:id/snapshot` — the snapshot frame's content as one request (the web server renders
+  the messages itself, then streams from its `event_seq`).
 - `OPTIONS *` — CORS preflight (`Access-Control-Allow-Origin: *`).
 
 The per-session port is OS-assigned (bound to `0`) and published to a `bridge.json` sidecar
