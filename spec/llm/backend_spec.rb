@@ -9,9 +9,9 @@ RSpec.describe Samagotchi::LLM::ModelBackend do
 end
 
 RSpec.describe Samagotchi::LLM::Factory do
-  it "returns nil for :native (engine drives KernelLoop directly)" do
+  it "returns a NativeBackend for :native" do
     backend = described_class.factory(provider: :native, model_name: "gemma4")
-    expect(backend).to be_nil
+    expect(backend).to be_a(Samagotchi::LLM::NativeBackend)
   end
 
   it "routes :ruby_llm to RubyLLMBackend" do

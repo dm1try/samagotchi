@@ -64,6 +64,8 @@ module Samagotchi
         @base_url = base_url.to_s.chomp("/") unless base_url.nil?
       end
 
+      def provider = :ruby_llm
+
       def complete(messages:, max_iterations: 100, on_stream_event: nil, cancel_controller: nil,
                    model_name: nil, max_tool_output_chars: nil, pending_input: nil)
         # Fast path: a pre-set cancel means nothing ran, so the conversation is

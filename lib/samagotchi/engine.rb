@@ -119,7 +119,7 @@ module Samagotchi
         kernel: @kernel,
         base_url: ruby_llm_base_url
       )
-      warn "[verbose] backend=#{@backend ? "ruby_llm" : "native"}" if verbose
+      warn "[verbose] backend=#{@backend.provider}" if verbose
       @resume_session = session_id ? Session.load(session_id) : nil
       @requested_memories = preload_memory_list(memories)
       @session = nil
@@ -865,42 +865,15 @@ module Samagotchi
         # host selection already done via active client.
         bare_for_backend = bare_model_name(@effective_model_name)
 
-        result = if @backend
-          # RubyLLM (or future) backend owns the agentic loop.
-          @backend.complete(
-            messages: messages,
-            max_iterations: max_iterations,
-            on_stream_event: build_stream_event_handler(on_event),
-            cancel_controller: effective_controller,
-            model_name: bare_for_backend,
-            max_tool_output_chars: max_tool_output_chars,
-            pending_input: pending_input
-          )
-        else
-          # :native path — no wrapper backend; drive KernelLoop directly.
-          # KernelLoop#run takes messages positionally + same kwargs.
-          kernel_result = @kernel.run(
-            messages,
-            max_iterations: max_iterations,
-            on_stream_event: build_stream_event_handler(on_event),
-            cancel_controller: effective_controller,
-            model_name: bare_for_backend,
-            max_tool_output_chars: max_tool_output_chars,
-            pending_input: pending_input
-          )
-          Samagotchi::LLM::ModelResult.new(
-            text: kernel_result.respond_to?(:output) ? kernel_result.output.to_s : kernel_result.to_s,
-            tool_calls: nil,
-            provider: :native,
-            conversation: kernel_result.respond_to?(:conversation) ? kernel_result.conversation : nil,
-            canceled: kernel_result.respond_to?(:canceled?) && kernel_result.canceled?,
-            cancellation_reason: kernel_result.respond_to?(:cancellation_reason) ? kernel_result.cancellation_reason : nil,
-            exhausted: kernel_result.respond_to?(:exhausted) && kernel_result.exhausted,
-            tool_activity: kernel_result.respond_to?(:tool_activity) ? kernel_result.tool_activity : [],
-            context_status: kernel_result.respond_to?(:context_status) ? kernel_result.context_status : nil,
-            pending_tool_calls: kernel_result.respond_to?(:pending_tool_calls) && kernel_result.pending_tool_calls
-          )
-        end
+        result = @backend.complete(
+          messages: messages,
+          max_iterations: max_iterations,
+          on_stream_event: build_stream_event_handler(on_event),
+          cancel_controller: effective_controller,
+          model_name: bare_for_backend,
+          max_tool_output_chars: max_tool_output_chars,
+          pending_input: pending_input
+        )
 
         # Persist deduped used memories onto the session for Web + reload.
         begin

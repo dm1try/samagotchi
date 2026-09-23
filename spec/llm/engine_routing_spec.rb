@@ -22,7 +22,7 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
     Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd)
   end
 
-  describe ":native path (backend is nil, drives KernelLoop directly)" do
+  describe ":native path (NativeBackend around the KernelLoop)" do
     it "returns a ModelResult with output identical to the native loop" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(kernel).to receive(:run).and_return(
@@ -32,7 +32,7 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
           tool_activity: []
         )
       )
-      # No provider override → :native → @backend is nil
+      # No provider override → :native → NativeBackend
       returned = build_engine(profile: "gemma4").run_turn(make_session, "hi")
 
       expect(returned).to be_a(Samagotchi::LLM::ModelResult)

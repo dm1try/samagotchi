@@ -12,9 +12,8 @@ module Samagotchi
     # streaming seam, Ctrl-C, model override, and tool-output cap unchanged. Any
     # extra surface lives on backend-specific subclasses, never on this interface.
     #
-    # `nil` (the :native path) is handled specially: when Factory returns nil,
-    # the caller must invoke @kernel.run directly and wrap the result in a
-    # ModelResult. This avoids keeping a dead class file around.
+    # The raw-prompt KernelLoop is NativeBackend; the chat loop is
+    # RubyLLMBackend.
     class ModelBackend
       def complete(messages:, max_iterations: 100, on_stream_event: nil, cancel_controller: nil,
                    model_name: nil, max_tool_output_chars: nil, pending_input: nil)
@@ -26,20 +25,19 @@ module Samagotchi
     # backend is selected (ruby_llm_backend.rb requires this file for its
     # superclass, so a plain require here would be circular).
     autoload :RubyLLMBackend, File.expand_path("ruby_llm_backend", __dir__)
+    autoload :NativeBackend, File.expand_path("native_backend", __dir__)
 
-    # Provider-based factory. Phase 1 knows `:native` (returns `nil` — the
-    # caller drives KernelLoop directly); Phase 2 adds `:ruby_llm` (and later
-    # phases register others here) without touching callers.
+    # Provider-based factory: `:native` (NativeBackend around the KernelLoop)
+    # and `:ruby_llm`; later phases register others here without touching
+    # callers.
     module Factory
-      # The default backend when no selection is made. `:native` means "no
-      # backend wrapper" — the Engine calls KernelLoop#run directly.
+      # The default backend when no selection is made.
       DEFAULT_PROVIDER = :native
 
       # Single source of truth for resolving the backend provider. Prefers an
       # explicit `provider:` value when given; otherwise falls back to
       # `ENV["SAMAGOTCHI_BACKEND"]`. Blank / whitespace / nil all resolve to
-      # `:native` (which means Factory returns nil and the Engine drives the
-      # KernelLoop directly).
+      # `:native`.
       #
       # Note the blank handling: `ENV["SAMAGOTCHI_BACKEND"] = ""` is a *truthy*
       # string in Ruby, so the naive `ENV["..."] || :native` one-liner yields
@@ -56,7 +54,7 @@ module Samagotchi
       def self.factory(provider:, model_name:, kernel: nil, base_url: nil, **_opts)
         case resolve_provider(provider)
         when :native
-          nil # The Engine drives KernelLoop#run directly
+          Samagotchi::LLM::NativeBackend.new(kernel: kernel)
         when :ruby_llm
           Samagotchi::LLM::RubyLLMBackend.new(model_name: model_name, kernel: kernel, base_url: base_url)
         else
