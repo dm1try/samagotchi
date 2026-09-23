@@ -8,6 +8,7 @@ require_relative "../kernel_loop"
 require_relative "../context_window"
 require_relative "../tool_activity"
 require_relative "../tool_runner"
+require_relative "../tool_declarations"
 
 require "ruby_llm"
 require "json"
@@ -55,63 +56,6 @@ module Samagotchi
     # and let completion finish (graceful degradation — no crash).
     class RubyLLMBackend < ModelBackend
       TOOL_RESPONSE_JOIN = "\n\n---\n\n".freeze
-      TOOL_PARAMETER_SCHEMAS = {
-        "execute" => {
-          type: "object",
-          properties: {
-            command: { type: "string", description: "Shell command to run" },
-            cwd: { type: "string", description: "Optional working directory" }
-          },
-          required: ["command"], additionalProperties: false
-        },
-        "read" => {
-          type: "object",
-          properties: {
-            path: { type: "string", description: "File path to read" },
-            start_line: { type: "integer" },
-            end_line: { type: "integer" }
-          },
-          required: ["path"], additionalProperties: false
-        },
-        "write" => {
-          type: "object",
-          properties: {
-            path: { type: "string" },
-            content: { type: "string" }
-          },
-          required: ["path", "content"], additionalProperties: false
-        },
-        "memory_read" => {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            scope: { type: "string", enum: ["project", "system"] }
-          },
-          required: ["name"], additionalProperties: false
-        },
-        "memory_write" => {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            content: { type: "string" },
-            scope: { type: "string", enum: ["project", "system"] },
-            description: { type: "string" },
-            current_model_only: { type: "boolean" }
-          },
-          required: ["name", "content", "scope"], additionalProperties: false
-        },
-        "edit" => {
-          type: "object",
-          properties: {
-            path: { type: "string" },
-            old_text: { type: "string" },
-            new_text: { type: "string" },
-            start_line: { type: "integer" },
-            end_line: { type: "integer" }
-          },
-          required: ["path", "old_text", "new_text"], additionalProperties: false
-        }
-      }.freeze
 
       def initialize(model_name:, gem_provider: :openai, assume_model_exists: true, kernel: nil, base_url: nil)
         @model_name = model_name
@@ -360,24 +304,11 @@ module Samagotchi
         end
       end
 
-      # The tool definitions sent in the request body. Minimal permissive schema per
-      # tool with a NON-NULL description (Spike #4: a null description makes the
-      # server hard-reject the request with "type must be string, but is null").
-      # Full per-tool parameter schemas are a per-server follow-up; the loop works
-      # off the emitted tool calls regardless of schema shape.
+      # The tool definitions sent in the request body: the same schemas the
+      # native prompts are rendered from (ToolDeclarations::TOOL_SCHEMAS).
       def tool_definitions
-        KernelLoop::TOOLS.map do |tool_klass|
-          {
-            type: "function",
-            function: {
-              name: tool_klass.const_get(:NAME),
-              description: (tool_klass.respond_to?(:description) ? tool_klass.description : tool_klass.const_get(:NAME)),
-              parameters: TOOL_PARAMETER_SCHEMAS.fetch(
-                tool_klass.const_get(:NAME),
-                { type: "object", properties: {}, required: [], additionalProperties: true }
-              )
-            }
-          }
+        ToolDeclarations::TOOL_SCHEMAS.map do |schema|
+          { type: "function", function: schema.slice(:name, :description, :parameters) }
         end
       end
 

@@ -3,23 +3,22 @@
     "type": "function",
     "function": {
       "name": "execute",
-      "description": "Run a shell command (ruby snippet, rspec, etc.). Large stdout/stderr is truncated to a head+tail preview with metadata.",
+      "description": "Run any shell command in a working directory (defaults to the project root) and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata.",
       "parameters": {
         "type": "object",
         "properties": {
           "command": {
             "type": "string",
-            "description": "Shell command to run"
+            "description": "The shell command to run"
           },
           "cwd": {
             "type": "string",
-            "description": "Optional working directory"
+            "description": "Optional working directory to run in (defaults to the project root). Relative paths are resolved against the project root."
           }
         },
         "required": [
           "command"
-        ],
-        "additionalProperties": false
+        ]
       }
     }
   },
@@ -27,25 +26,26 @@
     "type": "function",
     "function": {
       "name": "read",
-      "description": "Read a file from disk. Large files are returned as a head+tail preview with size metadata. Range mode: pass start_line/end_line (inclusive); end_line is optional (means 'to EOF') and may overshoot EOF — the range clamps to the last line and reports the clamp. A start_line past EOF returns an error.",
+      "description": "Read a file from disk. Large files may be truncated to a head+tail preview with metadata. Optionally pass start_line and end_line (1-based, inclusive) to read only a specific line range.",
       "parameters": {
         "type": "object",
         "properties": {
           "path": {
             "type": "string",
-            "description": "File path to read"
+            "description": "Path to the file"
           },
           "start_line": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Optional start line (1-based, inclusive). Must be provided with end_line."
           },
           "end_line": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Optional end line (1-based, inclusive). Must be provided with start_line."
           }
         },
         "required": [
           "path"
-        ],
-        "additionalProperties": false
+        ]
       }
     }
   },
@@ -53,85 +53,23 @@
     "type": "function",
     "function": {
       "name": "write",
-      "description": "Write content to a file. Use path attribute: <tool name=\"write\" path=\"path/to/file\">content</tool>",
+      "description": "Write content to a file (parent directories are created automatically)",
       "parameters": {
         "type": "object",
         "properties": {
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Destination file path"
           },
           "content": {
-            "type": "string"
+            "type": "string",
+            "description": "Content to write to the file"
           }
         },
         "required": [
           "path",
           "content"
-        ],
-        "additionalProperties": false
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "memory_read",
-      "description": "Read a memory entry (MD file) from scoped memories. Pass name without extension and optional scope (project|system). When scope is omitted, read falls back from project to system. Multiple comma-separated names (e.g. \"one, two\") read all matched entries concatenated with a `---` separator.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "project",
-              "system"
-            ]
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": false
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "memory_write",
-      "description": "Write or update a memory entry (MD file) in scoped memories. Provide the entry name (via the `name` parameter) and required scope (project|system). Optional description is appended to the managed index line.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "content": {
-            "type": "string"
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "project",
-              "system"
-            ]
-          },
-          "description": {
-            "type": "string"
-          },
-          "current_model_only": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "name",
-          "content",
-          "scope"
-        ],
-        "additionalProperties": false
+        ]
       }
     }
   },
@@ -139,32 +77,92 @@
     "type": "function",
     "function": {
       "name": "edit",
-      "description": "Edit a file by replacing an exact block of text.\nUsage: <tool name=\"edit\" path=\"path/to/file\"><old>exact text to replace</old><new>replacement text</new></tool>\nThe <old> block must match exactly once in the file.\nRange mode: pass start_line/end_line (inclusive) instead of old_text.\nend_line is optional (means \"to EOF\") and may overshoot EOF — the tool clamps to the last line and reports the clamp. A start_line past EOF returns an error.",
+      "description": "Edit an existing file. Mode 1 (default): replace an exact old_text block with new_text, where old_text must appear exactly once. Mode 2 (range): when start_line and end_line are provided, replace that whole line range with new_text.",
       "parameters": {
         "type": "object",
         "properties": {
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "File path"
           },
           "old_text": {
-            "type": "string"
+            "type": "string",
+            "description": "Exact text to replace (required in exact-match mode)"
           },
           "new_text": {
-            "type": "string"
+            "type": "string",
+            "description": "Replacement text"
           },
           "start_line": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Optional start line (1-based, inclusive) for range mode. Must be provided with end_line."
           },
           "end_line": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Optional end line (1-based, inclusive) for range mode. Must be provided with start_line."
           }
         },
         "required": [
           "path",
-          "old_text",
           "new_text"
-        ],
-        "additionalProperties": false
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "memory_read",
+      "description": "Read a memory entry from scoped memories. Scope is optional: if omitted, read falls back from project to system. Leave name blank to read indexes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Memory entry name without .md extension; leave blank for indexes"
+          },
+          "scope": {
+            "type": "string",
+            "description": "Optional scope: project or system"
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "memory_write",
+      "description": "Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`); each scope's index.md is auto-maintained (one managed line per entry); use name \"index\" to write the index file verbatim. If the user asks to save guidance for the current model only, pass current_model_only: true to save a model-specific overlay.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Memory entry name without .md extension"
+          },
+          "content": {
+            "type": "string",
+            "description": "Markdown content to write"
+          },
+          "scope": {
+            "type": "string",
+            "description": "Scope to write into: project or system"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional short description appended to the managed index line"
+          },
+          "current_model_only": {
+            "type": "boolean",
+            "description": "Set true to save this entry as a model-specific overlay for the current model only (<name>.<model>.md); it is auto-appended when the entry is read under that model and never listed in the index."
+          }
+        },
+        "required": [
+          "name",
+          "content",
+          "scope"
+        ]
       }
     }
   },
@@ -172,12 +170,26 @@
     "type": "function",
     "function": {
       "name": "task_create",
-      "description": "Create a background task for a long-running shell command, with optional environment overrides. Returns task id and output path.",
+      "description": "Start a background task for a long-running shell command. Returns task id and output path for later inspection.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
-        "additionalProperties": true
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Shell command to run in the background"
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Optional working directory (defaults to project root)"
+          },
+          "env": {
+            "type": "string",
+            "description": "Optional JSON object of environment overrides; use this for PATH or tool-specific variables"
+          }
+        },
+        "required": [
+          "command"
+        ]
       }
     }
   },
@@ -185,12 +197,18 @@
     "type": "function",
     "function": {
       "name": "task_get",
-      "description": "Get full metadata for a task id. Use read on output_path to inspect logs.",
+      "description": "Get full metadata for a task by id. Use read on output_path to inspect command output.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
-        "additionalProperties": true
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Task id returned by task_create"
+          }
+        },
+        "required": [
+          "id"
+        ]
       }
     }
   },
@@ -198,12 +216,10 @@
     "type": "function",
     "function": {
       "name": "task_list",
-      "description": "List all background tasks for the current workspace with status and output path.",
+      "description": "List all background tasks in the current workspace with current status.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
-        "additionalProperties": true
+        "properties": {}
       }
     }
   },
@@ -214,9 +230,15 @@
       "description": "Stop a running background task by id.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
-        "additionalProperties": true
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Task id to stop"
+          }
+        },
+        "required": [
+          "id"
+        ]
       }
     }
   },
@@ -224,12 +246,30 @@
     "type": "function",
     "function": {
       "name": "task_wait",
-      "description": "Wait for a background task to finish, a log pattern match, or timeout. Timed-out waits return a bounded output tail.",
+      "description": "Wait for a background task to finish. Polls every 0.5s until completion, a log pattern matches, or timeout. Timed-out waits include a bounded output tail.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
-        "additionalProperties": true
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "Task id returned by task_create"
+          },
+          "timeout": {
+            "type": "integer",
+            "description": "Maximum seconds to wait (default: 600)"
+          },
+          "tail_lines": {
+            "type": "integer",
+            "description": "Log lines to return when timing out or matching a pattern (default: 10, max: 100)"
+          },
+          "done_pattern": {
+            "type": "string",
+            "description": "Optional regular expression that returns early when it matches the recent log output"
+          }
+        },
+        "required": [
+          "task_id"
+        ]
       }
     }
   },
@@ -240,9 +280,15 @@
       "description": "Fetch the content of a URL (HTML or text) and return cleaned text. Handles HTML by stripping scripts/styles and extracting visible text. Returns error messages for invalid URLs or HTTP errors.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
-        "additionalProperties": true
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The URL to fetch"
+          }
+        },
+        "required": [
+          "url"
+        ]
       }
     }
   },
@@ -250,12 +296,28 @@
     "type": "function",
     "function": {
       "name": "register_reminder",
-      "description": "Register a periodic reminder. The harness injects a [SYSTEM:] message into the next idle turn.",
+      "description": "Register a periodic reminder. The harness injects a [SYSTEM:] message into your next idle turn when the reminder is due.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
-        "additionalProperties": true
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Short identifier, e.g. 'api_health'"
+          },
+          "description": {
+            "type": "string",
+            "description": "What should happen when this reminder fires"
+          },
+          "interval_minutes": {
+            "type": "integer",
+            "description": "How often to remind (1-1440 minutes, i.e. up to 1 day)"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "interval_minutes"
+        ]
       }
     }
   },
@@ -263,12 +325,18 @@
     "type": "function",
     "function": {
       "name": "cancel_reminder",
-      "description": "Cancel a previously registered reminder.",
+      "description": "Cancel a previously registered reminder so it stops firing.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
-        "additionalProperties": true
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The reminder identifier to cancel"
+          }
+        },
+        "required": [
+          "name"
+        ]
       }
     }
   },
@@ -279,9 +347,7 @@
       "description": "List all active registered reminders.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
-        "additionalProperties": true
+        "properties": {}
       }
     }
   },
@@ -289,12 +355,38 @@
     "type": "function",
     "function": {
       "name": "ask_user_question",
-      "description": "Ask the user a structured qualification question. Supports single or multi selection and optional freeform/Other input. Prefer this over plain numbered lists when you need a clear choice. The harness renders it natively (TUI prompt / WEB buttons) and returns {selected, freeform}.",
+      "description": "Ask the user a structured qualification question. Supports single/multi selection plus optional freeform/Other input. Prefer this over plain numbered lists when you need a clear choice. The harness renders it natively and returns {selected, freeform}.",
       "parameters": {
         "type": "object",
-        "properties": {},
-        "required": [],
-        "additionalProperties": true
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "The question to ask the user"
+          },
+          "options": {
+            "type": "array",
+            "description": "2-8 answer options as strings (labels)",
+            "items": {
+              "type": "string"
+            }
+          },
+          "header": {
+            "type": "string",
+            "description": "Optional short header/title"
+          },
+          "multi_select": {
+            "type": "boolean",
+            "description": "Allow selecting multiple options (comma-separated in TUI). Default false."
+          },
+          "allow_freeform": {
+            "type": "boolean",
+            "description": "Allow freeform/Other text alongside selection. Default false."
+          }
+        },
+        "required": [
+          "question",
+          "options"
+        ]
       }
     }
   }
