@@ -29,7 +29,6 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `--attach SESSION_ID` | Attach to a session's worker, waking one if it has exited. |
 | `--model NAME` | Use this model for the run (overrides the configured default and a resumed session's model). |
 | `--memory NAME` | Preload a memory entry into the system prompt (repeatable). Merged under the config.yml `memories:` baseline. |
-| `--backend {native,ruby_llm}` | Choose the model backend (default: `native`). See below. |
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
 | `--no-default-input` | Skip prefilling the first REPL line from `SAMAGOTCHI_DEFAULT_INPUT`. |
 | `-v`, `--verbose` | Print raw LLM responses and tool call/result payloads to stderr. |
@@ -38,12 +37,12 @@ Every setting in the config registry (`lib/samagotchi/config.rb`) that exposes a
 flag also works as `--kebab-case VALUE`, e.g. `--server-host`, `--server-port`,
 `--read-truncate-at-bytes`. `bin/chi --help` lists them all.
 
-**Backend selection.** `--backend ruby_llm` (or `SAMAGOTCHI_BACKEND=ruby_llm`) runs
-through the ruby_llm gem backend (an OpenAI-compatible endpoint); the default
-`native` path is the well-tested built-in. Both support text and agentic
-tool-round completion. `--backend` exports `SAMAGOTCHI_BACKEND`, so a value in your
-`~/.config/samagotchi/config.yml` sets the default and the CLI flag overrides it;
-an unknown value is rejected at startup.
+**Which loop runs.** There is no backend flag: the model's host decides. A host with
+`api: openai` in config.yml is driven through the OpenAI chat API; every other host
+gets chi's own raw-prompt loop. `/model` and `--model host:model` switch hosts, and
+the loop with them. See [Configuration](configuration.md) (`hosts:` and `api:`).
+`--backend`, `SAMAGOTCHI_BACKEND` and a `backend:` key were removed; chi says so if
+it sees one.
 
 ### Entrypoint scenarios
 

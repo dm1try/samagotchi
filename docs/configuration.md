@@ -21,7 +21,8 @@ SAMAGOTCHI_THINKING_UI: spinner
 
 # Multi-host (optional): aggregated /models and per-model routing.
 # Bare SAMAGOTCHI_DEFAULT_MODEL uses the default host; host:model pins to a host.
-# Transport per host overrides SAMAGOTCHI_SERVER_TRANSPORT.
+# Transport per host overrides SAMAGOTCHI_SERVER_TRANSPORT; api: openai makes a
+# host use the OpenAI chat API instead of chi's raw prompt.
 hosts:
   main:
     host: localhost
@@ -85,7 +86,17 @@ Select the transport with `SAMAGOTCHI_SERVER_TRANSPORT` (`llama_cpp`, `mlx`, or
 only the request/response shape differs. oMLX's default server port is `8000` (not
 `8080`), so point `SAMAGOTCHI_SERVER_PORT` at it, e.g. `SAMAGOTCHI_SERVER_PORT=8000`.
 With `hosts:` each entry may set `transport: llama_cpp|mlx|omlx` to override the
-global transport per host (`lib/samagotchi/host_registry.rb:25`).
+global transport per host (`lib/samagotchi/host_registry.rb`).
+
+Each host may also set `api:`, which says how chi talks to it:
+
+- `llama_cpp`, `mlx` or `omlx`: chi's own raw-prompt loop (the value is also the
+  host's transport, so don't set a different `transport:` next to it);
+- `openai`: the OpenAI chat API at `http://HOST:PORT/v1` (see below).
+
+Without `api:` a host uses the raw-prompt loop, as before. The loop follows the
+model's host, so `/model other-host:model` can move a session between the two.
+Workers started by `chi web` or `--shared` get the same hosts, `api:` included.
 
 Example for mlx-lm:
 
@@ -117,28 +128,26 @@ own chat template on this endpoint. Only the Gemma4 (`<|tool_call>…`) and Qwen
 formats are not parsed.
 
 For an OpenAI Chat Completions server such as [Splash](https://github.com/incoai/splash),
-select the `ruby_llm` backend instead of an HTTP transport:
+give its host `api: openai`:
 
 ```yaml
-backend: ruby_llm
 default:
-  model: incoai/Qwen3.6-35B-A3B-Splash
+  model: splash:incoai/Qwen3.6-35B-A3B-Splash
 hosts:
   splash:
     host: 192.168.1.29
     port: 8000
+    api: openai
 ```
 
-`--backend ruby_llm` takes precedence over `SAMAGOTCHI_BACKEND` and the config
-file. RubyLLM reuses the host selected for the active model, derives its OpenAI
-base as `http://HOST:PORT/v1`, and posts messages plus function schemas to
-`/v1/chat/completions`. This works with Splash and with llama.cpp servers that
-expose the OpenAI-compatible chat endpoint. In verbose mode, Chi prints a safe
-endpoint diagnostic such as
-`[samagotchi] backend=ruby_llm POST http://HOST:PORT/v1/chat/completions`; the
-request body is intentionally not logged. The interactive REPL, `--prompt`,
-workers, and resumed sessions all use the selected backend. Without the backend
-flag, Chi keeps using the native `/completion`, `/v1/completions`, or oMLX
+For models on that host, chi uses the chat loop (through the ruby_llm gem): it
+derives the OpenAI base as `http://HOST:PORT/v1` and posts messages plus function
+schemas to `/v1/chat/completions`. This works with Splash and with llama.cpp servers that
+expose the OpenAI-compatible chat endpoint. In verbose mode (`-v`), chi prints the loop the
+starting model uses (`[verbose] backend=ruby_llm` or `backend=native`); request
+bodies are not logged. The interactive REPL, `--prompt`,
+workers, and resumed sessions all use the loop of the model's host. Hosts without
+`api: openai` keep using the native `/completion`, `/v1/completions`, or oMLX
 transport path.
 
 To manually verify a live RubyLLM tool round trip, run the gated integration

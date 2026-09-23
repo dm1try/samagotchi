@@ -18,7 +18,7 @@ Single registry `Samagotchi::Config` (`lib/samagotchi/config.rb:22`) defines the
 
 Sections forbid `_`/`-` (`SECTION_RE` `/\A[a-z0-9]+\z/`); leaves keep `snake_case` in YAML (`base_url`) and become kebab in CLI (`base-url`) via registry derivation — no generic string split, registry lookup avoids flat vs nested collision.
 
-**Universal entries** (`expose: [:env,:config,:cli]`): `default.model`, `backend`, `server.host/port/transport/open_timeout/read_timeout`, `recap.model/base_url/host_ref/inactivity/timeout/min_user_turns`, `session.retention_days/max_count/keep_status/sweep_interval_hours/idle_exit_minutes`, `log.file/disable`, `status.line/width_mode/max_width/fixed_width`, `context.status/window_tokens/chars_per_token/status_thresholds/status_cadence`, `thinking.ui/preview_lines/render_interval`, `n_predict`, `max_tool_output_chars`, `retry.max/base_delay/max_delay`, `read.*`, `execute.*`, `web.port/host`, `no_interrupt`, `no_default_input` etc. (`lib/samagotchi/config.rb:22-75`). Precedence is `CLI > ENV > file > default`.
+**Universal entries** (`expose: [:env,:config,:cli]`): `default.model`, `server.host/port/transport/open_timeout/read_timeout`, `recap.model/base_url/host_ref/inactivity/timeout/min_user_turns`, `session.retention_days/max_count/keep_status/sweep_interval_hours/idle_exit_minutes`, `log.file/disable`, `status.line/width_mode/max_width/fixed_width`, `context.status/window_tokens/chars_per_token/status_thresholds/status_cadence`, `thinking.ui/preview_lines/render_interval`, `n_predict`, `max_tool_output_chars`, `retry.max/base_delay/max_delay`, `read.*`, `execute.*`, `web.port/host`, `no_interrupt`, `no_default_input` etc. (`lib/samagotchi/config.rb:22-75`). Precedence is `CLI > ENV > file > default`.
 
 Example `config.yml` (new nested form, preferred):
 
@@ -53,7 +53,7 @@ Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top
 **Excluded maps** (YAML-only, not part of the flat registry; skipped by scalar loader):
 
 - `model_aliases:` map of alias → model id (`config_file.rb:342`, `resolve_model_alias:321`). Keys lowercased on write (`write_model_alias!:367`). Values may be bare `model` or qualified `host:model` (hybrid).
-- `hosts:` map of `name → {host, port, transport, enabled}` (`config_file.rb:108`, `host_registry.rb:22`). Names lowercased; `transport` overrides `server.transport`; workers inherit via `SAMAGOTCHI_HOSTS_JSON` (`hosts_json_for_env:251`, `session_manager.rb:80`).
+- `hosts:` map of `name → {host, port, transport, api, enabled}` (`config_file.rb:108`, `host_registry.rb:22`). Names lowercased; `transport` overrides `server.transport`; workers inherit via `SAMAGOTCHI_HOSTS_JSON` (`hosts_json_for_env:251`, `session_manager.rb:80`).
 - `hooks:` map of `hooks_dir` + per-event lists `{path, on_error}` (`lib/samagotchi/hooks/loader.rb:32`). `hooks_dir` may start with `~`.
 
 **Preservation rule**: `write_default_model!` (`config_file.rb:263`) and `write_model_alias!` (`config_file.rb:342`) both load raw YAML (including nested sections and maps), mutate one key (`raw_data["default"]["model"] = ...` for new form), write atomically via `tmp`+`rename`. Never overwrite the file with only scalar keys — that would clobber `hooks:` / `model_aliases:` / `hosts:` / `recap:`.
@@ -70,7 +70,7 @@ Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top
 ## Validations
 
 - **Model name** (`default.model` / `SAMAGOTCHI_DEFAULT_MODEL`): `ModelProfile.required_model_name:101` — non-empty string, otherwise harness fails fast at startup. Via `Config.get("default.model")` with ENV fallback.
-- **Backend** (`backend`): enum `native|ruby_llm` (`Config` `enum_values`), default `native`.
+- **Host api** (`hosts.<name>.api`): `llama_cpp|mlx|omlx` (raw-prompt loop; also the transport) or `openai` (chat loop at `http://HOST:PORT/v1`). Absent: raw-prompt loop. It replaces the removed `backend` setting.
 - **Transport** (`server.transport`): enum `llama_cpp|mlx|omlx`.
 - **Alias name** (`write_model_alias!:342`):
   - required, non-empty, no whitespace, not starting with `-`, no `/`, must match `/\A[a-z0-9][a-z0-9._-]*\z/i`
@@ -78,7 +78,7 @@ Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top
   - must not point to itself (case-insensitive)
   - keys are normalized to downcase on write — `Qwen` and `qwen` collide
 - **Alias target**: non-empty string (model id).
-- **Hosts**: each entry needs `host`, `port` 1-65535, `transport` optional, name must match `/\A[a-z0-9][a-z0-9._-]*\z/i`.
+- **Hosts**: each entry needs `host`, `port` 1-65535, `transport` and `api` optional (a raw `api` must match `transport`), name must match `/\A[a-z0-9][a-z0-9._-]*\z/i`.
 - **Hooks**: each entry must have `path` (relative to `hooks_dir`), `on_error` is `skip` (default) or `log`. Class name must match file basename snake→Pascal.
 - **Scalars via registry**: `Config.coerce` validates `String/Numeric/true/false` per `type: :string/:integer/:float/:bool/:enum`; invalid values warn and fall back to entry `default`.
 - **Sections**: `validate_yaml_sections` rejects top-level keys containing `_` (suggest dotted) and section names containing `_`/`-`.
