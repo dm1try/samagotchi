@@ -450,7 +450,7 @@ module Samagotchi
       end
 
       def strip_model_thought(text)
-        @kernel ? @kernel.send(:strip_model_thought, text) : text
+        @kernel ? @kernel.strip_model_thought(text) : text
       end
 
       def build_result(text, canceled:, reason:, conversation:, exhausted: false, tool_activity: [])

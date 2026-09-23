@@ -654,6 +654,8 @@ module Samagotchi
       parser.parse(text.to_s)
     end
 
+    public
+
     # Public wrapper so other loops (e.g. the ruby_llm backend) can strip
     # per-profile thought blocks from finished model text without duplicating the
     # Gemma 4 / Qwen 3.6 logic. Mirrors the native loop's "strip before deciding
@@ -665,7 +667,6 @@ module Samagotchi
     # Per-profile parse strategy. Rebuilt when the active profile changes
     # (the profile may be re-inferred per run when not explicitly pinned).
     # Public so other loops (and specs) can reach the active profile's parser.
-    public
     def parser
       @parser = ToolCallParser.for_profile(@profile) if @parser_profile != @profile
       @parser_profile = @profile
