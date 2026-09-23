@@ -71,7 +71,9 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     expect(engine).to have_received(:answer_question).with(id: "q1", selected: ["Apple"], freeform: "extra")
   end
 
-  it "shows the choices in the notes slot while it reads the answer" do
+  # Committed, not in the notes slot: on a live region a slot's rows vanish
+  # when it is cleared, and the question must stay above its answer.
+  it "commits the question as output before it reads the answer" do
     allow(engine).to receive(:answer_question)
     surface = RecordingSurface.new
     agent.instance_variable_set(:@surface, surface)
@@ -80,9 +82,8 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
 
     expect(surface.events).to eq([
       [:clear_slot, :activity],
-      [:set_slot, :notes, ["Fruit", "? Which one?", "  1) Apple", "  2) Banana", "  3) Cherry", "  Enter empty to cancel."]],
-      [:set_slot, :editor, ["choice> "]],
-      [:clear_slot, :notes]
+      [:commit, "Fruit\n? Which one?\n  1) Apple\n  2) Banana\n  3) Cherry\n  Enter empty to cancel."],
+      [:set_slot, :editor, ["choice> "]]
     ])
   end
 

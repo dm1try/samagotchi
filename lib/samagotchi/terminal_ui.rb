@@ -2592,12 +2592,12 @@ module Samagotchi
       # Ensure spinner cleared and terminal in known state (same as reminder mute handling)
       finish_thinking_spinner rescue nil
 
-      # The choices stay in the notes slot while the answer is read (not in
-      # Reline's buffer); cleared when the widget returns.
+      # The question is output, not the notes slot: on a live region the slot
+      # would vanish when cleared, and the question must stay above its answer.
       rows = prompt.lines(paint: method(:paint), color: color_output?)
       rows.unshift("") if $stdout.tty?
       rows << "  Enter empty to cancel." if !prompt.free? # still allow cancel
-      @surface.set_slot(:notes, rows)
+      @surface.commit(rows.join("\n"))
 
       # Loop until valid selection or cancel
       loop do
@@ -2644,8 +2644,6 @@ module Samagotchi
           return false
         end
       end
-    ensure
-      @surface.clear_slot(:notes)
     end
 
     # Process a prompt through the kernel loop and return the model response.
