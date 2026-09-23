@@ -17,9 +17,27 @@ module Samagotchi
     CACHE_TTL_SECONDS = 60
     LIST_TIMEOUT_SECONDS = 3
 
-    HostEntry = Struct.new(:name, :host, :port, :transport, :client, keyword_init: true)
+    HostEntry = Struct.new(:name, :host, :port, :transport, :client, keyword_init: true) do
+      # The server root, e.g. for llama.cpp's own endpoints and recap.
+      def root_url = "http://#{host}:#{port}"
 
-    def initialize(hosts_config: nil, env: ENV)
+      # The OpenAI-compatible API base the chat loop talks to.
+      def openai_base_url = "#{root_url}/v1"
+    end
+
+    # Where a model's requests go: the host entry, the client to use and the
+    # model name to send (the host prefix stripped).
+    ModelTarget = Data.define(:model, :entry, :bare_model, :client) do
+      def root_url = entry.root_url
+      def openai_base_url = entry.openai_base_url
+    end
+
+    # A client that every target uses instead of its host's own (specs inject
+    # a stub this way; the Engine/TUI `client:` keyword sets it).
+    attr_accessor :client_override
+
+    def initialize(hosts_config: nil, env: ENV, client_override: nil)
+      @client_override = client_override
       raw = hosts_config || ConfigFile.hosts_config(env: env)
       @entries = {}
       raw.each do |key, cfg|
@@ -138,7 +156,27 @@ module Samagotchi
 
     def client_for_model(raw_model)
       host_entry, bare = host_for_model(raw_model)
-      [host_entry.client, bare, host_entry]
+      [client_for(host_entry), bare, host_entry]
+    end
+
+    # The single host/model resolution: alias and host routing (host_for_model)
+    # plus the name sent to the server (bare_name).
+    # @param raw_model [String] a model name, alias or host:model ref
+    # @return [ModelTarget]
+    def resolve(raw_model)
+      entry, = host_for_model(raw_model)
+      ModelTarget.new(model: raw_model, entry: entry, bare_model: bare_name(raw_model), client: client_for(entry))
+    end
+
+    # The model name without a known host prefix ("box:gemma" → "gemma").
+    # Aliases are not applied here.
+    def bare_name(full_ref)
+      _, bare = parse_qualified_model(full_ref)
+      bare.to_s.strip.empty? ? full_ref.to_s.strip : bare
+    end
+
+    def client_for(entry)
+      @client_override || entry.client
     end
 
     # List models on all hosts in parallel. On error per-host, skip with error entry (no failover).
@@ -163,7 +201,7 @@ module Samagotchi
             # Use a short-lived client timeout for listing to avoid blocking
             # We reuse entry.client but list_models honors retry; for aggregation we want fail-fast per host.
             # So temporarily reduce retry by using a 3s open_timeout-style? Instead just call list_models and rescue RetryExhausted.
-            models = entry.client.list_models
+            models = client_for(entry).list_models
             models = Array(models)
             results_mutex.synchronize { results[name] = { host: entry.host, port: entry.port, transport: entry.transport, models: models, error: nil } }
           rescue StandardError => e
