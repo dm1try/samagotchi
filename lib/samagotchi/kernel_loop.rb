@@ -167,7 +167,7 @@ module Samagotchi
     #                                           or a previous Result to resume
     # @param max_iterations [Integer]            safety cap on tool-call rounds
     # @param on_stream_event [Proc, nil]         optional callback for generation events
-    # @param cancel_controller [Client::CancellationController, nil] optional cancellation source
+    # @param cancel_controller [CancellationController, nil] optional cancellation source
     # @param model_name [String, nil]            optional per-run model override
     # @param max_tool_output_chars [Integer, nil] per-output char cap for the
     #   :tool_call_completed event's `output:` (nil → env/DEFAULT_MAX_TOOL_OUTPUT_CHARS)

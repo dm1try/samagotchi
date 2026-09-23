@@ -8,6 +8,7 @@ require "set"
 
 require_relative "model_profile"
 require_relative "config"
+require_relative "cancellation_controller"
 require_relative "host_registry"
 require_relative "context_usage"
 require_relative "context_window"
@@ -1362,7 +1363,7 @@ module Samagotchi
     # Run one REPL turn (a prompt, or a continue/reminder turn with nil) through
     # Engine#run_turn, rendering via @renderer.
     def run_engine_turn(session, prompt, continue: false, max_iterations: 100)
-      cancellation_controller = Client::CancellationController.new
+      cancellation_controller = CancellationController.new
       @active_cancel_controller = cancellation_controller
       @renderer.begin_turn
       # Build the (memoized) prompt now so --memory activations show in this

@@ -8,6 +8,7 @@ require "yaml"
 require_relative "config"
 require_relative "model_profile"
 require_relative "thought_stream_splitter"
+require_relative "cancellation_controller"
 require_relative "kernel_loop"
 require_relative "host_registry"
 require_relative "llm/backend"
@@ -233,7 +234,7 @@ module Samagotchi
       @activity_mutex.synchronize { @due_reminder_names = [] }
     end
 
-    # @return [Client::CancellationController, nil] active turn's cancellation controller
+    # @return [CancellationController, nil] active turn's cancellation controller
     def active_cancel_controller
       @activity_mutex.synchronize { @active_cancel_controller }
     end
@@ -790,7 +791,7 @@ module Samagotchi
     # @param prompt   [String] user input
     # @param on_event [Proc, nil] receives event hashes
     # @param max_iterations [Integer] max kernel iterations
-    # @param cancel_controller [Client::CancellationController, nil]
+    # @param cancel_controller [CancellationController, nil]
     # @param max_tool_output_chars [Integer, nil] per-output char cap for the
     #   :tool_call_completed event's `output:` (nil → env/DEFAULT_MAX_TOOL_OUTPUT_CHARS)
     # @return [KernelLoop::Result]
@@ -825,7 +826,7 @@ module Samagotchi
       # between turns raises no error that would drop the cache.
       @client.invalidate_context_window! if @client.respond_to?(:invalidate_context_window!)
       # Provide a cancellable controller for this turn (cross-process cancel via file flag)
-      effective_controller = cancel_controller || Client::CancellationController.new
+      effective_controller = cancel_controller || CancellationController.new
       @activity_mutex.synchronize { @active_cancel_controller = effective_controller }
 
       prompt = nil if continue
