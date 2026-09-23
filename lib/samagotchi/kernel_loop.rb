@@ -23,7 +23,6 @@ require_relative "tools/task_list"
 require_relative "tools/task_stop"
 require_relative "tools/task_wait"
 require_relative "tools/web_fetch"
-require_relative "tools/image_read"
 require_relative "tools/register_reminder"
 require_relative "tools/cancel_reminder"
 require_relative "tools/list_reminders"
@@ -110,7 +109,6 @@ module Samagotchi
       Tools::RegisterReminder,
       Tools::CancelReminder,
       Tools::ListReminders,
-      Tools::ImageRead,
       Tools::AskUserQuestion
     ].freeze
 

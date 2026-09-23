@@ -4,7 +4,6 @@ require "samagotchi/tools/tool_path"
 require "samagotchi/tools/write"
 require "samagotchi/tools/read"
 require "samagotchi/tools/edit"
-require "samagotchi/tools/image_read"
 require "tmpdir"
 
 RSpec.describe Samagotchi::Tools::ToolPath do
@@ -76,12 +75,6 @@ RSpec.describe Samagotchi::Tools::ToolPath do
 
       expect(result).to start_with("Edited")
       expect(File.read(path)).to eq("new value")
-    end
-
-    it "ImageRead resolves a ~ path" do
-      File.binwrite(File.join(@home, "pic.png"), "\x89PNG".b)
-
-      expect(Samagotchi::Tools::ImageRead.call("~/pic.png")).not_to include("file not found")
     end
   end
 end
