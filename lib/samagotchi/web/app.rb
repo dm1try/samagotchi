@@ -12,6 +12,7 @@ require_relative "../bridge_client"
 require_relative "../session"
 require_relative "../session_manager"
 require_relative "../output_formatter"
+require_relative "../image_store"
 require_relative "markdown_renderer"
 
 module Samagotchi
@@ -26,6 +27,12 @@ module Samagotchi
     class App
       DEFAULT_HOST = BridgeClient::HOST
       BRIDGE_WAIT_TIMEOUT = 10.0
+      # An uploaded image may be this big before it is downscaled.
+      MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024
+      SESSION_ID_RE = /\A[0-9A-Za-z-]{1,64}\z/
+      IMAGE_NAME_RE = /\A[0-9a-f]{16}\.(png|jpe?g|gif|webp)\z/
+      IMAGE_TYPES = { "png" => "image/png", "jpg" => "image/jpeg", "jpeg" => "image/jpeg", "gif" => "image/gif",
+                      "webp" => "image/webp" }.freeze
       # POST /stop waits this long for the worker to let go of the session.
       STOP_WAIT_SECONDS = 2.0
 
@@ -77,6 +84,12 @@ module Samagotchi
           end
           if (m = %r{\A/api/sessions/([^/]+)/command\z}.match(req.path_info)) && req.post?
             return handle_command(req, m[1])
+          end
+          if (m = %r{\A/api/sessions/([^/]+)/images\z}.match(req.path_info)) && req.post?
+            return handle_image_upload(req, m[1])
+          end
+          if (m = %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}.match(req.path_info)) && req.get?
+            return handle_image(req, m[1], m[2])
           end
           if (m = %r{\A/api/sessions/([^/]+)\z}.match(req.path_info)) && req.get?
             return handle_show(req, m[1])
@@ -172,11 +185,14 @@ module Samagotchi
           return error_response(400, "invalid_json", "invalid JSON body")
         end
         prompt = body["prompt"] || body[:prompt]
-        if prompt.to_s.strip.empty?
+        # idle: a session with no first turn, for a first message with
+        # images (the page uploads them into it, then sends the turn).
+        idle = body["idle"] == true
+        if prompt.to_s.strip.empty? && !idle
           return error_response(400, "missing_fields", "prompt is required")
         end
         begin
-          session = @manager.spawn_session(prompt: prompt.to_s, state_dir: @state_dir)
+          session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir)
         rescue ArgumentError => e
           return error_response(400, "invalid_model", e.message) if e.message.match?(/SAMAGOTCHI_DEFAULT_MODEL/)
           raise
@@ -358,21 +374,34 @@ module Samagotchi
         if prompt.to_s.strip.empty?
           return error_response(400, "missing_fields", "prompt is required")
         end
+        images = turn_images(id, body["images"])
+        return error_response(400, "bad_images", images) if images.is_a?(String)
+
         # Ensure session exists and resume worker if needed
         @manager.resume_session(id, state_dir: @state_dir) if @manager.respond_to?(:resume_session)
+        # A worker that predates images would drop them (its Bridge ignores
+        # them): refuse, so the sender keeps the chips and the text.
+        if images.any? && !SessionManager.images_input?(Session.session_dir(id, state_dir: default_state_dir))
+          raise SessionManager::ImagesUnsupported
+        end
         # Through the worker's Bridge when it is up, so every live UI sees
         # :turn_enqueued; otherwise straight into the input dir.
         if (client = live_bridge_client(id))
           begin
-            reply = client.post_turn(prompt: prompt.to_s, client_id: client_id)
+            options = { prompt: prompt.to_s, client_id: client_id }
+            options[:images] = images unless images.empty?
+            reply = client.post_turn(**options)
             ack = reply.json
             return json_response(202, ack) if reply.status == 202 && ack.is_a?(Hash)
+            return json_response(reply.status, ack) if ack.is_a?(Hash) && %w[bad_images images_unsupported].include?(ack["error"])
           rescue SystemCallError, IOError
             nil # the worker closed its Bridge on the way out: queue the file
           end
         end
         enqueued_id = SecureRandom.uuid
-        ok = @manager.write_turn_input(id, prompt: prompt.to_s, client_id: client_id, enqueued_id: enqueued_id, state_dir: @state_dir)
+        input = { prompt: prompt.to_s, client_id: client_id, enqueued_id: enqueued_id, state_dir: @state_dir }
+        input[:images] = images unless images.empty?
+        ok = @manager.write_turn_input(id, **input)
         unless ok
           return error_response(500, "enqueue_failed", "could not write turn input")
         end
@@ -391,8 +420,76 @@ module Samagotchi
         json_response(202, { status: "accepted", enqueued_id: enqueued_id, session_id: id })
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)
+      rescue SessionManager::ImagesUnsupported => e
+        error_response(409, "images_unsupported", e.message)
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
+      end
+
+      # A turn's images as [{file:, name:}] (refs to uploads already in the
+      # session's images/), or a String saying what's wrong. Never a path.
+      def turn_images(id, raw)
+        return [] if raw.nil?
+        return "images must be a list" unless raw.is_a?(Array)
+
+        session_dir = image_session_dir(id)
+        return "unknown session" unless session_dir
+
+        raw.map do |image|
+          return "each image must be {file:, name:}" unless image.is_a?(Hash)
+          return "images are refs to uploaded files, not paths" if image.key?("path") || image.key?(:path)
+          return "unknown image" unless ImageStore.valid_ref?(session_dir, image)
+
+          { file: (image["file"] || image[:file]).to_s, name: File.basename((image["name"] || image[:name]).to_s)[0, 120] }
+        end
+      end
+
+      # The session's folder, or nil for an id that isn't one.
+      def image_session_dir(id)
+        return nil unless SESSION_ID_RE.match?(id.to_s)
+
+        @session_class.load(id, state_dir: default_state_dir)
+        Session.session_dir(id, state_dir: default_state_dir)
+      rescue ArgumentError
+        nil
+      end
+
+      # POST /api/sessions/:id/images: the raw image as the body (a paste or
+      # a drop), ?name= for its file name. Stored like any other image
+      # (converted, downscaled); answers the ref the turn then names.
+      def handle_image_upload(req, id)
+        session_dir = image_session_dir(id)
+        return error_response(404, "not_found", "unknown session") unless session_dir
+
+        length = req.content_length.to_i
+        if length > MAX_IMAGE_UPLOAD_BYTES
+          return error_response(413, "too_large", "an image may be up to #{MAX_IMAGE_UPLOAD_BYTES / 1024 / 1024} MB")
+        end
+
+        bytes = req.body.read(MAX_IMAGE_UPLOAD_BYTES + 1).to_s.b
+        if bytes.bytesize > MAX_IMAGE_UPLOAD_BYTES
+          return error_response(413, "too_large", "an image may be up to #{MAX_IMAGE_UPLOAD_BYTES / 1024 / 1024} MB")
+        end
+
+        name = File.basename(req.params["name"].to_s)[0, 120]
+        ref = ImageStore.ingest(session_dir, bytes: bytes, name: name.empty? ? "image" : name, source: "user")
+        json_response(201, ref)
+      rescue ImageStore::Error => e
+        error_response(422, "bad_image", e.message)
+      end
+
+      # GET /api/sessions/:id/images/<hash>.<ext>: a stored image (only
+      # raster types; never svg), for the page's thumbnails.
+      def handle_image(_req, id, name)
+        session_dir = image_session_dir(id)
+        return not_found(path: "images/#{name}") unless session_dir && IMAGE_NAME_RE.match?(name.to_s)
+
+        path = File.join(session_dir, ImageStore::DIR, name)
+        return not_found(path: "images/#{name}") unless File.file?(path) && !File.symlink?(path)
+
+        body = File.binread(path)
+        [200, { "Content-Type" => IMAGE_TYPES.fetch(File.extname(name).delete(".")), "Content-Length" => body.bytesize.to_s,
+                "X-Content-Type-Options" => "nosniff", "Cache-Control" => "private, max-age=86400" }, [body]]
       end
 
       # The session's Bridge, waiting briefly for one a resume just spawned.
@@ -720,6 +817,8 @@ module Samagotchi
           next unless %w[user assistant].include?(norm_role)
 
           message = { role: norm_role, content: stripped }
+          images = m[:images] || m["images"]
+          message[:images] = Array(images).map { |ref| ImageStore.symbolize(ref).slice(:file, :name, :width, :height) } if norm_role == "user" && images.is_a?(Array) && !images.empty?
           message[:html] = @markdown_renderer.render(stripped) if norm_role == "assistant" && @markdown_renderer.available?
           filtered << message
         end

@@ -126,6 +126,20 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #annotateBtn{position:fixed;z-index:20;font-size:12px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.5)}
 #annotateBtn[hidden]{display:none}
 #composer{padding:12px;border-top:1px solid #1f232b;gap:8px;background:#0f1115;display:flex}
+#composer .compose-col{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
+#composer.dropping{outline:2px dashed #7aa5ff;outline-offset:-4px}
+#chips{display:flex;flex-wrap:wrap;gap:6px}
+#chips[hidden]{display:none}
+.chip{display:inline-flex;align-items:center;gap:6px;background:#1b2336;border:1px solid #2d333f;border-radius:8px;padding:3px 4px 3px 3px;font-size:12px;max-width:220px}
+.chip img{width:32px;height:32px;object-fit:cover;border-radius:5px}
+.chip .chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip .chip-remove{background:transparent;color:#9aa4b2;padding:0 6px;min-height:0;font-size:14px}
+.thumbs{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.thumb{max-height:120px;max-width:200px;border-radius:6px;border:1px solid #2d333f;cursor:zoom-in;object-fit:contain;background:#0b0d11}
+.activity-row .thumbs{flex-basis:100%}
+#lightbox{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out}
+#lightbox[hidden]{display:none}
+#lightbox img{max-width:96vw;max-height:94vh;border-radius:6px}
 #composer textarea{flex:1;min-height:44px;max-height:160px;resize:vertical;background:#0f1115;border:1px solid #1f232b;color:#e6e8eb;padding:10px 12px;border-radius:10px}
 #composer .actions-col{display:flex;flex-direction:column;gap:6px;align-items:stretch;width:132px;flex-shrink:0}
 #composer .actions-col button{white-space:nowrap}
@@ -224,8 +238,12 @@ a{color:#7aa5ff}
       <div id="history"></div>
       <div id="empty"><div class="brand-start"><span>Chi</span> Web</div></div>
     </div>
+    <div id="lightbox" hidden><img alt=""></div>
     <div id="composer" style="position:relative">
-      <textarea id="prompt" placeholder="New session prompt — press Enter to create (Shift+Enter for newline)"></textarea>
+      <div class="compose-col">
+        <div id="chips" hidden></div>
+        <textarea id="prompt" placeholder="New session prompt — press Enter to create (Shift+Enter for newline)"></textarea>
+      </div>
       <div class="actions-col">
         <div class="split">
           <button id="actionBtn">Create</button>
