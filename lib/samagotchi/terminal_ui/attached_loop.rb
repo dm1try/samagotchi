@@ -6,6 +6,7 @@ require_relative "formatting"
 require_relative "attached_view"
 require_relative "input_support"
 require_relative "question_prompt"
+require_relative "reline_seam"
 require_relative "../bridge_client"
 require_relative "../model_profile"
 require_relative "../session_commands"
@@ -27,6 +28,9 @@ module Samagotchi
       RECAP_COMMAND = "/recap"
       PROMPT = "> "
       DETACH_COMMANDS = %w[/exit /quit].freeze
+      # A second Ctrl-C at an empty idle prompt within this many seconds detaches.
+      DETACH_WINDOW = 2.0
+      DETACH_HINT = "Ctrl-C again or Ctrl-D to detach"
       STALE_WORKER = "this session's worker runs an older chi and can't run commands; " \
                      "restart it to use them (its turns still work)"
       ROLLBACK_HINT = "partial progress kept in context; !rollback restores the pre-turn state"
@@ -106,7 +110,9 @@ module Samagotchi
             rescue Reprompt
               next
             rescue Interrupt
-              @queue << [:interrupt]
+              # What the line held at the press (AttachedLoop#note_interrupted_line).
+              @queue << [:interrupt, Thread.current[:interrupted_line]]
+              Thread.current[:interrupted_line] = nil
             end
           end
         rescue Stop
@@ -145,8 +151,9 @@ module Samagotchi
       # @param no_interrupt [Boolean] post every turn with no_interrupt
       # @param default_input [Boolean] type SAMAGOTCHI_DEFAULT_INPUT into
       #   the first read (a new session with no -p, as the REPL)
+      # @param clock [#call] monotonic seconds (the Ctrl-C detach window)
       def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false,
-                     default_input: false)
+                     default_input: false, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
         @client = client
         @screen = screen
         @client_id = client_id
@@ -165,6 +172,8 @@ module Samagotchi
         @first_command_id = nil
         @no_interrupt = no_interrupt
         @no_default_input = !default_input
+        @clock = clock
+        @last_idle_interrupt_at = nil
         @next_input_prefill = nil
         # Prompts this run sent, by enqueued_id: only those come back into
         # the input when their turn fails (a replayed event must not).
@@ -190,6 +199,10 @@ module Samagotchi
       def run(input: nil)
         queue = Thread::Queue.new
         load_persistent_history
+        # Reline's seam asks this on Ctrl-C while the typed text is still
+        # there; declining lets the read end with Interrupt as before.
+        previous_interrupt_handler = RelineSeam.interrupt_handler
+        RelineSeam.interrupt_handler = method(:note_interrupted_line)
         stream = @client.follow { |event| queue << [:event, event] }
         @reader = LineReader.new(queue, prompt: method(:prompt_text), read: input || method(:read_input_line),
                                         prefill: default_input_text).start
@@ -200,10 +213,11 @@ module Samagotchi
             ended = safely_handle(payload)
             return ended if ended == :closed || ended == :failed
           when :line then return :detached if submit(payload) == :detach
-          when :interrupt then interrupt
+          when :interrupt then return :detached if interrupt(payload) == :detach
           end
         end
       ensure
+        RelineSeam.interrupt_handler = previous_interrupt_handler
         # The loop is over: end the read the reader still has open. Not under
         # the screen's lock: the reader may be waiting for it to draw. The
         # read takes its prompt away as it ends; clearing the editor slot
@@ -291,7 +305,7 @@ module Samagotchi
 
         text = line.strip
         return answer_question(text) if @question
-        return submit(nil) if DETACH_COMMANDS.include?(text)
+        return submit(nil) if DETACH_COMMANDS.include?(text) || text.casecmp?("exit")
         return send_command(continue_line(text)) if @continue_offer && !SessionCommands.command?(text)
         return if text.empty?
 
@@ -499,10 +513,39 @@ module Samagotchi
         end
       end
 
-      # Ctrl-C cancels the running turn (whoever started it); at an idle
-      # prompt it only clears the line.
-      def interrupt
-        @client.cancel(reason: "ctrl_c") if @running
+      # Ctrl-C cancels the running turn (whoever started it). At an idle
+      # prompt it clears the line; on an empty one it says how to detach, and
+      # a second press within DETACH_WINDOW detaches (D4).
+      # @param pressed [Hash, nil] {text:, at:} from the read the press ended
+      #   (nil: pressed with no read open)
+      # @return [Symbol, nil] :detach
+      def interrupt(pressed = nil)
+        typed = pressed&.fetch(:text, nil).to_s
+        if @running
+          @client.cancel(reason: "ctrl_c")
+          return nil
+        end
+        unless typed.strip.empty?
+          @last_idle_interrupt_at = nil
+          return nil
+        end
+
+        now = pressed&.fetch(:at, nil) || @clock.call
+        return submit(nil) if @last_idle_interrupt_at && now - @last_idle_interrupt_at <= DETACH_WINDOW
+
+        @last_idle_interrupt_at = now
+        @screen.commit(DETACH_HINT)
+        nil
+      end
+
+      # On the reader thread, from Reline's Ctrl-C: what the line held, and
+      # when, for the Interrupt the LineReader queues next.
+      # @return [false] Reline goes on ending the read with Interrupt
+      def note_interrupted_line
+        Thread.current[:interrupted_line] = { text: Reline.line_buffer.to_s, at: @clock.call }
+        false
+      rescue StandardError
+        false
       end
 
       def render_snapshot(snapshot, reset:)

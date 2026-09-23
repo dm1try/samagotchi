@@ -731,3 +731,61 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "idle status line" do
     expect(screen.slots).not_to have_key(:status)
   end
 end
+
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "Ctrl-C and exit at an idle prompt (D4)" do
+  let(:screen) { RecordingSurface.new(columns: 80) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:now) { [0.0] }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", clock: -> { now.first }) }
+
+  before do
+    allow(client).to receive(:follow) do |&block|
+      block.call("type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => nil, "queued" => [], "event_seq" => 1 })
+      double("stream", close: nil)
+    end
+    allow(client).to receive(:cancel)
+  end
+
+  after { Samagotchi::TerminalUI::RelineSeam.interrupt_handler = nil }
+
+  # Each entry is a read: a line, nil (Ctrl-D), or [:ctrl_c, typed, at] for a
+  # Ctrl-C with +typed+ in the line at time +at+ (Reline's seam sees the text
+  # before the read ends).
+  def run_reads(*reads)
+    attached.run(input: lambda do |_prompt, _prefill|
+      entry = reads.shift
+      return entry unless entry.is_a?(Array)
+
+      _, typed, at = entry
+      now[0] = at
+      allow(Reline).to receive(:line_buffer).and_return(typed)
+      Samagotchi::TerminalUI::RelineSeam.interrupt_handler&.call
+      raise Interrupt
+    end)
+  end
+
+  it "says how to detach on a first Ctrl-C at an empty prompt, and detaches on a second within 2 s" do
+    expect(run_reads([:ctrl_c, "", 10.0], [:ctrl_c, "", 11.5])).to eq(:detached)
+
+    expect(screen.lines).to include("Ctrl-C again or Ctrl-D to detach")
+    expect(screen.lines.last).to start_with("Detached; the session keeps running.")
+    expect(client).not_to have_received(:cancel)
+  end
+
+  it "only says it again when the second press comes later" do
+    expect(run_reads([:ctrl_c, "", 10.0], [:ctrl_c, "", 13.0], nil)).to eq(:detached)
+
+    expect(screen.lines.count("Ctrl-C again or Ctrl-D to detach")).to eq(2)
+  end
+
+  it "takes a Ctrl-C that cleared typed text as just that" do
+    expect(run_reads([:ctrl_c, "half typed", 10.0], [:ctrl_c, "", 10.5], nil)).to eq(:detached)
+
+    expect(screen.lines.count("Ctrl-C again or Ctrl-D to detach")).to eq(1)
+  end
+
+  it "detaches on a bare exit, as the REPL exits" do
+    expect(run_reads("exit")).to eq(:detached)
+    expect(described_class.new(client: client, screen: screen, client_id: "tui:1").run(input: ->(_p, _f) { "EXIT" })).to eq(:detached)
+  end
+end
