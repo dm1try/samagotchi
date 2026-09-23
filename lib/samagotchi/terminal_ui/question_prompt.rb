@@ -4,9 +4,10 @@ require_relative "question_slot"
 
 module Samagotchi
   class TerminalUI
-    # An ask_user_question prompt as the terminal shows it: the widget's
-    # lines and the parsing of a typed answer ("2", "1,3", "1 3; text",
-    # option labels). No I/O: callers print the lines and messages, and
+    # An ask_user_question prompt as the terminal shows it: the widget as
+    # slot content (#slot), the line it leaves (#summary) and the parsing of
+    # a typed answer ("2", "1,3", "1 3; text", option labels). No I/O:
+    # callers draw the slot and print the messages, and
     # record the answer (the REPL on its Engine, an attached UI over the
     # Bridge). An approval (kind "approval") takes only a number, an exact
     # label, y (the first option, Allow once) or n (the last, Deny), plus
@@ -36,21 +37,6 @@ module Samagotchi
       def multi? = @multi
       def free? = @free
       def approval? = @approval
-
-      # The widget, top down; +paint+ colours a string (text, code).
-      # @return [Array<String>]
-      def lines(paint: ->(text, _code) { text }, color: false)
-        return approval_lines(paint) if approval?
-
-        lines = []
-        lines << paint.(header, 1) if header
-        lines << paint.("? #{question}", 94)
-        options.each_with_index { |opt, idx| lines << paint.("  #{idx + 1}) #{opt}", 92) }
-        hint = [multi? ? "Select one or more (e.g. 1,3)" : "Select one (e.g. 2)"]
-        hint << "add '; freeform text' when Other/freeform needed" if free?
-        lines << paint.("  [#{hint.join('; ')}]", 90) if color
-        lines
-      end
 
       # The widget as slot content, fitted to the rows it gets (QuestionSlot).
       # @return [QuestionSlot]
@@ -123,18 +109,6 @@ module Samagotchi
         hint << "add '; text' for your own answer" if free?
         hint << "Enter alone cancels"
         hint.join("; ")
-      end
-
-      # The question text is several lines (tool, where, why); shown in the
-      # warning colour, with the answers the prompt takes.
-      def approval_lines(paint)
-        lines = [paint.(header || "Approve tool call?", 1)]
-        question.lines.map(&:chomp).each_with_index do |line, idx|
-          lines << paint.(idx.zero? ? "! #{line}" : line, 33)
-        end
-        options.each_with_index { |opt, idx| lines << paint.("  #{idx + 1}) #{opt}", 92) }
-        lines << paint.("  [1-#{options.size}, y = #{options.first}, n = #{options.last}; add '; reason' to tell the model why]", 90)
-        lines
       end
 
       def parse_approval(raw)

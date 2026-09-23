@@ -12,12 +12,6 @@ RSpec.describe Samagotchi::TerminalUI::QuestionPrompt do
     expect(described_class.new(id: "q2", question: "Q", options: %w[a b]).options).to eq(%w[a b])
   end
 
-  it "lists the question and numbered options" do
-    expect(prompt.lines).to eq(["? Which one?", "  1) Apple", "  2) Banana", "  3) Cherry"])
-    expect(described_class.new(pending.merge("header" => "Fruit", "multi_select" => true)).lines(color: true).values_at(0, -1))
-      .to eq(["Fruit", "  [Select one or more (e.g. 1,3)]"])
-  end
-
   {
     "2" => { selected: ["Banana"], freeform: nil },
     "banana" => { selected: ["Banana"], freeform: nil },
