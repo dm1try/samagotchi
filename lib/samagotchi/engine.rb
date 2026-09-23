@@ -1288,27 +1288,10 @@ module Samagotchi
     def tool_declarations
       case @profile.name
       when "qwen36"
-        "<tools>\n#{JSON.pretty_generate(ToolDeclarations::QWEN_TOOLS_JSON)}\n</tools>"
+        ToolDeclarations.qwen_declarations
       else
         # Gemma 4 format
-        [
-          ToolDeclarations::TOOL_EXECUTE,
-          ToolDeclarations::TOOL_READ,
-          ToolDeclarations::TOOL_WRITE,
-          ToolDeclarations::TOOL_EDIT,
-          ToolDeclarations::TOOL_MEMORY_READ,
-          ToolDeclarations::TOOL_MEMORY_WRITE,
-          ToolDeclarations::TOOL_TASK_CREATE,
-          ToolDeclarations::TOOL_TASK_GET,
-          ToolDeclarations::TOOL_TASK_LIST,
-          ToolDeclarations::TOOL_TASK_STOP,
-          ToolDeclarations::TOOL_TASK_WAIT,
-          ToolDeclarations::TOOL_WEB_FETCH,
-          ToolDeclarations::TOOL_REGISTER_REMINDER,
-          ToolDeclarations::TOOL_CANCEL_REMINDER,
-          ToolDeclarations::TOOL_LIST_REMINDERS,
-          ToolDeclarations::TOOL_ASK_USER_QUESTION
-        ].join("\n")
+        ToolDeclarations.gemma_declarations
       end
     end
 

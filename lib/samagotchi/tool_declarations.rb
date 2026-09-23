@@ -1,180 +1,20 @@
 # frozen_string_literal: true
 
+require "json"
+
 module Samagotchi
   # Tool-declaration constants, protocol constants, and guidance text.
   #
   # Placed in a dedicated module so that both Engine and any future UI can
   # reference declarations without instantiating an Engine.
   module ToolDeclarations
-    # ── Tool declarations (Gemma 4 <|tool>/<tool|> format) ────────────────────
+    # ── Tool schemas (declared once) ──────────────────────────────────────────
+    #
+    # Every tool's name, description and JSON Schema parameters. The Gemma 4
+    # and Qwen 3.6 prompt declarations and the chat path's tools: are all
+    # rendered from this table, in this order.
 
-    TOOL_EXECUTE = <<~DECL.strip
-      <|tool>declaration:execute{
-        description:<|"|>Run any shell command in a working directory (defaults to the project root) and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata.<|"|>,
-        parameters:{
-          command:{type:<|"|>string<|"|>, description:<|"|>The shell command to run<|"|>, required:true},
-          cwd:{type:<|"|>string<|"|>, description:<|"|>Optional working directory to run in (defaults to the project root). Relative paths are resolved against the project root.<|"|>}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_READ = <<~DECL.strip
-      <|tool>declaration:read{
-        description:<|"|>Read a file from disk. Large files may be truncated to a head+tail preview with metadata. Optionally pass start_line and end_line (1-based, inclusive) to read only a specific line range.<|"|>,
-        parameters:{
-          path:{type:<|"|>string<|"|>, description:<|"|>Path to the file<|"|>, required:true},
-          start_line:{type:<|"|>integer<|"|>, description:<|"|>Optional start line (1-based, inclusive). Must be provided with end_line.<|"|>},
-          end_line:{type:<|"|>integer<|"|>, description:<|"|>Optional end line (1-based, inclusive). Must be provided with start_line.<|"|>}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_WRITE = <<~DECL.strip
-      <|tool>declaration:write{
-        description:<|"|>Write content to a file (parent directories are created automatically)<|"|>,
-        parameters:{
-          path:{type:<|"|>string<|"|>, description:<|"|>Destination file path<|"|>, required:true},
-          content:{type:<|"|>string<|"|>, description:<|"|>Content to write to the file<|"|>, required:true}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_EDIT = <<~DECL.strip
-      <|tool>declaration:edit{
-        description:<|"|>Edit an existing file. Mode 1 (default): replace an exact old_text block with new_text, where old_text must appear exactly once. Mode 2 (range): when start_line and end_line are provided, replace that whole line range with new_text.<|"|>,
-        parameters:{
-          path:{type:<|"|>string<|"|>, description:<|"|>File path<|"|>, required:true},
-          old_text:{type:<|"|>string<|"|>, description:<|"|>Exact text to replace (required in exact-match mode)<|"|>},
-          new_text:{type:<|"|>string<|"|>, description:<|"|>Replacement text (required)<|"|>, required:true},
-          start_line:{type:<|"|>integer<|"|>, description:<|"|>Optional start line (1-based, inclusive) for range mode. Must be provided with end_line.<|"|>},
-          end_line:{type:<|"|>integer<|"|>, description:<|"|>Optional end line (1-based, inclusive) for range mode. Must be provided with start_line.<|"|>}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_MEMORY_READ = <<~DECL.strip
-      <|tool>declaration:memory_read{
-        description:<|"|>Read a memory entry from scoped memories. Scope is optional: if omitted, read falls back from project to system. Leave name blank to read indexes.<|"|>,
-        parameters:{
-          name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension; leave blank for indexes<|"|>},
-          scope:{type:<|"|>string<|"|>, description:<|"|>Optional scope: project or system<|"|>}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_MEMORY_WRITE = <<~DECL.strip
-      <|tool>declaration:memory_write{
-        description:<|"|>Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`); each scope's index.md is auto-maintained (one managed line per entry); use name "index" to write the index file verbatim. If the user asks to save guidance for the current model only, pass current_model_only: true to save a model-specific overlay.<|"|>,
-        parameters:{
-          name:{type:<|"|>string<|"|>, description:<|"|>Memory entry name without .md extension<|"|>, required:true},
-          content:{type:<|"|>string<|"|>, description:<|"|>Markdown content to write<|"|>, required:true},
-          scope:{type:<|"|>string<|"|>, description:<|"|>Scope to write into: project or system<|"|>, required:true},
-          description:{type:<|"|>string<|"|>, description:<|"|>Optional short description appended to the managed index line<|"|>},
-          current_model_only:{type:<|"|>boolean<|"|>, description:<|"|>Set true to save this entry as a model-specific overlay for the current model only (<name>.<model>.md); it is auto-appended when the entry is read under that model and never listed in the index.<|"|>}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_TASK_CREATE = <<~DECL.strip
-      <|tool>declaration:task_create{
-        description:<|"|>Start a background task for a long-running shell command. Returns task id and output path for later inspection.<|"|>,
-        parameters:{
-          command:{type:<|"|>string<|"|>, description:<|"|>Shell command to run in the background<|"|>, required:true},
-          cwd:{type:<|"|>string<|"|>, description:<|"|>Optional working directory (defaults to project root)<|"|>},
-          env:{type:<|"|>string<|"|>, description:<|"|>Optional JSON object of environment overrides; use this for PATH or tool-specific variables<|"|>}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_TASK_GET = <<~DECL.strip
-      <|tool>declaration:task_get{
-        description:<|"|>Get full metadata for a task by id. Use read on output_path to inspect command output.<|"|>,
-        parameters:{
-          id:{type:<|"|>string<|"|>, description:<|"|>Task id returned by task_create<|"|>, required:true}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_TASK_LIST = <<~DECL.strip
-      <|tool>declaration:task_list{
-        description:<|"|>List all background tasks in the current workspace with current status.<|"|>,
-        parameters:{}
-      }<tool|>
-    DECL
-
-    TOOL_TASK_STOP = <<~DECL.strip
-      <|tool>declaration:task_stop{
-        description:<|"|>Stop a running background task by id.<|"|>,
-        parameters:{
-          id:{type:<|"|>string<|"|>, description:<|"|>Task id to stop<|"|>, required:true}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_TASK_WAIT = <<~DECL.strip
-      <|tool>declaration:task_wait{
-        description:<|"|>Wait for a background task to finish. Polls every 0.5s until completion, a log pattern matches, or timeout. Timed-out waits include a bounded output tail.<|"|>,
-        parameters:{
-          task_id:{type:<|"|>string<|"|>, description:<|"|>Task id returned by task_create<|"|>, required:true},
-          timeout:{type:<|"|>integer<|"|>, description:<|"|>Maximum seconds to wait (default: 600)<|"|>, required:false},
-          tail_lines:{type:<|"|>integer<|"|>, description:<|"|>Log lines to return when timing out or matching a pattern (default: 10, max: 100)<|"|>, required:false},
-          done_pattern:{type:<|"|>string<|"|>, description:<|"|>Optional regular expression that returns early when it matches the recent log output<|"|>, required:false}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_WEB_FETCH = <<~DECL.strip
-      <|tool>declaration:web_fetch{
-        description:<|"|>Fetch the content of a URL (HTML or text) and return cleaned text. Handles HTML by stripping scripts/styles and extracting visible text. Returns error messages for invalid URLs or HTTP errors.<|"|>,
-        parameters:{
-          url:{type:<|"|>string<|"|>, description:<|"|>The URL to fetch<|"|>, required:true}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_REGISTER_REMINDER = <<~DECL.strip
-      <|tool>declaration:register_reminder{
-        description:<|"|>Register a periodic reminder. The harness injects a [SYSTEM:] message into your next idle turn when the reminder is due.<|"|>,
-        parameters:{
-          name:{type:<|"|>string<|"|>, description:<|"|>Short identifier, e.g. 'api_health'<|"|>, required:true},
-          description:{type:<|"|>string<|"|>, description:<|"|>What should happen when this reminder fires<|"|>, required:true},
-          interval_minutes:{type:<|"|>integer<|"|>, description:<|"|>How often to remind (1-1440 minutes, i.e. up to 1 day)<|"|>, required:true}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_CANCEL_REMINDER = <<~DECL.strip
-      <|tool>declaration:cancel_reminder{
-        description:<|"|>Cancel a previously registered reminder so it stops firing.<|"|>,
-        parameters:{
-          name:{type:<|"|>string<|"|>, description:<|"|>The reminder identifier to cancel<|"|>, required:true}
-        }
-      }<tool|>
-    DECL
-
-    TOOL_LIST_REMINDERS = <<~DECL.strip
-      <|tool>declaration:list_reminders{
-        description:<|"|>List all active registered reminders.<|"|>,
-        parameters:{}
-      }<tool|>
-    DECL
-
-    TOOL_ASK_USER_QUESTION = <<~DECL.strip
-      <|tool>declaration:ask_user_question{
-        description:<|"|>Ask the user a structured qualification question. Supports single/multi selection plus optional freeform/Other input. Prefer this over plain numbered lists when you need a clear choice. The harness renders it natively and returns {selected, freeform}.<|"|>,
-        parameters:{
-          question:{type:<|"|>string<|"|>, description:<|"|>The question to ask the user<|"|>, required:true},
-          options:{type:<|"|>array<|"|>, description:<|"|>2-8 answer options as strings (labels). Single/multi selection via multi_select flag.<|"|>, required:true},
-          header:{type:<|"|>string<|"|>, description:<|"|>Optional short header/title<|"|>},
-          multi_select:{type:<|"|>boolean<|"|>, description:<|"|>Allow selecting multiple options (comma-separated in TUI). Default false.<|"|>},
-          allow_freeform:{type:<|"|>boolean<|"|>, description:<|"|>Allow freeform/Other text alongside selection. Default false.<|"|>}
-        }
-      }<tool|>
-    DECL
-
-    # ── Qwen 3.6 tool declarations (JSON format) ──────────────────────────────
-
-    QWEN_TOOLS_JSON = [
+    TOOL_SCHEMAS = [
       {
         name: "execute",
         description: "Run any shell command in a working directory (defaults to the project root) and see stdout, stderr, and exit code. Large output may be truncated to a head+tail preview with metadata.",
@@ -484,6 +324,50 @@ module Samagotchi
         }
       }
     ].freeze
+
+    # Where Gemma's declaration text says something the schema doesn't: extra
+    # description text, and explicit required:false on optional parameters.
+    GEMMA_PARAM_OVERRIDES = {
+      "edit" => { new_text: { description: "Replacement text (required)" } },
+      "task_wait" => {
+        timeout: { required: false },
+        tail_lines: { required: false },
+        done_pattern: { required: false }
+      },
+      "ask_user_question" => {
+        options: { description: "2-8 answer options as strings (labels). Single/multi selection via multi_select flag." }
+      }
+    }.freeze
+
+    GEMMA_QUOTE = '<|"|>'
+
+    module_function
+
+    # Gemma 4 <|tool>declaration:NAME{…}<tool|> blocks for every tool, one per line group.
+    def gemma_declarations
+      TOOL_SCHEMAS.map { |schema| gemma_declaration(schema) }.join("\n")
+    end
+
+    def gemma_declaration(schema)
+      q = GEMMA_QUOTE
+      required = Array(schema[:parameters][:required])
+      overrides = GEMMA_PARAM_OVERRIDES.fetch(schema[:name], {})
+      lines = schema[:parameters][:properties].map do |name, param|
+        override = overrides.fetch(name, {})
+        description = override.fetch(:description, param[:description])
+        line = "    #{name}:{type:#{q}#{param[:type]}#{q}, description:#{q}#{description}#{q}"
+        req = override.fetch(:required, required.include?(name.to_s) ? true : nil)
+        line += ", required:#{req}" unless req.nil?
+        "#{line}}"
+      end
+      params = lines.empty? ? "  parameters:{}" : "  parameters:{\n#{lines.join(",\n")}\n  }"
+      "<|tool>declaration:#{schema[:name]}{\n  description:#{q}#{schema[:description]}#{q},\n#{params}\n}<tool|>"
+    end
+
+    # Qwen 3.6 <tools> block: the schemas as pretty-printed JSON.
+    def qwen_declarations
+      "<tools>\n#{JSON.pretty_generate(TOOL_SCHEMAS)}\n</tools>"
+    end
 
     TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param:<|"|>value<|"|>}<tool_call|>. CRITICAL: check the tool declaration for the exact parameter names and required fields!'
     QWEN_TOOL_CALL_HINT = <<~HINT
