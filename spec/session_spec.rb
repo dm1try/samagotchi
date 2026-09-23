@@ -63,6 +63,20 @@ RSpec.describe Samagotchi::Session do
       expect(loaded.messages).to eq(session.messages)
     end
 
+    it "restores image refs on messages with symbol keys" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      ref = { file: "images/0123456789abcdef.png", mime: "image/png", width: 3, height: 2, bytes: 70,
+              name: "shot.png", source: "user" }
+      session.messages = [
+        { role: "user", content: "look", images: [ref] },
+        { role: "tool_response", content: "[read]\nImage shot.png attached.", images: [ref.merge(source: "tool")] }
+      ]
+      session.save(state_dir: tmpdir)
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.messages).to eq(session.messages)
+    end
+
     it "restores message hashes with symbol keys" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.messages = [

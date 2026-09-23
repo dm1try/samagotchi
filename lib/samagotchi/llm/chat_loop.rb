@@ -125,13 +125,15 @@ module Samagotchi
       end
 
       # The shape the engine persists: role and content (parts stay an
-      # Array), plus a model turn's tool_calls and a result's tool_call_id.
+      # Array), plus a model turn's tool_calls, a result's tool_call_id and
+      # the image refs of a user message or a tool result.
       def plain(conversation)
         conversation.map do |entry|
           content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
           message = { role: entry[:role], content: content }
           message[:tool_calls] = entry[:tool_calls] if entry[:tool_calls].is_a?(Array) && !entry[:tool_calls].empty?
           message[:tool_call_id] = entry[:tool_call_id] if entry[:tool_call_id]
+          message[:images] = entry[:images] if entry[:images].is_a?(Array) && !entry[:images].empty?
           message
         end
       end

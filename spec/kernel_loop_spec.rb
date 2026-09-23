@@ -38,6 +38,13 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(kernel.run([{ role: "user", content: "hi" }])).to include("world")
     end
 
+    it "keeps image refs on the conversation it returns" do
+      ref = { file: "images/0123456789abcdef.png", mime: "image/png", width: 3, height: 2, name: "a.png", source: "user" }
+      allow(client).to receive(:complete).and_return("hello")
+      result = kernel.run([{ role: "user", content: "look", images: [ref] }])
+      expect(result.conversation.first).to eq({ role: "user", content: "look", images: [ref] })
+    end
+
     it "does not mutate the original messages array" do
       original = [{ role: "user", content: "hi" }]
       allow(client).to receive(:complete).and_return("hello")

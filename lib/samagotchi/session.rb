@@ -383,12 +383,15 @@ module Samagotchi
       private
 
       # A chat turn's tool_calls get symbol keys too ({id:, name:,
-      # arguments:}); the arguments keep the model's string keys.
+      # arguments:}); the arguments keep the model's string keys. So do
+      # image refs ({file:, mime:, width:, …}).
       def symbolize_message_keys(hash)
         message = hash.each_with_object({}) { |(k, v), h| h[k.to_sym] = v }
-        if message[:tool_calls].is_a?(Array)
-          message[:tool_calls] = message[:tool_calls].map do |call|
-            call.is_a?(Hash) ? call.each_with_object({}) { |(k, v), h| h[k.to_sym] = v } : call
+        %i[tool_calls images].each do |key|
+          next unless message[key].is_a?(Array)
+
+          message[key] = message[key].map do |entry|
+            entry.is_a?(Hash) ? entry.each_with_object({}) { |(k, v), h| h[k.to_sym] = v } : entry
           end
         end
         message

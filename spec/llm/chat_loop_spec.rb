@@ -46,6 +46,22 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
                                                                                          requested_model: "m")
   end
 
+  describe "image refs" do
+    let(:ref) { { file: "images/0123456789abcdef.png", mime: "image/png", width: 3, height: 2, name: "a.png", source: "user" } }
+
+    it "keeps images on user and tool_response entries in the persisted conversation" do
+      tool_ref = ref.merge(source: "tool")
+      history = [{ role: "user", content: "look", images: [ref] },
+                 { role: "model", content: "", tool_calls: [{ id: "c1", name: "read", arguments: { "path" => "a.png" } }] },
+                 { role: "tool_response", content: "[read] ok", tool_call_id: "c1", images: [tool_ref] }]
+      result = run(history)
+
+      expect(result.conversation[0]).to eq({ role: "user", content: "look", images: [ref] })
+      expect(result.conversation[2]).to include(images: [tool_ref])
+      expect(result.conversation.last).not_to have_key(:images)
+    end
+  end
+
   describe "request" do
     it "maps engine roles to the wire (model -> assistant, user content as parts)" do
       run([{ role: "system", content: "sys" }, { role: "user", content: "hi" }, { role: "model", content: "last" }])
