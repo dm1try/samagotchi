@@ -205,7 +205,7 @@ module Samagotchi
       effective_max_iterations = @no_interrupt ? 1000 : max_iterations
       effective_max_tool_output_chars = resolve_output_char_cap(max_tool_output_chars)
       effective_max_iterations.times do |iteration_index|
-        inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1)
+        inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller)
         prompt = Prompt.format(conversation, profile: @profile)
         context_window = ContextWindow.resolve(client: @client, model: resolved_model_name)
         context_status = emit_context_status_event(on_stream_event, prompt, iteration_index: iteration_index, state: context_state, window: context_window) || context_status
@@ -288,7 +288,7 @@ module Samagotchi
           end
 
           pending_tool_calls = false
-          unless inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1)
+          unless inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller)
             break
           end
           # Queued steering keeps the turn going: loop again so the model
@@ -362,8 +362,11 @@ module Samagotchi
     # append them as ONE merged user message at the conversation tail and emit
     # :pending_input_merged. Tail-append only: head mutation would invalidate
     # the server-side prefix KV cache. Returns true when a message was injected.
-    def inject_pending_input!(conversation, pending_input, on_stream_event, iteration)
+    # After a cancel the input stays queued: it runs as the next turn instead
+    # of dying with this one.
+    def inject_pending_input!(conversation, pending_input, on_stream_event, iteration, cancel_controller = nil)
       return false unless pending_input
+      return false if cancel_controller&.cancelled?
 
       lines = begin
         pending_input.call

@@ -332,6 +332,24 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(adapter.requests.last[:messages].last).to eq(role: "user", content: [{ type: "text", text: "also this" }])
       expect(result.text).to eq("second")
     end
+    it "leaves input queued after a cancel instead of merging it into the dying turn" do
+      controller = Samagotchi::CancellationController.new
+      queue = []
+      backend.adapter = FakeChatAdapter.new(text("answer"))
+      # Ctrl-C lands as the answer ends; the line comes right after it.
+      allow(backend.adapter).to receive(:chat).and_wrap_original do |original, **kwargs|
+        original.call(**kwargs).tap do
+          controller.cancel!(:ctrl_c)
+          queue << "sent after ctrl-c"
+        end
+      end
+
+      result = run(pending_input: -> { queue.empty? ? [] : [queue.shift] }, cancel_controller: controller)
+
+      expect(result.text).to eq("answer")
+      expect(events.map { |e| e[:type] }).not_to include(:pending_input_merged)
+      expect(queue).to eq(["sent after ctrl-c"])
+    end
   end
 
   describe "cancel" do

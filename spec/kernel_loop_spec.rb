@@ -970,6 +970,28 @@ Need to inspect the filesystem first.
       expect(final_model).to be > follow_up
     end
 
+it "leaves input queued after a cancel instead of merging it into the dying turn" do
+      controller = Samagotchi::CancellationController.new
+      responses = [%(<|tool_call>call:execute{command: "true"}<tool_call|>)]
+      allow(client).to receive(:complete) do
+        raise Samagotchi::Client::RequestCancelled, controller.reason if controller.cancelled?
+
+        # Ctrl-C while the tool runs, then a line sent before the turn ends.
+        controller.cancel!(:ctrl_c)
+        queue.push("sent after ctrl-c")
+        responses.shift
+      end
+      events = []
+
+      result = kernel.run([{ role: "user", content: "hi" }], pending_input: queue.method(:drain),
+                                                            cancel_controller: controller,
+                                                            on_stream_event: ->(event) { events << event })
+
+      expect(result).to be_canceled
+      expect(events.map { |event| event[:type] }).not_to include(:pending_input_merged)
+      expect(queue.drain).to eq(["sent after ctrl-c"])
+    end
+
     it "survives a draining proc that raises" do
       allow(client).to receive(:complete).and_return("done")
       bad_drain = -> { raise "boom" }

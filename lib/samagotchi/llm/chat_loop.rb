@@ -274,9 +274,11 @@ module Samagotchi
         end
 
         # Queued steering joins the conversation as one user message.
-        # Returns true when there was any.
+        # Returns true when there was any. After a cancel it stays queued, so
+        # it runs as the next turn instead of dying with this one.
         def inject_pending_input(iteration)
           return false unless @pending_input
+          return false if @cancel_controller&.cancelled?
 
           lines = begin
             @pending_input.call
