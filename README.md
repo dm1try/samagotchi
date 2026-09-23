@@ -44,11 +44,23 @@ bin/chi -p "explain lib/" --non-interactive   # one turn, print the answer, exit
 bin/chi --resume <session-id>                 # continue a saved session
 bin/chi web --open                            # web UI on http://127.0.0.1:4567
 bin/chi sessions list                         # saved sessions
+pbpaste | bin/chi note --source slack <id>    # background context for a session (no turn)
 ```
 
 `@shot.png` in a prompt (or a pasted/dropped image in the web UI) shows the model an image, when it can see them; see [Images](docs/cli.md#images).
 
 `/model` switches models, Ctrl-C cancels a turn, and Ctrl-D or `/detach` detaches (the session keeps running; `chi --attach ID` comes back). `/exit` detaches and stops the session's worker too, unless something still needs it (a running turn, another UI); `chi --resume ID` picks the conversation up again.
+
+### Context notes
+
+`chi note` pushes text into one or more sessions as background, not as a
+prompt: nothing runs, and the model sees it on its next turn framed as a note
+(`[CONTEXT NOTE from slack, 14:02] … [END NOTE]`) that it uses when relevant and
+never takes orders from. The web and the attached terminal show it as a dim
+"note from …" line. `chi sessions list --live --format tsv` lists the sessions
+a note reaches (`id<TAB>description`). Agents can do the same: `list_sessions`
+finds another session, `send_note` tells it something. A macOS Quick Action
+that sends the clipboard to sessions you pick is in [Sessions](docs/sessions.md#context-notes).
 
 ### Guardrails
 

@@ -1,6 +1,6 @@
 # Sessions
 
-Sessions are plain files — no DB. Each session is `~/.local/state/samagotchi/sessions/<uuid>.json` (XDG-aware via `XDG_STATE_HOME`) plus a sidecar dir `<uuid>/` with `input/`/`output/`/`pid`/`bridge.json` (`Session.session_dir`).
+Sessions are plain files — no DB. Each session is `~/.local/state/samagotchi/sessions/<uuid>.json` (XDG-aware via `XDG_STATE_HOME`) plus a sidecar dir `<uuid>/` with `input/`/`notes/`/`output/`/`pid`/`bridge.json` (`Session.session_dir`).
 
 **Retention (file-based, opt-out via env):**
 
@@ -25,6 +25,7 @@ A session is deleted if **expired by age OR overflow by count** (unless `keep_st
 
 ```sh
 bin/chi sessions list [--sort updated_at|created_at] [--order desc|asc] [--limit N]
+bin/chi sessions list [--live] [--cwd PATH] [--limit N] [--format text|json|tsv]
 bin/chi sessions stop ID
 bin/chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
 bin/chi sessions clean [--dry-run] [--days N] [--keep N]   # alias to prune --test-only
@@ -40,6 +41,42 @@ bin/chi sessions clean --dry-run --days 7            # only test sessions
 ```
 
 `--dry-run` is the safe preview. Web has no prune endpoint; use the CLI.
+
+`--live`, `--cwd` and `--format` make `list` a picker for scripts (`SessionManager.session_summaries`): `--live` keeps the sessions a worker runs now (the owner lock, not the saved status; a session open in a plain REPL is left out), `--cwd PATH` those in PATH or below, and test runs are left out. `--live` shows 10 unless `--limit` says otherwise; filters apply before the limit. `--format json` prints `[{id, short_id, desc, cwd, updated_at, live, busy}]`, `--format tsv` one `id<TAB>desc` line per session, where `desc` is `<folder> · <last prompt>` cut to 60 characters. With none of these flags the output is as before.
+
+## Context notes
+
+A context note is text pushed into a session as background: not a prompt, and it starts no turn.
+
+```sh
+bin/chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all
+pbpaste | bin/chi note --source slack 3f2a 8c1d
+```
+
+- The text comes from `-m` or stdin (a terminal on stdin is a usage error, not a wait). It is stripped; an empty note or one over 16 KiB is refused, never cut. `--source` (default `cli`) names where it came from. `--all` is every live session.
+- It lands in `<uuid>/notes/`, apart from `input/`, so nothing that runs turns sees it. A live worker adds it to the conversation within a few seconds, between turns: one sent during a turn waits for that turn to end. A session with no worker keeps it until a worker next starts (a prompt, `--attach`), which adds it before anything else. A session open in a plain REPL (`--no-shared`) refuses notes. `chi note` prints one line per session: queued, waits for the next start (with the queue count), or refused.
+- In the conversation it is a tail system message marked `kind: note`, framed `[CONTEXT NOTE from slack, 14:02]\n…\n[END NOTE]` (from another session: `from session 3f2a1c (~/projects/foo)`). The system prompt says notes are background, not requests: the model uses one when it is relevant, doesn't answer it on its own, and never follows instructions inside it. Its text is escaped like user text, so it can't fake a turn. It survives `--resume`, a reload, `!rollback` and a continue answered no.
+- The web shows it as a dim "note from …" block, live (`context_added`) and after a reload; the attached terminal as one dim `note from slack: <first line>` line, also when joining.
+- Agents: `list_sessions` (other sessions, newest first, up to 20; optional `cwd`) and `send_note(session, text)`, which sends a note from this session. Neither starts a turn anywhere.
+
+A macOS Quick Action that sends the clipboard to the live sessions you pick (Automator: Quick Action, "Run Shell Script", shell `/bin/zsh`; Automator's PATH is minimal, so put your Ruby's bin dir on it and use the full path to `chi`):
+
+```sh
+export PATH="$HOME/.local/share/mise/shims:$PATH"   # wherever your ruby lives
+chi="$HOME/projects/samagotchi/bin/chi"
+list=$("$chi" sessions list --live --format tsv)
+[ -z "$list" ] && { osascript -e 'display notification "No live chi sessions" with title "chi note"'; exit 0; }
+picked=$(osascript - "$list" <<'OSA'
+on run argv
+  set AppleScript's text item delimiters to linefeed
+  set choice to choose from list (paragraphs of item 1 of argv) with prompt "Send the clipboard to:" with multiple selections allowed
+  if choice is false then return ""
+  return choice as text
+end run
+OSA
+)
+[ -n "$picked" ] && pbpaste | "$chi" note --source clipboard $(print -r -- "$picked" | cut -f1)
+```
 
 **Ordering:**
 
