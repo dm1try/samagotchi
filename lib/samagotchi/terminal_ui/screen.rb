@@ -65,12 +65,15 @@ module Samagotchi
           check_slot!(name)
           raise ArgumentError, "Reline draws the editor slot" if name == :editor
 
-          [name, Array(rows).map { |row| one_row(row) }]
+          # Fitted content is laid out at each frame (#region).
+          [name, rows.respond_to?(:fit) ? rows : Array(rows).map { |row| one_row(row) }]
         end
         synchronize do
-          next if rows_by_slot.all? { |name, rows| slot(name) == rows }
+          next if rows_by_slot.all? { |name, rows| slot(name).equal?(rows) || slot(name) == rows }
 
-          rows_by_slot.each { |name, rows| rows.empty? ? @slots.delete(name) : (@slots[name] = rows) }
+          rows_by_slot.each do |name, rows|
+            rows.respond_to?(:empty?) && rows.empty? ? @slots.delete(name) : (@slots[name] = rows)
+          end
           frame
         end
         nil
@@ -95,7 +98,7 @@ module Samagotchi
       # dialog), so that the region fits on the screen with the activity and
       # status rows. Notes and hints give way to the editor instead.
       def editor_budget
-        synchronize { [rows - 1 - slot(:activity).size - slot(:status).size, 1].max }
+        synchronize { [rows - 1 - fitted(:activity, columns).size - fitted(:status, columns).size, 1].max }
       end
 
       # Reline rendered: +lines+ are its rows of [x, width, content] layers
@@ -226,6 +229,14 @@ module Samagotchi
 
       def slot(name) = @slots.fetch(name, [])
 
+      # A slot's rows at +width+; fitted content gets at most +height+ rows.
+      def fitted(name, width, height = nil)
+        content = slot(name)
+        return content unless content.respond_to?(:fit)
+
+        lay_out(content, width: width, height: height && [height, 0].max).map { |row| one_row(row) }
+      end
+
       # One frame: erase the region, let the block add scrollback text, draw
       # the region. Written in one piece and never cut short by
       # Thread#raise (LineReader drops a read that way).
@@ -249,10 +260,12 @@ module Samagotchi
       # below the region when no prompt is open). Sets @cursor_row.
       def region
         width = columns
-        above = slot(:activity)
-        below = BELOW.flat_map { |name| slot(name) }
-        spare = rows - 1 - above.size - @editor.size
-        below = below.first([spare, 0].max)
+        above = fitted(:activity, width)
+        spare = [rows - 1 - above.size - @editor.size, 0].max
+        # Each slot below gets the rows the ones above it left.
+        below = BELOW.each_with_object([]) do |name, taken|
+          taken.concat(fitted(name, width, spare - taken.size).first([spare - taken.size, 0].max))
+        end
         above = above.last([rows - 1 - @editor.size, 0].max)
         all = above + @editor + below
         return +"" if all.empty?

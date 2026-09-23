@@ -118,6 +118,19 @@ RSpec.describe Samagotchi::TerminalUI::LegacySurface do
     end
   end
 
+  it "prints fitted content once, with no height limit" do
+    content = Struct.new(:fits) do
+      def fit(width:, height:)
+        fits << [width, height]
+        ["? pick", "1) Apple"]
+      end
+    end.new([])
+    surface.set_slot(:notes, content)
+
+    expect(out.string).to eq("? pick\n1) Apple\n")
+    expect(content.fits.map(&:last)).to eq([nil])
+  end
+
   it "rejects an unknown slot" do
     expect { surface.set_slot(:banner, ["x"]) }.to raise_error(ArgumentError, /unknown slot :banner/)
     expect { surface.clear_slot(:banner) }.to raise_error(ArgumentError, /unknown slot :banner/)

@@ -18,6 +18,11 @@ module Samagotchi
     # +hints+. An implementation without a live region (LegacySurface) may
     # print a slot's rows as plain output instead, so the rows stay on screen.
     #
+    # Instead of rows, a slot may hold content that lays itself out: anything
+    # with +fit(width:, height:)+ -> rows (height nil: no limit). A live
+    # region fits it at every frame into the rows the slots above it leave
+    # (a question's choices on a short terminal); the others fit it once.
+    #
     # Implementations include this module for the slot names.
     module Surface
       SLOTS = %i[activity editor status notes hints].freeze
@@ -28,6 +33,11 @@ module Samagotchi
       end
 
       private
+
+      # @return [Array<String>] +rows+, or the rows fitted content gives
+      def lay_out(rows, width:, height: nil)
+        rows.respond_to?(:fit) ? Array(rows.fit(width: width, height: height)) : Array(rows)
+      end
 
       def check_slot!(name)
         raise ArgumentError, "unknown slot #{name.inspect} (slots: #{SLOTS.join(", ")})" unless SLOTS.include?(name)

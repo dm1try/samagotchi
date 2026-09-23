@@ -27,8 +27,10 @@ class RecordingSurface
     @lines << text
   end
 
+  # Fitted content is recorded as the rows it gives at #columns.
   def set_slot(name, rows)
     check_slot!(name)
+    rows = lay_out(rows, width: @columns) if rows.respond_to?(:fit)
     @events << [:set_slot, name, rows]
     @slots[name] = rows
   end

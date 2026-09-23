@@ -165,6 +165,54 @@ RSpec.describe Samagotchi::TerminalUI::Screen do
       expect(screen.editor_budget).to eq(3)
     end
 
+    # A question's choices: fitted into the rows left at each frame.
+    describe "fitted content" do
+      let(:fits) { [] }
+      let(:content) do
+        calls = fits
+        Object.new.tap do |object|
+          object.define_singleton_method(:fit) do |width:, height:|
+            calls << [width, height]
+            height >= 2 ? ["? pick", "1) Apple  2) Pear"] : ["? pick: 1) Apple · 2) Pear"]
+          end
+        end
+      end
+
+      before do
+        screen.set_slot(:notes, content)
+        screen.set_slot(:hints, [])
+      end
+
+      it "gets the rows the slots above it leave, and shrinks as the editor grows" do
+        screen.draw_editor([prompt_row("> ", "1")], 3, 0)
+        expect(term.lines).to eq(["| thinking…", "> 1", "ctx 12%", "? pick", "1) Apple  2) Pear"])
+        expect(fits.last).to eq([20, 2])
+
+        screen.draw_editor([prompt_row("> ", "1"), prompt_row("  ", "2")], 3, 1)
+        expect(term.lines).to eq(["| thinking…", "> 1", "  2", "ctx 12%", "? pick: 1) Apple · 2"])
+        expect(fits.last).to eq([20, 1])
+      end
+
+      it "fits again at the new size after a resize" do
+        size = [6, 20]
+        resizable = described_class.new(out: StringIO.new, size: -> { size })
+        resizable.set_slot(:notes, content)
+        resizable.draw_editor([prompt_row("> ", "")], 2, 0)
+        expect(fits.last).to eq([20, 4])
+
+        size = [12, 50]
+        resizable.redraw
+        expect(fits.last).to eq([50, 10])
+      end
+
+      it "hands a slot below it only the rows it left" do
+        screen.set_slot(:hints, ["? for help"])
+        screen.draw_editor([prompt_row("> ", "")], 2, 0)
+
+        expect(term.lines.last).to eq("1) Apple  2) Pear")
+      end
+    end
+
     it "drops the hints, then the notes, when the editor needs the rows" do
       screen.draw_editor([prompt_row("> ", "1"), prompt_row("  ", "2")], 3, 1)
       expect(term.lines).to eq(["| thinking…", "> 1", "  2", "ctx 12%", "1) Apple"])

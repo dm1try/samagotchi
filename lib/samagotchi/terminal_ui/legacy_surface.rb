@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "io/console"
 require_relative "surface"
 
 module Samagotchi
@@ -33,7 +34,7 @@ module Samagotchi
         when :editor
           out.print(rows.join("\n"))
           out.flush
-        else rows.each { |row| out.puts(row) }
+        else lay_out(rows, width: columns).each { |row| out.puts(row) }
         end
       end
 
@@ -61,6 +62,12 @@ module Samagotchi
       private
 
       def out = @out || $stdout
+
+      def columns
+        IO.console&.winsize&.last || 80
+      rescue StandardError
+        80
+      end
 
       # Pad to the taller of the old and new heights, so rows left over from
       # a taller frame are blanked.

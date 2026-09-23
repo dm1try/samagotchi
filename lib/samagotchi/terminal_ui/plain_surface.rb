@@ -35,7 +35,7 @@ module Samagotchi
         raise ArgumentError, "Reline draws the editor slot" if name == :editor
         return if name == :activity
 
-        synchronize { rows.each { |row| @out.puts(row) } }
+        synchronize { lay_out(rows, width: columns).each { |row| @out.puts(row) } }
       end
 
       # Nothing printed can be taken back.
