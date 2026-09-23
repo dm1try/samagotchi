@@ -39,7 +39,8 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     result, out = answer_with("2\n")
 
     expect(result).to be(true)
-    expect(out).to eq("Fruit\n? Which one?\n  1) Apple\n  2) Banana\n  3) Cherry\n  Enter empty to cancel.\nchoice> ")
+    expect(out).to eq("Fruit\n? Which one?\n  1) Apple\n  2) Banana\n  3) Cherry\n" \
+                      "  [Select one (e.g. 2); Enter alone cancels]\n? ? Which one? → Banana\n")
     expect(engine).to have_received(:answer_question).with(id: "q1", selected: ["Banana"], freeform: nil)
   end
 
@@ -58,7 +59,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
 
     _, out = answer_with("1 3; ripe ones\n", pending.merge(multi_select: true, allow_freeform: true))
 
-    expect(out).not_to include("Enter empty to cancel.")
+    expect(out).to include("add '; text' for your own answer", "? Which one? → Apple, Cherry; ripe ones")
     expect(engine).to have_received(:answer_question).with(id: "q1", selected: %w[Apple Cherry], freeform: "ripe ones")
   end
 
@@ -71,9 +72,9 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     expect(engine).to have_received(:answer_question).with(id: "q1", selected: ["Apple"], freeform: "extra")
   end
 
-  # Committed, not in the notes slot: on a live region a slot's rows vanish
-  # when it is cleared, and the question must stay above its answer.
-  it "commits the question as output before it reads the answer" do
+  # The choices wait in the notes slot; once answered they go, and one line
+  # (the question and the answer) stays.
+  it "shows the choices in the notes slot and commits one line once answered" do
     allow(engine).to receive(:answer_question)
     surface = RecordingSurface.new
     agent.instance_variable_set(:@surface, surface)
@@ -82,47 +83,25 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
 
     expect(surface.events).to eq([
       [:clear_slot, :activity],
-      [:commit, "Fruit\n? Which one?\n  1) Apple\n  2) Banana\n  3) Cherry\n  Enter empty to cancel."],
-      [:set_slot, :editor, ["choice> "]]
+      [:set_slot, :notes, ["Fruit", "? Which one?", "  1) Apple", "  2) Banana", "  3) Cherry",
+                           "  [Select one (e.g. 2); Enter alone cancels]"]],
+      [:set_slot, :editor, ["? "]],
+      [:clear_slot, :notes],
+      [:commit, "? Which one? → Banana"],
+      [:clear_slot, :notes]
     ])
   end
 
   it "cancels the question on empty input or end of input" do
     allow(engine).to receive(:cancel_question)
 
-    expect(answer_with("\n").first).to be(false)
-    expect(answer_with("").first).to be(false)
-    expect(engine).to have_received(:cancel_question).with("user").twice
-  end
-
-  # Ctrl-C at choice>: RelineSeam asks the interrupt handler; declining
-  # makes Reline end the read with Interrupt.
-  it "cancels the turn and the question on Ctrl-C at choice>" do
-    allow(engine).to receive(:cancel_question)
-    controller = Samagotchi::Client::CancellationController.new
-    agent.instance_variable_set(:@active_cancel_controller, controller)
-    allow(Samagotchi::TerminalUI::RelineSeam).to receive(:supported?).and_return(true)
-    allow(Reline).to receive(:readline) do
-      taken = Samagotchi::TerminalUI::RelineSeam.interrupt_handler.call
-      raise Interrupt unless taken
-    end
-    tty_in = StringIO.new
-    tty_out = StringIO.new
-    [tty_in, tty_out].each { |io| io.define_singleton_method(:tty?) { true } }
-    old_stdin, old_stdout = $stdin, $stdout
-    $stdin, $stdout = tty_in, tty_out
-    result = agent.send(:render_question_widget, pending)
-    $stdin, $stdout = old_stdin, old_stdout
-
-    expect(result).to be(false)
-    expect(controller).to be_cancelled
-    expect(engine).to have_received(:cancel_question)
-  ensure
-    $stdin, $stdout = old_stdin, old_stdout if old_stdin
+    expect(answer_with("\n")).to eq([false, answer_with("").last])
+    expect(answer_with("").last).to end_with("? Which one? → (cancelled)\n")
+    expect(engine).to have_received(:cancel_question).with("user").exactly(3).times
   end
 
   # On a terminal the prompt stays open during turns (ReplInput): the
-  # question turns it into choice> and takes the lines submitted there.
+  # question turns it into the ? prompt and takes the lines submitted there.
   describe "asked while the prompt is open" do
     let(:answers) { Thread::Queue.new }
     let(:repl_input) do
@@ -133,16 +112,16 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
 
     before { agent.instance_variable_set(:@repl_input, repl_input) }
 
-    it "takes the next line submitted at choice> as the answer" do
+    it "takes the next line submitted at the ? prompt as the answer" do
       allow(engine).to receive(:answer_question)
       answers << [:line, "2"]
 
       result, out = answer_with("")
 
       expect(result).to be(true)
-      expect(repl_input).to have_received(:ask).with("choice> ")
+      expect(repl_input).to have_received(:ask).with("? ")
       expect(engine).to have_received(:answer_question).with(id: "q1", selected: ["Banana"], freeform: nil)
-      expect(out).to include("Which one?")
+      expect(out).to include("? Which one? → Banana")
     end
 
     it "asks again at the same prompt after an invalid answer" do
@@ -172,9 +151,21 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       result, out = answer_with("")
 
       expect(result).to be(false)
-      expect(out).not_to include("choice> ")
+      expect(out).to end_with("? Which one? → (turn cancelled)\n")
       expect(engine).to have_received(:cancel_question)
     end
+  end
+
+  # Reline would commit the submitted "? 2" above the summary line.
+  it "reads the answer at the ? prompt without echo, the main prompt with it" do
+    echo = {}
+    allow(Reline).to receive(:readline) { |prompt, _| echo[prompt] = !Thread.current[:samagotchi_reline_no_echo]; "2" }
+    allow(agent).to receive(:read_prompt_line) { |prompt| echo[prompt] = !Thread.current[:samagotchi_reline_no_echo]; "hi" }
+
+    agent.send(:read_repl_line, "? ", nil)
+    agent.send(:read_repl_line, "> ", nil)
+
+    expect(echo).to eq("? " => false, "> " => true)
   end
 
   describe "an approval" do
@@ -191,7 +182,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       expect(result).to be(true)
       expect(out).to start_with("Approve tool call?\n! execute: git push\n  in /r (repo r, branch main)\n" \
                                 "  why: publishes (rule git-push, config)\n  1) Allow once\n")
-      expect(out).to include("  Enter empty to deny.\n")
+      expect(out).to include("Enter alone denies]\n", "! execute: git push → Allow once\n")
       expect(engine).to have_received(:answer_question).with(id: "a1", selected: ["Allow once"], freeform: nil)
     end
 
@@ -200,12 +191,14 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       _, out = answer_with("allow\nn; too risky\n", approval)
       expect(out).to include("Answer with 1-3, y (Allow once) or n (Deny).")
       expect(engine).to have_received(:answer_question).with(id: "a1", selected: ["Deny"], freeform: "too risky")
+      expect(out).to end_with("! execute: git push → Deny: too risky\n")
     end
 
     it "denies on an empty line" do
       allow(engine).to receive(:cancel_question)
-      result, = answer_with("\n", approval)
+      result, out = answer_with("\n", approval)
       expect(result).to be(false)
+      expect(out).to end_with("! execute: git push → (denied)\n")
       expect(engine).to have_received(:cancel_question)
     end
   end

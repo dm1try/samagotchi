@@ -43,6 +43,9 @@ module Samagotchi
     STATS_COMMAND = "/stats"
     RECAP_COMMAND = "/recap"
     CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
+    # The prompt while a question waits for its answer (its choices are in
+    # the notes slot).
+    QUESTION_PROMPT = "? "
     THINKING_UI_ENV = "SAMAGOTCHI_THINKING_UI"
     THINKING_UI_SPINNER = "spinner"
     THINKING_UI_OFF = "off"
@@ -759,12 +762,14 @@ module Samagotchi
 
     # One read on the reader thread (ReplInput): the multiline read with Tab
     # completion at the main prompt, a plain line for the continue offer and
-    # a question's choice>. +prefill+ is typed in first.
+    # a question's ? prompt. +prefill+ is typed in first.
     def read_repl_line(prompt, prefill)
       queue_input_prefill(prefill) if prefill
       return read_prompt_line(prompt) if prompt == paint("> ", 92)
 
-      with_next_input_prefill { Reline.readline(prompt, true) }&.strip
+      read = -> { with_next_input_prefill { Reline.readline(prompt, true) }&.strip }
+      # A question's answer leaves only its summary line.
+      prompt == paint(QUESTION_PROMPT, 33) ? RelineSeam.without_echo(&read) : read.call
     end
 
     # A failed prompt goes back into the input for a retry.
@@ -1692,32 +1697,32 @@ module Samagotchi
       false
     end
 
+    # The choices wait in the notes slot, laid out for the rows it gets, and
+    # the answer is a line at the ? prompt. Once the question closes, one
+    # line (the question and what became of it) stays in the scrollback.
     def render_question_widget(pending)
       prompt = QuestionPrompt.new(pending)
 
       # Ensure spinner cleared and terminal in known state (same as reminder mute handling)
       finish_thinking_spinner rescue nil
+      choices = prompt.slot(paint: method(:paint))
 
-      # The question is output, not the notes slot: on a live region the slot
-      # would vanish when cleared, and the question must stay above its answer.
-      rows = prompt.lines(paint: method(:paint), color: color_output?)
-      rows.unshift("") if $stdout.tty?
-      if prompt.approval?
-        rows << "  Enter empty to deny."
-      elsif !prompt.free?
-        rows << "  Enter empty to cancel." # still allow cancel
+      question_prompt = paint(QUESTION_PROMPT, 33)
+      unless @repl_input
+        @surface.set_slot(:notes, choices)
+        return answer_question_widget(prompt) { read_choice_line(question_prompt) }
       end
-      @surface.commit(rows.join("\n"))
 
-      choice_prompt = color_output? ? paint("choice> ", 33) : "choice> "
       # On a terminal the prompt is open (a turn runs with it): it turns into
-      # choice> for the answer. Only a line submitted there answers, never one
-      # typed before the question came.
-      return answer_question_widget(prompt) { read_choice_line(choice_prompt) } unless @repl_input&.open?
-
-      @repl_input.ask(choice_prompt) do |answers|
+      # the ? prompt for the answer. Only a line submitted there answers,
+      # never one typed before the question came. The choices show once the
+      # typed text is out of the prompt.
+      @repl_input.ask(question_prompt) do |answers|
+        @surface.set_slot(:notes, choices)
         answer_question_widget(prompt) { take_open_prompt_answer(answers) }
       end
+    ensure
+      @surface.clear_slot(:notes)
     end
 
     # Loop until a valid selection or a cancel. The block reads one answer:
@@ -1730,15 +1735,15 @@ module Samagotchi
         rescue Interrupt
           nil
         end
-        if raw.nil? || raw == :canceled
-          # EOF / Ctrl-D / Ctrl-C -> cancel
+        raw = raw.to_s.strip unless raw.nil? || raw == :canceled
+        if raw.nil? || raw == :canceled || raw.empty?
+          # Empty, EOF / Ctrl-D / Ctrl-C -> cancel (an approval: denied)
           @engine.cancel_question("user") rescue nil
-          return false
-        end
-        raw = raw.to_s.strip
-        if raw.empty?
-          @engine.cancel_question("user") rescue nil
-          @surface.commit(prompt.approval? ? "(denied)" : "(cancelled)") if $stdout.tty?
+          outcome = if raw == :canceled then "(turn cancelled)"
+                    elsif prompt.approval? then "(denied)"
+                    else "(cancelled)"
+                    end
+          close_question_widget(prompt, outcome)
           return false
         end
 
@@ -1751,45 +1756,30 @@ module Samagotchi
 
         begin
           @engine.answer_question(id: prompt.id, selected: answer.selected, freeform: answer.freeform)
+          close_question_widget(prompt, prompt.answer_text(answer))
           return true
         rescue ArgumentError => e
           @surface.commit("Invalid: #{e.message}. Try again.")
           next
         rescue StandardError => e
-          @surface.commit("Error: #{e.message}")
+          close_question_widget(prompt, "(error: #{e.message})")
           return false
         end
       end
     end
 
-    # A choice> read of its own: Reline on a terminal, else $stdin.gets
-    # (specs, pipes).
-    def read_choice_line(choice_prompt)
-      return with_choice_interrupt { Reline.readline(choice_prompt, true) } if $stdin.tty? && $stdout.tty?
+    def close_question_widget(prompt, outcome)
+      @surface.clear_slot(:notes)
+      @surface.commit(prompt.summary(outcome, paint: method(:paint)))
+    end
 
-      @surface.set_slot(:editor, [choice_prompt])
+    # A ? read of its own, off a terminal (specs, pipes): $stdin.gets.
+    def read_choice_line(question_prompt)
+      @surface.set_slot(:editor, [question_prompt])
       $stdin.gets
     end
 
-    # Ctrl-C at choice> cancels the running turn, as at the prompt, and ends
-    # the read too (Reline raises Interrupt), so the question closes instead
-    # of waiting on a cancelled turn.
-    def with_choice_interrupt
-      return yield unless RelineSeam.supported?
-
-      previous = RelineSeam.interrupt_handler
-      RelineSeam.interrupt_handler = lambda do
-        cancel_turn_from_prompt
-        false
-      end
-      begin
-        yield
-      ensure
-        RelineSeam.interrupt_handler = previous
-      end
-    end
-
-    # The next line submitted at the open prompt (choice>), nil for Ctrl-D
+    # The next line submitted at the open prompt (?), nil for Ctrl-D
     # or a Ctrl-C with no turn running, or :canceled when Ctrl-C cancels the
     # running turn first (the read goes on; the question closes).
     def take_open_prompt_answer(answers)

@@ -7,7 +7,7 @@ module Samagotchi
   class TerminalUI
     # The REPL's input on a terminal: one LineReader keeps a prompt open for
     # the whole session, turns included, and this routes what it reads. A
-    # line goes to a question waiting at the prompt (asked as choice>), to
+    # line goes to a question waiting at the prompt (asked at ? ), to
     # the running turn when its handler takes it (steering), else to the
     # inbox the REPL loop takes its next line from.
     class ReplInput
@@ -94,22 +94,31 @@ module Samagotchi
       def prefill(text) = open? && @reader.prefill(text)
 
       # A question answered at the open prompt: the lines submitted from now
-      # on go to it, at choice>. What was typed at the prompt is put aside
+      # on go to it, at the ? prompt. What was typed at the prompt is put aside
       # and comes back once the question closes.
       # @yield [Thread::Queue] the answers ([:line, text] or [:interrupt, info])
+      # A prompt closed by Ctrl-D mid-turn (the REPL exits after the turn)
+      # opens for the question and closes again after it.
       def ask(choice_prompt)
-        typed = @reader.typed_text
+        was_open = open?
+        typed = was_open ? @reader.typed_text : nil
         answers = Thread::Queue.new
         @lock.synchronize do
           @answers = answers
           @choice_prompt = choice_prompt
         end
-        reprompt
+        was_open ? reprompt : start
         yield answers
       ensure
         @lock.synchronize { @answers = nil }
-        # Ctrl-D at choice> ended the reader: start it again.
-        open? ? reprompt(prefill: typed) : start(prefill: typed)
+        if !was_open
+          stop
+        elsif open?
+          reprompt(prefill: typed)
+        else
+          # Ctrl-D at the question ended the reader: start it again.
+          start(prefill: typed)
+        end
       end
 
       private

@@ -32,8 +32,8 @@ RSpec.describe Samagotchi::TerminalUI::ReplInput do
   describe "#ask" do
     it "gives the question the lines submitted while it waits, at its own prompt" do
       taken = nil
-      input.ask("choice> ") do |answers|
-        expect(input.prompt_text).to eq("choice> ")
+      input.ask("? ") do |answers|
+        expect(input.prompt_text).to eq("? ")
         input << [:line, "2"]
         taken = answers.pop(timeout: 0)
       end
@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::TerminalUI::ReplInput do
     it "puts what was typed at the prompt aside and back once the question closes" do
       reader.typed_text = "half typed"
 
-      input.ask("choice> ") { nil }
+      input.ask("? ") { nil }
 
       expect(reader.reprompts).to eq([{ prefill: nil }, { prefill: "half typed" }])
     end
@@ -54,19 +54,33 @@ RSpec.describe Samagotchi::TerminalUI::ReplInput do
     it "leaves the lines submitted before it for the loop" do
       input << [:line, "typed ahead"]
 
-      input.ask("choice> ") { |answers| expect(answers.pop(timeout: 0)).to be_nil }
+      input.ask("? ") { |answers| expect(answers.pop(timeout: 0)).to be_nil }
 
       expect(input.pop(timeout: 0)).to eq([:line, "typed ahead"])
     end
 
-    it "starts the reader again when Ctrl-D at choice> ended it" do
+    it "starts the reader again when Ctrl-D at the question ended it" do
       reader.typed_text = "kept"
       allow(input).to receive(:start)
 
-      input.ask("choice> ") { reader.alive = false }
+      input.ask("? ") { reader.alive = false }
 
       expect(input).to have_received(:start).with(prefill: "kept")
     end
+  end
+
+  # Ctrl-D mid-turn closed the prompt (the REPL exits after the turn); a
+  # question asked by a line still queued opens it just for the answer.
+  it "opens a closed prompt for the question and closes it after" do
+    reader.alive = false
+    allow(input).to receive(:start) { reader.alive = true }
+    allow(input).to receive(:stop)
+
+    input.ask("? ") { expect(input.prompt_text).to eq("? ") }
+
+    expect(input).to have_received(:start).with(no_args)
+    expect(input).to have_received(:stop)
+    expect(reader.reprompts).to be_empty
   end
 
   describe "#sync_prompt" do
