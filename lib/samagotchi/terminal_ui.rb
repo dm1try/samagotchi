@@ -21,6 +21,7 @@ require_relative "turn_preamble"
 require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
 require_relative "terminal_ui/legacy_surface"
+require_relative "terminal_ui/live_region"
 require_relative "terminal_ui/question_prompt"
 
 module Samagotchi
@@ -95,7 +96,7 @@ module Samagotchi
       Engine.system_prompt_for(profile)
     end
 
-    def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false, backend: nil)
+    def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false, backend: nil, surface: nil)
       @mode           = mode.to_sym
       @prompt         = prompt
       @default_model_name = ModelProfile.required_model_name(nil)
@@ -147,8 +148,11 @@ module Samagotchi
       @pending_reminder_banner_shown = false
       @last_keystroke_at = monotonic_time
       @last_line_buffer = ""
-      # Every terminal write goes through the surface.
-      @surface = LegacySurface.new
+      # Every terminal write goes through the surface. The REPL swaps in a
+      # live region when the terminal can show one (#assist_loop), unless it
+      # was given a surface to draw on.
+      @surface = surface || LegacySurface.new
+      @surface_given = !surface.nil?
       @renderer = EventRenderer.new(self)
       @render_event = ->(event) { handle_stream_event(event) }
       @engine         = Engine.new(
@@ -308,11 +312,30 @@ module Samagotchi
       # shared scheduler for this REPL and stop it on exit. with_activity_hook
       # installs a Reline.pre_input_hook that resets the shared inactivity
       # clock on the first keystroke.
-      @engine.start_idle
-      with_activity_hook do
-        run_assist_loop(session: session, messages: messages)
+      with_live_region do
+        @engine.start_idle
+        with_activity_hook do
+          run_assist_loop(session: session, messages: messages)
+        ensure
+          @engine.stop_idle
+        end
+      end
+    end
+
+    # Draw the REPL on a live region (a Screen, with Reline's prompt in it)
+    # when the terminal can show one; plain output otherwise, or on the
+    # surface the UI was given.
+    def with_live_region
+      screen = LiveRegion.open unless @surface_given
+      return yield unless screen
+
+      plain = @surface
+      @surface = screen
+      begin
+        yield
       ensure
-        @engine.stop_idle
+        @surface = plain
+        LiveRegion.close(screen)
       end
     end
 
@@ -2498,11 +2521,8 @@ module Samagotchi
       if color_output?
         preview_lines = preview_lines.map { |text| paint(text, 90) }
       end
-      lines = spinner_lines + preview_lines
-      status_lines = spinner_status_lines(width: width)
-      lines.concat(status_lines) unless status_lines.empty?
-
-      @surface.set_slot(:activity, lines)
+      # The spinner and preview go above the prompt, the status rows below it.
+      @surface.set_slots(activity: spinner_lines + preview_lines, status: spinner_status_lines(width: width))
       @thinking_spinner_last_render_at = monotonic_time
       @thinking_tail_preview_dirty = false
       @thinking_preview_has_content = preview_has_content

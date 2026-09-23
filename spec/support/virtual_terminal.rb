@@ -4,7 +4,7 @@ require "strscan"
 
 # Just enough of a VT100 to check what a Screen leaves on the terminal: text
 # with autowrap, CR/LF with scrolling into a scrollback, cursor up/forward,
-# erase below (ESC[J), clear screen and home. Colours and private modes are
+# erase below (ESC[J), erase to the end of the row (ESC[K), clear screen and home. Colours and private modes are
 # ignored. Each character takes one column.
 class VirtualTerminal
   attr_reader :rows, :columns, :scrollback, :cursor
@@ -60,6 +60,7 @@ class VirtualTerminal
         @screen[@cursor[0]] = @screen[@cursor[0]][0, @cursor[1]]
         ((@cursor[0] + 1)...@rows).each { |row| @screen[row] = +"" }
       end
+    when "K" then @screen[@cursor[0]] = @screen[@cursor[0]][0, @cursor[1]]
     when "H" then @cursor = [0, 0]
     else raise ArgumentError, "unsupported escape #{raw.inspect}"
     end
