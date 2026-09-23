@@ -158,6 +158,39 @@ REPL alike:
 With stdin that isn't a terminal (a pipe), the REPL reads a line only between
 turns.
 
+### Images
+
+A model that can see images gets them three ways:
+
+- **`@path` in a prompt** (REPL, attached terminal, `-p`): `what's wrong in
+  @shot.png?`, `@~/Desktop/a.jpg`, `@"my shot.png"`. Each `@` token that names an
+  image file (png, jpeg, gif, webp; bmp, tiff and heic are converted) goes with
+  the prompt, and a dim line shows it: `[image shot.png 1280×800 · ~1.3k tokens]`.
+  The prompt text stays as typed; an `@` token that isn't an image (a source
+  file, a missing path, an email address) is just text. A line with images typed
+  while a turn runs waits for the next turn (steering merges text only).
+- **A path in plain words**: "check /home/me/shot.png and describe it". The
+  model calls `read` on it and sees the picture; the tool line ends in
+  `→ image 1280×800`.
+- **The Web UI**: paste or drop images into the composer. Each shows as a chip
+  (× removes it) and is sent with the message; an image alone is sent as
+  `[image: name]`. Messages show thumbnails; a click opens one full size.
+
+Images are downscaled to a 1568 px long side (with `sips` on macOS or
+ImageMagick; without either, a larger image is refused with a hint) and stored
+next to the session in `<session>/images/`, and the session file keeps small
+references to them. Each request sends the newest 20 images of the conversation;
+older ones become a line like `[image shot.png 1280×800 not sent: only the
+newest 20 images are sent]`.
+
+A model that can't see images (a text-only model, llama.cpp without
+`--mmproj`, an mlx host) refuses a turn with images before sending it:
+`host main can't take images: …; send text only, or pick a model that can see
+images (/model)`, and the typed text (and the web's chips) come back. When chi
+can't tell beforehand, the provider's refusal gives the same line. Images already
+in the conversation go as placeholder lines after a switch to such a model.
+Settings: `image.*` and `vision:` in [Configuration](configuration.md#images).
+
 ### Web Markdown rendering
 
 Web responses are escaped text by default. To render completed assistant

@@ -382,6 +382,41 @@ Behavior notes:
 - An attached terminal (plain `chi`) logs which session it joined there:
   `[attached] joined session ID (N messages)`.
 
+## Images
+
+Images a model gets (see [CLI: Images](cli.md#images)) are converted and
+downscaled first; three settings bound them (env `SAMAGOTCHI_IMAGE_*` or
+`config.yml`):
+
+```yaml
+image:
+  max_side: 1568          # long side in px (Claude's standard; ~1.3k tokens for 1280×800)
+  max_bytes: 3750000      # larger after downscaling → re-encoded as JPEG
+  max_per_request: 20     # older images in the conversation become placeholder lines
+```
+
+Whether a model can see images is found out before a turn with images is sent:
+
+- a native llama.cpp host: `/props` must report `modalities.vision` (the server
+  runs with `--mmproj`) and a media marker, and the prompt profile must know the
+  chat template's image wrapping (qwen36 does; gemma4 not yet);
+- mlx and oMLX hosts: no;
+- an OpenAI-API host: a local llama.cpp's `/props`, else the host's model list
+  (OpenRouter's `architecture.input_modalities`); when it doesn't say, the image
+  is sent and a refusal is reported.
+
+`vision: true|false` overrides that per model or per host:
+
+```yaml
+models:
+  ornith: { vision: true }
+hosts:
+  gateway: { url: https://…, api: openai, vision: false }
+```
+
+`models:` wins over `hosts:`. On a native host, `vision: true` skips only the
+modalities check: without a media marker the prompt can't carry an image.
+
 ## Project specific description
 
 If an AGENT.md file is present in the project root, samagotchi injects its
