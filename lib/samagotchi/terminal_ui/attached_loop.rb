@@ -4,6 +4,7 @@ require "set"
 require_relative "event_renderer"
 require_relative "formatting"
 require_relative "attached_view"
+require_relative "input_support"
 require_relative "question_prompt"
 require_relative "../bridge_client"
 require_relative "../session_commands"
@@ -19,6 +20,7 @@ module Samagotchi
     # same EventRenderer the local REPL uses, drawn by an AttachedView.
     class AttachedLoop
       include Formatting
+      include InputSupport
 
       STATS_COMMAND = "/stats"
       RECAP_COMMAND = "/recap"
@@ -43,14 +45,14 @@ module Samagotchi
         class Stop < StandardError; end
 
         # @param prompt [#call] -> the prompt for the next read
-        # @param read [#call, nil] (prompt, prefill) -> line; defaults to
-        #   Reline on a terminal, else $stdin
-        def initialize(queue, prompt:, read: nil)
+        # @param read [#call] (prompt, prefill) -> line (nil = Ctrl-D)
+        # @param prefill [String, nil] typed into the first read
+        def initialize(queue, prompt:, read:, prefill: nil)
           @queue = queue
           @prompt = prompt
-          @read = read || method(:read_line)
+          @read = read
           @current = nil
-          @prefill = nil
+          @prefill = prefill
         end
 
         # @return [String, nil] the prompt of the read in progress
@@ -110,23 +112,6 @@ module Samagotchi
           nil
         end
 
-        def read_line(prompt, prefill)
-          return $stdin.gets&.chomp unless $stdin.tty?
-          return Reline.readline(prompt, true) unless prefill
-
-          previous_hook = Reline.pre_input_hook
-          Reline.pre_input_hook = proc do
-            Reline.insert_text(prefill)
-            Reline.pre_input_hook = previous_hook
-            previous_hook&.call
-          end
-          begin
-            Reline.readline(prompt, true)
-          ensure
-            Reline.pre_input_hook = previous_hook
-          end
-        end
-
         def line_empty?
           return true unless $stdin.tty?
 
@@ -157,7 +142,10 @@ module Samagotchi
       #   (`--model` on a resumed session: "/model X"); if it doesn't go
       #   through, the launch stops
       # @param no_interrupt [Boolean] post every turn with no_interrupt
-      def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false)
+      # @param default_input [Boolean] type SAMAGOTCHI_DEFAULT_INPUT into
+      #   the first read (a new session with no -p, as the REPL)
+      def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false,
+                     default_input: false)
         @client = client
         @screen = screen
         @client_id = client_id
@@ -175,6 +163,8 @@ module Samagotchi
         @first_command = first_command
         @first_command_id = nil
         @no_interrupt = no_interrupt
+        @no_default_input = !default_input
+        @next_input_prefill = nil
         # Prompts this run sent, by enqueued_id: only those come back into
         # the input when their turn fails (a replayed event must not).
         @sent_ids = Set.new
@@ -194,8 +184,10 @@ module Samagotchi
       #   Interrupt = Ctrl-C); defaults to Reline
       def run(input: nil)
         queue = Thread::Queue.new
+        load_persistent_history
         stream = @client.follow { |event| queue << [:event, event] }
-        @reader = LineReader.new(queue, prompt: method(:prompt_text), read: input).start
+        @reader = LineReader.new(queue, prompt: method(:prompt_text), read: input || method(:read_input_line),
+                                        prefill: default_input_text).start
         loop do
           kind, payload = next_item(queue)
           case kind
@@ -296,6 +288,8 @@ module Samagotchi
         elsif command == RECAP_COMMAND
           @screen.commit(@recap || "no recap yet: one comes after a quiet stretch, when recap: is configured")
         elsif SessionCommands.command?(text)
+          # The history keeps !cmds, as the REPL's does (prompts: #send_prompt).
+          persist_recent_history(text) if shell_line?(text)
           send_command(text)
         else
           send_prompt(text)
@@ -356,10 +350,13 @@ module Samagotchi
       end
 
       def send_prompt(text)
+        persist_recent_history(text)
+        # #memory shorthand becomes words the model reads, as in the REPL.
+        prompt = normalize_model_input(text)
         reply = if @no_interrupt
-                  @client.post_turn(prompt: text, client_id: @client_id, no_interrupt: true)
+                  @client.post_turn(prompt: prompt, client_id: @client_id, no_interrupt: true)
                 else
-                  @client.post_turn(prompt: text, client_id: @client_id)
+                  @client.post_turn(prompt: prompt, client_id: @client_id)
                 end
         if reply.status == 202
           enqueued_id = reply.json&.fetch("enqueued_id", nil)
@@ -375,6 +372,20 @@ module Samagotchi
         metrics = @client.get_json("state")&.dig("session_state_snapshot", "metrics")
         @screen.commit(metrics ? format_session_metrics(EventRenderer.deep_symbolize_keys(metrics)) : "(no metrics: the worker did not answer)")
       end
+
+      # One read on the reader thread: the REPL's multiline read with Tab
+      # completion at the main prompt, a plain line for a question's choice
+      # or the continue offer's answer.
+      def read_input_line(prompt, prefill)
+        return $stdin.gets&.chomp unless $stdin.tty?
+        return Reline.readline(prompt, true) if @question || @continue_offer
+
+        queue_input_prefill(prefill) if prefill
+        read_prompt_line(prompt)
+      end
+
+      # The attached TUI's commands, for Tab.
+      def slash_commands = (InputSupport::SLASH_COMMANDS + DETACH_COMMANDS).uniq.sort
 
       def prompt_text
         return paint("choice> ", 33) if @question

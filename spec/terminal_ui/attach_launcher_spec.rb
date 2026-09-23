@@ -118,7 +118,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
 
     expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new)
       .with(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: "hi",
-            first_command: nil, no_interrupt: false)
+            first_command: nil, no_interrupt: false, default_input: false)
     expect(described_class).to have_received(:close_surface).with(surface)
   end
 
@@ -129,7 +129,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     allow(described_class).to receive(:connect).and_return(client)
     allow(described_class).to receive_messages(open_surface: surface, close_surface: nil)
     loops = []
-    allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new) { |**kwargs| loops << kwargs.slice(:first_prompt, :first_command, :no_interrupt); attached }
+    default_inputs = []
+    allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_wrap_original do |_original, **kwargs|
+      loops << kwargs.slice(:first_prompt, :first_command, :no_interrupt)
+      default_inputs << kwargs[:default_input]
+      attached
+    end
 
     described_class.run(shared: true, resume: "s1", prompt: "hi", model: "qwen_moe", no_interrupt: true)
     described_class.run(attach: "s2", model: "qwen_moe")
@@ -141,6 +146,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
       # A new session starts on the model instead (see .connect).
       { first_prompt: nil, first_command: nil, no_interrupt: false }
     ])
+    # Only a new session with no -p gets the default input.
+    expect(default_inputs).to eq([false, false, true])
     expect(described_class).to have_received(:connect).with(attach: nil, shared: true, resume: nil, model: "qwen_moe")
   end
 end

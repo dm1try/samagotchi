@@ -29,15 +29,18 @@ module Samagotchi
       #   resumed or attached one's worker gets a /model before the prompt
       # @param no_interrupt [Boolean] --no-interrupt: every turn this TUI
       #   posts runs with the raised iteration limit
+      # @param default_input [Boolean] a new session with no -p gets
+      #   SAMAGOTCHI_DEFAULT_INPUT in its first read (--no-default-input: no)
       # @return [Symbol] :detached, :closed when the worker went away, or
       #   :failed when the --model switch didn't go through
-      def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false)
+      def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true)
         client = connect(attach: attach, shared: shared, resume: resume, model: model)
         first_command = model && (attach || resume) ? "/model #{model}" : nil
         surface = open_surface
         begin
           AttachedLoop.new(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: prompt,
-                           first_command: first_command, no_interrupt: no_interrupt).run
+                           first_command: first_command, no_interrupt: no_interrupt,
+                           default_input: default_input && !prompt && !attach && !resume).run
         ensure
           close_surface(surface)
         end

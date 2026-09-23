@@ -838,7 +838,8 @@ if launch == :attached
   begin
     ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], shared: !options[:attach], resume: options[:resume],
                                                        prompt: options[:prompt], model: options[:model],
-                                                       no_interrupt: !!options[:no_interrupt])
+                                                       no_interrupt: !!options[:no_interrupt],
+                                                       default_input: !options[:no_default_input])
   rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
     warn "Error: #{e.message}"
     exit 1

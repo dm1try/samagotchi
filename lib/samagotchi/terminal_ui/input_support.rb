@@ -1,0 +1,321 @@
+# frozen_string_literal: true
+
+require "json"
+require "fileutils"
+require "reline"
+
+require_relative "../memory_paths"
+require_relative "../tools/memory"
+
+module Samagotchi
+  class TerminalUI
+    # Input the REPL and the attached TUI share: the persistent prompt
+    # history, Tab completion (/commands, @path in the cwd, #memory), the
+    # #memory shorthand rewrite, multiline reads at the main prompt, and a
+    # one-shot prefill of the next read (the default input, a prompt given
+    # back after a failed turn).
+    #
+    # Included for private use; it keeps state in @next_input_prefill and
+    # reads @no_default_input.
+    module InputSupport
+      PROMPT_HISTORY_ENV = "SAMAGOTCHI_HISTORY_FILE"
+      XDG_STATE_HOME_ENV = "XDG_STATE_HOME"
+      PROMPT_HISTORY_FILE = "history.json"
+      PROMPT_HISTORY_STATE_DIR = "samagotchi"
+      PROMPT_HISTORY_LIMIT = 20
+      DEFAULT_INPUT_ENV = "SAMAGOTCHI_DEFAULT_INPUT"
+      SLASH_COMMANDS = %w[/continue /exit /model /models /recap /stats].freeze
+      AT_PATH_COMPLETION_PREFIX = "@"
+      MEMORY_COMPLETION_PREFIX = "#"
+      AT_PATH_COMPLETION_MAX_CANDIDATES = 200
+
+      private
+
+      # The /commands Tab offers.
+      def slash_commands = SLASH_COMMANDS
+
+      # Whether a new session's first read gets the default input
+      # (SAMAGOTCHI_DEFAULT_INPUT); --no-default-input says no.
+      def default_input_wanted? = !@no_default_input
+
+      # One read at the main prompt. In multiline mode Enter submits, while
+      # Meta+Enter/Alt+Enter inserts a newline on terminals that emit that
+      # distinct sequence (for example kitty); Tab completes; a queued prefill
+      # is typed in first.
+      # @return [String, nil] the line, nil on Ctrl-D
+      def read_prompt_line(prompt)
+        input = with_scoped_at_path_completion do
+          with_next_input_prefill do
+            Reline.readmultiline(prompt, true) { true }
+          end
+        end
+        return nil if input.nil?
+
+        input.gsub(/\r\n?|\n\z/, "\n").strip
+      end
+
+      def with_scoped_at_path_completion
+        previous_completion_proc = Reline.completion_proc
+        previous_autocompletion = Reline.autocompletion
+        Reline.autocompletion = true
+        Reline.completion_proc = method(:assist_path_completion_candidates).to_proc
+        yield
+      ensure
+        Reline.completion_proc = previous_completion_proc
+        Reline.autocompletion = previous_autocompletion
+      end
+
+      def assist_path_completion_candidates(word)
+        token = word.to_s
+        return [] if token.empty?
+
+        if token.start_with?("/")
+          return build_slash_completion_candidates(token)
+        end
+
+        if token.start_with?(AT_PATH_COMPLETION_PREFIX)
+          path_fragment = token.delete_prefix(AT_PATH_COMPLETION_PREFIX)
+          return build_project_path_completion_candidates(path_fragment)
+        end
+
+        if token.start_with?(MEMORY_COMPLETION_PREFIX)
+          memory_fragment = token.delete_prefix(MEMORY_COMPLETION_PREFIX)
+          return build_memory_completion_candidates(memory_fragment)
+        end
+
+        []
+      end
+
+      def build_slash_completion_candidates(slash_fragment)
+        fragment = slash_fragment.to_s.strip
+        return [] unless fragment.start_with?("/")
+
+        begin
+          buf = Reline.line_buffer.to_s
+          unless buf.empty?
+            return [] unless buf.lstrip.start_with?("/")
+          end
+        rescue StandardError
+          nil
+        end
+
+        lowered = fragment.downcase
+        return slash_commands.dup if lowered == "/"
+
+        slash_commands.select { |cmd| cmd.start_with?(lowered) }
+      rescue StandardError
+        []
+      end
+
+      def build_project_path_completion_candidates(path_fragment)
+        fragment = path_fragment.to_s.tr("\\", "/")
+        return [] if fragment.start_with?("/")
+        return [] if fragment.split("/").include?("..")
+
+        dir_part = ""
+        entry_prefix = fragment
+
+        if fragment.include?("/")
+          dir_part = fragment.sub(%r{[^/]*\z}, "")
+          entry_prefix = fragment.split("/").last.to_s
+        end
+
+        base_dir = dir_part.empty? ? Dir.pwd : File.expand_path(dir_part, Dir.pwd)
+        return [] unless path_within_cwd?(base_dir)
+        return [] unless File.directory?(base_dir)
+
+        entries = Dir.children(base_dir).sort
+        entries.reject! { |entry| entry.start_with?(".") } unless entry_prefix.start_with?(".")
+        matches = entries.select { |entry| entry.start_with?(entry_prefix) }
+
+        matches.first(AT_PATH_COMPLETION_MAX_CANDIDATES).map do |entry|
+          relative_path = "#{dir_part}#{entry}".tr("\\", "/")
+          absolute_path = File.join(base_dir, entry)
+          relative_path = "#{relative_path}/" if File.directory?(absolute_path)
+          "#{AT_PATH_COMPLETION_PREFIX}#{relative_path}"
+        end
+      rescue StandardError
+        []
+      end
+
+      def path_within_cwd?(path)
+        expanded = File.expand_path(path)
+        cwd = Dir.pwd
+        expanded == cwd || expanded.start_with?("#{cwd}#{File::SEPARATOR}")
+      end
+
+      def build_memory_completion_candidates(memory_fragment)
+        fragment = memory_fragment.to_s.strip.tr("\\", "/")
+        candidates = memory_completion_entries
+        return candidates.map { |entry| entry[:token] } if fragment.empty?
+
+        candidates.filter_map do |entry|
+          entry[:token] if entry[:token].delete_prefix(MEMORY_COMPLETION_PREFIX).start_with?(fragment)
+        end
+      end
+
+      def memory_completion_entries
+        grouped = Hash.new { |hash, key| hash[key] = [] }
+
+        each_memory_completion_entry do |scope, name|
+          grouped[name] << scope unless grouped[name].include?(scope)
+        end
+
+        grouped.sort_by do |name, scopes|
+          [memory_scope_sort_key(scopes.min_by { |scope| memory_scope_sort_key(scope) }), name]
+        end.flat_map do |name, scopes|
+          scopes = scopes.sort_by { |scope| [memory_scope_sort_key(scope), scope] }
+          if scopes.length == 1
+            [{ token: "#{MEMORY_COMPLETION_PREFIX}#{name}", scope: scopes.first, name: name }]
+          else
+            scopes.map do |scope|
+              { token: "#{MEMORY_COMPLETION_PREFIX}#{scope}/#{name}", scope: scope, name: name }
+            end
+          end
+        end
+      end
+
+      def memory_scope_sort_key(scope)
+        scope == "project" ? 0 : 1
+      end
+
+      def each_memory_completion_entry
+        memory_completion_dirs.each do |scope, dir|
+          next unless File.directory?(dir)
+
+          Dir.glob(File.join(dir, "*.md")).sort.each do |path|
+            name = File.basename(path, ".md")
+            next if name.empty? || name == Tools::MEMORY_INDEX
+
+            yield scope, name
+          end
+        end
+      rescue StandardError
+        []
+      end
+
+      def memory_completion_dirs
+        {
+          "project" => File.expand_path(MemoryPaths.project_dir, Dir.pwd),
+          "system" => File.expand_path(MemoryPaths.system_dir)
+        }
+      end
+
+      def normalize_model_input(input)
+        input.to_s.gsub(/(^|[^\w\/])#((?:project|system)\/)?([a-zA-Z0-9][a-zA-Z0-9_-]*)/) do
+          prefix = Regexp.last_match(1)
+          scoped = Regexp.last_match(2).to_s
+          name = Regexp.last_match(3)
+          scope = scoped.delete_suffix("/")
+          normalized = if scope.empty?
+                         "memory \"#{name}\""
+                       else
+                         "memory \"#{name}\" in #{scope} scope"
+                       end
+          "#{prefix}#{normalized}"
+        end
+      end
+
+      def history_file_path
+        explicit = ENV[PROMPT_HISTORY_ENV].to_s.strip
+        return explicit unless explicit.empty?
+
+        File.join(xdg_state_home, PROMPT_HISTORY_STATE_DIR, PROMPT_HISTORY_FILE)
+      end
+
+      def xdg_state_home
+        configured = ENV[XDG_STATE_HOME_ENV].to_s.strip
+        return configured unless configured.empty?
+
+        File.join(Dir.home, ".local", "state")
+      end
+
+      def load_persistent_history
+        entries = load_history_entries_from_disk
+        entries.last(PROMPT_HISTORY_LIMIT).each { |entry| Reline::HISTORY << entry }
+      rescue StandardError
+        nil
+      end
+
+      def persist_recent_history(input)
+        entries = normalize_history_entries(load_history_entries_from_disk)
+        entries << input
+        trimmed_entries = entries.last(PROMPT_HISTORY_LIMIT)
+        path = history_file_path
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, JSON.pretty_generate(trimmed_entries) + "\n")
+      rescue StandardError
+        nil
+      end
+
+      def load_history_entries_from_disk
+        path = history_file_path
+        return [] unless File.file?(path)
+
+        raw = File.read(path)
+        parsed = JSON.parse(raw)
+        normalize_history_entries(parsed)
+      rescue JSON::ParserError
+        normalize_history_entries(raw.to_s.lines.map(&:chomp))
+      rescue StandardError
+        []
+      end
+
+      def normalize_history_entries(entries)
+        Array(entries).map { |entry| entry.to_s.gsub(/\r\n?/, "\n").strip }.reject(&:empty?)
+      end
+
+      def queue_input_prefill(text)
+        normalized = text.to_s.strip
+        return if normalized.empty?
+
+        @next_input_prefill = normalized
+      end
+
+      def queue_default_input
+        default = default_input_text
+        queue_input_prefill(default) if default
+      end
+
+      # @return [String, nil] the default input for a new session's first
+      #   read, if it gets one
+      def default_input_text
+        return nil unless default_input_wanted?
+
+        default = ENV.fetch(DEFAULT_INPUT_ENV, nil)
+        return nil if default.nil? || default.strip.empty?
+
+        default
+      end
+
+      def consume_input_prefill
+        value = @next_input_prefill
+        @next_input_prefill = nil
+        value
+      end
+
+      def with_next_input_prefill
+        prefill = consume_input_prefill
+        return yield if prefill.nil? || prefill.empty?
+
+        previous_hook = Reline.pre_input_hook
+        inserted = false
+        Reline.pre_input_hook = proc do
+          unless inserted
+            Reline.insert_text(prefill)
+            inserted = true
+          end
+          previous_hook.call if previous_hook
+        end
+        begin
+          yield
+        ensure
+          # Restore only what we replaced: a method-level ensure also ran on the
+          # no-prefill early return and reset the hook to nil, dropping the
+          # Engine activity hook (with_activity_hook) after the first prompt.
+          Reline.pre_input_hook = previous_hook
+        end
+      end
+    end
+  end
+end

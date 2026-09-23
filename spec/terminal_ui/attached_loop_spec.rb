@@ -611,3 +611,66 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "launch flags" do
     expect(client).to have_received(:post_turn).with(prompt: "hi", client_id: "tui:1", no_interrupt: true)
   end
 end
+
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input parity with the REPL" do
+  let(:screen) { RecordingSurface.new(columns: 80) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:history_dir) { Dir.mktmpdir("attached-history") }
+  let(:ack) { Samagotchi::BridgeClient::Response.new(status: 202, body: '{"enqueued_id":"e1","command_id":"c1"}') }
+
+  around do |example|
+    saved = ENV.to_h.slice("SAMAGOTCHI_HISTORY_FILE", "SAMAGOTCHI_DEFAULT_INPUT")
+    ENV["SAMAGOTCHI_HISTORY_FILE"] = File.join(history_dir, "history.json")
+    example.run
+  ensure
+    %w[SAMAGOTCHI_HISTORY_FILE SAMAGOTCHI_DEFAULT_INPUT].each { |k| ENV.delete(k) }
+    saved.each { |k, v| ENV[k] = v }
+    FileUtils.remove_entry(history_dir)
+    Reline::HISTORY.clear
+  end
+
+  before do
+    allow(client).to receive(:follow) do |&block|
+      block.call("type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => nil, "queued" => [], "event_seq" => 1 })
+      double("stream", close: nil)
+    end
+    allow(client).to receive_messages(post_turn: ack, post_command: ack)
+  end
+
+  def run_loop(inputs, **opts)
+    reads = []
+    described_class.new(client: client, screen: screen, client_id: "tui:1", **opts)
+                   .run(input: ->(_prompt, prefill) { reads << prefill; inputs.shift })
+    reads
+  end
+
+  it "keeps what was typed in the REPL's history file, and loads it on the next run" do
+    run_loop(["hello", "!ls", "/model", "!rollback", "/stats"].tap { allow(client).to receive(:get_json) })
+
+    expect(JSON.parse(File.read(ENV["SAMAGOTCHI_HISTORY_FILE"]))).to eq(["hello", "!ls"])
+    Reline::HISTORY.clear
+    run_loop([])
+    expect(Reline::HISTORY.to_a).to eq(["hello", "!ls"])
+  end
+
+  it "sends #memory shorthand rewritten, as the REPL does" do
+    run_loop(["check #notes and #project/todo"])
+
+    expect(client).to have_received(:post_turn)
+      .with(prompt: 'check memory "notes" and memory "todo" in project scope', client_id: "tui:1")
+  end
+
+  it "offers the attached commands on Tab, /quit too" do
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1")
+
+    expect(attached.send(:assist_path_completion_candidates, "/q")).to eq(["/quit"])
+    expect(attached.send(:assist_path_completion_candidates, "/mo")).to eq(%w[/model /models])
+  end
+
+  it "types the default input into a new session's first read, unless told not to" do
+    ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Hey Chi, "
+
+    expect(run_loop([nil], default_input: true)).to eq(["Hey Chi, "])
+    expect(run_loop([nil], default_input: false)).to eq([nil])
+  end
+end
