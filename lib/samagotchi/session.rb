@@ -106,6 +106,28 @@ module Samagotchi
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
     end
 
+    # A prefix that names more than one session.
+    class AmbiguousId < ArgumentError; end
+
+    # A session id or a unique prefix of one (like git's): the full id. An
+    # unknown one comes back as is, for the caller's own "not found"; one that
+    # names several sessions raises AmbiguousId, which lists them.
+    def self.resolve_id(id_or_prefix, state_dir: default_state_dir)
+      id = id_or_prefix.to_s
+      return id unless id.match?(/\A[\w-]+\z/) && !File.exist?(session_path(id, state_dir: state_dir))
+
+      matches = Dir.glob(File.join(state_dir, "#{id}*#{FILE_EXT}")).map { |path| File.basename(path, FILE_EXT) }.sort
+      return matches.fetch(0, id) if matches.size <= 1
+
+      lines = matches.map do |match|
+        preview = JSON.parse(File.read(session_path(match, state_dir: state_dir)))["first_preview"].to_s
+        "  #{match}  #{preview}".rstrip
+      rescue JSON::ParserError, SystemCallError
+        "  #{match}"
+      end
+      raise AmbiguousId, "session id #{id} matches #{matches.size} sessions:\n#{lines.join("\n")}"
+    end
+
     # Return all saved sessions sorted by updated_at desc by default (newest first).
     # Supports sort: created_at|updated_at and order: asc|desc.
     def self.list(state_dir: default_state_dir, sort: "updated_at", order: "desc", limit: nil, offset: 0)

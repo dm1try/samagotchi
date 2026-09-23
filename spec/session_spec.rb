@@ -117,6 +117,37 @@ RSpec.describe Samagotchi::Session do
     end
   end
 
+  describe ".resolve_id" do
+    def save(id, preview)
+      session = described_class.new_session(mode: "assist", model_name: "m", working_directory: tmpdir)
+      session.id = id
+      session.first_preview = preview
+      session.save(state_dir: tmpdir)
+    end
+
+    before do
+      save("abc12345-0000", "first")
+      save("abd99999-0000", "second")
+    end
+
+    it "expands a unique prefix to the full id" do
+      expect(described_class.resolve_id("abc", state_dir: tmpdir)).to eq("abc12345-0000")
+    end
+
+    it "keeps a full id, and an unknown one as is" do
+      expect(described_class.resolve_id("abd99999-0000", state_dir: tmpdir)).to eq("abd99999-0000")
+      expect(described_class.resolve_id("zzz", state_dir: tmpdir)).to eq("zzz")
+      expect(described_class.resolve_id("a*", state_dir: tmpdir)).to eq("a*")
+    end
+
+    it "lists the matches of an ambiguous prefix" do
+      expect { described_class.resolve_id("ab", state_dir: tmpdir) }.to raise_error(
+        described_class::AmbiguousId,
+        "session id ab matches 2 sessions:\n  abc12345-0000  first\n  abd99999-0000  second"
+      )
+    end
+  end
+
   describe ".list" do
     it "returns empty array when directory does not exist" do
       expect(described_class.list(state_dir: "/nonexistent/path")).to eq([])

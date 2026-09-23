@@ -8,6 +8,7 @@
 - `bin/chi --resume <session-id>` — resume a prior session (in its worker)
 - `bin/chi --no-shared [--resume <session-id>]` — the plain in-process REPL instead, for this run
 - `bin/chi --attach <session-id>` — attach the terminal to a session's worker (e.g. one started from the Web UI), waking one if it has exited
+- A session id can be shortened to any unique prefix (like git): `bin/chi --attach 2ea8`. `--resume`, `--attach` and `sessions stop` take one; an ambiguous prefix lists the sessions it matches.
 - `bin/chi web [--port 4567] [--open]` — start the Web UI (single localhost port session control plane)
 - `bin/chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
 - `bin/chi sessions list|stop|prune|clean` — manage persisted sessions (see [Sessions](sessions.md))
