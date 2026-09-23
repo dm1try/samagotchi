@@ -88,10 +88,11 @@ module Samagotchi
       end
       # Load hooks from config (plugins) and create the registry; what fails
       # to load is announced, and a required guardrail's failure denies
-      # every tool call.
+      # every tool call. Rules load now too, so their errors are announced.
       @guardrail_failures = Guardrails::LoadFailures.new
       @hooks = load_hooks_from_config
       load_hooks_from_bundles
+      guardrail_rules
       # Use the KernelLoop's reminder_store if provided (TerminalUI path),
       # otherwise create our own (SessionManager/one-shot paths). This ensures
       # tool calls via KernelLoop and reminder injection via Engine read/write
@@ -654,7 +655,28 @@ module Samagotchi
 
     # The gate's core checks, in order.
     def guardrail_checks
-      [@guardrail_failures, guardrail_protected_paths]
+      rules = guardrail_rules
+      [@guardrail_failures, rules.hook_asks, guardrail_protected_paths, rules]
+    end
+
+    # The YAML rules: config.yml's `guardrails:` section. One that doesn't
+    # parse is a required load failure (every call is denied).
+    # @return [Guardrails::Rules]
+    def guardrail_rules
+      @guardrail_rules ||= begin
+        section = Samagotchi::ConfigFile.read_yaml(path: Samagotchi::ConfigFile.global_path)
+        section = section["guardrails"] if section.is_a?(Hash)
+        rules = []
+        begin
+          raise Guardrails::Rules::ParseError, "guardrails must be a mapping" unless section.nil? || section.is_a?(Hash)
+
+          rules = Guardrails::Rules.parse(section && section["rules"], source: "config")
+        rescue Guardrails::Rules::ParseError => e
+          warn "[samagotchi:guardrails] config.yml guardrails rules: #{e.message}"
+          @guardrail_failures.add("rules in config.yml", e.message, required: true)
+        end
+        Guardrails::Rules.new(rules, enabled: Samagotchi::Config.get("guardrails.enabled") != false)
+      end
     end
 
     # @return [Guardrails::LoadFailures]

@@ -83,6 +83,8 @@ module Samagotchi
       # Plain `chi` runs like `chi --shared` (bin/chi, LaunchMode); false, or --no-shared per run, keeps the plain REPL. No CLI flag: that would duplicate --shared.
       Entry.new(key: "session.shared",                yaml_path: %w[session shared],                type: :bool,    default: true,  expose: %i[env config]),
 
+      Entry.new(key: "guardrails.enabled",       yaml_path: %w[guardrails enabled],       type: :bool,   default: true,             expose: %i[env config]),
+
       Entry.new(key: "log.file",                 yaml_path: %w[log file],                 type: :string, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "log.disable",              yaml_path: %w[log disable],              type: :bool,   default: false,            expose: %i[env config cli]),
 
@@ -364,7 +366,7 @@ module Samagotchi
         # Legacy flat UPPER keys are handled separately — don't flag them here
         legacy_keys = BY_ENV.keys
         data.each_key do |k|
-          next if %w[hosts hooks model_aliases models].include?(k.to_s)
+          next if %w[hosts hooks model_aliases models guardrails].include?(k.to_s)
           next if legacy_keys.include?(k.to_s)
           # Sections are top-level keys that map to hashes (e.g., default, recap)
           # If key contains _ or -, suggest dotted form

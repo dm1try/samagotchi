@@ -56,6 +56,16 @@ module Samagotchi
         self
       end
 
+      # Back to allow (guardrails disabled: a hook's ask doesn't count).
+      def drop_ask!
+        return self unless ask?
+
+        @decision = :allow
+        @reason = @rule = @source = @decided_by = @voter = nil
+        @scopes = SCOPES
+        self
+      end
+
       # The user (or the lack of one) settled an ask.
       # @param note [String, nil] for a deny, what the model is told about
       #   the user ("The user declined.", "No one to approve it.")

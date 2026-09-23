@@ -7,6 +7,7 @@ require_relative "guardrails/approval"
 require_relative "guardrails/approvals"
 require_relative "guardrails/protected_paths"
 require_relative "guardrails/load_failures"
+require_relative "guardrails/rules"
 require_relative "guardrails/gate"
 
 module Samagotchi
