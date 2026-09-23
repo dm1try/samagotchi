@@ -91,10 +91,59 @@ RSpec.describe Samagotchi::SelfReport do
     expect(field("host")).to eq("main 10.0.0.5:8081")
   end
 
+  describe "the profile row (offline: no server probe)" do
+    before { allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model") }
+
+    it "says a native llama.cpp host's template decides at runtime, and what the name gives otherwise" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
+      expect(field("profile")).to eq("from the server at runtime (default #{Samagotchi::ModelProfile::DEFAULT_NAME})")
+
+      allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("my-gemma")
+      expect(field("profile")).to eq("from the server at runtime (name says gemma4)")
+    end
+
+    it "shows a configured profile with where it came from" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    profile: gemma4\nmodels:\n  spec-model:\n    profile: qwen36\n")
+      expect(field("profile")).to eq("qwen36 (config models: spec-model)")
+
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    profile: gemma4\n")
+      expect(field("profile")).to eq("gemma4 (config hosts.main)")
+
+      env["SAMAGOTCHI_MODEL_PROFILE"] = "qwen36"
+      expect(field("profile")).to eq("qwen36 (env)")
+    end
+
+    it "finds models: under the alias typed after a host prefix" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\nmodel_aliases:\n  small: org/Small-1\nmodels:\n  small:\n    profile: gemma4\n")
+      allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("main:small")
+      # HostRegistry#host_for_model reads aliases from the global config, not env.
+      saved = ENV["XDG_CONFIG_HOME"]
+      ENV["XDG_CONFIG_HOME"] = config_home
+
+      expect(field("profile")).to eq("gemma4 (config models: small)")
+    ensure
+      ENV["XDG_CONFIG_HOME"] = saved
+    end
+
+    it "names mlx's profile directly (no template to read) and a chat host's as name-based" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    transport: mlx\n")
+      expect(field("profile")).to eq("#{Samagotchi::ModelProfile::DEFAULT_NAME} (default)")
+
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    api: openai\n")
+      expect(field("profile")).to eq("name-based (chat API: only strips thoughts)")
+    end
+
+    it "comes right after the loop row" do
+      labels = described_class.fields(env: env).map(&:first)
+      expect(labels[labels.index("loop") + 1]).to eq("profile")
+    end
+  end
+
   it "says so when no model is configured" do
     allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_raise(ArgumentError)
     expect(field("model")).to eq("(not configured)")
     expect(field("host")).to eq("-")
+    expect(field("profile")).to eq("-")
   end
 
   it "lists installed bundles and the shipped system bundle version" do

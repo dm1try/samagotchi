@@ -735,6 +735,8 @@ OptionParser.new do |opts|
   opts.on("--attach SESSION_ID", "Attach to a session's worker (e.g. one `chi web` started), waking one if it has exited") { |s| options[:attach] = s }
   opts.on("--[no-]shared", "Run the session in a background worker and attach to it, so `chi web` can share it (with --resume: that session); --no-shared runs a plain REPL even when session.shared is on") { |v| options[:shared] = v }
   opts.on("--model NAME", "Model selector (runtime only, overrides --resume) [alias for --default-model]") { |m| options[:model] = m; cli_overrides["default.model"] = m }
+  opts.on("--profile NAME", Samagotchi::ModelProfile::NAMES,
+          "Prompt profile for every model in this run (#{Samagotchi::ModelProfile::NAMES.join('|')}) [alias for --model-profile]") { |p| cli_overrides["model.profile"] = p }
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable)") { |m| (options[:memories] ||= []) << m }
   opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true; cli_overrides["no_interrupt"] = true }
   opts.on("--non-interactive", "Run a single prompt and exit (no REPL, implies --no-interrupt)") { options[:non_interactive] = true }

@@ -44,6 +44,7 @@ module Samagotchi
         ["host", model ? host_for(model, env) : "-"],
         ["api key", model ? api_key_for(model, env) : "-"],
         ["loop", model ? loop_for(model, env) : "-"],
+        ["profile", model ? profile_for(model, env) : "-"],
         ["context window", context_window(env)],
         ["bundles", bundles_summary]
       ]
@@ -87,6 +88,30 @@ module Samagotchi
       return "-" unless entry
 
       entry.chat? ? "chat (api: openai)" : "native (raw prompt)"
+    end
+
+    # Offline, so no /props probe: where nothing is configured, a native
+    # llama.cpp host's chat template decides at runtime.
+    def profile_for(model, env)
+      registry = HostRegistry.new(env: env)
+      entry, bare = registry.host_for_model(model)
+      return "name-based (chat API: only strips thoughts)" if entry&.chat?
+
+      # As typed, the part after a host prefix (maybe an alias), alias-resolved, bare.
+      names = [model, registry.parse_qualified_model(model).last, ConfigFile.resolve_model_alias(model, env: env), bare]
+      override = Config.resolve_with_origin("model.profile", env: env, cli_overrides: Config.cli_overrides)
+      result = ModelProfile.resolve(names: names, entry: entry, client: nil, bare_model: bare, override: override,
+                                    models: ConfigFile.model_settings(env: env))
+      name = result.profile.name
+      case result.source
+      when :config then "#{name} (config #{result.detail})"
+      when :cli, :env then "#{name} (#{result.source})"
+      else
+        return "#{name} (#{result.source})" unless entry.nil? || entry.transport.nil? || entry.transport == :llama_cpp
+
+        given = result.source == :name ? "name says #{name}" : "default #{name}"
+        "from the server at runtime (#{given})"
+      end
     end
 
     def host_for(model, env)
