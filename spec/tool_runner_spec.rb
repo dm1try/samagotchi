@@ -154,7 +154,7 @@ RSpec.describe Samagotchi::ToolRunner do
       result = run
       expect(asked).to eq([%i[tool_call_started]])
       expect(dispatched).to eq([call])
-      expect(result[:activity]).to include(guardrail: { verdict: "allow", decided_by: "user", scope: "once" })
+      expect(result[:activity]).to include(guardrail: { verdict: "allow", decided_by: "user", scope: "once", note: "approved (once)" })
     end
 
     context "when the user declines" do

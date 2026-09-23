@@ -121,12 +121,14 @@ module Samagotchi
       # Every tool call asks this gate first. The kernel is never rebuilt, so
       # it holds across model switches.
       @guardrail_git = Guardrails::GitInfo.new
+      self.guardrail_state_dir = Session.default_state_dir
       if @kernel.respond_to?(:guardrail_gate=)
         @kernel.guardrail_gate = Guardrails::Gate.new(
           -> { @hooks },
           context_lookup: -> { guardrail_context },
           model_key_lookup: -> { @model_key },
-          approver: ->(verdict) { request_approval(verdict) }
+          approver: ->(verdict) { request_approval(verdict) },
+          approvals_lookup: -> { @guardrail_approvals }
         )
       end
       # If session was resumed and has a pending_question, hydrate engine state
@@ -637,6 +639,16 @@ module Samagotchi
 
       @interface = value
     end
+
+    # Where the approval store lives: beside Session's state dir
+    # ($XDG_STATE_HOME/samagotchi/guardrails/). A Worker with its own state
+    # dir passes it.
+    def guardrail_state_dir=(state_dir)
+      @guardrail_approvals = Guardrails::Approvals.new(dir: Guardrails::Approvals.dir_for(state_dir))
+    end
+
+    # @return [Guardrails::Approvals]
+    attr_reader :guardrail_approvals
 
     # The context the gate sees for a tool call now.
     # @return [Guardrails::Context]

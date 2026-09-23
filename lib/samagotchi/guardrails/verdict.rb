@@ -81,9 +81,13 @@ module Samagotchi
         ].reject(&:empty?).join(" ")
       end
 
-      # For the activity entry.
+      # For the activity entry; an allowed ask notes how ("approved (repo)",
+      # "approved earlier (session)").
       def to_activity
-        { rule: @rule, verdict: @decision.to_s, decided_by: @decided_by, scope: @scope }.compact
+        note = if allow? && @scope
+                 "approved#{" earlier" if @decided_by == "approval"} (#{@scope})"
+               end
+        { rule: @rule, verdict: @decision.to_s, decided_by: @decided_by, scope: @scope, note: note }.compact
       end
 
       private

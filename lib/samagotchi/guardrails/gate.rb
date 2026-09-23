@@ -3,6 +3,7 @@
 require_relative "verdict"
 require_relative "context"
 require_relative "targets"
+require_relative "approvals"
 
 module Samagotchi
   module Guardrails
@@ -21,11 +22,14 @@ module Samagotchi
       # @param model_key_lookup [#call] the model key (memory overlays)
       # @param approver [#call, nil] settles an ask (Engine#request_approval);
       #   without one an ask is denied
-      def initialize(hooks_lookup, context_lookup: -> { Context.new }, model_key_lookup: -> {}, approver: nil)
+      # @param approvals_lookup [#call] returns the Approvals store (or nil)
+      def initialize(hooks_lookup, context_lookup: -> { Context.new }, model_key_lookup: -> {}, approver: nil,
+                     approvals_lookup: -> {})
         @hooks_lookup = hooks_lookup
         @context_lookup = context_lookup
         @model_key_lookup = model_key_lookup
         @approver = approver
+        @approvals_lookup = approvals_lookup
       end
 
       # @param call [Hash] the parsed tool call
@@ -52,16 +56,42 @@ module Samagotchi
       # Settle an ask: the approver asks the user; with none, or one that
       # fails, it is denied.
       # @return [Verdict]
+      # A stored approval that covers the call allows it without asking; an
+      # answer that allows it beyond this once is stored.
       def settle_ask(verdict)
+        approvals = @approvals_lookup.call
+        if (entry = stored(approvals, verdict))
+          verdict.settle!(:allow, decided_by: "approval")
+          verdict.scope = entry["scope"]
+          return verdict
+        end
         return verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it.") unless @approver
 
         @approver.call(verdict)
-        verdict.ask? ? verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it.") : verdict
+        return verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it.") if verdict.ask?
+
+        remember(approvals, verdict)
+        verdict
       rescue StandardError => e
         verdict.settle!(:deny, decided_by: "core", note: "The approval failed (#{e.class}: #{e.message}).")
       end
 
       private
+
+      def stored(approvals, verdict)
+        approvals&.match(verdict)
+      rescue StandardError
+        nil
+      end
+
+      # A store that can't be written only means the next call asks again.
+      def remember(approvals, verdict)
+        return unless approvals && verdict.allow? && verdict.scope
+
+        approvals.add(verdict, verdict.scope)
+      rescue StandardError => e
+        Kernel.warn("[samagotchi:guardrails] could not store the approval: #{e.class}: #{e.message}")
+      end
 
       def targets_for(call, context)
         Targets.for(call, context, model_key: @model_key_lookup.call)

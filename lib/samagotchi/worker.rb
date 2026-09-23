@@ -176,6 +176,7 @@ module Samagotchi
       # The attached TUI and the web answer approvals; with none attached
       # one waits, like ask_user_question.
       engine.interface = :worker
+      engine.guardrail_state_dir = @state_dir if @state_dir
       engine
     end
 
