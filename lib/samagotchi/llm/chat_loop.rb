@@ -318,7 +318,9 @@ module Samagotchi
             @tool_activity << run[:activity] if run[:activity]
             # The chat loop feeds the model the capped output (native feeds
             # the full one; D-P2-6).
-            @conversation << { role: "tool_response", content: run[:capped_output], tool_call_id: tool_call.id }
+            entry = { role: "tool_response", content: run[:capped_output], tool_call_id: tool_call.id }
+            entry[:images] = run[:images] if run[:images]&.any?
+            @conversation << entry
           end
           emit(type: :tool_dispatch_completed, iteration: iteration, call_count: tool_calls.length)
         end

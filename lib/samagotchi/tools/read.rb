@@ -2,6 +2,7 @@
 
 require_relative "output_guardrails"
 require_relative "tool_path"
+require_relative "../image_store"
 
 module Samagotchi
   module Tools
@@ -13,8 +14,31 @@ module Samagotchi
 
       def self.name        = NAME
 
+      # An image the tool found (by its magic bytes, whatever its name): the
+      # line the model reads, and the file the loop attaches (ToolRunner).
+      # It is that line as a String.
+      class ImageResult < String
+        attr_reader :image_path, :description
+
+        def initialize(image_path, description)
+          @image_path = image_path
+          @description = description
+          super("Image #{description} attached.")
+        end
+      end
+
+      # How far into a file its size is looked for (a JPEG's frame header
+      # can follow a large EXIF block).
+      IMAGE_HEADER_BYTES = 256 * 1024
+
       def self.call(path, start_line: nil, end_line: nil)
         path = ToolPath.normalize(path)
+
+        if ImageStore.image_file?(path)
+          return "Error: #{path} is an image; read it without start_line/end_line" if range_requested?(start_line, end_line)
+
+          return image_result(path)
+        end
 
         if range_requested?(start_line, end_line)
           return read_range(path, start_line: start_line, end_line: end_line)
@@ -38,6 +62,13 @@ module Samagotchi
       rescue => e
         "Error: #{e.message}"
       end
+
+      def self.image_result(path)
+        info = ImageHeader.read(File.binread(path, IMAGE_HEADER_BYTES))
+        size = info.width && info.height ? "#{info.width}×#{info.height} " : ""
+        ImageResult.new(path, "#{File.basename(path)} (#{size}#{info.format.to_s.upcase})")
+      end
+      private_class_method :image_result
 
       def self.build_truncated_preview(path:, file_size:, preview_bytes:)
         preview = OutputGuardrails.head_tail_from_file(path: path, file_size: file_size, preview_bytes: preview_bytes)

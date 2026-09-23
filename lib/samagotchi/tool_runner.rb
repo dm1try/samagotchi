@@ -2,6 +2,7 @@
 
 require_relative "tool_activity"
 require_relative "guardrails"
+require_relative "vision_context"
 
 module Samagotchi
   # The single per-call path both loops use: the tool_call_started and
@@ -18,7 +19,8 @@ module Samagotchi
     end
 
     # @param call_index [Integer] 1-based position of the call in its batch
-    # @return [Hash] output:, capped_output:, truncated:, activity:
+    # @return [Hash] output:, capped_output:, truncated:, activity:, and
+    #   images: (refs) when the tool read an image the model gets to see
     def run(call, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
       params = ToolActivity.tool_activity_params(call[:name], call)
       # The gate runs first, so tool_call_started shows the call that runs.
@@ -34,6 +36,7 @@ module Samagotchi
       settle_ask(verdict) if verdict.ask?
       result = verdict.deny? ? denied(call, verdict) : dispatch(call)
       result = approved(result, verdict) if verdict.allow? && verdict.decided_by
+      result, images = attach_image(call, result) if result[:image_path]
 
       output = result[:output].to_s
       capped = output
@@ -44,14 +47,33 @@ module Samagotchi
       end
 
       fire(:after_tool_call, { type: :after_tool_call, iteration: iteration, tool: call[:name], output: capped })
-      emit(on_stream_event,
-           type: :tool_call_completed, iteration: iteration, call_count: call_count, call_index: call_index,
-           tool: call[:name], output: capped, output_truncated: truncated, activity: result[:activity])
+      completed = { type: :tool_call_completed, iteration: iteration, call_count: call_count, call_index: call_index,
+                    tool: call[:name], output: capped, output_truncated: truncated, activity: result[:activity] }
+      completed[:images] = images if images&.any?
+      emit(on_stream_event, completed)
 
-      { output: output, capped_output: capped, truncated: truncated, activity: result[:activity] }
+      run = { output: output, capped_output: capped, truncated: truncated, activity: result[:activity] }
+      run[:images] = images if images&.any?
+      run
     end
 
     private
+
+    # A tool read an image: store it with the session (the turn's
+    # VisionContext) so the loop sends it, or tell the model why it can't
+    # see it. @return [Array(Hash, Array<Hash>)] the result and its refs
+    def attach_image(call, result)
+      vision = @kernel.vision if @kernel.respond_to?(:vision)
+      description = result[:image_description] || File.basename(result[:image_path].to_s)
+      reason = if vision.nil? then "images can't be attached here"
+               elsif !vision.sendable? then ImagePlan::CANT_SEE
+               end
+      return [result.merge(output: "[#{call[:name]}]\n#{description} is an image; #{reason}"), []] if reason
+
+      [result, [vision.ingest(result[:image_path])]]
+    rescue ImageStore::Error => e
+      [result.merge(output: "[#{call[:name]}] Error: #{e.message}"), []]
+    end
 
     # The Engine sets the kernel's gate (its context, later the approval
     # flow); a bare kernel (specs) gets one that only runs the hooks.

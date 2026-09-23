@@ -307,15 +307,20 @@ module Samagotchi
         qwen_partial_tool_call = nil
 
         emit_stream_event(on_stream_event, type: :tool_dispatch_started, iteration: iteration_index + 1, call_count: calls.length)
+        tool_images = []
         results = calls.map.with_index do |call, call_index|
           run = tool_runner.run(call, iteration: iteration_index + 1, call_index: call_index + 1,
                                       call_count: calls.length, on_stream_event: on_stream_event,
                                       max_tool_output_chars: effective_max_tool_output_chars)
           tool_activity << run[:activity]
+          tool_images.concat(Array(run[:images]))
           run[:output]
         end.join("\n\n---\n\n")
         emit_stream_event(on_stream_event, type: :tool_dispatch_completed, iteration: iteration_index + 1, call_count: calls.length)
-        conversation << { role: "tool_response", content: results }
+        # The joined results carry every call's images, in call order.
+        tool_response = { role: "tool_response", content: results }
+        tool_response[:images] = tool_images unless tool_images.empty?
+        conversation << tool_response
         pending_tool_calls = true
       rescue Client::RequestCancelled => e
         emit_stream_event(
@@ -827,10 +832,16 @@ module Samagotchi
                 end
 
       verbose_log("── tool result: #{call[:name]} ──\n#{result}\n──────────────────")
-      {
+      dispatched = {
         output: "[#{call[:name]}]\n#{result}",
         activity: ToolActivity.tool_activity_event(call[:name], call, result)
       }
+      # An image the read tool found: ToolRunner attaches it (or says why not).
+      if result.respond_to?(:image_path)
+        dispatched[:image_path] = result.image_path
+        dispatched[:image_description] = result.description
+      end
+      dispatched
     rescue => e
       verbose_log("── tool error: #{call[:name]} ──\n#{e.message}\n──────────────────")
       result = "Error: #{e.message}"
