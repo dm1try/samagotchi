@@ -46,6 +46,13 @@ model_aliases:
   small: gemma4-small
   tiny: recap-box:gemma4-small  # alias may be bare or host:model (hybrid)
 
+# Plain chi runs its session in a background worker and attaches to it, so the
+# web UI can share it (default true; env SAMAGOTCHI_SESSION_SHARED). false keeps
+# the in-process REPL; --no-shared does for one run.
+session:
+  shared: true
+  # idle_exit_minutes: 30   # an unused worker exits after this (0 = never)
+
 # Baseline memories preloaded into the system prompt (same shape as --memory).
 # CLI --memory entries are appended after these, deduped.
 memories:
@@ -98,7 +105,7 @@ Each host may also set `api:`, which says how chi talks to it:
 
 Without `api:` a host uses the raw-prompt loop, as before. The loop follows the
 model's host, so `/model other-host:model` can move a session between the two.
-Workers started by `chi web` or `--shared` get the same hosts, `api:` included.
+Workers started by plain `chi`, `chi web` or `--attach` get the same hosts, `api:` included.
 
 Example for mlx-lm:
 
@@ -364,6 +371,8 @@ Behavior notes:
 
 - `--verbose` still controls stderr output only.
 - File logging remains enabled even when `--verbose` is off.
+- An attached terminal (plain `chi`) logs which session it joined there:
+  `[attached] joined session ID (N messages)`.
 
 ## Project specific description
 

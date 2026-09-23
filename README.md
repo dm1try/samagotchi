@@ -38,15 +38,15 @@ Other settings (multiple hosts, transports, timeouts, the idle recap) are in
 ## Use
 
 ```sh
-bin/chi                                       # interactive REPL
+bin/chi                                       # interactive session the web UI can join too
+bin/chi --no-shared                           # the plain in-process REPL
 bin/chi -p "explain lib/" --non-interactive   # one turn, print the answer, exit
 bin/chi --resume <session-id>                 # continue a saved session
 bin/chi web --open                            # web UI on http://127.0.0.1:4567
-bin/chi --shared                              # a session the web UI can join too
 bin/chi sessions list                         # saved sessions
 ```
 
-In the REPL, `/model` switches models and Ctrl-C cancels a turn.
+`/model` switches models, Ctrl-C cancels a turn, and Ctrl-D detaches (the session keeps running; `chi --attach ID` comes back).
 
 ## Documentation
 

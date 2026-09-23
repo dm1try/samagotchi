@@ -96,14 +96,18 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
 
 ## Entry points
 
-- `bin/chi` interactive → builds `TerminalUI`. `TerminalUI#run` is the single dispatch
+- `LaunchMode.resolve` picks the terminal's mode. By default (`session.shared: true`)
+  plain `bin/chi`, `-p` and `--resume ID` run attached, like `--shared`; `--no-shared`,
+  `session.shared: false`, `--non-interactive`, `--memory` and `--verbose` run the REPL.
+- The REPL → builds `TerminalUI`. `TerminalUI#run` is the single dispatch
   for the REPL, `-p`/`--prompt`, `--non-interactive`, and `--resume`.
-- `bin/chi --attach ID` / `--shared [--resume ID]` → `TerminalUI::AttachLauncher`: no `Engine`
+- Attached (`bin/chi`, `--attach ID`, `--shared [--resume ID]`) → `TerminalUI::AttachLauncher`: no `Engine`
   and no `OwnerLock`; finds or starts the session's worker and runs `TerminalUI::AttachedLoop`
-  as a client of its Bridge (`BridgeClient#follow`, `post_turn`, `cancel`, `answer`).
+  as a client of its Bridge (`BridgeClient#follow`, `post_turn`, `post_command`, `cancel`, `answer`,
+  `dismiss_question`). The worker runs in the session's `working_directory`, so `!cmd` and
+  the tools don't depend on where the terminal attached from.
 - `bin/chi web` → builds `Web::Server` (Rack+WEBrick on `127.0.0.1:4567`, `--port`/`SAMAGOTCHI_WEB_PORT`, `--open`).
-- `bin/chi sessions {list,prune,clean}` → retention & ordering (`Session.prune`, `updated_at desc`, dry-run, test-only).
-- `bin/chi dashboard` → deprecated, use `chi web`.
+- `bin/chi sessions {list,stop,prune,clean}` → retention & ordering (`Session.prune`, `updated_at desc`, dry-run, test-only); `stop` is `SessionManager.stop_session(wait:)`, which waits for the worker to release `owner.lock`.
 - `--prompt`, `--non-interactive`, and `SessionManager` workers build `Engine` directly.
 
 ## Session retention & ordering
@@ -129,13 +133,13 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
 | Web (Rack) | `Samagotchi::Web::App`, `SessionManager` | Single-port `127.0.0.1:4567` control plane via `rack`+`webrick` (serve `index.html` + `/api/*`; `/stream` proxies each session's Bridge). `bin/chi web` entrypoint. |
 | Sessions | `Samagotchi::Session`, `SessionManager` | File-based `~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar `input/`/`output/`/`pid`; retention (14d/500) + ordering (`updated_at desc`). |
 
-- `bin/chi` (interactive) builds `TerminalUI`. `TerminalUI#run` is the single
+- `bin/chi` in REPL mode (see `LaunchMode` above) builds `TerminalUI`. `TerminalUI#run` is the single
   dispatch for the REPL, `-p`/`--prompt`, `--non-interactive`, and `--resume`: it
   builds the working session once, runs a single prompt turn when `-p` is given,
   then either exits (`--non-interactive`) or drops into the REPL carrying the
   post-turn conversation.
 - `SessionManager` background workers build `Engine` directly (no terminal rendering).
-- `bin/chi --attach`/`--shared` builds no `Engine`: `TerminalUI::AttachLauncher` finds
+- `bin/chi` in attached mode (the default, `--attach`, `--shared`) builds no `Engine`: `TerminalUI::AttachLauncher` finds
   or starts the worker, and `TerminalUI::AttachedLoop` is a client of its Bridge
   (`BridgeClient#follow` for events, `post_turn`/`cancel`/`answer` for input). It
   renders through the same `EventRenderer` as the REPL, on an `AttachedView` that
