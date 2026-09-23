@@ -78,6 +78,8 @@ module Samagotchi
     REMINDER_PENDING_POLL_INTERVAL = 0.5
     # What a command sent during a turn gets, as from a worker (Worker::BUSY_OUTPUT).
     COMMAND_BUSY = "busy: wait for the turn to end"
+    # /detach is the attached terminal's; the REPL owns its session.
+    REPL_DETACH_NOTE = "(not attached: this session runs in this terminal; /exit ends it)"
 
     # Raised when another process (a `chi web` worker or another chi) owns the
     # session this TUI was asked to run.
@@ -390,6 +392,8 @@ module Samagotchi
         end
         break if input.nil?
         break if exit_command?(input)
+        # Not an answer to a continue offer either.
+        next detach_note if detach_command?(input)
 
         if @turn_flow.awaiting_continue?
           answer_continue_offer(session, input)
@@ -815,6 +819,8 @@ module Samagotchi
       normalized == "exit" || normalized == "/exit"
     end
 
+    def detach_command?(input) = input.to_s.strip.casecmp?("/detach")
+
     def clone_messages(messages)
       Array(messages).map(&:dup)
     end
@@ -878,11 +884,17 @@ module Samagotchi
     # @return [Boolean, :back] whether the turn took it, :back to put it back
     def steer_line(line)
       return exit_after_turn if line.nil? || exit_command?(line)
+      return detach_note if detach_command?(line)
       return false if @active_cancel_controller&.cancelled?
       return command_during_turn(line) if command_line?(line)
       return true if line.strip.empty?
 
       @pending_input_queue.push(line.strip)
+      true
+    end
+
+    def detach_note
+      @surface.commit(REPL_DETACH_NOTE)
       true
     end
 
