@@ -205,6 +205,11 @@ body.all-view #center, body.all-view #topStrip{display:none}
 #topStrip:not(.loading) .card, #allList .card{animation:fadeIn .28s ease}
 .card{padding:12px;border-radius:10px;background:#151821;border:1px solid #1f232b;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:72px}
 .card:hover{border-color:#2d333f;background:#1a1f2b}
+#allList .card{position:relative}
+.card-del{position:absolute;top:6px;right:6px;padding:2px 7px;border-radius:6px;border:1px solid transparent;background:transparent;color:#8b949e;font-size:12px;line-height:1.2;cursor:pointer;opacity:0;transition:opacity .15s}
+#allList .card:hover .card-del, .card-del:focus-visible{opacity:1}
+.card-del:hover{color:#fff;background:#da3633;border-color:#da3633}
+@media (hover:none){.card-del{opacity:1}}
 .card.active{background:#1b2336;border-color:#223150}
 .card .id{font-family:ui-monospace,monospace;font-size:11px;color:#8b949e}
 .card .preview{font-size:13px;color:#e6e8eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -263,6 +268,7 @@ a{color:#7aa5ff}
     <div id="infoBar">
       <div class="info" id="infoText"><div class="idle">No session selected — pick one above, or type a prompt to start a new session.</div></div>
       <button class="danger" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop</button>
+      <button class="danger" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
     </div>
   </section>
   <section id="allView" aria-label="All sessions">

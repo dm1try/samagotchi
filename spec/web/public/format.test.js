@@ -119,3 +119,24 @@ test("modelLabel keeps the model when the served name is the same or extends it,
   assert.deepEqual(modelLabel("m", "M-2026-01-01", "m"), { text: "m", title: "m", mismatch: false });
   assert.equal(modelLabel("a".repeat(50), null, null).text, "a".repeat(40));
 });
+
+import { deleteConfirmText } from "../../../lib/samagotchi/web/public/format.js";
+
+test("deleteConfirmText names the session and says it can't be undone", () => {
+  assert.equal(
+    deleteConfirmText({ id: "3fa2b1c4-aaaa", short_id: "3fa2b1c4", first_preview: "fix the bug in the parser" }),
+    "Delete session 3fa2b1c4 — \"fix the bug in the parser\"?\nIts history, notes and images are removed; this can't be undone.",
+  );
+});
+
+test("deleteConfirmText cuts a long preview and says a live worker is stopped first", () => {
+  const text = deleteConfirmText({
+    id: "3fa2b1c4-aaaa", short_id: "3fa2b1c4", first_preview: "x".repeat(80), owner: "worker",
+  });
+  assert.ok(text.startsWith(`Delete session 3fa2b1c4 — "${"x".repeat(40)}…"?`));
+  assert.ok(text.endsWith("\nIts worker is running and will be stopped first."));
+});
+
+test("deleteConfirmText leaves out an empty preview", () => {
+  assert.ok(deleteConfirmText({ id: "3fa2b1c4-aaaa", first_preview: "" }).startsWith("Delete session 3fa2b1c4?\n"));
+});

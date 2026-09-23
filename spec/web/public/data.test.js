@@ -8,6 +8,7 @@ import {
   sendTurn,
   cancelTurn,
   stopSession,
+  deleteSession,
   dismissQuestion,
 } from "../../../lib/samagotchi/web/public/data.js";
 
@@ -158,4 +159,16 @@ test("sendCommand posts a session command line with this tab's id", async () => 
     },
   });
   assert.deepEqual(calls[0], ["/api/sessions/abc/command", "POST", JSON.stringify({ line: "/model x", client_id: "web:me" })]);
+});
+
+test("deleteSession sends DELETE to the session's URL", async () => {
+  const calls = [];
+  const result = await deleteSession("3fa2 b", {
+    fetchImpl: (path, opts) => {
+      calls.push([path, opts.method]);
+      return Promise.resolve(okResponse({ status: "deleted", session_id: "3fa2 b", stopped: false }));
+    },
+  });
+  assert.deepEqual(calls, [["/api/sessions/3fa2%20b", "DELETE"]]);
+  assert.equal(result.status, "deleted");
 });
