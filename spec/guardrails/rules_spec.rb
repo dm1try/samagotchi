@@ -60,6 +60,16 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       expect(verdict_for({ name: "write", path: "other/config/app.yml", content: "" }, rel)).to be_allow
     end
 
+    it "matches path rules on the read tool's path (the secrets rules from guardrails-extra-rules.yml)" do
+      dotenv = rules({ id: "read-dotenv", tool: %w[read], path: "**/.env*", verdict: "ask" })
+      expect(verdict_for({ name: "read", content: ".env" }, dotenv)).to be_ask
+      expect(verdict_for({ name: "read", content: "config/.env.local" }, dotenv)).to be_ask
+      expect(verdict_for({ name: "read", content: "README.md" }, dotenv)).to be_allow
+      secrets = rules({ id: "read-secrets", tool: %w[read], path: "**/{.ssh,.aws,.gnupg}/**", verdict: "ask" })
+      expect(verdict_for({ name: "read", content: "~/.ssh/id_rsa" }, secrets)).to be_ask
+      expect(verdict_for({ name: "read", content: "/home/u/.aws/credentials" }, secrets)).to be_ask
+    end
+
     it "needs every given field to match" do
       set = rules({ id: "x", tool: "execute", command: "rm", path: "outside_repo", verdict: "deny" })
       expect(verdict_for({ name: "execute", content: "rm -rf x" }, set)).to be_allow
