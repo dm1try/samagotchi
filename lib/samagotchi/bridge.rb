@@ -8,6 +8,7 @@ require "securerandom"
 require "time"
 
 require_relative "bridge/bounded_queue"
+require_relative "bridge/event_id"
 require_relative "bridge/ring_buffer"
 require_relative "bridge/sse_writer"
 require_relative "bridge/turn_accumulator"
@@ -73,6 +74,7 @@ module Samagotchi
       @ring = RingBuffer.new(capacity: ring_capacity)
       @accumulator = TurnAccumulator.new
       @heartbeat_interval = heartbeat_interval
+      @epoch = SecureRandom.hex(4)
 
       @capture_handle = nil
       @server = nil
@@ -88,6 +90,11 @@ module Samagotchi
     def stopped?
       @mutex.synchronize { @stopped }
     end
+
+    # This worker's epoch: event_seq starts over in each worker, so every
+    # event id and snapshot carries it (see EventId).
+    # @return [String]
+    attr_reader :epoch
 
     # @return [Integer] SSE streams open now: one per attached TUI or web tab
     def open_streams
@@ -148,16 +155,18 @@ module Samagotchi
     # the turn in progress, turns queued behind it, the idle recap since the
     # last turn, a pending continue offer, and the event_seq it all covers.
     # Taken with the log held, so no event is half-applied.
-    # @return [Hash] {messages:, current_turn:, queued:, recap:, continue_offer:, event_seq:}
+    # @return [Hash] {messages:, current_turn:, queued:, recap:, continue_offer:, event_seq:, event_id:}
     def snapshot
       @engine.synchronize_events do
+        seq = @engine.event_count
         {
           messages: @engine.messages_checkpoint,
           current_turn: @accumulator.current_turn,
           queued: @accumulator.queued,
           recap: @accumulator.recap,
           continue_offer: @accumulator.continue_offer,
-          event_seq: @engine.event_count
+          event_seq: seq,
+          event_id: event_id(seq)
         }
       end
     end
@@ -293,6 +302,7 @@ module Samagotchi
         ring: @ring,
         session_id: @session_id,
         last_event_id: last_event_id,
+        epoch: @epoch,
         snapshot_provider: -> { @engine.session_state_snapshot },
         turn_snapshot_provider: -> { self.snapshot },
         # A reconnect (with a cursor) replays; only a fresh join snapshots.
@@ -524,7 +534,8 @@ module Samagotchi
         return [{}, 404, { error: "unknown_session" }]
       end
 
-      [{}, 200, { session_id: @session_id, session_state_snapshot: @engine.session_state_snapshot }]
+      state = @engine.session_state_snapshot
+      [{}, 200, { session_id: @session_id, session_state_snapshot: state.merge(event_id: event_id(state[:event_seq])) }]
     end
 
     # /stats for an attached client: the metrics, with the window and prompt
@@ -545,9 +556,15 @@ module Samagotchi
 
       body = @engine.synchronize_events do
         snap = snapshot
-        { snapshot: snap, session_state_snapshot: @engine.session_state_snapshot.merge(event_seq: snap[:event_seq]) }
+        state = @engine.session_state_snapshot.merge(event_seq: snap[:event_seq], event_id: snap[:event_id])
+        { snapshot: snap, session_state_snapshot: state }
       end
       [{}, 200, body]
+    end
+
+    # The stream cursor for +seq+ in this worker.
+    def event_id(seq)
+      EventId.format(seq.to_i, @epoch)
     end
 
     # A per-session bridge only ever owns one Engine (for @session_id). The

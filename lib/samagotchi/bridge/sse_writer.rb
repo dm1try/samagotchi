@@ -2,6 +2,8 @@
 
 require "json"
 
+require_relative "event_id"
+
 module Samagotchi
   class Bridge
     # Per-connection SSE writer.
@@ -29,6 +31,11 @@ module Samagotchi
     # subscribe. Live events follow from the next seq. A `reset` frame (the
     # cursor can't be replayed) carries the same snapshot, numbered with its
     # own seq.
+    #
+    # Frame ids are `<seq>-<epoch>`: event_seq starts over in each worker, so
+    # the epoch (one per Bridge, so per worker) tells whose seq a cursor is.
+    # A cursor from another epoch gets a `reset` frame. A plain numeric
+    # cursor (a client that keeps event_seq itself) replays as before.
     class SSEWriter
       DEFAULT_MAX_QUEUE = 1024
       DEFAULT_HEARTBEAT_INTERVAL = 15.0
@@ -36,7 +43,9 @@ module Samagotchi
       # @param engine [Samagotchi::Engine] the owning engine (live fan-out)
       # @param ring [Samagotchi::Bridge::RingBuffer] shared capture buffer
       # @param session_id [String]
-      # @param last_event_id [String, nil] reconnect cursor (or ?from_seq=)
+      # @param last_event_id [String, nil] reconnect cursor (or ?from_seq=):
+      #   `<seq>-<epoch>` or a plain seq
+      # @param epoch [String, nil] this worker's epoch, in every frame id
       # @param snapshot_provider [#call] -> {status:, message_count:,
       #   last_prompt:, event_seq:} (Engine#session_state_snapshot)
       # @param turn_snapshot_provider [#call, nil] -> {messages:, current_turn:,
@@ -47,7 +56,7 @@ module Samagotchi
       # @param bridge [Samagotchi::Bridge, nil] for stop signalling
       # @param max_queue [Integer] bounded-queue capacity
       # @param heartbeat_interval [Float] idle-seconds between `: ping` frames
-      def initialize(engine:, ring:, session_id:, last_event_id: nil,
+      def initialize(engine:, ring:, session_id:, last_event_id: nil, epoch: nil,
                      snapshot_provider:, turn_snapshot_provider: nil, join_with_snapshot: false, bridge: nil,
                      max_queue: DEFAULT_MAX_QUEUE,
                      heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL)
@@ -55,6 +64,7 @@ module Samagotchi
         @ring = ring
         @session_id = session_id
         @last_event_id = last_event_id
+        @epoch = epoch
         @snapshot_provider = snapshot_provider
         @turn_snapshot_provider = turn_snapshot_provider || -> { { event_seq: @engine.event_count } }
         @join_with_snapshot = join_with_snapshot
@@ -63,7 +73,10 @@ module Samagotchi
         @heartbeat_interval = heartbeat_interval
 
         @queue = BoundedQueue.new(capacity: @max_queue)
-        @high_water = (@last_event_id || "0").to_i
+        cursor_seq, cursor_epoch = EventId.parse(@last_event_id)
+        # A foreign cursor's seq means nothing here; its reset sets the mark.
+        @foreign_cursor = !cursor_epoch.nil? && cursor_epoch != @epoch
+        @high_water = @foreign_cursor ? 0 : cursor_seq
         @handle = nil
         @serving = false
         @mutex = Monitor.new
@@ -119,8 +132,9 @@ module Samagotchi
       def replay!(io, snapshot_seq)
         from_seq = @high_water
         oldest = @ring.oldest_seq
-        if from_seq > snapshot_seq || (from_seq.positive? && oldest && from_seq < oldest - 1)
-          # Cursor is ahead of the engine (worker restarted) or behind the
+        if @foreign_cursor || from_seq > snapshot_seq || (from_seq.positive? && oldest && from_seq < oldest - 1)
+          # Cursor is from another worker (epoch), ahead of the engine (a
+          # worker restarted, plain cursor) or behind the
           # ring's buffered window (overflow): the server cannot replay the
           # gap, so it emits a reset marker and the client re-syncs. A cursor
           # at oldest - 1 has seen everything before the window, so it
@@ -188,7 +202,7 @@ module Samagotchi
       # and the terminating blank line.
       def write_frame(io, seq:, data:)
         lines = []
-        lines << "id: #{seq}"
+        lines << "id: #{EventId.format(seq, @epoch)}"
         event_type = data.is_a?(Hash) && (data[:type] || data["type"])
         lines << "event: #{event_type}" if event_type && !event_type.to_s.empty?
         JSON.generate(data).each_line { |line| lines << "data: #{line.chomp}" }
@@ -217,12 +231,12 @@ module Samagotchi
       def take_snapshot
         snapshot = @turn_snapshot_provider.call
         @high_water = snapshot[:event_seq].to_i
-        snapshot
+        snapshot.merge(event_id: EventId.format(@high_water, @epoch))
       end
 
       def write_snapshot_frame(io, type, snapshot)
         seq = snapshot[:event_seq]
-        state = @snapshot_provider.call.merge(event_seq: seq)
+        state = @snapshot_provider.call.merge(event_seq: seq, event_id: snapshot[:event_id])
         write_frame(io, seq: seq, data: { type: type, snapshot: snapshot, session_state_snapshot: state })
       end
 

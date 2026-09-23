@@ -319,6 +319,46 @@ RSpec.describe Samagotchi::Bridge do
       end
     end
 
+    describe "with a worker epoch" do
+      # The ring holds seqs 1..10 of the worker whose epoch is "e2".
+      def serve_from(cursor)
+        engine = make_engine
+        allow(engine).to receive(:event_count).and_return(10)
+        ring = Samagotchi::Bridge::RingBuffer.new(capacity: 64)
+        10.times { |i| ring.push(seq: i + 1, data: { type: :k, event_seq: i + 1 }) }
+        io = ControllableIO.new
+        writer = Samagotchi::Bridge::SSEWriter.new(
+          engine:, ring:, session_id: "s1", last_event_id: cursor, epoch: "e2",
+          snapshot_provider: -> { {} }, heartbeat_interval: 0.05
+        )
+        writer_thread = Thread.new { writer.serve!(io) }
+        sleep(0.3)
+        writer_thread.kill
+        io.buffer
+      end
+
+      it "numbers its frames <seq>-<epoch>" do
+        expect(serve_from("0").scan(/^id: (.*)\r$/).flatten).to eq((1..10).map { |s| "#{s}-e2" })
+      end
+
+      it "replays a cursor from its own epoch" do
+        buffer = serve_from("4-e2")
+        expect(buffer.scan(/^id: (.*)\r$/).flatten).to eq((5..10).map { |s| "#{s}-e2" })
+        expect(buffer).not_to include("event: reset")
+      end
+
+      it "resets a cursor from another worker's epoch, although its seq is in the ring" do
+        buffer = serve_from("4-e1")
+        expect(buffer.scan(/^event: (.*)\r$/).flatten).to eq(["reset"])
+        expect(buffer.scan(/^id: (.*)\r$/).flatten).to eq(["10-e2"])
+        expect(buffer).to include('"event_id":"10-e2"')
+      end
+
+      it "replays a plain numeric cursor as before" do
+        expect(serve_from("4").scan(/^id: (.*)\r$/).flatten).to eq((5..10).map { |s| "#{s}-e2" })
+      end
+    end
+
     it "does not block the enqueuer while the writer thread is stuck writing" do
       engine = make_engine
       allow(engine).to receive(:run_turn)
@@ -681,6 +721,8 @@ RSpec.describe Samagotchi::Bridge do
         expect(snap).to have_key("recap")
         expect(snap).to have_key("continue_offer")
         expect(body["session_state_snapshot"]).to include("status" => "running", "event_seq" => snap["event_seq"])
+        expect(snap["event_id"]).to eq("#{snap["event_seq"]}-#{@bridge.epoch}")
+        expect(body["session_state_snapshot"]["event_id"]).to eq(snap["event_id"])
         expect(missing).to be_nil
       end
 
@@ -705,7 +747,7 @@ RSpec.describe Samagotchi::Bridge do
         seqs = live.map { |e| e["event_seq"] }
         expect(seqs.first).to eq(snap.dig("snapshot", "event_seq") + 1)
         expect(seqs).to eq((seqs.first..seqs.last).to_a)
-        expect(stream.last_event_id).to eq(seqs.last.to_s)
+        expect(stream.last_event_id).to eq("#{seqs.last}-#{@bridge.epoch}")
         expect(stream).not_to be_alive
       end
 
@@ -772,6 +814,9 @@ RSpec.describe Samagotchi::Bridge do
       expect(reset[:id].to_i).to eq(reset[:data]["snapshot"]["event_seq"])
       expect(reset[:data]["session_state_snapshot"]["event_seq"]).to eq(reset[:id].to_i)
       expect(reset[:data]["snapshot"]).to include("messages" => [], "current_turn" => nil)
+      expect(reset[:id]).to eq("#{reset[:id].to_i}-#{@bridge.epoch}")
+      expect(reset[:data]["snapshot"]["event_id"]).to eq(reset[:id])
+      expect(reset[:data]["session_state_snapshot"]["event_id"]).to eq(reset[:id])
 
       # The cursor was ahead of this worker (it restarted): later events must
       # still arrive, not be dropped as already seen.
@@ -779,6 +824,33 @@ RSpec.describe Samagotchi::Bridge do
       after = c.wait_for(3).drop(1)
       expect(after.first[:data]).to include("type" => "turn_started", "prompt" => "after the reset")
       expect(after.first[:id].to_i).to eq(reset[:id].to_i + 1)
+    end
+
+    # The next worker's event_seq starts over. A cursor from the worker before
+    # it must not be taken as a position in the new one (it skipped events).
+    it "resets a cursor from an earlier worker instead of replaying from its seq" do
+      start_bridge
+      stub_kernel_emit({ type: :generation_started, iteration: 1 })
+      run_turn_sync(@engine, @session, "on the first worker")
+      first = SSEClient.new(@bridge_port, @session.id).start
+      @clients << first
+      old_cursor = first.wait_for(3).last[:id]
+      old_epoch = @bridge.epoch
+      @bridge.stop
+
+      # The next worker: a new Engine and Bridge, with more events than the
+      # old cursor's seq.
+      start_bridge
+      stub_kernel_emit(*Array.new(5) { { type: :generation_chunk, iteration: 1, content: "x" } })
+      run_turn_sync(@engine, @session, "on the next worker")
+      expect(@engine.event_count).to be > old_cursor.to_i
+      expect(@bridge.epoch).not_to eq(old_epoch)
+
+      c = SSEClient.new(@bridge_port, @session.id, last_event_id: old_cursor).start
+      @clients << c
+      reset = c.wait_for(1).first
+      expect(reset[:data]["type"]).to eq("reset")
+      expect(reset[:id]).to eq("#{@engine.event_count}-#{@bridge.epoch}")
     end
 
     it "emits a reset marker (not a stall) when reconnecting past the served window" do
@@ -888,6 +960,8 @@ RSpec.describe Samagotchi::Bridge do
 
       expect(status).to eq(200)
       expect(resp["session_state_snapshot"]).to include("status", "message_count", "event_seq")
+      state = resp["session_state_snapshot"]
+      expect(state["event_id"]).to eq("#{state["event_seq"]}-#{@bridge.epoch}")
     end
 
     it "answers /stats with the Engine's stats snapshot" do
