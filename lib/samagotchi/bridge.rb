@@ -140,9 +140,9 @@ module Samagotchi
     # What a joining client needs to render the session now, consistent with
     # the event log: the Engine's messages (not the lagging copy on disk),
     # the turn in progress, turns queued behind it, the idle recap since the
-    # last turn, and the event_seq it all covers. Taken with the log held, so
-    # no event is half-applied.
-    # @return [Hash] {messages:, current_turn:, queued:, recap:, event_seq:}
+    # last turn, a pending continue offer, and the event_seq it all covers.
+    # Taken with the log held, so no event is half-applied.
+    # @return [Hash] {messages:, current_turn:, queued:, recap:, continue_offer:, event_seq:}
     def snapshot
       @engine.synchronize_events do
         {
@@ -150,6 +150,7 @@ module Samagotchi
           current_turn: @accumulator.current_turn,
           queued: @accumulator.queued,
           recap: @accumulator.recap,
+          continue_offer: @accumulator.continue_offer,
           event_seq: @engine.event_count
         }
       end
@@ -404,12 +405,9 @@ module Samagotchi
 
     # Dismiss the pending question (an empty answer, as in the REPL): the
     # tool returns without an answer and every UI gets :question_cancelled.
-    # Only the question the client saw: the id is checked with the event
-    # log held, so one asked after the client's :question_requested isn't
-    # dismissed by mistake. An answer recorded but not yet taken by the turn
-    # still wins in the Engine (it reads the answer first), though the
-    # cancel is announced too; an id guard in Engine#cancel_question is
-    # planned (attached-default slice B). Returns [headers, status, body].
+    # Only the question the client saw, and only while nobody has answered
+    # it: Engine#cancel_question checks both under the question lock.
+    # Returns [headers, status, body].
     def handle_dismiss_question(session_id, body)
       return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
 
@@ -419,12 +417,7 @@ module Samagotchi
       qid = fetched(parsed, "id").to_s
       return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "id required" }] if qid.strip.empty?
 
-      dismissed = @engine.synchronize_events do
-        pending = @engine.pending_question
-        next false unless pending && pending[:id].to_s == qid && pending[:status].to_s == "pending"
-
-        @engine.cancel_question("dismissed")
-      end
+      dismissed = @engine.cancel_question("dismissed", id: qid)
       return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless dismissed
 
       [{}, 200, { status: "dismissed", id: qid, session_id: @session_id }]

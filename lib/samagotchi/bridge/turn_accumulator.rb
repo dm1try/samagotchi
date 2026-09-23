@@ -22,6 +22,7 @@ module Samagotchi
         @queued = []
         @merged_origins = []
         @recap = nil
+        @continue_offer = nil
       end
 
       def call(event)
@@ -42,6 +43,12 @@ module Samagotchi
         @mutex.synchronize { @recap }
       end
 
+      # @return [Hash, nil] a copy of the pending continue offer ({context:,
+      #   no_interrupt:}), from :continue_offered until :continue_resolved
+      def continue_offer
+        @mutex.synchronize { @continue_offer && Marshal.load(Marshal.dump(@continue_offer)) }
+      end
+
       # @return [Array<Hash>] turns announced as queued that haven't started
       #   or been merged into a running turn yet
       def queued
@@ -57,6 +64,10 @@ module Samagotchi
           @queued << { enqueued_id: event[:enqueued_id], client_id: event[:client_id], prompt: event[:prompt] }
         when :recap_ready
           @recap = event[:recap]
+        when :continue_offered
+          @continue_offer = { context: event[:context], no_interrupt: !!event[:no_interrupt] }
+        when :continue_resolved
+          @continue_offer = nil
         when :turn_started
           @recap = nil
           dequeue([event[:origin]])

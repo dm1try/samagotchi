@@ -170,11 +170,14 @@ module Samagotchi
       end
     end
 
-    def run_prompt(prompt, origin)
+    # @param no_interrupt [Boolean] an offer this turn makes keeps it for
+    #   its continue turn
+    def run_prompt(prompt, origin, no_interrupt: false)
       # Show the turn as running to readers of the file (the web's session
       # list); the Engine resets it to idle when it ends.
       @session.status = Session::STATUS_RUNNING
       @session.save(state_dir: @state_dir)
+      drop_continue_offer(origin)
       @turn_flow.before_prompt_turn
       @merged_this_turn = []
       begin
@@ -184,9 +187,32 @@ module Samagotchi
         restore_failed_turn([[prompt, origin], *@merged_this_turn])
         return
       end
+      after_turn(result, no_interrupt: no_interrupt)
       response = result.respond_to?(:output) ? result.output : nil
       SessionManager.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
       @session.save(state_dir: @state_dir) unless stopped_on_disk?
+    end
+
+    # TurnFlow keeps the checkpoint (a cancelled turn's, for !rollback) and
+    # the continue offer of a turn that ran out of iterations, which every
+    # UI hears about.
+    def after_turn(result, continue: false, no_interrupt: false)
+      outcome = @turn_flow.after_turn(result, continue: continue, no_interrupt: no_interrupt)
+      return unless outcome == :continue_offered || outcome == :continue_cancelled
+
+      offer = @turn_flow.offer
+      @engine.announce(type: :continue_offered, context: offer[:context], no_interrupt: offer[:no_interrupt])
+    end
+
+    # A prompt taken while a continue is offered replaces the answer (D2):
+    # the offer goes, the partial turn stays.
+    def drop_continue_offer(origin)
+      return unless @turn_flow.awaiting_continue?
+
+      @engine.synchronize_events do
+        @turn_flow.drop_offer!
+        @engine.announce(type: :continue_resolved, decision: "dropped", client_id: origin&.dig(:client_id))
+      end
     end
 
     # Back to the conversation before the failed turn, as the REPL does (so

@@ -669,6 +669,7 @@ RSpec.describe Samagotchi::Bridge do
         expect(snap["messages"]).to eq([])
         expect(snap["queued"]).to eq([])
         expect(snap).to have_key("recap")
+        expect(snap).to have_key("continue_offer")
         expect(body["session_state_snapshot"]).to include("status" => "running", "event_seq" => snap["event_seq"])
         expect(missing).to be_nil
       end

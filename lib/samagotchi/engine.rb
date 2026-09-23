@@ -311,10 +311,10 @@ module Samagotchi
       @session_observer.event_count
     end
 
-    # Event types #announce accepts: facts about the session's input queue
-    # (and a failed turn's prompt handed back) that live UIs need in the
-    # event log, emitted outside any turn's stream.
-    ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged prompt_restored].freeze
+    # Event types #announce accepts: facts about the session's input queue,
+    # a failed turn's prompt handed back and the continue offer, which live
+    # UIs need in the event log, emitted outside any turn's stream.
+    ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged prompt_restored continue_offered continue_resolved].freeze
 
     # Put a transport-level event into the ordered event log. Unlike turn
     # events it reaches only persistent observers (no turn sink, no memory
@@ -730,19 +730,28 @@ module Samagotchi
       @question_sync_handler = block
     end
 
-    # Cancel the pending question (e.g. /cancel). Announces which one, so
-    # every UI closes it; with none pending there is nothing to announce.
-    def cancel_question(reason = "user")
-      id = @question_mutex.synchronize do
-        next unless @pending_question
+    # Cancel the pending question (e.g. /cancel, a dismiss). Announces which
+    # one, so every UI closes it; with none pending there is nothing to
+    # announce. A question already answered (the turn thread hasn't taken the
+    # answer yet) or already closed stays as it is: the first responder wins.
+    # @param id [String, nil] cancel only this question (a UI's dismiss
+    #   names the one it showed)
+    # @return [Boolean] whether it was cancelled (true with none pending and
+    #   no id, as before)
+    def cancel_question(reason = "user", id: nil)
+      cancelled_id = @question_mutex.synchronize do
+        pending = @pending_question
+        next unless pending
+        next if id && pending[:id].to_s != id.to_s
+        next if @question_answer || pending[:status].to_s != "pending"
 
-        @pending_question[:status] = "cancelled"
+        pending[:status] = "cancelled"
         @question_cv.broadcast
-        @pending_question[:id]
+        pending[:id]
       end
-      return true unless id
+      return id.nil? && pending_question.nil? unless cancelled_id
 
-      emit_event(nil, { type: :question_cancelled, id: id, reason: reason.to_s }) rescue nil
+      emit_event(nil, { type: :question_cancelled, id: cancelled_id, reason: reason.to_s }) rescue nil
       true
     end
 
@@ -930,10 +939,12 @@ module Samagotchi
         # Bring the turn into the session and announce its end as one step of
         # the event log: a snapshot taken meanwhile (the Bridge's) shows the
         # turn either in progress or in the messages, never both or neither.
+        # A turn that ran out of iterations ends at its tool results, so a
+        # continue resumes from them rather than after a made-up reply.
+        resumable = result.respond_to?(:resumable?) && result.resumable?
         synchronize_events do
-          if response.strip.empty? && !canceled
-            # A new array: the placeholder must not leak into the result
-            # (continue resumes it).
+          if response.strip.empty? && !canceled && !resumable
+            # A new array: the placeholder must not leak into the result.
             replace_session_messages(session, (conversation || session.messages) + [{ role: "model", content: "[No response]" }])
           elsif conversation
             replace_session_messages(session, conversation)

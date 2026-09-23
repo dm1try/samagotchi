@@ -194,7 +194,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     expect(session.messages).to eq([{ role: "user", content: "hi" }])
   end
 
-  it "keeps the [No response] placeholder out of result.conversation" do
+  it "leaves a turn that can be continued ending at its tool results, with no [No response] placeholder" do
     allow(kernel).to receive(:run).and_return(
       kernel_result(output: "", conversation: [{ role: "tool_response", content: "r" }], exhausted: true, pending_tool_calls: true)
     )
@@ -202,6 +202,15 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     result = engine.run_turn(session, "hi")
 
     expect(result.conversation).to eq([{ role: "tool_response", content: "r" }])
+    expect(session.messages).to eq([{ role: "tool_response", content: "r" }])
+  end
+
+  it "keeps the [No response] placeholder for an ordinary empty reply, out of result.conversation" do
+    allow(kernel).to receive(:run).and_return(kernel_result(output: "", conversation: [{ role: "user", content: "hi" }]))
+
+    result = engine.run_turn(session, "hi")
+
+    expect(result.conversation).to eq([{ role: "user", content: "hi" }])
     expect(session.messages.last).to eq({ role: "model", content: "[No response]" })
   end
 

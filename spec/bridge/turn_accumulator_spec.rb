@@ -107,6 +107,22 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.recap).to be_nil
   end
 
+  it "keeps the pending continue offer until it is resolved, across turns in between" do
+    context = { original_prompt: "the task", tool_trace: ["execute status=ok"], last_model_intent: "" }
+    expect(acc.continue_offer).to be_nil
+
+    feed({ type: :continue_offered, context: context, no_interrupt: false })
+    expect(acc.continue_offer).to eq(context: context, no_interrupt: false)
+
+    feed({ type: :continue_resolved, decision: "resume", client_id: "web:1" }, { type: :turn_started, continue: true })
+    expect(acc.continue_offer).to be_nil
+
+    feed({ type: :continue_offered, context: context, no_interrupt: true })
+    offer = acc.continue_offer
+    offer[:context][:original_prompt] << " changed"
+    expect(acc.continue_offer[:context][:original_prompt]).to eq("the task")
+  end
+
   it "hands out copies that later events don't change" do
     feed({ type: :turn_started, prompt: "hi" }, { type: :generation_chunk, iteration: 1, content: "a" })
     snapshot = acc.current_turn

@@ -78,6 +78,21 @@ RSpec.describe Samagotchi::TurnFlow do
       expect(flow.awaiting_continue?).to be(true)
     end
 
+    it "summarizes the first turn of an empty session (a worker's) too" do
+      engine.messages = []
+      run_prompt("list it", [{ role: "model", content: "calling ls" }, { role: "tool_response", content: "a b" }])
+
+      flow.after_turn(result(engine.messages, exhausted: true, pending: true))
+
+      expect(flow.offer[:context]).to include(original_prompt: "list it", last_model_intent: "calling ls")
+    end
+
+    it "takes a result that doesn't say whether it can be continued as completed" do
+      run_prompt("go", [{ role: "model", content: "done" }])
+
+      expect(flow.after_turn(Struct.new(:output).new("done"))).to eq(:completed)
+    end
+
     it "summarizes a continue that runs out again against the original prompt" do
       run_prompt("the task", [{ role: "tool_response", content: "r1" }])
       flow.after_turn(result(engine.messages, exhausted: true, pending: true))
@@ -139,6 +154,17 @@ RSpec.describe Samagotchi::TurnFlow do
         expect(described_class.continue_decision(answer)).to eq(decision)
       end
     end
+  end
+
+  it "drops the offer and keeps the partial turn when a new prompt comes instead of an answer" do
+    run_prompt("go", [{ role: "tool_response", content: "r1" }])
+    flow.after_turn(result(engine.messages, exhausted: true, pending: true))
+    partial = engine.messages_checkpoint
+
+    flow.drop_offer!
+
+    expect(flow.awaiting_continue?).to be(false)
+    expect(engine.messages).to eq(partial)
   end
 
   it "forgets the checkpoint once the conversation changed outside a turn" do

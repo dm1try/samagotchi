@@ -81,7 +81,7 @@ module Samagotchi
         return :cancelled
       end
 
-      if result.resumable?
+      if result.respond_to?(:resumable?) && result.resumable?
         @offer = { context: interrupted_turn_context(result), no_interrupt: no_interrupt }
         :continue_offered
       else
@@ -104,6 +104,12 @@ module Samagotchi
       @engine.rollback_to(@checkpoint) if @checkpoint
       @checkpoint = nil
       @engine.append_messages([{ role: "user", content: reason_message(reason) }]) if reason
+      @offer = nil
+    end
+
+    # A new prompt came instead of an answer (a worker takes it): the offer
+    # is gone and the partial turn stays, as after a Ctrl-C.
+    def drop_offer!
       @offer = nil
     end
 
@@ -143,11 +149,12 @@ module Samagotchi
       }
     end
 
-    # The messages the turn added after the checkpoint.
+    # The messages the turn added after the checkpoint (all of them after an
+    # empty one: a new session's first turn).
     def interrupted_turn_messages(conversation)
       checkpoint = Array(@checkpoint)
       conversation = Array(conversation)
-      return [] if checkpoint.empty? || conversation.length < checkpoint.length
+      return [] if conversation.length < checkpoint.length
       return [] unless conversation.first(checkpoint.length) == checkpoint
 
       conversation[checkpoint.length..] || []

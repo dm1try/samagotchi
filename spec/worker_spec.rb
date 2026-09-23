@@ -294,5 +294,78 @@ RSpec.describe Samagotchi::Worker do
         expect(wait_until { saved_messages.empty? }).to be(true)
       end
     end
+
+    describe "a turn that runs out of iterations" do
+      let(:kernel) { engine.instance_variable_get(:@kernel) }
+      let(:events) { Queue.new }
+      let(:seen) { [] }
+
+      before do
+        allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+        allow(engine).to receive(:run_turn).and_call_original
+        allow(kernel).to receive(:run) do |messages, **|
+          prompt = messages.last[:content]
+          turns << [prompt, mono]
+          if prompt == "long task"
+            Samagotchi::KernelLoop::Result.new(
+              output: "", conversation: messages + [{ role: "model", content: "calling ls" }, { role: "tool_response", content: "a b" }],
+              exhausted: true, pending_tool_calls: true, canceled: false,
+              tool_activity: [{ tool: "execute", status: "ok", params: 'command="ls"' }]
+            )
+          else
+            Samagotchi::KernelLoop::Result.new(output: "OK", conversation: messages + [{ role: "model", content: "OK" }],
+                                               exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+          end
+        end
+        engine.subscribe(observer: ->(event) { events << event })
+      end
+
+      def saw?(type)
+        seen << events.pop until events.empty?
+        seen.any? { |e| e[:type] == type }
+      end
+
+      def saved_messages
+        Samagotchi::Session.load(session.id, state_dir: tmpdir).messages.drop(1).map { |m| m[:content] }
+      end
+
+      def bridge_snapshot
+        port = JSON.parse(File.read(sidecar))["port"]
+        JSON.parse(Net::HTTP.get(URI("http://127.0.0.1:#{port}/session/#{session.id}/snapshot")))["snapshot"]
+      end
+
+      it "offers to continue it, from its tool results (no [No response] placeholder)" do
+        start_worker(poll_interval: 5)
+
+        post_turn("long task")
+
+        expect(wait_until { saw?(:continue_offered) }).to be(true)
+        offered = seen.find { |e| e[:type] == :continue_offered }
+        expect(offered[:context]).to eq(original_prompt: "long task", tool_trace: ['execute status=ok params=command="ls"'],
+                                        last_model_intent: "calling ls")
+        expect(offered[:no_interrupt]).to be(false)
+        expect(bridge_snapshot["continue_offer"]).to include("context" => include("original_prompt" => "long task"))
+        expect(wait_until { saved_messages == ["long task", "calling ls", "a b"] }).to be(true)
+      end
+
+      it "drops the offer when a new prompt is taken, keeping the partial turn (D2)" do
+        start_worker(poll_interval: 5)
+        post_turn("long task")
+        expect(wait_until { saw?(:continue_offered) }).to be(true)
+
+        port = JSON.parse(File.read(sidecar))["port"]
+        Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/turn"),
+                       JSON.generate(session_id: session.id, prompt: "something else", client_id: "web:1"),
+                       "Content-Type" => "application/json")
+
+        expect(wait_until { saw?(:turn_completed) && seen.count { |e| e[:type] == :turn_completed } == 2 }).to be(true)
+        types = seen.map { |e| e[:type] }
+        resolved = seen.find { |e| e[:type] == :continue_resolved }
+        expect(resolved).to include(decision: "dropped", client_id: "web:1")
+        expect(types.index(:continue_resolved)).to be < types.rindex(:turn_started)
+        expect(bridge_snapshot["continue_offer"]).to be_nil
+        expect(wait_until { saved_messages == ["long task", "calling ls", "a b", "something else", "OK"] }).to be(true)
+      end
+    end
   end
 end

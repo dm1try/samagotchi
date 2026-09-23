@@ -294,6 +294,37 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       turn_thread.join(2)
     end
 
+    it "doesn't cancel a question once an answer is recorded (the answer wins, nothing is announced)" do
+      engine = build_engine
+      turn_thread, result_box, events = request_in_background(engine, payload)
+      qid = engine.pending_question[:id]
+
+      cancelled = nil
+      engine.instance_variable_get(:@question_mutex).synchronize do
+        engine.answer_question(id: qid, selected: ["Cats"])
+        cancelled = engine.cancel_question("dismissed", id: qid)
+      end
+      turn_thread.join(2)
+
+      expect(cancelled).to be(false)
+      expect(JSON.parse(result_box[:result])["selected"]).to eq(["Cats"])
+      expect(events.map { |e| e[:type] }).not_to include(:question_cancelled)
+    end
+
+    it "cancels only the question it names with id:" do
+      engine = build_engine
+      turn_thread, result_box, events = request_in_background(engine, payload)
+      qid = engine.pending_question[:id]
+
+      expect(engine.cancel_question("dismissed", id: "an-older-one")).to be(false)
+      expect(engine.pending_question[:status]).to eq("pending")
+
+      expect(engine.cancel_question("dismissed", id: qid)).to be(true)
+      turn_thread.join(2)
+      expect(JSON.parse(result_box[:result])["error"]).to eq("no answer")
+      expect(events.select { |e| e[:type] == :question_cancelled }.map { |e| e[:id] }).to eq([qid])
+    end
+
     it "keeps QuestionNotPending an ArgumentError for existing callers" do
       expect(Samagotchi::Engine::QuestionNotPending.ancestors).to include(ArgumentError)
     end
