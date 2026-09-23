@@ -3,8 +3,7 @@
 require_relative "../session"
 require_relative "../session_manager"
 require_relative "../bridge_client"
-require_relative "screen"
-require_relative "reline_seam"
+require_relative "live_region"
 require_relative "plain_surface"
 require_relative "attached_loop"
 
@@ -38,20 +37,11 @@ module Samagotchi
       # that can show one, else plain append-only output.
       # @return [Screen, PlainSurface]
       def open_surface(out: $stdout, input: $stdin, env: ENV)
-        return PlainSurface.new(out: out) unless live_region?(out: out, input: input, env: env)
-
-        screen = Screen.new(out: out).start
-        RelineSeam.attach(screen)
-        screen
+        LiveRegion.open(out: out, input: input, env: env) || PlainSurface.new(out: out)
       end
 
       def close_surface(surface)
-        RelineSeam.detach(surface)
-        surface.close
-      end
-
-      def live_region?(out:, input:, env:)
-        out.tty? && input.tty? && env["TERM"] != "dumb" && RelineSeam.supported?
+        LiveRegion.close(surface)
       end
 
       # @return [BridgeClient] a client for the live Bridge of the session

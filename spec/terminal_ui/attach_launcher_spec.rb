@@ -95,52 +95,26 @@ end
 
 RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".open_surface" do
   let(:tty) { StringIO.new.tap { |io| io.define_singleton_method(:tty?) { true } } }
-  let(:pipe) { StringIO.new }
-
-  after do
-    screen = Samagotchi::TerminalUI::RelineSeam.screen
-    described_class.close_surface(screen) if screen
-  end
 
   before { allow(Reline).to receive(:ambiguous_width).and_return(1) }
 
-  it "draws a live region with Reline's prompt in it on a terminal" do
-    surface = described_class.open_surface(out: tty, input: tty, env: { "TERM" => "xterm-256color" })
-
-    expect(surface).to be_a(Samagotchi::TerminalUI::Screen)
-    expect(Samagotchi::TerminalUI::RelineSeam.screen).to be(surface)
-  end
-
-  {
-    "output is not a terminal" => [:pipe, :tty, "xterm"],
-    "input is not a terminal" => [:tty, :pipe, "xterm"],
-    "TERM is dumb" => [:tty, :tty, "dumb"]
-  }.each do |why, (out, input, term)|
-    it "prints plainly when #{why}" do
-      surface = described_class.open_surface(out: send(out), input: send(input), env: { "TERM" => term })
-
-      expect(surface).to be_a(Samagotchi::TerminalUI::PlainSurface)
-      expect(Samagotchi::TerminalUI::RelineSeam.screen).to be_nil
-    end
-  end
-
-  it "prints plainly when the installed Reline doesn't have what the seam needs" do
-    allow(Samagotchi::TerminalUI::RelineSeam).to receive(:supported?).and_return(false)
-
-    surface = described_class.open_surface(out: tty, input: tty, env: { "TERM" => "xterm" })
-
-    expect(surface).to be_a(Samagotchi::TerminalUI::PlainSurface)
-  end
-
-  it "hands Reline its own drawing and $stderr back when the surface closes" do
+  it "draws a live region on a terminal and gives everything back when it closes" do
     stderr = $stderr
     surface = described_class.open_surface(out: tty, input: tty, env: { "TERM" => "xterm" })
-    expect($stderr).to be_a(Samagotchi::TerminalUI::Screen::ErrorOutput)
+    expect(surface).to be_a(Samagotchi::TerminalUI::Screen)
+    expect(Samagotchi::TerminalUI::RelineSeam.screen).to be(surface)
 
     described_class.close_surface(surface)
 
     expect(Samagotchi::TerminalUI::RelineSeam.screen).to be_nil
     expect($stderr).to be(stderr)
+  end
+
+  it "prints plainly when the terminal can't show a live region (see LiveRegion)" do
+    surface = described_class.open_surface(out: tty, input: tty, env: { "TERM" => "dumb" })
+
+    expect(surface).to be_a(Samagotchi::TerminalUI::PlainSurface)
+    expect(Samagotchi::TerminalUI::RelineSeam.screen).to be_nil
   end
 end
 
