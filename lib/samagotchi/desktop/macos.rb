@@ -67,6 +67,9 @@ module Samagotchi
 
       def app_path = File.join(@app_dir, "#{APP_NAME}.app")
       def launch_path = File.join(@support_dir, "launch.json")
+      # Written by the app at launch: its hotkey and whether macOS took it.
+      def hotkey_path = File.join(@support_dir, "hotkey.json")
+      def executable_path = File.join(app_path, "Contents", "MacOS", EXECUTABLE)
       def installed? = File.directory?(app_path)
 
       # What the helper runs: absolute ruby + this chi's bin/chi (no shims,
@@ -90,28 +93,50 @@ module Samagotchi
       end
 
       # @yield [String] progress lines
-      def install(force: false, &progress)
+      # @param login [Boolean] also start the app at login
+      def install(force: false, login: false, &progress)
         raise Error, "already installed (#{app_version}); use chi desktop upgrade" if installed? && !force
 
         toolchain!
+        quit if installed?
         progress&.call("building #{APP_NAME} #{@version} (can take a few minutes)…")
         built = build_app
         swap_in(built)
         write_launch_file
         register_app
+        self.login = true if login
         progress&.call("installed #{app_path}")
         app_path
       end
 
+      # Keeps the login item as it was.
       def upgrade(&progress)
-        quit
-        install(force: true, &progress)
+        was_login = installed? && login == "enabled"
+        install(force: true, login: was_login, &progress)
+      end
+
+      # SMAppService status as the app reports it ("enabled",
+      # "notRegistered", "requiresApproval", "notFound"); nil if unknown.
+      # Only the app itself can register it, run directly with --login.
+      def login
+        return nil unless @register && installed?
+
+        output, ok = @runner.run([executable_path, "--login", "status"])
+        ok ? output.strip : nil
+      end
+
+      def login=(on)
+        return unless @register && installed?
+
+        output, ok = @runner.run([executable_path, "--login", on ? "on" : "off"])
+        raise Error, "could not turn #{on ? "on" : "off"} the login item: #{output.strip}" if on && !ok
       end
 
       # @return [Boolean] false when there was nothing to remove
       def uninstall
         return false unless installed? || File.exist?(@support_dir)
 
+        self.login = false
         quit
         FileUtils.rm_rf(app_path)
         FileUtils.rm_rf(@support_dir)
@@ -131,8 +156,11 @@ module Samagotchi
         env = launch.is_a?(Hash) && launch["env"].is_a?(Hash) ? launch["env"] : {}
         dump, = @runner.run([PBS, "-dump"])
         _, running = @runner.run(["pgrep", "-x", EXECUTABLE])
+        hotkey = (JSON.parse(File.read(hotkey_path)) rescue nil)
         result.merge(
           app_version: app_version,
+          login: login,
+          hotkey: hotkey.is_a?(Hash) ? hotkey : nil,
           launch_argv: argv,
           launch_ok: !argv.empty? && argv.all? { |path| File.exist?(path) },
           baked_dirs: env.select { |name, _| name.start_with?("XDG_") },

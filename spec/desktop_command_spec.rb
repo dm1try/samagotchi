@@ -44,15 +44,20 @@ RSpec.describe Samagotchi::DesktopCommand do
   describe "install" do
     it "prints warnings and progress, and registers by default" do
       allow(macos).to receive(:warnings).and_return(["from a linked git worktree"])
-      expect(macos).to receive(:install).with(force: false) { |**, &blk| blk.call("building…") }
+      expect(macos).to receive(:install).with(force: false, login: false) { |**, &blk| blk.call("building…") }
       expect(run("install")).to eq(0)
       expect(err.string).to include("warning: from a linked git worktree")
       expect(out.string).to include("building…")
       expect(made_with).to eq([true])
     end
 
+    it "passes --login" do
+      expect(macos).to receive(:install).with(force: false, login: true)
+      expect(run("install", "--login")).to eq(0)
+    end
+
     it "passes --force, and --no-register skips the system registration" do
-      expect(macos).to receive(:install).with(force: true)
+      expect(macos).to receive(:install).with(force: true, login: false)
       expect(run("install", "--force", "--no-register")).to eq(0)
       expect(made_with).to eq([false])
     end
@@ -105,23 +110,25 @@ RSpec.describe Samagotchi::DesktopCommand do
       allow(macos).to receive(:status).and_return(
         installed: true, app_path: "/A/Chi Helper.app", chi_version: "0.1.19", app_version: "0.1.19",
         launch_argv: ["/r/ruby", "/c/bin/chi"], launch_ok: true, baked_dirs: { "XDG_STATE_HOME" => "/s" },
-        service: true, running: true
+        service: true, running: true, login: "enabled", hotkey: { "keys" => "⌃⌥⌘N", "registered" => true }
       )
       run("status")
       expect(out.string).to include("0.1.19 (matches chi)", "/r/ruby /c/bin/chi (ok)", "XDG_STATE_HOME=/s",
-                                    "registered", "running")
+                                    "registered", "running", "⌃⌥⌘N (clipboard)")
+      expect(out.string).to match(/^at login\s+on$/)
     end
 
     it "says to upgrade on a version mismatch or a stale launch file, and what's missing" do
       allow(macos).to receive(:status).and_return(
         installed: true, app_path: "/A/Chi Helper.app", chi_version: "0.1.20", app_version: "0.1.19",
         launch_argv: ["/r/ruby", "/c/bin/chi"], launch_ok: false, baked_dirs: {},
-        service: false, running: false
+        service: false, running: false, login: "notRegistered", hotkey: { "keys" => "⌃⌥⌘N", "registered" => false }
       )
       run("status")
       expect(out.string).to include("0.1.19 (chi is 0.1.20: chi desktop upgrade)",
                                     "(missing: chi desktop upgrade)", "(defaults)",
-                                    "not registered", "not running")
+                                    "not registered", "not running", "⌃⌥⌘N taken by another app",
+                                    "off (chi desktop install --force --login)")
     end
   end
 

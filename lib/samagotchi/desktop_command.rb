@@ -8,9 +8,11 @@ module Samagotchi
   class DesktopCommand
     USAGE = <<~TEXT
       Usage: chi desktop <install|upgrade|uninstall|status>
-        install [--force]  build "Chi Helper" into ~/Applications (needs the Command Line Tools)
-                           and start it: Services > "Send to chi" and a hotkey send text to
-                           a live session as a context note
+        install [--force] [--login]
+                           build "Chi Helper" into ~/Applications (needs the Command Line Tools)
+                           and start it: Services > "Send to chi", or ⌃⌥⌘N with the clipboard,
+                           sends text to a live session as a context note. --login: start it
+                           at login too (else it runs until you log out)
         upgrade            rebuild it for this chi and restart it
         uninstall          remove it, its settings and its launch file
         status             installed version, how it runs chi, Service and process state
@@ -56,7 +58,7 @@ module Samagotchi
     # @return [Hash, nil] nil after a usage error
     def parse(sub)
       flags = { "--no-register" => :no_register }
-      flags["--force"] = :force if sub == "install"
+      flags.merge!("--force" => :force, "--login" => :login) if sub == "install"
       @argv.each_with_object({}) do |arg, options|
         unless flags.key?(arg)
           usage_error("unknown option #{arg}")
@@ -68,7 +70,7 @@ module Samagotchi
 
     def install(helper, options)
       print_warnings(helper)
-      helper.install(force: options[:force] || false) { |line| @stdout.puts(line) }
+      helper.install(force: options[:force] || false, login: options[:login] || false) { |line| @stdout.puts(line) }
       0
     end
 
@@ -101,8 +103,24 @@ module Samagotchi
       service = s[:service] ? "registered" : "not registered (try chi desktop upgrade, or log out and back in)"
       running = s[:running] ? "running" : "not running (open -g \"#{s[:app_path]}\")"
       @stdout.puts(format_rows([["Chi Helper", version], ["app", s[:app_path]], ["runs chi", launch],
-                                ["state dirs", dirs], ["service", service], ["process", running]]))
+                                ["state dirs", dirs], ["service", service], ["hotkey", hotkey(s[:hotkey])],
+                                ["process", running], ["at login", login(s[:login])]]))
       0
+    end
+
+    def hotkey(state)
+      return "unknown (the app writes it when it starts)" unless state
+
+      state["registered"] ? "#{state["keys"]} (clipboard)" : "#{state["keys"]} taken by another app"
+    end
+
+    def login(state)
+      case state
+      when "enabled" then "on"
+      when "requiresApproval" then "waiting for approval in System Settings > General > Login Items"
+      when nil then "unknown"
+      else "off (chi desktop install --force --login)"
+      end
     end
 
     def format_rows(rows)

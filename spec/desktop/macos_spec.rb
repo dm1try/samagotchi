@@ -131,6 +131,14 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       expect(lines.join("\n")).to include("building", "installed")
     end
 
+    it "with --force over an existing copy quits the running helper before swapping" do
+      macos.install
+      runner.calls.clear
+      macos.install(force: true)
+      expect(runner.programs.index("pkill")).to be < runner.programs.index("codesign")
+      expect(runner.calls.last).to eq(["open", "-g", app])
+    end
+
     it "refuses an existing copy without --force, touching nothing" do
       macos.install
       runner.calls.clear
@@ -169,6 +177,50 @@ RSpec.describe Samagotchi::Desktop::MacOS do
     end
   end
 
+  describe "login item" do
+    let(:exe) { File.join(app, "Contents", "MacOS", "ChiHelper") }
+
+    it "install --login asks the app to register itself at login" do
+      macos.install(login: true)
+      expect(runner.calls).to include([exe, "--login", "on"])
+    end
+
+    it "install without --login leaves the login item alone" do
+      macos.install
+      expect(runner.calls.map(&:first)).not_to include(exe)
+    end
+
+    it "upgrade keeps a login item that was on" do
+      macos.install
+      runner = DesktopFakeRunner.new("xcrun" => ["", true], "ChiHelper" => ->(argv) { argv.last == "status" ? ["enabled\n", true] : nil }) do |argv|
+        if DesktopFakeRunner.name_of(argv) == "swiftc"
+          out = argv[argv.index("-o") + 1]
+          FileUtils.mkdir_p(File.dirname(out))
+          File.write(out, "binary")
+        end
+      end
+      described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner, source_dir: source_dir,
+                          arch: "arm64", sources_dir: sources_dir).upgrade
+      expect(runner.calls.first).to eq([exe, "--login", "status"])
+      expect(runner.calls).to include([exe, "--login", "on"])
+    end
+
+    it "uninstall turns the login item off before removing the app" do
+      macos.install
+      runner.calls.clear
+      macos.uninstall
+      expect(runner.calls.first(2)).to eq([[exe, "--login", "off"], %w[pkill -x ChiHelper]])
+    end
+
+    it "--no-register never touches the login item" do
+      no_reg = described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner,
+                                   source_dir: source_dir, arch: "arm64", sources_dir: sources_dir, register: false)
+      no_reg.install(login: true)
+      no_reg.uninstall
+      expect(runner.calls.map(&:first)).not_to include(exe)
+    end
+  end
+
   describe "#swap_in" do
     it "puts the new build in place and removes the old copy" do
       FileUtils.mkdir_p(File.join(app, "Contents"))
@@ -198,7 +250,8 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       macos.install
       runner.calls.clear
       macos.upgrade
-      expect(runner.calls.first).to eq(%w[pkill -x ChiHelper])
+      expect(runner.calls.first).to eq([File.join(app, "Contents", "MacOS", "ChiHelper"), "--login", "status"])
+      expect(runner.programs.index("pkill")).to be < runner.programs.index("codesign")
       expect(runner.calls.last).to eq(["open", "-g", app])
     end
 
@@ -215,7 +268,8 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       expect(macos.uninstall).to be(true)
       expect(File.exist?(app)).to be(false)
       expect(File.exist?(support_dir)).to be(false)
-      expect(runner.calls).to eq([%w[pkill -x ChiHelper], %w[defaults delete dev.samagotchi.chi-helper],
+      expect(runner.calls).to eq([[File.join(app, "Contents", "MacOS", "ChiHelper"), "--login", "off"],
+                                  %w[pkill -x ChiHelper], %w[defaults delete dev.samagotchi.chi-helper],
                                   [described_class::PBS, "-update"]])
     end
 
@@ -232,14 +286,17 @@ RSpec.describe Samagotchi::Desktop::MacOS do
     it "reports the app version, launch file, baked dirs, Service and running state" do
       env["XDG_STATE_HOME"] = "/state"
       macos.install
+      File.write(File.join(support_dir, "hotkey.json"), JSON.generate("keys" => "⌃⌥⌘N", "registered" => true))
       dump = "{ NSBundleIdentifier = \"dev.samagotchi.chi-helper\"; }"
-      status_runner = DesktopFakeRunner.new(described_class::PBS => [dump, true], "pgrep" => ["123\n", true])
+      status_runner = DesktopFakeRunner.new(described_class::PBS => [dump, true], "pgrep" => ["123\n", true],
+                                            "ChiHelper" => ["enabled\n", true])
       status = described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: status_runner,
                                    source_dir: source_dir, version: "9.9.10", sources_dir: sources_dir).status
       expect(status).to include(installed: true, app_version: "9.9.9", chi_version: "9.9.10",
                                 launch_argv: ["/opt/ruby/bin/ruby", File.join(source_dir, "bin", "chi")],
                                 launch_ok: false, baked_dirs: { "XDG_STATE_HOME" => "/state" },
-                                service: true, running: true)
+                                service: true, running: true, login: "enabled",
+                                hotkey: { "keys" => "⌃⌥⌘N", "registered" => true })
     end
 
     it "says the launch file still works when its ruby and bin/chi exist" do
