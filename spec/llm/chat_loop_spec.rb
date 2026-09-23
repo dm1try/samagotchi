@@ -37,6 +37,15 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     expect(backend.provider).to eq(:chat)
   end
 
+  it "names the model the adapter reports in :generation_completed, next to the one asked for" do
+    served = FakeChatAdapter.text("hi").with(model: "vendor/served-1")
+    described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(served))
+                   .complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(event) { events << event })
+
+    expect(events.find { |event| event[:type] == :generation_completed }).to include(served_model: "vendor/served-1",
+                                                                                         requested_model: "m")
+  end
+
   describe "request" do
     it "maps engine roles to the wire (model -> assistant, user content as parts)" do
       run([{ role: "system", content: "sys" }, { role: "user", content: "hi" }, { role: "model", content: "last" }])

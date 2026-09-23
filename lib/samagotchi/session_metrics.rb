@@ -121,6 +121,7 @@ module Samagotchi
           end
         end
       when :generation_completed, :generation_cancelled
+        record_served_model(event)
         record_generation_completed
       when :generation_retrying
         @mutex.synchronize { @retries += 1 }
@@ -152,6 +153,8 @@ module Samagotchi
           context_window_source: @context_window_source,
           profile: @profile,
           profile_source: @profile_source,
+          served_model: @served_model,
+          served_model_for: @served_model_for,
           tool_calls_total: @tool_calls_total,
           tool_calls_by_tool: @tool_calls_by_tool.dup,
           tool_errors: @tool_errors,
@@ -236,6 +239,17 @@ module Samagotchi
         @tool_calls_total += @turn.tool_calls if @turn
         @tool_errors += @turn.tool_errors if @turn
         @turn = nil
+      end
+    end
+
+    # The model the server says answered, and the name asked for then (a
+    # /model switch makes it stale until the next generation reports).
+    def record_served_model(event)
+      return unless event[:served_model]
+
+      @mutex.synchronize do
+        @served_model = event[:served_model]
+        @served_model_for = event[:requested_model]
       end
     end
 

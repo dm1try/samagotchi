@@ -215,6 +215,7 @@ module Samagotchi
           profile: @profile.name,
           profile_source: @profile_source
         )
+        served_model = nil
         # Fire :before_generation hook
         gen_event = { type: :before_generation, iteration: iteration_index + 1 }
         fire_hook(:before_generation, gen_event) if @hooks
@@ -225,6 +226,9 @@ module Samagotchi
             model_name: resolved_model_name,
             on_chunk: lambda { |chunk|
               capture_server_usage(chunk[:payload], context_state)
+              # llama.cpp names the loaded model in the stream's last payload.
+              named = chunk[:payload]["model"] if chunk[:payload].is_a?(Hash)
+              served_model = named if named.is_a?(String) && !named.strip.empty?
               split = stream_splitter.feed(chunk[:content])
               partial_assistant_buffer << split[:text]
               if on_stream_event
@@ -253,7 +257,9 @@ module Samagotchi
           on_stream_event,
           type: :generation_completed,
           iteration: iteration_index + 1,
-          content_length: response.to_s.length
+          content_length: response.to_s.length,
+          served_model: served_model,
+          requested_model: resolved_model_name
         )
         verbose_log("── LLM response ──\n#{response}\n──────────────────")
         # Fire :after_generation hook (after LLM returns, before tool parse)

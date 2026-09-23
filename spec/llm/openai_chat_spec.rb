@@ -45,6 +45,14 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       expect(deltas.last[2]).to include("usage")
     end
 
+    it "reports the model the server says answered, whatever name was asked for" do
+      replay("text_stream.sse")
+
+      response = adapter.chat(messages: messages, tools: tools, model: "unsloth/Qwen3.6")
+
+      expect(response.model).to eq("ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M")
+    end
+
     it "sends the chat request: streamed with usage, the tools, temperature 0, no auth header" do
       replay("text_stream.sse")
 
@@ -142,6 +150,12 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       expect(response.usage.source).to eq(:server)
       expect(server.requests.last.json).not_to include("stream_options")
       expect(server.requests.last.json["stream"]).to be(false)
+    end
+
+    it "reports the model the body names" do
+      server.enqueue("/v1/chat/completions", json: FakeProviderServer.fixture("text_sync.json"))
+
+      expect(adapter.chat(messages: messages, tools: [], model: "m").model).to eq("ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M")
     end
 
     it "raises ProtocolError for a body without a message" do

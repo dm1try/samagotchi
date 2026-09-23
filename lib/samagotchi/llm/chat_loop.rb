@@ -246,7 +246,8 @@ module Samagotchi
             },
             on_retry: ->(**retry_event) { emit({ type: :generation_retrying, iteration: iteration }.merge(retry_event)) }
           )
-          emit(type: :generation_completed, iteration: iteration, content_length: response.text.length)
+          emit(type: :generation_completed, iteration: iteration, content_length: response.text.length,
+               served_model: response.model, requested_model: @model_name)
           @loop.fire_hook(:after_generation, { type: :after_generation, iteration: iteration, response: response.text })
           [response, nil]
         rescue RequestCancelled => e

@@ -496,6 +496,20 @@ Need to inspect the filesystem first.
       expect(events.select { |event| event[:type] == :generation_chunk }.map { |event| event[:content] }).to eq(["Hel", "lo"])
     end
 
+    it "names the model the server reports in :generation_completed, next to the one asked for" do
+      events = []
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        kwargs[:on_chunk]&.call(content: "Hi", payload: { "content" => "Hi" })
+        kwargs[:on_chunk]&.call(content: "", payload: { "content" => "", "stop" => true, "model" => "ornith-1.5" })
+        "Hi"
+      end
+
+      kernel.run([{ role: "user", content: "hi" }], model_name: "qwen-asked", on_stream_event: ->(event) { events << event })
+
+      completed = events.find { |event| event[:type] == :generation_completed }
+      expect(completed).to include(served_model: "ornith-1.5", requested_model: "qwen-asked")
+    end
+
     it "returns a canceled result when client generation is cancelled" do
       allow(client).to receive(:complete).and_raise(Samagotchi::Client::RequestCancelled.new(:manual))
 

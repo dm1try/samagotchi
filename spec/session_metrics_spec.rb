@@ -21,6 +21,18 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:token_source]).to be_nil
   end
 
+  it "keeps the model the server last said it served, and the name asked for then" do
+    feed([
+      { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+      { type: :generation_started, iteration: 1 },
+      { type: :generation_completed, iteration: 1, served_model: "ornith", requested_model: "qwen" },
+      { type: :generation_started, iteration: 2 },
+      { type: :generation_completed, iteration: 2 }
+    ])
+
+    expect(metrics.snapshot).to include(served_model: "ornith", served_model_for: "qwen")
+  end
+
   it "captures server-reported token counts (cumulative max) and tool stats" do
     feed([
       { type: :turn_started, session_id: "sess-1", prompt: "hi" },

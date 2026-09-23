@@ -18,7 +18,11 @@ module Samagotchi
 
     # One chat completion: text and reasoning ("" when none), tool calls
     # ([] when none), usage (never nil) and the finish reason.
-    ChatResponse = Data.define(:text, :reasoning, :tool_calls, :usage, :finish_reason)
+    # +model+ is the model the server says answered (the body's `model`),
+    # which can differ from the one asked for; nil when it says nothing.
+    ChatResponse = Data.define(:text, :reasoning, :tool_calls, :usage, :finish_reason, :model) do
+      def initialize(model: nil, **fields) = super
+    end
 
     # The OpenAI Chat Completions API (llama.cpp's /v1, and any compatible
     # provider) on our own HTTP layer: one request per #chat, streamed by
@@ -203,8 +207,15 @@ module Samagotchi
         ChatResponse.new(text: message["content"].to_s,
                          reasoning: (message["reasoning_content"] || message["reasoning"]).to_s,
                          tool_calls: calls, usage: Usage.from_payload(body) || Usage.none,
-                         finish_reason: body.dig("choices", 0, "finish_reason"))
+                         finish_reason: body.dig("choices", 0, "finish_reason"), model: served_model(body))
       end
+
+      def self.served_model(payload)
+        model = payload.is_a?(Hash) ? payload["model"] : nil
+        model.is_a?(String) && !model.strip.empty? ? model : nil
+      end
+
+      def served_model(payload) = self.class.served_model(payload)
 
       # The parsed payload of a `data:` line; nil for blank lines, comments
       # and [DONE]. Error events raise their ProviderError.
@@ -294,7 +305,7 @@ module Samagotchi
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       # Streamed deltas put together: text, reasoning, tool calls by index,
-      # the finish reason and the usage chunk.
+      # the finish reason, the usage chunk and the served model.
       class Assembly
         # The chunk carries part of a tool call.
         def self.tool_call_delta?(payload)
@@ -308,11 +319,13 @@ module Samagotchi
           @calls = {}
           @finish_reason = nil
           @usage = nil
+          @model = nil
         end
 
         # @return [Array(String, String)] this chunk's content and reasoning
         def add(payload)
           @usage = Usage.from_payload(payload) || @usage if payload.key?("usage")
+          @model = OpenAIChat.served_model(payload) || @model
           choice = payload["choices"].is_a?(Array) ? payload["choices"].first : nil
           return ["", ""] unless choice.is_a?(Hash)
 
@@ -331,7 +344,7 @@ module Samagotchi
             ToolCall.new(id: call[:id], name: call[:name].to_s, arguments: OpenAIChat.parse_arguments(call[:arguments]))
           end
           ChatResponse.new(text: @text, reasoning: @reasoning, tool_calls: calls, usage: @usage || Usage.none,
-                           finish_reason: @finish_reason)
+                           finish_reason: @finish_reason, model: @model)
         end
 
         private
