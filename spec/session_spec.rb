@@ -51,6 +51,18 @@ RSpec.describe Samagotchi::Session do
       expect(loaded.metadata_version).to eq(described_class::METADATA_VERSION)
     end
 
+    it "restores a chat turn's tool calls with symbol keys (their arguments stay as saved)" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.messages = [
+        { role: "model", content: "", tool_calls: [{ id: "c1", name: "execute", arguments: { "command" => "ls" } }] },
+        { role: "tool_response", content: "[execute]\nok", tool_call_id: "c1" }
+      ]
+      session.save(state_dir: tmpdir)
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.messages).to eq(session.messages)
+    end
+
     it "restores message hashes with symbol keys" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.messages = [

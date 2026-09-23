@@ -355,8 +355,16 @@ module Samagotchi
     class << self
       private
 
+      # A chat turn's tool_calls get symbol keys too ({id:, name:,
+      # arguments:}); the arguments keep the model's string keys.
       def symbolize_message_keys(hash)
-        hash.each_with_object({}) { |(k, v), h| h[k.to_sym] = v }
+        message = hash.each_with_object({}) { |(k, v), h| h[k.to_sym] = v }
+        if message[:tool_calls].is_a?(Array)
+          message[:tool_calls] = message[:tool_calls].map do |call|
+            call.is_a?(Hash) ? call.each_with_object({}) { |(k, v), h| h[k.to_sym] = v } : call
+          end
+        end
+        message
       end
 
       def session_path(session_id, state_dir:)

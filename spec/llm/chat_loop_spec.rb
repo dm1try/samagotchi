@@ -38,15 +38,13 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
   end
 
   describe "request" do
-    it "maps engine roles to the wire (model -> assistant, user content as parts, tool ids kept)" do
-      run([{ role: "system", content: "sys" }, { role: "user", content: "hi" }, { role: "model", content: "last" },
-           { role: "tool_response", content: "out", tool_call_id: "c1" }])
+    it "maps engine roles to the wire (model -> assistant, user content as parts)" do
+      run([{ role: "system", content: "sys" }, { role: "user", content: "hi" }, { role: "model", content: "last" }])
 
       expect(adapter.requests.last[:messages]).to eq([
         { role: "system", content: "sys" },
         { role: "user", content: [{ type: "text", text: "hi" }] },
-        { role: "assistant", content: "last" },
-        { role: "tool", content: "out", tool_call_id: "c1" }
+        { role: "assistant", content: "last" }
       ])
     end
 
@@ -97,11 +95,12 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(run.text).to eq("the answer")
     end
 
-    it "returns the conversation in the {role:, content:} shape" do
+    it "returns the conversation with tool ids kept" do
       result = run([{ role: "user", content: "hi" }, { role: "tool_response", content: "out", tool_call_id: "c1" }])
 
       expect(result.conversation).to eq([
-        { role: "user", content: "hi" }, { role: "tool_response", content: "out" }, { role: "model", content: "hello back" }
+        { role: "user", content: "hi" }, { role: "tool_response", content: "out", tool_call_id: "c1" },
+        { role: "model", content: "hello back" }
       ])
     end
   end
@@ -166,8 +165,8 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       result = run
 
-      expect(result.conversation.map { |e| e[:role] }).to eq(%w[user tool_response model])
-      expect(result.conversation[1][:content]).to include("[execute]")
+      expect(result.conversation.map { |e| e[:role] }).to eq(%w[user model tool_response model])
+      expect(result.conversation[2][:content]).to include("[execute]")
       expect(adapter.requests.last[:messages].last).to include(role: "tool", tool_call_id: "c1")
       expect(result.text).to eq("the follow-up")
     end
@@ -203,7 +202,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       result = run
 
-      expect(result.conversation.map { |e| e[:role] }).to eq(%w[user tool_response tool_response model])
+      expect(result.conversation.map { |e| e[:role] }).to eq(%w[user model tool_response tool_response model])
       completed = events.select { |e| e[:type] == :tool_call_completed }
       expect(completed.map { |e| [e[:call_index], e[:tool]] }).to eq([[1, "execute"], [2, "web_fetch"]])
       expect(events.map { |e| e[:type] }).to include(:tool_dispatch_started, :tool_call_started, :tool_dispatch_completed)
@@ -218,6 +217,69 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(result).to be_exhausted
       expect(result).not_to be_canceled
       expect(result.text).to eq("")
+    end
+  end
+
+  describe "tool call ids" do
+    it "records the assistant's calls (even without text) and each result's id in the conversation" do
+      backend.adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "echo hi" }]), text("done"))
+
+      result = run
+
+      expect(result.conversation[1]).to eq(role: "model", content: "",
+                                            tool_calls: [{ id: "c1", name: "execute", arguments: { "command" => "echo hi" } }])
+      expect(result.conversation[2]).to include(role: "tool_response", tool_call_id: "c1")
+    end
+
+    it "sends the assistant's tool_calls paired with the tool messages" do
+      backend.adapter = adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "echo hi" }], text: "checking"), text("done"))
+
+      run
+
+      assistant, tool = adapter.requests.last[:messages].last(2)
+      expect(assistant).to eq(role: "assistant", content: "checking", tool_calls: [
+        { id: "c1", type: "function", function: { name: "execute", arguments: '{"command":"echo hi"}' } }
+      ])
+      expect(tool).to include(role: "tool", tool_call_id: "c1")
+    end
+
+    it "replays a saved turn's calls and ids" do
+      history = [{ role: "user", content: "go" },
+                 { role: "model", content: "", tool_calls: [{ id: "c9", name: "read", arguments: { "path" => "x" } }] },
+                 { role: "tool_response", content: "[read]\nx", tool_call_id: "c9" },
+                 { role: "model", content: "read it" }, { role: "user", content: "again" }]
+
+      run(history)
+
+      wire = adapter.requests.last[:messages]
+      expect(wire[1]).to include(role: "assistant", content: nil)
+      expect(wire[1][:tool_calls].first).to include(id: "c9")
+      expect(wire[2]).to eq(role: "tool", content: "[read]\nx", tool_call_id: "c9")
+    end
+
+    it "sends a tool result without an id (native or old history) as a user message" do
+      run([{ role: "user", content: "go" }, { role: "model", content: "<|tool_call>call:read{path: \"x\"}<tool_call|>" },
+           { role: "tool_response", content: "[read]\nx" }])
+
+      expect(adapter.requests.last[:messages].last).to eq(role: "user", content: "[tool results]\n[read]\nx")
+    end
+
+    it "flattens calls and results that don't pair up, so one broken turn can't fail every request" do
+      run([{ role: "user", content: "go" },
+           { role: "model", content: "trying", tool_calls: [{ id: "c1", name: "execute", arguments: { "command" => "ls" } }] },
+           { role: "user", content: "never mind" },
+           { role: "tool_response", content: "[execute]\nlate", tool_call_id: "c7" }])
+
+      wire = adapter.requests.last[:messages]
+      expect(wire[1]).to eq(role: "assistant", content: %(trying\n[tool call] execute {"command":"ls"}))
+      expect(wire.last).to eq(role: "user", content: "[tool results]\n[execute]\nlate")
+      expect(wire.none? { |m| m.key?(:tool_calls) || m[:role] == "tool" }).to be(true)
+    end
+
+    it "keeps multi-part user content in the returned conversation" do
+      parts = [{ type: "text", text: "look" }]
+
+      expect(run([{ role: "user", content: parts }]).conversation.first[:content]).to eq(parts)
     end
   end
 
@@ -303,7 +365,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
                                             Samagotchi::LLM::ServerError.new("boom", host: "box"))
 
       expect { run }.to raise_error(Samagotchi::LLM::ServerError) { |error|
-        expect(error.partial_conversation.map { |m| m[:role] }).to eq(%w[user tool_response])
+        expect(error.partial_conversation.map { |m| m[:role] }).to eq(%w[user model tool_response])
       }
     end
   end

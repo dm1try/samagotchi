@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require_relative "backend"
 require_relative "model_result"
 require_relative "errors"
@@ -62,10 +63,18 @@ module Samagotchi
         end
       end
 
-      # engine-format conversation -> OpenAI wire messages. Tool responses
-      # carry their tool_call_id; model turns are thought-stripped; user
-      # content goes as parts (a String is wrapped in a text part).
+      # engine-format conversation -> OpenAI wire messages. Model turns are
+      # thought-stripped and carry their tool_calls; tool responses go as tool
+      # messages with their tool_call_id; user content goes as parts (a String
+      # is wrapped in a text part).
+      #
+      # The API rejects an assistant tool call without its tool message (and
+      # the reverse), so calls and results that don't pair up are sent as
+      # text instead: one broken turn must not fail every later request. A
+      # tool result without an id (native or older chat history) goes as a
+      # user message "[tool results]\n…", valid on every server.
       def wire_messages(conversation)
+        paired = paired_call_ids(conversation)
         conversation.map do |entry|
           case entry[:role].to_s
           when "system"
@@ -73,11 +82,14 @@ module Samagotchi
           when "user"
             { role: "user", content: parts(entry[:content]) }
           when "model"
-            { role: "assistant", content: strip_model_thought(entry[:content].to_s) }
+            assistant_message(entry, paired)
           when "tool_response"
-            message = { role: "tool", content: entry[:content].to_s }
-            message[:tool_call_id] = entry[:tool_call_id] if entry[:tool_call_id]
-            message
+            id = entry[:tool_call_id]
+            if id && paired.include?(id)
+              { role: "tool", content: entry[:content].to_s, tool_call_id: id }
+            else
+              { role: "user", content: "[tool results]\n#{entry[:content]}" }
+            end
           else
             { role: entry[:role].to_s, content: parts(entry[:content]) }
           end
@@ -110,12 +122,57 @@ module Samagotchi
         nil
       end
 
-      # The {role:, content:} shape the engine persists.
+      # The shape the engine persists: role and content (parts stay an
+      # Array), plus a model turn's tool_calls and a result's tool_call_id.
       def plain(conversation)
-        conversation.map { |entry| { role: entry[:role], content: entry[:content].to_s } }
+        conversation.map do |entry|
+          content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
+          message = { role: entry[:role], content: content }
+          message[:tool_calls] = entry[:tool_calls] if entry[:tool_calls].is_a?(Array) && !entry[:tool_calls].empty?
+          message[:tool_call_id] = entry[:tool_call_id] if entry[:tool_call_id]
+          message
+        end
       end
 
       private
+
+      # Ids of the calls whose assistant turn is followed by a tool message
+      # for every one of them (before the next non-tool message).
+      def paired_call_ids(conversation)
+        paired = []
+        conversation.each_with_index do |entry, index|
+          ids = Array(entry[:tool_calls]).map { |call| call[:id] }.compact
+          next if entry[:role].to_s != "model" || ids.empty?
+
+          answered = conversation[(index + 1)..].take_while { |next_entry| next_entry[:role].to_s == "tool_response" }
+                                                .map { |next_entry| next_entry[:tool_call_id] }
+          paired.concat(ids) if (ids - answered).empty?
+        end
+        paired
+      end
+
+      def assistant_message(entry, paired)
+        text = strip_model_thought(entry[:content].to_s)
+        calls = Array(entry[:tool_calls])
+        return { role: "assistant", content: text } if calls.empty?
+
+        if calls.all? { |call| paired.include?(call[:id]) }
+          { role: "assistant", content: text.empty? ? nil : text,
+            tool_calls: calls.map { |call| wire_call(call) } }
+        else
+          flat = calls.map { |call| "[tool call] #{call[:name]} #{wire_arguments(call[:arguments])}" }
+          { role: "assistant", content: [text, *flat].reject(&:empty?).join("\n") }
+        end
+      end
+
+      def wire_call(call)
+        { id: call[:id], type: "function", function: { name: call[:name].to_s, arguments: wire_arguments(call[:arguments]) } }
+      end
+
+      # The API wants arguments as a JSON string; a raw (invalid) one stays.
+      def wire_arguments(arguments)
+        arguments.is_a?(String) ? arguments : JSON.generate(arguments || {})
+      end
 
       def parts(content)
         content.is_a?(Array) ? content : [{ type: "text", text: content.to_s }]
@@ -157,7 +214,10 @@ module Samagotchi
               break
             end
 
-            @conversation << { role: "model", content: last_text } unless last_text.empty?
+            # The calls are kept with the turn (even with no text) so the next
+            # request, and a resumed session, can pair them with their results.
+            @conversation << { role: "model", content: last_text,
+                               tool_calls: response.tool_calls.map { |call| { id: call.id, name: call.name, arguments: call.arguments } } }
             last_text = ""
             dispatch(response.tool_calls, iteration, cap)
           end
