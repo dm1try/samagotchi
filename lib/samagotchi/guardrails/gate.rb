@@ -4,6 +4,7 @@ require_relative "verdict"
 require_relative "context"
 require_relative "targets"
 require_relative "approvals"
+require_relative "protected_paths"
 
 module Samagotchi
   module Guardrails
@@ -23,13 +24,16 @@ module Samagotchi
       # @param approver [#call, nil] settles an ask (Engine#request_approval);
       #   without one an ask is denied
       # @param approvals_lookup [#call] returns the Approvals store (or nil)
+      # @param checks_lookup [#call] core checks (#check(verdict)) run on the
+      #   final call after the hooks: protected paths, then the rules
       def initialize(hooks_lookup, context_lookup: -> { Context.new }, model_key_lookup: -> {}, approver: nil,
-                     approvals_lookup: -> {})
+                     approvals_lookup: -> {}, checks_lookup: -> { [] })
         @hooks_lookup = hooks_lookup
         @context_lookup = context_lookup
         @model_key_lookup = model_key_lookup
         @approver = approver
         @approvals_lookup = approvals_lookup
+        @checks_lookup = checks_lookup
       end
 
       # @param call [Hash] the parsed tool call
@@ -50,6 +54,7 @@ module Samagotchi
         verdict.call = before[:call] || call
         verdict.context = context
         verdict.targets = targets_for(verdict.call, context)
+        Array(@checks_lookup.call).each { |check| check.check(verdict) }
         verdict
       end
 

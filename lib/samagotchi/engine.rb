@@ -128,7 +128,8 @@ module Samagotchi
           context_lookup: -> { guardrail_context },
           model_key_lookup: -> { @model_key },
           approver: ->(verdict) { request_approval(verdict) },
-          approvals_lookup: -> { @guardrail_approvals }
+          approvals_lookup: -> { @guardrail_approvals },
+          checks_lookup: -> { guardrail_checks }
         )
       end
       # If session was resumed and has a pending_question, hydrate engine state
@@ -645,6 +646,26 @@ module Samagotchi
     # dir passes it.
     def guardrail_state_dir=(state_dir)
       @guardrail_approvals = Guardrails::Approvals.new(dir: Guardrails::Approvals.dir_for(state_dir))
+      @guardrail_protected = nil
+    end
+
+    # The gate's core checks, in order.
+    def guardrail_checks
+      [guardrail_protected_paths]
+    end
+
+    def guardrail_protected_paths
+      @guardrail_protected ||= begin
+        require_relative "memory_bundle/provenance"
+        config = Samagotchi::ConfigFile.read_yaml(path: Samagotchi::ConfigFile.global_path)
+        hooks_dir = config.is_a?(Hash) && config["hooks"].is_a?(Hash) ? config["hooks"]["hooks_dir"] : nil
+        Guardrails::ProtectedPaths.new(
+          store_dir: File.dirname(@guardrail_approvals.path),
+          bundles_dir: MemoryBundle::Provenance.bundles_dir,
+          config_path: Samagotchi::ConfigFile.global_path,
+          hooks_dir: Hooks::Loader.expand_path(hooks_dir || Hooks::Loader.default_hooks_dir)
+        )
+      end
     end
 
     # @return [Guardrails::Approvals]
