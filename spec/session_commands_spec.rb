@@ -50,7 +50,9 @@ RSpec.describe Samagotchi::SessionCommands do
 
   describe ".command?" do
     it "knows the commands a worker runs, and nothing else" do
-      expect(%w[/model /models !rollback /continue].map { |c| described_class.command?(c) }).to all(be(true))
+      expect(%w[/model /models /guardrails !rollback /continue].map { |c| described_class.command?(c) }).to all(be(true))
+      expect(described_class.command?("/guardrails revoke 2")).to be(true)
+      expect(described_class.command?("/guardrailsx")).to be(false)
       expect(described_class.command?("/model beta:x --default")).to be(true)
       expect(described_class.command?("/continue no, too slow")).to be(true)
       expect(described_class.command?("!ls -la")).to be(true)
@@ -273,6 +275,57 @@ RSpec.describe Samagotchi::SessionCommands do
 
       expect(result).to have_attributes(status: :error, output: "answer yes, no, or no, <reason>")
       expect(turn_flow.awaiting_continue?).to be(true)
+    end
+  end
+
+  describe "/guardrails" do
+    let(:state) { Dir.mktmpdir("cmd-guard") }
+    let(:repo) { File.join(state, "repo").tap { |d| FileUtils.mkdir_p(d) } }
+
+    before { engine.guardrail_state_dir = File.join(state, "sessions") }
+    after { FileUtils.rm_rf(state) }
+
+    def store_approval(scope, command)
+      ctx = Samagotchi::Guardrails::Context.new(cwd: repo, session_id: "abcdef123456")
+      v = Samagotchi::Guardrails::Verdict.new(call: { name: "execute", content: command })
+      v.ask!("pushes", rule: "git-push", source: "config")
+      v.context = ctx
+      v.targets = Samagotchi::Guardrails::Targets.for(v.call, ctx)
+      engine.guardrail_approvals.add(v, scope)
+    end
+
+    it "lists the rules, the core checks and no approvals" do
+      rules = Samagotchi::Guardrails::Rules.parse(
+        [{ "id" => "git-push", "tool" => "shell", "command" => "git push", "verdict" => "ask", "reason" => "publishes" }],
+        source: "bundle guardrails"
+      )
+      engine.instance_variable_set(:@guardrail_rules, Samagotchi::Guardrails::Rules.new(rules))
+      out = commands.run("/guardrails").output
+      expect(out).to include("guardrails: on", "rules (1):",
+                             "  1. git-push: ask (tool execute,task_create, command /git push/) — publishes [bundle guardrails]",
+                             "  core: deny writes", "approvals (0):\n  (none)")
+    end
+
+    it "lists what failed to load" do
+      engine.guardrail_failures.add("hook g.rb (config)", "LoadError: x", required: true)
+      expect(commands.run("/guardrails").output).to include("failed to load:\n  hook g.rb (config): LoadError: x (required: every tool call is denied)")
+    end
+
+    it "numbers the approvals and revokes by number" do
+      store_approval("repo", "git push origin main")
+      store_approval("session", "git push")
+      out = commands.run("/guardrails").output
+      expect(out).to include("approvals (2):", "  1. repo: execute:git push origin main — in #{repo} (rule git-push, config)",
+                             "  2. session: execute:git push — session abcdef12", "revoke one with /guardrails revoke N")
+      result = commands.run("/guardrails revoke 1")
+      expect(result.output).to start_with("revoked approval 1: repo: execute:git push origin main")
+      expect(engine.guardrail_approvals.entries.map { |e| e["scope"] }).to eq(%w[session])
+    end
+
+    it "refuses a bad revoke or argument" do
+      expect(commands.run("/guardrails revoke 3").to_h).to include(status: :error, output: "no approval 3 (see /guardrails)")
+      expect(commands.run("/guardrails revoke x").status).to eq(:error)
+      expect(commands.run("/guardrails nope").output).to eq("usage: /guardrails [revoke N]")
     end
   end
 end

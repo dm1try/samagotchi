@@ -10,7 +10,7 @@ require_relative "tools/execute"
 
 module Samagotchi
   # The session commands a REPL and a session worker both run: /model,
-  # /models, !rollback, !cmd and the answer to a continue offer. They act on
+  # /models, /guardrails, !rollback, !cmd and the answer to a continue offer. They act on
   # the Engine and its TurnFlow; the host prints the result's output and
   # runs a continue turn when asked to (#run never runs a turn).
   #
@@ -18,6 +18,7 @@ module Samagotchi
   class SessionCommands
     MODEL_COMMAND = "/model"
     MODELS_COMMAND = "/models"
+    GUARDRAILS_COMMAND = "/guardrails"
     # A remote catalog has hundreds of ids (OpenRouter ~380): plain /models
     # shows this many per host; /models <text> lists every match.
     MODELS_PER_HOST = 20
@@ -48,6 +49,7 @@ module Samagotchi
       return :shell if text.match?(/\A!\s*\S/)
       return :continue if text == CONTINUE_COMMAND || text.start_with?("#{CONTINUE_COMMAND} ")
       return :models if text == MODELS_COMMAND || text.start_with?("#{MODELS_COMMAND} ")
+      return :guardrails if text == GUARDRAILS_COMMAND || text.start_with?("#{GUARDRAILS_COMMAND} ")
       return :model if text.match?(/\A\/model(?:\s+.*)?\z/)
 
       nil
@@ -79,6 +81,7 @@ module Samagotchi
         answer = text.delete_prefix(CONTINUE_COMMAND).strip
         continue_answer(answer.empty? ? CONTINUE_COMMAND : answer)
       when :models then reply(models_listing(text.delete_prefix(MODELS_COMMAND).strip))
+      when :guardrails then guardrails(text.delete_prefix(GUARDRAILS_COMMAND).strip)
       when :model then model(text)
       end
     end
@@ -136,6 +139,60 @@ module Samagotchi
       # Rolling back past this would silently drop the command output.
       @turn_flow.note_conversation_changed
       Result.new(status: :ok, output: output, changed: [:messages], model_name: model_name, resume: false, shell: true)
+    end
+
+    # /guardrails: the rules (by source), what failed to load, the stored
+    # approvals, numbered; /guardrails revoke N removes approval N.
+    def guardrails(args)
+      return guardrails_revoke(args.delete_prefix("revoke").strip) if args.start_with?("revoke")
+      return reply("usage: /guardrails [revoke N]", status: :error) unless args.empty?
+
+      reply(guardrails_listing)
+    end
+
+    def guardrails_listing
+      rules = @engine.guardrail_rules
+      approvals = @engine.guardrail_approvals.entries
+      lines = ["guardrails: #{rules.enabled? ? "on" : "off (guardrails.enabled: false; denies still apply)"}"]
+      failures = @engine.guardrail_failures.list
+      unless failures.empty?
+        lines << "failed to load:"
+        failures.each do |f|
+          lines << "  #{f.what}: #{f.reason}#{" (required: every tool call is denied)" if f.required}"
+        end
+      end
+      lines << "rules (#{rules.rules.size}):"
+      lines << "  (none; add them under guardrails.rules in config.yml, or install a bundle that ships them)" if rules.rules.empty?
+      rules.rules.each_with_index do |rule, idx|
+        match = [
+          ("tool #{rule.tools.join(",")}" if rule.tools),
+          ("command /#{rule.command.source}/" if rule.command),
+          ("path #{rule.path}" if rule.path)
+        ].compact.join(", ")
+        lines << "  #{idx + 1}. #{rule.id}: #{rule.verdict} (#{match}) — #{rule.reason} [#{rule.source}]"
+      end
+      lines << "  core: deny writes to the approval store and installed bundles; ask before editing config.yml or the hooks dir"
+      lines << "approvals (#{approvals.size}):"
+      lines << "  (none)" if approvals.empty?
+      approvals.each_with_index { |entry, idx| lines << "  #{idx + 1}. #{approval_line(entry)}" }
+      lines << "revoke one with /guardrails revoke N" unless approvals.empty?
+      lines.join("\n")
+    end
+
+    def approval_line(entry)
+      what = entry["key"] ? entry["key"].tr("\n", " ") : "any call rule #{entry["rule"]} asks about"
+      where = entry["scope"] == "session" ? "session #{entry["session_id"].to_s[0, 8]}" : "in #{entry["repo_root"]}"
+      rule = entry["rule"] ? " (rule #{entry["rule"]}, #{entry["source"]})" : ""
+      "#{entry["scope"]}: #{what} — #{where}#{rule}, #{entry["created_at"]}"
+    end
+
+    def guardrails_revoke(arg)
+      return reply("usage: /guardrails revoke N (N from /guardrails)", status: :error) unless arg.match?(/\A\d+\z/)
+
+      removed = @engine.guardrail_approvals.revoke(arg.to_i - 1)
+      return reply("no approval #{arg} (see /guardrails)", status: :error) unless removed
+
+      reply("revoked approval #{arg}: #{approval_line(removed)}")
     end
 
     def save_session

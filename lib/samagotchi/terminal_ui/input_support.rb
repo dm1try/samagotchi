@@ -24,7 +24,7 @@ module Samagotchi
       PROMPT_HISTORY_STATE_DIR = "samagotchi"
       PROMPT_HISTORY_LIMIT = 20
       DEFAULT_INPUT_ENV = "SAMAGOTCHI_DEFAULT_INPUT"
-      SLASH_COMMANDS = %w[/continue /exit /model /models /recap /stats].freeze
+      SLASH_COMMANDS = %w[/continue /exit /guardrails /model /models /recap /stats].freeze
       AT_PATH_COMPLETION_PREFIX = "@"
       MEMORY_COMPLETION_PREFIX = "#"
       AT_PATH_COMPLETION_MAX_CANDIDATES = 200
