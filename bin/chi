@@ -157,6 +157,12 @@ if ARGV[0] == "note"
   exit Samagotchi::NoteCommand.new(ARGV[1..] || []).run
 end
 
+# `chi desktop`: the native "Send to chi" helper, before OptionParser (its own flags)
+if ARGV[0] == "desktop"
+  require "samagotchi/desktop_command"
+  exit Samagotchi::DesktopCommand.new(ARGV[1..] || []).run
+end
+
 # Handle `bundle` subcommand before OptionParser (has its own flags like --scope, --force)
 if ARGV[0] == "bundle"
   require "samagotchi/memory_bundle"
@@ -800,6 +806,7 @@ parser = OptionParser.new do |opts|
            bin/chi sessions <list|stop|prune|clean>
            bin/chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
            bin/chi bundle <install|upgrade|uninstall|status|diff|bundles|build>
+           bin/chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
            bin/chi self                         version, paths, model and bundles
     (each subcommand takes --help)
 

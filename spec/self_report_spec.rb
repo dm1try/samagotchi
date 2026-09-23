@@ -54,6 +54,34 @@ RSpec.describe Samagotchi::SelfReport do
     expect(field("project memories")).to eq(File.join(memories, "projects", Samagotchi::MemoryPaths.project_key))
   end
 
+  describe "desktop" do
+    let(:plist) { File.join(tmp, "Applications", "Chi Helper.app", "Contents", "Info.plist") }
+
+    def install_helper(version)
+      FileUtils.mkdir_p(File.dirname(plist))
+      File.write(plist, "<key>CFBundleShortVersionString</key>\n<string>#{version}</string>")
+    end
+
+    it "says not installed" do
+      expect(field("desktop")).to eq("not installed")
+    end
+
+    it "says the helper matches this chi" do
+      install_helper(Samagotchi::VERSION)
+      expect(field("desktop")).to eq("#{Samagotchi::VERSION} (matches)")
+    end
+
+    it "says to upgrade when the helper is another version" do
+      install_helper("0.0.1")
+      expect(field("desktop")).to eq("0.0.1 (chi is #{Samagotchi::VERSION}: chi desktop upgrade)")
+    end
+
+    it "says macOS only elsewhere" do
+      allow(Samagotchi::Desktop).to receive(:supported?).and_return(false)
+      expect(field("desktop")).to eq("- (macOS only)")
+    end
+  end
+
   it "flags a missing config file" do
     expect(field("config")).to end_with("config.yml (missing)")
   end

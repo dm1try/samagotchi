@@ -13,6 +13,7 @@ require_relative "hooks/loader"
 require_relative "memory_bundle/provenance"
 require_relative "memory_bundle/manifest"
 require_relative "memory_bundle/system_bundle"
+require_relative "desktop"
 
 module Samagotchi
   # `chi self`: where this chi lives and what it is configured to use.
@@ -49,7 +50,8 @@ module Samagotchi
         ["profile", model ? profile_for(model, env) : "-"],
         ["served model", model ? served_model_for(model, env) : "-"],
         ["context window", context_window(env)],
-        ["bundles", bundles_summary]
+        ["bundles", bundles_summary],
+        ["desktop", desktop_summary(env)]
       ]
     end
 
@@ -155,6 +157,17 @@ module Samagotchi
       return "-" unless name
 
       "#{name} (#{env[name].to_s.empty? ? "unset" : "set"})"
+    end
+
+    # The Chi Helper app's version against this chi's (read from its
+    # Info.plist; no process or Services checks: chi desktop status has those).
+    def desktop_summary(env)
+      return "- (macOS only)" unless Desktop.supported?
+
+      version = Desktop::MacOS.new(env: env).app_version
+      return "not installed" unless version
+
+      version == VERSION ? "#{version} (matches)" : "#{version} (chi is #{VERSION}: chi desktop upgrade)"
     end
 
     # "samagotchi-system 0.1.5 (shipped 0.1.5), other 1.0.0"
