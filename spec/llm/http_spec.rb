@@ -302,6 +302,19 @@ RSpec.describe Samagotchi::LLM::HTTP do
     end
   end
 
+  describe "User-Agent" do
+    it "names chi and its version on streamed and fetched requests" do
+      server.enqueue("/v1/chat/completions", sse: "data: 1\n\n")
+      server.enqueue("/v1/models", json: { data: [] })
+
+      http.stream_lines(uri, post_request) { nil }
+      http.fetch(URI("#{server.base_url}/models"), Net::HTTP::Get.new(URI("#{server.base_url}/models")))
+
+      expect(server.requests.map { |request| request.header("User-Agent") })
+        .to eq(["chi/#{Samagotchi::VERSION}"] * 2)
+    end
+  end
+
   describe "#fetch" do
     it "returns the response with its body" do
       server.enqueue("/v1/models", json: { data: [] })

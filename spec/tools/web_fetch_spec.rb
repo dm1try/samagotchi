@@ -57,6 +57,16 @@ RSpec.describe Samagotchi::Tools::WebFetch do
       end
     end
 
+    it "sends chi's User-Agent" do
+      stub_request(:get, "https://example.com").to_return(status: 200, body: "<html><body>hi</body></html>",
+                                                          headers: { "Content-Type" => "text/html" })
+
+      web_fetch.call("https://example.com")
+
+      expect(a_request(:get, "https://example.com").with(headers: { "User-Agent" => "chi/#{Samagotchi::VERSION}" }))
+        .to have_been_made
+    end
+
     context "with whitespace-padded URL" do
       it "strips whitespace before fetching" do
         stub_request(:get, "https://example.com").to_return(

@@ -5,6 +5,7 @@ require "net/http"
 require "uri"
 require "ipaddr"
 require "nokogiri"
+require_relative "../version"
 
 module Samagotchi
   module Tools
@@ -88,7 +89,7 @@ module Samagotchi
                         open_timeout: TIMEOUT_SEC,
                         read_timeout: TIMEOUT_SEC) do |http|
           request = Net::HTTP::Get.new(uri.request_uri)
-          request["User-Agent"] = "Samagotchi/1.0 (AI Assistant)"
+          request["User-Agent"] = Samagotchi::USER_AGENT
           http.request(request)
         end
       end

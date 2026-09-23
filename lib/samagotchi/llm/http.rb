@@ -3,6 +3,7 @@
 require "net/http"
 require "uri"
 require_relative "../config"
+require_relative "../version"
 require_relative "errors"
 
 module Samagotchi
@@ -120,6 +121,7 @@ module Samagotchi
       # @raise [RetryExhausted] when the retries run out
       # @raise [ProviderError] for an error status
       def stream_lines(uri, request, cancel_controller: nil, on_retry: nil, on_network_error: nil, &on_line)
+        identify(request)
         with_retries(cancel_controller, on_retry, on_network_error) do |current|
           shown = -> { current[:streamed] = true }
           start(uri) do |http|
@@ -146,6 +148,7 @@ module Samagotchi
       #   of raising its ProviderError
       def fetch(uri, request, retries: true, check_status: true, open_timeout: nil, read_timeout: nil,
                 cancel_controller: nil)
+        identify(request)
         attempt = lambda do |current|
           start(uri, open_timeout: open_timeout, read_timeout: read_timeout) do |http|
             current[:http] = http
@@ -158,6 +161,10 @@ module Samagotchi
       end
 
       private
+
+      def identify(request)
+        request["User-Agent"] = Samagotchi::USER_AGENT
+      end
 
       def start(uri, open_timeout: nil, read_timeout: nil, &block)
         options = { open_timeout: open_timeout || @open_timeout, read_timeout: read_timeout || @read_timeout }
