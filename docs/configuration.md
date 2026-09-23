@@ -188,9 +188,9 @@ oMLX's known tool-call limitation (a stream filter that strips markup) only
 affects its `/v1/chat/completions` endpoint, not the `/v1/completions` endpoint
 chi uses, so raw `[[…]]`/`<|tool_call>` markers stream through untouched.
 
-`SAMAGOTCHI_DEFAULT_MODEL` (config default) and `/model` (runtime effective) drive samagotchi's own prompt-profile
-selection (Gemma4 vs Qwen36 formatting); the status line and `/model` output always render the runtime effective model (showing default when diverged). How the selector reaches the request
-differs by transport:
+`SAMAGOTCHI_DEFAULT_MODEL` (config default) and `/model` (runtime effective) pick the model; the status line and `/model`
+output always render the runtime effective model (showing default when diverged). Which prompt format it gets is the
+prompt profile (see "Prompt profile" below). How the selector reaches the request differs by transport:
 
 - **mlx** (`mlx_lm.server`): the `model` field is omitted entirely — the server
   uses whatever was loaded via its own `--model` CLI flag.
@@ -207,6 +207,56 @@ differs by transport:
   model switch re-resolves each completion (the `/v1/models` id list is cached per
   client; the selector itself is re-resolved every time).
 
+## Prompt profile
+
+A native host (`llama_cpp`, `mlx`, `omlx`) gets a raw prompt in one model family's format: its turn markers, tool-call
+syntax, thought tags and stop sequences. That is the prompt profile, `qwen36` or `gemma4`. A wrong one is not just
+worse output: a ChatML model under `gemma4` never hits a stop sequence, generates until its limit and then runs the
+tool calls it made up on the way. The first of these that says something wins:
+
+1. `--profile NAME` (or `--model-profile NAME`), then `SAMAGOTCHI_MODEL_PROFILE`: for every model in the process,
+   including one picked later with `/model`.
+2. `models:` in `config.yml`, keyed by model id or alias (case-insensitive; the name as typed, alias-resolved or
+   without its host prefix):
+
+   ```yaml
+   models:
+     ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M:
+       profile: qwen36
+     ista:
+       profile: qwen36
+   ```
+
+3. `profile:` on a `hosts:` entry, for anything that host serves:
+
+   ```yaml
+   hosts:
+     mlx:
+       host: 192.168.1.29
+       port: 8081
+       transport: mlx
+       profile: qwen36
+   ```
+
+4. The server's chat template, on `llama_cpp` hosts: `/props` (asked with `?model=`, which a router needs) with
+   `<|im_start|>` and `<function=` is `qwen36`, any other ChatML template too; `<|turn>` and `<|tool_call>` is `gemma4`.
+   mlx_lm.server and oMLX publish no template, so config or the name decides there.
+5. The name: `qwen` → `qwen36`, `gemma` → `gemma4`.
+6. `qwen36`.
+
+An unknown value in `models:` or `hosts:` warns and is skipped; an unknown `--profile` or `SAMAGOTCHI_MODEL_PROFILE`
+warns too (the CLI refuses it). The profile is resolved at start and on `/model`, then kept for the session, so the
+system prompt stays the same; a server that swaps models between turns goes unnoticed until `/model` or a new chi. If
+`/props` could not be read at start (server down, or 503 while loading), chi asks again before the next turn.
+
+`/stats` shows the profile and its source (`cli`, `env`, `config (models: …)`, `config (hosts.<name>)`,
+`server (chat_template)`, `name`, `default`); `chi self` shows what config says without asking the server. A chat
+host (`api: openai`) formats nothing itself: its profile comes from the name and only strips thought tags.
+
+Workers get `hosts:` (with `profile:`) through `SAMAGOTCHI_HOSTS_JSON` and read `models:` from the same config file.
+`--profile` reaches the worker a chi starts, but a worker that another process wakes later (`chi web`, `--attach`
+after an idle exit) gets that process's environment, so put a lasting choice in config.
+
 ## Llama HTTP Timeouts
 
 Long-running llama.cpp completions can exceed Ruby's default HTTP read timeout.
@@ -220,12 +270,6 @@ Configure these environment variables to avoid premature request failures:
 To explicitly route requests to a named model in llama.cpp, set:
 
 - `SAMAGOTCHI_DEFAULT_MODEL` (required): model name/id sent as the `model` field on `/completion` requests.
-
-Profile inference uses the model name:
-
-- names containing `qwen` map to the `qwen36` profile
-- names containing `gemma` map to the `gemma4` profile
-- all others map to the `qwen36` profile (many models with other names are Qwen-based)
 
 When `SAMAGOTCHI_DEFAULT_MODEL` is unset or blank, Samagotchi fails fast with a clear startup/configuration error.
 

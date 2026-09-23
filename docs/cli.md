@@ -28,6 +28,7 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `--no-shared` | Run the plain REPL for this run, even with `session.shared` on. |
 | `--attach SESSION_ID` | Attach to a session's worker, waking one if it has exited. |
 | `--model NAME` | Use this model for the run (overrides the configured default and a resumed session's model). |
+| `--profile NAME` | Prompt profile (`qwen36` or `gemma4`) for every model in this run, over config and the server's template (same as `--model-profile`, env `SAMAGOTCHI_MODEL_PROFILE`). See "Prompt profile" in configuration.md. |
 | `--memory NAME` | Preload a memory entry into the system prompt (repeatable). Merged under the config.yml `memories:` baseline. |
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
 | `--no-default-input` | Skip prefilling the first REPL line from `SAMAGOTCHI_DEFAULT_INPUT`. |
@@ -142,7 +143,7 @@ In interactive assist mode, you can switch the request model without restarting:
 
 Notes:
 
-- The switch updates the request `model` field, routes to the matching host (`HostRegistry`, `lib/samagotchi/host_registry.rb:72`), and automatically infers/switches profile behavior.
+- The switch updates the request `model` field, routes to the matching host (`HostRegistry`, `lib/samagotchi/host_registry.rb:72`), and resolves the prompt profile again (config, the server's chat template, the name; see "Prompt profile" in configuration.md).
 - Without `--default` the command is session-scoped and does not rewrite config files.
 - With `--default` the new default is written to `~/.config/samagotchi/config.yml` (honoring `XDG_CONFIG_HOME`) and takes effect for all new sessions; the current session's effective model is also updated immediately. Bare aliases and `host:model` are both valid.
 - Worker sessions inherit `hosts:` via `SAMAGOTCHI_HOSTS_JSON`.

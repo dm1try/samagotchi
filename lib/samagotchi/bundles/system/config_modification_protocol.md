@@ -53,7 +53,8 @@ Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top
 **Excluded maps** (YAML-only, not part of the flat registry; skipped by scalar loader):
 
 - `model_aliases:` map of alias → model id (`config_file.rb:342`, `resolve_model_alias:321`). Keys lowercased on write (`write_model_alias!:367`). Values may be bare `model` or qualified `host:model` (hybrid).
-- `hosts:` map of `name → {host, port | url, transport, api, api_key_env, enabled}` (`config.rb` `hosts_config`, `host_registry.rb` `HostEntry`). Names lowercased; `url:` (http/https, optional path) replaces host/port, never both; `api_key_env:` names the env var holding the API key (never write a key into config.yml); `transport` overrides `server.transport`; workers inherit via `SAMAGOTCHI_HOSTS_JSON` (`hosts_json_for_env`, `session_manager.rb`).
+- `hosts:` map of `name → {host, port | url, transport, api, api_key_env, profile, enabled}` (`config.rb` `hosts_config`, `host_registry.rb` `HostEntry`). Names lowercased; `url:` (http/https, optional path) replaces host/port, never both; `api_key_env:` names the env var holding the API key (never write a key into config.yml); `transport` overrides `server.transport`; workers inherit via `SAMAGOTCHI_HOSTS_JSON` (`hosts_json_for_env`, `session_manager.rb`).
+- `models:` map of model id or alias → `{profile}` (`ConfigFile.model_settings`). Keys match case-insensitively. `profile` (here or on a host) is `qwen36|gemma4`: the raw prompt format for native hosts. Precedence: `--profile`/`SAMAGOTCHI_MODEL_PROFILE` > `models:` > `hosts.<name>.profile` > the llama.cpp server's chat template > the name (`qwen`/`gemma`) > `qwen36` (`ModelProfile.resolve`). Set one when a model's name hides its family (e.g. a Qwen fine-tune under another name on mlx, which has no template to read).
 - `hooks:` map of `hooks_dir` + per-event lists `{path, on_error}` (`lib/samagotchi/hooks/loader.rb:32`). `hooks_dir` may start with `~`.
 
 **Preservation rule**: `write_default_model!` (`config_file.rb:263`) and `write_model_alias!` (`config_file.rb:342`) both load raw YAML (including nested sections and maps), mutate one key (`raw_data["default"]["model"] = ...` for new form), write atomically via `tmp`+`rename`. Never overwrite the file with only scalar keys — that would clobber `hooks:` / `model_aliases:` / `hosts:` / `recap:`.
@@ -72,6 +73,7 @@ Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top
 - **Model name** (`default.model` / `SAMAGOTCHI_DEFAULT_MODEL`): `ModelProfile.required_model_name:101` — non-empty string, otherwise harness fails fast at startup. Via `Config.get("default.model")` with ENV fallback.
 - **Host api** (`hosts.<name>.api`): `llama_cpp|mlx|omlx` (raw-prompt loop; also the transport) or `openai` (chat loop at `http://HOST:PORT/v1`). Absent: raw-prompt loop. It replaces the removed `backend` setting.
 - **Transport** (`server.transport`): enum `llama_cpp|mlx|omlx`.
+- **Profile** (`models.<id>.profile`, `hosts.<name>.profile`, `SAMAGOTCHI_MODEL_PROFILE`): enum `qwen36|gemma4`; an unknown one warns and is ignored.
 - **Alias name** (`write_model_alias!:342`):
   - required, non-empty, no whitespace, not starting with `-`, no `/`, must match `/\A[a-z0-9][a-z0-9._-]*\z/i`
   - reserved: `clear`, `default`, `none`, `off` (lowercased)
