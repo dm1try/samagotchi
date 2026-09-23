@@ -347,6 +347,35 @@ RSpec.describe Samagotchi::Bridge do
     end
   end
 
+  describe "cancel reasons" do
+    let(:engine) { make_engine }
+    let(:bridge) { described_class.new(engine: engine, state_dir: Dir.mktmpdir, session_id: "s1") }
+
+    before do
+      allow(engine).to receive(:turn_running?).and_return(true)
+      allow(engine).to receive(:active_cancel_controller).and_return(double)
+      allow(engine).to receive(:cancel_current_turn!).and_return(true)
+    end
+
+    def cancel_with(reason)
+      bridge.send(:handle_cancel, "s1", JSON.generate(reason: reason))
+    end
+
+    it "passes a reason the clients send" do
+      cancel_with("ctrl_c")
+      cancel_with("user")
+      expect(engine).to have_received(:cancel_current_turn!).with(:ctrl_c)
+      expect(engine).to have_received(:cancel_current_turn!).with(:user)
+    end
+
+    it "turns any other reason into :manual instead of a new symbol" do
+      _, status, body = cancel_with("made_up_#{SecureRandom.hex(4)}")
+      expect(status).to eq(202)
+      expect(body[:reason]).to eq("manual")
+      expect(engine).to have_received(:cancel_current_turn!).with(:manual)
+    end
+  end
+
   describe "integration" do
     let(:state_dir) { Dir.mktmpdir }
 

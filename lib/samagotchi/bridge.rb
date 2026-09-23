@@ -35,6 +35,9 @@ module Samagotchi
     SIDECAR_FILE = "bridge.json"
     DEFAULT_RING_CAPACITY = 256
     DEFAULT_HEARTBEAT_INTERVAL = 15.0
+    # Cancel reasons a client may name (the web sends user, an attached TUI
+    # ctrl_c); anything else is :manual, so client input never mints symbols.
+    CANCEL_REASONS = %w[manual user ctrl_c].freeze
 
     # @param engine [Samagotchi::Engine] the owning engine (must already live
     #   in this process)
@@ -318,7 +321,7 @@ module Samagotchi
       if body && !body.strip.empty?
         parsed = parse_json(body)
         r = parsed.is_a?(Hash) ? (fetched(parsed, "reason") || fetched(parsed, "cancellation_reason")) : nil
-        reason = r.to_s.strip.empty? ? :manual : r.to_sym
+        reason = CANCEL_REASONS.include?(r.to_s.strip) ? r.to_s.strip.to_sym : :manual
       end
 
       if @engine.turn_running? && @engine.active_cancel_controller
