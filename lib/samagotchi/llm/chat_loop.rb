@@ -214,7 +214,7 @@ module Samagotchi
               # Kept before a merge too: the model answers the merged line
               # knowing what it just said.
               @conversation << { role: "model", content: last_text } unless last_text.empty?
-              next if inject_pending_input(iteration)
+              next if inject_pending_input(iteration, answer: last_text)
 
               # Shown, not saved: an empty answer (content "" + stop, seen from
               # a remote host) would otherwise end the turn with nothing.
@@ -277,8 +277,9 @@ module Samagotchi
 
         # Queued steering joins the conversation as one user message.
         # Returns true when there was any. After a cancel it stays queued, so
-        # it runs as the next turn instead of dying with this one.
-        def inject_pending_input(iteration)
+        # it runs as the next turn instead of dying with this one. +answer+ is
+        # the answer the merge follows, for the UIs.
+        def inject_pending_input(iteration, answer: nil)
           return false unless @pending_input
           return false if @cancel_controller&.cancelled?
 
@@ -293,7 +294,8 @@ module Samagotchi
           return false if content.empty?
 
           @conversation << { role: "user", content: content }
-          emit(type: :pending_input_merged, iteration: iteration, count: lines.length, content: content)
+          emit(type: :pending_input_merged, iteration: iteration, count: lines.length, content: content,
+               answer: answer.to_s.empty? ? nil : answer)
           true
         end
 

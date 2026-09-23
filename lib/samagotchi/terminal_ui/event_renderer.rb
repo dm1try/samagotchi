@@ -55,6 +55,8 @@ module Samagotchi
           render_streamed_tool_activity(event[:activity], duration_ms: tool_duration_ms(event))
         when :generation_completed, :generation_cancelled, :tool_dispatch_started
           @view.generation_feedback_finished
+        when :pending_input_merged
+          render_merge(event)
         when :turn_completed
           render_turn_summary(event[:turn_summary]) if event[:turn_summary]
         when :guardrail_warning
@@ -87,7 +89,16 @@ module Samagotchi
         @view.print_line("iteration limit reached") if summary[:resumable]
       end
 
-      private
+# Steering merged into the running turn: the answer it follows first
+# (the turn summary shows only the last one), then the note.
+def render_merge(event)
+  @view.finish_thinking_spinner
+  @view.print_line(event[:answer]) unless event[:answer].to_s.strip.empty?
+  count = event[:count].to_i
+  @view.print_line("(#{count} message#{"s" unless count == 1} merged into the running turn)")
+end
+
+private
 
       def render_streamed_tool_activity(activity, duration_ms:)
         return if activity.nil?

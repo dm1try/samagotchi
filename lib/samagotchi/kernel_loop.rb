@@ -288,7 +288,8 @@ module Samagotchi
           end
 
           pending_tool_calls = false
-          unless inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller)
+          answer = -> { PromptLiteralGuard.restore(strip_thought_blocks(response), profile: @profile) }
+          unless inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller, answer: answer)
             break
           end
           # Queued steering keeps the turn going: loop again so the model
@@ -363,8 +364,10 @@ module Samagotchi
     # :pending_input_merged. Tail-append only: head mutation would invalidate
     # the server-side prefix KV cache. Returns true when a message was injected.
     # After a cancel the input stays queued: it runs as the next turn instead
-    # of dying with this one.
-    def inject_pending_input!(conversation, pending_input, on_stream_event, iteration, cancel_controller = nil)
+    # of dying with this one. +answer+ (a proc, called only on a merge) is the
+    # answer the merge follows: the UIs show it, the turn summary has only the
+    # last one.
+    def inject_pending_input!(conversation, pending_input, on_stream_event, iteration, cancel_controller = nil, answer: nil)
       return false unless pending_input
       return false if cancel_controller&.cancelled?
 
@@ -378,13 +381,15 @@ module Samagotchi
       content = lines.map { |line| line.to_s.strip }.reject(&:empty?).join("\n\n")
       return false if content.empty?
 
+      answer = answer.call.to_s if answer
       conversation << { role: "user", content: content }
       emit_stream_event(
         on_stream_event,
         type: :pending_input_merged,
         iteration: iteration,
         count: lines.length,
-        content: content
+        content: content,
+        answer: answer.to_s.strip.empty? ? nil : answer
       )
       true
     end

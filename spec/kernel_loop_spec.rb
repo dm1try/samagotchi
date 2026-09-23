@@ -992,6 +992,24 @@ it "leaves input queued after a cancel instead of merging it into the dying turn
       expect(queue.drain).to eq(["sent after ctrl-c"])
     end
 
+    it "names the answer a merge follows on :pending_input_merged (none after tool results)" do
+      steering = Samagotchi::PendingInputQueue.new
+      responses = [%(<|tool_call>call:execute{command: "true"}<tool_call|>), "first answer", "second answer"]
+      allow(client).to receive(:complete) do
+        response = responses.shift
+        steering.push(responses.length == 1 ? "after the answer" : "after the tool") unless responses.empty?
+        response
+      end
+      events = []
+
+      kernel.run([{ role: "user", content: "hi" }], pending_input: steering.method(:drain),
+                                                    on_stream_event: ->(event) { events << event })
+
+      merges = events.select { |event| event[:type] == :pending_input_merged }
+      expect(merges.map { |event| [event[:content], event[:answer]] })
+        .to eq([["after the tool", nil], ["after the answer", "first answer"]])
+    end
+
     it "survives a draining proc that raises" do
       allow(client).to receive(:complete).and_return("done")
       bad_drain = -> { raise "boom" }

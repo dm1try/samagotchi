@@ -333,6 +333,15 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(result.text).to eq("second")
     end
 
+    it "names the answer a merge follows on :pending_input_merged" do
+      backend.adapter = FakeChatAdapter.new(text("<|think|>hm<|think|>first"), text("second"))
+      queue = [[], ["also this"], []]
+
+      run(pending_input: -> { queue.shift || [] })
+
+      expect(events.find { |e| e[:type] == :pending_input_merged }).to include(answer: "first", content: "also this")
+    end
+
     it "keeps the answer a merge follows, so the model sees what it said" do
       backend.adapter = adapter = FakeChatAdapter.new(text("first"), text("second"))
       queue = [[], ["also this"], []]

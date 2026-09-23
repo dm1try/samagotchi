@@ -35,6 +35,15 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     [base.merge(type: :tool_call_started, call: { name: activity[:tool] }), base.merge(type: :tool_call_completed, activity: activity)]
   end
 
+  it "prints the answer a merge follows, then the merge note" do
+    renderer.call({ type: :pending_input_merged, count: 1, content: "also", answer: "the essay" })
+    renderer.call({ type: :pending_input_merged, count: 2, content: "a\n\nb" })
+
+    expect(view.lines).to eq(["the essay", "(1 message merged into the running turn)",
+                              "(2 messages merged into the running turn)"])
+    expect(view.calls).to include(:finish_thinking_spinner)
+  end
+
   it "prints a guardrail load warning" do
     renderer.call({ type: :guardrail_warning, message: "hook g.rb (config) failed to load (x)" })
     expect(view.lines).to eq(["guardrails> hook g.rb (config) failed to load (x)"])

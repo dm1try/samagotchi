@@ -118,10 +118,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(screen.lines).to eq(["reminder> [SYSTEM: reminders due]", "user> first"])
     end
 
-    it "notes input merged into the running turn" do
+    it "notes input merged into the running turn, after the answer it follows" do
       feed({ type: :input_merged, count: 2, origins: [{ client_id: "web:a" }, { client_id: "tui:1" }] })
+      expect(screen.lines).to be_empty
 
-      expect(screen.lines.last).to eq("(2 messages merged into the running turn)")
+      feed({ type: :pending_input_merged, iteration: 2, count: 2, content: "a\n\nb", answer: "the essay" })
+
+      expect(screen.lines.last(2)).to eq(["the essay", "(2 messages merged into the running turn)"])
     end
   end
 

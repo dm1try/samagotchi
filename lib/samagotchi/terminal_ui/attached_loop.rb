@@ -264,9 +264,9 @@ module Samagotchi
         when :reminder_injected then @screen.commit(reminder_line(event[:reminders]))
         when :continue_offered then offer_continue(event)
         when :continue_resolved then continue_resolved(event)
-        when :input_merged
-          count = event[:count].to_i
-          @screen.commit("(#{count} message#{"s" unless count == 1} merged into the running turn)")
+        # The note comes with the kernel's :pending_input_merged (EventRenderer),
+        # after the answer the merge follows.
+        when :input_merged then nil
         when :question_requested then ask(event[:pending_question])
         when :question_answered then question_answered(event)
         when :question_cancelled
