@@ -515,6 +515,20 @@ RSpec.describe Samagotchi::Web::App do
       expect(manager.resume_calls.map(&:first)).to eq(["s1"])
     end
 
+    it "falls back to the input file when the bridge closes before the post" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(app).to receive(:live_bridge_client).and_return(bridge)
+      allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+      expect(manager).to receive(:write_turn_input).and_return(true)
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST", body: '{"prompt":"hi"}'))
+
+      expect(status).to eq(202)
+      expect(JSON.parse(body.first)).to include("status" => "accepted")
+    end
+
     it "falls back to the input file when no bridge comes up" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
@@ -531,7 +545,7 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
-  describe "a session owned by the interactive TUI" do
+  describe "a session another process owns (TUI or worker)" do
     let(:state_dir) { Dir.mktmpdir("web-owner-spec") }
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd).tap do |s|
@@ -573,6 +587,33 @@ RSpec.describe Samagotchi::Web::App do
       expect(status).to eq(409)
       expect(JSON.parse(body.first)).to include("error" => "owned_by_tui")
       expect(input_files).to be_empty
+    end
+
+    it "wakes a worker when the one it found idle-exits before the write" do
+      @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
+      allow(Process).to receive(:spawn).and_return(50_005)
+      # The worker leaves between the resume (which saw it) and the write.
+      allow(app).to receive(:live_bridge_client) do
+        @lock.release
+        nil
+      end
+
+      status, _headers, _body = app.call(env_for("/api/sessions/#{session.id}/turn", method: "POST", body: '{"prompt":"hi"}'))
+
+      expect(status).to eq(202)
+      expect(Process).to have_received(:spawn).once
+      expect(input_files.size).to eq(1)
+    end
+
+    it "leaves a live worker to read the file" do
+      @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
+      allow(Process).to receive(:spawn)
+      allow(app).to receive(:live_bridge_client).and_return(nil)
+
+      status, _headers, _body = app.call(env_for("/api/sessions/#{session.id}/turn", method: "POST", body: '{"prompt":"hi"}'))
+
+      expect(status).to eq(202)
+      expect(Process).not_to have_received(:spawn)
     end
 
     it "answers POST /stop with 409 and signals nothing" do

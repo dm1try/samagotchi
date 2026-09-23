@@ -289,20 +289,30 @@ module Samagotchi
         # Through the worker's Bridge when it is up, so every live UI sees
         # :turn_enqueued; otherwise straight into the input dir.
         if (client = live_bridge_client(id))
-          reply = client.post_turn(prompt: prompt.to_s, client_id: client_id)
-          ack = reply.json
-          return json_response(202, ack) if reply.status == 202 && ack.is_a?(Hash)
+          begin
+            reply = client.post_turn(prompt: prompt.to_s, client_id: client_id)
+            ack = reply.json
+            return json_response(202, ack) if reply.status == 202 && ack.is_a?(Hash)
+          rescue SystemCallError, IOError
+            nil # the worker closed its Bridge on the way out: queue the file
+          end
         end
         enqueued_id = SecureRandom.uuid
         ok = @manager.write_turn_input(id, prompt: prompt.to_s, client_id: client_id, enqueued_id: enqueued_id, state_dir: @state_dir)
         unless ok
           return error_response(500, "enqueue_failed", "could not write turn input")
         end
+        owner = session_owner(id)
         # A TUI that took the session between the resume and the write never
         # reads input files; a later worker would replay this one.
-        if owned_by_tui?(id)
+        if owner&.fetch("kind", nil) == "tui"
           FileUtils.rm_f(ok) if ok.is_a?(String)
           raise SessionManager::OwnedByTUI, id
+        end
+        # A worker that idle-exited since the resume never reads it either:
+        # wake a new one. (The exiting worker also looks for input it left.)
+        if owner.nil? && @manager.respond_to?(:session_owner) && @manager.respond_to?(:resume_session)
+          @manager.resume_session(id, state_dir: @state_dir)
         end
         json_response(202, { status: "accepted", enqueued_id: enqueued_id, session_id: id })
       rescue SessionManager::OwnedByTUI => e
@@ -316,10 +326,6 @@ module Samagotchi
       def live_bridge_client(id)
         port = bridge_sidecar_port(id) || await_bridge_port(id, timeout: [@bridge_wait_timeout.to_f, 5.0].min)
         port && BridgeClient.new(session_id: id, port: port, host: DEFAULT_HOST)
-      end
-
-      def owned_by_tui?(id)
-        session_owner(id)&.fetch("kind", nil) == "tui"
       end
 
       # The process holding the session: {"pid", "kind" => "worker"|"tui"}, or
