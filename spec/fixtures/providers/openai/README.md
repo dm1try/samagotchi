@@ -8,6 +8,13 @@ Files named `*.hand-written.*` are not recorded (a local server can't produce th
 401/429/500 bodies in the usual OpenAI shape, a stream whose second `data:` line is
 broken JSON, and llama.cpp's mid-stream `error:` event.
 
+llama.cpp's mid-stream `error:` event stays hand-written: on 2026-09-23, b10819 could not be made to send one.
+A streamed prompt longer than the window is refused before the stream starts (HTTP 400, the shape of
+`error_400.json`, on both `/completion` and `/v1/chat/completions`). A prompt that fits but runs out of
+room while generating (127,961 prompt tokens, `n_predict: 200`) ends normally, with
+`"truncated":true,"stop_type":"limit"` in the last `data:` event, not an error. While the prompt is
+processed, the server sends bare `:` keep-alive comment lines.
+
 `openrouter_*` files come from OpenRouter (https://openrouter.ai/api/v1), not llama.cpp.
 `openrouter_error_429.json` was recorded with curl on 2026-09-23 (`z-ai/glm-5.2:free`, which
 answered with a `Retry-After: 5` header); only `user_id` is redacted.
