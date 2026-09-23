@@ -20,6 +20,7 @@ require_relative "output_formatter"
 require_relative "turn_preamble"
 require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
+require_relative "terminal_ui/legacy_surface"
 require_relative "terminal_ui/question_prompt"
 
 module Samagotchi
@@ -146,6 +147,8 @@ module Samagotchi
       @pending_reminder_banner_shown = false
       @last_keystroke_at = monotonic_time
       @last_line_buffer = ""
+      # Every terminal write goes through the surface.
+      @surface = LegacySurface.new
       @renderer = EventRenderer.new(self)
       @render_event = ->(event) { handle_stream_event(event) }
       @engine         = Engine.new(
@@ -224,7 +227,7 @@ module Samagotchi
           max_iterations: 1000,
           cancel_controller: nil
         )
-        $stdout.puts result.output
+        @surface.commit(result.output)
         session.save
         return
       end
@@ -260,10 +263,10 @@ module Samagotchi
         else
           messages[0] = system_message
         end
-        $stdout.puts "Resumed session: #{session.id}"
+        @surface.commit("Resumed session: #{session.id}")
       else
         messages = [system_message]
-        $stdout.puts "Session: #{session.id}"
+        @surface.commit("Session: #{session.id}")
       end
       messages
     end
@@ -441,7 +444,7 @@ module Samagotchi
             begin
               result = run_engine_turn(session, nil, continue: true)
             rescue Client::RetryExhausted => e
-              $stdout.puts "\nmodel> network error after #{e.attempts} attempts; continue prompt preserved"
+              @surface.commit("\nmodel> network error after #{e.attempts} attempts; continue prompt preserved")
               awaiting_continue = true
               interrupted_turn_checkpoint = nil unless awaiting_continue
               next
@@ -453,7 +456,7 @@ module Samagotchi
             awaiting_continue = false
             session.model_name = @effective_model_name
             session.save
-            $stdout.puts "\nmodel> interrupted turn cancelled; enter your next prompt"
+            @surface.commit("\nmodel> interrupted turn cancelled; enter your next prompt")
             next
           when :abort_with_reason
             @engine.rollback_to(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
@@ -466,10 +469,10 @@ module Samagotchi
             awaiting_continue = false
             session.model_name = @effective_model_name
             session.save
-            $stdout.puts "\nmodel> interrupted turn cancelled; noted your explanation"
+            @surface.commit("\nmodel> interrupted turn cancelled; noted your explanation")
             next
           else
-            $stdout.puts "\nmodel> answer yes, no, or no, <reason>"
+            @surface.commit("\nmodel> answer yes, no, or no, <reason>")
             next
           end
         else
@@ -483,9 +486,9 @@ module Samagotchi
               interrupted_turn_checkpoint = nil
               session.model_name = @effective_model_name
               session.save
-              $stdout.puts "\nmodel> salvaged turn discarded; restored pre-turn state"
+              @surface.commit("\nmodel> salvaged turn discarded; restored pre-turn state")
             else
-              $stdout.puts "\nmodel> nothing to rollback"
+              @surface.commit("\nmodel> nothing to rollback")
             end
             next
           end
@@ -493,12 +496,12 @@ module Samagotchi
           if shell_bang_command?(input)
             command = input.delete_prefix(SHELL_BANG_PREFIX).strip
             if command.empty?
-              $stdout.puts "\nmodel> !: please provide a shell command after '!'"
+              @surface.commit("\nmodel> !: please provide a shell command after '!'")
               next
             end
             output = Samagotchi::Tools::Execute.call(command)
-            $stdout.puts output
-            $stdout.puts
+            @surface.commit(output)
+            @surface.commit("")
             @engine.append_messages([{ role: "user", content: "!(#{command})\n#{output}" }])
             # Rolling back past this would silently drop the command output.
             interrupted_turn_checkpoint = nil
@@ -507,27 +510,27 @@ module Samagotchi
           end
 
           if continue_request?(input)
-            $stdout.puts "\nmodel> nothing to continue"
+            @surface.commit("\nmodel> nothing to continue")
             next
           end
 
           if models_command?(input)
-            $stdout.puts "\nmodel> #{handle_models_command}"
+            @surface.commit("\nmodel> #{handle_models_command}")
             next
           end
 
           if model_command?(input)
-            $stdout.puts "\nmodel> #{handle_model_command(input)}"
+            @surface.commit("\nmodel> #{handle_model_command(input)}")
             next
           end
 
           if stats_command?(input)
-            $stdout.puts "\nmodel> session stats:\n#{format_session_metrics(@engine.metrics.snapshot)}"
+            @surface.commit("\nmodel> session stats:\n#{format_session_metrics(@engine.metrics.snapshot)}")
             next
           end
 
           if recap_command?(input)
-            $stdout.puts "\nmodel> #{handle_recap_command}"
+            @surface.commit("\nmodel> #{handle_recap_command}")
             next
           end
 
@@ -544,7 +547,7 @@ module Samagotchi
             @engine.rollback_to(interrupted_turn_checkpoint) if interrupted_turn_checkpoint
             awaiting_continue = false
             queue_input_prefill(input)
-            $stdout.puts "\nmodel> network error after #{e.attempts} attempts; prompt restored for retry"
+            @surface.commit("\nmodel> network error after #{e.attempts} attempts; prompt restored for retry")
             interrupted_turn_checkpoint = nil unless awaiting_continue
             next
           end
@@ -570,7 +573,7 @@ module Samagotchi
             awaiting_continue = false
             # Keep interrupted_turn_checkpoint: it is what !rollback restores,
             # until the next turn or another change to the conversation.
-            $stdout.puts "\nmodel> turn cancelled; partial progress kept in context; use !rollback immediately after cancellation to restore the pre-turn checkpoint"
+            @surface.commit("\nmodel> turn cancelled; partial progress kept in context; use !rollback immediately after cancellation to restore the pre-turn checkpoint")
           end
           next
         end
@@ -594,7 +597,7 @@ module Samagotchi
         session.save
       end
 
-      $stdout.puts "\nContinue session: chi --resume #{session.id}"
+      @surface.commit("\nContinue session: chi --resume #{session.id}")
     end
 
     def status_server_segment
@@ -659,11 +662,11 @@ module Samagotchi
       lines = sticky_status_lines
       return if lines.empty?
 
-      lines.each { |line| $stdout.puts line }
+      lines.each { |line| @surface.commit(line) }
     end
 
     def print_line(text)
-      $stdout.puts text
+      @surface.commit(text)
     end
 
     def reset_turn_feedback
@@ -733,7 +736,7 @@ module Samagotchi
       return unless record && record[:duration_ms]
 
       state = canceled ? "canceled" : "completed"
-      $stdout.puts "#{paint('chi>', 36)} turn #{state} (#{format_elapsed_duration(record[:duration_ms])})"
+      @surface.commit("#{paint('chi>', 36)} turn #{state} (#{format_elapsed_duration(record[:duration_ms])})")
     end
 
     def split_memory_scope(raw)
@@ -981,7 +984,7 @@ module Samagotchi
               nil
             end
             begin
-              $stdout.puts if $stdout.tty?
+              @surface.commit("") if $stdout.tty?
             rescue StandardError
               nil
             end
@@ -1716,7 +1719,7 @@ module Samagotchi
 
       reason = result.respond_to?(:cancellation_reason) ? result.cancellation_reason : nil
       label = cancellation_reason_label(reason)
-      $stdout.puts "\nmodel> request cancelled#{label.empty? ? "" : " (#{label})"}"
+      @surface.commit("\nmodel> request cancelled#{label.empty? ? "" : " (#{label})"}")
     end
 
     def cancelled_result_from(messages, reason:)
