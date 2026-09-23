@@ -40,7 +40,7 @@ module Samagotchi
         return 2
       end
       begin
-        text = SessionManager.checked_note_text(text)
+        text = SessionManager.checked_text(text)
       rescue SessionManager::NoteRejected => e
         @stderr.puts("chi note: #{e.message}")
         return 1

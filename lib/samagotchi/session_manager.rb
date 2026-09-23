@@ -74,7 +74,8 @@ module Samagotchi
       end
     end
 
-    # A note that can't be queued: empty, or over NOTE_MAX_BYTES.
+    # A note (or a `chi send` message) that can't go in: empty, or over
+    # NOTE_MAX_BYTES.
     class NoteRejected < ArgumentError; end
 
     # Spawn a new background session that processes the given prompt (or,
@@ -595,7 +596,7 @@ module Samagotchi
     # @return [String] the note file's path
     # @raise [NoteRejected] for an empty note or one over 16 KiB (never cut)
     def self.write_note(session_id, text:, source: "cli", from_session: nil, from_cwd: nil, state_dir: nil)
-      body = checked_note_text(text)
+      body = checked_text(text)
       sd = state_dir || Session.default_state_dir
       notes_dir = File.join(Session.session_dir(session_id, state_dir: sd), NOTES_DIR)
       FileUtils.mkdir_p(notes_dir)
@@ -610,13 +611,15 @@ module Samagotchi
       path
     end
 
+    # The same empty and 16 KiB checks for a note and a sent message.
+    # @param noun [String] what the errors call the text
     # @return [String] the stripped text
     # @raise [NoteRejected]
-    def self.checked_note_text(text)
+    def self.checked_text(text, noun: "note")
       body = text.to_s.strip
-      raise NoteRejected, "the note is empty" if body.empty?
+      raise NoteRejected, "the #{noun} is empty" if body.empty?
       if body.bytesize > NOTE_MAX_BYTES
-        raise NoteRejected, "the note is #{body.bytesize} bytes; the limit is 16 KiB (#{NOTE_MAX_BYTES} bytes)"
+        raise NoteRejected, "the #{noun} is #{body.bytesize} bytes; the limit is 16 KiB (#{NOTE_MAX_BYTES} bytes)"
       end
 
       body

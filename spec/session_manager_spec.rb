@@ -682,6 +682,20 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
+  describe ".checked_text" do
+    it "names what it checks in its errors, a note by default" do
+      expect { described_class.checked_text(" \n") }.to raise_error(described_class::NoteRejected, "the note is empty")
+      expect { described_class.checked_text("", noun: "message") }.to raise_error(described_class::NoteRejected, "the message is empty")
+      big = "x" * (described_class::NOTE_MAX_BYTES + 1)
+      expect { described_class.checked_text(big, noun: "message") }
+        .to raise_error(described_class::NoteRejected, "the message is 16385 bytes; the limit is 16 KiB (16384 bytes)")
+    end
+
+    it "answers the text stripped" do
+      expect(described_class.checked_text("  hi\n", noun: "message")).to eq("hi")
+    end
+  end
+
   describe ".deliver_turn" do
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
