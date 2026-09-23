@@ -133,6 +133,17 @@ RSpec.describe Samagotchi::TerminalUI::RelineSeam do
     expect(term.cursor).to eq([2, 0])
   end
 
+  it "leaves nothing in the scrollback for a read without echo (a question's answer)" do
+    screen.set_slot(:status, ["ctx 12%"])
+    open_prompt
+    type("2")
+
+    described_class.without_echo { editor.render_finished }
+    editor.finalize
+
+    expect(term.lines).to eq(["ctx 12%"])
+  end
+
   it "takes the prompt of a dropped read out of the region" do
     screen.set_slot(:status, ["ctx 12%"])
     open_prompt

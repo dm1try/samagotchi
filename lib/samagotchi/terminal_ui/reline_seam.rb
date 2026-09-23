@@ -52,6 +52,17 @@ module Samagotchi
         # @return [Boolean] a Reline read is open (it owns stdin)
         def reading? = @reading == true
 
+        # Run a read (on this thread) whose submitted line leaves nothing in
+        # the scrollback: the answer to a question, which commits its own
+        # summary line instead.
+        def without_echo
+          was = Thread.current[:samagotchi_reline_no_echo]
+          Thread.current[:samagotchi_reline_no_echo] = true
+          yield
+        ensure
+          Thread.current[:samagotchi_reline_no_echo] = was
+        end
+
         # @api private
         attr_writer :reading
 
@@ -115,7 +126,7 @@ module Samagotchi
         screen = RelineSeam.screen
         return super unless screen
 
-        screen.finish_editor(seam_final_lines)
+        screen.finish_editor(Thread.current[:samagotchi_reline_no_echo] ? nil : seam_final_lines)
         clear_rendered_screen_cache
       end
 
