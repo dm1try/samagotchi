@@ -81,9 +81,11 @@ An empty answer dismisses the question in every UI.
 
 In an attached terminal:
 
-- Ctrl-C cancels the running turn (whoever started it). At an idle prompt it
-  clears the line; a second Ctrl-C within 2 s, Ctrl-D or `/exit` detaches. The
-  worker keeps running; the detach line prints `chi --attach ID` to come back.
+- Ctrl-C cancels the running turn (whoever started it) and leaves what you typed
+  in the prompt. At an idle prompt it clears the line; a second Ctrl-C within
+  2 s, Ctrl-D or `/exit` detaches. The worker keeps running; the detach line
+  prints `chi --attach ID` to come back.
+- The prompt stays open while a turn runs; see [Typing during a turn](#typing-during-a-turn).
 - `/model`, `/models`, `/guardrails`, `/continue`, `!rollback` and `!commands` run in the
   worker, and every UI sees their output; `/stats` and `/recap` work too. The
   Web UI's composer takes the same commands.
@@ -118,6 +120,31 @@ no worker:
 A session the REPL has open can't be shared: `--resume` and `--attach` on it say
 "close it there first", and the Web UI shows it read-only. `--attach`/`--shared`
 can't be combined with `--non-interactive`, `--memory` or `--verbose`.
+
+### Typing during a turn
+
+The prompt stays open while a turn runs, in an attached terminal and in the plain
+REPL alike:
+
+- A line you submit merges into the running turn at its next step (after the
+  current tool call or answer), and `(1 message merged into the running turn)`
+  says so. An answer the model finished just before the merge is printed first.
+  A line that comes after the turn's last step runs as the next turn, and so
+  does one sent after Ctrl-C: it doesn't merge into the turn being cancelled.
+  Reminder turns take merged lines too.
+- `/stats` and `/recap` answer at once. Other commands (`!cmd`, `/model`,
+  `!rollback`, `/continue`, `/guardrails`) say `busy: wait for the turn to end`
+  and go back into the prompt, so Enter runs them once the turn ends.
+- A question (`ask_user_question`, a guardrails approval) turns the prompt into
+  `choice>`; only a line submitted there answers it, and what you had typed
+  comes back once it closes.
+- Ctrl-C cancels the turn and keeps what you typed.
+- In the plain REPL, Ctrl-D on an empty prompt (or `exit`, `/exit`) mid-turn
+  exits once the turn ends: `(exits after this turn; Ctrl-C cancels it)`. In an
+  attached terminal it detaches at once and the turn goes on in the worker.
+
+With stdin that isn't a terminal (a pipe), the REPL reads a line only between
+turns.
 
 ### Web Markdown rendering
 
@@ -262,7 +289,7 @@ During assist-mode thinking (while the spinner is active), you can cancel an in-
 
 Behavior notes:
 
-- Cancellation returns control to the next prompt immediately.
+- Cancellation returns control to the prompt immediately; what you typed there stays.
 - Partial model output from the canceled request is not committed as a completed model turn.
 
 ## Iteration Limit Behavior

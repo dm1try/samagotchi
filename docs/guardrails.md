@@ -31,10 +31,9 @@ Approve tool call?
 
 In a terminal, answer with a number, the exact label, `y` (Allow once) or `n`
 (Deny); add `; reason` to tell the model why (`n; open a PR instead`). An empty
-answer, Ctrl-C, the web's Deny button or a cancelled turn deny it. During a
-reminder turn, when the question comes up while you are typing at the prompt, a line
-that isn't an answer goes back into the prompt and the question asks at
-`choice>`.
+answer, Ctrl-C, the web's Deny button or a cancelled turn deny it. The prompt stays open during turns: when the question comes up it turns
+into `choice>`, only a line submitted there answers it (never one typed before), and
+what you had typed comes back once it closes.
 
 Who answers:
 
