@@ -4,7 +4,6 @@ require "fileutils"
 
 require_relative "session"
 require_relative "worker_idle_exit"
-require_relative "debug_log"
 require_relative "session_manager"
 
 module Samagotchi
@@ -226,10 +225,7 @@ module Samagotchi
     end
 
     def log_idle_exit
-      path = begin Samagotchi::Config.get("log.file") rescue nil end
-      log = DebugLog.new(path: path)
-      log.write("[worker] pid #{Process.pid} idle-exits after #{@idle_exit.idle_seconds.round}s unused")
-      log.close
+      SessionManager.debug_log("[worker] pid #{Process.pid} idle-exits after #{@idle_exit.idle_seconds.round}s unused")
     end
 
     def stopped_on_disk?

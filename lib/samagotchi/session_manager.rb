@@ -9,6 +9,7 @@ require "rbconfig"
 
 require_relative "session"
 require_relative "owner_lock"
+require_relative "debug_log"
 require_relative "terminal_ui"
 
 module Samagotchi
@@ -80,10 +81,19 @@ module Samagotchi
     # Build the opts hash passed to Process.spawn for a forked worker. Setting
     # opts[:env] REPLACES the child ENV rather than merging it, so explicitly
     # thread through the values a worker needs (hosts, default model).
-    private_class_method def self.spawn_options
+    private_class_method def self.spawn_options(session)
       # Own process group: workers outlive `chi web`, and a Ctrl-C in its
       # terminal must not reach them.
       opts = { out: File::NULL, err: File::NULL, pgroup: true }
+      # The worker's tools (and `!cmd`) run in the session's directory, not
+      # in the cwd of whoever woke it (`chi web`, another terminal).
+      dir = session.working_directory.to_s
+      if !dir.empty? && File.directory?(dir)
+        opts[:chdir] = dir
+      else
+        debug_log("[worker] session #{session.id}: working directory #{dir} is gone; " \
+                  "the worker runs in #{Dir.pwd}")
+      end
       child_env = {}
       # Propagate hosts config for multi-host routing
       begin
@@ -288,6 +298,14 @@ module Samagotchi
       result
     end
 
+    # One line in the debug log (log.file), when one is configured.
+    def self.debug_log(message)
+      path = begin Samagotchi::Config.get("log.file") rescue nil end
+      log = DebugLog.new(path: path)
+      log.write(message)
+      log.close
+    end
+
     def self.config_idle_exit_minutes
       Samagotchi::Config.get("session.idle_exit_minutes")
     rescue StandardError
@@ -308,7 +326,7 @@ module Samagotchi
       FileUtils.mkdir_p(File.join(session_dir, OUTPUT_DIR))
 
       lib_path = File.expand_path("..", __dir__)
-      opts = spawn_options
+      opts = spawn_options(session)
       env = opts.delete(:env)
       command = [
         RbConfig.ruby,

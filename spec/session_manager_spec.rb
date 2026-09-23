@@ -149,6 +149,40 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
+  describe "the worker's directory" do
+    def spawned_opts
+      opts = nil
+      allow(Process).to receive(:spawn) do |*_args, **o|
+        opts = o
+        12_345
+      end
+      yield
+      opts
+    end
+
+    it "starts the worker in the session's directory, so its tools run there" do
+      dir = Dir.mktmpdir("session-dir", tmpdir)
+
+      opts = spawned_opts { described_class.spawn_session(prompt: nil, model_name: "gemma4", working_directory: dir, state_dir: tmpdir) }
+
+      expect(opts).to include(chdir: dir)
+    end
+
+    it "falls back to the spawner's directory, with a log line, when the session's is gone" do
+      log = File.join(tmpdir, "chi.log")
+      Samagotchi::Config.set_cli_overrides("log.file" => log)
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: File.join(tmpdir, "gone"))
+      session.save(state_dir: tmpdir)
+
+      opts = spawned_opts { described_class.resume_session(session.id, state_dir: tmpdir) }
+
+      expect(opts).not_to have_key(:chdir)
+      expect(File.read(log)).to include("#{File.join(tmpdir, "gone")} is gone", Dir.pwd)
+    ensure
+      Samagotchi::Config.set_cli_overrides({})
+    end
+  end
+
   describe "single owner" do
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
