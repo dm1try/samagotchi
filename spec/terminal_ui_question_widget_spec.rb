@@ -95,6 +95,32 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     expect(engine).to have_received(:cancel_question).with("user").twice
   end
 
+  # Ctrl-C at choice>: RelineSeam asks the interrupt handler; declining
+  # makes Reline end the read with Interrupt.
+  it "cancels the turn and the question on Ctrl-C at choice>" do
+    allow(engine).to receive(:cancel_question)
+    controller = Samagotchi::Client::CancellationController.new
+    agent.instance_variable_set(:@active_cancel_controller, controller)
+    allow(Samagotchi::TerminalUI::RelineSeam).to receive(:supported?).and_return(true)
+    allow(Reline).to receive(:readline) do
+      taken = Samagotchi::TerminalUI::RelineSeam.interrupt_handler.call
+      raise Interrupt unless taken
+    end
+    tty_in = StringIO.new
+    tty_out = StringIO.new
+    [tty_in, tty_out].each { |io| io.define_singleton_method(:tty?) { true } }
+    old_stdin, old_stdout = $stdin, $stdout
+    $stdin, $stdout = tty_in, tty_out
+    result = agent.send(:render_question_widget, pending)
+    $stdin, $stdout = old_stdin, old_stdout
+
+    expect(result).to be(false)
+    expect(controller).to be_cancelled
+    expect(engine).to have_received(:cancel_question)
+  ensure
+    $stdin, $stdout = old_stdin, old_stdout if old_stdin
+  end
+
   # A reminder turn runs with the prompt open (its read on @prompt_reader);
   # Reline reads one line at a time, so there is no choice> read then.
   describe "asked while the prompt is open" do

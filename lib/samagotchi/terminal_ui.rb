@@ -1672,7 +1672,7 @@ module Samagotchi
             end
           # Use plain Reline.readline when tty, else $stdin.gets for non-tty/specs
           elsif $stdin.tty? && $stdout.tty?
-            raw = Reline.readline(choice_prompt, true)
+            raw = with_choice_interrupt { Reline.readline(choice_prompt, true) }
           else
             @surface.set_slot(:editor, [choice_prompt])
             raw = $stdin.gets
@@ -1709,6 +1709,24 @@ module Samagotchi
           @surface.commit("Error: #{e.message}")
           return false
         end
+      end
+    end
+
+    # Ctrl-C at choice> cancels the running turn, as at the prompt, and ends
+    # the read too (Reline raises Interrupt), so the question closes instead
+    # of waiting on a cancelled turn.
+    def with_choice_interrupt
+      return yield unless RelineSeam.supported?
+
+      previous = RelineSeam.interrupt_handler
+      RelineSeam.interrupt_handler = lambda do
+        cancel_turn_from_prompt
+        false
+      end
+      begin
+        yield
+      ensure
+        RelineSeam.interrupt_handler = previous
       end
     end
 
