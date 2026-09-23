@@ -471,6 +471,7 @@ end
 
     typed << "9"
     wait_for { screen.lines.include?("Invalid choice '9': pick 1-3") }
+    expect(screen.lines.last(2)).to eq(["? 9", "Invalid choice '9': pick 1-3"])
     push("type" => "question_answered", "id" => "q1", "answer" => { "selected" => ["Apple"], "freeform" => nil })
     wait_for { prompts.last == "> " }
     finish
@@ -661,24 +662,29 @@ it "points to the history when the prompt already holds text" do
   expect(screen.lines.last).to eq("(the command is in the input history: ↑)")
 end
 
-  it "asks at the continue prompt while an offer is pending, from the join too" do
+  it "asks at the ? prompt, its choices in the notes slot, while an offer is pending, from the join too" do
     expect(attached.send(:prompt_text)).to eq("> ")
 
-    feed({ type: :continue_offered, context: { original_prompt: "task" }, no_interrupt: false })
-    expect(attached.send(:prompt_text)).to eq(Samagotchi::TerminalUI::CONTINUE_PROMPT)
+    feed({ type: :continue_offered, context: { original_prompt: "task", last_model_intent: "run specs" }, no_interrupt: false })
+    expect(attached.send(:prompt_text)).to eq("? ")
+    expect(screen.slots[:notes]).to eq(["? The turn ran out of iterations. Continue it?", "  last step: run specs",
+                                        "  yes: continue (Enter alone too)", "  no: stop here",
+                                        "  no, <reason>: stop and tell the model why"])
 
     feed({ type: :continue_resolved, decision: "resume", client_id: "web:tab" })
     expect(attached.send(:prompt_text)).to eq("> ")
+    expect(screen.slots).not_to have_key(:notes)
     # The web's "web> /continue yes" line says who answered.
-    expect(screen.lines.grep(/continue offer/)).to be_empty
+    expect(screen.lines.grep(/Continue it\?/)).to be_empty
 
     feed({ type: :continue_offered, context: {}, no_interrupt: false },
          { type: :continue_resolved, decision: "dropped", client_id: "web:tab" })
-    expect(screen.lines.last).to eq("(the continue offer was dropped: web sent a new prompt)")
+    expect(screen.lines.last).to eq("? The turn ran out of iterations. Continue it? → (dropped: web sent a new prompt)")
 
     other = described_class.new(client: client, screen: screen, client_id: "tui:2")
     other.handle_event(JSON.parse(JSON.generate(joined(continue_offer: { context: {}, no_interrupt: false }))))
-    expect(other.send(:prompt_text)).to eq(Samagotchi::TerminalUI::CONTINUE_PROMPT)
+    expect(other.send(:prompt_text)).to eq("? ")
+    expect(screen.slots[:notes].first).to eq("? The turn ran out of iterations. Continue it?")
   end
 
   it "renders a reminder turn by its reminders, live and from a join" do
@@ -728,14 +734,31 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue off
     allow(client).to receive(:follow) { |&block| block.call(offer) && double("stream", close: nil) }
     # Reads block until typed into, like Reline.
     thread = Thread.new { attached.run(input: ->(prompt, _prefill) { prompts << prompt; typed.pop }) }
-    wait_for { prompts.last == Samagotchi::TerminalUI::CONTINUE_PROMPT }
+    wait_for { prompts.last == "? " }
 
     ["no, too slow", "", "/model", nil].each { |line| typed << line }
     thread.join(2)
 
+    # A command at the offer ran without echo: its line shows as typed.
+    expect(screen.lines).to include("? /model")
+    expect(screen.lines).not_to include("? no, too slow", "? ")
+
     expect(client).to have_received(:post_command).with(line: "/continue no, too slow", client_id: "tui:1")
     expect(client).to have_received(:post_command).with(line: "/continue", client_id: "tui:1")
     expect(client).to have_received(:post_command).with(line: "/model", client_id: "tui:1")
+  end
+
+  it "leaves one line with its own answer once the worker resolves the offer" do
+    allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
+    attached.handle_event({ type: :continue_offered, context: {}, no_interrupt: false })
+
+    attached.send(:submit, "maybe")
+    expect(screen.lines.last).to eq("? maybe")
+    attached.send(:submit, "no, too slow")
+    attached.handle_event({ type: :continue_resolved, decision: "abort_with_reason", client_id: "tui:1" })
+
+    expect(screen.lines.last).to eq("? The turn ran out of iterations. Continue it? → no, too slow")
+    expect(screen.slots).not_to have_key(:notes)
   end
 end
 
@@ -1121,7 +1144,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     allow(client).to receive(:post_command)
 
     expect(run_lines("/detach", snapshot: idle.merge("continue_offer" => { "context" => {}, "no_interrupt" => false }),
-                               at: Samagotchi::TerminalUI::CONTINUE_PROMPT)).to eq(:detached)
+                               at: "? ")).to eq(:detached)
 
     expect(client).not_to have_received(:post_command)
   end
@@ -1131,7 +1154,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     allow(client).to receive(:request_exit).and_return(response(409, '{"status":"held","reason":"continue_offered"}'))
 
     run_lines("/exit", snapshot: idle.merge("continue_offer" => { "context" => {}, "no_interrupt" => false }),
-                       at: Samagotchi::TerminalUI::CONTINUE_PROMPT)
+                       at: "? ")
 
     expect(client).not_to have_received(:post_command)
     expect(screen.lines.last).to include("(a continue offer is pending)")

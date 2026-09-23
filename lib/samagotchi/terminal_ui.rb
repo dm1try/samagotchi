@@ -42,7 +42,6 @@ module Samagotchi
     SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
     STATS_COMMAND = "/stats"
     RECAP_COMMAND = "/recap"
-    CONTINUE_PROMPT = "continue(yes/no/no_with_reason)> "
     # The prompt while a question waits for its answer (its choices are in
     # the notes slot).
     QUESTION_PROMPT = "? "
@@ -409,9 +408,17 @@ module Samagotchi
       @surface.commit("\nContinue session: chi --resume #{session.id}")
     end
 
-    # An answer at the continue(yes/no/no_with_reason) prompt.
+    # An answer at the ? prompt of a continue offer. A valid one closes the
+    # offer's choices and leaves one line; an invalid one gets its error.
     def answer_continue_offer(session, input)
       answer = @commands.continue_answer(input)
+      if answer.decision == :invalid
+        # The read left no echo: the line shows above its error.
+        @surface.commit("#{paint(QUESTION_PROMPT, 33)}#{input}")
+      else
+        sync_continue_slot(false)
+        @surface.commit(QuestionSlot.continue_summary(input.to_s.strip.empty? ? "yes" : input.to_s.strip, paint: method(:paint)))
+      end
       return show_command_result(answer) unless answer.resume
 
       @turn_flow.before_continue_turn
@@ -667,8 +674,8 @@ module Samagotchi
       emit_idle_status_line
 
       if awaiting_continue
-        prompt = color_output? ? paint(CONTINUE_PROMPT, 33) : CONTINUE_PROMPT
-        input = Reline.readline(prompt, true)
+        sync_continue_slot(true)
+        input = Reline.readline(paint(QUESTION_PROMPT, 33), true)
         return nil if input.nil?
 
         return input.strip
@@ -726,6 +733,7 @@ module Samagotchi
         @idle_status_due = false
         emit_idle_status_line
       end
+      sync_continue_slot(awaiting_continue)
       @repl_input.sync_prompt
       loop do
         kind, line = @repl_input.pop(timeout: REMINDER_PENDING_POLL_INTERVAL)
@@ -753,11 +761,24 @@ module Samagotchi
       @repl_input = nil
     end
 
-    # The main prompt, or the continue offer's when one waits and no turn runs.
+    # The main prompt, or ? when a continue offer waits and no turn runs.
     def repl_prompt_text
       return paint("> ", 92) if @active_cancel_controller || !@turn_flow.awaiting_continue?
 
-      color_output? ? paint(CONTINUE_PROMPT, 33) : CONTINUE_PROMPT
+      paint(QUESTION_PROMPT, 33)
+    end
+
+    # The notes slot shows a continue offer's choices while it waits.
+    def sync_continue_slot(shown)
+      if shown
+        return if @continue_slot
+
+        @continue_slot = true
+        @surface.set_slot(:notes, QuestionSlot.continue_offer(@turn_flow.offer&.dig(:context), paint: method(:paint)))
+      elsif @continue_slot
+        @continue_slot = false
+        @surface.clear_slot(:notes)
+      end
     end
 
     # One read on the reader thread (ReplInput): the multiline read with Tab
@@ -1750,6 +1771,8 @@ module Samagotchi
         answer = prompt.parse(raw)
         @surface.commit(answer.note) if answer.note
         unless answer.ok?
+          # The read left no echo: the line shows above its error.
+          @surface.commit("#{paint(QUESTION_PROMPT, 33)}#{raw}")
           @surface.commit(answer.error)
           next
         end

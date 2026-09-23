@@ -49,7 +49,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
 
     _, out = answer_with("9\n1,2\nkiwi\nche\n")
 
-    expect(out).to include("Invalid choice '9': pick 1-3\n", "This is single-select (pick one). Try again.\n",
+    expect(out).to include("? 9\nInvalid choice '9': pick 1-3\n", "? kiwi\n", "This is single-select (pick one). Try again.\n",
                            "Unknown option 'kiwi'. Use numbers 1-3 or exact labels.\n")
     expect(engine).to have_received(:answer_question).with(id: "q1", selected: ["Cherry"], freeform: nil)
   end
@@ -166,6 +166,22 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     agent.send(:read_repl_line, "> ", nil)
 
     expect(echo).to eq("? " => false, "> " => true)
+  end
+
+  # A continue offer's ? read has no echo either.
+  it "shows an invalid continue answer above its error, the offer's choices staying" do
+    surface = RecordingSurface.new
+    agent.instance_variable_set(:@surface, surface)
+    agent.instance_variable_set(:@continue_slot, true)
+    invalid = Samagotchi::SessionCommands::Result.new(status: :error, output: "answer yes, no, or no, <reason>", changed: [],
+                                                     model_name: "m", resume: false, shell: false)
+    invalid.decision = :invalid
+    agent.instance_variable_set(:@commands, double("commands", continue_answer: invalid))
+
+    agent.send(:answer_continue_offer, nil, "/stats")
+
+    expect(surface.lines).to eq(["? /stats", "\nmodel> answer yes, no, or no, <reason>"])
+    expect(surface.events).not_to include([:clear_slot, :notes])
   end
 
   describe "an approval" do

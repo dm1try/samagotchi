@@ -235,7 +235,12 @@ module Samagotchi
         # Before the continue offer: neither is an answer to it.
         return submit(nil) if DETACH_COMMANDS.include?(text.downcase)
         return exit_worker if EXIT_COMMANDS.include?(text.downcase) || text.casecmp?("exit")
-        return send_command(continue_line(text)) if @continue_offer && !SessionCommands.command?(text)
+        if @continue_offer
+          return answer_continue(text) unless SessionCommands.command?(text)
+
+          # Not an answer: the read left no echo, so show what ran.
+          echo_answer(text)
+        end
         return if text.empty?
 
         command = text.split(/\s+/, 2).first
@@ -291,6 +296,15 @@ module Samagotchi
         "Detached (could not ask the worker to stop: #{why}). Re-attach with: chi --attach #{@client.session_id}"
       end
 
+      # The worker says what became of it (:continue_resolved); an invalid
+      # answer gets its error and the offer stays.
+      def answer_continue(text)
+        echo_answer(text) if TurnFlow.continue_decision(text).first == :invalid
+        @continue_answer = text.empty? ? "yes" : text
+        send_command(continue_line(text))
+        nil
+      end
+
       # A bare answer at the continue prompt, as the REPL reads it (an empty
       # one is yes).
       def continue_line(text)
@@ -342,17 +356,37 @@ module Samagotchi
       def offer_continue(event)
         @continue_offer = { context: event[:context], no_interrupt: event[:no_interrupt] }
         sync_prompt
+        sync_continue_slot
       end
 
-      # An answer shows as its command line (web> /continue yes); only a
-      # prompt that dropped the offer needs saying.
+      CONTINUE_DECISIONS = { "resume" => "yes", "abort" => "no", "abort_with_reason" => "no, with a reason" }.freeze
+
+      # The offer's choices go; one line says what became of it. Another
+      # UI's answer shows as its command line (web> /continue yes) instead.
       def continue_resolved(event)
         @continue_offer = nil
-        if event[:decision] == "dropped"
-          who = event[:client_id] ? CLIENT_LABELS.fetch(event[:client_id].to_s.split(":", 2).first, "another UI") : "another UI"
-          @screen.commit("(the continue offer was dropped: #{own?(event[:client_id]) ? "you" : who} sent a new prompt)")
-        end
+        sync_continue_slot
+        who = event[:client_id] ? CLIENT_LABELS.fetch(event[:client_id].to_s.split(":", 2).first, "another UI") : "another UI"
+        outcome = if event[:decision] == "dropped"
+                    "(dropped: #{own?(event[:client_id]) ? "you" : who} sent a new prompt)"
+                  elsif own?(event[:client_id])
+                    @continue_answer || CONTINUE_DECISIONS.fetch(event[:decision].to_s, event[:decision].to_s)
+                  end
+        @continue_answer = nil
+        @screen.commit(QuestionSlot.continue_summary(outcome, paint: method(:paint))) if outcome
         sync_prompt
+      end
+
+      # The notes slot shows the offer's choices while it waits (a question
+      # has the slot while it is open).
+      def sync_continue_slot
+        return if @question
+
+        if @continue_offer
+          @screen.set_slot(:notes, QuestionSlot.continue_offer(@continue_offer[:context], paint: method(:paint)))
+        else
+          @screen.clear_slot(:notes)
+        end
       end
 
       def send_prompt(text)
@@ -386,8 +420,7 @@ module Samagotchi
       def read_input_line(prompt, prefill)
         return $stdin.gets&.chomp unless $stdin.tty?
         # A question's answer leaves only its summary line.
-        return RelineSeam.without_echo { Reline.readline(prompt, true) } if @question
-        return Reline.readline(prompt, true) if @continue_offer
+        return RelineSeam.without_echo { Reline.readline(prompt, true) } if @question || @continue_offer
 
         queue_input_prefill(prefill) if prefill
         read_prompt_line(prompt)
@@ -408,8 +441,7 @@ module Samagotchi
       end
 
       def prompt_text
-        return paint(QUESTION_PROMPT, 33) if @question
-        return paint(CONTINUE_PROMPT, 33) if @continue_offer
+        return paint(QUESTION_PROMPT, 33) if @question || @continue_offer
 
         paint(PROMPT, 92)
       end
@@ -434,7 +466,10 @@ module Samagotchi
 
         answer = @question.parse(text)
         @screen.commit(answer.note) if answer.note
-        return @screen.commit(answer.error) unless answer.ok?
+        unless answer.ok?
+          echo_answer(text)
+          return @screen.commit(answer.error)
+        end
 
         reply = @client.answer(id: @question.id, selected: answer.selected, freeform: answer.freeform)
         case reply.status
@@ -465,6 +500,10 @@ module Samagotchi
         end
         nil
       end
+
+      # A line read at ? that isn't a (valid) answer: the read left no echo,
+      # so it shows above what it got.
+      def echo_answer(text) = @screen.commit("#{paint(QUESTION_PROMPT, 33)}#{text}")
 
       def stale_worker(cant)
         BridgeClient.stale_worker_message(@client.session_id, cant: cant)
@@ -501,6 +540,7 @@ module Samagotchi
         set_aside = @set_aside
         @set_aside = nil
         sync_prompt(keep_text: false, prefill: set_aside)
+        sync_continue_slot if @continue_offer
       end
 
       # Restart the open read when its prompt no longer fits (a question or a
@@ -574,7 +614,10 @@ module Samagotchi
         offer = snapshot[:continue_offer]
         had_offer = !@continue_offer.nil?
         @continue_offer = offer && { context: offer[:context], no_interrupt: offer[:no_interrupt] }
-        sync_prompt if had_offer != !@continue_offer.nil?
+        if had_offer != !@continue_offer.nil?
+          sync_prompt
+          sync_continue_slot
+        end
         render_current_turn(snapshot[:current_turn])
         Array(snapshot[:queued]).each do |entry|
           next if own?(entry[:client_id])

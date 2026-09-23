@@ -15,9 +15,18 @@
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[Jiteration limit reached
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+\e[33m? The turn ran out of iterations. Continue it?\e[0m
+\e[92m  yes: continue (Enter alone too)\e[0m
+\e[92m  no: stop here\e[0m
+\e[92m  no, <reason>: stop and tell the model why\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[5A\e[J
 Continue session: chi --resume <session-id>
 \e[90mstatus> model=Qwen3-14B | mem: notes\e[0m
+\e[33m? The turn ran out of iterations. Continue it?\e[0m
+\e[92m  yes: continue (Enter alone too)\e[0m
+\e[92m  no: stop here\e[0m
+\e[92m  no, <reason>: stop and tell the model why\e[0m
 \e[?25h\e[?2026l--- session ---
 system: <prompt>
 user: "hi"
