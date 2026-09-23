@@ -71,7 +71,8 @@ This lets you run `bin/chi` without repeating common defaults such as model
 and llama host/port on every invocation.
 
 Note: The global config file supports both flat scalar entries (for env vars)
-and nested sections like `hosts:`, `recap:`, `hooks:`, `model_aliases:`,
+and nested sections like `hosts:`, `recap:`, `hooks:`, `guardrails:` (see
+[Guardrails](guardrails.md)), `model_aliases:`,
 `memories:`. Scalar entries are loaded as environment
 variables; non-scalar sections are skipped by the env-loader and parsed by
 their respective subsystems (e.g. the hooks system, `HostRegistry`). The

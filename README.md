@@ -48,15 +48,26 @@ bin/chi sessions list                         # saved sessions
 
 `/model` switches models, Ctrl-C cancels a turn, and Ctrl-D detaches (the session keeps running; `chi --attach ID` comes back).
 
+### Guardrails
+
+Every tool call the model makes can be allowed, denied, or put to you first.
+Rules come from `config.yml` (`guardrails:`), installed bundles and hooks;
+`chi bundle install guardrails` adds a default set (asks before `git push`,
+history rewrites, wide `rm -rf`, `curl | sh`, writes outside the repo; denies
+writes to `.git/hooks`). You answer in the REPL, the attached TUI or the web:
+once, for the session, for the repo, or for the whole rule in the repo.
+`/guardrails` lists the rules and your approvals. See [Guardrails](docs/guardrails.md).
+
 ## Documentation
 
 - [CLI and REPL](docs/cli.md): flags, sharing a session, web UI, `/model`, status line
 - [Configuration](docs/configuration.md): `config.yml`, hosts, model server transports, timeouts, retries, logs
 - [Memory](docs/memory.md): scopes and model-specific overlays
 - [Sessions](docs/sessions.md): storage, retention, `chi sessions`
+- [Guardrails](docs/guardrails.md): allow / ask / deny for tool calls, rules, approvals
 - [Hooks](docs/hooks.md): plugin hooks and bundle hooks
 - [Architecture](docs/architecture.md): Engine, TerminalUI, bridge, web
-- Internals: [Gemma 4 contract](docs/internals/gemma4-contract.md), [context telemetry](docs/internals/context-telemetry.md), [tool guardrails](docs/internals/tool-guardrails.md), [background tasks](docs/internals/background-tasks.md)
+- Internals: [Gemma 4 contract](docs/internals/gemma4-contract.md), [context telemetry](docs/internals/context-telemetry.md), [tool output limits](docs/internals/tool-guardrails.md), [background tasks](docs/internals/background-tasks.md)
 
 ## Development
 

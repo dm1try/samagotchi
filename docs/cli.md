@@ -83,7 +83,7 @@ In an attached terminal:
 - Ctrl-C cancels the running turn (whoever started it). At an idle prompt it
   clears the line; a second Ctrl-C within 2 s, Ctrl-D or `/exit` detaches. The
   worker keeps running; the detach line prints `chi --attach ID` to come back.
-- `/model`, `/models`, `/continue`, `!rollback` and `!commands` run in the
+- `/model`, `/models`, `/guardrails`, `/continue`, `!rollback` and `!commands` run in the
   worker, and every UI sees their output; `/stats` and `/recap` work too. The
   Web UI's composer takes the same commands.
 - `!commands` and the model's tools run in the session's directory (where it
@@ -152,6 +152,7 @@ In interactive assist mode, you can switch the request model without restarting:
 - `/model <name> --alias <alias>`: create alias for current effective model (alias value may be bare or `host:model`).
 - `/model`: show the effective model (and default when diverged: `runtime model: <effective> (default: <default>, profile=<name>, <source>)`, e.g. `profile=qwen36, server (chat_template)`).
 - `/model clear` (or `default`/`none`/`off`): clear the session override, reverting to the configured default.
+- `/guardrails`: the guardrail rules (by source), what failed to load, and your stored approvals, numbered; `/guardrails revoke N` removes approval N (see [Guardrails](guardrails.md)).
 - `/models`: list model ids aggregated across all `hosts:` (grouped `host (host:port):` with per-host `unreachable` warnings, e.g. an unset `api_key_env`; lists cached 60s, 10 minutes for a remote host; lazy — no startup prefill). At most 20 ids per host, then `… and N more`; `/models <text>` lists every id containing `<text>` (any case), e.g. `/models qwen` on OpenRouter.
 
 Notes:

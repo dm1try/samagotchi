@@ -50,7 +50,7 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 | `:after_turn` | After each turn completes | `{ type: :after_turn }` |
 | `:before_generation` | Before each LLM API call (both loops) | `{ type: :before_generation, iteration: N }` |
 | `:after_generation` | After LLM returns (both loops) | `{ type: :after_generation, iteration: N, response: "..." }` |
-| `:before_tool_call` | Before tool dispatch | `{ type: :before_tool_call, iteration: N, call: {...}, params: {...} }` |
+| `:before_tool_call` | Before tool dispatch (and before `tool_call_started`) | `{ type: :before_tool_call, iteration: N, call: {...}, params: "...", guardrail: Verdict, context: {...}, targets: {...}, blocked: false, block_reason: nil }` |
 | `:after_tool_call` | After tool execution | `{ type: :after_tool_call, iteration: N, tool: "read", output: "..." }` |
 | `:session_end` | After every turn (turn-level lifecycle) | `{ type: :session_end, session_id: "..." }` |
 
@@ -58,6 +58,13 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 
 - `on_error: "skip"` (default): silently ignore hook failures
 - `on_error: "log"`: emit a `warn` message to stderr
+- `required: true` (config hooks): the hook is a guardrail. If it fails to load
+  (missing file, syntax error), chi denies every tool call and says why; if it
+  raises as a `before_tool_call` hook, that call is denied. See
+  [Guardrails](guardrails.md#failing-closed).
+
+A hook that fails to load is reported as a `[samagotchi:hooks]` warning and
+once in the UI.
 
 Hook failures never break the engine loop — each hook is wrapped in its own
 try/catch.
@@ -111,23 +118,41 @@ class ToolCounter
 end
 ```
 
-**Blocking tool calls with a guardrail (veto):**
+<a id="guardrails-from-a-hook"></a>
+**Guardrails from a hook (allow / ask / deny):**
 
 ```ruby
 # ~/.config/samagotchi/hooks/safety.rb
 class Safety
   def call(event)
     return unless event[:type] == :before_tool_call
-    tool = event[:call][:name]
-    if tool == "execute" && event[:call][:content]&.include?("rm -rf /")
-      event[:blocked] = true
-      event[:block_reason] = "dangerous command denied by policy"
+    command = event[:targets][:command].to_s   # execute / task_create
+    if command.include?("rm -rf /")
+      event[:guardrail].deny!("dangerous command denied by policy")
+    elsif event[:targets][:outside_repo]
+      event[:guardrail].ask!("writes outside the repo", scopes: %w[once session])
     end
   end
 end
 ```
 
-When `event[:blocked] = true`, the tool is not dispatched. The model receives `[<tool>] Error: blocked by guardrail: <reason>` as the tool output (in both loops) (with `block_reason` or default `blocked by hook`), activity status is `blocked`, and `:after_tool_call` still fires. Only `:before_tool_call` supports veto — `blocked` is ignored on other hooks.
+`event[:guardrail]` is the call's verdict. `deny!(reason, rule: nil, source: nil)`
+and `ask!(reason, scopes: nil, rule: nil, source: nil)` vote; the strictest
+vote wins (deny > ask > allow) and a vote never relaxes it, so a later hook
+can't undo a deny. An ask goes to the user (see [Guardrails](guardrails.md#ask)).
+
+`event[:context]` is `{cwd:, repo_root:, branch:, session_id:, interface:, origin:}`
+(`interface` is `:repl`, `:worker` or `:non_interactive`). `event[:targets]` is
+what the call acts on, resolved as the tools resolve it:
+`{command:, paths:, cwd:, repo_root:, outside_repo:}`.
+
+The older flag still works: `event[:blocked] = true` with an optional
+`event[:block_reason]`. It is folded into the verdict after each hook (so it
+is sticky too), and the model gets `[<tool>] Error: blocked by guardrail: <reason>`
+(default reason `blocked by hook`). A verdict's deny reads
+`[<tool>] Error: denied by guardrail (<rule or hook>): <reason>. … Do not retry it …`.
+Either way the activity status is `blocked`, and `:after_tool_call` still fires.
+Only `:before_tool_call` votes.
 
 **Mutating params (legacy):**
 
@@ -144,7 +169,7 @@ class SafetyLegacy
 end
 ```
 
-Note: `:before_tool_call` can mutate the `:call` hash to modify tool execution, or set `blocked`/`block_reason` to veto it entirely.
+Note: `:before_tool_call` can replace the `:call` hash to change what runs; `tool_call_started` (what the UIs show) and the rules see the final call.
 
 ## Bundle Hooks (unified workflow bundle)
 
@@ -185,9 +210,11 @@ Notes:
 
 - Hook key = basename (flat under `hooks/`). No subdirs in v1.
 - `event` is required for auto-registration; a hook with no event is skipped.
-- `sha256` is integrity (not authenticity). No signing in v1.
+- `sha256` is integrity (not authenticity). No signing in v1. Install records the sha256 of the copied file; at `Engine.new` a hook whose file differs is not loaded (reinstall the bundle after editing one by hand).
 - Hook code is the bundle author's source of truth: on upgrade, hooks are overwritten; if the installed file was locally modified, a warning is emitted (`was locally modified; overwriting`).
-- A raising `:before_tool_call` guardrail respects `on_error`: `fail_closed` sets `event[:blocked]=true` (fail-closed), `log` warns, `skip` is silent.
+- A raising `:before_tool_call` guardrail respects `on_error`: `fail_closed` denies the call (fail-closed), `log` warns, `skip` is silent.
+- A `fail_closed` `:before_tool_call` hook is required: if it is missing, fails to load or its sha256 differs, chi denies every tool call until it is fixed.
+- A bundle can also ship YAML rules in `guardrails/*.yml`; see [Guardrails](guardrails.md#the-guardrails-bundle).
 - Ordering: bundle hooks fire by `(priority, bundle_name, hook_name)` (lower priority first), then plain `config.yml` hooks in registration order.
 - Installing a bundle executes its hook code at `Engine` startup. Only install bundles you trust, as you would a gem. Hooks are **not** executed at install time (copy-only); they are `module_eval`'d at `Engine.new` inside per-bundle `Samagotchi::Bundles::<name>` namespaces (no top-level `require` collisions). Keep hook files side-effect-free at load time; do work in `#call` — top-level side effects (require, IO, `at_exit`, global assignment) run once per `Engine.new` (class redefinition is idempotent).
 
