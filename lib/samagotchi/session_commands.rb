@@ -155,9 +155,9 @@ module Samagotchi
     def model_command(input)
       suffix = input.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
-        return ["runtime model: #{model_name} (profile=#{profile_note})#{served_note}", false] if model_name == @default_model
+        return ["runtime model: #{model_name}#{model_note}#{served_note}", false] if model_name == @default_model
 
-        return ["runtime model: #{model_name} (default: #{@default_model}, profile=#{profile_note})#{served_note}", false]
+        return ["runtime model: #{model_name}#{model_note("default: #{@default_model}")}#{served_note}", false]
       end
 
       # Parse flags: --default and --alias <name> / --alias=<name> (tolerant order)
@@ -211,14 +211,14 @@ module Samagotchi
         begin
           previous = ConfigFile.write_model_alias!(alias_name, model_name)
         rescue ArgumentError => e
-          return ["invalid alias: #{e.message} (runtime model set to #{model_name} (profile=#{profile_note}))", true]
+          return ["invalid alias: #{e.message} (runtime model set to #{model_name}#{model_note})", true]
         rescue StandardError => e
-          return ["runtime model set to #{model_name} (profile=#{profile_note}) but failed to persist alias: #{e.message}", true]
+          return ["runtime model set to #{model_name}#{model_note} but failed to persist alias: #{e.message}", true]
         end
 
         key = alias_name.strip.downcase
         warn_prefix = previous ? "warning: overwriting alias '#{key}' (#{previous} -> #{model_name}); " : ""
-        base = persist_default ? "runtime model set to #{model_name} (profile=#{profile_note}) and default updated" : "runtime model set to #{model_name} (profile=#{profile_note})"
+        base = persist_default ? "runtime model set to #{model_name}#{model_note} and default updated" : "runtime model set to #{model_name}#{model_note}"
         ["#{warn_prefix}#{base}; alias '#{key}' -> '#{model_name}' persisted", true]
       else
         return ["--default requires a model name: usage /model --default <name> or /model <name> [--default]", false] if arg.empty?
@@ -227,14 +227,14 @@ module Samagotchi
           return ["--default cannot be combined with clear/default/none/off", false] if persist_default
 
           switch_model(@default_model)
-          return ["runtime model reset to #{model_name} (profile=#{profile_note})", true]
+          return ["runtime model reset to #{model_name}#{model_note}", true]
         end
 
         switch_model(arg, persist_default: persist_default)
         if persist_default
-          ["runtime model set to #{model_name} (profile=#{profile_note}) and default updated", true]
+          ["runtime model set to #{model_name}#{model_note} and default updated", true]
         else
-          ["runtime model set to #{model_name} (profile=#{profile_note})", true]
+          ["runtime model set to #{model_name}#{model_note}", true]
         end
       end
     end
@@ -276,7 +276,6 @@ module Samagotchi
       end
     end
 
-    # "qwen36, server (chat_template)": the profile and where it came from.
     # "; served: <name>" when the server serves another model than asked.
     def served_note
       served, asked = @engine.respond_to?(:served_model) ? @engine.served_model : nil
@@ -285,9 +284,24 @@ module Samagotchi
       ""
     end
 
+    # " (default: x, profile=qwen36, name)": +extra+ and the prompt profile,
+    # which a chat host's model doesn't have (its loop uses none); "" when
+    # there is neither.
+    def model_note(extra = nil)
+      parts = [extra, (profile_note unless chat_model?)].compact
+      parts.empty? ? "" : " (#{parts.join(", ")})"
+    end
+
+    def chat_model?
+      @engine.respond_to?(:chat_model?) && @engine.chat_model?
+    rescue StandardError
+      false
+    end
+
+    # "profile=qwen36, server (chat_template)": the profile and where it came from.
     def profile_note
       resolution = @engine.profile_resolution
-      "#{resolution.profile.name}, #{resolution.label}"
+      "profile=#{resolution.profile.name}, #{resolution.label}"
     end
 
     # @param filter [String] only ids containing it (any case); "" lists

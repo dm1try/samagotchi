@@ -198,6 +198,19 @@ RSpec.describe "Engine#stats_snapshot" do
     expect(engine.stats_snapshot).to include(served_model: ornith_props["model_alias"], served_model_for: "house-blend-35b")
   end
 
+  # The chat loop uses no prompt profile; a native turn's one must not
+  # show after /model moved to a chat host.
+  it "has no prompt profile for a chat host's model" do
+    engine = engine_with(FakeResolvingClient.new(nil),
+                         hosts: { "main" => { host: "h.test", port: 8081 },
+                                  "chat" => { host: "c.test", port: 8000, api: :openai } })
+    engine.metrics.call(type: :generation_started, iteration: 1, profile: "qwen36", profile_source: "name")
+    allow(engine).to receive(:current_context_window).and_return(nil)
+    engine.switch_model!("chat:some-model")
+
+    expect(engine.stats_snapshot).not_to include(:profile, :profile_source)
+  end
+
   it "keeps the served model a turn reported for the current model" do
     engine = engine_with(FakeResolvingClient.new(nil))
     engine.metrics.call(type: :generation_completed, served_model: "ornith-x", requested_model: "house-blend-35b")

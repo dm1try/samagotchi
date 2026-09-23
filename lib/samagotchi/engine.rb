@@ -483,12 +483,19 @@ module Samagotchi
         window = current_context_window(target)
         snapshot = snapshot.merge(context_window_tokens: window.tokens, context_window_source: window.source) if window
       end
-      unless snapshot[:profile] || target.entry.chat?
+      # The chat loop uses no prompt profile: drop one a native turn reported.
+      return snapshot.except(:profile, :profile_source) if target.entry.chat?
+
+      unless snapshot[:profile]
         resolution = profile_resolution
         snapshot = snapshot.merge(profile: resolution.profile.name, profile_source: resolution.label)
       end
       snapshot
     end
+
+    # The effective model is on a chat host (api: openai), whose loop uses
+    # no prompt profile.
+    def chat_model? = @host_registry.resolve(@effective_model_name).entry.chat?
 
     # The model the server serves for the current model, and the name asked
     # for: what the last generation of that name reported, else llama.cpp's
