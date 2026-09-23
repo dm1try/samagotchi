@@ -39,24 +39,37 @@ module Samagotchi
           return false
         end
 
-        provenance = Provenance.new(name: BUNDLE_NAME)
-        data = provenance.read
+        with_lock do
+          data = Provenance.new(name: BUNDLE_NAME).read
 
-        if data.nil?
-          install_fresh(gem_manifest)
-        elsif installed_newer?(data[:version], gem_manifest.version)
-          # Running an older checkout/gem: never downgrade the user's system memories
-          # (not even to restore a missing file). `chi self` shows installed vs shipped.
-          false
-        elsif data[:version].to_s != gem_manifest.version.to_s
-          upgrade_existing(gem_manifest, data)
-        else
-          # Already at desired version — still verify files present (e.g. user deleted one)
-          verify_files_present(gem_manifest, data)
+          if data.nil?
+            install_fresh(gem_manifest)
+          elsif installed_newer?(data[:version], gem_manifest.version)
+            # Running an older checkout/gem: never downgrade the user's system memories
+            # (not even to restore a missing file). `chi self` shows installed vs shipped.
+            false
+          elsif data[:version].to_s != gem_manifest.version.to_s
+            upgrade_existing(gem_manifest, data)
+          else
+            # Already at desired version — still verify files present (e.g. user deleted one)
+            verify_files_present(gem_manifest, data)
+          end
         end
       rescue StandardError => e
         warn "[samagotchi-system] ensure failed: #{e.class}: #{e.message}"
         false
+      end
+
+      # Parallel chi starts on one config dir take turns: the second one reads
+      # the provenance the first one wrote, instead of installing over it and
+      # warning "Skipped … already exists" for every file.
+      def with_lock
+        dir = Provenance.bundles_dir
+        FileUtils.mkdir_p(dir)
+        File.open(File.join(dir, "#{BUNDLE_NAME}.lock"), File::RDWR | File::CREAT, 0o644) do |f|
+          f.flock(File::LOCK_EX)
+          yield
+        end
       end
 
       def skip?
@@ -126,7 +139,7 @@ module Samagotchi
         _nd, _manifest = installer.run
         true
       end
-      private_class_method :install_fresh, :upgrade_existing, :verify_files_present
+      private_class_method :with_lock, :install_fresh, :upgrade_existing, :verify_files_present
     end
   end
 end

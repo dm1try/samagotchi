@@ -84,5 +84,33 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
       expect(installed_version).to eq("0.1.7")
       expect(File).not_to exist(File.join(Samagotchi::MemoryBundle::Installer.system_dir, "identity.md"))
     end
+
+    it "installs once, without warnings, when parallel processes start on a fresh config dir" do
+      ship("0.1.7", "new\n")
+      # The race is timing-dependent: run it on a few fresh config dirs.
+      3.times do |round|
+        ENV["XDG_CONFIG_HOME"] = File.join(@tmp, "config-#{round}")
+        gate_r, gate_w = IO.pipe
+        err_r, err_w = IO.pipe
+        pids = 8.times.map do
+          fork do
+            gate_w.close
+            err_r.close
+            $stderr.reopen(err_w)
+            gate_r.read # released when the parent closes the write end
+            described_class.ensure!
+            exit!(0)
+          end
+        end
+        gate_r.close
+        err_w.close
+        gate_w.close
+        pids.each { |pid| Process.wait(pid) }
+
+        expect(err_r.read).to eq("")
+        expect(installed_version).to eq("0.1.7")
+        expect(installed_identity).to eq("new\n")
+      end
+    end
   end
 end
