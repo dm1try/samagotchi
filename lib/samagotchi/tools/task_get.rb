@@ -6,10 +6,8 @@ module Samagotchi
   module Tools
     class TaskGet
       NAME = "task_get"
-      DESCRIPTION = "Get full metadata for a task id. Use read on output_path to inspect logs."
 
       def self.name = NAME
-      def self.description = DESCRIPTION
 
       def self.call(task_id)
         record, error = TaskRuntime.get_record(task_id.to_s.strip)

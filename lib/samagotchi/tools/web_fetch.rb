@@ -11,12 +11,10 @@ module Samagotchi
     # Fetches the content of a URL and returns cleaned text content.
     class WebFetch
       NAME        = "web_fetch"
-      DESCRIPTION = "Fetch the content of a URL (HTML or text) and return cleaned text. Handles HTML by stripping scripts/styles and extracting visible text. Returns error messages for invalid URLs or HTTP errors."
       TIMEOUT_SEC = 15
       MAX_OUTPUT_BYTES = 32 * 1024
 
       def self.name        = NAME
-      def self.description = DESCRIPTION
 
       def self.call(url)
         url = url.to_s.strip

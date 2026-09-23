@@ -8,12 +8,10 @@ module Samagotchi
     # Reads a file from disk and returns its contents as a string.
     class Read
       NAME        = "read"
-      DESCRIPTION = "Read a file from disk. Large files are returned as a head+tail preview with size metadata. Range mode: pass start_line/end_line (inclusive); end_line is optional (means 'to EOF') and may overshoot EOF — the range clamps to the last line and reports the clamp. A start_line past EOF returns an error."
 
       DEFAULT_HARD_MAX_BYTES = 2 * 1024 * 1024
 
       def self.name        = NAME
-      def self.description = DESCRIPTION
 
       def self.call(path, start_line: nil, end_line: nil)
         path = ToolPath.normalize(path)

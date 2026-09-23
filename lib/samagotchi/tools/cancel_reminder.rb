@@ -7,10 +7,8 @@ module Samagotchi
     # Cancels a previously registered reminder by name.
     class CancelReminder
       NAME        = "cancel_reminder"
-      DESCRIPTION = "Cancel a previously registered reminder."
 
       def self.name        = NAME
-      def self.description = DESCRIPTION
 
       def self.call(content, reminder_store: nil)
         return "Error: reminder_store not configured" unless reminder_store

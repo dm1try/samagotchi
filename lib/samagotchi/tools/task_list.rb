@@ -6,11 +6,9 @@ module Samagotchi
   module Tools
     class TaskList
       NAME = "task_list"
-      DESCRIPTION = "List all background tasks for the current workspace with status and output path."
       COMMAND_PREVIEW_LIMIT = 80
 
       def self.name = NAME
-      def self.description = DESCRIPTION
 
       def self.call(_content = nil)
         records = TaskRuntime.list_records

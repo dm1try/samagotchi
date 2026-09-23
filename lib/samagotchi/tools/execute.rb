@@ -15,13 +15,11 @@ module Samagotchi
     #   <tool name="execute">ruby path/to/script.rb</tool>
     class Execute
       NAME        = "execute"
-      DESCRIPTION = "Run a shell command (ruby snippet, rspec, etc.). Large stdout/stderr is truncated to a head+tail preview with metadata."
       TIMEOUT_SEC = 30
       STOP_GRACE_SEC = 1.0
       STOP_POLL_INTERVAL_SEC = 0.05
 
       def self.name        = NAME
-      def self.description = DESCRIPTION
 
       def self.call(command, cwd: nil)
         command = command.strip

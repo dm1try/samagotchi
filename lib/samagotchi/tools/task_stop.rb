@@ -6,10 +6,8 @@ module Samagotchi
   module Tools
     class TaskStop
       NAME = "task_stop"
-      DESCRIPTION = "Stop a running background task by id."
 
       def self.name = NAME
-      def self.description = DESCRIPTION
 
       def self.call(task_id)
         record, error = TaskRuntime.stop_task(task_id.to_s.strip)

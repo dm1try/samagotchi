@@ -16,14 +16,8 @@ module Samagotchi
     # Usage: call("entry_name", scope: "project"|"system"|nil)
     class MemoryRead
       NAME        = "memory_read"
-      DESCRIPTION = 'Read a memory entry (MD file) from scoped memories. ' \
-                    'Pass name without extension and optional scope (project|system). ' \
-                    "When scope is omitted, read falls back from project to system. " \
-                    'Multiple comma-separated names (e.g. "one, two") read all matched entries ' \
-                    'concatenated with a `---` separator.'
 
       def self.name        = NAME
-      def self.description = DESCRIPTION
 
       SEPARATOR = "\n\n---\n\n"
 
@@ -139,12 +133,8 @@ module Samagotchi
     # Usage: call(content, path: "entry_name", scope: "project"|"system", description: "…")
     class MemoryWrite
       NAME        = "memory_write"
-      DESCRIPTION = 'Write or update a memory entry (MD file) in scoped memories. ' \
-                    'Provide the entry name (via the `name` parameter) and required scope (project|system). ' \
-                    'Optional description is appended to the managed index line.'
 
       def self.name        = NAME
-      def self.description = DESCRIPTION
 
       # A line is "managed for entry `name`" only when the bolded token exactly
       # equals the entry name, followed by end-of-line, `:`, or a middle dot.

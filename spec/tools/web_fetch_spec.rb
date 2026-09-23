@@ -18,13 +18,6 @@ RSpec.describe Samagotchi::Tools::WebFetch do
     end
   end
 
-  describe ".description" do
-    it "returns a non-empty description" do
-      expect(web_fetch.description).to be_a(String)
-      expect(web_fetch.description).not_to be_empty
-    end
-  end
-
   describe ".call" do
     context "with no arguments" do
       it "returns an error" do

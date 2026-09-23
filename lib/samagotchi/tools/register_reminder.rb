@@ -12,10 +12,8 @@ module Samagotchi
     # and a new turn is about to start.
     class RegisterReminder
       NAME        = "register_reminder"
-      DESCRIPTION = "Register a periodic reminder. The harness injects a [SYSTEM:] message into the next idle turn."
 
       def self.name        = NAME
-      def self.description = DESCRIPTION
 
       def self.call(content, reminder_store: nil, description: nil, interval_minutes: nil)
         return "Error: reminder_store not configured" unless reminder_store

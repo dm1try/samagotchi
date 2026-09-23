@@ -10,10 +10,8 @@ module Samagotchi
     #   <tool name="write" path="lib/samagotchi/tools/new_tool.rb">content</tool>
     class Write
       NAME        = "write"
-      DESCRIPTION = 'Write content to a file. Use path attribute: <tool name="write" path="path/to/file">content</tool>'
 
       def self.name        = NAME
-      def self.description = DESCRIPTION
 
       def self.call(content, path:)
         path = ToolPath.normalize(path)

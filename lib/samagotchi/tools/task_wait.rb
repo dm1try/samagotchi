@@ -7,14 +7,12 @@ module Samagotchi
   module Tools
     class TaskWait
       NAME = "task_wait"
-      DESCRIPTION = "Wait for a background task to finish, a log pattern match, or timeout. Timed-out waits return a bounded output tail."
       TIMEOUT_DEFAULT = 600
       TAIL_LINES_DEFAULT = 10
       TAIL_LINES_MAX = 100
       POLL_INTERVAL = 0.5
 
       def self.name = NAME
-      def self.description = DESCRIPTION
 
       def self.call(task_id, timeout: TIMEOUT_DEFAULT, tail_lines: TAIL_LINES_DEFAULT, done_pattern: nil)
         timeout = TIMEOUT_DEFAULT if blank?(timeout)

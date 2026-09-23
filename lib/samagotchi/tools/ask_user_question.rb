@@ -16,10 +16,8 @@ module Samagotchi
     # Single tool covers single + multi + freeform via flags: multi_select, allow_freeform.
     class AskUserQuestion
       NAME        = "ask_user_question"
-      DESCRIPTION = "Ask the user a structured qualification question. Supports single or multi selection and optional freeform/Other input. Prefer this over plain numbered lists when you need a clear choice. The harness renders it natively (TUI prompt / WEB buttons) and returns {selected, freeform}."
 
       def self.name        = NAME
-      def self.description = DESCRIPTION
 
       # Direct invocation (used in specs / headless fallback).
       # When a blocking handler is not injected, return an instructional error so the

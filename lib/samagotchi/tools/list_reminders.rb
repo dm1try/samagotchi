@@ -7,10 +7,8 @@ module Samagotchi
     # Lists all active registered reminders.
     class ListReminders
       NAME        = "list_reminders"
-      DESCRIPTION = "List all active registered reminders."
 
       def self.name        = NAME
-      def self.description = DESCRIPTION
 
       def self.call(content, reminder_store: nil)
         return "Error: reminder_store not configured" unless reminder_store
