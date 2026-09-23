@@ -730,7 +730,7 @@ end
 
 OptionParser.new do |opts|
   opts.banner = "Usage: bin/chi [options] [subcommand]"
-  opts.on("-p", "--prompt PROMPT", "Run a single prompt and exit") { |p| options[:prompt] = p }
+  opts.on("-p", "--prompt PROMPT", "Run PROMPT as the first turn, then stay in the REPL") { |p| options[:prompt] = p }
   opts.on("--resume SESSION_ID", "Resume a previous session by its ID") { |s| options[:resume] = s }
   opts.on("--attach SESSION_ID", "Attach to a session's worker (e.g. one `chi web` started), waking one if it has exited") { |s| options[:attach] = s }
   opts.on("--[no-]shared", "Run the session in a background worker and attach to it, so `chi web` can share it (with --resume: that session); --no-shared runs a plain REPL even when session.shared is on") { |v| options[:shared] = v }
