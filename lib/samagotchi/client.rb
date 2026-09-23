@@ -485,7 +485,7 @@ module Samagotchi
     # so the next completion retries (a transient blip shouldn't disable
     # resolution for the whole session). On failure we return [] so an unknown
     # selector still passes through raw, letting oMLX return its own 400/404
-    # (server decides), matching the README's documented behavior.
+    # (server decides), as documented in docs/configuration.md.
     def fetch_omlx_model_ids
       return @omlx_model_ids if defined?(@omlx_model_ids)
 

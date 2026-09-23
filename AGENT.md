@@ -8,7 +8,7 @@ Naming note: Samagotchi is the full engine name. Chi (pronounced "chee") is the 
 ## Architecture
 
 Samagotchi is split into a core **Engine** (`lib/samagotchi/engine.rb`) and a
-**TerminalUI** (`lib/samagotchi/terminal_ui.rb`); see the README's Architecture section.
+**TerminalUI** (`lib/samagotchi/terminal_ui.rb`); see `docs/architecture.md`.
 - `Engine` owns all agent logic: system prompt, memory injection, tool declarations,
   session lifecycle, and the model↔tool loop (`Engine#run_turn`). No terminal coupling.
 - `TerminalUI` owns the REPL (Reline), rendering, and REPL commands; it delegates all core
@@ -21,7 +21,7 @@ Samagotchi is split into a core **Engine** (`lib/samagotchi/engine.rb`) and a
 
 ## CLI Usage (`bin/chi`)
 `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--prompt`, `--non-interactive`,
-and `--resume`. Flag semantics (also in README's "CLI Usage" section):
+and `--resume`. Flag semantics (also in `docs/cli.md`):
 - `-p`, `--prompt TEXT`: feed `TEXT` as the first turn — feeds **and** runs it.
 - `--non-interactive`: run one turn then exit (high iteration cap; implies `--no-interrupt`).
   A harmless no-op when given without `-p` (no session created).
@@ -49,7 +49,7 @@ and `--resume`. Flag semantics (also in README's "CLI Usage" section):
 - When modifying code, always ensure RSpec tests pass.
 - Use memory scopes explicitly: `memory_read` may omit scope (project -> system fallback), while `memory_write` must provide `scope` (`project` or `system`).
 - `memory_write` accepts an optional `description` (and its scoped `index.md` is auto-maintained). The entry name is passed via the `name` parameter (not `path` — the file tools use `path`). Each entry is written as a managed line — `- **name** · scope · date · size — description` — with every other line preserved byte-for-byte.
-- `memory_write` also accepts `current_model_only: true` to save a model-specific overlay (`<name>.<model-key>.md`) that is auto-appended when read under that model. See README.md's "Model-Specific Memory Overlays" section.
+- `memory_write` also accepts `current_model_only: true` to save a model-specific overlay (`<name>.<model-key>.md`) that is auto-appended when read under that model. See `docs/memory.md`.
 - When adding new capabilities, update the relevant tools in `lib/samagotchi/tools/`.
 - Always check `AGENT.md` for current operational context.
 - Prefer `execute` for short commands and `task_create`/`task_wait` for long-running commands. Use `task_get`/`task_list` for nonblocking status checks and `task_stop` to stop a task.
