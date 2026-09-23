@@ -139,6 +139,10 @@ module Samagotchi
             end
           end
         end
+        # ── Guardrail rules: the installed bundle's, else target_dir's ──
+        rules_dir = prov && prov_data && prov_data[:guardrails].is_a?(Hash) ? prov.guardrails_dir : File.join(target_dir, "guardrails")
+        rules_to_copy = Dir.exist?(rules_dir) ? Dir.glob(File.join(rules_dir, "*.yml")).sort : []
+
         # Determine trust_level for the built bundle
         build_trust_level = @trust_level
         if (build_trust_level.nil? || build_trust_level.empty?) && prov_data && prov_data[:trust_level]
@@ -162,6 +166,12 @@ module Samagotchi
             hooks_to_copy.each do |src, basename|
               FileUtils.cp(src, File.join(hooks_staging, basename))
             end
+          end
+
+          unless rules_to_copy.empty?
+            rules_staging = File.join(staging, "guardrails")
+            FileUtils.mkdir_p(rules_staging)
+            rules_to_copy.each { |src| FileUtils.cp(src, File.join(rules_staging, File.basename(src))) }
           end
 
           Manifest.write(

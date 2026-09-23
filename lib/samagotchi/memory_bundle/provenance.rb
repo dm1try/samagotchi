@@ -32,6 +32,32 @@ module Samagotchi
         File.join(@bundle_dir, "hooks")
       end
 
+      # Installed guardrail rule files (guardrails/*.yml).
+      def guardrails_dir
+        File.join(@bundle_dir, "guardrails")
+      end
+
+      # Yields [name, data] for each installed bundle with guardrail rule
+      # files, by name. A manifest that doesn't parse is yielded as
+      # {error:} when its bundle has a guardrails/ dir (its rules can't be
+      # checked), and skipped otherwise.
+      def self.each_installed_with_guardrails
+        return enum_for(:each_installed_with_guardrails) unless block_given?
+        dir = bundles_dir
+        return unless Dir.exist?(dir)
+        Dir[File.join(dir, "*", "manifest.json")].sort.each do |mjson|
+          name = File.basename(File.dirname(mjson))
+          begin
+            data = JSON.parse(File.read(mjson), symbolize_names: true)
+          rescue JSON::ParserError, SystemCallError => e
+            yield name, { error: "manifest.json is unreadable: #{e.message}" } if Dir.exist?(File.join(File.dirname(mjson), "guardrails"))
+            next
+          end
+          next unless data.is_a?(Hash) && data[:guardrails].is_a?(Hash) && !data[:guardrails].empty?
+          yield name, data
+        end
+      end
+
       def self.each_installed_holding_hooks
         return enum_for(:each_installed_holding_hooks) unless block_given?
         dir = self.bundles_dir
@@ -47,7 +73,10 @@ module Samagotchi
       # and saves base snapshots. Stale base snapshots (files removed from bundle)
       # are pruned.
       # @param hooks_files [Hash] basename => path for hook file snapshots (optional)
-      def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {})
+      # @param guardrails_files [Hash] basename => installed rule file; the
+      #   sha256 of each is recorded (the Engine checks it at load)
+      def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
+                guardrails_files: {})
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -139,6 +168,11 @@ module Samagotchi
           "hooks" => hooks_map
         }
         manifest_data["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
+        if guardrails_files.is_a?(Hash) && !guardrails_files.empty?
+          manifest_data["guardrails"] = guardrails_files.sort.to_h do |basename, path|
+            [basename.to_s, { "sha256" => "sha256:#{Digest::SHA256.hexdigest(File.read(path.to_s))}" }]
+          end
+        end
         manifest_data["source_commit"] = source_commit.to_s if source_commit && !source_commit.to_s.empty?
 
         # Write aside and rename, so a reader in another process (a parallel

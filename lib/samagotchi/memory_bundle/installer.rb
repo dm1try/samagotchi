@@ -243,6 +243,26 @@ module Samagotchi
           end
         end
 
+        # ── Guardrail rules: guardrails/*.yml into <bundle_dir>/guardrails/ ─
+        # The bundle's set replaces what an earlier version installed.
+        guardrails_target = provenance.guardrails_dir
+        guardrail_files_for_provenance = {}
+        incoming_rules = Dir.glob(File.join(normalized_dir, "guardrails", "*.yml")).sort
+        if @dry_run
+          incoming_rules.each { |src| @results["guardrails/#{File.basename(src)}"] = { status: "would_install" } }
+        else
+          FileUtils.rm_rf(guardrails_target)
+          unless incoming_rules.empty?
+            FileUtils.mkdir_p(guardrails_target)
+            incoming_rules.each do |src|
+              dest = File.join(guardrails_target, File.basename(src))
+              FileUtils.cp(src, dest)
+              @results["guardrails/#{File.basename(src)}"] = { status: "installed" }
+              guardrail_files_for_provenance[File.basename(src)] = dest
+            end
+          end
+        end
+
         # Handle pruned files (removed from bundle) — report warnings
         if @upgrade && existing_provenance && existing_provenance[:files]
           existing_provenance[:files].keys.each do |old_key|
@@ -345,7 +365,8 @@ module Samagotchi
               hooks: hooks_for_provenance,
               trust_level: manifest.respond_to?(:trust_level) ? manifest.trust_level : nil,
               source_commit: source_commit,
-              hooks_files: hooks_files_for_provenance
+              hooks_files: hooks_files_for_provenance,
+              guardrails_files: guardrail_files_for_provenance
             )
           end
         end

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "json"
 require "securerandom"
 require "time"
@@ -675,8 +676,51 @@ module Samagotchi
           warn "[samagotchi:guardrails] config.yml guardrails rules: #{e.message}"
           @guardrail_failures.add("rules in config.yml", e.message, required: true)
         end
-        Guardrails::Rules.new(rules, enabled: Samagotchi::Config.get("guardrails.enabled") != false)
+        Guardrails::Rules.new(rules + bundle_guardrail_rules,
+                              enabled: Samagotchi::Config.get("guardrails.enabled") != false)
       end
+    end
+
+    # Installed bundles' guardrails/*.yml, by bundle name then file name.
+    # A file that is missing, changed since install (sha256) or doesn't
+    # parse is a required load failure.
+    def bundle_guardrail_rules
+      require_relative "memory_bundle/provenance"
+      rules = []
+      MemoryBundle::Provenance.each_installed_with_guardrails do |bundle_name, data|
+        if data[:error]
+          warn "[samagotchi:guardrails] bundle #{bundle_name}: #{data[:error]}"
+          @guardrail_failures.add("rules (bundle #{bundle_name})", data[:error], required: true)
+          next
+        end
+        dir = MemoryBundle::Provenance.new(name: bundle_name).guardrails_dir
+        data[:guardrails].sort_by { |k, _| k.to_s }.each do |basename, meta|
+          what = "rules #{basename} (bundle #{bundle_name})"
+          path = File.join(dir, basename.to_s)
+          begin
+            raise Guardrails::Rules::ParseError, "the file is missing" unless File.file?(path)
+
+            expected = (meta.is_a?(Hash) ? meta[:sha256] : nil).to_s.sub(/\Asha256:/, "")
+            actual = Digest::SHA256.hexdigest(File.binread(path))
+            if expected != actual
+              raise Guardrails::Rules::ParseError, "its sha256 differs from the installed one (edited after install? reinstall the bundle)"
+            end
+
+            doc = YAML.safe_load(File.read(path))
+            raise Guardrails::Rules::ParseError, "expected a mapping with rules:" unless doc.is_a?(Hash)
+
+            rules.concat(Guardrails::Rules.parse(doc["rules"], source: "bundle #{bundle_name}"))
+          rescue Guardrails::Rules::ParseError, Psych::Exception => e
+            warn "[samagotchi:guardrails] #{what}: #{e.message}"
+            @guardrail_failures.add(what, e.message, required: true)
+          end
+        end
+      end
+      rules
+    rescue StandardError => e
+      warn "[samagotchi:guardrails] failed to read installed bundles' rules: #{e.class}: #{e.message}"
+      @guardrail_failures.add("bundle rules", "#{e.class}: #{e.message}", required: true)
+      rules || []
     end
 
     # @return [Guardrails::LoadFailures]
