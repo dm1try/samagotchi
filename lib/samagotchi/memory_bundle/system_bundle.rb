@@ -16,12 +16,13 @@ module Samagotchi
     # A newer shipped version (manifest.yml) triggers a 3-way upgrade:
     # fast-forward when not edited, keep when bundle unchanged, conflict keeps
     # local edit with a warning. An older shipped version is left alone, so an
-    # old checkout never downgrades the installed bundle.
+    # old checkout never downgrades the installed bundle; it says so once.
     module SystemBundle
       BUNDLE_NAME = "samagotchi-system"
       SCOPE = "system"
       SKIP_ENV = "SAMAGOTCHI_SKIP_SYSTEM_BUNDLE"
       GEM_BUNDLE_DIR = File.expand_path("../bundles/system", __dir__)
+      NOTED_FILE = "older_shipped_noted"
 
       module_function
 
@@ -47,6 +48,7 @@ module Samagotchi
           elsif installed_newer?(data[:version], gem_manifest.version)
             # Running an older checkout/gem: never downgrade the user's system memories
             # (not even to restore a missing file). `chi self` shows installed vs shipped.
+            note_newer_installed(data[:version], gem_manifest.version)
             false
           elsif data[:version].to_s != gem_manifest.version.to_s
             upgrade_existing(gem_manifest, data)
@@ -83,6 +85,19 @@ module Samagotchi
         return false unless Gem::Version.correct?(installed) && Gem::Version.correct?(shipped)
 
         Gem::Version.new(installed) > Gem::Version.new(shipped)
+      end
+
+      # One line per installed/shipped pair, so an old worktree (and each of its
+      # workers) says it once instead of on every start. The pairs already noted
+      # sit in the bundle's provenance dir; ensure! holds the lock here.
+      def note_newer_installed(installed, shipped)
+        pair = "#{installed} #{shipped}"
+        path = File.join(Provenance.new(name: BUNDLE_NAME).bundle_dir, NOTED_FILE)
+        noted = File.exist?(path) ? File.readlines(path, chomp: true) : []
+        return if noted.include?(pair)
+
+        warn "[samagotchi-system] installed system bundle #{installed} is newer than this chi's #{shipped}; left as is"
+        File.write(path, "#{pair}\n", mode: "a")
       end
 
       def install_fresh(gem_manifest)
@@ -139,7 +154,7 @@ module Samagotchi
         _nd, _manifest = installer.run
         true
       end
-      private_class_method :with_lock, :install_fresh, :upgrade_existing, :verify_files_present
+      private_class_method :with_lock, :note_newer_installed, :install_fresh, :upgrade_existing, :verify_files_present
     end
   end
 end

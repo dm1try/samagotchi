@@ -74,6 +74,34 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
       expect(installed_identity).to eq("new\n")
     end
 
+    it "notes a newer installed bundle once per installed/shipped pair" do
+      ship("0.1.13", "new\n")
+      described_class.ensure!
+      ship("0.1.8", "old\n")
+
+      note = "[samagotchi-system] installed system bundle 0.1.13 is newer than this chi's 0.1.8; left as is\n"
+      expect { described_class.ensure! }.to output(note).to_stderr
+      expect { described_class.ensure! }.not_to output.to_stderr
+
+      ship("0.1.11", "mid\n")
+      expect { described_class.ensure! }.to output(/0\.1\.13 is newer than this chi's 0\.1\.11/).to_stderr
+      ship("0.1.8", "old\n")
+      expect { described_class.ensure! }.not_to output.to_stderr
+      expect(installed_identity).to eq("new\n")
+    end
+
+    it "notes again after the installed bundle changes" do
+      ship("0.1.12", "a\n")
+      described_class.ensure!
+      ship("0.1.8", "old\n")
+      expect { described_class.ensure! }.to output(/0\.1\.12 is newer/).to_stderr
+
+      ship("0.1.13", "b\n")
+      described_class.ensure!
+      ship("0.1.8", "old\n")
+      expect { described_class.ensure! }.to output(/0\.1\.13 is newer/).to_stderr
+    end
+
     it "does not restore a missing file from an older shipped bundle" do
       ship("0.1.7", "new\n")
       described_class.ensure!
