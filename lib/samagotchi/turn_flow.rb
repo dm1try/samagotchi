@@ -154,12 +154,14 @@ module Samagotchi
     end
 
     # The messages the turn added after the checkpoint (all of them after an
-    # empty one: a new session's first turn).
+    # empty one: a new session's first turn). The prefix is matched by role,
+    # not content: the kernel returns earlier model messages without their
+    # thinking, so they differ from the saved ones, one for one.
     def interrupted_turn_messages(conversation)
       checkpoint = Array(@checkpoint)
       conversation = Array(conversation)
       return [] if conversation.length < checkpoint.length
-      return [] unless conversation.first(checkpoint.length) == checkpoint
+      return [] unless conversation.first(checkpoint.length).map { |m| m[:role] } == checkpoint.map { |m| m[:role] }
 
       conversation[checkpoint.length..] || []
     end

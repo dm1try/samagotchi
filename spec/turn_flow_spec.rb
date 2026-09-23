@@ -87,6 +87,21 @@ RSpec.describe Samagotchi::TurnFlow do
       expect(flow.offer[:context]).to include(original_prompt: "list it", last_model_intent: "calling ls")
     end
 
+    # The kernel sends (and returns) earlier model messages without their
+    # thinking, so after the first turn the returned conversation never
+    # starts with the saved checkpoint verbatim.
+    it "summarizes a turn after one whose model message kept its thinking" do
+      engine.messages = [{ role: "system", content: "sys" }, { role: "user", content: "one" },
+                         { role: "model", content: "<think>first</think>\n\nONE" }]
+      flow.before_prompt_turn
+      returned = [{ role: "system", content: "sys" }, { role: "user", content: "one" }, { role: "model", content: "\nONE" },
+                  { role: "user", content: "list it" }, { role: "model", content: "calling ls" }]
+
+      flow.after_turn(result(returned, exhausted: true, pending: true))
+
+      expect(flow.offer[:context]).to include(original_prompt: "list it", last_model_intent: "calling ls")
+    end
+
     it "takes a result that doesn't say whether it can be continued as completed" do
       run_prompt("go", [{ role: "model", content: "done" }])
 
