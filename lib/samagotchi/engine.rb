@@ -346,7 +346,7 @@ module Samagotchi
       @kernel.sync_profile_from_model!(bare) if @kernel.respond_to?(:sync_profile_from_model!)
       @model_key = ModelOverlay.key_for(bare)
       @kernel.sync_model_key!(@model_key) if @kernel.respond_to?(:sync_model_key!)
-      @system_prompt = nil
+      @system_prompts = nil
       sync_kernel_client!
       @client.invalidate_context_window! if @client.respond_to?(:invalidate_context_window!)
       if persist_default
@@ -745,9 +745,16 @@ module Samagotchi
       true
     end
 
-    # @return [String] fully built system prompt (for inspection/tests)
-    def system_prompt
-      @system_prompt ||= system_prompt_with_index(assist_system_prompt)
+    # The system prompt for a target's loop (default: the effective model's):
+    # the chat loop's leaves out the raw-prompt tool text, since its tools go
+    # as schemas. Built once per loop (and again after a model switch) so the
+    # prompt prefix, and the server's KV cache for it, stay stable.
+    # @param target [HostRegistry::ModelTarget, nil]
+    # @return [String]
+    def system_prompt(target = nil)
+      chat = (target || @host_registry.resolve(@effective_model_name)).entry.chat?
+      @system_prompts ||= {}
+      @system_prompts[chat] ||= system_prompt_with_index(assist_system_prompt(chat: chat), chat: chat)
     end
 
     # @return [Session] current session (Engine owns create/resume)
@@ -1299,7 +1306,11 @@ module Samagotchi
 
     # ── System prompts ─────────────────────────────────────────────────────────
 
-    def assist_system_prompt
+    # @param chat [Boolean] for the chat loop: no tool declarations, call
+    #   syntax or turn preamble (its tools go as schemas with each request)
+    def assist_system_prompt(chat: false)
+      return chat_system_prompt if chat
+
       declarations = tool_declarations
       hint = tool_call_hint
       turn_preamble = turn_preamble_instruction
@@ -1314,6 +1325,24 @@ module Samagotchi
         #{turn_preamble}
         #{ToolDeclarations::SMALL_CONTEXT_PROTOCOL}
 
+        #{assist_guidance}
+      SYS
+    end
+
+    def chat_system_prompt
+      <<~SYS
+        You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant harness. Your tools come with each request; call them as tool calls.
+        You may make multiple tool calls. After seeing tool results, continue reasoning or answer the user.
+
+        #{ToolDeclarations::SMALL_CONTEXT_PROTOCOL}
+
+        #{assist_guidance}
+      SYS
+    end
+
+    # The guidance both loops' prompts share.
+    def assist_guidance
+      <<~SYS.chomp
         Editing workflow:
           1. Read the target file or line range immediately before calling edit.
           2. For exact-match mode, copy old_text verbatim from that read output; do not reconstruct it from memory.
@@ -1352,11 +1381,13 @@ module Samagotchi
       SYS
     end
 
-    def system_prompt_with_index(base)
+    # @param chat [Boolean] no Gemma thinking token (the chat API's template
+    #   decides about thinking)
+    def system_prompt_with_index(base, chat: false)
       project_index = read_memory_index("project")
       system_index = read_memory_index("system")
       project_description = project_specific_description
-      thinking_token = if @profile.name == "gemma4" && ENV["THINKING_MODE"] != "false"
+      thinking_token = if !chat && @profile.name == "gemma4" && ENV["THINKING_MODE"] != "false"
                          "<|think|>\n"
                        else
                          ""
