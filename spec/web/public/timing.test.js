@@ -7,6 +7,7 @@ import {
   formatDuration,
   normalizeTiming,
   turnRecordAt,
+  timedTurnIndexes,
 } from "../../../lib/samagotchi/web/public/timing.js";
 
 // Shared contract: spec/shared/timing_matrix.json. One source of truth for the
@@ -41,4 +42,17 @@ test("normalizeTiming keeps usable persisted records and turnRecordAt preserves 
   assert.deepEqual(timing.turnRecords.map((record) => record.id), ["turn-1"]);
   assert.equal(turnRecordAt(timing, 0).duration_ms, 1000);
   assert.equal(turnRecordAt(timing, 1), null);
+});
+
+test("timedTurnIndexes marks only each turn's last assistant message", () => {
+  const items = [
+    { role: "user" },
+    { role: "assistant" }, // a tool-calling iteration
+    { role: "assistant" }, // the turn's answer
+    { role: "user" },
+    { role: "assistant" },
+    { role: "user" }, // a turn with no answer yet
+  ];
+
+  assert.deepEqual(timedTurnIndexes(items), [null, null, 0, null, 1, null]);
 });
