@@ -44,6 +44,14 @@ RSpec.describe Samagotchi::IdleRecap do
         messages = [{ "role" => "user", "content" => "Hello" }]
         expect(Samagotchi::IdleRecap::TranscriptFilter.build(messages)).to eq("Hello")
       end
+      it "names a user message's images, and never carries their bytes" do
+        ref = { "file" => "images/0123456789abcdef.png", "name" => "shot.png", "mime" => "image/png", "width" => 3, "height" => 2 }
+        messages = [{ "role" => "user", "content" => "what is this?", "images" => [ref] },
+                    { "role" => "tool_response", "content" => "[read]\nImage a.png attached.", "images" => [ref] },
+                    { "role" => "model", "content" => "A red square." }]
+        result = Samagotchi::IdleRecap::TranscriptFilter.build(messages)
+        expect(result).to eq("what is this?\n[image shot.png]\n\nA red square.")
+      end
       it "keeps model messages and strips think tokens" do
         messages = [
           { "role" => "user", "content" => "Hi" },

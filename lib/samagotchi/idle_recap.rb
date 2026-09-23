@@ -55,7 +55,8 @@ module Samagotchi
 
           case message["role"]
           when "user"
-            message["content"].to_s
+            # An image is a line naming it (refs only, never its bytes).
+            [message["content"].to_s, *image_lines(message["images"])].reject(&:empty?).join("\n")
           when "model", "assistant"
             strip_thought(message["content"].to_s.gsub(TOOL_CALL_RE, ""))
           else
@@ -74,6 +75,10 @@ module Samagotchi
             chunk[TOOL_OUTPUT_HEADER_RE, 1]
           end
         end
+      end
+
+      def image_lines(images)
+        Array(images).filter_map { |ref| "[image #{ref["name"] || File.basename(ref["file"].to_s)}]" if ref.is_a?(Hash) }
       end
 
       def strip_thought(text)
