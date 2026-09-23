@@ -25,6 +25,8 @@ module Samagotchi
     DEFAULT_MODEL = "gemma4-small"
     DUMMY_API_KEY = "sk-local-dummy"
     DEFAULT_TIMEOUT_SECONDS = 30.0
+    # 2-4 sentences need ~100 tokens with thinking off; the rest is headroom.
+    MAX_TOKENS = 512
 
     # @param timeout [Numeric] HTTP request timeout. Kept to the recap's own
     #   wait budget (not the chat's global request_timeout) so an abandoned
@@ -48,6 +50,12 @@ module Samagotchi
           .gsub(LITERAL_THINK_RE, "")
           .gsub(/\n\n+/, "\n")
           .strip
+    end
+
+    # +text+ up to its last sentence end (. ! ? plus closing quotes or
+    # brackets, then whitespace or the end), or "" when none finished.
+    def self.full_sentences(text)
+      text.to_s[/\A.*[.!?]["')\]`*]*(?=\s|\z)/m].to_s
     end
 
     # Summarize an already-built recap prompt. Returns the cleaned prose, or
@@ -78,8 +86,11 @@ module Samagotchi
       body = {
         model: @model,
         temperature: 0.0,
-        max_tokens: 256,
-        messages: [{ role: "user", content: prompt }]
+        max_tokens: MAX_TOKENS,
+        messages: [{ role: "user", content: prompt }],
+        # A reasoning model otherwise spends the budget thinking and the
+        # recap stops mid-sentence. Templates without the switch ignore it.
+        chat_template_kwargs: { enable_thinking: false }
       }
       base = provider.api_base.to_s
       base = base.chomp("/") if base.end_with?("/")
@@ -138,7 +149,10 @@ module Samagotchi
       text = content.empty? ? reasoning : content
       # Strip thinking tokens that some models (Qwen, Gemma) include in content
       text = self.class.strip_thinking(text)
+      # Cut off by max_tokens: keep the sentences that finished ("" if none).
+      text = self.class.full_sentences(text) if body.dig("choices", 0, "finish_reason") == "length"
       text
     end
+
   end
 end

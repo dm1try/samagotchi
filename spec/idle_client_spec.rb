@@ -76,8 +76,42 @@ RSpec.describe Samagotchi::IdleClient do
       body = bodies.first
       expect(body[:model]).to eq("gemma4-small")
       expect(body[:temperature]).to eq(0.0)
-      expect(body[:max_tokens]).to eq(256)
+      expect(body[:max_tokens]).to eq(512)
       expect(body[:messages]).to eq([{ role: "user", content: "summarize this" }])
+    end
+
+    # A reasoning model spent a 256-token budget on thinking and the recap
+    # stopped mid-sentence. Templates without the switch ignore it.
+    it "asks the chat template to skip thinking" do
+      bodies = []
+      install_provider!(post_result: chat_body("ok"), body_captures: bodies)
+
+      client.summarize("summarize this")
+
+      expect(bodies.first[:chat_template_kwargs]).to eq(enable_thinking: false)
+    end
+  end
+
+  describe "a reply cut off by max_tokens" do
+    def cut_body(message)
+      double(body: JSON.generate("choices" => [{ "message" => message, "finish_reason" => "length" }]))
+    end
+
+    it "keeps the full sentences" do
+      install_provider!(post_result: cut_body("content" => "The goal was a flag. It is done! This is"))
+      expect(client.summarize("summarize this")).to eq("The goal was a flag. It is done!")
+    end
+
+    it "gives no recap when not even one sentence finished" do
+      install_provider!(post_result: cut_body("content" => "The goal was to add a"))
+      expect(client.summarize("summarize this")).to be_nil
+    end
+
+    it "leaves a finished reply alone" do
+      install_provider!(post_result: double(body: JSON.generate(
+        "choices" => [{ "message" => { "content" => "Done. No trailing stop" }, "finish_reason" => "stop" }]
+      )))
+      expect(client.summarize("summarize this")).to eq("Done. No trailing stop")
     end
   end
 
