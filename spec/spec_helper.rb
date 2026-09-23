@@ -56,6 +56,14 @@ RSpec.configure do |config|
     stub_const("Samagotchi::TerminalUI::THINKING_TICK_INTERVAL", nil) if defined?(Samagotchi::TerminalUI::THINKING_TICK_INTERVAL)
   end
 
+  # Really compile the macOS desktop helper (swiftc, codesign): slow, and
+  # needs the Command Line Tools. Own switch, not :integration's.
+  config.around(:each, :macos_build) do |example|
+    skip "Set SAMAGOTCHI_MACOS_BUILD=1 to compile the desktop helper" unless ENV["SAMAGOTCHI_MACOS_BUILD"] == "1"
+
+    example.run
+  end
+
   # Point :integration examples at the real config, then restore the fixture.
   # Config.store memoizes a snapshot, so drop it on both sides of the switch.
   # Skip here, before the switch: this config-level around wraps the group's
