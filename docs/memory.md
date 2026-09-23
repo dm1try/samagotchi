@@ -2,7 +2,9 @@
 
 Samagotchi stores memories in two scopes:
 
-- Project scope: `~/.config/samagotchi/memories/projects/<name>_<hash>/`
+- Project scope: `~/.config/samagotchi/memories/projects/<name>_<hash>/`, one folder per
+  git repository (named and hashed by its root), shared by all its worktrees and
+  subdirectories; outside a repository, one per working directory
 - System scope: `~/.config/samagotchi/memories`
 
 Tool behavior:

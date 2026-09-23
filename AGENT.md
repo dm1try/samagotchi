@@ -41,7 +41,7 @@ and `--resume`. Flag semantics (also in `docs/cli.md`):
 
 ## Core Principles
 - **Memory-Centric**: The harness relies heavily on memory (project/system scopes) for persistent cognition; tools operate on code/memories but the core is not self-modifying.
-- **Persistent Cognition**: Use project memories (`~/.config/samagotchi/memories/projects/<name>_<hash>/`) and system memories (`~/.config/samagotchi/memories`) for long-term state.
+- **Persistent Cognition**: Use project memories (`~/.config/samagotchi/memories/projects/<name>_<hash>/`, one per git repository, shared by its worktrees) and system memories (`~/.config/samagotchi/memories`) for long-term state.
 - **Single Mode (Assist)**: The harness currently runs in **Assist Mode** only (human-AI collaboration). Persisted state lives in memories; see Memory Scopes.
 
 ## Operational Instructions

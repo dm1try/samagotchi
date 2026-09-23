@@ -48,7 +48,7 @@ A compact visual overview of the current architecture, then the core API in pros
         ▼
   ┌──────────────────────────────────────────────────────────────────────────────────┐
   │                                   Persistence                                      │
-  │   Project:  ~/.config/samagotchi/memories/projects/<name>_<hash>/                │
+  │   Project:  ~/.config/samagotchi/memories/projects/<repo>_<hash>/ (per git repo) │
   │   System:   ~/.config/samagotchi/memories/                                       │
   └──────────────────────────────────────────────────────────────────────────────────┘
 ```
