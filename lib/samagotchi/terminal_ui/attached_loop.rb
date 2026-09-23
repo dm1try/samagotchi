@@ -111,7 +111,7 @@ module Samagotchi
       # @param input [#call, nil] prompt -> line (nil = Ctrl-D, raising
       #   Interrupt = Ctrl-C); defaults to Reline
       def run(input: nil)
-        queue = Thread::Queue.new
+        queue = @queue = Thread::Queue.new
         load_persistent_history
         # Reline's seam asks this on Ctrl-C while the typed text is still
         # there; declining lets the read end with Interrupt as before.
@@ -490,10 +490,19 @@ module Samagotchi
       end
 
       # On the reader thread, from Reline's Ctrl-C: what the line held, and
-      # when, for the Interrupt the LineReader queues next.
-      # @return [false] Reline goes on ending the read with Interrupt
+      # when. During a turn the press goes to the loop (it cancels the turn)
+      # and the read goes on with the typed text still in it, as in the REPL;
+      # otherwise it is noted for the Interrupt the LineReader queues next.
+      # @return [Boolean] true: handled, the read goes on; false: Reline ends
+      #   the read with Interrupt
       def note_interrupted_line
-        Thread.current[:interrupted_line] = { text: Reline.line_buffer.to_s, at: @clock.call }
+        pressed = { text: Reline.line_buffer.to_s, at: @clock.call }
+        if @running
+          @queue << [:interrupt, pressed]
+          return true
+        end
+
+        Thread.current[:interrupted_line] = pressed
         false
       rescue StandardError
         false

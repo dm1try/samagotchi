@@ -960,6 +960,24 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "Ctrl-C and exit at an idle
     expect(screen.lines.count("Ctrl-C again or Ctrl-D to detach")).to eq(1)
   end
 
+it "cancels a running turn on Ctrl-C and leaves the typed text in the prompt (the read goes on)" do
+  allow(client).to receive(:follow) do |&block|
+    block.call("type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => { "prompt" => "p", "parts" => [] },
+                                                      "queued" => [], "event_seq" => 1 })
+    double("stream", close: nil)
+  end
+  handled = nil
+
+  attached.run(input: lambda do |_prompt, _prefill|
+    allow(Reline).to receive(:line_buffer).and_return("half typed")
+    handled = Samagotchi::TerminalUI::RelineSeam.interrupt_handler.call
+    nil # then Ctrl-D, in the same read
+  end)
+
+  expect(handled).to be(true)
+  expect(client).to have_received(:cancel).with(reason: "ctrl_c")
+end
+
   it "detaches on a bare exit, as the REPL exits" do
     expect(run_reads("exit")).to eq(:detached)
     expect(described_class.new(client: client, screen: screen, client_id: "tui:1").run(input: ->(_p, _f) { "EXIT" })).to eq(:detached)
