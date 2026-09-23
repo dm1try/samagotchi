@@ -367,6 +367,45 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     expect(client).to have_received(:answer).with(id: "q1", selected: ["Banana"], freeform: nil)
   end
 
+  describe "an approval" do
+    let(:approval) do
+      { "id" => "a1", "kind" => "approval", "header" => "Approve tool call?",
+        "question" => "execute: git push\n  in /r (repo r, branch main)\n  why: pushes (rule git-push, config)",
+        "options" => ["Allow once", "Allow this call in this repo", "Deny"], "allow_freeform" => true,
+        "approval" => { "scopes" => %w[once repo] } }
+    end
+
+    it "shows the call and takes y (also when it was pending before the attach)" do
+      allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
+      start(first: snapshot(pending_question: approval))
+      wait_for { prompts.last == "choice> " }
+      expect(screen.lines.last).to include("Approve tool call?", "! execute: git push", "  why: pushes (rule git-push, config)",
+                                           "  3) Deny")
+      typed << "y"
+      wait_for { prompts.last == "> " }
+      finish
+      expect(client).to have_received(:answer).with(id: "a1", selected: ["Allow once"], freeform: nil)
+    end
+
+    it "sends n with a reason, and says denied on an empty answer" do
+      allow(client).to receive(:answer).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
+      allow(client).to receive(:dismiss_question).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
+      start
+      push("type" => "question_requested", "pending_question" => approval)
+      wait_for { prompts.last == "choice> " }
+      typed << "n; use a PR"
+      wait_for { prompts.last == "> " }
+      push("type" => "question_requested", "pending_question" => approval.merge("id" => "a2"))
+      wait_for { prompts.last == "choice> " }
+      typed << ""
+      wait_for { prompts.last == "> " }
+      finish
+      expect(client).to have_received(:answer).with(id: "a1", selected: ["Deny"], freeform: "use a PR")
+      expect(client).to have_received(:dismiss_question).with(id: "a2")
+      expect(screen.lines).to include("(denied)")
+    end
+  end
+
   it "re-asks after an invalid answer, and closes when another UI answers first" do
     start
     push("type" => "question_requested", "pending_question" => question)

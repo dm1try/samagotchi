@@ -476,12 +476,12 @@ module Samagotchi
       end
 
       # An empty answer dismisses the question, as in the REPL: the tool
-      # returns unanswered and the turn goes on. The :question_cancelled
-      # every UI gets finds it already closed here.
+      # returns unanswered (an approval: denied) and the turn goes on. The
+      # :question_cancelled every UI gets finds it already closed here.
       def dismiss_question
         reply = @client.dismiss_question(id: @question.id)
         case reply.status
-        when 200 then close_question("(cancelled)")
+        when 200 then close_question(@question.approval? ? "(denied)" : "(cancelled)")
         when 409 then close_question("(question already closed in another UI)")
         when 404 then @screen.commit("#{stale_worker("dismiss questions")}; Ctrl-C cancels the turn")
         else

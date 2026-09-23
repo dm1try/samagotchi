@@ -107,6 +107,17 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.question.cancelled .question-result{color:#8b949e}
 .question-submit{align-self:flex-end;font-size:13px}
 .question-dismiss{font-size:13px;margin-left:8px}
+.bubble.question.approval{border-left-color:#f0883e;background:#1c1410}
+.bubble.question.approval .question-header{color:#f0883e}
+.bubble.question.approval.answered.denied{border-left-color:#f85149}
+.bubble.question.approval.answered.denied .question-result{color:#f85149}
+.bubble.question.approval.answered.denied .question-option.selected{border-color:#f85149}
+.approval-details{margin-bottom:8px;font-size:13px;color:#c9d1d9}
+.approval-tool{font-weight:700;color:#e6e8eb;margin-bottom:4px}
+.approval-what{margin:0 0 6px;padding:8px 10px;background:#0f1115;border:1px solid #3d2a1a;border-radius:6px;white-space:pre-wrap;word-break:break-all;color:#f0c674;font-size:12.5px}
+.approval-where,.approval-why{font-size:12px;color:#8b949e;word-break:break-all}
+.approval-why{color:#e3b341}
+.approval-label{color:#6e7681}
 .hint{color:#8b949e;font-size:13px;padding:12px}
 #annotateBtn{position:fixed;z-index:20;font-size:12px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.5)}
 #annotateBtn[hidden]{display:none}
