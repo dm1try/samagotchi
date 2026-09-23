@@ -1854,44 +1854,17 @@ module Samagotchi
 
     public
 
+    # Erase the spinner rows; nothing to do when none are shown.
     def finish_thinking_spinner
-      return unless @thinking_spinner_rendered
+      return unless @surface.clear_slot(:activity)
 
-      line_count = @thinking_spinner_lines_rendered.to_i
-      line_count = 1 if line_count <= 0
-
-      if line_count > 1
-        $stdout.print("\e[#{line_count - 1}A")
-      end
-      $stdout.print("\r")
-      line_count.times do |index|
-        $stdout.print("\e[0K")
-        $stdout.print("\n") if index < line_count - 1
-      end
-      if line_count > 1
-        $stdout.print("\e[#{line_count - 1}A")
-      end
-      $stdout.print("\r")
-      $stdout.flush
-      @thinking_spinner_rendered = false
       @thinking_spinner_active = false
-      @thinking_spinner_lines_rendered = 0
       @thinking_spinner_last_render_at = nil
       @thinking_tail_preview_dirty = false
       @thinking_preview_has_content = false
     end
 
     private
-
-    def move_to_thinking_spinner_origin
-      return unless @thinking_spinner_rendered
-
-      line_count = @thinking_spinner_lines_rendered.to_i
-      if line_count > 1
-        $stdout.print("\e[#{line_count - 1}A")
-      end
-      $stdout.print("\r")
-    end
 
     # Only Qwen streams thinking cleanly enough (explicit close marker) for a
     # reliable turn-preamble extraction; Gemma 4 keeps the raw preview instead.
@@ -2528,14 +2501,7 @@ module Samagotchi
       status_lines = spinner_status_lines
       lines.concat(status_lines) unless status_lines.empty?
 
-      move_to_thinking_spinner_origin
-      previous_line_count = @thinking_spinner_lines_rendered.to_i
-      render_line_count = [previous_line_count, lines.length].max
-      padded_lines = lines + Array.new(render_line_count - lines.length, "")
-      $stdout.print(padded_lines.map { |text| "#{text}\e[0K" }.join("\n"))
-      $stdout.flush
-      @thinking_spinner_rendered = true
-      @thinking_spinner_lines_rendered = render_line_count
+      @surface.set_slot(:activity, lines)
       @thinking_spinner_last_render_at = monotonic_time
       @thinking_tail_preview_dirty = false
       @thinking_preview_has_content = preview_has_content
