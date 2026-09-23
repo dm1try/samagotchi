@@ -859,20 +859,9 @@ if options[:web]
   exit
 end
 
-# Log file resolved via unified Config (CLI > ENV > file). Legacy ENV fallback kept.
-# The REPL's and the attached TUI's.
-log_file = begin
-  disable = Samagotchi::Config.get("log.disable")
-  disable = true if ["1", "true"].include?(ENV.fetch("SAMAGOTCHI_DISABLE_LOG_FILE", "").downcase) rescue false
-  if disable
-    nil
-  else
-    cfg_file = Samagotchi::Config.get("log.file")
-    cfg_file = ENV["SAMAGOTCHI_LOG_FILE"] if cfg_file.nil? || cfg_file.to_s.strip.empty?
-    cfg_file = File.expand_path("../tmp/samagotchi.log", __dir__) if cfg_file.to_s.strip.empty?
-    cfg_file
-  end
-end
+# The REPL's and the attached terminal's debug log (Samagotchi::LogPath).
+require "samagotchi/log_path"
+log_file = Samagotchi::LogPath.resolve
 
 # --resume and --attach take a unique id prefix too, like git.
 begin

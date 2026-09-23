@@ -178,6 +178,33 @@ RSpec.describe Samagotchi::SessionManager do
       Samagotchi::Config.set_cli_overrides({})
     end
 
+    describe "the worker's debug log" do
+      def spawned_env
+        env = nil
+        allow(Process).to receive(:spawn) do |*args, **_opts|
+          env = args.first if args.first.is_a?(Hash)
+          12_345
+        end
+        described_class.spawn_session(prompt: nil, mode: "assist", model_name: "gemma4", working_directory: tmpdir, state_dir: tmpdir)
+        env
+      end
+
+      after { Samagotchi::Config.set_cli_overrides({}) }
+
+      it "is the spawner's log.file, made absolute against the spawner's directory" do
+        Samagotchi::Config.set_cli_overrides("log.file" => "logs/chi.log")
+
+        expect(spawned_env).to include("SAMAGOTCHI_LOG_FILE" => File.join(Dir.pwd, "logs", "chi.log"))
+      end
+
+      it "is disabled when the spawner's log is" do
+        Samagotchi::Config.set_cli_overrides("log.disable" => true)
+
+        expect(spawned_env).to include("SAMAGOTCHI_LOG_DISABLE" => "true")
+        expect(spawned_env).not_to have_key("SAMAGOTCHI_LOG_FILE")
+      end
+    end
+
     it "spawns worker with explicit require for session manager" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       allow(Samagotchi::Session).to receive(:new_session).and_return(session)
@@ -249,6 +276,27 @@ RSpec.describe Samagotchi::SessionManager do
       expect(File.read(log)).to include("#{File.join(tmpdir, "gone")} is gone", Dir.pwd)
     ensure
       Samagotchi::Config.set_cli_overrides({})
+    end
+  end
+
+  describe ".debug_log" do
+    after { Samagotchi::Config.set_cli_overrides({}) }
+
+    it "writes to the default log under XDG_STATE_HOME when log.file is unset" do
+      stub_const("ENV", ENV.to_h.merge("XDG_STATE_HOME" => tmpdir))
+
+      described_class.debug_log("[worker] hello")
+
+      expect(File.read(File.join(tmpdir, "samagotchi", "samagotchi.log"))).to include("[worker] hello")
+    end
+
+    it "writes nothing when log.disable is set" do
+      log = File.join(tmpdir, "chi.log")
+      Samagotchi::Config.set_cli_overrides("log.file" => log, "log.disable" => true)
+
+      described_class.debug_log("[worker] hello")
+
+      expect(File.exist?(log)).to be(false)
     end
   end
 

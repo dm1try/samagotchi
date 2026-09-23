@@ -10,6 +10,7 @@ require "rbconfig"
 require_relative "session"
 require_relative "owner_lock"
 require_relative "debug_log"
+require_relative "log_path"
 require_relative "terminal_ui"
 
 module Samagotchi
@@ -111,6 +112,14 @@ module Samagotchi
       # A worker gets no CLI args: pass on an idle exit set by any layer.
       idle_exit = config_idle_exit_minutes
       child_env["SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES"] = idle_exit.to_s unless idle_exit.nil?
+      # And the spawner's debug log, absolute: a relative log.file would
+      # otherwise land in the worker's (the session's) directory.
+      log_path = begin LogPath.resolve rescue nil end
+      if log_path
+        child_env["SAMAGOTCHI_LOG_FILE"] = log_path
+      else
+        child_env["SAMAGOTCHI_LOG_DISABLE"] = "true"
+      end
       opts[:env] = child_env unless child_env.empty?
       opts
     end
@@ -321,9 +330,9 @@ module Samagotchi
       result
     end
 
-    # One line in the debug log (log.file), when one is configured.
+    # One line in the debug log (LogPath), unless log.disable is set.
     def self.debug_log(message)
-      path = begin Samagotchi::Config.get("log.file") rescue nil end
+      path = begin LogPath.resolve rescue nil end
       log = DebugLog.new(path: path)
       log.write(message)
       log.close
