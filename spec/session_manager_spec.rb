@@ -31,6 +31,66 @@ RSpec.describe Samagotchi::SessionManager do
       loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
       expect(loaded.status).to eq(Samagotchi::Session::STATUS_STOPPED)
     end
+
+    context "with wait:" do
+      let(:session) do
+        Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
+          s.save(state_dir: tmpdir)
+        end
+      end
+      let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
+
+      # A stand-in worker: another process holding the owner lock.
+      def spawn_owner(ignore_term: false)
+        lib = File.expand_path("../lib", __dir__)
+        script = <<~RUBY
+          require "samagotchi/owner_lock"
+          trap("TERM") {} if #{ignore_term}
+          lock = Samagotchi::OwnerLock.acquire(ARGV[0], kind: "worker")
+          sleep 30
+        RUBY
+        @owner_pid = Process.spawn(RbConfig.ruby, "-I", lib, "-e", script, session_dir)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
+        until described_class.session_owner(session.id, state_dir: tmpdir)
+          raise "owner never took the lock" if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+
+          sleep 0.02
+        end
+      end
+
+      after do
+        if @owner_pid
+          begin
+            Process.kill("KILL", @owner_pid)
+          rescue Errno::ESRCH
+            nil
+          end
+          begin
+            Process.wait(@owner_pid)
+          rescue Errno::ECHILD
+            nil
+          end
+        end
+      end
+
+      it "returns true once the owner has let go of the session" do
+        spawn_owner
+
+        expect(described_class.stop_session(session.id, state_dir: tmpdir, wait: 5)).to be true
+        expect(described_class.session_owner(session.id, state_dir: tmpdir)).to be_nil
+      end
+
+      it "returns false when the owner outlives the wait" do
+        spawn_owner(ignore_term: true)
+
+        expect(described_class.stop_session(session.id, state_dir: tmpdir, wait: 0.3)).to be false
+        expect(described_class.session_owner(session.id, state_dir: tmpdir)).not_to be_nil
+      end
+
+      it "returns true at once when nothing owns the session" do
+        expect(described_class.stop_session(session.id, state_dir: tmpdir, wait: 5)).to be true
+      end
+    end
   end
 
   describe ".wait_for_session" do

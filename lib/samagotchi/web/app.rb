@@ -26,6 +26,8 @@ module Samagotchi
     class App
       DEFAULT_HOST = BridgeClient::HOST
       BRIDGE_WAIT_TIMEOUT = 10.0
+      # POST /stop waits this long for the worker to let go of the session.
+      STOP_WAIT_SECONDS = 2.0
 
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
@@ -450,11 +452,9 @@ module Samagotchi
       end
 
       def handle_stop(_req, id)
-        @manager.stop_session(id, state_dir: @state_dir)
-        # Best-effort wait for terminal state (don't block too long for Rack worker)
-        if @manager.respond_to?(:wait_for_session)
-          @manager.wait_for_session(id, timeout: 2, state_dir: @state_dir)
-        end
+        # Bounded, so a Rack thread isn't held long; a worker still exiting
+        # after it just means an immediate resume finds it (rare).
+        @manager.stop_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS)
         json_response(200, { status: "stopped", session_id: id })
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)

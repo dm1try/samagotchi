@@ -47,8 +47,7 @@ class FakeResponsesManager
 
   def resume_session(id, state_dir: nil); @resume_calls << [id, state_dir]; nil; end
   def write_turn_input(_id, prompt:, client_id: nil, enqueued_id: nil, state_dir: nil); true; end
-  def stop_session(_id, state_dir: nil); nil; end
-  def wait_for_session(_id, timeout: 30, state_dir: nil); nil; end
+  def stop_session(_id, state_dir: nil, wait: nil); nil; end
 end
 
 # Loader that pretends a session always exists, so stream/show specs don't need
@@ -633,6 +632,16 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(status).to eq(202)
       expect(Process).not_to have_received(:spawn)
+    end
+
+    it "waits (bounded) for the worker to let go on POST /stop, so a resume after it spawns a fresh one" do
+      allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(true)
+
+      status, _headers, _body = app.call(env_for("/api/sessions/#{session.id}/stop", method: "POST"))
+
+      expect(status).to eq(200)
+      expect(Samagotchi::SessionManager).to have_received(:stop_session)
+        .with(session.id, state_dir: state_dir, wait: Samagotchi::Web::App::STOP_WAIT_SECONDS)
     end
 
     it "answers POST /stop with 409 and signals nothing" do

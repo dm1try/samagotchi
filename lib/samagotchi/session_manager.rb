@@ -228,8 +228,12 @@ module Samagotchi
     end
 
     # Stop a session by sending TERM to its process.
+    # With +wait+ (seconds), also wait for the owner to let go of the session,
+    # so a resume right after spawns a fresh worker instead of finding the
+    # dying one.
+    # @return [Boolean, nil] with +wait+: whether the owner was gone in time
     # @raise [OwnedByTUI] when the interactive TUI owns the session
-    def self.stop_session(session_id, state_dir: nil)
+    def self.stop_session(session_id, state_dir: nil, wait: nil)
       sd = state_dir || Session.default_state_dir
       owner = session_owner(session_id, state_dir: sd)
       raise OwnedByTUI, session_id if owner && owner["kind"] == "tui"
@@ -237,10 +241,23 @@ module Samagotchi
       # Mark first: a worker that has not taken the lock yet sees it and exits.
       Session.mark_stopped(session_id, state_dir: sd)
       pid = owner && owner["pid"].to_i
-      Process.kill("TERM", pid) if pid && pid > 0
-    rescue Errno::ESRCH
-      # Process already exited; still mark as stopped
-      Session.mark_stopped(session_id, state_dir: sd)
+      begin
+        Process.kill("TERM", pid) if pid && pid > 0
+      rescue Errno::ESRCH
+        nil # already exited
+      end
+      wait_for_owner_release(session_id, timeout: wait, state_dir: sd) if wait
+    end
+
+    # @return [Boolean] whether the session had no owner within +timeout+ seconds
+    def self.wait_for_owner_release(session_id, timeout:, state_dir:)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout.to_f
+      while session_owner(session_id, state_dir: state_dir)
+        return false if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+        sleep(OwnerLock::RETRY_INTERVAL)
+      end
+      true
     end
 
     # Wait for a session to reach a terminal state (completed, error, stopped).
