@@ -67,9 +67,14 @@ RSpec.describe Samagotchi::ModelProfile do
       expect(profile.name).to eq("qwen36")
     end
 
-    it "falls back to Gemma profile for unknown model families" do
-      profile = described_class.from_model_name("some-other-model")
-      expect(profile.name).to eq("gemma4")
+    it "infers Gemma profile when model name contains gemma" do
+      expect(described_class.from_model_name("gemma-4-31B-it").name).to eq("gemma4")
+    end
+
+    # Many models with other names are Qwen-based (Ornith, ISTA-DASLab...).
+    it "falls back to the Qwen profile for model names that say neither family" do
+      expect(described_class.from_model_name("ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M").name).to eq("qwen36")
+      expect(described_class.from_model_name("some-other-model").name).to eq("qwen36")
     end
   end
 
@@ -128,7 +133,7 @@ RSpec.describe Samagotchi::ModelProfile do
       expect(profile.name).to eq("qwen36")
     end
 
-    it "defaults to gemma4 for non-qwen SAMAGOTCHI_DEFAULT_MODEL values" do
+    it "infers gemma4 from a gemma SAMAGOTCHI_DEFAULT_MODEL" do
       ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
       profile = described_class.from_env
       expect(profile.name).to eq("gemma4")

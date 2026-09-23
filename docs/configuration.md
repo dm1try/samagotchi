@@ -224,7 +224,8 @@ To explicitly route requests to a named model in llama.cpp, set:
 Profile inference uses the model name:
 
 - names containing `qwen` map to the `qwen36` profile
-- all others map to the `gemma4` profile
+- names containing `gemma` map to the `gemma4` profile
+- all others map to the `qwen36` profile (many models with other names are Qwen-based)
 
 When `SAMAGOTCHI_DEFAULT_MODEL` is unset or blank, Samagotchi fails fast with a clear startup/configuration error.
 

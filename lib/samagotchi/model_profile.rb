@@ -2,12 +2,12 @@
 
 module Samagotchi
   # Encapsulates all model-specific token formats and parsing behavior.
-  # Each profile maps to a model family and is inferred from the selected
-  # model name.
+  # Each profile maps to a model family; ModelProfile.resolve picks one
+  # (config, the server's chat template, the name, then qwen36).
   #
   # Current profiles:
-  #   gemma4  — default, original Gemma 4 format
-  #   qwen36  — Qwen 3.6 chat template with function calling
+  #   qwen36  — Qwen 3.6 chat template with function calling (the default)
+  #   gemma4  — Gemma 4 format
   class ModelProfile
     MODEL_ENV = "SAMAGOTCHI_DEFAULT_MODEL"
 
@@ -116,17 +116,18 @@ module Samagotchi
     end
 
     def self.from_model_name(model_name)
-      case inferred_profile_name(model_name)
-      when "qwen36" then qwen36
-      else gemma4
-      end
+      named(inferred_profile_name(model_name))
     end
 
+    # qwen → qwen36, gemma → gemma4, anything else → DEFAULT_NAME: many
+    # models with other names are Qwen-based, and under the gemma4 profile a
+    # ChatML model never hits a stop sequence.
     def self.inferred_profile_name(model_name)
       normalized = model_name.to_s.strip.downcase
       return "qwen36" if normalized.include?("qwen")
+      return "gemma4" if normalized.include?("gemma")
 
-      "gemma4"
+      DEFAULT_NAME
     end
 
     def self.from_env
@@ -138,7 +139,7 @@ module Samagotchi
     NAMES = %w[qwen36 gemma4].freeze
 
     # The last layer, when nothing else says.
-    DEFAULT_NAME = "gemma4"
+    DEFAULT_NAME = "qwen36"
 
     # What the server's chat template must contain for each profile. The
     # template tells the families apart where eos_token doesn't (Gemma 4's is
