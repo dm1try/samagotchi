@@ -1,0 +1,8 @@
+---
+name: guardrails
+version: 0.1.0
+scope: system
+description: Optional default guardrail rules (git push/rewrites, rm -rf wide, curl | sh, writes outside the repo, git hooks) and a note for the model
+trust_level: reviewed
+files:
+  guardrails.md: sha256:e60675167e0da20692ee53f5e9c9fbae6c639929d85ff0068e6d64d19a4bdedb

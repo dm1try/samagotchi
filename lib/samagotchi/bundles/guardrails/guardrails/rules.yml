@@ -1,0 +1,82 @@
+# Default guardrail rules (the optional guardrails bundle:
+# `chi bundle install guardrails`). Text matches on shell commands catch
+# accidents, not a determined model: `sh -c`, base64, a script written
+# earlier or `git -C` variants can get past them.
+#
+# Fields: id, tool (a name, a list, or shell = execute + task_create),
+# command (Ruby regex), path (outside_repo or a glob), verdict (ask|deny),
+# reason, scopes (for an ask: once, session, repo, rule; default all).
+# [^;&|\n]* keeps a match inside one command of a chain; the git rules match
+# the subcommand after optional global options (git -C dir push).
+rules:
+  # ── git: publishing and rewriting history ──────────────────────────────
+  - id: git-push
+    tool: shell
+    command: '\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+push\b'
+    verdict: ask
+    reason: git push publishes commits
+  - id: git-reset-hard
+    tool: shell
+    command: '\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+reset\b[^;&|\n]*\s--hard\b'
+    verdict: ask
+    reason: git reset --hard discards uncommitted work
+  - id: git-clean-force
+    tool: shell
+    command: '\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+clean\b[^;&|\n]*\s(-[a-zA-Z]*f|--force)'
+    verdict: ask
+    reason: git clean -f deletes untracked files
+  - id: git-branch-force-delete
+    tool: shell
+    command: '\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+branch\b[^;&|\n]*\s(-[a-zA-Z]*D|--delete\s+--force|--force\s+--delete)\b'
+    verdict: ask
+    reason: git branch -D deletes a branch even if it is not merged
+  - id: git-rebase
+    tool: shell
+    command: '\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+rebase\b'
+    verdict: ask
+    reason: git rebase rewrites history
+  - id: git-history-rewrite
+    tool: shell
+    command: '\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+(filter-branch|filter-repo)\b'
+    verdict: ask
+    reason: filter-branch / filter-repo rewrite the whole history
+
+  # ── deleting ───────────────────────────────────────────────────────────
+  # rm with both -r and -f on an absolute path, ~, $HOME or a path with ..
+  # (a text heuristic; rm -rf build/ in the repo is not asked).
+  - id: rm-rf-wide
+    tool: shell
+    command: '\brm\b(?=[^;&|\n]*\s(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)(\s|$))(?=[^;&|\n]*\s(-[a-zA-Z]*f[a-zA-Z]*|--force)(\s|$))[^;&|\n]*\s(/|~|\$HOME|\S*\.\.)'
+    verdict: ask
+    reason: rm -rf on a path outside the working tree
+
+  # ── running code from the network ──────────────────────────────────────
+  - id: pipe-to-shell
+    tool: shell
+    command: '\b(curl|wget)\b[^;&\n]*\|\s*(sudo\s+)?(ba|z|da)?sh\b'
+    verdict: ask
+    reason: runs a script downloaded from the network
+  - id: base64-to-shell
+    tool: shell
+    command: '\bbase64\s+(-d|-D|--decode)\b[^;&\n]*\|\s*(sudo\s+)?(ba|z|da)?sh\b'
+    verdict: ask
+    reason: runs decoded text as a script
+
+  # ── files outside the repo, and git hooks ──────────────────────────────
+  - id: write-outside-repo
+    tool: [write, edit]
+    path: outside_repo
+    verdict: ask
+    reason: writes outside the repository
+  - id: git-hooks-write
+    tool: [write, edit]
+    path: '**/.git/hooks/**'
+    verdict: deny
+    reason: git hooks run code on every git command
+
+  # ── chi's own config, hooks, rules and approvals, from the shell ───────
+  - id: shell-touches-chi
+    tool: shell
+    command: '(\.config/samagotchi|samagotchi/config\.yml|samagotchi/hooks|samagotchi/guardrails|memories/\.bundles|\.git/hooks)'
+    verdict: ask
+    reason: the command names chi's config, hooks, guardrails or git hooks
