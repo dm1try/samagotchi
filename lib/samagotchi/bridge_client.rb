@@ -117,8 +117,11 @@ module Samagotchi
     # Bridge also announced in :turn_enqueued).
     # @param client_id [String, nil] identifies the sending UI in the events
     # @return [Response]
-    def post_turn(prompt:, client_id: nil)
-      post("turn", { session_id: @session_id, prompt: prompt, client_id: client_id }, read_body: true)
+    # @param no_interrupt [Boolean] run the turn with the raised iteration limit
+    def post_turn(prompt:, client_id: nil, no_interrupt: false)
+      body = { session_id: @session_id, prompt: prompt, client_id: client_id }
+      body[:no_interrupt] = true if no_interrupt
+      post("turn", body, read_body: true)
     end
 
     # POST /session/:id/command: a session command (/model, /models,

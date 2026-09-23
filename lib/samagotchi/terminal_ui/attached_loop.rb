@@ -153,7 +153,11 @@ module Samagotchi
       #   PlainSurface when the terminal can't show a live region)
       # @param client_id [String] this UI's id in the events ("tui:<pid>")
       # @param first_prompt [String, nil] sent once joined (`chi -p`)
-      def initialize(client:, screen:, client_id:, first_prompt: nil)
+      # @param first_command [String, nil] run before the first prompt
+      #   (`--model` on a resumed session: "/model X"); if it doesn't go
+      #   through, the launch stops
+      # @param no_interrupt [Boolean] post every turn with no_interrupt
+      def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false)
         @client = client
         @screen = screen
         @client_id = client_id
@@ -168,6 +172,9 @@ module Samagotchi
         @answered_ids = Set.new
         @reader = nil
         @first_prompt = first_prompt
+        @first_command = first_command
+        @first_command_id = nil
+        @no_interrupt = no_interrupt
         # Prompts this run sent, by enqueued_id: only those come back into
         # the input when their turn fails (a replayed event must not).
         @sent_ids = Set.new
@@ -181,7 +188,8 @@ module Samagotchi
 
       # Follow the session and read input until Ctrl-D, /exit or the worker
       # goes away. The worker keeps running after a detach.
-      # @return [Symbol] :detached, or :closed when the worker went away
+      # @return [Symbol] :detached, :closed when the worker went away, or
+      #   :failed when the first command (--model) didn't go through
       # @param input [#call, nil] prompt -> line (nil = Ctrl-D, raising
       #   Interrupt = Ctrl-C); defaults to Reline
       def run(input: nil)
@@ -191,7 +199,9 @@ module Samagotchi
         loop do
           kind, payload = next_item(queue)
           case kind
-          when :event then return :closed if safely_handle(payload) == :closed
+          when :event
+            ended = safely_handle(payload)
+            return ended if ended == :closed || ended == :failed
           when :line then return :detached if submit(payload) == :detach
           when :interrupt then interrupt
           end
@@ -207,11 +217,12 @@ module Samagotchi
       end
 
       # Render one Bridge event (string keys).
-      # @return [Symbol, nil] :closed when the stream ended
+      # @return [Symbol, nil] :closed when the stream ended, :failed when the
+      #   launch's first command didn't go through
       def handle_event(event)
         event = EventRenderer.symbolize(event)
         case event[:type]
-        when :snapshot, :reset then render_snapshot(event[:snapshot] || {}, reset: event[:type] == :reset)
+        when :snapshot, :reset then return render_snapshot(event[:snapshot] || {}, reset: event[:type] == :reset)
         when :turn_enqueued then show_enqueued(event)
         when :turn_started then start_turn(event)
         when :turn_completed then complete_turn(event)
@@ -224,7 +235,9 @@ module Samagotchi
         when :turn_failed
           end_turn("turn failed: #{event[:summary] || "#{event[:message]} (#{event[:error_class]})"}")
         when :prompt_restored then restore_prompt(event)
-        when :command_ran then command_ran(event)
+        when :command_ran
+          command_ran(event)
+          return first_command_ran(event) if @first_command_id && event[:command_id] == @first_command_id
         when :reminder_injected then @screen.commit(reminder_line(event[:reminders]))
         when :continue_offered then offer_continue(event)
         when :continue_resolved then continue_resolved(event)
@@ -343,7 +356,11 @@ module Samagotchi
       end
 
       def send_prompt(text)
-        reply = @client.post_turn(prompt: text, client_id: @client_id)
+        reply = if @no_interrupt
+                  @client.post_turn(prompt: text, client_id: @client_id, no_interrupt: true)
+                else
+                  @client.post_turn(prompt: text, client_id: @client_id)
+                end
         if reply.status == 202
           enqueued_id = reply.json&.fetch("enqueued_id", nil)
           @sent_ids << enqueued_id if enqueued_id
@@ -482,7 +499,39 @@ module Samagotchi
           @shown_enqueued << entry[:enqueued_id]
           @screen.commit("queued #{prompt_line(entry[:client_id], entry[:prompt])}")
         end
+        return send_first_command if @first_command
+
         send_first_prompt
+        nil
+      end
+
+      # --model on a resumed session: switch its worker before the first
+      # prompt goes; its :command_ran decides (#first_command_ran).
+      # @return [Symbol, nil] :failed when the worker didn't take it
+      def send_first_command
+        line = @first_command
+        @first_command = nil
+        reply = @client.post_command(line: line, client_id: @client_id)
+        if reply.status == 202
+          @first_command_id = reply.json&.fetch("command_id", nil)
+          return nil if @first_command_id
+        end
+
+        why = reply.status == 404 ? STALE_WORKER : "the worker answered #{reply.status}"
+        @screen.commit("could not switch to the --model: #{why}")
+        :failed
+      end
+
+      # @return [Symbol, nil] :failed unless the switch went through
+      def first_command_ran(event)
+        @first_command_id = nil
+        if event[:status] == "ok"
+          send_first_prompt
+          return nil
+        end
+
+        @screen.commit("could not switch to the --model: #{event[:output]}")
+        :failed
       end
 
       # After the join, so it lands below what the session already had. Our

@@ -476,6 +476,8 @@ module Samagotchi
       sid = fetched(parsed, "session_id")
       prompt = fetched(parsed, "prompt")
       client_id = fetched(parsed, "client_id")
+      # --no-interrupt: the turn runs with the raised iteration limit.
+      no_interrupt = fetched(parsed, "no_interrupt") == true
       if sid.to_s.strip.empty? || prompt.to_s.strip.empty?
         return [{ "Allow" => "POST" }, 400,
                 { error: "missing_fields", detail: "session_id and prompt are required" }]
@@ -488,7 +490,8 @@ module Samagotchi
           # emit this turn's :turn_started (or merge it mid-turn) before
           # :turn_enqueued, and a failed write announces nothing.
           @engine.synchronize_events do
-            enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id).tap do |ok|
+            enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
+                         no_interrupt: no_interrupt).tap do |ok|
               next unless ok
 
               @engine.announce(type: :turn_enqueued, enqueued_id: enqueued_id,
@@ -497,7 +500,8 @@ module Samagotchi
             end
           end
         else
-          enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id)
+          enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
+                       no_interrupt: no_interrupt)
         end
       return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] unless enqueued
 
@@ -541,10 +545,11 @@ module Samagotchi
 
     # Write a turn into the target session's input dir, reusing the file IPC
     # the worker polls. Never calls run_turn across the boundary.
-    def enqueue_turn(session_id:, prompt:, client_id: nil, enqueued_id: nil)
+    def enqueue_turn(session_id:, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false)
       require_relative "session_manager"
       Samagotchi::SessionManager.write_turn_input(
-        session_id, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: @state_dir
+        session_id, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, no_interrupt: no_interrupt,
+                    state_dir: @state_dir
       )
     rescue LoadError
       # SessionManager not available (e.g. bridge used standalone in a spec).

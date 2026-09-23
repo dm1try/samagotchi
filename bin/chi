@@ -820,7 +820,7 @@ launch, launch_note = Samagotchi::LaunchMode.resolve(options, shared_config: Sam
 warn launch_note if launch_note
 
 if launch == :attached
-  conflict = { non_interactive: "--non-interactive", model: "--model", memories: "--memory" }
+  conflict = { non_interactive: "--non-interactive", memories: "--memory", verbose: "--verbose" }
              .find { |key, _flag| options[key] }
   error = if options[:attach] && options[:shared]
             "use either --attach ID or --shared"
@@ -836,12 +836,14 @@ if launch == :attached
 
   require "samagotchi/terminal_ui/attach_launcher"
   begin
-    ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], shared: !options[:attach], resume: options[:resume], prompt: options[:prompt])
+    ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], shared: !options[:attach], resume: options[:resume],
+                                                       prompt: options[:prompt], model: options[:model],
+                                                       no_interrupt: !!options[:no_interrupt])
   rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
     warn "Error: #{e.message}"
     exit 1
   end
-  exit(ended == :closed ? 1 : 0)
+  exit(ended == :detached ? 0 : 1)
 end
 
 # Log file resolved via unified Config (CLI > ENV > file). Legacy ENV fallback kept.

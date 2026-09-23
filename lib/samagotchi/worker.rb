@@ -197,8 +197,8 @@ module Samagotchi
       return unless claimed_file
 
       begin
-        message, origin = SessionManager.read_input(claimed_file)
-        run_prompt(message, origin) unless message.to_s.strip.empty?
+        message, origin, no_interrupt = SessionManager.read_input(claimed_file)
+        run_prompt(message, origin, no_interrupt: !!no_interrupt) unless message.to_s.strip.empty?
       ensure
         FileUtils.rm_f(claimed_file)
       end

@@ -62,9 +62,20 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
 
       expect(connect(shared: true)).to be(client)
-      expect(Samagotchi::SessionManager).to have_received(:spawn_session).with(prompt: nil, state_dir: state_dir)
+      expect(Samagotchi::SessionManager).to have_received(:spawn_session).with(prompt: nil, model_name: nil, state_dir: state_dir)
       expect(Samagotchi::BridgeClient).to have_received(:wait_for)
         .with(session.id, session_dir: Samagotchi::Session.session_dir(session.id, state_dir: state_dir), timeout: 0.2)
+    end
+
+    it "starts a new session on --model, its alias resolved" do
+      allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).with("fast").and_return("unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M")
+
+      connect(shared: true, model: "fast")
+
+      expect(Samagotchi::SessionManager).to have_received(:spawn_session)
+        .with(prompt: nil, model_name: "unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M", state_dir: state_dir)
     end
 
     it "resumes a session in a worker (or joins the one running it)" do
@@ -98,7 +109,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     client = instance_double(Samagotchi::BridgeClient)
     surface = instance_double(Samagotchi::TerminalUI::PlainSurface)
     attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
-    allow(described_class).to receive(:connect).with(attach: nil, shared: true, resume: nil).and_return(client)
+    allow(described_class).to receive(:connect).with(attach: nil, shared: true, resume: nil, model: nil).and_return(client)
     allow(described_class).to receive(:open_surface).and_return(surface)
     allow(described_class).to receive(:close_surface)
     allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_return(attached)
@@ -106,8 +117,31 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     expect(described_class.run(shared: true, prompt: "hi")).to eq(:detached)
 
     expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new)
-      .with(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: "hi")
+      .with(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: "hi",
+            first_command: nil, no_interrupt: false)
     expect(described_class).to have_received(:close_surface).with(surface)
+  end
+
+  it "switches a resumed or attached session's worker to --model before the first prompt, and passes --no-interrupt" do
+    client = instance_double(Samagotchi::BridgeClient)
+    surface = instance_double(Samagotchi::TerminalUI::PlainSurface)
+    attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
+    allow(described_class).to receive(:connect).and_return(client)
+    allow(described_class).to receive_messages(open_surface: surface, close_surface: nil)
+    loops = []
+    allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new) { |**kwargs| loops << kwargs.slice(:first_prompt, :first_command, :no_interrupt); attached }
+
+    described_class.run(shared: true, resume: "s1", prompt: "hi", model: "qwen_moe", no_interrupt: true)
+    described_class.run(attach: "s2", model: "qwen_moe")
+    described_class.run(shared: true, model: "qwen_moe")
+
+    expect(loops).to eq([
+      { first_prompt: "hi", first_command: "/model qwen_moe", no_interrupt: true },
+      { first_prompt: nil, first_command: "/model qwen_moe", no_interrupt: false },
+      # A new session starts on the model instead (see .connect).
+      { first_prompt: nil, first_command: nil, no_interrupt: false }
+    ])
+    expect(described_class).to have_received(:connect).with(attach: nil, shared: true, resume: nil, model: "qwen_moe")
   end
 end
 
@@ -142,7 +176,8 @@ RSpec.describe "bin/chi --attach / --shared flags" do
   {
     %w[--attach s1 -p hi --non-interactive] => "--attach/--shared can't be combined with --non-interactive",
     %w[--shared --non-interactive] => "--attach/--shared can't be combined with --non-interactive",
-    %w[--shared --model m] => "--attach/--shared can't be combined with --model",
+    %w[--shared -v] => "--attach/--shared can't be combined with --verbose",
+    %w[--attach s1 --memory notes] => "--attach/--shared can't be combined with --memory",
     %w[--attach s1 --shared] => "use either --attach ID or --shared",
     %w[--attach s1 --resume s1] => "--attach takes the session id; --resume goes with --shared"
   }.each do |args, message|
@@ -155,10 +190,10 @@ RSpec.describe "bin/chi --attach / --shared flags" do
   end
 
   it "keeps rejecting explicit conflicts with session.shared on" do
-    _out, err, status = Open3.capture3({ "SAMAGOTCHI_SESSION_SHARED" => "1" }, RbConfig.ruby, chi, "--shared", "--model", "m", stdin_data: "")
+    _out, err, status = Open3.capture3({ "SAMAGOTCHI_SESSION_SHARED" => "1" }, RbConfig.ruby, chi, "--shared", "-v", stdin_data: "")
 
     expect(status.exitstatus).to eq(1)
-    expect(err).to include("--attach/--shared can't be combined with --model")
+    expect(err).to include("--attach/--shared can't be combined with --verbose")
     expect(err).not_to include("session.shared:")
   end
 end

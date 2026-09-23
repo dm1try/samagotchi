@@ -427,6 +427,16 @@ RSpec.describe Samagotchi::Bridge do
       ])
     end
 
+    it "keeps a turn's no_interrupt (--no-interrupt) in the queued input" do
+      start_bridge(input_format: 2)
+      post_turn(JSON.generate(session_id: @session.id, prompt: "long", client_id: "tui:1", no_interrupt: true))
+      post_turn(JSON.generate(session_id: @session.id, prompt: "short", client_id: "tui:1", no_interrupt: "yes"))
+
+      input_dir = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input")
+      queued = Dir.glob(File.join(input_dir, "*.json")).sort.map { |f| JSON.parse(File.read(f)) }
+      expect(queued.map { |q| [q["prompt"], q["no_interrupt"]] }).to eq([["long", true], ["short", nil]])
+    end
+
     it "writes a discoverable port sidecar on start" do
       start_bridge
       expect(@bridge_port).to be > 0

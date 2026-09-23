@@ -368,7 +368,7 @@ module Samagotchi
     # @param client_id [String, nil] the sending UI
     # @param enqueued_id [String, nil] the id its ACK / :turn_enqueued carry
     # @return [String, false] the input file's path, or false.
-    def self.write_turn_input(session_id, prompt:, client_id: nil, enqueued_id: nil, state_dir: nil)
+    def self.write_turn_input(session_id, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, state_dir: nil)
       sd = state_dir || Session.default_state_dir
       session_dir = Session.session_dir(session_id, state_dir: sd)
       input_dir = File.join(session_dir, INPUT_DIR)
@@ -377,7 +377,8 @@ module Samagotchi
       timestamp = Time.now.strftime("%Y%m%d%H%M%S%9N")
       if structured_input?(session_dir)
         path = File.join(input_dir, "#{timestamp}.json")
-        record = { "prompt" => prompt.to_s, "client_id" => client_id, "enqueued_id" => enqueued_id }.compact
+        record = { "prompt" => prompt.to_s, "client_id" => client_id, "enqueued_id" => enqueued_id,
+                   "no_interrupt" => (no_interrupt ? true : nil) }.compact
         write_atomic(path, JSON.generate(record))
       else
         path = File.join(input_dir, "#{timestamp}.txt")
@@ -413,15 +414,16 @@ module Samagotchi
       true
     end
 
-    # @return [Array(String, Hash|nil)] a claimed input file's prompt and
-    #   origin ({client_id:, enqueued_id:}, nil for plain text)
+    # @return [Array(String, Hash|nil, Boolean)] a claimed input file's
+    #   prompt, origin ({client_id:, enqueued_id:}, nil for plain text) and
+    #   whether its turn runs with the raised iteration limit (--no-interrupt)
     def self.read_input(claimed_file)
       raw = File.read(claimed_file).to_s
       return [raw, nil] unless claimed_file.end_with?(".json.processing")
 
       data = JSON.parse(raw)
       origin = { client_id: data["client_id"], enqueued_id: data["enqueued_id"] }.compact
-      [data["prompt"].to_s, origin.empty? ? nil : origin]
+      [data["prompt"].to_s, origin.empty? ? nil : origin, data["no_interrupt"] == true]
     rescue JSON::ParserError
       [nil, nil]
     end

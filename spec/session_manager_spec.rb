@@ -616,6 +616,22 @@ RSpec.describe Samagotchi::SessionManager do
       expect(runs).to eq([["from web", { client_id: "web:1", enqueued_id: "e1" }], ["plain", nil]])
     end
 
+    it "runs a turn queued with no_interrupt under the raised iteration limit" do
+      described_class.write_turn_input(session.id, prompt: "long", client_id: "tui:1", no_interrupt: true, state_dir: tmpdir)
+      described_class.write_turn_input(session.id, prompt: "short", state_dir: tmpdir)
+      engine = instance_double(Samagotchi::Engine, due_reminder_names: [], "session=": nil)
+      runs = []
+      allow(engine).to receive(:run_turn) do |_session, prompt, max_iterations:, **|
+        runs << [prompt, max_iterations]
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir) if runs.size == 2
+        instance_double(Samagotchi::KernelLoop::Result, output: "")
+      end
+
+      run_worker_with(engine)
+
+      expect(runs).to eq([["long", 1000], ["short", 100]])
+    end
+
     it "marks the session running on disk while a turn runs, and stops before the next queued turn" do
       described_class.write_turn_input(session.id, prompt: "one", state_dir: tmpdir)
       described_class.write_turn_input(session.id, prompt: "two", state_dir: tmpdir)

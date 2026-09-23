@@ -558,3 +558,56 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue off
     expect(client).to have_received(:post_command).with(line: "/model", client_id: "tui:1")
   end
 end
+
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "launch flags" do
+  let(:screen) { RecordingSurface.new(columns: 80) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:joined) { { "type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => nil, "queued" => [], "event_seq" => 1 } } }
+  let(:ack) { Samagotchi::BridgeClient::Response.new(status: 202, body: '{"enqueued_id":"e1"}') }
+
+  def ran(status, output) = { "type" => "command_ran", "command_id" => "c1", "client_id" => "tui:1", "line" => "/model fast",
+                              "status" => status, "output" => output, "changed" => [], "model_name" => "m" }
+
+  it "switches the model first, then sends the first prompt" do
+    allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
+    allow(client).to receive(:post_turn).and_return(ack)
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "hi", first_command: "/model fast")
+
+    attached.handle_event(joined)
+    expect(client).not_to have_received(:post_turn)
+    attached.handle_event(ran("ok", "runtime model set to fast (profile=qwen36)"))
+
+    expect(client).to have_received(:post_command).with(line: "/model fast", client_id: "tui:1")
+    expect(client).to have_received(:post_turn).with(prompt: "hi", client_id: "tui:1")
+  end
+
+  it "stops the launch when the switch doesn't go through, saying why" do
+    allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
+    allow(client).to receive(:post_turn)
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "hi", first_command: "/model fast")
+
+    attached.handle_event(joined)
+    result = attached.handle_event(ran("busy", "busy: wait for the turn to end"))
+
+    expect(result).to eq(:failed)
+    expect(screen.lines.last).to eq("could not switch to the --model: busy: wait for the turn to end")
+    expect(client).not_to have_received(:post_turn)
+  end
+
+  it "stops the launch when the worker can't take the command" do
+    allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 404, body: "{}"))
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1", first_command: "/model fast")
+
+    expect(attached.handle_event(joined)).to eq(:failed)
+    expect(screen.lines.last).to start_with("could not switch to the --model: this session's worker runs an older chi")
+  end
+
+  it "posts every prompt with no_interrupt under --no-interrupt" do
+    allow(client).to receive(:post_turn).and_return(ack)
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "hi", no_interrupt: true)
+
+    attached.handle_event(joined)
+
+    expect(client).to have_received(:post_turn).with(prompt: "hi", client_id: "tui:1", no_interrupt: true)
+  end
+end
