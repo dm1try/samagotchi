@@ -3,6 +3,7 @@
 require "yaml"
 require "json"
 require "fileutils"
+require "uri"
 
 module Samagotchi
   # Unified configuration registry implementing the implicit convention:
@@ -474,6 +475,7 @@ module Samagotchi
     # openai, the chat loop against <host>/v1.
     VALID_APIS_FOR_CONFIG = (VALID_TRANSPORTS_FOR_CONFIG + %w[openai]).freeze
     HOST_NAME_RE = /\A[a-z0-9][a-z0-9._-]*\z/i
+    ENV_NAME_RE = /\A[A-Za-z_][A-Za-z0-9_]*\z/
 
     def hosts_config(env: ENV, path: global_path(env: env))
       data = read_yaml(env: env, path: path)
@@ -512,6 +514,32 @@ module Samagotchi
           if enabled == false || enabled.to_s.strip.downcase == "false"
             next
           end
+          url = (raw_cfg["url"] || raw_cfg[:url]).to_s.strip
+          api_key_env = (raw_cfg["api_key_env"] || raw_cfg[:api_key_env]).to_s.strip
+          unless api_key_env.empty? || api_key_env.match?(ENV_NAME_RE)
+            warn "Warning: ignoring hosts entry '#{name}': api_key_env must be an environment variable name"
+            next
+          end
+          scheme = "http"
+          unless url.empty?
+            unless host.to_s.strip.empty? && port.to_s.strip.empty?
+              warn "Warning: ignoring hosts entry '#{name}': give url or host/port, not both"
+              next
+            end
+            uri = begin
+              URI.parse(url)
+            rescue URI::InvalidURIError
+              nil
+            end
+            unless uri.is_a?(URI::HTTP) && !uri.host.to_s.empty?
+              warn "Warning: ignoring hosts entry '#{name}': url must be an http(s) URL"
+              next
+            end
+            host = uri.host
+            port = uri.port
+            scheme = uri.scheme
+            url = url.chomp("/")
+          end
           host = host.to_s.strip
           if host.empty?
             warn "Warning: ignoring hosts entry '#{name}': host is required"
@@ -544,7 +572,8 @@ module Samagotchi
             transport_val = api_val
           end
           normalized[lowered] = { name: lowered, host: host, port: port_val, transport: transport_val ? transport_val.to_sym : nil,
-                                  api: api_val&.to_sym, original_name: name }
+                                  api: api_val&.to_sym, original_name: name, scheme: scheme,
+                                  url: url.empty? ? nil : url, api_key_env: api_key_env.empty? ? nil : api_key_env }
         end
       end
 
@@ -641,7 +670,10 @@ module Samagotchi
       return nil if hosts.nil? || hosts.empty?
       # Serialize to JSON with string keys
       simple = hosts.transform_values do |v|
-        { "host" => v[:host], "port" => v[:port], "transport" => v[:transport]&.to_s, "api" => v[:api]&.to_s }.compact
+        # A url entry travels as its url (host/port come from it); the API
+        # key stays in the environment, which workers inherit.
+        location = v[:url] ? { "url" => v[:url] } : { "host" => v[:host], "port" => v[:port] }
+        location.merge("transport" => v[:transport]&.to_s, "api" => v[:api]&.to_s, "api_key_env" => v[:api_key_env]).compact
       end
       JSON.generate(simple)
     rescue StandardError

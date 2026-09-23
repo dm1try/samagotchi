@@ -53,7 +53,7 @@ Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top
 **Excluded maps** (YAML-only, not part of the flat registry; skipped by scalar loader):
 
 - `model_aliases:` map of alias → model id (`config_file.rb:342`, `resolve_model_alias:321`). Keys lowercased on write (`write_model_alias!:367`). Values may be bare `model` or qualified `host:model` (hybrid).
-- `hosts:` map of `name → {host, port, transport, api, enabled}` (`config_file.rb:108`, `host_registry.rb:22`). Names lowercased; `transport` overrides `server.transport`; workers inherit via `SAMAGOTCHI_HOSTS_JSON` (`hosts_json_for_env:251`, `session_manager.rb:80`).
+- `hosts:` map of `name → {host, port | url, transport, api, api_key_env, enabled}` (`config.rb` `hosts_config`, `host_registry.rb` `HostEntry`). Names lowercased; `url:` (http/https, optional path) replaces host/port, never both; `api_key_env:` names the env var holding the API key (never write a key into config.yml); `transport` overrides `server.transport`; workers inherit via `SAMAGOTCHI_HOSTS_JSON` (`hosts_json_for_env`, `session_manager.rb`).
 - `hooks:` map of `hooks_dir` + per-event lists `{path, on_error}` (`lib/samagotchi/hooks/loader.rb:32`). `hooks_dir` may start with `~`.
 
 **Preservation rule**: `write_default_model!` (`config_file.rb:263`) and `write_model_alias!` (`config_file.rb:342`) both load raw YAML (including nested sections and maps), mutate one key (`raw_data["default"]["model"] = ...` for new form), write atomically via `tmp`+`rename`. Never overwrite the file with only scalar keys — that would clobber `hooks:` / `model_aliases:` / `hosts:` / `recap:`.

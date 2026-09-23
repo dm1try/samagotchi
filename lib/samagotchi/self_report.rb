@@ -42,6 +42,7 @@ module Samagotchi
         ["sessions", Session.default_state_dir(env: env)],
         ["model", model || "(not configured)"],
         ["host", model ? host_for(model, env) : "-"],
+        ["api key", model ? api_key_for(model, env) : "-"],
         ["loop", model ? loop_for(model, env) : "-"],
         ["context window", context_window(env)],
         ["bundles", bundles_summary]
@@ -93,7 +94,18 @@ module Samagotchi
       return "(no hosts configured)" unless entry
 
       suffix = bare && bare != model ? " as #{bare}" : ""
-      "#{entry.name} #{entry.host}:#{entry.port}#{suffix}"
+      location = entry.url || "#{entry.host}:#{entry.port}"
+      "#{entry.name} #{location}#{suffix}"
+    end
+
+    # The variable the host's API key comes from and whether it is set; the
+    # key itself is never shown.
+    def api_key_for(model, env)
+      entry, = HostRegistry.new(env: env).host_for_model(model)
+      name = entry&.api_key_env
+      return "-" unless name
+
+      "#{name} (#{env[name].to_s.empty? ? "unset" : "set"})"
     end
 
     # "samagotchi-system 0.1.5 (shipped 0.1.5), other 1.0.0"

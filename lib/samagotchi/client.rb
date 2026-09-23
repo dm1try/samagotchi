@@ -110,7 +110,8 @@ module Samagotchi
     CancellationController = Samagotchi::CancellationController
 
     # @param sleeper [#call, nil] waits between retries (specs pass a no-op)
-    def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil, sleeper: nil)
+    # @param scheme [String, nil] "https" for a TLS server (default http)
+    def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil, sleeper: nil, scheme: nil)
       # Unified config precedence: CLI > ENV > file > default (via Samagotchi::Config)
       cfg_host = nil; cfg_port = nil; cfg_transport_raw = nil
       begin
@@ -124,6 +125,7 @@ module Samagotchi
       end
       @host          = host || cfg_host
       @port          = (port || cfg_port).to_i
+      @scheme        = scheme || "http"
       @open_timeout  = (open_timeout || cfg_open_timeout).to_i
       @read_timeout  = (read_timeout || cfg_read_timeout).to_i
       transport_fallback = cfg_transport_raw || ENV.fetch(SERVER_TRANSPORT_ENV, DEFAULT_TRANSPORT.to_s)
@@ -182,7 +184,7 @@ module Samagotchi
     end
 
     def list_models
-      uri = URI("http://#{@host}:#{@port}#{@transport.models_path}")
+      uri = URI("#{@scheme}://#{@host}:#{@port}#{@transport.models_path}")
       response = @http.fetch(uri, Net::HTTP::Get.new(uri))
       parsed = JSON.parse(response.body.to_s)
       parsed.fetch("data", parsed)
@@ -221,7 +223,7 @@ module Samagotchi
     private
 
     def probe_context_window(path)
-      uri = URI("http://#{@host}:#{@port}#{path}")
+      uri = URI("#{@scheme}://#{@host}:#{@port}#{path}")
       response = @http.fetch(uri, Net::HTTP::Get.new(uri), retries: false, check_status: false,
                                   open_timeout: CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
                                   read_timeout: CONTEXT_WINDOW_PROBE_READ_TIMEOUT)
@@ -253,7 +255,7 @@ module Samagotchi
     end
 
     def completion_uri
-      URI("http://#{@host}:#{@port}#{@transport.completion_path}")
+      URI("#{@scheme}://#{@host}:#{@port}#{@transport.completion_path}")
     end
 
     def completion_payload(prompt, stop:, n_predict:, model:)

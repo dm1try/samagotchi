@@ -56,6 +56,24 @@ RSpec.describe Samagotchi::SelfReport do
     expect(field("hooks dir")).to eq(File.join(config_home, "samagotchi/hooks/"))
   end
 
+  it "names the host's API key variable and whether it is set, never the key" do
+    write_config("hosts:\n  fw:\n    url: https://api.example.test/v1\n    api: openai\n    api_key_env: EXAMPLE_KEY\n")
+    allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("fw:m")
+
+    expect(field("api key")).to eq("EXAMPLE_KEY (unset)")
+    env["EXAMPLE_KEY"] = "sk-secret"
+    expect(field("api key")).to eq("EXAMPLE_KEY (set)")
+    expect(described_class.text(env: env)).not_to include("sk-secret")
+    expect(field("host")).to eq("fw https://api.example.test/v1 as m")
+  end
+
+  it "shows no API key variable for a local host" do
+    write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
+    allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model")
+
+    expect(field("api key")).to eq("-")
+  end
+
   it "reports the fallback context window and its source (the server's own window wins at runtime)" do
     expect(field("context window")).to eq("256000 (default; the server's n_ctx wins at runtime)")
 

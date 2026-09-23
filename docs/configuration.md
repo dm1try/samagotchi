@@ -92,7 +92,7 @@ Each host may also set `api:`, which says how chi talks to it:
 
 - `llama_cpp`, `mlx` or `omlx`: chi's own raw-prompt loop (the value is also the
   host's transport, so don't set a different `transport:` next to it);
-- `openai`: the OpenAI chat API at `http://HOST:PORT/v1` (see below).
+- `openai`: the OpenAI chat API at `http://HOST:PORT/v1`, or at `url:` (see below).
 
 Without `api:` a host uses the raw-prompt loop, as before. The loop follows the
 model's host, so `/model other-host:model` can move a session between the two.
@@ -139,6 +139,23 @@ hosts:
     port: 8000
     api: openai
 ```
+
+A host can give `url:` instead of `host:`/`port:` (not both): `http` or `https`,
+with an optional path. For `api: openai` the url is the API base as written (no
+`/v1` is added); raw-prompt hosts use only its scheme, host and port. A remote
+provider's key comes from the environment variable that `api_key_env:` names;
+the key itself never goes into config.yml, `chi self`, logs or events, and
+workers get it by inheriting the environment:
+
+```yaml
+hosts:
+  fw:
+    url: https://api.fireworks.ai/inference/v1
+    api: openai
+    api_key_env: FIREWORKS_API_KEY
+```
+
+`chi self` shows the variable and whether it is set (`api key  FIREWORKS_API_KEY (set)`).
 
 For models on that host, chi uses the chat loop (through the ruby_llm gem): it
 derives the OpenAI base as `http://HOST:PORT/v1` and posts messages plus function
