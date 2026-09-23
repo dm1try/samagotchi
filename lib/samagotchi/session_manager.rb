@@ -30,6 +30,9 @@ module Samagotchi
   #       ├── input/              # clients (web/terminal UI) write messages here
   #       │   └── <timestamp>.json # one file per user message: {prompt, client_id,
   #       │                        # enqueued_id} (plain <timestamp>.txt for old workers)
+  #       ├── notes/              # context notes: background text the worker adds to
+  #       │   └── <ts>-<rand>.json # the conversation between turns, never a turn
+  #       │                        # ({text, source, from_session?, from_cwd?, created_at})
   #       ├── output/             # agent writes responses here
   #       │   └── <timestamp>.txt # one file per agent response
   #       ├── pid                 # PID of the owner, written by the owner itself
@@ -39,6 +42,10 @@ module Samagotchi
 
   class SessionManager
     INPUT_DIR  = "input"
+    # Context notes live apart from input/, so nothing that reads input/
+    # (the mid-turn drain, the idle-exit hold, the Waker) ever sees one.
+    NOTES_DIR  = "notes"
+    NOTE_MAX_BYTES = 16 * 1024
     OUTPUT_DIR = "output"
     PID_FILE   = "pid"
     # Input-file format this worker reads, advertised in the Bridge sidecar:
@@ -65,6 +72,9 @@ module Samagotchi
         super("session #{session_id} is owned by an interactive TUI")
       end
     end
+
+    # A note that can't be queued: empty, or over NOTE_MAX_BYTES.
+    class NoteRejected < ArgumentError; end
 
     # Spawn a new background session that processes the given prompt (or,
     # with none, waits idle for input).
@@ -440,6 +450,70 @@ module Samagotchi
       path
     rescue StandardError
       false
+    end
+
+    # Queue a context note for a session: background text its worker adds
+    # to the conversation between turns. It never starts a turn.
+    # @param source [String] where it came from ("cli", "slack", "session")
+    # @param from_session [String, nil] the sending session, for a peer's note
+    # @return [String] the note file's path
+    # @raise [NoteRejected] for an empty note or one over 16 KiB (never cut)
+    def self.write_note(session_id, text:, source: "cli", from_session: nil, from_cwd: nil, state_dir: nil)
+      body = checked_note_text(text)
+      sd = state_dir || Session.default_state_dir
+      notes_dir = File.join(Session.session_dir(session_id, state_dir: sd), NOTES_DIR)
+      FileUtils.mkdir_p(notes_dir)
+
+      # The random part keeps two writers in one nanosecond apart; the
+      # timestamp keeps the names in arrival order.
+      name = "#{Time.now.strftime("%Y%m%d%H%M%S%9N")}-#{SecureRandom.hex(3)}.json"
+      path = File.join(notes_dir, name)
+      record = { "text" => body, "source" => source.to_s, "from_session" => from_session,
+                 "from_cwd" => from_cwd, "created_at" => Time.now.iso8601 }.compact
+      write_atomic(path, JSON.generate(record))
+      path
+    end
+
+    # @return [String] the stripped text
+    # @raise [NoteRejected]
+    def self.checked_note_text(text)
+      body = text.to_s.strip
+      raise NoteRejected, "the note is empty" if body.empty?
+      if body.bytesize > NOTE_MAX_BYTES
+        raise NoteRejected, "the note is #{body.bytesize} bytes; the limit is 16 KiB (#{NOTE_MAX_BYTES} bytes)"
+      end
+
+      body
+    end
+
+    # Queued notes, oldest first, plus any a crashed worker claimed and left
+    # (the absorber skips a note id the conversation already holds).
+    def self.find_new_note_files(session_dir)
+      notes_dir = File.join(session_dir, NOTES_DIR)
+      return [] unless Dir.exist?(notes_dir)
+
+      Dir.glob(File.join(notes_dir, "*.{json,json.processing}")).sort_by { |p| File.basename(p) }
+    end
+
+    # @return [String, nil] the claimed path, or nil when another claimed it
+    def self.claim_note_file(note_file)
+      return note_file if note_file.end_with?(".processing")
+
+      claim_input_file(note_file)
+    end
+
+    # @return [Hash, nil] {note_id:, text:, source:, from_session:, from_cwd:,
+    #   created_at:}, or nil for a file that holds no usable note
+    def self.read_note(note_file)
+      data = JSON.parse(File.read(note_file))
+      text = data["text"].to_s.strip
+      return nil if text.empty?
+
+      { note_id: File.basename(note_file).sub(/\.json(\.processing)?\z/, ""), text: text,
+        source: data["source"].to_s.empty? ? "cli" : data["source"].to_s,
+        from_session: data["from_session"], from_cwd: data["from_cwd"], created_at: data["created_at"] }
+    rescue JSON::ParserError, SystemCallError, NoMethodError, TypeError
+      nil
     end
 
     def self.write_output(session_dir, response)
