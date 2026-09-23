@@ -45,7 +45,7 @@ session:
   idle_exit_minutes: 30   # a background worker nobody uses exits; 0 = never
   shared: true            # the default: plain `chi` runs its session in a background worker and attaches (as `chi --shared`); false keeps the in-process REPL (env SAMAGOTCHI_SESSION_SHARED; no CLI flag, `--no-shared` opts out per run)
 log:
-  file: ./tmp/samagotchi.log
+  file: ~/chi.log         # optional; the default is $XDG_STATE_HOME/samagotchi/samagotchi.log (~/.local/state/…); relative paths are from the cwd of the `chi` that starts the worker
   disable: false
 ```
 
