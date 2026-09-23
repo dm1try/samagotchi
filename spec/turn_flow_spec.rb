@@ -167,6 +167,16 @@ RSpec.describe Samagotchi::TurnFlow do
     expect(engine.messages).to eq(partial)
   end
 
+  it "drops a pending offer on !rollback: the offered turn is gone" do
+    run_prompt("go", [{ role: "tool_response", content: "r1" }])
+    flow.after_turn(result(engine.messages, exhausted: true, pending: true))
+
+    expect(flow.rollback!).to be(true)
+
+    expect(engine.messages).to eq(before)
+    expect(flow.awaiting_continue?).to be(false)
+  end
+
   it "forgets the checkpoint once the conversation changed outside a turn" do
     run_prompt("go", [{ role: "model", content: "Partial" }])
     flow.after_turn(result(engine.messages, canceled: true))

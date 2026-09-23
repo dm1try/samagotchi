@@ -115,7 +115,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     it "says a turn was cancelled and clears the status line" do
       feed({ type: :turn_canceled, cancellation_reason: :ctrl_c })
 
-      expect(screen.lines.last).to eq("turn cancelled (ctrl_c)")
+      expect(screen.lines.last(2)).to eq(["turn cancelled (ctrl_c)", described_class::ROLLBACK_HINT])
       expect(screen.statuses.last).to be_nil
       expect(attached).not_to be_running
     end
@@ -235,10 +235,24 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
     expect(screen.lines).to include("no recap yet: one comes after a quiet stretch, when recap: is configured")
   end
 
-  it "declines the commands that need the local Engine" do
+  it "sends session commands to the worker, which runs them" do
+    allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
+
     run_with(["/model x", "/models", "/continue", "!rollback", "!ls"])
 
-    expect(screen.lines.count { |l| l.end_with?("not available in attached mode yet (`chi --no-shared` runs a plain REPL)") }).to eq(5)
+    %w[/model\ x /models /continue !rollback !ls].each do |line|
+      expect(client).to have_received(:post_command).with(line: line.delete("\\"), client_id: "tui:1")
+    end
+    expect(screen.lines.grep(/not available/)).to be_empty
+  end
+
+  it "says so when the worker is older than the command route" do
+    allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 404, body: '{"error":"not_found"}'))
+
+    run_with(["/model x"])
+
+    expect(screen.lines).to include("this session's worker runs an older chi and can't run commands; " \
+                                    "restart it to use them (its turns still work)")
   end
 
   it "cancels the running turn on Ctrl-C, and only then" do
@@ -425,5 +439,105 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a failed turn's prompt" do
 
     expect(reads.pop(timeout: 0.3)).to be_nil
     expect(screen.lines).not_to include("(prompt restored for retry)")
+  end
+end
+
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue offer" do
+  let(:screen) { RecordingSurface.new(columns: 80) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
+
+  def feed(*events)
+    events.each { |e| attached.handle_event(JSON.parse(JSON.generate(e))) }
+  end
+
+  def joined(continue_offer: nil)
+    { type: :snapshot, snapshot: { messages: [], current_turn: nil, queued: [], continue_offer: continue_offer, event_seq: 1 } }
+  end
+
+  def ran(**fields)
+    { type: :command_ran, command_id: "c1", client_id: "tui:1", line: "/model", status: "ok", output: "", changed: [],
+      model_name: "m1" }.merge(fields)
+  end
+
+  before { feed(joined) }
+
+  it "shows its own command's output as the REPL does: model> lines, a !cmd's own output as is" do
+    feed(ran(line: "/model", output: "runtime model: m1 (profile=qwen36)"), ran(line: "!ls", output: "a\nb\n"))
+
+    expect(screen.lines.drop(1)).to eq(["model> runtime model: m1 (profile=qwen36)", "a\nb\n"])
+  end
+
+  it "shows another UI's command with who sent it" do
+    feed(ran(client_id: "web:tab", line: "/model x", output: "runtime model set to x (profile=qwen36)", changed: ["model"]))
+
+    expect(screen.lines.drop(1)).to eq(["web> /model x", "model> runtime model set to x (profile=qwen36)"])
+    expect(attached.model_name).to eq("m1")
+  end
+
+  it "says a command waits for the turn to end" do
+    feed(ran(status: "busy", output: "busy: wait for the turn to end"))
+
+    expect(screen.lines.last).to eq("busy: wait for the turn to end")
+  end
+
+  it "asks at the continue prompt while an offer is pending, from the join too" do
+    expect(attached.send(:prompt_text)).to eq("> ")
+
+    feed({ type: :continue_offered, context: { original_prompt: "task" }, no_interrupt: false })
+    expect(attached.send(:prompt_text)).to eq(Samagotchi::TerminalUI::CONTINUE_PROMPT)
+
+    feed({ type: :continue_resolved, decision: "resume", client_id: "web:tab" })
+    expect(attached.send(:prompt_text)).to eq("> ")
+    expect(screen.lines.last).to eq("(web answered the continue offer: resume)")
+
+    other = described_class.new(client: client, screen: screen, client_id: "tui:2")
+    other.handle_event(JSON.parse(JSON.generate(joined(continue_offer: { context: {}, no_interrupt: false }))))
+    expect(other.send(:prompt_text)).to eq(Samagotchi::TerminalUI::CONTINUE_PROMPT)
+  end
+
+  it "renders a continue turn as (continuing), not as an empty prompt line" do
+    feed({ type: :turn_started, prompt: nil, continue: true, origin: { client_id: "web:tab" } })
+
+    expect(screen.lines.last).to eq("web> (continuing)")
+  end
+
+  it "points at !rollback after a cancelled prompt turn, not after a cancelled continue" do
+    feed({ type: :turn_started, prompt: "go", origin: { client_id: "tui:1" } }, { type: :turn_canceled, cancellation_reason: "ctrl_c" })
+    expect(screen.lines.last(2)).to eq(["turn cancelled (ctrl_c)", "partial progress kept in context; !rollback restores the pre-turn state"])
+
+    feed({ type: :turn_started, prompt: nil, continue: true, origin: { client_id: "tui:1" } }, { type: :turn_canceled, cancellation_reason: "ctrl_c" })
+    expect(screen.lines.last).to eq("turn cancelled (ctrl_c)")
+  end
+end
+
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue offer" do
+  let(:screen) { RecordingSurface.new(columns: 80) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
+  let(:typed) { Queue.new }
+  let(:prompts) { [] }
+
+  def wait_for(timeout: 2)
+    deadline = Time.now + timeout
+    sleep 0.01 until yield || Time.now > deadline
+    expect(yield).to be_truthy
+  end
+
+  it "sends a bare answer as /continue <answer>, an empty one as /continue, and commands as they are" do
+    allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
+    offer = { "type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => nil, "queued" => [],
+                                                    "continue_offer" => { "context" => {}, "no_interrupt" => false } } }
+    allow(client).to receive(:follow) { |&block| block.call(offer) && double("stream", close: nil) }
+    # Reads block until typed into, like Reline.
+    thread = Thread.new { attached.run(input: ->(prompt, _prefill) { prompts << prompt; typed.pop }) }
+    wait_for { prompts.last == Samagotchi::TerminalUI::CONTINUE_PROMPT }
+
+    ["no, too slow", "", "/model", nil].each { |line| typed << line }
+    thread.join(2)
+
+    expect(client).to have_received(:post_command).with(line: "/continue no, too slow", client_id: "tui:1")
+    expect(client).to have_received(:post_command).with(line: "/continue", client_id: "tui:1")
+    expect(client).to have_received(:post_command).with(line: "/model", client_id: "tui:1")
   end
 end

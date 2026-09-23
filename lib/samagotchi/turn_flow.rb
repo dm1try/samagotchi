@@ -113,13 +113,17 @@ module Samagotchi
       @offer = nil
     end
 
-    # Restore the pre-turn checkpoint (!rollback after a Ctrl-C).
+    # Restore the pre-turn checkpoint (!rollback after a Ctrl-C). A pending
+    # offer goes too: the turn it offered to continue is gone. (The REPL
+    # reads every line as an answer while an offer is pending; a worker
+    # also takes !rollback then.)
     # @return [Boolean] false when there is none
     def rollback!
       return false unless @checkpoint
 
       @engine.rollback_to(@checkpoint)
       @checkpoint = nil
+      @offer = nil
       true
     end
 

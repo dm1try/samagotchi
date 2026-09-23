@@ -111,10 +111,14 @@ module Samagotchi
     # Explicit escape hatch after a Ctrl-C: discard the salvaged partial
     # turn and restore the pre-turn checkpoint.
     def rollback
+      offered = @turn_flow.awaiting_continue?
       return reply("nothing to rollback") unless @turn_flow.rollback!
 
       save_session
-      reply("salvaged turn discarded; restored pre-turn state", changed: [:messages])
+      result = reply("salvaged turn discarded; restored pre-turn state", changed: [:messages])
+      # It discarded the turn a continue was offered for: that offer's no.
+      result.decision = :abort if offered
+      result
     end
 
     # The output goes into the conversation for the next turn. Not saved

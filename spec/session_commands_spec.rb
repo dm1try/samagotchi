@@ -128,6 +128,16 @@ RSpec.describe Samagotchi::SessionCommands do
     end
   end
 
+  it "answers a pending continue offer no when !rollback discards the offered turn" do
+    offered_continue
+
+    result = commands.run("!rollback")
+
+    expect(result).to have_attributes(output: "salvaged turn discarded; restored pre-turn state", decision: :abort)
+    expect(turn_flow.awaiting_continue?).to be(false)
+    expect(session.messages.map { |m| m[:content] }).to eq(%w[sys old])
+  end
+
   describe "!cmd" do
     it "runs the command, adds its output to the conversation and ends the rollback window" do
       allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi").and_return("hi\n")

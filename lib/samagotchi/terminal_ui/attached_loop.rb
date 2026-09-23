@@ -6,6 +6,7 @@ require_relative "formatting"
 require_relative "attached_view"
 require_relative "question_prompt"
 require_relative "../bridge_client"
+require_relative "../session_commands"
 
 module Samagotchi
   class TerminalUI
@@ -22,9 +23,10 @@ module Samagotchi
       STATS_COMMAND = "/stats"
       RECAP_COMMAND = "/recap"
       PROMPT = "> "
-      # Commands that need the local Engine (server APIs for them are v2).
-      UNAVAILABLE_COMMANDS = %w[/model /models /continue !rollback].freeze
       DETACH_COMMANDS = %w[/exit /quit].freeze
+      STALE_WORKER = "this session's worker runs an older chi and can't run commands; " \
+                     "restart it to use them (its turns still work)"
+      ROLLBACK_HINT = "partial progress kept in context; !rollback restores the pre-turn state"
       # How much of the last answer a join shows.
       JOIN_ANSWER_LINES = 12
       JOIN_ANSWER_CHARS = 1200
@@ -139,6 +141,10 @@ module Samagotchi
 
       attr_reader :client_id, :recap
 
+      # @return [String, nil] the model the worker's turns run on, as the
+      #   last command said
+      attr_reader :model_name
+
       # @return [QuestionPrompt, nil] the question waiting for an answer
       attr_reader :question
 
@@ -165,6 +171,10 @@ module Samagotchi
         # Prompts this run sent, by enqueued_id: only those come back into
         # the input when their turn fails (a replayed event must not).
         @sent_ids = Set.new
+        # A continue offer is pending: the prompt asks for the answer.
+        @continue_offer = nil
+        @model_name = nil
+        @turn_continues = false
       end
 
       def running? = @running
@@ -206,10 +216,17 @@ module Samagotchi
         when :turn_started then start_turn(event)
         when :turn_completed then complete_turn(event)
         when :turn_canceled
+          continued = @turn_continues
           end_turn("turn cancelled (#{event[:cancellation_reason]})")
+          # A cancelled continue is back where it started; a prompt turn's
+          # partial progress stays, as in the REPL.
+          @screen.commit(ROLLBACK_HINT) unless continued
         when :turn_failed
           end_turn("turn failed: #{event[:summary] || "#{event[:message]} (#{event[:error_class]})"}")
         when :prompt_restored then restore_prompt(event)
+        when :command_ran then command_ran(event)
+        when :continue_offered then offer_continue(event)
+        when :continue_resolved then continue_resolved(event)
         when :input_merged
           count = event[:count].to_i
           @screen.commit("(#{count} message#{"s" unless count == 1} merged into the running turn)")
@@ -255,20 +272,71 @@ module Samagotchi
 
         text = line.strip
         return answer_question(text) if @question
-        return if text.empty?
         return submit(nil) if DETACH_COMMANDS.include?(text)
+        return send_command(continue_line(text)) if @continue_offer && !SessionCommands.command?(text)
+        return if text.empty?
 
         command = text.split(/\s+/, 2).first
         if command == STATS_COMMAND
           show_stats
         elsif command == RECAP_COMMAND
           @screen.commit(@recap || "no recap yet: one comes after a quiet stretch, when recap: is configured")
-        elsif UNAVAILABLE_COMMANDS.include?(command) || text.start_with?("!")
-          @screen.commit("#{command} is not available in attached mode yet (`chi --no-shared` runs a plain REPL)")
+        elsif SessionCommands.command?(text)
+          send_command(text)
         else
           send_prompt(text)
         end
         nil
+      end
+
+      # A bare answer at the continue prompt, as the REPL reads it (an empty
+      # one is yes).
+      def continue_line(text)
+        text.empty? ? SessionCommands::CONTINUE_COMMAND : "#{SessionCommands::CONTINUE_COMMAND} #{text}"
+      end
+
+      # The worker runs it and every UI renders its :command_ran, this one
+      # too, so nothing waits here.
+      def send_command(line)
+        reply = @client.post_command(line: line, client_id: @client_id)
+        return if reply.status == 202
+        return @screen.commit(STALE_WORKER) if reply.status == 404
+
+        detail = reply.json&.fetch("detail", nil) || reply.json&.fetch("error", nil)
+        @screen.commit("could not run the command (#{[reply.status, detail].compact.join(" ")})")
+      end
+
+      def command_ran(event)
+        @model_name = event[:model_name] if event[:model_name]
+        @screen.commit(prompt_line(event[:client_id], event[:line])) unless own?(event[:client_id])
+        output = event[:output].to_s
+        return if output.empty?
+
+        if event[:status] == "busy"
+          @screen.commit(output)
+        elsif shell_line?(event[:line])
+          @screen.commit(output)
+        else
+          @screen.commit("#{paint("model>", 36)} #{output}")
+        end
+      end
+
+      def shell_line?(line)
+        line.to_s.start_with?(SessionCommands::SHELL_BANG_PREFIX) && line.to_s.strip != SessionCommands::ROLLBACK_COMMAND
+      end
+
+      def offer_continue(event)
+        @continue_offer = { context: event[:context], no_interrupt: event[:no_interrupt] }
+        sync_prompt
+      end
+
+      def continue_resolved(event)
+        @continue_offer = nil
+        unless own?(event[:client_id])
+          who = event[:client_id] ? CLIENT_LABELS.fetch(event[:client_id].to_s.split(":", 2).first, "another UI") : "another UI"
+          @screen.commit("(#{who} answered the continue offer: #{event[:decision]})")
+        end
+        sync_prompt
       end
 
       def send_prompt(text)
@@ -289,7 +357,10 @@ module Samagotchi
       end
 
       def prompt_text
-        @question ? paint("choice> ", 33) : paint(PROMPT, 92)
+        return paint("choice> ", 33) if @question
+        return paint(CONTINUE_PROMPT, 33) if @continue_offer
+
+        paint(PROMPT, 92)
       end
 
       # Show the question and switch the open prompt to answer it. The
@@ -369,8 +440,8 @@ module Samagotchi
         sync_prompt
       end
 
-      # Restart the open read when its prompt no longer fits (a question
-      # opened or closed), first erasing the prompt Reline drew.
+      # Restart the open read when its prompt no longer fits (a question or a
+      # continue offer opened or closed), first erasing the prompt Reline drew.
       def sync_prompt
         return unless @reader
 
@@ -397,6 +468,10 @@ module Samagotchi
           render_join_header(Array(snapshot[:messages]))
         end
         @recap = snapshot[:recap]
+        offer = snapshot[:continue_offer]
+        had_offer = !@continue_offer.nil?
+        @continue_offer = offer && { context: offer[:context], no_interrupt: offer[:no_interrupt] }
+        sync_prompt if had_offer != !@continue_offer.nil?
         render_current_turn(snapshot[:current_turn])
         Array(snapshot[:queued]).each do |entry|
           next if own?(entry[:client_id])
@@ -447,7 +522,8 @@ module Samagotchi
         @joined_mid_turn = @running
         return unless turn
 
-        @screen.commit(prompt_line(turn.dig(:origin, :client_id), turn[:prompt]))
+        @turn_continues = turn[:prompt].nil?
+        @screen.commit(prompt_line(turn.dig(:origin, :client_id), turn[:prompt] || "(continuing)"))
         tail = nil
         running_tool = nil
         Array(turn[:parts]).each do |part|
@@ -477,8 +553,12 @@ module Samagotchi
         @recap = nil # the turn makes it stale
         @running = true
         @joined_mid_turn = false
+        @turn_continues = event[:prompt].nil?
         origin = event[:origin] || {}
-        unless own?(origin[:client_id]) || @shown_enqueued.include?(origin[:enqueued_id])
+        if @turn_continues
+          # A continue turn (after the offer's yes) has no prompt to show.
+          @screen.commit(prompt_line(origin[:client_id], "(continuing)"))
+        elsif !(own?(origin[:client_id]) || @shown_enqueued.include?(origin[:enqueued_id]))
           @screen.commit(prompt_line(origin[:client_id], event[:prompt]))
         end
         @renderer.call(event)

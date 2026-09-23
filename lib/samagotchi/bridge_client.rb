@@ -121,6 +121,15 @@ module Samagotchi
       post("turn", { session_id: @session_id, prompt: prompt, client_id: client_id }, read_body: true)
     end
 
+    # POST /session/:id/command: a session command (/model, /models,
+    # !rollback, !cmd, /continue) for the worker to run. 202 = queued (body
+    # carries the command_id its :command_ran will name), 400 = not a
+    # command, 404 = a worker older than the route.
+    # @return [Response]
+    def post_command(line:, client_id: nil)
+      post("command", { line: line, client_id: client_id }, read_body: true)
+    end
+
     # POST /session/:id/cancel. 202 = requested, 409 = no active turn.
     # @return [Response] (status only)
     def cancel(reason:)
