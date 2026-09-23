@@ -73,6 +73,9 @@ module Samagotchi
           if (m = %r{\A/api/sessions/([^/]+)/question/dismiss\z}.match(req.path_info)) && req.post?
             return handle_question_dismiss(req, m[1])
           end
+          if (m = %r{\A/api/sessions/([^/]+)/command\z}.match(req.path_info)) && req.post?
+            return handle_command(req, m[1])
+          end
           if (m = %r{\A/api/sessions/([^/]+)\z}.match(req.path_info)) && req.get?
             return handle_show(req, m[1])
           end
@@ -205,6 +208,8 @@ module Samagotchi
                     session.pending_question
                   end
         owner = session_owner(id)
+        # A /model in the worker changes it before the file catches up.
+        session.model_name = snapshot["model_name"] if snapshot && !snapshot["model_name"].to_s.empty?
         json_response(200, {
           session: session_to_json(session, status: displayed_status(session, snapshot, owner: owner), owner: owner),
           history: history,
@@ -212,6 +217,7 @@ module Samagotchi
           current_turn: current_turn,
           queued: turn_snapshot ? Array(turn_snapshot["queued"]) : [],
           recap: turn_snapshot && turn_snapshot["recap"],
+          continue_offer: turn_snapshot && turn_snapshot["continue_offer"],
           markdown_warning: @markdown_renderer.warning,
           pending_question: pending,
           last_event_seq: last_event_seq,
@@ -285,6 +291,36 @@ module Samagotchi
         else error_response(503, "not_live", "no live bridge for session #{id}")
         end
       rescue StandardError
+        error_response(503, "not_live", "no live bridge for session #{id}")
+      end
+
+      # A session command typed in the composer (/model, /models, !rollback,
+      # !cmd, /continue): the worker runs it (woken as for a turn) and every
+      # UI gets its :command_ran. Needs the worker's Bridge.
+      def handle_command(req, id)
+        body = parse_json(req.body.read)
+        return error_response(400, "invalid_json", "invalid JSON body") unless body.is_a?(Hash)
+
+        line = body["line"].to_s.strip
+        return error_response(400, "missing_fields", "line is required") if line.empty?
+
+        @manager.resume_session(id, state_dir: @state_dir) if @manager.respond_to?(:resume_session)
+        client = live_bridge_client(id)
+        return error_response(503, "not_live", "no live bridge for session #{id}") unless client
+
+        reply = client.post_command(line: line, client_id: body["client_id"])
+        case reply.status
+        when 202 then json_response(202, reply.json || { status: "accepted" })
+        when 400 then error_response(400, reply.json&.dig("error") || "unknown_command", reply.json&.dig("detail") || "not a session command")
+        when 404
+          error_response(501, "not_supported", "this session's worker runs an older chi: restart it to run commands")
+        else error_response(503, "not_live", "no live bridge for session #{id}")
+        end
+      rescue SessionManager::OwnedByTUI => e
+        error_response(409, "owned_by_tui", e.message)
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      rescue SystemCallError, IOError
         error_response(503, "not_live", "no live bridge for session #{id}")
       end
 

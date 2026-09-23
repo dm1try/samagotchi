@@ -330,11 +330,13 @@ module Samagotchi
         sync_prompt
       end
 
+      # An answer shows as its command line (web> /continue yes); only a
+      # prompt that dropped the offer needs saying.
       def continue_resolved(event)
         @continue_offer = nil
-        unless own?(event[:client_id])
+        if event[:decision] == "dropped"
           who = event[:client_id] ? CLIENT_LABELS.fetch(event[:client_id].to_s.split(":", 2).first, "another UI") : "another UI"
-          @screen.commit("(#{who} answered the continue offer: #{event[:decision]})")
+          @screen.commit("(the continue offer was dropped: #{own?(event[:client_id]) ? "you" : who} sent a new prompt)")
         end
         sync_prompt
       end

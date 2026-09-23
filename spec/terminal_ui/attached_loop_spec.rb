@@ -489,7 +489,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
 
     feed({ type: :continue_resolved, decision: "resume", client_id: "web:tab" })
     expect(attached.send(:prompt_text)).to eq("> ")
-    expect(screen.lines.last).to eq("(web answered the continue offer: resume)")
+    # The web's "web> /continue yes" line says who answered.
+    expect(screen.lines.grep(/continue offer/)).to be_empty
+
+    feed({ type: :continue_offered, context: {}, no_interrupt: false },
+         { type: :continue_resolved, decision: "dropped", client_id: "web:tab" })
+    expect(screen.lines.last).to eq("(the continue offer was dropped: web sent a new prompt)")
 
     other = described_class.new(client: client, screen: screen, client_id: "tui:2")
     other.handle_event(JSON.parse(JSON.generate(joined(continue_offer: { context: {}, no_interrupt: false }))))

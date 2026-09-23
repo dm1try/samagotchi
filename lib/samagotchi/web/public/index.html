@@ -77,6 +77,17 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.thinking[open]>summary::before{content:"▾ "}
 .thinking-body{margin-top:6px;font-size:13px;color:#a89bc4;white-space:pre-wrap;word-break:break-word;font-style:italic;max-height:240px;overflow:auto}
 .bubble.question{border-left:3px solid #d29922;background:#181510;padding:10px 12px}
+.bubble.command{border-left:3px solid #6e7681;background:#14161b;font-size:13px}
+.bubble.command.busy{border-left-color:#d29922}
+.bubble.command.failed{border-left-color:#f85149}
+.command-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#9aa4b2}
+.command-output{margin:6px 0 0;white-space:pre-wrap;font-size:12px;color:#c9d1d9}
+.bubble.continue{border-left:3px solid #58a6ff;background:#10151d;padding:10px 12px}
+.bubble.continue.resolved{border-left-color:#8b949e;opacity:.8}
+.continue-text{font-size:14px;color:#e6e8eb;margin-bottom:6px}
+.continue-context{font-size:12px;color:#9aa4b2;margin-bottom:8px;white-space:pre-wrap}
+.continue-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.continue-reason{flex:1;min-width:140px;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#e6e8eb;padding:6px 8px}
 .bubble.question.submitting{opacity:.7}
 .bubble.question.answered{border-left-color:#3fb950}
 .bubble.question.cancelled{border-left-color:#8b949e;opacity:.75}

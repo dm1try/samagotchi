@@ -160,3 +160,31 @@ test("restoreAction never refills a prompt this page didn't send (a replay after
   assert.deepEqual(restoreAction(theirs, opts), { refill: null, own: false, label: "tui" });
   assert.deepEqual(restoreAction(initial, opts), { refill: null, own: false, label: null });
 });
+
+import { commandView, continueLine, isCommandLine } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+test("isCommandLine: a composer line starting with / or ! goes to the command route", () => {
+  assert.equal(isCommandLine("/model x"), true);
+  assert.equal(isCommandLine("  !ls"), true);
+  assert.equal(isCommandLine("hello /model"), false);
+  assert.equal(isCommandLine(""), false);
+});
+
+test("continueLine: the card's answers as /continue commands", () => {
+  assert.equal(continueLine("yes"), "/continue yes");
+  assert.equal(continueLine("no"), "/continue no");
+  assert.equal(continueLine("no", "  too slow "), "/continue no, too slow");
+  assert.equal(continueLine("no", "   "), "/continue no");
+});
+
+test("commandView: who ran what, what it said, and whether the conversation must be re-read", () => {
+  const ran = { type: "command_ran", client_id: "tui:7", line: "!rollback", status: "ok", output: "salvaged turn discarded",
+                changed: ["messages"], model_name: "m1" };
+
+  assert.deepEqual(commandView(ran, ME), { label: "tui", line: "!rollback", text: "salvaged turn discarded", busy: false,
+                                           failed: false, resync: true, modelName: "m1" });
+  assert.deepEqual(commandView({ ...ran, client_id: ME, status: "busy", output: "busy: wait for the turn to end", changed: [] }, ME),
+                   { label: null, line: "!rollback", text: "busy: wait for the turn to end", busy: true, failed: false,
+                     resync: false, modelName: "m1" });
+  assert.equal(commandView({ ...ran, status: "error" }, ME).failed, true);
+});

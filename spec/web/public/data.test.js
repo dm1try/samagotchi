@@ -146,3 +146,16 @@ test("stopSession posts to the stop route", async () => {
   });
   assert.deepEqual(calls[0], ["/api/sessions/abc/stop", "POST", "{}"]);
 });
+import { sendCommand } from "../../../lib/samagotchi/web/public/data.js";
+
+test("sendCommand posts a session command line with this tab's id", async () => {
+  const calls = [];
+  await sendCommand("abc", "/model x", {
+    clientId: "web:me",
+    fetchImpl: (path, opts) => {
+      calls.push([path, opts.method, opts.body]);
+      return Promise.resolve(okResponse({ command_id: "c1" }));
+    },
+  });
+  assert.deepEqual(calls[0], ["/api/sessions/abc/command", "POST", JSON.stringify({ line: "/model x", client_id: "web:me" })]);
+});

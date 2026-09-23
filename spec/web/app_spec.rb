@@ -245,9 +245,10 @@ RSpec.describe Samagotchi::Web::App do
                               "pending_question" => { "id" => "q1", "status" => "pending" } },
           "queued" => [{ "enqueued_id" => "e1", "client_id" => "tui:1", "prompt" => "next" }],
           "recap" => "We did things.",
+          "continue_offer" => { "context" => { "original_prompt" => "first" }, "no_interrupt" => false },
           "event_seq" => 40
         },
-        "session_state_snapshot" => { "status" => "running", "event_seq" => 40 }
+        "session_state_snapshot" => { "status" => "running", "event_seq" => 40, "model_name" => "Qwen3-14B" }
       }
       allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
       status, _headers, body = app.call(env_for("/api/sessions/s1"))
@@ -264,7 +265,10 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["pending_question"]).to eq("id" => "q1", "status" => "pending")
       expect(payload["last_event_seq"]).to eq(40)
       expect(payload["recap"]).to eq("We did things.")
+      expect(payload["continue_offer"]).to eq("context" => { "original_prompt" => "first" }, "no_interrupt" => false)
       expect(payload.dig("session", "status")).to eq("running")
+      # The model turns run on now (after a /model), not the file's.
+      expect(payload.dig("session", "model_name")).to eq("Qwen3-14B")
     end
 
     it "uses the bridge event_seq when a live bridge reports it" do
@@ -796,6 +800,78 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(status).to eq(501)
       expect(resp).to include("error" => "not_supported")
+    end
+  end
+
+  describe "POST /api/sessions/:id/command" do
+    def serve_bridge_once(status_line, reply)
+      server = TCPServer.new("127.0.0.1", 0)
+      received = +""
+      thread = Thread.new do
+        conn = server.accept
+        received << conn.readpartial(16_384) until received.include?("\r\n\r\n") && received.end_with?("}")
+        conn.write("HTTP/1.1 #{status_line}\r\nContent-Type: application/json\r\nContent-Length: #{reply.bytesize}\r\n\r\n#{reply}")
+        conn.close
+      end
+      thread.report_on_exception = false
+      [server, thread, received]
+    end
+
+    def command(app, body = '{"line":"/model x","client_id":"web:1"}')
+      status, _headers, resp = app.call(env_for("/api/sessions/s1/command", method: "POST", body: body))
+      [status, JSON.parse(resp.first)]
+    end
+
+    def app_with_bridge(port, manager: FakeResponsesManager.new)
+      build_app(manager: manager, state_dir: Dir.mktmpdir).tap { |app| allow(app).to receive(:bridge_sidecar_port).and_return(port) }
+    end
+
+    it "wakes the session's worker and hands the command to its Bridge" do
+      manager = FakeResponsesManager.new
+      server, thread, received = serve_bridge_once("202 Accepted", '{"status":"accepted","command_id":"c1","session_id":"s1"}')
+
+      status, resp = command(app_with_bridge(server.local_address.ip_port, manager: manager))
+      thread.join(1)
+      server.close
+
+      expect(status).to eq(202)
+      expect(resp).to include("command_id" => "c1")
+      expect(manager.resume_calls.map(&:first)).to eq(["s1"])
+      expect(received).to start_with("POST /session/s1/command HTTP/1.1").and include('{"line":"/model x","client_id":"web:1"}')
+    end
+
+    it "returns 400 without a line, and 503 with no live bridge" do
+      expect(command(app_with_bridge(nil), "{}")).to match([400, hash_including("error" => "missing_fields")])
+      expect(command(app_with_bridge(nil))).to match([503, hash_including("error" => "not_live")])
+    end
+
+    it "passes the Bridge's 400 through for a line that isn't a session command" do
+      server, thread, = serve_bridge_once("400 Bad Request", '{"error":"unknown_command","detail":"not a session command: /nope"}')
+
+      status, resp = command(app_with_bridge(server.local_address.ip_port), '{"line":"/nope"}')
+      thread.join(1)
+      server.close
+
+      expect(status).to eq(400)
+      expect(resp).to include("error" => "unknown_command", "detail" => "not a session command: /nope")
+    end
+
+    it "says so when the session's worker is older than the route" do
+      server, thread, = serve_bridge_once("404 Not Found", '{"error":"not_found"}')
+
+      status, resp = command(app_with_bridge(server.local_address.ip_port))
+      thread.join(1)
+      server.close
+
+      expect(status).to eq(501)
+      expect(resp).to include("error" => "not_supported")
+    end
+
+    it "answers 409 while a plain chi owns the session" do
+      manager = FakeResponsesManager.new
+      def manager.resume_session(id, state_dir: nil) = raise(Samagotchi::SessionManager::OwnedByTUI, id)
+
+      expect(command(app_with_bridge(nil, manager: manager))).to match([409, hash_including("error" => "owned_by_tui")])
     end
   end
 end

@@ -202,3 +202,16 @@ test("openStream delivers prompt_restored (a failed turn's prompt handed back)",
 
   assert.deepEqual(seen, { prompt: "boom", origin: null });
 });
+
+test("openStream delivers the command and continue-offer events", () => {
+  let es;
+  const seen = [];
+  const handlers = Object.fromEntries(["command_ran", "continue_offered", "continue_resolved"].map((t) => [t, () => seen.push(t)]));
+  openStream("abc", 0, handlers, {
+    EventSourceImpl: class extends FakeEventSource { constructor(url) { super(url); es = this; } },
+  });
+
+  ["command_ran", "continue_offered", "continue_resolved"].forEach((t) => es.dispatch(t, { data: "{}" }));
+
+  assert.deepEqual(seen, ["command_ran", "continue_offered", "continue_resolved"]);
+});
