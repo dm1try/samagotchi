@@ -201,6 +201,18 @@ RSpec.describe Samagotchi::TerminalUI::RelineSeam do
     end
   end
 
+  it "tells the key handler about every key a read takes" do
+    keys = 0
+    described_class.key_handler = -> { keys += 1 }
+    open_prompt
+    type("abc")
+    press(:ed_prev_history)
+
+    expect(keys).to eq(4)
+  ensure
+    described_class.key_handler = nil
+  end
+
   it "knows when a read is open" do
     expect(described_class).not_to be_reading
     open_prompt

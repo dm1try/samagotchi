@@ -22,6 +22,7 @@ module Samagotchi
     # - screen_height: the rows Reline may draw in, cut to the Screen's
     #   editor budget so the region fits (Reline scrolls the input inside it).
     #   Overriding the method, not @screen_size, survives reset and resizes.
+    # - update(key): every key a read takes, for the key handler.
     # - render_finished (Enter), handle_interrupted (Ctrl-C), finalize (every
     #   read, including one dropped by Thread#raise), ed_clear_screen and its
     #   alias clear_screen (Ctrl-L), handle_resized (SIGWINCH, SIGCONT).
@@ -31,7 +32,7 @@ module Samagotchi
                   prompt_list: 0, modified_lines: 0, clear_dialogs: 0, scroll_into_view: 0, render: 0,
                   render_differential: 3, handle_interrupted: 0, handle_resized: 0,
                   clear_rendered_screen_cache: 0, ed_clear_screen: 1, clear_screen: 1,
-                  split_line_by_width: -3 }.freeze
+                  split_line_by_width: -3, update: 1 }.freeze
 
       class << self
         # @return [Screen, nil] where Reline draws, nil for Reline's own drawing
@@ -42,6 +43,11 @@ module Samagotchi
         # turn) and the read goes on with the typed text as it is.
         # @return [#call, nil]
         attr_accessor :interrupt_handler
+
+        # Called with no arguments for each key a read takes (typing is
+        # activity for the REPL's idle clock).
+        # @return [#call, nil]
+        attr_accessor :key_handler
 
         # @return [Boolean] a Reline read is open (it owns stdin)
         def reading? = @reading == true
@@ -93,6 +99,11 @@ module Samagotchi
         super
         RelineSeam.reading = true
         @rendered_screen.base_y = 0 if RelineSeam.screen
+      end
+
+      def update(key)
+        RelineSeam.key_handler&.call
+        super
       end
 
       def screen_height
