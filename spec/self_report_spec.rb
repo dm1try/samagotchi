@@ -17,8 +17,19 @@ RSpec.describe Samagotchi::SelfReport do
     described_class.fields(env: env).to_h.fetch(name)
   end
 
+  # chi self's one server call (the served model's /props GET) answers
+  # nothing unless a spec says otherwise.
+  let(:props_answer) { nil }
+
   before do
     Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(tmp, "bundles")
+    probed = []
+    @probed = probed
+    answer = -> { props_answer }
+    allow_any_instance_of(Samagotchi::Client).to receive(:server_props) do |_client, model: nil|
+      probed << model
+      answer.call
+    end
   end
 
   after do
@@ -89,6 +100,48 @@ RSpec.describe Samagotchi::SelfReport do
     allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model")
     expect(field("model")).to eq("spec-model")
     expect(field("host")).to eq("main 10.0.0.5:8081")
+  end
+
+  describe "the served model row (one short /props probe)" do
+    before { allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model") }
+
+    def props(body) = Samagotchi::Client::ServerProps.new(body: body, status: :ok)
+
+    context "when llama.cpp serves another model than configured" do
+      let(:props_answer) { props("model_alias" => "ornith-1.5") }
+
+      it "names it, and the configured one it answers for" do
+        write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
+
+        expect(field("served model")).to eq("ornith-1.5 (not spec-model: the server serves its own model)")
+        expect(@probed).to eq(["spec-model"])
+      end
+    end
+
+    context "when it serves the configured model" do
+      let(:props_answer) { props("model_alias" => "spec-model") }
+
+      it "names it alone" do
+        write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
+        expect(field("served model")).to eq("spec-model")
+      end
+    end
+
+    context "when the server doesn't answer" do
+      let(:props_answer) { Samagotchi::Client::ServerProps.new(body: nil, status: :network_error) }
+
+      it "says so" do
+        write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
+        expect(field("served model")).to eq("unknown (no answer from the server's /props)")
+      end
+    end
+
+    it "doesn't probe a remote host" do
+      write_config("hosts:\n  or:\n    url: https://openrouter.ai/api/v1\n    api: openai\n    api_key_env: OR_KEY\n")
+
+      expect(field("served model")).to eq("reported per turn (remote host)")
+      expect(@probed).to eq([])
+    end
   end
 
   describe "the profile row (offline: no server probe)" do

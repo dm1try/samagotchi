@@ -6,6 +6,7 @@ require_relative "config"
 require_relative "context_window"
 require_relative "session"
 require_relative "model_profile"
+require_relative "served_model"
 require_relative "host_registry"
 require_relative "tools/memory"
 require_relative "hooks/loader"
@@ -16,9 +17,10 @@ require_relative "memory_bundle/system_bundle"
 module Samagotchi
   # `chi self`: where this chi lives and what it is configured to use.
   #
-  # Read-only and offline (no model server calls), so the agent can run it via
-  # `execute` to orient itself — source dir to rg, config path, memory dirs,
-  # sessions, model/host, bundle versions — without guessing from $PATH.
+  # Read-only and nearly offline (one short /props GET for the served model,
+  # nothing else asks a model server), so the agent can run it via `execute`
+  # to orient itself — source dir to rg, config path, memory dirs, sessions,
+  # model/host, bundle versions — without guessing from $PATH.
   module SelfReport
     SOURCE_DIR = File.expand_path("../..", __dir__)
 
@@ -45,6 +47,7 @@ module Samagotchi
         ["api key", model ? api_key_for(model, env) : "-"],
         ["loop", model ? loop_for(model, env) : "-"],
         ["profile", model ? profile_for(model, env) : "-"],
+        ["served model", model ? served_model_for(model, env) : "-"],
         ["context window", context_window(env)],
         ["bundles", bundles_summary]
       ]
@@ -88,6 +91,27 @@ module Samagotchi
       return "-" unless entry
 
       entry.chat? ? "chat (api: openai)" : "native (raw prompt)"
+    end
+
+    # chi self's one server call: a single-model llama.cpp answers any name
+    # with the model it loaded, and its /props names it (model_alias). One
+    # GET with the probe's short timeouts; a remote host isn't asked.
+    def served_model_for(model, env)
+      registry = HostRegistry.new(env: env)
+      entry, bare = registry.host_for_model(model)
+      return "-" unless entry
+      return "reported per turn (remote host)" if entry.remote?
+
+      client = registry.client_for(entry)
+      props = client.server_props(model: bare) if client.respond_to?(:server_props)
+      return "reported per turn (the server has no /props)" if props.nil?
+
+      served = ServedModel.from_props(props)
+      return "unknown (no answer from the server's /props)" unless served
+
+      ServedModel.differs?(bare, served) ? "#{served} (not #{bare}: the server serves its own model)" : served
+    rescue StandardError => e
+      "unknown (#{e.class})"
     end
 
     # Offline, so no /props probe: where nothing is configured, a native
