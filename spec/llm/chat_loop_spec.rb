@@ -332,6 +332,18 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(adapter.requests.last[:messages].last).to eq(role: "user", content: [{ type: "text", text: "also this" }])
       expect(result.text).to eq("second")
     end
+
+    it "keeps the answer a merge follows, so the model sees what it said" do
+      backend.adapter = adapter = FakeChatAdapter.new(text("first"), text("second"))
+      queue = [[], ["also this"], []]
+
+      result = run(pending_input: -> { queue.shift || [] })
+
+      expect(adapter.requests.last[:messages].last(2)).to eq([{ role: "assistant", content: "first" },
+                                                              { role: "user", content: [{ type: "text", text: "also this" }] }])
+      expect(result.conversation.map { |m| [m[:role], m[:content]] }.last(3))
+        .to eq([["model", "first"], ["user", "also this"], ["model", "second"]])
+    end
     it "leaves input queued after a cancel instead of merging it into the dying turn" do
       controller = Samagotchi::CancellationController.new
       queue = []

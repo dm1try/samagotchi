@@ -211,9 +211,11 @@ module Samagotchi
 
             last_text = @loop.strip_model_thought(response.text)
             if response.tool_calls.empty?
+              # Kept before a merge too: the model answers the merged line
+              # knowing what it just said.
+              @conversation << { role: "model", content: last_text } unless last_text.empty?
               next if inject_pending_input(iteration)
 
-              @conversation << { role: "model", content: last_text } unless last_text.empty?
               # Shown, not saved: an empty answer (content "" + stop, seen from
               # a remote host) would otherwise end the turn with nothing.
               last_text = EMPTY_ANSWER if last_text.empty?
