@@ -105,6 +105,29 @@ RSpec.describe Samagotchi::NoteCommand do
     expect(err.string).to include("no live sessions")
   end
 
+  describe "without a locale (Finder, launchd: stdin and ARGV aren't UTF-8)" do
+    it "keeps non-ASCII text from stdin read as US-ASCII" do
+      a = make(owner: "worker")
+
+      expect(run(a.id, stdin: StringIO.new("h\xC3\xA9llo".dup.force_encoding("US-ASCII")))).to eq(0), err.string
+      expect(notes_of(a).first["text"]).to eq("héllo")
+    end
+
+    it "keeps non-ASCII text from -m given as binary" do
+      a = make(owner: "worker")
+
+      expect(run("-m", "héllo".b, a.id)).to eq(0), err.string
+      expect(notes_of(a).first["text"]).to eq("héllo")
+    end
+
+    it "replaces invalid bytes instead of crashing" do
+      a = make(owner: "worker")
+
+      expect(run(a.id, stdin: StringIO.new("bad\xFF\xFE".b))).to eq(0), err.string
+      expect(notes_of(a).first["text"]).to eq("bad\uFFFD\uFFFD")
+    end
+  end
+
   it "refuses an empty or oversized note before writing any" do
     a = make(owner: "worker")
 
@@ -148,6 +171,19 @@ RSpec.describe Samagotchi::NoteCommand do
 
       expect(status.exitstatus).to eq(0), stderr
       expect(stdout).to include("waits for the session's next start (1 note queued)")
+
+      # No locale at all, as an app started from Finder or launchd has it.
+      bare = { "XDG_STATE_HOME" => xdg, "HOME" => Dir.home, "PATH" => "#{File.dirname(RbConfig.ruby)}:/usr/bin:/bin" }
+      _out, stderr, status = Open3.capture3(bare, RbConfig.ruby, chi, "note", session.id, stdin_data: "h\u00E9llo",
+                                            unsetenv_others: true)
+      expect(status.exitstatus).to eq(0), stderr
+      _out, stderr, status = Open3.capture3(bare, RbConfig.ruby, chi, "note", "-m", "h\u00E9llo", session.id,
+                                            stdin_data: "", unsetenv_others: true)
+      expect(status.exitstatus).to eq(0), stderr
+      expect(stderr).not_to include("warning")
+      dir = File.join(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), "notes")
+      texts = Dir.glob(File.join(dir, "*.json")).map { |path| JSON.parse(File.read(path))["text"] }
+      expect(texts.count("héllo")).to eq(2)
     ensure
       FileUtils.rm_rf(xdg)
     end

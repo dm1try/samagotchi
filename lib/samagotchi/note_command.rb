@@ -34,7 +34,7 @@ module Samagotchi
       options = parse or return 2
       return 0 if options[:help]
 
-      text = options[:text] || read_stdin
+      text = utf8(options[:text] || read_stdin)
       unless text
         usage_error("no note text: pass -m TEXT or pipe it in")
         return 2
@@ -125,6 +125,13 @@ module Samagotchi
         @stdout.puts("#{short}  waits for the session's next start (#{queued} #{queued == 1 ? "note" : "notes"} queued)")
       end
       true
+    end
+
+    # The note as UTF-8 whatever the locale says: with no LANG/LC_* (an app
+    # started from Finder, launchd) stdin reads as US-ASCII and ARGV as
+    # binary. Invalid bytes become U+FFFD rather than an error.
+    def utf8(text)
+      text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
     end
 
     def usage_error(message)
