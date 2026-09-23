@@ -444,9 +444,7 @@ module Samagotchi
       end
 
       def resolve_output_char_cap(override)
-        value = override || ENV["SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS"]
-        parsed = value.to_i
-        parsed.positive? ? parsed : KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS
+        KernelLoop.resolve_output_char_cap(override)
       end
 
       def strip_model_thought(text)

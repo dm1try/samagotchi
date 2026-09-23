@@ -136,6 +136,16 @@ RSpec.describe "Tool call wrapper parity" do
       expect(fired.last).to eq([:after_tool_call, seen[0, 10]])
     end
 
+    it "both loops take the cap from config when no override is given" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("max_tool_output_chars").and_return(12)
+      run_native
+      native_cap = completed[:output].length
+      events.clear
+      run_chat
+      expect([native_cap, completed[:output].length]).to eq([12, 12])
+    end
+
     it "ruby_llm: the model gets the capped output (a per-loop choice, kept)" do
       _result, seen = run_chat(max_tool_output_chars: 10)
       expect(completed[:output].length).to eq(10)

@@ -393,7 +393,8 @@ module Samagotchi
     # env var, then DEFAULT_MAX_TOOL_OUTPUT_CHARS. A non-positive value falls back
     # to the default (there is intentionally no "unlimited" — live UIs get a
     # bounded `output:` plus a truthful `output_truncated:` flag).
-    def resolve_output_char_cap(override)
+    # Class-level so the chat loop resolves it the same way.
+    def self.resolve_output_char_cap(override)
       cfg_val = begin
         v = Samagotchi::Config.get("max_tool_output_chars") rescue nil
         v.to_i if v
@@ -401,6 +402,10 @@ module Samagotchi
       value = override || cfg_val || ENV[TOOL_OUTPUT_CHARS_ENV]
       parsed = value.to_i
       parsed.positive? ? parsed : DEFAULT_MAX_TOOL_OUTPUT_CHARS
+    end
+
+    def resolve_output_char_cap(override)
+      self.class.resolve_output_char_cap(override)
     end
 
     def complete_kwargs(cancel_controller:, model_name: nil, on_chunk: nil, on_retry: nil)
