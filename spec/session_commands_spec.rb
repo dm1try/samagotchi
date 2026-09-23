@@ -110,6 +110,39 @@ RSpec.describe Samagotchi::SessionCommands do
     expect(commands.run("/models").output).to eq("alpha (alpha.test:1111) — unreachable: refused")
   end
 
+  describe "/models on a big catalog" do
+    # A remote provider's catalog (OpenRouter ~380 ids) must not flood the terminal.
+    let(:catalog) do
+      ids = (1..25).map { |i| format("vendor/model-%02d", i) } + ["qwen/qwen3.8-27b:free"]
+      { "remote" => { host: "openrouter.ai", port: 443,
+                      models: ids.map { |id| Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {}) } } }
+    end
+
+    before do
+      allow(registry).to receive(:list_all_models).and_return(catalog)
+      allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({})
+    end
+
+    it "shows 20 ids per host and says how to find the rest" do
+      lines = commands.run("/models").output.lines(chomp: true)
+
+      expect(lines.first).to eq("remote (openrouter.ai:443):")
+      expect(lines[1..20]).to eq((1..20).map { |i| format("  vendor/model-%02d", i) })
+      expect(lines[21..]).to eq(["  … and 6 more; /models <text> lists the ids containing <text>"])
+    end
+
+    it "lists every id containing the text, in any case" do
+      expect(commands.run("/models QWEN").output).to eq("remote (openrouter.ai:443):\n  qwen/qwen3.8-27b:free")
+      expect(commands.run("/models model-2").output.lines.size).to eq(7)
+      expect(commands.run("/models nothing-like-it").output).to eq('no model ids contain "nothing-like-it"')
+    end
+
+    it "is a command with an argument too" do
+      expect(described_class.command?("/models qwen")).to be(true)
+      expect(described_class.command?("/modelsx")).to be(false)
+    end
+  end
+
   describe "!rollback" do
     it "has nothing to roll back before a cancelled turn" do
       result = commands.run("!rollback")

@@ -17,6 +17,9 @@ module Samagotchi
   class SessionCommands
     MODEL_COMMAND = "/model"
     MODELS_COMMAND = "/models"
+    # A remote catalog has hundreds of ids (OpenRouter ~380): plain /models
+    # shows this many per host; /models <text> lists every match.
+    MODELS_PER_HOST = 20
     ROLLBACK_COMMAND = "!rollback"
     CONTINUE_COMMAND = TurnFlow::CONTINUE_COMMAND
     SHELL_BANG_PREFIX = "!"
@@ -43,7 +46,7 @@ module Samagotchi
       return :rollback if text == ROLLBACK_COMMAND
       return :shell if text.match?(/\A!\s*\S/)
       return :continue if text == CONTINUE_COMMAND || text.start_with?("#{CONTINUE_COMMAND} ")
-      return :models if text == MODELS_COMMAND
+      return :models if text == MODELS_COMMAND || text.start_with?("#{MODELS_COMMAND} ")
       return :model if text.match?(/\A\/model(?:\s+.*)?\z/)
 
       nil
@@ -74,7 +77,7 @@ module Samagotchi
 
         answer = text.delete_prefix(CONTINUE_COMMAND).strip
         continue_answer(answer.empty? ? CONTINUE_COMMAND : answer)
-      when :models then reply(models_listing)
+      when :models then reply(models_listing(text.delete_prefix(MODELS_COMMAND).strip))
       when :model then model(text)
       end
     end
@@ -278,7 +281,10 @@ module Samagotchi
       "#{resolution.profile.name}, #{resolution.label}"
     end
 
-    def models_listing
+    # @param filter [String] only ids containing it (any case); "" lists
+    #   up to MODELS_PER_HOST per host
+    def models_listing(filter = "")
+      needle = filter.downcase
       registry = @engine.host_registry
       # Aggregate across all hosts (lazy discovery, skip-on-error)
       results = registry.list_all_models
@@ -311,29 +317,37 @@ module Samagotchi
           lines << "#{host_label} — no models discovered"
           next
         end
-        lines << "#{host_label}:"
+        shown = []
         models.each do |entry|
           identifier = entry.id.to_s.empty? ? "unknown" : entry.id
-          raw_status = entry.raw["status"] || entry.raw[:status]
-          status = raw_status.is_a?(Hash) ? (raw_status["value"] || raw_status[:value] || raw_status["status"] || raw_status[:status]) : raw_status
           seen << identifier.to_s.downcase
           # also track host-qualified seen for orphan logic
           seen << "#{hname}:#{identifier}".downcase
           seen << "#{hname}/#{identifier}".downcase
+          shown << [entry, identifier] if needle.empty? || identifier.to_s.downcase.include?(needle)
+        end
+        next if shown.empty?
+
+        lines << "#{host_label}:"
+        hidden = needle.empty? ? [shown.size - MODELS_PER_HOST, 0].max : 0
+        shown.first(shown.size - hidden).each do |entry, identifier|
+          raw_status = entry.raw["status"] || entry.raw[:status]
+          status = raw_status.is_a?(Hash) ? (raw_status["value"] || raw_status[:value] || raw_status["status"] || raw_status[:status]) : raw_status
           base = status.to_s.empty? ? "  #{identifier}" : "  #{identifier} (#{status})"
           alias_list = (by_model[identifier.to_s.downcase] || []) + (by_model["#{hname}:#{identifier}".downcase] || [])
           alias_list.uniq!
           lines << (alias_list.empty? ? base : "#{base} (alias: #{alias_list.join(", ")})")
         end
+        lines << "  … and #{hidden} more; /models <text> lists the ids containing <text>" if hidden.positive?
       end
       # Warnings for unreachable hosts are already in lines; no failover
       orphans = aliases.reject { |_, model_id| seen.include?(model_id.downcase) || seen.include?(registry.bare_name(model_id).downcase) }
-      unless orphans.empty?
+      unless orphans.empty? || !needle.empty?
         lines << ""
         lines << "orphan aliases (target not discovered):"
         orphans.sort.each { |alias_name, model_id| lines << "  #{alias_name} -> #{model_id}" }
       end
-      lines = ["no models discovered"] if lines.empty?
+      lines = [needle.empty? ? "no models discovered" : "no model ids contain #{filter.inspect}"] if lines.empty?
       lines.join("\n")
     rescue StandardError => e
       "unable to list models: #{e.message}"
