@@ -1011,8 +1011,7 @@ module Samagotchi
             # next prompt's prefill is the only visible copy (avoids the
             # "line is copied" duplication).
             begin
-              $stdout.print("\r\e[2K") if $stdout.tty?
-              $stdout.flush if $stdout.tty?
+              @surface.clear_slot(:editor) if $stdout.tty?
             rescue StandardError
               nil
             end
