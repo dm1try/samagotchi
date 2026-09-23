@@ -8,7 +8,9 @@
   for background/web workers (input/, output/, pid). List them with `chi sessions list`.
 
 ## Where things live (relative to the source dir)
-- `README.md`: CLI flags, subcommands, config keys, the hook events table.
+- `docs/`: `cli.md` (flags, subcommands, REPL commands), `configuration.md` (config.yml keys,
+  hosts, transports), `hooks.md` (hook events table), `memory.md`, `sessions.md`. `README.md` is
+  only the quickstart.
 - `lib/samagotchi/tools/<tool>.rb`: each tool's real limits and defaults (e.g. `execute.rb`,
   `output_guardrails.rb`). Tool descriptions are summaries, not the spec.
 - `lib/samagotchi/hooks.rb`, `hooks/loader.rb`: hook events and config format.

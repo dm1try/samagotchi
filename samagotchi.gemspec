@@ -22,11 +22,13 @@ Gem::Specification.new do |spec|
   # Guard against accidental push to rubygems.org (not published yet)
   spec.authors << " [DO NOT PUSH TO RUBYGEMS]"
 
-  # Collect files: lib/, bin/, README.md only.
-  # Explicit listing avoids pulling in spec/, docs/, Gemfile, etc.
+  # Collect files: lib/, bin/, docs/*.md and README.md only; the agent reads
+  # docs/ from its installed source dir (see bundles/system/self_map.md).
+  # Explicit listing avoids pulling in spec/, Gemfile, etc.
   # Use relative paths (relative to __dir__) for clean gem contents.
   spec.files = Dir.glob(File.join("lib", "**/*")) +
                Dir.glob(File.join("bin", "*")) +
+               Dir.glob(File.join("docs", "**/*.md")) +
                ["README.md"]
   # Exclude Ruby LSP internal files
   spec.files.reject! { |f| f.start_with?(".ruby-lsp/") }
