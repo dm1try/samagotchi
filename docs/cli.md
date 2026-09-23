@@ -8,10 +8,10 @@
 - `bin/chi --resume <session-id>` — resume a prior session (in its worker)
 - `bin/chi --no-shared [--resume <session-id>]` — the plain in-process REPL instead, for this run
 - `bin/chi --attach <session-id>` — attach the terminal to a session's worker (e.g. one started from the Web UI), waking one if it has exited
-- A session id can be shortened to any unique prefix (like git): `bin/chi --attach 2ea8`. `--resume`, `--attach` and `sessions stop` take one; an ambiguous prefix lists the sessions it matches.
+- A session id can be shortened to any unique prefix (like git): `bin/chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
 - `bin/chi web [--port 4567] [--open]` — start the Web UI (single localhost port session control plane)
 - `bin/chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
-- `bin/chi sessions list|stop|prune|clean` — manage persisted sessions (see [Sessions](sessions.md))
+- `bin/chi sessions list|stop|delete|prune|clean` — manage persisted sessions (see [Sessions](sessions.md))
 - `bin/chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
 - `bin/chi send [-m TEXT] (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context (see [Sessions: Sending a message](sessions.md#sending-a-message))
 - `bin/chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
@@ -96,6 +96,9 @@ In an attached terminal:
   attached for about 30 s. When the worker exits, `chi --resume ID` or
   `chi --attach ID` starts a new one with the conversation. A worker from an
   older chi can't be asked; the line says to use `chi sessions stop ID`.
+- `/exit --delete` (also `/quit --delete`, `exit --delete`) does the same and,
+  once the worker has agreed to exit, deletes the session for good. When the
+  worker stays up, nothing is deleted and the line says why.
 - The prompt stays open while a turn runs; see [Typing during a turn](#typing-during-a-turn).
 - `/model`, `/models`, `/guardrails`, `/continue`, `!rollback` and `!commands` run in the
   worker, and every UI sees their output; `/stats` and `/recap` work too. The
@@ -118,6 +121,15 @@ counters and the last idle recap start over.
 a `bin/chi --resume ID` after it starts a fresh one. A worker still running an
 older chi (from before an upgrade) takes turns but not commands; the attached
 terminal and the Web UI say so, with that restart line.
+
+`bin/chi sessions delete [--force] ID...` deletes sessions for good: the
+session file and its whole directory (notes, images, queued input). Each id
+(or unique prefix) gets one line: `deleted`, or `refused` with the reason. A
+session whose worker runs is refused unless `--force` stops the worker first;
+one open in a plain REPL is always refused ("close it there first"). Exit
+status: 0 when all are gone, 1 when any was refused or unknown, 2 on a usage
+error. The Web UI deletes too: `delete` in the info bar, or the ✕ on a card in
+All sessions; it asks first and stops a live worker.
 
 **The plain REPL.** Some launches run the session in this process instead, with
 no worker:
@@ -154,7 +166,8 @@ REPL alike:
   `? Pick a fruit → Banana`.
 - Ctrl-C cancels the turn and keeps what you typed.
 - In the plain REPL, Ctrl-D on an empty prompt (or `exit`, `/exit`) mid-turn
-  exits once the turn ends: `(exits after this turn; Ctrl-C cancels it)`. In an
+  exits once the turn ends: `(exits after this turn; Ctrl-C cancels it)`
+  (`/exit --delete` deletes the session then too). In an
   attached terminal it detaches at once and the turn goes on in the worker
   (`/exit` then says the worker stays up: a turn is running).
 

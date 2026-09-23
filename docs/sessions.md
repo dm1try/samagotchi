@@ -19,6 +19,8 @@ A session is deleted if **expired by age OR overflow by count** (unless `keep_st
 
 **Stopping a worker:** `chi sessions stop ID` marks the session stopped, sends its worker TERM and waits (up to 10 s) until the worker has let go of `owner.lock`, so a `chi --resume ID` right after spawns a fresh worker. That is also how to restart a worker still running an older chi, which the attached terminal and the web report when a command or a question dismiss gets a 404 (`BridgeClient.stale_worker_message`). The web's `POST /api/sessions/:id/stop` waits the same way, for 2 s.
 
+**Deleting a session:** `chi sessions delete ID...`, `/exit --delete` in a terminal and the Web UI's delete all go through `SessionManager.delete_session`: it resolves a unique prefix, removes `<id>.json` and the whole `<id>/` dir, and returns what it removed. A session a plain REPL has open (`owner.lock` kind `tui`) is always refused. One a worker runs is refused unless the caller asks to stop it: then it stops the worker as `chi sessions stop` does and deletes once `owner.lock` is free (`--force` on the CLI, 10 s; the web always, 2 s; `/exit --delete` after the worker agreed to exit, 10 s). A worker that outlives the wait leaves the session in place. The web's route is `DELETE /api/sessions/:id` (200 `{status: "deleted", session_id, stopped}`; 409 `owned_by_tui` or `still_stopping`; 404).
+
 **Lazy sweep:** automatic prune runs at most once per 24h on `GET /api/sessions` (Web). No background thread or cron. Manual prune is always available.
 
 **CLI:**
@@ -27,6 +29,7 @@ A session is deleted if **expired by age OR overflow by count** (unless `keep_st
 bin/chi sessions list [--sort updated_at|created_at] [--order desc|asc] [--limit N]
 bin/chi sessions list [--live] [--cwd PATH] [--limit N] [--format text|json|tsv]
 bin/chi sessions stop ID
+bin/chi sessions delete [--force] ID...                    # for good; --force stops a live worker first
 bin/chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
 bin/chi sessions clean [--dry-run] [--days N] [--keep N]   # alias to prune --test-only
 ```
