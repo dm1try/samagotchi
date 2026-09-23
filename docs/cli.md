@@ -13,6 +13,7 @@
 - `bin/chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
 - `bin/chi sessions list|stop|prune|clean` — manage persisted sessions (see [Sessions](sessions.md))
 - `bin/chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
+- `bin/chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
 - `bin/chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles
 - `bin/chi bundle install|upgrade|uninstall|status|diff|bundles|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle))
 

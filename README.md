@@ -59,8 +59,14 @@ prompt: nothing runs, and the model sees it on its next turn framed as a note
 never takes orders from. The web and the attached terminal show it as a dim
 "note from …" line. `chi sessions list --live --format tsv` lists the sessions
 a note reaches (`id<TAB>description`). Agents can do the same: `list_sessions`
-finds another session, `send_note` tells it something. A macOS Quick Action
-that sends the clipboard to sessions you pick is in [Sessions](docs/sessions.md#context-notes).
+finds another session, `send_note` tells it something.
+
+### Send to chi (macOS)
+
+`chi desktop install` builds a small native helper: select text in any app →
+Services → **Send to chi** (or ⌃⌥⌘N with the clipboard) → pick live sessions in a
+Spotlight-like panel → the text lands there as a context note. It needs the
+Command Line Tools. See [Desktop helper](docs/desktop.md).
 
 ### Guardrails
 
@@ -78,6 +84,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [Configuration](docs/configuration.md): `config.yml`, hosts, model server transports, timeouts, retries, logs
 - [Memory](docs/memory.md): scopes and model-specific overlays
 - [Sessions](docs/sessions.md): storage, retention, `chi sessions`
+- [Desktop helper](docs/desktop.md): `chi desktop`, the macOS "Send to chi" Service and hotkey
 - [Guardrails](docs/guardrails.md): allow / ask / deny for tool calls, rules, approvals
 - [Hooks](docs/hooks.md): plugin hooks and bundle hooks
 - [Architecture](docs/architecture.md): Engine, TerminalUI, bridge, web

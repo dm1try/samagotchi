@@ -59,7 +59,7 @@ pbpaste | bin/chi note --source slack 3f2a 8c1d
 - The web shows it as a dim "note from …" block, live (`context_added`) and after a reload; the attached terminal as one dim `note from slack: <first line>` line, also when joining.
 - Agents: `list_sessions` (other sessions, newest first, up to 20; optional `cwd`) and `send_note(session, text)`, which sends a note from this session. Neither starts a turn anywhere.
 
-A macOS Quick Action that sends the clipboard to the live sessions you pick (Automator: Quick Action, "Run Shell Script", shell `/bin/zsh`; Automator's PATH is minimal, so put your Ruby's bin dir on it and use the full path to `chi`):
+On macOS, `chi desktop install` does this with a native panel from the Services menu or a hotkey (see [Desktop helper](desktop.md)). A plain Automator Quick Action that sends the clipboard to the live sessions you pick works too (Automator: Quick Action, "Run Shell Script", shell `/bin/zsh`; Automator's PATH is minimal, so put your Ruby's bin dir on it and use the full path to `chi`):
 
 ```sh
 export PATH="$HOME/.local/share/mise/shims:$PATH"   # wherever your ruby lives
