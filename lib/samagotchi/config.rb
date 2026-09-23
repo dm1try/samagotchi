@@ -72,6 +72,8 @@ module Samagotchi
       Entry.new(key: "session.keep_status",           yaml_path: %w[session keep_status],           type: :string, default: "running", expose: %i[env config cli]),
       Entry.new(key: "session.sweep_interval_hours",  yaml_path: %w[session sweep_interval_hours],  type: :integer, default: 24,   expose: %i[env config cli]),
       Entry.new(key: "session.idle_exit_minutes",     yaml_path: %w[session idle_exit_minutes],     type: :float,   default: 30.0, expose: %i[env config cli]),
+      # Plain `chi` runs like `chi --shared` (bin/chi, LaunchMode). No CLI flag: that would duplicate --shared.
+      Entry.new(key: "session.shared",                yaml_path: %w[session shared],                type: :bool,    default: false, expose: %i[env config]),
 
       Entry.new(key: "log.file",                 yaml_path: %w[log file],                 type: :string, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "log.disable",              yaml_path: %w[log disable],              type: :bool,   default: false,            expose: %i[env config cli]),

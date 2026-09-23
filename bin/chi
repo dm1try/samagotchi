@@ -715,7 +715,7 @@ ARGV.each do |arg|
   base = arg.split("=", 2).first
   # If dashed version is a known flag (registry or hardcoded), reject underscore variant
   dashed = base.tr("_", "-")
-  known = %w[--prompt --resume --attach --shared --model --memory --backend --no-interrupt --non-interactive --verbose --no-default-input --port --open] + Samagotchi::Config.cli_entries.map(&:cli_flag)
+  known = %w[--prompt --resume --attach --shared --no-shared --model --memory --backend --no-interrupt --non-interactive --verbose --no-default-input --port --open] + Samagotchi::Config.cli_entries.map(&:cli_flag)
   if known.include?(dashed) || known.include?(base)
     warn "Unknown option: #{arg} (did you mean #{dashed}?)"
     exit 1
@@ -727,7 +727,7 @@ OptionParser.new do |opts|
   opts.on("-p", "--prompt PROMPT", "Run a single prompt and exit") { |p| options[:prompt] = p }
   opts.on("--resume SESSION_ID", "Resume a previous session by its ID") { |s| options[:resume] = s }
   opts.on("--attach SESSION_ID", "Attach to a session's worker (e.g. one `chi web` started), waking one if it has exited") { |s| options[:attach] = s }
-  opts.on("--shared", "Run the session in a background worker and attach to it, so `chi web` can share it (with --resume: that session)") { options[:shared] = true }
+  opts.on("--[no-]shared", "Run the session in a background worker and attach to it, so `chi web` can share it (with --resume: that session); --no-shared runs a plain REPL even when session.shared is on") { |v| options[:shared] = v }
   opts.on("--model NAME", "Model selector (runtime only, overrides --resume) [alias for --default-model]") { |m| options[:model] = m; cli_overrides["default.model"] = m }
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable)") { |m| (options[:memories] ||= []) << m }
   opts.on("--backend NAME", %w[native ruby_llm], "Model backend to use (default: native)") { |b| options[:backend] = b; cli_overrides["backend"] = b }
