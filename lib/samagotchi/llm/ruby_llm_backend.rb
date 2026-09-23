@@ -421,7 +421,7 @@ module Samagotchi
         result = if before_event[:blocked]
                    reason = before_event[:block_reason].to_s.strip
                    reason = "blocked by hook" if reason.empty?
-                   synthetic_output = "Error: blocked by guardrail: #{reason}"
+                   synthetic_output = "[#{call[:name]}] Error: blocked by guardrail: #{reason}"
                    activity = begin
                                 @kernel.send(:tool_activity_event, call[:name], call, synthetic_output).merge(status: "blocked")
                               rescue StandardError
@@ -434,7 +434,7 @@ module Samagotchi
                    rescue StandardError => e
                      # A failing tool is captured as the tool_response output (fed
                      # back to the model) rather than crashing the loop.
-                     { output: "Error: #{e.class}: #{e.message}", activity: nil }
+                     { output: "[#{call[:name]}] Error: #{e.class}: #{e.message}", activity: nil }
                    end
                  end
         activity = result[:activity]
@@ -455,7 +455,9 @@ module Samagotchi
           output_truncated: output_truncated,
           activity: activity
         )
-        "[#{call[:name]}]\n#{completed_output}"
+        # KernelLoop#dispatch already prefixes its output with "[name]", as
+        # the native loop feeds it; the veto and rescue texts above match.
+        completed_output
       end
 
       def gem_provider

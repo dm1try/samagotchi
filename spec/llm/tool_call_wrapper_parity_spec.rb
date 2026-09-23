@@ -79,12 +79,13 @@ RSpec.describe "Tool call wrapper parity" do
       expect(result.tool_activity).to eq([completed[:activity]])
     end
 
-    it "ruby_llm: today the prefix is doubled, params are nil, after_tool_call never fires, tool_activity stays empty" do
+    it "ruby_llm: today params are nil, after_tool_call never fires, tool_activity stays empty" do
       result, seen = run_chat
-      expect(seen).to start_with("[read]\n[read]\n")
+      expect(seen).to start_with("[read]\n")
+      expect(seen).not_to include("[read]\n[read]")
       expect(seen).to include("hello from the file")
       expect(started[:params]).to be_nil
-      expect(completed[:output]).to eq(seen.delete_prefix("[read]\n"))
+      expect(completed[:output]).to eq(seen)
       expect(completed[:activity]).to include(tool: "read", status: "ok")
       expect(fired.map(&:first)).to eq(%i[before_tool_call])
       expect(fired.first.last).to start_with(%(path="#{dir[0, 20]}))
@@ -102,9 +103,9 @@ RSpec.describe "Tool call wrapper parity" do
       expect(fired.map(&:first)).to eq(%i[before_tool_call after_tool_call])
     end
 
-    it "ruby_llm: today the veto text gets the chat loop's own prefix" do
+    it "ruby_llm: the same veto text" do
       _result, seen = run_chat
-      expect(seen).to eq("[read]\nError: blocked by guardrail: nope")
+      expect(seen).to eq("[read] Error: blocked by guardrail: nope")
       expect(completed[:activity]).to include(tool: "read", status: "blocked")
       expect(fired.map(&:first)).to eq(%i[before_tool_call])
     end
@@ -119,9 +120,9 @@ RSpec.describe "Tool call wrapper parity" do
       expect(completed[:activity]).to include(tool: "read", status: "error")
     end
 
-    it "ruby_llm: today the dispatch error gets a second prefix" do
+    it "ruby_llm: the same prefixed error" do
       _result, seen = run_chat
-      expect(seen).to eq("[read]\n[read] Error: boom")
+      expect(seen).to eq("[read] Error: boom")
       expect(completed[:activity]).to include(tool: "read", status: "error")
     end
   end
@@ -139,7 +140,7 @@ RSpec.describe "Tool call wrapper parity" do
       _result, seen = run_chat(max_tool_output_chars: 10)
       expect(completed[:output].length).to eq(10)
       expect(completed[:output_truncated]).to be(true)
-      expect(seen).to eq("[read]\n#{completed[:output]}")
+      expect(seen).to eq(completed[:output])
     end
   end
 end
