@@ -190,4 +190,25 @@ RSpec.describe "Engine#stats_snapshot" do
 
     expect(engine.stats_snapshot).to include(context_window_tokens: 4096, profile: "gemma4", profile_source: "env")
   end
+
+  # A single-model llama.cpp answers any name with the model it loaded.
+  it "names the served model from /props before the first turn, for the name asked" do
+    engine = engine_with(FakeResolvingClient.new(Samagotchi::Client::ServerProps.new(body: ornith_props, status: :ok)))
+
+    expect(engine.stats_snapshot).to include(served_model: ornith_props["model_alias"], served_model_for: "house-blend-35b")
+  end
+
+  it "keeps the served model a turn reported for the current model" do
+    engine = engine_with(FakeResolvingClient.new(nil))
+    engine.metrics.call(type: :generation_completed, served_model: "ornith-x", requested_model: "house-blend-35b")
+
+    expect(engine.stats_snapshot).to include(served_model: "ornith-x", served_model_for: "house-blend-35b")
+  end
+
+  it "drops a served model reported for another model (after /model), asking the server again" do
+    engine = engine_with(FakeResolvingClient.new(nil))
+    engine.metrics.call(type: :generation_completed, served_model: "ornith-x", requested_model: "older-model")
+
+    expect(engine.stats_snapshot).to include(served_model: nil, served_model_for: nil)
+  end
 end

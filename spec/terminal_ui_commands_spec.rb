@@ -44,6 +44,17 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:format_session_metrics, metrics.snapshot)).to include("context window:   128000 tokens (server)")
     end
 
+    it "shows the served model in /stats, with the name asked for when they differ" do
+      metrics = agent.instance_variable_get(:@engine).metrics
+      output = ->(snapshot) { agent.send(:format_session_metrics, metrics.snapshot.merge(snapshot)) }
+
+      expect(output.call(served_model: "ornith-1.5", served_model_for: "unsloth/Qwen3.6"))
+        .to include("served model:     ornith-1.5 (asked for unsloth/Qwen3.6)")
+      expect(output.call(served_model: "z-ai/glm-5.2", served_model_for: "z-ai/glm-5.2:free").lines.map(&:chomp))
+        .to include("served model:     z-ai/glm-5.2")
+      expect(output.call(served_model: nil, served_model_for: nil)).not_to include("served model")
+    end
+
     it "shows the prompt profile and where it came from in /stats" do
       metrics = agent.instance_variable_get(:@engine).metrics
       metrics.call(type: :generation_started, profile: "qwen36", profile_source: "config (models: ista)")

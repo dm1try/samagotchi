@@ -26,6 +26,7 @@ require_relative "hooks"
 require_relative "reminder_store"
 require_relative "tools/memory"
 require_relative "model_overlay"
+require_relative "served_model"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -469,13 +470,15 @@ module Samagotchi
     attr_reader :reminder_store
 
     # The metrics for /stats. Before the first generation reports them, the
-    # context window and (on a native host) the prompt profile come from the
-    # effective model's server, so this may make one short /props GET; the
-    # cheap #session_state_snapshot never does.
+    # context window, the served model and (on a native host) the prompt
+    # profile come from the effective model's server, so this may make one
+    # short /props GET; the cheap #session_state_snapshot never does.
     # @return [Hash] @metrics.snapshot, filled in
     def stats_snapshot
       snapshot = @metrics.snapshot
       target = @host_registry.resolve(@effective_model_name)
+      served, served_for = served_model_for(target, snapshot)
+      snapshot = snapshot.merge(served_model: served, served_model_for: served_for)
       unless snapshot[:context_window_tokens]
         window = current_context_window(target)
         snapshot = snapshot.merge(context_window_tokens: window.tokens, context_window_source: window.source) if window
@@ -485,6 +488,14 @@ module Samagotchi
         snapshot = snapshot.merge(profile: resolution.profile.name, profile_source: resolution.label)
       end
       snapshot
+    end
+
+    # The model the server serves for the current model, and the name asked
+    # for: what the last generation of that name reported, else llama.cpp's
+    # model_alias (/props, one short cached probe), else [nil, nil].
+    # @return [Array(String, String), Array(nil, nil)]
+    def served_model
+      served_model_for(@host_registry.resolve(@effective_model_name), @metrics.snapshot)
     end
 
     # Read-only snapshot of the engine's view of the current session plus the
@@ -1359,6 +1370,23 @@ module Samagotchi
       ContextWindow.resolve(client: client, model: target.bare_model, adapter: adapter)
     rescue StandardError
       nil
+    end
+
+    # See #served_model. A report for another name (before a /model switch)
+    # doesn't count. A remote chat host has no /props: nil until a turn.
+    def served_model_for(target, snapshot)
+      asked = bare_model_name(@effective_model_name)
+      return [snapshot[:served_model], asked] if snapshot[:served_model] && snapshot[:served_model_for] == asked
+
+      client = target.client
+      if target.entry.chat?
+        adapter = @host_registry.adapter_for(target.entry)
+        return [nil, nil] if adapter.respond_to?(:remote?) && adapter.remote?
+      end
+      served = ServedModel.from_props(client.server_props(model: target.bare_model)) if client.respond_to?(:server_props)
+      served ? [served, asked] : [nil, nil]
+    rescue StandardError
+      [nil, nil]
     end
 
     # ── Prompt profile ─────────────────────────────────────────────────────────

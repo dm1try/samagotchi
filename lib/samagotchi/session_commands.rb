@@ -4,6 +4,7 @@ require "set"
 
 require_relative "config"
 require_relative "model_profile"
+require_relative "served_model"
 require_relative "turn_flow"
 require_relative "tools/execute"
 
@@ -154,9 +155,9 @@ module Samagotchi
     def model_command(input)
       suffix = input.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
-        return ["runtime model: #{model_name} (profile=#{profile_note})", false] if model_name == @default_model
+        return ["runtime model: #{model_name} (profile=#{profile_note})#{served_note}", false] if model_name == @default_model
 
-        return ["runtime model: #{model_name} (default: #{@default_model}, profile=#{profile_note})", false]
+        return ["runtime model: #{model_name} (default: #{@default_model}, profile=#{profile_note})#{served_note}", false]
       end
 
       # Parse flags: --default and --alias <name> / --alias=<name> (tolerant order)
@@ -276,6 +277,14 @@ module Samagotchi
     end
 
     # "qwen36, server (chat_template)": the profile and where it came from.
+    # "; served: <name>" when the server serves another model than asked.
+    def served_note
+      served, asked = @engine.respond_to?(:served_model) ? @engine.served_model : nil
+      ServedModel.differs?(asked, served) ? "; served: #{served}" : ""
+    rescue StandardError
+      ""
+    end
+
     def profile_note
       resolution = @engine.profile_resolution
       "#{resolution.profile.name}, #{resolution.label}"

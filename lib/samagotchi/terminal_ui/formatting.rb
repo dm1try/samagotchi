@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../served_model"
+
 module Samagotchi
   class TerminalUI
     # Line formatting shared by the REPL and the attached view: colour, the
@@ -128,6 +130,11 @@ module Samagotchi
           lines << "context window:   #{snapshot[:context_window_tokens]} tokens (#{snapshot[:context_window_source]})"
         end
         lines << "prompt profile:   #{snapshot[:profile]} (#{snapshot[:profile_source]})" if snapshot[:profile]
+        if snapshot[:served_model]
+          asked = snapshot[:served_model_for]
+          note = ServedModel.differs?(asked, snapshot[:served_model]) ? " (asked for #{asked})" : ""
+          lines << "served model:     #{snapshot[:served_model]}#{note}"
+        end
         lines.join("\n")
       end
 

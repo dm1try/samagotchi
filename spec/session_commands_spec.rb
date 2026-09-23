@@ -71,6 +71,13 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(result.changed).to eq([])
     end
 
+    it "names the served model when the server serves another one" do
+      allow(engine).to receive(:served_model).and_return(["ornith-1.5", "Qwen3-14B"])
+
+      expect(commands.run("/model").output)
+        .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma4-small, profile=qwen36, name); served: ornith-1.5")
+    end
+
     it "switches the Engine's model and saves it on the session" do
       result = commands.run("/model alpha:gemma4-small")
 
