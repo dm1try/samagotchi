@@ -439,6 +439,20 @@ module Samagotchi
       warn(message) if first
     end
 
+    # A `vision:` setting (hosts entry or models: entry): true, false, or nil
+    # when unset. Anything else warns once and counts as unset.
+    def vision_flag(value, where)
+      return nil if value.nil?
+      return value if value == true || value == false
+
+      text = value.to_s.strip.downcase
+      return true if text == "true"
+      return false if text == "false"
+
+      warn_once "Warning: #{where}: vision must be true or false; ignored"
+      nil
+    end
+
     # Forget the warnings already printed (specs).
     def reset_warnings!
       @warned = nil
@@ -551,6 +565,7 @@ module Samagotchi
           # Kept as written; ModelProfile.resolve warns about an unknown one.
           profile = (raw_cfg["profile"] || raw_cfg[:profile]).to_s.strip.downcase
           first_token_timeout = raw_cfg.key?("first_token_timeout") ? raw_cfg["first_token_timeout"] : raw_cfg[:first_token_timeout]
+          vision = ConfigFile.vision_flag(raw_cfg.key?("vision") ? raw_cfg["vision"] : raw_cfg[:vision], "hosts entry '#{name}'")
           unless first_token_timeout.nil? || (first_token_timeout.is_a?(Numeric) && !first_token_timeout.negative?)
             warn_once "Warning: hosts entry '#{name}': first_token_timeout must be seconds (0 = off); using the default"
             first_token_timeout = nil
@@ -613,7 +628,8 @@ module Samagotchi
           normalized[lowered] = { name: lowered, host: host, port: port_val, transport: transport_val ? transport_val.to_sym : nil,
                                   api: api_val&.to_sym, original_name: name, scheme: scheme,
                                   url: url.empty? ? nil : url, api_key_env: api_key_env.empty? ? nil : api_key_env,
-                                  profile: profile.empty? ? nil : profile, first_token_timeout: first_token_timeout }
+                                  profile: profile.empty? ? nil : profile, first_token_timeout: first_token_timeout,
+                                  vision: vision }
         end
       end
 
@@ -714,7 +730,8 @@ module Samagotchi
         # key stays in the environment, which workers inherit.
         location = v[:url] ? { "url" => v[:url] } : { "host" => v[:host], "port" => v[:port] }
         location.merge("transport" => v[:transport]&.to_s, "api" => v[:api]&.to_s, "api_key_env" => v[:api_key_env],
-                       "profile" => v[:profile], "first_token_timeout" => v[:first_token_timeout]).compact
+                       "profile" => v[:profile], "first_token_timeout" => v[:first_token_timeout],
+                       "vision" => v[:vision]).compact
       end
       JSON.generate(simple)
     rescue StandardError
@@ -793,7 +810,9 @@ module Samagotchi
         next if key.empty? || !v.is_a?(Hash)
 
         profile = (v["profile"] || v[:profile]).to_s.strip.downcase
+        vision = vision_flag(v.key?("vision") ? v["vision"] : v[:vision], "models: #{key}")
         result[key] = { profile: profile.empty? ? nil : profile }
+        result[key][:vision] = vision unless vision.nil?
       end
     rescue StandardError
       {}

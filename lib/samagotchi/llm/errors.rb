@@ -25,6 +25,8 @@ module Samagotchi
     #   AuthError        401/403, or an API key variable that is not set
     #   BadRequest       other 4xx (a context overflow is one, whatever status;
     #                    so is a model that can't take tools)
+    #   VisionUnsupported  a model that can't see images (a BadRequest,
+    #                    whatever status; also raised before sending)
     #   ProtocolError    a body that isn't what the API promises
     class ProviderError < StandardError
       attr_reader :host, :status, :retry_after
@@ -136,6 +138,22 @@ module Samagotchi
       end
     end
 
+    # The model or host can't take images: refused before sending when chi
+    # knows it (VisionSupport), or the provider's answer to an image part
+    # (OpenRouter 404 "No endpoints found that support image input",
+    # llama.cpp 500 "image input is not supported … mmproj"). Never retried.
+    class VisionUnsupported < BadRequest
+      HINT = "send text only, or pick a model that can see images (/model)"
+
+      def kind = :vision_unsupported
+
+      def summary = "host #{host} can't take images: #{detail}; #{HINT}"
+
+      private
+
+      def default_retryable? = false
+    end
+
     class ProtocolError < ProviderError
       def kind = :protocol
 
@@ -189,6 +207,8 @@ module Samagotchi
       # does ("No endpoints found that support tool use", 404), Ollama ("…
       # does not support tools"), vLLM started without a tool parser.
       TOOLS_UNSUPPORTED_RE = /support tool use|(does not|doesn't) support tools|tool choice requires --enable-auto-tool-choice/i
+      # A model or server that can't take images (see VisionUnsupported).
+      VISION_UNSUPPORTED_RE = /support image input|image input is not supported|mmproj/i
       RETRYABLE_SERVER_STATUSES = [500, 502, 503, 504, 529].freeze
 
       module_function
@@ -203,6 +223,8 @@ module Samagotchi
         if CONTEXT_OVERFLOW_RE.match?(message) || CONTEXT_OVERFLOW_RE.match?(body.to_s)
           return BadRequest.new(text, context_overflow: true, **options)
         end
+        # Before the status: llama.cpp answers 500, which would be retried.
+        return VisionUnsupported.new(text, **options) if VISION_UNSUPPORTED_RE.match?(message)
 
         case status
         when 401, 403 then AuthError.new(text, **options)

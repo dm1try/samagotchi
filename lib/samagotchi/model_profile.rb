@@ -18,7 +18,8 @@ module Samagotchi
                 :thought_open, :thought_close,
                 :system_prefix, :user_prefix, :assistant_prefix,
                 :model_prefix,
-                :stop_sequences, :tool_decl_format
+                :stop_sequences, :tool_decl_format,
+                :image_template
 
     def initialize(config)
       @name = config[:name]
@@ -37,6 +38,15 @@ module Samagotchi
       @model_prefix = config[:model_prefix]
       @stop_sequences = config[:stop_sequences]
       @tool_decl_format = config[:tool_decl_format]
+      # How the chat template wraps an image's media marker ("%{marker}"),
+      # or nil when chi doesn't know it yet (native images are refused).
+      @image_template = config[:image_template]
+    end
+
+    # The token the image template opens with, e.g. "<|vision_start|>": the
+    # server's chat template must use it too (VisionSupport).
+    def image_open_token
+      image_template&.split("%{marker}")&.first.to_s
     end
 
     def self.gemma4
@@ -77,7 +87,8 @@ module Samagotchi
         assistant_prefix: "<|im_start|>assistant\n",
         model_prefix: "<|im_start|>assistant\n",
         stop_sequences: ["<|im_end|>"],
-        tool_decl_format: :qwen36
+        tool_decl_format: :qwen36,
+        image_template: "<|vision_start|>%{marker}<|vision_end|>"
       )
     end
 

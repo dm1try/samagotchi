@@ -10,7 +10,20 @@ require_relative "usage"
 module Samagotchi
   module LLM
     # A model a host lists. Unknown fields are nil.
-    ModelInfo = Data.define(:id, :context_window, :supports_tools, :raw)
+    ModelInfo = Data.define(:id, :context_window, :supports_tools, :raw) do
+      # true when the list says the model takes images (OpenRouter's
+      # architecture.input_modalities, llama.cpp's "multimodal" capability),
+      # false when it lists input modalities without "image", else nil.
+      def image_input
+        return nil unless raw.is_a?(Hash)
+
+        modalities = raw.dig("architecture", "input_modalities")
+        return modalities.include?("image") if modalities.is_a?(Array)
+        return true if Array(raw["capabilities"]).include?("multimodal")
+
+        nil
+      end
+    end
 
     # A tool call the model made. arguments: the parsed Hash, or the raw
     # String when it isn't valid JSON (the tool then reports the error).
@@ -144,6 +157,16 @@ module Samagotchi
         info = cached_models.find { |m| m.id == model.to_s } ||
                cached_models.find { |m| m.id.casecmp?(model.to_s) }
         info&.context_window
+      rescue StandardError
+        nil
+      end
+
+      # Whether the host's list says +model+ takes images (ModelInfo#image_input),
+      # or nil when it doesn't say or the listing fails.
+      def image_input(model:)
+        info = cached_models.find { |m| m.id == model.to_s } ||
+               cached_models.find { |m| m.id.casecmp?(model.to_s) }
+        info&.image_input
       rescue StandardError
         nil
       end

@@ -24,3 +24,9 @@ tool in the request, when none of the model's endpoints takes tools (nothing red
 failure after it has answered 200: a `: OPENROUTER PROCESSING` comment, then a `data:` event
 with empty `choices` and an `error` object. It was seen in a smoke run on 2026-09-23 but not
 saved, and it couldn't be triggered on demand, so the error text is made up.
+
+Vision (2026-09-23, hand-written, not recorded): `llamacpp_error_500_no_mmproj.hand-written.json` is
+llama.cpp's answer to an image part when it runs without `--mmproj` (the message is from its source;
+no local server without an mmproj was at hand). `openrouter_error_404_no_image.hand-written.json` has the
+text OpenRouter users report for an image sent to a text-only model; it was not recorded, to keep test
+images off a remote provider until the V12 smoke.

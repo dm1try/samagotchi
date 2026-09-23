@@ -27,6 +27,24 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
     server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture(fixture))
   end
 
+  describe "#image_input" do
+    it "reads OpenRouter's input_modalities and llama.cpp's multimodal capability" do
+      server.default("/v1/models", json: { data: [
+        { id: "vis", architecture: { input_modalities: %w[text image] } },
+        { id: "txt", architecture: { input_modalities: %w[text] } },
+        { id: "local", capabilities: %w[completion multimodal] },
+        { id: "plain" }
+      ] })
+
+      expect(%w[vis txt local plain nope].map { |m| adapter.image_input(model: m) }).to eq([true, false, true, nil, nil])
+    end
+
+    it "answers nil when the listing fails" do
+      server.default("/v1/models", status: 500, json: { error: { message: "down" } })
+      expect(adapter.image_input(model: "vis")).to be_nil
+    end
+  end
+
   describe "#chat, streamed" do
     it "assembles the text, the reasoning, the usage and the finish reason, calling on_delta per chunk" do
       replay("text_stream.sse")
@@ -230,6 +248,27 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       expect(response.text).to eq("PONG")
       expect(retries.map { |event| event[:error_class] }).to eq(["Samagotchi::LLM::ServerError"])
       expect(server.requests.size).to eq(2)
+    end
+
+    it "fails once, without a retry, when llama.cpp has no mmproj for an image (HTTP 500)" do
+      server.default("/v1/chat/completions", status: 500,
+                                             json: FakeProviderServer.fixture("llamacpp_error_500_no_mmproj.hand-written.json"))
+
+      expect { adapter.chat(messages: messages, tools: [], model: "m") }
+        .to raise_error(Samagotchi::LLM::VisionUnsupported) { |error|
+          expect(error.summary).to include("host box can't take images", "mmproj", "send text only")
+          expect(error.retryable?).to be(false)
+        }
+      expect(server.requests.size).to eq(1)
+    end
+
+    it "maps OpenRouter's 404 for an image to a text-only model" do
+      server.default("/v1/chat/completions", status: 404,
+                                             json: FakeProviderServer.fixture("openrouter_error_404_no_image.hand-written.json"))
+
+      expect { adapter.chat(messages: messages, tools: [], model: "m") }
+        .to raise_error(Samagotchi::LLM::VisionUnsupported, /support image input/) { |error| expect(error.kind).to eq(:vision_unsupported) }
+      expect(server.requests.size).to eq(1)
     end
 
     it "retries an in-stream 429 as a rate limit" do
