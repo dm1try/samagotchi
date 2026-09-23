@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { previewOf, escapeHtml, messageBodyHtml, normalize } from "../../../lib/samagotchi/web/public/format.js";
+import { previewOf, escapeHtml, messageBodyHtml, normalize, modelLabel } from "../../../lib/samagotchi/web/public/format.js";
 
 test("escapeHtml escapes HTML metacharacters", () => {
   assert.equal(escapeHtml(`<a href="x">&`), "&lt;a href=&quot;x&quot;&gt;&amp;");
@@ -68,4 +68,23 @@ test("failedTurnText shows the error's one-line summary, else its message and cl
   );
   assert.equal(failedTurnText({ message: "boom", error_class: "RuntimeError" }), "✕ turn failed: boom (RuntimeError)");
   assert.equal(failedTurnText({}), "✕ turn failed: error");
+});
+
+test("modelLabel shows the served model with a marker when the server serves another one", () => {
+  assert.deepEqual(
+    modelLabel("unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M", "ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M", "unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M"),
+    {
+      text: "ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M ⚠",
+      title: "served: ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M; asked for unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M",
+      mismatch: true,
+    },
+  );
+});
+
+test("modelLabel keeps the model when the served name is the same or extends it, or is unknown", () => {
+  const plain = { text: "openrouter:z-ai/glm-5.2:free", title: "openrouter:z-ai/glm-5.2:free", mismatch: false };
+  assert.deepEqual(modelLabel("openrouter:z-ai/glm-5.2:free", "z-ai/glm-5.2", "z-ai/glm-5.2:free"), plain);
+  assert.deepEqual(modelLabel("openrouter:z-ai/glm-5.2:free", null, null), plain);
+  assert.deepEqual(modelLabel("m", "M-2026-01-01", "m"), { text: "m", title: "m", mismatch: false });
+  assert.equal(modelLabel("a".repeat(50), null, null).text, "a".repeat(40));
 });

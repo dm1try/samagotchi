@@ -248,7 +248,8 @@ RSpec.describe Samagotchi::Web::App do
           "continue_offer" => { "context" => { "original_prompt" => "first" }, "no_interrupt" => false },
           "event_seq" => 40
         },
-        "session_state_snapshot" => { "status" => "running", "event_seq" => 40, "model_name" => "Qwen3-14B" }
+        "session_state_snapshot" => { "status" => "running", "event_seq" => 40, "model_name" => "Qwen3-14B",
+                                      "served_model" => "ornith-1.5", "served_model_for" => "Qwen3-14B" }
       }
       allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
       status, _headers, body = app.call(env_for("/api/sessions/s1"))
@@ -269,6 +270,9 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload.dig("session", "status")).to eq("running")
       # The model turns run on now (after a /model), not the file's.
       expect(payload.dig("session", "model_name")).to eq("Qwen3-14B")
+      # What the worker's server said it served for it.
+      expect(payload.dig("session", "served_model")).to eq("ornith-1.5")
+      expect(payload.dig("session", "served_model_for")).to eq("Qwen3-14B")
     end
 
     it "uses the bridge event_seq when a live bridge reports it" do

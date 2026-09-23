@@ -210,8 +210,13 @@ module Samagotchi
         owner = session_owner(id)
         # A /model in the worker changes it before the file catches up.
         session.model_name = snapshot["model_name"] if snapshot && !snapshot["model_name"].to_s.empty?
+        session_json = session_to_json(session, status: displayed_status(session, snapshot, owner: owner), owner: owner)
+        # What the worker's server said it served for that model (after a turn).
+        if snapshot
+          session_json = session_json.merge(served_model: snapshot["served_model"], served_model_for: snapshot["served_model_for"])
+        end
         json_response(200, {
-          session: session_to_json(session, status: displayed_status(session, snapshot, owner: owner), owner: owner),
+          session: session_json,
           history: history,
           messages: messages_for_display(turn_snapshot ? turn_snapshot["messages"] : session.messages),
           current_turn: current_turn,
