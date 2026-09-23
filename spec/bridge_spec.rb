@@ -290,6 +290,35 @@ RSpec.describe Samagotchi::Bridge do
       writer_thread.kill
     end
 
+    # The ring holds seqs 5..10. Cursor 4 has seen everything before 5, so it
+    # replays; cursor 3 missed seq 4, which is gone, so it resets.
+    { "4" => false, "3" => true }.each do |cursor, resets|
+      it "#{resets ? 'resets' : 'replays'} a cursor at #{cursor} when the ring's oldest seq is 5" do
+        engine = make_engine
+        allow(engine).to receive(:event_count).and_return(10)
+        ring = Samagotchi::Bridge::RingBuffer.new(capacity: 6)
+        10.times { |i| ring.push(seq: i + 1, data: { type: :k, event_seq: i + 1 }) }
+
+        io = ControllableIO.new
+        writer = Samagotchi::Bridge::SSEWriter.new(
+          engine:, ring:, session_id: "s1", last_event_id: cursor,
+          snapshot_provider: -> { {} }, heartbeat_interval: 0.05
+        )
+        writer_thread = Thread.new { writer.serve!(io) }
+        sleep(0.3)
+
+        if resets
+          expect(io.buffer).to include("event: reset")
+          expect(io.buffer).not_to include("id: 5\r\n")
+        else
+          expect(io.buffer).not_to include("event: reset")
+          expect(%w[5 6 7 8 9 10].map { |s| io.buffer.include?("id: #{s}\r\n") }).to all(be true)
+        end
+
+        writer_thread.kill
+      end
+    end
+
     it "does not block the enqueuer while the writer thread is stuck writing" do
       engine = make_engine
       allow(engine).to receive(:run_turn)
