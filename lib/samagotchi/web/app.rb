@@ -2,7 +2,6 @@
 
 require "fileutils"
 require "json"
-require "securerandom"
 require "time"
 require "uri"
 require "rack"
@@ -378,47 +377,13 @@ module Samagotchi
         images = turn_images(id, body["images"])
         return error_response(400, "bad_images", images) if images.is_a?(String)
 
-        # Ensure session exists and resume worker if needed
-        @manager.resume_session(id, state_dir: @state_dir) if @manager.respond_to?(:resume_session)
-        # A worker that predates images would drop them (its Bridge ignores
-        # them): refuse, so the sender keeps the chips and the text.
-        if images.any? && !SessionManager.images_input?(Session.session_dir(id, state_dir: default_state_dir))
-          raise SessionManager::ImagesUnsupported
+        result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images, state_dir: @state_dir,
+                                             manager: @manager, bridge: -> { live_bridge_client(id) })
+        case result[:status]
+        when :accepted then json_response(202, result[:ack])
+        when :refused then json_response(result[:code], result[:ack])
+        else error_response(500, "enqueue_failed", "could not write turn input")
         end
-        # Through the worker's Bridge when it is up, so every live UI sees
-        # :turn_enqueued; otherwise straight into the input dir.
-        if (client = live_bridge_client(id))
-          begin
-            options = { prompt: prompt.to_s, client_id: client_id }
-            options[:images] = images unless images.empty?
-            reply = client.post_turn(**options)
-            ack = reply.json
-            return json_response(202, ack) if reply.status == 202 && ack.is_a?(Hash)
-            return json_response(reply.status, ack) if ack.is_a?(Hash) && %w[bad_images images_unsupported].include?(ack["error"])
-          rescue SystemCallError, IOError
-            nil # the worker closed its Bridge on the way out: queue the file
-          end
-        end
-        enqueued_id = SecureRandom.uuid
-        input = { prompt: prompt.to_s, client_id: client_id, enqueued_id: enqueued_id, state_dir: @state_dir }
-        input[:images] = images unless images.empty?
-        ok = @manager.write_turn_input(id, **input)
-        unless ok
-          return error_response(500, "enqueue_failed", "could not write turn input")
-        end
-        owner = session_owner(id)
-        # A TUI that took the session between the resume and the write never
-        # reads input files; a later worker would replay this one.
-        if owner&.fetch("kind", nil) == "tui"
-          FileUtils.rm_f(ok) if ok.is_a?(String)
-          raise SessionManager::OwnedByTUI, id
-        end
-        # A worker that idle-exited since the resume never reads it either:
-        # wake a new one. (The exiting worker also looks for input it left.)
-        if owner.nil? && @manager.respond_to?(:session_owner) && @manager.respond_to?(:resume_session)
-          @manager.resume_session(id, state_dir: @state_dir)
-        end
-        json_response(202, { status: "accepted", enqueued_id: enqueued_id, session_id: id })
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)
       rescue SessionManager::ImagesUnsupported => e

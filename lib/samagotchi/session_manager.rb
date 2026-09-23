@@ -9,6 +9,7 @@ require "rbconfig"
 
 require_relative "session"
 require_relative "owner_lock"
+require_relative "bridge_client"
 require_relative "debug_log"
 require_relative "log_path"
 require_relative "terminal_ui"
@@ -493,6 +494,78 @@ module Samagotchi
       raise ImagesUnsupported if !images.empty? && !images_input?(session_dir)
 
       write_input_file(session_dir, prompt, client_id, enqueued_id, no_interrupt, images)
+    end
+
+    # How long a turn waits for the Bridge of a worker a resume just spawned.
+    TURN_BRIDGE_WAIT = 5.0
+
+    # Hand a user message to the session the way a UI does, for the web
+    # composer and `chi send` alike: wakes the worker when none runs, posts
+    # through its Bridge so every live UI sees :turn_enqueued, and falls back
+    # to the input file when the Bridge is gone (a worker closing it on idle
+    # exit). Race-safe against a TUI taking the session, or the worker
+    # exiting, between the resume and the write.
+    # @param images [Array<Hash>] refs ({file:, name:}) already in images/
+    # @param manager [#resume_session, #write_turn_input] this class, or a
+    #   stand-in (the web's specs); #session_owner is optional
+    # @param bridge [#call, nil] returns the BridgeClient or nil; defaults to
+    #   the session's sidecar, waiting TURN_BRIDGE_WAIT for a new worker's
+    # @return [Hash] {status: :accepted, ack: Hash} (the Bridge's reply, or
+    #   {status:, enqueued_id:, session_id:} for a file), {status: :refused,
+    #   code:, ack:} when the Bridge refused the images, or {status: :failed}
+    #   when the input file couldn't be written
+    # @raise [OwnedByTUI] a chi REPL owns the session
+    # @raise [ImagesUnsupported] images for a worker that predates them
+    # @raise [ArgumentError] no such session
+    def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], state_dir: nil, manager: self, bridge: nil)
+      session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
+      bridge ||= -> { BridgeClient.wait_for(session_id, session_dir: session_dir, timeout: TURN_BRIDGE_WAIT) }
+      manager.resume_session(session_id, state_dir: state_dir) if manager.respond_to?(:resume_session)
+      # A worker that predates images would drop them (its Bridge ignores
+      # them): refuse, so the sender keeps the chips and the text.
+      raise ImagesUnsupported if images.any? && !images_input?(session_dir)
+
+      if (client = bridge.call)
+        begin
+          options = { prompt: prompt, client_id: client_id }
+          options[:images] = images unless images.empty?
+          reply = client.post_turn(**options)
+          ack = reply.json
+          return { status: :accepted, ack: ack } if reply.status == 202 && ack.is_a?(Hash)
+          if ack.is_a?(Hash) && %w[bad_images images_unsupported].include?(ack["error"])
+            return { status: :refused, code: reply.status, ack: ack }
+          end
+        rescue SystemCallError, IOError
+          nil # the worker closed its Bridge on the way out: queue the file
+        end
+      end
+      enqueued_id = SecureRandom.uuid
+      input = { prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, state_dir: state_dir }
+      input[:images] = images unless images.empty?
+      path = manager.write_turn_input(session_id, **input)
+      return { status: :failed } unless path
+
+      owner = delivery_owner(manager, session_id, state_dir)
+      # A TUI that took the session between the resume and the write never
+      # reads input files; a later worker would replay this one.
+      if owner&.fetch("kind", nil) == "tui"
+        FileUtils.rm_f(path) if path.is_a?(String)
+        raise OwnedByTUI, session_id
+      end
+      # A worker that idle-exited since the resume never reads it either:
+      # wake a new one. (The exiting worker also looks for input it left.)
+      if owner.nil? && manager.respond_to?(:session_owner) && manager.respond_to?(:resume_session)
+        manager.resume_session(session_id, state_dir: state_dir)
+      end
+      { status: :accepted, ack: { status: "accepted", enqueued_id: enqueued_id, session_id: session_id } }
+    end
+
+    private_class_method def self.delivery_owner(manager, session_id, state_dir)
+      return nil unless manager.respond_to?(:session_owner)
+
+      manager.session_owner(session_id, state_dir: state_dir)
+    rescue StandardError
+      nil
     end
 
     private_class_method def self.write_input_file(session_dir, prompt, client_id, enqueued_id, no_interrupt, images)

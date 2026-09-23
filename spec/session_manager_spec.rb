@@ -682,6 +682,84 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
+  describe ".deliver_turn" do
+    let(:session) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
+        s.save(state_dir: tmpdir)
+      end
+    end
+    let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
+    let(:locks) { [] }
+
+    after { locks.each(&:release) }
+
+    def input_files
+      Dir.glob(File.join(session_dir, described_class::INPUT_DIR, "*"))
+    end
+
+    def own(kind)
+      locks << Samagotchi::OwnerLock.acquire(session_dir, kind: kind)
+    end
+
+    it "posts through a live Bridge and writes no file" do
+      own("worker")
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(bridge).to receive(:post_turn).with(prompt: "hi", client_id: "cli:send").and_return(
+        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","enqueued_id":"e1","session_id":"s"}')
+      )
+
+      result = described_class.deliver_turn(session.id, prompt: "hi", client_id: "cli:send", state_dir: tmpdir, bridge: -> { bridge })
+
+      expect(result).to eq(status: :accepted, ack: { "status" => "accepted", "enqueued_id" => "e1", "session_id" => "s" })
+      expect(input_files).to be_empty
+    end
+
+    it "falls back to the input file when the Bridge refuses the connection" do
+      own("worker")
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+
+      result = described_class.deliver_turn(session.id, prompt: "hi", client_id: "cli:send", state_dir: tmpdir, bridge: -> { bridge })
+
+      expect(result).to match(status: :accepted, ack: { status: "accepted", enqueued_id: kind_of(String), session_id: session.id })
+      expect(input_files.map { |path| JSON.parse(File.read(path)) })
+        .to eq([{ "prompt" => "hi", "client_id" => "cli:send", "enqueued_id" => result[:ack][:enqueued_id] }])
+    end
+
+    it "withdraws the file and raises OwnedByTUI when a TUI took the session after the write" do
+      allow(Process).to receive(:spawn).and_return(20_002)
+      bridge = lambda do
+        own("tui")
+        nil
+      end
+
+      expect do
+        described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: bridge)
+      end.to raise_error(described_class::OwnedByTUI)
+      expect(input_files).to be_empty
+    end
+
+    it "wakes a worker for a session nobody owns" do
+      allow(Process).to receive(:spawn).and_return(20_002)
+
+      result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> {})
+
+      expect(result[:status]).to eq(:accepted)
+      # Once by the resume, once more since still nobody owns it after the write.
+      expect(Process).to have_received(:spawn).twice
+      expect(input_files.size).to eq(1)
+    end
+
+    it "raises OwnedByTUI up front for a REPL-owned session and queues nothing" do
+      own("tui")
+
+      expect do
+        described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { raise "not reached" })
+      end.to raise_error(described_class::OwnedByTUI)
+      expect(input_files).to be_empty
+    end
+  end
+
   describe "structured input" do
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
