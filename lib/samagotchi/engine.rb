@@ -62,12 +62,9 @@ module Samagotchi
       @default_model_name = ModelProfile.required_model_name(model_name)
       @effective_model_name = @default_model_name
       @host_registry = host_registry || HostRegistry.new
-      @client_injected = !client.nil?
-      @client = client || default_client_for(@effective_model_name)
-      # If client was injected, ensure registry's default points to it (for routing)
-      if @client_injected && @host_registry.entries["default"]
-        @host_registry.entries["default"].client = @client
-      end
+      # An injected client (specs) stands in for every host's client.
+      @host_registry.client_override = client if client
+      @client = @host_registry.resolve(@effective_model_name).client
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(bare_model_name(@default_model_name))
       # Ensure the built-in system bundle is installed (lazy, warn-only).
       # This is the single seam for both TUI and non-TUI (web/worker) paths.
@@ -262,25 +259,14 @@ module Samagotchi
     attr_reader :host_registry, :client
 
     def bare_model_name(full_ref)
-      _, bare = @host_registry.parse_qualified_model(full_ref)
-      bare.to_s.strip.empty? ? full_ref.to_s.strip : bare
+      @host_registry.bare_name(full_ref)
     end
 
-    def default_client_for(model_name)
-      return @client if @client_injected
-      client, _bare, _entry = @host_registry.client_for_model(model_name)
-      client
-    end
-
+    # Point the kernel at the effective model's host (after /model, resume).
     def sync_kernel_client!
-      return if @client_injected
-      active = default_client_for(@effective_model_name)
+      active = @host_registry.resolve(@effective_model_name).client
       @client = active
-      if @kernel.respond_to?(:client) && @kernel.client != active
-        @kernel.client = active if @kernel.respond_to?(:client=)
-      elsif @kernel.instance_variable_defined?(:@client)
-        @kernel.instance_variable_set(:@client, active)
-      end
+      @kernel.client = active if @kernel.respond_to?(:client=) && @kernel.client != active
     end
 
     # Subscribe a persistent observer to engine events.
@@ -1079,10 +1065,7 @@ module Samagotchi
     end
 
     def ruby_llm_base_url
-      entry, = @host_registry.host_for_model(@default_model_name)
-      return nil unless entry
-
-      "http://#{entry.host}:#{entry.port}/v1"
+      @host_registry.resolve(@default_model_name).openai_base_url
     rescue StandardError
       nil
     end
@@ -1141,7 +1124,7 @@ module Samagotchi
       if host_ref && !host_ref.empty?
         entry = @host_registry.find_entry(host_ref)
         if entry
-          base_url = "http://#{entry.host}:#{entry.port}"
+          base_url = entry.root_url
           # If model is host-qualified, extract bare model for recap client
           _, bare = @host_registry.parse_qualified_model(model) if model
           model = bare if bare && !bare.empty?
