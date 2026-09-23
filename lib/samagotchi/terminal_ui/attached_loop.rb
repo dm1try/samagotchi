@@ -223,6 +223,7 @@ module Samagotchi
         # read takes its prompt away as it ends; clearing the editor slot
         # covers a reader that had to be killed.
         @reader&.stop
+        @view.stop
         @screen.clear_slot(:editor)
         stream&.close
       end
