@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "securerandom"
 require_relative "image_store"
 
 module Samagotchi
@@ -49,6 +50,9 @@ module Samagotchi
 
     ROLES = %w[user tool_response].freeze
     CANT_SEE = "this model can't see images"
+    # Stands for the server's media marker in a native prompt until
+    # Client#complete swaps in the live one (random, so no typed text has it).
+    NATIVE_PLACEHOLDER = "<__chi_image_#{SecureRandom.hex(8)}__>".freeze
 
     # @param conversation [Array<Hash>] engine-format messages
     # @param vision [VisionContext, nil]

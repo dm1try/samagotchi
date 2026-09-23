@@ -209,9 +209,11 @@ module Samagotchi
       effective_max_tool_output_chars = resolve_output_char_cap(max_tool_output_chars)
       effective_max_iterations.times do |iteration_index|
         inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller)
-        prompt = Prompt.format(conversation, profile: @profile)
+        prompt, images = Prompt.format_with_images(conversation, profile: @profile, vision: @vision)
+        image_tokens = images.empty? ? 0 : ImagePlan.estimated_tokens(conversation)
         context_window = ContextWindow.resolve(client: @client, model: resolved_model_name)
-        context_status = emit_context_status_event(on_stream_event, prompt, iteration_index: iteration_index, state: context_state, window: context_window) || context_status
+        context_status = emit_context_status_event(on_stream_event, prompt, iteration_index: iteration_index, state: context_state, window: context_window,
+                                                                            image_tokens: image_tokens) || context_status
         emit_stream_event(
           on_stream_event,
           type: :generation_started,
@@ -256,7 +258,8 @@ module Samagotchi
                   iteration: iteration_index + 1
                 }.merge(retry_event)
               )
-            } : nil)
+            } : nil),
+            images: images
           )
         )
         emit_stream_event(
@@ -443,8 +446,10 @@ module Samagotchi
       self.class.resolve_output_char_cap(override)
     end
 
-    def complete_kwargs(cancel_controller:, model_name: nil, on_chunk: nil, on_retry: nil)
+    def complete_kwargs(cancel_controller:, model_name: nil, on_chunk: nil, on_retry: nil, images: [])
       kwargs = {}
+      # Only a request with images names them: a text-only call is unchanged.
+      kwargs[:images] = images unless images.empty?
       kwargs[:on_chunk] = on_chunk if on_chunk
       kwargs[:on_retry] = on_retry if on_retry && client_supports_keyword?(:on_retry)
       kwargs[:cancel_controller] = cancel_controller if cancel_controller && client_supports_keyword?(:cancel_controller)
@@ -512,10 +517,10 @@ module Samagotchi
     # The model no longer receives the telemetry (it used to be injected as a
     # synthetic system message); the returned {est_pct:, bucket:} hash feeds
     # the Result's context_status for UI status lines (nil when not emitted).
-    def emit_context_status_event(on_stream_event, prompt, iteration_index:, state:, window: nil)
+    def emit_context_status_event(on_stream_event, prompt, iteration_index:, state:, window: nil, image_tokens: 0)
       return nil unless context_status_enabled?
 
-      usage = estimate_context_usage(prompt, server_usage: state[:server_usage], window: window)
+      usage = estimate_context_usage(prompt, server_usage: state[:server_usage], window: window, image_tokens: image_tokens)
       bucket = context_status_bucket(usage[:estimated_pct])
       emit_status = should_emit_context_status?(state: state, bucket: bucket, iteration_index: iteration_index)
       state[:last_bucket] = bucket
@@ -567,7 +572,8 @@ module Samagotchi
 
     # `window` is this iteration's ContextWindow::Resolved (resolved here when
     # not given). A window the stream payload reports itself still wins.
-    def estimate_context_usage(prompt, server_usage: nil, window: nil)
+    # +image_tokens+: the images' estimate (their base64 is not in +prompt+).
+    def estimate_context_usage(prompt, server_usage: nil, window: nil, image_tokens: 0)
       window ||= ContextWindow.resolve(client: @client, model: @current_model_name)
       window_source = window.source
       if server_usage && server_usage[:context_window_tokens]
@@ -591,7 +597,7 @@ module Samagotchi
       end
 
       window_tokens = window.tokens
-      estimated_used_tokens = (prompt.length / context_chars_per_token).ceil
+      estimated_used_tokens = (prompt.length / context_chars_per_token).ceil + image_tokens
       estimated_remaining_tokens = [window_tokens - estimated_used_tokens, 0].max
       estimated_pct = (estimated_used_tokens.to_f / window_tokens) * 100.0
 

@@ -25,7 +25,9 @@ module Samagotchi
       ["[[SAMAGOTCHI_LITERAL_TOOL_RESPONSE_OPEN]]", "<tool_response>"],
       ["[[SAMAGOTCHI_LITERAL_TOOL_RESPONSE_CLOSE]]", "</tool_response>"],
       ["[[SAMAGOTCHI_LITERAL_THINK_OPEN]]", "<think>"],
-      ["[[SAMAGOTCHI_LITERAL_THINK_CLOSE]]", "</think>"]
+      ["[[SAMAGOTCHI_LITERAL_THINK_CLOSE]]", "</think>"],
+      ["[[SAMAGOTCHI_LITERAL_VISION_START]]", "<|vision_start|>"],
+      ["[[SAMAGOTCHI_LITERAL_VISION_END]]", "<|vision_end|>"]
     ].freeze
 
     def self.escape(text, profile:, role: nil)

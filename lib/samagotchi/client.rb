@@ -6,6 +6,8 @@ require "uri"
 require_relative "config"
 require_relative "cancellation_controller"
 require_relative "llm/http"
+require_relative "vision_context"
+require_relative "vision_support"
 
 module Samagotchi
   # Thin HTTP client for llama.cpp's native /completion endpoint, or an
@@ -171,12 +173,36 @@ module Samagotchi
     # @param on_chunk    [Proc, nil]     optional callback per streamed chunk
     # @param cancel_controller [CancellationController, nil] cancellation source for in-flight requests
     # @param on_retry    [Proc, nil]     optional callback before retry sleep
+    # @param images      [Array<String>] base64 images, one per
+    #   ImagePlan::NATIVE_PLACEHOLDER in the prompt (llama.cpp only)
     # @return [String] the generated text
-    def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], n_predict: nil, model: nil, on_chunk: nil, cancel_controller: nil, on_retry: nil)
+    def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], n_predict: nil, model: nil, on_chunk: nil, cancel_controller: nil, on_retry: nil,
+                 images: [])
+      images = Array(images)
+      return stream_completion(scrub_utf8(prompt), stop, n_predict, model, on_chunk, cancel_controller, on_retry) if images.empty?
+
+      # The media marker is random per server process: a restart between the
+      # /props read and the request makes the prompt fail to tokenize, so
+      # the marker is read again once.
+      attempts = 0
+      begin
+        attempts += 1
+        payload_prompt = { prompt_string: scrub_utf8(prompt.gsub(ImagePlan::NATIVE_PLACEHOLDER, media_marker!(model))),
+                           multimodal_data: images }
+        stream_completion(payload_prompt, stop, n_predict, model, on_chunk, cancel_controller, on_retry)
+      rescue LLM::BadRequest => e
+        raise unless attempts == 1 && e.message.include?("Failed to tokenize prompt")
+
+        invalidate_context_window!
+        retry
+      end
+    end
+
+    private def stream_completion(prompt, stop, n_predict, model, on_chunk, cancel_controller, on_retry)
       uri = completion_uri
       request = Net::HTTP::Post.new(uri)
       request["Content-Type"] = "application/json"
-      request.body = completion_payload(scrub_utf8(prompt), stop: stop, n_predict: n_predict, model: model).to_json
+      request.body = completion_payload(prompt, stop: stop, n_predict: n_predict, model: model).to_json
 
       result = +""
       reset_on_retry = lambda do |event|
@@ -199,6 +225,14 @@ module Samagotchi
       raise
     rescue StandardError => e
       raise "#{@transport.label} request failed (#{@host}:#{@port}): #{e.message}"
+    end
+
+    # The running llama.cpp's media marker (/props), or a VisionUnsupported.
+    def media_marker!(model)
+      marker = @transport.props_path && VisionSupport.media_marker(server_props(model: model))
+      return marker if marker
+
+      raise LLM::VisionUnsupported.new("#{@transport.label}: can't reach /props for the media marker", host: @transport.label)
     end
 
     def list_models
