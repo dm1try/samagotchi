@@ -226,7 +226,7 @@ module Samagotchi
         elsif command == RECAP_COMMAND
           @screen.commit(@recap || "no recap yet: one comes after a quiet stretch, when recap: is configured")
         elsif UNAVAILABLE_COMMANDS.include?(command) || text.start_with?("!")
-          @screen.commit("#{command} is not available in attached mode yet")
+          @screen.commit("#{command} is not available in attached mode yet (`chi --no-shared` runs a plain REPL)")
         else
           send_prompt(text)
         end

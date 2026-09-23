@@ -231,7 +231,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
   it "declines the commands that need the local Engine" do
     run_with(["/model x", "/models", "/continue", "!rollback", "!ls"])
 
-    expect(screen.lines.count { |l| l.end_with?("not available in attached mode yet") }).to eq(5)
+    expect(screen.lines.count { |l| l.end_with?("not available in attached mode yet (`chi --no-shared` runs a plain REPL)") }).to eq(5)
   end
 
   it "cancels the running turn on Ctrl-C, and only then" do
