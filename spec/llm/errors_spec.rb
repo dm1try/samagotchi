@@ -42,11 +42,14 @@ RSpec.describe Samagotchi::LLM::ProviderError do
 
       expect(error).to be_a(Samagotchi::LLM::BadRequest)
       expect(error).to be_tools_unsupported
-      expect(error.summary).to start_with("host openrouter rejected the request: HTTP 404: No endpoints found that support tool use.")
-      expect(error.summary).to end_with(
-        "; this model can't use tools, and chi needs them: pick another model (/model) or host"
+      # OpenRouter's own advice ("Try disabling "execute"…", a routing docs
+      # link) is for its web UI and doesn't apply to chi: only its first
+      # sentence stays, then chi's hint.
+      expect(error.summary).to eq(
+        "host openrouter rejected the request: HTTP 404: No endpoints found that support tool use; " \
+        "this model can't use tools, and chi needs them: pick another model (/model) or host"
       )
-      expect(error.summary).not_to include("\n")
+      expect(error.message).to include("Try disabling")
     end
 
     it "recognises other servers' words for a model without tools, and nothing else" do
@@ -58,6 +61,8 @@ RSpec.describe Samagotchi::LLM::ProviderError do
       expect(tools_error.call(400, "registry.ollama.ai/library/gemma:2b does not support tools")).to be_tools_unsupported
       expect(tools_error.call(400, '"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set'))
         .to be_tools_unsupported
+      expect(tools_error.call(400, "gemma:2b does not support tools").summary)
+        .to eq("host h rejected the request: HTTP 400: gemma:2b does not support tools; #{Samagotchi::LLM::BadRequest::TOOLS_HINT}")
       expect(tools_error.call(404, "No endpoints found for foo/bar:free.")).not_to be_tools_unsupported
       expect(tools_error.call(404, "No endpoints found for foo/bar:free.").summary).not_to include("can't use tools")
     end

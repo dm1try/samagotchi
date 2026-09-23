@@ -115,10 +115,24 @@ module Samagotchi
         if context_overflow?
           "the conversation is too long for host #{host}'s context window: #{detail}"
         elsif tools_unsupported?
-          "host #{host} rejected the request: #{detail}; #{TOOLS_HINT}"
+          "host #{host} rejected the request: #{tools_detail}; #{TOOLS_HINT}"
         else
           "host #{host} rejected the request: #{detail}"
         end
+      end
+
+      private
+
+      # The detail up to the end of the sentence that says the model takes no
+      # tools: what a provider adds after it (OpenRouter: "Try disabling
+      # "execute"…" and a routing docs link) is advice for its own UI.
+      def tools_detail
+        text = detail
+        match = ProviderErrors::TOOLS_UNSUPPORTED_RE.match(text)
+        return text unless match
+
+        stop = text.index(/[.!](\s|\z)/, match.end(0))
+        stop ? text[0...stop] : text
       end
     end
 
