@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel } from "../../../lib/samagotchi/web/public/format.js";
+import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel, canStopSession } from "../../../lib/samagotchi/web/public/format.js";
 
 test("noteHtml: who sent the context note, then its text, both escaped", () => {
   assert.equal(
@@ -164,4 +164,14 @@ test("recapLabel: how old the recap is, in turns", () => {
   assert.equal(recapLabel(1), "recap · before the last turn");
   assert.equal(recapLabel(3), "recap · before the last 3 turns");
   assert.equal(recapLabel(null, true), "recap · earlier");
+});
+
+test("canStopSession: only when a worker runs the session", () => {
+  assert.equal(canStopSession({ owner: "worker", streaming: false }), true);
+  // A send woke a worker the page hasn't re-read yet: its stream is open.
+  assert.equal(canStopSession({ owner: null, streaming: true }), true);
+  // Stopped or idle-exited: nothing to stop.
+  assert.equal(canStopSession({ owner: null, streaming: false }), false);
+  // A chi REPL owns it: the server refuses (owned_by_tui).
+  assert.equal(canStopSession({ owner: "tui", streaming: true }), false);
 });
