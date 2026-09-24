@@ -303,7 +303,8 @@ module Samagotchi
 
           return detach("#{line} Not deleted.")
         end
-        @delete_session.call(id)
+        # An empty session: the worker deletes it as it leaves.
+        @delete_session.call(id) unless discards?(reply)
         detach("Detached; deleted session #{id}.")
       rescue SystemCallError, IOError => e
         detach("#{exit_failed_line(e.message)} Not deleted.")
@@ -315,7 +316,12 @@ module Samagotchi
         id = @client.session_id
         error = reply.json&.fetch("error", nil)
         case reply.status
-        when 200 then "Detached; the session's worker is stopping. Resume with: chi --resume #{id}"
+        when 200
+          # Said as the worker agreed to leave; a note coming in before it
+          # does keeps the session after all (rare, left as is).
+          return "Detached; the session was empty, so it is discarded." if discards?(reply)
+
+          "Detached; the session's worker is stopping. Resume with: chi --resume #{id}"
         when 409
           reason = reply.json&.fetch("reason", nil).to_s
           "Detached; the session keeps running (#{HELD_REASONS.fetch(reason, reason)}). Re-attach with: chi --attach #{id}"
@@ -327,6 +333,9 @@ module Samagotchi
           exit_failed_line([reply.status, reply.json&.fetch("detail", nil) || error].compact.join(" "))
         end
       end
+
+      # An older worker leaves the field out.
+      def discards?(reply) = reply.json&.fetch("discard", nil) == true
 
       def exit_failed_line(why)
         "Detached (could not ask the worker to stop: #{why}). Re-attach with: chi --attach #{@client.session_id}"

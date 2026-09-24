@@ -67,14 +67,18 @@ module Samagotchi
     #   now: takes the client_id, returns nil when the worker will leave or
     #   the Symbol that keeps it up (WorkerIdleExit#hold_for_request); called
     #   with the event log held. Without one, POST /exit answers 501
+    # @param exit_discards [#call, nil] after an exit the worker agreed to:
+    #   whether it will delete the session as empty (the 200 says
+    #   +discard+); without one the reply leaves the field out
     def initialize(engine:, state_dir:, session_id:, bind: DEFAULT_BIND,
                    port: 0, ring_capacity: DEFAULT_RING_CAPACITY,
                    heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, input_format: nil, on_input: nil,
-                   on_command: nil, on_exit_request: nil)
+                   on_command: nil, on_exit_request: nil, exit_discards: nil)
       @engine = engine
       @on_input = on_input
       @on_command = on_command
       @on_exit_request = on_exit_request
+      @exit_discards = exit_discards
       @input_format = input_format
       @state_dir = state_dir
       @session_id = session_id
@@ -528,7 +532,7 @@ module Samagotchi
     # A client asks the worker to exit now (`/exit` in the attached TUI). The
     # worker decides with the event log held, so no POST /turn lands between
     # its check and its answer; it leaves from its loop after this reply.
-    # 200 {status: "exiting"}, or 409 {status: "held", reason:} naming what
+    # 200 {status: "exiting", discard?: the session is empty and goes}, or 409 {status: "held", reason:} naming what
     # keeps it up. Returns [headers, status, body].
     def handle_exit_request(session_id, body)
       return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
@@ -539,7 +543,11 @@ module Samagotchi
 
       client_id = fetched(parsed, "client_id")
       reason = @engine.synchronize_events { @on_exit_request.call(client_id) }
-      return [{}, 200, { status: "exiting", session_id: @session_id }] if reason.nil?
+      if reason.nil?
+        body = { status: "exiting", session_id: @session_id }
+        body[:discard] = @exit_discards.call == true if @exit_discards
+        return [{}, 200, body]
+      end
 
       [{}, 409, { status: "held", reason: reason.to_s, session_id: @session_id }]
     rescue StandardError => e

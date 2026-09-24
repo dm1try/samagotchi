@@ -436,13 +436,13 @@ RSpec.describe Samagotchi::Bridge do
       WebMock.disable_net_connect! if defined?(WebMock)
     end
 
-    def start_bridge(input_format: nil, on_input: nil, on_command: nil, on_exit_request: nil)
+    def start_bridge(input_format: nil, on_input: nil, on_command: nil, on_exit_request: nil, exit_discards: nil)
       @engine = make_engine
       @session = make_session
       @bridge = described_class.new(
         engine: @engine, state_dir: state_dir, session_id: @session.id,
         heartbeat_interval: 0.2, input_format: input_format, on_input: on_input, on_command: on_command,
-        on_exit_request: on_exit_request
+        on_exit_request: on_exit_request, exit_discards: exit_discards
       )
       @bridge.start
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
@@ -1087,6 +1087,13 @@ RSpec.describe Samagotchi::Bridge do
         expect(post_exit(JSON.generate(client_id: "tui:1"))).to eq([200, { "status" => "exiting", "session_id" => @session.id }])
         expect(asked).to eq(["tui:1"])
         expect(@engine).to have_received(:synchronize_events)
+      end
+
+      it "says whether the worker will delete the session as empty" do
+        start_bridge(on_exit_request: ->(_) {}, exit_discards: -> { true })
+
+        expect(post_exit(JSON.generate(client_id: "tui:1")))
+          .to eq([200, { "status" => "exiting", "session_id" => @session.id, "discard" => true }])
       end
 
       it "answers 409 with what keeps the worker up" do

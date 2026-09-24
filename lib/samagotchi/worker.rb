@@ -126,7 +126,9 @@ module Samagotchi
                                               @command_queue << command.merge(after_seq: @engine.event_count)
                                               @waker.wake
                                             },
-                                            on_exit_request: method(:exit_request))
+                                            on_exit_request: method(:exit_request),
+                                            # Decided again as it leaves (a note may still come in).
+                                            exit_discards: method(:empty_session?))
       @idle_exit = WorkerIdleExit.new(
         engine: @engine, bridge: @bridge,
         timeout_minutes: @idle_exit_minutes || SessionManager.config_idle_exit_minutes,

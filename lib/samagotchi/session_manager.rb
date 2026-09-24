@@ -592,11 +592,12 @@ module Samagotchi
     #   (the worker degrades: turns still flow through the input-dir loop, but
     #   there is no live SSE or in-process cancel/answer).
     # @param on_input [#call, nil] called after the Bridge queues a turn
-    def self.start_bridge(engine:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil)
+    def self.start_bridge(engine:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil,
+                          exit_discards: nil)
       require_relative "bridge"
       Samagotchi::Bridge.new(
         engine: engine, state_dir: state_dir, session_id: session_id, input_format: INPUT_FORMAT,
-        on_input: on_input, on_command: on_command, on_exit_request: on_exit_request
+        on_input: on_input, on_command: on_command, on_exit_request: on_exit_request, exit_discards: exit_discards
       ).start
     rescue StandardError => e
       warn "Bridge: failed to start for session #{session_id}: #{e.class}: #{e.message}"

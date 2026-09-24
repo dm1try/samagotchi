@@ -1118,6 +1118,22 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     end
   end
 
+  it "says an empty session is discarded instead of how to resume it" do
+    allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting","discard":true}'))
+
+    run_lines("/exit")
+
+    expect(screen.lines.last).to eq("Detached; the session was empty, so it is discarded.")
+  end
+
+  it "says how to resume a session the worker keeps" do
+    allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting","discard":false}'))
+
+    run_lines("/exit")
+
+    expect(screen.lines.last).to eq("Detached; the session's worker is stopping. Resume with: chi --resume s-1234")
+  end
+
   {
     "turn_running" => "a turn is running", "input_queued" => "prompts are queued",
     "continue_offered" => "a continue offer is pending", "client_connected" => "another UI is attached",
@@ -1178,6 +1194,15 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
         expect(deleted).to eq(["s-1234"])
         expect(screen.lines.last).to eq("Detached; deleted session s-1234.")
       end
+    end
+
+    it "leaves an empty session to the worker, which deletes it as it leaves" do
+      allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting","discard":true}'))
+
+      run_lines("/exit --delete")
+
+      expect(deleted).to be_empty
+      expect(screen.lines.last).to eq("Detached; deleted session s-1234.")
     end
 
     it "deletes nothing when the worker stays up, and says why" do

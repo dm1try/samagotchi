@@ -243,6 +243,24 @@ RSpec.describe Samagotchi::Worker do
         expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).not_to eq(Samagotchi::Session::STATUS_STOPPED)
       end
 
+      it "says the session is discarded when nothing happened in it, and leaves it for deleting" do
+        start_worker(poll_interval: 5, idle_exit_minutes: 0)
+
+        expect(post_exit.last).to include("discard" => true)
+        expect(@thread.join(2)&.value).to eq(:exit_requested)
+        expect(@worker.discard?).to be(true)
+      end
+
+      it "says it keeps a session on another model" do
+        session.model_name = "Qwen3-14B"
+        session.save(state_dir: tmpdir)
+        start_worker(poll_interval: 5, idle_exit_minutes: 0)
+
+        expect(post_exit.last).to include("discard" => false)
+        @thread.join(2)
+        expect(@worker.discard?).to be(false)
+      end
+
       it "stays up while a turn runs" do
         start_worker(poll_interval: 0.05)
         allow(engine).to receive(:turn_running?).and_return(true)
