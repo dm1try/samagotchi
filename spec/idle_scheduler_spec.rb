@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "samagotchi/idle_scheduler"
+require "fileutils"
+require "tmpdir"
 
 RSpec.describe Samagotchi::IdleScheduler do
   subject(:scheduler) { described_class.new(engine: engine, jobs: jobs) }
@@ -61,8 +63,22 @@ RSpec.describe Samagotchi::IdleScheduler do
 
     it "isolates a failing job — the next job still ticks" do
       allow(job_a).to receive(:tick).and_raise(RuntimeError, "boom")
-      scheduler.tick
+      expect { scheduler.tick }.to output(/\[IdleScheduler\] .* tick failed: RuntimeError: boom/).to_stderr
       expect(job_b).to have_received(:tick).once
+    end
+
+    it "logs the failure (stderr text unchanged, a WARN idle record in the file)" do
+      dir = Dir.mktmpdir("samagotchi-log")
+      path = File.join(dir, "chi.log")
+      Samagotchi::Log.configure(path: path)
+      allow(job_a).to receive(:tick).and_raise(RuntimeError, "boom")
+      expect { scheduler.tick }.to output.to_stderr
+
+      record = File.open(path) { |io| Samagotchi::LogLine.each_record(io).first }
+      expect(record.to_h).to include(level: "WARN", tag: "idle", event: "tick_failed")
+      expect(record.fields).to include("error" => "RuntimeError", "msg" => a_string_ending_with("tick failed: RuntimeError: boom"))
+    ensure
+      FileUtils.remove_entry(dir)
     end
 
     it "does nothing once stopped" do

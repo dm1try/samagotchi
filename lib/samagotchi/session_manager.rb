@@ -311,11 +311,11 @@ module Samagotchi
       result = prune_sessions(state_dir: sd)
       FileUtils.touch(marker)
       if result[:deleted].any?
-        warn "[retention] pruned #{result[:deleted].size} sessions (kept #{result[:kept].size})"
+        Log.info(:worker, "retention_pruned", echo: "[retention] pruned #{result[:deleted].size} sessions (kept #{result[:kept].size})", deleted: result[:deleted].size, kept: result[:kept].size)
       end
       result
     rescue StandardError => e
-      warn "[retention] sweep failed: #{e.class}: #{e.message}"
+      Log.warn(:worker, "retention_failed", echo: "[retention] sweep failed: #{e.class}: #{e.message}", error: e.class.name)
       nil
     end
 
@@ -641,7 +641,7 @@ module Samagotchi
         on_input: on_input, on_command: on_command, on_exit_request: on_exit_request, exit_discards: exit_discards
       ).start
     rescue StandardError => e
-      warn "Bridge: failed to start for session #{session_id}: #{e.class}: #{e.message}"
+      Log.error(:bridge, "start_failed", echo: "Bridge: failed to start for session #{session_id}: #{e.class}: #{e.message}", sid: session_id, error: e.class.name)
       nil
     end
 

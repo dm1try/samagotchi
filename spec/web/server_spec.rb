@@ -27,3 +27,21 @@ RSpec.describe Samagotchi::Web::Server::Log do
     expect(out.string).to include("ERROR RuntimeError: boom").and include("ERROR bad request line")
   end
 end
+
+RSpec.describe Samagotchi::Web::Server do
+  it "says so on stderr when it can't open the browser" do
+    allow(described_class).to receive(:system).and_raise(Errno::ENOENT, "open")
+
+    expect { described_class.open_url("http://127.0.0.1:4567/") }
+      .to output(/Failed to open browser: .*open — please open http:\/\/127.0.0.1:4567\/ manually/).to_stderr
+  end
+
+  it "binds to 127.0.0.1 whatever host it is given, with a warning" do
+    allow(Samagotchi::Web::App).to receive(:new).and_return(double("app"))
+    allow(Rackup::Handler::WEBrick).to receive(:run)
+
+    expect { described_class.start(port: 4999, host: "0.0.0.0") }
+      .to output(/forcing 127.0.0.1/).to_stderr.and output(/starting on http:\/\/127.0.0.1:4999/).to_stdout
+    expect(Rackup::Handler::WEBrick).to have_received(:run).with(anything, hash_including(Host: "127.0.0.1", Port: 4999))
+  end
+end

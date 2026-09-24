@@ -2,6 +2,7 @@
 
 require_relative "registry"
 require "digest"
+require_relative "../log"
 
 module Samagotchi
   # Namespace that wraps hook plugin classes per-bundle. Each bundle's hooks are
@@ -68,7 +69,7 @@ module Samagotchi
               next
             end
             if (mismatch = sha_mismatch(file, meta.(:sha256), required: fail_closed))
-              warn "[samagotchi:hooks] bundle '#{bundle_name}' hook '#{basename}' not loaded: #{mismatch}"
+              Log.warn(:hooks, "bundle_hook_mismatch", echo: "[samagotchi:hooks] bundle '#{bundle_name}' hook '#{basename}' not loaded: #{mismatch}", bundle: bundle_name, hook: basename.to_s)
               failures&.add(what, mismatch, required: fail_closed)
               next
             end
@@ -85,7 +86,7 @@ module Samagotchi
               end
               loaded += 1
             rescue Exception => e
-              warn "[samagotchi:hooks] bundle '#{bundle_name}' hook '#{basename}' failed to load: #{e.class}: #{e.message}"
+              Log.error(:hooks, "bundle_hook_load_failed", echo: "[samagotchi:hooks] bundle '#{bundle_name}' hook '#{basename}' failed to load: #{e.class}: #{e.message}", bundle: bundle_name, hook: basename.to_s, error: e.class.name)
               failures&.add(what, "#{e.class}: #{e.message}", required: fail_closed)
             end
           end
@@ -142,7 +143,7 @@ module Samagotchi
             existing = event[:block_reason].to_s
             event[:block_reason] = existing.empty? ? reason : "#{existing}; #{reason}"
           elsif on_error == "log"
-            warn "[samagotchi:hooks] #{basename} (bundle #{bundle_name}) failed: #{error.class}: #{error.message}"
+            Log.warn(:hooks, "bundle_hook_failed", echo: "[samagotchi:hooks] #{basename} (bundle #{bundle_name}) failed: #{error.class}: #{error.message}", bundle: bundle_name, hook: basename.to_s, error: error.class.name)
           end
           # "skip" (and fail_closed on non-veto events) is silent.
         end

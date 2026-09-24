@@ -32,6 +32,7 @@ require_relative "terminal_ui/legacy_surface"
 require_relative "terminal_ui/live_region"
 require_relative "terminal_ui/question_prompt"
 require_relative "terminal_ui/repl_input"
+require_relative "log"
 
 module Samagotchi
   # TerminalUI encapsulates the single operating mode of the harness.
@@ -1042,7 +1043,7 @@ module Samagotchi
     def handle_stream_event(event)
       @renderer.call(event)
     rescue StandardError => e
-      warn "[render] #{event[:type]}: #{e.class}: #{e.message}"
+      Log.error(:repl, "render_failed", echo: "[render] #{event[:type]}: #{e.class}: #{e.message}", event_type: event[:type].to_s, error: e.class.name)
     end
 
     def emit_cancellation_notice(result)
@@ -1793,7 +1794,7 @@ module Samagotchi
       # result is already answered via Engine#answer_question in render_question_widget
       true
     rescue StandardError => e
-      warn "[ask_user_question] drain failed: #{e.class}: #{e.message}"
+      Log.warn(:repl, "question_drain_failed", echo: "[ask_user_question] drain failed: #{e.class}: #{e.message}", error: e.class.name)
       false
     end
 

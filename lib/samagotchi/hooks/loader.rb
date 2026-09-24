@@ -2,6 +2,7 @@
 
 require_relative "registry"
 require_relative "../config"
+require_relative "../log"
 
 module Samagotchi
   module Hooks
@@ -74,7 +75,7 @@ module Samagotchi
               end
             rescue ScriptError, StandardError => e
               # ScriptError: a SyntaxError (or LoadError) from `require`.
-              warn "[samagotchi:hooks] hook #{defn[:path]} failed to load: #{e.class}: #{e.message}"
+              Log.error(:hooks, "hook_load_failed", echo: "[samagotchi:hooks] hook #{defn[:path]} failed to load: #{e.class}: #{e.message}", hook: defn[:path].to_s, error: e.class.name)
               failures&.add("hook #{defn[:path]} (config)", "#{e.class}: #{e.message}", required: defn[:required])
             end
           end
@@ -145,7 +146,7 @@ module Samagotchi
       def self.handle_error(on_error, hook_path, error = nil)
         case on_error
         when "log"
-          warn "[samagotchi:hook] #{error ? "#{error.class}: #{error.message}" : "hook failed"} (#{hook_path})"
+          Log.warn(:hooks, "hook_failed", echo: "[samagotchi:hook] #{error ? "#{error.class}: #{error.message}" : "hook failed"} (#{hook_path})", hook: hook_path.to_s, error: error&.class&.name)
         when "skip"
           # Silent — just skip
         end

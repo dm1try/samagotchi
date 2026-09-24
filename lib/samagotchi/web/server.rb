@@ -5,6 +5,7 @@ require "rackup/handler/webrick"
 require "webrick"
 
 require_relative "app"
+require_relative "../log"
 
 module Samagotchi
   module Web
@@ -33,7 +34,7 @@ module Samagotchi
         host = (host || ENV.fetch("SAMAGOTCHI_WEB_HOST", DEFAULT_HOST)).to_s.strip
         host = DEFAULT_HOST if host.empty?
         unless %w[127.0.0.1 ::1 localhost].include?(host)
-          warn "Web server only binds to 127.0.0.1 (got #{host}); forcing 127.0.0.1"
+          Samagotchi::Log.warn(:web, "bind_forced", echo: "Web server only binds to 127.0.0.1 (got #{host}); forcing 127.0.0.1", host: host.to_s)
           host = DEFAULT_HOST
         end
 
@@ -62,10 +63,10 @@ module Samagotchi
         when /darwin/ then system("open", url)
         when /linux/ then system("xdg-open", url)
         when /mswin|mingw/ then system("start", url)
-        else warn "Please open #{url} manually"
+        else Samagotchi::Log.info(:web, "open_manually", echo: "Please open #{url} manually")
         end
       rescue StandardError => e
-        warn "Failed to open browser: #{e.message} — please open #{url} manually"
+        Samagotchi::Log.warn(:web, "open_failed", echo: "Failed to open browser: #{e.message} — please open #{url} manually", error: e.class.name)
       end
     end
   end

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "log"
 
 module Samagotchi
   # Shared background poller for all Engine-owned idle subsystems
@@ -55,7 +56,7 @@ module Samagotchi
       @jobs.each do |job|
         job.tick
       rescue StandardError => e
-        warn "[IdleScheduler] #{job.class} tick failed: #{e.class}: #{e.message}"
+        Log.warn(:idle, "tick_failed", echo: "[IdleScheduler] #{job.class} tick failed: #{e.class}: #{e.message}", job: job.class.name, error: e.class.name)
       end
     end
 
@@ -69,7 +70,7 @@ module Samagotchi
         sleep(POLL_INTERVAL_SECONDS)
       end
     rescue StandardError => e
-      warn "[IdleScheduler] scheduler thread crashed: #{e.class}: #{e.message}"
+      Log.error(:idle, "scheduler_crashed", echo: "[IdleScheduler] scheduler thread crashed: #{e.class}: #{e.message}", error: e.class.name)
     end
   end
 end

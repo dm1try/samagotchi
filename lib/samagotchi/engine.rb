@@ -216,8 +216,9 @@ module Samagotchi
       return unless in_file || !ENV["SAMAGOTCHI_BACKEND"].to_s.strip.empty?
 
       @warned_removed_backend = true
-      warn "Warning: the backend setting (SAMAGOTCHI_BACKEND / backend: in config.yml) was removed and is ignored; " \
-           "set api: openai on a host to use the chat API (see docs/configuration.md)."
+      Log.warn(:config, "backend_setting_removed",
+               echo: "Warning: the backend setting (SAMAGOTCHI_BACKEND / backend: in config.yml) was removed and is ignored; " \
+                     "set api: openai on a host to use the chat API (see docs/configuration.md).")
     end
 
     # Record that activity happened (user input or a completed turn). Shared,
@@ -713,7 +714,7 @@ module Samagotchi
           rules = Guardrails::Rules.parse(section && section["rules"], source: "config")
           disable = Guardrails::Rules.parse_disable(section && section["disable"])
         rescue Guardrails::Rules::ParseError => e
-          warn "[samagotchi:guardrails] config.yml guardrails rules: #{e.message}"
+          Log.warn(:guardrails, "config_rules_invalid", echo: "[samagotchi:guardrails] config.yml guardrails rules: #{e.message}")
           @guardrail_failures.add("rules in config.yml", e.message, required: true)
         end
         Guardrails::Rules.new(rules + bundle_guardrail_rules, disable: disable,
@@ -729,7 +730,7 @@ module Samagotchi
       rules = []
       MemoryBundle::Provenance.each_installed_with_guardrails do |bundle_name, data|
         if data[:error]
-          warn "[samagotchi:guardrails] bundle #{bundle_name}: #{data[:error]}"
+          Log.warn(:guardrails, "bundle_rules_invalid", echo: "[samagotchi:guardrails] bundle #{bundle_name}: #{data[:error]}", bundle: bundle_name)
           @guardrail_failures.add("rules (bundle #{bundle_name})", data[:error], required: true)
           next
         end
@@ -751,14 +752,14 @@ module Samagotchi
 
             rules.concat(Guardrails::Rules.parse(doc["rules"], source: "bundle #{bundle_name}"))
           rescue Guardrails::Rules::ParseError, Psych::Exception => e
-            warn "[samagotchi:guardrails] #{what}: #{e.message}"
+            Log.warn(:guardrails, "rules_file_invalid", echo: "[samagotchi:guardrails] #{what}: #{e.message}", bundle: bundle_name, file: basename.to_s)
             @guardrail_failures.add(what, e.message, required: true)
           end
         end
       end
       rules
     rescue StandardError => e
-      warn "[samagotchi:guardrails] failed to read installed bundles' rules: #{e.class}: #{e.message}"
+      Log.error(:guardrails, "bundle_rules_failed", echo: "[samagotchi:guardrails] failed to read installed bundles' rules: #{e.class}: #{e.message}", error: e.class.name)
       @guardrail_failures.add("bundle rules", "#{e.class}: #{e.message}", required: true)
       rules || []
     end
@@ -930,7 +931,7 @@ module Samagotchi
             end
           end
         rescue StandardError => e
-          warn "[ask_user_question] sync handler failed: #{e.message}"
+          Log.warn(:turn, "question_handler_failed", echo: "[ask_user_question] sync handler failed: #{e.message}", error: e.class.name)
         end
         # Sync handler existed but did not produce an answer — do not deadlock on
         # CV (no cross-thread answerer exists for synchronous UIs). Clear pending
@@ -1510,17 +1511,17 @@ module Samagotchi
         bundle_dir = File.join(MemoryBundle::Provenance.bundles_dir, bundle_name)
         hooks_dir = File.join(bundle_dir, "hooks")
         if (data[:trust_level] || "experimental").to_s == "experimental"
-          warn "[hooks] Bundle '#{bundle_name}' is experimental — its hooks may change or misbehave."
+          Log.info(:hooks, "experimental_bundle", echo: "[hooks] Bundle '#{bundle_name}' is experimental — its hooks may change or misbehave.", bundle: bundle_name)
         end
         begin
           Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: data[:hooks], registry: @hooks,
                                    failures: @guardrail_failures)
         rescue Exception => e
-          warn "[samagotchi:hooks] bundle '#{bundle_name}' failed to load hooks: #{e.class}: #{e.message}"
+          Log.error(:hooks, "bundle_load_failed", echo: "[samagotchi:hooks] bundle '#{bundle_name}' failed to load hooks: #{e.class}: #{e.message}", bundle: bundle_name, error: e.class.name)
         end
       end
     rescue Exception => e
-      warn "[samagotchi:hooks] failed to load bundle hooks: #{e.class}: #{e.message}"
+      Log.error(:hooks, "bundles_load_failed", echo: "[samagotchi:hooks] failed to load bundle hooks: #{e.class}: #{e.message}", error: e.class.name)
     end
 
     # Build (or disable) the idle recap job. On by default: with no recap
@@ -1564,15 +1565,16 @@ module Samagotchi
             _, bare = @host_registry.parse_qualified_model(model) if model
             model = bare if bare && !bare.empty?
           else
-            warn "Warning: recap host_ref '#{host_ref}' not found in hosts:; recap disabled."
+            Log.warn(:recap, "host_ref_unknown", echo: "Warning: recap host_ref '#{host_ref}' not found in hosts:; recap disabled.", host_ref: host_ref)
             return nil
           end
         end
 
         if base_url.to_s.strip.empty? || model.to_s.strip.empty?
-          warn "Warning: SAMAGOTCHI session recap is enabled but base_url/model are missing; recap disabled. " \
-               "Set recap: {host_ref:, model:} or SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL (or pass recap: {base_url:, model:}), " \
-               "or leave them all out to recap with the session's own model."
+          Log.warn(:recap, "recap_unconfigured",
+                   echo: "Warning: SAMAGOTCHI session recap is enabled but base_url/model are missing; recap disabled. " \
+                         "Set recap: {host_ref:, model:} or SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL (or pass recap: {base_url:, model:}), " \
+                         "or leave them all out to recap with the session's own model.")
           return nil
         end
         fixed = { base_url: base_url.to_s.strip, api_key_env: api_key_env, model: model.to_s.strip, label: label.to_s.strip }
@@ -1955,7 +1957,7 @@ module Samagotchi
           scope, actual_name = split_memory_scope(name)
           body = Tools::MemoryRead.call(actual_name, scope: scope)
           if body.start_with?("Error:")
-            warn "Warning: --memory '#{name}' could not be loaded (#{body})"
+            Log.warn(:memory, "preload_failed", echo: "Warning: --memory '#{name}' could not be loaded (#{body})", memory: name)
             next
           end
           # Record activated names so the UI can echo them in the sticky

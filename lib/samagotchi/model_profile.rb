@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "log"
 module Samagotchi
   # Encapsulates all model-specific token formats and parsing behavior.
   # Each profile maps to a model family; ModelProfile.resolve picks one
@@ -261,7 +262,7 @@ module Samagotchi
 
     def self.configured(value, where)
       profile = named(value)
-      warn "Warning: unknown profile #{value.to_s.inspect} in #{where} (allowed: #{NAMES.join(', ')}) — ignored" unless profile
+      Log.warn(:config, "unknown_profile", echo: "Warning: unknown profile #{value.to_s.inspect} in #{where} (allowed: #{NAMES.join(', ')}) — ignored", profile: value.to_s, where: where) unless profile
       profile
     end
     private_class_method :configured

@@ -3,6 +3,7 @@
 require "json"
 require "fileutils"
 require "time"
+require_relative "../log"
 
 module Samagotchi
   module Guardrails
@@ -26,7 +27,7 @@ module Samagotchi
 
       attr_reader :path
 
-      def initialize(dir:, warn: ->(msg) { Kernel.warn(msg) })
+      def initialize(dir:, warn: ->(msg) { Log.warn(:guardrails, "approvals_unreadable", echo: msg) })
         @dir = dir
         @path = File.join(dir, FILE)
         @warn = warn

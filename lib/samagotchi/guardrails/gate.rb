@@ -5,6 +5,7 @@ require_relative "context"
 require_relative "targets"
 require_relative "approvals"
 require_relative "protected_paths"
+require_relative "../log"
 
 module Samagotchi
   module Guardrails
@@ -95,7 +96,7 @@ module Samagotchi
 
         approvals.add(verdict, verdict.scope)
       rescue StandardError => e
-        Kernel.warn("[samagotchi:guardrails] could not store the approval: #{e.class}: #{e.message}")
+        Log.warn(:guardrails, "approval_store_failed", echo: "[samagotchi:guardrails] could not store the approval: #{e.class}: #{e.message}", error: e.class.name)
       end
 
       def targets_for(call, context)

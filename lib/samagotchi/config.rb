@@ -5,6 +5,7 @@ require "json"
 require "fileutils"
 require "uri"
 require "set"
+require_relative "log"
 
 module Samagotchi
   # Unified configuration registry implementing the implicit convention:
@@ -192,14 +193,14 @@ module Samagotchi
         when :integer
           Integer(str, exception: false).tap do |v|
             if v.nil?
-              warn "Warning: invalid integer for #{entry.key} (#{entry.env_key}): #{raw.inspect} — using default"
+              Log.warn(:config, "invalid_value", echo: "Warning: invalid integer for #{entry.key} (#{entry.env_key}): #{raw.inspect} — using default", key: entry.key)
               return entry.default
             end
           end
         when :float
           val = Float(str, exception: false)
           if val.nil?
-            warn "Warning: invalid float for #{entry.key}: #{raw.inspect}"
+            Log.warn(:config, "invalid_value", echo: "Warning: invalid float for #{entry.key}: #{raw.inspect}", key: entry.key)
             return entry.default
           end
           val
@@ -208,14 +209,14 @@ module Samagotchi
           when "1", "true", "yes", "on" then true
           when "0", "false", "no", "off", "" then false
           else
-            warn "Warning: invalid bool for #{entry.key}: #{raw.inspect} — treating as false"
+            Log.warn(:config, "invalid_value", echo: "Warning: invalid bool for #{entry.key}: #{raw.inspect} — treating as false", key: entry.key)
             false
           end
         when :enum
           lowered = str.downcase
           allowed = entry.enum_values.map(&:downcase)
           unless allowed.include?(lowered)
-            warn "Warning: invalid value for #{entry.key}: #{raw.inspect} (allowed: #{entry.enum_values.join(', ')}) — using default"
+            Log.warn(:config, "invalid_value", echo: "Warning: invalid value for #{entry.key}: #{raw.inspect} (allowed: #{entry.enum_values.join(', ')}) — using default", key: entry.key)
             return entry.default
           end
           # return canonical casing from enum_values
@@ -443,7 +444,7 @@ module Samagotchi
     def warn_once(message)
       @warn_once_mutex ||= Mutex.new
       first = @warn_once_mutex.synchronize { (@warned ||= Set.new).add?(message) }
-      warn(message) if first
+      Samagotchi::Log.warn(:config, "config_warning", echo: message) if first
     end
 
     # A `vision:` setting (hosts entry or models: entry): true, false, or nil
@@ -485,11 +486,11 @@ module Samagotchi
       existed = File.file?(path)
       raw = read_yaml(env: env, path: path) || {}
       if existed
-        Samagotchi::Config.validate_yaml_sections(raw).each { |w| warn "Warning: #{w}" }
+        Samagotchi::Config.validate_yaml_sections(raw).each { |w| Log.warn(:config, "invalid_section", echo: "Warning: #{w}") }
         # Warn on legacy UPPER keys
         raw.each_key do |k|
           if k.to_s.match?(/\A[A-Z_]{2,}\z/) && k.to_s.start_with?("SAMAGOTCHI_")
-            warn "Warning: config key '#{k}' is legacy UPPER — use '#{k.to_s.downcase.sub(/^samagotchi_/, '').tr('_', '.')}' (e.g., default.model)"
+            Log.warn(:config, "legacy_key", echo: "Warning: config key '#{k}' is legacy UPPER — use '#{k.to_s.downcase.sub(/^samagotchi_/, '').tr('_', '.')}' (e.g., default.model)", key: k.to_s)
           end
         end
       end

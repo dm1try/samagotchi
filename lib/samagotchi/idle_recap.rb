@@ -8,6 +8,7 @@ require "time"
 require_relative "idle_client"
 require_relative "output_formatter"
 require_relative "recap_store"
+require_relative "log"
 
 module Samagotchi
   # Idle job for the session-recap feature — polled by the shared
@@ -360,7 +361,7 @@ module Samagotchi
     def save(state)
       @store&.save(state)
     rescue StandardError => e
-      warn "[IdleRecap] saving the recap failed: #{e.class}: #{e.message}"
+      Log.warn(:recap, "save_failed", echo: "[IdleRecap] saving the recap failed: #{e.class}: #{e.message}", error: e.class.name)
     end
 
     # The saved state when it still describes a prefix of +messages+; nil

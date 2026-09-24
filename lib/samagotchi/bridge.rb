@@ -16,6 +16,7 @@ require_relative "session"
 require_relative "engine"
 require_relative "session_commands"
 require_relative "image_store"
+require_relative "log"
 
 module Samagotchi
   # Bridge is an optional HTTP transport that lets an external web / desktop
@@ -854,7 +855,7 @@ module Samagotchi
       File.write(temp, JSON.pretty_generate(record) + "\n")
       File.rename(temp, path)
     rescue StandardError => e
-      warn "Bridge: failed to write #{SIDECAR_FILE}: #{e.class}: #{e.message}"
+      Log.warn(:bridge, "sidecar_write_failed", echo: "Bridge: failed to write #{SIDECAR_FILE}: #{e.class}: #{e.message}", error: e.class.name)
     end
 
     # Only while it still names this bridge: a racing worker for the same

@@ -4,6 +4,7 @@ require "fileutils"
 require_relative "installer"
 require_relative "provenance"
 require_relative "manifest"
+require_relative "../log"
 
 module Samagotchi
   module MemoryBundle
@@ -36,7 +37,7 @@ module Samagotchi
         begin
           gem_manifest = Manifest.read(dir: GEM_BUNDLE_DIR)
         rescue Manifest::ValidationError => e
-          warn "[samagotchi-system] invalid gem manifest: #{e.message}"
+          Log.error(:memory, "system_manifest_invalid", echo: "[samagotchi-system] invalid gem manifest: #{e.message}")
           return false
         end
 
@@ -58,7 +59,7 @@ module Samagotchi
           end
         end
       rescue StandardError => e
-        warn "[samagotchi-system] ensure failed: #{e.class}: #{e.message}"
+        Log.error(:memory, "system_bundle_failed", echo: "[samagotchi-system] ensure failed: #{e.class}: #{e.message}", error: e.class.name)
         false
       end
 
@@ -96,7 +97,7 @@ module Samagotchi
         noted = File.exist?(path) ? File.readlines(path, chomp: true) : []
         return if noted.include?(pair)
 
-        warn "[samagotchi-system] installed system bundle #{installed} is newer than this chi's #{shipped}; left as is"
+        Log.warn(:memory, "system_bundle_newer", echo: "[samagotchi-system] installed system bundle #{installed} is newer than this chi's #{shipped}; left as is", installed: installed.to_s, shipped: shipped.to_s)
         File.write(path, "#{pair}\n", mode: "a")
       end
 
@@ -110,7 +111,7 @@ module Samagotchi
         )
         _nd, _manifest = installer.run
         unless installer.warnings.empty?
-          installer.warnings.each { |w| warn "[samagotchi-system] #{w}" }
+          installer.warnings.each { |w| Log.warn(:memory, "system_bundle_warning", echo: "[samagotchi-system] #{w}") }
         end
         true
       end
@@ -128,10 +129,10 @@ module Samagotchi
         # Installer already handled fast_forward/keep/noop. Conflicts are kept with warning.
         if installer.conflicts.any?
           installer.conflicts.each do |file_key, _info|
-            warn "[samagotchi-system] kept local edit in #{file_key} (bundle v#{gem_manifest.version} has update — run: chi bundle status #{BUNDLE_NAME} / chi bundle diff #{BUNDLE_NAME} #{file_key})"
+            Log.info(:memory, "system_local_edit_kept", echo: "[samagotchi-system] kept local edit in #{file_key} (bundle v#{gem_manifest.version} has update — run: chi bundle status #{BUNDLE_NAME} / chi bundle diff #{BUNDLE_NAME} #{file_key})", file: file_key.to_s)
           end
         end
-        installer.warnings.each { |w| warn "[samagotchi-system] #{w}" } unless installer.warnings.empty?
+        installer.warnings.each { |w| Log.warn(:memory, "system_bundle_warning", echo: "[samagotchi-system] #{w}") } unless installer.warnings.empty?
         true
       end
 
