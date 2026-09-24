@@ -264,7 +264,15 @@ body.all-view #center, body.all-view #topStrip{display:none}
 #topStrip .card .preview{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #allList .card .preview{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;word-break:break-word;line-height:1.4}
 .card .meta{font-size:11px;color:var(--text-muted);display:flex;gap:6px;align-items:center}
-.card .status{font-size:11px;padding:2px 6px;border-radius:999px;background:var(--bg-raised);color:var(--text-muted)}
+/* A card's status is a dot (its word is the tooltip); the .status.* pills below are the info bar's. */
+.card .dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--text-muted)}
+.card .dot.running{background:var(--ok);animation:dot-pulse 1.6s ease-in-out infinite}
+.card .dot.idle{background:var(--text-muted)}
+.card .dot.stopped{background:transparent;border:1px solid var(--text-faint)}
+.card .dot.completed{background:var(--accent)}
+.card .dot.error{background:var(--danger)}
+@keyframes dot-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 0%,transparent)}}
+@media (prefers-reduced-motion:reduce){.card .dot.running{animation:none}}
 .status.running{background:var(--ok-bg);color:var(--ok-text)}
 .status.idle{background:var(--bg-raised)}
 .status.completed{background:var(--accent-bg);color:var(--accent)}
