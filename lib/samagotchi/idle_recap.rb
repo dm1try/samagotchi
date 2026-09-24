@@ -28,7 +28,6 @@ module Samagotchi
     DEFAULT_INACTIVITY_SECONDS = 180.0
     DEFAULT_TIMEOUT_SECONDS = 30.0
     DEFAULT_MIN_USER_TURNS = 2
-    WAIT_TICK_SECONDS = 0.1
     # Above this many tool calls we ask only for a goal/achievement summary
     # (never enumerate calls).
     LARGE_TOOL_THRESHOLD = 10
@@ -158,6 +157,7 @@ module Samagotchi
       @mutex = Monitor.new
       @generation = 0
       @last_fire_activity_seq = nil
+      @in_flight = nil
     end
 
     # Mark any in-flight recap stale (called when a new turn starts). The
@@ -168,11 +168,19 @@ module Samagotchi
     end
 
     # One detector step, called by the shared IdleScheduler. Public so specs
-    # can drive it deterministically.
+    # can drive it deterministically. Never waits on the summarizer: it
+    # collects a finished (or overdue) request, else starts one when
+    # eligible, so the other idle jobs keep ticking meanwhile.
     def tick
+      return collect if in_flight?
       return unless should_fire?
 
-      generate
+      start
+    end
+
+    # @return [Boolean] true while a summarize request is running
+    def in_flight?
+      !@in_flight.nil?
     end
 
     # @return [Boolean] true when a recap is eligible to fire right now.
@@ -193,7 +201,9 @@ module Samagotchi
       @clock.call - @engine.last_activity_at
     end
 
-    def generate
+    # Start an attempt: snapshot, build the prompt, and spawn the summarize
+    # thread. The result is picked up by #collect on a later tick.
+    def start
       gen = bump_generation
       # Latch the attempt, not the success: a short history, a failed or
       # empty summary, or an invalidated run must not re-fire on every
@@ -207,14 +217,31 @@ module Samagotchi
       transcript = TranscriptFilter.build(parsed)
       prompt = RecapPrompt.build(transcript, tool_names: TranscriptFilter.tool_names(parsed))
       return if prompt.nil?
-      worker = spawn_summarize(prompt)
-      return unless wait_until_finished(worker, gen)
-      return unless valid_generation?(gen)
-      recap = safe_value(worker)
-      return if recap.nil? || recap.to_s.strip.empty?
-      @engine.emit_recap(recap: recap.to_s, generation: gen)
+      @in_flight = { thread: spawn_summarize(prompt), generation: gen, deadline: @clock.call + @timeout }
     rescue StandardError
       nil
+    end
+
+    # Pick up the in-flight attempt. Save/emit happens only here, on the
+    # scheduler thread, never from the summarize thread: a stale (turn
+    # started) or overdue attempt is dropped. An overdue thread is left to
+    # its IdleClient timeout (the same budget), not killed mid-request.
+    def collect
+      job = @in_flight
+      unless valid_generation?(job[:generation])
+        @in_flight = nil
+        return
+      end
+      if job[:thread].alive?
+        @in_flight = nil if @clock.call >= job[:deadline]
+        return
+      end
+      @in_flight = nil
+      recap = safe_value(job[:thread])
+      return if recap.nil? || recap.to_s.strip.empty?
+      @engine.emit_recap(recap: recap.to_s, generation: job[:generation])
+    rescue StandardError
+      @in_flight = nil
     end
 
     def bump_generation
@@ -243,15 +270,6 @@ module Samagotchi
       JSON.parse(json)
     rescue StandardError
       []
-    end
-
-    def wait_until_finished(worker, gen)
-      deadline = @clock.call + @timeout
-      until !worker.alive? || !valid_generation?(gen) || @clock.call >= deadline
-        sleep(WAIT_TICK_SECONDS)
-      end
-      # Return true only if worker finished AND generation is still valid
-      !worker.alive? && valid_generation?(gen)
     end
   end
 end

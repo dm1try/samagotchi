@@ -193,8 +193,8 @@ RSpec.describe "idle session-recap CLI integration", :integration do
         JSON.generate(messages)
       )
       engine.recap.tick
-      sleep 1.0 until recap_events.any? || Time.now.to_f > base_time + 15
-      engine.recap.stop
+      (sleep 0.2; engine.recap.tick) until recap_events.any? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > base_time + 15
+      engine.stop_idle
 
       expect(recap_events).not_to be_empty
       event = recap_events.first

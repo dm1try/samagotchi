@@ -143,9 +143,9 @@ RSpec.describe "idle session-recap end-to-end", :integration do
     # Trigger the recap manually
     engine.recap.tick
 
-    # Wait for the async recap to complete (timeout is generous)
-    sleep 1.0 until recap_events.any? || Time.now > base_time + 15
-    engine.recap.stop
+    # Tick until the job collects the async recap (timeout is generous)
+    (sleep 0.2; engine.recap.tick) until recap_events.any? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > base_time + 15
+    engine.stop_idle
 
     # Verify the event was emitted with non-empty recap
     expect(recap_events).not_to be_empty
