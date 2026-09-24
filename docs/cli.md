@@ -117,6 +117,11 @@ attached terminal counts, even an idle one) and no reminder registered. The next
 prompt or `--attach` wakes a new worker with the conversation intact; `/stats`
 counters and the last idle recap start over.
 
+A session you leave with nothing in it (no prompt sent, no `/model` switch, no
+note or image) is deleted as its worker exits, and `/exit` says so; set
+`session.keep_empty: true` to keep such sessions. See
+[Sessions](sessions.md).
+
 `bin/chi sessions stop ID` stops a session's worker and waits for it to exit, so
 a `bin/chi --resume ID` after it starts a fresh one. A worker still running an
 older chi (from before an upgrade) takes turns but not commands; the attached
