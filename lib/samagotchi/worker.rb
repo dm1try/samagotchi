@@ -80,7 +80,17 @@ module Samagotchi
       # The client_id of a client that asked the worker to exit (POST /exit).
       @exit_requested = nil
       @exit_requested_by = nil
+      # Set as it leaves: nothing happened in the session (#discard?).
+      @discard = false
     end
+
+    # Whether the session was empty as the worker left it, so the caller
+    # deletes it once the lock is free (SessionManager.run_session_loop
+    # checks again then).
+    def discard? = @discard
+
+    # What a new session starts on (and /model resets to); nil before #run.
+    attr_reader :default_model
 
     # @return [Symbol] :idle_exit, or :exit_requested when a client asked it
     #   to exit (Bridge POST /exit)
@@ -100,8 +110,9 @@ module Samagotchi
       })
       # /model's default is the config's, as in the REPL; the Engine started
       # on the session's model.
+      @default_model = ModelProfile.required_model_name(nil)
       @commands = SessionCommands.new(engine: @engine, turn_flow: @turn_flow,
-                                      default_model: ModelProfile.required_model_name(nil),
+                                      default_model: @default_model,
                                       save: ->(session) { session.save(state_dir: @state_dir) })
       # Start the shared idle scheduler so the worker can trigger turns when
       # reminders are due (even with no user input).
@@ -146,8 +157,8 @@ module Samagotchi
           input_files = SessionManager.find_new_input_files(@session_dir)
           if input_files.empty?
             next if run_due_reminders
-            return :idle_exit if @idle_exit.due? && leave_idle
-            return :exit_requested if @exit_requested && leave_on_request
+            return left(:idle_exit) if @idle_exit.due? && leave_idle
+            return left(:exit_requested) if @exit_requested && leave_on_request
 
             @waker.wait(@poll_interval)
             next
@@ -518,6 +529,18 @@ module Samagotchi
         SessionManager.debug_log("[worker] pid #{Process.pid} exits on request of #{@exit_requested_by || "a client"}")
         true
       end
+    end
+
+    # @return [Symbol] +result+, with #discard? decided
+    def left(result)
+      @discard = empty_session?
+      result
+    end
+
+    # Memory used before any turn saved it lives only in the Engine.
+    def empty_session?
+      SessionManager.discard_empty? && Array(@engine.used_memory_names).empty? &&
+        SessionManager.empty_session?(@session_id, state_dir: @state_dir, default_model: @default_model)
     end
 
     def log_idle_exit

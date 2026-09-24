@@ -510,10 +510,11 @@ module Samagotchi
       # Kept in a class ivar so the lock's File lives as long as the worker.
       @owner_lock = OwnerLock.acquire(session_dir, kind: "worker", wait: owner_wait)
       exit(0) unless @owner_lock
+      worker = Worker.new(session_id: session_id, state_dir: sd, session_dir: session_dir,
+                          idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
       result = begin
         File.write(File.join(session_dir, PID_FILE), Process.pid.to_s)
-        Worker.new(session_id: session_id, state_dir: sd, session_dir: session_dir,
-                   idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval).run
+        worker.run
       ensure
         @owner_lock.release
       end
@@ -522,8 +523,24 @@ module Samagotchi
       # owner after its write and wakes one, or this finds its input.
       if %i[idle_exit exit_requested].include?(result) && !find_new_input_files(session_dir).empty?
         resume_session(session_id, state_dir: sd)
+      elsif worker.discard?
+        discard_left_session(session_id, state_dir: sd, default_model: worker.default_model)
       end
       result
+    end
+
+    # Delete a session its worker left empty. Checked again now the lock is
+    # free: a note or input may have come in since the worker looked, and a
+    # worker woken meanwhile owns it (delete_session refuses). A `chi send`
+    # landing between this check and the delete fails with "no session"
+    # (a window of an empty session's last moments, left as is).
+    private_class_method def self.discard_left_session(session_id, state_dir:, default_model:)
+      return unless empty_session?(session_id, state_dir: state_dir, default_model: default_model)
+
+      delete_session(session_id, state_dir: state_dir)
+      debug_log("[worker] pid #{Process.pid} discarded empty session #{session_id}")
+    rescue DeleteRefused, OwnedByTUI, ArgumentError, SystemCallError => e
+      debug_log("[worker] session #{session_id} kept (#{e.class}: #{e.message})")
     end
 
     # One line in the debug log (LogPath), unless log.disable is set.

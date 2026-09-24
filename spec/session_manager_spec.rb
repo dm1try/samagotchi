@@ -820,7 +820,7 @@ RSpec.describe Samagotchi::SessionManager do
     let(:engine) do
       instance_double(Samagotchi::Engine, "interface=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil,
                                           reminder_store: reminders, turn_running?: false, last_activity_at: 0.0,
-                                          messages_checkpoint: [])
+                                          messages_checkpoint: [], used_memory_names: [])
     end
 
     before do
@@ -905,6 +905,88 @@ RSpec.describe Samagotchi::SessionManager do
 
       expect(Process).to have_received(:spawn)
       expect(Samagotchi::OwnerLock.owner(session_dir)).to be_nil
+    end
+
+    describe "an empty session" do
+      let(:session) do
+        model = Samagotchi::ModelProfile.required_model_name(nil)
+        Samagotchi::Session.new_session(mode: "assist", model_name: model, working_directory: "/tmp").tap do |s|
+          s.save(state_dir: tmpdir)
+        end
+      end
+      let(:session_file) { File.join(tmpdir, "#{session.id}.json") }
+
+      it "is deleted once its worker left it" do
+        expect(run_worker).to eq(:idle_exit)
+
+        expect(File.exist?(session_file)).to be(false)
+        expect(Dir.exist?(session_dir)).to be(false)
+      end
+
+      it "is deleted when it left on a client's request too" do
+        allow_any_instance_of(Samagotchi::Worker).to receive(:discard?).and_return(true)
+        allow_any_instance_of(Samagotchi::Worker).to receive(:default_model).and_return(session.model_name)
+        allow_any_instance_of(Samagotchi::Worker).to receive(:run).and_return(:exit_requested)
+
+        run_worker
+
+        expect(File.exist?(session_file)).to be(false)
+      end
+
+      it "is kept with a conversation" do
+        session.messages << { role: "user", content: "hi" }
+        session.save(state_dir: tmpdir)
+
+        run_worker
+
+        expect(File.exist?(session_file)).to be(true)
+      end
+
+      it "is kept on another model (/model)" do
+        session.model_name = "some/other-model"
+        session.save(state_dir: tmpdir)
+
+        run_worker
+
+        expect(File.exist?(session_file)).to be(true)
+      end
+
+      it "is kept with memory the engine used before any turn saved it" do
+        allow(engine).to receive(:used_memory_names).and_return(["notes"])
+
+        run_worker
+
+        expect(File.exist?(session_file)).to be(true)
+      end
+
+      it "is kept with session.keep_empty" do
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("session.keep_empty").and_return(true)
+
+        run_worker
+
+        expect(File.exist?(session_file)).to be(true)
+      end
+
+      it "is kept when a note came in after the worker looked" do
+        allow(engine).to receive(:stop_idle) do
+          described_class.write_note(session.id, text: "later", state_dir: tmpdir)
+        end
+
+        expect(run_worker).to eq(:idle_exit)
+
+        expect(File.exist?(session_file)).to be(true)
+      end
+
+      it "is kept when another owner took it after the worker left" do
+        allow(described_class).to receive(:session_owner).and_call_original
+        allow(described_class).to receive(:session_owner).with(session.id, state_dir: tmpdir)
+                                                         .and_return({ "kind" => "worker", "pid" => 1 })
+
+        run_worker
+
+        expect(File.exist?(session_file)).to be(true)
+      end
     end
   end
 
