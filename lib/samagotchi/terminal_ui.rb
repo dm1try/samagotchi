@@ -133,8 +133,9 @@ module Samagotchi
       @no_default_input = no_default_input
       @non_interactive = non_interactive
       @requested_memories = Array(memories)
-      @last_recap = nil
-      @last_recap_generation = nil
+      # A recap written while idle, printed by the main thread at the open
+      # prompt (#flush_pending_recap).
+      @pending_recap = nil
       # Every terminal write goes through the surface. The REPL swaps in a
       # live region when the terminal can show one (#assist_loop), unless it
       # was given a surface to draw on.
@@ -307,6 +308,8 @@ module Samagotchi
       if @resume_session
         messages = ContextNote.with_system_head(session.messages.dup, system_message)
         @surface.commit("Resumed session: #{session.id}")
+        saved = @engine.saved_recap
+        @surface.commit(recap_block(saved[:text], turns_since: saved[:turns_since])) if saved
       else
         messages = [system_message]
         @surface.commit("Session: #{session.id}")
@@ -796,6 +799,7 @@ module Samagotchi
       sync_continue_slot(awaiting_continue)
       @repl_input.sync_prompt
       loop do
+        flush_pending_recap
         kind, line = @repl_input.pop(timeout: REMINDER_PENDING_POLL_INTERVAL)
         if kind
           # What the line does may change the status (/model, a turn).
@@ -886,15 +890,15 @@ module Samagotchi
       @commands.run(SessionCommands::MODELS_COMMAND).output
     end
 
-    # Handle /recap command - display the last generated recap
+    # /recap: the saved recap, and a new one asked for at once when the
+    # chat moved on (it prints when it arrives, #flush_pending_recap).
     def handle_recap_command
       recap = @engine.recap
-      return recap_command_text(enabled: false, recap: nil) unless recap
+      return recap_command_text(enabled: false) unless recap
 
-      # Any later turn (or recap attempt) bumps the generation, so a
-      # mismatch means the conversation moved on since this recap.
-      recap_command_text(enabled: true, recap: @last_recap, stale: @last_recap && recap.generation != @last_recap_generation,
-                         min_user_turns: recap.min_user_turns, inactivity_seconds: recap.inactivity.to_i)
+      saved = @engine.saved_recap
+      request = @engine.turn_running? ? :busy : @engine.request_recap
+      recap_command_text(enabled: true, saved: saved, request: request, min_user_turns: recap.min_user_turns)
     end
 
     # A resumed session doesn't get the default input either.
@@ -1463,23 +1467,27 @@ module Samagotchi
 
     # ── Idle session recap ───────────────────────────────────────────────────
     #
-    # The Engine's idle detector (opt-in via SAMAGOTCHI_RECAP_BASE_URL +
-    # SAMAGOTCHI_RECAP_MODEL) emits a :recap_ready event once the session has
-    # been idle for its inactivity threshold. We store it for on-demand display
-    # via the /recap command.
-
+    # The Engine's idle job emits :recap_ready once the session has been idle
+    # for its inactivity threshold (or /recap asked). On the scheduler thread:
+    # kept for the main thread to print at the open prompt. One collected
+    # just as a turn started describes the chat before it.
     def handle_recap_ready(event)
       return unless event[:type] == :recap_ready
-      recap = event[:recap]
-      generation = event[:generation]
-      return if recap.nil? || recap.to_s.strip.empty?
-      return unless @engine.recap&.generation == generation
-      # Store the recap for on-demand display via /recap command
-      @last_recap = recap
-      @last_recap_generation = generation
+      return if event[:recap].to_s.strip.empty? || @engine.turn_running?
+
+      @pending_recap = event[:recap].to_s
     end
 
-    # Resolve the recap config (OFF by default). Returns false when explicitly
+    # Print a recap written while idle (main thread, at the open prompt).
+    def flush_pending_recap
+      recap = @pending_recap
+      return unless recap
+
+      @pending_recap = nil
+      @surface.commit(recap_block(recap))
+    end
+
+    # Resolve the recap config (on by default). Returns false when explicitly
     # disabled, nil when nothing is configured, or a Hash when enabled so the
     # Engine can build the detector. Single precedence path via the Config
     # registry: CLI > ENV (SAMAGOTCHI_RECAP_*) > file (recap:) > default.

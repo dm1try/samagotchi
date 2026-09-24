@@ -33,17 +33,39 @@ module Samagotchi
 
       private
 
-      # What /recap says (the REPL's words, attached mode's too).
-      # @param recap [String, nil] the latest recap
-      # @param stale [Boolean] the conversation moved on since it
-      def recap_command_text(enabled:, recap:, stale: false, min_user_turns: nil, inactivity_seconds: nil)
-        unless enabled
-          return "recap is off (recap: false in config.yml, or SAMAGOTCHI_RECAP_ENABLED=false)"
-        end
-        return "session recap#{' (from before your latest turn)' if stale}:\n#{recap}" if recap
+      # The recap shown on return: dim, one "recap>" block, noting how many
+      # turns came since it was written.
+      def recap_block(text, turns_since: 0)
+        n = turns_since.to_i
+        note = if n == 1 then " (before the last turn)"
+               elsif n > 1 then " (before the last #{n} turns)"
+               else ""
+               end
+        text.to_s.strip.lines.map(&:chomp).each_with_index.map do |line, i|
+          paint(i.zero? ? "recap#{note}> #{line}" : line, 90)
+        end.join("\n")
+      end
 
-        "no recap available yet — the session needs at least #{min_user_turns} user turns and " \
-          "#{inactivity_seconds}s of inactivity to generate one automatically"
+      RECAP_OFF_TEXT = "recap is off (recap: false in config.yml, or SAMAGOTCHI_RECAP_ENABLED=false)"
+
+      # What /recap says (the REPL's words, attached mode's too): the saved
+      # recap, then what came of asking for a new one.
+      # @param saved [Hash, nil] {text:, turns_since:}
+      # @param request [Symbol, String, nil] IdleRecap#request_now's answer
+      def recap_command_text(enabled:, saved: nil, request: nil, min_user_turns: nil)
+        return RECAP_OFF_TEXT unless enabled
+
+        saved = saved&.transform_keys(&:to_sym)
+        lines = []
+        lines << recap_block(saved[:text], turns_since: saved[:turns_since]) if saved
+        lines << case request&.to_sym
+                 when :started, :in_flight then "writing a recap…"
+                 when :nothing_new then saved ? "(nothing new since this recap)" : "no recap yet: nothing to recap"
+                 when :too_short then "no recap yet: it needs at least #{min_user_turns} user turns"
+                 when :busy then saved ? nil : "no recap yet: a turn is running; one is written once the session is idle"
+                 when :failed then "(could not ask for a recap)"
+                 end
+        lines.compact.join("\n")
       end
 
       # ── The status line (the REPL's, and attached mode's idle one) ────────

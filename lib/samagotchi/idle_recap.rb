@@ -203,6 +203,10 @@ module Samagotchi
       @store = store
 
       @mutex = Monitor.new
+      # Serializes the attempt state machine (#tick on the scheduler thread,
+      # #request_now on a Bridge or REPL thread, #write_now). Never held by
+      # #state, so a snapshot reading it doesn't wait on an emit.
+      @run_mutex = Monitor.new
       @generation = 0
       @last_fire_activity_seq = nil
       @in_flight = nil
@@ -221,10 +225,25 @@ module Samagotchi
     # collects a finished (or overdue) request, else starts one when
     # eligible, so the other idle jobs keep ticking meanwhile.
     def tick
-      return collect if in_flight?
-      return unless should_fire?
+      @run_mutex.synchronize do
+        next collect if in_flight?
+        next unless should_fire?
 
-      start
+        start
+      end
+    end
+
+    # Ask for a recap now (/recap): start an attempt at once, without the
+    # inactivity window; the scheduler collects it as usual.
+    # @return [Symbol] :started, :in_flight, :busy (a turn runs),
+    #   :too_short, :nothing_new or :failed
+    def request_now
+      @run_mutex.synchronize do
+        next :in_flight if in_flight?
+        next :busy if @engine.turn_running?
+
+        start
+      end
     end
 
     # Write a recap now and wait for it, bounded by the timeout: the worker
@@ -235,21 +254,23 @@ module Samagotchi
     # @param on_start [#call, nil] called when a request goes out
     # @return [String, nil] the recap written, nil when none was
     def write_now(on_start: nil)
-      unless in_flight?
-        start
-        on_start&.call if in_flight?
-      end
-      job = @in_flight
-      return nil unless job
+      @run_mutex.synchronize do
+        unless in_flight?
+          start
+          on_start&.call if in_flight?
+        end
+        job = @in_flight
+        next nil unless job
 
-      job[:thread].join([job[:deadline] - @clock.call, 0].max)
-      if job[:thread].alive?
-        @in_flight = nil # overdue: left to its IdleClient timeout
-        return nil
+        job[:thread].join([job[:deadline] - @clock.call, 0].max)
+        if job[:thread].alive?
+          @in_flight = nil # overdue: left to its IdleClient timeout
+          next nil
+        end
+        before = @state
+        collect
+        @state.equal?(before) ? nil : @state[:text]
       end
-      before = @state
-      collect
-      @state.equal?(before) ? nil : @state[:text]
     end
 
     # @return [Hash] the model the next attempt asks: {base_url:,
@@ -283,6 +304,7 @@ module Samagotchi
 
     # Start an attempt: snapshot, build the prompt, and spawn the summarize
     # thread. The result is picked up by #collect on a later tick.
+    # @return [Symbol] :started, :too_short, :nothing_new or :failed
     def start
       gen = bump_generation
       # Latch the attempt, not the success: a short history, a failed or
@@ -290,22 +312,23 @@ module Samagotchi
       # scheduler tick. The next recorded activity re-arms the window.
       @last_fire_activity_seq = @engine.activity_seq
       parsed = safe_parse(@engine.messages_json_for_recap)
-      return if parsed.nil? || parsed.empty?
+      return :too_short if parsed.nil? || parsed.empty?
       user_turns = parsed.count { |message| message.is_a?(Hash) && message["role"] == "user" }
-      return if user_turns < @min_user_turns
+      return :too_short if user_turns < @min_user_turns
       previous = continuable_state(parsed)
       fresh = parsed.drop(previous ? previous[:covered] : 0)
       transcript = TranscriptFilter.build(fresh)
       # Nothing new said (only notes, tool traffic, or no messages at all):
       # the recap still stands, so no request.
-      return if transcript.strip.empty?
+      return :nothing_new if transcript.strip.empty?
       prompt = RecapPrompt.build(transcript, tool_names: TranscriptFilter.tool_names(fresh), previous: previous&.dig(:text))
-      return if prompt.nil?
+      return :nothing_new if prompt.nil?
       asked = target
       @in_flight = { thread: spawn_summarize(client_for(asked), prompt), generation: gen, deadline: @clock.call + @timeout,
                      covered: parsed.size, covered_digest: self.class.digest(parsed.last), model: asked[:label] }
+      :started
     rescue StandardError
-      nil
+      :failed
     end
 
     # Pick up the in-flight attempt. Save/emit happens only here, on the

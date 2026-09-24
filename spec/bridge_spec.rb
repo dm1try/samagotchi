@@ -1073,6 +1073,33 @@ RSpec.describe Samagotchi::Bridge do
       end
     end
 
+    describe "POST /session/:id/recap" do
+      def post_recap(session_id: @session.id)
+        res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{session_id}/recap"), "{}",
+                             "Content-Type" => "application/json")
+        [res.code.to_i, JSON.parse(res.body)]
+      end
+
+      it "answers with the saved recap and asks for a new one" do
+        start_bridge
+        recap = instance_double(Samagotchi::IdleRecap, min_user_turns: 2)
+        allow(@engine).to receive(:recap).and_return(recap)
+        allow(@engine).to receive(:saved_recap).and_return({ text: "We set up Bluefin.", covered: 4, turns_since: 1, created_at: "t" })
+        allow(@engine).to receive(:request_recap).and_return(:started)
+
+        expect(post_recap).to eq([200, { "enabled" => true, "min_user_turns" => 2, "request" => "started",
+                                         "saved" => { "text" => "We set up Bluefin.", "covered" => 4, "turns_since" => 1, "created_at" => "t" } }])
+      end
+
+      it "says when recap is off, and 404s other sessions" do
+        start_bridge
+        allow(@engine).to receive(:recap).and_return(nil)
+
+        expect(post_recap).to eq([200, { "enabled" => false }])
+        expect(post_recap(session_id: "other").first).to eq(404)
+      end
+    end
+
     describe "POST /session/:id/exit" do
       def post_exit(body, session_id: @session.id)
         res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{session_id}/exit"),

@@ -58,7 +58,7 @@ module Samagotchi
       # Prompt labels by the sender's client_id prefix.
       CLIENT_LABELS = { "web" => "web", "tui" => "tui", "system" => "reminder" }.freeze
 
-      attr_reader :client_id, :recap
+      attr_reader :client_id
 
       # @return [String, nil] the model the worker's turns run on, as the
       #   last command said
@@ -96,7 +96,6 @@ module Samagotchi
         @running = false
         @joined_mid_turn = false
         @attached = false
-        @recap = nil
         @question = nil
         @answered_ids = Set.new
         @reader = nil
@@ -207,7 +206,9 @@ module Samagotchi
         when :question_answered then question_answered(event)
         when :question_cancelled
           close_question("(question cancelled)") if @question
-        when :recap_ready then @recap = event[:recap]
+        # Written while the session sat idle: shown at the open prompt. One
+        # collected just as a turn started describes the chat before it.
+        when :recap_ready then @screen.commit(recap_block(event[:recap])) unless @running || event[:recap].to_s.strip.empty?
         when :guardrail_warning then @screen.commit("guardrails> #{event[:message]}")
         when :generation_completed
           take_served_model(event[:served_model], event[:requested_model])
@@ -494,15 +495,17 @@ module Samagotchi
       # The attached TUI's commands, for Tab.
       def slash_commands = (InputSupport::SLASH_COMMANDS + EXIT_COMMANDS + DETACH_COMMANDS).uniq.sort
 
-      # The recap from the join or a :recap_ready (dropped when a turn starts,
-      # so never stale), with the REPL's words; the settings from the worker.
+      # The saved recap, and a new one asked for at once (it arrives as
+      # :recap_ready), with the REPL's words.
       def show_recap
-        state = @client.get_json("state")&.dig("session_state_snapshot")
-        return @screen.commit("(no recap settings: the worker did not answer)") unless state
+        reply = @client.request_recap
+        answer = reply.status == 200 ? reply.json : nil
+        return @screen.commit("(no recap: the worker did not answer)") unless answer
 
-        @screen.commit(recap_command_text(enabled: state["recap_enabled"], recap: @recap,
-                                          min_user_turns: state["recap_min_user_turns"],
-                                          inactivity_seconds: state["recap_inactivity_seconds"]))
+        @screen.commit(recap_command_text(enabled: answer["enabled"], saved: answer["saved"],
+                                          request: answer["request"], min_user_turns: answer["min_user_turns"]))
+      rescue SystemCallError, IOError
+        @screen.commit("(no recap: the worker did not answer)")
       end
 
       def prompt_text
@@ -672,10 +675,12 @@ module Samagotchi
           @screen.commit("(resynced with the session)") if reset
         else
           @attached = true
+          # The recap first: what the session was about, then where it stopped.
+          saved = snapshot[:saved_recap]
+          @screen.commit(recap_block(saved[:text], turns_since: saved[:turns_since])) if saved && !saved[:text].to_s.strip.empty?
           render_join_header(Array(snapshot[:messages]))
           @screen.commit("guardrails> #{snapshot[:guardrail_warning]}") if snapshot[:guardrail_warning]
         end
-        @recap = snapshot[:recap]
         offer = snapshot[:continue_offer]
         had_offer = !@continue_offer.nil?
         @continue_offer = offer && { context: offer[:context], no_interrupt: offer[:no_interrupt] }
@@ -815,7 +820,6 @@ module Samagotchi
       end
 
       def start_turn(event)
-        @recap = nil # the turn makes it stale
         @running = true
         @joined_mid_turn = false
         @turn_continues = event[:prompt].nil?

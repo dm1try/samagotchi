@@ -4,6 +4,7 @@ require "samagotchi/terminal_ui"
 require "spec_helper"
 require "stringio"
 require "json"
+require_relative "support/recording_surface"
 
 RSpec.describe Samagotchi::TerminalUI do
   let(:client) { instance_double(Samagotchi::Client) }
@@ -108,24 +109,67 @@ RSpec.describe Samagotchi::TerminalUI do
   end
 
   describe "/recap command" do
-    let(:recap_job) { double("recap", generation: 3, min_user_turns: 2, inactivity: 180.0) }
+    let(:engine) { agent.instance_variable_get(:@engine) }
+    let(:recap_job) { double("recap", min_user_turns: 2) }
 
-    before { allow(agent.instance_variable_get(:@engine)).to receive(:recap).and_return(recap_job) }
-
-    it "shows the latest recap as-is while the conversation hasn't moved on" do
-      agent.send(:handle_recap_ready, { type: :recap_ready, recap: "Did X.", generation: 3 })
-      expect(agent.send(:handle_recap_command)).to eq("session recap:\nDid X.")
+    before do
+      allow(engine).to receive(:recap).and_return(recap_job)
+      allow(engine).to receive(:turn_running?).and_return(false)
     end
 
-    it "labels the recap stale once a later turn bumped the generation" do
-      agent.send(:handle_recap_ready, { type: :recap_ready, recap: "Did X.", generation: 3 })
-      allow(recap_job).to receive(:generation).and_return(4)
-      expect(agent.send(:handle_recap_command)).to eq("session recap (from before your latest turn):\nDid X.")
+    it "shows the saved recap and asks for a new one when the chat moved on" do
+      allow(engine).to receive(:saved_recap).and_return({ text: "Did X.", covered: 4, turns_since: 1 })
+      allow(engine).to receive(:request_recap).and_return(:started)
+      expect(agent.send(:handle_recap_command)).to eq("recap (before the last turn)> Did X.\nwriting a recap…")
+    end
+
+    it "says there is nothing new since a current one" do
+      allow(engine).to receive(:saved_recap).and_return({ text: "Did X.", covered: 4, turns_since: 0 })
+      allow(engine).to receive(:request_recap).and_return(:nothing_new)
+      expect(agent.send(:handle_recap_command)).to eq("recap> Did X.\n(nothing new since this recap)")
+    end
+
+    it "asks for none during a turn" do
+      allow(engine).to receive(:turn_running?).and_return(true)
+      allow(engine).to receive(:saved_recap).and_return(nil)
+      allow(engine).to receive(:request_recap)
+      expect(agent.send(:handle_recap_command)).to eq("no recap yet: a turn is running; one is written once the session is idle")
+      expect(engine).not_to have_received(:request_recap)
     end
 
     it "says recap is off and where that is set when it is disabled" do
-      allow(agent.instance_variable_get(:@engine)).to receive(:recap).and_return(nil)
+      allow(engine).to receive(:recap).and_return(nil)
       expect(agent.send(:handle_recap_command)).to include("recap: false in config.yml").and include("SAMAGOTCHI_RECAP_ENABLED")
+    end
+
+    describe "on the screen" do
+      let(:surface) { RecordingSurface.new }
+      let(:agent) { described_class.new(mode: :assist, client: client, surface: surface) }
+
+      it "prints a recap written while idle at the open prompt, on the main thread" do
+        agent.send(:handle_recap_ready, { type: :recap_ready, recap: "Did Y.", generation: 3, covered: 6 })
+        expect(surface.lines.grep(/Did Y/)).to be_empty
+        agent.send(:flush_pending_recap)
+        expect(surface.lines.last).to eq("recap> Did Y.")
+        agent.send(:flush_pending_recap)
+        expect(surface.lines.grep(/Did Y/).size).to eq(1)
+      end
+
+      it "drops one that lands during a turn" do
+        allow(engine).to receive(:turn_running?).and_return(true)
+        agent.send(:handle_recap_ready, { type: :recap_ready, recap: "Did Y.", generation: 3, covered: 6 })
+        allow(engine).to receive(:turn_running?).and_return(false)
+        agent.send(:flush_pending_recap)
+        expect(surface.lines.grep(/Did Y/)).to be_empty
+      end
+
+      it "shows the saved recap under the resumed session's line" do
+        session = instance_double(Samagotchi::Session, id: "s-9", messages: [{ role: "user", content: "hi" }])
+        agent.instance_variable_set(:@resume_session, session)
+        allow(engine).to receive(:saved_recap).and_return({ text: "Did X.", covered: 1, turns_since: 0 })
+        agent.send(:messages_for, session)
+        expect(surface.lines).to eq(["Resumed session: s-9", "recap> Did X."])
+      end
     end
   end
 

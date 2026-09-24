@@ -155,6 +155,12 @@ module Samagotchi
       post("exit", body, read_body: true)
     end
 
+    # POST /session/:id/recap: the saved recap, and a new one asked for.
+    # @return [Response] 200 {enabled, saved, request, min_user_turns}
+    def request_recap
+      post("recap", {}, read_body: true)
+    end
+
     # POST /session/:id/cancel. 202 = requested, 409 = no active turn.
     # @return [Response] (status only)
     def cancel(reason:)

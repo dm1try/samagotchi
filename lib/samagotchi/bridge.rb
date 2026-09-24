@@ -297,6 +297,9 @@ module Samagotchi
         elsif (m = exit_match(request[:path])) && method == "POST"
           payload, status, body = handle_exit_request(m[1], request[:body])
           write_json(io, status, payload, body)
+        elsif (m = recap_match(request[:path])) && method == "POST"
+          payload, status, body = handle_recap(m[1])
+          write_json(io, status, payload, body)
         elsif (m = state_match(request[:path])) && method == "GET"
           payload, status, body = handle_state(m[1])
           write_json(io, status, payload, body)
@@ -419,6 +422,25 @@ module Samagotchi
 
     def exit_match(path)
       %r|\A/session/([^/]+)/exit\z|u.match(path.to_s)
+    end
+
+    def recap_match(path)
+      %r|\A/session/([^/]+)/recap\z|u.match(path.to_s)
+    end
+
+    # /recap in an attached TUI: the saved recap, and a new one asked for at
+    # once (it arrives as :recap_ready). Answers mid-turn too.
+    # 200 {enabled:, saved:, request:, min_user_turns:}. Returns [headers, status, body].
+    def handle_recap(session_id)
+      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
+
+      recap = @engine.recap
+      return [{}, 200, { enabled: false }] unless recap
+
+      saved = @engine.saved_recap
+      [{}, 200, { enabled: true, saved: saved, request: @engine.request_recap.to_s, min_user_turns: recap.min_user_turns }]
+    rescue StandardError => e
+      [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 
     # Cancel the active turn on this session's engine, if any.

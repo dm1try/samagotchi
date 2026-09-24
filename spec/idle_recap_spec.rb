@@ -833,4 +833,47 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(client).to have_received(:summarize).once
     end
   end
+
+  describe "#request_now (/recap)" do
+    let(:two_turns) do
+      JSON.generate([{ "role" => "user", "content" => "Hello" }, { "role" => "model", "content" => "Hi" },
+                     { "role" => "user", "content" => "What about X?" }])
+    end
+
+    def idle_for(engine, client = double(summarize: "Asked recap."))
+      described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 180.0,
+                          timeout: 5.0, client: client, clock: -> { base_time })
+    end
+
+    it "starts an attempt at once, without the inactivity window; the scheduler collects it" do
+      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
+      idle = idle_for(engine)
+      expect(idle.request_now).to eq(:started)
+      500.times { break unless idle.in_flight?; sleep(0.01); idle.tick }
+      expect(engine).to have_received(:emit_recap).with(recap: "Asked recap.", generation: idle.generation, covered: 3)
+    end
+
+    it "says why there is nothing to ask" do
+      short = stub_engine(messages: JSON.generate([{ "role" => "user", "content" => "Hello" }]))
+      expect(idle_for(short).request_now).to eq(:too_short)
+
+      engine = stub_engine(messages: two_turns)
+      idle = idle_for(engine)
+      idle.write_now
+      expect(idle.request_now).to eq(:nothing_new)
+
+      busy = stub_engine(messages: two_turns, turn_running: true)
+      expect(idle_for(busy).request_now).to eq(:busy)
+    end
+
+    it "does not start a second attempt while one is in flight" do
+      gate = Queue.new
+      client = double("slow")
+      allow(client).to receive(:summarize) { gate.pop; "x" }
+      idle = idle_for(stub_engine(messages: two_turns), client)
+      expect(idle.request_now).to eq(:started)
+      expect(idle.request_now).to eq(:in_flight)
+      gate.push(:go)
+    end
+  end
 end

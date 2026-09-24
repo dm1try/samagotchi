@@ -1104,6 +1104,12 @@ module Samagotchi
       @recap&.write_now(on_start: on_start)
     end
 
+    # Ask for a recap now (/recap), without waiting for the idle window.
+    # @return [Symbol] IdleRecap#request_now's answer, or :off
+    def request_recap
+      @recap ? @recap.request_now : :off
+    end
+
     # The recap saved with the current session (recap.json), and how many
     # user turns came after it (0: it is current).
     # @return [Hash, nil] {text:, covered:, turns_since:, created_at:}

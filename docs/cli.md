@@ -119,7 +119,7 @@ A worker nobody uses exits after `session.idle_exit_minutes` (30 by default, `0`
 for never): no turn running or queued, no UI attached (an open web tab or an
 attached terminal counts, even an idle one) and no reminder registered. The next
 prompt or `--attach` wakes a new worker with the conversation intact; `/stats`
-counters and the last idle recap start over.
+counters start over (the recap is saved with the session).
 
 A session you leave with nothing in it (no prompt sent, no `/model` switch, no
 note or image) is deleted as its worker exits, and `/exit` says so; set
@@ -260,6 +260,23 @@ Notes:
 - With `--default` the new default is written to `~/.config/samagotchi/config.yml` (honoring `XDG_CONFIG_HOME`) and takes effect for all new sessions; the current session's effective model is also updated immediately. Bare aliases and `host:model` are both valid.
 - Worker sessions inherit `hosts:` via `SAMAGOTCHI_HOSTS_JSON`.
 - The idle recap uses the session's current model (a switch counts from the next recap), unless `recap: {host_ref, model}` pins one.
+
+## Session recap
+
+A short recap of the session, for when you come back to it:
+
+- It is written once the session has sat idle for `recap.inactivity` (180 s)
+  after at least `recap.min_user_turns` (2) prompts, and as a worker (or the
+  REPL) exits, when something new was said since the last one. Each one
+  builds on the previous recap, so it only sends what is new.
+- It is saved with the session (`<session>/recap.json`) and shown as a dim
+  `recap>` block when you attach or `--resume`, noting how many turns came
+  after it (`recap (before the last 2 turns)>`). One written while you sit at
+  the prompt prints there.
+- `/recap` shows the saved one and asks for a new one when the chat moved on
+  (`writing a recap…`, then the recap when it comes).
+- It uses the session's own model unless `recap:` names one;
+  `recap: false` turns it off. See configuration.md.
 
 ## Tool Activity Log
 

@@ -154,18 +154,35 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     end
   end
 
-  it "keeps the latest recap for /recap, from the join's snapshot or announced later, until a turn starts" do
-    joined = snapshot
-    joined[:snapshot][:recap] = "earlier recap"
-    feed(joined)
-    expect(attached.recap).to eq("earlier recap")
+  describe "the recap on return" do
+    it "shows the saved recap when joining, before the last exchange, noting the turns since" do
+      joined = snapshot(messages: [{ role: "user", content: "hi" }, { role: "model", content: "hello" }])
+      joined[:snapshot][:saved_recap] = { text: "We set up Bluefin.", covered: 2, turns_since: 1 }
+      feed(joined)
 
-    feed({ type: :recap_ready, recap: "we fixed the bug", generation: 3 })
-    expect(attached.recap).to eq("we fixed the bug")
-    expect(screen.lines).to be_empty
+      expect(screen.lines.first(2)).to eq(["recap (before the last turn)> We set up Bluefin.", "user> hi"])
+    end
 
-    feed({ type: :turn_started, prompt: "next", origin: { client_id: "web:1" } })
-    expect(attached.recap).to be_nil
+    it "shows it once, not again on a resync" do
+      joined = snapshot
+      joined[:snapshot][:saved_recap] = { text: "We set up Bluefin.", covered: 2, turns_since: 0 }
+      feed(joined, joined.merge(type: :reset))
+
+      expect(screen.lines.grep(/Bluefin/)).to eq(["recap> We set up Bluefin."])
+    end
+
+    it "prints a recap written while it sits idle" do
+      feed(snapshot, { type: :recap_ready, recap: "We fixed the bug.", generation: 3, covered: 4 })
+
+      expect(screen.lines.last).to eq("recap> We fixed the bug.")
+    end
+
+    it "ignores one that lands after a turn started" do
+      feed(snapshot, { type: :turn_started, prompt: "next", origin: { client_id: "web:1" } },
+           { type: :recap_ready, recap: "stale", generation: 3, covered: 4 })
+
+      expect(screen.lines.grep(/stale/)).to be_empty
+    end
   end
 
   it "shows the guardrail load warning a snapshot carries when joining" do
@@ -271,43 +288,52 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
     expect(screen.lines).to include(a_string_including("turns:            4"))
   end
 
-  describe "/recap, with the REPL's words" do
-    def state(**fields) = JSON.parse(JSON.generate(session_state_snapshot: fields))
+  describe "/recap" do
+    def recap_reply(body) = Samagotchi::BridgeClient::Response.new(status: 200, body: JSON.generate(body))
 
-    it "says how to turn recap on when it's off" do
-      allow(client).to receive(:get_json).with("state").and_return(state(recap_enabled: false))
+    it "says how recap is turned off when it is" do
+      allow(client).to receive(:request_recap).and_return(recap_reply(enabled: false))
 
       run_with(["/recap"])
 
       expect(screen.lines).to include(a_string_starting_with("recap is off (recap: false in config.yml"))
     end
 
-    it "says when one would come, while there is none yet" do
-      allow(client).to receive(:get_json).with("state")
-        .and_return(state(recap_enabled: true, recap_min_user_turns: 2, recap_inactivity_seconds: 300))
+    it "shows the saved recap, and that a new one is being written" do
+      allow(client).to receive(:request_recap)
+        .and_return(recap_reply(enabled: true, min_user_turns: 2, request: "started",
+                                saved: { text: "We fixed the bug.", covered: 4, turns_since: 2 }))
 
       run_with(["/recap"])
 
-      expect(screen.lines).to include("no recap available yet — the session needs at least 2 user turns and 300s " \
-                                      "of inactivity to generate one automatically")
+      expect(screen.lines).to include("recap (before the last 2 turns)> We fixed the bug.\nwriting a recap…")
     end
 
-    it "shows the latest recap" do
-      allow(client).to receive(:get_json).with("state").and_return(state(recap_enabled: true))
-      joined = snapshot
-      joined["snapshot"]["recap"] = "We fixed the bug."
+    it "says when nothing new was said since" do
+      allow(client).to receive(:request_recap)
+        .and_return(recap_reply(enabled: true, min_user_turns: 2, request: "nothing_new",
+                                saved: { text: "We fixed the bug.", covered: 4, turns_since: 0 }))
 
-      run_with(["/recap"], first: joined)
+      run_with(["/recap"])
 
-      expect(screen.lines).to include("session recap:\nWe fixed the bug.")
+      expect(screen.lines).to include("recap> We fixed the bug.\n(nothing new since this recap)")
+    end
+
+    it "says what it needs while there is none yet" do
+      allow(client).to receive(:request_recap)
+        .and_return(recap_reply(enabled: true, min_user_turns: 2, request: "too_short", saved: nil))
+
+      run_with(["/recap"])
+
+      expect(screen.lines).to include("no recap yet: it needs at least 2 user turns")
     end
 
     it "says so when the worker doesn't answer" do
-      allow(client).to receive(:get_json).with("state").and_return(nil)
+      allow(client).to receive(:request_recap).and_return(Samagotchi::BridgeClient::Response.new(status: 404, body: "{}"))
 
       run_with(["/recap"])
 
-      expect(screen.lines).to include("(no recap settings: the worker did not answer)")
+      expect(screen.lines).to include("(no recap: the worker did not answer)")
     end
   end
 
