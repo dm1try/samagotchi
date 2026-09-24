@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel, canStopSession, goneSessionNotice } from "../../../lib/samagotchi/web/public/format.js";
+import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel, canStopSession, goneSessionNotice, withLiveStatus } from "../../../lib/samagotchi/web/public/format.js";
 
 test("noteHtml: who sent the context note, then its text, both escaped", () => {
   assert.equal(
@@ -180,4 +180,15 @@ test("goneSessionNotice: the short id and why the page left it", () => {
   assert.equal(goneSessionNotice("0123456789abcdef", "not_found"), "Session 01234567 was not found.");
   assert.equal(goneSessionNotice("0123456789abcdef", "deleted"), "Session 01234567 was deleted.");
   assert.equal(goneSessionNotice("<b>", "not_found"), "Session <b> was not found.");
+});
+
+test("withLiveStatus: a live status change is activity now (the card's time)", () => {
+  const now = Date.parse("2026-09-25T12:00:00Z");
+  const sess = { id: "a", status: "idle", updated_at: "2026-09-25T11:54:00Z", owner: "worker" };
+  const next = withLiveStatus(sess, "running", now);
+  assert.deepEqual(next, { id: "a", status: "running", updated_at: "2026-09-25T12:00:00.000Z", owner: "worker" });
+  assert.equal(relativeTime(next.updated_at, now), "just now");
+  assert.equal(sess.status, "idle"); // the input is left alone
+  // A send woke a worker the list didn't know about.
+  assert.equal(withLiveStatus({ id: "b", status: "stopped", owner: null }, "running", now).owner, "worker");
 });
