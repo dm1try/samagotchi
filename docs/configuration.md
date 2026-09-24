@@ -357,8 +357,10 @@ The turn's prompt and its completed tool calls stay in the session.
 
 ## Debug Log File
 
-Samagotchi also writes internal debug events to a file so you can inspect runs
-without enabling `--verbose` in the terminal.
+Every `chi` process (the REPL, the attached terminal, the background
+workers, `chi web`) appends tagged records to one log file, so you can see
+what happened in a session, what went over the wire and why something
+failed, without `--verbose`.
 
 Default path:
 
@@ -366,28 +368,80 @@ Default path:
   `~/.local/state/samagotchi/samagotchi.log` when `XDG_STATE_HOME` is unset
   (next to the sessions and prompt history, never inside the gem)
 
-This file receives verbose-equivalent internal events (for example raw LLM
-responses and full tool call/result payloads). It is append-only and intended
-for workflows like:
-
-- `tail -f ~/.local/state/samagotchi/samagotchi.log`
-
 Configuration (CLI > env > config file, like every other entry):
 
 - `log.file` / `SAMAGOTCHI_LOG_FILE` / `--log-file PATH`: another path. `~`
   and relative paths are expanded against the directory `chi` runs in.
 - `log.disable` / `SAMAGOTCHI_LOG_DISABLE=true` / `--log-disable`: no file logging.
+- `log.level` / `SAMAGOTCHI_LOG_LEVEL` / `--log-level LEVEL`: `debug`, `info`
+  (default), `warn` or `error`.
 
-The REPL, the attached terminal and the background worker write to the same
-file: a worker takes the log settings of the `chi` (or `chi web`) that
-started it.
+A worker takes the log settings (file and level) of the `chi` or `chi web`
+that started it.
 
-Behavior notes:
+### Format
 
-- `--verbose` still controls stderr output only.
-- File logging remains enabled even when `--verbose` is off.
-- An attached terminal (plain `chi`) logs which session it joined there:
-  `[attached] joined session ID (N messages)`.
+One record is one line, plus indented payload lines at debug level:
+
+```
+2026-09-25T10:11:12.345Z INFO  turn pid=4242 sid=6f1c2a9b tool_call_completed iteration=1 tool=read ms=12 output_chars=5120
+2026-09-25T10:11:13.001Z WARN  http pid=4242 sid=6f1c2a9b retry host=openrouter method=POST url=https://openrouter.ai/api/v1/chat/completions model=qwen/qwen3.6 purpose=chat attempt=1 max_retries=5 delay_s=2.0 status=429 error=Samagotchi::LLM::RateLimited msg="…"
+2026-09-25T10:11:14.500Z DEBUG model pid=4242 sid=6f1c2a9b response model=qwen3.6 iteration=2
+    the model's answer, every line indented by four spaces
+```
+
+- time (UTC, milliseconds), level, tag, the process id, the session's first
+  8 characters (`sid=`, when the record is about one; `turn_started` has the
+  full id as `session=`), the event, then `key=value` fields. A value with a
+  space, quote or `=` is a JSON string, so a record never spans lines;
+  control characters (terminal colours in tool output) are escaped.
+- Tags: `turn` (a session's event trail), `http` (model requests),
+  `worker`, `bridge`, `web`, `attached`, `repl`, `idle`, `recap`, `hooks`,
+  `guardrails`, `config`, `memory`, `model` (debug dumps).
+- The format is parsed by `Samagotchi::LogLine` (`parse`, `each_record`);
+  keep tools that read it on that parser.
+
+What each level adds:
+
+- `error`: crashes (a worker, a bridge connection, the idle scheduler, a
+  recap) with the first 20 backtrace frames; failed model requests.
+- `warn`: retries (429, 5xx, network), failed turns, hook and guardrail
+  problems, config warnings. Warnings `chi` prints on stderr are logged too,
+  with the same text as `msg=`; a worker's (its stderr goes nowhere) now
+  only reach the file.
+- `info`: turns, generations and tool calls with sizes and times (never the
+  text of a prompt, answer or tool output), one line per model request
+  (status, time to first token, total), worker start/spawn/stop/idle exit,
+  `chi web` start.
+- `debug`: payload dumps (each model answer with its thinking, tool calls
+  and results, context status), probes and model lists, every web API and
+  bridge request.
+
+`-v`/`--verbose` (the plain REPL only) logs at `debug` and prints every
+record to stderr as well.
+
+### Rotation and secrets
+
+At 5 MB the file moves to `samagotchi.log.1` (one kept) and a new one
+starts; every process follows. Request headers and bodies are never
+logged; fields named like a credential (`api_key`, `token`, `secret`,
+`authorization`, `password`) show `[redacted]`, and URLs lose their user
+info and query. Debug dumps can still hold secrets a tool read or was
+given (a file's contents, a command line): treat a debug log as sensitive.
+`tools/web_fetch` requests are not logged (their own HTTP client).
+
+### Recipes
+
+```sh
+tail -f ~/.local/state/samagotchi/samagotchi.log
+# one session
+grep 'sid=6f1c2a9b' ~/.local/state/samagotchi/samagotchi.log
+# model requests only, or warnings and errors
+awk '$3 == "http"' ~/.local/state/samagotchi/samagotchi.log
+awk '$2 == "WARN" || $2 == "ERROR"' ~/.local/state/samagotchi/samagotchi.log
+# how long each tool call took
+grep ' tool_call_completed ' ~/.local/state/samagotchi/samagotchi.log | grep -o 'tool=[^ ]* ms=[0-9]*'
+```
 
 ## Images
 

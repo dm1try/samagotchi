@@ -23,8 +23,8 @@ module Samagotchi
   #   - session wall-clock (first activity -> last activity)
   #
   # A snapshot is surfaced via Engine#session_state_snapshot and (optionally)
-  # persisted to a sibling analytics.json next to the session file. Raw events
-  # can be appended to a JSONL log for debugging only.
+  # persisted to a sibling analytics.json next to the session file. The event
+  # trail itself goes to the debug log (LogSubscriber).
   class SessionMetrics
     # Per-turn transient state, reset on each turn_started.
     TurnState = Struct.new(

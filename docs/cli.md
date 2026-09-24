@@ -36,7 +36,7 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `--memory NAME` | Preload a memory entry into the system prompt (repeatable). Merged under the config.yml `memories:` baseline. |
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
 | `--no-default-input` | Skip prefilling the first REPL line from `SAMAGOTCHI_DEFAULT_INPUT`. |
-| `-v`, `--verbose` | Print raw LLM responses and tool call/result payloads to stderr. |
+| `-v`, `--verbose` | Log at debug level (raw LLM responses, tool call/result payloads) and print every log record to stderr too. |
 
 Every setting in the config registry (`lib/samagotchi/config.rb`) that exposes a CLI
 flag also works as `--kebab-case VALUE`, e.g. `--server-host`, `--server-port`,
@@ -295,8 +295,9 @@ Parameter previews are normalized to one line and truncated to keep output conci
 This is separate from verbose mode:
 
 - Default output shows short activity status lines only.
-- `-v/--verbose` still prints detailed debug logs (raw LLM responses and full
-	tool call/result payloads) to stderr.
+- `-v/--verbose` prints the debug log's records (raw LLM responses and full
+  tool call/result payloads among them) to stderr as well; see
+  [Debug Log File](configuration.md#debug-log-file).
 
 ## Persistent Prompt History
 

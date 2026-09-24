@@ -118,9 +118,11 @@ module Samagotchi
       session
     end
 
-    # Build the opts hash passed to Process.spawn for a forked worker. Setting
-    # opts[:env] REPLACES the child ENV rather than merging it, so explicitly
-    # thread through the values a worker needs (hosts, default model).
+    # Build the opts hash passed to Process.spawn for a forked worker. The
+    # child inherits this process's ENV; opts[:env] adds to it (merged, not
+    # replaced) the values a worker can't read from its own config: the
+    # hosts, default model and log settings as this `chi` resolved them
+    # (CLI flags included).
     private_class_method def self.spawn_options(session)
       # Own process group: workers outlive `chi web`, and a Ctrl-C in its
       # terminal must not reach them.
