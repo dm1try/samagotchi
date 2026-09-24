@@ -23,7 +23,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #stage{flex:1;display:flex;flex-direction:column;position:relative;min-height:160px;background:var(--bg);overflow:hidden}
 #firstPeek{display:none;padding:8px 12px;background:var(--accent-bg);color:var(--text);border-bottom:1px solid var(--border);font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #firstPeek.visible{display:block}
-#composer #cancelBtn{background:var(--danger-bg);font-size:12px;padding:6px 10px;min-height:28px}
+#composer #cancelBtn{order:2;background:var(--danger-bg)}
 #history{flex:1;overflow:auto;padding:16px max(16px,calc((100% - 960px)/2));display:flex;flex-direction:column;gap:12px;background:var(--bg);min-height:160px}
 .bubble{background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5}
 .bubble.output,.bubble.user{font-size:15px;line-height:1.55}
@@ -147,7 +147,11 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .hint{color:var(--text-muted);font-size:13px;padding:12px}
 #annotateBtn{position:fixed;z-index:20;font-size:12px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.5)}
 #annotateBtn[hidden]{display:none}
-#composer{padding:12px;border-top:1px solid var(--border);gap:8px;background:var(--bg-inset);display:flex}
+/* The dock is the composer card: the text field, a toolbar row, the info bar as its footer. */
+#dock{display:flex;flex-direction:column;flex-shrink:0;margin:0 12px 12px;border-radius:16px;border:1px solid var(--border-strong);background:var(--bg-inset);position:relative;transition:border-color .12s ease,box-shadow .12s ease}
+body.has-session #center{background:var(--bg)}
+#dock:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+#composer{display:flex;flex-direction:column;gap:8px;padding:14px 14px 10px}
 #composer .compose-col{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
 #composer.dropping{outline:2px dashed var(--accent);outline-offset:-4px}
 #chips{display:flex;flex-wrap:wrap;gap:6px}
@@ -162,29 +166,28 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #lightbox{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out}
 #lightbox[hidden]{display:none}
 #lightbox img{max-width:96vw;max-height:94vh;border-radius:6px}
-#composer textarea{flex:1 1 auto;min-height:44px;resize:none;background:var(--bg);border:1px solid var(--border-strong);color:var(--text);padding:10px 12px;border-radius:10px;font-size:15px;line-height:1.45;transition:border-color .12s ease,box-shadow .12s ease}
+#composer textarea{flex:1 1 auto;min-height:44px;resize:none;background:transparent;border:0;color:var(--text);padding:2px;border-radius:0;font-size:15px;line-height:1.45}
 #composeGrip{position:absolute;left:0;right:0;top:-5px;height:10px;cursor:ns-resize;z-index:2;touch-action:none}
 #composeGrip::after{content:"";position:absolute;left:50%;top:3px;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:var(--border-strong);opacity:0;transition:opacity .12s ease}
 #composer:hover #composeGrip::after,#composeGrip.dragging::after{opacity:1}
 #composeGrip:hover::after,#composeGrip.dragging::after{background:var(--accent)}
 #composer textarea::placeholder{color:var(--text-faint)}
 /* Key hint: its line is always reserved, so focusing never shifts the layout. */
-#composeHint{font-size:11px;line-height:14px;color:var(--text-faint);padding-left:2px;opacity:0;transition:opacity .12s ease;user-select:none}
+#composeHint{order:1;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;line-height:14px;color:var(--text-faint);padding-left:2px;opacity:0;transition:opacity .12s ease;user-select:none}
 #composer:focus-within #composeHint:not(:empty){opacity:1}
-#composer textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
-#composer .actions-col{display:flex;flex-direction:column;gap:6px;align-items:stretch;width:132px;flex-shrink:0}
-#composer .actions-col button{white-space:nowrap}
-#composer .actions-col .split{display:flex;gap:4px}
-#composer #actionBtn{min-width:96px;flex:1}
-#composer #actionMenuBtn{width:32px;min-width:32px;visibility:hidden}
-#composer #createAltBtn{font-size:12px;padding:6px 10px;min-height:28px;visibility:hidden}
-#composer .actions-col.ready #actionMenuBtn{visibility:visible}
-#composer .actions-col.has-selection #createAltBtn{visibility:visible}
-#composer #actionMenu{position:absolute;right:12px;bottom:52px;background:var(--bg-panel);border:1px solid var(--border-strong);border-radius:8px;padding:4px;display:none;flex-direction:column;gap:2px;z-index:10;min-width:180px}
+#composer textarea:focus{outline:none}
+/* The toolbar row: New chat · hint · Cancel · Send ▾ (the JS display toggles decide what shows). */
+#composer .actions-col{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px}
+#composer .actions-col button{white-space:nowrap;font-size:12px;padding:0 12px;height:28px;min-height:28px;line-height:28px}
+#composer .actions-col .split{order:3;display:flex;gap:4px;margin-left:auto}
+#composer #actionBtn{min-width:64px;font-weight:600}
+#composer #actionMenuBtn{width:28px;min-width:28px;padding:0}
+#composer #createAltBtn{order:0}
+#composer #actionMenu{position:absolute;right:14px;bottom:44px;background:var(--bg-panel);border:1px solid var(--border-strong);border-radius:8px;padding:4px;display:none;flex-direction:column;gap:2px;z-index:10;min-width:180px}
 #composer #actionMenu.visible{display:flex}
 #composer #actionMenu button{justify-content:flex-start;background:transparent;color:var(--text);padding:8px 10px;border-radius:6px;text-align:left}
 #composer #actionMenu button:hover{background:var(--bg-raised)}
-#infoBar{display:flex;padding:10px 12px;border-top:1px solid var(--border);background:var(--bg-inset);color:var(--text-2);gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;min-height:56px;transition:opacity 280ms ease, min-height 300ms ease}
+#infoBar{display:flex;padding:8px 14px 10px;border-top:1px solid var(--border);background:transparent;border-radius:0 0 16px 16px;color:var(--text-2);gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;transition:opacity 280ms ease}
 #infoBar.visible{display:flex}
 #infoBar .info{flex:1;min-width:0;font-size:13px;line-height:1.4;word-break:break-word;display:flex;flex-direction:column;gap:2px}
 #infoBar .meta{font-size:11px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -198,7 +201,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #infoBar .preview-line{font-size:13px;word-break:break-word;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;line-height:1.4;max-height:2.8em}
 #infoBar .preview-line .preview, #infoBar .preview-line .mem{word-break:break-word}
 #infoBar .mem{font-size:12px;color:var(--text-muted)}
-#infoBar button{padding:6px 14px;border-radius:8px;font-size:13px;font-weight:600}
+#infoBar button{padding:4px 12px;border-radius:8px;font-size:12px;font-weight:600}
 #infoBar #infoStopBtn{background:var(--bg-raised);color:var(--warn-text);border:1px solid var(--border-strong)}
 #infoBar #infoStopBtn:hover{background:var(--warn-bg);border-color:var(--warn-border)}
 #infoBar #infoDeleteBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
@@ -210,8 +213,7 @@ body:not(.has-session) #center{justify-content:safe center}
 body:not(.has-session) #stage{flex:0 0 auto;min-height:0;background:transparent}
 body:not(.has-session) #history,body:not(.has-session) #markdownWarning{display:none}
 body:not(.has-session) #empty{position:static;background:transparent;padding:0}
-body:not(.has-session) #composer{width:min(720px,100%);margin:0 auto;border-top:0;background:transparent;padding:0 16px}
-body:not(.has-session) #composer .actions-col{width:auto}
+body:not(.has-session) #dock{width:min(720px,calc(100% - 32px));margin:0 auto}
 body:not(.has-session) #infoBar{display:none}
 #topBar{display:flex;align-items:center;gap:12px;margin-bottom:-6px}
 #newBtn.brand{background:transparent;border:0;padding:2px 4px;min-height:0;display:inline-flex;align-items:baseline;gap:10px;color:var(--text)}
@@ -282,10 +284,6 @@ body.all-view #center, body.all-view #topStrip{display:none}
   #topStrip{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:72%;overflow-x:auto;min-height:0}
   #topStrip #allTile{width:auto}
 }
-@media(max-width:600px){
-  #composer .actions-col{width:auto}
-  #composer #actionBtn{min-width:72px}
-}
 a{color:var(--accent)}
 </style>
 </head>
@@ -304,30 +302,32 @@ a{color:var(--accent)}
       <div id="empty"></div>
     </div>
     <div id="lightbox" hidden><img alt=""></div>
-    <div id="composer" style="position:relative">
-      <div id="composeGrip" title="Drag to make the message box taller (double-click resets)"></div>
-      <div class="compose-col">
-        <div id="chips" hidden></div>
-        <textarea id="prompt" placeholder="Ask chi anything…"></textarea>
-        <div id="composeHint">Enter to start · Shift+Enter for a newline</div>
-      </div>
-      <div class="actions-col">
-        <div class="split">
-          <button id="actionBtn">Start</button>
-          <button id="actionMenuBtn" class="ghost" title="More actions" style="padding:8px 10px">▾</button>
+    <div id="dock">
+      <div id="composer" style="position:relative">
+        <div id="composeGrip" title="Drag to make the message box taller (double-click resets)"></div>
+        <div class="compose-col">
+          <div id="chips" hidden></div>
+          <textarea id="prompt" placeholder="Ask chi anything…"></textarea>
         </div>
-        <button id="createAltBtn" class="ghost" style="visibility:hidden">New chat</button>
-        <button id="cancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Cancel</button>
+        <div class="actions-col">
+          <button id="createAltBtn" class="ghost" style="display:none">New chat</button>
+          <div id="composeHint">Enter to start · Shift+Enter for a newline</div>
+          <button id="cancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Cancel</button>
+          <div class="split">
+            <button id="actionBtn">Start</button>
+            <button id="actionMenuBtn" class="ghost" title="More actions" style="display:none">▾</button>
+          </div>
+        </div>
+        <div id="actionMenu">
+          <button data-action="send">Send to current session</button>
+          <button data-action="create">New chat</button>
+        </div>
       </div>
-      <div id="actionMenu">
-        <button data-action="send">Send to current session</button>
-        <button data-action="create">New chat</button>
+      <div id="infoBar">
+        <div class="info" id="infoText"></div>
+        <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop</button>
+        <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
       </div>
-    </div>
-    <div id="infoBar">
-      <div class="info" id="infoText"></div>
-      <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop</button>
-      <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
     </div>
   </section>
   <section id="allView" aria-label="All sessions">
