@@ -235,15 +235,54 @@ module Samagotchi
       days = resolve_retention_days(days)
       max_count = resolve_retention_max_count(max_count)
       keep_status = resolve_retention_keep_status(keep_status)
-      Session.prune(
+      discard = discard_empty?
+      default_model = discard ? (begin ModelProfile.required_model_name(nil) rescue nil end) : nil
+      result = Session.prune(
         state_dir: sd,
         days: days,
         max_count: max_count,
         keep_status: keep_status,
         dry_run: dry_run,
         test_only: test_only,
-        alive_check: ->(sid) { worker_alive_for_session?(sid, state_dir: sd) }
+        alive_check: ->(sid) { worker_alive_for_session?(sid, state_dir: sd) },
+        empty_check: discard ? ->(sid) { left_empty?(sid, state_dir: sd, default_model: default_model) } : nil
       )
+      result[:deleted].concat(prune_orphan_dirs(sd, dry_run: dry_run)) if discard && !test_only
+      result
+    end
+
+    # How long a session may sit empty before the sweep takes it: its
+    # worker (or a REPL) deletes it as it leaves, so the sweep only catches
+    # those killed first (a reboot, kill -9).
+    EMPTY_GRACE_SECONDS = 3600
+
+    private_class_method def self.left_empty?(session_id, state_dir:, default_model:)
+      path = File.join(state_dir, "#{session_id}#{Session::FILE_EXT}")
+      Time.now - File.mtime(path) > EMPTY_GRACE_SECONDS &&
+        empty_session?(session_id, state_dir: state_dir, default_model: default_model)
+    rescue SystemCallError
+      false
+    end
+
+    # Directories with no session file and nothing but the skeleton, nobody
+    # owning them: a REPL killed before its first save, or a worker woken
+    # just as its session was discarded.
+    # @return [Array<String>] their ids
+    private_class_method def self.prune_orphan_dirs(state_dir, dry_run:)
+      return [] unless Dir.exist?(state_dir)
+
+      Dir.children(state_dir).filter_map do |name|
+        dir = File.join(state_dir, name)
+        next unless name.match?(/\A[\w-]+\z/) && File.directory?(dir)
+        next if File.exist?(File.join(state_dir, "#{name}#{Session::FILE_EXT}"))
+        next unless Time.now - File.mtime(dir) > EMPTY_GRACE_SECONDS && empty_session_dir?(dir)
+        next if session_owner(name, state_dir: state_dir)
+
+        FileUtils.rm_rf(dir) unless dry_run
+        name
+      rescue SystemCallError
+        nil
+      end
     end
 
     # Lazy sweep guard: runs prune at most once per RETENTION_SWEEP_INTERVAL_HOURS.

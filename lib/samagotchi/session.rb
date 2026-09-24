@@ -183,9 +183,13 @@ module Samagotchi
     # A session is kept only if it is NOT expired by age AND within max_count;
     # either expiry or overflow triggers deletion (unless protected).
     #
+    # +empty_check+ (id → Boolean) marks a session left empty: it goes
+    # whatever its age and the count (SessionManager.prune_sessions).
+    #
     # @return [Hash] { deleted: [ids], kept: [ids], skipped: [ids] }
     def self.prune(state_dir: default_state_dir, days: DEFAULT_RETENTION_DAYS, max_count: DEFAULT_MAX_COUNT,
-                   keep_status: DEFAULT_KEEP_STATUS, dry_run: false, test_only: false, alive_check: nil)
+                   keep_status: DEFAULT_KEEP_STATUS, dry_run: false, test_only: false, alive_check: nil,
+                   empty_check: nil)
       keep_status = Array(keep_status).map(&:to_s)
       # Fetch all sessions sorted newest-first for count logic
       all = list(state_dir: state_dir, sort: "updated_at", order: "desc")
@@ -228,6 +232,12 @@ module Samagotchi
           end
         end
 
+        left_empty = begin
+          empty_check&.call(session.id)
+        rescue StandardError
+          false
+        end
+
         # Determine expiry and overflow
         expired = false
         if cutoff
@@ -242,13 +252,13 @@ module Samagotchi
         overflow = max.positive? && idx >= max
 
         # retain forever when both disabled
-        if max.zero? && cutoff.nil?
+        if max.zero? && cutoff.nil? && !left_empty
           kept << session.id
           next
         end
 
         # If neither expired nor overflow, keep
-        unless expired || overflow
+        unless expired || overflow || left_empty
           kept << session.id
           next
         end

@@ -505,6 +505,27 @@ RSpec.describe Samagotchi::Session do
       expect(File.exist?(path)).to be true
     end
 
+    it "deletes a session left empty whatever its age, also when retaining forever" do
+      empty = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      empty.save(state_dir: tmpdir)
+      used = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      used.save(state_dir: tmpdir)
+
+      result = described_class.prune(state_dir: tmpdir, days: 0, max_count: 0, empty_check: ->(id) { id == empty.id })
+
+      expect(result[:deleted]).to eq([empty.id])
+      expect(result[:kept]).to eq([used.id])
+    end
+
+    it "keeps a session left empty that a live owner has" do
+      empty = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      empty.save(state_dir: tmpdir)
+
+      result = described_class.prune(state_dir: tmpdir, empty_check: ->(_) { true }, alive_check: ->(_) { true })
+
+      expect(result[:kept]).to eq([empty.id])
+    end
+
     it "only deletes when json present (skips orphan dirs)" do
       s = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       s.save(state_dir: tmpdir)

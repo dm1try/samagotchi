@@ -214,6 +214,68 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
+  describe ".prune_sessions and sessions left empty" do
+    let(:model) { Samagotchi::ModelProfile.required_model_name(nil) }
+    let(:hour_ago) { Time.now - described_class::EMPTY_GRACE_SECONDS - 60 }
+
+    def saved(age: hour_ago, &block)
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: model, working_directory: "/tmp")
+      block&.call(session)
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      File.utime(age, age, path)
+      session
+    end
+
+    def orphan(name, files: %w[owner.lock], age: hour_ago)
+      dir = File.join(tmpdir, name)
+      FileUtils.mkdir_p(dir)
+      files.each do |file|
+        FileUtils.mkdir_p(File.dirname(File.join(dir, file)))
+        File.write(File.join(dir, file), "")
+      end
+      File.utime(age, age, dir)
+      dir
+    end
+
+    it "deletes an empty session an hour old, keeps a fresh one and one with a conversation" do
+      old_empty = saved
+      fresh_empty = saved(age: Time.now)
+      used = saved { |s| s.messages << { role: "user", content: "hi" } }
+
+      result = described_class.prune_sessions(state_dir: tmpdir)
+
+      expect(result[:deleted]).to eq([old_empty.id])
+      expect(result[:kept]).to contain_exactly(fresh_empty.id, used.id)
+    end
+
+    it "keeps them all with session.keep_empty" do
+      allow(described_class).to receive(:discard_empty?).and_return(false)
+      old_empty = saved
+      dir = orphan("0000-orphan")
+
+      result = described_class.prune_sessions(state_dir: tmpdir)
+
+      expect(result[:kept]).to eq([old_empty.id])
+      expect(Dir.exist?(dir)).to be(true)
+    end
+
+    it "removes an old orphan directory with only the skeleton, not one with input or a fresh one" do
+      skeleton = orphan("0000-skeleton", files: %w[owner.lock pid])
+      with_input = orphan("0000-input", files: %w[input/1.json])
+      fresh = orphan("0000-fresh", age: Time.now)
+
+      result = described_class.prune_sessions(state_dir: tmpdir, dry_run: true)
+      expect(result[:deleted]).to eq(["0000-skeleton"])
+      expect(Dir.exist?(skeleton)).to be(true)
+
+      described_class.prune_sessions(state_dir: tmpdir)
+      expect(Dir.exist?(skeleton)).to be(false)
+      expect(Dir.exist?(with_input)).to be(true)
+      expect(Dir.exist?(fresh)).to be(true)
+    end
+  end
+
   describe ".delete_session" do
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
