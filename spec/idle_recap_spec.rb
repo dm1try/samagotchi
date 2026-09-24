@@ -323,6 +323,25 @@ RSpec.describe Samagotchi::IdleRecap do
         expect(recap_client).to have_received(:summarize).at_least(:once)
         expect(engine).to have_received(:emit_recap)
       end
+      it "logs why the summarize thread failed, and emits nothing" do
+        dir = Dir.mktmpdir("samagotchi-log")
+        path = File.join(dir, "chi.log")
+        Samagotchi::Log.configure(path: path)
+        engine = stub_engine_with_two_user_turns
+        failing = double("client")
+        allow(failing).to receive(:summarize).and_raise(Errno::ECONNREFUSED, "localhost:9")
+        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: failing, clock: -> { base_time })
+        allow(idle).to receive(:should_fire?).and_return(true)
+        drive(idle)
+
+        expect(engine).not_to have_received(:emit_recap)
+        record = File.open(path) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "summarize_failed" } }
+        expect(record.to_h).to include(level: "ERROR", tag: "recap")
+        expect(record.fields).to include("error" => "Errno::ECONNREFUSED")
+      ensure
+        FileUtils.remove_entry(dir)
+      end
+
       it "does not emit when recap is nil" do
         engine = stub_engine_with_two_user_turns
         idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0, client: double("client", summarize: nil), clock: -> { base_time })

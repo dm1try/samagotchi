@@ -249,8 +249,10 @@ module Samagotchi
           @connection_threads << t
         end
       end
-    rescue StandardError
-      nil
+    rescue StandardError => e
+      # No accept loop, no bridge: every client of this worker loses it.
+      # (#stop closing the server ends the loop the same way: not a failure.)
+      Log.exception(:bridge, "accept_loop_failed", e) unless stopped?
     end
 
     # One thread per connection. Short-lived endpoints (POST / state) answer
@@ -320,6 +322,9 @@ module Samagotchi
       end
     rescue Errno::EPIPE, Errno::ECONNRESET, IOError
       nil
+    rescue StandardError => e
+      # The thread doesn't report (report_on_exception = false): log it.
+      Log.exception(:bridge, "connection_failed", e)
     ensure
       Thread.current[:bridge_answering] = false
       begin

@@ -175,6 +175,8 @@ module Samagotchi
           end
         end
       rescue StandardError => e
+        # Its stderr is /dev/null: the log is the only trace of why.
+        Log.exception(:worker, "crashed", e)
         Session.mark_error(@session_id, reason: e.message, state_dir: @state_dir)
         exit(1)
       ensure

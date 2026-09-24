@@ -409,7 +409,9 @@ module Samagotchi
     def spawn_summarize(client, prompt)
       Thread.new do
         client.summarize(prompt)
-      rescue StandardError
+      rescue StandardError => e
+        # No recap this time (the next idle window tries again); say why.
+        Log.exception(:recap, "summarize_failed", e)
         nil
       end
     end

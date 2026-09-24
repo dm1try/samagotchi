@@ -564,9 +564,14 @@ module Samagotchi
       result = begin
         File.write(File.join(session_dir, PID_FILE), Process.pid.to_s)
         worker.run
+      rescue StandardError, ScriptError => e
+        # The worker's stderr is /dev/null: the log is the only trace.
+        Log.exception(:worker, "crashed", e)
+        raise
       ensure
         @owner_lock.release
       end
+      Log.info(:worker, "stop", reason: result)
       # Only after the release: a writer that still saw this worker as the
       # owner may have queued input since the last check. Either it finds no
       # owner after its write and wakes one, or this finds its input.

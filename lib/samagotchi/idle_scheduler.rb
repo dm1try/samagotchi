@@ -70,7 +70,7 @@ module Samagotchi
         sleep(POLL_INTERVAL_SECONDS)
       end
     rescue StandardError => e
-      Log.error(:idle, "scheduler_crashed", echo: "[IdleScheduler] scheduler thread crashed: #{e.class}: #{e.message}", error: e.class.name)
+      Log.exception(:idle, "scheduler_crashed", e, echo: "[IdleScheduler] scheduler thread crashed: #{e.class}: #{e.message}")
     end
   end
 end

@@ -81,6 +81,21 @@ RSpec.describe Samagotchi::IdleScheduler do
       FileUtils.remove_entry(dir)
     end
 
+    it "logs a crash of its thread as an ERROR with the backtrace" do
+      dir = Dir.mktmpdir("samagotchi-log")
+      path = File.join(dir, "chi.log")
+      Samagotchi::Log.configure(path: path)
+      allow(scheduler).to receive(:tick).and_raise(TypeError, "bad")
+
+      expect { scheduler.send(:run_loop) }.to output(/scheduler thread crashed: TypeError: bad/).to_stderr
+
+      record = File.open(path) { |io| Samagotchi::LogLine.each_record(io).first }
+      expect(record.to_h).to include(level: "ERROR", tag: "idle", event: "scheduler_crashed")
+      expect(record.payload).not_to be_empty
+    ensure
+      FileUtils.remove_entry(dir)
+    end
+
     it "does nothing once stopped" do
       scheduler.stop
       scheduler.tick

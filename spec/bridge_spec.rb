@@ -1014,6 +1014,33 @@ RSpec.describe Samagotchi::Bridge do
       expect([res.code, JSON.parse(res.body)["metrics"]]).to eq(["200", { "turns" => 0, "context_window_tokens" => 4096 }])
     end
 
+    it "logs nothing when stopped (the closed server ends the accept loop)" do
+      log = File.join(Dir.mktmpdir, "chi.log")
+      Samagotchi::Log.configure(path: log)
+      start_bridge
+      @bridge.stop
+      sleep 0.1
+
+      expect(File.exist?(log) ? File.read(log) : "").not_to include("accept_loop_failed")
+    end
+
+    it "logs a request that fails in its handler (the thread doesn't report), with the backtrace" do
+      log = File.join(Dir.mktmpdir, "chi.log")
+      Samagotchi::Log.configure(path: log)
+      start_bridge
+      allow(@bridge).to receive(:handle_stats).and_raise(RuntimeError, "boom")
+
+      expect { Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats")) }
+        .to raise_error(EOFError)
+
+      deadline = mono + 2
+      sleep 0.01 until File.exist?(log) || mono > deadline
+      record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "connection_failed" } }
+      expect(record.to_h).to include(level: "ERROR", tag: "bridge")
+      expect(record.fields).to include("error" => "RuntimeError", "msg" => "boom")
+      expect(record.payload).to include("in 'Samagotchi::Bridge#handle_connection'")
+    end
+
     it "rejects an unknown session on the read surface with 404" do
       start_bridge
       _status, resp = get_state_for("does-not-exist")

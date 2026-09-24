@@ -201,6 +201,22 @@ RSpec.describe Samagotchi::Worker do
       expect(started_at - released_at).to be < 0.3
     end
 
+    it "logs what ended it when a turn's input fails past its own handling (then marks the session)" do
+      log = File.join(tmpdir, "chi.log")
+      Samagotchi::Log.configure(path: log)
+      allow_any_instance_of(described_class).to receive(:run_input_file).and_raise(JSON::GeneratorError, "source sequence is illegal/malformed utf-8")
+      start_worker(poll_interval: 0.05)
+
+      post_turn("one")
+
+      expect { @thread.join(2) }.to raise_error(SystemExit) { |e| expect(e.status).to eq(1) }
+      record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "crashed" } }
+      expect(record.to_h).to include(level: "ERROR", tag: "worker")
+      expect(record.fields).to include("error" => "JSON::GeneratorError")
+      expect(record.payload).to include("Samagotchi::Worker#run")
+      expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq("error")
+    end
+
     it "still exits on a stop marked on disk" do
       start_worker(poll_interval: 0.05)
 

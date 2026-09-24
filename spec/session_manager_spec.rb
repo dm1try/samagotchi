@@ -680,6 +680,27 @@ RSpec.describe Samagotchi::SessionManager do
   end
 
   describe ".run_session_loop" do
+    it "logs a worker crash with its backtrace (its stderr is /dev/null) and re-raises" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      log = File.join(tmpdir, "chi.log")
+      Samagotchi::Config.set_cli_overrides("log.file" => log)
+      worker = instance_double(Samagotchi::Worker)
+      allow(worker).to receive(:run).and_raise(NoMethodError, "undefined method 'x'")
+      allow(Samagotchi::Worker).to receive(:new).and_return(worker)
+
+      expect { described_class.run_session_loop(session.id, state_dir: tmpdir) }
+        .to raise_error(NoMethodError)
+
+      records = File.open(log) { |io| Samagotchi::LogLine.each_record(io).to_a }
+      expect(records.map(&:event)).to eq(%w[start crashed])
+      expect(records.last.to_h).to include(level: "ERROR", tag: "worker", sid: session.id[0, 8])
+      expect(records.last.fields).to include("error" => "NoMethodError")
+      expect(records.last.payload.lines.size).to be_between(1, 20)
+    ensure
+      Samagotchi::Config.set_cli_overrides({})
+    end
+
     it "initializes Engine with supported keywords" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.status = Samagotchi::Session::STATUS_STOPPED
