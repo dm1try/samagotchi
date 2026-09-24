@@ -23,7 +23,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #topStrip:empty{display:grid}
 #topStrip.loading, #allList.loading{opacity:.75}
 #center{flex:1;display:flex;flex-direction:column;min-height:45vh;background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
-#stage{flex:1;display:flex;flex-direction:column;position:relative;min-height:260px;background:var(--bg);overflow:hidden}
+#stage{flex:1;display:flex;flex-direction:column;position:relative;min-height:160px;background:var(--bg);overflow:hidden}
 #firstPeek{display:none;padding:8px 12px;background:var(--accent-bg);color:var(--text);border-bottom:1px solid var(--border);font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #firstPeek.visible{display:block}
 #composer #cancelBtn{background:var(--danger-bg);font-size:12px;padding:6px 10px;min-height:28px}
@@ -164,7 +164,11 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #lightbox{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out}
 #lightbox[hidden]{display:none}
 #lightbox img{max-width:96vw;max-height:94vh;border-radius:6px}
-#composer textarea{flex:1;min-height:44px;max-height:160px;resize:vertical;background:var(--bg);border:1px solid var(--border-strong);color:var(--text);padding:10px 12px;border-radius:10px;font-size:15px;line-height:1.45;transition:border-color .12s ease,box-shadow .12s ease}
+#composer textarea{flex:1 1 auto;min-height:44px;resize:none;background:var(--bg);border:1px solid var(--border-strong);color:var(--text);padding:10px 12px;border-radius:10px;font-size:15px;line-height:1.45;transition:border-color .12s ease,box-shadow .12s ease}
+#composeGrip{position:absolute;left:0;right:0;top:-5px;height:10px;cursor:ns-resize;z-index:2;touch-action:none}
+#composeGrip::after{content:"";position:absolute;left:50%;top:3px;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:var(--border-strong);opacity:0;transition:opacity .12s ease}
+#composer:hover #composeGrip::after,#composeGrip.dragging::after{opacity:1}
+#composeGrip:hover::after,#composeGrip.dragging::after{background:var(--accent)}
 #composer textarea::placeholder{color:var(--text-faint)}
 #composer textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
 #composer .actions-col{display:flex;flex-direction:column;gap:6px;align-items:stretch;width:132px;flex-shrink:0}
@@ -285,6 +289,7 @@ a{color:var(--accent)}
     </div>
     <div id="lightbox" hidden><img alt=""></div>
     <div id="composer" style="position:relative">
+      <div id="composeGrip" title="Drag to make the message box taller (double-click resets)"></div>
       <div class="compose-col">
         <div id="chips" hidden></div>
         <textarea id="prompt" placeholder="New session prompt — press Enter to create (Shift+Enter for newline)"></textarea>
