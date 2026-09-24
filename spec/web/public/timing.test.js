@@ -9,6 +9,7 @@ import {
   turnRecordAt,
   timedTurnIndexes,
   appendAboveLiveTiming,
+  turnTimingText,
 } from "../../../lib/samagotchi/web/public/timing.js";
 
 // Shared contract: spec/shared/timing_matrix.json. One source of truth for the
@@ -92,4 +93,12 @@ test("appendAboveLiveTiming appends after a finished timing line, or with none",
   appendAboveLiveTiming(parent, fakeEl("recap"), null);
 
   assert.deepEqual(parent.children.map((el) => el.name), ["timing", "next prompt", "recap"]);
+});
+
+test("turnTimingText: the turn's number live and after it ends, as a reload shows it", () => {
+  assert.equal(turnTimingText(3, 1000, { running: true }), "turn 3 running · 1.0s");
+  assert.equal(turnTimingText(3, 4100), "turn 3 · 4.1s");
+  // No number known (no timing yet): the old wording.
+  assert.equal(turnTimingText(null, 4100), "turn · 4.1s");
+  assert.equal(turnTimingText(null, 0, { running: true }), "turn running · 0ms");
 });
