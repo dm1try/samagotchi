@@ -226,6 +226,8 @@ body:not(.has-session) #history,body:not(.has-session) #markdownWarning{display:
 body:not(.has-session) #empty{position:static;background:transparent;padding:0}
 body:not(.has-session) #dock{width:min(720px,calc(100% - 32px));margin:0 auto}
 body:not(.has-session) #infoBar{display:none}
+#notice{width:min(720px,calc(100% - 32px));margin:0 auto 12px;padding:8px 12px;border:1px solid var(--border-strong);border-radius:8px;color:var(--text-muted);font-size:13px;text-align:center}
+body.has-session #notice{display:none}
 #topBar{display:flex;align-items:center;gap:12px;margin-bottom:-6px}
 #newBtn.brand{background:transparent;border:0;padding:2px 4px;min-height:0;display:inline-flex;align-items:baseline;gap:10px;color:var(--text)}
 #newBtn .brand-name{font-size:18px;font-weight:700;letter-spacing:.02em;color:var(--accent)}
@@ -311,6 +313,7 @@ a{color:var(--accent)}
       <div id="markdownWarning" class="markdown-warning" hidden></div>
       <div id="history"></div>
       <div id="empty"></div>
+      <div id="notice" role="status" hidden></div>
     </div>
     <div id="lightbox" hidden><img alt=""></div>
     <div id="dock">

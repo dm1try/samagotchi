@@ -46,6 +46,13 @@ test("api raises on non-ok status", async () => {
   );
 });
 
+test("api errors carry the HTTP status (a 404 means the session is gone)", async () => {
+  await assert.rejects(
+    () => api("/api/sessions/nope", { fetchImpl: () => Promise.resolve(okResponse({ error: "not_found" }, 404)) }),
+    (e) => e.status === 404 && /not_found \(404\)/.test(e.message),
+  );
+});
+
 test("listSessions builds sort and order query params", async () => {
   const calls = [];
   await listSessions("updated_at", "desc", {

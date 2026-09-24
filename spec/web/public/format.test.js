@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel, canStopSession } from "../../../lib/samagotchi/web/public/format.js";
+import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel, canStopSession, goneSessionNotice } from "../../../lib/samagotchi/web/public/format.js";
 
 test("noteHtml: who sent the context note, then its text, both escaped", () => {
   assert.equal(
@@ -174,4 +174,10 @@ test("canStopSession: only when a worker runs the session", () => {
   assert.equal(canStopSession({ owner: null, streaming: false }), false);
   // A chi REPL owns it: the server refuses (owned_by_tui).
   assert.equal(canStopSession({ owner: "tui", streaming: true }), false);
+});
+
+test("goneSessionNotice: the short id and why the page left it", () => {
+  assert.equal(goneSessionNotice("0123456789abcdef", "not_found"), "Session 01234567 was not found.");
+  assert.equal(goneSessionNotice("0123456789abcdef", "deleted"), "Session 01234567 was deleted.");
+  assert.equal(goneSessionNotice("<b>", "not_found"), "Session <b> was not found.");
 });
