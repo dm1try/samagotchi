@@ -389,7 +389,7 @@ module Samagotchi
       return false unless session.last_prompt.to_s.strip.empty? && session.first_preview.to_s.strip.empty?
       return false unless session.mode.to_s == "assist" && !default_model.nil? && session.model_name.to_s == default_model.to_s
 
-      skeleton_only?(Session.session_dir(session_id, state_dir: sd))
+      empty_session_dir?(Session.session_dir(session_id, state_dir: sd))
     rescue ArgumentError, SystemCallError, JSON::ParserError
       false
     end
@@ -402,7 +402,8 @@ module Samagotchi
       end
     end
 
-    private_class_method def self.skeleton_only?(dir)
+    # @return [Boolean] whether a session's directory holds only the skeleton
+    def self.empty_session_dir?(dir)
       return true unless Dir.exist?(dir)
 
       Dir.children(dir).all? do |name|

@@ -11,6 +11,10 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
   let(:agent) { described_class.new(mode: :assist, client: client, surface: surface) }
   let(:engine) { agent.instance_variable_get(:@engine) }
   let(:session) { instance_double(Samagotchi::Session, messages: []) }
+  # A session something happened in: the REPL keeps it at exit.
+  let(:used_session) do
+    instance_double(Samagotchi::Session, id: "s1", "messages=": nil, messages: [{ role: "user", content: "go" }], last_prompt: "go")
+  end
   let(:repl_input) { Samagotchi::TerminalUI::ReplInput.new(prompt: -> { "> " }, read: ->(*) {}, surface: surface) }
   let(:result) { Samagotchi::KernelLoop::Result.new(output: "ok", conversation: [], tool_activity: []) }
 
@@ -110,11 +114,57 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     allow(agent).to receive(:run_input_line)
     allow(agent).to receive(:drain_pending_question?)
 
-    agent.send(:run_assist_loop, session: instance_double(Samagotchi::Session, id: "s1", "messages=": nil), messages: [])
+    agent.send(:run_assist_loop, session: used_session, messages: [])
 
     expect(agent).not_to have_received(:run_input_line)
     expect(agent.instance_variable_get(:@delete_on_exit)).to be(true)
     expect(surface.lines.join("\n")).not_to include("Continue session")
+  end
+
+  describe "an empty session at exit" do
+    let(:state_dir) { Dir.mktmpdir("repl-empty") }
+    # The REPL's working copy starts with its system prompt.
+    let(:empty_session) do
+      instance_double(Samagotchi::Session, id: "s-empty", "messages=": nil, messages: [{ role: "system", content: "You are chi." }],
+                                           last_prompt: "")
+    end
+
+    before do
+      allow(Samagotchi::Session).to receive(:default_state_dir).and_return(state_dir)
+      allow(agent).to receive(:poll_input_with_reminder_check).and_return("/exit")
+      allow(agent).to receive(:drain_pending_question?)
+      # What claim_session! leaves: the directory with its owner lock.
+      FileUtils.mkdir_p(File.join(state_dir, "s-empty"))
+      File.write(File.join(state_dir, "s-empty", "owner.lock"), "")
+    end
+
+    after { FileUtils.rm_rf(state_dir) }
+
+    it "is discarded, without the resume line" do
+      agent.send(:run_assist_loop, session: empty_session, messages: [])
+      expect(surface.lines.join("\n")).not_to include("Continue session")
+      expect(agent.instance_variable_get(:@discard_on_exit)).to be(true)
+
+      agent.send(:discard_after_exit, empty_session)
+      expect(surface.lines.last).to eq("The session was empty, so it is discarded.")
+      expect(Dir.exist?(File.join(state_dir, "s-empty"))).to be(false)
+    end
+
+    it "is kept on another model than the default (/model, --model)" do
+      agent.instance_variable_set(:@effective_model_name, "some/other-model")
+
+      agent.send(:run_assist_loop, session: empty_session, messages: [])
+
+      expect(surface.lines.last).to include("Continue session: chi --resume s-empty")
+    end
+
+    it "is kept with session.keep_empty" do
+      allow(Samagotchi::SessionManager).to receive(:discard_empty?).and_return(false)
+
+      agent.send(:run_assist_loop, session: empty_session, messages: [])
+
+      expect(surface.lines.last).to include("Continue session: chi --resume s-empty")
+    end
   end
 
   it "says /detach has nothing to detach from, during a turn too, and sends nothing" do
@@ -136,7 +186,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     allow(agent).to receive(:run_input_line)
     allow(agent).to receive(:drain_pending_question?)
 
-    agent.send(:run_assist_loop, session: instance_double(Samagotchi::Session, id: "s1", "messages=": nil), messages: [])
+    agent.send(:run_assist_loop, session: used_session, messages: [])
 
     expect(agent).not_to have_received(:run_input_line)
     expect(surface.lines).to include("(not attached: this session runs in this terminal; /exit ends it)")
@@ -147,7 +197,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     allow(agent).to receive(:run_input_line) { agent.instance_variable_set(:@exit_after_turn, true) }
     allow(agent).to receive(:drain_pending_question?)
 
-    agent.send(:run_assist_loop, session: instance_double(Samagotchi::Session, id: "s1", "messages=": nil), messages: [])
+    agent.send(:run_assist_loop, session: used_session, messages: [])
 
     expect(agent).to have_received(:run_input_line).once
     expect(surface.lines.last).to include("Continue session: chi --resume s1")
@@ -159,7 +209,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     allow(agent).to receive(:run_input_line)
     allow(agent).to receive(:poll_input_with_reminder_check)
 
-    agent.send(:run_assist_loop, session: instance_double(Samagotchi::Session, id: "s1", "messages=": nil), messages: [])
+    agent.send(:run_assist_loop, session: used_session, messages: [])
 
     expect(agent).to have_received(:run_input_line).once.with(anything, "sent before")
     expect(agent).not_to have_received(:poll_input_with_reminder_check)

@@ -1691,6 +1691,8 @@ file2.rb")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
       allow(client).to receive(:complete).and_return("done")
+      # Nothing is sent: keep the session, for the resume line.
+      allow(Samagotchi::SessionManager).to receive(:discard_empty?).and_return(false)
     end
 
     it "prints the session id on exit" do

@@ -246,6 +246,9 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
   end
 
   describe "choosing the surface" do
+    # These runs send nothing: keep the session, for the resume line.
+    before { allow(Samagotchi::SessionManager).to receive(:discard_empty?).and_return(false) }
+
     it "opens a live region for the REPL and closes it at exit" do
       allow(Samagotchi::TerminalUI::LiveRegion).to receive(:open).and_return(screen)
       allow(Samagotchi::TerminalUI::LiveRegion).to receive(:close)

@@ -230,7 +230,36 @@ module Samagotchi
 
       assist_loop(session: session, messages: messages)
       # After the idle layer has stopped: nothing writes the session now.
-      delete_after_exit(session) if @delete_on_exit
+      if @delete_on_exit
+        delete_after_exit(session)
+      elsif @discard_on_exit
+        discard_after_exit(session)
+      end
+    end
+
+    # Nothing happened in the session (SessionManager.empty_session?). The
+    # REPL saves only after a turn and keeps /model in its Engine, so a
+    # session never saved is judged from memory, and one on another model
+    # than the default (/model, --model) is kept.
+    def discard_on_exit?(session)
+      return false unless SessionManager.discard_empty?
+      return false unless @effective_model_name == @default_model_name && Array(@engine.used_memory_names).empty?
+      if File.exist?(File.join(Session.default_state_dir, "#{session.id}#{Session::FILE_EXT}"))
+        return SessionManager.empty_session?(session.id, default_model: @default_model_name)
+      end
+
+      SessionManager.no_conversation?(session.messages) && session.last_prompt.to_s.strip.empty? &&
+        SessionManager.empty_session_dir?(Session.session_dir(session.id))
+    end
+
+    # A session left empty: give it up and delete it, one quiet line.
+    def discard_after_exit(session)
+      @owner_lock&.release
+      @owner_lock = nil
+      SessionManager.delete_session(session.id)
+      @surface.commit("The session was empty, so it is discarded.")
+    rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, ArgumentError, SystemCallError => e
+      @surface.commit("Continue session: chi --resume #{session.id} (the empty session was not discarded: #{e.message})")
     end
 
     # /exit --delete: give up the session, then delete it for good.
@@ -422,7 +451,8 @@ module Samagotchi
       end
 
       close_repl_input
-      @surface.commit("\nContinue session: chi --resume #{session.id}") unless @delete_on_exit
+      @discard_on_exit = !@delete_on_exit && discard_on_exit?(session)
+      @surface.commit("\nContinue session: chi --resume #{session.id}") unless @delete_on_exit || @discard_on_exit
     end
 
     # An answer at the ? prompt of a continue offer. A valid one closes the
