@@ -177,10 +177,11 @@ module Samagotchi
     # What a joining client needs to render the session now, consistent with
     # the event log: the Engine's messages (not the lagging copy on disk),
     # the turn in progress, turns queued behind it, the idle recap since the
-    # last turn, a pending continue offer, the guardrail load warning, and the
+    # last turn, the recap saved with the session (also from before the last
+    # turns: {text:, covered:, turns_since:, created_at:}), a pending continue offer, the guardrail load warning, and the
     # event_seq it all covers.
     # Taken with the log held, so no event is half-applied.
-    # @return [Hash] {messages:, current_turn:, queued:, recap:, continue_offer:, guardrail_warning:, event_seq:, event_id:}
+    # @return [Hash] {messages:, current_turn:, queued:, recap:, saved_recap:, continue_offer:, guardrail_warning:, event_seq:, event_id:}
     def snapshot
       @engine.synchronize_events do
         seq = @engine.event_count
@@ -189,6 +190,7 @@ module Samagotchi
           current_turn: @accumulator.current_turn,
           queued: @accumulator.queued,
           recap: @accumulator.recap,
+          saved_recap: @engine.saved_recap,
           continue_offer: @accumulator.continue_offer,
           guardrail_warning: @engine.guardrail_warning,
           event_seq: seq,

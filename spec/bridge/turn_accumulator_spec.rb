@@ -107,6 +107,12 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.recap).to be_nil
   end
 
+  it "ignores a recap that lands after a turn started (it describes the chat before it)" do
+    feed({ type: :turn_started, session_id: "s", prompt: "more" })
+    feed({ type: :recap_ready, recap: "stale", generation: 1, covered: 4 })
+    expect(acc.recap).to be_nil
+  end
+
   it "keeps the pending continue offer until it is resolved, across turns in between" do
     context = { original_prompt: "the task", tool_trace: ["execute status=ok"], last_model_intent: "" }
     expect(acc.continue_offer).to be_nil

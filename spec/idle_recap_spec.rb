@@ -678,4 +678,57 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(idle.state).to include(text: "recap 1", covered: 4)
     end
   end
+
+  describe "with a store (recap.json)" do
+    def msg(role, content) = { "role" => role, "content" => content }
+    let(:history) { [msg("user", "My project is Bluefin"), msg("model", "Noted."), msg("user", "2+2?"), msg("model", "4")] }
+    let(:prompts) { [] }
+    let(:recording_client) do
+      c = double("client")
+      allow(c).to receive(:summarize) { |prompt| prompts << prompt; "recap #{prompts.size}" }
+      c
+    end
+    let(:store_class) do
+      Class.new do
+        attr_accessor :key, :saved, :loads
+        def initialize(key, saved = nil) = (@key = key; @saved = saved; @loads = 0)
+        def load = (@loads += 1; @saved&.dup)
+        def save(state) = @saved = state.dup
+      end
+    end
+
+    def idle_with(store, messages, model_name: model)
+      engine = stub_engine(messages: JSON.generate(messages), last_activity: base_time.to_f - 5)
+      described_class.new(engine: engine, model: model_name, base_url: base_url, inactivity: 0.0,
+                          timeout: 5.0, client: recording_client, clock: -> { base_time }, store: store)
+    end
+
+    it "saves each recap with what it covers, the model and when" do
+      store = store_class.new("s1")
+      drive(idle_with(store, history))
+      expect(store.saved).to include(text: "recap 1", covered: 4, model: model)
+      expect(store.saved[:covered_digest]).to eq(described_class.digest(history.last))
+      expect(Time.iso8601(store.saved[:created_at])).to be_within(60).of(Time.now)
+    end
+
+    it "continues from the saved recap after a restart (a new worker)" do
+      store = store_class.new("s1")
+      drive(idle_with(store, history))
+      restarted = idle_with(store, history + [msg("user", "Reply PONG"), msg("model", "PONG")])
+      expect(restarted.state).to include(text: "recap 1", covered: 4)
+      drive(restarted)
+      expect(prompts.last.last[:content]).to include("Earlier recap:\nrecap 1")
+      expect(prompts.last.last[:content]).not_to include("Bluefin")
+    end
+
+    it "reloads when the session changes under it (the REPL's /new or /resume)" do
+      store = store_class.new("s1", { text: "old", covered: 2, covered_digest: "x" })
+      idle = idle_with(store, history)
+      expect(idle.state).to include(text: "old")
+      store.key = "s2"
+      store.saved = nil
+      expect(idle.state).to be_nil
+      expect(store.loads).to eq(2)
+    end
+  end
 end

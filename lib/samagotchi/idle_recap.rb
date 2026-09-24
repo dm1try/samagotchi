@@ -7,6 +7,7 @@ require "time"
 
 require_relative "idle_client"
 require_relative "output_formatter"
+require_relative "recap_store"
 
 module Samagotchi
   # Idle job for the session-recap feature — polled by the shared
@@ -158,10 +159,17 @@ module Samagotchi
     attr_reader :generation, :inactivity, :min_user_turns
 
     # @return [Hash, nil] the last recap written: {text:, covered:,
-    #   covered_digest:}, where covered counts the session messages it
-    #   summarizes and covered_digest fingerprints the last of them
+    #   covered_digest:, model:, created_at:}, where covered counts the
+    #   session messages it summarizes and covered_digest fingerprints the
+    #   last of them. With a store, loaded from it for each new session.
     def state
-      @mutex.synchronize { @state&.dup }
+      @mutex.synchronize do
+        if @store && @store_key != (key = @store.key)
+          @store_key = key
+          @state = @store.load
+        end
+        @state&.dup
+      end
     end
 
     # @param base_url [String] the OpenAI API base the recap asks
@@ -171,6 +179,7 @@ module Samagotchi
                    min_user_turns: DEFAULT_MIN_USER_TURNS,
                    timeout: DEFAULT_TIMEOUT_SECONDS,
                    client: nil,
+                   store: nil,
                    clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       raise ArgumentError, "IdleRecap requires an engine" unless engine
 
@@ -182,6 +191,7 @@ module Samagotchi
       @timeout = timeout
       @client = client || IdleClient.new(model: model, base_url: base_url, api_key_env: api_key_env, timeout: timeout)
       @clock = clock
+      @store = store
 
       @mutex = Monitor.new
       @generation = 0
@@ -274,10 +284,19 @@ module Samagotchi
       @in_flight = nil
       recap = safe_value(job[:thread])
       return if recap.nil? || recap.to_s.strip.empty?
-      @mutex.synchronize { @state = { text: recap.to_s, covered: job[:covered], covered_digest: job[:covered_digest] } }
+      saved = { text: recap.to_s, covered: job[:covered], covered_digest: job[:covered_digest],
+                model: @model, created_at: Time.now.utc.iso8601 }
+      @mutex.synchronize { @state = saved }
+      save(saved)
       @engine.emit_recap(recap: recap.to_s, generation: job[:generation], covered: job[:covered])
     rescue StandardError
       @in_flight = nil
+    end
+
+    def save(state)
+      @store&.save(state)
+    rescue StandardError => e
+      warn "[IdleRecap] saving the recap failed: #{e.class}: #{e.message}"
     end
 
     # The saved state when it still describes a prefix of +messages+; nil

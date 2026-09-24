@@ -1097,6 +1097,19 @@ module Samagotchi
       @recap
     end
 
+    # The recap saved with the current session (recap.json), and how many
+    # user turns came after it (0: it is current).
+    # @return [Hash, nil] {text:, covered:, turns_since:, created_at:}
+    def saved_recap
+      state = @recap&.state
+      return nil unless state
+
+      messages = @activity_mutex.synchronize { @session&.messages } || []
+      covered = state[:covered].to_i
+      turns_since = Array(messages).drop(covered).count { |m| m.is_a?(Hash) && (m["role"] || m[:role]).to_s == "user" }
+      { text: state[:text], covered: covered, turns_since: turns_since, created_at: state[:created_at] }
+    end
+
     # Start the shared idle scheduler (reminders + optional recap). The recap
     # job is only registered when recap is configured; the reminders job is
     # always present. TerminalUI calls this before the REPL and SessionManager
@@ -1548,7 +1561,8 @@ module Samagotchi
         api_key_env: api_key_env,
         inactivity: recap_number_setting(kwarg_config, :inactivity, "recap.inactivity", IdleRecap::DEFAULT_INACTIVITY_SECONDS, :float),
         min_user_turns: recap_number_setting(kwarg_config, :min_user_turns, "recap.min_user_turns", IdleRecap::DEFAULT_MIN_USER_TURNS, :int),
-        timeout: recap_number_setting(kwarg_config, :timeout, "recap.timeout", IdleRecap::DEFAULT_TIMEOUT_SECONDS, :float)
+        timeout: recap_number_setting(kwarg_config, :timeout, "recap.timeout", IdleRecap::DEFAULT_TIMEOUT_SECONDS, :float),
+        store: RecapStore.new(session_id_lookup: -> { @session&.id }, state_dir_lookup: -> { session_state_dir })
       )
     end
 

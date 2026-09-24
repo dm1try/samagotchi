@@ -65,7 +65,8 @@ module Samagotchi
           queued[:images] = event[:images] if event[:images]
           @queued << queued
         when :recap_ready
-          @recap = event[:recap]
+          # One collected just as a turn started describes the chat before it.
+          @recap = event[:recap] unless @turn
         when :continue_offered
           @continue_offer = { context: event[:context], no_interrupt: !!event[:no_interrupt] }
         when :continue_resolved
