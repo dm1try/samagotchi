@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "json"
 require "monitor"
 require "time"
@@ -31,6 +32,9 @@ module Samagotchi
     # Above this many tool calls we ask only for a goal/achievement summary
     # (never enumerate calls).
     LARGE_TOOL_THRESHOLD = 10
+    # The most new transcript one attempt sends (the tail is kept): a first
+    # recap of a long session, or a long stretch since the last one.
+    MAX_NEW_CHARS = 16_000
 
     # Build a cleaned recap transcript + the prompt text from a JSON snapshot.
     # Drops the system prompt and tool internals (call markup with its
@@ -85,44 +89,62 @@ module Samagotchi
       end
     end
 
-    # Builds the recap prompt. Short (2-4 sentences). Names the handful of tool
-    # calls briefly when the count is small; states only the count + overall
-    # goal when the count is large (never enumerates).
+    # Builds the recap prompt: the instructions as a system message and the
+    # transcript as the user message (R0 spike: with one user message Ornith
+    # opened 3/12 recaps with notes about the task; 0/12 this way). Short (2-4
+    # sentences). Names the handful of tool calls briefly when the count is
+    # small; states only the count when it is large (never enumerates). With
+    # a previous recap it asks for an updated recap of the whole session from
+    # that recap plus the transcript since.
     module RecapPrompt
+      SYSTEM = "You write short recaps of a chat between a user and an assistant, for the user " \
+               "coming back to it later. Reply with the recap only: 2-4 plain sentences, no heading, " \
+               "no preamble, no notes about the task. Say \"the user\" and \"the assistant\". Cover " \
+               "the overall goal, what was completed, any key facts or project props the user " \
+               "mentioned, and anything still pending."
+      # "do not just repeat": otherwise Ornith returned the earlier recap
+      # word for word after a short turn.
+      UPDATE = " You are given the earlier recap and the conversation since the earlier recap: " \
+               "write an updated recap of the whole session that also covers what happened since " \
+               "(do not just repeat the earlier recap)."
+      OMITTED = "(earlier part omitted)"
+
       module_function
 
-      # @return [String, nil] nil when there is no transcript to summarize
-      def build(transcript, tool_count: nil, tool_names: [])
-        body = transcript.to_s.strip
+      # @return [Array<Hash>, nil] chat messages; nil when there is no
+      #   transcript to summarize
+      def build(transcript, tool_count: nil, tool_names: [], previous: nil)
+        body = cap(transcript.to_s.strip)
         return nil if body.empty?
 
         tool_count ||= tool_names.size
-        if tool_count > LARGE_TOOL_THRESHOLD
-          <<~PROMPT.strip
-            The user and assistant worked together for a session. Below is the
-            cleaned transcript (the system prompt and tool internals were removed;
-            only user turns and assistant prose remain). A total of #{tool_count}
-            tool calls were made#{tools_used(tool_names)} — DO NOT enumerate them. Instead write a short
-            (2-4 sentence) recap covering: the overall goal, what was completed,
-            any key facts or project props the user mentioned, and anything still
-            pending.
-            ---
-            #{body}
-          PROMPT
-        else
-          count_word = tool_count == 1 ? "1 tool call" : "#{tool_count} tool calls"
-          <<~PROMPT.strip
-            The user and assistant worked together for a session. Below is the
-            cleaned transcript (the system prompt and tool internals were removed;
-            only user turns and assistant prose remain). About #{count_word}#{tools_used(tool_names)}
-            were made. Write a short (2-4 sentence) recap covering: the overall
-            goal, what was completed, any key facts or project props the user
-            mentioned, and anything still pending. You may briefly name the
-            handful of tool calls that were central to the work.
-            ---
-            #{body}
-          PROMPT
-        end
+        count_word = tool_count == 1 ? "1 tool call" : "#{tool_count} tool calls"
+        tools = if tool_count > LARGE_TOOL_THRESHOLD
+                  " #{count_word}#{tools_used(tool_names)} were made. Do not enumerate the tool calls."
+                elsif tool_count.positive?
+                  " About #{count_word}#{tools_used(tool_names)} were made; you may briefly name the " \
+                    "handful of tool calls that were central to the work."
+                else
+                  ""
+                end
+        system = SYSTEM + (previous ? UPDATE : "") + tools
+        user = +""
+        user << "Earlier recap:\n#{previous}\n\n" if previous
+        user << "Transcript#{previous ? ' since the earlier recap' : ''} (the system prompt and tool " \
+                "internals were removed; only user turns and assistant prose remain):\n---\n#{body}\n---\n" \
+                "Write the recap now."
+        [{ role: "system", content: system }, { role: "user", content: user }]
+      end
+
+      # The tail of +body+ when it is over MAX_NEW_CHARS, from a paragraph
+      # start when one is near, after an "(earlier part omitted)" line.
+      def cap(body)
+        return body if body.size <= MAX_NEW_CHARS
+
+        tail = body[-MAX_NEW_CHARS..]
+        cut = tail.index("\n\n")
+        tail = tail[(cut + 2)..] if cut && cut < 2_000
+        "#{OMITTED}\n\n#{tail}"
       end
 
       # " (execute x3, read_file)", or "" when no names are known
@@ -134,6 +156,13 @@ module Samagotchi
     end
 
     attr_reader :generation, :inactivity, :min_user_turns
+
+    # @return [Hash, nil] the last recap written: {text:, covered:,
+    #   covered_digest:}, where covered counts the session messages it
+    #   summarizes and covered_digest fingerprints the last of them
+    def state
+      @mutex.synchronize { @state&.dup }
+    end
 
     # @param base_url [String] the OpenAI API base the recap asks
     # @param api_key_env [String, nil] the variable holding its key
@@ -158,6 +187,7 @@ module Samagotchi
       @generation = 0
       @last_fire_activity_seq = nil
       @in_flight = nil
+      @state = nil
     end
 
     # Mark any in-flight recap stale (called when a new turn starts). The
@@ -209,15 +239,20 @@ module Samagotchi
       # empty summary, or an invalidated run must not re-fire on every
       # scheduler tick. The next recorded activity re-arms the window.
       @last_fire_activity_seq = @engine.activity_seq
-      snapshot = @engine.messages_json_for_recap
-      parsed = safe_parse(snapshot)
+      parsed = safe_parse(@engine.messages_json_for_recap)
       return if parsed.nil? || parsed.empty?
       user_turns = parsed.count { |message| message.is_a?(Hash) && message["role"] == "user" }
       return if user_turns < @min_user_turns
-      transcript = TranscriptFilter.build(parsed)
-      prompt = RecapPrompt.build(transcript, tool_names: TranscriptFilter.tool_names(parsed))
+      previous = continuable_state(parsed)
+      fresh = parsed.drop(previous ? previous[:covered] : 0)
+      transcript = TranscriptFilter.build(fresh)
+      # Nothing new said (only notes, tool traffic, or no messages at all):
+      # the recap still stands, so no request.
+      return if transcript.strip.empty?
+      prompt = RecapPrompt.build(transcript, tool_names: TranscriptFilter.tool_names(fresh), previous: previous&.dig(:text))
       return if prompt.nil?
-      @in_flight = { thread: spawn_summarize(prompt), generation: gen, deadline: @clock.call + @timeout }
+      @in_flight = { thread: spawn_summarize(prompt), generation: gen, deadline: @clock.call + @timeout,
+                     covered: parsed.size, covered_digest: self.class.digest(parsed.last) }
     rescue StandardError
       nil
     end
@@ -239,9 +274,33 @@ module Samagotchi
       @in_flight = nil
       recap = safe_value(job[:thread])
       return if recap.nil? || recap.to_s.strip.empty?
-      @engine.emit_recap(recap: recap.to_s, generation: job[:generation])
+      @mutex.synchronize { @state = { text: recap.to_s, covered: job[:covered], covered_digest: job[:covered_digest] } }
+      @engine.emit_recap(recap: recap.to_s, generation: job[:generation], covered: job[:covered])
     rescue StandardError
       @in_flight = nil
+    end
+
+    # The saved state when it still describes a prefix of +messages+; nil
+    # (start over) when the history got shorter or was rewritten (a
+    # rollback, a cancelled or failed turn replaced).
+    def continuable_state(messages)
+      saved = state
+      return nil unless saved && saved[:covered].to_i.positive?
+      return nil if saved[:covered] > messages.size
+      return nil unless self.class.digest(messages[saved[:covered] - 1]) == saved[:covered_digest]
+
+      saved
+    end
+
+    # SHA1 of one message's role and text: detects a rewrite a count alone
+    # misses. Model text is taken without its thinking, which is dropped from
+    # older model messages when the next turn starts.
+    def self.digest(message)
+      return nil unless message.is_a?(Hash)
+
+      text = message["content"].to_s
+      text = TranscriptFilter.strip_thought(text) if %w[model assistant].include?(message["role"])
+      Digest::SHA1.hexdigest("#{message['role']}\0#{text}")
     end
 
     def bump_generation

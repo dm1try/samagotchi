@@ -25,6 +25,13 @@ RSpec.describe Samagotchi::IdleClient do
       expect(client.summarize("summarize this")).to eq("the recap text")
     end
 
+    it "sends a message list as given (a system + user recap prompt)" do
+      reply(content: "ok")
+      client.summarize([{ role: "system", content: "Recap only." }, { role: "user", content: "the chat" }])
+      expect(request_body["messages"]).to eq([{ "role" => "system", "content" => "Recap only." },
+                                              { "role" => "user", "content" => "the chat" }])
+    end
+
     it "returns nil when the prompt is blank (nothing to summarize)" do
       expect(client.summarize("   ")).to be_nil
       expect(server.requests).to be_empty

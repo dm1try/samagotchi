@@ -60,14 +60,15 @@ module Samagotchi
       text.to_s[/\A.*[.!?]["')\]`*]*(?=\s|\z)/m].to_s
     end
 
-    # Summarize an already-built recap prompt. Returns the cleaned prose, or
-    # nil when there is nothing to summarize. Any failure raises
-    # SummarizeError (the caller isolates it).
+    # Summarize an already-built recap prompt: a string (one user message) or
+    # a list of chat messages. Returns the cleaned prose, or nil when there is
+    # nothing to summarize. Any failure raises SummarizeError (the caller
+    # isolates it).
     def summarize(prompt)
-      body = prompt.to_s.strip
-      return nil if body.empty?
+      messages = prompt.is_a?(Array) ? prompt : [{ role: "user", content: prompt.to_s.strip }]
+      return nil if messages.all? { |m| m[:content].to_s.strip.empty? }
 
-      content = generate(body)
+      content = generate(messages)
       cleaned = content.to_s.strip
       cleaned.empty? ? nil : cleaned
     rescue SummarizeError
@@ -81,9 +82,9 @@ module Samagotchi
     # One plain /chat/completions request. Returns the cleaned assistant text
     # ("" when there is nothing after stripping). Raises SummarizeError when
     # the reply has neither content nor reasoning_content.
-    def generate(prompt)
+    def generate(messages)
       response = @chat.chat(
-        messages: [{ role: "user", content: prompt }], model: @model, tools: [],
+        messages: messages, model: @model, tools: [],
         options: {
           max_tokens: MAX_TOKENS,
           # A reasoning model otherwise spends the budget thinking and the

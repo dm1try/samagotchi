@@ -131,38 +131,47 @@ RSpec.describe Samagotchi::IdleRecap do
   describe Samagotchi::IdleRecap::RecapPrompt do
     describe ".build" do
       let(:transcript) { "User asked about X.\nAssistant answered." }
+      def text(messages) = messages.map { |m| m[:content] }.join("\n")
+
       it "returns nil when transcript is empty (nothing to summarize)" do
         expect(Samagotchi::IdleRecap::RecapPrompt.build("", tool_count: 0)).to be_nil
       end
-      it "tallies the tool names when the count is small" do
-        result = Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_names: %w[execute read_file execute])
-        expect(result).to include("3 tool calls (execute x2, read_file)")
+      it "puts the instructions in a system message and the transcript in the user message" do
+        system, user = Samagotchi::IdleRecap::RecapPrompt.build(transcript)
+        expect(system[:role]).to eq("system")
+        expect(system[:content]).to include("recap only", "no preamble")
+        expect(user[:role]).to eq("user")
+        expect(user[:content]).to include(transcript)
       end
-      it "includes tool count when small" do
-        result = Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_count: 3)
-        expect(result).to include("3 tool calls")
+      it "tallies the tool names when the count is small" do
+        result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_names: %w[execute read_file execute]))
+        expect(result).to include("3 tool calls (execute x2, read_file)")
         expect(result).to include("handful of tool calls")
       end
       it "includes single tool call phrasing" do
-        result = Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_count: 1)
+        result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_count: 1))
         expect(result).to include("1 tool call")
       end
-      it "omits tool names when count is large (above threshold)" do
-        result = Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_count: 50)
-        expect(result).to include("50\ntool calls were made")
-        expect(result).to include("DO NOT enumerate them")
-      end
-      it "tallies the tool names even when the count is large" do
-        result = Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_names: ["execute"] * 11)
-        expect(result).to include("(execute x11)")
-        expect(result).to include("DO NOT enumerate them")
+      it "asks not to enumerate the calls when the count is large" do
+        result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_names: ["execute"] * 11))
+        expect(result).to include("11 tool calls (execute x11)")
+        expect(result).to include("Do not enumerate the tool calls")
       end
       it "includes overall goal, completion, facts, and pending in the prompt" do
-        result = Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_count: 2)
-        expect(result).to include("goal")
-        expect(result).to include("completed")
-        expect(result).to include("key facts")
-        expect(result).to include("pending")
+        result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_count: 2))
+        expect(result).to include("goal", "completed", "key facts", "pending")
+      end
+      it "asks for an updated recap of the whole session when given the previous one" do
+        result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, previous: "We set up Bluefin."))
+        expect(result).to include("Earlier recap:\nWe set up Bluefin.")
+        expect(result).to include("updated recap of the whole session", "do not just repeat the earlier recap")
+        expect(result).to include("since the earlier recap")
+      end
+      it "keeps the tail of an overlong transcript, marking the cut" do
+        long = ("a" * 100 + "\n\n") * 300
+        user = Samagotchi::IdleRecap::RecapPrompt.build(long + "THE END").last[:content]
+        expect(user).to include("(earlier part omitted)", "THE END")
+        expect(user.size).to be < Samagotchi::IdleRecap::MAX_NEW_CHARS + 1_000
       end
     end
   end
@@ -435,12 +444,13 @@ RSpec.describe Samagotchi::IdleRecap do
       allow(idle).to receive(:should_fire?).and_return(true)
       drive(idle)
       gen_v1 = idle.generation
-      expect(engine).to have_received(:emit_recap).with(recap: anything, generation: gen_v1)
+      expect(engine).to have_received(:emit_recap).with(recap: anything, generation: gen_v1, covered: 3)
       # Invalidate (bumps generation)
       idle.invalidate!
       expect(idle.generation).to eq(gen_v1 + 1)
-      # Build a fresh engine for the second call
-      engine2 = stub_engine(messages: messages_with_two_user_turns)
+      # Build a fresh engine for the second call, with something new said
+      more = JSON.generate(JSON.parse(messages_with_two_user_turns) + [{ "role" => "model", "content" => "Continuing" }])
+      engine2 = stub_engine(messages: more)
       allow(idle).to receive(:should_fire?).and_return(true)
       idle.instance_variable_set(:@engine, engine2)
       idle.instance_variable_set(:@client, double("client_v2", summarize: "recap v2"))
@@ -448,7 +458,7 @@ RSpec.describe Samagotchi::IdleRecap do
       expected_gen = gen_v1 + 2
       drive(idle)
       # The emit should use the new generation
-      expect(engine2).to have_received(:emit_recap).with(recap: anything, generation: expected_gen)
+      expect(engine2).to have_received(:emit_recap).with(recap: anything, generation: expected_gen, covered: 4)
     end
   end
 
@@ -531,7 +541,7 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(blocked_client).to have_received(:summarize).once
       gate.push(:go)
       drive(idle)
-      expect(engine).to have_received(:emit_recap).with(recap: "late recap", generation: idle.generation)
+      expect(engine).to have_received(:emit_recap).with(recap: "late recap", generation: idle.generation, covered: 3)
     end
 
     it "lets the other scheduler jobs keep ticking while a recap is in flight" do
@@ -561,6 +571,111 @@ RSpec.describe Samagotchi::IdleRecap do
       sleep(0.05)
       idle.tick
       expect(engine).not_to have_received(:emit_recap)
+    end
+  end
+
+  describe "incremental recaps" do
+    def msg(role, content) = { "role" => role, "content" => content }
+    let(:first) { [msg("user", "My project is Bluefin"), msg("model", "Noted."), msg("user", "What is 2+2?"), msg("model", "4")] }
+    let(:prompts) { [] }
+    let(:recording_client) do
+      c = double("client")
+      allow(c).to receive(:summarize) { |prompt| prompts << prompt; "recap #{prompts.size}" }
+      c
+    end
+    let(:seq) { [1] }
+    let(:messages) { [first.dup] }
+
+    def engine_for
+      e = stub_engine(last_activity: base_time.to_f - 5)
+      allow(e).to receive(:activity_seq) { seq[0] }
+      allow(e).to receive(:messages_json_for_recap) { JSON.generate(messages[0]) }
+      e
+    end
+
+    def recap_for(engine)
+      described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0,
+                          timeout: 5.0, client: recording_client, clock: -> { base_time })
+    end
+
+    def user_text(prompt) = prompt.last[:content]
+
+    it "summarizes only what is new since the last recap, with the previous recap in the prompt" do
+      engine = engine_for
+      idle = recap_for(engine)
+      drive(idle)
+      expect(idle.state).to include(text: "recap 1", covered: 4)
+      messages[0] += [msg("user", "Reply PONG"), msg("model", "PONG")]
+      seq[0] = 2
+      drive(idle)
+      expect(prompts.size).to eq(2)
+      expect(user_text(prompts[1])).to include("Earlier recap:\nrecap 1", "Reply PONG", "PONG")
+      expect(user_text(prompts[1])).not_to include("Bluefin")
+      expect(idle.state).to include(text: "recap 2", covered: 6)
+      expect(engine).to have_received(:emit_recap).with(recap: "recap 2", generation: idle.generation, covered: 6)
+    end
+
+    it "sends nothing when nothing new was said (a /recap or a context note re-arms the window)" do
+      idle = recap_for(engine_for)
+      drive(idle)
+      messages[0] += [msg("system", "[note] a context note")]
+      seq[0] = 2
+      drive(idle)
+      seq[0] = 3
+      drive(idle)
+      expect(prompts.size).to eq(1)
+    end
+
+    it "counts a !cmd output (a user message) as new" do
+      idle = recap_for(engine_for)
+      drive(idle)
+      messages[0] += [msg("user", "$ ls\nREADME.md")]
+      seq[0] = 2
+      drive(idle)
+      expect(prompts.size).to eq(2)
+    end
+
+    it "starts over when the covered messages were rewritten (a rollback plus a new turn)" do
+      idle = recap_for(engine_for)
+      drive(idle)
+      messages[0] = first[0, 2] + [msg("user", "Actually, what is 3+3?"), msg("model", "6")]
+      seq[0] = 2
+      drive(idle)
+      expect(user_text(prompts[1])).not_to include("Earlier recap")
+      expect(user_text(prompts[1])).to include("Bluefin", "3+3")
+      expect(idle.state).to include(covered: 4, text: "recap 2")
+    end
+
+    it "continues when an older model message lost its thinking (done when the next turn starts)" do
+      messages[0] = first[0, 3] + [msg("model", "<think>\nsimple sum\n</think>\n\n4")]
+      idle = recap_for(engine_for)
+      drive(idle)
+      messages[0] = first[0, 3] + [msg("model", "\n4"), msg("user", "Reply PONG"), msg("model", "PONG")]
+      seq[0] = 2
+      drive(idle)
+      expect(user_text(prompts[1])).to include("Earlier recap:\nrecap 1")
+      expect(user_text(prompts[1])).not_to include("Bluefin")
+    end
+
+    it "starts over when the history is shorter than the recap covered" do
+      idle = recap_for(engine_for)
+      drive(idle)
+      messages[0] = [msg("user", "one"), msg("model", "a"), msg("user", "two")]
+      seq[0] = 2
+      drive(idle)
+      expect(user_text(prompts[1])).not_to include("Earlier recap")
+      expect(idle.state).to include(covered: 3)
+    end
+
+    it "keeps the previous state when an attempt fails" do
+      engine = engine_for
+      idle = recap_for(engine)
+      drive(idle)
+      allow(recording_client).to receive(:summarize).and_raise(Samagotchi::IdleClient::SummarizeError)
+      messages[0] += [msg("user", "more")]
+      seq[0] = 2
+      drive(idle)
+      expect(idle.state).to include(text: "recap 1", covered: 4)
     end
   end
 end

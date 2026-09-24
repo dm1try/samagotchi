@@ -298,8 +298,9 @@ module Samagotchi
 
     # Emit a :recap_ready event (additive slot) carrying the generated recap
     # and the generation id an observer uses to reject an invalidated recap.
-    def emit_recap(recap:, generation:)
-      @session_observer.notify(type: :recap_ready, recap: recap, generation: generation)
+    # +covered+ counts the session messages it summarizes.
+    def emit_recap(recap:, generation:, covered: nil)
+      @session_observer.notify(type: :recap_ready, recap: recap, generation: generation, covered: covered)
     end
 
     # @return [SessionMetrics] the per-session analytics collector
