@@ -75,6 +75,12 @@ test("own turn_started without a tag starts the echo by its text", () => {
   assert.deepEqual(promptOps(ev, none), [{ op: "start", enqueuedId: "e4", prompt: "mine" }]);
 });
 
+test("own turn_started carries its images, for an echo a resync wiped", () => {
+  const images = [{ file: "a.png", name: "a.png" }];
+  const ev = { type: "turn_started", prompt: "mine", images, origin: { client_id: ME, enqueued_id: "e5" } };
+  assert.deepEqual(promptOps(ev, none), [{ op: "start", enqueuedId: "e5", prompt: "mine", images }]);
+});
+
 test("a continue turn and a prompt-less start render no bubble", () => {
   assert.deepEqual(promptOps({ type: "turn_started", prompt: "x", continue: true }, none), []);
   assert.deepEqual(promptOps({ type: "turn_started", prompt: "" }, none), []);
