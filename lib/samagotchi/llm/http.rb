@@ -4,6 +4,7 @@ require "net/http"
 require "uri"
 require_relative "../config"
 require_relative "../version"
+require_relative "../log"
 require_relative "errors"
 
 module Samagotchi
@@ -36,6 +37,10 @@ module Samagotchi
         Timeout::Error, EOFError, SocketError, IO::TimeoutError,
         Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::ETIMEDOUT
       ].freeze
+
+      # Requests of these purposes are the ones a turn waits on: INFO lines
+      # (and ERROR when they fail). Probes and model lists are DEBUG.
+      LOGGED_PURPOSES = %w[chat recap].freeze
 
       # Exponential backoff: base_delay * 2^(attempt-1), capped at max_delay,
       # for up to +max+ retries (max + 1 attempts).
@@ -130,46 +135,68 @@ module Samagotchi
       # @raise [RetryExhausted] when the retries run out
       # @raise [ProviderError] for an error status
       # @raise [FirstTokenTimeout] when nothing was shown in time
-      def stream_lines(uri, request, cancel_controller: nil, on_retry: nil, on_network_error: nil, &on_line)
+      # @param log_fields [Hash] what the log line says about the request
+      #   (model:, purpose: chat/recap/probe/models); never its body
+      def stream_lines(uri, request, cancel_controller: nil, on_retry: nil, on_network_error: nil, log_fields: {}, &on_line)
         identify(request)
-        with_retries(cancel_controller, on_retry, on_network_error) do |current|
-          shown = -> { current[:streamed] = true }
-          watch_first_token(current) do
-            start(uri) do |http|
-              current[:http] = http
-              http.request(request) do |response|
-                check_status!(response)
-                buffer = +""
-                response.read_body do |chunk|
-                  buffer << chunk
-                  while (newline_index = buffer.index("\n"))
-                    on_line.call(buffer.slice!(0, newline_index + 1).strip, shown)
-                  end
+        current = new_attempt_state(uri, request, log_fields, stream: true)
+        logged(current) do
+          with_retries(cancel_controller, on_retry, on_network_error, current) do
+            stream_attempt(uri, request, current, &on_line)
+          end
+        end
+      end
+
+      def stream_attempt(uri, request, current, &on_line)
+        # Time to first token is the answering attempt's, not the retries'.
+        current[:attempt_started_at] = monotonic_now
+        shown = lambda do
+          current[:streamed] = true
+          current[:first_shown_at] ||= monotonic_now
+        end
+        watch_first_token(current) do
+          start(uri) do |http|
+            current[:http] = http
+            http.request(request) do |response|
+              current[:status] = response.code.to_i
+              check_status!(response)
+              buffer = +""
+              response.read_body do |chunk|
+                buffer << chunk
+                while (newline_index = buffer.index("\n"))
+                  on_line.call(buffer.slice!(0, newline_index + 1).strip, shown)
                 end
-                # A body that doesn't end in a newline still has a last line.
-                on_line.call(buffer.strip, shown) unless buffer.strip.empty?
               end
+              # A body that doesn't end in a newline still has a last line.
+              on_line.call(buffer.strip, shown) unless buffer.strip.empty?
             end
           end
         end
       end
+      private :stream_attempt
 
       # Send +request+ and return the response with its body read.
       # @param retries [Boolean] false: one attempt, network errors raised as is
       # @param check_status [Boolean] false: return an error response instead
       #   of raising its ProviderError
       def fetch(uri, request, retries: true, check_status: true, open_timeout: nil, read_timeout: nil,
-                cancel_controller: nil)
+                cancel_controller: nil, log_fields: {})
         identify(request)
-        attempt = lambda do |current|
+        current = new_attempt_state(uri, request, log_fields, stream: false)
+        attempt = lambda do |state|
           start(uri, open_timeout: open_timeout, read_timeout: read_timeout) do |http|
-            current[:http] = http
-            http.request(request).tap { |response| check_status!(response) if check_status }
+            state[:http] = http
+            http.request(request).tap do |response|
+              state[:status] = response.code.to_i
+              check_status!(response) if check_status
+            end
           end
         end
-        return attempt.call({ mutex: Mutex.new }) unless retries
+        logged(current) do
+          next attempt.call(current.merge!(attempts: 1)) unless retries
 
-        with_retries(cancel_controller, nil, nil, &attempt)
+          with_retries(cancel_controller, nil, nil, current, &attempt)
+        end
       end
 
       private
@@ -187,8 +214,7 @@ module Samagotchi
       # Runs the block (one attempt) until it returns, retrying network
       # errors. The block gets a hash to put the attempt's Net::HTTP in, so a
       # cancel can reach its socket.
-      def with_retries(cancel_controller, on_retry, on_network_error)
-        current = { mutex: Mutex.new }
+      def with_retries(cancel_controller, on_retry, on_network_error, current = { mutex: Mutex.new })
         requesting_thread = Thread.current
         listener_id = cancel_controller&.on_cancel { |reason| abort_request(current, requesting_thread, reason) }
         raise RequestCancelled.new(cancel_controller.reason) if cancel_controller&.cancelled?
@@ -196,6 +222,7 @@ module Samagotchi
         attempts = 0
         loop do
           attempts += 1
+          current[:attempts] = attempts
           begin
             return yield(current)
           rescue RequestCancelled
@@ -209,7 +236,7 @@ module Samagotchi
             delay = e.retry_after || @retry_policy.delay_for(attempts)
             raise if delay.nil? || attempts > @retry_policy.max || delay > MAX_RETRY_AFTER
 
-            retry_after(e, attempts, delay, on_retry, cancel_controller)
+            retry_after(e, attempts, delay, on_retry, cancel_controller, current)
           rescue StandardError => e
             raise RequestCancelled.new(cancel_controller.reason) if cancel_controller&.cancelled?
             raise first_token_timeout if current[:first_token_expired]
@@ -219,7 +246,7 @@ module Samagotchi
             delay = current[:streamed] ? nil : @retry_policy.delay_for(attempts)
             raise RetryExhausted.new(attempts: attempts, last_error: e, label: @label) if delay.nil?
 
-            retry_after(e, attempts, delay, on_retry, cancel_controller)
+            retry_after(e, attempts, delay, on_retry, cancel_controller, current)
           ensure
             current.delete(:http)
           end
@@ -269,7 +296,68 @@ module Samagotchi
 
       def first_token_timeout = FirstTokenTimeout.new(limit: @first_token_timeout, host: @label)
 
-      def retry_after(error, attempts, delay, on_retry, cancel_controller)
+      def monotonic_now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      # The per-request state the attempts share (the Net::HTTP a cancel
+      # closes, status, timings) and what its log line says.
+      def new_attempt_state(uri, request, log_fields, stream:)
+        purpose = log_fields[:purpose]&.to_s
+        { mutex: Mutex.new, started_at: monotonic_now, stream: stream,
+          level: LOGGED_PURPOSES.include?(purpose) ? :info : :debug,
+          log: { host: @label, method: request.method, url: log_url(uri),
+                 **log_fields.compact } }
+      end
+
+      def log_base(current) = current[:log] || { host: @label }
+
+      # scheme://host[:port]/path: no user info, query or default port.
+      def log_url(uri)
+        port = uri.port == uri.default_port ? "" : ":#{uri.port}"
+        "#{uri.scheme}://#{uri.host}#{port}#{uri.path}"
+      end
+
+      # One line per request, whatever its end: done (status, time to the
+      # first token of a stream, total), failed, timed out or cancelled.
+      # Retries have their own WARN lines (#retry_after).
+      def logged(current)
+        result = yield
+        Log.public_send(current[:level], :http, current[:stream] ? "stream" : "fetch", **log_base(current),
+                        status: current[:status], ttft_ms: ttft_ms(current),
+                        ms: elapsed_ms(current), attempts: retried(current))
+        result
+      rescue RequestCancelled => e
+        Log.info(:http, "cancelled", **log_base(current), ms: elapsed_ms(current), reason: e.reason&.to_s)
+        raise
+      rescue StandardError => e
+        failure_level = current[:level] == :info ? :error : :debug
+        event = case e
+                when FirstTokenTimeout then "first_token_timeout"
+                when RetryExhausted then "retry_exhausted"
+                else "failed"
+                end
+        Log.public_send(failure_level, :http, event, **log_base(current), status: e.is_a?(ProviderError) ? e.status : nil,
+                                                     ms: elapsed_ms(current), attempts: current[:attempts], error: e.class.name,
+                                                     msg: (e.respond_to?(:summary) ? e.summary : e.message).to_s[0, 300])
+        raise
+      end
+
+      def elapsed_ms(current, at = monotonic_now)
+        at && ((at - current[:started_at]) * 1000).round
+      end
+
+      def ttft_ms(current)
+        shown = current[:first_shown_at]
+        shown && ((shown - current[:attempt_started_at]) * 1000).round
+      end
+
+      def retried(current)
+        current[:attempts].to_i > 1 ? current[:attempts] : nil
+      end
+
+      def retry_after(error, attempts, delay, on_retry, cancel_controller, current)
+        Log.warn(:http, "retry", **log_base(current), attempt: attempts, max_retries: @retry_policy.max, delay_s: delay,
+                                 status: error.is_a?(ProviderError) ? error.status : nil, error: error.class.name,
+                                 msg: error.message.to_s[0, 300])
         on_retry&.call(attempt: attempts, max_retries: @retry_policy.max, next_delay: delay,
                        error_class: error.class.name, error_message: error.message)
         wait(delay, cancel_controller)

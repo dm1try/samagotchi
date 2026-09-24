@@ -37,7 +37,7 @@ module Samagotchi
       # A recap is best-effort: one short attempt, no retries. The idle job
       # tries again after the next activity, never on its own.
       @chat = LLM::OpenAIChat.new(base_url: base_url.to_s, host_name: "recap", api_key_env: api_key_env,
-                                  stream: false, retries: false, timeout: timeout, env: env)
+                                  stream: false, retries: false, timeout: timeout, env: env, purpose: "recap")
     end
 
     THINK_RE = /<\|think\|.*?\|think\|>/m

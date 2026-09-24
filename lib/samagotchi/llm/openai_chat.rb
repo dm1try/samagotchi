@@ -80,8 +80,10 @@ module Samagotchi
       #   may take to show something (LLM::HTTP); nil: no limit
       def initialize(base_url:, host_name:, api_key_env: nil, stream: true, retries: true, timeout: nil,
                      env: ENV, sleeper: nil, retry_policy: nil, models_ttl: DEFAULT_MODELS_TTL, remote: false,
-                     first_token_timeout: nil)
+                     first_token_timeout: nil, purpose: "chat")
         @remote = remote
+        # What its requests are for, in the log (LLM::HTTP::LOGGED_PURPOSES).
+        @purpose = purpose
         @first_token_timeout = first_token_timeout
         @base_url = base_url.to_s.chomp("/")
         @host_name = host_name.to_s
@@ -111,7 +113,8 @@ module Samagotchi
                session_id: nil)
         request = post_request("#{@base_url}/chat/completions", request_body(messages, tools, model, options),
                                session_id: session_id)
-        return chat_once(request, cancel_controller) unless @stream
+        log_fields = { model: model, purpose: @purpose }
+        return chat_once(request, cancel_controller, log_fields) unless @stream
 
         assembly = Assembly.new
         events = 0
@@ -121,7 +124,8 @@ module Samagotchi
           assembly = Assembly.new
           on_retry&.call(**event)
         end
-        @http.stream_lines(URI(request.uri.to_s), request, cancel_controller: cancel_controller, on_retry: restart) do |line, shown|
+        @http.stream_lines(URI(request.uri.to_s), request, cancel_controller: cancel_controller, on_retry: restart,
+                                                           log_fields: log_fields) do |line, shown|
           events += 1 if line.start_with?("data:")
           other << line[0, 200] if !line.start_with?("data:") && other.length < 200
           payload = parse_line(line)
@@ -147,7 +151,7 @@ module Samagotchi
         after = nil
         MAX_MODEL_PAGES.times do
           uri = URI("#{@base_url}/models#{after ? "?after=#{URI.encode_www_form_component(after)}" : ""}")
-          body = parse_json(@http.fetch(uri, get_request(uri)).body, "model list")
+          body = parse_json(@http.fetch(uri, get_request(uri), log_fields: { purpose: "models" }).body, "model list")
           models.concat(model_entries(body).map { |raw| model_info(raw) })
           break unless body.is_a?(Hash) && body["has_more"] && body["last_id"]
 
@@ -226,8 +230,8 @@ module Samagotchi
         text.encoding == Encoding::UTF_8 && !text.valid_encoding? ? text.scrub("?") : text
       end
 
-      def chat_once(request, cancel_controller)
-        response = @http.fetch(URI(request.uri.to_s), request, cancel_controller: cancel_controller)
+      def chat_once(request, cancel_controller, log_fields)
+        response = @http.fetch(URI(request.uri.to_s), request, cancel_controller: cancel_controller, log_fields: log_fields)
         body = parse_json(response.body, "chat response")
         message = body.is_a?(Hash) ? body.dig("choices", 0, "message") : nil
         raise ProtocolError.new("#{@host_name}: no message in the chat response", host: @host_name) unless message.is_a?(Hash)

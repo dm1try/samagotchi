@@ -4,6 +4,8 @@ require "spec_helper"
 require "socket"
 require "samagotchi/llm/http"
 require "samagotchi/cancellation_controller"
+require "fileutils"
+require "tmpdir"
 require_relative "../support/fake_provider_server"
 
 RSpec.describe Samagotchi::LLM::HTTP do
@@ -337,6 +339,107 @@ RSpec.describe Samagotchi::LLM::HTTP do
       expect { cancelling.stream_lines(uri, post_request, cancel_controller: controller) { nil } }
         .to raise_error(Samagotchi::LLM::RequestCancelled)
       expect(server.requests.size).to eq(1)
+    end
+  end
+
+  describe "log lines (tag http)" do
+    let(:log_dir) { Dir.mktmpdir("samagotchi-log") }
+    let(:log_path) { File.join(log_dir, "chi.log") }
+    before { Samagotchi::Log.configure(path: log_path, level: :debug) }
+    after { FileUtils.remove_entry(log_dir) }
+
+    def http_records
+      return [] unless File.exist?(log_path)
+
+      File.open(log_path) { |io| Samagotchi::LogLine.each_record(io).select { |r| r.tag == "http" } }
+    end
+
+    let(:chat) { { model: "qwen", purpose: "chat" } }
+
+    it "writes one INFO line per stream: host, model, status, time to first token, total; never the body" do
+      server.enqueue("/v1/chat/completions", sse: "data: {\"secret\":1}\n\n")
+      request = post_request
+      request["Authorization"] = "Bearer sk-secret"
+
+      http.stream_lines(uri, request, log_fields: chat) { |_line, shown| shown.call }
+
+      expect(http_records.size).to eq(1)
+      record = http_records.first
+      expect(record.to_h).to include(level: "INFO", event: "stream")
+      expect(record.fields).to include("host" => "fake", "method" => "POST", "url" => "#{server.base_url}/chat/completions",
+                                       "model" => "qwen", "purpose" => "chat", "status" => "200")
+      expect(Integer(record.fields["ttft_ms"])).to be <= Integer(record.fields["ms"])
+      expect(File.read(log_path)).not_to include("secret")
+    end
+
+    it "writes a WARN per retry (a 429 here), then the stream with its attempts" do
+      server.enqueue("/v1/chat/completions", status: 429, json: { error: { message: "slow down" } }, headers: { "Retry-After" => "1" })
+      server.enqueue("/v1/chat/completions", sse: "data: ok\n\n")
+
+      http.stream_lines(uri, post_request, log_fields: chat) { |_line, shown| shown.call }
+
+      stream = http_records.last
+      # The answering attempt's time to first token, not the backoff before it.
+      expect(Integer(stream.fields["ttft_ms"])).to be <= Integer(stream.fields["ms"])
+      expect(http_records.map { |r| [r.level, r.event, r.fields.slice("status", "attempt", "delay_s", "attempts")] }).to eq([
+        ["WARN", "retry", { "status" => "429", "attempt" => "1", "delay_s" => "1.0" }],
+        ["INFO", "stream", { "status" => "200", "attempts" => "2" }]
+      ])
+    end
+
+    it "writes a WARN for a network retry too, and an ERROR when they run out" do
+      dead = URI("http://127.0.0.1:#{closed_port}/v1/chat/completions")
+
+      expect { http.stream_lines(dead, post_request(dead), log_fields: chat) { nil } }
+        .to raise_error(Samagotchi::LLM::RetryExhausted)
+
+      expect(http_records.map { |r| [r.level, r.event] }).to eq([%w[WARN retry], %w[WARN retry], %w[ERROR retry_exhausted]])
+      expect(http_records.last.fields).to include("attempts" => "3", "error" => "Samagotchi::LLM::RetryExhausted")
+    end
+
+    it "writes an ERROR for a Retry-After too long to wait out" do
+      server.default("/v1/chat/completions", status: 429, json: { error: { message: "slow down" } }, headers: { "Retry-After" => "600" })
+
+      expect { http.stream_lines(uri, post_request, log_fields: chat) { nil } }.to raise_error(Samagotchi::LLM::RateLimited)
+
+      expect(http_records.map { |r| [r.level, r.event, r.fields["status"]] }).to eq([["ERROR", "failed", "429"]])
+    end
+
+    it "writes an ERROR for a first-token timeout" do
+      limited = described_class.new(label: "fake", open_timeout: 2, read_timeout: 5, retry_policy: policy,
+                                    sleeper: ->(seconds) { sleeps << seconds }, first_token_timeout: 0.2)
+      server.enqueue("/v1/chat/completions", sse: Array.new(20) { ": PROCESSING\n\n" }, delay: 0.05, hold: true)
+
+      expect { limited.stream_lines(uri, post_request, log_fields: chat) { nil } }.to raise_error(Samagotchi::LLM::FirstTokenTimeout)
+      server.release
+
+      expect(http_records.map { |r| [r.level, r.event] }).to eq([%w[ERROR first_token_timeout]])
+    end
+
+    it "writes a cancelled request as INFO" do
+      controller = Samagotchi::CancellationController.new
+      controller.cancel!(:ctrl_c)
+
+      expect { http.stream_lines(uri, post_request, cancel_controller: controller, log_fields: chat) { nil } }
+        .to raise_error(Samagotchi::LLM::RequestCancelled)
+
+      expect(http_records.map { |r| [r.level, r.event, r.fields["reason"]] }).to eq([%w[INFO cancelled ctrl_c]])
+    end
+
+    it "keeps probes and model lists at DEBUG, failures included" do
+      server.enqueue("/v1/props", status: 404, json: { error: "no" })
+      server.enqueue("/v1/models", json: { data: [] })
+
+      http.fetch(URI("#{server.base_url}/props?model=q"), Net::HTTP::Get.new(URI("#{server.base_url}/props")),
+                 retries: false, check_status: false, log_fields: { purpose: "probe" })
+      http.fetch(URI("#{server.base_url}/models"), Net::HTTP::Get.new(URI("#{server.base_url}/models")),
+                 log_fields: { purpose: "models" })
+      expect { http.fetch(URI("http://127.0.0.1:#{closed_port}/props"), Net::HTTP::Get.new(URI("http://127.0.0.1:1/props")),
+                          retries: false, log_fields: { purpose: "probe" }) }.to raise_error(Errno::ECONNREFUSED)
+
+      expect(http_records.map { |r| [r.level, r.event, r.fields["status"]] })
+        .to eq([["DEBUG", "fetch", "404"], ["DEBUG", "fetch", "200"], ["DEBUG", "failed", nil]])
+      expect(http_records.first.fields["url"]).to eq("#{server.base_url}/props")
     end
   end
 

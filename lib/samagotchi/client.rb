@@ -211,7 +211,8 @@ module Samagotchi
         on_retry&.call(**event)
       end
       @http.stream_lines(uri, request, cancel_controller: cancel_controller, on_retry: reset_on_retry,
-                                       on_network_error: ->(_error) { invalidate_context_window! }) do |line, shown|
+                                       on_network_error: ->(_error) { invalidate_context_window! },
+                                       log_fields: { model: model, purpose: "chat" }) do |line, shown|
         parsed_chunk = parse_stream_line(line)
         next unless parsed_chunk
 
@@ -237,7 +238,7 @@ module Samagotchi
 
     def list_models
       uri = URI("#{@scheme}://#{@host}:#{@port}#{@transport.models_path}")
-      response = @http.fetch(uri, Net::HTTP::Get.new(uri))
+      response = @http.fetch(uri, Net::HTTP::Get.new(uri), log_fields: { purpose: "models" })
       parsed = JSON.parse(response.body.to_s)
       parsed.fetch("data", parsed)
     rescue LLM::ProviderError
@@ -289,6 +290,7 @@ module Samagotchi
       query = model.empty? ? "" : "?#{URI.encode_www_form(model: model)}"
       uri = URI("#{@scheme}://#{@host}:#{@port}#{path}#{query}")
       response = @http.fetch(uri, Net::HTTP::Get.new(uri), retries: false, check_status: false,
+                                  log_fields: { model: model.empty? ? nil : model, purpose: "probe" },
                                   open_timeout: CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
                                   read_timeout: CONTEXT_WINDOW_PROBE_READ_TIMEOUT)
       return ServerProps.new(body: nil, status: :http_error) unless response.code.to_s == "200"
