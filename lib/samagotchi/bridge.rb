@@ -64,7 +64,8 @@ module Samagotchi
     #   ({command_id:, client_id:, line:}) for the worker loop to run; without
     #   one, POST /command answers 501
     # @param on_exit_request [#call, nil] a client asks the worker to exit
-    #   now: takes the client_id, returns nil when the worker will leave or
+    #   now: takes the client_id and delete: (the exit is to delete the
+    #   session, /exit --delete), returns nil when the worker will leave or
     #   the Symbol that keeps it up (WorkerIdleExit#hold_for_request); called
     #   with the event log held. Without one, POST /exit answers 501
     # @param exit_discards [#call, nil] after an exit the worker agreed to:
@@ -544,7 +545,8 @@ module Samagotchi
       return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }] unless parsed.is_a?(Hash)
 
       client_id = fetched(parsed, "client_id")
-      reason = @engine.synchronize_events { @on_exit_request.call(client_id) }
+      delete = fetched(parsed, "delete") == true
+      reason = @engine.synchronize_events { @on_exit_request.call(client_id, delete: delete) }
       if reason.nil?
         body = { status: "exiting", session_id: @session_id }
         body[:discard] = @exit_discards.call == true if @exit_discards

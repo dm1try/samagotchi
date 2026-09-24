@@ -882,7 +882,7 @@ RSpec.describe Samagotchi::SessionManager do
     let(:engine) do
       instance_double(Samagotchi::Engine, "interface=": nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil,
                                           reminder_store: reminders, turn_running?: false, last_activity_at: 0.0,
-                                          messages_checkpoint: [], used_memory_names: [])
+                                          messages_checkpoint: [], used_memory_names: [], write_recap_now: nil)
     end
 
     before do

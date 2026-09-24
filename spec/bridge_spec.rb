@@ -1082,7 +1082,7 @@ RSpec.describe Samagotchi::Bridge do
 
       it "asks the worker with the event log held and answers exiting" do
         asked = []
-        start_bridge(on_exit_request: ->(client_id) { asked << client_id && nil })
+        start_bridge(on_exit_request: ->(client_id, **) { asked << client_id && nil })
         allow(@engine).to receive(:synchronize_events).and_call_original
 
         expect(post_exit(JSON.generate(client_id: "tui:1"))).to eq([200, { "status" => "exiting", "session_id" => @session.id }])
@@ -1090,22 +1090,30 @@ RSpec.describe Samagotchi::Bridge do
         expect(@engine).to have_received(:synchronize_events)
       end
 
+      it "tells the worker when the exit is to delete the session" do
+        asked = []
+        start_bridge(on_exit_request: ->(client_id, delete: false) { asked << [client_id, delete] && nil })
+        post_exit(JSON.generate(client_id: "tui:1", delete: true))
+        post_exit(JSON.generate(client_id: "tui:2"))
+        expect(asked).to eq([["tui:1", true], ["tui:2", false]])
+      end
+
       it "says whether the worker will delete the session as empty" do
-        start_bridge(on_exit_request: ->(_) {}, exit_discards: -> { true })
+        start_bridge(on_exit_request: ->(_, **) {}, exit_discards: -> { true })
 
         expect(post_exit(JSON.generate(client_id: "tui:1")))
           .to eq([200, { "status" => "exiting", "session_id" => @session.id, "discard" => true }])
       end
 
       it "answers 409 with what keeps the worker up" do
-        start_bridge(on_exit_request: ->(_) { :client_connected })
+        start_bridge(on_exit_request: ->(_, **) { :client_connected })
 
         expect(post_exit(JSON.generate(client_id: "tui:1")))
           .to eq([409, { "status" => "held", "reason" => "client_connected", "session_id" => @session.id }])
       end
 
       it "refuses bad JSON and other sessions" do
-        start_bridge(on_exit_request: ->(_) { raise "must not be called" })
+        start_bridge(on_exit_request: ->(_, **) { raise "must not be called" })
 
         expect(post_exit("{nope").first).to eq(400)
         expect(post_exit(JSON.generate(client_id: "tui:1"), session_id: "other"))

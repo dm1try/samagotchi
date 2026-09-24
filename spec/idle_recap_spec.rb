@@ -759,4 +759,78 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(store.loads).to eq(2)
     end
   end
+
+  describe "#write_now (the worker leaving)" do
+    let(:two_turns) do
+      JSON.generate([{ "role" => "user", "content" => "Hello" }, { "role" => "model", "content" => "Hi" },
+                     { "role" => "user", "content" => "What about X?" }])
+    end
+    let(:store) do
+      Class.new do
+        attr_reader :saved
+        def key = "s1"
+        def load = nil
+        def save(state) = @saved = state
+      end.new
+    end
+
+    def idle_for(engine, client, timeout: 5.0, clock: -> { base_time })
+      described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 180.0,
+                          timeout: timeout, client: client, clock: clock, store: store)
+    end
+
+    it "writes a recap now, without waiting for the inactivity window, and saves it" do
+      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
+      started = []
+      idle = idle_for(engine, double(summarize: "Left recap."))
+      expect(idle.write_now(on_start: -> { started << :yes })).to eq("Left recap.")
+      expect(started).to eq([:yes])
+      expect(store.saved).to include(text: "Left recap.", covered: 3)
+    end
+
+    it "sends nothing when nothing is new since the saved recap" do
+      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
+      client = double(summarize: "Left recap.")
+      idle = idle_for(engine, client)
+      idle.write_now
+      started = []
+      expect(idle.write_now(on_start: -> { started << :yes })).to be_nil
+      expect(started).to be_empty
+      expect(client).to have_received(:summarize).once
+    end
+
+    it "sends nothing below the minimum user turns" do
+      engine = stub_engine(messages: JSON.generate([{ "role" => "user", "content" => "Hello" }]))
+      client = double(summarize: "x")
+      expect(idle_for(engine, client).write_now).to be_nil
+      expect(client).not_to have_received(:summarize)
+    end
+
+    it "gives up after the timeout" do
+      engine = stub_engine(messages: two_turns)
+      gate = Queue.new
+      client = double("slow")
+      allow(client).to receive(:summarize) { gate.pop; "late" }
+      idle = described_class.new(engine: engine, model: model, base_url: base_url, timeout: 0.2, client: client, store: store)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      expect(idle.write_now).to be_nil
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1.0
+      expect(store.saved).to be_nil
+      expect(idle).not_to be_in_flight
+      gate.push(:go)
+    end
+
+    it "waits for the attempt already in flight instead of starting another" do
+      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 500)
+      gate = Queue.new
+      client = double("slow")
+      allow(client).to receive(:summarize) { gate.pop; "from the idle window" }
+      idle = idle_for(engine, client)
+      idle.tick
+      expect(idle).to be_in_flight
+      Thread.new { sleep(0.1); gate.push(:go) }
+      expect(idle.write_now).to eq("from the idle window")
+      expect(client).to have_received(:summarize).once
+    end
+  end
 end

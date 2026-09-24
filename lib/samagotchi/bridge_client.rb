@@ -149,8 +149,10 @@ module Samagotchi
     # error "not_found" = a worker older than the route.
     # @param client_id [String] the asking UI, whose own streams don't hold
     # @return [Response]
-    def request_exit(client_id:)
-      post("exit", { client_id: client_id }, read_body: true)
+    def request_exit(client_id:, delete: false)
+      body = { client_id: client_id }
+      body[:delete] = true if delete
+      post("exit", body, read_body: true)
     end
 
     # POST /session/:id/cancel. 202 = requested, 409 = no active turn.

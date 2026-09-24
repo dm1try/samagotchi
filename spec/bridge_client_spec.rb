@@ -122,6 +122,14 @@ RSpec.describe Samagotchi::BridgeClient do
     expect(finish.call).to start_with("POST /session/s1/exit HTTP/1.1\r\n").and include('{"client_id":"tui:1"}')
   end
 
+  it "says when the exit is to delete the session" do
+    port, finish = serve_once(json_reply("200 OK", '{"status":"exiting","session_id":"s1"}'))
+
+    described_class.new(session_id: "s1", port: port).request_exit(client_id: "tui:1", delete: true)
+
+    expect(finish.call).to include('{"client_id":"tui:1","delete":true}')
+  end
+
   it "posts a turn with the client's id and returns the ACK" do
     port, finish = serve_once(json_reply("202 Accepted", '{"status":"accepted","enqueued_id":"e1","session_id":"s1"}'))
 

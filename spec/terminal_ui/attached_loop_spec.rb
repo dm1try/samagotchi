@@ -1190,7 +1190,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
 
         expect(run_lines("#{command} --delete")).to eq(:detached)
 
-        expect(client).to have_received(:request_exit).with(client_id: "tui:1")
+        expect(client).to have_received(:request_exit).with(client_id: "tui:1", delete: true)
         expect(deleted).to eq(["s-1234"])
         expect(screen.lines.last).to eq("Detached; deleted session s-1234.")
       end

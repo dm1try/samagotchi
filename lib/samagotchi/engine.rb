@@ -1097,6 +1097,13 @@ module Samagotchi
       @recap
     end
 
+    # Write the recap now, before the session is left (IdleRecap#write_now).
+    # @return [String, nil] the recap written, nil when none was (recap off,
+    #   nothing new, an error, the timeout)
+    def write_recap_now(on_start: nil)
+      @recap&.write_now(on_start: on_start)
+    end
+
     # The recap saved with the current session (recap.json), and how many
     # user turns came after it (0: it is current).
     # @return [Hash, nil] {text:, covered:, turns_since:, created_at:}

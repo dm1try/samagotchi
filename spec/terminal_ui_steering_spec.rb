@@ -121,6 +121,25 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(surface.lines.join("\n")).not_to include("Continue session")
   end
 
+  describe "the recap at exit" do
+    it "writes one, saying so while it waits" do
+      allow(engine).to receive(:write_recap_now) { |on_start:| on_start.call; "Done." }
+      agent.send(:recap_after_exit)
+      expect(surface.lines).to include("writing a recap…")
+    end
+
+    it "says nothing when there is nothing new to recap" do
+      allow(engine).to receive(:write_recap_now).and_return(nil)
+      agent.send(:recap_after_exit)
+      expect(surface.lines).not_to include("writing a recap…")
+    end
+
+    it "gives up on Ctrl-C" do
+      allow(engine).to receive(:write_recap_now).and_raise(Interrupt)
+      expect { agent.send(:recap_after_exit) }.not_to raise_error
+    end
+  end
+
   describe "an empty session at exit" do
     let(:state_dir) { Dir.mktmpdir("repl-empty") }
     # The REPL's working copy starts with its system prompt.

@@ -16,6 +16,10 @@ File.write(File.join(SPEC_XDG_CONFIG_HOME, "samagotchi", "config.yml"), <<~YAML)
   default:
     model: spec-model
 YAML
+# The idle recap is on by default and would ask the model server: off for
+# specs, whatever config dir a spec points at. Examples tagged :recap and
+# :integration examples turn it back on.
+ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
 ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
 at_exit { FileUtils.remove_entry(SPEC_XDG_CONFIG_HOME) if File.directory?(SPEC_XDG_CONFIG_HOME) }
 
@@ -73,10 +77,23 @@ RSpec.configure do |config|
     skip "Set SAMAGOTCHI_INTEGRATION=1 to run integration tests" unless ENV["SAMAGOTCHI_INTEGRATION"] == "1"
 
     ENV["XDG_CONFIG_HOME"] = REAL_XDG_CONFIG_HOME
+    ENV.delete("SAMAGOTCHI_RECAP_ENABLED")
     Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
     example.run
   ensure
     ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
+    ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
+    Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
+  end
+
+  # Specs of the idle recap's own settings: recap as configured (on by
+  # default), not the suite's SAMAGOTCHI_RECAP_ENABLED=false.
+  config.around(:each, :recap) do |example|
+    ENV.delete("SAMAGOTCHI_RECAP_ENABLED")
+    Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
+    example.run
+  ensure
+    ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
     Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
   end
 

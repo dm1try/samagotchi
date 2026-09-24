@@ -138,7 +138,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     end
   end
 
-  it "invalidates an in-flight recap when a turn starts, for every UI" do
+  it "invalidates an in-flight recap when a turn starts, for every UI", :recap do
     engine = described_class.new(mode: :assist, client: client, kernel: kernel, profile: "gemma4",
                                  recap: { base_url: "http://127.0.0.1:1", model: "m" })
     allow(engine.recap).to receive(:invalidate!).and_call_original

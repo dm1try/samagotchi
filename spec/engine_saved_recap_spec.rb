@@ -5,7 +5,7 @@ require "samagotchi/engine"
 
 # The recap saved in <session>/recap.json: loaded for a resumed session, and
 # reported with how many turns came after it.
-RSpec.describe "Engine saved recap" do
+RSpec.describe "Engine saved recap", :recap do
   let(:state_dir) { Dir.mktmpdir }
   let(:registry) { Samagotchi::HostRegistry.new(hosts_config: { "box" => { name: "box", host: "box.test", port: 8081 } }) }
 

@@ -227,6 +227,31 @@ module Samagotchi
       start
     end
 
+    # Write a recap now and wait for it, bounded by the timeout: the worker
+    # (or the REPL) leaving. Skips the inactivity window and the once-per-
+    # window latch, not the rules on what to recap (minimum user turns,
+    # something new). Takes over an attempt already in flight. Call it with
+    # the idle scheduler stopped.
+    # @param on_start [#call, nil] called when a request goes out
+    # @return [String, nil] the recap written, nil when none was
+    def write_now(on_start: nil)
+      unless in_flight?
+        start
+        on_start&.call if in_flight?
+      end
+      job = @in_flight
+      return nil unless job
+
+      job[:thread].join([job[:deadline] - @clock.call, 0].max)
+      if job[:thread].alive?
+        @in_flight = nil # overdue: left to its IdleClient timeout
+        return nil
+      end
+      before = @state
+      collect
+      @state.equal?(before) ? nil : @state[:text]
+    end
+
     # @return [Hash] the model the next attempt asks: {base_url:,
     #   api_key_env:, model:, label:}
     def target

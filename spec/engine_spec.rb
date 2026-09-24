@@ -392,7 +392,7 @@ RSpec.describe Samagotchi::Engine do
     end
   end
 
-  describe "idle recap construction" do
+  describe "idle recap construction", :recap do
     around do |example|
       saved = ENV.values_at("SAMAGOTCHI_RECAP_BASE_URL", "SAMAGOTCHI_RECAP_MODEL")
       ENV["SAMAGOTCHI_RECAP_BASE_URL"] = "http://localhost:8080/v1"

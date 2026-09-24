@@ -94,10 +94,14 @@ In an attached terminal:
   first), prompts are queued, a continue offer is pending, another UI is
   attached, or reminders are set. A web tab you just closed can count as
   attached for about 30 s. When the worker exits, `chi --resume ID` or
-  `chi --attach ID` starts a new one with the conversation. A worker from an
+  `chi --attach ID` starts a new one with the conversation. Before it exits
+  (here and on the idle exit) the worker writes the session's recap if
+  anything new was said, which takes a few seconds; the terminal doesn't
+  wait, and an attach or `chi send` meanwhile starts the next worker once it
+  is gone. A worker from an
   older chi can't be asked; the line says to use `chi sessions stop ID`.
 - `/exit --delete` (also `/quit --delete`, `exit --delete`) does the same and,
-  once the worker has agreed to exit, deletes the session for good. When the
+  once the worker has agreed to exit (without writing a recap), deletes the session for good. When the
   worker stays up, nothing is deleted and the line says why.
 - The prompt stays open while a turn runs; see [Typing during a turn](#typing-during-a-turn).
 - `/model`, `/models`, `/guardrails`, `/continue`, `!rollback` and `!commands` run in the

@@ -497,8 +497,9 @@ module Samagotchi
     end
 
     # Bridge POST /exit, on a Bridge thread with the event log held.
+    # +delete+: the session is deleted after (/exit --delete), so no recap.
     # @return [Symbol, nil] what keeps the worker up, nil when it will leave
-    def exit_request(client_id)
+    def exit_request(client_id, delete: false)
       # The Bridge serves before the idle-exit policy exists.
       return :starting unless @idle_exit
 
@@ -507,6 +508,7 @@ module Samagotchi
 
       @exit_requested = true
       @exit_requested_by = client_id
+      @exit_deletes = delete
       @waker.wake
       nil
     end
@@ -533,10 +535,22 @@ module Samagotchi
       end
     end
 
-    # @return [Symbol] +result+, with #discard? decided
+    # @return [Symbol] +result+, with #discard? decided and, for a session
+    #   kept, its recap written: the Bridge is closed and the idle jobs are
+    #   stopped by now, and nothing waits on this (the TUI has detached). A
+    #   `chi send` meanwhile is picked up after the exit (run_session_loop);
+    #   a `chi --attach` finds no Bridge until then.
     def left(result)
       @discard = empty_session?
+      write_recap_on_leave unless @discard || (result == :exit_requested && @exit_deletes)
       result
+    end
+
+    def write_recap_on_leave
+      written = @engine.write_recap_now
+      SessionManager.debug_log("[worker] pid #{Process.pid} wrote a recap as it leaves") if written
+    rescue StandardError => e
+      SessionManager.debug_log("[worker] recap on leave failed: #{e.class}: #{e.message}")
     end
 
     # Memory used before any turn saved it lives only in the Engine.

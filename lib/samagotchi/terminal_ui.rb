@@ -234,7 +234,18 @@ module Samagotchi
         delete_after_exit(session)
       elsif @discard_on_exit
         discard_after_exit(session)
+      else
+        recap_after_exit
       end
+    end
+
+    # The recap for coming back: written before the REPL ends (it has to
+    # wait, same process), when there is something new to recap. Ctrl-C
+    # gives up on it.
+    def recap_after_exit
+      @engine.write_recap_now(on_start: -> { @surface.commit("writing a recap…") })
+    rescue Interrupt
+      nil
     end
 
     # Nothing happened in the session (SessionManager.empty_session?). The

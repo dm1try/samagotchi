@@ -5,7 +5,7 @@ require "samagotchi/engine"
 
 # recap.host_ref points the recap at a configured host: its OpenAI base
 # (the url as written, else root/v1) and its API key variable.
-RSpec.describe "Engine recap on a configured host" do
+RSpec.describe "Engine recap on a configured host", :recap do
   let(:registry) do
     Samagotchi::HostRegistry.new(hosts_config: {
       "box" => { name: "box", host: "box.test", port: 8081 },

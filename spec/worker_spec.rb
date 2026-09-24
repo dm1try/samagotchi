@@ -225,6 +225,16 @@ RSpec.describe Samagotchi::Worker do
       expect(File.exist?(sidecar)).to be(false)
     end
 
+    it "writes a recap as it idle-exits" do
+      session.model_name = "Qwen3-14B"
+      session.save(state_dir: tmpdir)
+      allow(engine).to receive(:write_recap_now)
+      start_worker(poll_interval: 0.05, idle_exit_minutes: 0.002)
+
+      expect(@thread.join(2)&.value).to eq(:idle_exit)
+      expect(engine).to have_received(:write_recap_now)
+    end
+
     describe "an exit request (POST /exit)" do
       def post_exit(client_id: "tui:1")
         port = JSON.parse(File.read(sidecar))["port"]
@@ -244,11 +254,39 @@ RSpec.describe Samagotchi::Worker do
       end
 
       it "says the session is discarded when nothing happened in it, and leaves it for deleting" do
+        allow(engine).to receive(:write_recap_now)
         start_worker(poll_interval: 5, idle_exit_minutes: 0)
 
         expect(post_exit.last).to include("discard" => true)
         expect(@thread.join(2)&.value).to eq(:exit_requested)
         expect(@worker.discard?).to be(true)
+        expect(engine).not_to have_received(:write_recap_now)
+      end
+
+      it "writes a recap as it leaves, after closing the Bridge and stopping the idle jobs" do
+        session.model_name = "Qwen3-14B"
+        session.save(state_dir: tmpdir)
+        order = []
+        allow(engine).to receive(:stop_idle) { order << :stop_idle }
+        allow(engine).to receive(:write_recap_now) { order << [:recap, File.exist?(sidecar)] }
+        start_worker(poll_interval: 5, idle_exit_minutes: 0)
+
+        expect(post_exit.first).to eq(200)
+        expect(@thread.join(2)&.value).to eq(:exit_requested)
+        expect(order).to eq([:stop_idle, [:recap, false]])
+      end
+
+      it "writes no recap for an exit that deletes the session (/exit --delete)" do
+        session.model_name = "Qwen3-14B"
+        session.save(state_dir: tmpdir)
+        allow(engine).to receive(:write_recap_now)
+        start_worker(poll_interval: 5, idle_exit_minutes: 0)
+        port = JSON.parse(File.read(sidecar))["port"]
+        Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
+                       JSON.generate(client_id: "tui:1", delete: true), "Content-Type" => "application/json")
+
+        expect(@thread.join(2)&.value).to eq(:exit_requested)
+        expect(engine).not_to have_received(:write_recap_now)
       end
 
       it "says it keeps a session on another model" do

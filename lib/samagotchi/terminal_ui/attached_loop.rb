@@ -295,7 +295,7 @@ module Samagotchi
       # deleted. When the worker stays up (another UI, queued input, ...),
       # nothing is deleted.
       def exit_and_delete
-        reply = @client.request_exit(client_id: @client_id)
+        reply = @client.request_exit(client_id: @client_id, delete: true)
         id = @client.session_id
         unless reply.status == 200
           line = exit_line(reply)
