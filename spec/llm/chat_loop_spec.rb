@@ -4,6 +4,8 @@ require "spec_helper"
 require "samagotchi/llm/backend"
 require "samagotchi/llm/chat_loop"
 require "samagotchi/hooks"
+require "fileutils"
+require "tmpdir"
 require_relative "../support/fake_chat_adapter"
 require_relative "../support/fake_provider_server"
 
@@ -58,6 +60,39 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
     expect(events.find { |event| event[:type] == :generation_completed }).to include(served_model: "vendor/served-1",
                                                                                          requested_model: "m")
+  end
+
+  describe "debug dump" do
+    let(:log_dir) { Dir.mktmpdir("samagotchi-log") }
+    let(:log_path) { File.join(log_dir, "chi.log") }
+    after { FileUtils.remove_entry(log_dir) }
+
+    def dumps
+      return [] unless File.exist?(log_path)
+
+      File.open(log_path) { |io| Samagotchi::LogLine.each_record(io).select { |r| r.event == "response" } }
+    end
+
+    it "logs each answer with its thinking at debug level, as the native loop does" do
+      Samagotchi::Log.configure(path: log_path, level: :debug)
+      backend = described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(
+        tools(["c1", "read", { "path" => "a.rb" }]), text("done", reasoning: "let me think")
+      ))
+
+      backend.complete(messages: [{ role: "user", content: "go" }], model_name: "m")
+
+      expect(dumps.map { |r| [r.tag, r.fields, r.payload] }).to eq([
+        ["model", { "model" => "m", "iteration" => "1", "tool_calls" => "read" }, nil],
+        ["model", { "model" => "m", "iteration" => "2" }, "<thinking>\nlet me think\n</thinking>\ndone"]
+      ])
+    end
+
+    it "logs nothing at the default level" do
+      Samagotchi::Log.configure(path: log_path)
+      run
+
+      expect(dumps).to be_empty
+    end
   end
 
   describe "image refs" do

@@ -13,6 +13,7 @@ require_relative "../context_note"
 require_relative "../tool_runner"
 require_relative "../tool_declarations"
 require_relative "../vision_context"
+require_relative "../log"
 
 module Samagotchi
   module LLM
@@ -308,10 +309,24 @@ module Samagotchi
           )
           emit(type: :generation_completed, iteration: iteration, content_length: response.text.length,
                served_model: response.model, requested_model: @model_name)
+          dump_response(response, iteration)
           @loop.fire_hook(:after_generation, { type: :after_generation, iteration: iteration, response: response.text })
           [response, nil]
         rescue RequestCancelled => e
           [e.reason, streamed]
+        end
+
+        # The model's answer at debug level, as the native loop dumps its
+        # raw response (the tool calls and results come through the kernel's
+        # dispatch dumps).
+        def dump_response(response, iteration)
+          return unless Log.level?(:debug)
+
+          thinking = response.reasoning.to_s
+          text = thinking.empty? ? response.text.to_s : "<thinking>\n#{thinking}\n</thinking>\n#{response.text}"
+          calls = Array(response.tool_calls).map(&:name)
+          Log.debug(:model, "response", payload: text, model: @model_name, iteration: iteration,
+                                        served_model: response.model, tool_calls: calls.empty? ? nil : calls.join(","))
         end
 
         def dispatch(tool_calls, iteration, cap)
