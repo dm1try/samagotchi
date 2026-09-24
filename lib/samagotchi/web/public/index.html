@@ -5,9 +5,17 @@
 <title>Chi</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-:root{--bg:#0b0d11;--bg-panel:#151821;--bg-inset:#0f1115;--bg-raised:#22262f;--bg-hover:#1b1f27;--border:#1f232b;--border-strong:#2d333f;--text:#e6e8eb;--text-bright:#f0f3f6;--text-2:#c9d1d9;--text-3:#9aa4b2;--text-muted:#8b949e;--text-faint:#6e7681;--accent:#7aa5ff;--accent-strong:#1f6feb;--accent-bg:#1b2336;--accent-ring:rgba(122,165,255,.18);--primary:#2a68d1;--ok:#3fb950;--ok-text:#7ee787;--ok-bg:#1a2e1a;--warn:#d29922;--warn-text:#e3b341;--warn-bright:#f2cc60;--warn-bg:#2b2108;--warn-border:#6b5416;--danger:#f85149;--danger-bg:#da3633;--danger-text:#ff7b72;--danger-bg-dim:#3d1f1f;--think:#8957e5;--think-text:#d2a8ff;--accent-border:#223150}
+:root{--bg:#0b0d11;--bg-panel:#151821;--bg-inset:#0f1115;--bg-raised:#22262f;--bg-hover:#1b1f27;--border:#1f232b;--border-strong:#2d333f;--text:#e6e8eb;--text-bright:#f0f3f6;--text-2:#c9d1d9;--text-3:#9aa4b2;--text-muted:#8b949e;--text-faint:#6e7681;--accent:#7aa5ff;--accent-strong:#1f6feb;--accent-bg:#1b2336;--accent-ring:rgba(122,165,255,.18);--primary:#2a68d1;--ok:#3fb950;--ok-text:#7ee787;--ok-bg:#1a2e1a;--warn:#d29922;--warn-text:#e3b341;--warn-bright:#f2cc60;--warn-bg:#2b2108;--warn-border:#6b5416;--danger:#f85149;--danger-bg:#da3633;--danger-text:#ff7b72;--danger-bg-dim:#3d1f1f;--think:#8957e5;--think-text:#d2a8ff;--accent-border:#223150;
+  --glass-bg:color-mix(in srgb,var(--bg-panel) 70%,transparent);--glass-border:rgba(255,255,255,.08);--glass-highlight:rgba(255,255,255,.05);--glass-shadow:0 8px 30px rgba(0,0,0,.35)}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
+body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),radial-gradient(900px 700px at 100% 100%,color-mix(in srgb,var(--think) 9%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;display:flex;flex-direction:column}
+/* Glass: the composer card and the strip cards only (by selector; the all-sessions view stays flat). */
+#dock,#topStrip .card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
+#topStrip .card:hover{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);border-color:rgba(255,255,255,.14)}
+#topStrip .card.active{background:color-mix(in srgb,var(--accent-bg) 75%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#dock,#topStrip .card{background:var(--bg-panel)}}
+@media (prefers-reduced-transparency:reduce){#dock,#topStrip .card{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}}
+body.no-glass #dock,body.no-glass #topStrip .card{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
 button,input,textarea{font:inherit}
 button{background:var(--primary);border:0;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;transition:filter .12s ease,background .12s ease}
 button:hover:not(:disabled){filter:brightness(1.12)}
@@ -15,10 +23,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 button.ghost{background:var(--bg-raised);color:var(--text-2)}
 button.danger{background:var(--danger-bg)}
 button:disabled{opacity:.5;cursor:not-allowed}
-main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:auto;background:var(--bg);min-height:0}
+main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:auto;background:transparent;min-height:0}
 #topStrip{display:grid;grid-template-columns:repeat(var(--strip-cols,3),minmax(0,440px)) 150px;gap:12px;min-height:88px;align-content:start;transition:opacity 280ms ease, transform 280ms ease}
 #topStrip:empty{display:grid}
-#topStrip.loading, #allList.loading{opacity:.75}
+#allList.loading{opacity:.75}
 #center{flex:1;display:flex;flex-direction:column;min-height:45vh;background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
 #stage{flex:1;display:flex;flex-direction:column;position:relative;min-height:160px;background:var(--bg);overflow:hidden}
 #firstPeek{display:none;padding:8px 12px;background:var(--accent-bg);color:var(--text);border-bottom:1px solid var(--border);font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -148,9 +156,9 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #annotateBtn{position:fixed;z-index:20;font-size:12px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.5)}
 #annotateBtn[hidden]{display:none}
 /* The dock is the composer card: the text field, a toolbar row, the info bar as its footer. */
-#dock{display:flex;flex-direction:column;flex-shrink:0;margin:0 12px 12px;border-radius:16px;border:1px solid var(--border-strong);background:var(--bg-inset);position:relative;transition:border-color .12s ease,box-shadow .12s ease}
+#dock{display:flex;flex-direction:column;flex-shrink:0;margin:0 12px 12px;border-radius:16px;position:relative;transition:border-color .12s ease,box-shadow .12s ease}
 body.has-session #center{background:var(--bg)}
-#dock:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+#dock:focus-within{border-color:color-mix(in srgb,var(--accent) 70%,transparent);box-shadow:0 0 0 3px var(--accent-ring),var(--glass-shadow)}
 #composer{display:flex;flex-direction:column;gap:8px;padding:14px 14px 10px}
 #composer .compose-col{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
 #composer.dropping{outline:2px dashed var(--accent);outline-offset:-4px}
@@ -209,7 +217,7 @@ body.has-session #center{background:var(--bg)}
 #empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--text-muted);padding:24px;text-align:center;background:var(--bg);z-index:1}
 #empty.hidden{display:none !important}
 /* Start page (no session): the composer alone, centered; no info bar. */
-body:not(.has-session) #center{justify-content:safe center}
+body:not(.has-session) #center{justify-content:safe center;background:transparent}
 body:not(.has-session) #stage{flex:0 0 auto;min-height:0;background:transparent}
 body:not(.has-session) #history,body:not(.has-session) #markdownWarning{display:none}
 body:not(.has-session) #empty{position:static;background:transparent;padding:0}
