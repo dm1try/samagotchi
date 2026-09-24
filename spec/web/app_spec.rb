@@ -106,6 +106,50 @@ RSpec.describe Samagotchi::Web::App do
   end
 
 
+  describe "log lines (tag web)" do
+    let(:log_dir) { Dir.mktmpdir("samagotchi-log") }
+    let(:log_path) { File.join(log_dir, "chi.log") }
+    after { FileUtils.remove_entry(log_dir) }
+
+    def web_records
+      return [] unless File.exist?(log_path)
+
+      File.open(log_path) { |io| Samagotchi::LogLine.each_record(io).select { |r| r.tag == "web" } }
+    end
+
+    it "writes API requests at debug level, with the session's sid, and not the page or assets" do
+      Samagotchi::Log.configure(path: log_path, level: :debug)
+      app = build_app(state_dir: Dir.mktmpdir)
+      app.call(env_for("/api/sessions/0123456789abcdef/stream?token=x"))
+      app.call(env_for("/"))
+
+      expect(web_records.map { |r| [r.level, r.event, r.sid, r.fields.except("ms")] }).to eq([
+        ["DEBUG", "request", "01234567", { "method" => "GET", "path" => "/api/sessions/0123456789abcdef/stream", "status" => "503" }]
+      ])
+    end
+
+    it "writes nothing per request at the default level" do
+      Samagotchi::Log.configure(path: log_path)
+      build_app(state_dir: Dir.mktmpdir).call(env_for("/api/sessions"))
+
+      expect(web_records).to be_empty
+    end
+
+    it "writes an internal error as an ERROR with the backtrace" do
+      Samagotchi::Log.configure(path: log_path)
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:handle_list).and_raise(RuntimeError, "boom")
+
+      status, = app.call(env_for("/api/sessions"))
+
+      expect(status).to eq(500)
+      record = web_records.first
+      expect(record.to_h).to include(level: "ERROR", event: "request_failed")
+      expect(record.fields).to include("method" => "GET", "path" => "/api/sessions", "error" => "RuntimeError", "msg" => "boom")
+      expect(record.payload).not_to be_empty
+    end
+  end
+
   describe "GET /api/sessions/:id/stream" do
     it "returns a typed 503 not_live when no live bridge sidecar exists" do
       app = build_app(state_dir: Dir.mktmpdir)

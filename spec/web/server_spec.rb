@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "stringio"
+require "fileutils"
+require "tmpdir"
 require "samagotchi/web/server"
 
 RSpec.describe Samagotchi::Web::Server::Log do
@@ -34,6 +36,22 @@ RSpec.describe Samagotchi::Web::Server do
 
     expect { described_class.open_url("http://127.0.0.1:4567/") }
       .to output(/Failed to open browser: .*open — please open http:\/\/127.0.0.1:4567\/ manually/).to_stderr
+  end
+
+  it "writes its start and stop to the log" do
+    dir = Dir.mktmpdir
+    Samagotchi::Log.configure(path: File.join(dir, "chi.log"))
+    allow(Samagotchi::Web::App).to receive(:new).and_return(double("app"))
+    allow(Rackup::Handler::WEBrick).to receive(:run)
+
+    expect { described_class.start(port: 4998) }.to output.to_stdout
+
+    records = File.open(File.join(dir, "chi.log")) { |io| Samagotchi::LogLine.each_record(io).to_a }
+    expect(records.map { |r| [r.tag, r.event, r.fields] }).to eq([
+      ["web", "start", { "url" => "http://127.0.0.1:4998", "version" => Samagotchi::VERSION }], ["web", "stop", {}]
+    ])
+  ensure
+    FileUtils.remove_entry(dir)
   end
 
   it "binds to 127.0.0.1 whatever host it is given, with a warning" do

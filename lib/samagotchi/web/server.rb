@@ -6,6 +6,7 @@ require "webrick"
 
 require_relative "app"
 require_relative "../log"
+require_relative "../version"
 
 module Samagotchi
   module Web
@@ -39,6 +40,7 @@ module Samagotchi
         end
 
         app = App.new(manager: manager, state_dir: state_dir, markdown: markdown)
+        Samagotchi::Log.info(:web, "start", url: "http://#{host}:#{port}", version: Samagotchi::VERSION)
         puts "Chi Web starting on http://#{host}:#{port} (public: #{File.expand_path("public", __dir__)})"
         puts "Press Ctrl-C to stop."
 
@@ -50,6 +52,8 @@ module Samagotchi
         end
 
         Rackup::Handler::WEBrick.run(app, Host: host, Port: port, AccessLog: [], Logger: Log.new($stderr, WEBrick::Log::WARN))
+      ensure
+        Samagotchi::Log.info(:web, "stop") if app
       end
 
       def self.resolve_port(port)

@@ -625,7 +625,9 @@ module Samagotchi
         "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{state_dir.inspect})"
       ]
       # The worker writes the pid file itself once it owns the session.
-      env ? Process.spawn(env, *command, **opts) : Process.spawn(*command, **opts)
+      pid = env ? Process.spawn(env, *command, **opts) : Process.spawn(*command, **opts)
+      Log.info(:worker, "spawn", sid: session.id, child_pid: pid)
+      pid
     end
 
     # Start the in-process Bridge transport for this worker. The bridge is

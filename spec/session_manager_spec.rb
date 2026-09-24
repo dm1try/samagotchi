@@ -482,7 +482,10 @@ RSpec.describe Samagotchi::SessionManager do
       it "is the spawner's log.file, made absolute against the spawner's directory" do
         Samagotchi::Config.set_cli_overrides("log.file" => "logs/chi.log")
 
-        expect(spawned_env).to include("SAMAGOTCHI_LOG_FILE" => File.join(Dir.pwd, "logs", "chi.log"))
+        # In tmpdir: the spawn itself is logged there.
+        Dir.chdir(tmpdir) do
+          expect(spawned_env).to include("SAMAGOTCHI_LOG_FILE" => File.join(Dir.pwd, "logs", "chi.log"))
+        end
       end
 
       it "is disabled when the spawner's log is" do
@@ -548,6 +551,18 @@ RSpec.describe Samagotchi::SessionManager do
       end
       yield
       opts
+    end
+
+    it "writes the spawn to the log, with the session's sid and the worker's pid" do
+      log = File.join(tmpdir, "chi.log")
+      Samagotchi::Config.set_cli_overrides("log.file" => log)
+      session = nil
+      spawned_opts { session = described_class.spawn_session(prompt: nil, model_name: "gemma4", working_directory: tmpdir, state_dir: tmpdir) }
+
+      record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "spawn" } }
+      expect(record.to_h).to include(level: "INFO", tag: "worker", sid: session.id[0, 8], fields: { "child_pid" => "12345" })
+    ensure
+      Samagotchi::Config.set_cli_overrides({})
     end
 
     it "starts the worker in the session's directory, so its tools run there" do

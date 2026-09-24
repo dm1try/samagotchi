@@ -1014,6 +1014,23 @@ RSpec.describe Samagotchi::Bridge do
       expect([res.code, JSON.parse(res.body)["metrics"]]).to eq(["200", { "turns" => 0, "context_window_tokens" => 4096 }])
     end
 
+    it "logs each answered request at debug level (method, path, status, time), never its body" do
+      log = File.join(Dir.mktmpdir, "chi.log")
+      Samagotchi::Log.configure(path: log, level: :debug)
+      start_bridge
+      allow(@engine).to receive(:stats_snapshot).and_return({ turns: 0 })
+
+      Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"))
+
+      deadline = mono + 2
+      record = nil
+      until record || mono > deadline
+        record = File.exist?(log) && File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.tag == "bridge" && r.event == "request" } }
+        sleep 0.01 unless record
+      end
+      expect(record.fields.except("ms")).to eq("method" => "GET", "path" => "/session/#{@session.id}/stats", "status" => "200")
+    end
+
     it "logs nothing when stopped (the closed server ends the accept loop)" do
       log = File.join(Dir.mktmpdir, "chi.log")
       Samagotchi::Log.configure(path: log)

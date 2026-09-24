@@ -265,6 +265,7 @@ module Samagotchi
         break if request.nil?
 
         note_client_activity
+        started = monotonic_now
 
         method = request[:method].to_s.upcase
         headers = request[:headers]
@@ -279,6 +280,7 @@ module Samagotchi
           write_json(io, 204, cors, {})
         elsif (m = stream_match(request[:path])) && method == "GET"
           cursor = reconnect_cursor(headers, request[:query])
+          Log.debug(:bridge, "stream", method: method, path: request[:path], client_id: stream_client_id(request[:query]))
           serve_sse(io, m[1], last_event_id: cursor, snapshot: snapshot_requested?(request[:query]),
                               client_id: stream_client_id(request[:query]))
           break # SSE owns the connection until the client disconnects.
@@ -318,6 +320,7 @@ module Samagotchi
         end
 
         Thread.current[:bridge_answering] = false
+        log_request(method, request[:path], started)
         break if close_after_request?(headers)
       end
     rescue Errno::EPIPE, Errno::ECONNRESET, IOError
@@ -773,7 +776,17 @@ module Samagotchi
       [target, nil]
     end
 
+    # One debug line per answered request (never its body): what #write_json
+    # last sent on this connection's thread.
+    def log_request(method, path, started)
+      return unless Log.level?(:debug)
+
+      Log.debug(:bridge, "request", method: method, path: path, status: Thread.current[:bridge_status],
+                                    ms: ((monotonic_now - started) * 1000).round)
+    end
+
     def write_json(io, status, extra_headers, body)
+      Thread.current[:bridge_status] = status
       extra_headers ||= {}
       body ||= {}
       data = JSON.generate(body)

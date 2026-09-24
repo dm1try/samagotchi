@@ -15,6 +15,7 @@ require_relative "../image_store"
 require_relative "../context_note"
 require_relative "../recap_store"
 require_relative "markdown_renderer"
+require_relative "../log"
 
 module Samagotchi
   module Web
@@ -50,6 +51,15 @@ module Samagotchi
       end
 
       def call(env)
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        response = route(env)
+        log_request(env, response, started)
+        response
+      end
+
+      private
+
+      def route(env)
         req = Rack::Request.new(env)
         return forbidden unless localhost?(req)
 
@@ -108,10 +118,20 @@ module Samagotchi
           not_found(path: req.path_info)
         end
       rescue StandardError => e
+        Log.exception(:web, "request_failed", e, method: env["REQUEST_METHOD"], path: env["PATH_INFO"])
         error_response(500, "internal_error", e.message)
       end
 
-      private
+      # API requests at debug level (not the page and its assets): method,
+      # path, status, time. Never a body or the query.
+      def log_request(env, response, started)
+        path = env["PATH_INFO"].to_s
+        return unless path.start_with?("/api/") && Log.level?(:debug)
+
+        Log.debug(:web, "request", sid: path[%r{\A/api/sessions/([^/]+)}, 1], method: env["REQUEST_METHOD"], path: path,
+                                   status: response[0],
+                                   ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
+      end
 
       def localhost?(req)
         # Only 127.0.0.1 / ::1 / localhost are allowed. The socket is bound to
@@ -598,7 +618,8 @@ module Samagotchi
           body.each { |chunk| io.write(chunk) }
         rescue Errno::EPIPE, Errno::ECONNRESET, IOError
           nil # client went away — end the stream quietly
-        rescue StandardError
+        rescue StandardError => e
+          Log.warn(:web, "proxy_failed", sid: id, port: port, error: e.class.name, msg: e.message)
           nil
         end
       end
