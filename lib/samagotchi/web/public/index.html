@@ -219,6 +219,18 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 #infoBar #infoStopBtn:hover{background:var(--warn-bg);border-color:var(--warn-border)}
 #infoBar #infoDeleteBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
 #infoBar #infoDeleteBtn:hover{color:#fff;background:var(--danger-bg);border-color:var(--danger-bg)}
+/* Phones: the footer is one line; its meta scrolls sideways (all of it stays reachable) and the first-message line, the strip card's title, goes. */
+@media(max-width:600px){
+  #infoBar{flex-wrap:nowrap;align-items:center;gap:6px;padding:6px 10px 8px}
+  #infoBar .preview-line{display:none}
+  #infoBar .meta{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
+  #infoBar .meta::-webkit-scrollbar{display:none}
+  #infoBar .meta>*{flex-shrink:0}
+  #infoBar .meta .id{order:-2}
+  #infoBar .meta .status{order:-1}
+  #infoBar .meta .dir{word-break:normal}
+  #infoBar button{padding:4px 8px}
+}
 #empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--text-muted);padding:24px;text-align:center;background:var(--bg);z-index:1}
 #empty.hidden{display:none !important}
 /* Start page (no session): the composer alone, centered; no info bar. */
