@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { previewOf, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml } from "../../../lib/samagotchi/web/public/format.js";
+import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml } from "../../../lib/samagotchi/web/public/format.js";
 
 test("noteHtml: who sent the context note, then its text, both escaped", () => {
   assert.equal(
@@ -139,4 +139,21 @@ test("deleteConfirmText cuts a long preview and says a live worker is stopped fi
 
 test("deleteConfirmText leaves out an empty preview", () => {
   assert.ok(deleteConfirmText({ id: "3fa2b1c4-aaaa", first_preview: "" }).startsWith("Delete session 3fa2b1c4?\n"));
+});
+
+test("relativeTime: coarse time since an ISO timestamp, \"\" for garbage", () => {
+  const now = Date.parse("2026-09-24T20:00:00.000+02:00");
+  const ago = (s) => new Date(now - s * 1000).toISOString();
+  assert.equal(relativeTime(ago(20), now), "just now");
+  assert.equal(relativeTime(ago(-30), now), "just now"); // a clock a bit ahead
+  assert.equal(relativeTime(ago(5 * 60 + 10), now), "5 min ago");
+  assert.equal(relativeTime(ago(2 * 3600 + 100), now), "2 h ago");
+  assert.equal(relativeTime(ago(30 * 3600), now), "yesterday");
+  assert.equal(relativeTime(ago(3 * 86400 + 60), now), "3 d ago");
+  assert.equal(relativeTime("2026-09-12T09:15:00.123+02:00", now), "12 Sep");
+  assert.equal(relativeTime("2025-09-12T09:15:00+02:00", now), "12 Sep 2025");
+  assert.equal(relativeTime("2026-09-24T19:58:00.000+02:00", now), "2 min ago"); // the server's format
+  assert.equal(relativeTime("garbage", now), "");
+  assert.equal(relativeTime("", now), "");
+  assert.equal(relativeTime(undefined, now), "");
 });

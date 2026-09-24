@@ -245,7 +245,6 @@ body.all-view #center, body.all-view #topStrip{display:none}
 #allList{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-content:start;padding:2px}
 .card.skeleton{pointer-events:none;border-style:dashed;opacity:.9;animation:skeleton-pulse 1.2s ease-in-out infinite}
 .card.skeleton .line{height:10px;background:var(--bg-raised);border-radius:6px}
-.card.skeleton .line.short{width:42%}
 .card.skeleton .line.long{width:78%}
 .card.skeleton .line.long2{width:62%}
 .card.skeleton .line.tiny{width:30%;height:8px}
@@ -260,8 +259,8 @@ body.all-view #center, body.all-view #topStrip{display:none}
 .card-del:hover{color:#fff;background:var(--danger-bg);border-color:var(--danger-bg)}
 @media (hover:none){.card-del{opacity:1}}
 .card.active{background:var(--accent-bg);border-color:var(--accent-border)}
-.card .id{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted)}
-.card .preview{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .preview{font-size:14px;line-height:1.4;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .time{font-variant-numeric:tabular-nums;white-space:nowrap}
 #topStrip .card .preview{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #allList .card .preview{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;word-break:break-word;line-height:1.4}
 .card .meta{font-size:11px;color:var(--text-muted);display:flex;gap:6px;align-items:center}
@@ -290,7 +289,7 @@ a{color:var(--accent)}
     <button type="button" id="newBtn" class="brand" title="New chat"><span class="brand-name">chi</span><span class="brand-new">+ new chat</span></button>
     <button type="button" class="strip-toggle" id="stripShow" title="Show the latest sessions">▾ sessions</button>
   </div>
-  <section id="topStrip" aria-label="Latest sessions" class="loading"><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div></section>
+  <section id="topStrip" aria-label="Latest sessions" class="loading"><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div></section>
   <section id="center">
     <div id="firstPeek"></div>
     <div id="stage">
