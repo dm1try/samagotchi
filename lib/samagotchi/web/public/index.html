@@ -238,6 +238,9 @@ body.all-view #center, body.all-view #topStrip{display:none}
 #allHead{display:flex;gap:8px;align-items:center}
 #allHead input{flex:1;min-width:0;background:var(--bg-panel);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:8px}
 #allHead input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+#allPath{font-size:11px;color:var(--text-muted);margin-top:-4px;word-break:break-all}
+#allPath[hidden]{display:none}
+#allPath code{font-family:ui-monospace,monospace;background:var(--bg-hover);padding:1px 4px;border-radius:4px}
 #allHead .count{font-size:11px;color:var(--text-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 #allList{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-content:start;padding:2px}
 .card.skeleton{pointer-events:none;border-style:dashed;opacity:.9;animation:skeleton-pulse 1.2s ease-in-out infinite}
@@ -328,6 +331,7 @@ a{color:var(--accent)}
       <input id="filter" type="search" placeholder="Search… (preview / id / status)" autocomplete="off">
       <span class="count" id="count"></span>
     </div>
+    <div id="allPath" hidden>Stored in <code></code></div>
     <div id="allList"></div>
   </section>
 </main>
