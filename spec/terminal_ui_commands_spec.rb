@@ -123,9 +123,9 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(agent.send(:handle_recap_command)).to eq("session recap (from before your latest turn):\nDid X.")
     end
 
-    it "points at both config.yml and the env vars when recap is disabled" do
+    it "says recap is off and where that is set when it is disabled" do
       allow(agent.instance_variable_get(:@engine)).to receive(:recap).and_return(nil)
-      expect(agent.send(:handle_recap_command)).to include("config.yml").and include("SAMAGOTCHI_RECAP_BASE_URL")
+      expect(agent.send(:handle_recap_command)).to include("recap: false in config.yml").and include("SAMAGOTCHI_RECAP_ENABLED")
     end
   end
 

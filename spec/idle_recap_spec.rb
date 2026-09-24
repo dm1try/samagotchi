@@ -182,17 +182,45 @@ RSpec.describe Samagotchi::IdleRecap do
         described_class.new(model: model, base_url: base_url)
       }.to raise_error(ArgumentError, /engine/)
     end
-    it "creates an IdleClient with the recap's timeout when none is provided" do
+    it "creates an IdleClient for the target with the recap's timeout when none is provided" do
       engine = stub_engine
       allow(Samagotchi::IdleClient).to receive(:new).and_return(double(summarize: "recap"))
-      described_class.new(engine: engine, model: model, base_url: base_url, timeout: 7.0)
+      idle = described_class.new(engine: engine, model: model, base_url: base_url, timeout: 7.0)
+      idle.send(:client_for, idle.target)
       expect(Samagotchi::IdleClient).to have_received(:new).with(model: model, base_url: base_url, api_key_env: nil, timeout: 7.0)
+    end
+
+    it "resolves the target at each attempt and rebuilds the client only when it changes" do
+      two_turns = JSON.generate([{ "role" => "user", "content" => "a" }, { "role" => "model", "content" => "b" },
+                                 { "role" => "user", "content" => "c" }])
+      seq = [1]
+      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 5)
+      allow(engine).to receive(:activity_seq) { seq[0] }
+      targets = [{ base_url: "http://a/v1", api_key_env: nil, model: "m1", label: "a:m1" }]
+      clients = []
+      allow(Samagotchi::IdleClient).to receive(:new) { |**kw| clients << kw; double(summarize: nil) }
+      idle = described_class.new(engine: engine, target: -> { targets.last }, inactivity: 0.0, clock: -> { base_time })
+      drive(idle)
+      seq[0] = 2
+      drive(idle)
+      targets << { base_url: "http://b/v1", api_key_env: "K", model: "m2", label: "b:m2" }
+      seq[0] = 3
+      drive(idle)
+      expect(clients.map { |kw| kw[:model] }).to eq(%w[m1 m2])
+    end
+
+    it "makes no attempt when the target can't be resolved" do
+      two_turns = JSON.generate([{ "role" => "user", "content" => "a" }, { "role" => "user", "content" => "c" }])
+      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f - 5)
+      idle = described_class.new(engine: engine, target: -> { raise "no host" }, inactivity: 0.0, clock: -> { base_time })
+      expect { drive(idle) }.not_to raise_error
+      expect(idle).not_to be_in_flight
     end
     it "uses a custom client when provided" do
       client_double = double
       engine = stub_engine
       idle = described_class.new(engine: engine, model: model, base_url: base_url, client: client_double)
-      expect(idle.instance_variable_get(:@client)).to eq(client_double)
+      expect(idle.send(:client_for, idle.target)).to eq(client_double)
     end
     it "defaults to DEFAULT_INACTIVITY_SECONDS" do
       engine = stub_engine
@@ -453,7 +481,7 @@ RSpec.describe Samagotchi::IdleRecap do
       engine2 = stub_engine(messages: more)
       allow(idle).to receive(:should_fire?).and_return(true)
       idle.instance_variable_set(:@engine, engine2)
-      idle.instance_variable_set(:@client, double("client_v2", summarize: "recap v2"))
+      idle.instance_variable_set(:@client_override, double("client_v2", summarize: "recap v2"))
       # Note: @generation is gen_v1+1; start bumps it to gen_v1+2
       expected_gen = gen_v1 + 2
       drive(idle)

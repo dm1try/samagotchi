@@ -172,9 +172,13 @@ module Samagotchi
       end
     end
 
+    # The recap asks either a fixed model (+model+, +base_url+,
+    # +api_key_env+: an explicit recap: config) or +target+, called at each
+    # attempt (the session's current model, so a /model switch counts).
     # @param base_url [String] the OpenAI API base the recap asks
     # @param api_key_env [String, nil] the variable holding its key
-    def initialize(engine:, model:, base_url:, api_key_env: nil,
+    # @param target [#call, nil] -> {base_url:, api_key_env:, model:, label:}
+    def initialize(engine:, model: nil, base_url: nil, api_key_env: nil, target: nil,
                    inactivity: DEFAULT_INACTIVITY_SECONDS,
                    min_user_turns: DEFAULT_MIN_USER_TURNS,
                    timeout: DEFAULT_TIMEOUT_SECONDS,
@@ -184,12 +188,17 @@ module Samagotchi
       raise ArgumentError, "IdleRecap requires an engine" unless engine
 
       @engine = engine
-      @model = model
-      @base_url = base_url
+      @target = target || lambda {
+        { base_url: base_url, api_key_env: api_key_env, model: model, label: model }
+      }
       @inactivity = inactivity
       @min_user_turns = min_user_turns
       @timeout = timeout
-      @client = client || IdleClient.new(model: model, base_url: base_url, api_key_env: api_key_env, timeout: timeout)
+      # Specs inject a client; otherwise one IdleClient per target, rebuilt
+      # when the target changes.
+      @client_override = client
+      @client = nil
+      @client_key = nil
       @clock = clock
       @store = store
 
@@ -216,6 +225,12 @@ module Samagotchi
       return unless should_fire?
 
       start
+    end
+
+    # @return [Hash] the model the next attempt asks: {base_url:,
+    #   api_key_env:, model:, label:}
+    def target
+      @target.call
     end
 
     # @return [Boolean] true while a summarize request is running
@@ -261,8 +276,9 @@ module Samagotchi
       return if transcript.strip.empty?
       prompt = RecapPrompt.build(transcript, tool_names: TranscriptFilter.tool_names(fresh), previous: previous&.dig(:text))
       return if prompt.nil?
-      @in_flight = { thread: spawn_summarize(prompt), generation: gen, deadline: @clock.call + @timeout,
-                     covered: parsed.size, covered_digest: self.class.digest(parsed.last) }
+      asked = target
+      @in_flight = { thread: spawn_summarize(client_for(asked), prompt), generation: gen, deadline: @clock.call + @timeout,
+                     covered: parsed.size, covered_digest: self.class.digest(parsed.last), model: asked[:label] }
     rescue StandardError
       nil
     end
@@ -285,7 +301,7 @@ module Samagotchi
       recap = safe_value(job[:thread])
       return if recap.nil? || recap.to_s.strip.empty?
       saved = { text: recap.to_s, covered: job[:covered], covered_digest: job[:covered_digest],
-                model: @model, created_at: Time.now.utc.iso8601 }
+                model: job[:model], created_at: Time.now.utc.iso8601 }
       @mutex.synchronize { @state = saved }
       save(saved)
       @engine.emit_recap(recap: recap.to_s, generation: job[:generation], covered: job[:covered])
@@ -330,9 +346,20 @@ module Samagotchi
       @mutex.synchronize { @generation == gen }
     end
 
-    def spawn_summarize(prompt)
+    def client_for(asked)
+      return @client_override if @client_override
+
+      key = asked.values_at(:base_url, :api_key_env, :model)
+      unless @client && @client_key == key
+        @client = IdleClient.new(model: asked[:model], base_url: asked[:base_url], api_key_env: asked[:api_key_env], timeout: @timeout)
+        @client_key = key
+      end
+      @client
+    end
+
+    def spawn_summarize(client, prompt)
       Thread.new do
-        @client.summarize(prompt)
+        client.summarize(prompt)
       rescue StandardError
         nil
       end

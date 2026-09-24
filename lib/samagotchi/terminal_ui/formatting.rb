@@ -38,8 +38,7 @@ module Samagotchi
       # @param stale [Boolean] the conversation moved on since it
       def recap_command_text(enabled:, recap:, stale: false, min_user_turns: nil, inactivity_seconds: nil)
         unless enabled
-          return "recap feature not enabled (add recap: {host_ref:, model:} to config.yml, " \
-                 "or set SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL)"
+          return "recap is off (recap: false in config.yml, or SAMAGOTCHI_RECAP_ENABLED=false)"
         end
         return "session recap#{' (from before your latest turn)' if stale}:\n#{recap}" if recap
 

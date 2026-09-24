@@ -279,7 +279,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
 
       run_with(["/recap"])
 
-      expect(screen.lines).to include(a_string_starting_with("recap feature not enabled (add recap: {host_ref:, model:} to config.yml"))
+      expect(screen.lines).to include(a_string_starting_with("recap is off (recap: false in config.yml"))
     end
 
     it "says when one would come, while there is none yet" do

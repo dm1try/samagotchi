@@ -1506,12 +1506,11 @@ module Samagotchi
       warn "[samagotchi:hooks] failed to load bundle hooks: #{e.class}: #{e.message}"
     end
 
-    # Build (or disable) the idle recap job. Recap is opt-in: it is active
-    # only when (a) not explicitly disabled and (b) both a `base_url`
-    # (a local OpenAI-compatible /chat/completions server) and a `model`
-    # are present. Missing either fails fast with a warning and leaves
-    # recap disabled — the idle job must never run with no configured
-    # endpoint.
+    # Build (or disable) the idle recap job. On by default: with no recap
+    # host or model configured it asks the session's current model on its
+    # host, resolved at each attempt the way a turn does (a /model switch
+    # counts). An explicit `recap: {host_ref:, model:}` or `{base_url:,
+    # model:}` pins it; an incomplete one warns and leaves recap off.
     #
     # Single precedence path: explicit `recap:` kwarg > Config registry
     # (CLI > ENV > file > default). An explicit disable (`recap: false` as
@@ -1519,6 +1518,9 @@ module Samagotchi
     # SAMAGOTCHI_RECAP_ENABLED=false) always wins.
     def build_recap(recap)
       return nil if recap == false
+      # The TUI passes the config file's section; a worker passes nothing, so
+      # read it here too (a scalar `recap: false` is only seen this way).
+      return nil if recap.nil? && ConfigFile.recap_config == false
       return nil if Samagotchi::Config.get("recap.enabled") == false
 
       # Normalize kwarg (TerminalUI passes recap: recap_config hash or nil)
@@ -1527,43 +1529,56 @@ module Samagotchi
       base_url = string_config(kwarg_config, :base_url) || registry_string("recap.base_url")
       host_ref = string_config(kwarg_config, :host_ref) || string_config(kwarg_config, :host) || registry_string("recap.host_ref")
       model = string_config(kwarg_config, :model) || registry_string("recap.model")
+      label = model
 
-      # If host_ref given, derive base_url (the host's OpenAI base) and its
-      # API key variable from the host_registry entry
-      api_key_env = nil
-      if host_ref && !host_ref.empty?
-        entry = @host_registry.find_entry(host_ref)
-        if entry
-          base_url = entry.openai_base_url
-          api_key_env = entry.api_key_env
-          # If model is host-qualified, extract bare model for recap client
-          _, bare = @host_registry.parse_qualified_model(model) if model
-          model = bare if bare && !bare.empty?
-        else
-          warn "Warning: recap host_ref '#{host_ref}' not found in hosts:; recap disabled."
+      target = nil
+      if base_url.nil? && host_ref.nil? && model.nil?
+        target = -> { session_model_recap_target }
+      else
+        # If host_ref given, derive base_url (the host's OpenAI base) and its
+        # API key variable from the host_registry entry
+        api_key_env = nil
+        if host_ref && !host_ref.empty?
+          entry = @host_registry.find_entry(host_ref)
+          if entry
+            base_url = entry.openai_base_url
+            api_key_env = entry.api_key_env
+            # If model is host-qualified, extract bare model for recap client
+            _, bare = @host_registry.parse_qualified_model(model) if model
+            model = bare if bare && !bare.empty?
+          else
+            warn "Warning: recap host_ref '#{host_ref}' not found in hosts:; recap disabled."
+            return nil
+          end
+        end
+
+        if base_url.to_s.strip.empty? || model.to_s.strip.empty?
+          warn "Warning: SAMAGOTCHI session recap is enabled but base_url/model are missing; recap disabled. " \
+               "Set recap: {host_ref:, model:} or SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL (or pass recap: {base_url:, model:}), " \
+               "or leave them all out to recap with the session's own model."
           return nil
         end
-      end
-
-      if base_url.to_s.strip.empty? || model.to_s.strip.empty?
-        # Something recap-related was configured but is incomplete
-        if base_url || model || host_ref || !kwarg_config.empty?
-          warn "Warning: SAMAGOTCHI session recap is enabled but base_url/model are missing; recap disabled. " \
-               "Set recap: {host_ref:, model:} or SAMAGOTCHI_RECAP_BASE_URL and SAMAGOTCHI_RECAP_MODEL (or pass recap: {base_url:, model:})."
-        end
-        return nil
+        fixed = { base_url: base_url.to_s.strip, api_key_env: api_key_env, model: model.to_s.strip, label: label.to_s.strip }
+        target = -> { fixed }
       end
 
       IdleRecap.new(
         engine: self,
-        model: model.to_s.strip,
-        base_url: base_url.to_s.strip,
-        api_key_env: api_key_env,
+        target: target,
         inactivity: recap_number_setting(kwarg_config, :inactivity, "recap.inactivity", IdleRecap::DEFAULT_INACTIVITY_SECONDS, :float),
         min_user_turns: recap_number_setting(kwarg_config, :min_user_turns, "recap.min_user_turns", IdleRecap::DEFAULT_MIN_USER_TURNS, :int),
         timeout: recap_number_setting(kwarg_config, :timeout, "recap.timeout", IdleRecap::DEFAULT_TIMEOUT_SECONDS, :float),
         store: RecapStore.new(session_id_lookup: -> { @session&.id }, state_dir_lookup: -> { session_state_dir })
       )
+    end
+
+    # The session's current model as a recap target: its host's OpenAI API
+    # (native llama.cpp hosts serve /v1/chat/completions too), key variable
+    # and bare model name, as a turn resolves them.
+    def session_model_recap_target
+      target = @host_registry.resolve(@effective_model_name)
+      { base_url: target.openai_base_url, api_key_env: target.entry.api_key_env,
+        model: target.bare_model, label: @effective_model_name.to_s }
     end
 
     # Read a scalar recap setting via the Config registry (ENV > file > default).

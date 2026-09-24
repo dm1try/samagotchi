@@ -255,7 +255,7 @@ Notes:
 - Without `--default` the command is session-scoped and does not rewrite config files.
 - With `--default` the new default is written to `~/.config/samagotchi/config.yml` (honoring `XDG_CONFIG_HOME`) and takes effect for all new sessions; the current session's effective model is also updated immediately. Bare aliases and `host:model` are both valid.
 - Worker sessions inherit `hosts:` via `SAMAGOTCHI_HOSTS_JSON`.
-- Recap is a generalized `hosts:` entry (`recap: {host_ref, model}`) — no separate base URL needed.
+- The idle recap uses the session's current model (a switch counts from the next recap), unless `recap: {host_ref, model}` pins one.
 
 ## Tool Activity Log
 

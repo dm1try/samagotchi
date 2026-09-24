@@ -32,12 +32,14 @@ hosts:
     host: 192.168.1.50
     port: 8080
 
-# Idle recap now generalized via host_ref (preferred) or base_url fallback.
-# host_ref asks that host's OpenAI API (its url:, else http://host:port/v1) with
-# its api_key_env; base_url is an OpenAI API base as given (e.g. http://h:8081/v1).
+# Idle recap: on by default, written with the session's own model and host
+# (on a paid remote host that is one small request per idle window).
+# host_ref + model pin another model: host_ref asks that host's OpenAI API (its
+# url:, else http://host:port/v1) with its api_key_env; base_url is an OpenAI API
+# base as given (e.g. http://h:8081/v1). recap: false turns it off.
 recap:
-  host_ref: recap-box
-  model: gemma4-small
+  # host_ref: recap-box
+  # model: gemma4-small
   # inactivity: 180
   # timeout: 30
   # min_user_turns: 2
