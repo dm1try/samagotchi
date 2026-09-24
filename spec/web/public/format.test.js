@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel, canStopSession, goneSessionNotice, withLiveStatus } from "../../../lib/samagotchi/web/public/format.js";
+import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, recapPlace } from "../../../lib/samagotchi/web/public/format.js";
 
 test("noteHtml: who sent the context note, then its text, both escaped", () => {
   assert.equal(
@@ -191,4 +191,13 @@ test("withLiveStatus: a live status change is activity now (the card's time)", (
   assert.equal(sess.status, "idle"); // the input is left alone
   // A send woke a worker the list didn't know about.
   assert.equal(withLiveStatus({ id: "b", status: "stopped", owner: null }, "running", now).owner, "worker");
+});
+
+test("recapPlace: a stale recap goes before the first turn it doesn't cover", () => {
+  const users = ["u1", "u2", "u3", "u4", "u5"];
+  assert.equal(recapPlace(users, 3), "u3");
+  assert.equal(recapPlace(users, 1), "u5");
+  // Current (nothing since), or more turns than the page shows: at the end.
+  assert.equal(recapPlace(users, 0), null);
+  assert.equal(recapPlace(users, 9), null);
 });
