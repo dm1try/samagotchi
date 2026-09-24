@@ -94,6 +94,126 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
+  describe ".empty_session?" do
+    let(:session) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
+        s.save(state_dir: tmpdir)
+      end
+    end
+    let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
+
+    def empty?(default_model: "gemma4")
+      described_class.empty_session?(session.id, state_dir: tmpdir, default_model: default_model)
+    end
+
+    def change(&block)
+      block.call(session)
+      session.save(state_dir: tmpdir)
+    end
+
+    before do
+      %w[input output notes images].each { |sub| FileUtils.mkdir_p(File.join(session_dir, sub)) }
+      %w[pid owner.lock bridge.json].each { |name| File.write(File.join(session_dir, name), "") }
+      File.write(File.join(session_dir, "analytics.json"), JSON.generate("turns" => 0))
+      File.write(File.join(session_dir, "output", "1.txt"), "")
+    end
+
+    it "is true for a fresh session on the default model, its directory the worker's skeleton" do
+      expect(empty?).to be true
+    end
+
+    it "is false with no session file" do
+      FileUtils.rm_f(File.join(tmpdir, "#{session.id}.json"))
+
+      expect(empty?).to be false
+    end
+
+    it "is true with only the system prompt saved, false with a context note" do
+      change { |s| s.messages << { role: "system", content: "You are chi." } }
+      expect(empty?).to be true
+
+      change { |s| s.messages << { role: "system", kind: "note", content: "from slack" } }
+      expect(empty?).to be false
+    end
+
+    it "is false with a conversation" do
+      change { |s| s.messages << { role: "user", content: "hi" } }
+
+      expect(empty?).to be false
+    end
+
+    # 0 messages, but turns that failed: a last_prompt and analytics turns.
+    it "is false after a failed turn" do
+      change { |s| s.last_prompt = "can you see this?" }
+
+      expect(empty?).to be false
+    end
+
+    it "is false when analytics counted a turn" do
+      File.write(File.join(session_dir, "analytics.json"), JSON.generate("turns" => 1))
+
+      expect(empty?).to be false
+    end
+
+    it "is false with a first prompt waiting for the worker" do
+      change { |s| s.first_preview = "hello" }
+
+      expect(empty?).to be false
+    end
+
+    it "is false on a model other than the default (/model, --model)" do
+      expect(empty?(default_model: "qwen36")).to be false
+    end
+
+    it "is false with no default model to compare with" do
+      expect(empty?(default_model: nil)).to be false
+    end
+
+    it "is false with memory attached or a question pending" do
+      change { |s| s.used_memory_names = ["notes"] }
+      expect(empty?).to be false
+
+      change do |s|
+        s.used_memory_names = []
+        s.pending_question = { question: "which?" }
+      end
+      expect(empty?).to be false
+    end
+
+    it "is false with queued input, a note or an image" do
+      %w[input notes images].each do |sub|
+        path = File.join(session_dir, sub, "1.json")
+        File.write(path, "{}")
+        expect(empty?).to be(false), sub
+        FileUtils.rm_f(path)
+      end
+      expect(empty?).to be true
+    end
+
+    it "is false with anything else in its directory" do
+      File.write(File.join(session_dir, "approvals.json"), "{}")
+
+      expect(empty?).to be false
+    end
+
+    it "is false for an unknown or unreadable session" do
+      File.write(File.join(tmpdir, "#{session.id}.json"), "{")
+
+      expect(empty?).to be false
+      expect(described_class.empty_session?("nope", state_dir: tmpdir, default_model: "gemma4")).to be false
+    end
+  end
+
+  describe ".discard_empty?" do
+    it "is on unless session.keep_empty is set" do
+      expect(described_class.discard_empty?).to be true
+
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("session.keep_empty").and_return(true)
+      expect(described_class.discard_empty?).to be false
+    end
+  end
+
   describe ".delete_session" do
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|

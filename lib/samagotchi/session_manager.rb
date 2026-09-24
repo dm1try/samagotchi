@@ -361,6 +361,62 @@ module Samagotchi
       wait_for_owner_release(session_id, timeout: wait, state_dir: sd) if wait
     end
 
+    # What a session's directory holds before anything happened in it. Any
+    # other entry (or a file in one of the EMPTY_DIRS) is something the
+    # session keeps.
+    EMPTY_SKELETON_FILES = %w[pid owner.lock bridge.json analytics.json].freeze
+    EMPTY_DIRS = [INPUT_DIR, NOTES_DIR, "images"].freeze
+    EMPTY_SKELETON_DIRS = (EMPTY_DIRS + [OUTPUT_DIR]).freeze
+
+    # session.keep_empty off: sessions left with nothing in them are deleted
+    # (the worker as it exits, the TUI at /exit, the retention sweep).
+    def self.discard_empty?
+      Samagotchi::Config.get("session.keep_empty") != true
+    rescue StandardError
+      false
+    end
+
+    # A session nothing happened in: no conversation, no turn tried (a failed
+    # one leaves no messages but a last_prompt and analytics turns), nothing
+    # queued or attached, and the model and mode a new session gets. A
+    # session prepared for later (/model, --model, a note, an image, memory)
+    # is not empty. Anything unreadable or unknown counts as not empty.
+    # @param default_model [String, nil] what a new session starts on
+    def self.empty_session?(session_id, state_dir: nil, default_model: nil)
+      sd = state_dir || Session.default_state_dir
+      session = Session.load(session_id, state_dir: sd)
+      return false unless no_conversation?(session.messages) && session.pending_question.nil? && session.used_memory_names.empty?
+      return false unless session.last_prompt.to_s.strip.empty? && session.first_preview.to_s.strip.empty?
+      return false unless session.mode.to_s == "assist" && !default_model.nil? && session.model_name.to_s == default_model.to_s
+
+      skeleton_only?(Session.session_dir(session_id, state_dir: sd))
+    rescue ArgumentError, SystemCallError, JSON::ParserError
+      false
+    end
+
+    # Only the system prompt (the REPL seeds one, a saved session keeps
+    # it); a context note is a system message too, but with its kind.
+    def self.no_conversation?(messages)
+      Array(messages).all? do |msg|
+        (msg[:role] || msg["role"]).to_s == "system" && (msg[:kind] || msg["kind"]).nil?
+      end
+    end
+
+    private_class_method def self.skeleton_only?(dir)
+      return true unless Dir.exist?(dir)
+
+      Dir.children(dir).all? do |name|
+        path = File.join(dir, name)
+        if EMPTY_SKELETON_DIRS.include?(name)
+          File.directory?(path) && (!EMPTY_DIRS.include?(name) || Dir.children(path).empty?)
+        elsif name == "analytics.json"
+          JSON.parse(File.read(path))["turns"].to_i.zero?
+        else
+          EMPTY_SKELETON_FILES.include?(name)
+        end
+      end
+    end
+
     # Delete one session: its <id>.json and the whole <id>/ directory
     # (history sidecars, input, output, notes, images). The CLI, the TUI's
     # /exit --delete and the web all come here.

@@ -82,6 +82,8 @@ module Samagotchi
       Entry.new(key: "session.idle_exit_minutes",     yaml_path: %w[session idle_exit_minutes],     type: :float,   default: 30.0, expose: %i[env config cli]),
       # Plain `chi` runs like `chi --shared` (bin/chi, LaunchMode); false, or --no-shared per run, keeps the plain REPL. No CLI flag: that would duplicate --shared.
       Entry.new(key: "session.shared",                yaml_path: %w[session shared],                type: :bool,    default: true,  expose: %i[env config]),
+      # false: a session nothing happened in is deleted when it is left (SessionManager.empty_session?).
+      Entry.new(key: "session.keep_empty",            yaml_path: %w[session keep_empty],            type: :bool,    default: false, expose: %i[env config]),
 
       # Images sent to a model (ImageStore): the long side they are downscaled
       # to, the most bytes one may take (bigger → re-encoded as jpeg), and how
