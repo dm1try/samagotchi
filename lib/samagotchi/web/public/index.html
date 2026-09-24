@@ -170,6 +170,9 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #composer:hover #composeGrip::after,#composeGrip.dragging::after{opacity:1}
 #composeGrip:hover::after,#composeGrip.dragging::after{background:var(--accent)}
 #composer textarea::placeholder{color:var(--text-faint)}
+/* Key hint: its line is always reserved, so focusing never shifts the layout. */
+#composeHint{font-size:11px;line-height:14px;color:var(--text-faint);padding-left:2px;opacity:0;transition:opacity .12s ease;user-select:none}
+#composer:focus-within #composeHint:not(:empty){opacity:1}
 #composer textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
 #composer .actions-col{display:flex;flex-direction:column;gap:6px;align-items:stretch;width:132px;flex-shrink:0}
 #composer .actions-col button{white-space:nowrap}
@@ -297,19 +300,20 @@ a{color:var(--accent)}
       <div id="composeGrip" title="Drag to make the message box taller (double-click resets)"></div>
       <div class="compose-col">
         <div id="chips" hidden></div>
-        <textarea id="prompt" placeholder="New session prompt — press Enter to create (Shift+Enter for newline)"></textarea>
+        <textarea id="prompt" placeholder="Ask chi anything…"></textarea>
+        <div id="composeHint">Enter to start · Shift+Enter for a newline</div>
       </div>
       <div class="actions-col">
         <div class="split">
-          <button id="actionBtn">Create</button>
+          <button id="actionBtn">Start</button>
           <button id="actionMenuBtn" class="ghost" title="More actions" style="padding:8px 10px">▾</button>
         </div>
-        <button id="createAltBtn" class="ghost" style="visibility:hidden">Create new</button>
+        <button id="createAltBtn" class="ghost" style="visibility:hidden">New chat</button>
         <button id="cancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Cancel</button>
       </div>
       <div id="actionMenu">
         <button data-action="send">Send to current session</button>
-        <button data-action="create">Create new session</button>
+        <button data-action="create">New chat</button>
       </div>
     </div>
     <div id="infoBar">
