@@ -37,6 +37,20 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     expect(backend.provider).to eq(:chat)
   end
 
+  it "passes its session id to every request, nil when it has none" do
+    seen = []
+    allow(adapter).to receive(:chat).and_wrap_original do |original, **kwargs|
+      seen << kwargs[:session_id]
+      original.call(**kwargs)
+    end
+
+    run
+    backend.session_id = "sess-1"
+    run
+
+    expect(seen).to eq([nil, "sess-1"])
+  end
+
   it "names the model the adapter reports in :generation_completed, next to the one asked for" do
     served = FakeChatAdapter.text("hi").with(model: "vendor/served-1")
     described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(served))

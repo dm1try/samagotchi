@@ -291,6 +291,10 @@ hosts:
 which applies to every host. With neither set, remote hosts (an API key or an https url) get 120 seconds and local
 servers no limit: a long prompt evaluation is normal there, and the read timeout catches a dead server.
 
+Every chat request carries the session's id as a `Session-Id` header (next to `User-Agent: chi/<version>`). A
+gateway that spreads requests over several providers can key on it to keep one conversation on one provider, so
+prompt caches hit and every turn is answered by the same model. Servers that don't know the header ignore it.
+
 ## Llama Model Routing
 
 To explicitly route requests to a named model in llama.cpp, set:

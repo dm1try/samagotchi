@@ -28,8 +28,9 @@ class FakeChatAdapter
 
   def base_url = "http://fake.test/v1"
 
-  def chat(messages:, model:, tools: [], cancel_controller: nil, on_delta: nil, on_retry: nil, options: {})
-    @requests << { messages: messages, model: model, tools: tools, options: options }
+  def chat(messages:, model:, tools: [], cancel_controller: nil, on_delta: nil, on_retry: nil, options: {},
+           session_id: nil)
+    @requests << { messages: messages, model: model, tools: tools, options: options, session_id: session_id }
     step = @steps.length > 1 ? @steps.shift : @steps.first
     step = step.call(cancel_controller: cancel_controller, on_delta: on_delta, on_retry: on_retry) if step.respond_to?(:call)
     raise step if step.is_a?(Exception)

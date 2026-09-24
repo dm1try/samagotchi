@@ -103,9 +103,14 @@ module Samagotchi
       # @param on_delta [Proc, nil] called per streamed chunk with content:,
       #   reasoning: and payload: (the parsed chunk)
       # @param on_retry [Proc, nil] see LLM::HTTP#stream_lines
+      # @param session_id [String, nil] sent as a Session-Id header so a
+      #   gateway that spreads requests over providers keeps one
+      #   conversation on one of them (prompt caches, one served model)
       # @return [ChatResponse]
-      def chat(messages:, model:, tools: [], cancel_controller: nil, on_delta: nil, on_retry: nil, options: {})
-        request = post_request("#{@base_url}/chat/completions", request_body(messages, tools, model, options))
+      def chat(messages:, model:, tools: [], cancel_controller: nil, on_delta: nil, on_retry: nil, options: {},
+               session_id: nil)
+        request = post_request("#{@base_url}/chat/completions", request_body(messages, tools, model, options),
+                               session_id: session_id)
         return chat_once(request, cancel_controller) unless @stream
 
         assembly = Assembly.new
@@ -264,10 +269,11 @@ module Samagotchi
         raise ProtocolError.new("#{@host_name}: malformed #{what}: #{e.message[0, 200]}", host: @host_name)
       end
 
-      def post_request(url, body)
+      def post_request(url, body, session_id: nil)
         uri = URI(url)
         Net::HTTP::Post.new(uri).tap do |request|
           request["Content-Type"] = "application/json"
+          request["Session-Id"] = session_id.to_s unless session_id.to_s.empty?
           authorize(request)
           request.body = JSON.generate(body)
         end

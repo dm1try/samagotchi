@@ -1458,6 +1458,7 @@ module Samagotchi
       @chat_backend_mutex.synchronize do
         @chat_backend ||= LLM::ChatLoop.new(kernel: @kernel)
         @chat_backend.adapter = @host_registry.adapter_for(target.entry)
+        @chat_backend.session_id = session&.id
         @chat_backend
       end
     end

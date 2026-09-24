@@ -34,6 +34,9 @@ module Samagotchi
     # thread; the text streamed so far is kept, marked [interrupted].
     class ChatLoop < ModelBackend
       attr_accessor :adapter
+      # The session every request is for; Engine sets it with the adapter.
+      # Goes out as a Session-Id header (OpenAIChat#chat).
+      attr_accessor :session_id
 
       # @param kernel [KernelLoop] tool dispatch, thought stripping, hooks
       # @param adapter [OpenAIChat, nil] the host to talk to; Engine sets it
@@ -295,7 +298,7 @@ module Samagotchi
           streamed = +""
           response = @loop.adapter.chat(
             messages: @loop.wire_messages(@conversation), tools: @loop.tool_definitions, model: @model_name,
-            cancel_controller: @cancel_controller,
+            cancel_controller: @cancel_controller, session_id: @loop.session_id,
             on_delta: lambda { |content:, reasoning:, payload:|
               streamed << content
               emit(type: :generation_chunk, iteration: iteration, content: reasoning + content, text: content,

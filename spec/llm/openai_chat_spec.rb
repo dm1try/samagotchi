@@ -87,6 +87,16 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       expect(request.header("authorization")).to be_nil
     end
 
+    it "sends the session id as a Session-Id header, and no header without one" do
+      replay("text_stream.sse")
+      adapter.chat(messages: messages, tools: [], model: "m", session_id: "abc-123")
+      expect(server.requests.last.header("session-id")).to eq("abc-123")
+
+      replay("text_stream.sse")
+      adapter.chat(messages: messages, tools: [], model: "m")
+      expect(server.requests.last.header("session-id")).to be_nil
+    end
+
     it "omits tools and tool_choice when there are none, and merges extra options" do
       replay("text_stream.sse")
 
