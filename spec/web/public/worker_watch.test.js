@@ -75,3 +75,35 @@ test("openStream closes and reports a dropped stream instead of letting the brow
   assert.deepEqual(closed, [true]);
   assert.equal(es.readyState, 2);
 });
+
+test("watchForWorker calls onGone and stops once the session is gone (404)", async () => {
+  const timers = fakeTimers();
+  const gone = [];
+  const notFound = Object.assign(new Error("not_found (404)"), { status: 404 });
+  const answers = [{ last_event_seq: null }, notFound];
+  watchForWorker("s1", {
+    getSessionImpl: async () => { const a = answers.shift(); if (a instanceof Error) throw a; return a; },
+    onLive: () => assert.fail("not live"),
+    onGone: () => gone.push("s1"),
+    ...timers,
+  });
+  await timers.tick();
+  assert.deepEqual(gone, []);
+  await timers.tick();
+  assert.deepEqual(gone, ["s1"]);
+  assert.equal(timers.size, 0, "stops polling once gone");
+});
+
+test("watchForWorker keeps polling through other errors (a server restart)", async () => {
+  const timers = fakeTimers();
+  const gone = [];
+  watchForWorker("s1", {
+    getSessionImpl: async () => { throw Object.assign(new Error("boom (500)"), { status: 500 }); },
+    onLive: () => {},
+    onGone: () => gone.push("s1"),
+    ...timers,
+  });
+  await timers.tick();
+  assert.deepEqual(gone, []);
+  assert.equal(timers.size, 1);
+});
