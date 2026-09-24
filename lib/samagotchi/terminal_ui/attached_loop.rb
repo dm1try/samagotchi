@@ -10,7 +10,7 @@ require_relative "line_reader"
 require_relative "question_prompt"
 require_relative "reline_seam"
 require_relative "../bridge_client"
-require_relative "../debug_log"
+require_relative "../log"
 require_relative "../context_note"
 require_relative "../model_profile"
 require_relative "../output_formatter"
@@ -80,14 +80,11 @@ module Samagotchi
       #   the first read (a new session with no -p, as the REPL)
       # @param clock [#call] monotonic seconds (the Ctrl-C detach window)
       # @param delete_session [#call] session id -> deletes it (/exit --delete)
-      # @param log [#write] the debug log (the REPL's), for lines kept off the screen
       def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false,
                      default_input: false, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
-                     log: DebugLog.new(path: nil),
                      delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) })
         @client = client
         @delete_session = delete_session
-        @log = log
         @screen = screen
         @client_id = client_id
         @view = AttachedView.new(screen)
@@ -745,7 +742,8 @@ module Samagotchi
       def render_join_header(messages)
         exchange = messages.select { |m| %w[user model assistant].include?(m[:role].to_s) }
         # The id stays findable: the detach line and chi sessions list show it.
-        @log.write("[attached] joined session #{@client.session_id} (#{exchange.size} messages)")
+        Log.session_id = @client.session_id
+        Log.info(:attached, "joined", session: @client.session_id, messages: exchange.size)
         last_user = exchange.rindex { |m| m[:role].to_s == "user" }
         render_join_notes(messages)
         return unless last_user

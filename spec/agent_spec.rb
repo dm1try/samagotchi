@@ -93,7 +93,7 @@ file2.rb")
       expect { agent.run }.to output(/file1.rb/).to_stdout
     end
 
-    it "passes log_file configuration through to KernelLoop" do
+    it "builds its KernelLoop with the client and options" do
       result = Samagotchi::KernelLoop::Result.new(
         output: "ok",
         conversation: [],
@@ -103,10 +103,10 @@ file2.rb")
       )
       kernel = instance_double(Samagotchi::KernelLoop, run: result)
       expect(Samagotchi::KernelLoop).to receive(:new)
-        .with(client: client, verbose: false, log_file: "tmp/custom.log", profile: nil, no_interrupt: false, reminder_store: instance_of(Samagotchi::ReminderStore))
+        .with(client: client, profile: nil, no_interrupt: false, reminder_store: instance_of(Samagotchi::ReminderStore))
         .and_return(kernel)
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client, log_file: "tmp/custom.log")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       expect { agent.run }.to output(/ok/).to_stdout
     end
 

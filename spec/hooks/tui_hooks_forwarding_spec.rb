@@ -22,7 +22,7 @@ RSpec.describe "TUI hooks forwarding regression" do
 
   describe "Engine owns hooks, KernelLoop reuses them" do
     it "propagates Engine registry to an externally-supplied KernelLoop" do
-      external_kernel = Samagotchi::KernelLoop.new(client: client, verbose: false)
+      external_kernel = Samagotchi::KernelLoop.new(client: client)
       expect(external_kernel.hooks).to be_nil
 
       engine = Samagotchi::Engine.new(mode: :assist, client: client, kernel: external_kernel)
@@ -34,7 +34,7 @@ RSpec.describe "TUI hooks forwarding regression" do
     end
 
     it "shares the same registry instance so Engine#register_hook is visible to KernelLoop" do
-      external_kernel = Samagotchi::KernelLoop.new(client: client, verbose: false)
+      external_kernel = Samagotchi::KernelLoop.new(client: client)
       engine = Samagotchi::Engine.new(mode: :assist, client: client, kernel: external_kernel)
 
       fired = []

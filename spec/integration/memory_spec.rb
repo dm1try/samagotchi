@@ -22,8 +22,7 @@ require "fileutils"
 # Custom server:
 #   SAMAGOTCHI_SERVER_HOST=myhost SAMAGOTCHI_SERVER_PORT=9090 SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/memory_spec.rb -v
 RSpec.describe "memory_read tool - reading existing memory integration", :integration do
-  let(:kernel) { Samagotchi::KernelLoop.new(verbose: verbose) }
-  let(:verbose) { false }
+  let(:kernel) { Samagotchi::KernelLoop.new }
   let(:project_memories_dir) { Dir.mktmpdir }
   let(:system_memories_dir) { Dir.mktmpdir }
 

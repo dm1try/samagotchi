@@ -96,6 +96,8 @@ module Samagotchi
 
       Entry.new(key: "log.file",                 yaml_path: %w[log file],                 type: :string, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "log.disable",              yaml_path: %w[log disable],              type: :bool,   default: false,            expose: %i[env config cli]),
+      # debug adds payload dumps (model responses, tool args/results) and fetch lines.
+      Entry.new(key: "log.level",                yaml_path: %w[log level],                type: :enum,   default: "info",           expose: %i[env config cli], enum_values: %w[debug info warn error]),
 
       Entry.new(key: "status.line",              yaml_path: %w[status line],              type: :string, default: "on",             expose: %i[env config cli]),
       Entry.new(key: "status.width_mode",        yaml_path: %w[status width_mode],        type: :string, default: "terminal_cap",   expose: %i[env config cli]),
@@ -341,6 +343,9 @@ module Samagotchi
       def reload!(path: nil, env: ENV, cli_overrides: {})
         @cli_overrides = cli_overrides.dup
         @store = load_snapshot(path: path, env: env, cli_overrides: cli_overrides)
+      ensure
+        # The log resolves its file and level from here.
+        Samagotchi::Log.invalidate! if defined?(Samagotchi::Log)
       end
 
       def cli_overrides

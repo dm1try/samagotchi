@@ -13,6 +13,7 @@ require_relative "thought_stream_splitter"
 require_relative "cancellation_controller"
 require_relative "context_window"
 require_relative "kernel_loop"
+require_relative "log"
 require_relative "host_registry"
 require_relative "llm/backend"
 require_relative "llm/openai_chat"
@@ -58,8 +59,6 @@ module Samagotchi
 
     # @param mode               [Symbol] :assist (harness is single-mode; memory-reliant; kwarg kept for compat, ignored)
     # @param client             [Client, nil] defaults to Client.new
-    # @param verbose            [Boolean]
-    # @param log_file           [String, nil]
     # @param profile            [ModelProfile, Symbol, String, nil]
     # @param session_id         [String, nil] resume an existing session
     # @param no_interrupt       [Boolean]
@@ -67,7 +66,7 @@ module Samagotchi
     # @param memories           [Array<String>] explicit --memory preload list (merged with the config.yml `memories:` baseline)
     DEFAULT_SYSTEM_MEMORIES = %w[identity].freeze
 
-    def initialize(mode: :assist, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
+    def initialize(mode: :assist, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
       @mode = mode.to_sym
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
@@ -112,7 +111,7 @@ module Samagotchi
       @reminders = build_reminders(auto_turn_callback: callback)
       # Track whether this is the first turn in the session (for session_start event)
       @first_turn = true
-      @kernel = kernel || KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: @given_profile, no_interrupt: no_interrupt, hooks: @hooks, reminder_store: @reminder_store)
+      @kernel = kernel || KernelLoop.new(client: @client, profile: @given_profile, no_interrupt: no_interrupt, hooks: @hooks, reminder_store: @reminder_store)
       sync_kernel_client!
       @model_key = ModelOverlay.key_for(bare_model_name(@effective_model_name))
       @kernel.sync_model_key!(@model_key) if @kernel.respond_to?(:sync_model_key!)
@@ -152,7 +151,7 @@ module Samagotchi
       # NativeBackend, or the chat backend for openai hosts.
       @native_backend = LLM::NativeBackend.new(kernel: @kernel)
       self.class.warn_removed_backend_setting
-      warn "[verbose] backend=#{backend.provider}" if verbose
+      Log.debug(:model, "backend", provider: backend.provider) if Log.level?(:debug)
       @resume_session = session_id ? Session.load(session_id) : nil
       @requested_memories = preload_memory_list(memories)
       @session = nil
@@ -1089,6 +1088,8 @@ module Samagotchi
     # turn, so the messages API and recap see it)
     def session=(session)
       @session = session
+      # One session per REPL/worker process: its records carry this sid.
+      Log.session_id = session.id if session.respond_to?(:id) && session.id
       sync_used_memories_from_session(session)
     end
 
@@ -1259,6 +1260,9 @@ module Samagotchi
         # Route model name as bare (without host prefix) to the transport;
         # host selection already done via active client.
         bare_for_backend = bare_model_name(@effective_model_name)
+        # The chat loop dispatches tools through the kernel without its #run:
+        # tag those dumps with this turn's model, not the last native one.
+        @kernel.current_model_name = bare_for_backend if @kernel.respond_to?(:current_model_name=)
 
         result = backend.complete(
           messages: messages,

@@ -1142,110 +1142,63 @@ describe "failed turn" do
   end
 end
 
-  describe "verbose mode" do
-    subject(:verbose_kernel) { described_class.new(client: client, verbose: true) }
+  describe "debug dumps" do
+    let(:log_dir) { Dir.mktmpdir("samagotchi-debug-log") }
+    let(:log_path) { File.join(log_dir, "samagotchi.log") }
+    after { FileUtils.remove_entry(log_dir) if File.directory?(log_dir) }
 
-    it "prints the raw LLM response to stderr when verbose" do
-      allow(client).to receive(:complete).and_return("Hello!")
-      expect { verbose_kernel.run([{ role: "user", content: "hi" }]) }
-        .to output(/LLM response.*Hello!/m).to_stderr
+    def records
+      File.open(log_path) { |io| Samagotchi::LogLine.each_record(io).to_a }
     end
 
-    it "prints tool call details to stderr when verbose" do
+    it "logs the raw LLM response at debug level, tagged with the resolved model" do
+      Samagotchi::Log.configure(path: log_path, level: :debug)
+      model_kernel = described_class.new(client: client, model_name: "gemma4:latest")
+      allow(client).to receive(:complete).and_return("Hello!")
+
+      expect { model_kernel.run([{ role: "user", content: "hi" }]) }.not_to output.to_stderr
+
+      response = records.find { |r| r.event == "response" }
+      expect(response.to_h).to include(level: "DEBUG", tag: "model", payload: "Hello!")
+      # The logged id is the resolved model, not the alias passed in.
+      expect(response.fields["model"]).not_to be_empty
+      expect(response.fields["model"]).not_to eq("gemma4:latest")
+    end
+
+    it "logs tool calls and results with the tool's name" do
+      Samagotchi::Log.configure(path: log_path, level: :debug)
       responses = ['<|tool_call>call:execute{command: "echo hi"}<tool_call|>', "done"]
       allow(client).to receive(:complete).and_return(*responses)
-      expect { verbose_kernel.run([{ role: "user", content: "go" }]) }
-        .to output(/tool call: execute.*echo hi/m).to_stderr
+      kernel.run([{ role: "user", content: "go" }])
+
+      call = records.find { |r| r.event == "tool_call" }
+      expect(call.fields).to include("tool" => "execute")
+      expect(call.payload).to eq("echo hi")
+      expect(records.find { |r| r.event == "tool_result" }.payload).to include("hi")
     end
 
-    it "prints tool result to stderr when verbose" do
-      responses = ['<|tool_call>call:execute{command: "echo hi"}<tool_call|>', "done"]
-      allow(client).to receive(:complete).and_return(*responses)
-      expect { verbose_kernel.run([{ role: "user", content: "go" }]) }
-        .to output(/tool result: execute/m).to_stderr
-    end
-
-    it "prints tool error to stderr when verbose" do
-      responses = ['<|tool_call>call:execute{command: "ruby -e \"raise \'boom\'\""}<tool_call|>', "done"]
-      allow(client).to receive(:complete).and_return(*responses)
-      expect { verbose_kernel.run([{ role: "user", content: "go" }]) }
-        .to output(/tool (result|error): execute/m).to_stderr
-    end
-
-    it "does not print to stderr when verbose is false (default)" do
+    it "logs no dumps at the default (info) level" do
+      Samagotchi::Log.configure(path: log_path)
       allow(client).to receive(:complete).and_return("Hello!")
+      kernel.run([{ role: "user", content: "hi" }])
+
+      expect(File.exist?(log_path) ? records.map(&:event) : []).not_to include("response")
+    end
+
+    it "mirrors the records to stderr with -v (mirror)" do
+      Samagotchi::Log.configure(path: log_path, level: :debug, mirror: true)
+      allow(client).to receive(:complete).and_return("Hello!")
+
       expect { kernel.run([{ role: "user", content: "hi" }]) }
-        .not_to output.to_stderr
+        .to output(/DEBUG model pid=\d+ response model=\S+ iteration=1\n    Hello!/).to_stderr
+      expect(records.map(&:event)).to include("response")
     end
 
-    it "tags the verbose output with the resolved model id" do
-      model_kernel = described_class.new(client: client, verbose: true, model_name: "qwen36:latest")
+    it "does not fail the run when the log path is not writable" do
+      Samagotchi::Log.configure(path: log_dir, level: :debug)
       allow(client).to receive(:complete).and_return("Hello!")
-      expect { model_kernel.run([{ role: "user", content: "hi" }])}
-        .to output(/\[model: .+\].*LLM response/m).to_stderr
-    end
-  end
 
-  describe "debug log file" do
-    it "writes verbose-equivalent events to a file when verbose is false" do
-      dir = Dir.mktmpdir("samagotchi-debug-log")
-      log_path = File.join(dir, "samagotchi.log")
-      kernel_with_log = described_class.new(client: client, log_file: log_path)
-
-      allow(client).to receive(:complete).and_return("Hello!")
-      expect { kernel_with_log.run([{ role: "user", content: "hi" }]) }
-        .not_to output.to_stderr
-
-      content = File.read(log_path)
-      expect(content).to include("LLM response")
-      expect(content).to include("Hello!")
-    ensure
-      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
-    end
-
-    it "writes to both stderr and file when verbose is true" do
-      dir = Dir.mktmpdir("samagotchi-debug-log")
-      log_path = File.join(dir, "samagotchi.log")
-      kernel_with_log = described_class.new(client: client, verbose: true, log_file: log_path)
-
-      allow(client).to receive(:complete).and_return("Hello!")
-      expect { kernel_with_log.run([{ role: "user", content: "hi" }]) }
-        .to output(/LLM response.*Hello!/m).to_stderr
-
-      content = File.read(log_path)
-      expect(content).to include("LLM response")
-      expect(content).to include("Hello!")
-    ensure
-      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
-    end
-
-    it "does not fail the run when log path is not writable" do
-      dir = Dir.mktmpdir("samagotchi-debug-log")
-      kernel_with_bad_log = described_class.new(client: client, log_file: dir)
-
-      allow(client).to receive(:complete).and_return("Hello!")
-      expect(kernel_with_bad_log.run([{ role: "user", content: "hi" }]).to_s).to eq("Hello!")
-    ensure
-      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
-    end
-
-    it "tags each log line with the resolved model id" do
-      dir = Dir.mktmpdir("samagotchi-debug-log")
-      log_path = File.join(dir, "samagotchi.log")
-      kernel_with_log = described_class.new(
-        client: client, log_file: log_path, model_name: "gemma4:latest"
-      )
-
-      allow(client).to receive(:complete).and_return("Hello!")
-      expect { kernel_with_log.run([{ role: "user", content: "hi" }]) }.not_to output.to_stderr
-
-      content = File.read(log_path)
-      expect(content).to include("[model: ")
-      expect(content).to include("LLM response")
-      # The logged id is the resolved model, not the alias we passed in.
-      expect(content).not_to include("[model: gemma4:latest]")
-    ensure
-      FileUtils.remove_entry(dir) if dir && File.directory?(dir)
+      expect(kernel.run([{ role: "user", content: "hi" }]).to_s).to eq("Hello!")
     end
   end
 

@@ -10,7 +10,7 @@ require "rbconfig"
 require_relative "session"
 require_relative "owner_lock"
 require_relative "bridge_client"
-require_relative "debug_log"
+require_relative "log"
 require_relative "log_path"
 require_relative "recap_store"
 require_relative "terminal_ui"
@@ -131,8 +131,7 @@ module Samagotchi
       if !dir.empty? && File.directory?(dir)
         opts[:chdir] = dir
       else
-        debug_log("[worker] session #{session.id}: working directory #{dir} is gone; " \
-                  "the worker runs in #{Dir.pwd}")
+        Log.warn(:worker, "cwd_gone", sid: session.id, dir: dir, cwd: Dir.pwd)
       end
       child_env = {}
       # Propagate hosts config for multi-host routing
@@ -156,6 +155,9 @@ module Samagotchi
       else
         child_env["SAMAGOTCHI_LOG_DISABLE"] = "true"
       end
+      # And its level (a --log-level flag isn't in the worker's own config).
+      level = begin Config.get("log.level") rescue nil end
+      child_env["SAMAGOTCHI_LOG_LEVEL"] = level.to_s if level
       opts[:env] = child_env unless child_env.empty?
       opts
     end
@@ -548,10 +550,15 @@ module Samagotchi
     def self.run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT,
                               idle_exit_minutes: nil, poll_interval: nil)
       sd = state_dir || Session.default_state_dir
+      # The spawner passed the file and level through ENV; a worker's stderr
+      # is /dev/null, so warnings only reach the file.
+      Log.configure(stderr: false)
+      Log.session_id = session_id
       session_dir = Session.session_dir(session_id, state_dir: sd)
       # Kept in a class ivar so the lock's File lives as long as the worker.
       @owner_lock = OwnerLock.acquire(session_dir, kind: "worker", wait: owner_wait)
       exit(0) unless @owner_lock
+      Log.info(:worker, "start", cwd: Dir.pwd)
       worker = Worker.new(session_id: session_id, state_dir: sd, session_dir: session_dir,
                           idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
       result = begin
@@ -580,17 +587,9 @@ module Samagotchi
       return unless empty_session?(session_id, state_dir: state_dir, default_model: default_model)
 
       delete_session(session_id, state_dir: state_dir)
-      debug_log("[worker] pid #{Process.pid} discarded empty session #{session_id}")
+      Log.info(:worker, "discarded_empty", sid: session_id)
     rescue DeleteRefused, OwnedByTUI, ArgumentError, SystemCallError => e
-      debug_log("[worker] session #{session_id} kept (#{e.class}: #{e.message})")
-    end
-
-    # One line in the debug log (LogPath), unless log.disable is set.
-    def self.debug_log(message)
-      path = begin LogPath.resolve rescue nil end
-      log = DebugLog.new(path: path)
-      log.write(message)
-      log.close
+      Log.info(:worker, "kept_session", sid: session_id, error: e.class.name, msg: e.message)
     end
 
     def self.config_idle_exit_minutes

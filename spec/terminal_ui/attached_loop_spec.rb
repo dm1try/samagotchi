@@ -8,8 +8,7 @@ require_relative "../support/recording_surface"
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
   let(:screen) { RecordingSurface.new(columns: 80) }
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
-  let(:log) { instance_double(Samagotchi::DebugLog, write: nil) }
-  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", log: log) }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
 
   def feed(*events)
     events.map { |e| attached.handle_event(JSON.parse(JSON.generate(e))) }
@@ -26,11 +25,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
 
   describe "joining" do
     it "shows the session and its last exchange" do
+      allow(Samagotchi::Log).to receive(:info).and_call_original
       feed(snapshot(messages: [{ role: "system", content: "sys" }, { role: "user", content: "hi" },
                                { role: "model", content: "hello there" }]))
 
       expect(screen.lines).to eq(["user> hi", "hello there"])
-      expect(log).to have_received(:write).with("[attached] joined session s-1234 (2 messages)")
+      expect(Samagotchi::Log).to have_received(:info).with(:attached, "joined", session: "s-1234", messages: 2)
+      expect(Samagotchi::Log.session_id).to eq("s-1234")
       expect(attached).not_to be_running
     end
 
@@ -1082,6 +1083,9 @@ it "cancels a running turn on Ctrl-C and leaves the typed text in the prompt (th
   handled = nil
 
   attached.run(input: lambda do |_prompt, _prefill|
+    # The read starts on its own thread as the loop takes the snapshot in.
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
+    sleep 0.01 until attached.running? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
     allow(Reline).to receive(:line_buffer).and_return("half typed")
     handled = Samagotchi::TerminalUI::RelineSeam.interrupt_handler.call
     nil # then Ctrl-D, in the same read

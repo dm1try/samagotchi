@@ -52,10 +52,7 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
   describe "KernelLoop receives hooks" do
     let(:hooks_registry) { Samagotchi::Hooks::Registry.new }
     let(:kernel) do
-      Samagotchi::KernelLoop.new(
-        hooks: hooks_registry,
-        verbose: false
-      )
+      Samagotchi::KernelLoop.new(hooks: hooks_registry)
     end
 
     it "accepts a hooks registry" do
@@ -80,7 +77,7 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
     end
 
     let(:engine) do
-      engine = Samagotchi::Engine.new(mode: :assist, verbose: false)
+      engine = Samagotchi::Engine.new(mode: :assist)
       hook_events.each_key do |name|
         engine.register_hook(name) do |event|
           hook_events[name] << event.dup
@@ -135,7 +132,7 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
 
       it ":before_tool_call can mutate the call params" do
         # Register a hook that modifies the call hash
-        engine2 = Samagotchi::Engine.new(mode: :assist, verbose: false)
+        engine2 = Samagotchi::Engine.new(mode: :assist)
         modified_calls = []
         engine2.register_hook(:before_tool_call) do |event|
           # Mutate the call by adding a marker

@@ -98,7 +98,7 @@ module Samagotchi
       Engine.system_prompt_for(profile)
     end
 
-    def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, verbose: false, log_file: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false, surface: nil,
+    def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false, surface: nil,
                    spinner_tick_interval: THINKING_TICK_INTERVAL)
       @mode           = mode.to_sym
       # nil: no ticker thread (specs that compare exact frames).
@@ -129,7 +129,7 @@ module Samagotchi
       end
       # Only a caller's profile goes in; otherwise the Engine resolves one
       # for the effective model and hands it to the kernel.
-      @kernel         = KernelLoop.new(client: @client, verbose: verbose, log_file: log_file, profile: profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
+      @kernel         = KernelLoop.new(client: @client, profile: profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
       @no_default_input = no_default_input
       @non_interactive = non_interactive
       @requested_memories = Array(memories)
@@ -147,8 +147,6 @@ module Samagotchi
         mode: :assist,
         client: client,
         host_registry: @host_registry,
-        verbose: verbose,
-        log_file: log_file,
         profile: profile,
         session_id: session_id,
         no_interrupt: no_interrupt,

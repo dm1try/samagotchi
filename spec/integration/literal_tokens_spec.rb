@@ -22,8 +22,7 @@ require "fileutils"
 # Custom server:
 #   SAMAGOTCHI_SERVER_HOST=myhost SAMAGOTCHI_SERVER_PORT=9090 SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/literal_tokens_spec.rb -v
 RSpec.describe "read tool - literal control token integration", :integration do
-  let(:kernel) { Samagotchi::KernelLoop.new(verbose: verbose, profile: profile) }
-  let(:verbose) { false }
+  let(:kernel) { Samagotchi::KernelLoop.new(profile: profile) }
   let(:profile) { Samagotchi::ModelProfile.from_env }
 
   around(:each) do |example|

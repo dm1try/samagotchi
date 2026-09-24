@@ -6,7 +6,7 @@ require_relative "session"
 require_relative "context_note"
 require_relative "worker_idle_exit"
 require_relative "session_manager"
-require_relative "log_path"
+require_relative "log"
 require_relative "turn_flow"
 require_relative "session_commands"
 require_relative "model_profile"
@@ -190,7 +190,6 @@ module Samagotchi
       engine = Samagotchi::Engine.new(
         mode: @session.mode.to_sym,
         model_name: @session.model_name,
-        log_file: LogPath.resolve,
         reminders: {
           callback: lambda { |due_names|
             # A reminder is due: the loop runs a reminder turn for it once
@@ -524,13 +523,13 @@ module Samagotchi
         hold = @idle_exit.hold_for_request(requester: @exit_requested_by, streams: false)
         if hold
           @exit_requested = nil
-          SessionManager.debug_log("[worker] pid #{Process.pid} stays up after an exit request (#{hold})")
+          Log.info(:worker, "exit_held", reason: hold)
           next false
         end
 
         @bridge&.stop
         @engine.stop_idle
-        SessionManager.debug_log("[worker] pid #{Process.pid} exits on request of #{@exit_requested_by || "a client"}")
+        Log.info(:worker, "exit_requested", by: @exit_requested_by || "a client")
         true
       end
     end
@@ -548,9 +547,9 @@ module Samagotchi
 
     def write_recap_on_leave
       written = @engine.write_recap_now
-      SessionManager.debug_log("[worker] pid #{Process.pid} wrote a recap as it leaves") if written
+      Log.info(:worker, "recap_on_leave") if written
     rescue StandardError => e
-      SessionManager.debug_log("[worker] recap on leave failed: #{e.class}: #{e.message}")
+      Log.warn(:worker, "recap_on_leave_failed", error: e.class.name, msg: e.message)
     end
 
     # Memory used before any turn saved it lives only in the Engine.
@@ -560,7 +559,7 @@ module Samagotchi
     end
 
     def log_idle_exit
-      SessionManager.debug_log("[worker] pid #{Process.pid} idle-exits after #{@idle_exit.idle_seconds.round}s unused")
+      Log.info(:worker, "idle_exit", idle_s: @idle_exit.idle_seconds.round)
     end
 
     def stopped_on_disk?

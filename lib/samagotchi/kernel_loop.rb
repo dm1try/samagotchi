@@ -9,7 +9,7 @@ require_relative "prompt"
 require_relative "prompt_literal_guard"
 require_relative "client"
 require_relative "llm/errors"
-require_relative "debug_log"
+require_relative "log"
 require_relative "hooks"
 require_relative "pending_input_queue"
 require_relative "thought_stream_splitter"
@@ -133,15 +133,14 @@ module Samagotchi
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
 
-    def initialize(client: nil, verbose: false, log_file: nil, debug_log: nil, profile: nil, model_name: nil, no_interrupt: false, hooks: nil, reminder_store: nil, model_key: nil)
+    def initialize(client: nil, profile: nil, model_name: nil, no_interrupt: false, hooks: nil, reminder_store: nil, model_key: nil)
       @client = client || Client.new
-      @verbose = verbose
-      @debug_log = debug_log || DebugLog.new(path: log_file)
       @no_interrupt = no_interrupt
       resolved_model_name = ModelProfile.required_model_name(model_name)
       # The resolved model id actually used for this run (per-run override wins
-      # over the config alias); surfaced in debug/verbose logs so we can see
-      # exactly which model each request went to.
+      # over the config alias); on every debug dump so we can see exactly
+      # which model each request went to. The Engine sets it per turn too:
+      # the chat loop dispatches tools here without going through #run.
       @current_model_name = resolved_model_name
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(resolved_model_name)
       # Where @profile came from, as /stats shows it (a Resolution's label
@@ -166,6 +165,7 @@ module Samagotchi
     attr_accessor :hooks
     attr_accessor :client
     attr_accessor :model_key
+    attr_accessor :current_model_name
     # @return [Proc, nil] answers ask_user_question (payload → answer string);
     #   Engine sets it to its blocking request_question.
     attr_accessor :question_handler
@@ -277,7 +277,7 @@ module Samagotchi
           served_model: served_model,
           requested_model: resolved_model_name
         )
-        verbose_log("── LLM response ──\n#{response}\n──────────────────")
+        dump_log("response", response, iteration: iteration_index + 1)
         # Fire :after_generation hook (after LLM returns, before tool parse)
         after_gen_event = { type: :after_generation, iteration: iteration_index + 1, response: response }
         fire_hook(:after_generation, after_gen_event) if @hooks
@@ -516,12 +516,12 @@ module Samagotchi
       )
     end
 
-    def verbose_log(message)
-      tagged = "[model: #{@current_model_name}] #{message}"
-      @debug_log&.write(tagged)
-      return unless @verbose
+    # A payload dump (model response, tool call/result, context status): the
+    # debug level only, tagged with the model it came from.
+    def dump_log(event, payload, **fields)
+      return unless Log.level?(:debug)
 
-      $stderr.puts "\n[verbose] #{tagged}"
+      Log.debug(:model, event, payload: payload, model: @current_model_name, **fields)
     end
 
     # Estimate context usage for this iteration's prompt and, when the emit
@@ -548,7 +548,7 @@ module Samagotchi
         bucket: bucket,
         source: usage[:source]
       )
-      verbose_log("── context status ──\n#{status_message}\n──────────────────")
+      dump_log("context_status", status_message, iteration: iteration_index + 1, bucket: bucket)
       { est_pct: usage[:estimated_pct], bucket: bucket }
     end
 
@@ -797,7 +797,7 @@ module Samagotchi
         }
       end
 
-      verbose_log("── tool call: #{call[:name]} ──\n#{call[:path] ? "path: #{call[:path]}\n" : ""}#{call[:scope] ? "scope: #{call[:scope]}\n" : ""}#{call[:content]}\n──────────────────")
+      dump_log("tool_call", call[:content], tool: call[:name], path: call[:path], scope: call[:scope])
 
       result = case call[:name]
                when Tools::MemoryRead::NAME
@@ -842,7 +842,7 @@ module Samagotchi
                   tool.call(call[:content])
                 end
 
-      verbose_log("── tool result: #{call[:name]} ──\n#{result}\n──────────────────")
+      dump_log("tool_result", result, tool: call[:name])
       dispatched = {
         output: "[#{call[:name]}]\n#{result}",
         activity: ToolActivity.tool_activity_event(call[:name], call, result)
@@ -854,7 +854,7 @@ module Samagotchi
       end
       dispatched
     rescue => e
-      verbose_log("── tool error: #{call[:name]} ──\n#{e.message}\n──────────────────")
+      dump_log("tool_error", e.message, tool: call[:name], error: e.class.name)
       result = "Error: #{e.message}"
       {
         output: "[#{call[:name]}] #{result}",

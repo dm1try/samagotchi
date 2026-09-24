@@ -52,6 +52,9 @@ RSpec.configure do |config|
     end
     # ContextWindow remembers the last server-reported window process-wide.
     Samagotchi::ContextWindow.reset! if defined?(Samagotchi::ContextWindow)
+    # The log facade is process-wide: unconfigured again, it resolves its
+    # file from this example's config (the temp XDG_STATE_HOME by default).
+    Samagotchi::Log.reset! if defined?(Samagotchi::Log)
     # ConfigFile prints each config warning once per process.
     Samagotchi::ConfigFile.reset_warnings! if defined?(Samagotchi::ConfigFile)
     # The REPL spinner's ticker thread draws until the spinner finishes, and
@@ -78,12 +81,18 @@ RSpec.configure do |config|
 
     ENV["XDG_CONFIG_HOME"] = REAL_XDG_CONFIG_HOME
     ENV.delete("SAMAGOTCHI_RECAP_ENABLED")
+    # The real config's log.file must never receive spec lines (workers
+    # spawned here inherit it too).
+    ENV["SAMAGOTCHI_LOG_DISABLE"] = "true"
     Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
+    Samagotchi::Log.reset! if defined?(Samagotchi::Log)
     example.run
   ensure
     ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
     ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
+    ENV.delete("SAMAGOTCHI_LOG_DISABLE")
     Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
+    Samagotchi::Log.reset! if defined?(Samagotchi::Log)
   end
 
   # Specs of the idle recap's own settings: recap as configured (on by

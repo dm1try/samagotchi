@@ -491,6 +491,12 @@ RSpec.describe Samagotchi::SessionManager do
         expect(spawned_env).to include("SAMAGOTCHI_LOG_DISABLE" => "true")
         expect(spawned_env).not_to have_key("SAMAGOTCHI_LOG_FILE")
       end
+
+      it "passes on the spawner's log.level (a --log-level flag included)" do
+        Samagotchi::Config.set_cli_overrides("log.level" => "debug")
+
+        expect(spawned_env).to include("SAMAGOTCHI_LOG_LEVEL" => "debug")
+      end
     end
 
     it "spawns worker with explicit require for session manager" do
@@ -561,30 +567,11 @@ RSpec.describe Samagotchi::SessionManager do
       opts = spawned_opts { described_class.resume_session(session.id, state_dir: tmpdir) }
 
       expect(opts).not_to have_key(:chdir)
-      expect(File.read(log)).to include("#{File.join(tmpdir, "gone")} is gone", Dir.pwd)
+      record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "cwd_gone" } }
+      expect(record.to_h).to include(level: "WARN", tag: "worker", sid: session.id[0, 8])
+      expect(record.fields).to eq("dir" => File.join(tmpdir, "gone"), "cwd" => Dir.pwd)
     ensure
       Samagotchi::Config.set_cli_overrides({})
-    end
-  end
-
-  describe ".debug_log" do
-    after { Samagotchi::Config.set_cli_overrides({}) }
-
-    it "writes to the default log under XDG_STATE_HOME when log.file is unset" do
-      stub_const("ENV", ENV.to_h.merge("XDG_STATE_HOME" => tmpdir))
-
-      described_class.debug_log("[worker] hello")
-
-      expect(File.read(File.join(tmpdir, "samagotchi", "samagotchi.log"))).to include("[worker] hello")
-    end
-
-    it "writes nothing when log.disable is set" do
-      log = File.join(tmpdir, "chi.log")
-      Samagotchi::Config.set_cli_overrides("log.file" => log, "log.disable" => true)
-
-      described_class.debug_log("[worker] hello")
-
-      expect(File.exist?(log)).to be(false)
     end
   end
 

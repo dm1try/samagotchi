@@ -20,8 +20,7 @@ require "samagotchi/model_profile"
 # Custom server:
 #   SAMAGOTCHI_SERVER_HOST=myhost SAMAGOTCHI_SERVER_PORT=9090 SAMAGOTCHI_INTEGRATION=1 bundle exec rspec spec/integration/execute_spec.rb -v
 RSpec.describe "execute tool - ruby expression integration", :integration do
-  let(:kernel) { Samagotchi::KernelLoop.new(verbose: verbose) }
-  let(:verbose) { false }
+  let(:kernel) { Samagotchi::KernelLoop.new }
 
   def run_with_prompt(prompt)
     messages = [

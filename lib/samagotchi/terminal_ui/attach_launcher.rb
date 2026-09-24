@@ -33,17 +33,14 @@ module Samagotchi
       #   SAMAGOTCHI_DEFAULT_INPUT in its first read (--no-default-input: no)
       # @return [Symbol] :detached, :closed when the worker went away, or
       #   :failed when the --model switch didn't go through
-      # @param log_file [String, nil] the REPL's debug log (nil: none)
-      def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
-              log_file: nil)
+      def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true)
         client = connect(attach: attach, shared: shared, resume: resume, model: model)
         first_command = model && (attach || resume) ? "/model #{model}" : nil
         surface = open_surface
         begin
           AttachedLoop.new(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: prompt,
                            first_command: first_command, no_interrupt: no_interrupt,
-                           default_input: default_input && !prompt && !attach && !resume,
-                           log: DebugLog.new(path: log_file)).run
+                           default_input: default_input && !prompt && !attach && !resume).run
         ensure
           close_surface(surface)
         end
