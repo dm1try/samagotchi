@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml } from "../../../lib/samagotchi/web/public/format.js";
+import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel } from "../../../lib/samagotchi/web/public/format.js";
 
 test("noteHtml: who sent the context note, then its text, both escaped", () => {
   assert.equal(
@@ -156,4 +156,12 @@ test("relativeTime: coarse time since an ISO timestamp, \"\" for garbage", () =>
   assert.equal(relativeTime("garbage", now), "");
   assert.equal(relativeTime("", now), "");
   assert.equal(relativeTime(undefined, now), "");
+});
+
+test("recapLabel: how old the recap is, in turns", () => {
+  assert.equal(recapLabel(0), "recap");
+  assert.equal(recapLabel(undefined), "recap");
+  assert.equal(recapLabel(1), "recap · before the last turn");
+  assert.equal(recapLabel(3), "recap · before the last 3 turns");
+  assert.equal(recapLabel(null, true), "recap · earlier");
 });

@@ -282,6 +282,7 @@ RSpec.describe Samagotchi::Web::App do
                               "pending_question" => { "id" => "q1", "status" => "pending" } },
           "queued" => [{ "enqueued_id" => "e1", "client_id" => "tui:1", "prompt" => "next" }],
           "recap" => "We did things.",
+          "saved_recap" => { "text" => "We did things.", "covered" => 4, "turns_since" => 0, "created_at" => "t" },
           "continue_offer" => { "context" => { "original_prompt" => "first" }, "no_interrupt" => false },
           "guardrail_warning" => "hook g.rb (config) failed to load (x)",
           "event_seq" => 40,
@@ -307,6 +308,7 @@ RSpec.describe Samagotchi::Web::App do
       # The cursor to stream on from: it names the worker (its epoch).
       expect(payload["last_event_id"]).to eq("40-e1")
       expect(payload["recap"]).to eq("We did things.")
+      expect(payload["saved_recap"]).to eq("text" => "We did things.", "turns_since" => 0)
       expect(payload["continue_offer"]).to eq("context" => { "original_prompt" => "first" }, "no_interrupt" => false)
       expect(payload["guardrail_warning"]).to eq("hook g.rb (config) failed to load (x)")
       expect(payload.dig("session", "status")).to eq("running")
@@ -345,6 +347,30 @@ RSpec.describe Samagotchi::Web::App do
       app.call(env_for("/api/sessions/s1"))
 
       expect(manager.resume_calls).to be_empty
+    end
+
+    it "shows a stopped session's saved recap, with the turns since it (no worker woken)" do
+      state_dir = Dir.mktmpdir
+      FileUtils.mkdir_p(File.join(state_dir, "s1"))
+      # StubSessionLoader's session: user "hello", assistant "hi there".
+      File.write(File.join(state_dir, "s1", "recap.json"), JSON.generate(text: "We said hello.", covered: 1, covered_digest: "x"))
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: state_dir)
+
+      payload = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)
+
+      expect(payload["recap"]).to be_nil
+      expect(payload["saved_recap"]).to eq("text" => "We said hello.", "turns_since" => 0)
+      expect(manager.resume_calls).to be_empty
+
+      File.write(File.join(state_dir, "s1", "recap.json"), JSON.generate(text: "Earlier.", covered: 0, covered_digest: "x"))
+      payload = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)
+      expect(payload["saved_recap"]).to eq("text" => "Earlier.", "turns_since" => 1)
+    end
+
+    it "has no saved recap for a session without one" do
+      payload = JSON.parse(build_app(state_dir: Dir.mktmpdir).call(env_for("/api/sessions/s1"))[2].first)
+      expect(payload["saved_recap"]).to be_nil
     end
 
     it "includes persisted timing details without failing when analytics are absent" do

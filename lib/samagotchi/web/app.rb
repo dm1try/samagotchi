@@ -13,6 +13,7 @@ require_relative "../session_manager"
 require_relative "../output_formatter"
 require_relative "../image_store"
 require_relative "../context_note"
+require_relative "../recap_store"
 require_relative "markdown_renderer"
 
 module Samagotchi
@@ -243,6 +244,7 @@ module Samagotchi
           current_turn: current_turn,
           queued: turn_snapshot ? Array(turn_snapshot["queued"]) : [],
           recap: turn_snapshot && turn_snapshot["recap"],
+          saved_recap: saved_recap_for(id, session, turn_snapshot),
           continue_offer: turn_snapshot && turn_snapshot["continue_offer"],
           guardrail_warning: turn_snapshot && turn_snapshot["guardrail_warning"],
           markdown_warning: @markdown_renderer.warning,
@@ -771,6 +773,27 @@ module Samagotchi
         norm.length > 80 ? "#{norm[0, 80]}…" : norm
       rescue StandardError
         ""
+      end
+
+      # The recap saved with the session and how many user turns came since:
+      # a live worker's (it counts against its Engine's messages), else
+      # recap.json against the session file. A stopped session gets its
+      # recap without a worker being woken.
+      # @return [Hash, nil] {text:, turns_since:}
+      def saved_recap_for(id, session, turn_snapshot)
+        if turn_snapshot
+          saved = turn_snapshot["saved_recap"]
+          return saved && { text: saved["text"], turns_since: saved["turns_since"].to_i }
+        end
+
+        saved = RecapStore.read(@session_class.session_dir(id, state_dir: default_state_dir))
+        return nil unless saved
+
+        messages = Array(session.messages)
+        since = messages.drop(saved[:covered].to_i).count { |m| (m[:role] || m["role"]).to_s == "user" }
+        { text: saved[:text], turns_since: since }
+      rescue StandardError
+        nil
       end
 
       def read_history(id)
