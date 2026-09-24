@@ -185,9 +185,6 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #composer #actionMenu button:hover{background:var(--bg-raised)}
 #infoBar{display:flex;padding:10px 12px;border-top:1px solid var(--border);background:var(--bg-inset);color:var(--text-2);gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;min-height:56px;transition:opacity 280ms ease, min-height 300ms ease}
 #infoBar.visible{display:flex}
-#infoBar .idle{font-size:13px;line-height:1.4}
-#infoBar .idle small{font-size:11px;color:var(--text-muted)}
-#infoBar .idle code{font-family:ui-monospace,monospace;font-size:11px;background:var(--bg-hover);padding:1px 4px;border-radius:4px}
 #infoBar .info{flex:1;min-width:0;font-size:13px;line-height:1.4;word-break:break-word;display:flex;flex-direction:column;gap:2px}
 #infoBar .meta{font-size:11px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 #infoBar .meta .id{font-family:ui-monospace,monospace;font-weight:700;font-size:12px;color:var(--accent)}
@@ -207,9 +204,17 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #infoBar #infoDeleteBtn:hover{color:#fff;background:var(--danger-bg);border-color:var(--danger-bg)}
 #empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--text-muted);padding:24px;text-align:center;background:var(--bg);z-index:1}
 #empty.hidden{display:none !important}
-#empty .brand-start{font-size:clamp(28px,5vw,38px);font-weight:700;letter-spacing:.02em;color:var(--text);padding:0}
+#empty .brand-start{font-size:32px;font-weight:600;letter-spacing:.02em;color:var(--text);padding:0}
 #empty .brand-start span{color:var(--accent)}
 #empty .brand-start small{display:none}
+/* Start page (no session): the mark and the composer, centered; no info bar. */
+body:not(.has-session) #center{justify-content:safe center}
+body:not(.has-session) #stage{flex:0 0 auto;min-height:0;background:transparent}
+body:not(.has-session) #history,body:not(.has-session) #markdownWarning{display:none}
+body:not(.has-session) #empty{position:static;background:transparent;padding:0 0 20px}
+body:not(.has-session) #composer{width:min(720px,100%);margin:0 auto;border-top:0;background:transparent;padding:0 16px}
+body:not(.has-session) #composer .actions-col{width:auto}
+body:not(.has-session) #infoBar{display:none}
 #topBar{display:flex;align-items:center;gap:12px;margin-bottom:-6px}
 #newBtn.brand{background:transparent;border:0;padding:2px 4px;min-height:0;display:inline-flex;align-items:baseline;gap:10px;color:var(--text)}
 #newBtn .brand-name{font-size:18px;font-weight:700;letter-spacing:.02em;color:var(--accent)}
@@ -285,7 +290,7 @@ a{color:var(--accent)}
     <div id="stage">
       <div id="markdownWarning" class="markdown-warning" hidden></div>
       <div id="history"></div>
-      <div id="empty"><div class="brand-start"><span>Chi</span></div></div>
+      <div id="empty"><div class="brand-start"><span>chi</span></div></div>
     </div>
     <div id="lightbox" hidden><img alt=""></div>
     <div id="composer" style="position:relative">
@@ -308,7 +313,7 @@ a{color:var(--accent)}
       </div>
     </div>
     <div id="infoBar">
-      <div class="info" id="infoText"><div class="idle">No session selected — pick one above, or type a prompt to start a new session.</div></div>
+      <div class="info" id="infoText"></div>
       <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop</button>
       <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
     </div>
