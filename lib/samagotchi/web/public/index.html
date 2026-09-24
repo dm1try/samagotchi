@@ -8,9 +8,6 @@
 :root{--bg:#0b0d11;--bg-panel:#151821;--bg-inset:#0f1115;--bg-raised:#22262f;--bg-hover:#1b1f27;--border:#1f232b;--border-strong:#2d333f;--text:#e6e8eb;--text-bright:#f0f3f6;--text-2:#c9d1d9;--text-3:#9aa4b2;--text-muted:#8b949e;--text-faint:#6e7681;--accent:#7aa5ff;--accent-strong:#1f6feb;--accent-bg:#1b2336;--accent-ring:rgba(122,165,255,.18);--primary:#2a68d1;--ok:#3fb950;--ok-text:#7ee787;--ok-bg:#1a2e1a;--warn:#d29922;--warn-text:#e3b341;--warn-bright:#f2cc60;--warn-bg:#2b2108;--warn-border:#6b5416;--danger:#f85149;--danger-bg:#da3633;--danger-text:#ff7b72;--danger-bg-dim:#3d1f1f;--think:#8957e5;--think-text:#d2a8ff;--accent-border:#223150}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
-.brand-start{text-align:center;padding:24px 0 8px;font-size:22px;letter-spacing:.02em;color:var(--text)}
-.brand-start span{color:var(--accent)}
-.brand-start small{display:block;font-size:12px;color:var(--text-muted);margin-top:4px}
 button,input,textarea{font:inherit}
 button{background:var(--primary);border:0;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;transition:filter .12s ease,background .12s ease}
 button:hover:not(:disabled){filter:brightness(1.12)}
@@ -208,14 +205,11 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #infoBar #infoDeleteBtn:hover{color:#fff;background:var(--danger-bg);border-color:var(--danger-bg)}
 #empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--text-muted);padding:24px;text-align:center;background:var(--bg);z-index:1}
 #empty.hidden{display:none !important}
-#empty .brand-start{font-size:32px;font-weight:600;letter-spacing:.02em;color:var(--text);padding:0}
-#empty .brand-start span{color:var(--accent)}
-#empty .brand-start small{display:none}
-/* Start page (no session): the mark and the composer, centered; no info bar. */
+/* Start page (no session): the composer alone, centered; no info bar. */
 body:not(.has-session) #center{justify-content:safe center}
 body:not(.has-session) #stage{flex:0 0 auto;min-height:0;background:transparent}
 body:not(.has-session) #history,body:not(.has-session) #markdownWarning{display:none}
-body:not(.has-session) #empty{position:static;background:transparent;padding:0 0 20px}
+body:not(.has-session) #empty{position:static;background:transparent;padding:0}
 body:not(.has-session) #composer{width:min(720px,100%);margin:0 auto;border-top:0;background:transparent;padding:0 16px}
 body:not(.has-session) #composer .actions-col{width:auto}
 body:not(.has-session) #infoBar{display:none}
@@ -307,7 +301,7 @@ a{color:var(--accent)}
     <div id="stage">
       <div id="markdownWarning" class="markdown-warning" hidden></div>
       <div id="history"></div>
-      <div id="empty"><div class="brand-start"><span>chi</span></div></div>
+      <div id="empty"></div>
     </div>
     <div id="lightbox" hidden><img alt=""></div>
     <div id="composer" style="position:relative">
