@@ -206,10 +206,16 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #empty .brand-start{font-size:clamp(28px,5vw,38px);font-weight:700;letter-spacing:.02em;color:var(--text);padding:0}
 #empty .brand-start span{color:var(--accent)}
 #empty .brand-start small{display:none}
+#topBar{display:flex;align-items:center;gap:12px;margin-bottom:-6px}
+#newBtn.brand{background:transparent;border:0;padding:2px 4px;min-height:0;display:inline-flex;align-items:baseline;gap:10px;color:var(--text)}
+#newBtn .brand-name{font-size:18px;font-weight:700;letter-spacing:.02em;color:var(--accent)}
+#newBtn .brand-new{font-size:12px;color:var(--text-muted);display:none}
+body.has-session #newBtn .brand-new{display:inline}
+#newBtn:hover .brand-new{color:var(--text-2)}
 .strip-side{display:flex;flex-direction:column;gap:6px;min-width:0}
 .strip-toggle{font-size:11px;padding:3px 10px;background:transparent;color:var(--text-muted);border:1px solid var(--border);border-radius:999px}
 .strip-toggle:hover{color:var(--text-2);border-color:var(--border-strong)}
-#stripShow{display:none;align-self:flex-start}
+#stripShow{display:none}
 body.strip-hidden #stripShow{display:block}
 body.strip-hidden #topStrip, body.all-view #stripShow{display:none}
 #allTile{flex:1;flex-direction:column;justify-content:center;align-items:flex-start;text-align:left;color:var(--text-2);font-size:13px;font-weight:600;width:100%}
@@ -265,7 +271,10 @@ a{color:var(--accent)}
 </head>
 <body>
 <main>
-  <button type="button" class="strip-toggle" id="stripShow" title="Show the latest sessions">▾ sessions</button>
+  <div id="topBar">
+    <button type="button" id="newBtn" class="brand" title="New chat"><span class="brand-name">chi</span><span class="brand-new">+ new chat</span></button>
+    <button type="button" class="strip-toggle" id="stripShow" title="Show the latest sessions">▾ sessions</button>
+  </div>
   <section id="topStrip" aria-label="Latest sessions" class="loading"><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line short"></div><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div></section>
   <section id="center">
     <div id="firstPeek"></div>
