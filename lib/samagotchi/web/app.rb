@@ -710,7 +710,9 @@ module Samagotchi
           test_run: !!s.test_run,
           used_memory_names: used,
           first_preview: first_preview_for(s),
-          owner: owner&.fetch("kind", nil)
+          owner: owner&.fetch("kind", nil),
+          # The saved recap's first sentence, for the session card.
+          recap: RecapStore.preview(@session_class.session_dir(s.id, state_dir: default_state_dir))
         }
       end
 

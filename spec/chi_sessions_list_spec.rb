@@ -68,7 +68,17 @@ RSpec.describe "chi sessions list" do
     expect(status.exitstatus).to eq(0), err
     expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
                                      "cwd" => "/work/app", "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
-                                     "live" => true, "busy" => false, "owner" => "worker" }])
+                                     "live" => true, "busy" => false, "owner" => "worker", "recap" => nil }])
+  end
+
+  it "--format json: each session's recap, its first sentence; the tsv lines don't change" do
+    live = make("fix it", live: true)
+    FileUtils.mkdir_p(Samagotchi::Session.session_dir(live.id, state_dir: state_dir))
+    File.write(File.join(Samagotchi::Session.session_dir(live.id, state_dir: state_dir), "recap.json"),
+               JSON.generate(text: "We fixed the login. Then the tests.", covered: 2))
+
+    expect(JSON.parse(run_chi("--live", "--format", "json").first).first).to include("recap" => "We fixed the login.")
+    expect(run_chi("--live", "--format", "tsv").first).to eq("#{live.id}\tapp · fix it\n")
   end
 
   it "--format json: owner is worker, tui (a chi REPL) or null; the text and tsv lines don't change" do

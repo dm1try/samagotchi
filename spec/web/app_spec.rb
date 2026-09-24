@@ -572,6 +572,19 @@ RSpec.describe Samagotchi::Web::App do
       locks&.each(&:release)
     end
 
+    it "gives each session in the list its recap's first sentence" do
+      with, without = %w[idle idle].map { |st| saved_session(st) }
+      FileUtils.mkdir_p(Samagotchi::Session.session_dir(with.id, state_dir: state_dir))
+      File.write(File.join(Samagotchi::Session.session_dir(with.id, state_dir: state_dir), "recap.json"),
+                 JSON.generate(text: "We fixed the login. Then the tests.", covered: 2))
+      allow(app).to receive(:bridge_get_json).and_return(nil)
+      allow(app).to receive(:bridge_event_seq).and_return(nil)
+
+      _, _, list = app.call(env_for("/api/sessions"))
+
+      expect(JSON.parse(list.first).to_h { |s| [s["id"], s["recap"]] }).to eq(with.id => "We fixed the login.", without.id => nil)
+    end
+
     it "takes the turn state from the live worker when there is one" do
       session = saved_session("running")
       lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), kind: "worker")

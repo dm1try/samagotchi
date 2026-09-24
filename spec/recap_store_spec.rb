@@ -54,4 +54,26 @@ RSpec.describe Samagotchi::RecapStore do
     expect { none.save(state) }.not_to raise_error
     expect(none.load).to be_nil
   end
+
+  describe ".preview" do
+    def write(text)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, JSON.generate(text: text, covered: 2))
+    end
+
+    it "is the saved recap's first sentence, on one line" do
+      write("The user set up Bluefin,\nits CI. The assistant wrote the README.")
+      expect(described_class.preview(File.dirname(path))).to eq("The user set up Bluefin, its CI.")
+    end
+
+    it "cuts a long one" do
+      write("word " * 60)
+      expect(described_class.preview(File.dirname(path)).length).to eq(described_class::PREVIEW_CHARS)
+      expect(described_class.preview(File.dirname(path))).to end_with("…")
+    end
+
+    it "is nil without a recap" do
+      expect(described_class.preview(File.dirname(path))).to be_nil
+    end
+  end
 end

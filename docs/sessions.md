@@ -47,7 +47,7 @@ bin/chi sessions clean --dry-run --days 7            # only test sessions
 
 `--dry-run` is the safe preview. Web has no prune endpoint; use the CLI.
 
-`--live`, `--cwd` and `--format` make `list` a picker for scripts (`SessionManager.session_summaries`): `--live` keeps the sessions a worker runs now (the owner lock, not the saved status; a session open in a plain REPL is left out), `--cwd PATH` those in PATH or below, and test runs are left out. `--live` shows 10 unless `--limit` says otherwise; filters apply before the limit. `--format json` prints `[{id, short_id, desc, cwd, updated_at, live, busy, owner}]` (`owner`: `"worker"`, `"tui"` for a plain REPL, which takes no notes or messages, or null), `--format tsv` one `id<TAB>desc` line per session, where `desc` is `<folder> · <last prompt>` cut to 60 characters. With none of these flags the output is as before.
+`--live`, `--cwd` and `--format` make `list` a picker for scripts (`SessionManager.session_summaries`): `--live` keeps the sessions a worker runs now (the owner lock, not the saved status; a session open in a plain REPL is left out), `--cwd PATH` those in PATH or below, and test runs are left out. `--live` shows 10 unless `--limit` says otherwise; filters apply before the limit. `--format json` prints `[{id, short_id, desc, cwd, updated_at, live, busy, owner, recap}]` (`owner`: `"worker"`, `"tui"` for a plain REPL, which takes no notes or messages, or null; `recap`: the first sentence of the session's recap, or null), `--format tsv` one `id<TAB>desc` line per session, where `desc` is `<folder> · <last prompt>` cut to 60 characters. With none of these flags the output is as before.
 
 ## Context notes
 

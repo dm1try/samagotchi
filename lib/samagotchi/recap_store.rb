@@ -12,6 +12,8 @@ module Samagotchi
   # turn. Follows the Engine's current session (the REPL can switch).
   class RecapStore
     FILE = "recap.json"
+    # A session card's or the picker's recap line.
+    PREVIEW_CHARS = 140
 
     # @param session_id_lookup [#call] the current session's id, or nil
     # @param state_dir_lookup [#call] the state dir holding the sessions
@@ -56,6 +58,16 @@ module Samagotchi
       data
     rescue StandardError
       nil
+    end
+
+    # @return [String, nil] the first sentence of the recap saved in
+    #   +session_dir+, on one line and cut to PREVIEW_CHARS
+    def self.preview(session_dir)
+      text = read(session_dir)&.dig(:text).to_s.gsub(/\s+/, " ").strip
+      return nil if text.empty?
+
+      first = text[/\A.*?[.!?](?=\s|\z)/] || text
+      first.length > PREVIEW_CHARS ? "#{first[0, PREVIEW_CHARS - 1]}…" : first
     end
   end
 end

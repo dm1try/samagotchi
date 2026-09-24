@@ -12,6 +12,7 @@ require_relative "owner_lock"
 require_relative "bridge_client"
 require_relative "debug_log"
 require_relative "log_path"
+require_relative "recap_store"
 require_relative "terminal_ui"
 
 module Samagotchi
@@ -178,7 +179,8 @@ module Samagotchi
     # @param include_tests [Boolean] false leaves out test runs
     # @param exclude [String, nil] a session id to leave out (the asker)
     # @return [Array<Hash>] {id:, short_id:, desc:, preview:, cwd:,
-    #   updated_at:, status:, live:, busy:}; busy = live with a turn running
+    #   updated_at:, status:, live:, busy:, owner:, recap:}; busy = live with
+    #   a turn running, recap = the saved recap's first sentence
     def self.session_summaries(live: false, cwd: nil, limit: nil, include_tests: true, exclude: nil, state_dir: nil)
       sd = state_dir || Session.default_state_dir
       root = cwd && folder_path(cwd)
@@ -192,7 +194,7 @@ module Samagotchi
 
         { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), preview: summary_preview(s), cwd: s.working_directory,
           updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING,
-          owner: owner }
+          owner: owner, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)) }
       end
       (limit ? summaries.first(limit) : summaries.to_a)
     end
