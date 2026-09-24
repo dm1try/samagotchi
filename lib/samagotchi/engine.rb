@@ -14,6 +14,7 @@ require_relative "cancellation_controller"
 require_relative "context_window"
 require_relative "kernel_loop"
 require_relative "log"
+require_relative "log_subscriber"
 require_relative "host_registry"
 require_relative "llm/backend"
 require_relative "llm/openai_chat"
@@ -193,6 +194,8 @@ module Samagotchi
       # (the REPL, -p/--non-interactive/--resume and SessionManager workers)
       # feeds it automatically.
       @session_observer.subscribe(observer: @metrics)
+      # And the event trail in the debug log (`turn` records).
+      @session_observer.subscribe(observer: LogSubscriber.new(session_id: -> { @session&.id }))
     end
 
     # A monotonically-increasing clock (wall clock can jump backwards; the idle
