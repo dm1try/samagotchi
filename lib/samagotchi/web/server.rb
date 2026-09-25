@@ -1,10 +1,14 @@
 # frozen_string_literal: true
 
+require "json"
+require "net/http"
 require "rack"
 require "rackup/handler/webrick"
+require "uri"
 require "webrick"
 
 require_relative "app"
+require_relative "../project_scope"
 require_relative "../log"
 require_relative "../version"
 
@@ -29,31 +33,108 @@ module Samagotchi
 
       DEFAULT_PORT = 4567
       DEFAULT_HOST = "127.0.0.1"
+      # How long `chi web` waits for a server already on its port to answer.
+      PROBE_TIMEOUT = 0.3
 
-      def self.start(port: nil, host: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false)
+      # `chi web`: one server serves every project, the scope is in the page
+      # URL. If a chi web already runs on the port, print (and with --open,
+      # open) its page for +dir+ and leave it be; else start one.
+      # @param scope ["project", "all"] "all": the plain page, every session
+      # @return [Integer] the exit status
+      def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false)
+        host = resolve_host(host)
         port = resolve_port(port)
-        host = (host || ENV.fetch("SAMAGOTCHI_WEB_HOST", DEFAULT_HOST)).to_s.strip
-        host = DEFAULT_HOST if host.empty?
-        unless %w[127.0.0.1 ::1 localhost].include?(host)
-          Samagotchi::Log.warn(:web, "bind_forced", echo: "Web server only binds to 127.0.0.1 (got #{host}); forcing 127.0.0.1", host: host.to_s)
-          host = DEFAULT_HOST
+        url = scope_url(host, port, dir: dir, scope: scope)
+        found = probe(host, port)
+        case found
+        when Hash
+          puts "chi web already runs on port #{port} (pid #{found["pid"]}): #{url}"
+          open_url(url) if open_browser
+          0
+        when :other
+          warn in_use_message(port)
+          1
+        else
+          start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown) ? 0 : 1
         end
+      end
+
+      # @return [Boolean] false when the port was taken (said so on stderr)
+      def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false)
+        port = resolve_port(port)
+        host = resolve_host(host)
+        url ||= "http://#{url_host(host)}:#{port}/"
 
         app = App.new(manager: manager, state_dir: state_dir, markdown: markdown)
         Samagotchi::Log.info(:web, "start", url: "http://#{host}:#{port}", version: Samagotchi::VERSION)
-        puts "Chi Web starting on http://#{host}:#{port} (public: #{File.expand_path("public", __dir__)})"
-        puts "Press Ctrl-C to stop."
-
-        if open_browser
-          Thread.new do
-            sleep 0.8
-            open_url("http://#{host}:#{port}/")
+        # Said once the port is bound: a second chi web racing for it gets
+        # the in-use line instead.
+        started = lambda do
+          puts "Chi Web on #{url} (public: #{File.expand_path("public", __dir__)})"
+          puts "Press Ctrl-C to stop."
+          $stdout.flush # a log file isn't line-buffered
+          if open_browser
+            Thread.new do
+              sleep 0.8
+              open_url(url)
+            end
           end
         end
 
-        Rackup::Handler::WEBrick.run(app, Host: host, Port: port, AccessLog: [], Logger: Log.new($stderr, WEBrick::Log::WARN))
+        Rackup::Handler::WEBrick.run(app, Host: host, Port: port, AccessLog: [], Logger: Log.new($stderr, WEBrick::Log::WARN),
+                                          StartCallback: started)
+        true
+      rescue Errno::EADDRINUSE
+        warn in_use_message(port)
+        false
       ensure
         Samagotchi::Log.info(:web, "stop") if app
+      end
+
+      def self.resolve_host(host)
+        host = (host || ENV.fetch("SAMAGOTCHI_WEB_HOST", DEFAULT_HOST)).to_s.strip
+        host = DEFAULT_HOST if host.empty?
+        return host if %w[127.0.0.1 ::1 localhost].include?(host)
+
+        Samagotchi::Log.warn(:web, "bind_forced", echo: "Web server only binds to 127.0.0.1 (got #{host}); forcing 127.0.0.1", host: host.to_s)
+        DEFAULT_HOST
+      end
+
+      # The page for +dir+: its project view (?dir=) when it is in a repo,
+      # the plain page (every session) outside one or with scope "all".
+      def self.scope_url(host, port, dir:, scope: "project")
+        base = "http://#{url_host(host)}:#{port}/"
+        return base if scope.to_s == "all" || ProjectScope.root_for(dir).nil?
+
+        # Slashes stay as they are (valid in a query): a URL people can read.
+        "#{base}?dir=#{URI.encode_www_form_component(dir).gsub("%2F", "/")}"
+      end
+
+      def self.url_host(host)
+        host.include?(":") ? "[#{host}]" : host
+      end
+
+      # What answers on the port: the /api/info hash of a chi web that knows
+      # ?dir, :free when nothing listens, :other for anything else (an older
+      # chi web, another program).
+      def self.probe(host, port, timeout: PROBE_TIMEOUT)
+        response = Net::HTTP.start(host, port, open_timeout: timeout, read_timeout: timeout) { |http| http.get("/api/info") }
+        probe_verdict(response.code.to_i, response.body)
+      rescue Errno::ECONNREFUSED, Errno::EADDRNOTAVAIL
+        :free
+      rescue StandardError
+        :other
+      end
+
+      def self.probe_verdict(status, body)
+        info = status == 200 ? JSON.parse(body.to_s) : nil
+        info.is_a?(Hash) && info["app"] == "chi-web" && Array(info["features"]).include?("dir") ? info : :other
+      rescue JSON::ParserError
+        :other
+      end
+
+      def self.in_use_message(port)
+        "Error: port #{port} is in use (an older chi web? restart it, or use --port)"
       end
 
       def self.resolve_port(port)

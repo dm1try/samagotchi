@@ -827,7 +827,7 @@ end
 parser = OptionParser.new do |opts|
   opts.banner = <<~BANNER
     Usage: bin/chi [options]
-           bin/chi web [--port PORT] [--open]   the web UI
+           bin/chi web [--port PORT] [--open] [--scope=all]   the web UI
            bin/chi sessions <list|stop|delete|prune|clean>
            bin/chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
            bin/chi send [-m TEXT] ID...         a message into sessions, as if typed there
@@ -851,6 +851,9 @@ parser = OptionParser.new do |opts|
   opts.on("--no-default-input", "Skip default REPL input prefill") { options[:no_default_input] = true; cli_overrides["no_default_input"] = true }
   opts.on("--port PORT", "Port for `chi web` (default: 4567, env SAMAGOTCHI_WEB_PORT)") { |p| options[:web_port] = p.to_i; cli_overrides["web.port"] = p.to_s }
   opts.on("--open", "Open browser for `chi web`") { options[:web_open] = true }
+  opts.on("--scope VALUE", %w[project all],
+          "Which sessions `chi web` and `chi sessions list` show: project (the default: this folder's git project; " \
+          "every session outside a repo) or all") { |v| options[:scope] = v }
   # Accepted values of string entries that the registry doesn't type as enums.
   value_hints = { "thinking.ui" => "spinner|off", "status.line" => "on|off", "status.width_mode" => "terminal_cap|fixed",
                   "web.host" => "127.0.0.1|::1|localhost", "recap.sentences" => "N|N-M" }
@@ -935,8 +938,8 @@ if options[:web]
   port = ENV.fetch("SAMAGOTCHI_WEB_PORT", port.to_s).to_i rescue port.to_i
   markdown = options[:web_markdown]
   markdown = Samagotchi::Config.get("web.markdown") if markdown.nil?
-  Samagotchi::Web::Server.start(port: port, open_browser: options[:web_open], markdown: markdown)
-  exit
+  exit Samagotchi::Web::Server.launch(port: port, scope: options[:scope] || "project", open_browser: options[:web_open],
+                                      markdown: markdown)
 end
 
 # --resume and --attach take a unique id prefix too, like git.

@@ -3,6 +3,7 @@
 require "stringio"
 require "fileutils"
 require "tmpdir"
+require "socket"
 require "samagotchi/web/server"
 
 RSpec.describe Samagotchi::Web::Server::Log do
@@ -44,7 +45,7 @@ RSpec.describe Samagotchi::Web::Server do
     allow(Samagotchi::Web::App).to receive(:new).and_return(double("app"))
     allow(Rackup::Handler::WEBrick).to receive(:run)
 
-    expect { described_class.start(port: 4998) }.to output.to_stdout
+    expect { described_class.start(port: 4998) }.not_to output.to_stdout
 
     records = File.open(File.join(dir, "chi.log")) { |io| Samagotchi::LogLine.each_record(io).to_a }
     expect(records.map { |r| [r.tag, r.event, r.fields] }).to eq([
@@ -58,8 +59,134 @@ RSpec.describe Samagotchi::Web::Server do
     allow(Samagotchi::Web::App).to receive(:new).and_return(double("app"))
     allow(Rackup::Handler::WEBrick).to receive(:run)
 
-    expect { described_class.start(port: 4999, host: "0.0.0.0") }
-      .to output(/forcing 127.0.0.1/).to_stderr.and output(/starting on http:\/\/127.0.0.1:4999/).to_stdout
+    expect { described_class.start(port: 4999, host: "0.0.0.0") }.to output(/forcing 127.0.0.1/).to_stderr
     expect(Rackup::Handler::WEBrick).to have_received(:run).with(anything, hash_including(Host: "127.0.0.1", Port: 4999))
+  end
+
+  it "says where it runs only once the port is bound (WEBrick's start callback)" do
+    allow(Samagotchi::Web::App).to receive(:new).and_return(double("app"))
+    callback = nil
+    allow(Rackup::Handler::WEBrick).to receive(:run) { |_app, opts| callback = opts[:StartCallback] }
+
+    expect { described_class.start(port: 4999, url: "http://127.0.0.1:4999/?dir=%2Fr") }.not_to output.to_stdout
+    expect { callback.call }.to output(%r{\AChi Web on http://127.0.0.1:4999/\?dir=%2Fr .*\nPress Ctrl-C}).to_stdout
+  end
+
+  it "says the port is in use instead of a backtrace when the bind fails" do
+    allow(Samagotchi::Web::App).to receive(:new).and_return(double("app"))
+    allow(Rackup::Handler::WEBrick).to receive(:run).and_raise(Errno::EADDRINUSE)
+
+    result = nil
+    expect { result = described_class.start(port: 4999) }
+      .to output("Error: port 4999 is in use (an older chi web? restart it, or use --port)\n").to_stderr
+    expect(result).to be false
+  end
+
+  describe ".scope_url" do
+    it "is the project view in a repo, the plain page outside one or for scope all" do
+      Dir.mktmpdir do |tmp|
+        repo = File.join(tmp, "my repo")
+        FileUtils.mkdir_p(File.join(repo, ".git"))
+
+        expect(described_class.scope_url("127.0.0.1", 4567, dir: repo))
+          .to eq("http://127.0.0.1:4567/?dir=#{repo.gsub(" ", "+")}")
+        expect(described_class.scope_url("127.0.0.1", 4567, dir: repo, scope: "all")).to eq("http://127.0.0.1:4567/")
+        expect(described_class.scope_url("::1", 4567, dir: tmp)).to eq("http://[::1]:4567/")
+      end
+    end
+  end
+
+  describe ".probe_verdict" do
+    it "takes a chi web that knows ?dir, and nothing else" do
+      info = { "app" => "chi-web", "pid" => 7, "features" => ["dir"] }
+      expect(described_class.probe_verdict(200, JSON.generate(info))).to eq(info)
+      expect(described_class.probe_verdict(200, JSON.generate(info.merge("features" => [])))).to eq(:other)
+      expect(described_class.probe_verdict(404, '{"error":"not_found","detail":"not found: /api/info"}')).to eq(:other)
+      expect(described_class.probe_verdict(200, "<html>")).to eq(:other)
+    end
+  end
+
+  describe ".probe (real sockets)" do
+    # WebMock (loaded by other specs) blocks real connections.
+    around do |example|
+      next example.run unless defined?(WebMock)
+
+      WebMock.disable!
+      begin
+        example.run
+      ensure
+        WebMock.enable!
+      end
+    end
+
+    def free_port
+      server = TCPServer.new("127.0.0.1", 0)
+      server.addr[1].tap { server.close }
+    end
+
+    it "is :free when nothing listens" do
+      expect(described_class.probe("127.0.0.1", free_port)).to eq(:free)
+    end
+
+    it "is :other for something that isn't chi web" do
+      server = TCPServer.new("127.0.0.1", 0)
+      thread = Thread.new do
+        client = server.accept
+        client.readpartial(4096)
+        client.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nhi")
+        client.close
+      end
+      expect(described_class.probe("127.0.0.1", server.addr[1])).to eq(:other)
+    ensure
+      thread&.join(1)
+      server&.close
+    end
+
+    it "is the /api/info hash for a running chi web" do
+      port = free_port
+      webrick = WEBrick::HTTPServer.new(Port: port, BindAddress: "127.0.0.1", AccessLog: [],
+                                        Logger: WEBrick::Log.new(File::NULL))
+      webrick.mount("/", Rackup::Handler::WEBrick, Samagotchi::Web::App.new(state_dir: Dir.mktmpdir))
+      thread = Thread.new { webrick.start }
+
+      expect(described_class.probe("127.0.0.1", port)).to include("app" => "chi-web", "pid" => Process.pid)
+    ensure
+      webrick&.shutdown
+      thread&.join(2)
+    end
+  end
+
+  describe ".launch" do
+    before { allow(described_class).to receive(:scope_url).and_return("http://127.0.0.1:4567/?dir=%2Fr") }
+
+    it "hands off to a running chi web: prints its page, opens it only with --open, starts nothing" do
+      allow(described_class).to receive(:probe).and_return({ "pid" => 42 })
+      allow(described_class).to receive(:open_url)
+      allow(described_class).to receive(:start)
+
+      expect { expect(described_class.launch(port: 4567)).to eq(0) }
+        .to output("chi web already runs on port 4567 (pid 42): http://127.0.0.1:4567/?dir=%2Fr\n").to_stdout
+      expect(described_class).not_to have_received(:open_url)
+      expect { described_class.launch(port: 4567, open_browser: true) }.to output.to_stdout
+      expect(described_class).to have_received(:open_url).with("http://127.0.0.1:4567/?dir=%2Fr")
+      expect(described_class).not_to have_received(:start)
+    end
+
+    it "starts a server on a free port with the scope URL" do
+      allow(described_class).to receive(:probe).and_return(:free)
+      allow(described_class).to receive(:start).and_return(true)
+
+      expect(described_class.launch(port: 4567, markdown: true)).to eq(0)
+      expect(described_class).to have_received(:start)
+        .with(port: 4567, host: "127.0.0.1", url: "http://127.0.0.1:4567/?dir=%2Fr", open_browser: false, markdown: true)
+    end
+
+    it "exits 1 when something else holds the port" do
+      allow(described_class).to receive(:probe).and_return(:other)
+      allow(described_class).to receive(:start)
+
+      expect { expect(described_class.launch(port: 4567)).to eq(1) }.to output(/port 4567 is in use/).to_stderr
+      expect(described_class).not_to have_received(:start)
+    end
   end
 end
