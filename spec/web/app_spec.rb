@@ -930,6 +930,70 @@ RSpec.describe Samagotchi::Web::App do
       expect(raw).not_to include("Last-Event-ID")
       expect(raw).to include("GET /session/s1/stream HTTP/1.1")
     end
+
+    # rackup's WEBrick joins every request thread before `run` returns, so a
+    # proxy blocked on a quiet bridge would hang Ctrl-C of chi web.
+    context "with a bridge that sends its headers, one frame, then stays quiet" do
+      let(:server) { TCPServer.new("127.0.0.1", 0) }
+      let(:upstream) { Queue.new }
+
+      before do
+        @accepter = Thread.new do
+          conn = server.accept
+          conn.readpartial(16_384)
+          conn.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nid: 1\r\ndata: {}\r\n\r\n")
+          upstream << conn
+          sleep
+        end
+        @accepter.report_on_exception = false
+      end
+
+      after do
+        @accepter.kill
+        server.close
+      end
+
+      def proxy_for(running)
+        described_class::ProxyStreamBody.new(host: "127.0.0.1", port: server.local_address.ip_port, session_id: "s1",
+                                             query: "", headers: {}, server_running: -> { running[0] })
+      end
+
+      it "ends the body within a second of the server leaving :Running, and closes the bridge socket" do
+        running = [true]
+        chunks = Queue.new
+        reader = Thread.new { proxy_for(running).each { |chunk| chunks << chunk } }
+        expect(chunks.pop(timeout: 2)).to eq("id: 1\r\ndata: {}\r\n\r\n")
+        conn = upstream.pop(timeout: 2)
+
+        running[0] = false
+        started = mono
+
+        expect(reader.join(1.5)).to eq(reader), "the proxy was still reading 1.5 s after shutdown"
+        expect(mono - started).to be < 1.2
+        expect(conn.wait_readable(1)).to be_truthy
+        expect(conn.read_nonblock(1, exception: false)).to be_nil # EOF: the proxy closed its end
+      ensure
+        reader&.kill
+      end
+
+      it "keeps a quiet stream open while the server is running, and forwards what comes next unchanged" do
+        running = [true]
+        chunks = Queue.new
+        reader = Thread.new { proxy_for(running).each { |chunk| chunks << chunk } }
+        chunks.pop(timeout: 2)
+        conn = upstream.pop(timeout: 2)
+
+        sleep 1.5 # several poll intervals of silence
+        expect(reader).to be_alive
+
+        conn.write(": ping\r\n\r\n")
+        expect(chunks.pop(timeout: 2)).to eq(": ping\r\n\r\n")
+        conn.close
+        expect(reader.join(2)).to eq(reader) # the bridge's close still ends it
+      ensure
+        reader&.kill
+      end
+    end
   end
 
   describe "session status" do

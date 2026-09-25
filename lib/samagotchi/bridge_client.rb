@@ -18,6 +18,8 @@ module Samagotchi
     SIDECAR_FILE = "bridge.json"
     PROBE_TIMEOUT = 0.2
     STREAM_CONNECT_ATTEMPTS = 3
+    # Seconds #stream waits for bytes before it asks `running` again.
+    STREAM_POLL = 0.5
     # Seconds a one-shot request waits for the whole reply. Every route
     # answers at once (a recap is only asked for); a worker that takes the
     # request and never answers raises Errno::ETIMEDOUT, as a dead one
@@ -216,7 +218,10 @@ module Samagotchi
     # @param query [String] "" or "?from_seq=N"
     # @param last_event_id [String, nil] reconnect cursor; the Bridge prefers it
     #   over ?from_seq
-    def stream(query: "", last_event_id: nil)
+    # @param running [#call, nil] asked before every read, and every
+    #   STREAM_POLL seconds of silence: the stream ends once it returns
+    #   false. A quiet stream is never cut otherwise.
+    def stream(query: "", last_event_id: nil, running: nil)
       sock = nil
       # Absorb the probe→connect race around a resumed worker's bridge:
       # the sidecar probe can succeed a moment before the worker dies (or
@@ -233,6 +238,10 @@ module Samagotchi
 
       begin
         loop do
+          if running
+            break unless running.call
+            next unless sock.wait_readable(STREAM_POLL)
+          end
           chunk = sock.readpartial(4096)
           yield chunk
         rescue EOFError, IOError, Errno::ECONNRESET, Errno::ECONNREFUSED

@@ -732,7 +732,8 @@ module Samagotchi
         end
 
         query = req.query_string.to_s.empty? ? "" : "?#{req.query_string}"
-        [200, headers, ProxyStreamBody.new(host: DEFAULT_HOST, port: bridge_port, session_id: id, query: query, headers: req.env)]
+        [200, headers, ProxyStreamBody.new(host: DEFAULT_HOST, port: bridge_port, session_id: id, query: query, headers: req.env,
+                                           server_running: @server_running)]
       end
 
       # GET /api/events: the session list as one SSE stream per tab. The
@@ -780,7 +781,8 @@ module Samagotchi
       def sse_hijack(id, req, port)
         lambda do |io|
           query = req.query_string.to_s.empty? ? "" : "?#{req.query_string}"
-          body = ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: query, headers: req.env)
+          body = ProxyStreamBody.new(host: DEFAULT_HOST, port: port, session_id: id, query: query, headers: req.env,
+                                    server_running: @server_running)
           body.each { |chunk| io.write(chunk) }
         rescue Errno::EPIPE, Errno::ECONNRESET, IOError
           nil # client went away — end the stream quietly
@@ -1169,12 +1171,17 @@ module Samagotchi
         end
       end
 
-      # Proxy body that streams from the per-session Bridge TCP server.
+      # Proxy body that streams from the per-session Bridge TCP server. It
+      # ends when the Bridge closes the stream or, as EventsBody, when the
+      # server leaves :Running: rackup's WEBrick joins every request thread
+      # before returning, and a read blocked on a quiet worker would hang
+      # Ctrl-C of chi web. The bytes go through unchanged.
       class ProxyStreamBody
-        def initialize(host:, port:, session_id:, query:, headers:)
+        def initialize(host:, port:, session_id:, query:, headers:, server_running: -> { true })
           @client = BridgeClient.new(session_id: session_id, port: port, host: host)
           @query = query
           @headers = headers
+          @server_running = server_running
         end
 
         def each(&block)
@@ -1182,7 +1189,7 @@ module Samagotchi
           # Last-Event-ID header over ?from_seq, and the reconnect URL carries a
           # stale initial cursor — without this the bridge would replay content
           # already delivered (duplicate bubbles).
-          @client.stream(query: @query, last_event_id: @headers["HTTP_LAST_EVENT_ID"], &block)
+          @client.stream(query: @query, last_event_id: @headers["HTTP_LAST_EVENT_ID"], running: @server_running, &block)
         end
       end
     end

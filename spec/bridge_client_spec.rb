@@ -241,4 +241,54 @@ RSpec.describe Samagotchi::BridgeClient do
     expect(chunks.join).to eq("id: 8\r\ndata: {}\r\n\r\n")
     expect(finish.call).to include("GET /session/s1/stream?from_seq=3 HTTP/1.1\r\n", "Last-Event-ID: 7\r\n")
   end
+
+  it "ends a quiet stream once `running` turns false" do
+    server = TCPServer.new("127.0.0.1", 0)
+    peer = Thread.new do
+      conn = server.accept
+      conn.readpartial(16_384)
+      conn.write("HTTP/1.1 200 OK\r\n\r\n")
+      sleep
+    end
+    peer.report_on_exception = false
+    running = true
+    client = described_class.new(session_id: "s1", port: server.local_address.ip_port)
+    reader = Thread.new { client.stream(running: -> { running }) { nil } }
+
+    sleep 0.3
+    expect(reader).to be_alive
+    running = false
+    expect(reader.join(1.5)).to eq(reader)
+  ensure
+    reader&.kill
+    peer&.kill
+    server&.close
+  end
+
+  it "ends a stream that never goes quiet once `running` turns false" do
+    server = TCPServer.new("127.0.0.1", 0)
+    peer = Thread.new do
+      conn = server.accept
+      conn.readpartial(16_384)
+      conn.write("HTTP/1.1 200 OK\r\n\r\n")
+      loop do
+        conn.write("data: x\r\n\r\n")
+        sleep 0.1
+      end
+    end
+    peer.report_on_exception = false
+    running = true
+    chunks = 0
+    client = described_class.new(session_id: "s1", port: server.local_address.ip_port)
+    reader = Thread.new { client.stream(running: -> { running }) { chunks += 1 } }
+
+    sleep 0.3
+    expect(chunks).to be > 0
+    running = false
+    expect(reader.join(1.5)).to eq(reader)
+  ensure
+    reader&.kill
+    peer&.kill
+    server&.close
+  end
 end
