@@ -8,6 +8,7 @@ require "securerandom"
 require "rbconfig"
 
 require_relative "session"
+require_relative "turn_note"
 require_relative "owner_lock"
 require_relative "bridge_client"
 require_relative "log"
@@ -486,9 +487,13 @@ module Samagotchi
 
     # Only the system prompt (the REPL seeds one, a saved session keeps
     # it); a context note is a system message too, but with its kind.
+    # A turn note (the tail system message after a failed, cancelled or empty
+    # turn) is not a conversation either: a session whose only turn failed
+    # before any answer is still empty.
     def self.no_conversation?(messages)
       Array(messages).all? do |msg|
-        (msg[:role] || msg["role"]).to_s == "system" && (msg[:kind] || msg["kind"]).nil?
+        (msg[:role] || msg["role"]).to_s == "system" &&
+          ((msg[:kind] || msg["kind"]).nil? || TurnNote.note?(msg))
       end
     end
 

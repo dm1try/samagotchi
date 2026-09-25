@@ -173,6 +173,18 @@ RSpec.describe Samagotchi::SessionManager do
       expect(empty?).to be false
     end
 
+    it "is still true when the only message is a turn note (a first turn that failed before any answer)" do
+      change { |s| s.messages << Samagotchi::TurnNote.message("the previous turn failed before any answer") }
+
+      expect(empty?).to be true
+    end
+
+    it "is false once a context note is in the conversation" do
+      change { |s| s.messages << { role: "system", content: "[note]", kind: "note" } }
+
+      expect(empty?).to be false
+    end
+
     it "is true with only the system prompt saved, false with a context note" do
       change { |s| s.messages << { role: "system", content: "You are chi." } }
       expect(empty?).to be true
