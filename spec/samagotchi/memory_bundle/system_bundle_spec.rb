@@ -4,6 +4,7 @@ require "spec_helper"
 require "digest"
 require "tmpdir"
 require "samagotchi/memory_bundle/system_bundle"
+require "samagotchi/version"
 
 RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
   describe "shipped bundle manifest" do
@@ -13,6 +14,15 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
     it "lists every bundled memory file" do
       shipped = Dir.glob(File.join(dir, "*.md")).map { |p| File.basename(p) }.sort
       expect(manifest.files.keys.map(&:to_s).sort).to eq(shipped)
+    end
+
+    it "is at the gem's version (the two are bumped together)" do
+      expect(manifest.version.to_s).to eq(Samagotchi::VERSION)
+    end
+
+    it "ships the delegated-session rules, preloaded into every child of a delegate call" do
+      expect(manifest.files.keys.map(&:to_s)).to include("delegated.md")
+      expect(File.read(File.join(dir, "delegated.md"))).to include("Don't delegate further")
     end
 
     it "has checksums matching the bundled files (edit a file → refresh its sha256 and bump the version)" do

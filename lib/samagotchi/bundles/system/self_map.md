@@ -18,6 +18,10 @@
   something without starting a turn there; see `docs/sessions.md` "Context notes".
 - `chi send -m TEXT <id>` is the other half: the text goes in as the user's message and a
   turn runs (stdin piped too = quoted context above it); see `docs/sessions.md` "Sending a message".
+- `delegate` hands a task to a child session that runs in parallel and returns only its final
+  reply (`delegate_result` waits for it; `session:` sends a follow-up to a child). A child is a
+  normal session: it shows in `chi sessions list` with `↳ <parent>`, and the user can steer it
+  with `chi --attach <id>`; see `docs/sessions.md` "Delegating".
 
 ## Where things live (relative to the source dir)
 - `docs/`: `cli.md` (flags, subcommands, REPL commands), `configuration.md` (config.yml keys,
@@ -33,7 +37,7 @@
 - When asked about my limits, flags, defaults or behavior: `rg` my source dir and cite
   `file:line`. Read the source `chi self` reports, not some other checkout on disk.
 - Installed gem files and bundled memories (`identity`, `memory_guide`,
-  `config_modification_protocol`, `self_map`) are managed: don't edit them
+  `config_modification_protocol`, `self_map`, `delegated`) are managed: don't edit them
   (local edits conflict on upgrade).
   Put notes in my own memories. A model-only note is an overlay on an existing
   entry (`current_model_only: true`), and it needs that base entry to exist.
