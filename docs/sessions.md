@@ -102,6 +102,10 @@ system message marked `kind: turn_note` (the UIs don't show it; they showed the 
 - ended with nothing visible: `[SYSTEM: the previous turn ended with no visible answer (thinking only, or
   nothing). The user's last message is still unanswered.]`.
 
+When the context window fills past 40% (then 60%, 80%), the native loop leaves a similar line (`kind: context`):
+`[CONTEXT: about 55% of the context window is in use (estimated; bucket=40plus). context moderate — prefer targeted
+and range reads over full-file dumps]`, once per rise; see [context telemetry](internals/context-telemetry.md).
+
 Failed retries replace the note, they don't pile up. The note's text is escaped like user text (an error may
 quote what a server sent). A cancelled continue turn and `!rollback` go back to before the turn, note included.
 Without it, the model saw an unanswered user message and no reason: asked "did your last answer finish?" after a

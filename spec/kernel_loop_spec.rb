@@ -179,8 +179,11 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(status_events.first[:status]).to include("CONTEXT_STATUS")
       expect(status_events.first[:status]).to include("bucket=20plus")
       expect(status_events.first[:bucket]).to eq("20plus")
-      # The model no longer receives the telemetry in the prompt.
+      # The model no longer receives the telemetry in the prompt, and 20plus
+      # asks it for no change: no line for it either.
       expect(prompts.first).not_to include("CONTEXT_STATUS")
+      expect(prompts.first).not_to include("[CONTEXT:")
+      expect(result.conversation.none? { |m| m[:kind] == "context" }).to be(true)
       expect(result.context_status).to include(est_pct: 35.2, bucket: "20plus")
     end
 
@@ -218,6 +221,63 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(status_events.first[:status]).to include("bucket=40plus")
       expect(prompts[0]).not_to include("CONTEXT_STATUS")
       expect(prompts[1]).not_to include("CONTEXT_STATUS")
+    end
+
+    it "leaves the model a line on a rise into a bucket that asks for a change, in the prompt from that request on" do
+      prompts = []
+      responses = [%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done"]
+      allow(client).to receive(:complete) do |prompt|
+        prompts << prompt
+        responses.shift
+      end
+      allow(kernel).to receive(:estimate_context_usage).and_return(
+        { window_tokens: 256_000, estimated_used_tokens: 30_000, estimated_remaining_tokens: 226_000, estimated_pct: 11.7 },
+        { window_tokens: 256_000, estimated_used_tokens: 140_000, estimated_remaining_tokens: 116_000, estimated_pct: 54.6 }
+      )
+
+      result = kernel.run([{ role: "user", content: "check" }])
+
+      line = "[CONTEXT: about 55% of the context window is in use (estimated; bucket=40plus). context moderate"
+      expect(prompts[0]).not_to include("[CONTEXT:")
+      expect(prompts[1]).to include(line)
+      lines = result.conversation.select { |m| m[:kind] == "context" }
+      expect(lines.size).to eq(1)
+      expect(lines.first).to include(role: "system")
+      expect(lines.first[:content]).to start_with(line).and end_with("]")
+      # After the tool result, before the reply it led to.
+      expect(result.conversation.index(lines.first)).to eq(result.conversation.length - 2)
+    end
+
+    it "leaves no line on a fall, nor again for the bucket a resumed session's line already names" do
+      responses = [%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done"]
+      allow(client).to receive(:complete) { responses.shift }
+      allow(kernel).to receive(:estimate_context_usage).and_return(
+        { window_tokens: 256_000, estimated_used_tokens: 160_000, estimated_remaining_tokens: 96_000, estimated_pct: 62.0 },
+        { window_tokens: 256_000, estimated_used_tokens: 120_000, estimated_remaining_tokens: 136_000, estimated_pct: 45.0 }
+      )
+
+      result = kernel.run([{ role: "user", content: "check" }])
+      lines = result.conversation.select { |m| m[:kind] == "context" }
+      expect(lines.map { |m| m[:content] }).to contain_exactly(a_string_including("bucket=60plus"))
+
+      responses = ["done again"]
+      allow(kernel).to receive(:estimate_context_usage).and_return(
+        { window_tokens: 256_000, estimated_used_tokens: 160_000, estimated_remaining_tokens: 96_000, estimated_pct: 62.0 }
+      )
+      again = kernel.run(result.conversation + [{ role: "user", content: "more" }])
+      expect(again.conversation.count { |m| m[:kind] == "context" }).to eq(1)
+    end
+
+    it "leaves no line with the context status off" do
+      ENV["SAMAGOTCHI_CONTEXT_STATUS"] = "false"
+      allow(client).to receive(:complete).and_return("done")
+      allow(kernel).to receive(:estimate_context_usage).and_return(
+        { window_tokens: 256_000, estimated_used_tokens: 160_000, estimated_remaining_tokens: 96_000, estimated_pct: 62.0 }
+      )
+
+      result = kernel.run([{ role: "user", content: "check" }])
+
+      expect(result.conversation.none? { |m| m[:kind] == "context" }).to be(true)
     end
 
     it "prefers real server usage over the synthetic estimate when available" do

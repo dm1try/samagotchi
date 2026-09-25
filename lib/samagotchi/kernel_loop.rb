@@ -121,6 +121,12 @@ module Samagotchi
     ].freeze
 
     CONTEXT_STATUS_PREFIX = "CONTEXT_STATUS"
+    # The model's own line about its context (a tail system message, kind
+    # CONTEXT_LINE_KIND), left once per rise into a bucket whose guidance
+    # asks for a change: from the second threshold (40% by default) up.
+    CONTEXT_LINE_PREFIX = "[CONTEXT: "
+    CONTEXT_LINE_KIND = "context"
+    CONTEXT_GUIDANCE_FROM_RANK = 2
     CONTEXT_STATUS_ENABLED_ENV = "SAMAGOTCHI_CONTEXT_STATUS"
     CONTEXT_CHARS_PER_TOKEN_ENV = "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"
     CONTEXT_THRESHOLDS_ENV = "SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"
@@ -225,6 +231,12 @@ module Samagotchi
         context_window = ContextWindow.resolve(client: @client, model: resolved_model_name)
         context_status = emit_context_status_event(on_stream_event, prompt, iteration_index: iteration_index, state: context_state, window: context_window,
                                                                             image_tokens: image_tokens) || context_status
+        if (line = context_state.delete(:guidance))
+          # The model's own copy, on the tail (the prompt cache keeps its
+          # prefix), then the prompt again with it.
+          conversation << line
+          prompt, images = Prompt.format_with_images(conversation, profile: @profile, vision: @vision)
+        end
         emit_stream_event(
           on_stream_event,
           type: :generation_started,
@@ -555,7 +567,9 @@ module Samagotchi
 
     # Estimate context usage for this iteration's prompt and, when the emit
     # gate fires, surface it to stream consumers as a :context_status event.
-    # The model no longer receives the telemetry (it used to be injected as a
+    # A rise into a bucket that asks the model for a change also leaves a
+    # short line for it (state[:guidance], see context_guidance_message):
+    # not the telemetry, which the model no longer receives (it used to be injected as a
     # synthetic system message); the returned {est_pct:, bucket:} hash feeds
     # the Result's context_status for UI status lines (nil when not emitted).
     def emit_context_status_event(on_stream_event, prompt, iteration_index:, state:, window: nil, image_tokens: 0)
@@ -564,8 +578,11 @@ module Samagotchi
       usage = estimate_context_usage(prompt, server_usage: state[:server_usage], window: window, image_tokens: image_tokens)
       bucket = context_status_bucket(usage[:estimated_pct])
       emit_status = should_emit_context_status?(state: state, bucket: bucket, iteration_index: iteration_index)
+      previous_bucket = state[:last_bucket]
       state[:last_bucket] = bucket
       return nil unless emit_status
+
+      state[:guidance] = context_guidance_message(usage: usage, bucket: bucket) if guidance_due?(previous_bucket, bucket)
 
       status_message = context_status_message(usage: usage, bucket: bucket, source: usage[:source])
       emit_stream_event(
@@ -590,9 +607,12 @@ module Samagotchi
       { last_bucket: extract_last_context_status_bucket(conversation) }
     end
 
+    # The bucket of the last status line the conversation holds: the model's
+    # own line, or a legacy session's injected telemetry.
     def extract_last_context_status_bucket(conversation)
       message = conversation.reverse.find do |entry|
-        entry[:role] == "system" && entry[:content].to_s.start_with?(CONTEXT_STATUS_PREFIX)
+        content = entry[:content].to_s
+        entry[:role] == "system" && (content.start_with?(CONTEXT_STATUS_PREFIX) || content.start_with?(CONTEXT_LINE_PREFIX))
       end
       return nil unless message
 
@@ -677,6 +697,28 @@ module Samagotchi
       end
       value = ENV.fetch(CONTEXT_CADENCE_ENV, DEFAULT_CONTEXT_CADENCE.to_s).to_i
       [value, 0].max
+    end
+
+    # 0 for the bucket under the first threshold, then one per threshold.
+    def bucket_rank(bucket)
+      return 0 if bucket.nil? || bucket.to_s.start_with?("under")
+
+      (context_status_thresholds.index(bucket.to_s.delete_suffix("plus").to_i) || -1) + 1
+    end
+
+    # A rise (never a fall or a cadence tick) into a bucket whose guidance
+    # asks for a change. With no previous bucket (a first turn, a resumed
+    # session with no line yet), the first bucket counts as a rise from 0.
+    def guidance_due?(previous, bucket)
+      rank = bucket_rank(bucket)
+      rank >= CONTEXT_GUIDANCE_FROM_RANK && rank > bucket_rank(previous)
+    end
+
+    def context_guidance_message(usage:, bucket:)
+      how = usage[:source].to_s == "server" ? "as the server reports" : "estimated"
+      { role: "system", kind: CONTEXT_LINE_KIND,
+        content: "#{CONTEXT_LINE_PREFIX}about #{usage[:estimated_pct].to_f.round}% of the context window is in use " \
+                 "(#{how}; bucket=#{bucket}). #{context_status_guidance(bucket)}]" }
     end
 
     def context_status_bucket(estimated_pct)

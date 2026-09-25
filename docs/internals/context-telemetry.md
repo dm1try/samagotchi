@@ -1,9 +1,17 @@
 # Context status telemetry
 
 The kernel surfaces context-usage telemetry to UI consumers (status line,
-web/SSE clients) as a `:context_status` stream event. It is no longer injected
-into the model's conversation. The event carries a `status` string using this
-prefix:
+web/SSE clients) as a `:context_status` stream event. The telemetry itself is
+not injected into the model's conversation; what the model gets is one short
+line, as a tail system message (`kind: context`), when usage rises into a bucket
+whose guidance asks it to change how it works (from the second threshold, 40%
+by default, up; never on a fall or a cadence tick, and not again for a bucket a
+resumed session's line already names):
+
+`[CONTEXT: about 55% of the context window is in use (estimated; bucket=40plus). context moderate — prefer targeted and range reads over full-file dumps]`
+
+The native loop only (the chat loop has no context status). The event carries
+a `status` string using this prefix:
 
 `CONTEXT_STATUS ...`
 
