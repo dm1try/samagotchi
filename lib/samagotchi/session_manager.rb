@@ -404,6 +404,9 @@ module Samagotchi
     # With +wait+ (seconds), also wait for the owner to let go of the session,
     # so a resume right after spawns a fresh worker instead of finding the
     # dying one.
+    # A turn still running is canceled first (STOP_CANCEL_WAIT), as the
+    # web's Cancel does: its Engine saves the prompt, which the TERM alone
+    # would lose with the worker.
     # @return [Boolean, nil] with +wait+: whether the owner was gone in time
     # @raise [OwnedByTUI] when the interactive TUI owns the session
     def self.stop_session(session_id, state_dir: nil, wait: nil)
@@ -411,6 +414,7 @@ module Samagotchi
       owner = session_owner(session_id, state_dir: sd)
       raise OwnedByTUI, session_id if owner && owner["kind"] == "tui"
 
+      cancel_running_turn(session_id, state_dir: sd)
       # Mark first: a worker that has not taken the lock yet sees it and exits.
       Session.mark_stopped(session_id, state_dir: sd)
       pid = owner && owner["pid"].to_i
@@ -420,6 +424,25 @@ module Samagotchi
         nil # already exited
       end
       wait_for_owner_release(session_id, timeout: wait, state_dir: sd) if wait
+    end
+
+    STOP_CANCEL_WAIT = 3.0
+
+    # Cancel the session's running turn over its Bridge and wait (up to
+    # STOP_CANCEL_WAIT) for the worker to save it. Best effort: without a
+    # live Bridge, or when it doesn't answer, the stop goes on as before.
+    private_class_method def self.cancel_running_turn(session_id, state_dir:)
+      return unless Session.load(session_id, state_dir: state_dir).status == Session::STATUS_RUNNING
+
+      client = BridgeClient.discover(session_id, session_dir: Session.session_dir(session_id, state_dir: state_dir))
+      return unless client && client.cancel(reason: "user").status == 202
+
+      BridgeClient.poll(STOP_CANCEL_WAIT) do
+        Session.load(session_id, state_dir: state_dir).status != Session::STATUS_RUNNING
+      end
+    rescue StandardError => e
+      Log.info(:worker, "stop_cancel_failed", sid: session_id, error: e.class.name, msg: e.message)
+      nil
     end
 
     # What a session's directory holds before anything happened in it. Any

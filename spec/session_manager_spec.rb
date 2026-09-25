@@ -92,6 +92,51 @@ RSpec.describe Samagotchi::SessionManager do
         expect(described_class.stop_session(session.id, state_dir: tmpdir, wait: 5)).to be true
       end
     end
+
+    context "mid-turn" do
+      let(:session) do
+        Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
+          s.status = Samagotchi::Session::STATUS_RUNNING
+          s.save(state_dir: tmpdir)
+        end
+      end
+      let(:bridge) { instance_double(Samagotchi::BridgeClient) }
+      let(:calls) { [] }
+
+      before do
+        allow(Samagotchi::BridgeClient).to receive(:discover).and_return(bridge)
+        allow(Process).to receive(:kill).and_call_original
+      end
+
+      it "cancels the running turn first, so its prompt is saved as a Cancel saves it, then stops" do
+        allow(bridge).to receive(:cancel) do |reason:|
+          calls << [:cancel, reason, Samagotchi::Session.load(session.id, state_dir: tmpdir).status]
+          # The worker's Engine ends the turn and saves the session.
+          Thread.new do
+            sleep 0.2
+            loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+            loaded.status = Samagotchi::Session::STATUS_IDLE
+            loaded.save(state_dir: tmpdir)
+          end
+          Samagotchi::BridgeClient::Response.new(status: 202, body: nil)
+        end
+
+        described_class.stop_session(session.id, state_dir: tmpdir, wait: 1)
+
+        expect(calls).to eq([[:cancel, "user", Samagotchi::Session::STATUS_RUNNING]])
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_STOPPED)
+      end
+
+      it "stops at once when there is no turn to cancel" do
+        allow(bridge).to receive(:cancel).and_return(Samagotchi::BridgeClient::Response.new(status: 409, body: nil))
+
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        described_class.stop_session(session.id, state_dir: tmpdir, wait: 1)
+
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.5
+        expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_STOPPED)
+      end
+    end
   end
 
   describe ".empty_session?" do
