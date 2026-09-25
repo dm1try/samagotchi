@@ -105,7 +105,7 @@ module Samagotchi
       Engine.system_prompt_for(profile)
     end
 
-    def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], non_interactive: false, surface: nil,
+    def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], muted_memories: [], non_interactive: false, surface: nil,
                    spinner_tick_interval: THINKING_TICK_INTERVAL)
       @mode           = mode.to_sym
       # nil: no ticker thread (specs that compare exact frames).
@@ -145,7 +145,14 @@ module Samagotchi
       @kernel         = KernelLoop.new(client: @client, profile: profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
       @no_default_input = no_default_input
       @non_interactive = non_interactive
+      # --memory and --mute, with a resumed session's own lists first: a
+      # session started attached with mutes keeps them here.
       @requested_memories = Array(memories)
+      @muted_memory_names = Array(muted_memories)
+      if @resume_session
+        @requested_memories = (@resume_session.preloaded_memory_names + @requested_memories).uniq
+        @muted_memory_names = (@resume_session.muted_memory_names + @muted_memory_names).uniq
+      end
       # A recap written while idle, printed by the main thread at the open
       # prompt (#flush_pending_recap).
       @pending_recap = nil
@@ -165,6 +172,7 @@ module Samagotchi
         no_interrupt: no_interrupt,
         model_name: @default_model_name,
         memories: @requested_memories,
+        muted_memories: @muted_memory_names,
         kernel: @kernel,
         recap: recap_config,
         reminders: {
@@ -221,7 +229,9 @@ module Samagotchi
       session = @resume_session || Session.new_session(
         mode: @mode.to_s,
         model_name: @effective_model_name,
-        working_directory: Dir.pwd
+        working_directory: Dir.pwd,
+        preloaded_memory_names: @requested_memories,
+        muted_memory_names: @muted_memory_names
       )
       claim_session!(session.id) unless @owner_lock
       # Attach before building the prompt so it can name the session id.
@@ -1452,12 +1462,20 @@ module Samagotchi
 
     def memory_sticky_line
       names = Array(@session_memory_names)
-      return "" if names.empty?
+      muted = @engine.muted_memory_names
+      return "" if names.empty? && muted.empty?
 
-      visible = names.first(MEMORY_STICKY_PREVIEW_LIMIT)
-      suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
-      body = "memories> active this session: #{visible.join(', ')}#{suffix}"
+      parts = []
+      parts << "active this session: #{preview_names(names)}" unless names.empty?
+      parts << "muted: #{preview_names(muted)}" unless muted.empty?
+      body = "memories> #{parts.join(' · ')}"
       color_output? ? paint(body, MEMORY_SPINNER_COLOR) : body
+    end
+
+    def preview_names(names, limit: MEMORY_STICKY_PREVIEW_LIMIT)
+      visible = names.first(limit)
+      suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
+      "#{visible.join(', ')}#{suffix}"
     end
 
     def reset_thinking_memory_names
@@ -1629,6 +1647,9 @@ module Samagotchi
       memory_segment = status_memory_segment(scope)
       segments << context_segment unless context_segment.empty?
       segments << memory_segment unless memory_segment.empty?
+      # The session's --mute list, on the sticky and idle rows (not the spinner).
+      muted_segment = scope == :spinner ? "" : status_memory_text(@engine.muted_memory_names, MEMORY_STICKY_PREVIEW_LIMIT, label: "muted")
+      segments << muted_segment unless muted_segment.empty?
       segments
     end
 

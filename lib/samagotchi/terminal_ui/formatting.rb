@@ -130,13 +130,15 @@ module Samagotchi
         "#{base} (#{tokens.join(' ')})"
       end
 
-      def status_memory_text(names, limit)
+      # @param label [String] "mem" for the used memories, "muted" for the
+      #   session's --mute list
+      def status_memory_text(names, limit, label: "mem")
         names = Array(names)
         return "" if names.empty?
 
         visible = names.first(limit)
         suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
-        "mem: #{visible.join(', ')}#{suffix}"
+        "#{label}: #{visible.join(', ')}#{suffix}"
       end
 
       def cap_preview_text(text, width)

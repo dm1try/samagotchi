@@ -1086,6 +1086,7 @@ begin
     no_interrupt: options[:no_interrupt] || options[:non_interactive],
     no_default_input: options[:no_default_input],
     memories: options[:memories] || [],
+    muted_memories: options[:muted] || [],
     non_interactive: options[:non_interactive],
     model_name: options[:model]
   ).run

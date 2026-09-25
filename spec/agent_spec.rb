@@ -257,6 +257,53 @@ file2.rb")
       expect(agent.send(:sticky_status_lines).join("\n")).to include("mem: foo")
     end
 
+    it "keeps a --mute memory out of the prompt and names it in the sticky status line" do
+      received_prompt = nil
+      allow(client).to receive(:complete) do |prompt|
+        received_prompt = prompt
+        "ok"
+      end
+      index = "- **foo** · system · 2026-09-01 · 10 — foo\n- **bar** · system · 2026-09-01 · 10 — bar\n"
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "system").and_return(index)
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["foo"], muted_memories: ["system/bar.md"])
+      run_and_render(agent, prompt: "hi")
+
+      expect(received_prompt).to include("**foo**")
+      expect(received_prompt).not_to include("**bar**")
+      expect(agent.send(:sticky_status_lines).join("\n")).to include("mem: foo | muted: bar")
+      expect(agent.send(:memory_sticky_line)).to eq("memories> active this session: foo · muted: bar")
+      expect(agent.send(:build_status_lines, scope: :spinner).join).not_to include("muted")
+      expect(agent.instance_variable_get(:@engine).muted_memory_names).to eq(["bar"])
+    end
+
+    it "records the --memory and --mute lists on a new REPL session" do
+      allow(client).to receive(:complete).and_return("ok")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client, non_interactive: true,
+                                  memories: ["foo"], muted_memories: ["system/bar.md"])
+      agent.run
+
+      session = agent.instance_variable_get(:@engine).session
+      expect(session.preloaded_memory_names).to eq(["foo"])
+      expect(session.muted_memory_names).to eq(["system/bar.md"])
+    end
+
+    it "merges a resumed session's stored --memory and --mute lists with the flags" do
+      stored = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd,
+                                               preloaded_memory_names: ["foo"], muted_memory_names: ["bar"])
+      stored.save
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      agent = described_class.new(mode: "assist", client: client, session_id: stored.id, memories: ["baz"], muted_memories: ["bar", "qux"])
+
+      expect(agent.instance_variable_get(:@requested_memories)).to eq(%w[foo baz])
+      expect(agent.instance_variable_get(:@engine).muted_memory_names).to eq(%w[bar qux])
+    ensure
+      agent&.instance_variable_get(:@owner_lock)&.release
+    end
+
     it "resolves scope-prefixed --memory entries" do
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|
