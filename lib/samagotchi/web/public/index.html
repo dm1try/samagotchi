@@ -221,6 +221,8 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 #infoBar #infoDeleteBtn:hover{color:#fff;background:var(--danger-bg);border-color:var(--danger-bg)}
 /* Phones: the footer is one line; its meta scrolls sideways (all of it stays reachable) and the first-message line, the strip card's title, goes. */
 @media(max-width:600px){
+  /* The key hint: cut off at this width, and phones have no Shift+Enter. */
+  #composeHint{display:none}
   #infoBar{flex-wrap:nowrap;align-items:center;gap:6px;padding:6px 10px 8px}
   #infoBar .preview-line{display:none}
   #infoBar .meta{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
