@@ -294,13 +294,13 @@ module Samagotchi
       },
       {
         name: "list_sessions",
-        description: "List the other chi sessions (newest first, up to 20): id, whether a worker runs it, its folder and last prompt. Use it to find the session send_note should go to.",
+        description: "List the other chi sessions of this project (newest first, up to 20): id, whether a worker runs it, its folder and last prompt; other projects: cwd \"/\". Use it to find the session send_note should go to.",
         parameters: {
           type: "object",
           properties: {
             cwd: {
               type: "string",
-              description: "Only sessions in this folder or below it (optional)"
+              description: "Only sessions in this folder or below it, in any project (optional)"
             }
           }
         }

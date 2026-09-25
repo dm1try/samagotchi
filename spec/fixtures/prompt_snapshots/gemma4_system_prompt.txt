@@ -107,9 +107,9 @@ You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant 
   parameters:{}
 }<tool|>
 <|tool>declaration:list_sessions{
-  description:<|"|>List the other chi sessions (newest first, up to 20): id, whether a worker runs it, its folder and last prompt. Use it to find the session send_note should go to.<|"|>,
+  description:<|"|>List the other chi sessions of this project (newest first, up to 20): id, whether a worker runs it, its folder and last prompt; other projects: cwd "/". Use it to find the session send_note should go to.<|"|>,
   parameters:{
-    cwd:{type:<|"|>string<|"|>, description:<|"|>Only sessions in this folder or below it (optional)<|"|>}
+    cwd:{type:<|"|>string<|"|>, description:<|"|>Only sessions in this folder or below it, in any project (optional)<|"|>}
   }
 }<tool|>
 <|tool>declaration:send_note{

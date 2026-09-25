@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "json"
+require "open3"
 require "spec_helper"
 require "samagotchi/tools/list_sessions"
 require "samagotchi/tools/send_note"
@@ -71,6 +72,58 @@ RSpec.describe "peer tools" do
 
     it "needs to know its own session" do
       expect(described_class.call("", peers: nil)).to start_with("Error:")
+    end
+
+    describe "in a git project" do
+      def git(*args)
+        out, status = Open3.capture2e("git", "-c", "user.name=x", "-c", "user.email=x@x",
+                                      "-c", "init.defaultBranch=main", *args)
+        raise "git #{args.join(" ")} failed: #{out}" unless status.success?
+      end
+
+      let(:root) { File.realpath(tmpdir) }
+      let(:alpha) do
+        File.join(root, "alpha").tap do |dir|
+          git("init", "-q", dir)
+          git("-C", dir, "commit", "-q", "--allow-empty", "-m", "i")
+        end
+      end
+      let(:my_worktree) { File.join(root, "alpha-wt").tap { |dir| git("-C", alpha, "worktree", "add", "-q", "-b", "wt", dir) } }
+      let(:beta) { File.join(root, "beta").tap { |dir| git("init", "-q", dir) } }
+      let(:me) { make(cwd: my_worktree, prompt: "my own work") }
+
+      it "lists this project's sessions only (its worktrees too); cwd \"/\" lists every project's" do
+        mine = make(cwd: alpha, prompt: "in alpha")
+        other = make(cwd: beta, prompt: "in beta")
+
+        scoped = described_class.call("", peers: peers)
+        expect(scoped.lines.first).to include("in this project (alpha; cwd \"/\" for every project)")
+        expect(scoped).to include(mine.id[0, 8])
+        expect(scoped).not_to include(other.id[0, 8])
+
+        everything = described_class.call("", peers: peers, cwd: "/")
+        expect(everything).to include(mine.id[0, 8], other.id[0, 8])
+        expect(everything.lines.first).not_to include("this project")
+      end
+
+      it "keeps the stored project after its worktree is deleted" do
+        mine = make(cwd: alpha)
+        make(cwd: beta)
+        me
+        git("-C", alpha, "worktree", "remove", "--force", my_worktree)
+
+        out = described_class.call("", peers: peers)
+        expect(out).to include(mine.id[0, 8])
+        expect(out.lines.size).to eq(2)
+      end
+
+      it "says how to reach other projects when this one has no other session" do
+        me
+        make(cwd: beta)
+
+        expect(described_class.call("", peers: peers))
+          .to eq("No other chi sessions in this project (alpha); cwd \"/\" lists every project's.")
+      end
     end
   end
 
