@@ -1202,7 +1202,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { bridge })
 
-      expect(result).to match(status: :timeout, ack: { "error" => "worker_timeout", "detail" => /did not answer/ })
+      expect(result).to match(status: :timeout, ack: { "error" => "worker_timeout", "detail" => "the session's worker did not answer, so the message was not sent" })
       expect(input_files).to be_empty
     end
 
@@ -1215,7 +1215,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { client })
 
-      expect(result).to match(status: :timeout, ack: { "error" => "worker_timeout", "detail" => /did not answer/ })
+      expect(result).to match(status: :timeout, ack: { "error" => "worker_timeout", "detail" => "the session's worker did not answer, so the message was not sent" })
       expect(input_files).to be_empty
     ensure
       acceptor&.kill

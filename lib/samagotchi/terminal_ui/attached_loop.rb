@@ -461,6 +461,9 @@ module Samagotchi
         end
 
         detail = reply.json&.fetch("error", nil)
+        # Read after its deadline and dropped (BridgeClient#post_turn).
+        return @screen.commit("could not send the prompt (worker not answering in time)") if detail == "deadline_passed"
+
         explained = reply.json&.fetch("detail", nil) if detail == "images_unsupported"
         @screen.commit("could not send the prompt (#{[reply.status, detail].compact.join(" ")})#{": #{explained}" if explained}")
       rescue SystemCallError, IOError => e

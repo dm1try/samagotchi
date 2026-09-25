@@ -280,6 +280,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
                                       "could not send the prompt (worker unreachable: connection refused)")
     end
 
+    # The Bridge read it after its deadline (a slow worker) and dropped it.
+    it "says a prompt the worker dropped as too late wasn't sent" do
+      reply = Samagotchi::BridgeClient::Response.new(status: 408, body: '{"error":"deadline_passed"}')
+      allow(client).to receive(:post_turn).and_return(reply)
+
+      expect(run_with(["hello", nil])).to eq(:detached)
+
+      expect(screen.lines).to include("could not send the prompt (worker not answering in time)")
+    end
+
     it "stays up and says why a command didn't run" do
       allow(client).to receive(:post_command).and_raise(timeout)
 

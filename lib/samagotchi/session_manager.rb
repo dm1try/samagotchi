@@ -789,7 +789,7 @@ module Samagotchi
 
     private_class_method def self.turn_timeout
       { status: :timeout, ack: { "error" => "worker_timeout",
-                                 "detail" => "the session's worker did not answer; the message may still arrive" } }
+                                 "detail" => "the session's worker did not answer, so the message was not sent" } }
     end
 
     private_class_method def self.delivery_owner(manager, session_id, state_dir)

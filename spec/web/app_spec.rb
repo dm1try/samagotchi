@@ -688,7 +688,7 @@ RSpec.describe Samagotchi::Web::App do
       status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST", body: '{"prompt":"hi"}'))
 
       expect(status).to eq(504)
-      expect(JSON.parse(body.first)).to include("error" => "worker_timeout")
+      expect(JSON.parse(body.first)).to include("error" => "worker_timeout", "detail" => /message was not sent/)
     end
 
     it "falls back to the input file when no bridge comes up" do

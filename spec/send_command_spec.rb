@@ -152,6 +152,16 @@ RSpec.describe Samagotchi::SendCommand do
     expect(out.string).to eq("#{short(a)}  failed: Permission denied - input\n")
   end
 
+  it "says a message the worker didn't answer for was not sent" do
+    a = make(owner: "worker")
+    allow(Samagotchi::SessionManager).to receive(:deliver_turn)
+      .and_return(status: :timeout, ack: { "error" => "worker_timeout",
+                                           "detail" => "the session's worker did not answer, so the message was not sent" })
+
+    expect(run("-m", "x", a.id)).to eq(1)
+    expect(out.string).to eq("#{short(a)}  failed: the session's worker did not answer, so the message was not sent\n")
+  end
+
   it "reports an unknown or ambiguous id and exits 1" do
     live = make(owner: "worker")
     serve(live)
