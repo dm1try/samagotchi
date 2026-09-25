@@ -310,6 +310,19 @@ body.has-session #newBtn .brand-new{display:inline}
 body.has-session #scope .scope-where{display:none}
 /* A phone has no room for both; the hidden strip's pill (count, live) wins. */
 @media(max-width:600px){body.strip-hidden #scope .scope-where{display:none}}
+/* A phone's top bar stays one row: "chi +" (the rest of "+ new chat" goes),
+   tighter gaps, nothing wraps, and the "← project" link cuts with an
+   ellipsis before the pill does; the pill's ▾ is drawn larger to read. */
+@media(max-width:600px){
+  #topBar{gap:8px}
+  #scope{gap:6px}
+  #newBtn .brand-new-word{display:none}
+  #newBtn .brand-new,#scope .scope-back{white-space:nowrap}
+  #scope .scope-back{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  #stripShow{padding:3px 8px}
+  #newBtn .brand-new{font-size:16px}
+  #stripShow .pill-arrow{font-size:20px;line-height:0;vertical-align:-3px}
+}
 .card .folder{font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;color:var(--text-3)}
 .scope-error{grid-column:1/-1;font-size:13px;color:var(--warn-text)}
 .strip-toggle{font-size:11px;padding:3px 10px;background:transparent;color:var(--text-muted);border:1px solid var(--border);border-radius:999px}
@@ -382,9 +395,9 @@ a{color:var(--accent)}
 <body>
 <main>
   <div id="topBar">
-    <button type="button" id="newBtn" class="brand" title="New chat"><span class="brand-name">chi</span><span class="brand-new">+ new chat</span></button>
+    <button type="button" id="newBtn" class="brand" title="New chat"><span class="brand-name">chi</span><span class="brand-new">+<span class="brand-new-word"> new chat</span></span></button>
     <div id="scope" hidden></div>
-    <button type="button" class="strip-toggle" id="stripShow" title="Show the latest sessions">▾ sessions</button>
+    <button type="button" class="strip-toggle" id="stripShow" title="Show the latest sessions"><span class="pill-arrow" aria-hidden="true">▾</span> sessions</button>
   </div>
   <section id="topStrip" aria-label="Latest sessions" class="loading"><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div></section>
   <section id="center">
