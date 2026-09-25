@@ -11,6 +11,8 @@ require_relative "../bridge_client"
 require_relative "../bridge/bounded_queue"
 require_relative "../session"
 require_relative "../session_manager"
+require_relative "../host_registry"
+require_relative "../model_profile"
 require_relative "../project_scope"
 require_relative "../version"
 require_relative "../output_formatter"
@@ -53,6 +55,9 @@ module Samagotchi
       # whether the hub or the server is shutting down.
       EVENTS_HEARTBEAT = 15.0
       EVENTS_QUEUE = 256
+      # Seconds GET /api/models waits for the hosts' lists before answering
+      # with what it has (the listing goes on and fills the registry's cache).
+      MODELS_WAIT_TIMEOUT = 4.0
       EVENTS_POLL = 1.0
 
       # A callable the event loops ask whether the server still runs;
@@ -66,10 +71,19 @@ module Samagotchi
       #   overrides it for one page load
       # @param hub [SessionHub, nil] the session projection GET /api/events
       #   streams from; without one the route answers 503
+      # @param registry [HostRegistry, nil] the hosts GET /api/models lists
+      #   (built from the config on first use)
+      # @param models_wait_timeout [Float] bounded seconds GET /api/models
+      #   waits for the hosts' lists
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
                      bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, turn_view: true, hub: nil,
-                     events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE)
+                     events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
+                     registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT)
         @manager = manager || SessionManager
+        @registry = registry
+        @models_wait_timeout = models_wait_timeout
+        @models_mutex = Mutex.new
+        @models_thread = nil
         @session_class = session_class || Session
         @state_dir = state_dir
         @public_dir = public_dir || File.expand_path("public", __dir__)
@@ -104,6 +118,8 @@ module Samagotchi
           handle_create(req)
         when ["GET", "/api/info"]
           handle_info
+        when ["GET", "/api/models"]
+          handle_models
         when ["GET", "/api/events"]
           handle_events(req)
         else
@@ -265,6 +281,74 @@ module Samagotchi
       def handle_info
         json_response(200, { app: "chi-web", version: Samagotchi::VERSION, pid: Process.pid, cwd: Dir.pwd,
                              features: ["dir"] })
+      end
+
+      # The models a new session can start on, spelled as chi spells them
+      # elsewhere: bare for the default host (what default.model holds), and
+      # host:model for another host. The default is the configured model, or
+      # what spawn_session gives a session today. The hosts' lists come from
+      # the registry's cache (60 s; 10 min for a remote host); the route waits
+      # a bounded time for a fresh listing and answers with what it has, a
+      # host that failed or the wait running out noted in +warning+, never a
+      # failure: the default alone is enough for the page.
+      def handle_models
+        default = begin
+          ModelProfile.required_model_name
+        rescue StandardError
+          nil
+        end
+        models = []
+        warnings = []
+        begin
+          registry = host_registry
+          results = await_model_lists(registry)
+          if results.nil?
+            warnings << "the hosts are still listing their models"
+          else
+            default_host = registry.default_entry&.name
+            ordered = results.keys.sort_by { |name| [name == default_host ? 0 : 1, name] }
+            ordered.each do |host|
+              data = results[host]
+              if data[:error]
+                warnings << "#{host}: #{data[:error]}"
+                next
+              end
+              Array(data[:models]).each do |info|
+                id = info.id.to_s
+                next if id.strip.empty? || id.end_with?(":batch")
+
+                models << { name: host == default_host ? id : "#{host}:#{id}", host: host, id: id }
+              end
+            end
+          end
+        rescue StandardError => e
+          warnings << e.message
+        end
+        if default && models.none? { |m| m[:name].casecmp?(default) }
+          models.unshift({ name: default, host: nil, id: default })
+        end
+        payload = { default: default, models: models }
+        payload[:warning] = warnings.join("; ") unless warnings.empty?
+        json_response(200, payload)
+      end
+
+      def host_registry
+        @models_mutex.synchronize { @registry ||= HostRegistry.new }
+      end
+
+      # The hosts' model lists (cached ones as they are), or the last complete
+      # listing (nil when there is none) when this one is not done within the
+      # wait. One listing runs at a time; a request that finds one running
+      # waits on it. A listing that raised raises here.
+      def await_model_lists(registry)
+        thread = @models_mutex.synchronize do
+          unless @models_thread&.alive?
+            @models_thread = Thread.new { registry.list_all_models(force: false) }
+            @models_thread.report_on_exception = false
+          end
+          @models_thread
+        end
+        thread.join(@models_wait_timeout) ? thread.value : registry.cached_results
       end
 
       def sanitize_sort(val)

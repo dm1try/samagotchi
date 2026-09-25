@@ -905,6 +905,100 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  # A registry as GET /api/models reads it: list_all_models(force:) answers
+  # per host {models:, error:}; default_entry names the default host.
+  class FakeModelRegistry
+    attr_reader :calls
+
+    def initialize(results, default_host: "default", delay: 0, cached: nil)
+      @results = results
+      @default_host = default_host
+      @delay = delay
+      @cached = cached
+      @calls = []
+    end
+
+    def list_all_models(force: true)
+      @calls << force
+      sleep @delay if @delay.positive?
+      raise @results if @results.is_a?(Exception)
+
+      @results
+    end
+
+    def default_entry = Struct.new(:name).new(@default_host)
+    def cached_results = @cached
+  end
+
+  def model_info(id) = Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {})
+
+  describe "GET /api/models" do
+    def models_payload(registry, **opts)
+      app = described_class.new(manager: FakeResponsesManager.new, session_class: StubSessionLoader, registry: registry, **opts)
+      status, _headers, body = app.call(env_for("/api/models"))
+      expect(status).to eq(200)
+      JSON.parse(body.first)
+    end
+
+    it "lists the default host's models bare and the other hosts' as host:model, the default host first, from the cached lists" do
+      registry = FakeModelRegistry.new({
+        "box" => { models: [model_info("gemma4-26b"), model_info("qwen3.6")], error: nil },
+        "default" => { models: [model_info("Gemma-4B-it"), model_info("Qwen3-14B")], error: nil }
+      })
+
+      payload = models_payload(registry)
+
+      expect(payload["default"]).to eq("Gemma-4B-it")
+      expect(payload["models"].map { |m| m["name"] }).to eq(%w[Gemma-4B-it Qwen3-14B box:gemma4-26b box:qwen3.6])
+      expect(payload["models"].last).to eq("name" => "box:qwen3.6", "host" => "box", "id" => "qwen3.6")
+      expect(payload).not_to have_key("warning")
+      expect(registry.calls).to eq([false])
+    end
+
+    it "keeps the default in the list when no host lists it, and leaves :batch variants out" do
+      registry = FakeModelRegistry.new({ "default" => { models: [model_info("other"), model_info("other:batch")], error: nil } })
+
+      payload = models_payload(registry)
+
+      expect(payload["models"].map { |m| m["name"] }).to eq(%w[Gemma-4B-it other])
+      expect(payload["models"].first).to eq("name" => "Gemma-4B-it", "host" => nil, "id" => "Gemma-4B-it")
+    end
+
+    it "answers with the other hosts and a warning when a host is down" do
+      registry = FakeModelRegistry.new({
+        "default" => { models: [model_info("Gemma-4B-it")], error: nil },
+        "cloud" => { models: [], error: "connection refused" }
+      })
+
+      payload = models_payload(registry)
+
+      expect(payload["models"].map { |m| m["name"] }).to eq(%w[Gemma-4B-it])
+      expect(payload["warning"]).to eq("cloud: connection refused")
+    end
+
+    it "answers the default alone with a warning when the registry fails" do
+      payload = models_payload(FakeModelRegistry.new(RuntimeError.new("no config")))
+
+      expect(payload).to eq("default" => "Gemma-4B-it", "models" => [{ "name" => "Gemma-4B-it", "host" => nil, "id" => "Gemma-4B-it" }],
+                            "warning" => "no config")
+    end
+
+    it "does not wait past its deadline: a slow listing answers the last cached lists, or the default alone" do
+      slow = FakeModelRegistry.new({ "default" => { models: [model_info("late")], error: nil } }, delay: 1)
+      started = mono
+      payload = models_payload(slow, models_wait_timeout: 0.05)
+
+      expect(mono - started).to be < 0.5
+      expect(payload["models"].map { |m| m["name"] }).to eq(%w[Gemma-4B-it])
+      expect(payload["warning"]).to eq("the hosts are still listing their models")
+
+      cached = FakeModelRegistry.new({ "default" => { models: [model_info("late")], error: nil } }, delay: 1,
+                                     cached: { "default" => { models: [model_info("Gemma-4B-it"), model_info("old")], error: nil } })
+      payload = models_payload(cached, models_wait_timeout: 0.05)
+      expect(payload["models"].map { |m| m["name"] }).to eq(%w[Gemma-4B-it old])
+    end
+  end
+
   describe "GET /" do
     it "serves index.html with hard no-cache headers and no polling code" do
       app = build_app(manager: FakeResponsesManager.new)
