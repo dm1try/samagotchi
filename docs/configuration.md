@@ -82,7 +82,9 @@ variables; non-scalar sections are skipped by the env-loader and parsed by
 their respective subsystems (e.g. the hooks system, `HostRegistry`). The
 `memories:` list is the persistent baseline for preloaded memory entries —
 the same name shape as `--memory` (bare name or `scope/name`), merged under
-any per-run `--memory` values (config baseline first, deduped).
+any per-run `--memory` values (config baseline first, deduped). A per-run
+`--mute NAME` removes an entry from the merged list for that session (see
+"Muting a memory" in cli.md).
 
 ## Model Server Transport
 

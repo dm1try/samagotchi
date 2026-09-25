@@ -98,7 +98,10 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
 
 - `LaunchMode.resolve` picks the terminal's mode. By default (`session.shared: true`)
   plain `bin/chi`, `-p` and `--resume ID` run attached, like `--shared`; `--no-shared`,
-  `session.shared: false`, `--non-interactive`, `--memory` and `--verbose` run the REPL.
+  `session.shared: false`, `--non-interactive` and `--verbose` run the REPL. `--memory`
+  and `--mute` are session fields (`preloaded_memory_names`, `muted_memory_names`) the
+  worker reads when it builds its `Engine`; `MutedMemories` filters the prompt's index and
+  the kernel's `memory_read`.
 - The REPL → builds `TerminalUI`. `TerminalUI#run` is the single dispatch
   for the REPL, `-p`/`--prompt`, `--non-interactive`, and `--resume`.
 - Attached (`bin/chi`, `--attach ID`, `--shared [--resume ID]`) → `TerminalUI::AttachLauncher`: no `Engine`

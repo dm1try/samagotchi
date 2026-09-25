@@ -34,7 +34,8 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `--attach SESSION_ID` | Attach to a session's worker, waking one if it has exited. |
 | `--model NAME` | Use this model for the run (overrides the configured default and a resumed session's model). |
 | `--profile NAME` | Prompt profile (`qwen36` or `gemma4`) for every model in this run, over config and the server's template (same as `--model-profile`, env `SAMAGOTCHI_MODEL_PROFILE`). See "Prompt profile" in configuration.md. |
-| `--memory NAME` | Preload a memory entry into the system prompt (repeatable). Merged under the config.yml `memories:` baseline. |
+| `--memory NAME` | Preload a memory entry into the system prompt (repeatable; a comma list too). Merged under the config.yml `memories:` baseline. Works attached: the list is stored on the session, so its worker builds the same prompt on every respawn. |
+| `--mute NAME` | Hide a memory from this session (repeatable; a comma list too): its index line is not in the prompt, `memory_read` refuses it, the identity auto-load skips it, and it is dropped from the preloads (config baseline or `--memory`). A name matches in both scopes (`gh-helper`, `project/gh-helper` and `gh-helper.md` all hide `gh-helper`). Nothing on disk changes. See [Muting a memory](#muting-a-memory). |
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
 | `--no-default-input` | Skip prefilling the first REPL line from `SAMAGOTCHI_DEFAULT_INPUT`. |
 | `-v`, `--verbose` | Log at debug level (raw LLM responses, tool call/result payloads) and print every log record to stderr too. |
@@ -147,12 +148,37 @@ no worker:
 - `--no-shared`, for one run, or `session.shared: false` in the config
   (`SAMAGOTCHI_SESSION_SHARED=0`), for every run.
 - `--non-interactive`, a one-shot with no REPL.
-- `--memory` and `--verbose`, which attached mode can't honor. They print a
-  one-line note, e.g. `(session.shared: --memory runs in a plain REPL)`.
+- `--verbose`, which attached mode can't honor (the worker prints nothing). It
+  prints a one-line note, `(session.shared: --verbose runs in a plain REPL)`.
 
 A session the REPL has open can't be shared: `--resume` and `--attach` on it say
 "close it there first", and the Web UI shows it read-only. `--attach`/`--shared`
-can't be combined with `--non-interactive`, `--memory` or `--verbose`.
+can't be combined with `--non-interactive` or `--verbose`.
+
+### Muting a memory
+
+`chi --mute NAME` runs a session without a memory: for a memory whose
+description mixes the context for a small model, or one a bundle owns
+(`gh-helper`, `jira-manager`) that is not worth editing locally. The memory's
+file and index line stay as they are; only this session doesn't see it.
+
+- `--memory` and `--mute` are session fields (`preloaded_memory_names`,
+  `muted_memory_names` in the session's JSON), written before the worker
+  starts. A worker respawned by `--resume`, `--attach` or `chi send` builds
+  the same prompt, and a REPL `--resume` of that session keeps the lists too
+  (merged with the flags it is given).
+- A mute wins: `--mute user_preferences` drops that config baseline entry for
+  one session, and `--memory x --mute x` is a mute (one warning line).
+- Names are checked before the launch, warnings only: `Warning: --memory 'x'
+  not found`, `Warning: --mute 'x' matches no memory`, `Warning: 'x' is both
+  --memory and --mute; muted`.
+- `--attach ID` or `--resume ID` with either flag: the session's prompt is
+  already built, so the flags are ignored with one line,
+  `(--mute applies to a new session; <id>'s prompt is already built)`.
+- The status row shows `mem: <used and preloaded>` and `muted: <names>`; the
+  Web UI's info-bar tooltip shows `memories: … · preloaded: … · muted: …`.
+- The `read` tool on `memories/<name>.md` is not refused (a guardrails rule
+  can protect the path if wanted).
 
 ### Typing during a turn
 
@@ -380,6 +406,9 @@ Behavior:
 - When a memory is loaded between tool rounds, the spinner line includes a `loaded: <memory>` notification immediately after the spinner frame.
 - After responses, memory details are shown via the same unified `status>` line.
 - The legacy standalone `memories>` summary line is no longer emitted.
+- With `--mute`, the sticky and idle rows add `muted: <names>` after `mem:` (the
+  spinner row doesn't). Attached, `mem:` shows the used memories and the
+  session's `--memory` list before the first turn records them.
 
 Configuration:
 

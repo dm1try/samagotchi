@@ -26,7 +26,10 @@ Each memory entry may have a companion file named `<name>.<model-key>.md` in the
 
 At startup, the agent reads both scope indexes with blank-name memory reads
 and injects them into the system prompt as `Project memories` and
-`System memories`.
+`System memories`. A memory muted for the session (`chi --mute NAME`) has its
+index line dropped there and from a blank-name `memory_read`; reading it by
+name answers `Error: memory 'NAME' is muted for this session` (the other
+names of a comma list are read). Its file and index line are untouched.
 
 These startup index reads are harness-injected context assembly and are not
 rendered as `tool>` activity lines.
