@@ -194,3 +194,35 @@ test("cancelLineText / cancelLineHtml: the live line and the one a re-render dra
   assert.equal(cancelLineHtml({ status: "completed" }, esc), "");
   assert.equal(cancelLineHtml(null, esc), "");
 });
+
+// Live, a canceled turn's partial text stays in the block unless the turn
+// was one step with no tools (turn_view.js turnEnded); a reload agrees.
+const CANCELED = normalizeTiming({
+  turn_records: [{ id: "T1", status: "canceled", cancellation_reason: "user", duration_ms: 12000 }],
+  tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
+});
+
+test("turnGroups with parts: a canceled multi-step turn's last text is a step, not the answer", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "Checking.", parts: { thinking: "plan", tools: [EXECUTE] } },
+    { role: "assistant", content: "Both checks passed:\n[interrupted]", parts: { thinking: "sum up" } },
+  ];
+  assert.deepEqual(turnGroups(items, CANCELED)[0], {
+    kind: "turn", turnIndex: 0, user: 0, answer: null, record: CANCELED.turnRecords[0], steps: [
+      { i: 1, iteration: 1, thinking: "plan", tools: [{ key: "1:1", status: "ok", duration_ms: 7, ...EXECUTE }] },
+      { i: 2, iteration: 2, thinking: "sum up", tools: [] },
+    ],
+  });
+});
+
+test("turnGroups: a canceled multi-step turn without parts keeps every text as a step; a one-step one keeps its answer", () => {
+  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "Checking." }, { role: "assistant", content: "Both\n[interrupted]" }];
+  const g = turnGroups(items, CANCELED)[0];
+  assert.equal(g.answer, null);
+  assert.deepEqual(g.steps.map((s) => [s.i, s.iteration, s.tools.length]), [[1, 1, 1], [2, 2, 0]]);
+  const plain = [{ role: "user", content: "p" }, { role: "assistant", content: "Half an answer\n[interrupted]", parts: { thinking: "t" } }];
+  const oneStep = normalizeTiming({ turn_records: [{ id: "T1", status: "canceled", duration_ms: 900 }] });
+  assert.equal(turnGroups(plain, oneStep)[0].answer, 1);
+  assert.equal(turnGroups(plain.map(({ parts, ...m }) => m), oneStep)[0].answer, 1);
+});

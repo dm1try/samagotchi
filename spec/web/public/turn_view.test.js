@@ -89,3 +89,20 @@ test("turnHistoryHtml: a canceled turn with an answer ends with its cancel line 
   const done = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 4400 }] });
   assert.doesNotMatch(turnHistoryHtml(items, done, { thumbs }), /bubble cancel/);
 });
+
+test("turnHistoryHtml: a canceled multi-step turn keeps its partial text in the block, as live: no answer bubble", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "Checking.", parts: { tools: [{ tool: "execute", params: 'command="true"', output: "exit: 0" }] } },
+    { role: "assistant", content: "Both checks passed:\n[interrupted]" },
+  ];
+  const canceled = normalizeTiming({
+    turn_records: [{ id: "T1", status: "canceled", cancellation_reason: "user", duration_ms: 12000 }],
+    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
+  });
+  const html = turnHistoryHtml(items, canceled, { thumbs });
+  assert.doesNotMatch(html, /bubble output/);
+  assert.match(html, /2 steps · 1 tool call/);
+  assert.match(html, /Both checks passed:/);
+  assert.match(html, /<\/details><div class="turn-timing">turn 1 · 12s · canceled<\/div><div class="bubble cancel">✕ canceled \(user\)<\/div>$/);
+});
