@@ -16,7 +16,7 @@ body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetic
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#dock,#topStrip .card{background:var(--bg-panel)}}
 @media (prefers-reduced-transparency:reduce){#dock,#topStrip .card{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}}
 body.no-glass #dock,body.no-glass #topStrip .card{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
-button,input,textarea{font:inherit}
+button,input,textarea,select{font:inherit}
 button{background:var(--primary);border:0;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;transition:filter .12s ease,background .12s ease}
 button:hover:not(:disabled){filter:brightness(1.12)}
 button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -261,6 +261,18 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 #composer #actionBtn{min-width:64px;font-weight:600}
 #composer #actionMenuBtn{width:28px;min-width:28px;padding:0}
 #composer #createAltBtn{order:0}
+/* The model picker (start page only): reads as a label, "host:model ▾", left of Start; a native select under a drawn caret. */
+/* A select is as wide as its widest option: a hidden copy of the chosen name (data-value) sizes the box to that name instead, and the select fills it. */
+.model-pick{order:0;position:relative;display:inline-block;max-width:min(50%,380px);height:28px;border-radius:8px;overflow:hidden;color:var(--text-muted);font-size:12px;transition:background .12s ease,color .12s ease}
+.model-pick[hidden],body.has-session .model-pick{display:none}
+.model-pick:hover,.model-pick:focus-within{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);color:var(--text-2)}
+.model-pick::before{content:attr(data-value);display:block;visibility:hidden;padding:0 22px 0 8px;white-space:pre;line-height:28px}
+.model-pick::after{content:"";position:absolute;right:9px;top:50%;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-70%) rotate(45deg);pointer-events:none}
+.model-pick select{position:absolute;inset:0;appearance:none;-webkit-appearance:none;width:100%;height:28px;padding:0 22px 0 8px;border:0;border-radius:8px;background:transparent;color:inherit;font-size:12px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;color-scheme:dark}
+.model-pick select:focus{outline:none}
+.model-pick select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.model-pick option{color:var(--text);background:var(--bg-panel)}
+@media(max-width:600px){.model-pick{max-width:60%}}
 #composer #actionMenu{position:absolute;right:14px;bottom:44px;background:var(--bg-panel);border:1px solid var(--border-strong);border-radius:8px;padding:4px;display:none;flex-direction:column;gap:2px;z-index:10;min-width:180px}
 #composer #actionMenu.visible{display:flex}
 #composer #actionMenu button{justify-content:flex-start;background:transparent;color:var(--text);padding:8px 10px;border-radius:6px;text-align:left}
@@ -438,6 +450,7 @@ a{color:var(--accent)}
           <textarea id="prompt" placeholder="Ask chi anything…"></textarea>
         </div>
         <div class="actions-col">
+          <label id="modelPick" class="model-pick" title="The model the new chat starts on" hidden><select id="modelSelect" aria-label="Model for the new chat"></select></label>
           <button id="createAltBtn" class="ghost" style="display:none">New chat</button>
           <div id="composeHint">Enter to start · Shift+Enter for a newline</div>
           <button id="cancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Cancel</button>

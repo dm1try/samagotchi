@@ -11,6 +11,7 @@ import {
   stopSession,
   deleteSession,
   dismissQuestion,
+  listModels,
 } from "../../../lib/samagotchi/web/public/data.js";
 
 function okResponse(body, status = 200) {
@@ -87,6 +88,31 @@ test("createSession and createIdleSession send the folder in the body when given
   await createIdleSession({ dir: "/r", fetchImpl });
   await createIdleSession({ fetchImpl });
   assert.deepEqual(bodies, [{ prompt: "hi", dir: "/r" }, { idle: true, dir: "/r" }, { idle: true }]);
+});
+
+test("createSession and createIdleSession send the model in the body when given, not when blank", async () => {
+  const bodies = [];
+  const fetchImpl = (_path, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return Promise.resolve(okResponse({ id: "new" }));
+  };
+  await createSession("hi", { dir: "/r", model: "box:gemma", fetchImpl });
+  await createSession("hi", { model: "", fetchImpl });
+  await createIdleSession({ model: "box:gemma", fetchImpl });
+  assert.deepEqual(bodies, [{ prompt: "hi", dir: "/r", model: "box:gemma" }, { prompt: "hi" }, { idle: true, model: "box:gemma" }]);
+});
+
+test("listModels reads /api/models", async () => {
+  const calls = [];
+  const payload = { default: "a", models: [{ name: "a", host: "default", id: "a" }] };
+  const got = await listModels({
+    fetchImpl: (path) => {
+      calls.push(String(path));
+      return Promise.resolve(okResponse(payload));
+    },
+  });
+  assert.deepEqual(calls, ["/api/models"]);
+  assert.deepEqual(got, payload);
 });
 
 test("createSession posts a JSON prompt", async () => {
