@@ -58,6 +58,13 @@ RSpec.describe Samagotchi::ConfigFile do
                                        env: { "SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES" => "0.2" })).to eq(0.2)
       end
 
+      it "caps a session's running delegates at 4, from the file or the env, with no CLI flag" do
+        expect(described_class.resolve("session.max_children", file_data: {}, env: {})).to eq(4)
+        expect(described_class.resolve("session.max_children", file_data: {}, env: { "SAMAGOTCHI_SESSION_MAX_CHILDREN" => "1" })).to eq(1)
+        expect(described_class.resolve("session.max_children", file_data: { "session" => { "max_children" => 2 } }, env: {})).to eq(2)
+        expect(described_class.cli_entries.map(&:key)).not_to include("session.max_children")
+      end
+
       it "runs plain chi attached unless session.shared is turned off" do
         expect(described_class.resolve("session.shared", file_data: {}, env: {})).to be(true)
         expect(described_class.resolve("session.shared", file_data: {}, env: { "SAMAGOTCHI_SESSION_SHARED" => "0" })).to be(false)

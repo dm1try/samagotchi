@@ -56,6 +56,7 @@ session:
   shared: true
   # idle_exit_minutes: 30   # an unused worker exits after this (0 = never)
   # keep_empty: false       # true keeps sessions nothing happened in (default: deleted when left)
+  # max_children: 4         # running sessions one session may have delegated at a time (the delegate tool)
 
 # Baseline memories preloaded into the system prompt (same shape as --memory).
 # CLI --memory entries are appended after these, deduped.

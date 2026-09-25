@@ -87,6 +87,8 @@ module Samagotchi
       Entry.new(key: "session.shared",                yaml_path: %w[session shared],                type: :bool,    default: true,  expose: %i[env config]),
       # false: a session nothing happened in is deleted when it is left (SessionManager.empty_session?).
       Entry.new(key: "session.keep_empty",            yaml_path: %w[session keep_empty],            type: :bool,    default: false, expose: %i[env config]),
+      # The most sessions one session may have delegated and still running (the delegate tool); a guard against a runaway model.
+      Entry.new(key: "session.max_children",          yaml_path: %w[session max_children],          type: :integer, default: 4,     expose: %i[env config]),
 
       # Images sent to a model (ImageStore): the long side they are downscaled
       # to, the most bytes one may take (bigger → re-encoded as jpeg), and how
