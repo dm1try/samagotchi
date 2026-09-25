@@ -20,21 +20,21 @@ test("turnHistoryHtml: a reloaded tool turn is a collapsed block of steps, then 
   ];
   const html = turnHistoryHtml(items, timing, { thumbs });
   assert.equal(html,
-    '<div class="bubble user"><div class="user-message">p</div></div>' +
+    '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
     '<details class="turn-work done"><summary>2 steps · 2 tool calls</summary>' +
     '<details class="gen"><summary>Let me &lt;check&gt;. · 1 tool call</summary><div class="gen-text">Let me &lt;check&gt;.</div>' +
     '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok">done</span><span class="activity-tool">execute</span><span class="activity-params">7ms</span></div></div></details>' +
     '<details class="gen"><summary>working with read · 1 tool call</summary>' +
     '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok">done</span><span class="activity-tool">read</span><span class="activity-params">1.2s</span></div></div></details>' +
     '</details>' +
-    '<div class="bubble output markdown"><p>Both <em>fine</em>.</p><div class="turn-timing">turn 1 · 19s</div></div>');
+    '<div class="bubble output markdown" data-copy-source="Both fine."><p>Both <em>fine</em>.</p><div class="turn-timing">turn 1 · 19s</div></div>');
 });
 
 test("turnHistoryHtml: a plain answer and a note render as the chat view does", () => {
   const items = [{ role: "user", content: "p" }, { role: "assistant", content: "PONG" }, { role: "note", content: "n", label: "x" }];
   const plain = normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 500 }] });
   assert.equal(turnHistoryHtml(items, plain, { thumbs }),
-    '<div class="bubble user"><div class="user-message">p</div></div>' +
+    '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
     '<div class="bubble output">PONG<div class="turn-timing">turn 1 · 0.5s</div></div>' +
     '<div class="bubble note"><div class="note-line">note from x</div><div class="note-text">n</div></div>');
 });
