@@ -70,6 +70,19 @@ RSpec.describe Samagotchi::Engine do
       expect(prompt).to include("Current session id: #{session.id} (resume later with `chi --resume #{session.id}`)")
       expect(prompt).to include("My debug log: #{Samagotchi::LogPath.resolve} (one record per line; this session's carry sid=#{session.id[0, 8]})")
     end
+
+    it "tells a delegated session which session reads its reply" do
+      engine = build_engine(profile: "gemma4")
+      session = make_session
+      engine.session = session
+      plain = engine.send(:system_prompt_with_index, engine.send(:assist_system_prompt))
+      expect(plain).not_to include("Delegated by session")
+
+      session.parent_id = "parent-1234"
+      prompt = engine.send(:system_prompt_with_index, engine.send(:assist_system_prompt))
+      expect(prompt).to include("Current session id: #{session.id} (resume later with `chi --resume #{session.id}`)")
+      expect(prompt).to match(/^Delegated by session parent-1234: it reads your final reply; reach it with send_note\.$/)
+    end
   end
 
   describe "project location in the system prompt" do

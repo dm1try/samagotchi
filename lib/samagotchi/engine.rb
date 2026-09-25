@@ -2231,7 +2231,8 @@ module Samagotchi
     end
 
     # Fixed for the session's lifetime, so it doesn't churn the prompt cache.
-    # Omitted until a session is attached (run_turn / TerminalUI set it).
+    # Omitted until a session is attached (run_turn / TerminalUI set it). A
+    # delegated session (parent_id set) is told who reads its reply.
     def current_session
       id = @session&.id.to_s
       return nil if id.empty?
@@ -2240,7 +2241,11 @@ module Samagotchi
       # The log path too: asked what went wrong, a model that has to look
       # it up guesses ~/.local/state first (the self-awareness probes).
       log = begin; LogPath.resolve; rescue StandardError; nil; end
-      log ? "#{line}\nMy debug log: #{log} (one record per line; this session's carry sid=#{id[0, Log::SID_LENGTH]})" : line
+      line = "#{line}\nMy debug log: #{log} (one record per line; this session's carry sid=#{id[0, Log::SID_LENGTH]})" if log
+      parent = @session.parent_id.to_s
+      return line if parent.empty?
+
+      "#{line}\nDelegated by session #{parent}: it reads your final reply; reach it with send_note."
     end
 
     def skip_agent_description?
