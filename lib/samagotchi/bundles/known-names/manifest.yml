@@ -1,0 +1,14 @@
+---
+name: known-names
+version: 0.1.0
+scope: system
+description: Catches a near-miss of a protected name (home folder, login, git name, repo name, names from config) in a tool call and rejects it with the right spelling; mode ask / correct optional
+trust_level: reviewed
+files:
+  known_names.md: sha256:d5348b95b6c655017b541910b36e384220da280818160201f6ec9a50e1e4287c
+hooks:
+  known_names.rb:
+    sha256: sha256:4c7ac1231f374d6840acea0ca62f5fe2ebedaa3fbb5669002511e6e03ca58917
+    event: before_tool_call
+    on_error: log
+    priority: 50
