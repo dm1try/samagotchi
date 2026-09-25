@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/kernel_loop"
+require "samagotchi/hooks"
 require "samagotchi/session"
 require "fileutils"
 require "tmpdir"
@@ -32,6 +33,18 @@ RSpec.describe Samagotchi::KernelLoop do
     it "returns the model response when no tool calls are present" do
       allow(client).to receive(:complete).and_return("Hello!")
       expect(kernel.run([{ role: "user", content: "hi" }])).to eq("Hello!")
+    end
+
+    it "gives after_generation a frozen copy of the conversation as sent" do
+      registry = Samagotchi::Hooks::Registry.new
+      seen = []
+      registry.register(:after_generation) { |event| seen << event[:messages] }
+      allow(client).to receive(:complete).and_return("Hello!")
+
+      described_class.new(client: client, hooks: registry).run([{ role: "user", content: "hi" }])
+
+      expect(seen).to eq([[{ role: "user", content: "hi" }]])
+      expect(seen.first).to be_frozen
     end
 
     it "supports String-style include? checks on the returned result" do

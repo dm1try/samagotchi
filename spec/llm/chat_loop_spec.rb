@@ -249,6 +249,18 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(fired).to eq([[:before, 1], [:after, "hello back"]])
     end
 
+    it "gives after_generation a frozen copy of the conversation as sent" do
+      registry = Samagotchi::Hooks::Registry.new
+      seen = []
+      registry.register(:after_generation) { |event| seen << event[:messages] }
+      allow(fake_kernel).to receive(:hooks).and_return(registry)
+
+      run([{ role: "user", content: "go" }])
+
+      expect(seen).to eq([[{ role: "user", content: "go" }]])
+      expect(seen.first).to be_frozen
+    end
+
     it "sets the turn's usage from the server's counts" do
       usage = Samagotchi::LLM::Usage.new(prompt_tokens: 300, completion_tokens: 12, source: :server)
       backend.adapter = FakeChatAdapter.new(text("ok", usage: usage))

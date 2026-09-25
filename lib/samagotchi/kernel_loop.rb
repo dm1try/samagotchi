@@ -282,8 +282,10 @@ module Samagotchi
           requested_model: resolved_model_name
         )
         dump_log("response", response, iteration: iteration_index + 1)
-        # Fire :after_generation hook (after LLM returns, before tool parse)
-        after_gen_event = { type: :after_generation, iteration: iteration_index + 1, response: response }
+        # Fire :after_generation hook (after LLM returns, before tool parse),
+        # with a read-only copy of the conversation as sent.
+        after_gen_event = { type: :after_generation, iteration: iteration_index + 1, response: response,
+                            messages: conversation.map(&:dup).freeze }
         fire_hook(:after_generation, after_gen_event) if @hooks
         conversation << { role: "model", content: response }
 

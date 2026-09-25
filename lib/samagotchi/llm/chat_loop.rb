@@ -322,7 +322,8 @@ module Samagotchi
           emit(type: :generation_completed, iteration: iteration, content_length: response.text.length,
                served_model: response.model, requested_model: @model_name)
           dump_response(response, iteration)
-          @loop.fire_hook(:after_generation, { type: :after_generation, iteration: iteration, response: response.text })
+          @loop.fire_hook(:after_generation, { type: :after_generation, iteration: iteration, response: response.text,
+                                               messages: @conversation.map(&:dup).freeze })
           [response, nil]
         rescue RequestCancelled => e
           [e.reason, streamed]

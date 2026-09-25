@@ -857,6 +857,13 @@ module Samagotchi
       Guardrails::Approval.settle(verdict, open_question(payload), payload[:approval][:scopes])
     end
 
+    # The conversation as a hook may read it: a frozen array of copied
+    # messages, so a hook cannot change what the turn sends or stores.
+    def hook_messages(messages)
+      Array(messages).map(&:dup).freeze
+    end
+    private :hook_messages
+
     # ── The hook runtime (Hooks::Runtime) ─────────────────────────────────────
 
     # The three things a hook can do beyond reading its event. Each gets the
@@ -1330,8 +1337,10 @@ module Samagotchi
           @first_turn = false
         end
 
-        # Fire :before_turn hook
-        @hooks.fire(:before_turn, { type: :before_turn })
+        # Fire :before_turn hook, with a read-only copy of the history so far
+        # and the prompt (nil on a continue).
+        @hooks.fire(:before_turn, { type: :before_turn, session_id: session.id, prompt: prompt,
+                                    messages: hook_messages(session.messages) })
 
         messages = session.messages.dup
         # Built once per Engine (and again after a model switch) so the prompt
@@ -1426,8 +1435,10 @@ module Samagotchi
         end
         @metrics.persist
 
-        # Fire :after_turn hook (runs even on cancel/success)
-        @hooks.fire(:after_turn, { type: :after_turn })
+        # Fire :after_turn hook (runs even on cancel/success), with a read-only
+        # copy of the conversation the turn stored.
+        @hooks.fire(:after_turn, { type: :after_turn, status: canceled ? "canceled" : "completed",
+                                   messages: hook_messages(session.messages) })
 
         # Fire :session_end after every turn (turn-level lifecycle)
         @hooks.fire(:session_end, { type: :session_end, session_id: session.id })
