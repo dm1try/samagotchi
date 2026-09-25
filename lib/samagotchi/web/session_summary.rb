@@ -37,6 +37,9 @@ module Samagotchi
           short_id: session.id.to_s[0, 8],
           test_run: !!session.test_run,
           used_memory_names: used,
+          # The session's --memory and --mute lists (info-bar tooltip).
+          preloaded_memory_names: session.respond_to?(:preloaded_memory_names) ? Array(session.preloaded_memory_names) : [],
+          muted_memory_names: session.respond_to?(:muted_memory_names) ? Array(session.muted_memory_names) : [],
           first_preview: first_preview_for(session),
           owner: owner&.fetch("kind", nil),
           # The saved recap's first sentence, for the session card.

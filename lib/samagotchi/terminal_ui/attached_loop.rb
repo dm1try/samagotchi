@@ -115,6 +115,10 @@ module Samagotchi
         @turn_continues = false
         # The idle status line's data (the REPL's segments).
         @memory_names = []
+        # The session's --memory list (shown with the used memories until the
+        # first turn records them) and its --mute list, from the join.
+        @preloaded_names = []
+        @muted_names = []
         @context_estimate = nil
         @status_rows = nil
       end
@@ -906,6 +910,8 @@ module Samagotchi
         @served_model = nil
         take_served_model(state[:served_model], state[:served_model_for], refresh: false)
         @memory_names = Array(state[:used_memory_names]) if state.key?(:used_memory_names)
+        @preloaded_names = Array(state[:preloaded_memory_names]) if state.key?(:preloaded_memory_names)
+        @muted_names = Array(state[:muted_memory_names]) if state.key?(:muted_memory_names)
         refresh_status
       end
 
@@ -917,7 +923,8 @@ module Samagotchi
         served, served_for = @served_model
         segments = [@model_name ? status_model_text(@model_name, default_model_name, served: served, served_for: served_for) : "",
                     status_context_text(estimate: @context_estimate),
-                    status_memory_text(@memory_names, MEMORY_STICKY_PREVIEW_LIMIT)].reject(&:empty?)
+                    status_memory_text(@memory_names | @preloaded_names, MEMORY_STICKY_PREVIEW_LIMIT),
+                    status_memory_text(@muted_names, MEMORY_STICKY_PREVIEW_LIMIT, label: "muted")].reject(&:empty?)
         rows = status_rows(segments, @screen.columns - 1)
         return if rows == @status_rows
 

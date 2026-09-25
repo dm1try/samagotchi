@@ -1064,9 +1064,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "idle status line" do
     events.each { |e| attached.handle_event(JSON.parse(JSON.generate(e))) }
   end
 
-  def join(model_name: "m1", used_memory_names: [])
+  def join(model_name: "m1", used_memory_names: [], **state)
     { type: :snapshot, snapshot: { messages: [], current_turn: nil, queued: [], event_seq: 1 },
-      session_state_snapshot: { status: "idle", model_name: model_name, used_memory_names: used_memory_names } }
+      session_state_snapshot: { status: "idle", model_name: model_name, used_memory_names: used_memory_names, **state } }
   end
 
   def status = screen.slots[:status]&.first
@@ -1107,6 +1107,15 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "idle status line" do
     end)
 
     expect(status).to start_with("status> model=ornith (served; asked unsloth/Qwen3.6-35B-A3B…)")
+  end
+
+  it "shows the session's --memory list with the used memories, and its --mute list, from the join" do
+    feed(join(preloaded_memory_names: %w[cli_usage], muted_memory_names: %w[gh-helper]))
+    expect(status).to eq("status> model=m1 | mem: cli_usage | muted: gh-helper")
+
+    # After a turn the used list carries the preloads itself; no repeats.
+    feed({ type: :used_memories_updated, used_memory_names: %w[notes cli_usage] })
+    expect(status).to eq("status> model=m1 | mem: notes, cli_usage | muted: gh-helper")
   end
 
   it "adds the context estimate and the memories a turn used" do

@@ -61,6 +61,17 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       expect(json.keys).to include(:created_at, :updated_at, :used_memory_names)
     end
 
+    it "carries the session's --memory and --mute lists" do
+      s = session
+      s.preloaded_memory_names = ["cli_usage"]
+      s.muted_memory_names = ["gh-helper"]
+
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s)))
+        .to include(preloaded_memory_names: ["cli_usage"], muted_memory_names: ["gh-helper"])
+      expect(described_class.build(session, owner: nil, session_dir: session_dir(s)))
+        .to include(preloaded_memory_names: [], muted_memory_names: [])
+    end
+
     it "applies the owner to the status and names its kind" do
       s = session(status: "running")
 
