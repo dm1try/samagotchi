@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { turnOutput } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { turnOutput, workerGoneText } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("turnOutput reads turn_summary.output (result is a string on the wire)", () => {
   const data = { type: "turn_completed", result: "\nPONG", turn_summary: { output: "\nPONG" } };
@@ -211,4 +211,10 @@ import { reminderText } from "../../../lib/samagotchi/web/public/turn_events.js"
 test("reminderText names the reminders a turn got", () => {
   assert.equal(reminderText({ reminders: [{ name: "stretch" }, { name: "water" }] }), "reminder: stretch, water");
   assert.equal(reminderText({}), "reminder");
+});
+
+test("workerGoneText ends a running turn whose worker went away, and only a running one", () => {
+  assert.equal(workerGoneText({ turnRunning: true, stopped: true }), "\u2715 canceled (session stopped)");
+  assert.equal(workerGoneText({ turnRunning: true }), "\u2715 canceled (worker exited)");
+  assert.equal(workerGoneText({ turnRunning: false, stopped: true }), null);
 });
