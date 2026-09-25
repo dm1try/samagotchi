@@ -23,7 +23,6 @@ require_relative "output_formatter"
 require_relative "turn_preamble"
 require_relative "turn_flow"
 require_relative "session_commands"
-require_relative "session_manager"
 require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
 require_relative "terminal_ui/input_support"
@@ -35,6 +34,10 @@ require_relative "terminal_ui/repl_input"
 require_relative "log"
 
 module Samagotchi
+  # Loaded on first use: session_manager requires this file (its worker
+  # process loads the whole UI stack through it), a require cycle otherwise.
+  autoload :SessionManager, File.expand_path("session_manager", __dir__)
+
   # TerminalUI encapsulates the single operating mode of the harness.
   #
   # assist mode  — interactive REPL: user types, model responds, tools execute inline.
