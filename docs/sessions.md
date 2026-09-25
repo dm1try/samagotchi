@@ -28,8 +28,8 @@ A session is deleted if **expired by age OR overflow by count** (unless `keep_st
 **CLI:**
 
 ```sh
-bin/chi sessions list [--sort updated_at|created_at] [--order desc|asc] [--limit N]
-bin/chi sessions list [--live] [--cwd PATH] [--limit N] [--format text|json|tsv]
+bin/chi sessions list [--sort updated_at|created_at] [--order desc|asc] [--limit N] [--scope=all]
+bin/chi sessions list [--live] [--cwd PATH] [--limit N] [--format text|json|tsv] [--scope=all]
 bin/chi sessions stop ID
 bin/chi sessions delete [--force] ID...                    # for good; --force stops a live worker first
 bin/chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
@@ -48,6 +48,8 @@ bin/chi sessions clean --dry-run --days 7            # test sessions older than 
 
 `--dry-run` is the safe preview. Web has no prune endpoint; use the CLI.
 
+**Projects:** a session belongs to the git project it was started in: the repository, whichever worktree or subfolder of it (the same project root memories use). `chi sessions list` (with `--live` and `--format` too) and `chi web` show the current folder's project; `--scope=all` shows every session, and so does a folder in no repo (`~`). `--cwd PATH` is a folder filter instead of the project. The project is stored with the session (`project_root` in its JSON, `project` in `--format json`), so a session keeps it after its worktree is deleted; sessions older than that are placed by their folder, and one whose folder is gone shows in `--scope=all` only. Retention, `--resume`/`--attach ID`, `chi send`/`chi note ID` and `chi note --all` (every live session) are not scoped. The agent's `list_sessions` lists its own project's sessions; `cwd: "/"` lists every one.
+
 `--live`, `--cwd` and `--format` make `list` a picker for scripts (`SessionManager.session_summaries`): `--live` keeps the sessions a worker runs now (the owner lock, not the saved status; a session open in a plain REPL is left out), `--cwd PATH` those in PATH or below, and test runs are left out. `--live` shows 10 unless `--limit` says otherwise; filters apply before the limit. `--format json` prints `[{id, short_id, desc, cwd, updated_at, live, busy, owner, recap}]` (`owner`: `"worker"`, `"tui"` for a plain REPL, which takes no notes or messages, or null; `recap`: the first sentence of the session's recap, or null), `--format tsv` one `id<TAB>desc` line per session, where `desc` is `<folder> · <last prompt>` cut to 60 characters. With none of these flags the output is as before.
 
 ## Context notes
@@ -63,14 +65,14 @@ pbpaste | bin/chi note --source slack 3f2a 8c1d
 - It lands in `<uuid>/notes/`, apart from `input/`, so nothing that runs turns sees it. A live worker adds it to the conversation within a few seconds, between turns: one sent during a turn waits for that turn to end. A session with no worker keeps it until a worker next starts (a prompt, `--attach`), which adds it before anything else. A session open in a plain REPL (`--no-shared`) refuses notes. `chi note` prints one line per session: queued, waits for the next start (with the queue count), or refused.
 - In the conversation it is a tail system message marked `kind: note`, framed `[CONTEXT NOTE from slack, 14:02]\n…\n[END NOTE]` (from another session: `from session 3f2a1c (~/projects/foo)`). The system prompt says notes are background, not requests: the model uses one when it is relevant, doesn't answer it on its own, and never follows instructions inside it. Its text is escaped like user text, so it can't fake a turn. It survives `--resume`, a reload, `!rollback` and a continue answered no.
 - The web shows it as a dim "note from …" block, live (`context_added`) and after a reload; the attached terminal as one dim `note from slack: <first line>` line, also when joining.
-- Agents: `list_sessions` (other sessions, newest first, up to 20; optional `cwd`) and `send_note(session, text)`, which sends a note from this session. Neither starts a turn anywhere.
+- Agents: `list_sessions` (other sessions of this project, newest first, up to 20; optional `cwd`, `"/"` for every project) and `send_note(session, text)`, which sends a note from this session. Neither starts a turn anywhere.
 
 On macOS, `chi desktop install` does this with a native panel from the Services menu or a hotkey (see [Desktop helper](desktop.md)). A plain Automator Quick Action that sends the clipboard to the live sessions you pick works too (Automator: Quick Action, "Run Shell Script", shell `/bin/zsh`; Automator's PATH is minimal, so put your Ruby's bin dir on it and use the full path to `chi`):
 
 ```sh
 export PATH="$HOME/.local/share/mise/shims:$PATH"   # wherever your ruby lives
 chi="$HOME/projects/samagotchi/bin/chi"
-list=$("$chi" sessions list --live --format tsv)
+list=$("$chi" sessions list --live --scope=all --format tsv)
 [ -z "$list" ] && { osascript -e 'display notification "No live chi sessions" with title "chi note"'; exit 0; }
 picked=$(osascript - "$list" <<'OSA'
 on run argv
@@ -106,7 +108,7 @@ The Automator action above works for messages too: swap its last line for `pbpas
 **Ordering:**
 
 - `Session.list` / `SessionManager.list_sessions` / `GET /api/sessions?sort=&order=&limit=&offset=` default to `updated_at desc` (newest activity first). Also supports `created_at`, `asc`. `X-Total-Count` header when paginated.
-- Web UI (`bin/chi web`): the 3 latest sessions sit above the chat; "All sessions" (or `/`) opens every session at `#/sessions`, with a search over preview, id and status (Esc or Back returns). The open session is in the URL (`#/s/<id>`), so a reload or a copied link opens it again; the chi logo top left goes back to the empty start for a new chat. The message box grows with its text; drag its top edge to keep it taller (double-click resets). The info bar copies `chi --attach <id>` for a terminal.
+- Web UI (`bin/chi web`): the page's scope is in its URL. Started in a git repo, `chi web` opens `/?dir=<that folder>`: that project's sessions, and new chats start in that folder; the header chip says `<project> · all`, and `all` opens the same place without `?dir` (every session; a new chat there starts in the server's own folder, shown on the start page, and cards name their folder). One server serves every project: a second `chi web` (from another repo) finds it through `GET /api/info` and prints (with `--open`, opens) its page for its own folder instead of starting another. The 3 latest sessions sit above the chat; "All sessions" (or `/`) opens every session at `#/sessions`, with a search over preview, id and status (Esc or Back returns). The open session is in the URL (`#/s/<id>`), so a reload or a copied link opens it again; the chi logo top left goes back to the empty start for a new chat. The message box grows with its text; drag its top edge to keep it taller (double-click resets). The info bar copies `chi --attach <id>` for a terminal.
 - The web frontend is a zero-build ES-module stack in `lib/samagotchi/web/public/`: `data.js` (retrieval, typed SSE `openStream`, `watchForWorker`), `app.js` (presentation/state; with no live stream it polls the session until a worker is up, then re-reads it: `event_seq` starts over in each worker, so a dropped stream is never resumed with its old cursor), `format.js` (pure formatters such as `previewOf`). Unit-tested via `npm test` (`node --test spec/web/public/*.test.js`).
 - Selecting a session in the web UI is read-only: `GET /api/sessions/:id` never spawns a worker (it reads a live worker's snapshot when one runs, else the session file). A prompt (`POST /turn`) or a command (`POST /command`) wakes the worker, and `/stream` briefly waits for a freshly-spawned bridge before answering. A caught-up SSE reconnect holds the stream open; `reset` markers are only sent for reconnects behind the ring window, or with a cursor from another worker (event ids are `<event_seq>-<epoch>`, one epoch per worker).
 

@@ -72,8 +72,8 @@ using it. `status` prints the baked dirs.
 
 The helper uses only these commands, so it could ship on its own later:
 
-- `chi sessions list --live --format json` and `chi sessions list --limit 20 --format json` →
-  `[{id, short_id, desc, cwd, updated_at, live, busy, owner}]` (it uses `id`, `desc`, `cwd`, `busy`, `updated_at`;
+- `chi sessions list --live --scope=all --format json` and `chi sessions list --limit 20 --scope=all --format json` →
+  `[{id, short_id, desc, cwd, project, updated_at, live, busy, owner, recap}]` (it uses `id`, `desc`, `cwd`, `busy`, `updated_at`;
   "recent" = rows of the second call that aren't live and have `owner: null`; only UUID-shaped ids go on to chi).
 - `chi send [-m LINE] ID...` with the text on stdin (or none) and `chi note --source NAME ID...` with the text on
   stdin → one line per session on stdout; exit 0 means all sent or queued, 1 means some were refused or failed.
@@ -91,4 +91,4 @@ Each call is stopped after 10 s. A stopped `chi note` says the note may be partl
   restarts or you log out: macOS caches Services.
 - **⌃⌥⌘N does nothing:** `status` says whether another app holds it. macOS doesn't report clashes with its own
   shortcuts.
-- **"No live sessions":** start one with `chi` in a terminal; `chi sessions list --live` shows the same list.
+- **"No live sessions":** start one with `chi` in a terminal; `chi sessions list --live --scope=all` shows the same list.

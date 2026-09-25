@@ -9,9 +9,9 @@
 - `bin/chi --no-shared [--resume <session-id>]` — the plain in-process REPL instead, for this run
 - `bin/chi --attach <session-id>` — attach the terminal to a session's worker (e.g. one started from the Web UI), waking one if it has exited
 - A session id can be shortened to any unique prefix (like git): `bin/chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
-- `bin/chi web [--port 4567] [--open]` — start the Web UI (single localhost port session control plane)
+- `bin/chi web [--port 4567] [--open] [--scope=all]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
 - `bin/chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
-- `bin/chi sessions list|stop|delete|prune|clean` — manage persisted sessions (see [Sessions](sessions.md))
+- `bin/chi sessions list|stop|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one (see [Sessions](sessions.md))
 - `bin/chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
 - `bin/chi send [-m TEXT] (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context (see [Sessions: Sending a message](sessions.md#sending-a-message))
 - `bin/chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))

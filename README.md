@@ -42,8 +42,8 @@ bin/chi                                       # interactive session the web UI c
 bin/chi --no-shared                           # the plain in-process REPL
 bin/chi -p "explain lib/" --non-interactive   # one turn, print the answer, exit
 bin/chi --resume <session-id>                 # continue a saved session
-bin/chi web --open                            # web UI on http://127.0.0.1:4567
-bin/chi sessions list                         # saved sessions
+bin/chi web --open                            # web UI: this project's sessions (--scope=all: every one)
+bin/chi sessions list                         # this project's saved sessions (--scope=all: every one)
 pbpaste | bin/chi note --source slack <id>    # background context for a session (no turn)
 pbpaste | bin/chi send -m "same bug?" <id>    # a message to a session, the clipboard quoted above it
 ```
@@ -58,7 +58,7 @@ pbpaste | bin/chi send -m "same bug?" <id>    # a message to a session, the clip
 prompt: nothing runs, and the model sees it on its next turn framed as a note
 (`[CONTEXT NOTE from slack, 14:02] … [END NOTE]`) that it uses when relevant and
 never takes orders from. The web and the attached terminal show it as a dim
-"note from …" line. `chi sessions list --live --format tsv` lists the sessions
+"note from …" line. `chi sessions list --live --scope=all --format tsv` lists the sessions
 a note reaches (`id<TAB>description`). Agents can do the same: `list_sessions`
 finds another session, `send_note` tells it something.
 
