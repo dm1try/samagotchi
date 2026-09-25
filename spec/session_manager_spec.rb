@@ -510,6 +510,17 @@ RSpec.describe Samagotchi::SessionManager do
       expect(loaded.muted_memory_names).to eq(["gh-helper"])
     end
 
+    it "stores the parent session's id before the worker starts" do
+      allow(Process).to receive(:spawn).and_return(12_345)
+
+      session = described_class.spawn_session(prompt: "look", model_name: "gemma4", state_dir: tmpdir,
+                                              parent_id: "parent-1234")
+
+      expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).parent_id).to eq("parent-1234")
+      expect(Samagotchi::Session.load(described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir).id,
+                                      state_dir: tmpdir).parent_id).to be_nil
+    end
+
     it "records the first prompt as the preview, before the worker takes it" do
       allow(Process).to receive(:spawn).and_return(12_345)
 
@@ -1547,6 +1558,27 @@ RSpec.describe Samagotchi::SessionManager do
 
       expect(summary).to include(id: session.id, short_id: session.id[0, 8], desc: "app · fix the login page",
                                  cwd: "/work/app", updated_at: "2026-09-24T10:00:00Z", live: true, busy: true)
+    end
+
+    it "carries the parent link, and .children_of lists a parent's children newest first" do
+      parent = make(prompt: "plan", updated: "2026-09-24T09:00:00Z")
+      older = make(prompt: "first task", updated: "2026-09-24T10:00:00Z")
+      newer = make(prompt: "second task", updated: "2026-09-24T11:00:00Z", status: Samagotchi::Session::STATUS_RUNNING)
+      [older, newer].each do |child|
+        child.parent_id = parent.id
+        child.save(state_dir: tmpdir)
+      end
+      own(newer)
+
+      rows = described_class.session_summaries(state_dir: tmpdir).to_h { |s| [s[:id], s] }
+      expect(rows[parent.id]).to include(parent_id: nil, parent_short_id: nil)
+      expect(rows[older.id]).to include(parent_id: parent.id, parent_short_id: parent.id[0, 8])
+
+      children = described_class.children_of(parent.id, state_dir: tmpdir)
+      expect(children.map { |s| s[:id] }).to eq([newer.id, older.id])
+      expect(children.count { |s| s[:busy] }).to eq(1)
+      expect(described_class.children_of(nil, state_dir: tmpdir)).to eq([])
+      expect(described_class.children_of(older.id, state_dir: tmpdir)).to eq([])
     end
 
     it "cuts a long description to 60 characters and falls back to the first preview" do

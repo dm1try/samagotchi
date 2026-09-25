@@ -134,6 +134,23 @@ RSpec.describe Samagotchi::Session do
       expect(summary.muted_memory_names).to eq(["gh-helper"])
     end
 
+    it "round-trips parent_id, the session that delegated this one, and reads nil where there is none" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                            parent_id: "parent-1234")
+      expect(session.parent_id).to eq("parent-1234")
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+
+      expect(JSON.parse(File.read(path))["parent_id"]).to eq("parent-1234")
+      expect(described_class.load(session.id, state_dir: tmpdir).parent_id).to eq("parent-1234")
+      expect(described_class.summary_from_file(path).parent_id).to eq("parent-1234")
+
+      plain = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      plain.save(state_dir: tmpdir)
+      expect(described_class.load(plain.id, state_dir: tmpdir).parent_id).to be_nil
+      expect(JSON.parse(File.read(File.join(tmpdir, "#{plain.id}.json")))).to include("parent_id" => nil)
+    end
+
     it "reads a session file written before the memory-name fields as empty lists" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)

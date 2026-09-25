@@ -548,6 +548,11 @@ RSpec.describe Samagotchi::Engine do
         expect(snap[:metrics]).to be_a(Hash)
         expect(snap[:metrics][:turns]).to eq(0)
       end
+
+      it "carries the session's parent_id (nil before a session exists)" do
+        engine = build_engine(profile: "gemma4")
+        expect(engine.session_state_snapshot).to include(parent_id: nil)
+      end
     end
   end
 end

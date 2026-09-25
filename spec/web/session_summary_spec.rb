@@ -72,6 +72,13 @@ RSpec.describe Samagotchi::Web::SessionSummary do
         .to include(preloaded_memory_names: [], muted_memory_names: [])
     end
 
+    it "carries the parent link of a delegated session" do
+      s = session
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(parent_id: nil)
+      s.parent_id = "parent-1234"
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(parent_id: "parent-1234")
+    end
+
     it "applies the owner to the status and names its kind" do
       s = session(status: "running")
 

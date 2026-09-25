@@ -102,15 +102,18 @@ module Samagotchi
     # @param memories [Array<String>] --memory: preloaded into the worker's prompt
     # @param muted_memories [Array<String>] --mute: hidden from the session
     #   (both are session fields, so a respawn keeps them)
+    # @param parent_id [String, nil] the session that delegates this one (the
+    #   `delegate` tool); a session field too
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
-                           memories: [], muted_memories: [])
+                           memories: [], muted_memories: [], parent_id: nil)
       sd = state_dir || Session.default_state_dir
       session = Session.new_session(
         mode: mode,
         model_name: model_name || Samagotchi::ModelProfile.required_model_name,
         working_directory: working_directory || Dir.pwd,
         preloaded_memory_names: memories,
-        muted_memory_names: muted_memories
+        muted_memory_names: muted_memories,
+        parent_id: parent_id
       )
       # With no prompt there is no first turn to run (an attaching UI sends
       # the prompts), so the session starts idle.
@@ -195,7 +198,8 @@ module Samagotchi
     # @param include_tests [Boolean] false leaves out test runs
     # @param exclude [String, nil] a session id to leave out (the asker)
     # @return [Array<Hash>] {id:, short_id:, desc:, preview:, cwd:, project:,
-    #   updated_at:, status:, live:, busy:, owner:, recap:}; busy = live with
+    #   updated_at:, status:, live:, busy:, owner:, recap:, parent_id:,
+    #   parent_short_id:}; busy = live with
     #   a turn running, recap = the saved recap's first sentence, project =
     #   Session#project_root
     def self.session_summaries(live: false, cwd: nil, limit: nil, include_tests: true, exclude: nil, state_dir: nil,
@@ -213,9 +217,19 @@ module Samagotchi
 
         { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), preview: summary_preview(s), cwd: s.working_directory,
           project: s.project_root(cache: roots), updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING,
-          owner: owner, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)) }
+          owner: owner, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)),
+          parent_id: s.parent_id, parent_short_id: s.parent_id&.[](0, 8) }
       end
       (limit ? summaries.first(limit) : summaries.to_a)
+    end
+
+    # The sessions delegated by +parent_id+ (the `delegate` tool), newest
+    # first, as .session_summaries rows. A running one (busy) counts against
+    # session.max_children.
+    def self.children_of(parent_id, state_dir: nil)
+      return [] if parent_id.to_s.empty?
+
+      session_summaries(state_dir: state_dir, include_tests: true).select { |s| s[:parent_id] == parent_id.to_s }
     end
 
     SUMMARY_PREVIEW_LIMIT = 120

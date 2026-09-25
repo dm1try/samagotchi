@@ -584,6 +584,7 @@ module Samagotchi
     #   :metrics       [Hash]      @metrics.snapshot (per-session analytics)
     #   :pending_question [Hash, nil] current pending structured question
     #   :used_memory_names [Array<String>] deduped memory names active this session
+    #   :parent_id     [String, nil] the session that delegated this one
     #   :model_name    [String]    the model turns run on now (after /model)
     #   :served_model, :served_model_for [String, nil] what a generation of
     #     that model reported serving, and the name asked (#served_model
@@ -602,6 +603,7 @@ module Samagotchi
         used_memory_names: @used_memory_mutex.synchronize { @used_memory_names.dup },
         preloaded_memory_names: preloaded_memory_names,
         muted_memory_names: @muted_memory_names.dup,
+        parent_id: @session&.parent_id,
         model_name: @effective_model_name,
         served_model: served_pair[0],
         served_model_for: served_pair[1],

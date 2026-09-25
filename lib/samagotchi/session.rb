@@ -40,12 +40,15 @@ module Samagotchi
     # deleted folder no longer leads to its repository. nil outside a repo,
     # and in files written before the field existed (see #project_root).
     attr_writer :project_root
+    # The session that delegated this one (the `delegate` tool), else nil.
+    # Set before the spawn and kept on respawns, like preloaded_memory_names.
+    attr_accessor :parent_id
 
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
                    metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
                    first_preview: "", test_run: false, pending_question: nil,
                    used_memory_names: [], project_root: nil,
-                   preloaded_memory_names: [], muted_memory_names: [])
+                   preloaded_memory_names: [], muted_memory_names: [], parent_id: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -63,6 +66,7 @@ module Samagotchi
       @preloaded_memory_names = self.class.name_list(preloaded_memory_names)
       @muted_memory_names = self.class.name_list(muted_memory_names)
       @project_root = project_root
+      @parent_id = parent_id&.to_s
     end
 
     # The stored project root, else (a file from before the field) the
@@ -81,7 +85,7 @@ module Samagotchi
 
     # Build a new, unsaved session.
     def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
-                         preloaded_memory_names: [], muted_memory_names: [])
+                         preloaded_memory_names: [], muted_memory_names: [], parent_id: nil)
       now = Time.now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?
@@ -101,7 +105,8 @@ module Samagotchi
         test_run: resolved_test,
         project_root: ProjectScope.root_for(working_directory),
         preloaded_memory_names: preloaded_memory_names,
-        muted_memory_names: muted_memory_names
+        muted_memory_names: muted_memory_names,
+        parent_id: parent_id
       )
     end
 
@@ -141,7 +146,8 @@ module Samagotchi
         used_memory_names: Array(used_mems),
         project_root: data["project_root"],
         preloaded_memory_names: Array(data["preloaded_memory_names"]),
-        muted_memory_names: Array(data["muted_memory_names"])
+        muted_memory_names: Array(data["muted_memory_names"]),
+        parent_id: data["parent_id"]
       )
     rescue JSON::ParserError => e
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
@@ -228,7 +234,8 @@ module Samagotchi
         used_memory_names: Array(used_mems),
         project_root: data["project_root"],
         preloaded_memory_names: Array(data["preloaded_memory_names"]),
-        muted_memory_names: Array(data["muted_memory_names"])
+        muted_memory_names: Array(data["muted_memory_names"]),
+        parent_id: data["parent_id"]
       )
     rescue JSON::ParserError, KeyError, SystemCallError
       nil
@@ -372,7 +379,8 @@ module Samagotchi
         "used_memory_names" => Array(@used_memory_names),
         "project_root" => @project_root,
         "preloaded_memory_names" => Array(@preloaded_memory_names),
-        "muted_memory_names" => Array(@muted_memory_names)
+        "muted_memory_names" => Array(@muted_memory_names),
+        "parent_id" => @parent_id
       }
 
       File.write(temp_path, JSON.pretty_generate(record) + "\n")

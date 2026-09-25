@@ -40,6 +40,8 @@ module Samagotchi
           # The session's --memory and --mute lists (info-bar tooltip).
           preloaded_memory_names: session.respond_to?(:preloaded_memory_names) ? Array(session.preloaded_memory_names) : [],
           muted_memory_names: session.respond_to?(:muted_memory_names) ? Array(session.muted_memory_names) : [],
+          # The session that delegated this one (the `delegate` tool), else nil.
+          parent_id: session.respond_to?(:parent_id) ? session.parent_id : nil,
           first_preview: first_preview_for(session),
           owner: owner&.fetch("kind", nil),
           # The saved recap's first sentence, for the session card.
