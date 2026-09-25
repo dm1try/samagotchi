@@ -2209,7 +2209,11 @@ module Samagotchi
       id = @session&.id.to_s
       return nil if id.empty?
 
-      "Current session id: #{id} (resume later with `chi --resume #{id}`)"
+      line = "Current session id: #{id} (resume later with `chi --resume #{id}`)"
+      # The log path too: asked what went wrong, a model that has to look
+      # it up guesses ~/.local/state first (the self-awareness probes).
+      log = begin; LogPath.resolve; rescue StandardError; nil; end
+      log ? "#{line}\nMy debug log: #{log} (one record per line; this session's carry sid=#{id[0, Log::SID_LENGTH]})" : line
     end
 
     def skip_agent_description?

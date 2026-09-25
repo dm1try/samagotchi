@@ -5,6 +5,7 @@ require_relative "version"
 require_relative "config"
 require_relative "context_window"
 require_relative "session"
+require_relative "log_path"
 require_relative "model_profile"
 require_relative "served_model"
 require_relative "host_registry"
@@ -43,6 +44,7 @@ module Samagotchi
         ["memories", Tools::MemoryRead.memories_dir("system", env: env)],
         ["project memories", Tools::MemoryRead.memories_dir("project", env: env)],
         ["sessions", Session.default_state_dir(env: env)],
+        ["log", log_path(env)],
         ["model", model || "(not configured)"],
         ["host", model ? host_for(model, env) : "-"],
         ["api key", model ? api_key_for(model, env) : "-"],
@@ -62,6 +64,13 @@ module Samagotchi
       return "installed gem" if Gem.path.any? { |p| dir.start_with?(File.join(p, "gems") + File::SEPARATOR) }
 
       "directory"
+    end
+
+    # The debug log every chi process appends to (LogPath): the sessions
+    # dir's sibling by default, so a chi that wants to read its own trail
+    # doesn't guess ~/.local/state.
+    def log_path(env)
+      LogPath.resolve(env: env) || "(disabled: log.disable)"
     end
 
     def with_presence(path)

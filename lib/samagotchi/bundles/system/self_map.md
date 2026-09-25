@@ -4,6 +4,12 @@
 - `chi self` (via `execute`) prints my version, **source dir**, config path, hooks dir,
   memory dirs, sessions dir, model/host and bundles. Use its source dir; don't hunt via `which`/`gem list`/`find /`.
 - My current session id is in the system prompt; resume with `chi --resume <id>`.
+- My debug log is the `log` line of `chi self` (default `$XDG_STATE_HOME/samagotchi/samagotchi.log`,
+  next to the sessions dir; not `~/.local/state` when `XDG_STATE_HOME` is set). One record per line,
+  `<time> LEVEL tag pid= sid=<first 8 chars of my session id> event k=v`. When a turn failed, was
+  cancelled or something else went wrong: `grep 'sid=<id8>' <log> | grep -v DEBUG` first; the WARN/ERROR
+  records name it (`turn_failed`, `retry_exhausted`, `hook_failed`, `crashed`), `http` records show
+  which host answered what.
 - Sessions: each is one file, `<sessions dir>/<id>.json`. A `<id>/` dir beside it exists only
   for background/web workers (input/, notes/, output/, pid). List them with `chi sessions list`
   (`--live` for the ones a worker runs now); delete one with `chi sessions delete ID` (never by hand).

@@ -48,6 +48,13 @@ RSpec.describe Samagotchi::SelfReport do
     expect(field("sessions")).to eq(File.join(tmp, "state", "samagotchi", "sessions"))
   end
 
+  it "names the debug log next to the sessions dir, or says it is off" do
+    expect(field("log")).to eq(File.join(tmp, "state", "samagotchi", "samagotchi.log"))
+    allow(Samagotchi::Config).to receive(:get).and_call_original
+    allow(Samagotchi::Config).to receive(:get).with("log.disable").and_return(true)
+    expect(field("log")).to eq("(disabled: log.disable)")
+  end
+
   it "resolves the memory dirs from the XDG env it is given" do
     memories = File.join(config_home, "samagotchi", "memories")
     expect(field("memories")).to eq(memories)

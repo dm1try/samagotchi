@@ -1,10 +1,10 @@
 ---
 name: samagotchi-system
-version: 0.1.26
+version: 0.1.27
 scope: system
 description: Default system memories — identity, self map, config modification protocol and memory guide
 files:
   identity.md: sha256:e7acc00e1dc4e45be2cf3fdbfbde0f88b438a12c08a60037753044c124d52fcc
-  self_map.md: sha256:f5efc471f2a23895ff258840073d6e11c570208e1f4c2312f5f00ca87939afc2
+  self_map.md: sha256:b64c39569535e36ce3cb0349dd3843ded722a7e1fc950bcdef5742a46ad60715
   config_modification_protocol.md: sha256:5a0a745e877bdf4b89765dd90b5bd4ed981fefaad9bf2663907ebeec24617564
   memory_guide.md: sha256:4a5fb2a03dc166abd2fd87dab9051d5e3b51a3162043a6e2d1baf0fd4bf8ea41

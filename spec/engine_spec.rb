@@ -68,6 +68,7 @@ RSpec.describe Samagotchi::Engine do
       engine.session = session
       prompt = engine.send(:system_prompt_with_index, engine.send(:assist_system_prompt))
       expect(prompt).to include("Current session id: #{session.id} (resume later with `chi --resume #{session.id}`)")
+      expect(prompt).to include("My debug log: #{Samagotchi::LogPath.resolve} (one record per line; this session's carry sid=#{session.id[0, 8]})")
     end
   end
 
