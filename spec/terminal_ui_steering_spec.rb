@@ -138,6 +138,17 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
       allow(engine).to receive(:write_recap_now).and_raise(Interrupt)
       expect { agent.send(:recap_after_exit) }.not_to raise_error
     end
+
+    it "comes before the resume line, which ends the REPL's output" do
+      allow(agent).to receive(:poll_input_with_reminder_check).and_return("/exit")
+      allow(agent).to receive(:drain_pending_question?)
+      allow(engine).to receive(:write_recap_now) { |on_start:| on_start.call; "Done." }
+
+      agent.send(:run_assist_loop, session: used_session, messages: [])
+      agent.send(:keep_after_exit, used_session)
+
+      expect(surface.lines.last(2)).to eq(["writing a recap…", "\nContinue session: chi --resume s1"])
+    end
   end
 
   describe "an empty session at exit" do
@@ -174,7 +185,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
 
       agent.send(:run_assist_loop, session: empty_session, messages: [])
 
-      expect(surface.lines.last).to include("Continue session: chi --resume s-empty")
+      expect(agent.instance_variable_get(:@discard_on_exit)).to be(false)
     end
 
     it "is kept with session.keep_empty" do
@@ -182,7 +193,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
 
       agent.send(:run_assist_loop, session: empty_session, messages: [])
 
-      expect(surface.lines.last).to include("Continue session: chi --resume s-empty")
+      expect(agent.instance_variable_get(:@discard_on_exit)).to be(false)
     end
   end
 
@@ -235,7 +246,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     agent.send(:run_assist_loop, session: used_session, messages: [])
 
     expect(agent).to have_received(:run_input_line).once
-    expect(surface.lines.last).to include("Continue session: chi --resume s1")
+    expect(agent.instance_variable_get(:@discard_on_exit)).to be(false)
   end
 
   it "still runs the lines sent before Ctrl-D, then exits" do

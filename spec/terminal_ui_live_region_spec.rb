@@ -254,10 +254,10 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
       allow(Samagotchi::TerminalUI::LiveRegion).to receive(:close)
       ui = build_ui(surface: nil)
 
-      run_repl(ui, prompts: [])
+      # The resume line comes after the region closed, last.
+      expect { run_repl(ui, prompts: []) }.to output(/Continue session: chi --resume \S+\n\z/).to_stdout
 
       expect(Samagotchi::TerminalUI::LiveRegion).to have_received(:close).with(screen)
-      expect(shown).to include(a_string_starting_with("Continue session: chi --resume"))
     end
 
     it "prints plainly when the terminal can't show a live region" do

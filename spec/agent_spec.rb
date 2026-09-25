@@ -1704,8 +1704,10 @@ file2.rb")
         mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd
       )
       messages = [{ role: "system", content: agent.send(:assist_system_prompt) }]
-      expect { agent.send(:assist_loop, session: session, messages: messages) }
-        .to output(/Continue session: chi --resume [0-9a-f-]+/).to_stdout
+      expect do
+        agent.send(:assist_loop, session: session, messages: messages)
+        agent.send(:keep_after_exit, session)
+      end.to output(/Continue session: chi --resume [0-9a-f-]+\n\z/).to_stdout
     end
   end
 

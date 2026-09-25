@@ -235,8 +235,14 @@ module Samagotchi
       elsif @discard_on_exit
         discard_after_exit(session)
       else
-        recap_after_exit
+        keep_after_exit(session)
       end
+    end
+
+    # The session stays: the recap first, then the resume line, last.
+    def keep_after_exit(session)
+      recap_after_exit
+      @surface.commit("\nContinue session: chi --resume #{session.id}")
     end
 
     # The recap for coming back: written before the REPL ends (it has to
@@ -468,7 +474,6 @@ module Samagotchi
 
       close_repl_input
       @discard_on_exit = !@delete_on_exit && discard_on_exit?(session)
-      @surface.commit("\nContinue session: chi --resume #{session.id}") unless @delete_on_exit || @discard_on_exit
     end
 
     # An answer at the ? prompt of a continue offer. A valid one closes the
