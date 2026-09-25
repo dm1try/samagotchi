@@ -204,6 +204,9 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
 - `POST /session/:id/turn` — fire-and-forget turn creation; returns `202` with an `enqueued_id`
   (delivery is at-least-once via the worker's file-IPC input path — it never calls `run_turn`
   across the HTTP boundary). Inspect results through the read surface, not the turn response.
+  An optional `deadline` (epoch seconds; `BridgeClient` sends 5/6 of its read timeout ahead) makes
+  a request read after it (a worker frozen by sleep or SIGSTOP) answer `408 deadline_passed` and
+  not run: a client that timed out has said the message was not sent.
 - `POST /session/:id/cancel` — cancel the running turn; `202`, or `409` when none runs.
 - `POST /session/:id/answer` — answer the pending question; `200`, `409` when another client
   answered first or it is gone, `400` for an invalid selection.
