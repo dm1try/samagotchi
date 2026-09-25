@@ -18,7 +18,7 @@ RSpec.describe "Engine picks the loop from the host's api" do
     Samagotchi::Engine.instance_variable_set(:@warned_removed_backend, nil)
     example.run
   ensure
-    ENV["SAMAGOTCHI_BACKEND"] = previous if previous
+    previous ? ENV["SAMAGOTCHI_BACKEND"] = previous : ENV.delete("SAMAGOTCHI_BACKEND")
     Samagotchi::Engine.instance_variable_set(:@warned_removed_backend, nil)
   end
 
