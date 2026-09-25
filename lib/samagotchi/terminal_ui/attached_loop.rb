@@ -850,6 +850,7 @@ module Samagotchi
             end
           when "input" then @screen.commit("input> #{part[:text]}")
           when "reminder" then @screen.commit(reminder_line(part[:reminders]))
+          when "hook_notice" then @screen.commit(EventRenderer.hook_notice_line(part))
           end
         end
         @view.resume(tail: tail, tool: running_tool, parts: turn[:parts])

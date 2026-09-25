@@ -32,7 +32,7 @@ module Samagotchi
       end
 
       # @return [Hash, nil] a copy of the turn in progress: prompt, origin,
-      #   continue, ordered parts (thinking / text / tool / input / reminder),
+      #   continue, ordered parts (thinking / text / tool / input / reminder / hook_notice),
       #   pending_question and the last event_seq folded in
       def current_turn
         @mutex.synchronize { @turn && Marshal.load(Marshal.dump(@turn)) }
@@ -123,6 +123,8 @@ module Samagotchi
           @merged_origins = []
         when :reminder_injected
           parts << { kind: "reminder", reminders: Array(event[:reminders]).map(&:dup) }
+        when :hook_notice
+          parts << { kind: "hook_notice", hook: event[:hook].to_s, text: event[:text].to_s, level: event[:level].to_s }
         when :question_requested
           @turn[:pending_question] = event[:pending_question]&.dup
         when :question_answered, :question_cancelled

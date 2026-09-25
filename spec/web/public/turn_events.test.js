@@ -113,6 +113,7 @@ test("snapshotEvents replays the turn in progress as live events, then the queue
       { kind: "tool", iteration: 1, call_index: 0, tool: "execute", params: "ls", status: "ok", output: "a b", output_truncated: false },
       { kind: "input", iteration: 2, text: "also this", origins: [{ client_id: "web:x", enqueued_id: "e2" }] },
       { kind: "reminder", reminders: ["r"] },
+      { kind: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" },
       { kind: "tool", iteration: 2, call_index: 0, tool: "read", params: "f", status: "running" },
     ],
   };
@@ -126,6 +127,7 @@ test("snapshotEvents replays the turn in progress as live events, then the queue
     { type: "tool_call_completed", iteration: 1, call_index: 0, tool: "execute", output: "a b", output_truncated: false, activity: { status: "ok", params: "ls" } },
     { type: "merged_input", content: "also this", origins: [{ client_id: "web:x", enqueued_id: "e2" }] },
     { type: "reminder_injected", reminders: ["r"] },
+    { type: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" },
     { type: "tool_call_started", iteration: 2, call_index: 0, tool: "read", params: "f" },
     { type: "turn_enqueued", enqueued_id: "e3", client_id: "web:y", prompt: "later" },
   ]);
@@ -217,4 +219,13 @@ test("workerGoneText ends a running turn whose worker went away, and only a runn
   assert.equal(workerGoneText({ turnRunning: true, stopped: true }), "\u2715 canceled (session stopped)");
   assert.equal(workerGoneText({ turnRunning: true }), "\u2715 canceled (worker exited)");
   assert.equal(workerGoneText({ turnRunning: false, stopped: true }), null);
+});
+
+import { hookNoticeLabel } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+test("hookNoticeLabel names a bundle hook by its bundle, any other hook as hook", () => {
+  assert.equal(hookNoticeLabel("known_names.rb (bundle known-names)"), "known-names");
+  assert.equal(hookNoticeLabel("audit.rb (config)"), "hook");
+  assert.equal(hookNoticeLabel("turn hook"), "hook");
+  assert.equal(hookNoticeLabel(undefined), "hook");
 });

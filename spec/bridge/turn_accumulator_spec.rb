@@ -45,6 +45,17 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect { JSON.generate(turn) }.not_to raise_error
   end
 
+  it "keeps a hook's notice as a part, in order" do
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :generation_chunk, iteration: 1, content: "Hm" },
+         { type: :hook_notice, hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: :info })
+
+    expect(acc.current_turn[:parts]).to eq([
+      { kind: "text", iteration: 1, text: "Hm" },
+      { kind: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" }
+    ])
+  end
+
   it "caps a tool's output at the event cap" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :tool_call_started, iteration: 1, call_index: 1, tool: "read" },

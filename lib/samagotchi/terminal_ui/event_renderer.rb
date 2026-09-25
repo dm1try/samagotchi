@@ -63,7 +63,20 @@ module Samagotchi
           render_turn_summary(event[:turn_summary]) if event[:turn_summary]
         when :guardrail_warning
           @view.print_line("guardrails> #{event[:message]}")
+        when :hook_notice
+          @view.print_line(self.class.hook_notice_line(event))
         end
+      end
+
+      # A hook's notice as one line: "<bundle>> text" for a bundle hook,
+      # "hook> text" for a config or turn hook (a warn one says so).
+      # @param event [Hash] :hook_notice event or a snapshot part with
+      #   hook:, text:, level:
+      def self.hook_notice_line(event)
+        label = event[:hook].to_s[/\(bundle (.+)\)\z/, 1] || "hook"
+        text = event[:text].to_s
+        text = "warning: #{text}" if event[:level].to_s == "warn"
+        "#{label}> #{text}"
       end
 
       # Start a turn's bookkeeping and reset the view's per-turn feedback.

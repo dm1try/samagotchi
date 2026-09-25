@@ -44,6 +44,12 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     expect(view.calls).to include(:finish_thinking_spinner)
   end
 
+  it "prints a hook's notice under the bundle's name, or as hook" do
+    renderer.call({ type: :hook_notice, hook: "known_names.rb (bundle known-names)", text: 'rejected execute: "x" looks like "y"', level: :info })
+    renderer.call({ type: :hook_notice, hook: "audit.rb (config)", text: "stopped the turn: enough", level: :warn })
+    expect(view.lines).to eq(['known-names> rejected execute: "x" looks like "y"', "hook> warning: stopped the turn: enough"])
+  end
+
   it "prints a guardrail load warning" do
     renderer.call({ type: :guardrail_warning, message: "hook g.rb (config) failed to load (x)" })
     expect(view.lines).to eq(["guardrails> hook g.rb (config) failed to load (x)"])

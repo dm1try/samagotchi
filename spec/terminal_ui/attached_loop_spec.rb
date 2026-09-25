@@ -194,6 +194,15 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     expect(screen.lines).to include("guardrails> hook g.rb (config) failed to load (LoadError: x)")
   end
 
+  it "shows a hook's notice, live and from a snapshot's turn parts" do
+    feed({ type: :hook_notice, hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" })
+    expect(screen.lines.last).to eq("known-names> rejected execute")
+
+    turn = { prompt: "go", parts: [{ kind: "hook_notice", hook: "turn hook", text: "careful", level: "warn" }] }
+    feed(snapshot(current_turn: turn, type: :reset))
+    expect(screen.lines).to include("hook> warning: careful")
+  end
+
   it "shows a guardrail load warning" do
     feed({ type: :guardrail_warning, message: "hook g.rb (config) failed to load (LoadError: x)" })
     expect(screen.lines.last).to eq("guardrails> hook g.rb (config) failed to load (LoadError: x)")
