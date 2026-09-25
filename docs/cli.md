@@ -258,9 +258,11 @@ count), expandable for inspection. When the turn ends the block collapses
 to its summary (`3 steps · 8 tool calls · execute ×7 · read ×1`) and the
 answer sits under it as a normal bubble (Markdown, annotate). A plain
 answer without tools looks exactly as it does today. Rows the code
-collapses stay as you toggled them; a reloaded session shows the block from
-the saved messages and the timing records (tool name, status and duration
-per row; no parameters or output after a reload).
+collapses stay as you toggled them. A reloaded session shows the same block
+from the saved messages (each step's thinking, narration, tool parameters
+and output, the output capped at 2000 characters) and the timing records
+(status and duration per row). On an `api: openai` host the model's
+thinking is not saved, so a reloaded step shows none.
 
 ```sh
 bin/chi web --web-turn-view      # --no-web-turn-view switches it off
