@@ -5,7 +5,7 @@ require "rbconfig"
 module Samagotchi
   # `chi desktop`: a small native helper that sends selected text to live
   # sessions as a context note. It talks to chi only through the CLI
-  # (`chi sessions list --live --format json`, `chi note`), so it could ship
+  # (`chi sessions list --live --scope=all --format json`, `chi note`), so it could ship
   # on its own later. macOS only for now; a Linux variant would be another
   # class next to MacOS.
   module Desktop

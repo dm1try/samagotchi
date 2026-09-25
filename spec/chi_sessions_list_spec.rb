@@ -10,7 +10,9 @@ require "samagotchi/owner_lock"
 
 # `chi sessions list` as the picker for `chi note` (an Automator dialog,
 # a script): --live, --cwd, --format json|tsv. With none of them the output
-# is what it always was.
+# is what it always was. It lists the current git project's sessions
+# (--scope=all: every project's), so chi runs from a folder in no repo
+# unless a spec says otherwise: /work/app (the fixtures' folder) is in none.
 RSpec.describe "chi sessions list" do
   let(:chi) { File.expand_path("../bin/chi", __dir__) }
   let(:xdg_state) { Dir.mktmpdir("chi-sessions-list") }
@@ -18,13 +20,16 @@ RSpec.describe "chi sessions list" do
   let(:env) { { "XDG_STATE_HOME" => xdg_state } }
   let(:locks) { [] }
 
+  let(:outside) { Dir.mktmpdir("chi-sessions-list-cwd") }
+
   after do
     locks.each(&:release)
     FileUtils.rm_rf(xdg_state)
+    FileUtils.rm_rf(outside)
   end
 
-  def run_chi(*args)
-    Open3.capture3(env, RbConfig.ruby, chi, "sessions", "list", *args, stdin_data: "")
+  def run_chi(*args, dir: outside)
+    Open3.capture3(env, RbConfig.ruby, chi, "sessions", "list", *args, stdin_data: "", chdir: dir)
   end
 
   def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil)
@@ -67,7 +72,7 @@ RSpec.describe "chi sessions list" do
 
     expect(status.exitstatus).to eq(0), err
     expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
-                                     "cwd" => "/work/app", "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
+                                     "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
                                      "live" => true, "busy" => false, "owner" => "worker", "recap" => nil }])
   end
 
@@ -118,6 +123,81 @@ RSpec.describe "chi sessions list" do
 
   it "lists the flags in the help" do
     out, = Open3.capture3(env, RbConfig.ruby, chi, "sessions", "--help", stdin_data: "")
-    expect(out).to include("--live", "--cwd PATH", "--format text|json|tsv")
+    expect(out).to include("--live", "--cwd PATH", "--format text|json|tsv", "--scope=all")
+  end
+
+  describe "the project scope" do
+    def git(*args)
+      out, status = Open3.capture2e("git", "-c", "user.name=x", "-c", "user.email=x@x",
+                                    "-c", "init.defaultBranch=main", *args)
+      raise "git #{args.join(" ")} failed: #{out}" unless status.success?
+    end
+
+    let(:root) { File.realpath(outside) }
+    let(:alpha) do
+      File.join(root, "alpha").tap do |dir|
+        git("init", "-q", dir)
+        git("-C", dir, "commit", "-q", "--allow-empty", "-m", "i")
+      end
+    end
+    let(:worktree) { File.join(root, "alpha-wt").tap { |dir| git("-C", alpha, "worktree", "add", "-q", "-b", "wt", dir) } }
+    let(:beta) { File.join(root, "beta").tap { |dir| git("init", "-q", dir) } }
+    let!(:sessions) do
+      { a: make("in alpha", cwd: alpha, live: true), wt: make("in the worktree", cwd: worktree),
+        b: make("in beta", cwd: beta, live: true), plain: make("plain", cwd: "/work/app") }
+    end
+
+    def ids(out) = out.lines.filter_map { |line| line[/\A[0-9a-f-]{36}/] }
+
+    it "lists this project's sessions from the repo or its worktree, and says so in the footer" do
+      [alpha, worktree, File.join(alpha, ".git", "..")].each do |dir|
+        out, err, status = run_chi(dir: dir)
+
+        expect(status.exitstatus).to eq(0), err
+        expect(ids(out)).to eq([sessions[:wt].id, sessions[:a].id])
+        expect(out).to end_with("\n2 session(s) in alpha (--scope=all: every project)\n")
+      end
+    end
+
+    it "--scope=all (either form) and a folder in no repo list every session, with the old footer" do
+      [run_chi("--scope=all", dir: alpha), run_chi("--scope", "all", dir: alpha), run_chi].each do |out, err, _|
+        expect(ids(out).size).to eq(4), err
+        expect(out).to end_with("\n4 session(s) (sort=updated_at order=desc)\n")
+      end
+    end
+
+    it "scopes --live and --format too; --cwd replaces the project; json has the project" do
+      expect(run_chi("--live", "--format", "tsv", dir: alpha).first.lines.map { |l| l.split("\t").first }).to eq([sessions[:a].id])
+      expect(run_chi("--live", "--format", "tsv", "--scope=all", dir: alpha).first.lines.size).to eq(2)
+      expect(run_chi("--live", dir: alpha).first).to end_with("\n1 session(s) in alpha (--scope=all: every project)\n")
+      expect(ids(run_chi("--cwd", beta, dir: alpha).first)).to eq([sessions[:b].id])
+
+      rows = JSON.parse(run_chi("--format", "json", "--scope=all", dir: alpha).first)
+      expect(rows.to_h { |row| [row["id"], row["project"]] })
+        .to eq(sessions[:a].id => alpha, sessions[:wt].id => alpha, sessions[:b].id => beta, sessions[:plain].id => nil)
+    end
+
+    it "says so when the project has no sessions yet" do
+      empty = File.join(root, "gamma").tap { |dir| git("init", "-q", dir) }
+
+      expect(run_chi(dir: empty).first).to eq("0 session(s) in gamma (--scope=all: every project)\n")
+    end
+
+    it "refuses an unknown scope" do
+      _out, err, status = run_chi("--scope=mine", dir: alpha)
+
+      expect(status.exitstatus).to eq(1)
+      expect(err).to include("--scope=project|all")
+    end
+
+    it "leaves chi note --all global: every live session, whichever project chi runs in" do
+      _out, err, status = Open3.capture3(env, RbConfig.ruby, chi, "note", "--all", "-m", "heads up", stdin_data: "", chdir: alpha)
+
+      expect(status.exitstatus).to eq(0), err
+      notes = %i[a b].map do |key|
+        Dir.glob(File.join(Samagotchi::Session.session_dir(sessions[key].id, state_dir: state_dir), "notes", "*.json")).size
+      end
+      expect(notes).to eq([1, 1])
+    end
   end
 end

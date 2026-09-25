@@ -34,6 +34,7 @@ end
 if ARGV[0] == "sessions"
   require "samagotchi/session"
   require "samagotchi/session_manager"
+  require "samagotchi/project_scope"
   sessions_args = ARGV[1..] || []
   sub = sessions_args[0]
   if sub.nil? || %w[-h --help help].include?(sub)
@@ -42,6 +43,7 @@ if ARGV[0] == "sessions"
     puts "       [--live] [--cwd PATH] [--format text|json|tsv]"
     puts "       --live: sessions a worker runs now (the ones chi note reaches), 10 unless --limit"
     puts "       --cwd PATH: sessions in PATH or below; json/tsv (id<TAB>description) are for scripts"
+    puts "       [--scope=all]: every project's sessions; by default only this git project's (all outside a repo)"
     puts "  stop ID   # stop the session's worker (ID or a unique prefix); chi --resume ID then starts a fresh one"
     puts "  delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first"
     puts "  prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]"
@@ -60,6 +62,7 @@ if ARGV[0] == "sessions"
   live = sessions_args.include?("--live")
   cwd = nil
   format = nil
+  scope = nil
   sessions_args.each_with_index do |arg, i|
     nxt = sessions_args[i+1]
     if arg == "--days" && nxt then days = nxt.to_i
@@ -78,6 +81,8 @@ if ARGV[0] == "sessions"
     elsif arg.start_with?("--cwd=") then cwd = arg.split("=",2).last
     elsif arg == "--format" && nxt then format = nxt
     elsif arg.start_with?("--format=") then format = arg.split("=",2).last
+    elsif arg == "--scope" && nxt then scope = nxt
+    elsif arg.start_with?("--scope=") then scope = arg.split("=",2).last
     end
   end
   case sub
@@ -89,17 +94,27 @@ if ARGV[0] == "sessions"
       warn "Unknown format #{format.inspect}: use --format text|json|tsv"
       exit 1
     end
+    unless scope.nil? || %w[project all].include?(scope)
+      warn "Unknown scope #{scope.inspect}: use --scope=project|all"
+      exit 1
+    end
+    # The current git project's sessions (Samagotchi::ProjectScope), like
+    # chi web's; --scope=all, a folder in no repo or an explicit --cwd: every
+    # project's.
+    project = scope == "all" || cwd ? nil : Samagotchi::ProjectScope.root_for(Dir.pwd)
+    scope_note = ->(count) { "#{count} session(s) in #{File.basename(project)} (--scope=all: every project)" }
     # The picker (chi note from a script): filters apply before the limit,
     # and test runs stay out.
     if live || cwd || (format && format != "text")
       summaries = Samagotchi::SessionManager.session_summaries(
-        live: live, cwd: cwd, limit: limit || (live ? 10 : nil), include_tests: false
+        live: live, cwd: cwd, limit: limit || (live ? 10 : nil), include_tests: false, project_root: project
       )
       case format
       when "json"
         # owner: "worker", "tui" (a chi REPL: it takes no notes or messages)
-        # or nil; recap: the saved recap's first sentence, or nil
-        keys = %i[id short_id desc cwd updated_at live busy owner recap]
+        # or nil; recap: the saved recap's first sentence, or nil; project:
+        # its git project's root, or nil
+        keys = %i[id short_id desc cwd project updated_at live busy owner recap]
         puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
       when "tsv"
         summaries.each { |summary| puts "#{summary[:id]}\t#{summary[:desc]}" }
@@ -108,14 +123,24 @@ if ARGV[0] == "sessions"
           state = summary[:busy] ? "running" : (summary[:live] ? "live" : summary[:status].to_s)
           puts "#{summary[:id]}  #{state.ljust(8)}  #{summary[:updated_at]}  #{summary[:desc]}"
         end
-        puts summaries.empty? ? "No sessions." : "\n#{summaries.size} session(s)"
+        if project
+          puts "#{summaries.empty? ? "" : "\n"}#{scope_note.call(summaries.size)}"
+        else
+          puts summaries.empty? ? "No sessions." : "\n#{summaries.size} session(s)"
+        end
       end
       exit 0
     end
     sort ||= "updated_at"
     order ||= "desc"
-    sessions = Samagotchi::SessionManager.list_sessions(sort: sort, order: order, limit: limit)
-    if sessions.empty?
+    sessions = Samagotchi::SessionManager.list_sessions(sort: sort, order: order, limit: limit, project_root: project)
+    if project
+      sessions.each do |s|
+        flag = s.test_run ? " [test]" : ""
+        puts "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{s.last_prompt.to_s.gsub(/\s+/, ' ')[0,60]}#{flag}"
+      end
+      puts "#{sessions.empty? ? "" : "\n"}#{scope_note.call(sessions.size)}"
+    elsif sessions.empty?
       puts "No sessions."
     else
       sessions.each do |s|

@@ -21,7 +21,7 @@ module Samagotchi
                   quote (context); without -m, stdin is the message
         Only sessions on this machine. Answers show in the attached TUI
         or web page, not here.
-        Find ids with: chi sessions list --live [--format tsv]
+        Find ids with: chi sessions list --live [--scope=all] [--format tsv]
     TEXT
 
     # @param argv [Array<String>] the arguments after "send"

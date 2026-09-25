@@ -181,7 +181,9 @@ final class ChiRunner {
   }
 
   private func list(_ flags: [String], completion: @escaping (Result<[LiveSession], ChiError>) -> Void) {
-    run(["sessions", "list"] + flags + ["--format", "json"]) { result in
+    // Every project's sessions: the helper isn't in any one project (an
+    // older chi ignores the flag).
+    run(["sessions", "list"] + flags + ["--scope=all", "--format", "json"]) { result in
       switch result {
       case .failure(let error): completion(.failure(error))
       case .success(let r):

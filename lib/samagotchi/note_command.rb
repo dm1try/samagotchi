@@ -7,7 +7,7 @@ module Samagotchi
   # `chi note`: push text into sessions as a context note (background the
   # model sees on its next turn), never as a prompt; nothing wakes. For a
   # script, e.g. an Automator action:
-  #   pbpaste | chi note --source slack $(chi sessions list --live --format tsv | cut -f1)
+  #   pbpaste | chi note --source slack $(chi sessions list --live --scope=all --format tsv | cut -f1)
   class NoteCommand
     USAGE = <<~TEXT
       Usage: chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all
@@ -15,8 +15,8 @@ module Samagotchi
         the model sees on its next turn, not a prompt. It starts no turn.
         --source NAME  where it came from, shown to the model (default: cli)
         -m TEXT        the note; without it, stdin is read
-        --all          every session a worker runs now
-        Find ids with: chi sessions list --live [--format tsv]
+        --all          every session a worker runs now, in every project
+        Find ids with: chi sessions list --live [--scope=all] [--format tsv]
     TEXT
 
     # @param argv [Array<String>] the arguments after "note"
@@ -99,7 +99,7 @@ module Samagotchi
     def deliver_to_live(text, source)
       ids = SessionManager.session_summaries(live: true, include_tests: false, state_dir: @state_dir).map { |s| s[:id] }
       if ids.empty?
-        error_line("chi note: no live sessions (chi sessions list --live)")
+        error_line("chi note: no live sessions (chi sessions list --live --scope=all)")
         return 1
       end
 
