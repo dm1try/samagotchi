@@ -209,6 +209,17 @@ RSpec.describe Samagotchi::IdleRecap do
         expect(update).to include("Keep it to 5-7 sentences even though it now covers more", "merge or drop older details",
                                   "Keep the first sentence about what the user is working on")
       end
+      it "asks for one sentence with the task and where it stands when the range is 1" do
+        build = ->(**kw) { Samagotchi::IdleRecap::RecapPrompt.build(transcript, **kw).first[:content] }
+        one = build.(sentences: [1, 1])
+        expect(one).to include("recap only: 1 plain sentence,", "The sentence names what the user was working on",
+                               "and where it stands: the result, or what is still open.")
+        expect(one).not_to include("first sentence", "Then say what came of it", "End with")
+        update = build.(sentences: [1, 1], previous: "Earlier.")
+        expect(update).to include("Keep it to 1 sentence even though", "Keep it about what the user is working on")
+        expect(update).not_to include("first sentence")
+        expect(build.(sentences: [1, 2])).to include("The first sentence names", "Then say what came of it")
+      end
       it "keeps the tail of an overlong transcript, marking the cut" do
         long = ("a" * 100 + "\n\n") * 300
         user = Samagotchi::IdleRecap::RecapPrompt.build(long + "THE END").last[:content]

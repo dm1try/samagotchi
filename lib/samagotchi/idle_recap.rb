@@ -109,21 +109,29 @@ module Samagotchi
       # first recaps at 2-4 said "…weren't captured in the transcript"; 0/80
       # with it. (A "short sentences, no dashes" line was dropped: with this
       # one it brought back "Chi" as an actor in 15-18/80.)
-      # %<plain>s is the range, e.g. "2-4 plain sentences".
+      # %<plain>s is the range, e.g. "2-4 plain sentences"; %<shape>s is SHAPE
+      # or ONE_SHAPE.
       SYSTEM = "You write short recaps of a chat between a user and an assistant, for the user " \
                "coming back to it later. Reply with the recap only: %<plain>s, no heading, " \
                "no preamble, no notes about the task or the transcript. Do not mention what the " \
                "transcript lacks or does not say; leave it out. Centre it on outcomes, not on " \
-               "the order of events. The first sentence names what the user was working on, as the " \
-               "task itself (\"The user was checking how the parser handles tabs\"), not as a request " \
-               "(\"The user asked the assistant to...\"). Then say what came of it: results, decisions, " \
-               "findings. End with what is still open or the next step, if anything. Keep project names " \
+               "the order of events. %<shape>s Keep project names " \
                "and facts that matter for continuing. Do not retell the chat turn by turn (\"the user " \
                "asked..., then the assistant...\"); name who did something only when it matters, as " \
                "\"the user\" or \"the assistant\", never by name. Leave out side details: personal " \
                "details about the user (where they live, their accounts, how many repos they have), " \
                "file paths and version numbers, unless they are the point. If there was no clear task, " \
                "just say what was talked about."
+      SHAPE = "The first sentence names what the user was working on, as the task itself (\"The user " \
+              "was checking how the parser handles tabs\"), not as a request (\"The user asked the " \
+              "assistant to...\"). Then say what came of it: results, decisions, findings. End with " \
+              "what is still open or the next step, if anything."
+      # recap.sentences: 1. Asking for "1 plain sentence" next to SHAPE's
+      # first sentence, then results, then what is open gave 3.4 sentences
+      # (1 exactly in 0/20, spike); with this shape 1 in 40/40, goal first.
+      ONE_SHAPE = "The sentence names what the user was working on, as the task itself (\"The user " \
+                  "was checking how the parser handles tabs\"), not as a request (\"The user asked the " \
+                  "assistant to...\"), and where it stands: the result, or what is still open."
       # "do not just repeat": otherwise Ornith returned the earlier recap
       # word for word after a short turn.
       UPDATE = " You are given the earlier recap and the conversation since the earlier recap: " \
@@ -133,7 +141,7 @@ module Samagotchi
       # to 6 sentences for 2-4 without it, within range+1 in 95%+ with it).
       # The first-sentence line keeps the list preview on the task.
       UPDATE_LENGTH = " Keep it to %<sentences>s even though it now covers more: merge or drop older " \
-                      "details rather than adding sentences. Keep the first sentence about what the user " \
+                      "details rather than adding sentences. Keep %<focus>s about what the user " \
                       "is working on (change it if the focus moved)."
       OMITTED = "(earlier part omitted)"
       DEFAULT_SENTENCES = [2, 4].freeze
@@ -176,7 +184,9 @@ module Samagotchi
                 else
                   ""
                 end
-        range = { plain: sentences_text(sentences, "plain "), sentences: sentences_text(sentences) }
+        one = sentences.last == 1
+        range = { plain: sentences_text(sentences, "plain "), sentences: sentences_text(sentences),
+                  shape: one ? ONE_SHAPE : SHAPE, focus: one ? "it" : "the first sentence" }
         system = format(SYSTEM, range) + (previous ? UPDATE + format(UPDATE_LENGTH, range) : "") + tools
         user = +""
         user << "Earlier recap:\n#{previous}\n\n" if previous
