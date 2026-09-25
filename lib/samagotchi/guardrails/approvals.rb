@@ -14,8 +14,9 @@ module Samagotchi
     #             this session;
     #   repo    — this exact call in this repo (the cwd outside a repo);
     #   rule    — anything this rule (from this source) asks about here.
-    # "once" is never stored. A file that doesn't parse counts as empty,
-    # with a warning: it only means more asks.
+    # "once" is never stored. A file that doesn't parse is moved aside to
+    # approvals.json.corrupt-<UTC time>, with a warning, and the store
+    # starts empty: it only means more asks, and nothing is overwritten.
     class Approvals
       FILE = "approvals.json"
       STORED_SCOPES = %w[session repo rule].freeze
@@ -96,26 +97,62 @@ module Samagotchi
 
       private
 
-      def read
+      # @param locked [Boolean] the caller holds the store's lock
+      def read(locked: false)
         return [] unless File.exist?(@path)
 
-        data = JSON.parse(File.read(@path))
-        raise JSON::ParserError, "not a list" unless data.is_a?(Array)
-
-        data.select { |e| e.is_a?(Hash) }
+        parse(File.read(@path))
       rescue JSON::ParserError, SystemCallError => e
+        aside = begin
+          locked ? set_aside : with_lock { set_aside }
+        rescue SystemCallError
+          nil
+        end
+        return read(locked: locked) if aside == :readable
+
         unless @warned
           @warned = true
-          @warn.call("[samagotchi:guardrails] #{@path} is unreadable (#{e.message}); no stored approvals apply")
+          where = aside ? "moved it to #{aside}" : "left it in place"
+          @warn.call("[samagotchi:guardrails] #{@path} is unreadable (#{e.message}); #{where}, no stored approvals apply")
         end
         []
       end
 
-      def update
+      def parse(text)
+        data = JSON.parse(text)
+        raise JSON::ParserError, "not a list" unless data.is_a?(Array)
+
+        data.select { |e| e.is_a?(Hash) }
+      end
+
+      # Under the lock: rename the file aside if it is still unreadable.
+      # @return [String, :readable] where it went; :readable when another
+      #   process replaced or removed it meanwhile
+      def set_aside
+        return :readable unless File.exist?(@path)
+
+        begin
+          parse(File.read(@path))
+          return :readable
+        rescue JSON::ParserError, SystemCallError
+          nil
+        end
+        aside = "#{@path}.corrupt-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
+        File.rename(@path, aside)
+        aside
+      end
+
+      def with_lock
         FileUtils.mkdir_p(@dir)
         File.open(File.join(@dir, "approvals.lock"), File::RDWR | File::CREAT, 0o600) do |lock|
           lock.flock(File::LOCK_EX)
-          list = read
+          yield
+        end
+      end
+
+      def update
+        with_lock do
+          list = read(locked: true)
           yield list
           tmp = "#{@path}.#{Process.pid}.#{Thread.current.object_id}.tmp"
           begin

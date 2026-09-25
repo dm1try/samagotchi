@@ -63,6 +63,8 @@ Allowing beyond "once" is stored in `$XDG_STATE_HOME/samagotchi/guardrails/appro
 | rule | anything this rule asks about in this repo |
 
 A stored approval only relaxes an ask; a deny rule is never approvable.
+A file that doesn't parse is moved aside to `approvals.json.corrupt-<UTC time>`
+with one warning, and chi starts with no stored approvals (more asks, nothing lost).
 `/guardrails` lists the rules and approvals; `/guardrails revoke N` removes one.
 The file tools can't write the store.
 

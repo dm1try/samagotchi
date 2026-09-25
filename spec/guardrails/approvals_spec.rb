@@ -84,13 +84,29 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
     expect(store.entries.size).to eq(20)
   end
 
-  it "treats a corrupt file as empty, with one warning" do
+  it "moves a corrupt file aside, with one warning, and starts empty" do
     FileUtils.mkdir_p(File.join(state, "guardrails"))
     File.write(store.path, "{not json")
     expect(store.match(ask)).to be_nil
     expect(store.entries).to eq([])
     expect(warnings.size).to eq(1)
     expect(warnings.first).to include("unreadable")
+
+    aside = Dir[File.join(state, "guardrails", "approvals.json.corrupt-*")]
+    expect(aside.size).to eq(1)
+    expect(File.basename(aside.first)).to match(/\Aapprovals\.json\.corrupt-\d{8}T\d{6}Z\z/)
+    expect(File.read(aside.first)).to eq("{not json")
+    expect(warnings.first).to include(aside.first)
+  end
+
+  it "keeps the corrupt file when a new approval is stored" do
+    FileUtils.mkdir_p(File.join(state, "guardrails"))
+    File.write(store.path, "[1,")
+    store.add(ask, "repo")
+    expect(store.entries.size).to eq(1)
+    aside = Dir[File.join(state, "guardrails", "approvals.json.corrupt-*")]
+    expect(aside.map { |f| File.read(f) }).to eq(["[1,"])
+    expect(warnings.size).to eq(1)
   end
 end
 
