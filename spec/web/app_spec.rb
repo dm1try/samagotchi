@@ -128,6 +128,18 @@ RSpec.describe Samagotchi::Web::App do
       ])
     end
 
+    it "marks the end-of-turn tail read, so the log tells it from a full one (still no query)" do
+      Samagotchi::Log.configure(path: log_path, level: :debug)
+      app = build_app(state_dir: Dir.mktmpdir)
+      app.call(env_for("/api/sessions/0123456789abcdef?tail=1"))
+      app.call(env_for("/api/sessions/0123456789abcdef"))
+
+      expect(web_records.map { |r| r.fields.except("ms") }).to eq([
+        { "method" => "GET", "path" => "/api/sessions/0123456789abcdef", "status" => "200", "tail" => "true" },
+        { "method" => "GET", "path" => "/api/sessions/0123456789abcdef", "status" => "200" }
+      ])
+    end
+
     it "writes nothing per request at the default level" do
       Samagotchi::Log.configure(path: log_path)
       build_app(state_dir: Dir.mktmpdir).call(env_for("/api/sessions"))

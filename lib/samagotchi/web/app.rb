@@ -131,13 +131,15 @@ module Samagotchi
       end
 
       # API requests at debug level (not the page and its assets): method,
-      # path, status, time. Never a body or the query.
+      # path, status, time. Never a body or the query; only a tail=1 read
+      # (the page's end-of-turn re-read) is marked, to tell it from a full one.
       def log_request(env, response, started)
         path = env["PATH_INFO"].to_s
         return unless path.start_with?("/api/") && Log.level?(:debug)
 
+        tail = env["QUERY_STRING"].to_s.split("&").include?("tail=1") ? { tail: true } : {}
         Log.debug(:web, "request", sid: path[%r{\A/api/sessions/([^/]+)}, 1], method: env["REQUEST_METHOD"], path: path,
-                                   status: response[0],
+                                   status: response[0], **tail,
                                    ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
       end
 
