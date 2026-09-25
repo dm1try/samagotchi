@@ -453,6 +453,7 @@ file2.rb")
 
       expect(received_prompt).to include("Current working directory:")
       expect(received_prompt).to include(Dir.pwd)
+      expect(received_prompt).to include("Home directory: #{Dir.home} (write it as ~ or $HOME in commands and paths)")
     end
 
     it "injects the current session id as context" do

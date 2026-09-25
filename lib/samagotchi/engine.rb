@@ -2177,6 +2177,8 @@ module Samagotchi
 
     # Where the session runs and which project memory folder it uses. The root
     # line appears only when it differs from the cwd (a worktree or subdir).
+    # The home directory is spelled out once so the model copies the right
+    # sequence, with the advice to write it as ~ or $HOME instead.
     def project_location
       cwd = Dir.pwd
       root = MemoryPaths.project_root(cwd)
@@ -2185,6 +2187,8 @@ module Samagotchi
         lines << "Project root (project memories are shared by all worktrees and subdirectories of this repository):"
         lines << root
       end
+      home = Dir.home
+      lines << "Home directory: #{home} (write it as ~ or $HOME in commands and paths)" unless home.to_s.empty?
       lines << "Project memories folder:"
       lines << home_relative(Tools::MemoryRead.memories_dir("project"))
       lines.join("\n")

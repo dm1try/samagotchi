@@ -106,6 +106,7 @@ RSpec.describe Samagotchi::Engine do
         #{tree}
         Project root (project memories are shared by all worktrees and subdirectories of this repository):
         #{repo}
+        Home directory: #{Dir.home} (write it as ~ or $HOME in commands and paths)
         Project memories folder:
         #{folder}
       TEXT
@@ -113,8 +114,15 @@ RSpec.describe Samagotchi::Engine do
 
     it "shows no root line at the repository root" do
       prompt = project_prompt_in(repo)
-      expect(prompt).to include("Current working directory:\n#{repo}\nProject memories folder:\n")
+      expect(prompt).to include("Current working directory:\n#{repo}\nHome directory: #{Dir.home} (write it as ~ or $HOME in commands and paths)\nProject memories folder:\n")
       expect(prompt).not_to include("Project root (")
+    end
+
+    it "names the home directory once, with the advice to write it as ~ or $HOME" do
+      allow(Dir).to receive(:home).and_return("/Users/dmitrydedov")
+      prompt = project_prompt_in(repo)
+      expect(prompt.scan("Home directory:").size).to eq(1)
+      expect(prompt).to include("Home directory: /Users/dmitrydedov (write it as ~ or $HOME in commands and paths)")
     end
 
     it "shortens a memories folder under the home directory with ~" do
