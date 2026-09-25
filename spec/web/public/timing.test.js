@@ -53,10 +53,16 @@ test("timedTurnIndexes marks only each turn's last assistant message", () => {
     { role: "assistant" }, // the turn's answer
     { role: "user" },
     { role: "assistant" },
-    { role: "user" }, // a turn with no answer yet
+    { role: "user" }, // a turn with no answer: canceled, or still running (no record yet)
   ];
 
-  assert.deepEqual(timedTurnIndexes(items), [null, null, 0, null, 1, null]);
+  assert.deepEqual(timedTurnIndexes(items), [null, null, 0, null, 1, 2]);
+});
+
+test("timedTurnIndexes: a canceled turn that saved only its prompt keeps its timing, on the prompt", () => {
+  const items = [{ role: "user" }, { role: "note" }, { role: "user" }, { role: "assistant" }];
+
+  assert.deepEqual(timedTurnIndexes(items), [0, null, null, 1]);
 });
 
 function fakeParent() {
@@ -101,4 +107,8 @@ test("turnTimingText: the turn's number live and after it ends, as a reload show
   // No number known (no timing yet): the old wording.
   assert.equal(turnTimingText(null, 4100), "turn · 4.1s");
   assert.equal(turnTimingText(null, 0, { running: true }), "turn running · 0ms");
+});
+
+test("turnTimingText: a canceled turn says so", () => {
+  assert.equal(turnTimingText(2, 1600, { canceled: true }), "turn 2 · 1.6s · canceled");
 });
