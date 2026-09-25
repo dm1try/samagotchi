@@ -1127,6 +1127,11 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "idle status line" do
     expect(status).to eq("status> model=m1 | mem: notes, cli_usage | muted: gh-helper")
   end
 
+  it "marks a delegated session with its parent's short id, from the join" do
+    feed(join(parent_id: "3f2a1c9e-0000-4000-8000-000000000000", preloaded_memory_names: %w[delegated]))
+    expect(status).to eq("status> model=m1 | ↳ 3f2a1c9e | mem: delegated")
+  end
+
   it "adds the context estimate and the memories a turn used" do
     feed(join,
          { type: :context_status, usage: { estimated_pct: 12.5 }, bucket: "low" },

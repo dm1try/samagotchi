@@ -119,6 +119,8 @@ module Samagotchi
         # first turn records them) and its --mute list, from the join.
         @preloaded_names = []
         @muted_names = []
+        # The session that delegated this one, shown as ↳ <short id>.
+        @parent_id = nil
         @context_estimate = nil
         @status_rows = nil
       end
@@ -913,6 +915,7 @@ module Samagotchi
         @memory_names = Array(state[:used_memory_names]) if state.key?(:used_memory_names)
         @preloaded_names = Array(state[:preloaded_memory_names]) if state.key?(:preloaded_memory_names)
         @muted_names = Array(state[:muted_memory_names]) if state.key?(:muted_memory_names)
+        @parent_id = state[:parent_id] if state.key?(:parent_id)
         refresh_status
       end
 
@@ -923,6 +926,7 @@ module Samagotchi
 
         served, served_for = @served_model
         segments = [@model_name ? status_model_text(@model_name, default_model_name, served: served, served_for: served_for) : "",
+                    @parent_id ? "↳ #{@parent_id.to_s[0, 8]}" : "",
                     status_context_text(estimate: @context_estimate),
                     status_memory_text(@memory_names | @preloaded_names, MEMORY_STICKY_PREVIEW_LIMIT),
                     status_memory_text(@muted_names, MEMORY_STICKY_PREVIEW_LIMIT, label: "muted")].reject(&:empty?)

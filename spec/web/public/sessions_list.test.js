@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applySessionEvent, sortedByUpdated } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { applySessionEvent, sortedByUpdated, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // The page's session list is a projection of the hub's events: a snapshot
 // replaces it, an upsert keeps a known card in place, a new one goes on
@@ -42,4 +42,18 @@ test("the all view re-sorts by updated_at desc, as the server lists", () => {
   const c = { id: "c", updated_at: "2026-09-25T12:00:00.000Z" };
   const odd = { id: "d", updated_at: "not a date" };
   assert.deepEqual(sortedByUpdated([b, odd, c, a]).map((s) => s.id), ["c", "a", "b", "d"]);
+});
+
+test("the all view puts a delegated session right after its parent; the family keeps its newest member's place", () => {
+  const parent = { id: "p", updated_at: "2026-09-25T08:00:00.000Z" };
+  const child1 = { id: "c1", parent_id: "p", updated_at: "2026-09-25T11:00:00.000Z" };
+  const child2 = { id: "c2", parent_id: "p", updated_at: "2026-09-25T09:30:00.000Z" };
+  const other = { id: "o", updated_at: "2026-09-25T10:00:00.000Z" };
+  const orphan = { id: "x", parent_id: "gone", updated_at: "2026-09-25T09:00:00.000Z" };
+  const sorted = sortedByUpdated([parent, child1, child2, other, orphan]);
+  assert.deepEqual(sorted.map((s) => s.id), ["c1", "o", "c2", "x", "p"]);
+  assert.deepEqual(withChildrenAfterParents(sorted).map((s) => s.id), ["p", "c1", "c2", "o", "x"]);
+  // Nothing to group: the same array comes back.
+  const plain = [other, orphan];
+  assert.equal(withChildrenAfterParents(plain), plain);
 });

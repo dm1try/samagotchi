@@ -218,3 +218,16 @@ test("leadTrimmed drops leading whitespace only while the body is empty", () => 
   assert.equal(leadTrimmed("Hmm", "\n\nnext"), "\n\nnext");
   assert.equal(leadTrimmed("", undefined), "");
 });
+
+import { delegatedBy } from "../../../lib/samagotchi/web/public/format.js";
+
+test("delegatedBy names the parent by its short id, with its preview when the parent is listed", () => {
+  assert.equal(delegatedBy(null), null);
+  assert.equal(delegatedBy(""), null);
+  assert.deepEqual(delegatedBy("3f2a1c9e-0000-4000-8000-000000000000"), {
+    text: "\u21B3 3f2a1c9e", title: "delegated by session 3f2a1c9e",
+  });
+  assert.deepEqual(delegatedBy("3f2a1c9e-0000-4000-8000-000000000000", { last_prompt: "plan the  release" }), {
+    text: "\u21B3 3f2a1c9e", title: "delegated by session 3f2a1c9e: plan the release",
+  });
+});
