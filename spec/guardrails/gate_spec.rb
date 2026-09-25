@@ -28,6 +28,16 @@ RSpec.describe Samagotchi::Guardrails::Gate do
     expect(evaluate.call).to eq({ name: "execute", content: "pwd" })
   end
 
+  it "denies at once, without asking the hooks, once the turn was cancelled" do
+    asked = false
+    hooks.register(:before_tool_call) { |_e| asked = true }
+    cancelled = described_class.new(-> { hooks }, cancelled_lookup: -> { true })
+    verdict = cancelled.evaluate(call, iteration: 1, params: "")
+    expect(verdict).to be_deny
+    expect(verdict.deny_text).to start_with("denied by guardrail (core): the turn was stopped.")
+    expect(asked).to be(false)
+  end
+
   it "allows when there is no registry" do
     expect(described_class.new(-> {}).evaluate(call, iteration: 1, params: "")).to be_allow
   end

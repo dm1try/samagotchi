@@ -117,6 +117,13 @@ module Samagotchi
       log(:warn, :guardrail_warning, msg: event[:message].to_s[0, 300])
     end
 
+    # A hook's notice to the user: who said it and what (its text is the
+    # hook's, not the user's or the model's).
+    def on_hook_notice(event)
+      level = event[:level].to_s == "warn" ? :warn : :info
+      log(level, :hook_notice, hook: event[:hook], msg: event[:text].to_s[0, 300])
+    end
+
     def on_recap_ready(event)
       log(:info, :recap_ready, chars: event[:recap].to_s.length, generation: event[:generation], covered: event[:covered])
     end

@@ -27,14 +27,17 @@ module Samagotchi
       # @param approvals_lookup [#call] returns the Approvals store (or nil)
       # @param checks_lookup [#call] core checks (#check(verdict)) run on the
       #   final call after the hooks: protected paths, then the rules
+      # @param cancelled_lookup [#call] true once the turn was cancelled (a
+      #   hook's stop_turn): the rest of a batch is denied without a vote
       def initialize(hooks_lookup, context_lookup: -> { Context.new }, model_key_lookup: -> {}, approver: nil,
-                     approvals_lookup: -> {}, checks_lookup: -> { [] })
+                     approvals_lookup: -> {}, checks_lookup: -> { [] }, cancelled_lookup: -> { false })
         @hooks_lookup = hooks_lookup
         @context_lookup = context_lookup
         @model_key_lookup = model_key_lookup
         @approver = approver
         @approvals_lookup = approvals_lookup
         @checks_lookup = checks_lookup
+        @cancelled_lookup = cancelled_lookup
       end
 
       # @param call [Hash] the parsed tool call
@@ -44,6 +47,12 @@ module Samagotchi
       def evaluate(call, iteration:, params:)
         context = @context_lookup.call
         verdict = Verdict.new(call: call)
+        if @cancelled_lookup.call
+          verdict.deny!("the turn was stopped", decided_by: "core")
+          verdict.context = context
+          verdict.targets = targets_for(call, context)
+          return verdict
+        end
         before = { type: :before_tool_call, iteration: iteration, call: call.dup, params: params,
                    blocked: false, block_reason: nil, guardrail: verdict,
                    context: context.to_h, targets: targets_for(call, context).to_h }

@@ -147,9 +147,13 @@ module Samagotchi
           model_key_lookup: -> { @model_key },
           approver: ->(verdict) { request_approval(verdict) },
           approvals_lookup: -> { @guardrail_approvals },
-          checks_lookup: -> { guardrail_checks }
+          checks_lookup: -> { guardrail_checks },
+          cancelled_lookup: -> { !!active_cancel_controller&.cancelled? }
         )
       end
+      # What a hook can do beyond reading its event (event[:notify],
+      # event[:ask_user], event[:stop_turn]): the Engine's routes to the UIs.
+      @hooks.runtime = hook_runtime
       # If session was resumed and has a pending_question, hydrate engine state
       if @resume_session && @resume_session.pending_question
         @pending_question = @resume_session.pending_question.dup
@@ -853,6 +857,69 @@ module Samagotchi
       Guardrails::Approval.settle(verdict, open_question(payload), payload[:approval][:scopes])
     end
 
+    # ── The hook runtime (Hooks::Runtime) ─────────────────────────────────────
+
+    # The three things a hook can do beyond reading its event. Each gets the
+    # hook's label (event[:hook]) from the registry.
+    def hook_runtime
+      Hooks::Runtime.new(
+        notify: ->(text:, level:, hook:) { hook_notify(text, level, hook) },
+        ask_user: ->(question:, options:, header:, allow_freeform:, hook:) { hook_ask_user(question, options, header, allow_freeform, hook) },
+        stop_turn: ->(reason:, hook:) { hook_stop_turn(reason, hook) }
+      )
+    end
+    private :hook_runtime
+
+    # One line to the user, as a turn event (:hook_notice): the turn's sink
+    # (the REPL) and the observers (bridge, log). Hooks fire inside a turn,
+    # so the sink is the running turn's.
+    def hook_notify(text, level, hook)
+      sink = @activity_mutex.synchronize { @turn_event_sink }
+      level = (level || :info).to_sym
+      level = :info unless %i[info warn].include?(level)
+      emit_event(sink, { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level })
+      nil
+    end
+    private :hook_notify
+
+    # A question through the question flow (REPL sync handler, attached TUI,
+    # web), single-select, kind "hook". A --non-interactive run has no one
+    # to ask: nil at once. Anything but an answer (a sync handler's text, no
+    # answer, cancelled) is nil too.
+    # @return [Hash, nil] {selected:, freeform:, selected_indices:}
+    def hook_ask_user(question, options, header, allow_freeform, hook)
+      return nil if interface == :non_interactive
+
+      opts = Tools::AskUserQuestion.normalize_options(options)
+      unless opts
+        Log.warn(:hooks, "ask_user_invalid", echo: "[samagotchi:hooks] #{hook} asked with invalid options (2-8 strings)", hook: hook.to_s)
+        return nil
+      end
+
+      fields = { question: question.to_s, options: opts, header: header, multi_select: false,
+                 allow_freeform: !!allow_freeform, kind: "hook", hook: hook.to_s }.compact
+      answer = open_question(fields)
+      return nil unless answer.is_a?(Hash) && answer[:selected]
+
+      result = { selected: Array(answer[:selected]), freeform: answer[:freeform] }
+      result[:selected_indices] = answer[:selected_indices] if answer.key?(:selected_indices)
+      result
+    end
+    private :hook_ask_user
+
+    # Cancel the running turn (reason :hook), after a notice that says why.
+    # The gate denies the rest of a tool batch once the controller is
+    # cancelled; the next request ends the turn as :turn_canceled.
+    # @return [Boolean] true when a running turn was cancelled now
+    def hook_stop_turn(reason, hook)
+      ctrl = active_cancel_controller
+      return false unless ctrl && !ctrl.cancelled?
+
+      hook_notify("stopped the turn: #{reason}", :warn, hook)
+      ctrl.cancel!(:hook)
+    end
+    private :hook_stop_turn
+
     # ── Ask-user-question (structured qualification) ──────────────────────────
 
     # @return [Hash, nil] current pending question (thread-safe copy)
@@ -1226,7 +1293,12 @@ module Samagotchi
       refresh_profile!
       # Provide a cancellable controller for this turn (cross-process cancel via file flag)
       effective_controller = cancel_controller || CancellationController.new
-      @activity_mutex.synchronize { @active_cancel_controller = effective_controller }
+      @activity_mutex.synchronize do
+        @active_cancel_controller = effective_controller
+        # A hook's notice goes where the turn's events go (the REPL renders
+        # only its sink; a worker's observers carry it to the bridge).
+        @turn_event_sink = on_event
+      end
       # The gate's context: who queued this turn, and git asked afresh.
       @turn_origin = origin
       @guardrail_git = Guardrails::GitInfo.new
@@ -1392,7 +1464,10 @@ module Samagotchi
         # treats the just-finished turn as activity and re-arms its window.
         # Always runs, even if an exception occurred.
         set_turn_running(false)
-        @activity_mutex.synchronize { @active_cancel_controller = nil }
+        @activity_mutex.synchronize do
+          @active_cancel_controller = nil
+          @turn_event_sink = nil
+        end
         record_activity
         # Clear hooks so they remain turn-scoped and never leak into the next turn.
         clear_hooks
