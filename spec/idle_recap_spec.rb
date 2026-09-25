@@ -818,6 +818,7 @@ RSpec.describe Samagotchi::IdleRecap do
         def initialize(key, saved = nil) = (@key = key; @saved = saved; @loads = 0)
         def load = (@loads += 1; @saved&.dup)
         def save(state) = @saved = state.dup
+        def delete = @saved = nil
       end
     end
 
@@ -843,6 +844,28 @@ RSpec.describe Samagotchi::IdleRecap do
       drive(restarted)
       expect(prompts.last.last[:content]).to include("Earlier recap:\nrecap 1")
       expect(prompts.last.last[:content]).not_to include("Bluefin")
+    end
+
+    # A "no" at a continue offer takes the offered turn back: with fewer user
+    # turns than min_user_turns left, no new recap is written, and the one
+    # written while the offer was open ("stopped unfinished") would stay.
+    it "drops a recap that no longer describes the history when it is too short for a new one" do
+      store = store_class.new("s1")
+      drive(idle_with(store, history))
+      expect(store.saved).to include(text: "recap 1", covered: 4)
+      rolled_back = idle_with(store, history.first(2))
+      expect(rolled_back.request_now).to eq(:too_short)
+      expect(store.saved).to be_nil
+      expect(rolled_back.state).to be_nil
+      expect(prompts.size).to eq(1)
+    end
+
+    it "keeps a recap that still describes the start of a history too short for a new one" do
+      store = store_class.new("s1", { text: "old", covered: 2, covered_digest: described_class.digest(history[1]) })
+      idle = idle_with(store, history.first(2))
+      expect(idle.request_now).to eq(:too_short)
+      expect(store.saved).to include(text: "old")
+      expect(idle.state).to include(text: "old")
     end
 
     it "reloads when the session changes under it (the REPL's /new or /resume)" do

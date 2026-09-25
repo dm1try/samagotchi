@@ -401,9 +401,13 @@ module Samagotchi
       # scheduler tick. The next recorded activity re-arms the window.
       @last_fire_activity_seq = @engine.activity_seq
       parsed = safe_parse(@engine.messages_json_for_recap)
-      return :too_short if parsed.nil? || parsed.empty?
+      return :too_short if parsed.nil?
+
       user_turns = parsed.count { |message| message.is_a?(Hash) && message["role"] == "user" }
-      return :too_short if user_turns < @min_user_turns
+      if parsed.empty? || user_turns < @min_user_turns
+        drop_stale(parsed)
+        return :too_short
+      end
       previous = continuable_state(parsed)
       fresh = parsed.drop(previous ? previous[:covered] : 0)
       transcript = TranscriptFilter.build(fresh)
@@ -449,6 +453,19 @@ module Samagotchi
       @engine.emit_recap(recap: text, generation: job[:generation], covered: job[:covered])
     rescue StandardError
       @in_flight = nil
+    end
+
+    # A history too short for a recap that no longer holds what the saved one
+    # covers (a "no" at a continue offer took the offered turn back): the
+    # saved recap would keep describing that turn, so it goes.
+    def drop_stale(messages)
+      return unless state
+      return if continuable_state(messages)
+
+      @mutex.synchronize { @state = nil }
+      @store&.delete
+    rescue StandardError => e
+      Log.warn(:recap, "delete_failed", echo: "[IdleRecap] dropping a stale recap failed: #{e.class}: #{e.message}", error: e.class.name)
     end
 
     def save(state)

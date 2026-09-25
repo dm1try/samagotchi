@@ -58,6 +58,14 @@ module Samagotchi
       File.rename("#{path}.tmp", path)
     end
 
+    # Remove the saved recap (it no longer describes the session).
+    def delete
+      id = key
+      return unless id
+
+      FileUtils.rm_f(File.join(Session.session_dir(id, state_dir: @state_dir_lookup.call), FILE))
+    end
+
     # @return [Hash, nil] the recap saved in +session_dir+, nil when there is
     #   none or it can't be read
     def self.read(session_dir)

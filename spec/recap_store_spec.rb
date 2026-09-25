@@ -42,6 +42,15 @@ RSpec.describe Samagotchi::RecapStore do
     expect(store.load).to be_nil
   end
 
+  it "deletes the saved recap (one that no longer describes the history)" do
+    save_session_file
+    store.save(state)
+    store.delete
+    expect(File.exist?(path)).to be false
+    expect(store.load).to be_nil
+    expect { store.delete }.not_to raise_error
+  end
+
   it "reads a session dir's recap without a store (for the web and previews)" do
     save_session_file
     store.save(state)
