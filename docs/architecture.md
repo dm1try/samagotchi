@@ -25,7 +25,7 @@ A compact visual overview of the current architecture, then the core API in pros
                                                   │ delegates
                      ┌────────────────────────────┴──────────────┐
                      │             Web::App (Rack)                │ ← browser UI
-                     │   dashboard parity · SSE poll · /api/*      │   via SessionManager file IPC
+                     │   session hub · /api/events · /api/*        │   via SessionManager file IPC
                      └───────────────────────────┬───────────────┘
                                                    │
         ┌───────────────────────────────┬──────────┴───────────────┬──────────────────┐
@@ -91,7 +91,7 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
 | Adapters | `Samagotchi::Client`, `LLM::OpenAIChat`, `LLM::HTTP` | Raw-prompt servers, the OpenAI chat API, and the HTTP both share. |
 | Tools | `lib/samagotchi/tools/*` | Execute, read, edit, write, memory, task_*, web_fetch, plus runtime/output-guardrails. |
 | Background | `Samagotchi::SessionManager` | Builds `Engine` directly (no terminal rendering) for workers. |
-| Web | `Samagotchi::Web::App`, `Samagotchi::Web::Server` | Rack+WEBrick single-port `127.0.0.1:4567` (index.html + `/api/*` + SSE). Replicates dashboard via file IPC. |
+| Web | `Samagotchi::Web::App`, `Samagotchi::Web::Server`, `Samagotchi::Web::SessionHub` | Rack+WEBrick single-port `127.0.0.1:4567` (index.html + `/api/*` + SSE). The hub is chi web's projection of the session list, pushed to every tab over `GET /api/events`. |
 | Sessions | `Samagotchi::Session`, `SessionManager` | File `sessions/<uuid>.json` + sidecar `input/`/`output/`/`pid`; retention 14d/500, `updated_at desc`, lazy sweep. |
 
 ## Entry points
@@ -115,7 +115,7 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
 - **Files:** `~/.local/state/samagotchi/sessions/<uuid>.json` + `<uuid>/input|output|pid|owner.lock|bridge.json` (XDG-aware).
 - **Single owner:** the process running a session's Engine (worker or in-process TUI) holds a flock on `owner.lock` (`OwnerLock`); a second owner backs off, and the web answers 409 for a TUI-owned session.
 - **Status:** `status` is turn state (`idle`/`running`); liveness is the lock.
-- **Retention:** 14 days / 500 cap (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`/`MAX_COUNT`, optional `KEEP_STATUS`), live-owner guard, only when `*.json` present; lazy sweep ≤1/24h on `GET /api/sessions` & `Dashboard#render_list`, manual via `bin/chi sessions prune --dry-run`.
+- **Retention:** 14 days / 500 cap (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`/`MAX_COUNT`, optional `KEEP_STATUS`), live-owner guard, only when `*.json` present; lazy sweep ≤1/24h from the session hub's full-probe tick (and on `GET /api/sessions`, which the page no longer calls) & `Dashboard#render_list`, manual via `bin/chi sessions prune --dry-run`.
 - **Ordering:** `Session.list(sort:,order:,limit:,offset:)` and `GET /api/sessions?sort=&order=&limit=&offset=` default `updated_at desc`; Web UI sort/filter/pagination.
 - **Test hygiene:** `test_run` flag when `SAMAGOTCHI_ENV=test`/`RACK_ENV=test`/`CI`, targetable via `prune --test-only` / `clean`.
 
@@ -237,6 +237,23 @@ for client discovery. `chi web`'s `GET /api/sessions/:id/stream` proxies this br
 (503 `not_live` when the worker is not running; full history of any session is served by
 `GET /api/sessions/:id/output`). Resume/ring-buffer state is **in-memory** (v1) — durable
 cross-process resume is a staged next step, not part of v1.
+
+**Session hub.** The cross-session layer (which sessions exist, who owns them, what changed)
+never pulls from the page: `chi web` runs one `Samagotchi::Web::SessionHub` (a thread inside
+the server, no daemon) that keeps an in-memory projection of the session list and pushes
+changes to every open tab over `GET /api/events` (SSE: a `snapshot` frame on every connect,
+then `session` for an upsert and `session_gone` for a removal, `: ping` while idle, no replay).
+Files stay the source of truth and workers don't know the hub. Its watcher is a 1 s tick that
+stats the sessions dir (every session writer goes tmp + rename, which bumps the dir's mtime) and
+each `<id>/` folder (recap.json, bridge.json), re-parsing only the files whose mtime or size
+moved through `Session.summary_from_file`. Liveness is probed, since a killed owner leaves no
+file trace: the owner lock every tick for the sessions the projection believes owned, and every
+session every 10 s, so a `kill -9` shows within a second. The summary (`Web::SessionSummary`,
+shared with `/api/sessions` and the session view) carries `owner`, `project_root` and
+`bridge_up` (the sidecar is there *and* the lock is held: the page attaches its stream on it).
+`POST/DELETE /api/sessions` and `/stop` rescan the session before answering (`SessionHub#touch`).
+Without a hub (`App.new` alone) `/api/events` answers `503 no_hub` and the page falls back to
+fetching the list.
 
 ## Model loops and adapters
 
