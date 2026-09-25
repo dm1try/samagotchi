@@ -236,7 +236,8 @@ module Samagotchi
       dir == root || dir.start_with?("#{root}/")
     end
 
-    def self.prune_sessions(state_dir: nil, days: nil, max_count: nil, keep_status: nil, dry_run: false, test_only: false)
+    def self.prune_sessions(state_dir: nil, days: nil, max_count: nil, keep_status: nil, dry_run: false, test_only: false,
+                            any_age: false)
       sd = state_dir || Session.default_state_dir
       days = resolve_retention_days(days)
       max_count = resolve_retention_max_count(max_count)
@@ -250,6 +251,7 @@ module Samagotchi
         keep_status: keep_status,
         dry_run: dry_run,
         test_only: test_only,
+        any_age: any_age,
         alive_check: ->(sid) { worker_alive_for_session?(sid, state_dir: sd) },
         empty_check: discard ? ->(sid) { left_empty?(sid, state_dir: sd, default_model: default_model) } : nil
       )

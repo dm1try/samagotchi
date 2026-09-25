@@ -33,7 +33,7 @@ bin/chi sessions list [--live] [--cwd PATH] [--limit N] [--format text|json|tsv]
 bin/chi sessions stop ID
 bin/chi sessions delete [--force] ID...                    # for good; --force stops a live worker first
 bin/chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
-bin/chi sessions clean [--dry-run] [--days N] [--keep N]   # alias to prune --test-only
+bin/chi sessions clean [--dry-run] [--days N]             # test sessions: all, or older than N days
 ```
 
 Examples:
@@ -42,7 +42,8 @@ Examples:
 bin/chi sessions list --sort updated_at --order desc --limit 20
 bin/chi sessions prune --dry-run --days 14 --keep 500
 bin/chi sessions prune --days 14 --keep 500          # actually delete
-bin/chi sessions clean --dry-run --days 7            # only test sessions
+bin/chi sessions clean --dry-run                     # every test session, whatever its age
+bin/chi sessions clean --dry-run --days 7            # test sessions older than 7 days
 ```
 
 `--dry-run` is the safe preview. Web has no prune endpoint; use the CLI.
@@ -112,5 +113,5 @@ The Automator action above works for messages too: swap its last line for `pbpas
 **Test-session hygiene:**
 
 - New sessions set `test_run:true` when `SAMAGOTCHI_ENV=test` or `RACK_ENV=test` or `CI` is set (explicit flag, `metadata_version` 2). Old sessions without the flag load as `test_run:false`.
-- Future `CI`/test runs are tagged and obey the same retention but can be targeted via `bin/chi sessions prune --test-only` or `bin/chi sessions clean`.
-- For ad-hoc manual QA use `XDG_STATE_HOME=/tmp/chi-test-$USER bin/chi ...` to isolate from real state.
+- Test runs are tagged and obey the same retention. `bin/chi sessions clean` deletes every test session whatever its age (`--days N`: only those older than N days); a live worker or a `keep_status` status still keeps one. `bin/chi sessions prune --test-only` applies the usual age and count rules to test sessions only.
+- For ad-hoc manual QA use `SAMAGOTCHI_ENV=test XDG_STATE_HOME=/tmp/chi-test-$USER bin/chi ...` to isolate from real state; the flag also marks sessions that `chi web` or an attached `chi` spawn (their workers inherit the environment), so `clean` finds them if they land in the real state.

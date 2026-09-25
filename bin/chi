@@ -45,7 +45,7 @@ if ARGV[0] == "sessions"
     puts "  stop ID   # stop the session's worker (ID or a unique prefix); chi --resume ID then starts a fresh one"
     puts "  delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first"
     puts "  prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]"
-    puts "  clean [--dry-run] [--days N] [--keep N]   # alias to prune --test-only"
+    puts "  clean [--dry-run] [--days N]   # test sessions (SAMAGOTCHI_ENV=test, CI): all of them, or those older than N days"
     puts "Defaults: days=14 keep=500 keep_status=running (env overrides: SAMAGOTCHI_SESSION_RETENTION_DAYS etc.)"
     exit 0
   end
@@ -149,7 +149,12 @@ if ARGV[0] == "sessions"
     exit 0
   when "prune", "clean"
     test_only = true if sub == "clean" && !sessions_args.include?("--all")
-    result = Samagotchi::SessionManager.prune_sessions(days: days, max_count: keep, keep_status: keep_status, dry_run: dry_run, test_only: test_only)
+    # Test sessions are throwaway: clean takes them whatever their age,
+    # unless --days asks for the older ones only. Live workers and
+    # keep_status still protect a session.
+    any_age = sub == "clean" && test_only && days.nil?
+    result = Samagotchi::SessionManager.prune_sessions(days: days, max_count: keep, keep_status: keep_status, dry_run: dry_run,
+                                                       test_only: test_only, any_age: any_age)
     mode = dry_run ? "Would delete" : "Deleted"
     puts "#{mode} #{result[:deleted].size} sessions (kept #{result[:kept].size}, skipped #{result[:skipped].size})"
     if result[:deleted].any?

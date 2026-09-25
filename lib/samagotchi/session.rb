@@ -186,10 +186,13 @@ module Samagotchi
     # +empty_check+ (id → Boolean) marks a session left empty: it goes
     # whatever its age and the count (SessionManager.prune_sessions).
     #
+    # +any_age+ makes every session eligible, whatever its age and the
+    # count (`chi sessions clean` with no --days: test runs are throwaway).
+    #
     # @return [Hash] { deleted: [ids], kept: [ids], skipped: [ids] }
     def self.prune(state_dir: default_state_dir, days: DEFAULT_RETENTION_DAYS, max_count: DEFAULT_MAX_COUNT,
                    keep_status: DEFAULT_KEEP_STATUS, dry_run: false, test_only: false, alive_check: nil,
-                   empty_check: nil)
+                   empty_check: nil, any_age: false)
       keep_status = Array(keep_status).map(&:to_s)
       # Fetch all sessions sorted newest-first for count logic
       all = list(state_dir: state_dir, sort: "updated_at", order: "desc")
@@ -252,13 +255,13 @@ module Samagotchi
         overflow = max.positive? && idx >= max
 
         # retain forever when both disabled
-        if max.zero? && cutoff.nil? && !left_empty
+        if max.zero? && cutoff.nil? && !left_empty && !any_age
           kept << session.id
           next
         end
 
         # If neither expired nor overflow, keep
-        unless expired || overflow || left_empty
+        unless expired || overflow || left_empty || any_age
           kept << session.id
           next
         end

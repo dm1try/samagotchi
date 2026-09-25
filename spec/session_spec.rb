@@ -440,6 +440,21 @@ RSpec.describe Samagotchi::Session do
   end
 
   describe ".prune" do
+    it "with any_age deletes every eligible session however new, still keeping live and keep_status ones" do
+      mk = ->(**attrs) { described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", test_run: true).tap { |x| attrs.each { |k, v| x.public_send("#{k}=", v) }; x.save(state_dir: tmpdir) } }
+      fresh = mk.call
+      running = mk.call(status: "running")
+      live = mk.call
+      other = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", test_run: false).tap { |x| x.save(state_dir: tmpdir) }
+
+      result = described_class.prune(state_dir: tmpdir, days: 0, max_count: 0, keep_status: ["running"], test_only: true,
+                                     any_age: true, alive_check: ->(id) { id == live.id })
+
+      expect(result[:deleted]).to eq([fresh.id])
+      expect(result[:kept]).to contain_exactly(running.id, live.id)
+      expect(File.exist?(File.join(tmpdir, "#{other.id}.json"))).to be true
+    end
+
     it "deletes sessions older than days" do
       s_old = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       s_old.save(state_dir: tmpdir)
