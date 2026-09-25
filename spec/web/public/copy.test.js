@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bubbleCopyText, copySourceAttr, visibleText } from "../../../lib/samagotchi/web/public/copy.js";
+import { bubbleCopyText, codeText, copySourceAttr, visibleText } from "../../../lib/samagotchi/web/public/copy.js";
 
 // Just enough of an Element for the copy rules: children, classes, a
 // selector test by class names, attributes.
@@ -52,6 +52,12 @@ test("a prompt copies the text as typed: its kept source, else its message witho
 
 test("an empty kept source is still the source", () => {
   assert.equal(bubbleCopyText(el("bubble output", ["shown"], { "data-copy-source": "" })), "");
+});
+
+test("codeText: the code of the block, without the renderer's last newline or the button", () => {
+  const pre = tagged("pre", [tagged("code", [tagged("span", ["def "]), "x\n  1\nend\n"]), el("copy-btn")]);
+  assert.equal(codeText(pre), "def x\n  1\nend");
+  assert.equal(codeText(tagged("pre", ["no code tag\n\n"])), "no code tag\n");
 });
 
 test("visibleText skips the matching subtrees", () => {

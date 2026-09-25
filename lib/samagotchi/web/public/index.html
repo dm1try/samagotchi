@@ -183,17 +183,21 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .hint{color:var(--text-muted);font-size:13px;padding:12px}
 #annotateBtn{position:fixed;z-index:20;font-size:12px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.5)}
 #annotateBtn[hidden]{display:none}
-/* Copy buttons (copy.js): top-right in an answer, left of a prompt (its right edge is the page's); shown on hover or focus, always (dim) on touch. They hold no text: "copied ✓" is CSS content. */
+/* Copy buttons (copy.js): top-right in an answer and a code block, left of a prompt (its right edge is the page's); shown on hover or focus, always (dim) on touch. They hold no text: "copied ✓" is CSS content. */
 .bubble.output,.bubble.user{position:relative}
 .copy-btn{position:absolute;top:6px;right:6px;z-index:1;display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:24px;padding:0 5px;border-radius:6px;background:var(--bg-raised);border:1px solid var(--border-strong);color:var(--text-muted);font-size:11px;line-height:1;white-space:nowrap;user-select:none;-webkit-user-select:none;opacity:0;transition:opacity .12s ease,color .12s ease}
 .copy-btn svg{display:block}
 .copy-btn:hover:not(:disabled){filter:none;color:var(--text-bright)}
-.bubble:hover>.copy-btn,.copy-btn:focus-visible,.copy-btn[data-copied]{opacity:1}
+.bubble:hover>.copy-btn,.code-wrap:hover>.copy-btn,.copy-btn:focus-visible,.copy-btn[data-copied]{opacity:1}
 .copy-btn[data-copied],.copy-btn[data-copied]:hover:not(:disabled){color:var(--ok-text)}
 .copy-btn[data-copied] svg{display:none}
 .copy-btn[data-copied]::after{content:"copied \2713";padding:0 2px}
 .bubble.user>.copy-btn{right:calc(100% + 4px);top:4px;background:transparent;border-color:transparent}
 .bubble.user>.copy-btn:hover{background:var(--bg-raised);border-color:var(--border-strong)}
+.code-wrap{position:relative;margin:0 0 12px}
+.code-wrap:last-child{margin-bottom:0}
+.bubble.output.markdown .code-wrap>pre{margin:0}
+.code-wrap>.copy-btn{top:5px;right:5px}
 @media (hover:none){.copy-btn{opacity:.55}}
 /* The dock is the composer card: the text field, a toolbar row, the info bar as its footer. */
 #dock{display:flex;flex-direction:column;flex-shrink:0;margin:0 12px 12px;border-radius:16px;position:relative;transition:border-color .12s ease,box-shadow .12s ease}
