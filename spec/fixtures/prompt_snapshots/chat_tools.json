@@ -419,6 +419,63 @@
   {
     "type": "function",
     "function": {
+      "name": "delegate",
+      "description": "Hand a task to a child chi session that runs in parallel in this folder and returns only its final reply (its trace stays out of this context). The child is a normal session: it shows in the lists as a child of this one and the user can attach to it. With session, send a follow-up to one of this session's children instead. Children keep running if this turn is canceled; delegate_result waits for them later.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "The task, as the child's first message: self-contained, with what to report back"
+          },
+          "model": {
+            "type": "string",
+            "description": "The child's model (a name or alias; default: this session's)"
+          },
+          "session": {
+            "type": "string",
+            "description": "A child's id or prefix: send the task there as a follow-up instead of starting a new child"
+          },
+          "wait": {
+            "type": "boolean",
+            "description": "Wait for the reply (default true); false returns at once so several children can run side by side"
+          },
+          "timeout": {
+            "type": "integer",
+            "description": "Maximum seconds to wait (default: 600); a timed-out child keeps running"
+          }
+        },
+        "required": [
+          "task"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "delegate_result",
+      "description": "Wait for a delegated child session's next reply: the child named, or this session's newest running child. Returns early if the child waits for an approval or a question the user must answer.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session": {
+            "type": "string",
+            "description": "The child's id or prefix (default: the newest running child)"
+          },
+          "timeout": {
+            "type": "integer",
+            "description": "Maximum seconds to wait (default: 600)"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "ask_user_question",
       "description": "Ask the user a structured qualification question. Supports single/multi selection plus optional freeform/Other input. Prefer this over plain numbered lists when you need a clear choice. The harness renders it natively and returns {selected, freeform}.",
       "parameters": {

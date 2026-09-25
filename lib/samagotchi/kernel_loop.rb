@@ -30,6 +30,8 @@ require_relative "tools/cancel_reminder"
 require_relative "tools/list_reminders"
 require_relative "tools/list_sessions"
 require_relative "tools/send_note"
+require_relative "tools/delegate"
+require_relative "tools/delegate_result"
 require_relative "tools/ask_user_question"
 require_relative "tool_activity"
 require_relative "tool_runner"
@@ -117,6 +119,8 @@ module Samagotchi
       Tools::ListReminders,
       Tools::ListSessions,
       Tools::SendNote,
+      Tools::Delegate,
+      Tools::DelegateResult,
       Tools::AskUserQuestion
     ].freeze
 
@@ -907,6 +911,11 @@ module Samagotchi
                   tool.call(call[:content], peers: @peers, cwd: call[:cwd])
                 when Tools::SendNote::NAME
                   tool.call(call[:content], session: call[:session], peers: @peers)
+                when Tools::Delegate::NAME
+                  tool.call(call[:content], model: call[:model], session: call[:session], wait: call[:wait],
+                                            timeout: call[:timeout], peers: @peers)
+                when Tools::DelegateResult::NAME
+                  tool.call(call[:content], session: call[:session], timeout: call[:timeout], peers: @peers)
                 when Tools::AskUserQuestion::NAME
                   handle_ask_user_question(call)
                 else

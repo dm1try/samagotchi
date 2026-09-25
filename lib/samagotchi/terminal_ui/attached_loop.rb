@@ -58,7 +58,7 @@ module Samagotchi
       JOIN_ANSWER_CHARS = 1200
 
       # Prompt labels by the sender's client_id prefix.
-      CLIENT_LABELS = { "web" => "web", "tui" => "tui", "system" => "reminder" }.freeze
+      CLIENT_LABELS = { "web" => "web", "tui" => "tui", "system" => "reminder", "delegate" => "delegate" }.freeze
 
       attr_reader :client_id
 

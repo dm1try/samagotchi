@@ -107,6 +107,13 @@ RSpec.describe Samagotchi::LLM::NativeToolNormalizer do
       expect(mapped).to include(name: "send_note", content: "moved", session: "3f2a1c")
     end
 
+    it "maps delegate's task and options, and delegate_result's session" do
+      mapped = described_class.normalize(tool_call(name: "delegate", arguments: { "task" => "count", "model" => "tiny", "wait" => false, "timeout" => 30 }))
+      expect(mapped).to include(name: "delegate", content: "count", model: "tiny", session: nil, wait: false, timeout: 30)
+      expect(described_class.normalize(tool_call(name: "delegate_result", arguments: { "session" => "3f2a1c" })))
+        .to include(name: "delegate_result", content: "", session: "3f2a1c", timeout: nil)
+    end
+
     it "maps list_sessions with an optional folder" do
       expect(described_class.normalize(tool_call(name: "list_sessions", arguments: {}))).to include(name: "list_sessions", cwd: nil)
       expect(described_class.normalize(tool_call(name: "list_sessions", arguments: { "cwd" => "/w" }))).to include(cwd: "/w")

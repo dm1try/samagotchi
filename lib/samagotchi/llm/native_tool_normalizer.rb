@@ -17,6 +17,8 @@ require_relative "../tools/cancel_reminder"
 require_relative "../tools/list_reminders"
 require_relative "../tools/list_sessions"
 require_relative "../tools/send_note"
+require_relative "../tools/delegate"
+require_relative "../tools/delegate_result"
 require_relative "../tools/ask_user_question"
 
 module Samagotchi
@@ -183,6 +185,14 @@ module Samagotchi
         },
         Tools::SendNote::NAME => lambda { |args|
           { name: Tools::SendNote::NAME, content: args["text"].to_s, path: nil, scope: nil, session: args["session"].to_s }
+        },
+        Tools::Delegate::NAME => lambda { |args|
+          { name: Tools::Delegate::NAME, content: args["task"].to_s, path: nil, scope: nil,
+            model: args["model"], session: args["session"], wait: args["wait"], timeout: args["timeout"] }
+        },
+        Tools::DelegateResult::NAME => lambda { |args|
+          { name: Tools::DelegateResult::NAME, content: "", path: nil, scope: nil,
+            session: args["session"], timeout: args["timeout"] }
         },
         Tools::AskUserQuestion::NAME => lambda { |args|
           raw_opts = args["options"]

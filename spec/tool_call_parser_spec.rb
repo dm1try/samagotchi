@@ -45,6 +45,35 @@ RSpec.describe Samagotchi::ToolCallParser do
     end
   end
 
+  describe "delegate and delegate_result" do
+    it "parses them in the Gemma format, optional params left nil" do
+      parser = described_class::Gemma.new(Samagotchi::ModelProfile.normalize(:gemma4))
+
+      full = parser.parse("<|tool_call>call:delegate{task:<|\"|>count the specs<|\"|>,model:<|\"|>tiny<|\"|>,wait:false,timeout:30}<tool_call|>").first
+      bare = parser.parse("<|tool_call>call:delegate{task:<|\"|>count the specs<|\"|>}<tool_call|>").first
+      result = parser.parse("<|tool_call>call:delegate_result{session:<|\"|>3f2a1c<|\"|>}<tool_call|>").first
+
+      expect(full).to include(name: "delegate", content: "count the specs", model: "tiny", session: nil)
+      expect(full[:wait].to_s).to eq("false")
+      expect(full[:timeout].to_s).to eq("30")
+      expect(bare).to include(name: "delegate", content: "count the specs", model: nil, session: nil, wait: nil, timeout: nil)
+      expect(result).to include(name: "delegate_result", session: "3f2a1c", timeout: nil)
+    end
+
+    it "parses them in the Qwen format" do
+      parser = described_class::Qwen.new(Samagotchi::ModelProfile.normalize(:qwen36))
+
+      call = parser.parse("<tool_call>\n<function=delegate>\n<parameter=task>\ncount the specs\n</parameter>\n" \
+                          "<parameter=session>\n3f2a1c\n</parameter>\n<parameter=wait>\nfalse\n</parameter>\n</function>\n</tool_call>").first
+      result = parser.parse("<tool_call>\n<function=delegate_result>\n</function>\n</tool_call>").first
+
+      expect(call).to include(name: "delegate", content: "count the specs", session: "3f2a1c", wait: "false")
+      expect(call[:model].to_s).to eq("")
+      expect(result).to include(name: "delegate_result")
+      expect(result[:session].to_s).to eq("")
+    end
+  end
+
   describe "Qwen#strip_thought" do
     let(:parser) { described_class::Qwen.new(Samagotchi::ModelProfile.normalize(:qwen36)) }
 

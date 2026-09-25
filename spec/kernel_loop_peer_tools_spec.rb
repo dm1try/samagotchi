@@ -26,6 +26,26 @@ RSpec.describe "list_sessions and send_note in the loops" do
     expect(listed[:activity]).to include(action: "listing sessions")
   end
 
+  it "KernelLoop dispatches delegate and delegate_result with its peers, and labels the activity" do
+    kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
+    kernel.peers = Samagotchi::Tools::Peers.new(session_id: me.id, cwd: "/work/me", state_dir: tmpdir)
+    allow(Process).to receive(:spawn).and_return(12_345)
+    allow(Process).to receive(:detach)
+
+    started = kernel.dispatch_tool_call(name: "delegate", content: "count the specs", model: nil, session: nil, wait: "false", timeout: nil)
+
+    expect(started[:output]).to start_with("[delegate]\nsession: ")
+    expect(started[:output]).to include("status: running\nStarted a delegate session")
+    expect(started[:activity]).to include(action: "delegating", tool: "delegate", status: "ok")
+    expect(started[:activity][:params]).to eq("task=\"count the specs\" wait=\"false\"")
+
+    child_id = started[:output][/session: (\S+)/, 1]
+    Samagotchi::SessionManager.write_output(Samagotchi::Session.session_dir(child_id, state_dir: tmpdir), "42")
+    waited = kernel.dispatch_tool_call(name: "delegate_result", content: "", session: child_id[0, 8], timeout: "5")
+    expect(waited[:output]).to eq("[delegate_result]\nsession: #{child_id}\nstatus: done\n---\n42")
+    expect(waited[:activity]).to include(action: "waiting for a delegate", params: "session=#{child_id[0, 8].inspect}")
+  end
+
   it "Engine tells its kernel which session it runs and where sessions live" do
     engine = Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client), profile: "gemma4")
     engine.guardrail_state_dir = tmpdir

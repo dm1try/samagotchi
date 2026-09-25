@@ -17,6 +17,8 @@ require_relative "tools/cancel_reminder"
 require_relative "tools/list_reminders"
 require_relative "tools/list_sessions"
 require_relative "tools/send_note"
+require_relative "tools/delegate"
+require_relative "tools/delegate_result"
 require_relative "tools/ask_user_question"
 
 module Samagotchi
@@ -274,6 +276,15 @@ module Samagotchi
         when Tools::SendNote::NAME
           { name: name, content: strip_gemma_delimiters(params["text"].to_s), path: nil, scope: nil,
             session: strip_gemma_delimiters(params["session"].to_s) }
+        when Tools::Delegate::NAME
+          task = params["task"] || strip_param_prefix(params_raw, "task") || params_raw
+          { name: name, content: strip_gemma_delimiters(task.to_s), path: nil, scope: nil,
+            model: params["model"] && strip_gemma_delimiters(params["model"]),
+            session: params["session"] && strip_gemma_delimiters(params["session"]),
+            wait: params["wait"], timeout: params["timeout"] }
+        when Tools::DelegateResult::NAME
+          { name: name, content: "", path: nil, scope: nil,
+            session: params["session"] && strip_gemma_delimiters(params["session"]), timeout: params["timeout"] }
         when Tools::AskUserQuestion::NAME
           { name: name, content: params["question"] ? strip_gemma_delimiters(params["question"]) : strip_gemma_delimiters(params_raw),
             path: nil, scope: nil,
@@ -577,6 +588,13 @@ module Samagotchi
         when Tools::SendNote::NAME
           { name: name, content: qwen_param_value(params, "text"), path: nil, scope: nil,
             session: qwen_param_value(params, "session") }
+        when Tools::Delegate::NAME
+          { name: name, content: qwen_param_value(params, "task"), path: nil, scope: nil,
+            model: qwen_param_value(params, "model"), session: qwen_param_value(params, "session"),
+            wait: qwen_param_value(params, "wait"), timeout: qwen_param_value(params, "timeout") }
+        when Tools::DelegateResult::NAME
+          { name: name, content: "", path: nil, scope: nil,
+            session: qwen_param_value(params, "session"), timeout: qwen_param_value(params, "timeout") }
         when Tools::AskUserQuestion::NAME
            opts_raw = qwen_param_value(params, "options", strip: false)
            opts = qwen_ask_options(opts_raw)

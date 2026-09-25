@@ -14,6 +14,8 @@ require_relative "tools/web_fetch"
 require_relative "tools/ask_user_question"
 require_relative "tools/list_sessions"
 require_relative "tools/send_note"
+require_relative "tools/delegate"
+require_relative "tools/delegate_result"
 
 module Samagotchi
   # The one-line summary of a tool call that the UIs show ("reading file",
@@ -50,6 +52,8 @@ module Samagotchi
       when Tools::AskUserQuestion::NAME then "asking user"
       when Tools::ListSessions::NAME then "listing sessions"
       when Tools::SendNote::NAME then "sending a note"
+      when Tools::Delegate::NAME then "delegating"
+      when Tools::DelegateResult::NAME then "waiting for a delegate"
       else "calling tool"
       end
     end
@@ -116,6 +120,15 @@ module Samagotchi
         call[:cwd].to_s.strip.empty? ? nil : "cwd=#{preview_tool_param(call[:cwd])}"
       when Tools::SendNote::NAME
         "session=#{preview_tool_param(call[:session])} text=#{preview_tool_param(call[:content])}"
+      when Tools::Delegate::NAME
+        parts = []
+        parts << "session=#{preview_tool_param(call[:session])}" unless call[:session].to_s.strip.empty?
+        parts << "model=#{preview_tool_param(call[:model])}" unless call[:model].to_s.strip.empty?
+        parts << "task=#{preview_tool_param(call[:content])}"
+        parts << "wait=#{preview_tool_param(call[:wait])}" unless call[:wait].nil? || call[:wait].to_s.strip.empty?
+        parts.join(" ")
+      when Tools::DelegateResult::NAME
+        call[:session].to_s.strip.empty? ? nil : "session=#{preview_tool_param(call[:session])}"
       when Tools::AskUserQuestion::NAME
         parts = ["question=#{preview_tool_param(call[:question] || call[:content])}"]
         opts = call[:options]
