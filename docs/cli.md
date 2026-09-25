@@ -276,6 +276,9 @@ working on, what came of it and what is still open, not a turn-by-turn log.
   the prompt prints there.
 - `/recap` shows the saved one and asks for a new one when the chat moved on
   (`writing a recap…`, then the recap when it comes).
+- One written while a continue offer waits (the last turn ran out of steps)
+  says that turn stopped before the task was finished. Answering `no` counts
+  as activity, so the next recap no longer says so.
 - It is 2-4 sentences; `recap.sentences` sets another length (`3`, `5-7`,
   up to 10; `--recap-sentences`, `SAMAGOTCHI_RECAP_SENTENCES`). A change
   shows from the next recap written, and updates keep to it.

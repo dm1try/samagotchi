@@ -220,6 +220,21 @@ RSpec.describe Samagotchi::IdleRecap do
         expect(update).not_to include("first sentence")
         expect(build.(sentences: [1, 2])).to include("The first sentence names", "Then say what came of it")
       end
+      it "states an open continue offer as one line after the transcript" do
+        user = Samagotchi::IdleRecap::RecapPrompt.build(transcript, offer: true).last[:content]
+        expect(user).to end_with("#{transcript}\n---\nWhere it stands now: the assistant's last turn stopped at its " \
+                                 "step limit before the task was finished.\nWrite the recap now.")
+        system = Samagotchi::IdleRecap::RecapPrompt.build(transcript, offer: true).first[:content]
+        expect(system).to eq(Samagotchi::IdleRecap::RecapPrompt.build(transcript).first[:content])
+      end
+      it "builds the same prompt as before without an offer" do
+        [{}, { previous: "Earlier." }, { tool_names: %w[execute], sentences: [1, 1] }].each do |kw|
+          expect(Samagotchi::IdleRecap::RecapPrompt.build(transcript, **kw, offer: false))
+            .to eq(Samagotchi::IdleRecap::RecapPrompt.build(transcript, **kw))
+        end
+        user = Samagotchi::IdleRecap::RecapPrompt.build(transcript).last[:content]
+        expect(user).to end_with("#{transcript}\n---\nWrite the recap now.")
+      end
       it "keeps the tail of an overlong transcript, marking the cut" do
         long = ("a" * 100 + "\n\n") * 300
         user = Samagotchi::IdleRecap::RecapPrompt.build(long + "THE END").last[:content]
@@ -867,6 +882,33 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(idle.write_now(on_start: -> { started << :yes })).to eq("Left recap.")
       expect(started).to eq([:yes])
       expect(store.saved).to include(text: "Left recap.", covered: 3)
+    end
+
+    it "says the last turn stopped when a continue offer is open (read at each attempt)" do
+      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
+      prompts = []
+      client = double("client")
+      allow(client).to receive(:summarize) { |prompt| prompts << prompt.last[:content]; "Recap." }
+      idle = idle_for(engine, client)
+      offer = [true]
+      idle.awaiting_continue = -> { offer.first }
+      idle.write_now
+      expect(prompts.last).to include("Where it stands now: the assistant's last turn stopped at its step limit")
+
+      offer[0] = false
+      allow(engine).to receive(:messages_json_for_recap).and_return(JSON.generate(JSON.parse(two_turns) + [{ "role" => "model", "content" => "More." }]))
+      idle.write_now
+      expect(prompts.size).to eq(2)
+      expect(prompts.last).not_to include("Where it stands now")
+    end
+
+    it "writes the recap without the offer line when asking about the offer fails" do
+      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
+      client = double("client", summarize: "Recap.")
+      idle = idle_for(engine, client)
+      idle.awaiting_continue = -> { raise "gone" }
+      expect(idle.write_now).to eq("Recap.")
+      expect(client).to have_received(:summarize) { |prompt| expect(prompt.last[:content]).not_to include("Where it stands") }
     end
 
     it "sends nothing when nothing is new since the saved recap" do

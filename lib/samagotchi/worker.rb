@@ -102,6 +102,9 @@ module Samagotchi
       # an empty session until the first turn.
       @engine.session = @session
       @turn_flow = TurnFlow.new(engine: @engine)
+      # A recap written while a continue offer waits says the turn stopped
+      # unfinished (before the idle jobs start).
+      @engine.recap&.awaiting_continue = -> { @turn_flow.awaiting_continue? }
       # The seq of the last turn's end event: a command queued before it was
       # queued while that turn ran.
       @turn_end_seq = 0
@@ -364,6 +367,9 @@ module Samagotchi
         announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed))
       end
       @session.save(state_dir: @state_dir) unless Array(result.changed).empty? || stopped_on_disk?
+      # An offer answered without a turn ("no") is activity: the recap
+      # written at the offer (it says the turn stopped) gets rewritten.
+      @engine.record_activity if resolved && !result.resume
       run_continue_turn(command) if result.resume
     end
 
@@ -421,6 +427,7 @@ module Samagotchi
         @turn_flow.drop_offer!
         @engine.announce(type: :continue_resolved, decision: "dropped", client_id: origin&.dig(:client_id))
       end
+      @engine.record_activity
     end
 
     # Back to the conversation before the failed turn, as the REPL does (so

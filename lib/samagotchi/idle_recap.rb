@@ -143,6 +143,13 @@ module Samagotchi
       UPDATE_LENGTH = " Keep it to %<sentences>s even though it now covers more: merge or drop older " \
                       "details rather than adding sentences. Keep %<focus>s about what the user " \
                       "is working on (change it if the focus moved)."
+      # At an open continue offer (the last turn ran out of steps with a
+      # tool call pending). Recap-next F1 spike: without it the recap stated
+      # the stop in 5-10% and said "no open items" 7/40; with this line
+      # after the transcript 95-100% and 0. A system sentence as well made
+      # it worse (a chit-chat session judged there was no task). Worded to
+      # stay true after a worker restart, when the offer itself is gone.
+      OFFER_LINE = "Where it stands now: the assistant's last turn stopped at its step limit before the task was finished."
       OMITTED = "(earlier part omitted)"
       DEFAULT_SENTENCES = [2, 4].freeze
       MAX_SENTENCES = 10
@@ -170,7 +177,8 @@ module Samagotchi
       # @return [Array<Hash>, nil] chat messages; nil when there is no
       #   transcript to summarize
       # @param sentences [Array(Integer, Integer)] the range, from #sentences_range
-      def build(transcript, tool_count: nil, tool_names: [], previous: nil, sentences: DEFAULT_SENTENCES)
+      # @param offer [Boolean] a continue offer is open: add OFFER_LINE
+      def build(transcript, tool_count: nil, tool_names: [], previous: nil, sentences: DEFAULT_SENTENCES, offer: false)
         body = cap(transcript.to_s.strip)
         return nil if body.empty?
 
@@ -191,8 +199,9 @@ module Samagotchi
         user = +""
         user << "Earlier recap:\n#{previous}\n\n" if previous
         user << "Transcript#{previous ? ' since the earlier recap' : ''} (the system prompt and tool " \
-                "internals were removed; only user turns and assistant prose remain):\n---\n#{body}\n---\n" \
-                "Write the recap now."
+                "internals were removed; only user turns and assistant prose remain):\n---\n#{body}\n---\n"
+        user << "#{OFFER_LINE}\n" if offer
+        user << "Write the recap now."
         [{ role: "system", content: system }, { role: "user", content: user }]
       end
 
@@ -223,6 +232,10 @@ module Samagotchi
 
     # @return [Array(Integer, Integer)] the recap length range, e.g. [2, 4]
     attr_reader :generation, :inactivity, :min_user_turns, :sentences
+
+    # @param callable [#call] true while a continue offer waits for an
+    #   answer (the Worker's or the REPL's TurnFlow); read at each attempt
+    attr_writer :awaiting_continue
 
     # @return [Hash, nil] the last recap written: {text:, covered:,
     #   covered_digest:, model:, created_at:}, where covered counts the
@@ -277,6 +290,7 @@ module Samagotchi
       @run_mutex = Monitor.new
       @generation = 0
       @last_fire_activity_seq = nil
+      @awaiting_continue = -> { false }
       @in_flight = nil
       @state = nil
     end
@@ -366,6 +380,13 @@ module Samagotchi
 
     private
 
+    # A failing check writes the recap without the offer line.
+    def offer_open?
+      @awaiting_continue.call ? true : false
+    rescue StandardError
+      false
+    end
+
     def last_idle_seconds
       @clock.call - @engine.last_activity_at
     end
@@ -390,7 +411,7 @@ module Samagotchi
       # the recap still stands, so no request.
       return :nothing_new if transcript.strip.empty?
       prompt = RecapPrompt.build(transcript, tool_names: TranscriptFilter.tool_names(fresh), previous: previous&.dig(:text),
-                                                     sentences: @sentences)
+                                                     sentences: @sentences, offer: offer_open?)
       return :nothing_new if prompt.nil?
       asked = target
       @in_flight = { thread: spawn_summarize(client_for(asked), prompt), generation: gen, deadline: @clock.call + @timeout,

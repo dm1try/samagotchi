@@ -675,6 +675,9 @@ RSpec.describe Samagotchi::Worker do
 
       describe "/continue" do
         before do
+          recap = double("recap")
+          allow(recap).to receive(:awaiting_continue=) { |seam| @recap_offer_seam = seam }
+          allow(engine).to receive(:recap).and_return(recap)
           start_worker(poll_interval: 5)
           post_turn("long task")
           expect(wait_until { events_seen.any? { |e| e[:type] == :continue_offered } }).to be(true)
@@ -690,6 +693,15 @@ RSpec.describe Samagotchi::Worker do
           started = seen.select { |e| e[:type] == :turn_started }.last
           expect(started).to include(continue: true, prompt: nil, origin: { client_id: "web:2" })
           expect(wait_until { saved_messages == ["long task", "r1", "OK"] }).to be(true)
+        end
+
+        it "tells the recap an offer is open, and records activity when no ends it, so a new recap follows" do
+          expect(@recap_offer_seam.call).to be(true)
+          seq = engine.activity_seq
+          ran(JSON.parse(post_command("/continue no").body)["command_id"])
+
+          expect(@recap_offer_seam.call).to be(false)
+          expect(engine.activity_seq).to be > seq
         end
 
         it "discards the interrupted turn on no" do
