@@ -491,7 +491,7 @@ RSpec.describe Samagotchi::Web::App do
       status, _headers, body = build_app(state_dir: File.join(Dir.home, "st<a>", "sessions")).call(env_for("/"))
 
       expect(status).to eq(200)
-      expect(body.first).to include('<body data-sessions-dir="~/st&lt;a&gt;/sessions">')
+      expect(body.first).to include('<body data-sessions-dir="~/st&lt;a&gt;/sessions" ')
       expect(body.first).not_to include(".local/state")
     end
   end

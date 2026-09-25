@@ -10,6 +10,8 @@ require "rack/request"
 require_relative "../bridge_client"
 require_relative "../session"
 require_relative "../session_manager"
+require_relative "../project_scope"
+require_relative "../version"
 require_relative "../output_formatter"
 require_relative "../image_store"
 require_relative "../context_note"
@@ -70,6 +72,8 @@ module Samagotchi
           handle_list(req)
         when ["POST", "/api/sessions"]
           handle_create(req)
+        when ["GET", "/api/info"]
+          handle_info
         else
           # Dynamic routes
           if (m = %r{\A/api/sessions/([^/]+)/stream\z}.match(req.path_info)) && req.get?
@@ -144,7 +148,16 @@ module Samagotchi
         error_response(403, "forbidden", "only 127.0.0.1 is allowed")
       end
 
+      # The page's scope: ?dir=<folder> lists that folder's project (every
+      # session when the folder is in no repo). A dir that isn't an existing
+      # absolute folder answers 400 before anything else runs.
       def handle_list(req)
+        dir, error = scope_dir(req.params["dir"])
+        return error if error
+
+        scope = {}
+        root = dir && ProjectScope.root_for(dir)
+        scope[:project_root] = root if root
         # Lazy retention sweep (once per 24h)
         if @manager.respond_to?(:retention_sweep_if_due)
           begin
@@ -158,9 +171,10 @@ module Samagotchi
         limit = sanitize_limit(req.params["limit"])
         offset = sanitize_offset(req.params["offset"])
         sessions = if @state_dir
-                     @manager.list_sessions(state_dir: @state_dir, sort: sort, order: order, limit: limit, offset: offset)
+                     @manager.list_sessions(state_dir: @state_dir, sort: sort, order: order, limit: limit, offset: offset,
+                                            **scope)
                    else
-                     @manager.list_sessions(sort: sort, order: order, limit: limit, offset: offset)
+                     @manager.list_sessions(sort: sort, order: order, limit: limit, offset: offset, **scope)
                    end
         payload = sessions.map do |s|
           owner = session_owner(s.id)
@@ -171,15 +185,36 @@ module Samagotchi
         # Compute total without limit/offset for header
         if limit || offset.positive?
           total = if @state_dir
-                    @manager.list_sessions(state_dir: @state_dir, sort: sort, order: order).size
+                    @manager.list_sessions(state_dir: @state_dir, sort: sort, order: order, **scope).size
                   else
-                    @manager.list_sessions(sort: sort, order: order).size
+                    @manager.list_sessions(sort: sort, order: order, **scope).size
                   end
           headers["X-Total-Count"] = total.to_s
         end
         body = JSON.generate(payload)
         headers["Content-Length"] = body.bytesize.to_s
         [200, headers, [body]]
+      end
+
+      # A scope folder from the page: [dir, nil] (dir nil when none was
+      # given), or [nil, a 400 response] when it isn't an existing absolute
+      # folder (a bookmarked worktree deleted since, a typo).
+      def scope_dir(value)
+        return [nil, nil] if value.nil? || value.to_s.strip.empty?
+
+        dir = value.to_s
+        unless dir.start_with?("/") && File.directory?(dir)
+          return [nil, error_response(400, "invalid_dir", "not a folder: #{dir}")]
+        end
+
+        [File.expand_path(dir), nil]
+      end
+
+      # What a second `chi web` probes before starting its own server: this
+      # is chi web, and it knows ?dir (features).
+      def handle_info
+        json_response(200, { app: "chi-web", version: Samagotchi::VERSION, pid: Process.pid, cwd: Dir.pwd,
+                             features: ["dir"] })
       end
 
       def sanitize_sort(val)
@@ -215,8 +250,14 @@ module Samagotchi
         if prompt.to_s.strip.empty? && !idle
           return error_response(400, "missing_fields", "prompt is required")
         end
+        # dir: the folder the chat starts in (the page's scope); without it,
+        # the server's own cwd.
+        dir, error = scope_dir(body["dir"])
+        return error if error
+
+        folder = dir ? { working_directory: dir } : {}
         begin
-          session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir)
+          session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
         rescue ArgumentError => e
           return error_response(400, "invalid_model", e.message) if e.message.match?(/SAMAGOTCHI_DEFAULT_MODEL/)
           raise
@@ -661,10 +702,10 @@ module Samagotchi
         bridge_client(session_id)&.event_seq
       end
 
-      def serve_index(_req)
+      def serve_index(req)
         path = File.join(@public_dir, "index.html")
         if File.file?(path)
-          body = File.read(path).sub("<body>", %(<body data-sessions-dir="#{Rack::Utils.escape_html(sessions_dir_label)}">))
+          body = File.read(path).sub("<body>", "<body #{index_data_attributes(req)}>")
           [200, {
             "Content-Type" => "text/html; charset=utf-8",
             "Content-Length" => body.bytesize.to_s,
@@ -887,9 +928,29 @@ module Samagotchi
 
       # The sessions folder as the page shows it: ~ for the home folder.
       def sessions_dir_label
-        dir = File.expand_path(default_state_dir)
+        home_label(File.expand_path(default_state_dir))
+      end
+
+      def home_label(dir)
         home = Dir.home
+        return "~" if dir == home
+
         dir.start_with?("#{home}/") ? "~#{dir.delete_prefix(home)}" : dir
+      end
+
+      # <body> data for the page: where sessions are stored, where an
+      # all-view new chat starts (the server's cwd), and, when ?dir names a
+      # folder in a repo, that project's name and root. A bad dir adds
+      # nothing here: the list call answers 400 and the page says so.
+      def index_data_attributes(req)
+        attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(Dir.pwd) }
+        dir, = scope_dir(req.params["dir"])
+        root = dir && ProjectScope.root_for(dir)
+        if root
+          attrs["project-name"] = File.basename(root)
+          attrs["project-dir"] = home_label(root)
+        end
+        attrs.map { |key, value| %(data-#{key}="#{Rack::Utils.escape_html(value)}") }.join(" ")
       end
 
       def json_response(status, payload)
