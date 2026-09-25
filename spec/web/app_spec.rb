@@ -677,6 +677,20 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)).to include("status" => "accepted")
     end
 
+    it "answers 504 and queues no file when the bridge times out" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(app).to receive(:live_bridge_client).and_return(bridge)
+      allow(bridge).to receive(:post_turn).and_raise(Errno::ETIMEDOUT)
+      expect(manager).not_to receive(:write_turn_input)
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/turn", method: "POST", body: '{"prompt":"hi"}'))
+
+      expect(status).to eq(504)
+      expect(JSON.parse(body.first)).to include("error" => "worker_timeout")
+    end
+
     it "falls back to the input file when no bridge comes up" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)

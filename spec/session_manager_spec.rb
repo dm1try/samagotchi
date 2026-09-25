@@ -1178,6 +1178,36 @@ RSpec.describe Samagotchi::SessionManager do
         .to eq([{ "prompt" => "hi", "client_id" => "cli:send", "enqueued_id" => result[:ack][:enqueued_id] }])
     end
 
+    it "queues the input file when nothing listens on the Bridge's port" do
+      own("worker")
+      server = TCPServer.new("127.0.0.1", 0)
+      port = server.addr[1]
+      server.close
+      client = Samagotchi::BridgeClient.new(session_id: session.id, port: port, read_timeout: 0.3)
+
+      result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { client })
+
+      expect(result[:status]).to eq(:accepted)
+      expect(input_files.size).to eq(1)
+    end
+
+    it "reports a timeout and queues nothing when the Bridge takes the request but never answers" do
+      own("worker")
+      server = TCPServer.new("127.0.0.1", 0)
+      accepted = []
+      acceptor = Thread.new { loop { accepted << server.accept } }
+      client = Samagotchi::BridgeClient.new(session_id: session.id, port: server.addr[1], read_timeout: 0.3)
+
+      result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { client })
+
+      expect(result).to match(status: :timeout, ack: { "error" => "worker_timeout", "detail" => /did not answer/ })
+      expect(input_files).to be_empty
+    ensure
+      acceptor&.kill
+      accepted&.each(&:close)
+      server&.close
+    end
+
     it "withdraws the file and raises OwnedByTUI when a TUI took the session after the write" do
       allow(Process).to receive(:spawn).and_return(20_002)
       bridge = lambda do

@@ -731,8 +731,9 @@ module Samagotchi
     #   the session's sidecar, waiting TURN_BRIDGE_WAIT for a new worker's
     # @return [Hash] {status: :accepted, ack: Hash} (the Bridge's reply, or
     #   {status:, enqueued_id:, session_id:} for a file), {status: :refused,
-    #   code:, ack:} when the Bridge refused the images, or {status: :failed}
-    #   when the input file couldn't be written
+    #   code:, ack:} when the Bridge refused the images, {status: :timeout,
+    #   ack:} when it took the request but never answered (no file then), or
+    #   {status: :failed} when the input file couldn't be written
     # @raise [OwnedByTUI] a chi REPL owns the session
     # @raise [ImagesUnsupported] images for a worker that predates them
     # @raise [ArgumentError] no such session
@@ -754,6 +755,11 @@ module Samagotchi
           if ack.is_a?(Hash) && %w[bad_images images_unsupported].include?(ack["error"])
             return { status: :refused, code: reply.status, ack: ack }
           end
+        rescue Errno::ETIMEDOUT
+          # A live worker that took the request may still run it: a file
+          # too could run the turn twice.
+          return { status: :timeout, ack: { "error" => "worker_timeout",
+                                            "detail" => "the session's worker did not answer; the message may still arrive" } }
         rescue SystemCallError, IOError
           nil # the worker closed its Bridge on the way out: queue the file
         end

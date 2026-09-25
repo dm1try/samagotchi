@@ -452,6 +452,7 @@ module Samagotchi
         case result[:status]
         when :accepted then json_response(202, result[:ack])
         when :refused then json_response(result[:code], result[:ack])
+        when :timeout then error_response(504, "worker_timeout", result[:ack]["detail"])
         else error_response(500, "enqueue_failed", "could not write turn input")
         end
       rescue SessionManager::OwnedByTUI => e
