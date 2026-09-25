@@ -88,7 +88,7 @@ RSpec.describe Samagotchi::BridgeClient do
 
     expect(reply.status).to eq(409)
     expect(reply.json).to include("detail" => "already answered")
-    expect(finish.call).to start_with("POST /session/s1/answer HTTP/1.1\r\n").and include('{"id":"q1","selected":["A"],"freeform":null}')
+    expect(finish.call).to start_with("POST /session/s1/answer HTTP/1.1\r\n").and include('{"id":"q1","selected":["A"],"freeform":null,"deadline":')
   end
 
   it "dismisses a question by its id" do
@@ -98,7 +98,7 @@ RSpec.describe Samagotchi::BridgeClient do
 
     expect(reply.status).to eq(200)
     expect(reply.json).to include("status" => "dismissed")
-    expect(finish.call).to start_with("POST /session/s1/question/dismiss HTTP/1.1\r\n").and include('{"id":"q1"}')
+    expect(finish.call).to start_with("POST /session/s1/question/dismiss HTTP/1.1\r\n").and include('{"id":"q1","deadline":')
   end
 
   it "posts a session command with the client's id and returns the ACK" do
@@ -109,7 +109,7 @@ RSpec.describe Samagotchi::BridgeClient do
     expect(reply.status).to eq(202)
     expect(reply.json).to include("command_id" => "c1")
     expect(finish.call).to start_with("POST /session/s1/command HTTP/1.1\r\n")
-      .and include('{"line":"/model x","client_id":"tui:1"}')
+      .and include('{"line":"/model x","client_id":"tui:1","deadline":')
   end
 
   it "asks the worker to exit, naming the client" do
@@ -158,6 +158,24 @@ RSpec.describe Samagotchi::BridgeClient do
 
     deadline = JSON.parse(finish.call.split("\r\n\r\n", 2)[1])["deadline"]
     expect(deadline).to be_within(1).of(sent_at + 25)
+  end
+
+  # A command (a shell line), an answer or a dismissal the client gave up
+  # on must not run when a frozen worker wakes, as a turn doesn't.
+  {
+    "a command" => ->(c) { c.post_command(line: "!ls") },
+    "an answer" => ->(c) { c.answer(id: "q1", selected: ["A"]) },
+    "a dismissal" => ->(c) { c.dismiss_question(id: "q1") }
+  }.each do |what, send_it|
+    it "gives #{what} the turn's deadline" do
+      port, finish = serve_once(json_reply("202 Accepted", "{}"))
+      sent_at = Time.now.to_f
+
+      send_it.call(described_class.new(session_id: "s1", port: port, read_timeout: 30))
+
+      deadline = JSON.parse(finish.call.split("\r\n\r\n", 2)[1])["deadline"]
+      expect(deadline).to be_within(1).of(sent_at + 25)
+    end
   end
 
   describe "a worker that takes the request and never answers" do

@@ -1275,6 +1275,30 @@ RSpec.describe Samagotchi::Bridge do
           .with(:bridge, "command_expired", hash_including(sid: @session.id, client_id: "web:1", late: be > 4))
       end
 
+      # The real client against a worker that reads the request only after
+      # the client gave up (its event log held past the read timeout).
+      it "never runs a command its BridgeClient timed out on" do
+        queued = []
+        start_bridge(on_command: ->(command) { queued << command })
+        dropped = Queue.new
+        allow(Samagotchi::Log).to receive(:warn).and_wrap_original do |original, *args, **kw|
+          dropped << args[1] if args[1] == "command_expired"
+          original.call(*args, **kw)
+        end
+        held = Queue.new
+        holder = Thread.new { @engine.synchronize_events { held << true; sleep(0.9) } }
+        held.pop
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, read_timeout: 0.5)
+
+        expect { client.post_command(line: "!echo STALE", client_id: "tui:1") }.to raise_error(Errno::ETIMEDOUT)
+        holder.join
+
+        expect(dropped.pop(timeout: 2)).to eq("command_expired")
+        expect(queued).to be_empty
+      ensure
+        holder&.join
+      end
+
       it "queues a command before its deadline" do
         queued = []
         start_bridge(on_command: ->(command) { queued << command })

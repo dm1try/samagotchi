@@ -1048,7 +1048,7 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(status).to eq(200)
       expect(resp).to include("status" => "dismissed", "id" => "q-3")
-      expect(received).to start_with("POST /session/s1/question/dismiss HTTP/1.1").and include('{"id":"q-3"}')
+      expect(received).to start_with("POST /session/s1/question/dismiss HTTP/1.1").and include('{"id":"q-3","deadline":')
     end
 
     it "passes the bridge's 409 through when the question is no longer pending" do
@@ -1109,7 +1109,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(status).to eq(202)
       expect(resp).to include("command_id" => "c1")
       expect(manager.resume_calls.map(&:first)).to eq(["s1"])
-      expect(received).to start_with("POST /session/s1/command HTTP/1.1").and include('{"line":"/model x","client_id":"web:1"}')
+      expect(received).to start_with("POST /session/s1/command HTTP/1.1").and include('{"line":"/model x","client_id":"web:1","deadline":')
     end
 
     it "returns 400 without a line, and 503 with no live bridge" do

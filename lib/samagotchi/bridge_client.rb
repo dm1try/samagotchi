@@ -23,11 +23,12 @@ module Samagotchi
     # request and never answers raises Errno::ETIMEDOUT, as a dead one
     # raises Errno::ECONNREFUSED. The event stream has no such limit.
     READ_TIMEOUT = 30
-    # Share of the read timeout a turn's deadline allows (25 s of 30): the
-    # Bridge drops a turn it reads after the deadline, so one this client
-    # timed out on, and said was not sent, never runs when a frozen worker
-    # wakes. The rest covers the write and the reply.
-    TURN_DEADLINE_SHARE = 5 / 6r
+    # Share of the read timeout a request's deadline allows (25 s of 30): the
+    # Bridge drops a turn, command, answer or dismissal it reads after the
+    # deadline, so one this client timed out on, and said did not go
+    # through, never runs when a frozen worker wakes. The rest covers the
+    # write and the reply.
+    DEADLINE_SHARE = 5 / 6r
 
     # A Bridge reply: HTTP status code and raw body (nil when not read).
     Response = Struct.new(:status, :body, keyword_init: true) do
@@ -119,23 +120,24 @@ module Samagotchi
     end
 
     # POST /session/:id/answer. 200 = recorded, 409 = another client answered
-    # first (or the question is gone), 400 = invalid selection.
+    # first (or the question is gone), 400 = invalid selection, 408
+    # deadline_passed = read too late and dropped (see DEADLINE_SHARE).
     # @return [Response]
     def answer(id:, selected:, freeform: nil)
-      post("answer", { id: id, selected: selected, freeform: freeform }, read_body: true)
+      post("answer", { id: id, selected: selected, freeform: freeform, deadline: deadline }, read_body: true)
     end
 
     # POST /session/:id/question/dismiss: leave the question unanswered.
     # 200 = dismissed, 409 = no longer pending (answered, cancelled, or
-    # another question), 404 = a worker older than the route.
+    # another question), 404 = a worker older than the route, 408 = too late.
     # @return [Response]
     def dismiss_question(id:)
-      post("question/dismiss", { id: id }, read_body: true)
+      post("question/dismiss", { id: id, deadline: deadline }, read_body: true)
     end
 
     # POST /session/:id/turn. 202 = queued (body carries the enqueued_id the
     # Bridge also announced in :turn_enqueued), 408 deadline_passed = the
-    # Bridge read it too late and dropped it (see TURN_DEADLINE_SHARE).
+    # Bridge read it too late and dropped it (see DEADLINE_SHARE).
     # @param client_id [String, nil] identifies the sending UI in the events
     # @return [Response]
     # @param no_interrupt [Boolean] run the turn with the raised iteration limit
@@ -145,18 +147,17 @@ module Samagotchi
       body = { session_id: @session_id, prompt: prompt, client_id: client_id }
       body[:no_interrupt] = true if no_interrupt
       body[:images] = images if images && !images.empty?
-      # Wall clock: the worker runs on this machine and reads the same one.
-      body[:deadline] = (Time.now.to_f + (@read_timeout * TURN_DEADLINE_SHARE)).round(3)
+      body[:deadline] = deadline
       post("turn", body, read_body: true)
     end
 
     # POST /session/:id/command: a session command (/model, /models,
     # !rollback, !cmd, /continue) for the worker to run. 202 = queued (body
     # carries the command_id its :command_ran will name), 400 = not a
-    # command, 404 = a worker older than the route.
+    # command, 404 = a worker older than the route, 408 = too late.
     # @return [Response]
     def post_command(line:, client_id: nil)
-      post("command", { line: line, client_id: client_id }, read_body: true)
+      post("command", { line: line, client_id: client_id, deadline: deadline }, read_body: true)
     end
 
     # POST /session/:id/exit: ask the worker to exit now. 200 = it will
@@ -274,6 +275,11 @@ module Samagotchi
     end
 
     private
+
+    # When this client stops waiting for a reply, as epoch seconds (see
+    # DEADLINE_SHARE). Wall clock: the worker runs on this machine and reads
+    # the same one.
+    def deadline = (Time.now.to_f + (@read_timeout * DEADLINE_SHARE)).round(3)
 
     def post(path, payload, read_body:)
       sock = TCPSocket.new(@host, @port)
