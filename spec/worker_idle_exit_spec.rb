@@ -82,6 +82,11 @@ RSpec.describe Samagotchi::WorkerIdleExit do
       expect(policy(minutes: 0.001).hold).to eq(:reminders)
     end
 
+    it "while a continue offer waits (only the worker's memory has it)" do
+      offer[0] = true
+      expect(policy(minutes: 0.001).hold).to eq(:continue_offered)
+    end
+
     it "for good with a timeout of 0" do
       expect(policy(minutes: 0).hold).to eq(:disabled)
       expect(policy(minutes: nil).hold).to eq(:disabled)
@@ -117,7 +122,7 @@ RSpec.describe Samagotchi::WorkerIdleExit do
     it "holds while a continue offer waits" do
       offer[0] = true
       expect(policy.hold_for_request(requester: "tui:1")).to eq(:continue_offered)
-      expect(policy.hold).to eq(:recent_activity) # the idle exit doesn't look at it
+      expect(policy(minutes: 0.001).hold).to eq(:continue_offered)
     end
 
     it "holds while anyone but the asker holds a stream" do

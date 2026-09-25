@@ -12,13 +12,13 @@ module Samagotchi
   #   or a web tab);
   # * a reminder is registered. Reminders live only in the Engine and repeat
   #   until the agent cancels them, so an exit would drop them for good;
+  # * a continue offer waits for an answer; it too lives only in memory;
   # * less than the timeout has passed since the worker started, the Engine's
   #   last activity, or the last client request or disconnect.
   #
   # A client can also ask the worker to exit now (`/exit` in the attached
   # TUI, Bridge POST /exit): #hold_for_request applies the same rules without
-  # the timeout, leaves out the asking client's own stream, and also holds
-  # for a pending continue offer, which lives only in memory.
+  # the timeout and leaves out the asking client's own stream.
   class WorkerIdleExit
     # @param engine [Engine] #turn_running?, #last_activity_at, #reminder_store
     # @param bridge [Bridge, nil] #open_streams, #last_client_activity_at; nil
@@ -45,11 +45,12 @@ module Samagotchi
 
     # What keeps the worker up, or nil when nothing does.
     # @return [Symbol, nil] :disabled, :turn_running, :input_queued,
-    #   :client_connected, :reminders or :recent_activity
+    #   :continue_offered, :client_connected, :reminders or :recent_activity
     def hold
       return :disabled unless @timeout.positive?
       return :turn_running if @engine.turn_running?
       return :input_queued if @input_pending.call
+      return :continue_offered if @awaiting_continue.call
       return :client_connected if @bridge && @bridge.open_streams.positive?
       return :reminders if @engine.reminder_store&.any?
       return :recent_activity if idle_seconds < @timeout
