@@ -62,7 +62,8 @@ RSpec.describe Samagotchi::DesktopCommand do
       expect(made_with).to eq([false])
     end
 
-    it "prints an install error on one line and exits 1" do
+    it "prints an install error on one line and exits 1, without the warnings" do
+      allow(macos).to receive(:warnings).and_return(["from a linked git worktree"])
       allow(macos).to receive(:install).and_raise(Samagotchi::Desktop::MacOS::Error, "already installed (0.1.1); use chi desktop upgrade")
       expect(run("install")).to eq(1)
       expect(err.string).to eq("chi desktop: already installed (0.1.1); use chi desktop upgrade\n")
@@ -79,10 +80,19 @@ RSpec.describe Samagotchi::DesktopCommand do
     end
   end
 
-  it "upgrade upgrades" do
+  it "upgrade upgrades, and warns" do
+    allow(macos).to receive(:warnings).and_return(["from a linked git worktree"])
     expect(macos).to receive(:upgrade) { |&blk| blk.call("installed X") }
     expect(run("upgrade")).to eq(0)
     expect(out.string).to include("installed X")
+    expect(err.string).to include("warning: from a linked git worktree")
+  end
+
+  it "a failed upgrade prints only its error" do
+    allow(macos).to receive(:warnings).and_return(["from a linked git worktree"])
+    allow(macos).to receive(:upgrade).and_raise(Samagotchi::Desktop::MacOS::Error, "chi desktop needs the Command Line Tools")
+    expect(run("upgrade")).to eq(1)
+    expect(err.string).to eq("chi desktop: chi desktop needs the Command Line Tools\n")
   end
 
   describe "uninstall" do

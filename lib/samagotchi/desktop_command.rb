@@ -68,15 +68,17 @@ module Samagotchi
       end
     end
 
+    # The warnings come after a done install: a refused or failed one
+    # prints only its error.
     def install(helper, options)
-      print_warnings(helper)
       helper.install(force: options[:force] || false, login: options[:login] || false) { |line| @stdout.puts(line) }
+      print_warnings(helper)
       0
     end
 
     def upgrade(helper, _options)
-      print_warnings(helper)
       helper.upgrade { |line| @stdout.puts(line) }
+      print_warnings(helper)
       0
     end
 
