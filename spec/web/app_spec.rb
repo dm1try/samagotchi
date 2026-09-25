@@ -817,6 +817,24 @@ RSpec.describe Samagotchi::Web::App do
         ])
       end
 
+      it "hands out the thinking an api: openai step saved; the chat view's messages don't carry it" do
+        openai = { "snapshot" => { "messages" => [
+          { "role" => "user", "content" => "check" },
+          { "role" => "model", "content" => "", "thinking" => "run it",
+            "tool_calls" => [{ "id" => "c1", "name" => "execute", "arguments" => { "command" => "true" } }] },
+          { "role" => "tool_response", "content" => "[execute]\n", "tool_call_id" => "c1" },
+          { "role" => "model", "content" => "Passed.", "thinking" => "it passed" }
+        ] }, "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } }
+        app = build_app(state_dir: Dir.mktmpdir)
+        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(openai)
+
+        turn = JSON.parse(app.call(env_for("/api/sessions/s1?parts=1"))[2].first)["messages"]
+        chat = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["messages"]
+
+        expect(turn.filter_map { |m| m.dig("parts", "thinking") }).to eq(["run it", "it passed"])
+        expect(chat).to eq([{ "role" => "user", "content" => "check" }, { "role" => "assistant", "content" => "Passed." }])
+      end
+
       it "the turn-end tail stays light (no parts)" do
         payload = payload_for(build_app(state_dir: Dir.mktmpdir), "/api/sessions/s1?tail=1&parts=1")
 

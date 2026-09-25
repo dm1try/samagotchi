@@ -154,8 +154,9 @@ module Samagotchi
       end
 
       # The shape the engine persists: role and content (parts stay an
-      # Array), plus a model turn's tool_calls, a result's tool_call_id and
-      # the image refs of a user message or a tool result.
+      # Array), plus a model turn's tool_calls and thinking (the host's
+      # reasoning, never sent back), a result's tool_call_id and the image
+      # refs of a user message or a tool result.
       def plain(conversation)
         conversation.map do |entry|
           content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
@@ -163,6 +164,7 @@ module Samagotchi
           message[:tool_calls] = entry[:tool_calls] if entry[:tool_calls].is_a?(Array) && !entry[:tool_calls].empty?
           message[:tool_call_id] = entry[:tool_call_id] if entry[:tool_call_id]
           message[:images] = entry[:images] if entry[:images].is_a?(Array) && !entry[:images].empty?
+          message[:thinking] = entry[:thinking] if entry[:thinking].is_a?(String) && !entry[:thinking].empty?
           ContextNote::KEYS.each { |key| message[key] = entry[key] if entry.key?(key) }
           message
         end
@@ -267,7 +269,7 @@ module Samagotchi
             if response.tool_calls.empty?
               # Kept before a merge too: the model answers the merged line
               # knowing what it just said.
-              @conversation << { role: "model", content: last_text } unless last_text.empty?
+              @conversation << with_thinking({ role: "model", content: last_text }, response) unless last_text.empty?
               next if inject_pending_input(iteration, answer: last_text)
 
               # Shown, not saved: an empty answer (content "" + stop, seen from
@@ -279,8 +281,9 @@ module Samagotchi
 
             # The calls are kept with the turn (even with no text) so the next
             # request, and a resumed session, can pair them with their results.
-            @conversation << { role: "model", content: last_text,
-                               tool_calls: response.tool_calls.map { |call| { id: call.id, name: call.name, arguments: call.arguments } } }
+            @conversation << with_thinking({ role: "model", content: last_text,
+                                             tool_calls: response.tool_calls.map { |call| { id: call.id, name: call.name, arguments: call.arguments } } },
+                                           response)
             last_text = ""
             dispatch(response.tool_calls, iteration, cap)
           end
@@ -288,6 +291,15 @@ module Samagotchi
         end
 
         private
+
+        # The host's reasoning, kept on the model message as +thinking+ for
+        # the web turn view's reload (the whole of it, as the live view
+        # shows). Only saved: #assistant_message builds the wire message from
+        # content and tool_calls, so it never goes back to the model.
+        def with_thinking(message, response)
+          reasoning = response.reasoning.to_s
+          reasoning.strip.empty? ? message : message.merge(thinking: reasoning)
+        end
 
         # One streamed request. Returns [response, nil], or [reason, partial
         # text] when it was cancelled.

@@ -83,6 +83,26 @@ RSpec.describe Samagotchi::Web::MessageParts do
         tools: [{ tool: "execute", params: 'command="echo hi"', output: "[execute]\nhi" }]
       )
     end
+
+    it "reads the reasoning the chat loop saved as thinking (trimmed), next to the calls" do
+      message = { role: "model", content: "", thinking: "\nrun it first\n",
+                  tool_calls: [{ id: "c1", name: "execute", arguments: { "command" => "true" } }] }
+
+      expect(described_class.for_message(message, [{ content: "[execute]\n", tool_call_id: "c1" }])).to eq(
+        thinking: "run it first", tools: [{ tool: "execute", params: 'command="true"', output: "[execute]\n" }]
+      )
+    end
+
+    it "gives an answer's saved thinking as its only part (string keys too)" do
+      expect(described_class.for_message({ "role" => "model", "content" => "Done.", "thinking" => "it passed" }, [])).to eq(
+        thinking: "it passed"
+      )
+    end
+
+    it "gives nothing for an older message without the key, or a blank one" do
+      expect(described_class.for_message({ role: "model", content: "Done." }, [])).to be_nil
+      expect(described_class.for_message({ role: "model", content: "Done.", thinking: " \n" }, [])).to be_nil
+    end
   end
 
   describe "a message it can't read" do

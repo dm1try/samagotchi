@@ -512,6 +512,70 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  # api: openai hosts stream the reasoning apart from the text. It is saved
+  # on the model message for the web turn view's reload, and never sent back.
+  describe "the model's reasoning" do
+    it "is saved as thinking on each model message that had some" do
+      backend.adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "true" }]).with(reasoning: "run it first"),
+                                            text("done", reasoning: "\nit passed"))
+
+      conversation = run.conversation
+
+      expect(conversation[1]).to include(role: "model", content: "", thinking: "run it first")
+      expect(conversation[3]).to eq(role: "model", content: "done", thinking: "\nit passed")
+    end
+
+    it "adds no key when there was none" do
+      backend.adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "true" }]), text("done"))
+
+      expect(run.conversation.map(&:keys)).to all(satisfy { |keys| !keys.include?(:thinking) })
+    end
+
+    it "keeps a saved message's thinking in the conversation it hands back (a later turn)" do
+      history = [{ role: "user", content: "go" }, { role: "model", content: "ok", thinking: "hm" }, { role: "user", content: "again" }]
+
+      expect(run(history).conversation[1]).to eq(role: "model", content: "ok", thinking: "hm")
+    end
+
+    it "is not sent back: a past message's thinking stays out of the wire messages" do
+      history = [{ role: "user", content: "go" },
+                 { role: "model", content: "", thinking: "plan", tool_calls: [{ id: "c1", name: "read", arguments: { "path" => "x" } }] },
+                 { role: "tool_response", content: "[read]\nx", tool_call_id: "c1" },
+                 { role: "model", content: "read it", thinking: "summarise" }, { role: "user", content: "again" }]
+
+      run(history)
+
+      wire = adapter.requests.last[:messages]
+      expect(wire[1].keys).to contain_exactly(:role, :content, :tool_calls)
+      expect(wire[3]).to eq(role: "assistant", content: "read it")
+    end
+
+    # The real adapter over HTTP: the request body the host gets on the next
+    # turn holds none of the saved reasoning.
+    it "is not in the next turn's request body" do
+      FakeProviderServer.without_webmock do
+        server = FakeProviderServer.start
+        server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("reasoning_tool_stream.sse"))
+        server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("text_stream.sse"))
+        server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("text_stream.sse"))
+        backend.adapter = Samagotchi::LLM::OpenAIChat.new(base_url: server.base_url, host_name: "box")
+
+        first = run
+        saved = first.conversation.select { |m| m[:thinking] }
+        expect(saved.length).to eq(2)
+        run(first.conversation + [{ role: "user", content: "and now?" }])
+
+        body = server.requests.last
+        messages = body.json["messages"]
+        expect(messages.length).to eq(first.conversation.length + 1)
+        expect(messages.flat_map(&:keys).uniq).to contain_exactly("role", "content", "tool_calls", "tool_call_id")
+        saved.each { |m| expect(body.body).not_to include(JSON.generate(m[:thinking])[1..-2]) }
+      ensure
+        server&.stop
+      end
+    end
+  end
+
   describe "a context note" do
     let(:note) do
       { role: "system", kind: "note", note_id: "n1", source: "session", from_session: "abc", from_cwd: "/w",

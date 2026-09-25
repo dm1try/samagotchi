@@ -14,9 +14,10 @@ module Samagotchi
     #   * the native loop (a profile, llama.cpp): the raw response as content
     #     (thinking + tool-call markup, Qwen or Gemma), then one tool_response
     #     whose content joins every call's output with "\n\n---\n\n";
-    #   * the chat loop (api: openai): the text without thinking (the
-    #     reasoning is not saved), the calls as tool_calls ({id, name,
-    #     arguments}), then one tool_response per call (tool_call_id).
+    #   * the chat loop (api: openai): the text without thinking, the host's
+    #     reasoning as +thinking+ (older sessions have none), the calls as
+    #     tool_calls ({id, name, arguments}), then one tool_response per call
+    #     (tool_call_id).
     # A message that can't be read gives no parts, never an error.
     module MessageParts
       JOINER = "\n\n---\n\n"
@@ -48,7 +49,7 @@ module Samagotchi
                   markup_tools(content, responses)
                 end
         parts = {}
-        thinking = thinking_of(content)
+        thinking = [field(message, :thinking).to_s.strip, thinking_of(content)].reject(&:empty?).join("\n\n")
         parts[:thinking] = thinking unless thinking.empty?
         parts[:tools] = tools unless tools.empty?
         parts.empty? ? nil : parts
