@@ -121,7 +121,14 @@ if ARGV[0] == "sessions"
       else
         summaries.each do |summary|
           state = summary[:busy] ? "running" : (summary[:live] ? "live" : summary[:status].to_s)
-          puts "#{summary[:id]}  #{state.ljust(8)}  #{summary[:updated_at]}  #{summary[:desc]}"
+          # The saved recap's first sentence says more than the last prompt
+          # (text only: tsv and json keep desc for pickers).
+          desc = summary[:desc]
+          if summary[:recap]
+            desc = [File.basename(summary[:cwd].to_s), summary[:recap]].reject(&:empty?).join(" · ")
+            desc = "#{desc[0, 59]}…" if desc.length > 60
+          end
+          puts "#{summary[:id]}  #{state.ljust(8)}  #{summary[:updated_at]}  #{desc}"
         end
         if project
           puts "#{summaries.empty? ? "" : "\n"}#{scope_note.call(summaries.size)}"
@@ -134,10 +141,16 @@ if ARGV[0] == "sessions"
     sort ||= "updated_at"
     order ||= "desc"
     sessions = Samagotchi::SessionManager.list_sessions(sort: sort, order: order, limit: limit, project_root: project)
+    # The saved recap's first sentence, else the last prompt, cut as before.
+    state_dir = Samagotchi::Session.default_state_dir
+    list_text = lambda do |s|
+      recap = Samagotchi::RecapStore.preview(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
+      (recap || Samagotchi::SessionManager.one_line(s.last_prompt))[0, 60]
+    end
     if project
       sessions.each do |s|
         flag = s.test_run ? " [test]" : ""
-        puts "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{Samagotchi::SessionManager.one_line(s.last_prompt)[0,60]}#{flag}"
+        puts "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}"
       end
       puts "#{sessions.empty? ? "" : "\n"}#{scope_note.call(sessions.size)}"
     elsif sessions.empty?
@@ -145,7 +158,7 @@ if ARGV[0] == "sessions"
     else
       sessions.each do |s|
         flag = s.test_run ? " [test]" : ""
-        puts "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{Samagotchi::SessionManager.one_line(s.last_prompt)[0,60]}#{flag}"
+        puts "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}"
       end
       puts "\n#{sessions.size} session(s) (sort=#{sort} order=#{order})"
     end

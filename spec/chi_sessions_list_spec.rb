@@ -63,6 +63,41 @@ RSpec.describe "chi sessions list" do
     expect(out).to include("  answer: the build failed same bug?\n")
   end
 
+  def write_recap(session, text)
+    dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, "recap.json"), JSON.generate(text: text, covered: 2))
+  end
+
+  it "shows a saved recap's first sentence in place of the last prompt, in the text output only" do
+    recapped = make("fix it", live: true)
+    plain = make("hello there", live: true)
+    write_recap(recapped, "The user was fixing the login page for the new theme, and the tests. It works now.")
+
+    out, err, status = run_chi
+    expect(status.exitstatus).to eq(0), err
+    line = out.lines.find { |l| l.start_with?(recapped.id) }
+    expect(line).to end_with("  Fixing the login page for the new theme, and the tests.\n")
+    expect(out.lines.find { |l| l.start_with?(plain.id) }).to end_with("  hello there\n")
+
+    live_out = run_chi("--live").first
+    expect(live_out.lines.find { |l| l.start_with?(recapped.id) })
+      .to end_with("  app · Fixing the login page for the new theme, and the test…\n")
+    expect(live_out.lines.find { |l| l.start_with?(plain.id) }).to end_with("  app · hello there\n")
+
+    expect(run_chi("--live", "--format", "tsv").first).to include("#{recapped.id}\tapp · fix it\n")
+    expect(JSON.parse(run_chi("--live", "--format", "json").first).find { |r| r["id"] == recapped.id })
+      .to include("desc" => "app · fix it")
+  end
+
+  it "cuts a long recap to 60 characters, as it does a prompt" do
+    session = make("x")
+    write_recap(session, "Checking #{"word " * 30}.")
+
+    line = run_chi.first.lines.find { |l| l.start_with?(session.id) }
+    expect(line.chomp.split("  ").last).to eq("Checking #{"word " * 30}"[0, 60])
+  end
+
   it "--live --format tsv: id<TAB>description per live session, for choose from list + cut -f1" do
     live = make("fix the login page", live: true)
     make("stopped one")
@@ -184,6 +219,12 @@ RSpec.describe "chi sessions list" do
       rows = JSON.parse(run_chi("--format", "json", "--scope=all", dir: alpha).first)
       expect(rows.to_h { |row| [row["id"], row["project"]] })
         .to eq(sessions[:a].id => alpha, sessions[:wt].id => alpha, sessions[:b].id => beta, sessions[:plain].id => nil)
+    end
+
+    it "shows the recap in the project's listing too" do
+      write_recap(sessions[:a], "The user and assistant explored the alpha repo.")
+
+      expect(run_chi(dir: alpha).first).to include("#{sessions[:a].id}  ", "  Explored the alpha repo.\n")
     end
 
     it "says so when the project has no sessions yet" do
