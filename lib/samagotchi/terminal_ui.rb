@@ -93,6 +93,8 @@ module Samagotchi
     # Raised when another process (a `chi web` worker or another chi) owns the
     # session this TUI was asked to run.
     class SessionBusy < StandardError; end
+    # --resume with an id that has no saved session.
+    class SessionNotFound < StandardError; end
 
     # ── System prompts (delegated to Engine) ─────────────────────────────────
     def self.system_prompt_for(profile)
@@ -116,6 +118,11 @@ module Samagotchi
       @client = @host_registry.resolve(@effective_model_name).client
       # Own the session before loading it, so a worker can't write a turn
       # between the load and the lock that this TUI would later save over.
+      # An unknown id is refused before the claim, which would leave an
+      # empty session dir behind.
+      if session_id && !Session.exist?(session_id)
+        raise SessionNotFound, "Session not found: #{session_id}"
+      end
       claim_session!(session_id) if session_id
       @resume_session = session_id ? Session.load(session_id) : nil
       if @resume_session

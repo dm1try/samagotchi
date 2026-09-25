@@ -1034,7 +1034,7 @@ begin
     non_interactive: options[:non_interactive],
     model_name: options[:model]
   ).run
-rescue Samagotchi::TerminalUI::SessionBusy => e
+rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::TerminalUI::SessionNotFound => e
   warn "Error: #{e.message}"
   exit 1
 rescue Samagotchi::LLM::ProviderError => e

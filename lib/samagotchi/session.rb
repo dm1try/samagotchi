@@ -95,6 +95,11 @@ module Samagotchi
     end
 
     # Load a persisted session by its UUID.
+    # Whether +session_id+ has a saved session.
+    def self.exist?(session_id, state_dir: default_state_dir)
+      File.exist?(session_path(session_id, state_dir: state_dir))
+    end
+
     def self.load(session_id, state_dir: default_state_dir)
       path = session_path(session_id, state_dir: state_dir)
       raise ArgumentError, "Session not found: #{session_id}" unless File.exist?(path)

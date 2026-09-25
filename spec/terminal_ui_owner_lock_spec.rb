@@ -37,6 +37,12 @@ RSpec.describe "TerminalUI session ownership" do
     lock&.release
   end
 
+  it "refuses an unknown session before claiming it" do
+    expect { Samagotchi::TerminalUI.new(client: client, session_id: "deadbeef") }
+      .to raise_error(Samagotchi::TerminalUI::SessionNotFound, "Session not found: deadbeef")
+    expect(Dir.exist?(Samagotchi::Session.session_dir("deadbeef"))).to be false
+  end
+
   it "owns a resumed session for as long as it lives" do
     ui = Samagotchi::TerminalUI.new(client: client, session_id: session.id)
 
