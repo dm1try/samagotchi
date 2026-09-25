@@ -883,6 +883,25 @@ RSpec.describe Samagotchi::Web::App do
       expect(replies).to eq(%w[ctrl_c manual user user])
       expect(sent).to eq(%w[ctrl_c manual user user])
     end
+
+    it "takes a POST with no body and no Content-Length as empty (curl -X POST)" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(app).to receive(:bridge_client).with("s1").and_return(bridge)
+      allow(bridge).to receive(:cancel).with(reason: "user")
+                                       .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: nil))
+      # WEBrick (through rackup) refuses to read such a body: LengthRequired.
+      input = Object.new
+      def input.read(*) = raise("LengthRequired")
+      env = env_for("/api/sessions/s1/cancel", method: "POST")
+      env.delete("CONTENT_LENGTH")
+      env["rack.input"] = input
+
+      status, _headers, out = app.call(env)
+
+      expect(status).to eq(202)
+      expect(JSON.parse(out.first)["reason"]).to eq("user")
+    end
   end
 
   describe "POST /api/sessions/:id/answer" do

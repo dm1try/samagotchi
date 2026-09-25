@@ -243,7 +243,7 @@ module Samagotchi
       end
 
       def handle_create(req)
-        body = parse_json(req.body.read)
+        body = parse_json(request_body(req))
         unless body.is_a?(Hash)
           return error_response(400, "invalid_json", "invalid JSON body")
         end
@@ -328,7 +328,7 @@ module Samagotchi
         session = @session_class.load(id, state_dir: default_state_dir) rescue nil
         return error_response(404, "not_found", "Session not found: #{id}") unless session
 
-        body = parse_json(req.body.read)
+        body = parse_json(request_body(req))
         unless body.is_a?(Hash)
           return error_response(400, "invalid_json", "invalid JSON body")
         end
@@ -370,7 +370,7 @@ module Samagotchi
       # Leave the pending question unanswered (the card's Dismiss). A question
       # only exists while its worker waits on it, so this needs a live bridge.
       def handle_question_dismiss(req, id)
-        body = parse_json(req.body.read)
+        body = parse_json(request_body(req))
         return error_response(400, "invalid_json", "invalid JSON body") unless body.is_a?(Hash)
 
         qid = body["id"].to_s
@@ -395,7 +395,7 @@ module Samagotchi
       # !cmd, /continue): the worker runs it (woken as for a turn) and every
       # UI gets its :command_ran. Needs the worker's Bridge.
       def handle_command(req, id)
-        body = parse_json(req.body.read)
+        body = parse_json(request_body(req))
         return error_response(400, "invalid_json", "invalid JSON body") unless body.is_a?(Hash)
 
         line = body["line"].to_s.strip
@@ -435,7 +435,7 @@ module Samagotchi
       end
 
       def handle_turn(req, id)
-        body = parse_json(req.body.read)
+        body = parse_json(request_body(req))
         unless body.is_a?(Hash)
           return error_response(400, "invalid_json", "invalid JSON body")
         end
@@ -503,7 +503,7 @@ module Samagotchi
           return error_response(413, "too_large", "an image may be up to #{MAX_IMAGE_UPLOAD_BYTES / 1024 / 1024} MB")
         end
 
-        bytes = req.body.read(MAX_IMAGE_UPLOAD_BYTES + 1).to_s.b
+        bytes = request_body(req, MAX_IMAGE_UPLOAD_BYTES + 1).to_s.b
         if bytes.bytesize > MAX_IMAGE_UPLOAD_BYTES
           return error_response(413, "too_large", "an image may be up to #{MAX_IMAGE_UPLOAD_BYTES / 1024 / 1024} MB")
         end
@@ -554,7 +554,7 @@ module Samagotchi
           return error_response(404, "not_found", e.message)
         end
 
-        body = req.body.read
+        body = request_body(req)
         reason = "user"
         unless body.nil? || body.strip.empty?
           parsed = parse_json(body)
@@ -974,6 +974,15 @@ module Samagotchi
       def json_response(status, payload)
         body = JSON.generate(payload)
         [status, { "Content-Type" => "application/json; charset=utf-8", "Content-Length" => body.bytesize.to_s, "Cache-Control" => "no-store", "Access-Control-Allow-Origin" => "*" }, [body]]
+      end
+
+      # The request body, "" when there is none: WEBrick (through rackup)
+      # raises LengthRequired on reading a POST that has neither a
+      # Content-Length nor a chunked body (plain `curl -X POST`).
+      def request_body(req, limit = nil)
+        return "" if req.get_header("CONTENT_LENGTH").nil? && req.get_header("HTTP_TRANSFER_ENCODING").nil?
+
+        req.body.read(*limit)
       end
 
       def error_response(status, code, detail)
