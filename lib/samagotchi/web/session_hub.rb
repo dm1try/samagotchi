@@ -28,6 +28,12 @@ module Samagotchi
     # step under it, so no stale upsert can follow a fresh snapshot.
     class SessionHub
       SCAN_INTERVAL = 1.0
+      # The flock leaves no file trace when its holder dies, so owners are
+      # probed: every tick for the sessions the projection believes owned
+      # (a handful; OwnerLock.owner is open + LOCK_SH|LOCK_NB + close), and
+      # all sessions this often (a plain REPL that opened an old session
+      # without saving it has no file signal until its first save).
+      FULL_PROBE_INTERVAL = 10.0
 
       # What a subscriber gets: `session` with {session: summary} for an
       # upsert, `session_gone` with {id:} for a removal. seq is monotonic per
@@ -58,25 +64,62 @@ module Samagotchi
       end
 
       # @param state_dir [String] the sessions dir (Session.default_state_dir)
-      # @param manager [#session_owner] SessionManager, or a stand-in
-      def initialize(state_dir:, manager: SessionManager)
+      # @param manager [#session_owner, #retention_sweep_if_due] SessionManager,
+      #   or a stand-in
+      # @param now [#call] a monotonic clock in seconds (specs drive it)
+      def initialize(state_dir:, manager: SessionManager, now: nil, scan_interval: SCAN_INTERVAL,
+                     full_probe_interval: FULL_PROBE_INTERVAL)
         @state_dir = state_dir
         @manager = manager
+        @now = now || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
+        @scan_interval = scan_interval
+        @full_probe_interval = full_probe_interval
         @monitor = Monitor.new
         @sessions = {}      # id → Entry
         @subscribers = []
         @seq = 0
         @dir_mtime = nil    # the state dir's mtime at the last glob
         @root_cache = {}    # folder → project root, for sessions saved before project_root
+        @next_full_probe = nil
+        @wakeup = Queue.new # stop wakes the tick thread out of its sleep
         @thread = nil
         @stopped = false
       end
 
-      # One pass: what changed on disk since the last one, emitted.
+      # Spawn the tick thread (idempotent). Logs nothing: Server.start's
+      # start and stop lines are the web log's.
+      def start
+        return self if @thread&.alive?
+
+        @stopped = false
+        @thread = Thread.new { run_loop }
+        self
+      end
+
+      # End the tick thread (idempotent); the event loops see #stopped?.
+      def stop
+        @stopped = true
+        @wakeup << :stop
+        thread = @thread
+        @thread = nil
+        thread&.join(@scan_interval + 1.0)
+        nil
+      end
+
+      def stopped?
+        @stopped
+      end
+
+      # One pass: what changed on disk since the last one, emitted. Every
+      # +full_probe_interval+ it also probes every session's owner and
+      # gives the retention sweep its chance (it used to run on
+      # GET /api/sessions, which the page no longer calls).
       def scan
         @monitor.synchronize do
+          full = full_probe_due?
           scan_files
-          @sessions.each_key { |id| refresh(id) }
+          @sessions.each_key { |id| refresh(id, probe: full) }
+          sweep if full
         end
         nil
       end
@@ -88,7 +131,7 @@ module Samagotchi
           path = File.join(@state_dir, "#{id}#{Session::FILE_EXT}")
           if File.file?(path)
             @sessions[id] ||= Entry.new
-            refresh(id)
+            refresh(id, probe: true)
           elsif @sessions.key?(id)
             drop(id)
           end
@@ -131,6 +174,33 @@ module Samagotchi
 
       private
 
+      def run_loop
+        until @stopped
+          begin
+            scan
+          rescue StandardError => e
+            Log.warn(:web, "hub_scan_failed", error: e.class.name, msg: e.message)
+          end
+          @wakeup.pop(timeout: @scan_interval)
+        end
+      end
+
+      def full_probe_due?
+        now = @now.call
+        return false if @next_full_probe && now < @next_full_probe
+
+        @next_full_probe = now + @full_probe_interval
+        true
+      end
+
+      def sweep
+        return unless @manager.respond_to?(:retention_sweep_if_due)
+
+        @manager.retention_sweep_if_due(state_dir: @state_dir)
+      rescue StandardError
+        nil
+      end
+
       # The state dir's files: a new id is parsed and emitted, an id gone
       # from disk is dropped, a changed file is re-parsed. Skipped when the
       # dir's mtime says nothing was renamed in or unlinked since.
@@ -156,8 +226,10 @@ module Samagotchi
       end
 
       # Bring one entry up to date with its file, its folder and its owner;
-      # emit when the page would see a difference.
-      def refresh(id)
+      # emit when the page would see a difference. The owner is probed when
+      # asked (+probe+), when the entry believes it has one (to see it go),
+      # and when its folder changed (a new owner.lock, a bridge.json).
+      def refresh(id, probe: false)
         entry = @sessions[id]
         path = File.join(@state_dir, "#{id}#{Session::FILE_EXT}")
         stat = begin
@@ -187,15 +259,18 @@ module Samagotchi
           entry.dir_stamp = dir_stamp
           changed = true
         end
-        owner = owner_of(id)
+        owner = probe || changed || entry.owner ? owner_of(id) : entry.owner
         live = live_stamp(owner, dir)
-        changed ||= live != entry.live
-        return unless changed
+        live_changed = live != entry.live
+        return unless changed || live_changed
 
         entry.owner = owner
         entry.live = live
         summary = SessionSummary.build(entry.session, owner: owner, session_dir: dir)
-        return if summary == entry.summary
+        # A new worker (pid) or a new Bridge for the same session is an
+        # event for the page even when the summary reads the same: it
+        # reconnects its stream on it.
+        return if summary == entry.summary && !live_changed
 
         entry.summary = summary
         emit("session", session: summary)

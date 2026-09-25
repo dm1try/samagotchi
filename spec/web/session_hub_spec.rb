@@ -227,6 +227,153 @@ RSpec.describe Samagotchi::Web::SessionHub do
     end
   end
 
+  describe "liveness" do
+    let(:clock) { [0.0] }
+    let(:hub) { described_class.new(state_dir: state_dir, now: -> { clock.first }) }
+
+    def lock_dir(session)
+      session_dir(session)
+    end
+
+    def acquire(session, kind: "worker")
+      Samagotchi::OwnerLock.acquire(lock_dir(session), kind: kind, wait: 0)
+    end
+
+    it "sees an owner take the session, then its bridge come up: two events, the page acts on the second" do
+      a = save_session(status: "idle")
+      hub.scan
+      events.clear
+
+      lock = acquire(a)
+      hub.scan
+      expect(types).to eq(%w[session])
+      expect(events.last.data[:session]).to include(owner: "worker", status: "idle", bridge_up: false)
+
+      File.write(File.join(lock_dir(a), "bridge.json"), JSON.generate(port: 4321, started_at: Time.now.iso8601(3)))
+      hub.scan
+      expect(types).to eq(%w[session session])
+      expect(events.last.data[:session]).to include(owner: "worker", bridge_up: true)
+    ensure
+      lock&.release
+    end
+
+    it "sees the owner go, on the next tick, with no file change: owner nil, bridge_up false, a 'running' shown idle" do
+      a = save_session(status: "running")
+      lock = acquire(a)
+      File.write(File.join(lock_dir(a), "bridge.json"), JSON.generate(port: 4321))
+      hub.scan
+      expect(hub.snapshot.first).to include(owner: "worker", status: "running", bridge_up: true)
+      events.clear
+
+      lock.release
+      hub.scan
+      hub.scan
+
+      expect(types).to eq(%w[session])
+      expect(events.first.data[:session]).to include(owner: nil, bridge_up: false, status: "idle")
+    end
+
+    it "treats a new worker for the same session as a change, even though owner reads worker both times" do
+      a = save_session
+      lock = acquire(a)
+      hub.scan
+      events.clear
+
+      # The lock file holds the owner's pid; a replacement worker writes its own.
+      File.write(Samagotchi::OwnerLock.path(lock_dir(a)), JSON.generate(pid: Process.pid + 100_000, kind: "worker"))
+      hub.scan
+
+      expect(types).to eq(%w[session])
+      expect(events.first.data[:session]).to include(owner: "worker")
+    ensure
+      lock&.release
+    end
+
+    it "probes an unowned session only every full-probe interval: a tui on an old lock file shows up within it" do
+      a = save_session
+      acquire(a).release # the lock file exists from before; taking it again leaves no file signal
+      hub.scan
+      events.clear
+
+      lock = acquire(a, kind: "tui")
+      clock[0] += 1.0
+      hub.scan
+      expect(types).to eq([])
+
+      clock[0] += described_class::FULL_PROBE_INTERVAL
+      hub.scan
+      expect(types).to eq(%w[session])
+      expect(events.first.data[:session]).to include(owner: "tui")
+    ensure
+      lock&.release
+    end
+
+    it "probes in touch whatever the clock says" do
+      a = save_session
+      acquire(a).release
+      hub.scan
+      events.clear
+      lock = acquire(a, kind: "tui")
+
+      hub.touch(a.id)
+
+      expect(events.last.data[:session]).to include(owner: "tui")
+    ensure
+      lock&.release
+    end
+
+    it "runs the retention sweep on the full-probe tick" do
+      manager = double("manager", session_owner: nil)
+      hub = described_class.new(state_dir: state_dir, manager: manager, now: -> { clock.first })
+      FileUtils.mkdir_p(state_dir)
+
+      expect(manager).to receive(:retention_sweep_if_due).with(state_dir: state_dir).twice
+      hub.scan
+      clock[0] += 1.0
+      hub.scan
+      clock[0] += described_class::FULL_PROBE_INTERVAL
+      hub.scan
+    end
+  end
+
+  describe "the tick thread" do
+    it "scans on its own once started, and stops when told" do
+      hub = described_class.new(state_dir: state_dir, scan_interval: 0.01)
+      seen = Queue.new
+      hub.subscribe(->(event) { seen << event.type })
+      hub.start
+      hub.start
+      a = save_session
+
+      expect(seen.pop(timeout: 2)).to eq("session")
+      hub.stop
+      expect(hub).to be_stopped
+      File.delete(File.join(state_dir, "#{a.id}.json"))
+      sleep 0.05
+      expect(seen).to be_empty
+    end
+
+    it "logs a tick that raises and keeps going" do
+      dir = Dir.mktmpdir
+      Samagotchi::Log.configure(path: File.join(dir, "chi.log"))
+      hub = described_class.new(state_dir: state_dir, scan_interval: 0.01)
+      calls = Queue.new
+      allow(hub).to receive(:scan) do
+        calls << 1
+        raise "boom" if calls.size == 1
+      end
+
+      hub.start
+      3.times { calls.pop(timeout: 2) }
+      hub.stop
+
+      records = File.open(File.join(dir, "chi.log")) { |io| Samagotchi::LogLine.each_record(io).to_a }
+      expect(records.map { |r| [r.tag, r.event, r.fields["error"]] }).to include(["web", "hub_scan_failed", "RuntimeError"])
+    ensure
+      FileUtils.remove_entry(dir)
+    end
+  end
+
   describe "#subscribe" do
     it "hands the subscriber the snapshot as the same step, so no stale event can follow it" do
       a = save_session
