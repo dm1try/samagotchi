@@ -772,6 +772,58 @@ RSpec.describe Samagotchi::Web::App do
       end
     end
 
+    describe "?parts=1 (the turn view's reload: what each step did)" do
+      let(:live) do
+        { "snapshot" => { "messages" => [
+          { "role" => "system", "content" => "sys" },
+          { "role" => "user", "content" => "check" },
+          { "role" => "model", "content" => "<think>look</think>\nLet me look.\n<tool_call>\n<function=execute>\n" \
+                                             "<parameter=command>\nls\n</parameter>\n</function>\n</tool_call>" },
+          { "role" => "tool_response", "content" => "[execute]\na.txt" },
+          { "role" => "model", "content" => "",
+            "tool_calls" => [{ "id" => "c1", "name" => "read", "arguments" => { "path" => "a.txt" } }] },
+          { "role" => "tool_response", "content" => "[read]\nhello", "tool_call_id" => "c1" },
+          { "role" => "model", "content" => "<think>done</think>It says **hello**." }
+        ] }, "session_state_snapshot" => { "status" => "idle", "event_seq" => 9 } }
+      end
+
+      def payload_for(app, path)
+        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+        JSON.parse(app.call(env_for(path))[2].first)
+      end
+
+      it "hands each assistant message its parts and keeps a text-less step" do
+        payload = payload_for(build_app(state_dir: Dir.mktmpdir, markdown: true), "/api/sessions/s1?parts=1")
+
+        steps = payload["messages"].select { |m| m["role"] == "assistant" }
+        expect(steps.map { |m| m["content"] }).to eq(["Let me look.", "", "It says **hello**."])
+        expect(steps.map { |m| m["parts"] }).to eq([
+          { "thinking" => "look", "tools" => [{ "tool" => "execute", "params" => 'command="ls"', "output" => "[execute]\na.txt" }] },
+          { "tools" => [{ "tool" => "read", "params" => 'path="a.txt"', "output" => "[read]\nhello" }] },
+          { "thinking" => "done" }
+        ])
+        # Nothing to render for the text-less step.
+        expect(steps[1]).not_to have_key("html")
+        expect(steps[2]["html"]).to include("<strong>hello</strong>")
+      end
+
+      it "without it the messages are as before: no parts, no text-less step" do
+        payload = payload_for(build_app(state_dir: Dir.mktmpdir), "/api/sessions/s1")
+
+        expect(payload["messages"]).to eq([
+          { "role" => "user", "content" => "check" },
+          { "role" => "assistant", "content" => "Let me look." },
+          { "role" => "assistant", "content" => "It says **hello**." }
+        ])
+      end
+
+      it "the turn-end tail stays light (no parts)" do
+        payload = payload_for(build_app(state_dir: Dir.mktmpdir), "/api/sessions/s1?tail=1&parts=1")
+
+        expect(payload["messages"]).to eq([{ "role" => "assistant", "content" => "It says **hello**." }])
+      end
+    end
+
     it "has no saved recap for a session without one" do
       payload = JSON.parse(build_app(state_dir: Dir.mktmpdir).call(env_for("/api/sessions/s1"))[2].first)
       expect(payload["saved_recap"]).to be_nil

@@ -18,6 +18,7 @@ require_relative "../image_store"
 require_relative "../context_note"
 require_relative "../recap_store"
 require_relative "markdown_renderer"
+require_relative "message_parts"
 require_relative "session_summary"
 require_relative "../log"
 
@@ -366,7 +367,7 @@ module Samagotchi
         json_response(200, {
           session: session_json,
           history: read_history(id),
-          messages: messages_for_display(raw_messages),
+          messages: messages_for_display(raw_messages, parts: req.params["parts"] == "1"),
           current_turn: current_turn,
           queued: turn_snapshot ? Array(turn_snapshot["queued"]) : [],
           recap: turn_snapshot && turn_snapshot["recap"],
@@ -975,9 +976,14 @@ module Samagotchi
 
       # @param msgs [Array<Hash>] a session's messages; symbol keys from disk,
       #   string keys from a Bridge snapshot
-      def messages_for_display(msgs)
+      # @param parts [Boolean] the turn view's reload (?parts=1): each
+      #   assistant message also carries what it did (MessageParts: thinking,
+      #   tool calls with params and output), and a message with nothing to
+      #   show but that (a text-less step) is kept with empty content
+      def messages_for_display(msgs, parts: false)
         filtered = []
-        Array(msgs).each do |m|
+        list = Array(msgs)
+        list.each_with_index do |m, index|
           role = (m[:role] || m["role"]).to_s
           content = (m[:content] || m["content"]).to_s
           if Samagotchi::ContextNote.note?(m)
@@ -988,7 +994,8 @@ module Samagotchi
           next if role == "tool_response"
 
           stripped = Samagotchi::OutputFormatter.strip_markup(content)
-          next if stripped.empty?
+          did = parts && %w[model assistant].include?(role) ? message_parts(list, index) : nil
+          next if stripped.empty? && did.nil?
 
           norm_role = role == "model" ? "assistant" : role
           # normalize assistant vs model, keep user as is
@@ -999,12 +1006,20 @@ module Samagotchi
           message = { role: norm_role, content: stripped }
           images = m[:images] || m["images"]
           message[:images] = Array(images).map { |ref| ImageStore.symbolize(ref).slice(:file, :name, :width, :height) } if norm_role == "user" && images.is_a?(Array) && !images.empty?
-          message[:html] = @markdown_renderer.render(stripped) if norm_role == "assistant" && @markdown_renderer.available?
+          message[:html] = @markdown_renderer.render(stripped) if norm_role == "assistant" && !stripped.empty? && @markdown_renderer.available?
+          message[:parts] = did if did
           filtered << message
         end
         filtered
       rescue StandardError
         []
+      end
+
+      # The parts of the assistant message at +index+, with the tool_response
+      # messages right after it.
+      def message_parts(list, index)
+        responses = list.drop(index + 1).take_while { |r| (r[:role] || r["role"]).to_s == "tool_response" }
+        MessageParts.for_message(list[index], responses)
       end
 
       # The last message messages_for_display shows as an answer, as a list of
