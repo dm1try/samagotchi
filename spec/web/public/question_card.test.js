@@ -60,12 +60,12 @@ test("resultText for questions is unchanged", () => {
   assert.equal(approvalAllowed(q, { selected: ["A"] }), null);
 });
 
-test("summaryText pending: header, question, approval fallback", () => {
+test("summaryText pending: header, else a label (the question is in the body)", () => {
   assert.equal(summaryText({ id: "q", header: "Pick a lane", question: "Which lane?" }), "Pick a lane");
-  assert.equal(summaryText({ id: "q", question: "Which lane?" }), "Which lane?");
+  assert.equal(summaryText({ id: "q", question: "Which lane?" }), "Question");
   assert.equal(summaryText({ id: "a", kind: "approval", approval: { tool: "execute" } }), "Approve execute?");
   assert.equal(summaryText({ id: "a", kind: "approval" }), "Approve call?");
-  assert.equal(summaryText({ id: "q" }), "");
+  assert.equal(summaryText({ id: "q" }), "Question");
 });
 
 test("summaryText resolved: answered, denied, cancelled with reason", () => {
@@ -80,10 +80,10 @@ test("summaryText resolved: answered, denied, cancelled with reason", () => {
 
 test("summaryText truncates long lines at 80 chars", () => {
   const long = "x".repeat(120);
-  const s = summaryText({ id: "q", question: long });
+  const s = summaryText({ id: "q", header: long });
   assert.equal(s.length, 80);
   assert.ok(s.endsWith("…"));
-  assert.equal(summaryText({ id: "q", question: "short" }), "short");
+  assert.equal(summaryText({ id: "q", header: "short" }), "short");
   assert.equal(truncate("abcdef", 3), "ab…");
   assert.equal(truncate("abc", 3), "abc");
   assert.equal(truncate(null), "");
