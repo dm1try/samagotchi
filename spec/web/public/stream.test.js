@@ -246,3 +246,23 @@ test("openStream hands a context_added (a note joined the conversation) to its h
 
   assert.deepEqual(seen, ["slack"]);
 });
+
+class ClosingEventSource {
+  constructor() { this.listeners = new Map(); this.readyState = 1; this.onerror = null; }
+  addEventListener(type, fn) { this.listeners.set(type, fn); }
+  close() { this.readyState = 2; }
+}
+
+test("openStream closes and reports a dropped stream instead of letting the browser reconnect with its cursor", () => {
+  let es;
+  const Impl = class extends ClosingEventSource { constructor(u) { super(u); es = this; } };
+  const closed = [];
+  openStream("s1", 0, { turn_started: () => {} }, { EventSourceImpl: Impl, onStreamClosed: () => closed.push(true) });
+
+  es.listeners.get("turn_started")({ data: "{}" });
+  es.readyState = 0; // the worker left; the browser would reconnect with Last-Event-ID
+  es.onerror();
+  es.onerror();
+  assert.deepEqual(closed, [true]);
+  assert.equal(es.readyState, 2);
+});
