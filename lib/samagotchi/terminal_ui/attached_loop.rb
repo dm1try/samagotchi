@@ -44,6 +44,8 @@ module Samagotchi
       # A second Ctrl-C at an empty idle prompt within this many seconds detaches.
       DETACH_WINDOW = 2.0
       DETACH_HINT = "Ctrl-D to detach, /exit stops the worker"
+      # Why a request the Bridge read after its deadline didn't go through.
+      LATE = "worker not answering in time"
       # Why the worker stayed up after /exit, by the reason it gave.
       HELD_REASONS = {
         "turn_running" => "a turn is running", "input_queued" => "prompts are queued",
@@ -360,12 +362,17 @@ module Samagotchi
         reply = @client.post_command(line: line, client_id: @client_id)
         return if reply.status == 202
         return @screen.commit(stale_worker("run commands")) if reply.status == 404
+        return @screen.commit("could not run the command (#{LATE})") if too_late?(reply)
 
         detail = reply.json&.fetch("detail", nil) || reply.json&.fetch("error", nil)
         @screen.commit("could not run the command (#{[reply.status, detail].compact.join(" ")})")
       rescue SystemCallError, IOError => e
         @screen.commit("could not run the command (#{worker_down(e)})")
       end
+
+      # A request the Bridge read after its deadline and dropped
+      # (BridgeClient::DEADLINE_SHARE): it didn't go through.
+      def too_late?(reply) = reply.status == 408 && reply.json&.fetch("error", nil) == "deadline_passed"
 
       # Why a Bridge request raised, for the line that says what didn't go
       # through: a stopped (or wedged) worker times out, a gone one refuses.
@@ -461,8 +468,8 @@ module Samagotchi
         end
 
         detail = reply.json&.fetch("error", nil)
-        # Read after its deadline and dropped (BridgeClient#post_turn).
-        return @screen.commit("could not send the prompt (worker not answering in time)") if detail == "deadline_passed"
+        # Read after its deadline and dropped (BridgeClient::DEADLINE_SHARE).
+        return @screen.commit("could not send the prompt (#{LATE})") if detail == "deadline_passed"
 
         explained = reply.json&.fetch("detail", nil) if detail == "images_unsupported"
         @screen.commit("could not send the prompt (#{[reply.status, detail].compact.join(" ")})#{": #{explained}" if explained}")
@@ -558,6 +565,7 @@ module Samagotchi
           @answered_ids << @question.id
           close_question(@question.answer_text(answer))
         when 409 then close_question("(already answered in another UI)")
+        when 408 then @screen.commit("could not answer (#{LATE})")
         else
           detail = reply.json&.fetch("detail", nil) || reply.json&.fetch("error", nil)
           @screen.commit("could not answer (#{[reply.status, detail].compact.join(" ")})")
@@ -577,6 +585,7 @@ module Samagotchi
         when 200 then close_question(@question.approval? ? "(denied)" : "(cancelled)")
         when 409 then close_question("(question already closed in another UI)")
         when 404 then @screen.commit("#{stale_worker("dismiss questions")}; Ctrl-C cancels the turn")
+        when 408 then @screen.commit("could not dismiss the question (#{LATE}); Ctrl-C cancels the turn")
         else
           # The question stays open (after a 404 too).
           detail = reply.json&.fetch("error", nil)
@@ -736,7 +745,11 @@ module Samagotchi
           return nil if @first_command_id
         end
 
-        why = reply.status == 404 ? stale_worker("run commands") : "the worker answered #{reply.status}"
+        why =
+          if reply.status == 404 then stale_worker("run commands")
+          elsif too_late?(reply) then LATE
+          else "the worker answered #{reply.status}"
+          end
         @screen.commit("could not switch to the --model: #{why}")
         :failed
       rescue SystemCallError, IOError => e

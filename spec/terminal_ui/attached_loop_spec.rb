@@ -298,6 +298,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
       expect(screen.lines).to include("could not run the command (worker not answering: no reply within 30s)")
     end
 
+    # The Bridge read it after its deadline and dropped it: it didn't run.
+    it "says a command the worker dropped as too late didn't run" do
+      reply = Samagotchi::BridgeClient::Response.new(status: 408, body: '{"error":"deadline_passed"}')
+      allow(client).to receive(:post_command).and_return(reply)
+
+      expect(run_with(["!echo hi", nil])).to eq(:detached)
+
+      expect(screen.lines).to include("could not run the command (worker not answering in time)")
+    end
+
     it "stays up when Ctrl-C can't reach the worker to cancel the turn" do
       allow(client).to receive(:cancel).and_raise(refused)
 
@@ -647,6 +657,23 @@ end
                                     "Ctrl-C cancels the turn")
     expect(prompts.last).to eq("? ")
   end
+
+  it "keeps the question open when the worker dropped the answer or the dismiss as too late" do
+    late = Samagotchi::BridgeClient::Response.new(status: 408, body: '{"error":"deadline_passed"}')
+    allow(client).to receive_messages(answer: late, dismiss_question: late)
+    start(first: snapshot(pending_question: question))
+    wait_for { prompts.last == "? " }
+
+    typed << "1"
+    wait_for { screen.lines.last.to_s.start_with?("could not answer") }
+    typed << ""
+    wait_for { screen.lines.last.to_s.start_with?("could not dismiss") }
+    finish
+
+    expect(screen.lines).to include("could not answer (worker not answering in time)",
+                                    "could not dismiss the question (worker not answering in time); Ctrl-C cancels the turn")
+    expect(prompts.last).to eq("? ")
+  end
 end
 
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a failed turn's prompt" do
@@ -935,6 +962,15 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "launch flags" do
 
     expect(attached.handle_event(joined)).to eq(:failed)
     expect(screen.lines.last).to eq("could not switch to the --model: worker not answering: no reply within 30s")
+  end
+
+  it "stops the launch when the worker dropped the command as too late" do
+    allow(client).to receive(:post_command)
+      .and_return(Samagotchi::BridgeClient::Response.new(status: 408, body: '{"error":"deadline_passed"}'))
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1", first_command: "/model fast")
+
+    expect(attached.handle_event(joined)).to eq(:failed)
+    expect(screen.lines.last).to eq("could not switch to the --model: worker not answering in time")
   end
 
   it "posts every prompt with no_interrupt under --no-interrupt" do

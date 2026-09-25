@@ -1147,4 +1147,42 @@ RSpec.describe Samagotchi::Web::App do
       expect(command(app_with_bridge(nil, manager: manager))).to match([409, hash_including("error" => "owned_by_tui")])
     end
   end
+
+  # A worker frozen (a sleeping Mac, SIGSTOP) or too slow: the client's read
+  # timed out, or the Bridge read the request after its deadline and dropped
+  # it. Either way it didn't run, and the page says so.
+  describe "a command, answer or dismissal the worker didn't take in time" do
+    let(:bridge) { instance_double(Samagotchi::BridgeClient) }
+    let(:late) { Samagotchi::BridgeClient::Response.new(status: 408, body: '{"error":"deadline_passed"}') }
+    let(:app) do
+      build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir).tap do |app|
+        allow(app).to receive_messages(live_bridge_client: bridge, bridge_client: bridge)
+      end
+    end
+
+    def post(path, body)
+      status, _headers, resp = app.call(env_for("/api/sessions/s1/#{path}", method: "POST", body: body))
+      [status, JSON.parse(resp.first)]
+    end
+
+    {
+      "a command" => ["command", '{"line":"!echo hi"}', :post_command, "the command was not run"],
+      "an answer" => ["answer", '{"id":"q-1","selected":["A"]}', :answer, "the answer was not sent"],
+      "a dismissal" => ["question/dismiss", '{"id":"q-1"}', :dismiss_question, "the question was not dismissed"]
+    }.each do |what, (path, body, call, said)|
+      it "answers 504 for #{what} the worker timed out on" do
+        allow(bridge).to receive(call).and_raise(Errno::ETIMEDOUT)
+
+        expect(post(path, body)).to eq([504, { "error" => "worker_timeout",
+                                               "detail" => "the session's worker did not answer, so #{said}" }])
+      end
+
+      it "answers 504 for #{what} the worker dropped as past its deadline" do
+        allow(bridge).to receive(call).and_return(late)
+
+        expect(post(path, body)).to eq([504, { "error" => "worker_timeout",
+                                               "detail" => "the session's worker did not answer, so #{said}" }])
+      end
+    end
+  end
 end

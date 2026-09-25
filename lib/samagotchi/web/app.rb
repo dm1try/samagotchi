@@ -351,6 +351,8 @@ module Samagotchi
           begin
             reply = client.answer(id: qid, selected: selected, freeform: freeform)
             return json_response(200, { status: "answered", session_id: id, id: qid }) if reply.ok?
+            # Read after its deadline and dropped (see #worker_timeout).
+            return worker_timeout("the answer was not sent") if reply.status == 408
 
             # Pass the bridge's verdict through: 409 = another client answered
             # first (or the question was cancelled), 400 = invalid selection.
@@ -358,6 +360,8 @@ module Samagotchi
               detail = reply.json&.dig("detail") || "answer rejected"
               return error_response(reply.status, reply.status == 409 ? "question_not_pending" : "invalid_answer", detail)
             end
+          rescue Errno::ETIMEDOUT
+            return worker_timeout("the answer was not sent")
           rescue StandardError
             nil
           end
@@ -383,10 +387,13 @@ module Samagotchi
         case reply.status
         when 200 then json_response(200, { status: "dismissed", session_id: id, id: qid })
         when 409 then error_response(409, "question_not_pending", reply.json&.dig("detail") || "question not pending")
+        when 408 then worker_timeout("the question was not dismissed")
         when 404
           error_response(501, "not_supported", BridgeClient.stale_worker_message(id, cant: "dismiss questions"))
         else error_response(503, "not_live", "no live bridge for session #{id}")
         end
+      rescue Errno::ETIMEDOUT
+        worker_timeout("the question was not dismissed")
       rescue StandardError
         error_response(503, "not_live", "no live bridge for session #{id}")
       end
@@ -409,6 +416,7 @@ module Samagotchi
         case reply.status
         when 202 then json_response(202, reply.json || { status: "accepted" })
         when 400 then error_response(400, reply.json&.dig("error") || "unknown_command", reply.json&.dig("detail") || "not a session command")
+        when 408 then worker_timeout("the command was not run")
         when 404
           error_response(501, "not_supported", BridgeClient.stale_worker_message(id, cant: "run commands"))
         else error_response(503, "not_live", "no live bridge for session #{id}")
@@ -417,8 +425,18 @@ module Samagotchi
         error_response(409, "owned_by_tui", e.message)
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
+      rescue Errno::ETIMEDOUT
+        worker_timeout("the command was not run")
       rescue SystemCallError, IOError
         error_response(503, "not_live", "no live bridge for session #{id}")
+      end
+
+      # The worker didn't take a request in time: its read timed out, or the
+      # Bridge read it after its deadline (408 deadline_passed) and dropped
+      # it. Either way +what+ didn't happen, and a frozen worker that wakes
+      # won't do it (BridgeClient::DEADLINE_SHARE).
+      def worker_timeout(what)
+        error_response(504, "worker_timeout", "the session's worker did not answer, so #{what}")
       end
 
       def handle_output(req, id)
