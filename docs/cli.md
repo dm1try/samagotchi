@@ -11,7 +11,7 @@
 - A session id can be shortened to any unique prefix (like git): `bin/chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
 - `bin/chi web [--port 4567] [--open] [--scope=all]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
 - `bin/chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
-- `bin/chi web --web-turn-view` — show each turn as one block of steps (the running one at the bottom) instead of a row of bubbles; `?view=turn|chat` on the page URL overrides it (see [Web turn view](#web-turn-view))
+- `bin/chi web --no-web-turn-view` — show turns as the classic row of bubbles instead of the default turn view (each turn as one block of steps, the running one at the bottom); `?view=turn|chat` on the page URL overrides it (see [Web turn view](#web-turn-view))
 - `bin/chi sessions list|stop|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one (see [Sessions](sessions.md))
 - `bin/chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
 - `bin/chi send [-m TEXT] (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context (see [Sessions: Sending a message](sessions.md#sending-a-message))
@@ -274,9 +274,10 @@ its code; a prompt copies the text as you typed it.
 
 ### Web turn view
 
-By default a turn with tool calls renders as a row of bubbles: one thinking
-block, one activity panel and one answer bubble per generation. The turn
-view shows a turn as *one block* where the work happens: the running
+The turn view, the default, shows a turn as *one block* where the work
+happens (the classic chat view renders a turn with tool calls as a row of
+bubbles: one thinking block, one activity panel and one answer bubble per
+generation; `web.turn_view: false` brings it back). The running
 generation is the live part at the bottom (its thinking, its narration, its
 tool rows), the earlier ones stack above it collapsed to one line each
 (their narration's first line, else `working with <tools>`, and a call
@@ -292,18 +293,18 @@ reasoning is saved with each step for this (never sent back to the model);
 steps saved before that have none, so they show no thinking.
 
 ```sh
-bin/chi web --web-turn-view      # --no-web-turn-view switches it off
+bin/chi web --no-web-turn-view   # the classic chat view; --web-turn-view is the default
 ```
 
-The setting also supports `SAMAGOTCHI_WEB_TURN_VIEW=true` or the global config:
+The setting also supports `SAMAGOTCHI_WEB_TURN_VIEW=false` or the global config:
 
 ```yaml
 web:
-  turn_view: true
+  turn_view: false
 ```
 
-`?view=turn` on the page URL forces the turn view for that page load and
-`?view=chat` the bubbles, whatever the config says; the parameter is dropped
+`?view=chat` on the page URL forces the classic chat view for that page load
+and `?view=turn` the turn view, whatever the config says; the parameter is dropped
 when you switch between the project and all-sessions views. The terminal
 UIs are not affected.
 

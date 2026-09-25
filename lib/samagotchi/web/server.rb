@@ -51,7 +51,7 @@ module Samagotchi
       # open) its page for +dir+ and leave it be; else start one.
       # @param scope ["project", "all"] "all": the plain page, every session
       # @return [Integer] the exit status
-      def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false, turn_view: false)
+      def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false, turn_view: true)
         host = resolve_host(host)
         port = resolve_port(port)
         url = scope_url(host, port, dir: dir, scope: scope)
@@ -78,7 +78,7 @@ module Samagotchi
       #   from; built over the app's state dir unless given
       # @return [Boolean] false when the port was taken (said so on stderr)
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
-                     turn_view: false, hub: nil)
+                     turn_view: true, hub: nil)
         port = resolve_port(port)
         host = resolve_host(host)
         url ||= "http://#{url_host(host)}:#{port}/"

@@ -61,12 +61,13 @@ module Samagotchi
 
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
-      # @param turn_view [Boolean] the page's per-turn view (web.turn_view);
-      #   ?view=turn|chat overrides it for one page load
+      # @param turn_view [Boolean] the page's per-turn view (web.turn_view,
+      #   the default); false is the classic row of bubbles; ?view=turn|chat
+      #   overrides it for one page load
       # @param hub [SessionHub, nil] the session projection GET /api/events
       #   streams from; without one the route answers 503
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
-                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, turn_view: false, hub: nil,
+                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, turn_view: true, hub: nil,
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE)
         @manager = manager || SessionManager
         @session_class = session_class || Session

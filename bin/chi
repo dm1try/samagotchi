@@ -930,8 +930,8 @@ parser = OptionParser.new do |opts|
   end
   opts.on("--web-markdown", "Render finalized LLM Markdown in `chi web` (requires optional commonmarker gem)") { options[:web_markdown] = true; cli_overrides["web.markdown"] = true }
   opts.on("--no-web-markdown", "Disable Markdown rendering in `chi web`") { options[:web_markdown] = false; cli_overrides["web.markdown"] = false }
-  opts.on("--web-turn-view", "Show each turn in `chi web` as one block of steps (the live one at the bottom); ?view=turn|chat overrides per page") { options[:web_turn_view] = true; cli_overrides["web.turn_view"] = true }
-  opts.on("--no-web-turn-view", "Show turns in `chi web` as a row of bubbles (the default)") { options[:web_turn_view] = false; cli_overrides["web.turn_view"] = false }
+  opts.on("--web-turn-view", "Show each turn in `chi web` as one block of steps (the live one at the bottom; the default); ?view=turn|chat overrides per page") { options[:web_turn_view] = true; cli_overrides["web.turn_view"] = true }
+  opts.on("--no-web-turn-view", "Show turns in `chi web` as the classic row of bubbles instead of the turn view") { options[:web_turn_view] = false; cli_overrides["web.turn_view"] = false }
   # Strict underscore rejection: --recap_base_url etc. are not registered and will raise OptionParser::InvalidOption
   opts.on("-h", "--help", "Show help") { puts opts; exit }
 end

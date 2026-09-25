@@ -137,8 +137,8 @@ module Samagotchi
       Entry.new(key: "web.port",                 yaml_path: %w[web port],                 type: :integer, default: 4567,            expose: %i[env config cli]),
       Entry.new(key: "web.host",                 yaml_path: %w[web host],                 type: :string, default: "127.0.0.1",     expose: %i[env config cli]),
       Entry.new(key: "web.markdown",             yaml_path: %w[web markdown],             type: :bool,    default: false,           expose: %i[env config cli]),
-      # The page shows each turn as one block of generations (the live one at the bottom) instead of a row of bubbles; ?view=turn|chat overrides it per page load.
-      Entry.new(key: "web.turn_view",            yaml_path: %w[web turn_view],            type: :bool,    default: false,           expose: %i[env config cli]),
+      # The page shows each turn as one block of generations (the live one at the bottom); false brings back the row of bubbles; ?view=turn|chat overrides it per page load.
+      Entry.new(key: "web.turn_view",            yaml_path: %w[web turn_view],            type: :bool,    default: true,           expose: %i[env config cli]),
 
       Entry.new(key: "no_interrupt",             yaml_path: %w[no_interrupt],             type: :bool,   default: false,            expose: %i[env config cli]),
       Entry.new(key: "no_default_input",         yaml_path: %w[no_default_input],         type: :bool,   default: false,            expose: %i[env config cli]),
