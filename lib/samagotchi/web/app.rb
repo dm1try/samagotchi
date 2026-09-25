@@ -8,6 +8,7 @@ require "rack"
 require "rack/request"
 
 require_relative "../bridge_client"
+require_relative "../bridge/bounded_queue"
 require_relative "../session"
 require_relative "../session_manager"
 require_relative "../project_scope"
@@ -45,16 +46,35 @@ module Samagotchi
       # POST /stop waits this long for the worker to let go of the session.
       STOP_WAIT_SECONDS = 2.0
 
+      # GET /api/events: a `: ping` this often while idle, a queue this deep
+      # per tab (an overflow ends the connection; the reconnect's snapshot
+      # is the recovery), and the loop's longest wait before it looks at
+      # whether the hub or the server is shutting down.
+      EVENTS_HEARTBEAT = 15.0
+      EVENTS_QUEUE = 256
+      EVENTS_POLL = 1.0
+
+      # A callable the event loops ask whether the server still runs;
+      # Server.start points it at WEBrick's status once it has the server.
+      attr_writer :server_running
+
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
+      # @param hub [SessionHub, nil] the session projection GET /api/events
+      #   streams from; without one the route answers 503
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
-                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false)
+                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, hub: nil,
+                     events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE)
         @manager = manager || SessionManager
         @session_class = session_class || Session
         @state_dir = state_dir
         @public_dir = public_dir || File.expand_path("public", __dir__)
         @bridge_wait_timeout = bridge_wait_timeout
         @markdown_renderer = MarkdownRenderer.new(enabled: markdown)
+        @hub = hub
+        @events_heartbeat = events_heartbeat
+        @events_queue = events_queue
+        @server_running = -> { true }
       end
 
       def call(env)
@@ -79,6 +99,8 @@ module Samagotchi
           handle_create(req)
         when ["GET", "/api/info"]
           handle_info
+        when ["GET", "/api/events"]
+          handle_events(req)
         else
           # Dynamic routes
           if (m = %r{\A/api/sessions/([^/]+)/stream\z}.match(req.path_info)) && req.get?
@@ -693,6 +715,44 @@ module Samagotchi
         [200, headers, ProxyStreamBody.new(host: DEFAULT_HOST, port: bridge_port, session_id: id, query: query, headers: req.env)]
       end
 
+      # GET /api/events: the session list as one SSE stream per tab. The
+      # first frame is the hub's snapshot (scoped by ?dir= as the list is),
+      # then `session` for an upsert and `session_gone` for a removal, with
+      # a `: ping` while idle. Frame ids are the hub's seq, for the log's
+      # sake: there is no replay, a reconnect starts with a fresh snapshot.
+      def handle_events(req)
+        return error_response(503, "no_hub", "this chi web has no session hub") unless @hub
+
+        dir, error = scope_dir(req.params["dir"])
+        return error if error
+
+        root = dir && ProjectScope.root_for(dir)
+        headers = {
+          "Content-Type" => "text/event-stream",
+          "Cache-Control" => "no-cache",
+          "Connection" => "keep-alive",
+          "X-Accel-Buffering" => "no",
+          "Access-Control-Allow-Origin" => "*"
+        }
+        body = EventsBody.new(hub: @hub, project_root: root, heartbeat: @events_heartbeat, capacity: @events_queue,
+                              server_running: @server_running)
+        # As handle_stream: hijack when the handler offers it (rackup's
+        # WEBrick buffers enumerable bodies), else an enumerable body.
+        if req.env["rack.hijack?"]
+          hijack = lambda do |io|
+            body.each do |chunk|
+              io.write(chunk)
+              io.flush
+            end
+          rescue Errno::EPIPE, Errno::ECONNRESET, IOError
+            nil # the tab went away
+          end
+          return [200, headers.merge("rack.hijack" => hijack), []]
+        end
+
+        [200, headers, body]
+      end
+
       # Rack hijack lambda (env["rack.hijack?"] truthy): pipes the bridge's SSE
       # frames directly to the client socket until it disconnects. The handler
       # (WEBrick via rackup) has already sent the status line + headers, so
@@ -1014,6 +1074,79 @@ module Samagotchi
 
       def not_found(path:)
         error_response(404, "not_found", "not found: #{path}")
+      end
+
+      # One tab's GET /api/events: a bounded queue behind a lambda sink,
+      # subscribed and snapshotted as one step under the hub's lock, then
+      # drained onto the socket. The loop ends when the hub stops or the
+      # server leaves :Running (rackup's WEBrick joins every request thread
+      # before returning, so a loop that waited on the queue alone would
+      # hang Ctrl-C while a tab is open), and when the queue overflowed:
+      # the reconnect's snapshot is the recovery.
+      class EventsBody
+        # Subscribes now: the snapshot is the list as of the request, and
+        # what changes between here and the socket queues up behind it.
+        def initialize(hub:, project_root:, heartbeat:, capacity:, server_running:)
+          @hub = hub
+          @project_root = project_root
+          @heartbeat = heartbeat
+          @server_running = server_running
+          @queue = Bridge::BoundedQueue.new(capacity: capacity)
+          @handle, @snapshot = @hub.subscribe(->(event) { @queue.push(event) }, snapshot: true, project_root: project_root)
+        end
+
+        def each
+          yield frame(nil, "snapshot", sessions: @snapshot)
+          last_write = monotonic
+          loop do
+            event = @queue.pop([@heartbeat, EVENTS_POLL].min)
+            if event
+              break if @queue.overflow_dropped?
+
+              next unless in_scope?(event)
+
+              yield frame(event.seq, event.type, event.data)
+              last_write = monotonic
+            else
+              # What was queued before the stop still goes out.
+              break if @hub.stopped? || !@server_running.call
+
+              if monotonic - last_write >= @heartbeat
+                yield ": ping\r\n\r\n"
+                last_write = monotonic
+              end
+            end
+          end
+        ensure
+          close
+        end
+
+        # Rack calls it when the body is done with, served or not.
+        def close
+          @handle.unsubscribe
+        end
+
+        private
+
+        # A session outside ?dir's project is not this tab's (its removal
+        # still goes out: harmless).
+        def in_scope?(event)
+          return true if @project_root.nil? || event.type != "session"
+
+          event.data[:session][:project_root] == @project_root
+        end
+
+        def frame(id, type, data)
+          lines = []
+          lines << "id: #{id}" if id
+          lines << "event: #{type}"
+          JSON.generate(data).each_line { |line| lines << "data: #{line.chomp}" }
+          lines.join("\r\n") + "\r\n\r\n"
+        end
+
+        def monotonic
+          Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        end
       end
 
       # Proxy body that streams from the per-session Bridge TCP server.

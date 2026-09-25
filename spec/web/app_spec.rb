@@ -9,6 +9,7 @@ require "rack/mock"
 require "rack/request"
 
 require "samagotchi/web/app"
+require "samagotchi/web/session_hub"
 require "samagotchi/session"
 
 # Emulates SessionManager#read_responses over an in-memory response list,
@@ -223,6 +224,158 @@ RSpec.describe Samagotchi::Web::App do
       expect(out.string).to include("event: generation_chunk")
       expect(out.string).to include(%q{"content":"one"})
       expect(out.string).not_to include("HTTP/1.1") # handler owns the status line
+    end
+  end
+
+  describe "GET /api/events" do
+    let(:state_dir) { Dir.mktmpdir("web-events-spec") }
+    let(:hub) { Samagotchi::Web::SessionHub.new(state_dir: state_dir) }
+
+    after { FileUtils.rm_rf(state_dir) }
+
+    def events_app(hub: self.hub, **kw)
+      described_class.new(manager: Samagotchi::SessionManager, session_class: Samagotchi::Session, state_dir: state_dir,
+                          bridge_wait_timeout: 0, hub: hub, events_heartbeat: 0.01, **kw)
+    end
+
+    def saved_session(project_root: nil)
+      Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd).tap do |s|
+        s.project_root = project_root
+        s.save(state_dir: state_dir)
+      end
+    end
+
+    # The frames a body yields until it ends (the hub is stopped, or the
+    # queue overflowed): [[event, data], ...], pings left out.
+    def frames_of(body)
+      raw = +""
+      body.each { |chunk| raw << chunk }
+      raw.split("\r\n\r\n").reject { |f| f.start_with?(":") }.map do |frame|
+        lines = frame.split("\r\n")
+        [lines.find { |l| l.start_with?("event: ") }&.delete_prefix("event: "),
+         JSON.parse(lines.select { |l| l.start_with?("data: ") }.map { |l| l.delete_prefix("data: ") }.join)]
+      end
+    end
+
+    it "answers 503 no_hub without a hub, so the page falls back to fetching" do
+      status, _, body = build_app(state_dir: state_dir).call(env_for("/api/events"))
+
+      expect(status).to eq(503)
+      expect(JSON.parse(body.first)).to include("error" => "no_hub")
+    end
+
+    it "opens with the hub's snapshot, then a session frame for each change the hub sees, until the hub stops" do
+      a = saved_session
+      hub.scan
+      app = events_app
+      status, headers, body = app.call(env_for("/api/events"))
+      expect(status).to eq(200)
+      expect(headers["Content-Type"]).to eq("text/event-stream")
+
+      collected = Thread.new { frames_of(body) }
+      b = saved_session
+      hub.touch(b.id)
+      File.delete(File.join(state_dir, "#{a.id}.json"))
+      hub.touch(a.id)
+      hub.stop
+
+      frames = collected.value
+      expect(frames.map(&:first)).to eq(%w[snapshot session session_gone])
+      expect(frames[0][1]["sessions"].map { |s| s["id"] }).to eq([a.id])
+      expect(frames[0][1]["sessions"].first).to include("bridge_up" => false, "owner" => nil)
+      expect(frames[1][1]["session"]).to include("id" => b.id)
+      expect(frames[2][1]).to eq("id" => a.id)
+    end
+
+    it "carries the hub's seq as the frame id, and pings while idle" do
+      hub.scan
+      app = events_app
+      _, _, body = app.call(env_for("/api/events"))
+      raw = +""
+      collected = Thread.new { body.each { |chunk| raw << chunk } }
+      hub.touch(saved_session.id)
+      sleep 0.05
+      hub.stop
+      collected.join(2)
+
+      expect(raw).to include("id: 1\r\nevent: session\r\n")
+      expect(raw).to include(": ping\r\n\r\n")
+    end
+
+    it "scopes the snapshot and the session frames to ?dir's project, and answers 400 for a folder that isn't one" do
+      here = Samagotchi::ProjectScope.root_for(__dir__) # the main repo, for a worktree too
+      mine = saved_session(project_root: here)
+      saved_session(project_root: "/repo/other")
+      hub.scan
+      app = events_app
+      status, _, body = app.call(env_for("/api/events?dir=#{URI.encode_www_form_component(__dir__)}"))
+      expect(status).to eq(200)
+      collected = Thread.new { frames_of(body) }
+      other = saved_session(project_root: "/repo/other")
+      hub.touch(other.id)
+      again = saved_session(project_root: here)
+      hub.touch(again.id)
+      hub.stop
+
+      frames = collected.value
+      expect(frames.map(&:first)).to eq(%w[snapshot session])
+      expect(frames[0][1]["sessions"].map { |s| s["id"] }).to eq([mine.id])
+      expect(frames[1][1]["session"]["id"]).to eq(again.id)
+
+      status, = app.call(env_for("/api/events?dir=/no/such/folder"))
+      expect(status).to eq(400)
+    end
+
+    it "ends the connection when its queue overflowed: the reconnect's snapshot is the recovery" do
+      hub.scan
+      app = events_app(events_queue: 2)
+      _, _, body = app.call(env_for("/api/events"))
+      3.times { hub.touch(saved_session.id) }
+
+      frames = frames_of(body) # ends on its own, no hub.stop
+      expect(frames.first.first).to eq("snapshot")
+      expect(frames.size).to be < 4
+    end
+
+    it "ends the connection once the server is shutting down" do
+      hub.scan
+      app = events_app
+      running = true
+      app.server_running = -> { running }
+      _, _, body = app.call(env_for("/api/events"))
+      collected = Thread.new { frames_of(body) }
+      running = false
+
+      expect(collected.join(2)).not_to be_nil
+    end
+
+    it "streams straight to the socket under rack.hijack, as the session stream does" do
+      hub.scan
+      app = events_app
+      status, headers, body = app.call(env_for("/api/events", headers: { "rack.hijack?" => true }))
+      expect(status).to eq(200)
+      expect(body).to eq([])
+      out = StringIO.new
+      writer = Thread.new { headers["rack.hijack"].call(out) }
+      hub.touch(saved_session.id)
+      hub.stop
+      writer.join(2)
+
+      expect(out.string).to start_with("event: snapshot\r\n")
+      expect(out.string).to include("event: session\r\n")
+    end
+
+    it "logs the connect as one request line at debug level" do
+      log_dir = Dir.mktmpdir
+      Samagotchi::Log.configure(path: File.join(log_dir, "chi.log"), level: :debug)
+      hub.scan
+      hub.stop
+      events_app.call(env_for("/api/events")).last.each { |_c| nil }
+
+      records = File.open(File.join(log_dir, "chi.log")) { |io| Samagotchi::LogLine.each_record(io).select { |r| r.tag == "web" } }
+      expect(records.map { |r| [r.event, r.fields["path"], r.fields["status"]] }).to eq([["request", "/api/events", "200"]])
+    ensure
+      FileUtils.remove_entry(log_dir)
     end
   end
 
