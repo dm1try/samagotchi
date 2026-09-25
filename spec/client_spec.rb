@@ -278,6 +278,25 @@ RSpec.describe Samagotchi::Client do
         end
     end
 
+    it "names the configured host, not the transport, when retries run out" do
+      client = described_class.new(host: "localhost", port: 8080, name: "main", sleeper: ->(_seconds) {})
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
+
+      expect { client.complete("prompt") }
+        .to raise_error(described_class::RetryExhausted) do |error|
+          expect(error.host).to eq("main")
+          expect(error.summary).to include("host main:")
+        end
+    end
+
+    it "falls back to the transport's label when it has no host name" do
+      client = described_class.new(host: "localhost", port: 8080, sleeper: ->(_seconds) {})
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
+
+      expect { client.complete("prompt") }
+        .to raise_error(described_class::RetryExhausted) { |error| expect(error.host).to eq("llama.cpp") }
+    end
+
     it "does not retry non-network errors" do
       client = described_class.new(host: "localhost", port: 8080)
       allow(Net::HTTP).to receive(:start)

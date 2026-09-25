@@ -39,6 +39,11 @@ RSpec.describe Samagotchi::HostRegistry do
       expect(target.bare_model).to eq("small")
     end
 
+    it "gives each host's client the host's config name, for its error lines" do
+      expect(registry.entries["box"].client.host_name).to eq("box")
+      expect(registry.entries["default"].client.host_name).to eq("default")
+    end
+
     it "keeps one client per host, so per-client caches (the /props window) survive" do
       expect(registry.resolve("box:a").client).to be(registry.resolve("box:b").client)
     end

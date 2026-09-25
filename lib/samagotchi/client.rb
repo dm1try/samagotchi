@@ -125,8 +125,10 @@ module Samagotchi
     # @param scheme [String, nil] "https" for a TLS server (default http)
     # @param first_token_timeout [Numeric, nil] seconds a completion may take
     #   to stream its first text (LLM::HTTP); nil: no limit
+    # @param name [String, nil] the host's config name, for error lines
+    #   (default: the transport's label)
     def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil, sleeper: nil, scheme: nil,
-                   first_token_timeout: nil)
+                   first_token_timeout: nil, name: nil)
       # Unified config precedence: CLI > ENV > file > default (via Samagotchi::Config)
       cfg_host = nil; cfg_port = nil; cfg_transport_raw = nil
       begin
@@ -148,12 +150,17 @@ module Samagotchi
       @props_cache = {}
       @props_mutex = Mutex.new
       @first_token_timeout = first_token_timeout
-      @http = LLM::HTTP.new(label: @transport.label, open_timeout: @open_timeout, read_timeout: @read_timeout,
+      @host_name = name
+      @label = name.to_s.empty? ? @transport.label : name.to_s
+      @http = LLM::HTTP.new(label: @label, open_timeout: @open_timeout, read_timeout: @read_timeout,
                             sleeper: sleeper, first_token_timeout: first_token_timeout)
     end
 
     # Seconds a completion may take to stream its first text, or nil.
     attr_reader :first_token_timeout
+
+    # The host's config name, or nil when built without one.
+    attr_reader :host_name
 
     # The wire-format strategy for this client's transport.
     def transport
@@ -233,7 +240,7 @@ module Samagotchi
       marker = @transport.props_path && VisionSupport.media_marker(server_props(model: model))
       return marker if marker
 
-      raise LLM::VisionUnsupported.new("#{@transport.label}: can't reach /props for the media marker", host: @transport.label)
+      raise LLM::VisionUnsupported.new("#{@label}: can't reach /props for the media marker", host: @label)
     end
 
     def list_models
@@ -403,7 +410,7 @@ module Samagotchi
     # (blank lines, non-data lines, and the mlx/oMLX `[DONE]` sentinel).
     # Raises the ProviderError of a server's error event.
     def parse_stream_line(line)
-      error = LLM::HTTP.sse_error(line, host: @transport.label)
+      error = LLM::HTTP.sse_error(line, host: @label)
       raise error if error
       return nil if line.empty? || !line.start_with?("data: ")
 
@@ -413,7 +420,7 @@ module Samagotchi
       payload = begin
         JSON.parse(data)
       rescue JSON::ParserError => e
-        raise LLM::ProtocolError.new("#{@transport.label}: malformed stream chunk: #{e.message[0, 200]}", host: @transport.label)
+        raise LLM::ProtocolError.new("#{@label}: malformed stream chunk: #{e.message[0, 200]}", host: @label)
       end
       content = @transport.content_from_payload(payload)
       [content, payload]

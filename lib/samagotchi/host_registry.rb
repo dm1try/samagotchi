@@ -88,7 +88,7 @@ module Samagotchi
                               profile: cfg[:profile], first_token_timeout: cfg[:first_token_timeout],
                               vision: cfg[:vision])
         entry.client = Client.new(host: cfg[:host], port: cfg[:port], transport: transport, scheme: cfg[:scheme],
-                                  first_token_timeout: entry.first_token_limit)
+                                  first_token_timeout: entry.first_token_limit, name: entry.name)
         @entries[entry.name] = entry
       end
       # Fallback single entry (should already be synthesized by hosts_config, but guard)
@@ -97,7 +97,7 @@ module Samagotchi
         host = "localhost" if host.empty?
         port = Config.get("server.port").to_i
         port = 8080 if port <= 0
-        @entries["default"] = HostEntry.new(name: "default", host: host, port: port, transport: nil, client: Client.new(host: host, port: port))
+        @entries["default"] = HostEntry.new(name: "default", host: host, port: port, transport: nil, client: Client.new(host: host, port: port, name: "default"))
       end
       @mutex = Mutex.new
       @cache = nil
