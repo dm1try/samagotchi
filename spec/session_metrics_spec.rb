@@ -63,6 +63,28 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:cancellations]).to eq(0)
   end
 
+  it "counts the running turn's tool calls and errors in the totals, once" do
+    feed([
+      { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+      { type: :generation_started, iteration: 1 },
+      { type: :tool_call_started, iteration: 1, call_index: 1, tool: "read" },
+      { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "read", status: "error" },
+      { type: :tool_call_started, iteration: 1, call_index: 2, tool: "execute" }
+    ])
+
+    snap = metrics.snapshot
+    expect(snap[:tool_calls_total]).to eq(2)
+    expect(snap[:tool_errors]).to eq(1)
+    expect(snap[:tool_calls_by_tool]).to eq("read" => 1, "execute" => 1)
+
+    feed([
+      { type: :tool_call_completed, iteration: 1, call_index: 2, tool: "execute", status: "ok" },
+      { type: :generation_completed, iteration: 1, content_length: 3 },
+      { type: :turn_completed, result: double(respond_to?: false) }
+    ])
+    expect(metrics.snapshot).to include(tool_calls_total: 2, tool_errors: 1)
+  end
+
   it "keeps the latest context window :generation_started reported" do
     expect(metrics.snapshot).to include(context_window_tokens: nil, context_window_source: nil)
 

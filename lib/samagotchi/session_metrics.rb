@@ -164,9 +164,11 @@ module Samagotchi
           profile_source: @profile_source,
           served_model: @served_model,
           served_model_for: @served_model_for,
-          tool_calls_total: @tool_calls_total,
+          # The running turn's calls count at once, as the per-tool
+          # counts do, so both agree mid-turn.
+          tool_calls_total: @tool_calls_total + (@turn&.tool_calls || 0),
           tool_calls_by_tool: @tool_calls_by_tool.dup,
-          tool_errors: @tool_errors,
+          tool_errors: @tool_errors + (@turn&.tool_errors || 0),
           iterations_total: @iterations_total,
           gen_latency_ms: @gen_latency_ms,
           cancellations: @cancellations,
