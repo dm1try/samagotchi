@@ -271,9 +271,8 @@ module Samagotchi
         json_response(201, session_to_json(session).merge(bridge_port: await_bridge_port(session.id)))
       end
 
-      def handle_show(_req, id)
+      def handle_show(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
-        history = read_history(id)
         # Read-only preview: selecting a session never spawns a worker.
         # The worker is woken only on POST /turn (handle_turn) via
         # SessionManager.resume_session + write_turn_input. This avoids
@@ -302,10 +301,25 @@ module Samagotchi
         if snapshot
           session_json = session_json.merge(served_model: snapshot["served_model"], served_model_for: snapshot["served_model_for"])
         end
+        raw_messages = turn_snapshot ? turn_snapshot["messages"] : session.messages
+        timing = timing_payload(id, live_metrics: snapshot && snapshot["metrics"])
+        # ?tail=1: the page's re-read at the end of a turn wants the final
+        # answer's rendered markdown, the status and the timing, not the
+        # whole history again (nor a render of every earlier answer).
+        if req.params["tail"] == "1"
+          return json_response(200, {
+            tail: true,
+            session: session_json,
+            messages: last_assistant_for_display(raw_messages),
+            markdown_warning: @markdown_renderer.warning,
+            timing: timing
+          })
+        end
+
         json_response(200, {
           session: session_json,
-          history: history,
-          messages: messages_for_display(turn_snapshot ? turn_snapshot["messages"] : session.messages),
+          history: read_history(id),
+          messages: messages_for_display(raw_messages),
           current_turn: current_turn,
           queued: turn_snapshot ? Array(turn_snapshot["queued"]) : [],
           recap: turn_snapshot && turn_snapshot["recap"],
@@ -318,7 +332,7 @@ module Samagotchi
           # The stream cursor `<seq>-<epoch>`: a later worker resets it
           # instead of taking the seq as its own. Only the snapshot has it.
           last_event_id: turn_snapshot && turn_snapshot["event_id"],
-          timing: timing_payload(id, live_metrics: snapshot && snapshot["metrics"])
+          timing: timing
         })
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
@@ -925,6 +939,16 @@ module Samagotchi
         end
         filtered
       rescue StandardError
+        []
+      end
+
+      # The last message messages_for_display shows as an answer, as a list of
+      # at most one: walked backwards so only that one is rendered.
+      def last_assistant_for_display(msgs)
+        Array(msgs).reverse_each do |m|
+          shown = messages_for_display([m]).first
+          return [shown] if shown && shown[:role] == "assistant"
+        end
         []
       end
 

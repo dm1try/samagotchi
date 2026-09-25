@@ -412,6 +412,88 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["saved_recap"]).to eq("text" => "Earlier.", "turns_since" => 1)
     end
 
+    describe "?tail=1 (the page's re-read at the end of a turn)" do
+      let(:live) do
+        { "snapshot" => { "messages" => [
+          { "role" => "system", "content" => "sys" },
+          { "role" => "user", "content" => "first" },
+          { "role" => "model", "content" => "old *answer*" },
+          { "role" => "user", "content" => "second" },
+          { "role" => "model", "content" => "let me look" },
+          { "role" => "tool_response", "content" => "raw" },
+          { "role" => "model", "content" => "<think>hm</think>see [x](https://example.test)" }
+        ], "recap" => "We did things.", "queued" => [{ "prompt" => "next" }], "event_id" => "40-e1" },
+          "session_state_snapshot" => { "status" => "idle", "event_seq" => 40, "model_name" => "Qwen3-14B" } }
+      end
+
+      it "answers the session, the timing and the last assistant message only, rendered" do
+        manager = FakeResponsesManager.new(responses: %w[one two])
+        app = build_app(manager: manager, state_dir: Dir.mktmpdir, markdown: true)
+        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+        allow(manager).to receive(:read_responses).and_call_original
+
+        status, _headers, body = app.call(env_for("/api/sessions/s1?tail=1"))
+
+        expect(status).to eq(200)
+        payload = JSON.parse(body.first)
+        expect(payload.keys).to contain_exactly("tail", "session", "messages", "markdown_warning", "timing")
+        expect(payload["tail"]).to be(true)
+        expect(payload["messages"].size).to eq(1)
+        expect(payload["messages"].first).to include("role" => "assistant", "content" => "see [x](https://example.test)")
+        expect(payload["messages"].first["html"]).to include('href="https://example.test"')
+        expect(payload.dig("session", "status")).to eq("idle")
+        expect(payload.dig("session", "model_name")).to eq("Qwen3-14B")
+        expect(payload["timing"]).to include("turn_records", "tool_records")
+        # The responses file is the full answer's alone.
+        expect(manager).not_to have_received(:read_responses)
+      end
+
+      it "renders only that one message, not the whole history" do
+        app = build_app(state_dir: Dir.mktmpdir, markdown: true)
+        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+        renderer = app.instance_variable_get(:@markdown_renderer)
+        allow(renderer).to receive(:render).and_call_original
+
+        app.call(env_for("/api/sessions/s1?tail=1"))
+
+        expect(renderer).to have_received(:render).once
+      end
+
+      it "a turn with no answer (canceled): the answer before it, as the full list's last one" do
+        live["snapshot"]["messages"] << { "role" => "user", "content" => "third" }
+        app = build_app(state_dir: Dir.mktmpdir)
+        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+
+        payload = JSON.parse(app.call(env_for("/api/sessions/s1?tail=1"))[2].first)
+
+        expect(payload["messages"].map { |m| m["content"] }).to eq(["see [x](https://example.test)"])
+      end
+
+      it "no answer yet: no messages; a stopped session reads its file" do
+        loader = Class.new(StubSessionLoader) do
+          def self.load(id, state_dir: nil)
+            super.tap { |s| s.messages = [{ role: "user", content: "hello" }] }
+          end
+        end
+        app = build_app(state_dir: Dir.mktmpdir, session_class: loader)
+        expect(JSON.parse(app.call(env_for("/api/sessions/s1?tail=1"))[2].first)["messages"]).to eq([])
+
+        payload = JSON.parse(build_app(state_dir: Dir.mktmpdir).call(env_for("/api/sessions/s1?tail=1"))[2].first)
+        expect(payload["messages"]).to eq([{ "role" => "assistant", "content" => "hi there" }])
+      end
+
+      it "without tail the answer stays full" do
+        app = build_app(state_dir: Dir.mktmpdir)
+        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+
+        payload = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)
+
+        expect(payload).not_to have_key("tail")
+        expect(payload["messages"].size).to eq(5)
+        expect(payload).to include("history", "recap", "queued", "last_event_id")
+      end
+    end
+
     it "has no saved recap for a session without one" do
       payload = JSON.parse(build_app(state_dir: Dir.mktmpdir).call(env_for("/api/sessions/s1"))[2].first)
       expect(payload["saved_recap"]).to be_nil
