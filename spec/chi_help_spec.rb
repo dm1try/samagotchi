@@ -36,4 +36,20 @@ RSpec.describe "chi --help" do
     expect(status.exitstatus).to eq(1)
     expect(err).to eq("Error: invalid option: --bogus (see chi --help)\n")
   end
+
+  it "refuses an unknown command instead of starting a session" do
+    _out, err, status = Open3.capture3({ "SAMAGOTCHI_SESSION_SHARED" => "0" }, "timeout", "10", RbConfig.ruby, chi,
+                                       "bogus", "--non-interactive", stdin_data: "")
+
+    expect(status.exitstatus).to eq(1)
+    expect(err).to eq("Error: unknown command bogus (see chi --help)\n")
+  end
+
+  it "refuses a stray argument after web" do
+    _out, err, status = Open3.capture3("timeout", "10", RbConfig.ruby, chi, "web", "extra", "--port", "45898",
+                                       stdin_data: "")
+
+    expect(status.exitstatus).to eq(1)
+    expect(err).to eq("Error: unexpected argument extra (see chi --help)\n")
+  end
 end

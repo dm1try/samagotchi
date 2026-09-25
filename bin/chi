@@ -926,6 +926,15 @@ rescue OptionParser::ParseError => e
   exit 1
 end
 
+# The subcommands with their own parsers ran above; what parse! leaves is
+# `web` or nothing. Anything else is a typo, not a prompt: refuse it rather
+# than start a session.
+stray = ARGV.first == "web" ? ARGV[1] : ARGV.first
+if stray
+  warn "Error: #{ARGV.first == "web" ? "unexpected argument" : "unknown command"} #{stray} (see chi --help)"
+  exit 1
+end
+
 # Apply CLI precedence: CLI > ENV > file
 unless cli_overrides.empty?
   Samagotchi::Config.reload!(cli_overrides: cli_overrides)
