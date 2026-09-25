@@ -30,6 +30,7 @@ require_relative "hooks"
 require_relative "guardrails"
 require_relative "reminder_store"
 require_relative "tools/memory"
+require_relative "muted_memories"
 require_relative "model_overlay"
 require_relative "served_model"
 require_relative "image_store"
@@ -65,9 +66,11 @@ module Samagotchi
     # @param no_interrupt       [Boolean]
     # @param model_name         [String, nil] defaults from SAMAGOTCHI_DEFAULT_MODEL
     # @param memories           [Array<String>] explicit --memory preload list (merged with the config.yml `memories:` baseline)
+    # @param muted_memories     [Array<String>] --mute list: memories hidden from this session (not in the
+    #   prompt's index, dropped from the preloads, refused by memory_read); a mute wins over a preload
     DEFAULT_SYSTEM_MEMORIES = %w[identity].freeze
 
-    def initialize(mode: :assist, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], kernel: nil, recap: nil, reminders: nil)
+    def initialize(mode: :assist, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], muted_memories: [], kernel: nil, recap: nil, reminders: nil)
       @mode = mode.to_sym
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
@@ -154,7 +157,8 @@ module Samagotchi
       self.class.warn_removed_backend_setting
       Log.debug(:model, "backend", provider: backend.provider) if Log.level?(:debug)
       @resume_session = session_id ? Session.load(session_id) : nil
-      @requested_memories = preload_memory_list(memories)
+      @muted_memory_names = MutedMemories.normalize_list(muted_memories)
+      @requested_memories = effective_preload_list(preload_memory_list(memories))
       @session = nil
       @session_observer = SessionObserver.new
       @metrics = SessionMetrics.new
@@ -588,6 +592,8 @@ module Samagotchi
         metrics: @metrics.snapshot,
         pending_question: @question_mutex.synchronize { @pending_question&.dup },
         used_memory_names: @used_memory_mutex.synchronize { @used_memory_names.dup },
+        preloaded_memory_names: preloaded_memory_names,
+        muted_memory_names: @muted_memory_names.dup,
         model_name: @effective_model_name,
         served_model: served_pair[0],
         served_model_for: served_pair[1],
@@ -600,6 +606,22 @@ module Samagotchi
     # @return [Array<String>] deduped used memory names (thread-safe copy)
     def used_memory_names
       @used_memory_mutex.synchronize { @used_memory_names.dup }
+    end
+
+    # @return [Array<String>] the memories hidden from this session (normalized names)
+    def muted_memory_names
+      @muted_memory_names.dup
+    end
+
+    # @return [Array<String>] the names the session preloads (config baseline
+    #   + --memory, minus mutes), known before the prompt is built, unlike
+    #   #activated_memory_names
+    def preloaded_memory_names
+      @requested_memories.map { |raw| split_memory_scope(raw).last }.uniq
+    end
+
+    def memory_muted?(name)
+      MutedMemories.muted?(name, @muted_memory_names)
     end
 
     def add_used_memory_names(names)
@@ -1925,6 +1947,8 @@ module Samagotchi
     # to avoid always showing `mem: identity`.
     def system_identity_section
       DEFAULT_SYSTEM_MEMORIES.each do |name|
+        next if memory_muted?(name)
+
         body = Tools::MemoryRead.call(name, scope: "system")
         next if body.start_with?("Error:")
         next if body.strip.empty?
@@ -1938,8 +1962,9 @@ module Samagotchi
 
     # ── Memory helpers ─────────────────────────────────────────────────────────
 
+    # The scope's index text without the muted memories' lines.
     def read_memory_index(scope)
-      Tools::MemoryRead.call("", scope: scope)
+      MutedMemories.filter_index(Tools::MemoryRead.call("", scope: scope), @muted_memory_names)
     end
 
     # Merge the config.yml `memories:` baseline with the explicit `--memory`
@@ -1960,6 +1985,19 @@ module Samagotchi
         end
       end
       merged
+    end
+
+    # The merged preload list minus the muted entries: a mute wins over a
+    # preload, whether the preload came from config.yml or --memory.
+    def effective_preload_list(merged)
+      return merged if @muted_memory_names.empty?
+
+      merged.reject do |raw|
+        next false unless memory_muted?(raw)
+
+        Log.warn(:memory, "preload_muted", echo: "Warning: preloaded memory '#{raw}' is muted for this session", memory: raw)
+        true
+      end
     end
 
     def explicit_memory_section
