@@ -119,8 +119,8 @@ test("snapshotEvents replays the turn in progress as live events, then the queue
   const queued = [{ enqueued_id: "e3", client_id: "web:y", prompt: "later" }];
   assert.deepEqual(snapshotEvents({ current_turn: turn, queued, started_at: "T0" }), [
     { type: "turn_started", prompt: "do it", origin: turn.origin, continue: false, started_at: "T0" },
-    { type: "generation_chunk", text: "", thinking: "hmm" },
-    { type: "generation_chunk", text: "Let me look.", thinking: "" },
+    { type: "generation_chunk", text: "", thinking: "hmm", iteration: 1 },
+    { type: "generation_chunk", text: "Let me look.", thinking: "", iteration: 1 },
     { type: "generation_completed" },
     { type: "tool_call_started", iteration: 1, call_index: 0, tool: "execute", params: "ls" },
     { type: "tool_call_completed", iteration: 1, call_index: 0, tool: "execute", output: "a b", output_truncated: false, activity: { status: "ok", params: "ls" } },
