@@ -110,6 +110,32 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.thinking>summary::before{content:"▸ ";color:var(--think)}
 .bubble.thinking[open]>summary::before{content:"▾ "}
 .thinking-body{margin-top:6px;font-size:13px;color:var(--text-3);white-space:pre-wrap;word-break:break-word;font-style:italic;max-height:240px;overflow:auto}
+/* Turn view (web.turn_view): one block per turn, its steps as collapsed rows, the live one open at the bottom. */
+.turn-work{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;background:var(--bg-panel);padding:8px 12px;font-size:14px}
+.turn-work>summary{cursor:pointer;color:var(--text-muted);font-size:13px;font-weight:600;user-select:none;list-style:none}
+.turn-work>summary::-webkit-details-marker{display:none}
+.turn-work>summary::before{content:"▸ ";color:var(--accent)}
+.turn-work[open]>summary::before{content:"▾ "}
+.turn-work:not([open]){padding:3px 10px;background:transparent;border-color:transparent;border-left-color:var(--accent);align-self:flex-start;border-radius:6px;transition:background .12s ease}
+.turn-work:not([open]):hover{background:var(--bg-panel)}
+.turn-work:not([open])>summary{font-size:12px;font-weight:500}
+.gen{margin-top:8px;padding-top:6px;border-top:1px solid var(--border)}
+.gen>summary{cursor:pointer;color:var(--text-muted);font-size:12px;font-weight:500;user-select:none;list-style:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gen>summary::-webkit-details-marker{display:none}
+.gen>summary::before{content:"▸ ";color:var(--text-faint)}
+.gen[open]>summary::before{content:"▾ "}
+.gen.live{border-left:2px solid var(--accent);padding-left:9px;margin-left:-11px}
+.gen.live>summary{color:var(--accent);white-space:normal}
+.gen.live>summary::before{color:var(--accent)}
+.gen-text{margin-top:6px;white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.55}
+.gen:not(.live) .gen-text{font-size:14px;color:var(--text-2)}
+.gen-text:empty{display:none}
+.gen .activity-body{margin-top:6px}
+/* One gen, no thinking, no tool rows: nothing to stack yet, so the narration streams like a plain answer bubble. */
+.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)){border:0;padding:0;background:transparent}
+.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body))>summary,.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)) .gen>summary{display:none}
+.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)) .gen{margin:0;padding:0;border:0}
+.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)) .gen-text{margin:0;background:var(--bg-panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;padding:12px 14px;opacity:.95}
 .bubble.question{border-left:3px solid var(--warn);background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));padding:10px 12px}
 .bubble.command{border-left:3px solid var(--text-faint);background:var(--bg-panel);font-size:13px}
 .bubble.note{border-left:3px dotted var(--text-faint);background:transparent;font-size:12px;color:var(--text-muted);opacity:.85}

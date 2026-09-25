@@ -64,3 +64,11 @@ test("appendQuote adds the block after a blank line", () => {
   assert.equal(appendQuote("", "> a\n\n"), "> a\n\n");
   assert.equal(appendQuote("> a\n\nnote \n", "> b\n\n"), "> a\n\nnote\n\n> b\n\n");
 });
+
+test("annotationSource quotes a step's narration in the turn view, not the live one", () => {
+  const step = fakeEl({}, { classes: ["gen-text"] });
+  assert.deepEqual(annotationSource(fakeEl({ ".gen-text": step })), { kind: "step", root: step });
+  assert.equal(sourceLabel("step"), "From your earlier step:");
+  const live = fakeEl({}, { classes: ["gen-text", "streaming"] });
+  assert.equal(annotationSource(fakeEl({ ".gen-text": live })), null);
+});
