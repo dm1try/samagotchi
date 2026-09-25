@@ -94,16 +94,30 @@ module Samagotchi
     # Builds the recap prompt: the instructions as a system message and the
     # transcript as the user message (R0 spike: with one user message Ornith
     # opened 3/12 recaps with notes about the task; 0/12 this way). Short (2-4
-    # sentences). Names the handful of tool calls briefly when the count is
-    # small; states only the count when it is large (never enumerates). With
-    # a previous recap it asks for an updated recap of the whole session from
-    # that recap plus the transcript since.
+    # sentences) and centred on outcomes: what the user was working on, what
+    # came of it, what is open. Names the handful of tool calls only when they
+    # matter to the result; states only the count when it is large (never
+    # enumerates). With a previous recap it asks for an updated recap of the
+    # whole session from that recap plus the transcript since.
     module RecapPrompt
+      # Recap-length S0 spike (Ornith 35B-A3B, 4 sessions): without the
+      # example opening, first recaps still began "The user asked the
+      # assistant to…" (goal first 25% → 100% with it); without "never by
+      # name" it wrote "Dmitry and Chi"; without the side-details list it
+      # kept the user's city and repo count, and paths and versions.
       SYSTEM = "You write short recaps of a chat between a user and an assistant, for the user " \
                "coming back to it later. Reply with the recap only: 2-4 plain sentences, no heading, " \
-               "no preamble, no notes about the task. Say \"the user\" and \"the assistant\". Cover " \
-               "the overall goal, what was completed, any key facts or project props the user " \
-               "mentioned, and anything still pending."
+               "no preamble, no notes about the task or the transcript. Centre it on outcomes, not on " \
+               "the order of events. The first sentence names what the user was working on, as the " \
+               "task itself (\"The user was checking how the parser handles tabs\"), not as a request " \
+               "(\"The user asked the assistant to...\"). Then say what came of it: results, decisions, " \
+               "findings. End with what is still open or the next step, if anything. Keep project names " \
+               "and facts that matter for continuing. Do not retell the chat turn by turn (\"the user " \
+               "asked..., then the assistant...\"); name who did something only when it matters, as " \
+               "\"the user\" or \"the assistant\", never by name. Leave out side details: personal " \
+               "details about the user (where they live, their accounts, how many repos they have), " \
+               "file paths and version numbers, unless they are the point. If there was no clear task, " \
+               "just say what was talked about."
       # "do not just repeat": otherwise Ornith returned the earlier recap
       # word for word after a short turn.
       UPDATE = " You are given the earlier recap and the conversation since the earlier recap: " \
@@ -144,8 +158,8 @@ module Samagotchi
         tools = if tool_count > LARGE_TOOL_THRESHOLD
                   " #{count_word}#{tools_used(tool_names)} were made. Do not enumerate the tool calls."
                 elsif tool_count.positive?
-                  " About #{count_word}#{tools_used(tool_names)} were made; you may briefly name the " \
-                    "handful of tool calls that were central to the work."
+                  " About #{count_word}#{tools_used(tool_names)} were made; name them only if they " \
+                    "matter to the result."
                 else
                   ""
                 end

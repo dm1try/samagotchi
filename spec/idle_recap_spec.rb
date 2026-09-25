@@ -167,7 +167,7 @@ RSpec.describe Samagotchi::IdleRecap do
       it "tallies the tool names when the count is small" do
         result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_names: %w[execute read_file execute]))
         expect(result).to include("3 tool calls (execute x2, read_file)")
-        expect(result).to include("handful of tool calls")
+        expect(result).to include("name them only if they matter to the result")
       end
       it "includes single tool call phrasing" do
         result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_count: 1))
@@ -178,9 +178,11 @@ RSpec.describe Samagotchi::IdleRecap do
         expect(result).to include("11 tool calls (execute x11)")
         expect(result).to include("Do not enumerate the tool calls")
       end
-      it "includes overall goal, completion, facts, and pending in the prompt" do
-        result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, tool_count: 2))
-        expect(result).to include("goal", "completed", "key facts", "pending")
+      it "asks for an outcome-centred recap: the task first, what came of it, what is open" do
+        system = Samagotchi::IdleRecap::RecapPrompt.build(transcript).first[:content]
+        expect(system).to include("Centre it on outcomes", "first sentence names what the user was working on",
+                                  "what came of it", "still open", "Do not retell the chat turn by turn")
+        expect(system).to include("never by name", "personal details about the user")
       end
       it "asks for an updated recap of the whole session when given the previous one" do
         result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, previous: "We set up Bluefin."))
