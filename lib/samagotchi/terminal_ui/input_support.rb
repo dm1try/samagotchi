@@ -265,11 +265,11 @@ module Samagotchi
         Array(entries).map { |entry| entry.to_s.gsub(/\r\n?/, "\n").strip }.reject(&:empty?)
       end
 
+      # The text as given ("Hey Chi, " keeps its space); a blank one is none.
       def queue_input_prefill(text)
-        normalized = text.to_s.strip
-        return if normalized.empty?
+        return if text.to_s.strip.empty?
 
-        @next_input_prefill = normalized
+        @next_input_prefill = text.to_s
       end
 
       def queue_default_input

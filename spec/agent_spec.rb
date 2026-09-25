@@ -1740,6 +1740,20 @@ file2.rb")
       agent.send(:queue_default_input)
     end
 
+    it "keeps the default input as given, its trailing space too" do
+      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Hey Chi, "
+      agent = described_class.new(mode: "assist", client: client)
+      agent.instance_variable_set(:@resume_session, nil)
+      agent.send(:queue_default_input)
+      expect(agent.send(:consume_input_prefill)).to eq("Hey Chi, ")
+    end
+
+    it "queues no blank prefill" do
+      agent = described_class.new(mode: "assist", client: client)
+      agent.send(:queue_input_prefill, "  \n")
+      expect(agent.send(:consume_input_prefill)).to be_nil
+    end
+
     it "does not queue when --no-default-input is true" do
       ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Hey Chi, "
       agent = described_class.new(mode: "assist", client: client, no_default_input: true)
