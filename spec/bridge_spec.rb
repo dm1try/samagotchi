@@ -1169,6 +1169,55 @@ RSpec.describe Samagotchi::Bridge do
       expect(resp["error"]).to eq("question_not_pending")
     end
 
+    describe "an answer's deadline" do
+      # An answer that waited in the socket while the worker was frozen: its
+      # client has said it was not sent, and the question stays open.
+      it "drops an answer whose deadline has passed and logs a warning" do
+        start_bridge
+        allow(@engine).to receive(:answer_question)
+        allow(Samagotchi::Log).to receive(:warn).and_call_original
+
+        status, resp, = post_answer(JSON.generate(id: "q1", selected: ["A"], deadline: Time.now.to_f - 5))
+
+        expect(status).to eq(408)
+        expect(resp).to include("error" => "deadline_passed")
+        expect(@engine).not_to have_received(:answer_question)
+        expect(Samagotchi::Log).to have_received(:warn)
+          .with(:bridge, "answer_expired", hash_including(sid: @session.id, late: be > 4))
+      end
+
+      it "takes an answer before its deadline, or with none" do
+        start_bridge
+        allow(@engine).to receive(:answer_question).and_return({ id: "q1" })
+
+        expect(post_answer(JSON.generate(id: "q1", selected: ["A"], deadline: Time.now.to_f + 25)).first).to eq(200)
+        expect(post_answer(JSON.generate(id: "q1", selected: ["A"])).first).to eq(200)
+        expect(@engine).to have_received(:answer_question).twice
+      end
+
+      it "answers 400 for a deadline that is not a number" do
+        start_bridge
+
+        status, resp, = post_answer(JSON.generate(id: "q1", selected: ["A"], deadline: "soon"))
+
+        expect(status).to eq(400)
+        expect(resp["error"]).to eq("bad_deadline")
+      end
+
+      it "drops a dismissal whose deadline has passed: the question stays open" do
+        start_bridge
+        allow(@engine).to receive(:cancel_question)
+        allow(Samagotchi::Log).to receive(:warn).and_call_original
+        res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/question/dismiss"),
+                             JSON.generate(id: "q1", deadline: Time.now.to_f - 5), "Content-Type" => "application/json")
+
+        expect(res.code).to eq("408")
+        expect(JSON.parse(res.body)).to include("error" => "deadline_passed")
+        expect(@engine).not_to have_received(:cancel_question)
+        expect(Samagotchi::Log).to have_received(:warn).with(:bridge, "dismiss_expired", hash_including(late: be > 4))
+      end
+    end
+
     describe "POST /session/:id/command" do
       def post_command(body)
         res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/command"),
@@ -1205,6 +1254,44 @@ RSpec.describe Samagotchi::Bridge do
         start_bridge
 
         expect(post_command(JSON.generate(line: "/model"))).to eq([501, { "error" => "commands_unavailable" }])
+      end
+
+      # A command that waited in the socket while the worker was frozen: its
+      # client has said it didn't run (a shell line must not run late).
+      it "drops a command whose deadline has passed: not queued or announced, and a warning logged" do
+        start_bridge(on_command: ->(_) { raise "must not be called" })
+        seen = []
+        @engine.subscribe(observer: ->(e) { seen << e })
+        allow(Samagotchi::Log).to receive(:warn).and_call_original
+        allow(@engine).to receive(:synchronize_events).and_call_original
+
+        status, resp = post_command(JSON.generate(line: "!echo STALE", client_id: "web:1", deadline: Time.now.to_f - 5))
+
+        expect(status).to eq(408)
+        expect(resp).to include("error" => "deadline_passed")
+        expect(seen).to be_empty
+        expect(@engine).to have_received(:synchronize_events)
+        expect(Samagotchi::Log).to have_received(:warn)
+          .with(:bridge, "command_expired", hash_including(sid: @session.id, client_id: "web:1", late: be > 4))
+      end
+
+      it "queues a command before its deadline" do
+        queued = []
+        start_bridge(on_command: ->(command) { queued << command })
+
+        status, = post_command(JSON.generate(line: "/model", deadline: Time.now.to_f + 25))
+
+        expect(status).to eq(202)
+        expect(queued.size).to eq(1)
+      end
+
+      it "answers 400 for a deadline that is not a number" do
+        start_bridge(on_command: ->(_) { raise "must not be called" })
+
+        status, resp = post_command(JSON.generate(line: "/model", deadline: "soon"))
+
+        expect(status).to eq(400)
+        expect(resp["error"]).to eq("bad_deadline")
       end
     end
 

@@ -47,6 +47,8 @@ module Samagotchi
     # The largest request body read (images travel as refs, never bytes).
     MAX_BODY_BYTES = 1_000_000
     MAX_TURN_IMAGES = 20
+    # A request's deadline (see #handle_post_turn) that isn't epoch seconds.
+    BAD_DEADLINE = [{ "Allow" => "POST" }, 400, { error: "bad_deadline", detail: "deadline must be epoch seconds" }].freeze
 
     # @param engine [Samagotchi::Engine] the owning engine (must already live
     #   in this process)
@@ -479,6 +481,9 @@ module Samagotchi
       [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 
+    # Answer the pending question. A past +deadline+ (see #handle_post_turn):
+    # 408 deadline_passed, and the question stays open. An answer takes no
+    # event hold, so it is checked right before it is recorded.
     def handle_answer(session_id, body)
       unless own_session?(session_id)
         return [{}, 404, { error: "unknown_session" }]
@@ -500,6 +505,10 @@ module Samagotchi
       if qid.to_s.strip.empty?
         return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "id required" }]
       end
+      deadline = fetched(parsed, "deadline")
+      return BAD_DEADLINE unless deadline_valid?(deadline)
+      return deadline_passed("answer") if expired?("answer_expired", deadline, sid: session_id, id: qid)
+
       begin
         result = @engine.answer_question(id: qid, selected: selected, freeform: freeform)
         [{}, 200, { status: "answered", session_id: session_id, answer: result }]
@@ -516,7 +525,8 @@ module Samagotchi
     # Dismiss the pending question (an empty answer, as in the REPL): the
     # tool returns without an answer and every UI gets :question_cancelled.
     # Only the question the client saw, and only while nobody has answered
-    # it: Engine#cancel_question checks both under the question lock.
+    # it: Engine#cancel_question checks both under the question lock. A past
+    # +deadline+ (dismissing an approval denies it): 408, as for an answer.
     # Returns [headers, status, body].
     def handle_dismiss_question(session_id, body)
       return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
@@ -526,6 +536,10 @@ module Samagotchi
 
       qid = fetched(parsed, "id").to_s
       return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "id required" }] if qid.strip.empty?
+
+      deadline = fetched(parsed, "deadline")
+      return BAD_DEADLINE unless deadline_valid?(deadline)
+      return deadline_passed("dismissal") if expired?("dismiss_expired", deadline, sid: session_id, id: qid)
 
       dismissed = @engine.cancel_question("dismissed", id: qid)
       return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless dismissed
@@ -539,7 +553,10 @@ module Samagotchi
     # for the worker loop, which runs it between turns and announces
     # :command_ran (busy while a turn runs). Answers at once: the queueing
     # and its :command_queued are one step of the event log, so the
-    # :command_ran always comes after. Only the syntax is checked here.
+    # :command_ran always comes after. Only the syntax is checked here. A
+    # past +deadline+ (see #handle_post_turn), checked with the event log
+    # held: 408 deadline_passed, not run. Every command is checked, the
+    # read-only ones (/models) too: its client said it didn't run.
     # Returns [headers, status, body].
     def handle_command(session_id, body)
       return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
@@ -553,11 +570,19 @@ module Samagotchi
         return [{ "Allow" => "POST" }, 400, { error: "unknown_command", detail: "not a session command: #{line[0, 80]}" }]
       end
 
+      deadline = fetched(parsed, "deadline")
+      return BAD_DEADLINE unless deadline_valid?(deadline)
+
       command = { command_id: SecureRandom.uuid, client_id: fetched(parsed, "client_id"), line: line }
-      @engine.synchronize_events do
+      queued = @engine.synchronize_events do
+        next false if expired?("command_expired", deadline, sid: session_id, client_id: command[:client_id])
+
         @on_command.call(command)
         @engine.announce(type: :command_queued, **command)
+        true
       end
+      return deadline_passed("command") unless queued
+
       [{}, 202, { status: "accepted", command_id: command[:command_id], session_id: @session_id }]
     rescue StandardError => e
       [{}, 500, { error: "bridge_error", detail: e.message }]
@@ -617,9 +642,7 @@ module Samagotchi
       return [{}, 400, { error: "bad_images", detail: images }] if images.is_a?(String)
 
       deadline = fetched(parsed, "deadline")
-      unless deadline.nil? || deadline.is_a?(Numeric)
-        return [{ "Allow" => "POST" }, 400, { error: "bad_deadline", detail: "deadline must be epoch seconds" }]
-      end
+      return BAD_DEADLINE unless deadline_valid?(deadline)
 
       enqueued_id = SecureRandom.uuid
       enqueued =
@@ -628,7 +651,7 @@ module Samagotchi
           # emit this turn's :turn_started (or merge it mid-turn) before
           # :turn_enqueued, and a failed write announces nothing.
           @engine.synchronize_events do
-            next :expired if turn_expired?(deadline, sid, client_id)
+            next :expired if expired?("turn_expired", deadline, sid: sid, client_id: client_id)
 
             enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
                          no_interrupt: no_interrupt, images: images).tap do |ok|
@@ -640,15 +663,13 @@ module Samagotchi
               @on_input&.call
             end
           end
-        elsif turn_expired?(deadline, sid, client_id)
+        elsif expired?("turn_expired", deadline, sid: sid, client_id: client_id)
           :expired
         else
           enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
                        no_interrupt: no_interrupt, images: images)
         end
-      if enqueued == :expired
-        return [{}, 408, { error: "deadline_passed", detail: "the turn arrived after its client stopped waiting; not run" }]
-      end
+      return deadline_passed("turn") if enqueued == :expired
       return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] unless enqueued
 
       [{}, 202, { status: "accepted", enqueued_id: enqueued_id, session_id: sid }]
@@ -710,19 +731,29 @@ module Samagotchi
       session_id.to_s == @session_id.to_s
     end
 
-    # Write a turn into the target session's input dir, reusing the file IPC
-    # the worker polls. Never calls run_turn across the boundary.
-    # Whether a turn's +deadline+ has passed (logged when it has).
-    def turn_expired?(deadline, session_id, client_id)
+    # A request's +deadline+ (see #handle_post_turn) is epoch seconds or absent.
+    def deadline_valid?(deadline) = deadline.nil? || deadline.is_a?(Numeric)
+
+    # Whether a request's +deadline+ has passed; logs +event+ with +fields+
+    # and how late it was when it has.
+    def expired?(event, deadline, **fields)
       return false if deadline.nil?
 
       late = Time.now.to_f - deadline
       return false unless late.positive?
 
-      Log.warn(:bridge, "turn_expired", sid: session_id, client_id: client_id, late: late.round(1))
+      Log.warn(:bridge, event, **fields, late: late.round(1))
       true
     end
 
+    # The 408 for a request read after its deadline: +what+ (turn, command,
+    # answer, dismissal) was dropped.
+    def deadline_passed(what)
+      [{}, 408, { error: "deadline_passed", detail: "the #{what} arrived after its client stopped waiting; not run" }]
+    end
+
+    # Write a turn into the target session's input dir, reusing the file IPC
+    # the worker polls. Never calls run_turn across the boundary.
     def enqueue_turn(session_id:, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [])
       require_relative "session_manager"
       Samagotchi::SessionManager.write_turn_input(
