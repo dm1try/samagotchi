@@ -25,7 +25,10 @@ module Samagotchi
       TAIL_LIMIT = 400
       # Chunks arrive faster than a status line is worth redrawing.
       MIN_REDRAW_INTERVAL = 0.08
-      TICK_INTERVAL = 0.25
+      # Seconds per spinner frame.
+      FRAME_INTERVAL = 0.25
+      # Seconds between the ticker's redraws (specs stub it to nil: no thread).
+      TICK_INTERVAL = FRAME_INTERVAL
       WAIT_NOTICE_AFTER = 2.0
 
       attr_reader :context_status
@@ -188,7 +191,7 @@ module Samagotchi
 
       def status_text
         now = @clock.call
-        frame = FRAMES[((now - @origin) / TICK_INTERVAL).floor % FRAMES.length]
+        frame = FRAMES[((now - @origin) / FRAME_INTERVAL).floor % FRAMES.length]
         return "#{frame} #{@retry}" if @retry
         return "#{frame} #{@tool}…" if @tool
         return nil unless @thinking

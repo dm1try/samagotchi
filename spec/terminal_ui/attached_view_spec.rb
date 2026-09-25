@@ -111,6 +111,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
       real.stop
     end
 
+    it "runs no ticker thread under the suite's defaults, as AttachedLoop builds it" do
+      default = described_class.new(screen)
+      default.generation_feedback_started
+      expect(default.instance_variable_get(:@ticker)).to be_nil
+      expect(screen.statuses.last).to end_with("thinking…")
+    end
+
     it "stops its ticker when the loop ends mid-turn" do
       real = described_class.new(screen, tick_interval: 0.02)
       real.generation_feedback_started

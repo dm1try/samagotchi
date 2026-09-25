@@ -61,6 +61,9 @@ RSpec.configure do |config|
     # many specs start one they never finish: it would write into later
     # specs' output. Off by default; specs of the ticker pass an interval.
     stub_const("Samagotchi::TerminalUI::THINKING_TICK_INTERVAL", nil) if defined?(Samagotchi::TerminalUI::THINKING_TICK_INTERVAL)
+    # The attached TUI's status ticker likewise (AttachedLoop builds its view
+    # with the default interval).
+    stub_const("Samagotchi::TerminalUI::AttachedView::TICK_INTERVAL", nil) if defined?(Samagotchi::TerminalUI::AttachedView::TICK_INTERVAL)
   end
 
   # Really compile the macOS desktop helper (swiftc, codesign): slow, and
