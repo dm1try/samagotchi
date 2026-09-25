@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isApproval, approvalView, resultText, approvalAllowed, nextCardAction } from "../../../lib/samagotchi/web/public/question_card.js";
+import { isApproval, approvalView, resultText, approvalAllowed, nextCardAction, summaryText, truncate } from "../../../lib/samagotchi/web/public/question_card.js";
 
 const approval = {
   id: "a1",
@@ -58,6 +58,35 @@ test("resultText for questions is unchanged", () => {
   assert.equal(resultText(q, { cancelled: true }), "Cancelled");
   assert.equal(resultText(q, { cancelled: true, reason: "dismissed" }), "Cancelled (dismissed)");
   assert.equal(approvalAllowed(q, { selected: ["A"] }), null);
+});
+
+test("summaryText pending: header, question, approval fallback", () => {
+  assert.equal(summaryText({ id: "q", header: "Pick a lane", question: "Which lane?" }), "Pick a lane");
+  assert.equal(summaryText({ id: "q", question: "Which lane?" }), "Which lane?");
+  assert.equal(summaryText({ id: "a", kind: "approval", approval: { tool: "execute" } }), "Approve execute?");
+  assert.equal(summaryText({ id: "a", kind: "approval" }), "Approve call?");
+  assert.equal(summaryText({ id: "q" }), "");
+});
+
+test("summaryText resolved: answered, denied, cancelled with reason", () => {
+  const q = { id: "q", question: "Which lane?", options: ["A", "B"] };
+  assert.equal(summaryText(q, { answer: { selected: ["A"], freeform: "x" } }), "Answered: A · x");
+  assert.equal(summaryText(q, { cancelled: true }), "Cancelled");
+  assert.equal(summaryText(q, { cancelled: true, reason: "turn ended" }), "Cancelled (turn ended)");
+  assert.equal(summaryText(approval, { answer: { selected: ["Allow once"] } }), "Allowed: Allow once");
+  assert.equal(summaryText(approval, { answer: { selected: ["Deny"], freeform: "use a PR" } }), "Denied: use a PR");
+  assert.equal(summaryText(approval, { cancelled: true, reason: "dismissed" }), "Denied (dismissed)");
+});
+
+test("summaryText truncates long lines at 80 chars", () => {
+  const long = "x".repeat(120);
+  const s = summaryText({ id: "q", question: long });
+  assert.equal(s.length, 80);
+  assert.ok(s.endsWith("…"));
+  assert.equal(summaryText({ id: "q", question: "short" }), "short");
+  assert.equal(truncate("abcdef", 3), "ab…");
+  assert.equal(truncate("abc", 3), "abc");
+  assert.equal(truncate(null), "");
 });
 
 // A resolved card stays in the history (as the terminal's scrollback keeps

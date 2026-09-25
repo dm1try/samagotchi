@@ -154,6 +154,17 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)) .gen{margin:0;padding:0;border:0;background:transparent}
 .turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)) .gen-text{margin:0;background:var(--bg-panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;padding:12px 14px;opacity:.95}
 .bubble.question{border-left:3px solid var(--warn);background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));padding:10px 12px}
+/* Collapsed (resolved) question: one line, like the thinking and activity blocks.
+   The left bar keeps --warn here; the existing answered/cancelled/denied classes
+   (which apply whether open or not) recolour it once resolved. */
+.bubble.question:not([open]){padding:3px 10px;background:transparent;border-color:transparent;align-self:flex-start;border-radius:6px;transition:background .12s ease}
+.bubble.question:not([open]){border-left-color:var(--warn)}
+.bubble.question:not([open]):hover{background:var(--bg-panel)}
+.bubble.question:not([open])>summary{font-size:12px;font-weight:500}
+.bubble.question>summary{cursor:pointer;color:var(--text-muted);font-size:13px;font-weight:600;user-select:none;list-style:none}
+.bubble.question>summary::-webkit-details-marker{display:none}
+.bubble.question>summary::before{content:"▸ ";color:var(--warn)}
+.bubble.question[open]>summary::before{content:"▾ "}
 .bubble.command{border-left:3px solid var(--text-faint);background:var(--bg-panel);font-size:13px}
 .bubble.note{border-left:3px dotted var(--text-faint);background:transparent;font-size:12px;color:var(--text-muted);opacity:.85}
 .note-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-faint);margin-bottom:2px}
