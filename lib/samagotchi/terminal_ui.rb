@@ -22,6 +22,7 @@ require_relative "tools/memory"
 require_relative "output_formatter"
 require_relative "turn_preamble"
 require_relative "turn_flow"
+require_relative "turn_tally"
 require_relative "session_commands"
 require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
@@ -110,6 +111,7 @@ module Samagotchi
       # nil: no ticker thread (specs that compare exact frames).
       @spinner_tick_interval = spinner_tick_interval
       @spinner_lock = Monitor.new
+      @turn_tally = TurnTally.new
       @prompt         = prompt
       @default_model_name = ModelProfile.required_model_name(nil)
       aliased_model_name = model_name.to_s.strip.empty? ? nil : ConfigFile.resolve_model_alias(model_name)
@@ -659,6 +661,7 @@ module Samagotchi
     end
 
     def reset_turn_feedback
+      @spinner_lock.synchronize { @turn_tally.reset }
       clear_retry_spinner_status
       reset_thinking_memory_notification
       reset_thinking_memory_names
@@ -698,14 +701,19 @@ module Samagotchi
       @spinner_lock.synchronize do
         @thinking_waiting_since = nil
         clear_retry_spinner_status
+        @turn_tally.started(key: tally_key(event), tool: event[:tool], params: event[:params])
         memory_loaded = capture_memory_tool_call(event)
         capture_thinking_tool_call(event) if memory_loaded
         refresh_thinking_spinner_status
       end
     end
 
-    # The REPL doesn't tally a turn's calls (yet); both views take the call.
-    def tool_call_feedback_completed(_event); end
+    def tool_call_feedback_completed(event)
+      @spinner_lock.synchronize do
+        @turn_tally.completed(key: tally_key(event), tool: event[:tool],
+                              status: event.dig(:activity, :status), params: event.dig(:activity, :params))
+      end
+    end
 
     def clear_generation_retry
       @spinner_lock.synchronize { clear_retry_spinner_status }
@@ -1746,7 +1754,25 @@ module Samagotchi
       lines.empty? ? "" : lines.first
     end
 
+    # The spinner row, then (from a turn's 3rd tool call) its tool tally.
+    # The spinner stops while tools run, so the tally shows while the model
+    # generates between tool rounds.
     def thinking_spinner_status_lines(frame, width: status_effective_width)
+      spinner_row_lines(frame, width: width) + tally_status_lines(width)
+    end
+
+    def tally_status_lines(width)
+      tally = @turn_tally.text(width: width)
+      return [] unless tally
+
+      [color_output? ? paint(tally, 90) : tally]
+    end
+
+    def tally_key(event)
+      [event[:iteration].to_i, event[:call_index].to_i]
+    end
+
+    def spinner_row_lines(frame, width:)
       if retry_spinner_status_active?
         return [retry_spinner_status_line(frame, width)]
       end

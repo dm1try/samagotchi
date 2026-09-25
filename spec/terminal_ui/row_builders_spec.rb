@@ -53,3 +53,54 @@ RSpec.describe Samagotchi::TerminalUI, "row builders" do
     expect(row).to eq("model> thinking... | memory_loaded: notes")
   end
 end
+
+# The REPL's tool tally: a row after the spinner row.
+RSpec.describe Samagotchi::TerminalUI, "tool tally row" do
+  let(:client) { instance_double(Samagotchi::Client) }
+  let(:ui) { described_class.new(mode: :assist, client: client, spinner_tick_interval: nil) }
+
+  before do
+  ui.instance_variable_set(:@surface, RecordingSurface.new)
+  allow(ui).to receive(:color_output?).and_return(false)
+  allow(ui).to receive(:thinking_spinner_enabled?).and_return(true)
+  allow(ui).to receive(:status_server_segment).and_return("")
+  allow(ui).to receive(:status_effective_width).and_return(80)
+  ui.send(:handle_stream_event, type: :generation_started)
+  ui.send(:handle_stream_event, type: :tool_call_started, iteration: 0, call_index: 0, tool: "memory_read",
+                                call: { name: "memory_read", content: "notes" })
+  end
+
+  def call_tool(iteration, name, status: "ok")
+    ui.send(:handle_stream_event, type: :tool_call_started, iteration: iteration, call_index: 1, tool: name,
+                                  call: { name: name }, params: "command=x")
+    ui.send(:handle_stream_event, type: :tool_call_completed, iteration: iteration, call_index: 1, tool: name,
+                                  activity: { action: "running command", tool: name, params: "command=x", status: status })
+  end
+
+  it "follows the spinner row from the turn's 3rd tool call" do
+    call_tool(1, "execute", status: "error")
+    expect(ui.send(:thinking_spinner_status_lines, "|", width: 80).size).to eq(1)
+
+    call_tool(2, "execute")
+    rows = ui.send(:thinking_spinner_status_lines, "|", width: 50)
+    expect(rows.size).to eq(2)
+    expect(rows.first).to start_with("model> thinking... |")
+    expect(rows.last).to eq("3 tool calls (1 failed) · execute ×2 · memory_rea…")
+  end
+
+  it "follows the retry row too" do
+    2.times { |i| call_tool(i + 1, "execute") }
+    ui.send(:handle_stream_event, type: :generation_retrying, attempt: 1, max_retries: 2, next_delay: 1.0)
+    rows = ui.send(:thinking_spinner_status_lines, "|", width: 200)
+    expect(rows.size).to eq(2)
+    expect(rows.first).to include("retrying")
+    expect(rows.last).to start_with("3 tool calls · execute ×2")
+  end
+
+  it "starts over with each turn" do
+    2.times { |i| call_tool(i + 1, "execute") }
+    ui.send(:handle_stream_event, type: :turn_started)
+    ui.send(:handle_stream_event, type: :generation_started)
+    expect(ui.send(:thinking_spinner_status_lines, "|", width: 80).size).to eq(1)
+  end
+end

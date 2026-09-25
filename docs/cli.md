@@ -369,6 +369,9 @@ call with its parameters, cut to the terminal width. It starts over with each tu
 
 - Attached mode: the second row of the activity slot, shown while the slot is (the
   model generating or a tool running). Joining a turn mid-way seeds it from the turn so far.
+- The REPL (`--no-shared`): a row under the spinner row. The spinner stops while tools
+  run (the `tool>` lines show them), so the tally shows while the model generates
+  between tool rounds; the spinner block is one row taller from then on.
 - The web: the activity panel's summary reads `activity · 12 tool calls (2 failed) · execute ×7 · …`
   (without `last:`: the rows show it).
 
