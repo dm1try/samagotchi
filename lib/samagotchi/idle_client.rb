@@ -24,7 +24,7 @@ module Samagotchi
 
     DEFAULT_MODEL = "gemma4-small"
     DEFAULT_TIMEOUT_SECONDS = 30.0
-    # 2-4 sentences need ~100 tokens with thinking off; the rest is headroom.
+    # Up to 10 sentences (recap.sentences) need ~350 tokens with thinking off.
     MAX_TOKENS = 512
 
     # @param base_url [String] the OpenAI API base, e.g. http://host:8081/v1

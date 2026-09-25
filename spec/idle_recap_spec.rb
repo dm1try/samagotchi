@@ -190,6 +190,20 @@ RSpec.describe Samagotchi::IdleRecap do
         expect(result).to include("updated recap of the whole session", "do not just repeat the earlier recap")
         expect(result).to include("since the earlier recap")
       end
+      it "asks for 2-4 sentences by default and renders the configured range" do
+        build = ->(**kw) { Samagotchi::IdleRecap::RecapPrompt.build(transcript, **kw).first[:content] }
+        expect(build.()).to include("recap only: 2-4 plain sentences,")
+        expect(build.(sentences: [2, 3])).to include("recap only: 2-3 plain sentences,")
+        expect(build.(sentences: [3, 3])).to include("recap only: 3 plain sentences,")
+        expect(build.(sentences: [1, 1])).to include("recap only: 1 plain sentence,")
+      end
+      it "holds the length in an updated recap only" do
+        first = Samagotchi::IdleRecap::RecapPrompt.build(transcript, sentences: [5, 7]).first[:content]
+        update = Samagotchi::IdleRecap::RecapPrompt.build(transcript, previous: "Earlier.", sentences: [5, 7]).first[:content]
+        expect(first).not_to include("Keep it to")
+        expect(update).to include("Keep it to 5-7 sentences even though it now covers more", "merge or drop older details",
+                                  "Keep the first sentence about what the user is working on")
+      end
       it "keeps the tail of an overlong transcript, marking the cut" do
         long = ("a" * 100 + "\n\n") * 300
         user = Samagotchi::IdleRecap::RecapPrompt.build(long + "THE END").last[:content]

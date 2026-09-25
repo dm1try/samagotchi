@@ -105,8 +105,9 @@ module Samagotchi
       # assistant to…" (goal first 25% → 100% with it); without "never by
       # name" it wrote "Dmitry and Chi"; without the side-details list it
       # kept the user's city and repo count, and paths and versions.
+      # %<plain>s is the range, e.g. "2-4 plain sentences".
       SYSTEM = "You write short recaps of a chat between a user and an assistant, for the user " \
-               "coming back to it later. Reply with the recap only: 2-4 plain sentences, no heading, " \
+               "coming back to it later. Reply with the recap only: %<plain>s, no heading, " \
                "no preamble, no notes about the task or the transcript. Centre it on outcomes, not on " \
                "the order of events. The first sentence names what the user was working on, as the " \
                "task itself (\"The user was checking how the parser handles tabs\"), not as a request " \
@@ -123,6 +124,12 @@ module Samagotchi
       UPDATE = " You are given the earlier recap and the conversation since the earlier recap: " \
                "write an updated recap of the whole session that also covers what happened since " \
                "(do not just repeat the earlier recap)."
+      # Holds the length once the recap covers more (S0: an updated recap ran
+      # to 6 sentences for 2-4 without it, within range+1 in 95%+ with it).
+      # The first-sentence line keeps the list preview on the task.
+      UPDATE_LENGTH = " Keep it to %<sentences>s even though it now covers more: merge or drop older " \
+                      "details rather than adding sentences. Keep the first sentence about what the user " \
+                      "is working on (change it if the focus moved)."
       OMITTED = "(earlier part omitted)"
       DEFAULT_SENTENCES = [2, 4].freeze
       MAX_SENTENCES = 10
@@ -149,7 +156,8 @@ module Samagotchi
 
       # @return [Array<Hash>, nil] chat messages; nil when there is no
       #   transcript to summarize
-      def build(transcript, tool_count: nil, tool_names: [], previous: nil)
+      # @param sentences [Array(Integer, Integer)] the range, from #sentences_range
+      def build(transcript, tool_count: nil, tool_names: [], previous: nil, sentences: DEFAULT_SENTENCES)
         body = cap(transcript.to_s.strip)
         return nil if body.empty?
 
@@ -163,13 +171,20 @@ module Samagotchi
                 else
                   ""
                 end
-        system = SYSTEM + (previous ? UPDATE : "") + tools
+        range = { plain: sentences_text(sentences, "plain "), sentences: sentences_text(sentences) }
+        system = format(SYSTEM, range) + (previous ? UPDATE + format(UPDATE_LENGTH, range) : "") + tools
         user = +""
         user << "Earlier recap:\n#{previous}\n\n" if previous
         user << "Transcript#{previous ? ' since the earlier recap' : ''} (the system prompt and tool " \
                 "internals were removed; only user turns and assistant prose remain):\n---\n#{body}\n---\n" \
                 "Write the recap now."
         [{ role: "system", content: system }, { role: "user", content: user }]
+      end
+
+      # "2-4 sentences", or "3 sentences" for [3, 3] ("1 sentence" for [1, 1])
+      def sentences_text((min, max), adjective = "")
+        count = min == max ? min.to_s : "#{min}-#{max}"
+        "#{count} #{adjective}#{max == 1 ? 'sentence' : 'sentences'}"
       end
 
       # The tail of +body+ when it is over MAX_NEW_CHARS, from a paragraph
