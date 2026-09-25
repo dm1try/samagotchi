@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, recapPlace } from "../../../lib/samagotchi/web/public/format.js";
+import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace } from "../../../lib/samagotchi/web/public/format.js";
 
 test("noteHtml: who sent the context note, then its text, both escaped", () => {
   assert.equal(
@@ -191,6 +191,16 @@ test("withLiveStatus: a live status change is activity now (the card's time)", (
   assert.equal(sess.status, "idle"); // the input is left alone
   // A send woke a worker the list didn't know about.
   assert.equal(withLiveStatus({ id: "b", status: "stopped", owner: null }, "running", now).owner, "worker");
+});
+
+test("withoutWorker: the card of a session whose worker went away (killed, idle exit) loses live", () => {
+  const sess = { id: "a", status: "running", owner: "worker" };
+  assert.deepEqual(withoutWorker(sess), { id: "a", status: "idle", owner: null });
+  assert.equal(sess.owner, "worker"); // the input is left alone
+  assert.deepEqual(withoutWorker({ id: "b", status: "idle", owner: "worker" }), { id: "b", status: "idle", owner: null });
+  // A terminal chi's session isn't the worker's to lose.
+  const tui = { id: "c", status: "running", owner: "tui" };
+  assert.equal(withoutWorker(tui), tui);
 });
 
 test("recapPlace: a stale recap goes before the first turn it doesn't cover", () => {
