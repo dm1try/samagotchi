@@ -265,6 +265,38 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
     expect(screen.lines).to include("could not send the prompt (409 owned_by_tui)")
   end
 
+  describe "a worker that doesn't answer or can't be reached" do
+    let(:timeout) { Errno::ETIMEDOUT.new("bridge turn: no reply within 30s") }
+    let(:refused) { Errno::ECONNREFUSED.new('connect(2) for "127.0.0.1" port 1') }
+
+    it "stays up and says why a prompt wasn't sent" do
+      allow(client).to receive(:post_turn).and_raise(timeout)
+
+      expect(run_with(["hello", nil])).to eq(:detached)
+      allow(client).to receive(:post_turn).and_raise(refused)
+      expect(run_with(["again", nil])).to eq(:detached)
+
+      expect(screen.lines).to include("could not send the prompt (worker not answering: no reply within 30s)",
+                                      "could not send the prompt (worker unreachable: connection refused)")
+    end
+
+    it "stays up and says why a command didn't run" do
+      allow(client).to receive(:post_command).and_raise(timeout)
+
+      expect(run_with(["/models", nil])).to eq(:detached)
+
+      expect(screen.lines).to include("could not run the command (worker not answering: no reply within 30s)")
+    end
+
+    it "stays up when Ctrl-C can't reach the worker to cancel the turn" do
+      allow(client).to receive(:cancel).and_raise(refused)
+
+      expect(run_with([:interrupt, nil], first: snapshot(current_turn: { "prompt" => "p", "parts" => [] }))).to eq(:detached)
+
+      expect(screen.lines).to include("could not cancel the turn (worker unreachable: connection refused)")
+    end
+  end
+
   it "shows /stats from the worker's live metrics" do
     metrics = { turns: 2, tool_calls_total: 1, tool_errors: 0, tool_calls_by_tool: { read: 1 }, iterations_total: 3,
                 tokens_in: 10, tokens_out: 5, tokens_total: 15, token_source: :server, gen_latency_ms: 120,
@@ -587,6 +619,24 @@ end
                                     "Ctrl-C cancels the turn")
     expect(prompts.last).to eq("? ")
   end
+
+  it "keeps the question open when the worker doesn't answer the answer or the dismiss" do
+    allow(client).to receive(:answer).and_raise(Errno::ETIMEDOUT.new("bridge answer: no reply within 30s"))
+    allow(client).to receive(:dismiss_question).and_raise(Errno::ECONNREFUSED)
+    start(first: snapshot(pending_question: question))
+    wait_for { prompts.last == "? " }
+
+    typed << "1"
+    wait_for { screen.lines.last.to_s.start_with?("could not answer") }
+    typed << ""
+    wait_for { screen.lines.last.to_s.start_with?("could not dismiss") }
+    finish
+
+    expect(screen.lines).to include("could not answer (worker not answering: no reply within 30s)",
+                                    "could not dismiss the question (worker unreachable: connection refused); " \
+                                    "Ctrl-C cancels the turn")
+    expect(prompts.last).to eq("? ")
+  end
 end
 
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a failed turn's prompt" do
@@ -867,6 +917,14 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "launch flags" do
     expect(attached.handle_event(joined)).to eq(:failed)
     expect(screen.lines.last).to start_with("could not switch to the --model: this session's worker runs an older chi")
     expect(screen.lines.last).to include("chi sessions stop s-1234 && chi --resume s-1234")
+  end
+
+  it "stops the launch when the worker doesn't answer the command" do
+    allow(client).to receive(:post_command).and_raise(Errno::ETIMEDOUT.new("bridge command: no reply within 30s"))
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1", first_command: "/model fast")
+
+    expect(attached.handle_event(joined)).to eq(:failed)
+    expect(screen.lines.last).to eq("could not switch to the --model: worker not answering: no reply within 30s")
   end
 
   it "posts every prompt with no_interrupt under --no-interrupt" do

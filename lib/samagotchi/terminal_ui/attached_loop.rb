@@ -363,6 +363,17 @@ module Samagotchi
 
         detail = reply.json&.fetch("detail", nil) || reply.json&.fetch("error", nil)
         @screen.commit("could not run the command (#{[reply.status, detail].compact.join(" ")})")
+      rescue SystemCallError, IOError => e
+        @screen.commit("could not run the command (#{worker_down(e)})")
+      end
+
+      # Why a Bridge request raised, for the line that says what didn't go
+      # through: a stopped (or wedged) worker times out, a gone one refuses.
+      def worker_down(error)
+        head, detail = error.message.split(" - ", 2)
+        return "worker not answering: #{(detail || head).sub(/\Abridge \S+: /, "")}" if error.is_a?(Errno::ETIMEDOUT)
+
+        "worker unreachable: #{head.downcase}"
       end
 
       def command_ran(event)
@@ -452,6 +463,8 @@ module Samagotchi
         detail = reply.json&.fetch("error", nil)
         explained = reply.json&.fetch("detail", nil) if detail == "images_unsupported"
         @screen.commit("could not send the prompt (#{[reply.status, detail].compact.join(" ")})#{": #{explained}" if explained}")
+      rescue SystemCallError, IOError => e
+        @screen.commit("could not send the prompt (#{worker_down(e)})")
       end
 
       # The prompt's `@path` images, stored in the session's images/ here
@@ -547,6 +560,9 @@ module Samagotchi
           @screen.commit("could not answer (#{[reply.status, detail].compact.join(" ")})")
         end
         nil
+      rescue SystemCallError, IOError => e
+        @screen.commit("could not answer (#{worker_down(e)})")
+        nil
       end
 
       # An empty answer dismisses the question, as in the REPL: the tool
@@ -563,6 +579,9 @@ module Samagotchi
           detail = reply.json&.fetch("error", nil)
           @screen.commit("could not dismiss the question (#{[reply.status, detail].compact.join(" ")}); Ctrl-C cancels the turn")
         end
+        nil
+      rescue SystemCallError, IOError => e
+        @screen.commit("could not dismiss the question (#{worker_down(e)}); Ctrl-C cancels the turn")
         nil
       end
 
@@ -631,7 +650,11 @@ module Samagotchi
       def interrupt(pressed = nil)
         typed = pressed&.fetch(:text, nil).to_s
         if @running
-          @client.cancel(reason: "ctrl_c")
+          begin
+            @client.cancel(reason: "ctrl_c")
+          rescue SystemCallError, IOError => e
+            @screen.commit("could not cancel the turn (#{worker_down(e)})")
+          end
           return nil
         end
         unless typed.strip.empty?
@@ -712,6 +735,9 @@ module Samagotchi
 
         why = reply.status == 404 ? stale_worker("run commands") : "the worker answered #{reply.status}"
         @screen.commit("could not switch to the --model: #{why}")
+        :failed
+      rescue SystemCallError, IOError => e
+        @screen.commit("could not switch to the --model: #{worker_down(e)}")
         :failed
       end
 
