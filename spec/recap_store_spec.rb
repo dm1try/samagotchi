@@ -72,6 +72,43 @@ RSpec.describe Samagotchi::RecapStore do
       expect(described_class.preview(File.dirname(path))).to end_with("…")
     end
 
+    # Openings from the recap-length S0 spike (Ornith 35B-A3B)
+    it "drops the leading subject phrase, so the line starts with the task" do
+      {
+        "The user was testing how the web frontend renders markdown, feeding it a showcase." =>
+          "Testing how the web frontend renders markdown, feeding it a showcase.",
+        "The user was working through an architecture investigation of the Samagotchi project." =>
+          "Working through an architecture investigation of the Samagotchi project.",
+        "The user is checking how the parser handles tabs." => "Checking how the parser handles tabs.",
+        "The user and assistant were exploring how the Samagotchi agent could be open-sourced." =>
+          "Exploring how the Samagotchi agent could be open-sourced.",
+        "The user and the assistant were getting familiar with the tools." => "Getting familiar with the tools."
+      }.each do |recap, line|
+        write("#{recap} The assistant wrote the README.")
+        expect(described_class.preview(File.dirname(path))).to eq(line)
+      end
+    end
+
+    it "keeps openings that are not a subject plus an -ing verb" do
+      [
+        "The user asked the assistant to review what's stored in its memory library.",
+        "The user checked the current time and asked the assistant to list its tools.",
+        "The user and assistant explored the Samagotchi agent's setup.",
+        "The user was curious about the recap.",
+        "Bluefin's CI was set up; the user was testing it."
+      ].each do |recap|
+        write(recap)
+        expect(described_class.preview(File.dirname(path))).to eq(recap)
+      end
+    end
+
+    it "cuts after dropping the subject phrase, so the task gets the room" do
+      write("The user was testing #{'word ' * 40}")
+      line = described_class.preview(File.dirname(path))
+      expect(line).to start_with("Testing word")
+      expect(line.length).to eq(described_class::PREVIEW_CHARS)
+    end
+
     it "is nil without a recap" do
       expect(described_class.preview(File.dirname(path))).to be_nil
     end

@@ -14,6 +14,11 @@ module Samagotchi
     FILE = "recap.json"
     # A session card's or the picker's recap line.
     PREVIEW_CHARS = 140
+    # "The user was testing…" / "The user and the assistant were exploring…":
+    # the recap prompt opens with the user's task this way, which spent ~30
+    # of a card's visible characters on the same words every time. Only a
+    # subject plus an -ing verb; anything else is left as it is.
+    SUBJECT_RE = /\AThe user(?: and (?:the )?assistant)? (?:was|were|is|are) (?=[a-z]+ing\b)/
 
     # @param session_id_lookup [#call] the current session's id, or nil
     # @param state_dir_lookup [#call] the state dir holding the sessions
@@ -61,12 +66,14 @@ module Samagotchi
     end
 
     # @return [String, nil] the first sentence of the recap saved in
-    #   +session_dir+, on one line and cut to PREVIEW_CHARS
+    #   +session_dir+, on one line, without the subject phrase (SUBJECT_RE)
+    #   and cut to PREVIEW_CHARS. The full recap keeps its sentence.
     def self.preview(session_dir)
       text = read(session_dir)&.dig(:text).to_s.gsub(/\s+/, " ").strip
       return nil if text.empty?
 
       first = text[/\A.*?[.!?](?=\s|\z)/] || text
+      first = first.sub(SUBJECT_RE, "").sub(/\A[a-z]/, &:upcase)
       first.length > PREVIEW_CHARS ? "#{first[0, PREVIEW_CHARS - 1]}…" : first
     end
   end
