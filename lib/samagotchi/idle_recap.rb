@@ -94,9 +94,13 @@ module Samagotchi
     # Builds the recap prompt: the instructions as a system message and the
     # transcript as the user message (R0 spike: with one user message Ornith
     # opened 3/12 recaps with notes about the task; 0/12 this way). Short (2-4
-    # sentences) and centred on outcomes: what the user was working on, what
-    # came of it, what is open. Names the handful of tool calls only when they
-    # matter to the result; states only the count when it is large (never
+    # sentences) and centred on outcomes: the task, what came of it, what is
+    # open. Passive voice — no actors at all (voice spike 2026-09-25: the
+    # 3rd-person "the user was…/the assistant…" projection read as a third
+    # party watching; "we" was consistent but the user preferred outcomes
+    # without persons; the small model occasionally drifts back to naming
+    # actors, which is tolerated). Names the handful of tool calls only when
+    # they matter to the result; states only the count when it is large (never
     # enumerates). With a previous recap it asks for an updated recap of the
     # whole session from that recap plus the transcript since.
     module RecapPrompt
@@ -109,6 +113,10 @@ module Samagotchi
       # first recaps at 2-4 said "…weren't captured in the transcript"; 0/80
       # with it. (A "short sentences, no dashes" line was dropped: with this
       # one it brought back "Chi" as an actor in 15-18/80.)
+      # Voice spike (same 4 sessions, 2026-09-25): the passive "no actors"
+      # rule reads like a personal changelog ("Explored… then implemented…");
+      # it drifted to "the user and assistant" on 1/4 (a session with clear
+      # user decisions) — tolerated. The "we" variant was 4/4 consistent.
       # %<plain>s is the range, e.g. "2-4 plain sentences"; %<shape>s is SHAPE
       # or ONE_SHAPE.
       SYSTEM = "You write short recaps of a chat between a user and an assistant, for the user " \
@@ -117,21 +125,21 @@ module Samagotchi
                "transcript lacks or does not say; leave it out. Centre it on outcomes, not on " \
                "the order of events. %<shape>s Keep project names " \
                "and facts that matter for continuing. Do not retell the chat turn by turn (\"the user " \
-               "asked..., then the assistant...\"); name who did something only when it matters, as " \
-               "\"the user\" or \"the assistant\", never by name. Leave out side details: personal " \
+               "asked..., then the assistant...\"). Never name who did something: no \"the user\", no " \
+               "\"the assistant\", no \"I\", no \"we\", no personal names — state outcomes and decisions " \
+               "without actors (\"a 28-day threshold was chosen\", \"the plan was saved\"). Leave out " \
+               "side details: personal " \
                "details about the user (where they live, their accounts, how many repos they have), " \
                "file paths and version numbers, unless they are the point. If there was no clear task, " \
                "just say what was talked about."
-      SHAPE = "The first sentence names what the user was working on, as the task itself (\"The user " \
-              "was checking how the parser handles tabs\"), not as a request (\"The user asked the " \
-              "assistant to...\"). Then say what came of it: results, decisions, findings. End with " \
+      SHAPE = "The first sentence names the task itself (\"Checking how the parser handles tabs\"), " \
+              "not who asked for it. Then say what came of it: results, decisions, findings. End with " \
               "what is still open or the next step, if anything."
       # recap.sentences: 1. Asking for "1 plain sentence" next to SHAPE's
       # first sentence, then results, then what is open gave 3.4 sentences
       # (1 exactly in 0/20, spike); with this shape 1 in 40/40, goal first.
-      ONE_SHAPE = "The sentence names what the user was working on, as the task itself (\"The user " \
-                  "was checking how the parser handles tabs\"), not as a request (\"The user asked the " \
-                  "assistant to...\"), and where it stands: the result, or what is still open."
+      ONE_SHAPE = "The sentence names the task itself (\"Checking how the parser handles tabs\"), not " \
+                  "who asked for it, and where it stands: the result, or what is still open."
       # "do not just repeat": otherwise Ornith returned the earlier recap
       # word for word after a short turn.
       UPDATE = " You are given the earlier recap and the conversation since the earlier recap: " \
@@ -141,15 +149,15 @@ module Samagotchi
       # to 6 sentences for 2-4 without it, within range+1 in 95%+ with it).
       # The first-sentence line keeps the list preview on the task.
       UPDATE_LENGTH = " Keep it to %<sentences>s even though it now covers more: merge or drop older " \
-                      "details rather than adding sentences. Keep %<focus>s about what the user " \
-                      "is working on (change it if the focus moved)."
+                      "details rather than adding sentences. Keep %<focus>s on the task (change it " \
+                      "if the focus moved)."
       # At an open continue offer (the last turn ran out of steps with a
       # tool call pending). Recap-next F1 spike: without it the recap stated
       # the stop in 5-10% and said "no open items" 7/40; with this line
       # after the transcript 95-100% and 0. A system sentence as well made
       # it worse (a chit-chat session judged there was no task). Worded to
       # stay true after a worker restart, when the offer itself is gone.
-      OFFER_LINE = "Where it stands now: the assistant's last turn stopped at its step limit before the task was finished."
+      OFFER_LINE = "Where it stands now: the last turn stopped at its step limit before the task was finished."
       OMITTED = "(earlier part omitted)"
       DEFAULT_SENTENCES = [2, 4].freeze
       MAX_SENTENCES = 10

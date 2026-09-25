@@ -180,9 +180,9 @@ RSpec.describe Samagotchi::IdleRecap do
       end
       it "asks for an outcome-centred recap: the task first, what came of it, what is open" do
         system = Samagotchi::IdleRecap::RecapPrompt.build(transcript).first[:content]
-        expect(system).to include("Centre it on outcomes", "first sentence names what the user was working on",
+        expect(system).to include("Centre it on outcomes", "first sentence names the task itself",
                                   "what came of it", "still open", "Do not retell the chat turn by turn")
-        expect(system).to include("never by name", "personal details about the user")
+        expect(system).to include("Never name who did something", "no personal names", "personal details about the user")
       end
       it "asks to leave out what the transcript lacks" do
         system = Samagotchi::IdleRecap::RecapPrompt.build(transcript).first[:content]
@@ -207,22 +207,22 @@ RSpec.describe Samagotchi::IdleRecap do
         update = Samagotchi::IdleRecap::RecapPrompt.build(transcript, previous: "Earlier.", sentences: [5, 7]).first[:content]
         expect(first).not_to include("Keep it to")
         expect(update).to include("Keep it to 5-7 sentences even though it now covers more", "merge or drop older details",
-                                  "Keep the first sentence about what the user is working on")
+                                  "Keep the first sentence on the task")
       end
       it "asks for one sentence with the task and where it stands when the range is 1" do
         build = ->(**kw) { Samagotchi::IdleRecap::RecapPrompt.build(transcript, **kw).first[:content] }
         one = build.(sentences: [1, 1])
-        expect(one).to include("recap only: 1 plain sentence,", "The sentence names what the user was working on",
+        expect(one).to include("recap only: 1 plain sentence,", "The sentence names the task itself",
                                "and where it stands: the result, or what is still open.")
         expect(one).not_to include("first sentence", "Then say what came of it", "End with")
         update = build.(sentences: [1, 1], previous: "Earlier.")
-        expect(update).to include("Keep it to 1 sentence even though", "Keep it about what the user is working on")
+        expect(update).to include("Keep it to 1 sentence even though", "Keep it on the task")
         expect(update).not_to include("first sentence")
         expect(build.(sentences: [1, 2])).to include("The first sentence names", "Then say what came of it")
       end
       it "states an open continue offer as one line after the transcript" do
         user = Samagotchi::IdleRecap::RecapPrompt.build(transcript, offer: true).last[:content]
-        expect(user).to end_with("#{transcript}\n---\nWhere it stands now: the assistant's last turn stopped at its " \
+        expect(user).to end_with("#{transcript}\n---\nWhere it stands now: the last turn stopped at its " \
                                  "step limit before the task was finished.\nWrite the recap now.")
         system = Samagotchi::IdleRecap::RecapPrompt.build(transcript, offer: true).first[:content]
         expect(system).to eq(Samagotchi::IdleRecap::RecapPrompt.build(transcript).first[:content])
@@ -916,7 +916,7 @@ RSpec.describe Samagotchi::IdleRecap do
       offer = [true]
       idle.awaiting_continue = -> { offer.first }
       idle.write_now
-      expect(prompts.last).to include("Where it stands now: the assistant's last turn stopped at its step limit")
+      expect(prompts.last).to include("Where it stands now: the last turn stopped at its step limit")
 
       offer[0] = false
       allow(engine).to receive(:messages_json_for_recap).and_return(JSON.generate(JSON.parse(two_turns) + [{ "role" => "model", "content" => "More." }]))
