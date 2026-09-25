@@ -87,10 +87,15 @@ module Samagotchi
       options
     end
 
-    # A terminal on stdin means nobody piped a note in: waiting there
-    # would just hang a script.
+    # Only a pipe or a file is read, as chi send does. A terminal means
+    # nobody piped a note in, and a socket a launcher or an agent's shell
+    # passes down may never close: waiting on either would hang a script.
     def read_stdin
       return nil if @stdin.respond_to?(:tty?) && @stdin.tty?
+      if @stdin.respond_to?(:stat)
+        stat = @stdin.stat
+        return nil unless stat.pipe? || stat.file?
+      end
 
       @stdin.read
     end

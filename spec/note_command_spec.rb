@@ -5,6 +5,8 @@ require "rbconfig"
 require "stringio"
 require "tmpdir"
 require "json"
+require "socket"
+require "timeout"
 require "spec_helper"
 require "samagotchi/note_command"
 require "samagotchi/owner_lock"
@@ -145,6 +147,16 @@ RSpec.describe Samagotchi::NoteCommand do
 
     expect(run(a.id, stdin: tty)).to eq(2)
     expect(err.string).to include("Usage: chi note")
+  end
+
+  it "doesn't wait on an inherited stdin that is neither a pipe nor a file (a launcher's socket)" do
+    a = make(owner: "worker")
+    socket, other_end = UNIXSocket.pair
+
+    expect(Timeout.timeout(5) { run(a.id, stdin: socket) }).to eq(2)
+    expect(err.string).to include("no note text")
+  ensure
+    [socket, other_end].compact.each(&:close)
   end
 
   it "asks for targets" do
