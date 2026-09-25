@@ -55,6 +55,30 @@ RSpec.describe "peer tools" do
       expect(bar_line[/"(x+…)"/, 1].length).to eq(120)
     end
 
+    it "marks this session's children and its parent" do
+      me
+      child = make(cwd: File.join(Dir.home, "projects/me"), prompt: "count the specs", owner: "worker").tap do |s|
+        s.parent_id = me.id
+        s.save(state_dir: tmpdir)
+      end
+      other = make(cwd: "/work/other", prompt: "another")
+      boss = make(cwd: "/work/boss", prompt: "the plan")
+      grand = make(cwd: "/work/grand", prompt: "someone else's child").tap do |s|
+        s.parent_id = boss.id
+        s.save(state_dir: tmpdir)
+      end
+      me.parent_id = boss.id
+      me.save(state_dir: tmpdir)
+
+      out = described_class.call("", peers: peers)
+
+      expect(out.lines.first).to include("child (this session delegated it) or parent (it delegated this session)")
+      expect(out).to include("#{child.id[0, 8]}  live  idle  child  ~/projects/me  \"count the specs\"")
+      expect(out).to include("#{boss.id[0, 8]}  not live  idle  parent  /work/boss  \"the plan\"")
+      expect(out).to include("#{other.id[0, 8]}  not live  idle  /work/other  \"another\"")
+      expect(out).to include("#{grand.id[0, 8]}  not live  idle  /work/grand  \"someone else's child\"")
+    end
+
     it "narrows to a folder" do
       foo = make(cwd: "/work/foo")
       make(cwd: "/work/bar")

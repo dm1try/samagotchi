@@ -32,8 +32,8 @@ RSpec.describe "chi sessions list" do
     Open3.capture3(env, RbConfig.ruby, chi, "sessions", "list", *args, stdin_data: "", chdir: dir)
   end
 
-  def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil)
-    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd).tap do |s|
+  def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil, parent_id: nil)
+    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd, parent_id: parent_id).tap do |s|
       s.last_prompt = prompt
       s.test_run = test_run
       s.save(state_dir: state_dir)
@@ -52,6 +52,23 @@ RSpec.describe "chi sessions list" do
     expect(out).to include("#{session.id}  idle      #{Samagotchi::Session.load(session.id, state_dir: state_dir).updated_at}  hello there\n")
     expect(out).to include("  a test [test]\n")
     expect(out).to end_with("\n2 session(s) (sort=updated_at order=desc)\n")
+  end
+
+  it "marks a delegated session with its parent, in the plain and the --live listings; json has parent_id" do
+    parent = make("the plan")
+    child = make("count the specs", live: true, parent_id: parent.id)
+
+    out, err, status = run_chi
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to include("#{child.id}  idle      #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  count the specs  ↳ #{parent.id[0, 8]}\n")
+    expect(out).to match(/#{parent.id}  idle .* the plan\n/)
+
+    out, _err, _status = run_chi("--live")
+    expect(out).to include("#{child.id}  live      #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  app · count the specs  ↳ #{parent.id[0, 8]}\n")
+
+    out, _err, _status = run_chi("--format=json")
+    by_id = JSON.parse(out).to_h { |row| [row["id"], row["parent_id"]] }
+    expect(by_id).to eq(parent.id => nil, child.id => parent.id)
   end
 
   it "shows a quoted message without its quote markers" do
@@ -117,7 +134,7 @@ RSpec.describe "chi sessions list" do
     expect(status.exitstatus).to eq(0), err
     expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
                                      "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
-                                     "live" => true, "busy" => false, "owner" => "worker", "recap" => nil }])
+                                     "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil }])
   end
 
   it "--format json: each session's recap, its first sentence; the tsv lines don't change" do
