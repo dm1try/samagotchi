@@ -456,9 +456,12 @@ module Samagotchi
         # Not an answer to a continue offer either.
         next detach_note if detach_command?(input)
 
-        if @turn_flow.awaiting_continue?
+        # /stats and /recap run; the offer stays open.
+        if @turn_flow.awaiting_continue? && !stats_command?(input) && !recap_command?(input)
           answer_continue_offer(session, input)
         else
+          # The ? read left no echo: show what ran.
+          @surface.commit("#{paint(QUESTION_PROMPT, 33)}#{input}") if @turn_flow.awaiting_continue?
           run_input_line(session, input)
         end
       end

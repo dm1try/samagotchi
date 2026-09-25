@@ -1303,6 +1303,22 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     expect(client).not_to have_received(:post_command)
   end
 
+  it "runs /stats and /recap at a continue offer, the offer staying open" do
+    allow(client).to receive(:post_command)
+    allow(client).to receive(:get_json).with("stats")
+      .and_return(JSON.parse(JSON.generate(metrics: { turns: 3 })))
+    allow(client).to receive(:request_recap)
+      .and_return(response(200, JSON.generate(enabled: false)))
+    offered = idle.merge("continue_offer" => { "context" => {}, "no_interrupt" => false })
+
+    expect(run_lines("/stats", "/recap", nil, snapshot: offered, at: "? ")).to eq(:detached)
+
+    expect(client).not_to have_received(:post_command)
+    expect(screen.lines).to include(a_string_including("turns:            3"),
+                                    a_string_starting_with("recap is off"))
+    expect(attached.instance_variable_get(:@continue_offer)).not_to be_nil
+  end
+
   it "asks the worker on /exit at a continue offer, which then holds" do
     allow(client).to receive(:post_command)
     allow(client).to receive(:request_exit).and_return(response(409, '{"status":"held","reason":"continue_offered"}'))

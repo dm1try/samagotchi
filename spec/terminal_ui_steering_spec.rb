@@ -211,6 +211,22 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(surface.lines).to include("(not attached: this session runs in this terminal; /exit ends it)")
   end
 
+  it "runs /stats and /recap at a continue offer instead of reading them as an answer" do
+    turn_flow = agent.instance_variable_get(:@turn_flow)
+    allow(turn_flow).to receive(:awaiting_continue?).and_return(true)
+    allow(agent).to receive(:poll_input_with_reminder_check).and_return("/stats", "/recap", nil)
+    allow(agent).to receive(:drain_pending_question?)
+    allow(agent).to receive(:answer_continue_offer)
+    allow(engine).to receive(:stats_snapshot).and_return({})
+    allow(agent).to receive(:format_session_metrics).and_return("turns: 1")
+    allow(agent).to receive(:handle_recap_command).and_return("recap is off")
+
+    agent.send(:run_assist_loop, session: used_session, messages: [])
+
+    expect(agent).not_to have_received(:answer_continue_offer)
+    expect(surface.lines).to include("? /stats", "\nmodel> session stats:\nturns: 1", "? /recap", "\nmodel> recap is off")
+  end
+
   it "ends the loop after the turn instead of reading on" do
     allow(agent).to receive(:poll_input_with_reminder_check).and_return("go", "never read", nil)
     allow(agent).to receive(:run_input_line) { agent.instance_variable_set(:@exit_after_turn, true) }

@@ -247,15 +247,15 @@ module Samagotchi
         return submit(nil) if DETACH_COMMANDS.include?(text.downcase)
         return exit_worker if exit_command?(text)
         return exit_and_delete if exit_command?(text.delete_suffix(DELETE_FLAG).rstrip) && text.end_with?(" #{DELETE_FLAG}")
+        command = text.split(/\s+/, 2).first
         if @continue_offer
-          return answer_continue(text) unless SessionCommands.command?(text)
+          return answer_continue(text) unless SessionCommands.command?(text) || [STATS_COMMAND, RECAP_COMMAND].include?(command)
 
           # Not an answer: the read left no echo, so show what ran.
           echo_answer(text)
         end
         return if text.empty?
 
-        command = text.split(/\s+/, 2).first
         if command == STATS_COMMAND
           show_stats
         elsif command == RECAP_COMMAND
