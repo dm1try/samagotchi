@@ -99,6 +99,41 @@ test("turnGroups: a plain answer has no steps; an assistant message before any p
   assert.deepEqual(groups.map((g) => [g.kind, g.user, g.answer, g.steps?.length]), [["answer", undefined, 0, undefined], ["turn", 1, 2, 0]]);
 });
 
+const EXECUTE = { tool: "execute", params: 'command="true"', output: "[execute]\nexit: 0" };
+const READ = { tool: "read", params: 'path="README.md"', output: "[read]\n# T" };
+
+test("turnGroups with parts (?parts=1): one step per saved message, its thinking and its calls with the records' status", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "Let me check.", parts: { thinking: "plan", tools: [EXECUTE] } },
+    { role: "assistant", content: "", parts: { tools: [READ] } }, // a text-less step, kept with its parts
+    { role: "assistant", content: "Both fine.", parts: { thinking: "sum up" } },
+  ];
+  assert.deepEqual(turnGroups(items, TIMING)[0], {
+    kind: "turn", turnIndex: 0, user: 0, answer: 3, record: TIMING.turnRecords[0], steps: [
+      { i: 1, iteration: 1, thinking: "plan", tools: [{ key: "1:1", status: "ok", duration_ms: 7, ...EXECUTE }] },
+      { i: 2, iteration: 2, thinking: "", tools: [{ key: "2:1", status: "error", duration_ms: 1, ...READ }] },
+      // The answer's thinking stays in the block as a step, as it does live.
+      { i: null, iteration: 3, thinking: "sum up", tools: [] },
+    ],
+  });
+});
+
+test("turnGroups with parts: a turn that ended on a call has no answer; a call with no record shows done", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "Checking.", parts: { tools: [EXECUTE, READ] } },
+  ];
+  const timing = normalizeTiming({ turn_records: [{ id: "T1", status: "canceled", duration_ms: 5 }],
+    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }] });
+  const group = turnGroups(items, timing)[0];
+  assert.equal(group.answer, null);
+  assert.deepEqual(group.steps, [{ i: 1, iteration: 1, thinking: "", tools: [
+    { key: "1:1", status: "ok", duration_ms: 7, ...EXECUTE },
+    { key: "1:2", status: "ok", duration_ms: undefined, ...READ },
+  ] }]);
+});
+
 function fakeParent() {
   const parent = {
     children: [],
