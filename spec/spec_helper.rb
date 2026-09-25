@@ -29,6 +29,10 @@ SPEC_XDG_STATE_HOME = Dir.mktmpdir("samagotchi-spec-state")
 ENV["XDG_STATE_HOME"] = SPEC_XDG_STATE_HOME
 at_exit { FileUtils.remove_entry(SPEC_XDG_STATE_HOME) if File.directory?(SPEC_XDG_STATE_HOME) }
 
+# The developer's shell may point the debug log somewhere, or raise or turn
+# off its level: specs set what they need, so start from none of it.
+%w[SAMAGOTCHI_LOG_FILE SAMAGOTCHI_LOG_LEVEL SAMAGOTCHI_LOG_DISABLE].each { |key| ENV.delete(key) }
+
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
     expectations.include_chain_clauses_in_custom_matcher_descriptions = true
