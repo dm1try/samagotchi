@@ -850,6 +850,27 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "POST /api/sessions/:id/cancel" do
+    it "passes a known reason through and echoes it; anything else is manual" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(app).to receive(:bridge_client).with("s1").and_return(bridge)
+      sent = []
+      allow(bridge).to receive(:cancel) do |reason:|
+        sent << reason
+        Samagotchi::BridgeClient::Response.new(status: 202, body: nil)
+      end
+
+      replies = ['{"reason":"ctrl_c"}', '{"reason":"<img src=x onerror=alert(1)>"}', "{}", ""].map do |body|
+        _status, _headers, out = app.call(env_for("/api/sessions/s1/cancel", method: "POST", body: body))
+        JSON.parse(out.first)["reason"]
+      end
+
+      expect(replies).to eq(%w[ctrl_c manual user user])
+      expect(sent).to eq(%w[ctrl_c manual user user])
+    end
+  end
+
   describe "POST /api/sessions/:id/answer" do
     it "returns 400 when the question id is missing" do
       app = build_app(state_dir: Dir.mktmpdir)

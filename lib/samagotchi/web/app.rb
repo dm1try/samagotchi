@@ -37,6 +37,10 @@ module Samagotchi
       IMAGE_NAME_RE = /\A[0-9a-f]{16}\.(png|jpe?g|gif|webp)\z/
       IMAGE_TYPES = { "png" => "image/png", "jpg" => "image/jpeg", "jpeg" => "image/jpeg", "gif" => "image/gif",
                       "webp" => "image/webp" }.freeze
+      # The cancel reasons a client may give, as the Bridge takes them
+      # (Bridge::CANCEL_REASONS); anything else is sent and echoed as manual.
+      CANCEL_REASONS = %w[manual user ctrl_c].freeze
+
       # POST /stop waits this long for the worker to let go of the session.
       STOP_WAIT_SECONDS = 2.0
 
@@ -555,7 +559,11 @@ module Samagotchi
           parsed = parse_json(body)
           if parsed.is_a?(Hash)
             r = parsed["reason"] || parsed[:reason] || parsed["cancellation_reason"]
-            reason = r.to_s.strip.empty? ? "user" : r.to_s
+            r = r.to_s.strip
+            reason = if r.empty? then "user"
+                     elsif CANCEL_REASONS.include?(r) then r
+                     else "manual"
+                     end
           end
         end
 
