@@ -1590,6 +1590,7 @@ module Samagotchi
         inactivity: recap_number_setting(kwarg_config, :inactivity, "recap.inactivity", IdleRecap::DEFAULT_INACTIVITY_SECONDS, :float),
         min_user_turns: recap_number_setting(kwarg_config, :min_user_turns, "recap.min_user_turns", IdleRecap::DEFAULT_MIN_USER_TURNS, :int),
         timeout: recap_number_setting(kwarg_config, :timeout, "recap.timeout", IdleRecap::DEFAULT_TIMEOUT_SECONDS, :float),
+        sentences: recap_sentences(string_config(kwarg_config, :sentences) || registry_string("recap.sentences")),
         store: RecapStore.new(session_id_lookup: -> { @session&.id }, state_dir_lookup: -> { session_state_dir })
       )
     end
@@ -1601,6 +1602,18 @@ module Samagotchi
       target = @host_registry.resolve(@effective_model_name)
       { base_url: target.openai_base_url, api_key_env: target.entry.api_key_env,
         model: target.bare_model, label: @effective_model_name.to_s }
+    end
+
+    # recap.sentences as [min, max]; an invalid value warns and falls back to
+    # the default range (the recap stays on).
+    def recap_sentences(value)
+      range = IdleRecap::RecapPrompt.sentences_range(value)
+      return range if range
+
+      default = IdleRecap::RecapPrompt::DEFAULT_SENTENCES
+      Log.warn(:recap, "sentences_invalid", echo: "Warning: invalid value for recap.sentences: #{value.to_s.inspect} — using #{default.join('-')}",
+                                            value: value.to_s)
+      default
     end
 
     # Read a scalar recap setting via the Config registry (ENV > file > default).

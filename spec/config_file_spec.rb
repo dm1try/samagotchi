@@ -262,7 +262,7 @@ RSpec.describe Samagotchi::ConfigFile do
       recap_env_keys = %w[
         XDG_CONFIG_HOME SAMAGOTCHI_RECAP_ENABLED SAMAGOTCHI_RECAP_BASE_URL
         SAMAGOTCHI_RECAP_MODEL SAMAGOTCHI_RECAP_HOST_REF SAMAGOTCHI_RECAP_INACTIVITY
-        SAMAGOTCHI_RECAP_TIMEOUT SAMAGOTCHI_RECAP_MIN_USER_TURNS
+        SAMAGOTCHI_RECAP_TIMEOUT SAMAGOTCHI_RECAP_MIN_USER_TURNS SAMAGOTCHI_RECAP_SENTENCES
       ]
       original = recap_env_keys.each_with_object({}) { |k, h| h[k] = ENV[k] }
       recap_env_keys.each { |k| ENV.delete(k) }
@@ -322,6 +322,13 @@ RSpec.describe Samagotchi::ConfigFile do
         rc = described_class.recap_config
         expect(rc[:host_ref]).to eq("recap-box")
         expect(rc[:model]).to eq("small")
+      end
+    end
+
+    it "passes recap.sentences from the file along" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        write_recap_yaml(dir, "recap:\n  model: m\n  base_url: http://x:1/v1\n  sentences: 2-3\n")
+        expect(described_class.recap_config[:sentences]).to eq("2-3")
       end
     end
 

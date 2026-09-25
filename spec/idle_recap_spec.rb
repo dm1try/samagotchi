@@ -360,6 +360,15 @@ RSpec.describe Samagotchi::IdleRecap do
         expect(recap_client).to have_received(:summarize).at_least(:once)
         expect(engine).to have_received(:emit_recap)
       end
+      it "asks the client for the configured number of sentences" do
+        engine = stub_engine_with_two_user_turns
+        recap_client = double("recap_client", summarize: "recap")
+        idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, timeout: 1.0,
+                                   sentences: [2, 3], client: recap_client, clock: -> { base_time })
+        allow(idle).to receive(:should_fire?).and_return(true)
+        drive(idle)
+        expect(recap_client).to have_received(:summarize) { |prompt| expect(prompt.first[:content]).to include("2-3 plain sentences") }
+      end
       it "logs why the summarize thread failed, and emits nothing" do
         dir = Dir.mktmpdir("samagotchi-log")
         path = File.join(dir, "chi.log")

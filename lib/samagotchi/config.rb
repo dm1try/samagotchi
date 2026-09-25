@@ -684,7 +684,8 @@ module Samagotchi
         model: model,
         inactivity: Samagotchi::Config.resolve("recap.inactivity", **opts),
         timeout: Samagotchi::Config.resolve("recap.timeout", **opts),
-        min_user_turns: Samagotchi::Config.resolve("recap.min_user_turns", **opts)
+        min_user_turns: Samagotchi::Config.resolve("recap.min_user_turns", **opts),
+        sentences: Samagotchi::Config.resolve("recap.sentences", **opts)
       }
     end
 

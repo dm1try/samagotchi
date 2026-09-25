@@ -206,7 +206,8 @@ module Samagotchi
       end
     end
 
-    attr_reader :generation, :inactivity, :min_user_turns
+    # @return [Array(Integer, Integer)] the recap length range, e.g. [2, 4]
+    attr_reader :generation, :inactivity, :min_user_turns, :sentences
 
     # @return [Hash, nil] the last recap written: {text:, covered:,
     #   covered_digest:, model:, created_at:}, where covered counts the
@@ -232,6 +233,7 @@ module Samagotchi
                    inactivity: DEFAULT_INACTIVITY_SECONDS,
                    min_user_turns: DEFAULT_MIN_USER_TURNS,
                    timeout: DEFAULT_TIMEOUT_SECONDS,
+                   sentences: RecapPrompt::DEFAULT_SENTENCES,
                    client: nil,
                    store: nil,
                    clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
@@ -244,6 +246,7 @@ module Samagotchi
       @inactivity = inactivity
       @min_user_turns = min_user_turns
       @timeout = timeout
+      @sentences = sentences
       # Specs inject a client; otherwise one IdleClient per target, rebuilt
       # when the target changes.
       @client_override = client
@@ -371,7 +374,8 @@ module Samagotchi
       # Nothing new said (only notes, tool traffic, or no messages at all):
       # the recap still stands, so no request.
       return :nothing_new if transcript.strip.empty?
-      prompt = RecapPrompt.build(transcript, tool_names: TranscriptFilter.tool_names(fresh), previous: previous&.dig(:text))
+      prompt = RecapPrompt.build(transcript, tool_names: TranscriptFilter.tool_names(fresh), previous: previous&.dig(:text),
+                                                     sentences: @sentences)
       return :nothing_new if prompt.nil?
       asked = target
       @in_flight = { thread: spawn_summarize(client_for(asked), prompt), generation: gen, deadline: @clock.call + @timeout,

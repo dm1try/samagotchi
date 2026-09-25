@@ -76,6 +76,30 @@ RSpec.describe "Engine recap on a configured host", :recap do
       old.nil? ? ENV.delete("SAMAGOTCHI_RECAP_INACTIVITY") : ENV["SAMAGOTCHI_RECAP_INACTIVITY"] = old
     end
 
+    it "takes recap.sentences from the environment without a host or model" do
+      old = ENV["SAMAGOTCHI_RECAP_SENTENCES"]
+      ENV["SAMAGOTCHI_RECAP_SENTENCES"] = "5-7"
+      engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m")
+      expect(engine.recap.sentences).to eq([5, 7])
+    ensure
+      old.nil? ? ENV.delete("SAMAGOTCHI_RECAP_SENTENCES") : ENV["SAMAGOTCHI_RECAP_SENTENCES"] = old
+    end
+
+    it "takes recap.sentences from the TUI's recap hash, a YAML integer too" do
+      engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m",
+                                      recap: { host_ref: "box", model: "box:small", sentences: 3 })
+      expect(engine.recap.sentences).to eq([3, 3])
+    end
+
+    it "warns about an invalid recap.sentences and keeps the recap on with 2-4" do
+      engine = nil
+      expect {
+        engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m",
+                                        recap: { host_ref: "box", model: "box:small", sentences: "12" })
+      }.to output(/invalid value for recap.sentences: "12" — using 2-4/).to_stderr
+      expect(engine.recap.sentences).to eq([2, 4])
+    end
+
     it "still warns and stays off for an incomplete explicit config" do
       expect {
         engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m", recap: { model: "small" })
