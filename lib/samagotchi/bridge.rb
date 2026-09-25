@@ -590,6 +590,14 @@ module Samagotchi
     end
 
     # Create a turn via file IPC (fire-and-forget). Returns [headers, status, body].
+    #
+    # A +deadline+ (wall-clock epoch seconds; the client shares this machine's
+    # clock) is when the client stops waiting (BridgeClient#post_turn): a turn
+    # past it waited in the socket while this worker was frozen (a sleeping
+    # Mac, SIGSTOP) and its client has already said it was not sent, so it is
+    # dropped with 408 deadline_passed. It is checked with the event log held,
+    # right before the write, so nothing that holds the log (an exit check)
+    # can delay an accepted turn past it. No deadline (an older client): taken.
     def handle_post_turn(session_id, body)
       parsed = parse_json(body)
       unless parsed.is_a?(Hash)
@@ -608,6 +616,11 @@ module Samagotchi
       images = turn_images(sid, fetched(parsed, "images"))
       return [{}, 400, { error: "bad_images", detail: images }] if images.is_a?(String)
 
+      deadline = fetched(parsed, "deadline")
+      unless deadline.nil? || deadline.is_a?(Numeric)
+        return [{ "Allow" => "POST" }, 400, { error: "bad_deadline", detail: "deadline must be epoch seconds" }]
+      end
+
       enqueued_id = SecureRandom.uuid
       enqueued =
         if own_session?(sid)
@@ -615,6 +628,8 @@ module Samagotchi
           # emit this turn's :turn_started (or merge it mid-turn) before
           # :turn_enqueued, and a failed write announces nothing.
           @engine.synchronize_events do
+            next :expired if turn_expired?(deadline, sid, client_id)
+
             enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
                          no_interrupt: no_interrupt, images: images).tap do |ok|
               next unless ok
@@ -625,10 +640,15 @@ module Samagotchi
               @on_input&.call
             end
           end
+        elsif turn_expired?(deadline, sid, client_id)
+          :expired
         else
           enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
                        no_interrupt: no_interrupt, images: images)
         end
+      if enqueued == :expired
+        return [{}, 408, { error: "deadline_passed", detail: "the turn arrived after its client stopped waiting; not run" }]
+      end
       return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] unless enqueued
 
       [{}, 202, { status: "accepted", enqueued_id: enqueued_id, session_id: sid }]
@@ -692,6 +712,17 @@ module Samagotchi
 
     # Write a turn into the target session's input dir, reusing the file IPC
     # the worker polls. Never calls run_turn across the boundary.
+    # Whether a turn's +deadline+ has passed (logged when it has).
+    def turn_expired?(deadline, session_id, client_id)
+      return false if deadline.nil?
+
+      late = Time.now.to_f - deadline
+      return false unless late.positive?
+
+      Log.warn(:bridge, "turn_expired", sid: session_id, client_id: client_id, late: late.round(1))
+      true
+    end
+
     def enqueue_turn(session_id:, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [])
       require_relative "session_manager"
       Samagotchi::SessionManager.write_turn_input(

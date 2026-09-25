@@ -937,6 +937,70 @@ RSpec.describe Samagotchi::Bridge do
       expect(resp).to have_key("enqueued_id")
     end
 
+    describe "a turn's deadline" do
+      def input_dir
+        File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input")
+      end
+
+      # A request that waited in the socket while the worker was frozen: its
+      # client has timed out and said it was not sent.
+      it "drops a turn whose deadline has passed: nothing queued, announced or woken, and a warning logged" do
+        wakes = []
+        start_bridge(on_input: -> { wakes << true })
+        seen = []
+        @engine.subscribe(observer: ->(e) { seen << e })
+        allow(Samagotchi::Log).to receive(:warn).and_call_original
+
+        status, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "stale", client_id: "cli:send",
+                                               deadline: Time.now.to_f - 5))
+
+        expect(status).to eq(408)
+        expect(resp).to include("error" => "deadline_passed")
+        expect(Dir.exist?(input_dir) ? Dir.children(input_dir) : []).to be_empty
+        expect(seen).to be_empty
+        expect(wakes).to be_empty
+        expect(Samagotchi::Log).to have_received(:warn)
+          .with(:bridge, "turn_expired", hash_including(sid: @session.id, client_id: "cli:send", late: be > 4))
+      end
+
+      it "drops a stale turn for another session too" do
+        start_bridge
+        other = make_session
+
+        status, = post_turn(JSON.generate(session_id: other.id, prompt: "stale", deadline: Time.now.to_f - 1))
+
+        expect(status).to eq(408)
+        expect(Dir.glob(File.join(state_dir, "*", "input", "*"))).to be_empty
+      end
+
+      it "accepts a turn before its deadline" do
+        start_bridge
+
+        status, = post_turn(JSON.generate(session_id: @session.id, prompt: "fresh", deadline: Time.now.to_f + 25))
+
+        expect(status).to eq(202)
+        expect(Dir.children(input_dir).size).to eq(1)
+      end
+
+      it "accepts a turn with no deadline, as an older client sends it" do
+        start_bridge
+
+        status, = post_turn(JSON.generate(session_id: @session.id, prompt: "old client"))
+
+        expect(status).to eq(202)
+        expect(Dir.children(input_dir).size).to eq(1)
+      end
+
+      it "answers 400 for a deadline that is not a number" do
+        start_bridge
+
+        status, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "hi", deadline: "soon"))
+
+        expect(status).to eq(400)
+        expect(resp["error"]).to eq("bad_deadline")
+      end
+    end
+
     it "announces :turn_enqueued with the client's id and the ACK's enqueued_id" do
       start_bridge
       seen = []
