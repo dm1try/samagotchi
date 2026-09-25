@@ -32,6 +32,17 @@ module Samagotchi
       profile.name == "qwen36" ? Qwen.new(profile) : Gemma.new(profile)
     end
 
+    # +text+ without its tool-call blocks (+open+ … +close+); a block the model
+    # never closed runs to the end. Surrounding whitespace is trimmed.
+    def self.strip_calls(text, open, close)
+      result = text.to_s
+      while (open_pos = result.index(open))
+        close_pos = result.index(close, open_pos + open.length)
+        result = result[0...open_pos] + (close_pos ? result[close_pos + close.length..] : "")
+      end
+      result.strip
+    end
+
     # ── Gemma 4 ────────────────────────────────────────────────────────────
     # Tool calls:  <|tool_call>call:NAME{params}<tool_call|>
     # Thoughts:    <|think|>CONTENT (ends at next real <| token) and
@@ -104,6 +115,10 @@ module Samagotchi
         end
 
         result
+      end
+
+      def strip_tool_calls(text)
+        ToolCallParser.strip_calls(text, @tool_call_open, @tool_call_close)
       end
 
       # Gemma has no unterminated-tool-call recovery flow.
@@ -423,6 +438,10 @@ module Samagotchi
         result = result.gsub(/^\s*<\/think>\s*\n?/m, '')
         # Clean up any extra blank lines that may have been left behind
         result.gsub(/\n\n+/, "\n")
+      end
+
+      def strip_tool_calls(text)
+        ToolCallParser.strip_calls(text, "<tool_call>", "</tool_call>")
       end
 
       def parse_with_recovery(response, partial_fragment)

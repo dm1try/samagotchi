@@ -453,6 +453,17 @@ Need to inspect the filesystem first.
       expect(result.conversation.last[:content]).to include("[execute]")
     end
 
+    it "leaves the tool-call markup out of an exhausted result's output" do
+      allow(client).to receive(:complete)
+        .and_return(%(Checking the loop.\n<|tool_call>call:execute{command: "echo loop"}<tool_call|>))
+
+      result = kernel.run([{ role: "user", content: "loop" }], max_iterations: 1)
+
+      expect(result).to be_exhausted
+      expect(result.output).to eq("Checking the loop.")
+      expect(result.conversation.find { |m| m[:role] == "model" }[:content]).to include("<|tool_call>")
+    end
+
     it "can resume from a previous exhausted result" do
       prompts = []
       responses = [
@@ -1243,6 +1254,16 @@ end
       expect(result).to eq("done")
       expect(prompts[1]).to include("stdout:")
       expect(prompts[1]).to include("hello")
+    end
+
+    it "leaves the tool-call markup out of an exhausted result's output" do
+      allow(client).to receive(:complete)
+        .and_return("<tool_call><function=execute><parameter=command>echo hi</parameter></function></tool_call>")
+
+      result = qwen_kernel.run([{ role: "user", content: "run" }], max_iterations: 1)
+
+      expect(result).to be_exhausted
+      expect(result.output).to eq("")
     end
 
     it "parses a Qwen 3.6 read tool call" do

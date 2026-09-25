@@ -343,8 +343,11 @@ module Samagotchi
         exhausted = true
       end
 
+      output = strip_thought_blocks(last_model_content(conversation))
+      # A turn stopped at the limit ends on a call it never ran: show only its text.
+      output = parser.strip_tool_calls(output) if exhausted
       Result.new(
-        output: PromptLiteralGuard.restore(strip_thought_blocks(last_model_content(conversation)), profile: @profile),
+        output: PromptLiteralGuard.restore(output, profile: @profile),
         conversation: duplicate_conversation(conversation),
         exhausted: exhausted,
         pending_tool_calls: pending_tool_calls,
