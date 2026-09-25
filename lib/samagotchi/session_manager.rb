@@ -165,8 +165,10 @@ module Samagotchi
     end
 
     # List all sessions, reading status from persisted session.json files.
-    def self.list_sessions(state_dir: nil, sort: "updated_at", order: "desc", limit: nil, offset: 0)
-      Session.list(state_dir: state_dir || Session.default_state_dir, sort: sort, order: order, limit: limit, offset: offset)
+    # +project_root+: only that project's sessions (nil: every session).
+    def self.list_sessions(state_dir: nil, sort: "updated_at", order: "desc", limit: nil, offset: 0, project_root: nil)
+      Session.list(state_dir: state_dir || Session.default_state_dir, sort: sort, order: order, limit: limit,
+                   offset: offset, project_root: project_root)
     end
 
     # Prune sessions per retention policy. Delegates to Session.prune with live-worker guard.
@@ -179,16 +181,19 @@ module Samagotchi
     #   not the saved status, which a dead worker leaves at "running"); a
     #   REPL-owned session is left out: it can't take notes
     # @param cwd [String, nil] only sessions in this folder or below it
+    # @param project_root [String, nil] only this project's sessions
+    #   (Session#project_root)
     # @param limit [Integer, nil] taken after the filters
     # @param include_tests [Boolean] false leaves out test runs
     # @param exclude [String, nil] a session id to leave out (the asker)
     # @return [Array<Hash>] {id:, short_id:, desc:, preview:, cwd:,
     #   updated_at:, status:, live:, busy:, owner:, recap:}; busy = live with
     #   a turn running, recap = the saved recap's first sentence
-    def self.session_summaries(live: false, cwd: nil, limit: nil, include_tests: true, exclude: nil, state_dir: nil)
+    def self.session_summaries(live: false, cwd: nil, limit: nil, include_tests: true, exclude: nil, state_dir: nil,
+                               project_root: nil)
       sd = state_dir || Session.default_state_dir
       root = cwd && folder_path(cwd)
-      summaries = Session.list(state_dir: sd, sort: "updated_at", order: "desc").lazy
+      summaries = Session.list(state_dir: sd, sort: "updated_at", order: "desc", project_root: project_root).lazy
                          .reject { |s| (!include_tests && s.test_run) || s.id == exclude }
                          .select { |s| root.nil? || in_folder?(s.working_directory, root) }
                          .filter_map do |s|

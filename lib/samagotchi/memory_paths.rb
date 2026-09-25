@@ -51,6 +51,11 @@ module Samagotchi
       File.basename(common) == ".git" ? File.dirname(common) : common
     end
 
+    # Is +cwd+ inside a git repository (a .git somewhere above it)?
+    def in_repo?(cwd = Dir.pwd)
+      !find_dot_git(cwd).nil?
+    end
+
     def find_dot_git(start)
       dir = File.expand_path(start)
       loop do

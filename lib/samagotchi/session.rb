@@ -5,6 +5,8 @@ require "json"
 require "securerandom"
 require "time"
 
+require_relative "project_scope"
+
 module Samagotchi
   class Session
     METADATA_VERSION = 3
@@ -29,11 +31,16 @@ module Samagotchi
     attr_accessor :id, :metadata_version, :mode, :model_name, :working_directory, :messages,
                    :created_at, :updated_at, :status, :last_prompt, :first_preview, :test_run,
                    :pending_question, :used_memory_names
+    # The project the session was started in (ProjectScope.root_for its
+    # folder), stored because worktrees are deleted after a merge and a
+    # deleted folder no longer leads to its repository. nil outside a repo,
+    # and in files written before the field existed (see #project_root).
+    attr_writer :project_root
 
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
                    metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
                    first_preview: "", test_run: false, pending_question: nil,
-                   used_memory_names: [])
+                   used_memory_names: [], project_root: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -48,6 +55,16 @@ module Samagotchi
       @test_run = !!test_run
       @pending_question = pending_question
       @used_memory_names = Array(used_memory_names).map(&:to_s).reject(&:empty?).uniq
+      @project_root = project_root
+    end
+
+    # The stored project root, else (a file from before the field) the
+    # project of the working directory now: nil when that is in no repo or
+    # gone. +cache+ is ProjectScope.root_for's, shared across one listing.
+    def project_root(cache: nil)
+      return @project_root if @project_root
+
+      ProjectScope.root_for(@working_directory, cache: cache)
     end
 
     # Build a new, unsaved session.
@@ -68,7 +85,8 @@ module Samagotchi
         updated_at: now,
         status: STATUS_IDLE,
         first_preview: "",
-        test_run: resolved_test
+        test_run: resolved_test,
+        project_root: ProjectScope.root_for(working_directory)
       )
     end
 
@@ -100,7 +118,8 @@ module Samagotchi
         first_preview: data.fetch("first_preview", ""),
         test_run: data.fetch("test_run", false),
         pending_question: pending,
-        used_memory_names: Array(used_mems)
+        used_memory_names: Array(used_mems),
+        project_root: data["project_root"]
       )
     rescue JSON::ParserError => e
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
@@ -130,7 +149,10 @@ module Samagotchi
 
     # Return all saved sessions sorted by updated_at desc by default (newest first).
     # Supports sort: created_at|updated_at and order: asc|desc.
-    def self.list(state_dir: default_state_dir, sort: "updated_at", order: "desc", limit: nil, offset: 0)
+    # +project_root+ keeps only that project's sessions (Session#project_root),
+    # before offset/limit so pages count within the project.
+    def self.list(state_dir: default_state_dir, sort: "updated_at", order: "desc", limit: nil, offset: 0,
+                  project_root: nil)
       return [] unless Dir.exist?(state_dir)
 
       sort_key = SORT_KEYS.include?(sort.to_s) ? sort.to_s : "updated_at"
@@ -152,10 +174,15 @@ module Samagotchi
           last_prompt: data.fetch("last_prompt", ""),
           first_preview: data.fetch("first_preview", ""),
           test_run: data.fetch("test_run", false),
-          used_memory_names: Array(used_mems)
+          used_memory_names: Array(used_mems),
+          project_root: data["project_root"]
         )
       rescue JSON::ParserError, KeyError
         nil
+      end
+      if project_root
+        roots = {}
+        sessions.select! { |s| s.project_root(cache: roots) == project_root }
       end
 
       sorted = sessions.sort_by do |s|
@@ -311,7 +338,8 @@ module Samagotchi
         "first_preview" => @first_preview,
         "test_run" => !!@test_run,
         "pending_question" => @pending_question ? scrub_utf8(stringify_message_keys(@pending_question)) : nil,
-        "used_memory_names" => Array(@used_memory_names)
+        "used_memory_names" => Array(@used_memory_names),
+        "project_root" => @project_root
       }
 
       File.write(temp_path, JSON.pretty_generate(record) + "\n")
