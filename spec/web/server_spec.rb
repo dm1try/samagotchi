@@ -29,6 +29,17 @@ RSpec.describe Samagotchi::Web::Server::Log do
 
     expect(out.string).to include("ERROR RuntimeError: boom").and include("ERROR bad request line")
   end
+
+  # WEBrick logs the signal that stops its loop as FATAL with a backtrace
+  # before it re-raises it: Ctrl-C (Interrupt) and a kill (SIGTERM).
+  it "drops the signal that stops the server, keeps other fatals" do
+    log.fatal(raised(Interrupt, ""))
+    log.fatal(SignalException.new("TERM"))
+    expect(out.string).to eq("")
+
+    log.fatal(raised(RuntimeError, "boom"))
+    expect(out.string).to include("FATAL RuntimeError: boom")
+  end
 end
 
 RSpec.describe Samagotchi::Web::Server do
@@ -206,6 +217,13 @@ RSpec.describe Samagotchi::Web::Server do
       expect(described_class.launch(port: 4567, markdown: true, turn_view: true)).to eq(0)
       expect(described_class).to have_received(:start)
         .with(port: 4567, host: "127.0.0.1", url: "http://127.0.0.1:4567/?dir=%2Fr", open_browser: false, markdown: true, turn_view: true)
+    end
+
+    it "stops on Ctrl-C with one line and status 130, no backtrace" do
+      allow(described_class).to receive(:probe).and_return(:free)
+      allow(described_class).to receive(:start).and_raise(Interrupt)
+
+      expect { expect(described_class.launch(port: 4567)).to eq(130) }.to output("Chi Web stopped.\n").to_stdout
     end
 
     it "exits 1 when something else holds the port" do

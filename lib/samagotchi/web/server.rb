@@ -30,6 +30,15 @@ module Samagotchi
 
           super
         end
+
+        # WEBrick logs the signal that ends its loop (Ctrl-C, a kill) as
+        # FATAL with a backtrace, then re-raises it: .launch says it in a
+        # line instead.
+        def fatal(msg)
+          return if msg.is_a?(SignalException)
+
+          super
+        end
       end
 
       DEFAULT_PORT = 4567
@@ -58,6 +67,11 @@ module Samagotchi
         else
           start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, turn_view: turn_view) ? 0 : 1
         end
+      rescue Interrupt
+        # Ctrl-C: the server has stopped (start's ensure); one line, and the
+        # status a shell gives a command it interrupted.
+        puts "#{"\n" if $stdout.tty?}Chi Web stopped."
+        130
       end
 
       # @param hub [SessionHub, nil] the session projection the page streams
