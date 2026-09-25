@@ -215,7 +215,6 @@ RSpec.describe "bin/chi --attach / --shared flags" do
     %w[--attach s1 -p hi --non-interactive] => "--attach/--shared can't be combined with --non-interactive",
     %w[--shared --non-interactive] => "--attach/--shared can't be combined with --non-interactive",
     %w[--shared -v] => "--attach/--shared can't be combined with --verbose",
-    %w[--attach s1 --memory notes] => "--attach/--shared can't be combined with --memory",
     %w[--attach s1 --shared] => "use either --attach ID or --shared",
     %w[--attach s1 --resume s1] => "--attach takes the session id; --resume goes with --shared"
   }.each do |args, message|
@@ -225,6 +224,17 @@ RSpec.describe "bin/chi --attach / --shared flags" do
       expect(status.exitstatus).to eq(1)
       expect(err).to include(message)
     end
+  end
+
+  it "warns about --memory/--mute for an existing session and goes on to attach" do
+    _out, err, status = Open3.capture3(RbConfig.ruby, chi, "--attach", "s1", "--memory", "notes", "--mute", "identity", stdin_data: "")
+
+    expect(err).to include("Warning: --memory 'notes' not found")
+    expect(err).to include("(--memory and --mute apply to a new session; s1's prompt is already built)")
+    expect(err).not_to include("can't be combined")
+    # The attach itself: s1 is no session here.
+    expect(status.exitstatus).to eq(1)
+    expect(err).to include("Session not found: s1")
   end
 
   it "keeps rejecting explicit conflicts with session.shared on" do

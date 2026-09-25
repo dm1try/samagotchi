@@ -24,6 +24,15 @@ RSpec.describe "chi --help" do
     expect(shared_line).to include("--no-shared runs a plain in-process REPL")
   end
 
+  it "lists --mute next to --memory, neither tied to the plain REPL" do
+    out, = Open3.capture3(RbConfig.ruby, chi, "--help", stdin_data: "")
+
+    memory_line = out.lines.find { |l| l.include?("--memory NAME") }
+    expect(memory_line).to include("repeatable")
+    expect(memory_line).not_to include("plain REPL")
+    expect(out.lines.find { |l| l.include?("--mute NAME") }).to include("Hide a memory from this session")
+  end
+
   it "names the subcommands" do
     out, = Open3.capture3(RbConfig.ruby, chi, "--help", stdin_data: "")
 

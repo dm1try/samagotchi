@@ -863,7 +863,7 @@ ARGV.each do |arg|
   base = arg.split("=", 2).first
   # If dashed version is a known flag (registry or hardcoded), reject underscore variant
   dashed = base.tr("_", "-")
-  known = %w[--prompt --resume --attach --shared --no-shared --model --memory --no-interrupt --non-interactive --verbose --no-default-input --port --open] + Samagotchi::Config.cli_entries.map(&:cli_flag)
+  known = %w[--prompt --resume --attach --shared --no-shared --model --memory --mute --no-interrupt --non-interactive --verbose --no-default-input --port --open] + Samagotchi::Config.cli_entries.map(&:cli_flag)
   if known.include?(dashed) || known.include?(base)
     warn "Unknown option: #{arg} (did you mean #{dashed}?)"
     exit 1
@@ -890,7 +890,8 @@ parser = OptionParser.new do |opts|
   opts.on("--model NAME", "Model selector (runtime only, overrides --resume) [alias for --default-model]") { |m| options[:model] = m; cli_overrides["default.model"] = m }
   opts.on("--profile NAME", Samagotchi::ModelProfile::NAMES,
           "Prompt profile for every model in this run (#{Samagotchi::ModelProfile::NAMES.join('|')}) [alias for --model-profile]") { |p| cli_overrides["model.profile"] = p }
-  opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable; runs a plain REPL, not attached)") { |m| (options[:memories] ||= []) << m }
+  opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable; a comma list too)") { |m| (options[:memories] ||= []) << m }
+  opts.on("--mute NAME", "Hide a memory from this session: not in the prompt, refused by memory_read (repeatable; a comma list too)") { |m| (options[:muted] ||= []) << m }
   opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true; cli_overrides["no_interrupt"] = true }
   opts.on("--non-interactive", "Run a single prompt and exit (no REPL, implies --no-interrupt)") { options[:non_interactive] = true }
   opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results (runs a plain REPL, not attached)") { options[:verbose] = true }
@@ -1013,12 +1014,43 @@ rescue Samagotchi::Session::AmbiguousId => e
   exit 1
 end
 
+# --memory and --mute names are checked here, before the launch: a worker's
+# stderr goes nowhere, so its engine's warnings would not be seen. Warnings
+# only; the session starts either way.
+if options[:memories] || options[:muted]
+  require "samagotchi/muted_memories"
+  require "samagotchi/memory_bundle/system_bundle"
+  begin
+    Samagotchi::MemoryBundle::SystemBundle.ensure!
+  rescue StandardError
+    nil
+  end
+  memory_exists = lambda do |raw|
+    scope, name = raw.split("/", 2)
+    scope, name = nil, raw unless name && Samagotchi::Tools::VALID_SCOPES.include?(scope)
+    !Samagotchi::Tools::MemoryRead.call(name, scope: scope).start_with?("Error:")
+  end
+  cli_memories = (options[:memories] || []).flat_map { |m| m.split(",") }.map(&:strip).reject(&:empty?)
+  cli_memories.each { |m| warn "Warning: --memory '#{m}' not found" unless memory_exists.call(m) }
+  muted = Samagotchi::MutedMemories.normalize_list(options[:muted] || [])
+  baseline = Samagotchi::ConfigFile.preloaded_memories
+  muted.each do |name|
+    if cli_memories.any? { |m| Samagotchi::MutedMemories.normalize(m) == name }
+      warn "Warning: '#{name}' is both --memory and --mute; muted"
+    elsif baseline.any? { |m| Samagotchi::MutedMemories.normalize(m) == name }
+      warn "Warning: '#{name}' is in config.yml memories: and --mute; muted for this session"
+    elsif !memory_exists.call(name)
+      warn "Warning: --mute '#{name}' matches no memory"
+    end
+  end
+end
+
 require "samagotchi/launch_mode"
 launch, launch_note = Samagotchi::LaunchMode.resolve(options, shared_config: Samagotchi::Config.get("session.shared"))
 warn launch_note if launch_note
 
 if launch == :attached
-  conflict = { non_interactive: "--non-interactive", memories: "--memory", verbose: "--verbose" }
+  conflict = { non_interactive: "--non-interactive", verbose: "--verbose" }
              .find { |key, _flag| options[key] }
   error = if options[:attach] && options[:shared]
             "use either --attach ID or --shared"
@@ -1037,7 +1069,9 @@ if launch == :attached
     ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], shared: !options[:attach], resume: options[:resume],
                                                        prompt: options[:prompt], model: options[:model],
                                                        no_interrupt: !!options[:no_interrupt],
-                                                       default_input: !options[:no_default_input])
+                                                       default_input: !options[:no_default_input],
+                                                       memories: options[:memories] || [],
+                                                       muted_memories: options[:muted] || [])
   rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
     warn "Error: #{e.message}"
     exit 1

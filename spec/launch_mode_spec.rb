@@ -36,18 +36,18 @@ RSpec.describe Samagotchi::LaunchMode do
       expect(resolve(true, prompt: "hi")).to eq([:attached, nil])
     end
 
-    {
-      { memories: ["a"] } => "--memory",
-      { verbose: true } => "--verbose"
-    }.each do |options, flag|
-      it "runs a plain REPL, with a note, for #{flag}" do
-        expect(resolve(true, **options)).to eq([:repl, "(session.shared: #{flag} runs in a plain REPL)"])
-      end
+    it "runs a plain REPL, with a note, for --verbose" do
+      expect(resolve(true, verbose: true)).to eq([:repl, "(session.shared: --verbose runs in a plain REPL)"])
     end
 
     it "attaches with --model and --no-interrupt, which reach the worker" do
       expect(resolve(true, model: "m")).to eq([:attached, nil])
       expect(resolve(true, no_interrupt: true, prompt: "hi")).to eq([:attached, nil])
+    end
+
+    it "attaches with --memory and --mute, which the worker reads from the session" do
+      expect(resolve(true, memories: ["a"])).to eq([:attached, nil])
+      expect(resolve(true, muted: ["a"])).to eq([:attached, nil])
     end
 
     it "keeps the explicit flags' behavior" do

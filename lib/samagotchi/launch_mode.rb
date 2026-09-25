@@ -6,10 +6,11 @@ module Samagotchi
   # plain `chi` runs attached unless it asks for something attached mode
   # can't do yet.
   module LaunchMode
-    # Options an attached TUI can't honor: the worker takes no memories and
-    # prints nothing. (--model and --no-interrupt reach the worker: a /model
-    # command, and no_interrupt on each posted turn.)
-    REPL_ONLY = { memories: "--memory", verbose: "--verbose" }.freeze
+    # Options an attached TUI can't honor: the worker prints nothing, so
+    # --verbose is about this process's output. (--model and --no-interrupt
+    # reach the worker: a /model command, and no_interrupt on each posted
+    # turn; --memory and --mute are session fields the worker reads.)
+    REPL_ONLY = { verbose: "--verbose" }.freeze
 
     module_function
 
