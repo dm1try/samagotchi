@@ -189,6 +189,16 @@ RSpec.describe Samagotchi::SessionMetrics do
     snap = metrics.snapshot
     expect(snap[:retries]).to eq(1)
     expect(snap[:cancellations]).to eq(1)
+    expect(snap[:turn_records].last).to include(status: "canceled", cancellation_reason: "ctrl_c")
+  end
+
+  it "keeps no cancellation reason on a completed turn's record" do
+    feed([
+      { type: :turn_started, session_id: "sess-3b", prompt: "x" },
+      { type: :turn_completed, result: double(respond_to?: false) }
+    ])
+
+    expect(metrics.snapshot[:turn_records].last).not_to have_key(:cancellation_reason)
   end
 
   it "commits partial generation tokens when a generation is canceled" do

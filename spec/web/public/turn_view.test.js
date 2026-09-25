@@ -46,7 +46,7 @@ test("turnHistoryHtml: a turn canceled before any answer keeps its timing under 
     tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
   });
   const html = turnHistoryHtml(items, canceled, { thumbs });
-  assert.match(html, /<\/details><div class="turn-timing">turn 1 · 0.9s · canceled<\/div>$/);
+  assert.match(html, /<\/details><div class="turn-timing">turn 1 · 0.9s · canceled<\/div><div class="bubble cancel">\u2715 canceled<\/div>$/);
   assert.match(html, /<summary>1 step · 1 tool call<\/summary><details class="gen"><summary>working with execute · 1 tool call<\/summary>/);
 });
 
@@ -79,4 +79,13 @@ test("turnHistoryHtml with parts: a plain answer's thinking is the chat view's c
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
     '<details class="bubble thinking"><summary>thinking</summary><div class="thinking-body">easy</div></details>' +
     '<div class="bubble output">PONG</div><div class="turn-timing">turn 1 · 0.5s</div>');
+});
+
+test("turnHistoryHtml: a canceled turn with an answer ends with its cancel line and reason, after the answer", () => {
+  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "Running the slow\n[interrupted]" }];
+  const canceled = normalizeTiming({ turn_records: [{ id: "T1", status: "canceled", cancellation_reason: "user", duration_ms: 4400 }] });
+  const html = turnHistoryHtml(items, canceled, { thumbs });
+  assert.match(html, /<div class="turn-timing">turn 1 · 4.4s · canceled<\/div><div class="bubble cancel">\u2715 canceled \(user\)<\/div>$/);
+  const done = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 4400 }] });
+  assert.doesNotMatch(turnHistoryHtml(items, done, { thumbs }), /bubble cancel/);
 });

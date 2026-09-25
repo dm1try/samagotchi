@@ -138,7 +138,7 @@ module Samagotchi
         end_turn(status: "completed")
       when :turn_canceled
         @mutex.synchronize { @cancellations += 1 }
-        end_turn(status: "canceled")
+        end_turn(status: "canceled", reason: event[:cancellation_reason])
       when :turn_failed
         end_turn(status: "failed")
       end
@@ -234,17 +234,21 @@ module Samagotchi
       end
     end
 
-    def end_turn(status: "completed")
+    # A canceled turn's record keeps why (+reason+: "user", "ctrl_c", ...), so
+    # a reloaded web history can show the cancel line the live one did.
+    def end_turn(status: "completed", reason: nil)
       @mutex.synchronize do
         if @turn
           finished_at = now
-          @turn_records << {
+          record = {
             id: @turn.id,
             status: status,
             started_at: @turn.started_at,
             completed_at: finished_at.iso8601(3),
             duration_ms: elapsed_ms(@turn.started_monotonic)
           }
+          record[:cancellation_reason] = reason.to_s unless reason.nil? || reason.to_s.empty?
+          @turn_records << record
         end
         @iterations_total += @turn.iteration_count if @turn
         @gen_latency_ms += @turn.gen_latency_accum if @turn

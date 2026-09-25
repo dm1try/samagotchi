@@ -181,3 +181,16 @@ test("turnTimingText: the turn's number live and after it ends, as a reload show
 test("turnTimingText: a canceled turn says so", () => {
   assert.equal(turnTimingText(2, 1600, { canceled: true }), "turn 2 · 1.6s · canceled");
 });
+
+import { cancelLineHtml, cancelLineText } from "../../../lib/samagotchi/web/public/timing.js";
+
+test("cancelLineText / cancelLineHtml: the live line and the one a re-render draws from the turn record", () => {
+  assert.equal(cancelLineText("user"), "\u2715 canceled (user)");
+  assert.equal(cancelLineText(""), "\u2715 canceled");
+  const esc = (s) => s.replace(/</g, "&lt;");
+  assert.equal(cancelLineHtml({ status: "canceled", cancellation_reason: "ctrl_c" }, esc), '<div class="bubble cancel">\u2715 canceled (ctrl_c)</div>');
+  assert.equal(cancelLineHtml({ status: "canceled" }, esc), '<div class="bubble cancel">\u2715 canceled</div>');
+  assert.equal(cancelLineHtml({ status: "canceled", cancellation_reason: "<x>" }, esc), '<div class="bubble cancel">\u2715 canceled (&lt;x>)</div>');
+  assert.equal(cancelLineHtml({ status: "completed" }, esc), "");
+  assert.equal(cancelLineHtml(null, esc), "");
+});
