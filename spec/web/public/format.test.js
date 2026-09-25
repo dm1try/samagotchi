@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace } from "../../../lib/samagotchi/web/public/format.js";
+import { leadTrimmed, previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace } from "../../../lib/samagotchi/web/public/format.js";
 
 test("noteHtml: who sent the context note, then its text, both escaped", () => {
   assert.equal(
@@ -210,4 +210,11 @@ test("recapPlace: a stale recap goes before the first turn it doesn't cover", ()
   // Current (nothing since), or more turns than the page shows: at the end.
   assert.equal(recapPlace(users, 0), null);
   assert.equal(recapPlace(users, 9), null);
+});
+
+test("leadTrimmed drops leading whitespace only while the body is empty", () => {
+  assert.equal(leadTrimmed("", "\n"), "");
+  assert.equal(leadTrimmed("", "\n  Hmm, so"), "Hmm, so");
+  assert.equal(leadTrimmed("Hmm", "\n\nnext"), "\n\nnext");
+  assert.equal(leadTrimmed("", undefined), "");
 });

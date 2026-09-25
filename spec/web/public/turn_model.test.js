@@ -207,3 +207,14 @@ test("blockSummary: an answer that moved out of the block is no step unless its 
   takeAnswer(thought, thought.gens[1]);
   assert.equal(blockSummary(thought), "2 steps · 1 tool call");
 });
+
+test("a live gen's thinking starts at its first visible character; later whitespace stays", () => {
+  const { turn } = feed([
+    { type: "turn_started", prompt: "p" },
+    { type: "generation_started", iteration: 1 },
+    { type: "generation_chunk", iteration: 1, text: "", thinking: "\n" },
+    { type: "generation_chunk", iteration: 1, text: "", thinking: " \nFirst" },
+    { type: "generation_chunk", iteration: 1, text: "", thinking: " line.\n\nSecond" },
+  ]);
+  assert.equal(currentGen(turn).thinking, "First line.\n\nSecond");
+});
