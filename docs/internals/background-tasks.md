@@ -22,3 +22,5 @@ Behavior:
 - `task_get` returns metadata and `output_path`; use `read` for output contents.
 - `task_wait` accepts `timeout`, `tail_lines` (maximum 100), and `done_pattern` (a regular expression string).
 - `task_create` accepts `env` as a JSON object string for deterministic overrides such as `PATH`; use an absolute interpreter path when that is simpler. Ruby/Bundler isolation variables remain protected.
+
+Work that needs a model, not a shell command, goes to a child chi session instead: `delegate` / `delegate_result` have the same shape (start, then wait) and return only the child's final reply; see [Sessions: Delegating](../sessions.md#delegating).
