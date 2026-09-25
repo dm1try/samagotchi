@@ -35,4 +35,24 @@ RSpec.describe "list_sessions and send_note in the loops" do
 
     expect([peers.session_id, peers.cwd, peers.state_dir]).to eq([me.id, "/work/me", tmpdir])
   end
+
+  it "the Engine's peers see the running turn's cancel, so a waiting tool can return" do
+    engine = Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client), profile: "gemma4")
+    peers = engine.instance_variable_get(:@kernel).peers
+    expect(peers.cancelled?).to be(false)
+
+    ctrl = Samagotchi::CancellationController.new
+    engine.instance_variable_set(:@active_cancel_controller, ctrl)
+    expect(peers.cancelled?).to be(false)
+    ctrl.cancel!
+    expect(peers.cancelled?).to be(true)
+
+    plain = Samagotchi::Tools::Peers.new(session_id: me.id, cwd: "/work/me", state_dir: tmpdir)
+    expect(plain.cancelled?).to be(false)
+    flag = false
+    lazy = Samagotchi::Tools::Peers.new(session_id: me.id, cwd: "/work/me", state_dir: tmpdir, cancelled: -> { flag })
+    expect(lazy.cancelled?).to be(false)
+    flag = true
+    expect(lazy.cancelled?).to be(true)
+  end
 end
