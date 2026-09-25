@@ -223,6 +223,17 @@ RSpec.describe Samagotchi::SendCommand do
 
     after { FileUtils.rm_rf(xdg) }
 
+    it "keeps the order of the ids given when stdout and stderr share a pipe" do
+      repl = make(owner: "tui")
+      live = make(owner: "worker")
+      serve(live)
+
+      output, _status = Open3.capture2e({ "XDG_STATE_HOME" => xdg }, RbConfig.ruby, chi, "send", "-m", "x",
+                                        short(repl), "nope", short(live), stdin_data: "")
+
+      expect(output.lines.map { |line| line[/refused|no session nope|sent/] }).to eq(["refused", "no session nope", "sent"])
+    end
+
     it "is wired before the main option parser, and keeps non-ASCII text without a locale" do
       a = make(owner: "worker")
       # A history with non-ASCII in it, read with no locale.

@@ -125,6 +125,17 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
       Open3.capture3({ "XDG_STATE_HOME" => xdg_state }, RbConfig.ruby, chi, "sessions", *args, stdin_data: "")
     end
 
+    it "keeps the order of the ids given when stdout and stderr share a pipe" do
+      a, b = Array.new(2) do
+        Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap { |s| s.save(state_dir: state_dir) }
+      end
+
+      output, _status = Open3.capture2e({ "XDG_STATE_HOME" => xdg_state }, RbConfig.ruby, chi, "sessions", "delete",
+                                        a.id[0, 8], "nope1", b.id[0, 8], "nope2", stdin_data: "")
+
+      expect(output.lines.map { |line| line[/deleted|nope\d/] }).to eq(%w[deleted nope1 deleted nope2])
+    end
+
     it "deletes a session and lists delete in the help" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: state_dir)

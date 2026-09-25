@@ -46,9 +46,19 @@ module Samagotchi
         return 1
       end
 
-      ids, all_found = targets(options)
-      delivered = ids.map { |id| deliver(id, text, options[:source]) }
-      all_found && !ids.empty? && delivered.all? ? 0 : 1
+      return deliver_to_live(text, options[:source]) if options[:all]
+
+      # One id at a time, so each line follows the order of the ids given.
+      seen = {}
+      results = options[:ids].uniq.map do |given|
+        id = resolve(given)
+        next false unless id
+        next true if seen[id]
+
+        seen[id] = true
+        deliver(id, text, options[:source])
+      end
+      results.all? ? 0 : 1
     end
 
     private
@@ -85,17 +95,15 @@ module Samagotchi
       @stdin.read
     end
 
-    # @return [Array(Array<String>, Boolean)] full ids, and whether every
-    #   given id was found
-    def targets(options)
-      if options[:all]
-        ids = SessionManager.session_summaries(live: true, include_tests: false, state_dir: @state_dir).map { |s| s[:id] }
-        @stderr.puts("chi note: no live sessions (chi sessions list --live)") if ids.empty?
-        return [ids, true]
+    # --all: every live session. @return [Integer] exit status
+    def deliver_to_live(text, source)
+      ids = SessionManager.session_summaries(live: true, include_tests: false, state_dir: @state_dir).map { |s| s[:id] }
+      if ids.empty?
+        error_line("chi note: no live sessions (chi sessions list --live)")
+        return 1
       end
 
-      found = options[:ids].uniq.map { |given| resolve(given) }
-      [found.compact.uniq, found.all?]
+      ids.map { |id| deliver(id, text, source) }.all? ? 0 : 1
     end
 
     def resolve(given)
@@ -104,7 +112,7 @@ module Samagotchi
       id
     rescue ArgumentError => e
       message = e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"
-      @stderr.puts("chi note: #{message}")
+      error_line("chi note: #{message}")
       nil
     end
 
@@ -134,8 +142,15 @@ module Samagotchi
       text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
     end
 
+    # stderr isn't buffered, stdout is when it's a pipe: flush the lines
+    # already printed, so the output keeps the order of the ids given.
+    def error_line(text)
+      @stdout.flush
+      @stderr.puts(text)
+    end
+
     def usage_error(message)
-      @stderr.puts("chi note: #{message}")
+      error_line("chi note: #{message}")
       @stderr.puts(USAGE)
       nil
     end

@@ -51,9 +51,17 @@ module Samagotchi
         return 1
       end
 
-      found = options[:ids].uniq.map { |given| resolve(given) }
-      sent = found.compact.uniq.map { |id| deliver(id, prompt) }
-      found.all? && sent.all? ? 0 : 1
+      # One id at a time, so each line follows the order of the ids given.
+      seen = {}
+      results = options[:ids].uniq.map do |given|
+        id = resolve(given)
+        next false unless id
+        next true if seen[id]
+
+        seen[id] = true
+        deliver(id, prompt)
+      end
+      results.all? ? 0 : 1
     end
 
     private
@@ -111,7 +119,7 @@ module Samagotchi
       id
     rescue ArgumentError => e
       message = e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"
-      @stderr.puts("chi send: #{message}")
+      error_line("chi send: #{message}")
       nil
     end
 
@@ -146,8 +154,15 @@ module Samagotchi
       text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
     end
 
+    # stderr isn't buffered, stdout is when it's a pipe: flush the lines
+    # already printed, so the output keeps the order of the ids given.
+    def error_line(text)
+      @stdout.flush
+      @stderr.puts(text)
+    end
+
     def usage_error(message)
-      @stderr.puts("chi send: #{message}")
+      error_line("chi send: #{message}")
       @stderr.puts(USAGE)
       nil
     end

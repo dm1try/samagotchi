@@ -73,7 +73,7 @@ module Samagotchi
       @stdout.puts("#{short}  refused: #{line}")
       false
     rescue ArgumentError => e
-      @stderr.puts("chi sessions delete: #{e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"}")
+      error_line("chi sessions delete: #{e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"}")
       false
     rescue SystemCallError => e
       @stdout.puts("#{short}  failed: #{e.message}")
@@ -89,8 +89,15 @@ module Samagotchi
       nil
     end
 
+    # stderr isn't buffered, stdout is when it's a pipe: flush the lines
+    # already printed, so the output keeps the order of the ids given.
+    def error_line(text)
+      @stdout.flush
+      @stderr.puts(text)
+    end
+
     def usage_error(message)
-      @stderr.puts("chi sessions delete: #{message}")
+      error_line("chi sessions delete: #{message}")
       @stderr.puts(USAGE)
       nil
     end
