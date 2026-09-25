@@ -65,6 +65,40 @@ test("timedTurnIndexes: a canceled turn that saved only its prompt keeps its tim
   assert.deepEqual(timedTurnIndexes(items), [0, null, null, 1]);
 });
 
+import { turnGroups } from "../../../lib/samagotchi/web/public/timing.js";
+
+const TIMING = normalizeTiming({
+  turn_records: [{ id: "T1", status: "completed", duration_ms: 18503 }, { id: "T2", status: "canceled", duration_ms: 900 }],
+  tool_records: [
+    { id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 },
+    { id: "T1:2:1", turn_id: "T1", iteration: 2, call_index: 1, tool: "read", status: "error", duration_ms: 1 },
+  ],
+});
+
+test("turnGroups: a turn's steps come from its iterations (tool records), its texts in order, the last text is the answer", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "Let me check." }, // iteration 1's narration; iteration 2 wrote none
+    { role: "assistant", content: "Both fine." },
+    { role: "note", content: "n" },
+    { role: "user", content: "again" }, // canceled before an answer
+  ];
+  assert.deepEqual(turnGroups(items, TIMING), [
+    { kind: "turn", turnIndex: 0, user: 0, answer: 2, record: TIMING.turnRecords[0], steps: [
+      { i: 1, iteration: 1, tools: [{ key: "1:1", tool: "execute", status: "ok", duration_ms: 7 }] },
+      { i: null, iteration: 2, tools: [{ key: "2:1", tool: "read", status: "error", duration_ms: 1 }] },
+    ] },
+    { kind: "note", i: 3 },
+    { kind: "turn", turnIndex: 1, user: 4, answer: null, record: TIMING.turnRecords[1], steps: [] },
+  ]);
+});
+
+test("turnGroups: a plain answer has no steps; an assistant message before any prompt is its own answer", () => {
+  const items = [{ role: "assistant", content: "hello" }, { role: "user", content: "p" }, { role: "assistant", content: "PONG" }];
+  const groups = turnGroups(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }));
+  assert.deepEqual(groups.map((g) => [g.kind, g.user, g.answer, g.steps?.length]), [["answer", undefined, 0, undefined], ["turn", 1, 2, 0]]);
+});
+
 function fakeParent() {
   const parent = {
     children: [],
