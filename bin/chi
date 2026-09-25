@@ -363,7 +363,7 @@ if ARGV[0] == "bundle"
           puts ""
           puts "  install <source> [--scope system|project] [--force]"
           puts "    Install a memory bundle from a directory, zip, tar archive, or git URL,"
-          puts "    or a bundle shipped with chi by name (e.g. guardrails)."
+          puts "    or a bundle shipped with chi by name (guardrails, known-names)."
           puts "    --force overwrites existing entries; default skips them."
           exit 0
         elsif arg == "--scope" && nxt

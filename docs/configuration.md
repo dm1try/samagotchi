@@ -76,7 +76,8 @@ and llama host/port on every invocation.
 
 Note: The global config file supports both flat scalar entries (for env vars)
 and nested sections like `hosts:`, `recap:`, `hooks:`, `guardrails:` (see
-[Guardrails](guardrails.md)), `model_aliases:`,
+[Guardrails](guardrails.md)), `bundles:` (a bundle's settings for its hooks,
+see [Hooks: Settings](hooks.md#settings)), `model_aliases:`,
 `memories:`. Scalar entries are loaded as environment
 variables; non-scalar sections are skipped by the env-loader and parsed by
 their respective subsystems (e.g. the hooks system, `HostRegistry`). The

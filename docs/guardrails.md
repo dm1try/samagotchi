@@ -136,6 +136,55 @@ A bundle ships rules as `guardrails/*.yml` (the same `rules:` shape). Install
 records each file's sha256; a file changed afterwards, missing, or not parsing
 denies every call until the bundle is reinstalled.
 
+## The known-names bundle
+
+```sh
+chi bundle install known-names
+```
+
+installs one `before_tool_call` hook and a short memory. A local model that
+once misspells a name inside a path (`dzmitrydziadou` → `dzmitryziadou`)
+keeps copying the wrong spelling from its context, and every call after
+that fails. The hook knows the right names and compares strings: the
+user's home folder name, login (`$USER`), git `user.name` words and email
+local part, the repo folder name, and any names from config. A token in a
+call's command, `cwd` or paths (never a write's content) that is within one
+edit of a known name shorter than 10 characters, or two edits of a longer
+one, is a near miss. Tokens and names shorter than `min_length` (6) are
+skipped, as is a token that equals another known name.
+
+By default (`mode: reject`) the call is denied with advice in place of the
+usual tail, so the model retries it corrected:
+
+```
+[execute] Error: denied by guardrail (hook known_names, bundle known-names): "dmitrydedvo" in the command is 1 edit away from the known name "dmitrydedov". The user was not asked. Retry with "dmitrydedov". If "dmitrydedvo" is really what you meant, say so to the user instead of retrying.
+```
+
+and the user sees one line: `known-names> rejected execute: "dmitrydedvo" looks like "dmitrydedov"`.
+
+```yaml
+bundles:
+  known-names:
+    names: [dzmitrydziadou]   # protected besides the derived ones
+    mode: reject              # reject | correct | ask
+    derive: [home, user, git, repo]
+    ignore: [dmitri]          # a real name that is near a protected one
+    min_length: 6
+    max_distance: 2           # default: 1 under 10 characters, else 2
+```
+
+`mode: correct` rewrites the call (whole tokens, everywhere they appear) and
+says so; `mode: ask` shows the call with three choices, *Correct it and
+run*, *Run as is*, *Deny*; with no one to ask (`--non-interactive`) or a
+dismissed question it rejects. A real near name (a folder `dmitri` next to
+user `dmitry`, a login one letter from another) is caught too: list it under
+`ignore:`. The hook is `on_error: log`: a bug in it warns and lets the call
+through. As with every bundle hook, a running worker picks it up after its
+next start.
+
+The system prompt names the home directory once, with the advice to write
+it as `~` or `$HOME`, so the model rarely has to spell it.
+
 ## Failing closed
 
 - A config hook with `required: true`, or a bundle `before_tool_call` hook with

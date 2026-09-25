@@ -46,13 +46,86 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 | Event | When it fires | Event payload |
 |-------|--------------|---------------|
 | `:session_start` | First turn of the session | `{ type: :session_start, session_id: "..." }` |
-| `:before_turn` | Before each turn starts | `{ type: :before_turn }` |
-| `:after_turn` | After each turn completes | `{ type: :after_turn }` |
+| `:before_turn` | Before each turn starts | `{ type: :before_turn, session_id: "...", prompt: "..." (nil on a continue), messages: [...] (the history before this turn) }` |
+| `:after_turn` | After a turn completed or was cancelled (not after one that failed) | `{ type: :after_turn, status: "completed" \| "canceled", messages: [...] (the conversation the turn stored) }` |
 | `:before_generation` | Before each LLM API call (both loops) | `{ type: :before_generation, iteration: N }` |
-| `:after_generation` | After LLM returns (both loops) | `{ type: :after_generation, iteration: N, response: "..." }` |
+| `:after_generation` | After LLM returns (both loops) | `{ type: :after_generation, iteration: N, response: "...", messages: [...] (the conversation as sent) }` |
 | `:before_tool_call` | Before tool dispatch (and before `tool_call_started`) | `{ type: :before_tool_call, iteration: N, call: {...}, params: "...", guardrail: Verdict, context: {...}, targets: {...}, blocked: false, block_reason: nil }` |
 | `:after_tool_call` | After tool execution | `{ type: :after_tool_call, iteration: N, tool: "read", output: "..." }` |
 | `:session_end` | After every turn (turn-level lifecycle) | `{ type: :session_end, session_id: "..." }` |
+
+Every event also carries the hook runtime (next section): `hook:` (the label
+of the hook about to run) and the callables `notify:`, `ask_user:`,
+`stop_turn:`.
+
+`messages:` is a **read-only copy**: a frozen array of copied message hashes
+(`{role:, content:, …}`). A hook that mutates it, or its strings, gets
+undefined behaviour. `:before_tool_call` carries no messages (the gate stays
+cheap).
+
+## What a hook can do: the runtime
+
+Besides reading (and, on `:before_tool_call`, voting on) its event, a hook
+can talk to the user through three callables the registry puts on every
+event:
+
+```ruby
+class Watchful
+  def call(event)
+    case event[:type]
+    when :after_generation
+      # One line in the REPL, the attached TUI and the web ("<bundle>> text",
+      # or "hook> text" for a config hook); level: :warn colours it.
+      event[:notify].call("the model repeated itself", level: :warn)
+    when :before_tool_call
+      # A single-select question through the question flow (REPL, attached
+      # TUI, web); returns {selected: [...], freeform:, selected_indices:}
+      # or nil when there is no one to ask (--non-interactive), the
+      # question was dismissed, or the options were not 2-8 strings.
+      answer = event[:ask_user].call(question: "#{event[:call][:name]}: #{event[:params]}\nRun it?",
+                                     options: ["Run", "Deny"], header: "my guard", allow_freeform: false)
+      event[:guardrail].deny!("the user said no") unless answer&.dig(:selected)&.first == "Run"
+    when :before_generation
+      # Cancel the running turn: a warn notice with the reason, then the
+      # turn ends as cancelled (hook). From :before_tool_call it also denies
+      # that call, and the rest of the batch is denied; from :after_turn or
+      # :session_end it does nothing (false).
+      event[:stop_turn].call("too many iterations without progress") if event[:iteration] > 20
+    end
+  end
+end
+```
+
+`event[:hook]` is the label the notices carry: `known_names.rb (bundle
+known-names)` for a bundle hook, `audit.rb (config)` for a config hook,
+`turn hook` for one registered at runtime.
+
+Timing: a notice from `:after_turn` or `:session_end` shows after the turn's
+end line. A question from `:before_tool_call` shows **before** the tool
+line (the gate runs first), so its text should name the call. The notices
+are also logged (`turn` tag, `hook_notice`).
+
+## Settings
+
+A hook class whose `initialize` takes an argument gets its settings: **one
+positional Hash with string keys** (`def initialize(settings = {})`;
+`initialize(**kw)` is not supported). A class whose `initialize` takes none
+is built bare. Defaults belong in the hook.
+
+```yaml
+bundles:                 # per bundle, by name, for its hooks
+  known-names:
+    names: [dzmitrydziadou]
+    mode: reject
+hooks:
+  before_tool_call:
+    - path: my_guard.rb  # a config hook: its entry's settings
+      settings: { threshold: 2 }
+```
+
+Two config entries for the same file with different settings get two
+instances. A running worker reads config at start (restart it after a
+change), as for every hook.
 
 ## Error Handling
 
@@ -136,10 +209,13 @@ class Safety
 end
 ```
 
-`event[:guardrail]` is the call's verdict. `deny!(reason, rule: nil, source: nil)`
+`event[:guardrail]` is the call's verdict. `deny!(reason, rule: nil, source: nil, advice: nil)`
 and `ask!(reason, scopes: nil, rule: nil, source: nil)` vote; the strictest
 vote wins (deny > ask > allow) and a vote never relaxes it, so a later hook
 can't undo a deny. An ask goes to the user (see [Guardrails](guardrails.md#ask)).
+`advice:` replaces the fixed "Do not retry it…" tail of the deny text with
+the voter's own (a guard that wants the model to retry a corrected call:
+`Retry with "…".`).
 
 `event[:context]` is `{cwd:, repo_root:, branch:, session_id:, interface:, origin:}`
 (`interface` is `:repl`, `:worker` or `:non_interactive`). `event[:targets]` is
@@ -217,6 +293,8 @@ Notes:
 - A `fail_closed` `:before_tool_call` hook is required: if it is missing, fails to load or its sha256 differs, chi denies every tool call until it is fixed.
 - A bundle can also ship YAML rules in `guardrails/*.yml`; see [Guardrails](guardrails.md#the-guardrails-bundle).
 - Ordering: bundle hooks fire by `(priority, bundle_name, hook_name)` (lower priority first), then plain `config.yml` hooks in registration order.
+- Settings: a hook class with `initialize(settings = {})` gets the bundle's section of `config.yml` `bundles:` (see [Settings](#settings)).
+- Shipped bundles: `chi bundle install guardrails` (rules, see [Guardrails](guardrails.md#the-guardrails-bundle)) and `chi bundle install known-names` (a hook, see [Guardrails](guardrails.md#the-known-names-bundle)).
 - Installing a bundle executes its hook code at `Engine` startup. Only install bundles you trust, as you would a gem. Hooks are **not** executed at install time (copy-only); they are `module_eval`'d at `Engine.new` inside per-bundle `Samagotchi::Bundles::<name>` namespaces (no top-level `require` collisions). Keep hook files side-effect-free at load time; do work in `#call` — top-level side effects (require, IO, `at_exit`, global assignment) run once per `Engine.new` (class redefinition is idempotent).
 
 Lifecycle:
