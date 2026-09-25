@@ -98,12 +98,18 @@ module Samagotchi
     # Returns the session object with its ID. Every worker always starts its
     # per-session Bridge (the single live client transport), so external
     # clients can reach it once the sidecar is published.
-    def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil)
+    # @param memories [Array<String>] --memory: preloaded into the worker's prompt
+    # @param muted_memories [Array<String>] --mute: hidden from the session
+    #   (both are session fields, so a respawn keeps them)
+    def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
+                           memories: [], muted_memories: [])
       sd = state_dir || Session.default_state_dir
       session = Session.new_session(
         mode: mode,
         model_name: model_name || Samagotchi::ModelProfile.required_model_name,
-        working_directory: working_directory || Dir.pwd
+        working_directory: working_directory || Dir.pwd,
+        preloaded_memory_names: memories,
+        muted_memory_names: muted_memories
       )
       # With no prompt there is no first turn to run (an attaching UI sends
       # the prompts), so the session starts idle.

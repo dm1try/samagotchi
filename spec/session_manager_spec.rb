@@ -487,6 +487,17 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Process).to have_received(:spawn)
     end
 
+    it "stores the --memory and --mute lists on the session before the worker starts" do
+      allow(Process).to receive(:spawn).and_return(12_345)
+
+      session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir,
+                                              memories: ["cli_usage"], muted_memories: ["gh-helper"])
+
+      loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      expect(loaded.preloaded_memory_names).to eq(["cli_usage"])
+      expect(loaded.muted_memory_names).to eq(["gh-helper"])
+    end
+
     it "records the first prompt as the preview, before the worker takes it" do
       allow(Process).to receive(:spawn).and_return(12_345)
 

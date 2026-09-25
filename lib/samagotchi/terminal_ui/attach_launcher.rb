@@ -31,10 +31,15 @@ module Samagotchi
       #   posts runs with the raised iteration limit
       # @param default_input [Boolean] a new session with no -p gets
       #   SAMAGOTCHI_DEFAULT_INPUT in its first read (--no-default-input: no)
+      # @param memories [Array<String>] --memory: a new session's worker
+      #   preloads them (an existing session keeps its own list)
+      # @param muted_memories [Array<String>] --mute: hidden from a new session
       # @return [Symbol] :detached, :closed when the worker went away, or
       #   :failed when the --model switch didn't go through
-      def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true)
-        client = connect(attach: attach, shared: shared, resume: resume, model: model)
+      def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
+              memories: [], muted_memories: [])
+        client = connect(attach: attach, shared: shared, resume: resume, model: model,
+                         memories: memories, muted_memories: muted_memories)
         first_command = model && (attach || resume) ? "/model #{model}" : nil
         surface = open_surface
         begin
@@ -59,8 +64,10 @@ module Samagotchi
 
       # @return [BridgeClient] a client for the live Bridge of the session
       # @raise [Error]
-      def connect(attach: nil, shared: false, resume: nil, model: nil, state_dir: nil, wait: BRIDGE_WAIT)
+      def connect(attach: nil, shared: false, resume: nil, model: nil, state_dir: nil, wait: BRIDGE_WAIT,
+                  memories: [], muted_memories: [], err: $stderr)
         sd = state_dir || Session.default_state_dir
+        warn_memory_flags_ignored(attach || resume, memories, muted_memories, err) if attach || resume
         if attach
           live = connect_existing(attach, sd)
           return live if live
@@ -72,7 +79,8 @@ module Samagotchi
         session = if resume
                     SessionManager.resume_session(resume, state_dir: sd)
                   else
-                    SessionManager.spawn_session(prompt: nil, model_name: model && model_ref(model), state_dir: sd)
+                    SessionManager.spawn_session(prompt: nil, model_name: model && model_ref(model), state_dir: sd,
+                                                 memories: memories, muted_memories: muted_memories)
                   end
         client = BridgeClient.wait_for(session.id, session_dir: Session.session_dir(session.id, state_dir: sd), timeout: wait)
         client || raise(Error, "the worker for session #{session.id} did not start its Bridge in time")
@@ -85,6 +93,19 @@ module Samagotchi
       # --model as the REPL reads it: an alias resolved, a host prefix kept.
       def model_ref(model)
         ModelProfile.required_model_name(ConfigFile.resolve_model_alias(model))
+      end
+
+      # An existing session's prompt is built from its own session fields:
+      # --memory/--mute given with --attach or --resume are ignored, with a
+      # line saying so (printed before the live region opens).
+      def warn_memory_flags_ignored(session_id, memories, muted_memories, err)
+        flags = []
+        flags << "--memory" unless Array(memories).empty?
+        flags << "--mute" unless Array(muted_memories).empty?
+        return if flags.empty?
+
+        verb = flags.size == 1 ? "applies" : "apply"
+        err.puts "(#{flags.join(' and ')} #{verb} to a new session; #{session_id}'s prompt is already built)"
       end
 
       # @return [BridgeClient, nil] the running worker's, or nil when none runs

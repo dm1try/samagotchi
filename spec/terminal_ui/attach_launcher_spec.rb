@@ -62,7 +62,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
 
       expect(connect(shared: true)).to be(client)
-      expect(Samagotchi::SessionManager).to have_received(:spawn_session).with(prompt: nil, model_name: nil, state_dir: state_dir)
+      expect(Samagotchi::SessionManager).to have_received(:spawn_session)
+        .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: [], muted_memories: [])
       expect(Samagotchi::BridgeClient).to have_received(:wait_for)
         .with(session.id, session_dir: Samagotchi::Session.session_dir(session.id, state_dir: state_dir), timeout: 0.2)
     end
@@ -75,7 +76,35 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       connect(shared: true, model: "fast")
 
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
-        .with(prompt: nil, model_name: "unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M", state_dir: state_dir)
+        .with(prompt: nil, model_name: "unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M", state_dir: state_dir,
+              memories: [], muted_memories: [])
+    end
+
+    it "starts a new session with its --memory and --mute lists" do
+      allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+
+      expect { connect(shared: true, memories: ["cli_usage"], muted_memories: ["gh-helper"]) }.not_to output.to_stderr
+      expect(Samagotchi::SessionManager).to have_received(:spawn_session)
+        .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: ["cli_usage"], muted_memories: ["gh-helper"])
+    end
+
+    it "ignores --memory/--mute for an existing session, saying so, and goes on" do
+      allow(Samagotchi::SessionManager).to receive(:resume_session).and_return(session)
+      allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
+      allow(Samagotchi::BridgeClient).to receive(:discover).and_return(client)
+      err = StringIO.new
+
+      expect(connect(shared: true, resume: session.id, muted_memories: ["gh-helper"], err: err)).to be(client)
+      expect(connect(attach: session.id, memories: ["a"], muted_memories: ["b"], err: err)).to be(client)
+      expect(connect(attach: session.id, err: err)).to be(client)
+
+      expect(err.string).to eq(
+        "(--mute applies to a new session; #{session.id}'s prompt is already built)\n" \
+        "(--memory and --mute apply to a new session; #{session.id}'s prompt is already built)\n"
+      )
+      expect(Samagotchi::SessionManager).to have_received(:resume_session).with(session.id, state_dir: state_dir)
+      expect(Samagotchi::Session.load(session.id, state_dir: state_dir).muted_memory_names).to eq([])
     end
 
     it "resumes a session in a worker (or joins the one running it)" do
@@ -109,7 +138,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     client = instance_double(Samagotchi::BridgeClient)
     surface = instance_double(Samagotchi::TerminalUI::PlainSurface)
     attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
-    allow(described_class).to receive(:connect).with(attach: nil, shared: true, resume: nil, model: nil).and_return(client)
+    allow(described_class).to receive(:connect)
+      .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: []).and_return(client)
     allow(described_class).to receive(:open_surface).and_return(surface)
     allow(described_class).to receive(:close_surface)
     allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_return(attached)
@@ -148,7 +178,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     ])
     # Only a new session with no -p gets the default input.
     expect(default_inputs).to eq([false, false, true])
-    expect(described_class).to have_received(:connect).with(attach: nil, shared: true, resume: nil, model: "qwen_moe")
+    expect(described_class).to have_received(:connect)
+      .with(attach: nil, shared: true, resume: nil, model: "qwen_moe", memories: [], muted_memories: [])
   end
 end
 
