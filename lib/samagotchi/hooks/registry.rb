@@ -4,6 +4,15 @@ require "monitor"
 
 module Samagotchi
   module Hooks
+    # What a hook can do beyond reading its event: the Engine's three
+    # callables, each given the hook's label. +notify+ takes
+    # (text:, level:, hook:) and shows one line to the user; +ask_user+
+    # takes (question:, options:, header:, allow_freeform:, hook:) and
+    # returns the answer hash or nil; +stop_turn+ takes (reason:, hook:) and
+    # cancels the running turn (true when it did). A registry without one
+    # gives hooks no-op helpers.
+    Runtime = Struct.new(:notify, :ask_user, :stop_turn, keyword_init: true)
+
     # A thread-safe registry for named hook callbacks.
     #
     # Each hook is stored as a Proc that receives an event hash (passed by
@@ -11,13 +20,28 @@ module Samagotchi
     # per-hook registration/unregistration, clearing all hooks, and
     # synchronous dispatch.
     #
+    # Every fire puts the hook runtime on the event: +event[:hook]+ (the
+    # label of the proc about to run: "<file> (bundle <name>)", a config
+    # hook's label, or "turn hook"), and the helpers +event[:notify]+,
+    # +event[:ask_user]+ and +event[:stop_turn]+ (see #fire). Keys the fire
+    # site put on the event are never overwritten.
+    #
     # Thread safety is achieved via Monitor.
     class Registry
+      TURN_HOOK_LABEL = "turn hook"
+      CONFIG_HOOK_LABEL = "config hook"
+      # Events after which there is no turn left to stop.
+      TURN_OVER_EVENTS = %i[after_turn session_end].freeze
+
+      # @return [Runtime, nil] what the helpers call (the Engine sets it)
+      attr_accessor :runtime
+
       def initialize
         @mutex = Monitor.new
         @hooks = {} # name -> Array<Proc> (manual, turn-scoped hooks, run last)
-        @persistent_hooks = {} # name -> Array<Proc> (config.yml hooks, survive clear_all)
+        @persistent_hooks = {} # name -> Array<{label:, proc:}> (config.yml hooks, survive clear_all)
         @bundle_hooks = {} # name -> Array<{bundle:, hook_name:, priority:, proc:}>
+        @runtime = nil
       end
 
       # Register a hook with the given name.
@@ -37,11 +61,15 @@ module Samagotchi
       # turn, not only the first. Fires after bundle hooks, before
       # turn-scoped ones.
       # @param name [Symbol] hook event identifier
+      # @param label [String, nil] what event[:hook] names the hook by
+      #   (the loader passes the file); default "config hook"
       # @return [void]
-      def register_persistent(name, &block)
+      def register_persistent(name, label: nil, &block)
         raise ArgumentError, "hook name must be a Symbol" unless name.is_a?(Symbol)
         raise ArgumentError, "hook block is required" unless block_given?
-        @mutex.synchronize { (@persistent_hooks[name] ||= []) << block }
+        label = label.to_s.strip
+        label = CONFIG_HOOK_LABEL if label.empty?
+        @mutex.synchronize { (@persistent_hooks[name] ||= []) << { label: label, proc: block } }
       end
 
       # Register a bundle-owned hook. Bundle hooks are ordered by
@@ -124,6 +152,16 @@ module Samagotchi
       # name) fire first; config hooks next; turn-scoped hooks last, each in
       # registration order.
       #
+      # All procs get the same hash, so event[:hook] is set before each one;
+      # the helpers are set once per fire and read event[:hook] when called:
+      #   event[:notify].call(text, level: :info)   one line to the user
+      #   event[:ask_user].call(question:, options:, header: nil, allow_freeform: false)
+      #     -> {selected:, freeform:, selected_indices:} or nil (no one to
+      #     ask, cancelled, bad options)
+      #   event[:stop_turn].call(reason) -> true when the turn was cancelled;
+      #     in a before_tool_call event it also denies the call; from
+      #     after_turn / session_end it does nothing (false)
+      #
       # @param name [Symbol] the hook name to fire
       # @param event [Hash] the event payload (may be mutated by hooks)
       # @return [void]
@@ -131,7 +169,9 @@ module Samagotchi
         procs = ordered_procs(name)
         return if procs.empty?
 
-        procs.each do |hook_proc|
+        with_runtime(event)
+        procs.each do |label, hook_proc|
+          event[:hook] = label if event.is_a?(Hash)
           begin
             hook_proc.call(event)
           rescue StandardError
@@ -146,7 +186,12 @@ module Samagotchi
       # @yieldparam event [Hash]
       # @return [void]
       def fire_each(name, event)
-        ordered_procs(name).each do |hook_proc|
+        procs = ordered_procs(name)
+        return if procs.empty?
+
+        with_runtime(event)
+        procs.each do |label, hook_proc|
+          event[:hook] = label if event.is_a?(Hash)
           begin
             hook_proc.call(event)
           rescue StandardError
@@ -165,16 +210,40 @@ module Samagotchi
 
       private
 
-      # Returns the ordered list of procs for an event: bundle hooks sorted by
-      # (priority, bundle, hook_name), then config hooks, then turn-scoped
-      # hooks, each in registration order.
+      # Returns the ordered [label, proc] pairs for an event: bundle hooks
+      # sorted by (priority, bundle, hook_name), then config hooks, then
+      # turn-scoped hooks, each in registration order.
       def ordered_procs(name)
         @mutex.synchronize do
           bundle_procs = (@bundle_hooks[name] || [])
             .sort_by { |h| [h[:priority].to_i, h[:bundle].to_s, h[:hook_name].to_s] }
-            .map { |h| h[:proc] }
-          bundle_procs + (@persistent_hooks[name] || []) + (@hooks[name] || [])
+            .map { |h| ["#{h[:hook_name]} (bundle #{h[:bundle]})", h[:proc]] }
+          config_procs = (@persistent_hooks[name] || []).map { |h| [h[:label], h[:proc]] }
+          turn_procs = (@hooks[name] || []).map { |hook_proc| [TURN_HOOK_LABEL, hook_proc] }
+          bundle_procs + config_procs + turn_procs
         end
+      end
+
+      # The three helpers, once per fire; a fire site's own keys stay.
+      def with_runtime(event)
+        return unless event.is_a?(Hash)
+
+        event[:notify] ||= lambda { |text, level: :info|
+          @runtime&.notify&.call(text: text.to_s, level: level, hook: event[:hook])
+          nil
+        }
+        event[:ask_user] ||= lambda { |question:, options:, header: nil, allow_freeform: false|
+          @runtime&.ask_user&.call(question: question, options: options, header: header,
+                                   allow_freeform: allow_freeform, hook: event[:hook])
+        }
+        event[:stop_turn] ||= lambda { |reason|
+          next false if TURN_OVER_EVENTS.include?(event[:type])
+
+          if event[:type] == :before_tool_call && event[:guardrail].respond_to?(:deny!)
+            event[:guardrail].deny!("the turn was stopped by #{event[:hook]}: #{reason}")
+          end
+          @runtime&.stop_turn&.call(reason: reason.to_s, hook: event[:hook]) ? true : false
+        }
       end
     end
   end

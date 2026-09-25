@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/hooks"
+require "samagotchi/guardrails"
 
 RSpec.describe Samagotchi::Hooks::Registry do
   describe "#register" do
@@ -104,6 +105,109 @@ RSpec.describe Samagotchi::Hooks::Registry do
 
       expect(subject.unregister(:a)).to be true
       expect(subject.size).to eq(0)
+    end
+  end
+end
+
+RSpec.describe Samagotchi::Hooks::Registry, "the hook runtime on the event" do
+  it "labels each proc before it runs: bundle file, config label, turn hook" do
+    labels = []
+    subject.register_bundle("known-names", :before_turn, hook_name: "known_names.rb") { |e| labels << e[:hook] }
+    subject.register_persistent(:before_turn, label: "audit.rb (config)") { |e| labels << e[:hook] }
+    subject.register_persistent(:before_turn) { |e| labels << e[:hook] }
+    subject.register(:before_turn) { |e| labels << e[:hook] }
+    subject.fire(:before_turn, { type: :before_turn })
+    expect(labels).to eq(["known_names.rb (bundle known-names)", "audit.rb (config)", "config hook", "turn hook"])
+  end
+
+  it "labels the procs of fire_each too" do
+    labels = []
+    subject.register_bundle("b", :before_tool_call, hook_name: "g.rb") { |e| labels << e[:hook] }
+    subject.register(:before_tool_call) { |e| labels << e[:hook] }
+    subject.fire_each(:before_tool_call, { type: :before_tool_call }) { }
+    expect(labels).to eq(["g.rb (bundle b)", "turn hook"])
+  end
+
+  it "gives every hook notify, ask_user and stop_turn, and keeps the fire site's keys" do
+    seen = nil
+    subject.register(:before_turn) { |e| seen = e }
+    event = { type: :before_turn, messages: [] }
+    subject.fire(:before_turn, event)
+    expect(seen.object_id).to eq(event.object_id)
+    expect(event).to include(type: :before_turn, messages: [])
+    expect(%i[notify ask_user stop_turn].map { |k| event[k] }).to all(respond_to(:call))
+  end
+
+  it "does not add the runtime to an event nobody listens to" do
+    event = { type: :nothing }
+    subject.fire(:nothing, event)
+    expect(event).to eq({ type: :nothing })
+  end
+
+  it "makes the helpers no-ops without a runtime: notify nil, ask_user nil, stop_turn false" do
+    results = {}
+    subject.register(:before_turn) do |e|
+      results[:notify] = e[:notify].call("hi")
+      results[:ask] = e[:ask_user].call(question: "q", options: %w[a b])
+      results[:stop] = e[:stop_turn].call("why")
+    end
+    subject.fire(:before_turn, { type: :before_turn })
+    expect(results).to eq(notify: nil, ask: nil, stop: false)
+  end
+
+  describe "with a runtime" do
+    let(:calls) { [] }
+    let(:runtime) do
+      Samagotchi::Hooks::Runtime.new(
+        notify: ->(**kw) { calls << [:notify, kw] },
+        ask_user: ->(**kw) { calls << [:ask, kw]; { selected: ["a"], freeform: nil } },
+        stop_turn: ->(**kw) { calls << [:stop, kw]; true }
+      )
+    end
+
+    before { subject.runtime = runtime }
+
+    it "routes notify with the text, level and the calling hook's label" do
+      subject.register_bundle("kn", :after_turn, hook_name: "k.rb") { |e| e[:notify].call("looks off", level: :warn) }
+      subject.register(:after_turn) { |e| e[:notify].call("fine") }
+      subject.fire(:after_turn, { type: :after_turn })
+      expect(calls).to eq([[:notify, { text: "looks off", level: :warn, hook: "k.rb (bundle kn)" }],
+                           [:notify, { text: "fine", level: :info, hook: "turn hook" }]])
+    end
+
+    it "routes ask_user with defaults filled in and returns the runtime's answer" do
+      answer = nil
+      subject.register(:before_turn) { |e| answer = e[:ask_user].call(question: "which?", options: %w[a b]) }
+      subject.fire(:before_turn, { type: :before_turn })
+      expect(calls).to eq([[:ask, { question: "which?", options: %w[a b], header: nil, allow_freeform: false, hook: "turn hook" }]])
+      expect(answer).to eq(selected: ["a"], freeform: nil)
+    end
+
+    it "stop_turn cancels through the runtime and returns true" do
+      stopped = nil
+      subject.register(:before_generation) { |e| stopped = e[:stop_turn].call("enough") }
+      subject.fire(:before_generation, { type: :before_generation, iteration: 1 })
+      expect(calls).to eq([[:stop, { reason: "enough", hook: "turn hook" }]])
+      expect(stopped).to be(true)
+    end
+
+    it "stop_turn from before_tool_call also denies the call" do
+      verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "execute", content: "ls" })
+      subject.register_bundle("kn", :before_tool_call, hook_name: "k.rb") { |e| e[:stop_turn].call("bad call") }
+      subject.fire_each(:before_tool_call, { type: :before_tool_call, guardrail: verdict }) { }
+      expect(verdict).to be_deny
+      expect(verdict.reason).to eq("the turn was stopped by k.rb (bundle kn): bad call")
+      expect(calls.map(&:first)).to eq([:stop])
+    end
+
+    it "stop_turn after the turn does nothing and returns false" do
+      results = []
+      subject.register(:after_turn) { |e| results << e[:stop_turn].call("late") }
+      subject.register(:session_end) { |e| results << e[:stop_turn].call("late") }
+      subject.fire(:after_turn, { type: :after_turn })
+      subject.fire(:session_end, { type: :session_end })
+      expect(results).to eq([false, false])
+      expect(calls).to be_empty
     end
   end
 end

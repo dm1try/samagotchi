@@ -62,7 +62,7 @@ module Samagotchi
               plugin = load_plugin(hooks_dir, defn[:path])
               # Persistent: config hooks must fire on every turn, not be wiped
               # by Engine#run_turn's per-turn clear_hooks after turn 1.
-              registry.register_persistent(defn[:event_type].to_sym) do |event|
+              registry.register_persistent(defn[:event_type].to_sym, label: "#{defn[:path]} (config)") do |event|
                 begin
                   plugin.call(event)
                 rescue StandardError => e
