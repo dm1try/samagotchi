@@ -89,12 +89,33 @@ RSpec.describe Samagotchi::RecapStore do
       end
     end
 
-    it "keeps openings that are not a subject plus an -ing verb" do
+    it "drops the subject before a past-tense verb too" do
+      {
+        "The user and assistant explored open-sourcing samagotchi." => "Explored open-sourcing samagotchi.",
+        "The user and the assistant discussed the recap length." => "Discussed the recap length.",
+        "The user checked the current time and asked the assistant to list its tools." =>
+          "Checked the current time and asked the assistant to list its tools.",
+        "The user tried a new prompt." => "Tried a new prompt.",
+        "The user shared a screenshot of the web page." => "Shared a screenshot of the web page."
+      }.each do |recap, line|
+        write(recap)
+        expect(described_class.preview(File.dirname(path))).to eq(line)
+      end
+    end
+
+    it "keeps openings that are not a subject plus an -ing or an -ed verb" do
       [
         "The user asked the assistant to review what's stored in its memory library.",
-        "The user checked the current time and asked the assistant to list its tools.",
-        "The user and assistant explored the Samagotchi agent's setup.",
+        "The user wanted a shorter recap.",
+        "The user requested a list of tools.",
+        "The user needed the build to pass.",
+        "The user hoped to ship it today.",
+        "The user preferred the dark theme.",
+        "The user expected a single sentence.",
+        "The user seemed happy with it.",
+        "The user ran the suite twice.",
         "The user was curious about the recap.",
+        "The user and assistant's red-team exercise was paused.",
         "Bluefin's CI was set up; the user was testing it."
       ].each do |recap|
         write(recap)

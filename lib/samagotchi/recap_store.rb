@@ -17,8 +17,12 @@ module Samagotchi
     # "The user was testing…" / "The user and the assistant were exploring…":
     # the recap prompt opens with the user's task this way, which spent ~30
     # of a card's visible characters on the same words every time. Only a
-    # subject plus an -ing verb; anything else is left as it is.
-    SUBJECT_RE = /\AThe user(?: and (?:the )?assistant)? (?:was|were|is|are) (?=[a-z]+ing\b)/
+    # subject plus an -ing verb ("was testing") or a regular past tense
+    # ("explored"); not one that names a wish or a request ("asked the
+    # assistant to", "wanted"), which reads wrong without its subject.
+    # Irregular past tenses ("ran", "made") keep their subject.
+    NOT_STRIPPED = %w[asked wanted requested needed hoped preferred expected seemed].freeze
+    SUBJECT_RE = /\AThe user(?: and (?:the )?assistant)? (?:(?:was|were|is|are) (?=[a-z]+ing\b)|(?=[a-z]+ed\b)(?!(?:#{NOT_STRIPPED.join("|")})\b))/
 
     # @param session_id_lookup [#call] the current session's id, or nil
     # @param state_dir_lookup [#call] the state dir holding the sessions
