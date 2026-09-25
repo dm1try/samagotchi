@@ -390,6 +390,10 @@ module Samagotchi
         return error if error
 
         folder = dir ? { working_directory: dir } : {}
+        # model: the model the session starts on (the start page's picker,
+        # spelled as GET /api/models lists it); blank means the default.
+        model = (body["model"] || body["model_name"]).to_s.strip
+        folder[:model_name] = model unless model.empty?
         begin
           session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
         rescue ArgumentError => e

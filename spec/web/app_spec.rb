@@ -905,6 +905,19 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "POST /api/sessions with model" do
+    it "starts the session on the given model, and on the default without one or with a blank one" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager)
+      app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi","model":" box:gemma4-26b "}'))
+      app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi","model_name":"Qwen3-14B"}'))
+      app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi","model":"  "}'))
+      app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi"}'))
+
+      expect(manager.spawn_calls.map { |c| c[:extra] }).to eq([{ model_name: "box:gemma4-26b" }, { model_name: "Qwen3-14B" }, {}, {}])
+    end
+  end
+
   # A registry as GET /api/models reads it: list_all_models(force:) answers
   # per host {models:, error:}; default_entry names the default host.
   class FakeModelRegistry
