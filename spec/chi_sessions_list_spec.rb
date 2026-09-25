@@ -54,6 +54,15 @@ RSpec.describe "chi sessions list" do
     expect(out).to end_with("\n2 session(s) (sort=updated_at order=desc)\n")
   end
 
+  it "shows a quoted message without its quote markers" do
+    make("> answer:\n> the build failed\n\nsame bug?")
+
+    out, err, status = run_chi
+
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to include("  answer: the build failed same bug?\n")
+  end
+
   it "--live --format tsv: id<TAB>description per live session, for choose from list + cut -f1" do
     live = make("fix the login page", live: true)
     make("stopped one")

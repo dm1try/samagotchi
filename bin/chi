@@ -137,7 +137,7 @@ if ARGV[0] == "sessions"
     if project
       sessions.each do |s|
         flag = s.test_run ? " [test]" : ""
-        puts "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{s.last_prompt.to_s.gsub(/\s+/, ' ')[0,60]}#{flag}"
+        puts "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{Samagotchi::SessionManager.one_line(s.last_prompt)[0,60]}#{flag}"
       end
       puts "#{sessions.empty? ? "" : "\n"}#{scope_note.call(sessions.size)}"
     elsif sessions.empty?
@@ -145,7 +145,7 @@ if ARGV[0] == "sessions"
     else
       sessions.each do |s|
         flag = s.test_run ? " [test]" : ""
-        puts "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{s.last_prompt.to_s.gsub(/\s+/, ' ')[0,60]}#{flag}"
+        puts "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{Samagotchi::SessionManager.one_line(s.last_prompt)[0,60]}#{flag}"
       end
       puts "\n#{sessions.size} session(s) (sort=#{sort} order=#{order})"
     end

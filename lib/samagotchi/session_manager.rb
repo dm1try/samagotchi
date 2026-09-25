@@ -224,8 +224,14 @@ module Samagotchi
     end
 
     private_class_method def self.summary_text(session)
-      text = session.last_prompt.to_s.strip.empty? ? session.first_preview.to_s : session.last_prompt.to_s
-      text.gsub(/\s+/, " ").strip
+      one_line(session.last_prompt.to_s.strip.empty? ? session.first_preview.to_s : session.last_prompt.to_s)
+    end
+
+    # A prompt as one line for a session list: whitespace collapsed, and a
+    # quoted or annotated message (ContextQuote, the web's annotations)
+    # without its "> " markers, so the words show.
+    def self.one_line(text)
+      text.to_s.gsub(/^[ \t]*(?:>[ \t]?)+/, "").gsub(/\s+/, " ").strip
     end
 
     private_class_method def self.cut(text, limit)

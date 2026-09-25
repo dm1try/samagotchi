@@ -1447,6 +1447,15 @@ RSpec.describe Samagotchi::SessionManager do
       expect(by_id[preview.id]).to eq("app · from the preview")
     end
 
+    it "drops the quote markers of a quoted or annotated message from the description" do
+      quoted = make(prompt: "> answer:\n> the build failed\n>\n> > nested\n\nsame bug?")
+
+      summary = described_class.session_summaries(state_dir: tmpdir).find { |s| s[:id] == quoted.id }
+
+      expect(summary[:desc]).to eq("app · answer: the build failed nested same bug?")
+      expect(summary[:preview]).to eq("answer: the build failed nested same bug?")
+    end
+
     it "live: only sessions a worker owns now, not a REPL's and not a stale running status" do
       worker = make(updated: "2026-09-24T10:00:00Z")
       repl = make(updated: "2026-09-24T11:00:00Z")
