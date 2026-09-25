@@ -105,10 +105,15 @@ module Samagotchi
       # assistant to…" (goal first 25% → 100% with it); without "never by
       # name" it wrote "Dmitry and Chi"; without the side-details list it
       # kept the user's city and repo count, and paths and versions.
+      # Recap-polish spike (same 4 sessions): without the "lacks" line 4/20
+      # first recaps at 2-4 said "…weren't captured in the transcript"; 0/80
+      # with it. (A "short sentences, no dashes" line was dropped: with this
+      # one it brought back "Chi" as an actor in 15-18/80.)
       # %<plain>s is the range, e.g. "2-4 plain sentences".
       SYSTEM = "You write short recaps of a chat between a user and an assistant, for the user " \
                "coming back to it later. Reply with the recap only: %<plain>s, no heading, " \
-               "no preamble, no notes about the task or the transcript. Centre it on outcomes, not on " \
+               "no preamble, no notes about the task or the transcript. Do not mention what the " \
+               "transcript lacks or does not say; leave it out. Centre it on outcomes, not on " \
                "the order of events. The first sentence names what the user was working on, as the " \
                "task itself (\"The user was checking how the parser handles tabs\"), not as a request " \
                "(\"The user asked the assistant to...\"). Then say what came of it: results, decisions, " \

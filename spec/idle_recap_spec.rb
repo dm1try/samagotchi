@@ -184,6 +184,11 @@ RSpec.describe Samagotchi::IdleRecap do
                                   "what came of it", "still open", "Do not retell the chat turn by turn")
         expect(system).to include("never by name", "personal details about the user")
       end
+      it "asks to leave out what the transcript lacks" do
+        system = Samagotchi::IdleRecap::RecapPrompt.build(transcript).first[:content]
+        expect(system).to include("no notes about the task or the transcript. Do not mention what the transcript " \
+                                  "lacks or does not say; leave it out.")
+      end
       it "asks for an updated recap of the whole session when given the previous one" do
         result = text(Samagotchi::IdleRecap::RecapPrompt.build(transcript, previous: "We set up Bluefin."))
         expect(result).to include("Earlier recap:\nWe set up Bluefin.")
