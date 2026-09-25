@@ -195,6 +195,10 @@ module Samagotchi
       engine = Samagotchi::Engine.new(
         mode: @session.mode.to_sym,
         model_name: @session.model_name,
+        # The session's --memory and --mute lists: the same prompt on every
+        # (re)spawn.
+        memories: @session.preloaded_memory_names,
+        muted_memories: @session.muted_memory_names,
         reminders: {
           callback: lambda { |due_names|
             # A reminder is due: the loop runs a reminder turn for it once

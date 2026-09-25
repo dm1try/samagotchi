@@ -132,6 +132,19 @@ RSpec.describe Samagotchi::Worker do
       turns.pop(timeout: timeout)
     end
 
+    it "builds its Engine from the session's preloaded and muted memory lists" do
+      session.preloaded_memory_names = ["cli_usage"]
+      session.muted_memory_names = ["gh-helper"]
+      session.save(state_dir: tmpdir)
+      kwargs = nil
+      allow(Samagotchi::Engine).to receive(:new) do |**given|
+        kwargs = given
+        engine
+      end
+      start_worker
+      expect(kwargs).to include(memories: ["cli_usage"], muted_memories: ["gh-helper"])
+    end
+
     it "tells its Engine it is a worker, so approvals wait for an attached UI" do
       start_worker
       expect(engine.interface).to eq(:worker)
