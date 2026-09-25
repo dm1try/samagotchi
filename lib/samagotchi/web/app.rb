@@ -17,6 +17,7 @@ require_relative "../image_store"
 require_relative "../context_note"
 require_relative "../recap_store"
 require_relative "markdown_renderer"
+require_relative "session_summary"
 require_relative "../log"
 
 module Samagotchi
@@ -182,9 +183,10 @@ module Samagotchi
                    else
                      @manager.list_sessions(sort: sort, order: order, limit: limit, offset: offset, **scope)
                    end
+        roots = {}
         payload = sessions.map do |s|
           owner = session_owner(s.id)
-          session_to_json(s, status: displayed_status(s, owner: owner), owner: owner)
+          session_to_json(s, status: displayed_status(s, owner: owner), owner: owner, root_cache: roots)
         end
         # Expose total via header for pagination (total unordered count)
         headers = { "Content-Type" => "application/json; charset=utf-8", "Cache-Control" => "no-store", "Access-Control-Allow-Origin" => "*" }
@@ -788,37 +790,23 @@ module Samagotchi
         end
       end
 
-      # status is turn state (idle/running). The live worker's snapshot is the
-      # truth; on disk, a "running" with no live owner was left by a worker
-      # that died mid-turn.
+      # status is turn state (idle/running): SessionSummary.displayed_status,
+      # unless the manager can't tell who owns a session (then the file's
+      # word stands).
       def displayed_status(session, snapshot = nil, owner: session_owner(session.id))
-        return snapshot["status"] if snapshot.is_a?(Hash) && snapshot["status"]
-        return session.status unless session.status == Session::STATUS_RUNNING
-        return session.status unless @manager.respond_to?(:session_owner)
+        unless @manager.respond_to?(:session_owner)
+          return snapshot["status"] if snapshot.is_a?(Hash) && snapshot["status"]
 
-        owner ? session.status : Session::STATUS_IDLE
+          return session.status
+        end
+
+        SessionSummary.displayed_status(session, snapshot, owner: owner)
       end
 
       # @param owner [Hash, nil] #session_owner; its kind is shown as `owner`
-      def session_to_json(s, status: s.status, owner: nil)
-        used = s.respond_to?(:used_memory_names) ? Array(s.used_memory_names) : []
-        {
-          id: s.id,
-          status: status,
-          mode: s.mode,
-          model_name: s.model_name,
-          working_directory: s.working_directory,
-          created_at: s.created_at,
-          updated_at: s.updated_at,
-          last_prompt: s.last_prompt,
-          short_id: s.id.to_s[0, 8],
-          test_run: !!s.test_run,
-          used_memory_names: used,
-          first_preview: first_preview_for(s),
-          owner: owner&.fetch("kind", nil),
-          # The saved recap's first sentence, for the session card.
-          recap: RecapStore.preview(@session_class.session_dir(s.id, state_dir: default_state_dir))
-        }
+      def session_to_json(s, status: s.status, owner: nil, root_cache: nil)
+        SessionSummary.build(s, status: status, owner: owner, root_cache: root_cache,
+                                session_dir: @session_class.session_dir(s.id, state_dir: default_state_dir))
       end
 
       def timing_payload(session_id, live_metrics: nil)
@@ -870,16 +858,6 @@ module Samagotchi
         [((finished - started) * 1000).round, 0].max
       rescue ArgumentError
         nil
-      end
-
-      def first_preview_for(session)
-        raw = session.first_preview || session.last_prompt || ""
-        norm = raw.to_s.gsub(/\s+/, " ").strip
-        return "" if norm.empty?
-
-        norm.length > 80 ? "#{norm[0, 80]}…" : norm
-      rescue StandardError
-        ""
       end
 
       # The recap saved with the session and how many user turns came since:

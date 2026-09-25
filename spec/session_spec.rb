@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "tmpdir"
+require "json"
 require "spec_helper"
 require "samagotchi/session"
 
@@ -223,6 +224,37 @@ RSpec.describe Samagotchi::Session do
 
       listed = described_class.list(state_dir: tmpdir).first
       expect(listed.messages).to eq([])
+    end
+  end
+
+  describe ".summary_from_file" do
+    it "parses one session file into a messages-less Session, as .list does" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp/proj")
+      session.messages = [{ role: "user", content: "hello" }]
+      session.last_prompt = "hello"
+      session.status = described_class::STATUS_RUNNING
+      session.save(state_dir: tmpdir)
+
+      summary = described_class.summary_from_file(File.join(tmpdir, "#{session.id}.json"))
+
+      expect(summary.id).to eq(session.id)
+      expect(summary.messages).to eq([])
+      expect(summary.last_prompt).to eq("hello")
+      expect(summary.status).to eq("running")
+      expect(summary.working_directory).to eq("/tmp/proj")
+    end
+
+    it "is nil for a corrupt file and for one missing a required field, and .list leaves the same files out" do
+      File.write(File.join(tmpdir, "corrupt.json"), "{ invalid")
+      File.write(File.join(tmpdir, "partial.json"), JSON.generate("id" => "partial"))
+
+      expect(described_class.summary_from_file(File.join(tmpdir, "corrupt.json"))).to be_nil
+      expect(described_class.summary_from_file(File.join(tmpdir, "partial.json"))).to be_nil
+      expect(described_class.list(state_dir: tmpdir)).to be_empty
+    end
+
+    it "is nil for a file that is gone" do
+      expect(described_class.summary_from_file(File.join(tmpdir, "missing.json"))).to be_nil
     end
   end
 

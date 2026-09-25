@@ -163,28 +163,7 @@ module Samagotchi
       sort_key = SORT_KEYS.include?(sort.to_s) ? sort.to_s : "updated_at"
       sort_order = SORT_ORDERS.include?(order.to_s) ? order.to_s : "desc"
 
-      sessions = Dir.glob(File.join(state_dir, "*#{FILE_EXT}")).filter_map do |path|
-        data = JSON.parse(File.read(path))
-        used_mems = data["used_memory_names"] || data["used_memories"] || []
-        new(
-          id: data.fetch("id"),
-          metadata_version: data.fetch("metadata_version", 1),
-          mode: data.fetch("mode"),
-          model_name: data.fetch("model_name"),
-          working_directory: data.fetch("working_directory"),
-          messages: [],
-          created_at: data.fetch("created_at"),
-          updated_at: data.fetch("updated_at"),
-          status: data.fetch("status", STATUS_IDLE),
-          last_prompt: data.fetch("last_prompt", ""),
-          first_preview: data.fetch("first_preview", ""),
-          test_run: data.fetch("test_run", false),
-          used_memory_names: Array(used_mems),
-          project_root: data["project_root"]
-        )
-      rescue JSON::ParserError, KeyError
-        nil
-      end
+      sessions = Dir.glob(File.join(state_dir, "*#{FILE_EXT}")).filter_map { |path| summary_from_file(path) }
       if project_root
         roots = {}
         sessions.select! { |s| s.project_root(cache: roots) == project_root }
@@ -206,6 +185,34 @@ module Samagotchi
         sorted = sorted.first(limit.to_i)
       end
       sorted
+    end
+
+    # One session file as .list reads it: the session without its messages
+    # (the list is lightweight). The session hub reads files the same way,
+    # so both agree on which files count.
+    # @return [Session, nil] nil for a file that is corrupt, missing a
+    #   required field, or gone
+    def self.summary_from_file(path)
+      data = JSON.parse(File.read(path))
+      used_mems = data["used_memory_names"] || data["used_memories"] || []
+      new(
+        id: data.fetch("id"),
+        metadata_version: data.fetch("metadata_version", 1),
+        mode: data.fetch("mode"),
+        model_name: data.fetch("model_name"),
+        working_directory: data.fetch("working_directory"),
+        messages: [],
+        created_at: data.fetch("created_at"),
+        updated_at: data.fetch("updated_at"),
+        status: data.fetch("status", STATUS_IDLE),
+        last_prompt: data.fetch("last_prompt", ""),
+        first_preview: data.fetch("first_preview", ""),
+        test_run: data.fetch("test_run", false),
+        used_memory_names: Array(used_mems),
+        project_root: data["project_root"]
+      )
+    rescue JSON::ParserError, KeyError, SystemCallError
+      nil
     end
 
     # Prune old sessions according to retention policy.
