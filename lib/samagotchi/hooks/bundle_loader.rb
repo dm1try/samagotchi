@@ -44,8 +44,11 @@ module Samagotchi
         # @param registry [Samagotchi::Hooks::Registry]
         # @param failures [Guardrails::LoadFailures, nil] collects hooks that
         #   failed to load
+        # @param settings [Hash] the bundle's section of config.yml
+        #   `bundles:` (string keys); a hook class whose initialize takes an
+        #   argument gets it
         # @return [Integer] number of hooks successfully registered
-        def load(bundle_name:, hooks_dir:, metadata:, registry:, failures: nil)
+        def load(bundle_name:, hooks_dir:, metadata:, registry:, failures: nil, settings: {})
           return 0 unless metadata.is_a?(Hash)
 
           loaded = 0
@@ -75,7 +78,7 @@ module Samagotchi
             end
 
             begin
-              plugin = instantiate(bundle_name, basename, file)
+              plugin = instantiate(bundle_name, basename, file, settings: settings)
 
               registry.register_bundle(bundle_name, event_sym, hook_name: basename, priority: priority) do |event|
                 begin
@@ -106,14 +109,16 @@ module Samagotchi
         end
 
         # Evaluate a plugin file inside the bundle's namespace module and
-        # return an instance that responds to #call.
-        def instantiate(bundle_name, basename, file)
+        # return an instance that responds to #call. A class whose
+        # initialize takes an argument gets the settings (one Hash, string
+        # keys); one that takes none is built bare.
+        def instantiate(bundle_name, basename, file, settings: {})
           ns = namespace_for(bundle_name)
           content = File.read(file)
           ns.module_eval(content, file, 1)
           class_name = File.basename(basename, ".rb").split("_").map(&:capitalize).join
           klass = ns.const_get(class_name, false)
-          instance = klass.new
+          instance = Hooks.build_plugin(klass, settings)
           raise ArgumentError, "plugin #{class_name} does not respond to #call" unless instance.respond_to?(:call)
           instance
         end

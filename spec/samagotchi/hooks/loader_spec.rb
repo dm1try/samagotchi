@@ -193,9 +193,9 @@ RSpec.describe Samagotchi::Hooks::Loader do
 
       definitions = described_class.parse_definitions(hooks_config)
       expect(definitions).to be_an(Array).and(have_attributes(size: 3))
-      expect(definitions[0]).to eq({ event_type: "turn_start", path: "hook1.rb", on_error: "log", required: false })
-      expect(definitions[1]).to eq({ event_type: "turn_start", path: "hook2.rb", on_error: "skip", required: false })
-      expect(definitions[2]).to eq({ event_type: "turn_end", path: "hook3.rb", on_error: "skip", required: false })
+      expect(definitions[0]).to eq({ event_type: "turn_start", path: "hook1.rb", on_error: "log", required: false, settings: {} })
+      expect(definitions[1]).to eq({ event_type: "turn_start", path: "hook2.rb", on_error: "skip", required: false, settings: {} })
+      expect(definitions[2]).to eq({ event_type: "turn_end", path: "hook3.rb", on_error: "skip", required: false, settings: {} })
     end
 
     it "skips non-array configs" do

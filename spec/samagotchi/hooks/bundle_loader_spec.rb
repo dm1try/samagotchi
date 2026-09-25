@@ -31,6 +31,30 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       expect(e[:called]).to be true
     end
 
+    it "gives a hook whose initialize takes an argument the bundle's settings, and builds the others bare" do
+      hooks_dir = File.join(tmpdir, "hooks")
+      write_hook(hooks_dir, "with_settings.rb", "class WithSettings; def initialize(s = {}); @s = s; end; def call(e); e[:settings] = @s; end; end")
+      write_hook(hooks_dir, "bare.rb", "class Bare; def call(e); e[:bare] = true; end; end")
+      registry = Samagotchi::Hooks::Registry.new
+      meta = { "with_settings.rb" => { "event" => "before_turn" }, "bare.rb" => { "event" => "before_turn" } }
+      loaded = described_class.load(bundle_name: "settings-bundle", hooks_dir: hooks_dir, metadata: meta, registry: registry,
+                                    settings: { "names" => ["x"], "mode" => "ask" })
+      expect(loaded).to eq(2)
+      e = {}
+      registry.fire(:before_turn, e)
+      expect(e).to include(settings: { "names" => ["x"], "mode" => "ask" }, bare: true)
+    end
+
+    it "gives a hook an empty settings hash when the bundle has none configured" do
+      hooks_dir = File.join(tmpdir, "hooks")
+      write_hook(hooks_dir, "with_settings.rb", "class WithSettings; def initialize(s); @s = s; end; def call(e); e[:settings] = @s; end; end")
+      registry = Samagotchi::Hooks::Registry.new
+      described_class.load(bundle_name: "no-settings", hooks_dir: hooks_dir, metadata: { "with_settings.rb" => { "event" => "before_turn" } }, registry: registry)
+      e = {}
+      registry.fire(:before_turn, e)
+      expect(e[:settings]).to eq({})
+    end
+
     it "isolates same basename across two bundles via namespacing" do
       dir1 = File.join(tmpdir, "b1", "hooks")
       dir2 = File.join(tmpdir, "b2", "hooks")

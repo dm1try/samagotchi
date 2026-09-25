@@ -1623,6 +1623,7 @@ module Samagotchi
 
     def load_hooks_from_bundles
       require_relative "memory_bundle/provenance"
+      settings = bundle_settings
       MemoryBundle::Provenance.each_installed_holding_hooks do |bundle_name, data|
         bundle_dir = File.join(MemoryBundle::Provenance.bundles_dir, bundle_name)
         hooks_dir = File.join(bundle_dir, "hooks")
@@ -1631,7 +1632,7 @@ module Samagotchi
         end
         begin
           Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: data[:hooks], registry: @hooks,
-                                   failures: @guardrail_failures)
+                                   failures: @guardrail_failures, settings: settings[bundle_name.to_s] || {})
         rescue Exception => e
           Log.error(:hooks, "bundle_load_failed", echo: "[samagotchi:hooks] bundle '#{bundle_name}' failed to load hooks: #{e.class}: #{e.message}", bundle: bundle_name, error: e.class.name)
         end
@@ -1639,6 +1640,26 @@ module Samagotchi
     rescue Exception => e
       Log.error(:hooks, "bundles_load_failed", echo: "[samagotchi:hooks] failed to load bundle hooks: #{e.class}: #{e.message}", error: e.class.name)
     end
+
+    # config.yml `bundles:`: each bundle's settings by name, for its hooks.
+    # @return [Hash{String => Hash}] {} when absent; a section that isn't a
+    #   mapping warns once and counts as absent
+    def bundle_settings
+      data = Samagotchi::ConfigFile.read_yaml(path: Samagotchi::ConfigFile.global_path)
+      section = data.is_a?(Hash) ? data["bundles"] : nil
+      return {} if section.nil?
+      unless section.is_a?(Hash)
+        Log.warn(:hooks, "bundles_section_invalid", echo: "[samagotchi:hooks] config.yml bundles: must be a mapping of bundle name to settings; ignored")
+        return {}
+      end
+
+      section.each_with_object({}) do |(name, value), acc|
+        acc[name.to_s] = value.is_a?(Hash) ? value : {}
+      end
+    rescue StandardError
+      {}
+    end
+    private :bundle_settings
 
     # Build (or disable) the idle recap job. On by default: with no recap
     # host or model configured it asks the session's current model on its

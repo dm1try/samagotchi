@@ -59,7 +59,7 @@ module Samagotchi
 
           definitions.each do |defn|
             begin
-              plugin = load_plugin(hooks_dir, defn[:path])
+              plugin = load_plugin(hooks_dir, defn[:path], settings: defn[:settings])
               # Persistent: config hooks must fire on every turn, not be wiped
               # by Engine#run_turn's per-turn clear_hooks after turn 1.
               registry.register_persistent(defn[:event_type].to_sym, label: "#{defn[:path]} (config)") do |event|
@@ -103,7 +103,8 @@ module Samagotchi
               event_type: event_type.to_s,
               path: cfg["path"],
               on_error: (cfg["on_error"] || "skip").to_s,
-              required: cfg["required"] == true
+              required: cfg["required"] == true,
+              settings: cfg["settings"].is_a?(Hash) ? cfg["settings"] : {}
             }
           end
         end
@@ -111,9 +112,14 @@ module Samagotchi
       end
 
       # Load a plugin from the hooks directory.
-      # Returns an instance of the plugin class.
-      def self.load_plugin(hooks_dir, path)
+      # Returns an instance of the plugin class. Instances are cached per
+      # [path, settings] across Engines: two entries with different
+      # settings get two instances.
+      # @param settings [Hash] the entry's `settings:` (string keys); a
+      #   class whose initialize takes an argument gets it
+      def self.load_plugin(hooks_dir, path, settings: {})
         full_path = File.expand_path(File.join(hooks_dir, path))
+        settings = {} unless settings.is_a?(Hash)
 
         # Check if already loaded (Ruby's require caching handles this)
         # We cache the instance separately to avoid re-instantiating
@@ -121,11 +127,11 @@ module Samagotchi
           @plugin_cache = {}
         end
 
-        @plugin_cache[full_path] ||= begin
+        @plugin_cache[[full_path, settings]] ||= begin
           require full_path
           class_name = File.basename(path, ".rb").split("_").map(&:capitalize).join
           klass = Object.const_get(class_name)
-          instance = klass.new
+          instance = Hooks.build_plugin(klass, settings)
           # Validate that the instance responds to #call
           raise ArgumentError, "Plugin #{class_name} does not respond to #call" unless instance.respond_to?(:call)
           instance

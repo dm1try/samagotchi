@@ -4,6 +4,17 @@ require "monitor"
 
 module Samagotchi
   module Hooks
+    # A hook plugin instance: a class whose initialize takes an argument
+    # gets its settings (one positional Hash with string keys), any other
+    # is built bare. `initialize(**kw)` is not told apart (arity -1 too)
+    # and not supported.
+    # @param klass [Class]
+    # @param settings [Hash]
+    def self.build_plugin(klass, settings)
+      takes_settings = klass.instance_method(:initialize).arity != 0
+      takes_settings ? klass.new(settings.is_a?(Hash) ? settings : {}) : klass.new
+    end
+
     # What a hook can do beyond reading its event: the Engine's three
     # callables, each given the hook's label. +notify+ takes
     # (text:, level:, hook:) and shows one line to the user; +ask_user+

@@ -385,7 +385,7 @@ module Samagotchi
         # Legacy flat UPPER keys are handled separately — don't flag them here
         legacy_keys = BY_ENV.keys
         data.each_key do |k|
-          next if %w[hosts hooks model_aliases models guardrails].include?(k.to_s)
+          next if %w[hosts hooks model_aliases models guardrails bundles].include?(k.to_s)
           next if legacy_keys.include?(k.to_s)
           # Sections are top-level keys that map to hashes (e.g., default, recap)
           # If key contains _ or -, suggest dotted form
