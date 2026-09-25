@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isApproval, approvalView, resultText, approvalAllowed } from "../../../lib/samagotchi/web/public/question_card.js";
+import { isApproval, approvalView, resultText, approvalAllowed, nextCardAction } from "../../../lib/samagotchi/web/public/question_card.js";
 
 const approval = {
   id: "a1",
@@ -58,4 +58,16 @@ test("resultText for questions is unchanged", () => {
   assert.equal(resultText(q, { cancelled: true }), "Cancelled");
   assert.equal(resultText(q, { cancelled: true, reason: "dismissed" }), "Cancelled (dismissed)");
   assert.equal(approvalAllowed(q, { selected: ["A"] }), null);
+});
+
+// A resolved card stays in the history (as the terminal's scrollback keeps
+// every question); only a still-pending one is replaced.
+test("nextCardAction: same card, keep a resolved one, replace a pending one", () => {
+  assert.equal(nextCardAction({ cardId: null, pendingId: null }, { id: "q1" }), "replace");
+  assert.equal(nextCardAction({ cardId: "q1", pendingId: "q1" }, { id: "q1" }), "same");
+  assert.equal(nextCardAction({ cardId: "q1", pendingId: "q1" }, { id: "q2" }), "replace");
+  assert.equal(nextCardAction({ cardId: "q1", pendingId: null }, { id: "q2" }), "keep");
+  // A replay of the question the resolved card shows draws no second card.
+  assert.equal(nextCardAction({ cardId: "q1", pendingId: null }, { id: "q1" }), "same");
+  assert.equal(nextCardAction({ cardId: 7, pendingId: null }, { id: "7" }), "same");
 });
