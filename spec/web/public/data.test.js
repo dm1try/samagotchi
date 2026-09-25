@@ -4,6 +4,7 @@ import {
   api,
   listSessions,
   createSession,
+  createIdleSession,
   getSession,
   sendTurn,
   cancelTurn,
@@ -62,6 +63,30 @@ test("listSessions builds sort and order query params", async () => {
     },
   });
   assert.equal(calls[0], "/api/sessions?sort=updated_at&order=desc");
+});
+
+test("listSessions adds the scope folder only when there is one, never to fetch's options", async () => {
+  const calls = [];
+  await listSessions("updated_at", "desc", {
+    dir: "/Users/me/my proj",
+    fetchImpl: (path, opts) => {
+      calls.push([String(path), "dir" in opts]);
+      return Promise.resolve(okResponse([]));
+    },
+  });
+  assert.deepEqual(calls[0], ["/api/sessions?sort=updated_at&order=desc&dir=%2FUsers%2Fme%2Fmy%20proj", false]);
+});
+
+test("createSession and createIdleSession send the folder in the body when given", async () => {
+  const bodies = [];
+  const fetchImpl = (_path, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return Promise.resolve(okResponse({ id: "new" }));
+  };
+  await createSession("hi", { dir: "/r", fetchImpl });
+  await createIdleSession({ dir: "/r", fetchImpl });
+  await createIdleSession({ fetchImpl });
+  assert.deepEqual(bodies, [{ prompt: "hi", dir: "/r" }, { idle: true, dir: "/r" }, { idle: true }]);
 });
 
 test("createSession posts a JSON prompt", async () => {
