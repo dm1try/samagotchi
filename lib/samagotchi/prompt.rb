@@ -20,6 +20,9 @@ module Samagotchi
   #   - Tool response: wrapped in user message with <tool_response>...</tool_response>
   #   - Generation cue: <|im_start|>assistant\n
   module Prompt
+    # Tail system messages whose text isn't the harness's own.
+    ESCAPED_KINDS = %w[note turn_note context].freeze
+
     # @param messages [Array<Hash>] each element has :role and :content.
     #   Recognised roles: "system", "user", "model", "tool_response".
     # @param profile [ModelProfile] model token configuration
@@ -107,8 +110,9 @@ module Samagotchi
       return message[:content].to_s if message[:preserve_literals]
 
       # A context note is system-framed but its text is untrusted (Slack, a
-      # peer session): escaped like user content so it can't close its turn.
-      role = message[:kind].to_s == "note" ? "user" : message[:role]
+      # peer session), and a turn note carries an error's text: escaped like
+      # user content so it can't close its turn.
+      role = ESCAPED_KINDS.include?(message[:kind].to_s) ? "user" : message[:role]
       PromptLiteralGuard.escape(message[:content], profile: profile, role: role)
     end
   end

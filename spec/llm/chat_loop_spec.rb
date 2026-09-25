@@ -168,6 +168,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       result = run([{ role: "user", content: "hi" }])
 
       expect(result.text).to eq("(the model returned an empty answer)")
+      expect(result).to be_empty_answer
       expect(result).not_to be_exhausted
       expect(result.conversation).to eq([{ role: "user", content: "hi" }])
     end

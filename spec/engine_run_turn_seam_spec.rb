@@ -124,7 +124,9 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
       engine.run_turn(session, "hi")
 
-      expect(seen).to eq([{ role: "user", content: "hi" }, { role: "model", content: "[No response]" }])
+      expect(seen.first(2)).to eq([{ role: "user", content: "hi" }, { role: "model", content: "[No response]" }])
+      expect(seen.last).to include(role: "system", kind: "turn_note")
+      expect(seen.last[:content]).to include("no visible answer")
     end
 
     it "has the messages kept on a Ctrl-C" do
@@ -134,7 +136,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
       expect { engine.run_turn(session, "hi") }.to raise_error(Interrupt)
 
-      expect(seen.last).to eq("hi")
+      expect(seen[-2]).to eq("hi")
+      expect(seen.last).to include("cancelled (ctrl-c)")
     end
   end
 
@@ -184,14 +187,30 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     end
   end
 
-  it "does not append [No response] to a canceled turn" do
+  it "appends a cancel note, not [No response], to a canceled turn" do
     allow(kernel).to receive(:run).and_return(
       kernel_result(output: "", conversation: [{ role: "user", content: "hi" }], canceled: true, cancellation_reason: :ctrl_c)
     )
 
+    result = engine.run_turn(session, "hi")
+
+    expect(session.messages.first).to eq({ role: "user", content: "hi" })
+    expect(session.messages.last).to include(role: "system", kind: "turn_note")
+    expect(session.messages.last[:content]).to include("cancelled (ctrl-c)").and include("no answer had been shown")
+    expect(session.messages.length).to eq(2)
+    # The REPL keeps result.conversation: the note is there too.
+    expect(result.conversation.last).to eq(session.messages.last)
+  end
+
+  it "says a cancelled answer was cut off when the tail is [interrupted]" do
+    allow(kernel).to receive(:run).and_return(
+      kernel_result(output: "", conversation: [{ role: "user", content: "hi" }, { role: "model", content: "Riv\n[interrupted]", interrupted: true }],
+                    canceled: true, cancellation_reason: :user)
+    )
+
     engine.run_turn(session, "hi")
 
-    expect(session.messages).to eq([{ role: "user", content: "hi" }])
+    expect(session.messages.last[:content]).to include("cancelled (user)").and include("the answer above ends where it was cut off")
   end
 
   it "leaves a turn that can be continued ending at its tool results, with no [No response] placeholder" do
@@ -210,8 +229,11 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
     result = engine.run_turn(session, "hi")
 
-    expect(result.conversation).to eq([{ role: "user", content: "hi" }])
-    expect(session.messages.last).to eq({ role: "model", content: "[No response]" })
+    expect(result.conversation.first).to eq({ role: "user", content: "hi" })
+    expect(result.conversation.last).to include(kind: "turn_note")
+    expect(result.conversation.length).to eq(2)
+    expect(session.messages[-2]).to eq({ role: "model", content: "[No response]" })
+    expect(session.messages.last).to eq(result.conversation.last)
   end
 
   describe "Interrupt" do
@@ -221,8 +243,9 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
       expect { engine.run_turn(session, "hi", on_event: ->(e) { events << e }) }.to raise_error(Interrupt)
 
-      expect(session.messages.map { |m| m[:role] }).to eq(%w[system user])
-      expect(session.messages.last[:content]).to eq("hi")
+      expect(session.messages.map { |m| m[:role] }).to eq(%w[system user system])
+      expect(session.messages[-2][:content]).to eq("hi")
+      expect(session.messages.last[:content]).to include("cancelled (ctrl-c)")
       expect(events.last).to eq(type: :turn_canceled, cancellation_reason: :ctrl_c)
       expect(engine.turn_running?).to be(false)
       expect(engine.metrics.snapshot[:cancellations]).to eq(1)
@@ -270,7 +293,9 @@ describe "a failed turn" do
 
     expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError, "boom")
 
-    expect(session.messages).to eq(partial)
+    expect(session.messages.first(4)).to eq(partial)
+    expect(session.messages.last).to eq({ role: "system", kind: "turn_note",
+                                          content: "[SYSTEM: the previous turn failed before any answer: boom. The user's last message was not answered.]" })
     expect(session).to have_received(:save)
   end
 
@@ -280,8 +305,21 @@ describe "a failed turn" do
 
     expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
 
-    expect(session.messages.map { |m| m[:role] }).to eq(%w[system user])
-    expect(session.messages.last[:content]).to eq("hi")
+    expect(session.messages.map { |m| m[:role] }).to eq(%w[system user system])
+    expect(session.messages[-2][:content]).to eq("hi")
+  end
+
+  it "leaves one note when the turn fails again, and says so for a continue turn" do
+    allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
+    allow(session).to receive(:save)
+    expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
+    session.messages = session.messages.dup
+
+    expect { engine.run_turn(session, nil, continue: true) }.to raise_error(RuntimeError)
+
+    notes = session.messages.select { |m| Samagotchi::TurnNote.note?(m) }
+    expect(notes.length).to eq(1)
+    expect(notes.first[:content]).to include("The continued turn stopped there.")
   end
 end
 

@@ -396,7 +396,7 @@ module Samagotchi
 
         def result(text, exhausted:)
           ModelResult.new(text: text, provider: :chat, conversation: @loop.plain(@conversation), exhausted: exhausted,
-                          tool_activity: @tool_activity, usage: usage)
+                          tool_activity: @tool_activity, usage: usage, empty_answer: text == EMPTY_ANSWER)
         end
 
         def usage

@@ -414,13 +414,16 @@ RSpec.describe Samagotchi::Worker do
         restored = seen.find { |e| e[:type] == :prompt_restored }
         expect(restored).to include(prompt: "boom")
         expect(restored[:origin]).to include(:enqueued_id)
-        expect(conversation).to eq(%w[sys earlier ok])
-        expect(wait_until { saved_messages == %w[sys earlier ok] }).to be(true)
+        expect(conversation.first(3)).to eq(%w[sys earlier ok])
+        expect(conversation.last).to include("failed before any answer").and include("went back to the user")
+        expect(conversation.length).to eq(4)
+        expect(wait_until { saved_messages.first(3) == %w[sys earlier ok] && saved_messages.length == 4 }).to be(true)
         expect(@thread).to be_alive
 
         post_turn("fine")
         expect(next_turn&.first).to eq("fine")
-        expect(wait_until { saved_messages.drop(1) == %w[earlier ok fine FINE] }).to be(true)
+        expect(wait_until { saved_messages.drop(1).grep_v(/\A\[SYSTEM: /) == %w[earlier ok fine FINE] }).to be(true)
+        expect(saved_messages[3]).to start_with("[SYSTEM: the previous turn failed")
       end
 
       it "rolls back with the event log held, so a snapshot sees the failed turn or its restore, not half of it" do
@@ -446,7 +449,7 @@ RSpec.describe Samagotchi::Worker do
         post_turn("fine")
 
         expect(next_turn&.first).to eq("fine")
-        expect(wait_until { saved_messages.drop(1) == %w[earlier ok fine FINE] }).to be(true)
+        expect(wait_until { saved_messages.drop(1).grep_v(/\A\[SYSTEM: /) == %w[earlier ok fine FINE] }).to be(true)
       end
 
       it "survives a failed initial prompt too" do
@@ -461,7 +464,7 @@ RSpec.describe Samagotchi::Worker do
         expect(wait_until { (seen += drain_events).any? { |e| e[:type] == :prompt_restored } }).to be(true)
         expect(seen.find { |e| e[:type] == :prompt_restored }).to include(prompt: "boom", origin: nil)
         expect(@thread).to be_alive
-        expect(wait_until { saved_messages.empty? }).to be(true)
+        expect(wait_until { saved_messages.length == 1 && saved_messages.first.start_with?("[SYSTEM: the previous turn failed") }).to be(true)
       end
     end
 

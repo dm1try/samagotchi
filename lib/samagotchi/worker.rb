@@ -3,6 +3,7 @@
 require "fileutils"
 
 require_relative "session"
+require_relative "turn_note"
 require_relative "context_note"
 require_relative "worker_idle_exit"
 require_relative "session_manager"
@@ -278,9 +279,9 @@ module Samagotchi
       begin
         result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, origin: origin,
                                                     max_iterations: max_iterations(no_interrupt), images: images)
-      rescue StandardError
+      rescue StandardError => e
         # The Engine announced :turn_failed (with the error's one line).
-        restore_failed_turn([[prompt, origin, images], *@merged_this_turn])
+        restore_failed_turn([[prompt, origin, images], *@merged_this_turn], error: e)
         return
       ensure
         refuse_queued_commands
@@ -442,9 +443,12 @@ module Samagotchi
     # or the restored ones, never the one without the other.
     # @param prompts [Array<Array(String, Hash|nil, Array|nil)>] [prompt,
     #   origin, images] (a web client gets its image chips back)
-    def restore_failed_turn(prompts)
+    # @param error [Exception, nil] what failed: its one line stays in the
+    #   conversation as a turn note
+    def restore_failed_turn(prompts, error: nil)
+      note = error && TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message, restored: true)
       @engine.synchronize_events do
-        @turn_flow.prompt_turn_failed
+        @turn_flow.prompt_turn_failed(note: note)
         prompts.each do |prompt, origin, images|
           restored = { type: :prompt_restored, prompt: prompt, origin: origin }
           restored[:images] = images unless Array(images).empty?

@@ -7,6 +7,7 @@ require "io/console"
 require "reline"
 
 require_relative "model_profile"
+require_relative "turn_note"
 require_relative "config"
 require_relative "context_note"
 require_relative "cancellation_controller"
@@ -548,8 +549,14 @@ module Samagotchi
         # Retries were already tallied via generation_retrying events.
         # An @path image that can't be used fails the turn the same way.
         emit_interactive_turn_duration(canceled: false)
-        @turn_flow.prompt_turn_failed
         summary = e.respond_to?(:summary) ? e.summary : e.message
+        # The model reads why on its next turn. An image that couldn't be
+        # used, or that the host refused, never reached it: no note for that
+        # (a first turn refused that way leaves the session empty, as before).
+        note = TurnNote.failed(summary, restored: true) if e.is_a?(LLM::ProviderError) && !e.is_a?(LLM::VisionUnsupported)
+        @turn_flow.prompt_turn_failed(note: note)
+        # The Engine saved the failed turn; the file follows the rollback.
+        save_session(session) if note
         @surface.commit("\nmodel> #{summary}; #{restore_prompt_for_retry(input)}")
         return
       end

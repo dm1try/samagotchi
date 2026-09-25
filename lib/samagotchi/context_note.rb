@@ -54,11 +54,12 @@ module Samagotchi
     end
 
     # The conversation with +system_message+ at its head: an old system
-    # prompt there is replaced, anything else (a note that arrived before the
-    # first turn included) stays and the prompt goes before it.
+    # prompt there (a system message of no kind) is replaced, anything else
+    # (a note that arrived before the first turn, a turn note left by a
+    # failed first turn) stays and the prompt goes before it.
     def with_system_head(messages, system_message)
       first = messages.first
-      replace = first && fetch(first, :role).to_s == "system" && !note?(first)
+      replace = first && fetch(first, :role).to_s == "system" && fetch(first, :kind).to_s.empty?
       [system_message] + (replace ? messages.drop(1) : messages)
     end
 

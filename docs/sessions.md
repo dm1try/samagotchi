@@ -88,6 +88,25 @@ OSA
 [ -n "$picked" ] && pbpaste | "$chi" note --source clipboard $(print -r -- "$picked" | cut -f1)
 ```
 
+## Notes a turn leaves for the model
+
+A turn that ends without an answer leaves one line for the model to read on its next turn, as a tail
+system message marked `kind: turn_note` (the UIs don't show it; they showed the end itself as it happened):
+
+- failed before any answer (a dead host, retries run out, an auth error): `[SYSTEM: the previous turn failed
+  before any answer: network error after 2 attempts (host main: Errno::ECONNREFUSED). The message went back to
+  the user, who may send it again.]` in the REPL and attached mode, where the prompt is given back;
+  `… The user's last message was not answered.]` after `-p`, where the prompt stays in the session;
+- cancelled (Ctrl-C, the web's stop): `[SYSTEM: the previous turn was cancelled (ctrl-c) after 12s; the answer
+  above ends where it was cut off.]`, or `…; no answer had been shown.]` when only thinking had streamed;
+- ended with nothing visible: `[SYSTEM: the previous turn ended with no visible answer (thinking only, or
+  nothing). The user's last message is still unanswered.]`.
+
+Failed retries replace the note, they don't pile up. The note's text is escaped like user text (an error may
+quote what a server sent). A cancelled continue turn and `!rollback` go back to before the turn, note included.
+Without it, the model saw an unanswered user message and no reason: asked "did your last answer finish?" after a
+cancel during its thinking, it said it had never been asked.
+
 ## Sending a message
 
 `chi send` is the other half of `chi note`: the text goes in as your message, the same as typing it in the attached terminal or the web composer, so a turn runs.

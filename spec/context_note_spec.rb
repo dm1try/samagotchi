@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/context_note"
+require "samagotchi/turn_note"
 
 RSpec.describe Samagotchi::ContextNote do
   let(:at) { Time.local(2026, 9, 24, 14, 2, 30).iso8601 }
@@ -62,6 +63,11 @@ RSpec.describe Samagotchi::ContextNote do
 
     it "keeps a note at the head and puts the system prompt before it" do
       expect(described_class.with_system_head([note], head)).to eq([head, note])
+    end
+
+    it "keeps a turn note a failed first turn left at the head" do
+      turn_note = Samagotchi::TurnNote.failed("HTTP 500", restored: true)
+      expect(described_class.with_system_head([turn_note], head)).to eq([head, turn_note])
     end
 
     it "puts the system prompt before a conversation that has none" do

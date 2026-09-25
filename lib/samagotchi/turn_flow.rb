@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "output_formatter"
+require_relative "turn_note"
 require_relative "context_note"
 
 module Samagotchi
@@ -94,9 +95,15 @@ module Samagotchi
       end
     end
 
-    # A prompt turn failed: back to the conversation before it.
-    def prompt_turn_failed
-      restore(@checkpoint) if @checkpoint
+    # A prompt turn failed: back to the conversation before it, plus the
+    # note that says so (TurnNote.failed) in place of an older one at the
+    # tail, so the model reads why its last message went unanswered.
+    def prompt_turn_failed(note: nil)
+      if @checkpoint
+        restore(@checkpoint, note: note)
+      elsif note
+        @engine.rollback_to(TurnNote.replace_trailing(@engine.messages_checkpoint, note))
+      end
       @offer = nil
       @checkpoint = nil
     end
@@ -145,11 +152,13 @@ module Samagotchi
 
     # Back to +checkpoint+, keeping the context notes that arrived since:
     # notes land between turns, after the checkpoint was taken, and a
-    # rollback must not drop them.
-    def restore(checkpoint)
+    # rollback must not drop them. One rollback, +note+ included.
+    def restore(checkpoint, note: nil)
       kept = Array(checkpoint).filter_map { |m| m[:note_id] }
       arrived = @engine.messages_checkpoint.select { |m| ContextNote.note?(m) && !kept.include?(m[:note_id]) }
-      @engine.rollback_to(Array(checkpoint) + arrived)
+      restored = Array(checkpoint) + arrived
+      restored = TurnNote.replace_trailing(restored, note) if note
+      @engine.rollback_to(restored)
     end
 
     def conversation_of(result)

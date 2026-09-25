@@ -75,6 +75,8 @@ RSpec.describe "Conversation state on the turn hooks" do
 
     engine.run_turn(session, "hi")
 
-    expect(seen).to include(status: "canceled", messages: stored)
+    expect(seen).to include(status: "canceled")
+    expect(seen[:messages].first(stored.length)).to eq(stored)
+    expect(seen[:messages].last).to include(kind: "turn_note")
   end
 end

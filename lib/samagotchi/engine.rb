@@ -8,6 +8,7 @@ require "yaml"
 
 require_relative "config"
 require_relative "context_note"
+require_relative "turn_note"
 require_relative "model_profile"
 require_relative "thought_stream_splitter"
 require_relative "cancellation_controller"
@@ -1311,6 +1312,9 @@ module Samagotchi
       @guardrail_git = Guardrails::GitInfo.new
 
       prompt = nil if continue
+      # For the cancel note: how long the turn ran.
+      turn_started_clock = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      turn_seconds = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) - turn_started_clock }
       messages = nil
       # Boundary events carry the origin only when there is one, so payloads
       # stay unchanged for callers that don't pass it.
@@ -1412,10 +1416,24 @@ module Samagotchi
         # A turn that ran out of iterations ends at its tool results, so a
         # continue resumes from them rather than after a made-up reply.
         resumable = result.respond_to?(:resumable?) && result.resumable?
+        # Nothing visible (the native loop: no text; the chat loop: its
+        # placeholder text) is a turn the model should know ended that way.
+        empty = !canceled && !resumable &&
+                (response.strip.empty? || (result.respond_to?(:empty_answer?) && result.empty_answer?))
         synchronize_events do
-          if response.strip.empty? && !canceled && !resumable
-            # A new array: the placeholder must not leak into the result.
-            replace_session_messages(session, (conversation || session.messages) + [{ role: "model", content: "[No response]" }])
+          if empty
+            # The placeholder is for the UIs (a new array: it must not leak
+            # into the result); the note is for the model, so it goes on the
+            # result's conversation too, which the REPL keeps as-is.
+            note = TurnNote.empty
+            saved = (conversation || session.messages).dup
+            saved << { role: "model", content: "[No response]" } if response.strip.empty?
+            replace_session_messages(session, saved + [note])
+            conversation << note if conversation
+          elsif canceled && conversation
+            conversation << TurnNote.cancelled(result.cancellation_reason, seconds: turn_seconds.call,
+                                                                          shown: TurnNote.interrupted_tail?(conversation))
+            replace_session_messages(session, conversation)
           elsif conversation
             replace_session_messages(session, conversation)
           end
@@ -1447,7 +1465,7 @@ module Samagotchi
       rescue Interrupt
         effective_controller.cancel!(:ctrl_c)
         synchronize_events do
-          replace_session_messages(session, messages) if messages
+          replace_session_messages(session, TurnNote.replace_trailing(messages, TurnNote.cancelled(:ctrl_c, seconds: turn_seconds.call))) if messages
           session.status = Session::STATUS_IDLE
           emit_event(on_event, with_origin.call({ type: :turn_canceled, cancellation_reason: :ctrl_c }))
         end
@@ -1458,6 +1476,13 @@ module Samagotchi
         # tool iterations) like a cancel does, and save it: a worker exits
         # after a failed turn. The REPL still rolls back to its checkpoint.
         kept = e.respond_to?(:partial_conversation) && e.partial_conversation.is_a?(Array) ? e.partial_conversation : messages
+        # The model reads why on its next turn (a UI that rolls the turn back
+        # leaves its own note, TurnFlow#prompt_turn_failed). Nothing when the
+        # turn never reached the model (kept is nil).
+        if kept
+          summary = e.respond_to?(:summary) ? e.summary : e.message
+          kept = TurnNote.replace_trailing(kept, TurnNote.failed(summary, continued: continue))
+        end
         replace_session_messages(session, kept) if kept
         session.status = Session::STATUS_IDLE
         begin; session.save; rescue StandardError; nil; end

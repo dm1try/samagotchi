@@ -148,6 +148,36 @@ RSpec.describe Samagotchi::TurnFlow do
       expect(flow.rollback!).to be(false)
       expect(flow.awaiting_continue?).to be(false)
     end
+
+    it "leaves the failure note after the restored conversation, in one rollback" do
+      run_prompt("go", [{ role: "tool_response", content: "partial" }])
+      note = Samagotchi::TurnNote.failed("HTTP 500", restored: true)
+      allow(engine).to receive(:rollback_to).and_call_original
+
+      flow.prompt_turn_failed(note: note)
+
+      expect(engine.messages).to eq(before + [note])
+      expect(engine).to have_received(:rollback_to).once
+    end
+
+    it "replaces the note a previous failure left" do
+      first = Samagotchi::TurnNote.failed("HTTP 500", restored: true)
+      flow.prompt_turn_failed(note: first)
+      run_prompt("again", [{ role: "tool_response", content: "partial" }])
+      second = Samagotchi::TurnNote.failed("HTTP 503", restored: true)
+
+      flow.prompt_turn_failed(note: second)
+
+      expect(engine.messages).to eq(before + [second])
+    end
+
+    it "leaves the note even with no checkpoint" do
+      note = Samagotchi::TurnNote.failed("HTTP 500", restored: true)
+
+      flow.prompt_turn_failed(note: note)
+
+      expect(engine.messages).to eq(before + [note])
+    end
   end
 
   describe "#abort_continue!" do

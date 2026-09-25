@@ -19,7 +19,8 @@ module Samagotchi
 
       def initialize(text:, tool_calls: nil, provider: nil, usage: nil, metadata: nil,
                      conversation: nil, canceled: false, cancellation_reason: nil, exhausted: false,
-                     tool_activity: [], context_status: nil, pending_tool_calls: false)
+                     tool_activity: [], context_status: nil, pending_tool_calls: false, empty_answer: false)
+        @empty_answer = empty_answer
         @text = text
         @tool_calls = tool_calls
         @provider = provider
@@ -41,6 +42,12 @@ module Samagotchi
 
       def canceled?
         !!canceled
+      end
+
+      # The turn ended with nothing visible: the text shown is a placeholder,
+      # the conversation holds no reply.
+      def empty_answer?
+        !!@empty_answer
       end
 
       def exhausted?

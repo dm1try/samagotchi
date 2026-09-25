@@ -22,3 +22,4 @@ Continue session: chi --resume <session-id>
 system: <prompt>
 user: "hi"
 model: "Partial\n[interrupted]"
+system: "[SYSTEM: the previous turn was cancelled (ctrl-c) after 0s; the answer above ends where it was cut off.]"

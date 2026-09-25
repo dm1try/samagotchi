@@ -65,7 +65,8 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
       session = make_session
       build_engine(profile: "gemma4").run_turn(session, "hi")
 
-      expect(session.messages.last).to eq({ role: "model", content: "[No response]" })
+      expect(session.messages[-2]).to eq({ role: "model", content: "[No response]" })
+      expect(session.messages.last).to include(role: "system", kind: "turn_note")
     end
 
     it "passes max_iterations through to KernelLoop#run" do

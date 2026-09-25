@@ -13,4 +13,4 @@ Continue session: chi --resume <session-id>
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l--- session ---
 system: <prompt>
-user: "hi"
+system: "[SYSTEM: the previous turn failed before any answer: network error after 4 attempts (host llama.cpp: Errno::ECONNREFUSED). The message went back to the user, who may send it again.]"

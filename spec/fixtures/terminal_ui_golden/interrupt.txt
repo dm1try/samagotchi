@@ -20,3 +20,4 @@ Continue session: chi --resume <session-id>
 \e[?25h\e[?2026l--- session ---
 system: <prompt>
 user: "hi"
+system: "[SYSTEM: the previous turn was cancelled (ctrl-c) after 0s; no answer had been shown.]"
