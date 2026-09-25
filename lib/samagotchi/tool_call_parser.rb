@@ -430,14 +430,14 @@ module Samagotchi
       end
 
       def strip_thought(text)
-        # Remove all complete <think>...</think> blocks (including any leading/trailing whitespace)
-        result = text.gsub(/<think>.*?<\/think>/m, '')
+        # Remove all complete <think>...</think> blocks with the newlines after them
+        result = text.gsub(/<think>.*?<\/think>\n*/m, '')
         # Remove any stray opening tags
         result = result.gsub(/<think>.*?(?=\n|$)/m, '')
-        # Remove any orphaned closing tags (and preceding whitespace on same line if it's all whitespace)
-        result = result.gsub(/^\s*<\/think>\s*\n?/m, '')
-        # Clean up any extra blank lines that may have been left behind
-        result.gsub(/\n\n+/, "\n")
+        # Remove any orphaned closing tags (and the whitespace around them)
+        # The answer's own blank lines stay: they are its markdown paragraphs
+        # and lists (a chat host's answer is saved as stripped here).
+        result.gsub(/^\s*<\/think>\s*/m, '')
       end
 
       def strip_tool_calls(text)

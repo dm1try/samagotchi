@@ -44,4 +44,21 @@ RSpec.describe Samagotchi::ToolCallParser do
       expect(list[:cwd].to_s).to eq("")
     end
   end
+
+  describe "Qwen#strip_thought" do
+    let(:parser) { described_class::Qwen.new(Samagotchi::ModelProfile.normalize(:qwen36)) }
+
+    # A chat host's answer has no think block at all, and it is saved as
+    # stripped: collapsing every blank line merged its markdown paragraphs
+    # and lists for good.
+    it "keeps the blank lines of an answer with no think block" do
+      answer = "All checks passed:\n\n- a\n- b\n\nAll **good**.\n\n\nSecond paragraph."
+      expect(parser.strip_thought(answer)).to eq(answer)
+    end
+
+    it "drops a block with the blank lines after it and keeps the answer's own" do
+      expect(parser.strip_thought("<think>\nplan\n</think>\n\nOne.\n\nTwo.")).to eq("One.\n\nTwo.")
+      expect(parser.strip_thought("</think>\n\nOne.\n\nTwo.")).to eq("One.\n\nTwo.")
+    end
+  end
 end
