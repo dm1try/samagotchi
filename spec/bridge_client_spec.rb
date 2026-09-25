@@ -147,7 +147,17 @@ RSpec.describe Samagotchi::BridgeClient do
     expect(reply.status).to eq(202)
     expect(reply.json).to include("enqueued_id" => "e1")
     expect(finish.call).to start_with("POST /session/s1/turn HTTP/1.1\r\n")
-      .and include('{"session_id":"s1","prompt":"hi","client_id":"web:1"}')
+      .and include('{"session_id":"s1","prompt":"hi","client_id":"web:1","deadline":')
+  end
+
+  it "gives a turn a deadline before its own read timeout, so a worker never runs one it gave up on" do
+    port, finish = serve_once(json_reply("202 Accepted", '{"status":"accepted","enqueued_id":"e1"}'))
+    sent_at = Time.now.to_f
+
+    described_class.new(session_id: "s1", port: port, read_timeout: 30).post_turn(prompt: "hi")
+
+    deadline = JSON.parse(finish.call.split("\r\n\r\n", 2)[1])["deadline"]
+    expect(deadline).to be_within(1).of(sent_at + 25)
   end
 
   describe "a worker that takes the request and never answers" do

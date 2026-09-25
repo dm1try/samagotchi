@@ -755,11 +755,13 @@ module Samagotchi
           if ack.is_a?(Hash) && %w[bad_images images_unsupported].include?(ack["error"])
             return { status: :refused, code: reply.status, ack: ack }
           end
+          # Read after its deadline and dropped: a file would run it after all.
+          return turn_timeout if ack.is_a?(Hash) && ack["error"] == "deadline_passed"
         rescue Errno::ETIMEDOUT
-          # A live worker that took the request may still run it: a file
-          # too could run the turn twice.
-          return { status: :timeout, ack: { "error" => "worker_timeout",
-                                            "detail" => "the session's worker did not answer; the message may still arrive" } }
+          # The Bridge drops a turn it reads after the request's deadline
+          # (BridgeClient#post_turn), so a worker that wakes later won't run
+          # it; a file would.
+          return turn_timeout
         rescue SystemCallError, IOError
           nil # the worker closed its Bridge on the way out: queue the file
         end
@@ -783,6 +785,11 @@ module Samagotchi
         manager.resume_session(session_id, state_dir: state_dir)
       end
       { status: :accepted, ack: { status: "accepted", enqueued_id: enqueued_id, session_id: session_id } }
+    end
+
+    private_class_method def self.turn_timeout
+      { status: :timeout, ack: { "error" => "worker_timeout",
+                                 "detail" => "the session's worker did not answer; the message may still arrive" } }
     end
 
     private_class_method def self.delivery_owner(manager, session_id, state_dir)

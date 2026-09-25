@@ -23,6 +23,11 @@ module Samagotchi
     # request and never answers raises Errno::ETIMEDOUT, as a dead one
     # raises Errno::ECONNREFUSED. The event stream has no such limit.
     READ_TIMEOUT = 30
+    # Share of the read timeout a turn's deadline allows (25 s of 30): the
+    # Bridge drops a turn it reads after the deadline, so one this client
+    # timed out on, and said was not sent, never runs when a frozen worker
+    # wakes. The rest covers the write and the reply.
+    TURN_DEADLINE_SHARE = 5 / 6r
 
     # A Bridge reply: HTTP status code and raw body (nil when not read).
     Response = Struct.new(:status, :body, keyword_init: true) do
@@ -129,7 +134,8 @@ module Samagotchi
     end
 
     # POST /session/:id/turn. 202 = queued (body carries the enqueued_id the
-    # Bridge also announced in :turn_enqueued).
+    # Bridge also announced in :turn_enqueued), 408 deadline_passed = the
+    # Bridge read it too late and dropped it (see TURN_DEADLINE_SHARE).
     # @param client_id [String, nil] identifies the sending UI in the events
     # @return [Response]
     # @param no_interrupt [Boolean] run the turn with the raised iteration limit
@@ -139,6 +145,8 @@ module Samagotchi
       body = { session_id: @session_id, prompt: prompt, client_id: client_id }
       body[:no_interrupt] = true if no_interrupt
       body[:images] = images if images && !images.empty?
+      # Wall clock: the worker runs on this machine and reads the same one.
+      body[:deadline] = (Time.now.to_f + (@read_timeout * TURN_DEADLINE_SHARE)).round(3)
       post("turn", body, read_body: true)
     end
 

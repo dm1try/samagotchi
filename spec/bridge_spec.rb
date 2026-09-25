@@ -991,6 +991,33 @@ RSpec.describe Samagotchi::Bridge do
         expect(Dir.children(input_dir).size).to eq(1)
       end
 
+      # The real client against a worker that reads the request only after
+      # the client gave up (its event log held past the read timeout, as a
+      # frozen worker would): the client reports a timeout, the turn never runs.
+      it "never runs a turn its BridgeClient timed out on" do
+        start_bridge(input_format: 2)
+        seen = []
+        @engine.subscribe(observer: ->(e) { seen << e })
+        dropped = Queue.new
+        allow(Samagotchi::Log).to receive(:warn).and_wrap_original do |original, *args, **kw|
+          dropped << args[1] if args[1] == "turn_expired"
+          original.call(*args, **kw)
+        end
+        held = Queue.new
+        holder = Thread.new { @engine.synchronize_events { held << true; sleep(0.9) } }
+        held.pop
+        client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, read_timeout: 0.5)
+
+        expect { client.post_turn(prompt: "late", client_id: "cli:send") }.to raise_error(Errno::ETIMEDOUT)
+        holder.join
+
+        expect(dropped.pop(timeout: 2)).to eq("turn_expired")
+        expect(Dir.exist?(input_dir) ? Dir.children(input_dir) : []).to be_empty
+        expect(seen).to be_empty
+      ensure
+        holder&.join
+      end
+
       it "answers 400 for a deadline that is not a number" do
         start_bridge
 

@@ -1191,6 +1191,21 @@ RSpec.describe Samagotchi::SessionManager do
       expect(input_files.size).to eq(1)
     end
 
+    # The Bridge got to the request only after its deadline (a slow worker,
+    # a clock step): the turn was dropped, so it is a timeout, and a file
+    # would run it after all.
+    it "reports a timeout and queues nothing when the Bridge dropped the turn as past its deadline" do
+      own("worker")
+      bridge = instance_double(Samagotchi::BridgeClient)
+      reply = Samagotchi::BridgeClient::Response.new(status: 408, body: '{"error":"deadline_passed"}')
+      allow(bridge).to receive(:post_turn).and_return(reply)
+
+      result = described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { bridge })
+
+      expect(result).to match(status: :timeout, ack: { "error" => "worker_timeout", "detail" => /did not answer/ })
+      expect(input_files).to be_empty
+    end
+
     it "reports a timeout and queues nothing when the Bridge takes the request but never answers" do
       own("worker")
       server = TCPServer.new("127.0.0.1", 0)
