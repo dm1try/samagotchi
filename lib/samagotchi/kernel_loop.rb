@@ -17,6 +17,7 @@ require_relative "tools/execute"
 require_relative "tools/read"
 require_relative "tools/write"
 require_relative "tools/memory"
+require_relative "muted_memories"
 require_relative "tools/edit"
 require_relative "tools/task_create"
 require_relative "tools/task_get"
@@ -166,6 +167,9 @@ module Samagotchi
     attr_accessor :client
     attr_accessor :model_key
     attr_accessor :current_model_name
+    # @return [Array<String>, nil] the session's muted memories (normalized
+    #   names, see MutedMemories); memory_read refuses them. The Engine sets it.
+    attr_accessor :muted_memory_names
     # @return [Proc, nil] answers ask_user_question (payload → answer string);
     #   Engine sets it to its blocking request_question.
     attr_accessor :question_handler
@@ -373,6 +377,26 @@ module Samagotchi
     end
 
     private
+
+    # memory_read with the session's mutes applied: a blank name (the index)
+    # loses the muted memories' lines; a muted name in a comma list is
+    # refused with its own error line and the rest is read as usual.
+    def muted_memory_read(tool, call)
+      muted = Array(@muted_memory_names)
+      content = call[:content].to_s
+      read = ->(names) { tool.call(names, scope: call[:scope], model_key: @model_key) }
+      return read.call(content) if muted.empty?
+      return MutedMemories.filter_index(read.call(content), muted) if content.strip.empty?
+
+      names = Tools::MemoryRead.parse_names(content)
+      refused, allowed = names.partition { |name| MutedMemories.muted?(name, muted) }
+      return read.call(content) if refused.empty?
+
+      errors = refused.map { |name| "Error: memory '#{name}' is muted for this session" }
+      return errors.join("\n") if allowed.empty?
+
+      [read.call(allowed.join(",")), *errors].join(Tools::MemoryRead::SEPARATOR)
+    end
 
     def emit_stream_event(callback, event)
       callback&.call(event)
@@ -804,7 +828,7 @@ module Samagotchi
 
       result = case call[:name]
                when Tools::MemoryRead::NAME
-                 tool.call(call[:content], scope: call[:scope], model_key: @model_key)
+                 muted_memory_read(tool, call)
                when Tools::MemoryWrite::NAME
                  tool.call(call[:content], path: call[:path], scope: call[:scope], description: call[:description],
                            current_model_only: truthy?(call[:current_model_only]), model_key: @model_key)

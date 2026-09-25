@@ -119,6 +119,10 @@ module Samagotchi
       sync_kernel_client!
       @model_key = ModelOverlay.key_for(bare_model_name(@effective_model_name))
       @kernel.sync_model_key!(@model_key) if @kernel.respond_to?(:sync_model_key!)
+      # The mutes never change during a session, so no re-sync: the kernel's
+      # memory_read guard reads the same list for every turn.
+      @muted_memory_names = MutedMemories.normalize_list(muted_memories)
+      @kernel.muted_memory_names = @muted_memory_names if @kernel.respond_to?(:muted_memory_names=)
       # Keep kernel client in sync with active host via setter
       @kernel_client_synced = false
       # Engine owns hooks; if a kernel was supplied externally (TUI path) propagate
@@ -157,7 +161,6 @@ module Samagotchi
       self.class.warn_removed_backend_setting
       Log.debug(:model, "backend", provider: backend.provider) if Log.level?(:debug)
       @resume_session = session_id ? Session.load(session_id) : nil
-      @muted_memory_names = MutedMemories.normalize_list(muted_memories)
       @requested_memories = effective_preload_list(preload_memory_list(memories))
       @session = nil
       @session_observer = SessionObserver.new
@@ -680,7 +683,9 @@ module Samagotchi
 
       call = event[:call].is_a?(Hash) ? event[:call] : {}
       names = memory_name_from_tool_call(call)
-      return if names.nil? || (names.is_a?(Array) && names.empty?)
+      # A refused read of a muted memory is not a use of it.
+      names = Array(names).reject { |n| memory_muted?(n) }
+      return if names.empty?
 
       add_used_memory_names(names)
     end
