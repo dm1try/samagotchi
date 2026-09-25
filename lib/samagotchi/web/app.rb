@@ -60,10 +60,12 @@ module Samagotchi
 
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
+      # @param turn_view [Boolean] the page's per-turn view (web.turn_view);
+      #   ?view=turn|chat overrides it for one page load
       # @param hub [SessionHub, nil] the session projection GET /api/events
       #   streams from; without one the route answers 503
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
-                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, hub: nil,
+                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, turn_view: false, hub: nil,
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE)
         @manager = manager || SessionManager
         @session_class = session_class || Session
@@ -71,6 +73,7 @@ module Samagotchi
         @public_dir = public_dir || File.expand_path("public", __dir__)
         @bridge_wait_timeout = bridge_wait_timeout
         @markdown_renderer = MarkdownRenderer.new(enabled: markdown)
+        @turn_view = turn_view
         @hub = hub
         @events_heartbeat = events_heartbeat
         @events_queue = events_queue
@@ -1057,6 +1060,7 @@ module Samagotchi
       # nothing here: the list call answers 400 and the page says so.
       def index_data_attributes(req)
         attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(Dir.pwd) }
+        attrs["turn-view"] = "1" if turn_view?(req.params["view"])
         dir, = scope_dir(req.params["dir"])
         root = dir && ProjectScope.root_for(dir)
         if root
@@ -1073,6 +1077,16 @@ module Samagotchi
           end
         end
         attrs.map { |key, value| %(data-#{key}="#{Rack::Utils.escape_html(value)}") }.join(" ")
+      end
+
+      # The turn view for this page load: ?view=turn or ?view=chat wins,
+      # anything else leaves the config's choice.
+      def turn_view?(param)
+        case param
+        when "turn" then true
+        when "chat" then false
+        else @turn_view
+        end
       end
 
       def json_response(status, payload)

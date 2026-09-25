@@ -846,7 +846,7 @@ if ARGV[0] == "bundle"
   exit 0
 end
 
-options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, web: false, web_port: nil, web_open: false, web_markdown: nil }
+options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, web: false, web_port: nil, web_open: false, web_markdown: nil, web_turn_view: nil }
 cli_overrides = {}
 
 if ARGV.any? { |arg| arg == "--backend" || arg.start_with?("--backend=") }
@@ -909,7 +909,7 @@ parser = OptionParser.new do |opts|
     next if %w[no_interrupt no_default_input].include?(entry.key)
     next if entry.key == "web.port" # already handled as --port
     next if entry.key == "default.model" # alias --model above
-    next if entry.key == "web.markdown" # handled below with an explicit inverse flag
+    next if %w[web.markdown web.turn_view].include?(entry.key) # handled below with explicit inverse flags
     case entry.type
     when :bool
       # --[no-]: a bool that defaults to on is only useful switched off.
@@ -929,6 +929,8 @@ parser = OptionParser.new do |opts|
   end
   opts.on("--web-markdown", "Render finalized LLM Markdown in `chi web` (requires optional commonmarker gem)") { options[:web_markdown] = true; cli_overrides["web.markdown"] = true }
   opts.on("--no-web-markdown", "Disable Markdown rendering in `chi web`") { options[:web_markdown] = false; cli_overrides["web.markdown"] = false }
+  opts.on("--web-turn-view", "Show each turn in `chi web` as one block of steps (the live one at the bottom); ?view=turn|chat overrides per page") { options[:web_turn_view] = true; cli_overrides["web.turn_view"] = true }
+  opts.on("--no-web-turn-view", "Show turns in `chi web` as a row of bubbles (the default)") { options[:web_turn_view] = false; cli_overrides["web.turn_view"] = false }
   # Strict underscore rejection: --recap_base_url etc. are not registered and will raise OptionParser::InvalidOption
   opts.on("-h", "--help", "Show help") { puts opts; exit }
 end
@@ -980,6 +982,10 @@ when "web"
       options[:web_markdown] = true
     elsif arg == "--no-web-markdown"
       options[:web_markdown] = false
+    elsif arg == "--web-turn-view"
+      options[:web_turn_view] = true
+    elsif arg == "--no-web-turn-view"
+      options[:web_turn_view] = false
     elsif arg.start_with?("--port=")
       options[:web_port] = arg.split("=", 2).last.to_i
     end
@@ -993,8 +999,10 @@ if options[:web]
   port = ENV.fetch("SAMAGOTCHI_WEB_PORT", port.to_s).to_i rescue port.to_i
   markdown = options[:web_markdown]
   markdown = Samagotchi::Config.get("web.markdown") if markdown.nil?
+  turn_view = options[:web_turn_view]
+  turn_view = Samagotchi::Config.get("web.turn_view") if turn_view.nil?
   exit Samagotchi::Web::Server.launch(port: port, scope: options[:scope] || "project", open_browser: options[:web_open],
-                                      markdown: markdown)
+                                      markdown: markdown, turn_view: turn_view)
 end
 
 # --resume and --attach take a unique id prefix too, like git.

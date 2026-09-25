@@ -203,9 +203,9 @@ RSpec.describe Samagotchi::Web::Server do
       allow(described_class).to receive(:probe).and_return(:free)
       allow(described_class).to receive(:start).and_return(true)
 
-      expect(described_class.launch(port: 4567, markdown: true)).to eq(0)
+      expect(described_class.launch(port: 4567, markdown: true, turn_view: true)).to eq(0)
       expect(described_class).to have_received(:start)
-        .with(port: 4567, host: "127.0.0.1", url: "http://127.0.0.1:4567/?dir=%2Fr", open_browser: false, markdown: true)
+        .with(port: 4567, host: "127.0.0.1", url: "http://127.0.0.1:4567/?dir=%2Fr", open_browser: false, markdown: true, turn_view: true)
     end
 
     it "exits 1 when something else holds the port" do

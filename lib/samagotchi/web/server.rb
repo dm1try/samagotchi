@@ -42,7 +42,7 @@ module Samagotchi
       # open) its page for +dir+ and leave it be; else start one.
       # @param scope ["project", "all"] "all": the plain page, every session
       # @return [Integer] the exit status
-      def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false)
+      def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false, turn_view: false)
         host = resolve_host(host)
         port = resolve_port(port)
         url = scope_url(host, port, dir: dir, scope: scope)
@@ -56,7 +56,7 @@ module Samagotchi
           warn in_use_message(port)
           1
         else
-          start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown) ? 0 : 1
+          start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, turn_view: turn_view) ? 0 : 1
         end
       end
 
@@ -64,13 +64,13 @@ module Samagotchi
       #   from; built over the app's state dir unless given
       # @return [Boolean] false when the port was taken (said so on stderr)
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
-                     hub: nil)
+                     turn_view: false, hub: nil)
         port = resolve_port(port)
         host = resolve_host(host)
         url ||= "http://#{url_host(host)}:#{port}/"
 
         hub ||= SessionHub.new(state_dir: state_dir || Session.default_state_dir, manager: manager || SessionManager)
-        app = App.new(manager: manager, state_dir: state_dir, markdown: markdown, hub: hub)
+        app = App.new(manager: manager, state_dir: state_dir, markdown: markdown, turn_view: turn_view, hub: hub)
         Samagotchi::Log.info(:web, "start", url: "http://#{host}:#{port}", version: Samagotchi::VERSION)
         hub.start
         # Said once the port is bound: a second chi web racing for it gets

@@ -85,14 +85,15 @@ RSpec.describe Samagotchi::Web::App do
 
   # bridge_wait_timeout: 0 — no real worker is spawned in these specs, so the
   # create handler must not wait for a bridge sidecar.
-  def build_app(manager: nil, state_dir: nil, markdown: false, session_class: StubSessionLoader)
+  def build_app(manager: nil, state_dir: nil, markdown: false, turn_view: false, session_class: StubSessionLoader)
     manager ||= FakeResponsesManager.new
     described_class.new(
       manager: manager,
       state_dir: state_dir,
       session_class: session_class,
       bridge_wait_timeout: 0,
-      markdown: markdown
+      markdown: markdown,
+      turn_view: turn_view
     )
   end
 
@@ -852,6 +853,19 @@ RSpec.describe Samagotchi::Web::App do
       expect(status).to eq(200)
       expect(body.first).to include('<body data-sessions-dir="~/st&lt;a&gt;/sessions" ')
       expect(body.first).not_to include(".local/state")
+    end
+
+    # web.turn_view picks the page's per-turn view; ?view=turn|chat overrides
+    # it for one page load, anything else is ignored.
+    it "tells the page to use the turn view from the config or ?view=" do
+      page = ->(path, **opts) { build_app(**opts).call(env_for(path))[2].first }
+
+      expect(page.call("/")).not_to include("data-turn-view")
+      expect(page.call("/", turn_view: true)).to include(' data-turn-view="1"')
+      expect(page.call("/?view=turn")).to include(' data-turn-view="1"')
+      expect(page.call("/?view=chat", turn_view: true)).not_to include("data-turn-view")
+      expect(page.call("/?view=nope", turn_view: true)).to include(' data-turn-view="1"')
+      expect(page.call("/?view=nope")).not_to include("data-turn-view")
     end
   end
 

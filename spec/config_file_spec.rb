@@ -44,6 +44,14 @@ RSpec.describe Samagotchi::ConfigFile do
         expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.markdown")).to be(false)
       end
 
+      it "defaults the web turn view to off, on from the file, env or cli" do
+        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.turn_view")).to be(false)
+        expect(described_class.resolve("web.turn_view", file_data: { "web" => { "turn_view" => true } }, env: {})).to be(true)
+        expect(described_class.resolve("web.turn_view", file_data: {}, env: { "SAMAGOTCHI_WEB_TURN_VIEW" => "1" })).to be(true)
+        expect(described_class.resolve("web.turn_view", file_data: {}, env: {}, cli_overrides: { "web.turn_view" => true })).to be(true)
+        expect(described_class.find_by_key("web.turn_view").cli_flag).to eq("--web-turn-view")
+      end
+
       it "defaults a worker's idle exit to 30 minutes, overridable in fractions" do
         expect(described_class.resolve("session.idle_exit_minutes", file_data: {}, env: {})).to eq(30.0)
         expect(described_class.resolve("session.idle_exit_minutes", file_data: {},
