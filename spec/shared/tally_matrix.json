@@ -1,0 +1,80 @@
+{
+  "description": "Canonical turn tool-tally contract shared by the TUI (Ruby TurnTally) and the web (tally.js over activity.js rows). Each case replays tool events in order; `text` is the tally with the last call, `text_no_last` without it (the web's form). null: below the 3-call minimum. `blocked` counts as a call, not as failed; a completion with no start seen counts as a call; ties among the top 3 go to the tool used first.",
+  "cases": [
+    {
+      "name": "two calls: no tally",
+      "events": [
+        { "event": "started", "iteration": 1, "call_index": 1, "tool": "execute", "params": "command=ls" },
+        { "event": "completed", "iteration": 1, "call_index": 1, "tool": "execute", "status": "ok" },
+        { "event": "started", "iteration": 2, "call_index": 1, "tool": "read_file", "params": "path=a.rb" }
+      ],
+      "text": null,
+      "text_no_last": null
+    },
+    {
+      "name": "third call starts the tally, the running call is the last",
+      "events": [
+        { "event": "started", "iteration": 1, "call_index": 1, "tool": "execute", "params": "command=ls" },
+        { "event": "completed", "iteration": 1, "call_index": 1, "tool": "execute", "status": "ok" },
+        { "event": "started", "iteration": 2, "call_index": 1, "tool": "read_file", "params": "path=a.rb" },
+        { "event": "completed", "iteration": 2, "call_index": 1, "tool": "read_file", "status": "ok" },
+        { "event": "started", "iteration": 3, "call_index": 1, "tool": "execute", "params": "command=bundle exec rspec" }
+      ],
+      "text": "3 tool calls · execute ×2 · read_file ×1 · last: execute command=bundle exec rspec",
+      "text_no_last": "3 tool calls · execute ×2 · read_file ×1"
+    },
+    {
+      "name": "failed calls, blocked is not failed, top 3 only",
+      "events": [
+        { "event": "started", "iteration": 1, "call_index": 1, "tool": "execute", "params": "command=a" },
+        { "event": "completed", "iteration": 1, "call_index": 1, "tool": "execute", "status": "error" },
+        { "event": "started", "iteration": 1, "call_index": 2, "tool": "read_file", "params": "path=x" },
+        { "event": "completed", "iteration": 1, "call_index": 2, "tool": "read_file", "status": "ok" },
+        { "event": "started", "iteration": 2, "call_index": 1, "tool": "execute", "params": "command=b" },
+        { "event": "completed", "iteration": 2, "call_index": 1, "tool": "execute", "status": "blocked" },
+        { "event": "started", "iteration": 3, "call_index": 1, "tool": "edit_file", "params": "path=y" },
+        { "event": "completed", "iteration": 3, "call_index": 1, "tool": "edit_file", "status": "error" },
+        { "event": "started", "iteration": 4, "call_index": 1, "tool": "web_fetch", "params": "url=http://e" },
+        { "event": "completed", "iteration": 4, "call_index": 1, "tool": "web_fetch", "status": "ok" },
+        { "event": "started", "iteration": 5, "call_index": 1, "tool": "execute", "params": "command=c" },
+        { "event": "completed", "iteration": 5, "call_index": 1, "tool": "execute", "status": "ok" }
+      ],
+      "text": "6 tool calls (2 failed) · execute ×3 · read_file ×1 · edit_file ×1 · last: execute command=c",
+      "text_no_last": "6 tool calls (2 failed) · execute ×3 · read_file ×1 · edit_file ×1"
+    },
+    {
+      "name": "ties go to the tool used first",
+      "events": [
+        { "event": "started", "iteration": 1, "call_index": 1, "tool": "web_fetch", "params": "url=u" },
+        { "event": "started", "iteration": 1, "call_index": 2, "tool": "read_file", "params": "path=p" },
+        { "event": "started", "iteration": 1, "call_index": 3, "tool": "execute", "params": "command=x" },
+        { "event": "started", "iteration": 1, "call_index": 4, "tool": "read_file", "params": "path=q" },
+        { "event": "started", "iteration": 1, "call_index": 5, "tool": "execute", "params": "command=y" }
+      ],
+      "text": "5 tool calls · read_file ×2 · execute ×2 · web_fetch ×1 · last: execute command=y",
+      "text_no_last": "5 tool calls · read_file ×2 · execute ×2 · web_fetch ×1"
+    },
+    {
+      "name": "a completion with no start seen counts, whitespace in params squashed, empty params",
+      "events": [
+        { "event": "completed", "iteration": 1, "call_index": 1, "tool": "execute", "status": "ok", "params": "command=echo  a\nb" },
+        { "event": "started", "iteration": 1, "call_index": 2, "tool": "task_list", "params": "" },
+        { "event": "completed", "iteration": 1, "call_index": 2, "tool": "task_list", "status": "ok" },
+        { "event": "completed", "iteration": 2, "call_index": 1, "tool": "task_list", "status": "error" }
+      ],
+      "text": "3 tool calls (1 failed) · task_list ×2 · execute ×1 · last: task_list",
+      "text_no_last": "3 tool calls (1 failed) · task_list ×2 · execute ×1"
+    },
+    {
+      "name": "a duplicate start does not add a call",
+      "events": [
+        { "event": "started", "iteration": 1, "call_index": 1, "tool": "execute", "params": "command=a" },
+        { "event": "started", "iteration": 1, "call_index": 1, "tool": "execute", "params": "command=a" },
+        { "event": "started", "iteration": 1, "call_index": 2, "tool": "execute", "params": "command=b" },
+        { "event": "started", "iteration": 2, "call_index": 1, "tool": "execute", "params": "command=c" }
+      ],
+      "text": "3 tool calls · execute ×3 · last: execute command=c",
+      "text_no_last": "3 tool calls · execute ×3"
+    }
+  ]
+}
