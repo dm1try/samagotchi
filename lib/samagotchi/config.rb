@@ -75,6 +75,8 @@ module Samagotchi
       Entry.new(key: "recap.inactivity",         yaml_path: %w[recap inactivity],          type: :float,   default: nil,             expose: %i[env config cli]),
       Entry.new(key: "recap.timeout",            yaml_path: %w[recap timeout],             type: :float,   default: nil,             expose: %i[env config cli]),
       Entry.new(key: "recap.min_user_turns",     yaml_path: %w[recap min_user_turns],      type: :integer, default: nil,             expose: %i[env config cli]),
+      # "N-M" or "N" sentences (1-10); unset = 2-4. Parsed by RecapPrompt.sentences_range.
+      Entry.new(key: "recap.sentences",          yaml_path: %w[recap sentences],           type: :string,  default: nil,             expose: %i[env config cli]),
 
       Entry.new(key: "session.retention_days",        yaml_path: %w[session retention_days],        type: :integer, default: 14,   expose: %i[env config cli]),
       Entry.new(key: "session.max_count",             yaml_path: %w[session max_count],             type: :integer, default: 500,  expose: %i[env config cli]),

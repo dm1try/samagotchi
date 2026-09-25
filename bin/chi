@@ -853,7 +853,7 @@ parser = OptionParser.new do |opts|
   opts.on("--open", "Open browser for `chi web`") { options[:web_open] = true }
   # Accepted values of string entries that the registry doesn't type as enums.
   value_hints = { "thinking.ui" => "spinner|off", "status.line" => "on|off", "status.width_mode" => "terminal_cap|fixed",
-                  "web.host" => "127.0.0.1|::1|localhost" }
+                  "web.host" => "127.0.0.1|::1|localhost", "recap.sentences" => "N|N-M" }
   # Universal config flags (implicit convention: ENV SAMAGOTCHI_* ↔ YAML dotted ↔ CLI --kebab)
   # Generated from Samagotchi::Config registry — Option A: snake leaf in YAML, kebab in CLI.
   Samagotchi::Config.cli_entries.each do |entry|

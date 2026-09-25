@@ -110,8 +110,28 @@ module Samagotchi
                "write an updated recap of the whole session that also covers what happened since " \
                "(do not just repeat the earlier recap)."
       OMITTED = "(earlier part omitted)"
+      DEFAULT_SENTENCES = [2, 4].freeze
+      MAX_SENTENCES = 10
+      SENTENCES_RE = /\A(\d+)(?:\s*[-–]\s*(\d+))?\z/
 
       module_function
+
+      # The recap.sentences setting as [min, max]: "2-3", "3" or 3 (an en
+      # dash and spaces are fine). DEFAULT_SENTENCES when unset; nil when
+      # invalid (outside 1..MAX_SENTENCES, min above max, not a number).
+      def sentences_range(value)
+        text = value.to_s.strip
+        return DEFAULT_SENTENCES if text.empty?
+
+        match = SENTENCES_RE.match(text)
+        return nil unless match
+
+        min = match[1].to_i
+        max = (match[2] || match[1]).to_i
+        return nil unless min.between?(1, MAX_SENTENCES) && max.between?(min, MAX_SENTENCES)
+
+        [min, max]
+      end
 
       # @return [Array<Hash>, nil] chat messages; nil when there is no
       #   transcript to summarize

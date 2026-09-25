@@ -245,6 +245,18 @@ RSpec.describe Samagotchi::ConfigFile do
     end
   end
 
+  describe "recap.sentences" do
+    def resolve(**opts) = Samagotchi::Config.resolve("recap.sentences", env: {}, **opts)
+
+    it "is unset by default and read from env, file and cli, cli first" do
+      expect(resolve).to be_nil
+      expect(resolve(env: { "SAMAGOTCHI_RECAP_SENTENCES" => "2-3" })).to eq("2-3")
+      expect(resolve(file_data: { "recap" => { "sentences" => 3 } })).to eq("3")
+      expect(resolve(env: { "SAMAGOTCHI_RECAP_SENTENCES" => "2-3" }, cli_overrides: { "recap.sentences" => "5-7" })).to eq("5-7")
+      expect(Samagotchi::Config.find_by_key("recap.sentences").cli_flag).to eq("--recap-sentences")
+    end
+  end
+
   describe ".recap_config" do
     around do |example|
       recap_env_keys = %w[

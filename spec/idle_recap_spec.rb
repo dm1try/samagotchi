@@ -129,6 +129,27 @@ RSpec.describe Samagotchi::IdleRecap do
   end
 
   describe Samagotchi::IdleRecap::RecapPrompt do
+    describe ".sentences_range" do
+      def range(value) = Samagotchi::IdleRecap::RecapPrompt.sentences_range(value)
+
+      it "defaults to 2-4 when unset" do
+        expect(range(nil)).to eq([2, 4])
+        expect(range("  ")).to eq([2, 4])
+      end
+      it "takes a range, a single number or a YAML integer" do
+        expect(range("2-3")).to eq([2, 3])
+        expect(range("3")).to eq([3, 3])
+        expect(range(3)).to eq([3, 3])
+      end
+      it "allows spaces and an en dash" do
+        expect(range(" 5 - 7 ")).to eq([5, 7])
+        expect(range("5–7")).to eq([5, 7])
+      end
+      it "rejects values outside 1-10, a reversed range and non-numbers" do
+        %w[0 12 7-3 0-2 3-11 lots 2-3-4 -2].each { |bad| expect(range(bad)).to be_nil, bad }
+      end
+    end
+
     describe ".build" do
       let(:transcript) { "User asked about X.\nAssistant answered." }
       def text(messages) = messages.map { |m| m[:content] }.join("\n")
