@@ -30,6 +30,25 @@ RSpec.describe "chi sessions stop" do
       .to eq(Samagotchi::Session::STATUS_STOPPED)
   end
 
+  it "stops every id given, in order, and fails on an unknown one" do
+    first = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+    first.save(state_dir: state_dir)
+    second = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+    second.save(state_dir: state_dir)
+
+    out, err, status = Open3.capture3(env, "#{RbConfig.ruby} #{chi} sessions stop #{first.id} nope #{second.id} 2>&1")
+
+    expect(status.exitstatus).to eq(1), err
+    lines = out.lines.map(&:strip).reject(&:empty?)
+    expect(lines[0]).to include("Stopped session #{first.id}")
+    expect(lines[1]).to include("nope")
+    expect(lines[2]).to include("Stopped session #{second.id}")
+    [first, second].each do |session|
+      expect(Samagotchi::Session.load(session.id, state_dir: state_dir).status)
+        .to eq(Samagotchi::Session::STATUS_STOPPED)
+    end
+  end
+
   it "fails on an unknown session" do
     _out, err, status = run_chi("stop", "nope")
 
@@ -41,7 +60,7 @@ RSpec.describe "chi sessions stop" do
     _out, err, status = run_chi("stop")
 
     expect(status.exitstatus).to eq(1)
-    expect(err).to include("Usage: chi sessions stop ID")
+    expect(err).to include("Usage: chi sessions stop ID...")
   end
 
   it "lists stop in the help" do

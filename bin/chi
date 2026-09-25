@@ -44,7 +44,7 @@ if ARGV[0] == "sessions"
     puts "       --live: sessions a worker runs now (the ones chi note reaches), 10 unless --limit"
     puts "       --cwd PATH: sessions in PATH or below; json/tsv (id<TAB>description) are for scripts"
     puts "       [--scope=all]: every project's sessions; by default only this git project's (all outside a repo)"
-    puts "  stop ID   # stop the session's worker (ID or a unique prefix); chi --resume ID then starts a fresh one"
+    puts "  stop ID...   # stop each session's worker (IDs or unique prefixes); chi --resume ID then starts a fresh one"
     puts "  delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first"
     puts "  prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]"
     puts "  clean [--dry-run] [--days N]   # test sessions (SAMAGOTCHI_ENV=test, CI): all of them, or those older than N days"
@@ -151,27 +151,35 @@ if ARGV[0] == "sessions"
     end
     exit 0
   when "stop"
-    id = sessions_args[1]
-    if id.nil? || id.start_with?("-")
-      warn "Usage: chi sessions stop ID"
+    ids = sessions_args[1..]
+    if ids.empty? || ids.any? { |arg| arg.start_with?("-") }
+      warn "Usage: chi sessions stop ID..."
       exit 1
     end
-    begin
-      id = Samagotchi::Session.resolve_id(id)
-      released = Samagotchi::SessionManager.stop_session(id, wait: 10)
-    rescue Samagotchi::SessionManager::OwnedByTUI
-      warn "session #{id} is open in a chi REPL; close it there first"
-      exit 1
-    rescue ArgumentError => e
-      warn e.message
-      exit 1
+    # Each id in turn, like chi sessions delete: stdout is flushed before an
+    # error line, so the output keeps the order of the ids given.
+    ok = ids.uniq.map do |given|
+      begin
+        id = Samagotchi::Session.resolve_id(given)
+        released = Samagotchi::SessionManager.stop_session(id, wait: 10)
+      rescue Samagotchi::SessionManager::OwnedByTUI
+        $stdout.flush
+        warn "session #{id} is open in a chi REPL; close it there first"
+        next false
+      rescue ArgumentError => e
+        $stdout.flush
+        warn e.message
+        next false
+      end
+      if released
+        puts "Stopped session #{id}. chi --resume #{id} starts a fresh worker."
+      else
+        $stdout.flush
+        warn "Stopped session #{id}, but its worker is still shutting down; try chi --resume #{id} in a moment."
+      end
+      true
     end
-    if released
-      puts "Stopped session #{id}. chi --resume #{id} starts a fresh worker."
-    else
-      warn "Stopped session #{id}, but its worker is still shutting down; try chi --resume #{id} in a moment."
-    end
-    exit 0
+    exit(ok.all? ? 0 : 1)
   when "prune", "clean"
     test_only = true if sub == "clean" && !sessions_args.include?("--all")
     # Test sessions are throwaway: clean takes them whatever their age,
