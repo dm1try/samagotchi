@@ -39,13 +39,20 @@ RSpec.describe Samagotchi::Web::Server do
       .to output(/Failed to open browser: .*open — please open http:\/\/127.0.0.1:4567\/ manually/).to_stderr
   end
 
+  # The hub logs nothing of its own: the web log's start and stop lines
+  # are the server's. Server.start starts it before WEBrick and stops it
+  # after.
+  let(:hub) { instance_double(Samagotchi::Web::SessionHub, start: nil, stop: nil) }
+
   it "writes its start and stop to the log" do
     dir = Dir.mktmpdir
     Samagotchi::Log.configure(path: File.join(dir, "chi.log"))
     allow(Samagotchi::Web::App).to receive(:new).and_return(double("app"))
     allow(Rackup::Handler::WEBrick).to receive(:run)
 
-    expect { described_class.start(port: 4998) }.not_to output.to_stdout
+    expect { described_class.start(port: 4998, hub: hub) }.not_to output.to_stdout
+    expect(hub).to have_received(:start).ordered
+    expect(hub).to have_received(:stop).ordered
 
     records = File.open(File.join(dir, "chi.log")) { |io| Samagotchi::LogLine.each_record(io).to_a }
     expect(records.map { |r| [r.tag, r.event, r.fields] }).to eq([
@@ -55,11 +62,31 @@ RSpec.describe Samagotchi::Web::Server do
     FileUtils.remove_entry(dir)
   end
 
+  it "builds a hub over the app's state dir, hands it to the app, and points the app's shutdown check at WEBrick" do
+    state_dir = Dir.mktmpdir
+    webrick = double("webrick", status: :Running)
+    app = nil
+    allow(Rackup::Handler::WEBrick).to receive(:run) { |served, _opts, &block| app = served; block.call(webrick) }
+
+    described_class.start(port: 4999, state_dir: state_dir)
+
+    hub = app.instance_variable_get(:@hub)
+    expect(hub).to be_a(Samagotchi::Web::SessionHub)
+    expect(hub.instance_variable_get(:@state_dir)).to eq(state_dir)
+    expect(hub).to be_stopped
+    check = app.instance_variable_get(:@server_running)
+    expect(check.call).to be true
+    allow(webrick).to receive(:status).and_return(:Shutdown)
+    expect(check.call).to be false
+  ensure
+    FileUtils.remove_entry(state_dir)
+  end
+
   it "binds to 127.0.0.1 whatever host it is given, with a warning" do
     allow(Samagotchi::Web::App).to receive(:new).and_return(double("app"))
     allow(Rackup::Handler::WEBrick).to receive(:run)
 
-    expect { described_class.start(port: 4999, host: "0.0.0.0") }.to output(/forcing 127.0.0.1/).to_stderr
+    expect { described_class.start(port: 4999, host: "0.0.0.0", hub: hub) }.to output(/forcing 127.0.0.1/).to_stderr
     expect(Rackup::Handler::WEBrick).to have_received(:run).with(anything, hash_including(Host: "127.0.0.1", Port: 4999))
   end
 
@@ -68,7 +95,7 @@ RSpec.describe Samagotchi::Web::Server do
     callback = nil
     allow(Rackup::Handler::WEBrick).to receive(:run) { |_app, opts| callback = opts[:StartCallback] }
 
-    expect { described_class.start(port: 4999, url: "http://127.0.0.1:4999/?dir=%2Fr") }.not_to output.to_stdout
+    expect { described_class.start(port: 4999, url: "http://127.0.0.1:4999/?dir=%2Fr", hub: hub) }.not_to output.to_stdout
     expect { callback.call }.to output(%r{\AChi Web on http://127.0.0.1:4999/\?dir=%2Fr .*\nPress Ctrl-C}).to_stdout
   end
 
@@ -77,7 +104,7 @@ RSpec.describe Samagotchi::Web::Server do
     allow(Rackup::Handler::WEBrick).to receive(:run).and_raise(Errno::EADDRINUSE)
 
     result = nil
-    expect { result = described_class.start(port: 4999) }
+    expect { result = described_class.start(port: 4999, hub: hub) }
       .to output("Error: port 4999 is in use (an older chi web? restart it, or use --port)\n").to_stderr
     expect(result).to be false
   end

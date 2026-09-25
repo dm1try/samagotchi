@@ -379,6 +379,118 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "with a session hub" do
+    let(:state_dir) { Dir.mktmpdir("web-hub-spec") }
+    let(:hub) { Samagotchi::Web::SessionHub.new(state_dir: state_dir) }
+    let(:app) do
+      described_class.new(manager: Samagotchi::SessionManager, session_class: Samagotchi::Session, state_dir: state_dir,
+                          bridge_wait_timeout: 0, hub: hub)
+    end
+
+    after { FileUtils.rm_rf(state_dir) }
+
+    def saved_session(status: "idle")
+      Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd).tap do |s|
+        s.status = status
+        s.save(state_dir: state_dir)
+      end
+    end
+
+    it "lists from the projection: Session.list's order, pagination and total, with owner, status and recap" do
+      sessions = 3.times.map { saved_session(status: "running") }
+      lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(sessions[0].id, state_dir: state_dir), kind: "worker")
+      FileUtils.mkdir_p(Samagotchi::Session.session_dir(sessions[1].id, state_dir: state_dir))
+      File.write(File.join(Samagotchi::Session.session_dir(sessions[1].id, state_dir: state_dir), "recap.json"),
+                 JSON.generate(text: "We fixed the login. Then the tests.", covered: 2))
+      hub.scan
+
+      _, _, body = app.call(env_for("/api/sessions"))
+      listed = JSON.parse(body.first)
+      expect(listed.map { |s| s["id"] }).to eq(Samagotchi::Session.list(state_dir: state_dir).map(&:id))
+      expect(listed.to_h { |s| [s["id"], [s["owner"], s["status"], s["recap"]]] }).to eq(
+        sessions[0].id => ["worker", "running", nil],
+        sessions[1].id => [nil, "idle", "We fixed the login."],
+        sessions[2].id => [nil, "idle", nil]
+      )
+
+      _, headers, body = app.call(env_for("/api/sessions?sort=created_at&order=asc&limit=2&offset=1"))
+      expect(JSON.parse(body.first).map { |s| s["id"] })
+        .to eq(Samagotchi::Session.list(state_dir: state_dir, sort: "created_at", order: "asc", limit: 2, offset: 1).map(&:id))
+      expect(headers["X-Total-Count"]).to eq("3")
+
+      # The projection is the source: a file the tick hasn't seen isn't listed yet.
+      saved_session
+      _, _, body = app.call(env_for("/api/sessions"))
+      expect(JSON.parse(body.first).size).to eq(3)
+    ensure
+      lock&.release
+    end
+
+    it "scopes the list by ?dir's project from the projection, and gives the sweep its chance" do
+      here = Samagotchi::ProjectScope.root_for(__dir__)
+      mine = saved_session
+      other = saved_session
+      mine.project_root = here
+      mine.save(state_dir: state_dir)
+      other.project_root = "/repo/other"
+      other.save(state_dir: state_dir)
+      hub.scan
+      allow(Samagotchi::SessionManager).to receive(:retention_sweep_if_due)
+
+      _, _, body = app.call(env_for("/api/sessions?dir=#{URI.encode_www_form_component(__dir__)}"))
+
+      expect(JSON.parse(body.first).map { |s| s["id"] }).to eq([mine.id])
+      expect(Samagotchi::SessionManager).to have_received(:retention_sweep_if_due).with(state_dir: state_dir)
+    end
+
+    it "has the projection hold a created session before the 201 goes out" do
+      manager = Class.new(FakeResponsesManager) do
+        def spawn_session(prompt:, state_dir: nil, **kw)
+          super.tap { |s| s.save(state_dir: state_dir) }
+        end
+      end.new
+      app = described_class.new(manager: manager, session_class: Samagotchi::Session, state_dir: state_dir,
+                                bridge_wait_timeout: 0, hub: hub)
+      seen = []
+      hub.subscribe(->(event) { seen << event.type })
+
+      status, _, body = app.call(env_for("/api/sessions", method: "POST", body: JSON.generate(prompt: "hi")))
+
+      expect(status).to eq(201)
+      id = JSON.parse(body.first)["id"]
+      expect(hub.snapshot.map { |s| s[:id] }).to eq([id])
+      expect(seen).to eq(%w[session])
+    end
+
+    it "has the projection drop a deleted session before the 200 goes out" do
+      session = saved_session
+      hub.scan
+      seen = []
+      hub.subscribe(->(event) { seen << event.type })
+
+      status, = app.call(env_for("/api/sessions/#{session.id}", method: "DELETE"))
+
+      expect(status).to eq(200)
+      expect(hub.snapshot).to eq([])
+      expect(seen).to eq(%w[session_gone])
+    end
+
+    it "rescans a stopped session before answering the stop" do
+      session = saved_session(status: "running")
+      lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), kind: "worker")
+      hub.scan
+      allow(Samagotchi::SessionManager).to receive(:stop_session) { lock.release }
+      seen = []
+      hub.subscribe(->(event) { seen << [event.data[:session][:owner], event.data[:session][:status]] })
+
+      status, = app.call(env_for("/api/sessions/#{session.id}/stop", method: "POST"))
+
+      expect(status).to eq(200)
+      # The worker is gone, so the file's "running" now shows idle.
+      expect(seen).to eq([[nil, "idle"]])
+    end
+  end
+
   describe "GET /api/sessions/:id" do
     it "keeps Markdown disabled by default" do
       app = build_app(state_dir: Dir.mktmpdir)

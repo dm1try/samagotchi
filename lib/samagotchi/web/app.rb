@@ -199,6 +199,8 @@ module Samagotchi
         order = sanitize_order(req.params["order"])
         limit = sanitize_limit(req.params["limit"])
         offset = sanitize_offset(req.params["offset"])
+        return list_from_hub(root, sort: sort, order: order, limit: limit, offset: offset) if @hub
+
         sessions = if @state_dir
                      @manager.list_sessions(state_dir: @state_dir, sort: sort, order: order, limit: limit, offset: offset,
                                             **scope)
@@ -222,6 +224,19 @@ module Samagotchi
           headers["X-Total-Count"] = total.to_s
         end
         body = JSON.generate(payload)
+        headers["Content-Length"] = body.bytesize.to_s
+        [200, headers, [body]]
+      end
+
+      # The list from the hub's projection (the page's fallback and the
+      # first paint): the same sort, paging and total as from the files.
+      def list_from_hub(root, sort:, order:, limit:, offset:)
+        all = @hub.snapshot(project_root: root, sort: sort, order: order)
+        page = all.drop(offset)
+        page = page.first(limit) if limit
+        headers = { "Content-Type" => "application/json; charset=utf-8", "Cache-Control" => "no-store", "Access-Control-Allow-Origin" => "*" }
+        headers["X-Total-Count"] = all.size.to_s if limit || offset.positive?
+        body = JSON.generate(page)
         headers["Content-Length"] = body.bytesize.to_s
         [200, headers, [body]]
       end
@@ -294,7 +309,10 @@ module Samagotchi
         end
         # The worker's Bridge is the single live transport: wait (bounded) for
         # it so the client can attach without client-side polling.
-        json_response(201, session_to_json(session).merge(bridge_port: await_bridge_port(session.id)))
+        port = await_bridge_port(session.id)
+        # The projection holds it before the page hears back (no tick wait).
+        @hub&.touch(session.id)
+        json_response(201, session_to_json(session).merge(bridge_port: port))
       end
 
       def handle_show(req, id)
@@ -652,6 +670,7 @@ module Samagotchi
         # Bounded, so a Rack thread isn't held long; a worker still exiting
         # after it just means an immediate resume finds it (rare).
         @manager.stop_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS)
+        @hub&.touch(id)
         json_response(200, { status: "stopped", session_id: id })
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)
@@ -664,6 +683,7 @@ module Samagotchi
       # refused.
       def handle_delete(_req, id)
         result = @manager.delete_session(id, state_dir: @state_dir, stop: true, wait: STOP_WAIT_SECONDS)
+        @hub&.touch(result[:id])
         json_response(200, { status: "deleted", session_id: result[:id], stopped: result[:stopped] })
       rescue SessionManager::OwnedByTUI
         error_response(409, "owned_by_tui", "session #{id} is open in a chi REPL; close it there first")

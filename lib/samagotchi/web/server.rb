@@ -8,6 +8,7 @@ require "uri"
 require "webrick"
 
 require_relative "app"
+require_relative "session_hub"
 require_relative "../project_scope"
 require_relative "../log"
 require_relative "../version"
@@ -59,14 +60,19 @@ module Samagotchi
         end
       end
 
+      # @param hub [SessionHub, nil] the session projection the page streams
+      #   from; built over the app's state dir unless given
       # @return [Boolean] false when the port was taken (said so on stderr)
-      def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false)
+      def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
+                     hub: nil)
         port = resolve_port(port)
         host = resolve_host(host)
         url ||= "http://#{url_host(host)}:#{port}/"
 
-        app = App.new(manager: manager, state_dir: state_dir, markdown: markdown)
+        hub ||= SessionHub.new(state_dir: state_dir || Session.default_state_dir, manager: manager || SessionManager)
+        app = App.new(manager: manager, state_dir: state_dir, markdown: markdown, hub: hub)
         Samagotchi::Log.info(:web, "start", url: "http://#{host}:#{port}", version: Samagotchi::VERSION)
+        hub.start
         # Said once the port is bound: a second chi web racing for it gets
         # the in-use line instead.
         started = lambda do
@@ -81,13 +87,18 @@ module Samagotchi
           end
         end
 
+        # The event loops (GET /api/events) end once WEBrick leaves
+        # :Running: it joins every request thread before run returns.
         Rackup::Handler::WEBrick.run(app, Host: host, Port: port, AccessLog: [], Logger: Log.new($stderr, WEBrick::Log::WARN),
-                                          StartCallback: started)
+                                          StartCallback: started) do |server|
+          app.server_running = -> { server.status == :Running }
+        end
         true
       rescue Errno::EADDRINUSE
         warn in_use_message(port)
         false
       ensure
+        hub&.stop
         Samagotchi::Log.info(:web, "stop") if app
       end
 
