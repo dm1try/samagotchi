@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyEvent, blockSummary, currentGen, genLabel, newTurn } from "../../../lib/samagotchi/web/public/turn_model.js";
+import { applyEvent, blockSummary, currentGen, genLabel, newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 const feed = (events, turn = newTurn()) => {
@@ -187,4 +187,23 @@ test("blockSummary counts steps and tool calls, with the tally from 3 calls", ()
   ]).turn;
   assert.equal(blockSummary(heavy, { running: true }), "working · 4 steps · 4 tool calls (1 failed) · execute ×3 · read ×1");
   assert.equal(blockSummary(feed([{ type: "turn_started", prompt: "p" }]).turn, { running: true }), "working · 1 step");
+});
+
+test("blockSummary: an answer that moved out of the block is no step unless its thinking stays behind", () => {
+  const events = (thinking) => [
+    { type: "turn_started", prompt: "p" },
+    { type: "generation_started", iteration: 1 },
+    { type: "tool_call_started", iteration: 1, call_index: 1, tool: "execute", params: "" },
+    { type: "tool_call_completed", iteration: 1, call_index: 1, tool: "execute", output: "", activity: { status: "ok" } },
+    { type: "generation_started", iteration: 2 },
+    { type: "generation_chunk", iteration: 2, thinking, text: "Done." },
+    { type: "generation_completed", iteration: 2 },
+    { type: "turn_completed" },
+  ];
+  const plain = feed(events("")).turn;
+  takeAnswer(plain, plain.gens[1]);
+  assert.equal(blockSummary(plain), "1 step · 1 tool call");
+  const thought = feed(events("hm")).turn;
+  takeAnswer(thought, thought.gens[1]);
+  assert.equal(blockSummary(thought), "2 steps · 1 tool call");
 });
