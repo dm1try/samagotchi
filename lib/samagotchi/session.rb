@@ -31,6 +31,10 @@ module Samagotchi
     attr_accessor :id, :metadata_version, :mode, :model_name, :working_directory, :messages,
                    :created_at, :updated_at, :status, :last_prompt, :first_preview, :test_run,
                    :pending_question, :used_memory_names
+    # Memories the session was started with (--memory) and memories hidden
+    # from it (--mute): the worker rebuilds the same prompt on a respawn.
+    # Names as given; the engine normalizes them.
+    attr_accessor :preloaded_memory_names, :muted_memory_names
     # The project the session was started in (ProjectScope.root_for its
     # folder), stored because worktrees are deleted after a merge and a
     # deleted folder no longer leads to its repository. nil outside a repo,
@@ -40,7 +44,8 @@ module Samagotchi
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
                    metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
                    first_preview: "", test_run: false, pending_question: nil,
-                   used_memory_names: [], project_root: nil)
+                   used_memory_names: [], project_root: nil,
+                   preloaded_memory_names: [], muted_memory_names: [])
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -54,7 +59,9 @@ module Samagotchi
       @first_preview = first_preview
       @test_run = !!test_run
       @pending_question = pending_question
-      @used_memory_names = Array(used_memory_names).map(&:to_s).reject(&:empty?).uniq
+      @used_memory_names = self.class.name_list(used_memory_names)
+      @preloaded_memory_names = self.class.name_list(preloaded_memory_names)
+      @muted_memory_names = self.class.name_list(muted_memory_names)
       @project_root = project_root
     end
 
@@ -67,8 +74,14 @@ module Samagotchi
       ProjectScope.root_for(@working_directory, cache: cache)
     end
 
+    # A list of memory names: strings, stripped, no blanks, no repeats.
+    def self.name_list(names)
+      Array(names).map { |n| n.to_s.strip }.reject(&:empty?).uniq
+    end
+
     # Build a new, unsaved session.
-    def self.new_session(mode:, model_name:, working_directory:, test_run: nil)
+    def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
+                         preloaded_memory_names: [], muted_memory_names: [])
       now = Time.now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?
@@ -86,7 +99,9 @@ module Samagotchi
         status: STATUS_IDLE,
         first_preview: "",
         test_run: resolved_test,
-        project_root: ProjectScope.root_for(working_directory)
+        project_root: ProjectScope.root_for(working_directory),
+        preloaded_memory_names: preloaded_memory_names,
+        muted_memory_names: muted_memory_names
       )
     end
 
@@ -124,7 +139,9 @@ module Samagotchi
         test_run: data.fetch("test_run", false),
         pending_question: pending,
         used_memory_names: Array(used_mems),
-        project_root: data["project_root"]
+        project_root: data["project_root"],
+        preloaded_memory_names: Array(data["preloaded_memory_names"]),
+        muted_memory_names: Array(data["muted_memory_names"])
       )
     rescue JSON::ParserError => e
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
@@ -209,7 +226,9 @@ module Samagotchi
         first_preview: data.fetch("first_preview", ""),
         test_run: data.fetch("test_run", false),
         used_memory_names: Array(used_mems),
-        project_root: data["project_root"]
+        project_root: data["project_root"],
+        preloaded_memory_names: Array(data["preloaded_memory_names"]),
+        muted_memory_names: Array(data["muted_memory_names"])
       )
     rescue JSON::ParserError, KeyError, SystemCallError
       nil
@@ -351,7 +370,9 @@ module Samagotchi
         "test_run" => !!@test_run,
         "pending_question" => @pending_question ? scrub_utf8(stringify_message_keys(@pending_question)) : nil,
         "used_memory_names" => Array(@used_memory_names),
-        "project_root" => @project_root
+        "project_root" => @project_root,
+        "preloaded_memory_names" => Array(@preloaded_memory_names),
+        "muted_memory_names" => Array(@muted_memory_names)
       }
 
       File.write(temp_path, JSON.pretty_generate(record) + "\n")

@@ -113,6 +113,41 @@ RSpec.describe Samagotchi::Session do
       session.save(state_dir: tmpdir)
       expect(session.updated_at).not_to eq(original_updated_at)
     end
+
+    it "round-trips the preloaded and muted memory names, normalized" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                            preloaded_memory_names: ["cli_usage", " cli_usage ", ""],
+                                            muted_memory_names: ["gh-helper", nil, "gh-helper"])
+      expect(session.preloaded_memory_names).to eq(["cli_usage"])
+      expect(session.muted_memory_names).to eq(["gh-helper"])
+      session.save(state_dir: tmpdir)
+
+      raw = JSON.parse(File.read(File.join(tmpdir, "#{session.id}.json")))
+      expect(raw["preloaded_memory_names"]).to eq(["cli_usage"])
+      expect(raw["muted_memory_names"]).to eq(["gh-helper"])
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.preloaded_memory_names).to eq(["cli_usage"])
+      expect(loaded.muted_memory_names).to eq(["gh-helper"])
+      summary = described_class.summary_from_file(File.join(tmpdir, "#{session.id}.json"))
+      expect(summary.preloaded_memory_names).to eq(["cli_usage"])
+      expect(summary.muted_memory_names).to eq(["gh-helper"])
+    end
+
+    it "reads a session file written before the memory-name fields as empty lists" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      raw = JSON.parse(File.read(path))
+      raw.delete("preloaded_memory_names")
+      raw.delete("muted_memory_names")
+      File.write(path, JSON.generate(raw))
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.preloaded_memory_names).to eq([])
+      expect(loaded.muted_memory_names).to eq([])
+      expect(described_class.summary_from_file(path).muted_memory_names).to eq([])
+    end
   end
 
   describe "#save atomic write" do
