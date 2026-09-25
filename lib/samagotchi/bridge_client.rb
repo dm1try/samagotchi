@@ -18,6 +18,11 @@ module Samagotchi
     SIDECAR_FILE = "bridge.json"
     PROBE_TIMEOUT = 0.2
     STREAM_CONNECT_ATTEMPTS = 3
+    # Seconds a one-shot request waits for the whole reply. Every route
+    # answers at once (a recap is only asked for); a worker that takes the
+    # request and never answers raises Errno::ETIMEDOUT, as a dead one
+    # raises Errno::ECONNREFUSED. The event stream has no such limit.
+    READ_TIMEOUT = 30
 
     # A Bridge reply: HTTP status code and raw body (nil when not read).
     Response = Struct.new(:status, :body, keyword_init: true) do
@@ -100,10 +105,12 @@ module Samagotchi
 
     attr_reader :session_id, :port, :host
 
-    def initialize(session_id:, port:, host: HOST)
+    # @param read_timeout [Numeric] see READ_TIMEOUT
+    def initialize(session_id:, port:, host: HOST, read_timeout: READ_TIMEOUT)
       @session_id = session_id
       @port = port
       @host = host
+      @read_timeout = read_timeout
     end
 
     # POST /session/:id/answer. 200 = recorded, 409 = another client answered
@@ -172,7 +179,7 @@ module Samagotchi
     def get_json(path)
       sock = TCPSocket.new(@host, @port)
       sock.write("GET /session/#{@session_id}/#{path} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nConnection: close\r\n\r\n")
-      response = sock.read
+      response = read_reply(sock, path)
       sock.close rescue nil
       return nil unless response
 
@@ -264,11 +271,32 @@ module Samagotchi
       sock = TCPSocket.new(@host, @port)
       json_body = JSON.generate(payload)
       sock.write("POST /session/#{@session_id}/#{path} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nContent-Type: application/json\r\nContent-Length: #{json_body.bytesize}\r\nConnection: close\r\n\r\n#{json_body}")
-      status_line = sock.gets
-      body = read_body ? sock.read.to_s.split("\r\n\r\n", 2)[1] : nil
-      Response.new(status: status_line.to_s[/\AHTTP\/1\.[01] (\d{3})/, 1].to_i, body: body)
+      reply = read_reply(sock, path, whole: read_body)
+      body = read_body ? reply.split("\r\n\r\n", 2)[1] : nil
+      Response.new(status: reply[/\AHTTP\/1\.[01] (\d{3})/, 1].to_i, body: body)
     ensure
       sock&.close rescue nil
+    end
+
+    # The reply up to the Bridge's close (or its first line only), within
+    # @read_timeout in all.
+    # @raise [Errno::ETIMEDOUT]
+    def read_reply(sock, path, whole: true)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @read_timeout
+      reply = +""
+      loop do
+        break if !whole && reply.include?("\n")
+
+        left = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        unless left.positive? && sock.wait_readable(left)
+          raise Errno::ETIMEDOUT, "bridge #{path}: no reply within #{@read_timeout}s"
+        end
+
+        reply << sock.readpartial(16_384)
+      rescue EOFError
+        break
+      end
+      reply.force_encoding(Encoding::UTF_8)
     end
   end
 end

@@ -150,6 +150,53 @@ RSpec.describe Samagotchi::BridgeClient do
       .and include('{"session_id":"s1","prompt":"hi","client_id":"web:1"}')
   end
 
+  describe "a worker that takes the request and never answers" do
+    let(:server) { TCPServer.new("127.0.0.1", 0) }
+    let(:held) { [] }
+    let(:acceptor) do
+      Thread.new { loop { held << server.accept } }.tap { |t| t.report_on_exception = false }
+    end
+    let(:client) { described_class.new(session_id: "s1", port: server.local_address.ip_port, read_timeout: 0.3) }
+
+    before { acceptor }
+
+    after do
+      acceptor.kill
+      held.each { |c| c.close rescue nil }
+      server.close
+    end
+
+    it "gives up on a post after the read timeout, with an error callers already handle" do
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      expect { client.post_turn(prompt: "hi") }.to raise_error(Errno::ETIMEDOUT)
+      expect { client.cancel(reason: "x") }.to raise_error(SystemCallError)
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
+    end
+
+    it "gives up on a reply whose body never ends" do
+      Thread.new do
+        sleep 0.05 until held.any?
+        held.first.write("HTTP/1.1 202 Accepted\r\nContent-Type: application/json\r\n\r\n{")
+      end
+      expect { client.post_command(line: "/model x") }.to raise_error(Errno::ETIMEDOUT)
+    end
+
+    it "gives up on a GET the same way (nil)" do
+      expect(client.event_seq).to be_nil
+    end
+  end
+
+  it "waits 30 seconds for a reply by default" do
+    expect(described_class::READ_TIMEOUT).to eq(30)
+  end
+
+  it "reads a reply body as UTF-8" do
+    port, _done = serve_once(json_reply("202 Accepted", JSON.generate(detail: "caf\u00e9")))
+    reply = described_class.new(session_id: "s1", port: port).post_command(line: "/x")
+    expect(reply.body.encoding).to eq(Encoding::UTF_8)
+    expect(reply.json).to eq("detail" => "caf\u00e9")
+  end
+
   it "reads the live event cursor from /state" do
     port, finish = serve_once(json_reply("200 OK", '{"session_state_snapshot":{"event_seq":42}}'))
 
