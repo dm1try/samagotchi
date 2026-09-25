@@ -85,6 +85,24 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(metrics.snapshot).to include(tool_calls_total: 2, tool_errors: 1)
   end
 
+  it "counts the running turn's iterations and generation latency in the totals, once" do
+    monotonic = 10.0
+    metrics = described_class.new(clock: -> { monotonic })
+    [
+      { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+      { type: :generation_started, iteration: 1 },
+      { type: :tool_dispatch_started, iteration: 1 },
+      { type: :tool_call_started, iteration: 1, call_index: 1, tool: "read" }
+    ].each { |e| metrics.call(e) }
+    monotonic = 10.5
+    metrics.call({ type: :generation_completed, iteration: 1, content_length: 3 })
+
+    expect(metrics.snapshot).to include(iterations_total: 1, gen_latency_ms: 500.0)
+
+    metrics.call({ type: :turn_completed, result: double(respond_to?: false) })
+    expect(metrics.snapshot).to include(iterations_total: 1, gen_latency_ms: 500.0)
+  end
+
   it "keeps the latest context window :generation_started reported" do
     expect(metrics.snapshot).to include(context_window_tokens: nil, context_window_source: nil)
 
