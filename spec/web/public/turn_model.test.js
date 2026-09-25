@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyEvent, blockSummary, currentGen, genLabel, newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
+import { applyEvent, blockSummary, currentGen, genLabel, newTurn, notice, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 const feed = (events, turn = newTurn()) => {
@@ -217,4 +217,26 @@ test("a live gen's thinking starts at its first visible character; later whitesp
     { type: "generation_chunk", iteration: 1, text: "", thinking: " line.\n\nSecond" },
   ]);
   assert.equal(currentGen(turn).thinking, "First line.\n\nSecond");
+});
+
+// A hook's notice (before_tool_call hooks run before tool_call_started) lands
+// in the current step, ahead of the call it judged; with no running turn it
+// has no step (the page shows it as a bubble).
+test("notice: a hook's line goes to the current gen, before its tool row; none once the turn ended", () => {
+  const { turn } = feed(LIVE.slice(0, 5));
+  const r = notice(turn, { hook: "x.rb (bundle known-names)", text: "saw it", level: "warn" });
+  assert.equal(r.gen, currentGen(turn));
+  assert.deepEqual(r.gen.notices, [{ hook: "x.rb (bundle known-names)", text: "saw it", level: "warn" }]);
+  feed(LIVE.slice(5, 7), turn);
+  assert.equal(turn.gens[0].tools.length, 1);
+  assert.equal(blockSummary(turn), "1 step · 1 tool call");
+  assert.equal(genLabel(turn.gens[0]), "Let me look. · 1 tool call");
+  applyEvent(turn, { type: "turn_completed" });
+  assert.equal(notice(turn, { hook: "h", text: "late" }), null);
+  assert.equal(notice(null, { hook: "h", text: "none" }), null);
+});
+
+test("notice: a new gen starts with no notices", () => {
+  const { turn } = feed(LIVE.slice(0, 2));
+  assert.deepEqual(currentGen(turn).notices, []);
 });
