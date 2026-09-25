@@ -49,6 +49,11 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     expect(view.lines).to eq(["guardrails> hook g.rb (config) failed to load (x)"])
   end
 
+  it "hands a completed tool call to the view (for its tally)" do
+    renderer.call(tool_events(activity).last)
+    expect(view.calls).to include(:tool_call_feedback_completed)
+  end
+
   it "times each tool call from its own started/completed events" do
     started, completed = tool_events(activity)
     renderer.call(started)

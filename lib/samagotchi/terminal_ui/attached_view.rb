@@ -3,6 +3,7 @@
 require "monitor"
 require_relative "formatting"
 require_relative "../output_formatter"
+require_relative "../turn_tally"
 
 module Samagotchi
   class TerminalUI
@@ -18,6 +19,9 @@ module Samagotchi
     # chunks (a queued remote request, a long prompt eval) still looks alive,
     # and after WAIT_NOTICE_AFTER seconds with no chunk it says how long it
     # has been waiting for the first token.
+    #
+    # From a turn's TurnTally::MIN_CALLS-th tool call, a second, dim row under
+    # it tallies the turn's calls (TurnTally).
     class AttachedView
       include Formatting
 
@@ -43,6 +47,7 @@ module Samagotchi
         @origin = clock.call
         @lock = Monitor.new
         @ticker = nil
+        @tally = TurnTally.new
         reset_turn_feedback
       end
 
@@ -50,13 +55,11 @@ module Samagotchi
         @screen.commit(text)
       end
 
+      # A new turn: its tally starts over too.
       def reset_turn_feedback
         @lock.synchronize do
-          @thinking = false
-          @tail = +""
-          @tool = nil
-          @retry = nil
-          @waiting_since = nil
+          reset_feedback_state
+          @tally.reset
         end
       end
 
@@ -96,7 +99,15 @@ module Samagotchi
           @retry = nil
           @waiting_since = nil
           @tool = "running #{event[:tool]}"
+          @tally.started(key: tally_key(event), tool: event[:tool], params: event[:params])
           redraw_status
+        end
+      end
+
+      def tool_call_feedback_completed(event)
+        @lock.synchronize do
+          @tally.completed(key: tally_key(event), tool: event[:tool],
+                           status: event.dig(:activity, :status), params: event.dig(:activity, :params))
         end
       end
 
@@ -113,17 +124,21 @@ module Samagotchi
         end
       end
 
+      # The turn's answer (or a merge's) is out: the slot goes. The tally
+      # keeps counting until the next turn starts (a merge goes on).
       def finish_thinking_spinner
         @lock.synchronize do
-          reset_turn_feedback
+          reset_feedback_state
           @screen.clear_slot(:activity)
         end
       end
 
       # Pick up a turn joined mid-way (from the Bridge snapshot): the model's
-      # text so far, or the tool it is running.
-      def resume(tail: nil, tool: nil)
+      # text so far, or the tool it is running, and the tally of its tool
+      # parts.
+      def resume(tail: nil, tool: nil, parts: nil)
         @lock.synchronize do
+          @tally.reset.seed(parts) if parts
           @thinking = true
           @tail = +tail.to_s
           @tool = tool && "running #{tool}"
@@ -159,6 +174,18 @@ module Samagotchi
 
       private
 
+      def reset_feedback_state
+        @thinking = false
+        @tail = +""
+        @tool = nil
+        @retry = nil
+        @waiting_since = nil
+      end
+
+      def tally_key(event)
+        [event[:iteration].to_i, event[:call_index].to_i]
+      end
+
       def redraw_status(throttle: false)
         now = @clock.call
         return if throttle && @last_redraw && (now - @last_redraw) < MIN_REDRAW_INTERVAL
@@ -166,7 +193,8 @@ module Samagotchi
         @last_redraw = now
         text = status_text
         if text
-          @screen.set_slot(:activity, [text])
+          tally = @tally.text(width: @screen.columns - 1)
+          @screen.set_slot(:activity, tally ? [text, paint(tally, 90)] : [text])
           start_ticker
         else
           @screen.clear_slot(:activity)

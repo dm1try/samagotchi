@@ -53,6 +53,7 @@ module Samagotchi
           @view.tool_call_feedback_started(event)
         when :tool_call_completed
           @view.clear_generation_retry
+          @view.tool_call_feedback_completed(event)
           render_streamed_tool_activity(event[:activity], duration_ms: tool_duration_ms(event), images: event[:images])
         when :generation_completed, :generation_cancelled, :tool_dispatch_started
           @view.generation_feedback_finished

@@ -144,7 +144,9 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
   (`BridgeClient#follow` for events, `post_turn`/`cancel`/`answer` for input). It
   renders through the same `EventRenderer` as the REPL, on an `AttachedView` that
   draws on a `Screen`: a live region at the bottom of the terminal (activity row,
-  prompt, status/notes/hints) under normal scrollback. Reline still reads the input,
+  prompt, status/notes/hints) under normal scrollback. From a turn's 3rd tool call the
+  activity slot gets a second, dim row: the turn's tool tally (`TurnTally`, seeded from the
+  snapshot's tool parts on a mid-turn join). Reline still reads the input,
   but `RelineSeam` (prepended to `Reline::LineEditor`) sends its drawing to the
   `Screen`. Without a capable terminal it falls back to `PlainSurface` (append-only).
 

@@ -20,8 +20,10 @@ module Samagotchi
       reset
     end
 
+    # @return [TurnTally] self
     def reset
       @calls = {}
+      self
     end
 
     def count

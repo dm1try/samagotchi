@@ -354,6 +354,24 @@ Notes:
 - Spinner rendering remains app-managed to keep cursor cleanup deterministic.
 - Raw terminal auto-wrap is intentionally avoided in the spinner region.
 
+## Tool Tally
+
+A long, tool-heavy turn says what it has been doing. From the turn's 3rd tool call,
+a dim row under the activity row tallies its calls, with no model call:
+
+```
+12 tool calls (2 failed) · execute ×7 · read_file ×3 · edit_file ×2 · last: execute command=bundle exec rspec
+```
+
+It lists the top 3 tools by count (ties go to the tool used first), the failed calls
+(a call a guardrail or an approval blocked counts as a call, not as failed) and the last
+call with its parameters, cut to the terminal width. It starts over with each turn.
+
+- Attached mode: the second row of the activity slot, shown while the slot is (the
+  model generating or a tool running). Joining a turn mid-way seeds it from the turn so far.
+- The web: the activity panel's summary reads `activity · 12 tool calls (2 failed) · execute ×7 · …`
+  (without `last:`: the rows show it).
+
 ## Thinking Spinner Preview
 
 When `SAMAGOTCHI_THINKING_UI=spinner`, the preview renderer uses a deterministic layout:

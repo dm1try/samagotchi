@@ -848,7 +848,7 @@ module Samagotchi
           when "reminder" then @screen.commit(reminder_line(part[:reminders]))
           end
         end
-        @view.resume(tail: tail, tool: running_tool)
+        @view.resume(tail: tail, tool: running_tool, parts: turn[:parts])
         ask(turn[:pending_question]) if turn[:pending_question]
       end
 

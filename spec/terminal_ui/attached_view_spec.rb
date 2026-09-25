@@ -128,4 +128,56 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
       expect(screen.statuses.size).to eq(after)
     end
   end
+
+  describe "the tool tally row" do
+    def tool_call(iteration, tool, params: "command=x", status: "ok")
+      activity = { action: "running command", tool: tool, params: params, status: status }
+      feed({ type: :tool_call_started, iteration: iteration, call_index: 1, tool: tool, params: params },
+           { type: :tool_call_completed, iteration: iteration, call_index: 1, tool: tool, activity: activity })
+    end
+
+    it "adds a second row from the turn's 3rd tool call" do
+      feed({ type: :turn_started }, { type: :generation_started, iteration: 1 })
+      tool_call(1, "execute")
+      feed({ type: :generation_started, iteration: 2 })
+      tool_call(2, "read_file", params: "path=a", status: "error")
+      feed({ type: :generation_started, iteration: 3 })
+      expect(screen.slots[:activity].size).to eq(1)
+
+      feed({ type: :tool_call_started, iteration: 3, call_index: 1, tool: "execute", params: "command=rspec" })
+      expect(screen.slots[:activity]).to eq(["| running execute…",
+                                             "3 tool calls (1 failed) · execute ×2 ·…"])
+      expect(screen.slots[:activity].last.length).to eq(39)
+    end
+
+    it "keeps counting across a merge and starts over with the next turn" do
+      feed({ type: :turn_started })
+      3.times { |i| tool_call(i + 1, "execute") }
+      feed({ type: :pending_input_merged, count: 1, content: "also" },
+           { type: :generation_started, iteration: 4 })
+      expect(screen.slots[:activity].last).to start_with("3 tool calls")
+
+      feed({ type: :turn_completed, turn_summary: { tool_activity: [], output: "done", resumable: false } })
+      expect(screen.slots[:activity]).to be_nil
+      feed({ type: :turn_started }, { type: :generation_started, iteration: 1 })
+      expect(screen.slots[:activity]).to eq(["| thinking…"])
+    end
+
+    it "seeds the tally from a joined turn's snapshot parts" do
+      parts = [
+        { kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "command=a", status: "ok" },
+        { kind: "tool", iteration: 2, call_index: 1, tool: "execute", params: "command=b", status: "ok" },
+        { kind: "tool", iteration: 3, call_index: 1, tool: "read_file", params: "path=c", status: "running" }
+      ]
+      view.resume(tool: "read_file", parts: parts)
+      expect(screen.slots[:activity]).to eq(["| running read_file…",
+                                             "3 tool calls · execute ×2 · read_file …"])
+
+      # The running call's completion doesn't count twice.
+      feed({ type: :tool_call_completed, iteration: 3, call_index: 1, tool: "read_file",
+             activity: { action: "reading file", tool: "read_file", params: "path=c", status: "ok" } },
+           { type: :generation_started, iteration: 4 })
+      expect(screen.slots[:activity].last).to start_with("3 tool calls · ")
+    end
+  end
 end

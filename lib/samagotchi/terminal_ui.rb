@@ -704,6 +704,9 @@ module Samagotchi
       end
     end
 
+    # The REPL doesn't tally a turn's calls (yet); both views take the call.
+    def tool_call_feedback_completed(_event); end
+
     def clear_generation_retry
       @spinner_lock.synchronize { clear_retry_spinner_status }
     end
