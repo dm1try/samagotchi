@@ -241,6 +241,11 @@ is not trusted, and unsafe links are removed. If Markdown is enabled without
 commonmarker installed, Chi Web keeps the normal escaped-text display and shows a
 warning explaining how to install the optional gem.
 
+Every prompt and answer has a copy button (on hover; always shown, dimmed, on a
+touch screen), and so does each code block of a rendered answer. An answer
+copies its Markdown source, not the rendered text; a code block copies just
+its code; a prompt copies the text as you typed it.
+
 ### Web turn view
 
 By default a turn with tool calls renders as a row of bubbles: one thinking
