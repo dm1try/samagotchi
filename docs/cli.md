@@ -262,7 +262,8 @@ collapses stay as you toggled them. A reloaded session shows the same block
 from the saved messages (each step's thinking, narration, tool parameters
 and output, the output capped at 2000 characters) and the timing records
 (status and duration per row). On an `api: openai` host the model's
-thinking is not saved, so a reloaded step shows none.
+reasoning is saved with each step for this (never sent back to the model);
+steps saved before that have none, so they show no thinking.
 
 ```sh
 bin/chi web --web-turn-view      # --no-web-turn-view switches it off
