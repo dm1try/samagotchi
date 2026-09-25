@@ -38,7 +38,7 @@ module Samagotchi
       result = approved(result, verdict) if verdict.allow? && verdict.decided_by
       result, images = attach_image(call, result) if result[:image_path]
 
-      output = result[:output].to_s
+      output = scrub(result[:output].to_s)
       capped = output
       truncated = false
       if max_tool_output_chars && output.length > max_tool_output_chars
@@ -58,6 +58,15 @@ module Samagotchi
     end
 
     private
+
+    # A tool's output can hold bytes that aren't UTF-8 (`printf '\xff'`, a
+    # binary file). They become "?" here, before the output reaches the
+    # conversation, the events and the saved session: JSON.generate raises
+    # on them, and the session would fail to save.
+    def scrub(text)
+      text = text.dup.force_encoding(Encoding::UTF_8) unless text.encoding == Encoding::UTF_8
+      text.valid_encoding? ? text : text.scrub("?")
+    end
 
     # A tool read an image: store it with the session (the turn's
     # VisionContext) so the loop sends it, or tell the model why it can't

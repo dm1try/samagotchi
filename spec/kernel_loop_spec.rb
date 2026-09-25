@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/kernel_loop"
+require "samagotchi/session"
 require "fileutils"
 require "tmpdir"
 
@@ -66,6 +67,30 @@ RSpec.describe Samagotchi::KernelLoop do
         params: "command=\"ruby -e 'puts 7'\"",
         status: "ok"
       )
+    end
+
+    it "turns a tool's bytes that aren't UTF-8 into ? and continues; the session saves and reloads" do
+      prompts = []
+      allow(client).to receive(:complete) do |prompt, **_|
+        prompts << prompt
+        prompts.length == 1 ? %(<|tool_call>call:execute{command: "printf 'ok\\377\\376'"}<tool_call|>) : "done"
+      end
+      events = []
+      result = kernel.run([{ role: "user", content: "print bytes" }], on_stream_event: ->(e) { events << e })
+
+      expect(result).to eq("done")
+      completed = events.find { |e| e[:type] == :tool_call_completed }
+      expect(completed[:output]).to include("ok??")
+      expect(JSON.generate(completed)).to include("ok??")
+      expect(prompts[1]).to include("ok??")
+
+      Dir.mktmpdir("kernel-utf8") do |dir|
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: dir)
+        session.messages.concat(result.conversation)
+        session.save(state_dir: dir)
+        loaded = Samagotchi::Session.load(session.id, state_dir: dir)
+        expect(loaded.messages.map { |m| m[:content].to_s }.join).to include("ok??")
+      end
     end
 
     it "captures concise tool activity with error status when a tool returns an error" do

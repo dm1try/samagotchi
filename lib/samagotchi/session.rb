@@ -300,14 +300,14 @@ module Samagotchi
         "mode" => @mode,
         "model_name" => @model_name,
         "working_directory" => @working_directory,
-        "messages" => @messages.map { |msg| stringify_message_keys(msg) },
+        "messages" => @messages.map { |msg| scrub_utf8(stringify_message_keys(msg)) },
         "created_at" => @created_at,
         "updated_at" => @updated_at,
         "status" => @status,
         "last_prompt" => @last_prompt,
         "first_preview" => @first_preview,
         "test_run" => !!@test_run,
-        "pending_question" => @pending_question ? stringify_message_keys(@pending_question) : nil,
+        "pending_question" => @pending_question ? scrub_utf8(stringify_message_keys(@pending_question)) : nil,
         "used_memory_names" => Array(@used_memory_names)
       }
 
@@ -387,6 +387,20 @@ module Samagotchi
 
     def stringify_message_keys(hash)
       hash.each_with_object({}) { |(k, v), h| h[k.to_s] = v }
+    end
+
+    # The last guard before JSON.generate, which raises on bytes that
+    # aren't UTF-8: a save that raised would lose the whole conversation.
+    # ToolRunner already scrubs tool output; this covers any other source.
+    def scrub_utf8(obj)
+      case obj
+      when String
+        str = obj.encoding == Encoding::UTF_8 ? obj : obj.dup.force_encoding(Encoding::UTF_8)
+        str.valid_encoding? ? str : str.scrub("?")
+      when Array then obj.map { |element| scrub_utf8(element) }
+      when Hash then obj.to_h { |key, value| [key, scrub_utf8(value)] }
+      else obj
+      end
     end
 
     class << self

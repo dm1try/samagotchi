@@ -90,6 +90,21 @@ RSpec.describe Samagotchi::Session do
       expect(loaded.messages.first[:content]).to eq("test message")
     end
 
+    it "saves a message holding bytes that aren't UTF-8, as ?, instead of raising" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.messages << { role: "user", content: "run it" }
+      session.messages << { role: "tool", content: "[execute]\nstdout:\nok \xFF\xFE".dup.force_encoding(Encoding::UTF_8) }
+      session.messages << { role: "tool", content: "bin \xFF".b, tool_calls: [{ id: "c1", arguments: { "x" => "\xFE".b } }] }
+
+      expect { session.save(state_dir: tmpdir) }.not_to raise_error
+
+      loaded = described_class.load(session.id, state_dir: tmpdir)
+      expect(loaded.messages[1][:content]).to eq("[execute]\nstdout:\nok ??")
+      expect(loaded.messages[2][:content]).to eq("bin ?")
+      expect(loaded.messages[2][:tool_calls].first[:arguments]).to eq("x" => "?")
+      expect(session.messages[1][:content].valid_encoding?).to be(false) # the live copy is left alone
+    end
+
     it "updates updated_at on save" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       original_updated_at = session.updated_at
