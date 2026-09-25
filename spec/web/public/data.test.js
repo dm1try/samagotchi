@@ -111,6 +111,18 @@ test("getSession hits the detail route", async () => {
   assert.equal(calls[0], "/api/sessions/abc");
 });
 
+test("getSession({ tail: true }) asks for the lighter end-of-turn answer, never passing tail to fetch", async () => {
+  const calls = [];
+  await getSession("abc", {
+    tail: true,
+    fetchImpl: (path, opts) => {
+      calls.push([String(path), "tail" in opts]);
+      return Promise.resolve(okResponse({ session: { id: "abc" } }));
+    },
+  });
+  assert.deepEqual(calls[0], ["/api/sessions/abc?tail=1", false]);
+});
+
 test("sendTurn posts the prompt to the turn route", async () => {
   const calls = [];
   await sendTurn("abc", "prompt text", {
