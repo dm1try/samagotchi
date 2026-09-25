@@ -99,6 +99,20 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
     expect(warnings.first).to include(aside.first)
   end
 
+  it "keeps both corrupt files set aside within the same second" do
+    allow(Time).to receive(:now).and_return(Time.utc(2026, 9, 25, 3, 0, 0))
+    FileUtils.mkdir_p(File.join(state, "guardrails"))
+    File.write(store.path, "{first")
+    store.entries
+    File.write(store.path, "{second")
+    store.entries
+
+    aside = Dir[File.join(state, "guardrails", "approvals.json.corrupt-*")].sort
+    expect(aside.map { |f| File.basename(f) })
+      .to eq(%w[approvals.json.corrupt-20260925T030000Z approvals.json.corrupt-20260925T030000Z-2])
+    expect(aside.map { |f| File.read(f) }).to eq(["{first", "{second"])
+  end
+
   it "keeps the corrupt file when a new approval is stored" do
     FileUtils.mkdir_p(File.join(state, "guardrails"))
     File.write(store.path, "[1,")

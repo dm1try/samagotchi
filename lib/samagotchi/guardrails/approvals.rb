@@ -15,7 +15,7 @@ module Samagotchi
     #   repo    — this exact call in this repo (the cwd outside a repo);
     #   rule    — anything this rule (from this source) asks about here.
     # "once" is never stored. A file that doesn't parse is moved aside to
-    # approvals.json.corrupt-<UTC time>, with a warning, and the store
+    # approvals.json.corrupt-<UTC time>[-N], with a warning, and the store
     # starts empty: it only means more asks, and nothing is overwritten.
     class Approvals
       FILE = "approvals.json"
@@ -137,7 +137,12 @@ module Samagotchi
         rescue JSON::ParserError, SystemCallError
           nil
         end
-        aside = "#{@path}.corrupt-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
+        base = "#{@path}.corrupt-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
+        # A second one within the same second must not replace the first
+        # (we hold the lock, so nobody else takes the name meanwhile).
+        aside = base
+        n = 1
+        aside = "#{base}-#{n += 1}" while File.exist?(aside)
         File.rename(@path, aside)
         aside
       end
