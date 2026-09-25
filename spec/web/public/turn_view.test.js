@@ -27,15 +27,15 @@ test("turnHistoryHtml: a reloaded tool turn is a collapsed block of steps, then 
     '<details class="gen"><summary>working with read · 1 tool call</summary>' +
     '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok">done</span><span class="activity-tool">read</span><span class="activity-params">1.2s</span></div></div></details>' +
     '</details>' +
-    '<div class="bubble output markdown" data-copy-source="Both fine."><p>Both <em>fine</em>.</p><div class="turn-timing">turn 1 · 19s</div></div>');
+    '<div class="bubble output markdown" data-copy-source="Both fine."><p>Both <em>fine</em>.</p></div><div class="turn-timing">turn 1 · 19s</div>');
 });
 
-test("turnHistoryHtml: a plain answer and a note render as the chat view does", () => {
+test("turnHistoryHtml: a plain answer and a note; the timing line under the answer, where the live view leaves it", () => {
   const items = [{ role: "user", content: "p" }, { role: "assistant", content: "PONG" }, { role: "note", content: "n", label: "x" }];
   const plain = normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 500 }] });
   assert.equal(turnHistoryHtml(items, plain, { thumbs }),
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<div class="bubble output">PONG<div class="turn-timing">turn 1 · 0.5s</div></div>' +
+    '<div class="bubble output">PONG</div><div class="turn-timing">turn 1 · 0.5s</div>' +
     '<div class="bubble note"><div class="note-line">note from x</div><div class="note-text">n</div></div>');
 });
 
