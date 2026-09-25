@@ -43,6 +43,7 @@ recap:
   # inactivity: 180
   # timeout: 30
   # min_user_turns: 2
+  # sentences: 2-4   # or 3, 5-7; 1-10 (from the next recap written)
 
 model_aliases:
   small: gemma4-small

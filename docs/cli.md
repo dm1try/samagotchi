@@ -263,7 +263,8 @@ Notes:
 
 ## Session recap
 
-A short recap of the session, for when you come back to it:
+A short recap of the session, for when you come back to it: what you were
+working on, what came of it and what is still open, not a turn-by-turn log.
 
 - It is written once the session has sat idle for `recap.inactivity` (180 s)
   after at least `recap.min_user_turns` (2) prompts, and as a worker (or the
@@ -275,6 +276,9 @@ A short recap of the session, for when you come back to it:
   the prompt prints there.
 - `/recap` shows the saved one and asks for a new one when the chat moved on
   (`writing a recap…`, then the recap when it comes).
+- It is 2-4 sentences; `recap.sentences` sets another length (`3`, `5-7`,
+  up to 10; `--recap-sentences`, `SAMAGOTCHI_RECAP_SENTENCES`). A change
+  shows from the next recap written, and updates keep to it.
 - It uses the session's own model unless `recap:` names one;
   `recap: false` turns it off. See configuration.md.
 
