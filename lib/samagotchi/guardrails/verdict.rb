@@ -30,12 +30,16 @@ module Samagotchi
         @legacy = false
         @note = nil
         @voter = nil
+        @advice = nil
       end
 
       # @param rule [String, nil] the rule id, when a rule decided
       # @param source [String, nil] where the rule came from ("config", "bundle x")
-      def deny!(reason, rule: nil, source: nil, decided_by: "hook")
-        vote(:deny, reason, rule: rule, source: source, decided_by: decided_by)
+      # @param advice [String, nil] what the model should do instead, in
+      #   place of the fixed "Do not retry it…" tail (a hook that rejects a
+      #   call so the model retries it corrected)
+      def deny!(reason, rule: nil, source: nil, decided_by: "hook", advice: nil)
+        @advice = advice.to_s.strip.empty? ? nil : advice.to_s.strip if vote(:deny, reason, rule: rule, source: source, decided_by: decided_by)
         self
       end
 
@@ -61,7 +65,7 @@ module Samagotchi
         return self unless ask?
 
         @decision = :allow
-        @reason = @rule = @source = @decided_by = @voter = nil
+        @reason = @rule = @source = @decided_by = @voter = @advice = nil
         @scopes = SCOPES
         self
       end
@@ -82,8 +86,9 @@ module Samagotchi
       def legacy? = @legacy
 
       # What the model gets for a deny (after the "[tool] Error: " prefix):
-      # who decided, why, and not to route around it. A user's deny leads
-      # with the user's answer, so it doesn't read as the rule refusing.
+      # who decided, why, and not to route around it (or the voter's own
+      # advice). A user's deny leads with the user's answer, so it doesn't
+      # read as the rule refusing.
       def deny_text
         reason = @reason.to_s.strip
         reason += "." unless reason.empty? || reason.match?(/[.!?]\z/)
@@ -92,7 +97,7 @@ module Samagotchi
                 else
                   ["denied by guardrail (#{decider}):", reason, @note || "The user was not asked."]
                 end
-        (parts << DO_NOT_RETRY).reject(&:empty?).join(" ")
+        (parts << (@advice || DO_NOT_RETRY)).reject(&:empty?).join(" ")
       end
 
       # For the activity entry; an allowed ask notes how ("approved (repo)",

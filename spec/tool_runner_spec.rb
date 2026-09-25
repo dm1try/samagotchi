@@ -86,6 +86,27 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(result[:activity]).to include(status: "blocked", guardrail: { verdict: "deny", decided_by: "hook" })
     end
 
+    it "ends the deny text with the voter's advice instead of the fixed tail" do
+      hooks.register(:before_tool_call) do |e|
+        e[:guardrail].deny!('"dedvo" is 1 edit away from "dedov"', source: "hook known_names, bundle known-names",
+                            advice: 'Retry with "dedov".')
+      end
+      expect(run[:output]).to eq(
+        '[execute] Error: denied by guardrail (hook known_names, bundle known-names): "dedvo" is 1 edit away from "dedov". ' \
+        'The user was not asked. Retry with "dedov".'
+      )
+    end
+
+    it "keeps the fixed tail when the advice is blank, and the first vote's advice when a later deny loses" do
+      hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("no", advice: " ") }
+      expect(run[:output]).to end_with("Do not retry it or reach the same result another way; ask the user how to proceed.")
+
+      hooks.unregister(:before_tool_call)
+      hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("first", advice: "Retry it corrected.") }
+      hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("second", advice: "Other advice.") }
+      expect(run[:output]).to eq("[execute] Error: denied by guardrail (hook): first. The user was not asked. Retry it corrected.")
+    end
+
     it "names the rule and its source in the deny text" do
       hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("pushes commits", rule: "git-push", source: "bundle guardrails") }
       expect(run[:output]).to start_with("[execute] Error: denied by guardrail (rule git-push, bundle guardrails): pushes commits.")
