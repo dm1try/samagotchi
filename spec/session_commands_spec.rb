@@ -320,6 +320,20 @@ RSpec.describe Samagotchi::SessionCommands do
                              "  guardrails.disable: typo matches no rule")
     end
 
+    it "cuts a command pattern longer than 80 characters with …" do
+      long = "(?:#{%w[alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron].join("|")})\\s+--force"
+      rules = Samagotchi::Guardrails::Rules.parse(
+        [{ "id" => "long", "tool" => "shell", "command" => long, "verdict" => "ask", "reason" => "long" },
+         { "id" => "short", "tool" => "shell", "command" => "x" * 80, "verdict" => "ask", "reason" => "short" }],
+        source: "config"
+      )
+      engine.instance_variable_set(:@guardrail_rules, Samagotchi::Guardrails::Rules.new(rules))
+      out = commands.run("/guardrails").output
+      expect(long.length).to be > 80
+      expect(out).to include("command /#{long[0, 79]}…/)", "command /#{"x" * 80}/)")
+      expect(out).not_to include(long)
+    end
+
     it "lists what failed to load" do
       engine.guardrail_failures.add("hook g.rb (config)", "LoadError: x", required: true)
       expect(commands.run("/guardrails").output).to include("failed to load:\n  hook g.rb (config): LoadError: x (required: every tool call is denied)")

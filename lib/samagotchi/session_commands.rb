@@ -167,7 +167,7 @@ module Samagotchi
       rules.rules.each_with_index do |rule, idx|
         match = [
           ("tool #{rule.tools.join(",")}" if rule.tools),
-          ("command /#{rule.command.source}/" if rule.command),
+          ("command /#{shorten_pattern(rule.command.source)}/" if rule.command),
           ("path #{rule.path}" if rule.path)
         ].compact.join(", ")
         off = "disabled (guardrails.disable) — " if rules.disabled?(rule)
@@ -180,6 +180,13 @@ module Samagotchi
       approvals.each_with_index { |entry, idx| lines << "  #{idx + 1}. #{approval_line(entry)}" }
       lines << "revoke one with /guardrails revoke N" unless approvals.empty?
       lines.join("\n")
+    end
+
+    PATTERN_SHOWN = 80
+
+    # A regex source cut to PATTERN_SHOWN characters, the last one "…".
+    def shorten_pattern(source)
+      source.length > PATTERN_SHOWN ? "#{source[0, PATTERN_SHOWN - 1]}…" : source
     end
 
     def approval_line(entry)
