@@ -957,6 +957,15 @@ module Samagotchi
         if root
           attrs["project-name"] = File.basename(root)
           attrs["project-dir"] = home_label(root)
+        elsif dir.nil?
+          # The all view's way back: the project view it came from
+          # (?from=), else the project chi web runs in.
+          back, = scope_dir(req.params["from"])
+          back ||= Dir.pwd
+          if (back_root = ProjectScope.root_for(back))
+            attrs["back-name"] = File.basename(back_root)
+            attrs["back-dir"] = back
+          end
         end
         attrs.map { |key, value| %(data-#{key}="#{Rack::Utils.escape_html(value)}") }.join(" ")
       end

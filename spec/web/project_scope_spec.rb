@@ -133,6 +133,24 @@ RSpec.describe Samagotchi::Web::App do
       expect(body).to include(%(data-server-dir="#{Dir.pwd.sub(Dir.home, "~")}"))
     end
 
+    it "names the project an all view came from (?from=), to link back to its view" do
+      _, _, body = call("/?from=#{q(repo_a)}")
+
+      expect(body).to include(%(data-back-name="alpha"), %(data-back-dir="#{repo_a}"))
+      expect(body).not_to include("data-project-name")
+    end
+
+    it "offers the server's own project as the way back when the all view names none" do
+      Dir.chdir(repo_b) { expect(call("/")[2]).to include(%(data-back-name="beta"), %(data-back-dir="#{repo_b}")) }
+      Dir.chdir(plain) { expect(call("/")[2]).not_to include("data-back-name") }
+      Dir.chdir(plain) { expect(call("/?from=#{q(plain)}")[2]).not_to include("data-back-name") }
+      Dir.chdir(plain) { expect(call("/?from=%2Fnope")[2]).not_to include("data-back-name") }
+    end
+
+    it "has no way back in a project view" do
+      expect(call("/?dir=#{q(repo_a)}")[2]).not_to include("data-back-name")
+    end
+
     it "has no project for no dir, a folder in no repo or a bad dir" do
       ["/", "/?dir=#{q(plain)}", "/?dir=%2Fnope"].each do |path|
         expect(call(path)[2]).not_to include("data-project-name")
