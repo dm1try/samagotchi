@@ -438,11 +438,15 @@ module Samagotchi
       @in_flight = nil
       recap = safe_value(job[:thread])
       return if recap.nil? || recap.to_s.strip.empty?
-      saved = { text: recap.to_s, covered: job[:covered], covered_digest: job[:covered_digest],
-                model: job[:model], created_at: Time.now.utc.iso8601 }
+      # An IdleClient::Summary names the model that answered; a plain String
+      # (a stubbed client) doesn't, and the asked label stands in.
+      served = recap.model if recap.respond_to?(:model)
+      text = recap.to_s
+      saved = { text: text, covered: job[:covered], covered_digest: job[:covered_digest],
+                model: served || job[:model], created_at: Time.now.utc.iso8601 }
       @mutex.synchronize { @state = saved }
       save(saved)
-      @engine.emit_recap(recap: recap.to_s, generation: job[:generation], covered: job[:covered])
+      @engine.emit_recap(recap: text, generation: job[:generation], covered: job[:covered])
     rescue StandardError
       @in_flight = nil
     end

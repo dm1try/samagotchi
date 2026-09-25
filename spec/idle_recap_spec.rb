@@ -911,6 +911,20 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(client).to have_received(:summarize) { |prompt| expect(prompt.last[:content]).not_to include("Where it stands") }
     end
 
+    it "saves the name of the model that answered, else the one it asked" do
+      engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
+      served = Samagotchi::IdleClient::Summary.new(text: "Served recap.", model: "ornith/served.gguf")
+      expect(idle_for(engine, double(summarize: served)).write_now).to eq("Served recap.")
+      expect(store.saved).to include(text: "Served recap.", model: "ornith/served.gguf")
+
+      unnamed = Samagotchi::IdleClient::Summary.new(text: "Recap.", model: nil)
+      idle_for(stub_engine(messages: two_turns), double(summarize: unnamed)).write_now
+      expect(store.saved).to include(text: "Recap.", model: model)
+
+      idle_for(stub_engine(messages: two_turns), double(summarize: "Plain.")).write_now
+      expect(store.saved).to include(text: "Plain.", model: model)
+    end
+
     it "sends nothing when nothing is new since the saved recap" do
       engine = stub_engine(messages: two_turns, last_activity: base_time.to_f)
       client = double(summarize: "Left recap.")

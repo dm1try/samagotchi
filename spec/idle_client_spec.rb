@@ -22,7 +22,20 @@ RSpec.describe Samagotchi::IdleClient do
   describe "#summarize" do
     it "returns the assistant prose, trimmed" do
       reply(content: "  the recap text  ")
-      expect(client.summarize("summarize this")).to eq("the recap text")
+      expect(client.summarize("summarize this").text).to eq("the recap text")
+    end
+
+    it "names the model that answered, as the server reports it" do
+      server.enqueue("/v1/chat/completions", json: { model: "served/model-Q4.gguf",
+                                                      choices: [{ message: { content: "Recap." }, finish_reason: "stop" }] })
+      summary = client.summarize("summarize this")
+      expect(summary).to have_attributes(text: "Recap.", model: "served/model-Q4.gguf")
+      expect(summary.to_s).to eq("Recap.")
+    end
+
+    it "has no served model when the server names none" do
+      reply(content: "Recap.")
+      expect(client.summarize("summarize this").model).to be_nil
     end
 
     it "sends a message list as given (a system + user recap prompt)" do
@@ -108,7 +121,7 @@ RSpec.describe Samagotchi::IdleClient do
   describe "a reply cut off by max_tokens" do
     it "keeps the full sentences" do
       reply({ content: "The goal was a flag. It is done! This is" }, finish_reason: "length")
-      expect(client.summarize("summarize this")).to eq("The goal was a flag. It is done!")
+      expect(client.summarize("summarize this").text).to eq("The goal was a flag. It is done!")
     end
 
     it "gives no recap when not even one sentence finished" do
@@ -118,7 +131,7 @@ RSpec.describe Samagotchi::IdleClient do
 
     it "leaves a finished reply alone" do
       reply(content: "Done. No trailing stop")
-      expect(client.summarize("summarize this")).to eq("Done. No trailing stop")
+      expect(client.summarize("summarize this").text).to eq("Done. No trailing stop")
     end
   end
 
@@ -126,12 +139,12 @@ RSpec.describe Samagotchi::IdleClient do
     it "returns reasoning_content when content is empty" do
       reasoning = "Here's a thinking process: the answer is 42"
       reply(content: "", reasoning_content: reasoning)
-      expect(client.summarize("summarize this")).to eq(reasoning)
+      expect(client.summarize("summarize this").text).to eq(reasoning)
     end
 
     it "prefers content over reasoning_content when both are present" do
       reply(content: "direct answer", reasoning_content: "thinking...")
-      expect(client.summarize("summarize this")).to eq("direct answer")
+      expect(client.summarize("summarize this").text).to eq("direct answer")
     end
 
     it "raises SummarizeError when both content and reasoning_content are empty" do

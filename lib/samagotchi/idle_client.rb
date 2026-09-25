@@ -22,6 +22,13 @@ module Samagotchi
     # Raised when summarization fails (server down, timeout, malformed body…).
     class SummarizeError < StandardError; end
 
+    # What #summarize returns: the recap text and the model that answered
+    # (the server's name for it; nil when the reply names none). #to_s is
+    # the text.
+    Summary = Data.define(:text, :model) do
+      def to_s = text
+    end
+
     DEFAULT_MODEL = "gemma4-small"
     DEFAULT_TIMEOUT_SECONDS = 30.0
     # Up to 10 sentences (recap.sentences) need ~350 tokens with thinking off.
@@ -61,16 +68,17 @@ module Samagotchi
     end
 
     # Summarize an already-built recap prompt: a string (one user message) or
-    # a list of chat messages. Returns the cleaned prose, or nil when there is
-    # nothing to summarize. Any failure raises SummarizeError (the caller
-    # isolates it).
+    # a list of chat messages. Returns a Summary of the cleaned prose, or nil
+    # when there is nothing to summarize. Any failure raises SummarizeError
+    # (the caller isolates it).
+    # @return [Summary, nil]
     def summarize(prompt)
       messages = prompt.is_a?(Array) ? prompt : [{ role: "user", content: prompt.to_s.strip }]
       return nil if messages.all? { |m| m[:content].to_s.strip.empty? }
 
-      content = generate(messages)
+      content, served = generate(messages)
       cleaned = content.to_s.strip
-      cleaned.empty? ? nil : cleaned
+      cleaned.empty? ? nil : Summary.new(text: cleaned, model: served)
     rescue SummarizeError
       raise
     rescue StandardError => e
@@ -80,7 +88,8 @@ module Samagotchi
     private
 
     # One plain /chat/completions request. Returns the cleaned assistant text
-    # ("" when there is nothing after stripping). Raises SummarizeError when
+    # ("" when there is nothing after stripping) and the served model's name
+    # (nil when the reply names none). Raises SummarizeError when
     # the reply has neither content nor reasoning_content.
     def generate(messages)
       response = @chat.chat(
@@ -100,7 +109,8 @@ module Samagotchi
       # strip thinking tokens some models (Qwen, Gemma) leave in the text.
       text = self.class.strip_thinking(content.empty? ? reasoning : content)
       # Cut off by max_tokens: keep the sentences that finished ("" if none).
-      response.finish_reason == "length" ? self.class.full_sentences(text) : text
+      text = self.class.full_sentences(text) if response.finish_reason == "length"
+      [text, response.model]
     rescue LLM::ProtocolError => e
       raise SummarizeError, "server returned no parseable assistant content (#{e.message})"
     end
