@@ -108,6 +108,38 @@ RSpec.describe Samagotchi::TerminalUI do
     end
   end
 
+  describe "cards and notices between turns" do
+    let(:surface) { RecordingSurface.new }
+    let(:agent) { described_class.new(mode: :assist, client: client, surface: surface) }
+    let(:engine) { agent.instance_variable_get(:@engine) }
+    def lines = surface.lines.flat_map { |line| line.split("\n") }
+
+    it "prints a card announced between turns at the open prompt, on the main thread, once" do
+      engine.show_card(source: "sample-plugin", title: "Hello", body: "hi there",
+                       actions: [{ label: "Again", command: "/hello again" }])
+      expect(lines).to be_empty
+      agent.send(:flush_pending_cards)
+      expect(lines).to eq(["┌ Hello · sample-plugin", "│ hi there", "│ → /hello again  Again", "└"])
+      agent.send(:flush_pending_cards)
+      expect(lines.grep(/Hello/).size).to eq(1)
+    end
+
+    it "prints a plugin's notice between turns under its bundle's name, and a card shown again marked (updated)" do
+      engine.send(:hook_notify, "saved", :info, "plugin.rb (bundle sample-plugin)")
+      engine.show_card(source: "b", title: "One", id: "c1")
+      engine.show_card(source: "b", title: "Two", id: "c1")
+      agent.send(:flush_pending_cards)
+      expect(lines).to eq(["sample-plugin> saved", "┌ One · b", "└", "┌ Two (updated) · b", "└"])
+    end
+
+    it "leaves a turn's card to the turn's sink" do
+      agent.send(:handle_card_event, { type: :card, id: "c1", source: "b", title: "mid", in_turn: true })
+      agent.send(:handle_card_event, { type: :hook_notice, hook: "h", text: "in a turn", level: :info })
+      agent.send(:flush_pending_cards)
+      expect(lines).to be_empty
+    end
+  end
+
   describe "/recap command" do
     let(:engine) { agent.instance_variable_get(:@engine) }
     let(:recap_job) { double("recap", min_user_turns: 2) }

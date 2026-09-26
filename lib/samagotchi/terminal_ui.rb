@@ -157,6 +157,9 @@ module Samagotchi
       # A recap written while idle, printed by the main thread at the open
       # prompt (#flush_pending_recap).
       @pending_recap = nil
+      # Cards and notices announced between turns, printed by the main
+      # thread at the open prompt (#flush_pending_cards).
+      @pending_cards = Queue.new
       # Every terminal write goes through the surface. The REPL swaps in a
       # live region when the terminal can show one (#assist_loop), unless it
       # was given a surface to draw on.
@@ -202,6 +205,7 @@ module Samagotchi
       # detector itself is Engine-owned (see Engine#recap) and opt-in.
       @recap_handle = @engine.subscribe(observer: ->(event) { handle_recap_ready(event) })
       @question_handle = @engine.subscribe(observer: ->(event) { handle_question_event(event) })
+      @card_handle = @engine.subscribe(observer: ->(event) { handle_card_event(event) })
       # Synchronous TUI handler for in-turn ask_user_question: the turn thread IS the
       # REPL thread (run_engine_turn runs Engine#run_turn inline), so we must render
       # and collect input on the SAME thread without parking on a second thread.
@@ -839,7 +843,10 @@ module Samagotchi
     def poll_input_with_reminder_check(awaiting_continue:)
       return :due unless @engine.due_reminder_names.empty?
       # Specs and pipes: a plain blocking read.
-      return read_input(awaiting_continue: awaiting_continue) unless @repl_input
+      unless @repl_input
+        flush_pending_cards
+        return read_input(awaiting_continue: awaiting_continue)
+      end
 
       if @idle_status_due
         @idle_status_due = false
@@ -849,6 +856,7 @@ module Samagotchi
       @repl_input.sync_prompt
       loop do
         flush_pending_recap
+        flush_pending_cards
         kind, line = @repl_input.pop(timeout: REMINDER_PENDING_POLL_INTERVAL)
         if kind
           # What the line does may change the status (/model, a turn).
@@ -1542,6 +1550,34 @@ module Samagotchi
 
       @pending_recap = nil
       @surface.commit(recap_block(recap))
+    end
+
+    # ── Cards and notices between turns ─────────────────────────────────────
+    #
+    # A card or a plugin's notice shown outside a turn is announced; on the
+    # announcing thread it is only kept, for the main thread to print at the
+    # open prompt (after the command that showed it). One shown during a
+    # turn is a turn event: the turn's sink prints it where it happens
+    # (EventRenderer; the Screen draws it above the live region).
+    def handle_card_event(event)
+      case event[:type]
+      when :card then @pending_cards << event unless event[:in_turn]
+      when :hook_notice then @pending_cards << event if event[:between_turns]
+      end
+    end
+
+    # Print the cards and notices kept since the last flush (main thread).
+    def flush_pending_cards
+      loop do
+        event = @pending_cards.pop(true)
+        if event[:type] == :card
+          @renderer.render_card(event)
+        else
+          @surface.commit(EventRenderer.hook_notice_line(event))
+        end
+      end
+    rescue ThreadError
+      nil # empty
     end
 
     # Resolve the recap config (on by default). Returns false when explicitly
