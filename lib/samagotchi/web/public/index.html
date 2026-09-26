@@ -34,6 +34,8 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #firstPeek.visible{display:block}
 #composer #cancelBtn{order:2;background:var(--danger-bg)}
 #history{flex:1;overflow:auto;padding:16px max(16px,calc((100% - 960px)/2));display:flex;flex-direction:column;gap:12px;background:var(--bg);min-height:160px}
+/* No child shrinks to fit: a held (overflow:hidden) answer bubble would, clipped under the dock with nothing to scroll. */
+#history>*{flex-shrink:0}
 .bubble{background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5}
 .bubble.output,.bubble.user{font-size:15px;line-height:1.55}
 .bubble.output{border-left:3px solid var(--accent-strong)}
