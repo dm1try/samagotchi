@@ -523,6 +523,60 @@ bundles:
   (`mcp_everything_get_sum: a=20 b=22`), and "Allow this call for the
   session" (or in this repo) allows that tool with those arguments only.
 
+## The loop-guard bundle
+
+`chi bundle install loop-guard` installs the bundle shipped with chi. It is
+written only against this API (`lib/samagotchi/bundles/loop-guard/plugin.rb`),
+with `chi.on` hooks, and has no memory file.
+
+A local model can run the same tool call again and again in one turn: each
+step's thinking starts over, so it never notices it already tried. (A real
+one ran `find . -name 'config.yml'` ten times, getting nothing each time.)
+loop-guard breaks that:
+
+- A call is keyed by its tool and its arguments (whitespace collapsed), and
+  its result by a hash of the output. When a call has already returned the
+  same result `deny_after` times this turn (default 2), the next identical
+  call is **denied** with advice, so the 3rd one is caught:
+
+  ```
+  [execute] Error: denied by guardrail (bundle loop-guard): repeated call. The user was not asked. You already ran this exact call 2 times this turn and it returned the same result each time (exit: 0 (no output)). Don't repeat it. Try a different approach, or tell the user what you're stuck on.
+  ```
+
+  The user sees one line per call per turn: `loop-guard> loop: execute find
+  . -name 'config.yml' 2>/dev/null repeated, denied`.
+- At the `stop_after`-th deny in a turn (default 4) the turn is **stopped**
+  (core's own "stopped" notice), and a card lists the repeated calls, so the
+  user can say what to try instead.
+- A denied call has no result: a deny (loop-guard's, known-names', a rule's)
+  never counts as the call's result, so the deny sticks.
+- The counts are per turn, and a count is the turn's total, not a run of
+  consecutive repeats: the loop usually has other calls in between. A new
+  turn (a prompt, a continue, a reminder) starts from zero, since a new user
+  message can make an old call right again. A steering message merged into
+  a running turn doesn't reset them.
+- The polling tools, where repeating is the point, are ignored.
+
+```yaml
+# config.yml
+bundles:
+  loop-guard:
+    deny_after: 2        # same call, same result this many times: deny the next one
+    stop_after: 4        # stop the turn at this many denies
+    ignore_tools: [task_wait, task_get, delegate_result, list_sessions, list_reminders]
+    mode: deny           # deny | notify: notify only warns, once per call per turn
+```
+
+Its hooks run at the default priority (100), after known-names (50), so in
+known-names' `correct` mode loop-guard keys the corrected call.
+
+Not caught (yet):
+
+- near-duplicates, such as `find . -name 'config*'` after `'config.yml'`;
+- loops across turns;
+- alternating calls (A, B, A, B) that each return something new;
+- thinking that goes in circles inside one long generation.
+
 ## Shutdown
 
 When the REPL exits, or a session's worker exits (an idle exit, `/exit`, a

@@ -1,0 +1,10 @@
+---
+name: loop-guard
+version: 0.1.0
+scope: system
+description: "Breaks tool-call loops: the same call with the same result again and again in one turn is denied with advice, and after a few denies the turn stops with a card"
+trust_level: reviewed
+plugin:
+  file: plugin.rb
+  sha256: sha256:f9e66f289f3bb92ba53e6a16ea563c16e7b814accb607a34f20585cf563b7ef5
+requires_chi: ">= 0.1.30"
