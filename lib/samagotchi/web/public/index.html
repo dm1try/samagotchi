@@ -318,13 +318,11 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 #composeHint{order:1;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;line-height:14px;color:var(--text-faint);padding-left:2px;opacity:0;transition:opacity .12s ease;user-select:none}
 #composer:focus-within #composeHint:not(:empty){opacity:1}
 #composer textarea:focus{outline:none}
-/* The toolbar row: New chat · hint · Cancel · Send ▾ (the JS display toggles decide what shows). */
+/* The toolbar row: model picker · hint · Cancel · Send (the JS display toggles decide what shows). */
 #composer .actions-col{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px}
 #composer .actions-col button{white-space:nowrap;font-size:12px;padding:0 12px;height:28px;min-height:28px;line-height:28px}
 #composer .actions-col .split{order:3;display:flex;gap:4px;margin-left:auto}
 #composer #actionBtn{min-width:64px;font-weight:600}
-#composer #actionMenuBtn{width:28px;min-width:28px;padding:0}
-#composer #createAltBtn{order:0}
 /* The model picker (start page only): reads as a label, "host:model ▾", left of Start; a native select under a drawn caret. */
 /* A select is as wide as its widest option: a hidden copy of the chosen name (data-value) sizes the box to that name instead, and the select fills it. */
 .model-pick{order:0;position:relative;display:inline-block;max-width:min(50%,380px);height:28px;border-radius:8px;overflow:hidden;color:var(--text-muted);font-size:12px;transition:background .12s ease,color .12s ease}
@@ -347,10 +345,6 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 #commandList .command-desc{flex:1;min-width:0;font-size:13px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #commandList .command-note{font-size:11px;color:var(--text-faint);white-space:nowrap}
 @media(max-width:600px){#commandList{left:6px;width:calc(100% - 12px)}#commandList .command-option{flex-wrap:wrap;row-gap:0;padding:8px 10px}#commandList .command-desc{flex-basis:100%;order:3}}
-#composer #actionMenu{position:absolute;right:14px;bottom:44px;background:var(--bg-panel);border:1px solid var(--border-strong);border-radius:8px;padding:4px;display:none;flex-direction:column;gap:2px;z-index:10;min-width:180px}
-#composer #actionMenu.visible{display:flex}
-#composer #actionMenu button{justify-content:flex-start;background:transparent;color:var(--text);padding:8px 10px;border-radius:6px;text-align:left}
-#composer #actionMenu button:hover{background:var(--bg-raised)}
 #infoBar{display:flex;padding:8px 14px 10px;border-top:1px solid var(--glass-border);background:transparent;border-radius:0 0 16px 16px;color:var(--text-2);gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;transition:opacity 280ms ease}
 #infoBar.visible{display:flex}
 #infoBar .info{flex:1;min-width:0;font-size:13px;line-height:1.4;word-break:break-word;display:flex;flex-direction:column;gap:2px}
@@ -530,17 +524,11 @@ a{color:var(--accent)}
         </div>
         <div class="actions-col">
           <label id="modelPick" class="model-pick" title="The model the new chat starts on" hidden><select id="modelSelect" aria-label="Model for the new chat"></select></label>
-          <button id="createAltBtn" class="ghost" style="display:none">New chat</button>
           <div id="composeHint">Enter to start · Shift+Enter for a newline</div>
           <button id="cancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Cancel</button>
           <div class="split">
             <button id="actionBtn">Start</button>
-            <button id="actionMenuBtn" class="ghost" title="More actions" style="display:none">▾</button>
           </div>
-        </div>
-        <div id="actionMenu">
-          <button data-action="send">Send to current session</button>
-          <button data-action="create">New chat</button>
         </div>
       </div>
       <div id="infoBar">
