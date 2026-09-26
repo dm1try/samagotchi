@@ -1978,7 +1978,9 @@ module Samagotchi
         ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
           hook_ask_user(question, options, header, allow_freeform, hook)
         },
-        cancelled: -> { active_cancel_controller&.cancelled? },
+        # Nothing to cancel while the Engine is still being built (a
+        # server that starts as its plugin loads).
+        cancelled: -> { @activity_mutex && active_cancel_controller&.cancelled? },
         card: ->(**card) { show_card(**card) },
         ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:|
           ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller)

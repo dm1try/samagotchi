@@ -2,14 +2,23 @@
 
 # A tiny MCP server over stdio (newline-delimited JSON-RPC) for the mcp
 # bundle's specs. FAKE_MCP_MODE: "hang" never answers initialize, "exit"
-# leaves at once, "error" answers initialize with an error. FAKE_MCP_LOG,
+# leaves at once, "error" answers initialize with an error, "slow" waits
+# FAKE_MCP_DELAY seconds (default 3) before answering it. FAKE_MCP_LOG,
 # when set, gets each message it received, one JSON per line.
+# FAKE_MCP_MODE_FILE, when set and present, holds the mode instead (the
+# mcp bundle's cache is keyed by the env, a file changes without it).
+# FAKE_MCP_TOOLS, when set, is a file whose lines name the tools it lists
+# (read at each tools/list; the rest of TOOLS is left out). FAKE_MCP_PIDS,
+# when set, gets the process's pid at start, one per line.
 require "json"
 
 $stdout.sync = true
 mode = ENV.fetch("FAKE_MCP_MODE", "")
+mode_file = ENV["FAKE_MCP_MODE_FILE"]
+mode = File.read(mode_file).strip if mode_file && File.exist?(mode_file)
 log = ENV["FAKE_MCP_LOG"]
 warn "fake mcp server starting (#{mode.empty? ? "normal" : mode})"
+File.open(ENV["FAKE_MCP_PIDS"], "a") { |f| f.puts(Process.pid) } if ENV["FAKE_MCP_PIDS"]
 exit(3) if mode == "exit"
 
 TOOLS = [
@@ -44,17 +53,24 @@ $stdin.each_line do |line|
   case message["method"]
   when "initialize"
     next if mode == "hang"
+
+    sleep(Float(ENV.fetch("FAKE_MCP_DELAY", "3"))) if mode == "slow"
     next reply(id, error: { code: -32_000, message: "not today" }) if mode == "error"
 
     # A request of its own first: the client must answer it and go on.
     $stdout.puts(JSON.generate(jsonrpc: "2.0", id: "srv-1", method: "ping"))
     reply(id, { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "fake", version: "1" } })
   when "tools/list"
+    tools = TOOLS
+    if (file = ENV["FAKE_MCP_TOOLS"])
+      names = File.readlines(file, chomp: true)
+      tools = TOOLS.select { |tool| names.include?(tool[:name]) }
+    end
     # Two pages.
     if message.dig("params", "cursor")
-      reply(id, { tools: TOOLS.drop(4) })
+      reply(id, { tools: tools.drop(4) })
     else
-      reply(id, { tools: TOOLS.take(4), nextCursor: "page2" })
+      reply(id, { tools: tools.take(4), nextCursor: "page2" })
     end
   when "tools/call"
     args = message.dig("params", "arguments") || {}
