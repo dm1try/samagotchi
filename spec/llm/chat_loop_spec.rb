@@ -273,6 +273,27 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(run([{ role: "user", content: "a" * 40 }]).usage)
         .to eq(Samagotchi::LLM::Usage.new(prompt_tokens: 10, completion_tokens: 3, source: :estimate))
     end
+
+    describe "the status line's context value" do
+      before do
+        real = Samagotchi::KernelLoop.new(client: nil)
+        allow(fake_kernel).to receive(:context_display) { |**args| real.context_display(**args) }
+        allow(fake_kernel).to receive(:client).and_return(double("client", context_window: 100_000))
+      end
+
+      it "comes from the last request's server counts and the window" do
+        first = Samagotchi::LLM::Usage.new(prompt_tokens: 1_000, completion_tokens: 50, source: :server)
+        last = Samagotchi::LLM::Usage.new(prompt_tokens: 3_000, completion_tokens: 1_000, source: :server)
+        backend.adapter = FakeChatAdapter.new(text("", usage: first).with(tool_calls: [Samagotchi::LLM::ToolCall.new(id: "c1", name: "execute", arguments: { "command" => "x" })]),
+                                              text("ok", usage: last))
+
+        expect(run.context_status).to eq(est_pct: 4.0, bucket: "under20")
+      end
+
+      it "is nil when the server reports no counts" do
+        expect(run.context_status).to be_nil
+      end
+    end
   end
 
   describe "tool calls" do
