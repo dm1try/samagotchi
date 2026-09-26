@@ -283,13 +283,16 @@ tool rows), the earlier ones stack above it collapsed to one line each
 (their narration's first line, else `working with <tools>`, and a call
 count), expandable for inspection. The live thinking is one line: the
 newest complete sentence, changing at most once per 1.5 s. Click it for the
-full text; the page remembers whether you last opened or closed it and starts
-the next live thinking that way. When a step ends its thinking closes to a
-plain `thinking` line (unless you opened it). When the turn ends the
-block collapses to its summary (`3 steps · 8 tool calls · execute ×7 ·
-read ×1`) and the answer sits under it as a normal bubble (Markdown, annotate). A plain
-answer without tools looks exactly as it does today. Rows the code
-collapses stay as you toggled them. A reloaded session shows the same block
+full text; a peek is per step (the next step's thinking starts closed
+again). When a step ends its thinking closes to a plain `thinking` line
+(unless you opened it); a step that only thought shows that line alone. The
+live narration is a box of about three lines that fills sentence by
+sentence (a sentence shows once it is complete) and scrolls to the newest
+when full. When the turn ends the block collapses to its summary (`3 steps
+· 8 tool calls · execute ×7 · read ×1`) and the answer expands from the
+box into a normal bubble under it (Markdown, annotate). A plain answer
+without tools ends exactly as it does today. Rows the code collapses stay
+as you toggled them. A reloaded session shows the same block
 from the saved messages (each step's thinking, narration, tool parameters
 and output, the output capped at 2000 characters) and the timing records
 (status and duration per row). On an `api: openai` host the model's
