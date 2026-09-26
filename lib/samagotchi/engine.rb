@@ -169,7 +169,8 @@ module Samagotchi
           approver: ->(verdict) { request_approval(verdict) },
           approvals_lookup: -> { @guardrail_approvals },
           checks_lookup: -> { guardrail_checks },
-          cancelled_lookup: -> { !!active_cancel_controller&.cancelled? }
+          cancelled_lookup: -> { !!active_cancel_controller&.cancelled? },
+          tools_lookup: -> { @tools }
         )
       end
       # What a hook can do beyond reading its event (event[:notify],

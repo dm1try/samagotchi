@@ -91,7 +91,7 @@ module Samagotchi
     # flow); a bare kernel (specs) gets one that only runs the hooks.
     def gate
       given = @kernel.guardrail_gate if @kernel.respond_to?(:guardrail_gate)
-      given || (@gate ||= Guardrails::Gate.new(-> { @kernel.hooks if @kernel.respond_to?(:hooks) }))
+      given || (@gate ||= Guardrails::Gate.new(-> { @kernel.hooks if @kernel.respond_to?(:hooks) }, tools_lookup: -> { tools }))
     end
 
     # A gate that fails denies the call (fail closed).

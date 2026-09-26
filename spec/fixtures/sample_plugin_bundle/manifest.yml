@@ -4,6 +4,6 @@ description: "Sample bundle with a plugin: /hello (a card), /hello-slow (anytime
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:5b001827b45d81865b683f90e1f55c6ffe389690f780779557d0d05e7bc78042
+  sha256: sha256:b06c80faaa8b035b3611ae382baf0552d7c0368a9641e979d2c584b44a31e47c
 requires_chi: ">= 0.1.28"
 trust_level: reviewed

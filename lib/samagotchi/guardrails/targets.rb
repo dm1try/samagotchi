@@ -2,6 +2,7 @@
 
 require_relative "../tools/tool_path"
 require_relative "../tools/memory"
+require_relative "../log"
 
 module Samagotchi
   module Guardrails
@@ -18,7 +19,9 @@ module Samagotchi
       # @param call [Hash] the parsed tool call
       # @param context [Context]
       # @param model_key [String, nil] for a memory_write model overlay
-      def self.for(call, context, model_key: nil)
+      # @param registry [Tools::Registry, nil] the session's tools: a plugin
+      #   tool's entry says what it acts on (its targets:)
+      def self.for(call, context, model_key: nil, registry: nil)
         tool = call[:name].to_s
         base = context.cwd
         command = nil
@@ -35,8 +38,34 @@ module Samagotchi
           paths << absolute(call[:content], base)
         when "memory_write"
           paths << memory_path(call, model_key)
+        else
+          given = plugin_targets(call, registry)
+          command = given[:command]
+          given_cwd = given[:cwd].to_s.strip
+          cwd = File.expand_path(given_cwd, base) unless given_cwd.empty?
+          paths.concat(given[:paths].map { |path| absolute(path, cwd) })
         end
         new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd))
+      end
+
+      # What a plugin tool's targets: callable says the call acts on:
+      # {command:, paths:, cwd:}, each optional; a callable that raises or
+      # gives something else counts as nothing (and is logged).
+      def self.plugin_targets(call, registry)
+        entry = registry && registry[call[:name].to_s]
+        none = { command: nil, paths: [], cwd: nil }
+        return none unless entry && !entry.core? && entry.targets
+
+        given = entry.targets.call(call)
+        return none unless given.is_a?(Hash)
+
+        given = given.transform_keys(&:to_sym)
+        command = given[:command].to_s
+        { command: command.empty? ? nil : command, paths: Array(given[:paths]).map(&:to_s), cwd: given[:cwd] }
+      rescue StandardError => e
+        Log.warn(:plugins, "plugin_targets_failed", tool: call[:name].to_s, error: e.class.name,
+                                                    msg: "#{call[:name]} targets failed: #{e.message}")
+        none
       end
 
       def self.absolute(path, base)

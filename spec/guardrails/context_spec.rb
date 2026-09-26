@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "samagotchi/guardrails"
+require "samagotchi/tools/builtins"
 
 RSpec.describe Samagotchi::Guardrails::Context do
   around do |example|
@@ -65,6 +66,43 @@ RSpec.describe Samagotchi::Guardrails::Targets do
     t = targets(name: "execute", content: "git push", cwd: "sub")
     expect([t.command, t.cwd, t.repo_root, t.paths]).to eq(["git push", File.join(@dir, "sub"), @dir, []])
     expect(t).to be_shell
+  end
+
+  describe "a plugin tool: its entry's targets:" do
+    let(:registry) do
+      Samagotchi::Tools::Builtins.registry.tap do |r|
+        r.register("save_note", schema: {}, handler: ->(*) { "" }, source: "notes",
+                                targets: ->(call) { { "paths" => [call[:args]["path"]], cwd: call[:args]["cwd"] } })
+        r.register("run_it", schema: {}, handler: ->(*) { "" }, source: "runner",
+                             targets: ->(call) { { command: call[:args]["cmd"] } })
+        r.register("broken", schema: {}, handler: ->(*) { "" }, source: "x", targets: ->(_) { raise "nope" })
+        r.register("plain", schema: {}, handler: ->(*) { "" }, source: "x")
+      end
+    end
+
+    def targets(call) = described_class.for(call, context, registry: registry)
+
+    it "resolves its paths against its cwd, or the context's" do
+      FileUtils.mkdir_p(File.join(@dir, "sub"))
+      t = targets(name: "save_note", args: { "path" => "n.md" })
+      expect([t.paths, t.cwd, t.command]).to eq([[File.join(@dir, "n.md")], @dir, nil])
+      t = targets(name: "save_note", args: { "path" => "n.md", "cwd" => "sub" })
+      expect([t.paths, t.cwd]).to eq([[File.join(@dir, "sub", "n.md")], File.join(@dir, "sub")])
+      expect(targets(name: "save_note", args: { "path" => "/etc/x" })).to be_outside_repo
+    end
+
+    it "takes a command, which command rules match (it is not a shell tool)" do
+      t = targets(name: "run_it", args: { "cmd" => "git push" })
+      expect([t.command, t.paths]).to eq(["git push", []])
+      expect(t).not_to be_shell
+    end
+
+    it "is nothing for a tool without targets:, one that raises, or no registry" do
+      [targets(name: "plain", args: {}), targets(name: "broken", args: {}),
+       described_class.for({ name: "save_note", args: { "path" => "n.md" } }, context)].each do |t|
+        expect([t.command, t.paths, t.cwd]).to eq([nil, [], @dir])
+      end
+    end
   end
 
   it "treats task_create as a shell tool, defaulting the cwd to the context's" do

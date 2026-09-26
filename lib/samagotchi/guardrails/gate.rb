@@ -29,8 +29,11 @@ module Samagotchi
       #   final call after the hooks: protected paths, then the rules
       # @param cancelled_lookup [#call] true once the turn was cancelled (a
       #   hook's stop_turn): the rest of a batch is denied without a vote
+      # @param tools_lookup [#call] returns the Tools::Registry (or nil): a
+      #   plugin tool's targets: say what its call acts on
       def initialize(hooks_lookup, context_lookup: -> { Context.new }, model_key_lookup: -> {}, approver: nil,
-                     approvals_lookup: -> {}, checks_lookup: -> { [] }, cancelled_lookup: -> { false })
+                     approvals_lookup: -> {}, checks_lookup: -> { [] }, cancelled_lookup: -> { false },
+                     tools_lookup: -> {})
         @hooks_lookup = hooks_lookup
         @context_lookup = context_lookup
         @model_key_lookup = model_key_lookup
@@ -38,6 +41,7 @@ module Samagotchi
         @approvals_lookup = approvals_lookup
         @checks_lookup = checks_lookup
         @cancelled_lookup = cancelled_lookup
+        @tools_lookup = tools_lookup
       end
 
       # @param call [Hash] the parsed tool call
@@ -109,7 +113,7 @@ module Samagotchi
       end
 
       def targets_for(call, context)
-        Targets.for(call, context, model_key: @model_key_lookup.call)
+        Targets.for(call, context, model_key: @model_key_lookup.call, registry: @tools_lookup.call)
       end
 
       # Registry#fire_each rescues a raising hook itself.

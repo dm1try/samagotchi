@@ -171,6 +171,23 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       end
     end
 
+    it "tells guardrail path rules the file save_note writes" do
+      rule = Samagotchi::Guardrails::Rules.parse([{ "id" => "no-secrets", "path" => "**/secret*", "verdict" => "deny",
+                                                   "reason" => "secrets stay put" }], source: "config")
+      allow(engine).to receive(:guardrail_rules).and_return(Samagotchi::Guardrails::Rules.new(rule))
+      run = lambda do |call|
+        Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,
+                                                     on_stream_event: nil, max_tool_output_chars: nil)
+      end
+      Dir.mktmpdir do |dir|
+        denied = run.call(name: "save_note", args: { "path" => "#{dir}/secret.md", "text" => "x" })
+        expect(denied[:output]).to include("no-secrets").and include("secrets stay put")
+        expect(File.exist?("#{dir}/secret.md")).to be false
+        allowed = run.call(name: "save_note", args: { "path" => "#{dir}/plain.md", "text" => "x" })
+        expect(allowed[:output]).to eq("[save_note]\nsaved #{dir}/plain.md")
+      end
+    end
+
     it "is declared in the native prompt and the chat path's tools, but not in system_prompt_for's" do
       expect(engine.assist_system_prompt).to include("declaration:echo_args{")
       chat = Samagotchi::LLM::ChatLoop.new(kernel: kernel)

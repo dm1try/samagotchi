@@ -47,7 +47,9 @@ class Plugin
                                properties: { tags: { type: "array", items: { type: "string" } }, priority: { type: "integer" } },
                                additionalProperties: false } },
              label: "saving note",
-             preview: ->(args) { "#{args["path"]} (#{args["text"].to_s.length} chars)" } do |args, ctx|
+             preview: ->(args) { "#{args["path"]} (#{args["text"].to_s.length} chars)" },
+             # Path rules (guardrails) see the file it writes.
+             targets: ->(args) { { paths: [args["path"]] } } do |args, ctx|
       path = File.expand_path(args["path"], ctx.cwd)
       meta = args["meta"].is_a?(Hash) ? args["meta"] : {}
       header = meta.map { |key, value| "#{key}: #{value.is_a?(Array) ? value.join(", ") : value}" }
