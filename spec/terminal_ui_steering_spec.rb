@@ -80,6 +80,66 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(repl_input.pop(timeout: 0)).to be_nil
   end
 
+  describe "a plugin's command" do
+    let(:reader) { double("reader", prefill_next: nil) }
+
+    before do
+      repl_input.instance_variable_set(:@reader, reader)
+      agent.instance_variable_set(:@commands, Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                                                              default_model: "m", registry: engine.command_registry))
+    end
+
+    it "is busy mid-turn and goes back into the prompt, a normal one" do
+      engine.command_registry.register("/hello", "greet", source: "b") { |_args| "hi" }
+      allow(engine).to receive(:run_turn) do
+        repl_input << [:line, "/hello"]
+        result
+      end
+
+      agent.send(:run_engine_turn, session, "go")
+
+      expect(surface.lines).to include("busy: wait for the turn to end")
+      expect(reader).to have_received(:prefill_next).with("/hello")
+    end
+
+    it "runs at once on its own thread mid-turn, an anytime one, printing while the turn goes on" do
+      started = Queue.new
+      engine.command_registry.register("/side", "side", anytime: true, source: "b") do |args|
+        started << Thread.current
+        "side: #{args}"
+      end
+      lines_mid_turn = nil
+      allow(engine).to receive(:turn_running?).and_return(true)
+      allow(engine).to receive(:run_turn) do
+        repl_input << [:line, "/side q"]
+        thread = started.pop
+        thread.join(2)
+        lines_mid_turn = surface.lines.dup
+        result
+      end
+
+      agent.send(:run_engine_turn, session, "go")
+
+      expect(lines_mid_turn).to include("\nmodel> side: q")
+      expect(surface.lines).not_to include("busy: wait for the turn to end")
+      expect(reader).not_to have_received(:prefill_next)
+    end
+
+    it "keeps an anytime command's output for the prompt's flush once the turn has ended" do
+      engine.command_registry.register("/side", "side", anytime: true, source: "b") { |_args| "later" }
+      thread = nil
+      allow(Thread).to receive(:new).and_wrap_original { |original, &block| thread = original.call(&block) }
+      allow(engine).to receive(:turn_running?).and_return(false)
+
+      agent.send(:start_anytime_command, "/side")
+      thread.join(2)
+      expect(surface.lines).not_to include("\nmodel> later")
+      agent.send(:flush_pending_cards)
+
+      expect(surface.lines).to include("\nmodel> later")
+    end
+  end
+
   %w[Ctrl-D exit].each do |key|
     it "exits after the turn on #{key}, and says so" do
       line = key == "exit" ? "/exit" : nil

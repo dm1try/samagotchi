@@ -1031,13 +1031,15 @@ module Samagotchi
     # On the reader thread, from ReplInput: takes a line for the running turn.
     # A line sent after Ctrl-C waits for the next turn (the kernel would not
     # merge it into the cancelled one). Ctrl-D or exit ends the REPL after
-    # the turn. /stats and /recap run now; other commands wait, back in the
-    # prompt.
+    # the turn. /stats and /recap run now, an anytime command (/help, a
+    # plugin's /btw) starts now on its own thread; other commands wait, back
+    # in the prompt.
     # @return [Boolean, :back] whether the turn took it, :back to put it back
     def steer_line(line)
       return exit_after_turn(delete: delete_on_exit?(line)) if line.nil? || exit_command?(line)
       return detach_note if detach_command?(line)
       return false if @active_cancel_controller&.cancelled?
+      return start_anytime_command(line) if command_registry.lookup(line)&.anytime
       return command_during_turn(line) if command_line?(line)
       return true if line.strip.empty?
       # Steering merges text only: a line with images runs as the next turn.
@@ -1079,6 +1081,24 @@ module Samagotchi
       else
         @surface.commit(COMMAND_BUSY)
         return :back
+      end
+      true
+    end
+
+    # D8: an anytime command runs on its own thread while the turn goes on
+    # (it reads copies, and shows things through its ctx). What it prints
+    # while the turn runs goes above the live region now; once the turn has
+    # ended it waits for the prompt's flush, with the cards it showed then.
+    # @return [true]
+    def start_anytime_command(line)
+      Thread.new do
+        result, shown = @engine.holding_announcements { @commands.run(line) }
+        output = result&.output
+        items = output.nil? ? [] : [{ type: :command_output, text: "\nmodel> #{output}" }]
+        items.concat(shown)
+        items.each { |item| @engine.turn_running? ? show_pending_item(item) : @pending_cards << item }
+      rescue StandardError => e
+        @pending_cards << { type: :command_output, text: "\nmodel> #{line.split.first}: #{e.message}" }
       end
       true
     end
@@ -1566,18 +1586,23 @@ module Samagotchi
       end
     end
 
-    # Print the cards and notices kept since the last flush (main thread).
+    # Print the cards, notices and anytime commands' output kept since the
+    # last flush (main thread).
     def flush_pending_cards
       loop do
-        event = @pending_cards.pop(true)
-        if event[:type] == :card
-          @renderer.render_card(event)
-        else
-          @surface.commit(EventRenderer.hook_notice_line(event))
-        end
+        show_pending_item(@pending_cards.pop(true))
       end
     rescue ThreadError
       nil # empty
+    end
+
+    # A card, a notice, or an anytime command's output (:command_output).
+    def show_pending_item(item)
+      case item[:type]
+      when :card then @renderer.render_card(item)
+      when :command_output then @surface.commit(item[:text])
+      else @surface.commit(EventRenderer.hook_notice_line(item))
+      end
     end
 
     # Resolve the recap config (on by default). Returns false when explicitly

@@ -110,6 +110,20 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       expect(cards.last[:in_turn]).to be false
     end
 
+    it "adds /hello-slow as an anytime command, which shows a card after 2 s and prints nothing" do
+      engine.session = session
+      entry = engine.command_registry.lookup("/hello-slow now")
+      expect([entry.name, entry.anytime, entry.source]).to eq(["/hello-slow", true, "sample-plugin"])
+      cards = []
+      engine.subscribe(observer: ->(e) { cards << e if e[:type] == :card })
+      allow_any_instance_of(Object).to receive(:sleep).with(2)
+      commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                                 default_model: "Gemma-4B-it", registry: engine.command_registry)
+
+      expect(commands.run("/hello-slow now").output).to be_nil
+      expect(cards.map { |c| [c[:title], c[:body]] }).to eq([["slow hello, now", "Ran beside the turn; it saw 2 messages."]])
+    end
+
     it "gets the bundle's settings" do
       allow_any_instance_of(Samagotchi::Engine).to receive(:bundle_settings).and_return("sample-plugin" => { "greeting" => "hey" })
       commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),

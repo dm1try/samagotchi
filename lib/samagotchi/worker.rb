@@ -78,6 +78,8 @@ module Samagotchi
       @poll_interval = poll_interval || FALLBACK_TICK_SECONDS
       @waker = Waker.new
       @command_queue = Thread::Queue.new
+      # The anytime commands running now (#start_anytime_command).
+      @anytime_threads = []
       # The client_id of a client that asked the worker to exit (POST /exit).
       @exit_requested = nil
       @exit_requested_by = nil
@@ -125,6 +127,8 @@ module Samagotchi
       @bridge = SessionManager.start_bridge(engine: @engine, state_dir: @state_dir, session_id: @session_id,
                                             on_input: -> { @waker.wake },
                                             on_command: lambda { |command|
+                                              next start_anytime_command(command) if anytime_command?(command[:line])
+
                                               # Called with the event log held: the
                                               # count says which turn ends came before it.
                                               @command_queue << command.merge(after_seq: @engine.event_count)
@@ -358,13 +362,7 @@ module Samagotchi
 
     def run_command(command)
       awaiting = @turn_flow.awaiting_continue?
-      # The cards a command shows follow its command_ran, as its output.
-      result, shown = @engine.holding_announcements do
-        @commands.run(command[:line])
-      rescue StandardError => e
-        SessionCommands::Result.new(status: :error, output: "#{command[:line].split.first}: #{e.message}", changed: [])
-      end
-      result ||= SessionCommands::Result.new(status: :error, output: "not a session command", changed: [])
+      result, shown = run_command_line(command)
       resolved = awaiting && result.decision && result.decision != :invalid
       @engine.synchronize_events do
         if resolved
@@ -378,6 +376,38 @@ module Samagotchi
       # written at the offer (it says the turn stopped) gets rewritten.
       @engine.record_activity if resolved && !result.resume
       run_continue_turn(command) if result.resume
+    end
+
+    # @return [Array(SessionCommands::Result, Array<Hash>)] the result, and
+    #   the cards and notices it showed, held: they follow its command_ran,
+    #   as its output
+    def run_command_line(command)
+      result, shown = @engine.holding_announcements do
+        @commands.run(command[:line])
+      rescue StandardError => e
+        SessionCommands::Result.new(status: :error, output: "#{command[:line].split.first}: #{e.message}", changed: [])
+      end
+      [result || SessionCommands::Result.new(status: :error, output: "not a session command", changed: []), shown]
+    end
+
+    def anytime_command?(line) = @engine.command_registry.lookup(line)&.anytime == true
+
+    # An anytime command (/help, a plugin's /btw; D8) runs now, on its own
+    # thread, never queued behind a turn: it is never busy. The Bridge calls
+    # this with the event log held, so its command_ran (announced when it
+    # finishes) comes after its command_queued. Its handler reads copies
+    # (ctx.messages) and shows things through ctx only; nothing is saved.
+    def start_anytime_command(command)
+      @anytime_threads.select!(&:alive?)
+      @anytime_threads << Thread.new do
+        result, shown = run_command_line(command)
+        @engine.synchronize_events do
+          announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed))
+          shown.each { |event| @engine.announce(event) }
+        end
+      rescue StandardError => e
+        Log.warn(:worker, "anytime_command_failed", line: command[:line], error: e.class.name, msg: e.message)
+      end
     end
 
     def announce_command(command, status:, output:, changed:)

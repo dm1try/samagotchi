@@ -693,6 +693,49 @@ RSpec.describe Samagotchi::Worker do
         expect(ran(command_id)).to include(status: "busy")
       end
 
+      describe "an anytime command (D8)" do
+        before do
+          engine.command_registry.register("/side", "a side question", anytime: true, source: "b") do |args|
+            engine.show_card(source: "b", title: "side card")
+            "side: #{args}"
+          end
+        end
+
+        ["slow", "slow, no boundary"].each do |prompt|
+          it "runs at once while a turn runs (#{prompt}), never busy, its cards after its command_ran" do
+            start_worker(poll_interval: 5)
+            post_turn(prompt)
+            expect(next_turn&.first).to eq(prompt)
+
+            done = ran(JSON.parse(post_command("/side q").body)["command_id"])
+            still_running = engine.turn_running?
+            release << true
+
+            expect(still_running).to be(true)
+            expect(done).to include(status: "ok", output: "side: q")
+            expect(wait_until { events_seen.any? { |e| e[:type] == :turn_completed } }).to be(true)
+            card = seen.find { |e| e[:type] == :card }
+            expect(card).to include(title: "side card", in_turn: true)
+            queued = seen.find { |e| e[:type] == :command_queued }
+            expect(queued[:event_seq]).to be < done[:event_seq]
+            expect(seen.count { |e| e[:type] == :command_ran }).to eq(1)
+          end
+        end
+
+        it "runs between turns too, and a normal command still waits its turn" do
+          start_worker(poll_interval: 5)
+          post_turn("slow, no boundary")
+          expect(next_turn&.first).to eq("slow, no boundary")
+          normal = JSON.parse(post_command("/model").body)["command_id"]
+          side = ran(JSON.parse(post_command("/side").body)["command_id"])
+          release << true
+
+          expect(side).to include(status: "ok", output: "side: ")
+          expect(ran(normal)).to include(status: "busy")
+          expect(ran(JSON.parse(post_command("/side again").body)["command_id"])).to include(status: "ok", output: "side: again")
+        end
+      end
+
       it "runs commands queued before a prompt first" do
         start_worker(poll_interval: 5)
         # Written without a wake (another process); the command wakes the loop.
