@@ -40,9 +40,14 @@ module Samagotchi
     # deleted folder no longer leads to its repository. nil outside a repo,
     # and in files written before the field existed (see #project_root).
     attr_writer :project_root
-    # The session that delegated this one (the `delegate` tool), else nil.
+    # The session that delegated this one (the `delegate` tool) or that a
+    # plugin forked it from (ctx.sessions.fork), else nil.
     # Set before the spawn and kept on respawns, like preloaded_memory_names.
     attr_accessor :parent_id
+
+    # How many image refs a fork's seed lost (SessionManager.spawn_session
+    # sets it); not saved.
+    attr_accessor :seed_images_dropped
 
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
                    metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
@@ -84,8 +89,10 @@ module Samagotchi
     end
 
     # Build a new, unsaved session.
+    # @param messages [Array<Hash>] a conversation to start from (a fork's
+    #   seed); [] by default
     def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
-                         preloaded_memory_names: [], muted_memory_names: [], parent_id: nil)
+                         preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [])
       now = Time.now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?
@@ -97,7 +104,7 @@ module Samagotchi
         mode: mode.to_s,
         model_name: model_name.to_s,
         working_directory: working_directory.to_s,
-        messages: [],
+        messages: Array(messages).map(&:dup),
         created_at: now,
         updated_at: now,
         status: STATUS_IDLE,

@@ -14,6 +14,7 @@ require_relative "bridge_client"
 require_relative "log"
 require_relative "log_path"
 require_relative "recap_store"
+require_relative "image_store"
 require_relative "terminal_ui"
 
 module Samagotchi
@@ -103,9 +104,16 @@ module Samagotchi
     # @param muted_memories [Array<String>] --mute: hidden from the session
     #   (both are session fields, so a respawn keeps them)
     # @param parent_id [String, nil] the session that delegates this one (the
-    #   `delegate` tool); a session field too
+    #   `delegate` tool) or was forked from; a session field too
+    # @param messages [Array<Hash>] a conversation to start from (a plugin's
+    #   ctx.sessions.fork); its image refs are copied from +images_from+
+    # @param images_from [String, nil] the session dir the seed's images are in
+    # @param title [String, nil] what the lists show before the first turn
+    #   (the prompt's preview by default, else the seed's first user message)
+    # @return [Session] with #seed_images_dropped: refs whose file was gone
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
-                           memories: [], muted_memories: [], parent_id: nil)
+                           memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
+                           title: nil)
       sd = state_dir || Session.default_state_dir
       session = Session.new_session(
         mode: mode,
@@ -113,7 +121,8 @@ module Samagotchi
         working_directory: working_directory || Dir.pwd,
         preloaded_memory_names: memories,
         muted_memory_names: muted_memories,
-        parent_id: parent_id
+        parent_id: parent_id,
+        messages: messages
       )
       # With no prompt there is no first turn to run (an attaching UI sends
       # the prompts), so the session starts idle.
@@ -121,8 +130,12 @@ module Samagotchi
       session.last_prompt = prompt
       # The worker takes last_prompt and clears it, and messages are saved at
       # the turn's end: until then this is the only preview a list has.
-      session.first_preview = Session.preview_of(prompt)
+      session.first_preview = Session.preview_of(title.to_s.strip.empty? ? prompt : title)
       session_dir = Session.session_dir(session.id, state_dir: sd)
+      unless session.messages.empty?
+        session.messages, dropped = ImageStore.copy_refs(session.messages, from: images_from, to: session_dir)
+        session.seed_images_dropped = dropped
+      end
       setup_session_directory(session_dir, session, state_dir: sd)
       spawn_worker_for_session(session, state_dir: sd)
       session

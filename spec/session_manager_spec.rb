@@ -521,6 +521,42 @@ RSpec.describe Samagotchi::SessionManager do
                                       state_dir: tmpdir).parent_id).to be_nil
     end
 
+    it "starts from a seed conversation, idle, titled, with the seed's images copied" do
+      allow(Process).to receive(:spawn).and_return(12_345)
+      parent_dir = File.join(tmpdir, "parent")
+      FileUtils.mkdir_p(File.join(parent_dir, "images"))
+      File.binwrite(File.join(parent_dir, "images", "0123456789abcdef.png"), "PNG")
+      seed = [
+        { role: "user", content: "look", images: [{ file: "images/0123456789abcdef.png", name: "a.png" },
+                                                  { file: "images/fedcba9876543210.png", name: "gone.png" }] },
+        { role: "model", content: "a cat" }
+      ]
+
+      session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir, parent_id: "p1",
+                                              messages: seed, images_from: parent_dir, title: "btw: what is it?")
+
+      loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      expect(loaded.status).to eq(Samagotchi::Session::STATUS_IDLE)
+      expect(loaded.first_preview).to eq("btw: what is it?")
+      expect(loaded.messages).to eq([
+        { role: "user", content: "look\n[image gone.png was not copied]",
+          images: [{ file: "images/0123456789abcdef.png", name: "a.png" }] },
+        { role: "model", content: "a cat" }
+      ])
+      expect(session.seed_images_dropped).to eq(1)
+      child_dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+      expect(File.binread(File.join(child_dir, "images", "0123456789abcdef.png"))).to eq("PNG")
+    end
+
+    it "previews a seeded session without a title by its first user message" do
+      allow(Process).to receive(:spawn).and_return(12_345)
+
+      session = described_class.spawn_session(prompt: nil, model_name: "gemma4", state_dir: tmpdir,
+                                              messages: [{ role: "user", content: "the first question" }])
+
+      expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).first_preview).to eq("the first question")
+    end
+
     it "records the first prompt as the preview, before the worker takes it" do
       allow(Process).to receive(:spawn).and_return(12_345)
 

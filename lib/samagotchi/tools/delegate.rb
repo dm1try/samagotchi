@@ -72,7 +72,7 @@ module Samagotchi
           return "Error: this session is a delegate of #{parent.parent_id}; delegated sessions don't delegate further"
         end
 
-        running = SessionManager.children_of(parent.id, state_dir: state_dir).select { |s| running?(s) }
+        running = running_children(parent.id, state_dir: state_dir)
         max = max_children
         if running.size >= max
           ids = running.map { |s| s[:short_id] }.join(", ")
@@ -125,6 +125,13 @@ module Samagotchi
       end
       private_class_method :child_model
 
+      # The children of +parent_id+ that count against session.max_children
+      # (a plugin's ctx.sessions.fork counts them too).
+      # @return [Array<Hash>] SessionManager.children_of rows
+      def self.running_children(parent_id, state_dir:)
+        SessionManager.children_of(parent_id, state_dir: state_dir).select { |s| running?(s) }
+      end
+
       # busy (a worker runs its turn), or running with a worker on its way.
       def self.running?(summary)
         return true if summary[:busy]
@@ -142,7 +149,6 @@ module Samagotchi
       rescue StandardError
         MAX_CHILDREN_DEFAULT
       end
-      private_class_method :max_children
 
       # true unless told otherwise; text-based parsers hand strings over.
       def self.parse_wait(value)

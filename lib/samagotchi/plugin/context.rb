@@ -5,6 +5,7 @@ require_relative "../log"
 require_relative "../guardrails/context"
 require_relative "../idle_client"
 require_relative "side_question"
+require_relative "sessions"
 
 module Samagotchi
   module Plugin
@@ -15,9 +16,10 @@ module Samagotchi
     # Engine#show_card's keywords and returns the id, +ask_model+ takes
     # (chat messages, timeout:, max_tokens:, cancel_controller:) and returns
     # the answer text.
-    # +messages_partial+ says whether +messages+ leaves out a running turn.
+    # +messages_partial+ says whether +messages+ leaves out a running turn;
+    # +model_name+ and +state_dir+ are what ctx.sessions forks with.
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
-                      :ask_model, keyword_init: true)
+                      :ask_model, :model_name, :state_dir, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -156,6 +158,13 @@ module Samagotchi
 
       # ctx.ask_model's answer limit when none is given.
       ASK_MAX_TOKENS = 1024
+
+      # Other sessions: fork one from a conversation, send one a message,
+      # read one (Sessions).
+      # @return [Sessions]
+      def sessions
+        @sessions ||= Sessions.new(@host)
+      end
 
       # A single-select question through the question flow, like a hook's
       # event[:ask_user].

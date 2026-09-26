@@ -249,6 +249,36 @@ module Samagotchi
       File.file?(path) && !File.symlink?(path)
     end
 
+    # Messages seeded into another session (a plugin's ctx.sessions.fork):
+    # each image ref's file is copied from +from+ into +to+ (both session
+    # dirs; no +from+ copies none). A ref whose file isn't there is dropped, and its message says
+    # so ("[image shot.png was not copied]").
+    # @return [Array(Array<Hash>, Integer)] the messages, how many dropped
+    def self.copy_refs(messages, from:, to:)
+      dropped = 0
+      copied = Array(messages).map do |message|
+        images = message[:images] || message["images"]
+        next message unless images.is_a?(Array) && !images.empty?
+
+        kept, gone = from ? images.partition { |ref| valid_ref?(from, ref) } : [[], images]
+        kept.each do |ref|
+          file = (ref[:file] || ref["file"]).to_s
+          target = File.join(to.to_s, file)
+          FileUtils.mkdir_p(File.dirname(target))
+          FileUtils.cp(File.join(from.to_s, file), target) unless File.exist?(target)
+        end
+        dropped += gone.size
+        message = message.reject { |key, _| key.to_s == "images" }
+        message[:images] = kept unless kept.empty?
+        unless gone.empty?
+          notes = gone.map { |ref| "[image #{ref.is_a?(Hash) ? ImageRef.name(symbolize(ref)) : "?"} was not copied]" }
+          message[:content] = [(message.delete("content") || message[:content]).to_s, *notes].reject(&:empty?).join("\n")
+        end
+        message
+      end
+      [copied, dropped]
+    end
+
     # A ref for an image already stored in this session (a web upload),
     # rebuilt from the file itself: only its name comes from the caller.
     def self.ref_for(session_dir, file:, name: nil, source: "user")
