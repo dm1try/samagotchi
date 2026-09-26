@@ -70,12 +70,18 @@ test("summaryText pending: header, else a label (the question is in the body)", 
 
 test("summaryText resolved: answered, denied, cancelled with reason", () => {
   const q = { id: "q", question: "Which lane?", options: ["A", "B"] };
-  assert.equal(summaryText(q, { answer: { selected: ["A"], freeform: "x" } }), "Answered: A · x");
-  assert.equal(summaryText(q, { cancelled: true }), "Cancelled");
-  assert.equal(summaryText(q, { cancelled: true, reason: "turn ended" }), "Cancelled (turn ended)");
-  assert.equal(summaryText(approval, { answer: { selected: ["Allow once"] } }), "Allowed: Allow once");
-  assert.equal(summaryText(approval, { answer: { selected: ["Deny"], freeform: "use a PR" } }), "Denied: use a PR");
-  assert.equal(summaryText(approval, { cancelled: true, reason: "dismissed" }), "Denied (dismissed)");
+  assert.equal(summaryText(q, { answer: { selected: ["A"], freeform: "x" } }), "Which lane? → A · x");
+  assert.equal(summaryText(q, { cancelled: true }), "Which lane? → Cancelled");
+  assert.equal(summaryText(q, { cancelled: true, reason: "turn ended" }), "Which lane? → Cancelled (turn ended)");
+  assert.equal(summaryText(approval, { answer: { selected: ["Allow once"] } }), "execute: git push → Allowed: Allow once");
+  assert.equal(summaryText(approval, { answer: { selected: ["Deny"], freeform: "use a PR" } }), "execute: git push → Denied: use a PR");
+  assert.equal(summaryText(approval, { cancelled: true, reason: "dismissed" }), "execute: git push → Denied (dismissed)");
+});
+
+test("summaryText resolved: a long question is cut so the result stays", () => {
+  const s = summaryText({ id: "q", question: "y".repeat(200) }, { answer: { selected: ["A"] } });
+  assert.ok(s.endsWith("… → A"));
+  assert.equal(summaryText({ id: "q" }, { answer: { selected: ["A"] } }), "A");
 });
 
 test("summaryText truncates long lines at 80 chars", () => {
