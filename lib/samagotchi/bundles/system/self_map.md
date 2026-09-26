@@ -22,11 +22,17 @@
   reply (`delegate_result` waits for it; `session:` sends a follow-up to a child). A child is a
   normal session: it shows in `chi sessions list` with `↳ <parent>`, and the user can steer it
   with `chi --attach <id>`; see `docs/sessions.md` "Delegating".
+- Bundles extend me: memories, `hooks/*.rb`, `guardrails/*.yml`, and a `plugin.rb` that adds slash
+  commands (`anytime:` ones run mid-turn), model tools, hooks, cards, side answers (`ask_model`),
+  child sessions and services (e.g. MCP server processes). Shipped: `btw` (`/btw` side question),
+  `mcp` (MCP server tools), `guardrails` (rules), `known-names` (typo guard). `chi bundle list`
+  shows installed + available; `chi bundle install <name>`. Settings: config.yml `bundles: <name>:`
+  (`config_modification_protocol`); API and bundle docs: `docs/plugins.md`.
 
 ## Where things live (relative to the source dir)
 - `docs/`: `cli.md` (flags, subcommands, REPL commands), `configuration.md` (config.yml keys,
-  hosts, transports), `hooks.md` (hook events table), `memory.md`, `sessions.md`. `README.md` is
-  only the quickstart.
+  hosts, transports), `hooks.md` (hook events table), `plugins.md` (plugin API, btw/mcp bundles),
+  `guardrails.md`, `memory.md`, `sessions.md`. `README.md` is only the quickstart.
 - `lib/samagotchi/tools/<tool>.rb`: each tool's real limits and defaults (e.g. `execute.rb`,
   `output_guardrails.rb`). Tool descriptions are summaries, not the spec.
 - A tool that isn't in `lib/samagotchi/tools/` comes from an installed bundle's plugin
