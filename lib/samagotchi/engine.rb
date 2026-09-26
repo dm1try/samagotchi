@@ -35,6 +35,7 @@ require_relative "guardrails"
 require_relative "reminder_store"
 require_relative "tools/memory"
 require_relative "muted_memories"
+require_relative "bundle_needs"
 require_relative "model_overlay"
 require_relative "served_model"
 require_relative "image_store"
@@ -2350,7 +2351,7 @@ module Samagotchi
 
     # The scope's index text without the muted memories' lines.
     def read_memory_index(scope)
-      MutedMemories.filter_index(Tools::MemoryRead.call("", scope: scope), @muted_memory_names)
+      BundleNeeds.annotate_index(MutedMemories.filter_index(Tools::MemoryRead.call("", scope: scope), @muted_memory_names), scope)
     end
 
     # Merge the config.yml `memories:` baseline with the explicit `--memory`

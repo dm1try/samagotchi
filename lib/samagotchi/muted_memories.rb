@@ -49,11 +49,18 @@ module Samagotchi
     end
 
     def self.muted_index_line?(line, muted)
+      muted?(index_line_name(line), muted)
+    end
+
+    # The memory an index line names, normalized: a managed line's
+    # `**name**`, else the bare line (the "no index yet" list). nil for a
+    # line that names none (a heading, prose with spaces).
+    def self.index_line_name(line)
       stripped = line.chomp
       name = stripped.match(INDEX_LINE)&.[](1) || stripped
-      return false if name.include?(" ")
+      return nil if name.include?(" ")
 
-      muted?(name, muted)
+      normalize(name)
     end
   end
 end

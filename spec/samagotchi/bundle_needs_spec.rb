@@ -3,7 +3,9 @@
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
+require "json"
 require "samagotchi/bundle_needs"
+require "samagotchi/muted_memories"
 
 RSpec.describe Samagotchi::BundleNeeds do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-needs-") }
@@ -52,6 +54,80 @@ RSpec.describe Samagotchi::BundleNeeds do
 
     it "has no marker when nothing is missing" do
       expect(described_class.marker([])).to be_nil
+    end
+  end
+
+  describe ".annotate_index" do
+    let(:bundles_dir) { File.join(tmpdir, ".bundles") }
+
+    def install(name, scope:, files:, needs:)
+      dir = File.join(bundles_dir, name)
+      FileUtils.mkdir_p(dir)
+      data = { "name" => name, "scope" => scope, "files" => files.to_h { |f| [f, { "checksum" => "x" }] } }
+      data["needs"] = needs if needs
+      File.write(File.join(dir, "manifest.json"), JSON.generate(data))
+    end
+
+    let(:index) do
+      "# Memory index\n\n- **gh_helper** · system · 2026-09-26 · 120 — GitHub via gh\n" \
+        "- **other** · system · 2026-09-26 · 40\n- **legacy.md** · old line\r\n"
+    end
+
+    def annotate(text = index, scope: "system")
+      described_class.annotate_index(text, scope, path: "/usr/bin:/bin", bundles_dir: bundles_dir)
+    end
+
+    it "marks only the lines of the bundle with a missing need, keeping every other byte" do
+      install("needs", scope: "system", files: %w[gh_helper.md legacy.md], needs: [{ "command" => "chi-nope" }, { "command" => "sh" }])
+      install("fine", scope: "system", files: %w[other.md], needs: [{ "command" => "sh" }])
+      expect(annotate).to eq(
+        "# Memory index\n\n- **gh_helper** · system · 2026-09-26 · 120 — GitHub via gh [needs chi-nope: not found on PATH]\n" \
+          "- **other** · system · 2026-09-26 · 40\n- **legacy.md** · old line [needs chi-nope: not found on PATH]\r\n"
+      )
+    end
+
+    it "marks a bare name in the no-index-yet list" do
+      install("needs", scope: "system", files: %w[gh_helper.md], needs: [{ "command" => "chi-nope" }])
+      expect(annotate("Stored memories (no index yet):\ngh_helper\nother")).to eq(
+        "Stored memories (no index yet):\ngh_helper [needs chi-nope: not found on PATH]\nother"
+      )
+    end
+
+    it "ignores a bundle of the other scope" do
+      install("needs", scope: "project", files: %w[gh_helper.md], needs: [{ "command" => "chi-nope" }])
+      expect(annotate).to equal(index)
+    end
+
+    it "leaves a muted (filtered-out) line gone" do
+      install("needs", scope: "system", files: %w[gh_helper.md], needs: [{ "command" => "chi-nope" }])
+      filtered = Samagotchi::MutedMemories.filter_index(index, ["gh_helper"])
+      expect(annotate(filtered)).not_to include("gh_helper")
+    end
+
+    it "returns the same text when no bundle has needs or none is missing" do
+      install("plain", scope: "system", files: %w[gh_helper.md], needs: nil)
+      install("fine", scope: "system", files: %w[other.md], needs: [{ "command" => "sh" }])
+      expect(annotate).to equal(index)
+    end
+
+    it "skips a broken manifest.json and still marks the others" do
+      FileUtils.mkdir_p(File.join(bundles_dir, "broken"))
+      File.write(File.join(bundles_dir, "broken", "manifest.json"), "{nope")
+      expect(annotate).to equal(index)
+      install("needs", scope: "system", files: %w[gh_helper.md], needs: [{ "command" => "chi-nope" }])
+      expect(annotate).to include("gh_helper** · system · 2026-09-26 · 120 — GitHub via gh [needs chi-nope")
+    end
+
+    it "skips a bundle whose stored needs don't parse" do
+      install("bad", scope: "system", files: %w[other.md], needs: [{ "command" => "/bad path" }])
+      install("needs", scope: "system", files: %w[gh_helper.md], needs: [{ "command" => "chi-nope" }])
+      expect(annotate).to include("GitHub via gh [needs chi-nope").and include("- **other** · system · 2026-09-26 · 40\n")
+    end
+
+    it "returns the text unchanged on an unexpected error" do
+      install("needs", scope: "system", files: %w[gh_helper.md], needs: [{ "command" => "chi-nope" }])
+      allow(Dir).to receive(:[]).and_raise(Errno::EACCES)
+      expect(annotate).to equal(index)
     end
   end
 end

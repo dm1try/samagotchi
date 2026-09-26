@@ -85,6 +85,33 @@ RSpec.describe Samagotchi::Engine do
     end
   end
 
+  describe "bundle needs in the system prompt's index" do
+    around do |example|
+      Dir.mktmpdir do |tmp|
+        installer = Samagotchi::MemoryBundle::Installer
+        provenance = Samagotchi::MemoryBundle::Provenance
+        saved = [installer.system_dir_override, installer.project_dir_base_override, provenance.bundles_dir_override, ENV["PATH"]]
+        installer.system_dir_override = File.join(tmp, "system")
+        installer.project_dir_base_override = File.join(tmp, "project")
+        provenance.bundles_dir_override = File.join(tmp, "system", ".bundles")
+        example.run
+      ensure
+        installer.system_dir_override, installer.project_dir_base_override, provenance.bundles_dir_override, ENV["PATH"] = saved
+        Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
+        Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
+      end
+    end
+
+    it "marks a bundle memory's index line when a need isn't on the worker's PATH" do
+      fixture = File.expand_path("fixtures/sample_needs_bundle", __dir__)
+      Samagotchi::MemoryBundle::Installer.new(source: fixture, name: "sample-needs", scope: "system").run
+      ENV["PATH"] = "/usr/bin:/bin"
+
+      prompt = build_engine(profile: "gemma4").send(:system_prompt_with_index, "base")
+      expect(prompt).to match(/^- \*\*gh_helper\*\* · system · .* \[needs chi-surely-missing-cmd: not found on PATH\]$/)
+    end
+  end
+
   describe "project location in the system prompt" do
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
