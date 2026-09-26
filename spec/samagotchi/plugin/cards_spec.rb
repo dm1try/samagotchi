@@ -156,6 +156,26 @@ RSpec.describe "Cards" do
         .to eq([["before", 2, false], ["during", 1, false], ["after", 1, false]])
     end
 
+    it "places a card that comes during a turn but isn't the turn's (an anytime command's) after that turn" do
+      turn(:turn_completed)
+      turn(:turn_started)
+      store.call(card("btw"))
+      expect(store.list.first).to include(turns_since: 0, current: false, in_turn: false, during: true)
+      store.call(card("btw", "answer"))
+      turn(:turn_completed)
+      expect(store.list.first).to include(title: "answer", turns_since: 0, current: false)
+      expect(store.list.first).not_to have_key(:during)
+      turn(:turn_started, :turn_completed)
+      expect(store.list.first[:turns_since]).to eq(1)
+    end
+
+    it "keeps such a card before the next turn when its turn failed (no prompt in the history)" do
+      turn(:turn_started)
+      store.call(card("btw"))
+      turn(:turn_failed, :turn_started, :turn_completed)
+      expect(store.list.first[:turns_since]).to eq(1)
+    end
+
     it "keeps a card replaced during a turn in its first place" do
       store.call(card("btw"))
       turn(:turn_started)

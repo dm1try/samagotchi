@@ -43,8 +43,9 @@ test("cardPlace: above the first turn after the card (turns_since from the end),
   assert.equal(cardPlace(users, { turns_since: 9 }), null);
 });
 
-test("splitSnapshotCards: the history's cards and notices, and the running turn's", () => {
-  const cards = [{ id: "a", current: false }, { type: "hook_notice", current: false }, { id: "b", current: true }];
-  assert.deepEqual(splitSnapshotCards(cards), { placed: [cards[0], cards[1]], current: [cards[2]] });
-  assert.deepEqual(splitSnapshotCards(undefined), { placed: [], current: [] });
+test("splitSnapshotCards: the history's cards and notices, the running turn's, and the ones during it", () => {
+  const cards = [{ id: "a", current: false }, { type: "hook_notice", current: false }, { id: "b", current: true },
+    { id: "btw", current: false, during: true }];
+  assert.deepEqual(splitSnapshotCards(cards), { placed: [cards[0], cards[1]], current: [cards[2]], during: [cards[3]] });
+  assert.deepEqual(splitSnapshotCards(undefined), { placed: [], current: [], during: [] });
 });
