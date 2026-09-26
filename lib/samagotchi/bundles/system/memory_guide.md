@@ -57,7 +57,7 @@ Bundles are versioned directories/zips/tar.gz/git URLs containing `manifest.yml`
 | `uninstall <bundle> [--force]` | Removes bundle files (skips locally edited files unless `--force`) and `index.md` lines, deletes provenance dir. |
 | `status [<bundle>]` | Provenance + per-file `ok|modified|missing|no-index` vs stored checksum and base snapshot. |
 | `diff <bundle> [file]` | Prints `base` (provenance snapshot) vs `current` (on-disk) for each file. |
-| `bundles` | Lists installed bundles (`name v<version> scope files installed_at`). |
+| `list` | Lists installed bundles (`name v<version> scope files installed_at`, plus the shipped version when newer) and the bundles shipped with chi that are not installed (`install <name>` installs one). |
 | `build [--scope system\|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]` | **Inverse of install** — builds a shareable bundle from local memories and installed hooks. Infers `zip` vs `dir`/`tar.gz` from `--out` extension; default `chi_system_memories.zip` (system) or `chi_<repo>_memories.zip` (project, named after the project root) v`1.0.0` in `Dir.pwd`. `FILES...` is an optional allowlist of memory basenames (`identity` or `identity.md`); if omitted, all `*.md` except `index.md`/hidden/non-md are included. Installed hooks are copied to `hooks/` with their manifest metadata. Computes `sha256:` checksums and writes `manifest.yml` via `Manifest.write`. No provenance write. |
 
 **Scope resolution for install/build:**
