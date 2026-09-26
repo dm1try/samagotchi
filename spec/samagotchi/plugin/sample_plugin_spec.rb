@@ -297,6 +297,83 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     end
   end
 
+  describe "chi.replace_tools" do
+    # A plugin whose /set command replaces its tools with the names given.
+    before do
+      install_source("late-tools", <<~RUBY)
+        class Plugin
+          def register(chi)
+            @chi = chi
+            chi.tool("late_a", "first") { "a" }
+            chi.command("/set", "replace the tools") do |args|
+              @chi.replace_tools do |set|
+                args.split.each do |name|
+                  set.tool(name, name == "late_a" ? "first" : "changed \#{name}", label: name) { |_a, ctx| "\#{name} in \#{ctx.bundle}" }
+                end
+              end
+              nil
+            end
+            chi.command("/early", "") { nil }
+          end
+        end
+      RUBY
+    end
+
+    let(:commands) do
+      Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                      default_model: "Gemma-4B-it", registry: engine.command_registry)
+    end
+
+    def late_names = tools.entries.select { |e| e.source == "late-tools" }.map(&:name)
+
+    it "stages the set; the turn thread applies it: new tools, dropped ones, the prompts built again once" do
+      built = engine.system_prompt
+      commands.run("/set late_b late_c")
+      # Staged only: nothing changes until it is applied.
+      expect(late_names).to eq(%w[late_a])
+      expect(engine.system_prompt).to equal(built)
+      expect(engine.apply_staged_tools!).to be(true)
+      expect(late_names).to eq(%w[late_b late_c])
+      expect(tools["late_b"].label).to eq("late_b")
+      expect(tools["late_b"].handler.call({ name: "late_b", args: {} }, nil)).to eq("late_b in late-tools")
+      expect(engine.system_prompt).not_to equal(built)
+      expect(engine.system_prompt).to include("late_c")
+      expect(engine.apply_staged_tools!).to be(false)
+    end
+
+    it "keeps an unchanged tool as it is, and changes nothing for the same set" do
+      commands.run("/set late_a")
+      # The declared label differs from the load's (nil): a change.
+      expect(engine.apply_staged_tools!).to be(true)
+      entry = tools["late_a"]
+      commands.run("/set late_a")
+      expect(engine.apply_staged_tools!).to be(false)
+      expect(tools["late_a"]).to equal(entry)
+    end
+
+    it "leaves out a name another source has, with a notice" do
+      notices = []
+      engine.subscribe(observer: ->(e) { notices << e if e[:type] == :hook_notice })
+      commands.run("/set read late_b")
+      engine.apply_staged_tools!
+      expect(tools["read"].source).to eq("core")
+      expect(late_names).to eq(%w[late_b])
+      expect(notices.map { |n| n[:text] }).to eq(["tool read is already registered (core); left out"])
+    end
+
+    it "is refused inside register, and a bad tool raises at once, staging nothing" do
+      install_source("early", <<~RUBY)
+        class Plugin
+          def register(chi) = chi.replace_tools { |set| set.tool("x", "") { "" } }
+        end
+      RUBY
+      expect(engine.plugin_failures.message).to include("replace_tools is for after register")
+      expect(commands.run("/set BAD").output).to include("tool name \"BAD\" must be a-z")
+      expect(engine.apply_staged_tools!).to be(false)
+      expect(late_names).to eq(%w[late_a])
+    end
+  end
+
   describe "chi.on" do
     before { install }
 

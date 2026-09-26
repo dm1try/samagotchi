@@ -14,8 +14,10 @@ module Samagotchi
     # +context_for+ is (bundle_name, settings, label) → the Plugin::Context
     # its handlers get; +tools_changed+ drops what was built from the tools
     # (the Engine's system prompts); +services+ (Plugin::Services) is what
-    # Engine#shutdown stops.
-    Registries = Struct.new(:commands, :tools, :hooks, :context_for, :tools_changed, :services, keyword_init: true)
+    # Engine#shutdown stops; +stage_tools+ is (bundle, specs, context),
+    # chi.replace_tools' set, which the Engine applies on its turn thread.
+    Registries = Struct.new(:commands, :tools, :hooks, :context_for, :tools_changed, :services, :stage_tools,
+                            keyword_init: true)
 
     # Loads installed bundles' plugins (manifest plugin: {file:, sha256:})
     # into an Engine's registries (docs/plugins.md).

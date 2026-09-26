@@ -122,6 +122,9 @@ module Samagotchi
       # commands running now (#spawn_anytime), which it waits for.
       @services = Plugin::Services.new
       @anytime_threads = []
+      # Plugins' tool sets from chi.replace_tools, by bundle, until the
+      # turn thread applies them (#apply_staged_tools!).
+      @staged_tools = {}
       @lifecycle_mutex = Mutex.new
       @shut_down = false
       load_plugins if plugins
@@ -1554,6 +1557,9 @@ module Samagotchi
         @kernel.vision = vision if @kernel.respond_to?(:vision=)
         refuse_images!(vision) unless image_refs.empty?
         announce_guardrail_failures(on_event)
+        # Plugins' tool sets that changed since the last turn, before the
+        # system prompt declares the tools.
+        apply_staged_tools!
 
         # Fire :session_start on the very first turn
         if @first_turn
@@ -1896,7 +1902,8 @@ module Samagotchi
           Plugin::Context.new(bundle: bundle, label: label, settings: settings, host: host)
         },
         tools_changed: -> { tools_changed! },
-        services: @services
+        services: @services,
+        stage_tools: ->(bundle, specs, context) { stage_tools(bundle, specs, context) }
       )
       # What plugins show while they load (an MCP server that didn't
       # start) waits for the first turn, beside the load warnings: no UI
@@ -1913,6 +1920,45 @@ module Samagotchi
       @plugin_load_events << event
       event
     end
+
+    # Keep a plugin's new tool set (chi.replace_tools, from any thread)
+    # for the turn thread, which applies it (#apply_staged_tools!): the
+    # registry is read only there. A later set of the same bundle wins.
+    def stage_tools(bundle, specs, context)
+      @lifecycle_mutex.synchronize do
+        return if @shut_down
+
+        @staged_tools[bundle] = [specs, context]
+      end
+      nil
+    end
+    private :stage_tools
+
+    # Apply the staged tool sets (#stage_tools), on the turn thread, before
+    # the turn's system prompt is built; the prompts are built again when
+    # a set changed anything. A name another source has is left out with a
+    # notice.
+    # @return [Boolean] whether the tools changed
+    def apply_staged_tools!
+      staged = @lifecycle_mutex.synchronize do
+        taken = @staged_tools
+        @staged_tools = {}
+        taken
+      end
+      changed = false
+      staged.each do |bundle, (specs, context)|
+        result = Plugin::Api.apply_tools(@tools, bundle, specs, context)
+        changed ||= result[:changed]
+        result[:skipped].each do |why|
+          Log.warn(:plugins, "plugin_tool_skipped", bundle: bundle, msg: why)
+          hook_notify("#{why}; left out", :warn, bundle)
+        end
+        Log.info(:plugins, "plugin_tools_replaced", bundle: bundle, tools: specs.size) if result[:changed]
+      end
+      tools_changed! if changed
+      changed
+    end
+    public :apply_staged_tools!
 
     # The tools changed (a plugin's chi.tools_changed!): the system prompts,
     # which declare them, are built again on the next turn.

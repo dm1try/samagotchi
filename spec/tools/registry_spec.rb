@@ -26,6 +26,15 @@ RSpec.describe Samagotchi::Tools::Registry do
     expect { registry.register("echo", schema: schema, handler: ->(*) {}) }.to raise_error(ArgumentError)
   end
 
+  it "unregisters a tool, and registers the name again after that" do
+    registry = extended_registry
+    expect(registry.unregister("echo").name).to eq("echo")
+    expect(registry.key?("echo")).to be(false)
+    expect(registry.unregister("echo")).to be_nil
+    registry.register("echo", schema: schema, handler: ->(*) {})
+    expect(registry.names.last).to eq("echo")
+  end
+
   it "has a frozen default with the built-ins alone, and a fresh one per call" do
     default = Samagotchi::Tools::Builtins.default
     expect(default).to be_frozen

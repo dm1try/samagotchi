@@ -33,6 +33,10 @@ module Samagotchi
                                    targets: targets, source: source)
       end
 
+      # Remove a tool (a plugin's tool set changed after load).
+      # @return [Entry, nil] the removed entry
+      def unregister(name) = @entries.delete(name.to_s)
+
       # @return [Entry, nil]
       def [](name) = @entries[name.to_s]
 

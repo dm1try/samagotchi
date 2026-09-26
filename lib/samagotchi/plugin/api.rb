@@ -29,6 +29,7 @@ module Samagotchi
         @commands = []
         @tools = []
         @services = []
+        @committed = false
       end
 
       # The Context the plugin's handlers get, for #register itself: its
@@ -75,21 +76,59 @@ module Samagotchi
       #   with paths: (absolute or relative to the cwd), command: (a shell
       #   command) and cwd:, each optional
       def tool(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &block)
-        raise ArgumentError, "tool #{name.inspect} needs a block" unless block
-        name = name.to_s
-        raise ArgumentError, "tool name #{name.inspect} must be a-z, 0-9 and _ (at most 48)" unless name.match?(TOOL_NAME)
-        if (taken = @registries.tools[name])
-          raise ArgumentError, "tool #{name} is already registered (#{taken.source})"
+        spec = Api.tool_spec(name, description, params: params, schema: schema, label: label, preview: preview,
+                                                targets: targets, &block)
+        if (taken = @registries.tools[spec[:name]])
+          raise ArgumentError, "tool #{spec[:name]} is already registered (#{taken.source})"
         end
-        raise ArgumentError, "tool #{name} is registered twice" if @tools.any? { |tool| tool[:name] == name }
-        raise ArgumentError, "tool #{name}: preview must respond to #call" if preview && !preview.respond_to?(:call)
-        raise ArgumentError, "tool #{name}: targets must respond to #call" if targets && !targets.respond_to?(:call)
+        raise ArgumentError, "tool #{spec[:name]} is registered twice" if @tools.any? { |tool| tool[:name] == spec[:name] }
 
-        parameters = schema ? schema_parameters(name, schema) : params_schema(name, params)
-        @tools << { name: name, schema: { name: name, description: description.to_s, parameters: parameters },
-                    label: label&.to_s, preview: preview,
-                    targets: targets, block: block }
+        @tools << spec
         nil
+      end
+
+      # The plugin's whole tool set, after #register (a plugin whose tools
+      # are known only later: an MCP server that listed them). The block
+      # gets a set whose #tool takes #tool's arguments; what it declares
+      # replaces the plugin's tools from the next turn on: its tools not in
+      # the set go, new or changed ones are registered, and the system
+      # prompts are built again if anything changed. Safe from any thread:
+      # the set is staged, and the turn thread applies it before the
+      # turn's first model request. A name another bundle (or chi) has is
+      # left out, with a notice.
+      # @raise [ArgumentError] a bad tool (as #tool), or called in #register
+      def replace_tools
+        raise ArgumentError, "replace_tools needs a block" unless block_given?
+        raise ArgumentError, "replace_tools is for after register (use chi.tool there)" unless @committed
+
+        set = ToolSet.new
+        yield set
+        if (stage = @registries.stage_tools)
+          stage.call(@bundle, set.specs, @context)
+        elsif Api.apply_tools(@registries.tools, @bundle, set.specs, @context)[:changed]
+          tools_changed!
+        end
+        nil
+      end
+
+      # What #replace_tools' block declares tools on.
+      class ToolSet
+        # @return [Array<Hash>]
+        attr_reader :specs
+
+        def initialize
+          @specs = []
+        end
+
+        # As Api#tool.
+        def tool(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &block)
+          spec = Api.tool_spec(name, description, params: params, schema: schema, label: label, preview: preview,
+                                                  targets: targets, &block)
+          raise ArgumentError, "tool #{spec[:name]} is registered twice" if @specs.any? { |s| s[:name] == spec[:name] }
+
+          @specs << spec
+          nil
+        end
       end
 
       # Run the block on a hook event (docs/hooks.md: :before_turn,
@@ -150,22 +189,7 @@ module Samagotchi
             block.call(args, context)
           end
         end
-        @tools.each do |tool|
-          block = tool[:block]
-          preview = tool[:preview]
-          targets = tool[:targets]
-          parameters = tool[:schema][:parameters]
-          @registries.tools.register(
-            tool[:name], schema: tool[:schema], source: @bundle, label: tool[:label],
-                         handler: lambda { |call, _kctx|
-                           result = block.call(Api.args_of(call, parameters), context)
-                           # A String (a ToolResult too, with its images) as it is.
-                           result.is_a?(String) ? result : result.to_s
-                         },
-                         preview: preview && ->(call) { preview.call(Api.args_of(call, parameters))&.to_s },
-                         targets: targets && ->(call) { targets.call(Api.args_of(call, parameters)) }
-          )
-        end
+        @tools.each { |tool| @registries.tools.register(tool[:name], source: @bundle, **Api.entry_fields(tool, context)) }
         @hooks.each do |hook|
           bundle = @bundle
           label = @label
@@ -180,10 +204,73 @@ module Samagotchi
                                                      msg: "#{label} #{hook[:event]} hook failed: #{e.message}")
           end
         end
+        @committed = true
       end
 
       # @return [Hash] how many of each it registered (for the log)
       def counts = { commands: @commands.size, tools: @tools.size, hooks: @hooks.size, services: @services.size }
+
+      # A checked tool declaration (#tool's arguments).
+      # @return [Hash] {name:, schema:, label:, preview:, targets:, block:}
+      def self.tool_spec(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &block)
+        raise ArgumentError, "tool #{name.inspect} needs a block" unless block
+        name = name.to_s
+        raise ArgumentError, "tool name #{name.inspect} must be a-z, 0-9 and _ (at most 48)" unless name.match?(TOOL_NAME)
+        raise ArgumentError, "tool #{name}: preview must respond to #call" if preview && !preview.respond_to?(:call)
+        raise ArgumentError, "tool #{name}: targets must respond to #call" if targets && !targets.respond_to?(:call)
+
+        parameters = schema ? schema_parameters(name, schema) : params_schema(name, params)
+        { name: name, schema: { name: name, description: description.to_s, parameters: parameters },
+          label: label&.to_s, preview: preview, targets: targets, block: block }
+      end
+
+      # Make +bundle+'s tools in +registry+ the +specs+: its tools not in
+      # them go; a new one, or one whose schema or label changed, is
+      # registered (a changed one again, at the end); an unchanged one is
+      # kept as it is. A name another source has is left out. Called on
+      # the turn thread (Engine#apply_staged_tools!).
+      # @return [Hash] {changed: Boolean, skipped: [String] (why)}
+      def self.apply_tools(registry, bundle, specs, context)
+        wanted = specs.to_h { |spec| [spec[:name], spec] }
+        changed = false
+        registry.entries.each do |entry|
+          next unless entry.source == bundle
+          next if (spec = wanted[entry.name]) && spec[:schema] == entry.schema && spec[:label] == entry.label
+
+          registry.unregister(entry.name)
+          changed = true
+        end
+        skipped = []
+        specs.each do |spec|
+          if (taken = registry[spec[:name]])
+            skipped << "tool #{spec[:name]} is already registered (#{taken.source})" unless taken.source == bundle
+            next
+          end
+
+          registry.register(spec[:name], source: bundle, **entry_fields(spec, context))
+          changed = true
+        end
+        { changed: changed, skipped: skipped }
+      end
+
+      # Registry#register's keywords for a tool declaration: its block
+      # wrapped as a handler (typed args, the Context), preview, targets.
+      def self.entry_fields(spec, context)
+        block = spec[:block]
+        preview = spec[:preview]
+        targets = spec[:targets]
+        parameters = spec[:schema][:parameters]
+        {
+          schema: spec[:schema], label: spec[:label],
+          handler: lambda { |call, _kctx|
+            result = block.call(Api.args_of(call, parameters), context)
+            # A String (a ToolResult too, with its images) as it is.
+            result.is_a?(String) ? result : result.to_s
+          },
+          preview: preview && ->(call) { preview.call(Api.args_of(call, parameters))&.to_s },
+          targets: targets && ->(call) { targets.call(Api.args_of(call, parameters)) }
+        }
+      end
 
       # A tool call's arguments as a plugin sees them: the parsers' args:
       # (a call built without one, in a spec say: the call without its
@@ -203,10 +290,8 @@ module Samagotchi
         end
       end
 
-      private
-
       # The parameters object from params: (name => property spec).
-      def params_schema(name, params)
+      def self.params_schema(name, params)
         raise ArgumentError, "tool #{name}: params must be a Hash" unless params.is_a?(Hash)
 
         required = []
@@ -221,9 +306,10 @@ module Samagotchi
         end
         { type: "object", properties: properties, required: required }
       end
+      private_class_method :params_schema
 
       # The parameters object from schema: (a JSON Schema object).
-      def schema_parameters(name, schema)
+      def self.schema_parameters(name, schema)
         raise ArgumentError, "tool #{name}: schema must be a Hash" unless schema.is_a?(Hash)
 
         schema = Api.symbolize(schema)
@@ -235,6 +321,7 @@ module Samagotchi
         { type: "object", properties: properties, required: Array(schema[:required]).map(&:to_s) }
           .merge(schema.except(:type, :properties, :required))
       end
+      private_class_method :schema_parameters
     end
   end
 end
