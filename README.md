@@ -95,6 +95,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [Desktop helper](docs/desktop.md): `chi desktop`, the macOS "Send to chi" Service and hotkey
 - [Guardrails](docs/guardrails.md): allow / ask / deny for tool calls, rules, approvals
 - [Hooks](docs/hooks.md): plugin hooks and bundle hooks
+- [Plugins](docs/plugins.md): bundle plugins (commands, tools, hooks)
 - [Architecture](docs/architecture.md): Engine, TerminalUI, bridge, web
 - Internals: [Gemma 4 contract](docs/internals/gemma4-contract.md), [context telemetry](docs/internals/context-telemetry.md), [tool output limits](docs/internals/tool-guardrails.md), [background tasks](docs/internals/background-tasks.md)
 

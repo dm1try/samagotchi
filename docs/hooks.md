@@ -4,6 +4,9 @@ Samagotchi supports pluggable Ruby hooks that fire at key lifecycle points
 during agent turns. Hooks let you add external tooling (CI checks, logging,
 analytics) or in-process verification (test gates, policy checks).
 
+A bundle can go further with a plugin: slash commands and tools as well as
+hooks. See [Plugins](plugins.md).
+
 ## Configuration
 
 Add a `hooks:` section to your global config file (`~/.config/samagotchi/config.yml`):
@@ -294,6 +297,7 @@ Notes:
 - A bundle can also ship YAML rules in `guardrails/*.yml`; see [Guardrails](guardrails.md#the-guardrails-bundle).
 - Ordering: bundle hooks fire by `(priority, bundle_name, hook_name)` (lower priority first), then plain `config.yml` hooks in registration order.
 - Settings: a hook class with `initialize(settings = {})` gets the bundle's section of `config.yml` `bundles:` (see [Settings](#settings)).
+- A bundle can also ship a `plugin.rb` whose `chi.on(event)` blocks are bundle hooks too, next to commands and tools; see [Plugins](plugins.md).
 - Shipped bundles: `chi bundle install guardrails` (rules, see [Guardrails](guardrails.md#the-guardrails-bundle)) and `chi bundle install known-names` (a hook, see [Guardrails](guardrails.md#the-known-names-bundle)).
 - Installing a bundle executes its hook code at `Engine` startup. Only install bundles you trust, as you would a gem. Hooks are **not** executed at install time (copy-only); they are `module_eval`'d at `Engine.new` inside per-bundle `Samagotchi::Bundles::<name>` namespaces (no top-level `require` collisions). Keep hook files side-effect-free at load time; do work in `#call` — top-level side effects (require, IO, `at_exit`, global assignment) run once per `Engine.new` (class redefinition is idempotent).
 
