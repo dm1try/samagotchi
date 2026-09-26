@@ -3,6 +3,7 @@
 require_relative "tool_activity"
 require_relative "guardrails"
 require_relative "vision_context"
+require_relative "log"
 
 module Samagotchi
   # The single per-call path both loops use: the tool_call_started and
@@ -12,6 +13,10 @@ module Samagotchi
   # feeds the full `output:`, the chat loop feeds `capped_output:` (the cap
   # on the event applies to both).
   class ToolRunner
+    # More images in one result are left out, each with a line (a tool
+    # that returns many screenshots can't flood the context).
+    MAX_IMAGES_PER_RESULT = 4
+
     # @param kernel [KernelLoop] read lazily: Engine sets its hooks after
     #   the kernel is built.
     def initialize(kernel)
@@ -20,7 +25,7 @@ module Samagotchi
 
     # @param call_index [Integer] 1-based position of the call in its batch
     # @return [Hash] output:, capped_output:, truncated:, activity:,
-    #   images: (refs) when the tool read an image the model gets to see, and
+    #   images: (refs) when the tool returned images the model gets to see, and
     #   shown_params: the params line the live row showed, only for a tool
     #   that isn't built in (the loops save it with the result, so a reload
     #   without the plugin shows the same line)
@@ -39,7 +44,7 @@ module Samagotchi
       settle_ask(verdict) if verdict.ask?
       result = verdict.deny? ? denied(call, verdict) : dispatch(call)
       result = approved(result, verdict) if verdict.allow? && verdict.decided_by
-      result, images = attach_image(call, result) if result[:image_path]
+      result, images = attach_images(call, result) if result[:images]
 
       output = scrub(result[:output].to_s)
       capped = output
@@ -72,20 +77,56 @@ module Samagotchi
       text.valid_encoding? ? text : text.scrub("?")
     end
 
-    # A tool read an image: store it with the session (the turn's
-    # VisionContext) so the loop sends it, or tell the model why it can't
-    # see it. @return [Array(Hash, Array<Hash>)] the result and its refs
-    def attach_image(call, result)
+    # A tool returned images (read an image file, or a plugin's
+    # ToolResult): store each with the session (the turn's VisionContext)
+    # so the loop sends it. One that can't be sent adds a line saying why
+    # and keeps the text and the other images; for read, whose text only
+    # says the image is attached, that line replaces the text.
+    # @return [Array(Hash, Array<Hash>)] the result and its refs
+    def attach_images(call, result)
       vision = @kernel.vision if @kernel.respond_to?(:vision)
-      description = result[:image_description] || File.basename(result[:image_path].to_s)
       reason = if vision.nil? then "images can't be attached here"
                elsif !vision.sendable? then ImagePlan::CANT_SEE
                end
-      return [result.merge(output: "[#{call[:name]}]\n#{description} is an image; #{reason}"), []] if reason
+      refs = []
+      notes = []
+      Array(result[:images]).each_with_index do |entry, index|
+        entry = ImageStore.symbolize(entry)
+        unless valid_image_entry?(entry)
+          notes << "Error: image #{index + 1} is not {path:} or {bytes:, name:}"
+          next
+        end
 
-      [result, [vision.ingest(result[:image_path])]]
-    rescue ImageStore::Error => e
-      [result.merge(output: "[#{call[:name]}] Error: #{e.message}"), []]
+        description = entry[:description] || entry[:name] || (entry[:path] && File.basename(entry[:path])) || "image #{index + 1}"
+        if reason
+          notes << "#{description} is an image; #{reason}"
+        elsif refs.size >= MAX_IMAGES_PER_RESULT
+          notes << "#{description} is not attached: at most #{MAX_IMAGES_PER_RESULT} images per tool result"
+        else
+          refs << vision.ingest(entry[:path], name: entry[:name], bytes: entry[:bytes])
+        end
+      rescue ImageStore::Error => e
+        notes << "Error: #{e.message}"
+      end
+      unless refs.empty?
+        Log.info(:turn, "tool_images_attached", tool: call[:name], count: refs.size,
+                                                bytes: refs.sum { |ref| ref[:bytes].to_i }, left_out: notes.size)
+      end
+      [result.merge(output: images_output(call, result, notes)), refs]
+    end
+
+    def valid_image_entry?(entry)
+      return false unless entry.is_a?(Hash)
+
+      (entry[:path].is_a?(String) && !entry[:path].empty?) || (entry[:bytes].is_a?(String) && !entry[:bytes].empty?)
+    end
+
+    def images_output(call, result, notes)
+      return result[:output] if notes.empty?
+      return "[#{call[:name]}] #{notes.first}" if result[:image_only] && notes.first.start_with?("Error: ")
+      return "[#{call[:name]}]\n#{notes.first}" if result[:image_only]
+
+      [result[:output], *notes].join("\n")
     end
 
     # The kernel's tools, for the activity line of a tool that isn't built in.

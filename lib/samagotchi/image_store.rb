@@ -230,6 +230,7 @@ module Samagotchi
       raise Error, "no image given" if bytes.nil? || bytes.empty?
 
       name = (name || (path && File.basename(path)) || "image").to_s
+      raise Error, "#{name} is too large (over 50 MB)" if bytes.bytesize > MAX_SOURCE_BYTES
       info = ImageHeader.read(bytes)
       raise Error, "#{name} is not an image chi can send (png, jpeg, gif, webp)" unless info
 

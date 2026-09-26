@@ -54,11 +54,12 @@ module Samagotchi
       data && "data:#{ref[:mime] || ref["mime"]};base64,#{data}"
     end
 
-    # Stores an image a tool read (source "tool") and returns its ref.
-    def ingest(path, name: nil)
+    # Stores an image a tool read or returned (source "tool", from a +path+
+    # or raw +bytes+) and returns its ref.
+    def ingest(path = nil, name: nil, bytes: nil)
       raise ImageStore::Error, "no session to keep the image in" unless session_dir
 
-      ImageStore.ingest(session_dir, path: path, name: name, source: "tool", limits: limits,
+      ImageStore.ingest(session_dir, path: path, bytes: bytes, name: name, source: "tool", limits: limits,
                                      resizer: resizer || ImageResizer.detect)
     end
   end

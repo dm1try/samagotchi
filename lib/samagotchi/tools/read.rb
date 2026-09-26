@@ -25,6 +25,12 @@ module Samagotchi
           @description = description
           super("Image #{description} attached.")
         end
+
+        def images = [{ path: image_path, description: description }]
+
+        # The text only says the image is attached: when it can't be, the
+        # line saying why replaces it.
+        def image_only? = true
       end
 
       # How far into a file its size is looked for (a JPEG's frame header

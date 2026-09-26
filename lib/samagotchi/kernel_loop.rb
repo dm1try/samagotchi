@@ -918,10 +918,11 @@ module Samagotchi
         output: "[#{call[:name]}]\n#{result}",
         activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: @tools)
       }
-      # An image the read tool found: ToolRunner attaches it (or says why not).
-      if result.respond_to?(:image_path)
-        dispatched[:image_path] = result.image_path
-        dispatched[:image_description] = result.description
+      # Images the tool returned (read's ImageResult, a plugin's ToolResult):
+      # ToolRunner attaches them (or says why not).
+      if result.respond_to?(:images) && !Array(result.images).empty?
+        dispatched[:images] = Array(result.images)
+        dispatched[:image_only] = true if result.respond_to?(:image_only?) && result.image_only?
       end
       dispatched
     rescue => e
