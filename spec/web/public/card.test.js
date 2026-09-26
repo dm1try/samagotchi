@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cardBodyHtml, cardClass, cardInnerHtml, cardPlace, splitSnapshotCards } from "../../../lib/samagotchi/web/public/card.js";
+import { cardBodyHtml, cardClass, cardInnerHtml, cardPlace, leavesBlock, splitSnapshotCards } from "../../../lib/samagotchi/web/public/card.js";
 
 const card = {
   type: "card", id: "c1", source: "sample-plugin", title: "Hello <you>", body: "hi *there*", level: "info",
@@ -48,4 +48,13 @@ test("splitSnapshotCards: the history's cards and notices, the running turn's, a
     { id: "btw", current: false, during: true }];
   assert.deepEqual(splitSnapshotCards(cards), { placed: [cards[0], cards[1]], current: [cards[2]], during: [cards[3]] });
   assert.deepEqual(splitSnapshotCards(undefined), { placed: [], current: [], during: [] });
+});
+
+test("leavesBlock: a warn card always leaves the collapsed block, any card of a turn that did not complete does", () => {
+  assert.equal(leavesBlock({ warn: false, kind: "completed" }), false);
+  assert.equal(leavesBlock({ warn: true, kind: "completed" }), true);
+  for (const kind of ["canceled", "failed", "gone"]) {
+    assert.equal(leavesBlock({ warn: false, kind }), true, kind);
+    assert.equal(leavesBlock({ warn: true, kind }), true, kind);
+  }
 });
