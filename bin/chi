@@ -641,6 +641,7 @@ if ARGV[0] == "bundle"
         puts "    requires_chi: #{plugin[:requires_chi]}" if plugin[:requires_chi]
         puts "    not loaded: #{plugin[:requires_failure]}" if plugin[:requires_failure]
       end
+      st[:needs].each { |need| puts "  #{Samagotchi::MemoryBundle::Status.need_line(need)}" }
     else
       bundles_dir = Samagotchi::MemoryBundle::Provenance.bundles_dir
       unless File.directory?(bundles_dir)

@@ -5,6 +5,7 @@ require_relative "manifest"
 require_relative "../version"
 require_relative "index_updater"
 require_relative "../memory_paths"
+require_relative "../bundle_needs"
 
 module Samagotchi
   module MemoryBundle
@@ -40,7 +41,26 @@ module Samagotchi
             base_path: base_path
           }
         end
-        { provenance: data, scope: scope, target_dir: target_dir, files: details, plugin: plugin_status(provenance, data) }
+        { provenance: data, scope: scope, target_dir: target_dir, files: details, plugin: plugin_status(provenance, data),
+          needs: needs_status(data) }
+      end
+
+      # The stored needs, each with found: from this process's PATH (the
+      # shell's; a worker's PATH can differ, see docs/memory.md).
+      def self.needs_status(data, path: ENV["PATH"])
+        Manifest.parse_needs(data[:needs]).map do |need|
+          need.merge(found: BundleNeeds.found?(need[:command], path: path))
+        end
+      rescue Manifest::ValidationError
+        []
+      end
+
+      # "needs gh (reads PRs) [ok]" / "needs gh [not found]: brew install gh"
+      def self.need_line(need)
+        why = need[:why] ? " (#{need[:why]})" : ""
+        state = need[:found] ? "[ok]" : "[not found]"
+        hint = !need[:found] && need[:hint] ? ": #{need[:hint]}" : ""
+        "needs #{need[:command]}#{why} #{state}#{hint}"
       end
 
       # The installed plugin: {file:, path:, state:, requires_chi:,
