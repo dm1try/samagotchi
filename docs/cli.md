@@ -281,9 +281,13 @@ generation; `web.turn_view: false` brings it back). The running
 generation is the live part at the bottom (its thinking, its narration, its
 tool rows), the earlier ones stack above it collapsed to one line each
 (their narration's first line, else `working with <tools>`, and a call
-count), expandable for inspection. When the turn ends the block collapses
-to its summary (`3 steps · 8 tool calls · execute ×7 · read ×1`) and the
-answer sits under it as a normal bubble (Markdown, annotate). A plain
+count), expandable for inspection. The live thinking is one line: the
+newest complete sentence, changing at most once per 1.5 s. Click it for the
+full text; the page remembers whether you last opened or closed it and starts
+the next live thinking that way. When a step ends its thinking closes to a
+plain `thinking` line (unless you opened it). When the turn ends the
+block collapses to its summary (`3 steps · 8 tool calls · execute ×7 ·
+read ×1`) and the answer sits under it as a normal bubble (Markdown, annotate). A plain
 answer without tools looks exactly as it does today. Rows the code
 collapses stay as you toggled them. A reloaded session shows the same block
 from the saved messages (each step's thinking, narration, tool parameters
