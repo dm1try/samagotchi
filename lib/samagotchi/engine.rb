@@ -14,6 +14,7 @@ require_relative "thought_stream_splitter"
 require_relative "cancellation_controller"
 require_relative "context_window"
 require_relative "kernel_loop"
+require_relative "tools/builtins"
 require_relative "log"
 require_relative "log_subscriber"
 require_relative "host_registry"
@@ -101,6 +102,9 @@ module Samagotchi
       @guardrail_failures = Guardrails::LoadFailures.new
       @hooks = load_hooks_from_config
       load_hooks_from_bundles
+      # The tools this session offers (the prompts' declarations and the
+      # kernel's dispatch): the built-ins, per Engine.
+      @tools = Tools::Builtins.registry
       guardrail_rules
       # Use the KernelLoop's reminder_store if provided (TerminalUI path),
       # otherwise create our own (SessionManager/one-shot paths). This ensures
@@ -116,7 +120,8 @@ module Samagotchi
       @reminders = build_reminders(auto_turn_callback: callback)
       # Track whether this is the first turn in the session (for session_start event)
       @first_turn = true
-      @kernel = kernel || KernelLoop.new(client: @client, profile: @given_profile, no_interrupt: no_interrupt, hooks: @hooks, reminder_store: @reminder_store)
+      @kernel = kernel || KernelLoop.new(client: @client, profile: @given_profile, no_interrupt: no_interrupt, hooks: @hooks, reminder_store: @reminder_store,
+                                         tools: @tools)
       sync_kernel_client!
       @model_key = ModelOverlay.key_for(bare_model_name(@effective_model_name))
       @kernel.sync_model_key!(@model_key) if @kernel.respond_to?(:sync_model_key!)
@@ -133,6 +138,8 @@ module Samagotchi
       if kernel && @kernel.respond_to?(:hooks=)
         @kernel.hooks = @hooks
       end
+      # Likewise its tools: the REPL builds its kernel before the Engine.
+      @kernel.tools = @tools if kernel && @kernel.respond_to?(:tools=)
       # ask_user_question blocks on the Engine's question flow (TUI/Web answer it).
       @kernel.question_handler = proc { |payload| request_question(payload) } if @kernel.respond_to?(:question_handler=)
       # Every tool call asks this gate first. The kernel is never rebuilt, so
@@ -1961,10 +1968,10 @@ module Samagotchi
     def tool_declarations
       case profile.name
       when "qwen36"
-        ToolDeclarations.qwen_declarations
+        ToolDeclarations.qwen_declarations(@tools.schemas)
       else
         # Gemma 4 format
-        ToolDeclarations.gemma_declarations
+        ToolDeclarations.gemma_declarations(@tools.schemas)
       end
     end
 

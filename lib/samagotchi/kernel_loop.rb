@@ -13,26 +13,8 @@ require_relative "log"
 require_relative "hooks"
 require_relative "pending_input_queue"
 require_relative "thought_stream_splitter"
-require_relative "tools/execute"
-require_relative "tools/read"
-require_relative "tools/write"
-require_relative "tools/memory"
+require_relative "tools/builtins"
 require_relative "muted_memories"
-require_relative "tools/edit"
-require_relative "tools/task_create"
-require_relative "tools/task_get"
-require_relative "tools/task_list"
-require_relative "tools/task_stop"
-require_relative "tools/task_wait"
-require_relative "tools/web_fetch"
-require_relative "tools/register_reminder"
-require_relative "tools/cancel_reminder"
-require_relative "tools/list_reminders"
-require_relative "tools/list_sessions"
-require_relative "tools/send_note"
-require_relative "tools/delegate"
-require_relative "tools/delegate_result"
-require_relative "tools/ask_user_question"
 require_relative "tool_activity"
 require_relative "tool_runner"
 
@@ -101,28 +83,23 @@ module Samagotchi
       end
     end
 
-    TOOLS = [
-      Tools::Execute,
-      Tools::Read,
-      Tools::Write,
-      Tools::MemoryRead,
-      Tools::MemoryWrite,
-      Tools::Edit,
-      Tools::TaskCreate,
-      Tools::TaskGet,
-      Tools::TaskList,
-      Tools::TaskStop,
-      Tools::TaskWait,
-      Tools::WebFetch,
-      Tools::RegisterReminder,
-      Tools::CancelReminder,
-      Tools::ListReminders,
-      Tools::ListSessions,
-      Tools::SendNote,
-      Tools::Delegate,
-      Tools::DelegateResult,
-      Tools::AskUserQuestion
-    ].freeze
+    # The built-in tool classes (Tools::Builtins registers them).
+    TOOLS = Tools::Builtins::CLASSES
+
+    # What a tool handler (call, kctx) gets from the kernel: the reminder
+    # store, the peers, the model key, and the memory read and ask-user
+    # flows that need its state.
+    class ToolContext
+      def initialize(kernel)
+        @kernel = kernel
+      end
+
+      def reminder_store = @kernel.reminder_store
+      def peers = @kernel.peers
+      def model_key = @kernel.model_key
+      def muted_memory_read(call) = @kernel.__send__(:muted_memory_read, Tools::MemoryRead, call)
+      def ask_user_question(call) = @kernel.__send__(:handle_ask_user_question, call)
+    end
 
     CONTEXT_STATUS_PREFIX = "CONTEXT_STATUS"
     # The model's own line about its context (a tail system message, kind
@@ -144,8 +121,12 @@ module Samagotchi
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
 
-    def initialize(client: nil, profile: nil, model_name: nil, no_interrupt: false, hooks: nil, reminder_store: nil, model_key: nil)
+    # @param tools [Tools::Registry, nil] the tools calls dispatch to (the
+    #   Engine's; nil: the built-ins alone)
+    def initialize(client: nil, profile: nil, model_name: nil, no_interrupt: false, hooks: nil, reminder_store: nil, model_key: nil,
+                   tools: nil)
       @client = client || Client.new
+      @tools = tools || Tools::Builtins.default
       @no_interrupt = no_interrupt
       resolved_model_name = ModelProfile.required_model_name(model_name)
       # The resolved model id actually used for this run (per-run override wins
@@ -174,6 +155,9 @@ module Samagotchi
     #   Engine owns the registry; KernelLoop only fires events. Accessor allows
     #   Engine to propagate its registry to an externally-created kernel (TUI path).
     attr_accessor :hooks
+    # @return [Tools::Registry] the tools #dispatch runs. The Engine sets
+    #   its own on a kernel built before it (the REPL's), as with hooks.
+    attr_accessor :tools
     attr_accessor :client
     attr_accessor :model_key
     attr_accessor :current_model_name
@@ -482,11 +466,9 @@ module Samagotchi
     end
 
     # Coerce a value to boolean — handles true/false, nil, and string "true"/"false".
-    def truthy?(val)
-      return true  if val == true
-      return false if val == false || val.nil?
-      val.to_s.strip.downcase == "true"
-    end
+    def truthy?(val) = Tools::Builtins.truthy?(val)
+
+    def tool_context = @tool_context ||= ToolContext.new(self)
 
     # ── Output char cap resolution ─────────────────────────────────────────────
 
@@ -897,9 +879,9 @@ module Samagotchi
 
     private
     def dispatch(call)
-      tool = TOOLS.find { |t| t.name == call[:name] }
-      unless tool
-        available = TOOLS.map(&:name).join(", ")
+      entry = @tools[call[:name]]
+      unless entry
+        available = @tools.names.join(", ")
         result = "Error: unknown tool '#{call[:name]}'. Available: #{available}"
         return {
           output: result,
@@ -909,53 +891,7 @@ module Samagotchi
 
       dump_log("tool_call", call[:content], tool: call[:name], path: call[:path], scope: call[:scope])
 
-      result = case call[:name]
-               when Tools::MemoryRead::NAME
-                 muted_memory_read(tool, call)
-               when Tools::MemoryWrite::NAME
-                 tool.call(call[:content], path: call[:path], scope: call[:scope], description: call[:description],
-                           current_model_only: truthy?(call[:current_model_only]), model_key: @model_key)
-               when Tools::Write::NAME
-                 tool.call(call[:content], path: call[:path])
-               when Tools::Read::NAME
-                 tool.call(call[:content], start_line: call[:start_line], end_line: call[:end_line])
-               when Tools::Edit::NAME
-                 tool.call(call[:content], path: call[:path], start_line: call[:start_line], end_line: call[:end_line])
-               when Tools::TaskCreate::NAME
-                 tool.call(call[:content], cwd: call[:cwd], env: call[:env])
-               when Tools::TaskGet::NAME, Tools::TaskStop::NAME
-                 tool.call(call[:content])
-               when Tools::TaskWait::NAME
-                 tool.call(
-                   call[:content],
-                   timeout: call[:timeout],
-                   tail_lines: call[:tail_lines],
-                   done_pattern: call[:done_pattern]
-                 )
-               when Tools::Execute::NAME
-                 tool.call(call[:content], cwd: call[:cwd])
-               when Tools::WebFetch::NAME
-                 tool.call(call[:content])
-               when Tools::RegisterReminder::NAME
-                 tool.call(call[:content], reminder_store: @reminder_store, description: call[:description], interval_minutes: call[:interval_minutes])
-               when Tools::CancelReminder::NAME
-                 tool.call(call[:content], reminder_store: @reminder_store)
-                when Tools::ListReminders::NAME
-                  tool.call(call[:content], reminder_store: @reminder_store)
-                when Tools::ListSessions::NAME
-                  tool.call(call[:content], peers: @peers, cwd: call[:cwd])
-                when Tools::SendNote::NAME
-                  tool.call(call[:content], session: call[:session], peers: @peers)
-                when Tools::Delegate::NAME
-                  tool.call(call[:content], model: call[:model], session: call[:session], wait: call[:wait],
-                                            timeout: call[:timeout], peers: @peers)
-                when Tools::DelegateResult::NAME
-                  tool.call(call[:content], session: call[:session], timeout: call[:timeout], peers: @peers)
-                when Tools::AskUserQuestion::NAME
-                  handle_ask_user_question(call)
-                else
-                  tool.call(call[:content])
-                end
+      result = entry.handler.call(call, tool_context)
 
       dump_log("tool_result", result, tool: call[:name])
       dispatched = {

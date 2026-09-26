@@ -6,7 +6,8 @@ require "samagotchi/kernel_loop"
 # The rendered texts are pinned byte-for-byte by prompt_snapshot_spec; this
 # checks the schema table itself.
 RSpec.describe Samagotchi::ToolDeclarations do
-  it "declares every tool KernelLoop dispatches, and only those" do
+  it "is the built-in registry's schemas, in order, and declares every built-in tool class" do
+    expect(Samagotchi::Tools::Builtins.default.schemas).to eq(described_class::TOOL_SCHEMAS)
     expect(described_class::TOOL_SCHEMAS.map { |s| s[:name] })
       .to match_array(Samagotchi::KernelLoop::TOOLS.map { |t| t::NAME })
   end

@@ -440,8 +440,9 @@ module Samagotchi
     module_function
 
     # Gemma 4 <|tool>declaration:NAME{…}<tool|> blocks for every tool, one per line group.
-    def gemma_declarations
-      TOOL_SCHEMAS.map { |schema| gemma_declaration(schema) }.join("\n")
+    # @param schemas [Array<Hash>] a Tools::Registry's schemas
+    def gemma_declarations(schemas = TOOL_SCHEMAS)
+      schemas.map { |schema| gemma_declaration(schema) }.join("\n")
     end
 
     def gemma_declaration(schema)
@@ -460,12 +461,12 @@ module Samagotchi
       "<|tool>declaration:#{schema[:name]}{\n  description:#{q}#{schema[:description]}#{q},\n#{params}\n}<tool|>"
     end
 
-    # The schemas for the chat path's tools: array: TOOL_SCHEMAS with
+    # The schemas for the chat path's tools: array: +schemas+ with
     # CHAT_PARAM_OVERRIDES merged in and each tool's parameters closed
     # (additionalProperties: false), so a strict provider rejects made-up
     # parameters instead of the tool ignoring them.
-    def chat_schemas
-      TOOL_SCHEMAS.map do |schema|
+    def chat_schemas(schemas = TOOL_SCHEMAS)
+      schemas.map do |schema|
         overrides = CHAT_PARAM_OVERRIDES.fetch(schema[:name], {})
         properties = schema[:parameters][:properties].to_h do |name, param|
           [name, param.merge(overrides.fetch(name, {}))]
@@ -475,8 +476,8 @@ module Samagotchi
     end
 
     # Qwen 3.6 <tools> block: the schemas as pretty-printed JSON.
-    def qwen_declarations
-      "<tools>\n#{JSON.pretty_generate(TOOL_SCHEMAS)}\n</tools>"
+    def qwen_declarations(schemas = TOOL_SCHEMAS)
+      "<tools>\n#{JSON.pretty_generate(schemas)}\n</tools>"
     end
 
     TOOL_CALL_HINT = 'To call a tool, emit: <|tool_call>call:NAME{param:<|"|>value<|"|>}<tool_call|>. CRITICAL: check the tool declaration for the exact parameter names and required fields!'

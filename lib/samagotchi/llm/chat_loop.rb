@@ -62,11 +62,17 @@ module Samagotchi
       end
 
       # Tool definitions for the request: the schemas the native prompts are
-      # rendered from, with the chat-only enums and closed parameters.
+      # rendered from (the kernel's registry), with the chat-only enums and
+      # closed parameters.
       def tool_definitions
-        ToolDeclarations.chat_schemas.map do |schema|
+        ToolDeclarations.chat_schemas(tools.schemas).map do |schema|
           { type: "function", function: schema.slice(:name, :description, :parameters) }
         end
+      end
+
+      # The kernel's tools; the built-ins for a kernel without a registry.
+      def tools
+        @kernel.respond_to?(:tools) ? @kernel.tools : Tools::Builtins.default
       end
 
       # engine-format conversation -> OpenAI wire messages. Model turns are
