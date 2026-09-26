@@ -108,3 +108,33 @@ test("a second reveal does not push the end back", (t) => {
   t.mock.timers.tick(50);
   assert.equal(b.held, false);
 });
+
+test("following, the pop keeps the history pinned every frame until it ends", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const frames = [];
+  const timers = { setTimeout, clearTimeout, requestAnimationFrame: (f) => frames.push(f) };
+  const follows = [];
+  const hold = createHold({ isNearBottom: () => true, follow: () => follows.push(1), timers });
+  const b = fakeBubble();
+  hold.start(b, 96);
+  hold.reveal();
+  frames.shift()();
+  frames.shift()();
+  assert.equal(follows.length, 2);
+  t.mock.timers.tick(REVEAL_MS);
+  assert.equal(follows.length, 3, "finish follows once more");
+  frames.shift()();
+  assert.equal(follows.length, 3, "no pinning after the pop");
+  assert.equal(frames.length, 0);
+});
+
+test("scrolled up to read, the pop pins nothing", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const frames = [];
+  const timers = { setTimeout, clearTimeout, requestAnimationFrame: (f) => frames.push(f) };
+  const hold = createHold({ isNearBottom: () => false, follow: () => assert.fail("followed"), timers });
+  hold.start(fakeBubble(), 96);
+  hold.reveal();
+  t.mock.timers.tick(REVEAL_MS);
+  assert.equal(frames.length, 0);
+});
