@@ -1537,10 +1537,6 @@ module Samagotchi
       @thinking_recent_tool_call = nil
     end
 
-    def capture_context_status_from_result(result)
-      capture_context_status(result.respond_to?(:context_status) ? result.context_status : nil)
-    end
-
     def capture_server_context_status_from_payload(payload)
       # The window the kernel resolved for this generation (see
       # :generation_started); the configured one before the first generation.

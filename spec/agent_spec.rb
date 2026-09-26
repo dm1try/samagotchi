@@ -898,16 +898,7 @@ file2.rb")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
 
-      result = Samagotchi::KernelLoop::Result.new(
-        output: "ok",
-        conversation: [],
-        context_status: { est_pct: 35.2, bucket: "20plus" },
-        exhausted: false,
-        pending_tool_calls: false,
-        tool_activity: []
-      )
-
-      agent.send(:capture_context_status_from_result, result)
+      agent.capture_context_status({ est_pct: 35.2, bucket: "20plus" })
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
 
       status = agent.send(:build_status_line, scope: :spinner)
@@ -920,15 +911,7 @@ file2.rb")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
 
-      result = Samagotchi::KernelLoop::Result.new(
-        output: "ok",
-        conversation: [],
-        context_status: { est_pct: 35.2, bucket: "20plus" },
-        exhausted: false,
-        pending_tool_calls: false,
-        tool_activity: []
-      )
-      agent.send(:capture_context_status_from_result, result)
+      agent.capture_context_status({ est_pct: 35.2, bucket: "20plus" })
 
       agent.send(:handle_stream_event, type: :generation_started)
       agent.send(
@@ -968,15 +951,7 @@ file2.rb")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
 
-      result = Samagotchi::KernelLoop::Result.new(
-        output: "ok",
-        conversation: [],
-        context_status: { est_pct: 35.2, bucket: "20plus" },
-        exhausted: false,
-        pending_tool_calls: false,
-        tool_activity: []
-      )
-      agent.send(:capture_context_status_from_result, result)
+      agent.capture_context_status({ est_pct: 35.2, bucket: "20plus" })
 
       agent.send(:handle_stream_event, type: :generation_started)
       agent.send(:handle_stream_event, type: :generation_chunk, content: "chunk", payload: { "content" => "chunk" })
