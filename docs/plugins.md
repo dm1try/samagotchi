@@ -49,7 +49,7 @@ class Plugin
     chi.tool "echo_args", "Echo the arguments back.",
              params: { text: { type: "string", description: "Any text to echo", required: true } },
              label: "echoing" do |args, _ctx|
-      "echo: #{args[:text] || args[:content]}"
+      "echo: #{args["text"]}"
     end
 
     chi.on(:after_turn) do |_event, ctx|
@@ -60,7 +60,7 @@ end
 ```
 
 `spec/fixtures/sample_plugin_bundle` is this bundle, plus the `/hello-slow`
-of [anytime](#anytime-true). Install it with
+of [anytime](#anytime-true) and the `save_note` tool (see `chi.tool` below). Install it with
 `chi bundle install spec/fixtures/sample_plugin_bundle`.
 
 Settings work as they do for hooks ([hooks.md](hooks.md#settings)). An
@@ -131,26 +131,103 @@ chi's own, each bundle's with the bundle's name, and the terminal UIs' own
 (`/stats`, `/exit`, `/detach` …), marked `terminal only` or `attached only`.
 It works in all three UIs.
 
-### `chi.tool(name, description, params:, label:, preview:, targets:) { |args, ctx| … }`
+### `chi.tool(name, description, params:, schema:, label:, preview:, targets:) { |args, ctx| … }`
 
 This adds a tool the model can call. It is declared in the system prompt and
 in the chat path's `tools:`, after chi's own tools.
 
-- `name`: a–z, 0–9 and `_`, up to 48 characters.
-- `params`: `{ name => { type:, description:, required: } }`. The type
-  defaults to `"string"`.
+- `name`: a–z first, then a–z, 0–9 and `_`, up to 48 characters.
+- `params`: `{ name => property }`, where a property is a JSON Schema
+  property (`type:`, `description:`, `enum:`, `items:`, `properties:` …) plus
+  `required: true`. The type defaults to `"string"`.
+- `schema`: instead of `params`, the parameters as one JSON Schema object
+  (`{ type: "object", properties: {…}, required: [...] }`), an MCP server's
+  `inputSchema` for example.
 - `label`: the activity line's verb (`echoing`). The default is `calling tool`.
 - `preview`: `->(args) { "…" }` for the activity line's parameters. The
-  default is `key="value"` for each argument.
-- `targets`: `->(args) { … }` for guardrail path and command rules. It is
-  stored, but nothing uses it yet.
+  default is `key="value"` for each argument (a list or object as JSON). If
+  it raises, the default is shown. A web page reloaded later shows the
+  default too: the web server doesn't run plugins.
+- `targets`: `->(args) { { paths: [...], command: "…", cwd: "…" } }`, each
+  key optional, says what a call acts on, for [guardrails](#guardrails).
 
 The block returns the result text. If it starts with `Error:`, it counts as
-a failure. If it raises, the model gets `Error: <message>`. `args` is the
-parsed call as a frozen Hash with symbol keys, without the tool's name. For
-now the parsers give **flat** arguments: on the native (Gemma/Qwen) paths the
-model's main argument often arrives as `args[:content]`. Structured,
-schema-typed arguments come later.
+a failure. If it raises, the model gets `Error: <message>`.
+
+#### `args`
+
+`args` is a frozen Hash with **string keys**: the arguments the model gave,
+by name (`args["text"]`). The same Hash goes to `preview` and `targets`.
+
+Each parser gives them structured: Gemma's native values (strings, numbers,
+booleans, lists, nested objects), Qwen's `<parameter=…>` text, and the chat
+path's JSON. The values are then **typed by the schema**, because Qwen's are
+all text and a model may quote a number anyway:
+
+| type | from |
+|---|---|
+| `integer` | `"3"` → `3`; `3.0` → `3` |
+| `number` | `"2.5"` → `2.5` |
+| `boolean` | `"true"`/`"false"`, any case |
+| `array`, `object` | JSON text → a list or a Hash (string keys), its items or fields typed too |
+| `string` | a number or boolean → its text |
+
+A value that doesn't fit its type stays as it came (`"three"` for an
+integer), so check it if it matters. Names the schema doesn't have pass
+through. `"type": ["integer", "null"]` counts as `integer`.
+
+```ruby
+chi.tool "save_note", "Save a note to a file.",
+         params: { path: { type: "string", description: "The file to write", required: true },
+                   text: { type: "string", description: "The note", required: true },
+                   format: { type: "string", enum: %w[plain markdown] },
+                   meta: { type: "object", description: "Header fields",
+                           properties: { tags: { type: "array", items: { type: "string" } },
+                                         priority: { type: "integer" } } } },
+         preview: ->(args) { "#{args["path"]} (#{args["text"].to_s.length} chars)" },
+         targets: ->(args) { { paths: [args["path"]] } } do |args, ctx|
+  File.write(File.expand_path(args["path"], ctx.cwd), args["text"])
+  "saved #{args["path"]}"                  # args["meta"]["priority"] is an Integer
+end
+```
+
+#### Schemas on the native paths
+
+The native prompts (Gemma, Qwen on llama.cpp) declare each parameter with a
+type and a description only. A plugin tool's schema is **flattened** for
+them, and what doesn't fit goes into the description in words:
+
+- an `enum`: `How the note is written. One of: "plain", "markdown".`;
+- an object's fields: `type: object`, and `A JSON object with tags (array),
+  priority (integer).`;
+- a list's items: `A list of string values.`;
+- `additionalProperties` and deeper nesting are dropped.
+
+The chat path (`api: openai` hosts) gets the full schema, nesting and all.
+Either way the call's `args` are typed by the full schema. Keep deeply
+nested schemas for tools that mostly run on chat hosts.
+
+#### Guardrails
+
+Guardrail rules keyed by a tool's name apply to plugin tools, as they do to
+chi's own. Path and command rules need to know what a call acts on, and that
+is what `targets:` says:
+
+- `paths:`: files the call reads or writes, absolute or relative to `cwd:`
+  (else the session's directory). `path:` globs, `outside_repo` and the
+  protected paths (chi's config, …) match them.
+- `command:`: a shell command the call runs; `command:` rules match it.
+- `cwd:`: where it runs, for the repo root and relative paths.
+
+A tool without `targets:` is matched by its name only. A `targets:` that
+raises counts as nothing (it is logged). See [guardrails.md](guardrails.md).
+
+#### When the tools change
+
+The system prompt is built once, after the plugins load, so the server can
+keep its cached prompt prefix. A plugin whose tools change later (an MCP
+server that answers late) calls `chi.tools_changed!`: the next turn builds
+the prompt again, which costs that cache once.
 
 ### `chi.on(event, priority: 100) { |event, ctx| … }`
 
@@ -267,7 +344,7 @@ gem.
 - Install only copies the file. The code first runs at the next session
   start.
 - Guardrail rules keyed by a tool's name apply to plugin tools, as they do to
-  chi's own tools.
+  chi's own tools; path and command rules see what `targets:` says.
 
 ## The bundle commands
 
@@ -288,7 +365,6 @@ gem.
 
 These are planned (`~/.claude/plans/plugins.md`):
 
-- Structured, schema-typed tool arguments, and `targets:` for guardrails.
 - `ctx.ask_model` for a side answer, and `ctx.sessions` to fork or send to
   other sessions.
 - `chi.service` for long-lived processes, such as MCP servers.
