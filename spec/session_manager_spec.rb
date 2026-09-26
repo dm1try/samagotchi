@@ -1531,9 +1531,11 @@ RSpec.describe Samagotchi::SessionManager do
 
     after { locks.each(&:release) }
 
-    def make(cwd: "/work/app", prompt: "hello", updated: "2026-09-24T10:00:00Z", status: nil, test_run: false, preview: "")
+    def make(cwd: "/work/app", prompt: "hello", updated: "2026-09-24T10:00:00Z", status: nil, test_run: false, preview: "",
+             parent_id: nil)
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd).tap do |s|
         s.last_prompt = prompt
+        s.parent_id = parent_id
         s.first_preview = preview
         s.status = status if status
         s.test_run = test_run
@@ -1562,12 +1564,9 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "carries the parent link, and .children_of lists a parent's children newest first" do
       parent = make(prompt: "plan", updated: "2026-09-24T09:00:00Z")
-      older = make(prompt: "first task", updated: "2026-09-24T10:00:00Z")
-      newer = make(prompt: "second task", updated: "2026-09-24T11:00:00Z", status: Samagotchi::Session::STATUS_RUNNING)
-      [older, newer].each do |child|
-        child.parent_id = parent.id
-        child.save(state_dir: tmpdir)
-      end
+      older = make(prompt: "first task", updated: "2026-09-24T10:00:00Z", parent_id: parent.id)
+      newer = make(prompt: "second task", updated: "2026-09-24T11:00:00Z", parent_id: parent.id,
+                   status: Samagotchi::Session::STATUS_RUNNING)
       own(newer)
 
       rows = described_class.session_summaries(state_dir: tmpdir).to_h { |s| [s[:id], s] }
