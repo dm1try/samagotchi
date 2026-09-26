@@ -51,7 +51,9 @@ module Samagotchi
     # Thoughts:    <|think|>CONTENT (ends at next real <| token) and
     #              <|channel>thought......<channel|>
     class Gemma
-      TOOL_CALL_BODY_RE   = /\Acall:([a-z_]{1,50})\{/
+      # Digits after the first character: plugin tools may have them
+      # (Plugin::Api::TOOL_NAME).
+      TOOL_CALL_BODY_RE   = /\Acall:([a-z_][a-z0-9_]{0,49})\{/
       THOUGHT_CHANNEL_OPEN  = "<|channel>thought"
       THOUGHT_CHANNEL_CLOSE = "<channel|>"
       CONTROL_TOKEN_START = "<|"
