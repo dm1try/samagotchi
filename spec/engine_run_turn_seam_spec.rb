@@ -52,6 +52,17 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       expect(JSON.parse(JSON.generate(completed[:turn_summary]))).to include("resumable" => true)
     end
 
+    it "keeps the last reported context status for a client that attaches later" do
+      allow(kernel).to receive(:run).and_return(kernel_result(context_status: { est_pct: 7.5, bucket: "under20" }),
+                                                kernel_result)
+
+      expect(engine.session_state_snapshot[:context_status]).to be_nil
+      engine.run_turn(session, "hi")
+      engine.run_turn(session, "again")
+
+      expect(engine.session_state_snapshot[:context_status]).to eq(est_pct: 7.5, bucket: "under20")
+    end
+
     it "is also available on the returned result" do
       allow(kernel).to receive(:run).and_return(kernel_result(tool_activity: [activity]))
 

@@ -607,6 +607,7 @@ module Samagotchi
         model_name: @effective_model_name,
         served_model: served_pair[0],
         served_model_for: served_pair[1],
+        context_status: @last_context_status&.dup,
         recap_enabled: !@recap.nil?,
         recap_min_user_turns: @recap&.min_user_turns,
         recap_inactivity_seconds: @recap&.inactivity&.to_i
@@ -1450,6 +1451,8 @@ module Samagotchi
               cancellation_reason: result.cancellation_reason
             }))
           else
+            # For a client that attaches later (session_state_snapshot).
+            @last_context_status = result.context_status.dup if result.context_status
             emit_event(on_event, with_origin.call({
               type: :turn_completed,
               result: result,

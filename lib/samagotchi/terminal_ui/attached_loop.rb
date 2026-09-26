@@ -916,6 +916,8 @@ module Samagotchi
         @preloaded_names = Array(state[:preloaded_memory_names]) if state.key?(:preloaded_memory_names)
         @muted_names = Array(state[:muted_memory_names]) if state.key?(:muted_memory_names)
         @parent_id = state[:parent_id] if state.key?(:parent_id)
+        # The last turn's ctx, so it shows before this client's first turn.
+        @context_estimate = state[:context_status] if state[:context_status].is_a?(Hash)
         refresh_status
       end
 

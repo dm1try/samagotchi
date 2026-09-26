@@ -1086,6 +1086,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "idle status line" do
     expect(status).to eq("status> model=m1 | mem: notes, todo")
   end
 
+  it "shows the last turn's ctx from the join, before a turn of its own" do
+    feed(join(used_memory_names: %w[notes], context_status: { est_pct: 7.5, bucket: "under20" }))
+
+    expect(status).to eq("status> model=m1 | ctx=7.5% (under20) | mem: notes")
+  end
+
   it "names the default when the worker runs another model, and follows /model" do
     feed(join(model_name: "m2"))
     expect(status).to eq("status> model=m2 (default: m1)")
