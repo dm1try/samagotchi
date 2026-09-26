@@ -157,9 +157,19 @@ RSpec.describe "Plugin init tasks" do
     engine.run_turn(session, "hi", on_event: ->(_e) {})
     expect(events(:plugin_init_finished).map { |e| e.slice(:ok, :error) }).to eq([{ ok: false, error: "no network" }])
     card = events(:card).first
-    expect(card).to include(source: "slowb", title: "Logging in: failed", body: "no network", level: :warn, in_turn: false)
-    expect(store.list.map { |e| e[:title] }).to eq(["Logging in: failed"])
+    expect(card).to include(source: "slowb", title: "setup failed", body: "Logging in: no network", level: :warn,
+                            in_turn: false)
+    expect(store.list.map { |e| e[:title] }).to eq(["setup failed"])
     expect(tools_at_request).to eq([[]])
+  end
+
+  it "titles a failure's card with the task's own short title (failed:), the error alone in the body" do
+    engine.add_init_task(bundle: "mcp", label: "Starting MCP server chrome (first run, saving its tools)", plugin_label: "x",
+                         provides_tools: false, quiet: false, timeout: 5, failed: "chrome didn't start") { raise "no npx" }
+    engine.start_init_tasks!
+    Timeout.timeout(2) { sleep(0.01) until events(:card).any? }
+    join_tasks
+    expect(events(:card).first).to include(source: "mcp", title: "chrome didn't start", body: "no npx", level: :warn)
   end
 
   it "keeps a quiet task out of sight unless it fails" do
@@ -171,7 +181,7 @@ RSpec.describe "Plugin init tasks" do
     Timeout.timeout(2) { sleep(0.01) until engine.init_tasks.empty? && tasks.all? { |t| %i[done failed].include?(t.state) } }
     join_tasks
     expect(events(:plugin_init_started) + events(:plugin_init_finished)).to be_empty
-    expect(events(:card).map { |c| c[:title] }).to eq(["Refreshing more: failed"])
+    expect(events(:card).map { |c| [c[:title], c[:body]] }).to eq([["setup failed", "Refreshing more: gone"]])
   end
 
   it "announces the task's notices and cards between turns, even while a turn runs; its ctx.cancelled? is its own" do

@@ -319,9 +319,9 @@ RSpec.describe "The mcp bundle" do
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3.5
       cards = load_events.select { |e| e[:type] == :card }
       expect(cards.map { |c| [c[:title], c[:body], c[:level]] }).to contain_exactly(
-        ["Starting MCP server gone (first run, saving its tools): failed",
+        ["gone didn't start",
          "MCP server gone didn't start: can't start /nonexistent/mcp-server: No such file or directory; its tools are left out", :warn],
-        ["Starting MCP server hung (first run, saving its tools): failed",
+        ["hung didn't start",
          "MCP server hung didn't start: initialize timed out after 2s; its tools are left out", :warn]
       )
       finished = @init_events.select { |e| e[:type] == :plugin_init_finished }

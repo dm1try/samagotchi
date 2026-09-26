@@ -178,13 +178,17 @@ module Samagotchi
       #   up to +timeout+; a Ctrl-C ends the wait
       # @param quiet [Boolean] shown only if it fails (a background refresh)
       # @param timeout [Numeric, nil] seconds a turn waits for it (default 60)
-      def init(label, provides_tools: false, quiet: false, timeout: nil, &block)
+      # @param failed [String, nil] the warn card's short title if it raises
+      #   ("chrome didn't start"; default "setup failed", the label then
+      #   leads the card's body)
+      def init(label, provides_tools: false, quiet: false, timeout: nil, failed: nil, &block)
         raise ArgumentError, "init needs a block" unless block
         raise ArgumentError, "init needs a label" if label.to_s.strip.empty?
         raise ArgumentError, "this chi runs no init tasks (plugins: false)" unless @registries.init
 
         @inits << { label: label.to_s.strip, provides_tools: provides_tools ? true : false, quiet: quiet ? true : false,
-                    timeout: timeout && Float(timeout), block: block }
+                    timeout: timeout && Float(timeout), failed: failed.to_s.strip.empty? ? nil : failed.to_s.strip,
+                    block: block }
         nil
       end
 
@@ -230,7 +234,9 @@ module Samagotchi
         @inits.each do |init|
           block = init[:block]
           @registries.init.call(@bundle, init[:label], @label, provides_tools: init[:provides_tools], quiet: init[:quiet],
-                                                              timeout: init[:timeout]) { block.call(context) }
+                                                              timeout: init[:timeout], failed: init[:failed]) do
+            block.call(context)
+          end
         end
         @committed = true
       end

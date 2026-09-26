@@ -264,16 +264,23 @@ class Plugin
     # Two startup_timeouts: initialize, then tools/list.
     wait = @startup_timeout * 2
     @servers.each do |server|
+      # A failure's card title, short: the card shows "mcp" beside it and
+      # the error in its body.
+      failed = "#{server.name} didn't start"
       if load_cache(server, ctx)
         declare(chi, server, ctx)
         if server.config["start"].to_s == "eager"
-          chi.init("Starting MCP server #{server.name}", timeout: wait) { boot(server, ctx) }
+          chi.init("Starting MCP server #{server.name}", timeout: wait, failed: failed) { boot(server, ctx) }
         elsif server.cached_at.nil? || Time.now - server.cached_at > CACHE_TTL
-          chi.init("Refreshing MCP server #{server.name}'s tools", quiet: true, timeout: wait) { refresh(server, ctx) }
+          chi.init("Refreshing MCP server #{server.name}'s tools", quiet: true, timeout: wait,
+                                                                   failed: "#{server.name}'s tools weren't refreshed") do
+            refresh(server, ctx)
+          end
         end
       else
         why = File.exist?(cache_path(server, ctx)) ? "config changed" : "first run"
-        chi.init("Starting MCP server #{server.name} (#{why}, saving its tools)", provides_tools: true, timeout: wait) do
+        chi.init("Starting MCP server #{server.name} (#{why}, saving its tools)", provides_tools: true, timeout: wait,
+                                                                                   failed: failed) do
           boot(server, ctx)
         end
       end

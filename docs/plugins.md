@@ -346,7 +346,7 @@ end
   servers leave when their stdin closes, which it does as chi's process
   ends.
 
-### `chi.init(label, provides_tools: false, quiet: false, timeout: nil) { |ctx| … }`
+### `chi.init(label, provides_tools: false, quiet: false, timeout: nil, failed: nil) { |ctx| … }`
 
 Slow setup that must not hold chi's start: downloading a model, indexing a
 repo, logging in, starting a server for the first time. `register` itself
@@ -381,7 +381,10 @@ end
   line when it is done: `✓` and what the block returned, a short summary
   (`chrome ready, 3 tools`), or `<label>: done` for anything else. A UI that
   joins while it runs sees it too.
-- **A raise** is a warn card, `<label>: failed`, with the message.
+- **A raise** is a warn card. Its title is `failed:`, short (`chrome didn't
+  start`; the card shows the bundle beside it), and its body the message;
+  without `failed:` the title is `setup failed` and the body
+  `<label>: <message>`.
 - **`provides_tools: true`**: the task brings tools (with
   `chi.replace_tools`). A turn sent while it runs starts at once (the user's
   message shows), then waits for it **before its first model request**, so

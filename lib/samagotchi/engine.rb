@@ -532,8 +532,8 @@ module Samagotchi
     # (#await_init_tasks), up to each one's timeout. +cancel+ is its own
     # controller, cancelled only by #shutdown: a Ctrl-C ends a turn's wait,
     # not the task.
-    InitTask = Struct.new(:id, :bundle, :label, :plugin_label, :provides_tools, :quiet, :timeout, :block, :cancel,
-                          :thread, :state, :started_at, keyword_init: true) do
+    InitTask = Struct.new(:id, :bundle, :label, :plugin_label, :provides_tools, :quiet, :timeout, :failed, :block,
+                          :cancel, :thread, :state, :started_at, keyword_init: true) do
       # What the task's block reads: whether chi is shutting down.
       def cancelled? = cancel.cancelled?
     end
@@ -543,12 +543,12 @@ module Samagotchi
 
     # Add a plugin's init task (Plugin::Api#init at commit); it starts with
     # #start_init_tasks!.
-    def add_init_task(bundle:, label:, plugin_label:, provides_tools:, quiet:, timeout:, &block)
+    def add_init_task(bundle:, label:, plugin_label:, provides_tools:, quiet:, timeout:, failed: nil, &block)
       @lifecycle_mutex.synchronize do
         @init_tasks << InitTask.new(id: "#{bundle}-#{@init_tasks.size + 1}", bundle: bundle.to_s, label: label.to_s,
                                     plugin_label: plugin_label, provides_tools: provides_tools ? true : false,
-                                    quiet: quiet ? true : false, timeout: timeout || INIT_TASK_TIMEOUT, block: block,
-                                    cancel: CancellationController.new, state: :pending)
+                                    quiet: quiet ? true : false, timeout: timeout || INIT_TASK_TIMEOUT, failed: failed,
+                                    block: block, cancel: CancellationController.new, state: :pending)
       end
       nil
     end
@@ -642,9 +642,14 @@ module Samagotchi
           announce({ type: :plugin_init_finished, bundle: task.bundle, id: task.id, label: task.label, ok: ok,
                      summary: summary, error: error }.compact)
         end
-        # A failure stays on screen (and for a UI that joins later) as a card.
-        show_card(source: task.bundle, title: "#{task.label}: failed", body: error.to_s, level: :warn,
-                  id: "init-#{task.id}") unless ok
+        # A failure stays on screen (and for a UI that joins later) as a
+        # card: a short title (the card shows the bundle beside it), the
+        # detail in the body.
+        unless ok
+          title = task.failed || "setup failed"
+          body = task.failed ? error.to_s : "#{task.label}: #{error}"
+          show_card(source: task.bundle, title: title, body: body, level: :warn, id: "init-#{task.id}")
+        end
       end
     end
     private :finish_init_task
@@ -2069,9 +2074,9 @@ module Samagotchi
         tools_changed: -> { tools_changed! },
         services: @services,
         stage_tools: ->(bundle, specs, context) { stage_tools(bundle, specs, context) },
-        init: lambda { |bundle, label, plugin_label, provides_tools:, quiet:, timeout:, &block|
+        init: lambda { |bundle, label, plugin_label, provides_tools:, quiet:, timeout:, failed: nil, &block|
           add_init_task(bundle: bundle, label: label, plugin_label: plugin_label, provides_tools: provides_tools,
-                        quiet: quiet, timeout: timeout, &block)
+                        quiet: quiet, timeout: timeout, failed: failed, &block)
         }
       )
       # What plugins show while they load (an MCP server that didn't
