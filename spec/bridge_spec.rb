@@ -767,6 +767,14 @@ RSpec.describe Samagotchi::Bridge do
         expect(@bridge.snapshot[:guardrail_warning]).to eq("hook g.rb (config) failed to load (LoadError: x)")
       end
 
+      it "carries the guardrail load warning announced before any turn (a worker's, once its Bridge is up)" do
+        start_bridge
+        @engine.guardrail_failures.add("hook g.rb (config)", "LoadError: x", required: false)
+        @engine.announce_load_events!
+
+        expect(@bridge.snapshot[:guardrail_warning]).to eq("hook g.rb (config) failed to load (LoadError: x)")
+      end
+
       it "is followed by BridgeClient#follow: snapshot first, then gap-free live events" do
         start_bridge
         release = hold_turn_after({ type: :generation_chunk, iteration: 1, content: "half " },

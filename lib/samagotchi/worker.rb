@@ -135,6 +135,9 @@ module Samagotchi
                                             on_exit_request: method(:exit_request),
                                             # Decided again as it leaves (a note may still come in).
                                             exit_discards: method(:empty_session?))
+      # What failed to load and what plugins showed as they loaded, now that
+      # a UI can be there (a late one gets them in the snapshot).
+      @engine.announce_load_events!
       @idle_exit = WorkerIdleExit.new(
         engine: @engine, bridge: @bridge,
         timeout_minutes: @idle_exit_minutes || SessionManager.config_idle_exit_minutes,

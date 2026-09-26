@@ -416,7 +416,7 @@ module Samagotchi
     # a failed turn's prompt handed back and the continue offer, which live
     # UIs need in the event log, emitted outside any turn's stream.
     ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged prompt_restored continue_offered continue_resolved
-                             command_queued command_ran context_added card hook_notice
+                             command_queued command_ran context_added card hook_notice guardrail_warning
                              plugin_init_started plugin_init_finished].freeze
 
     # Put a transport-level event into the ordered event log. Unlike turn
@@ -648,6 +648,30 @@ module Samagotchi
       end
     end
     private :finish_init_task
+
+    # ── Load events ───────────────────────────────────────────────────────
+
+    # Announce what failed to load and what plugins showed while loading,
+    # once, as soon as the owner can show it (the worker's Bridge is up, the
+    # REPL renders events): the guardrail and plugin warnings, then the
+    # held notices (between_turns) and cards (in_turn: false, so late
+    # joiners get them). Without this call the first turn announces them
+    # (#announce_guardrail_failures).
+    def announce_load_events!
+      synchronize_events do
+        next if @guardrail_failures_announced
+
+        @guardrail_failures_announced = true
+        message = @guardrail_failures.message
+        announce({ type: :guardrail_warning, message: message }) if message
+        plugins = @plugin_failures.message
+        announce({ type: :guardrail_warning, message: plugins, label: "plugins" }) if plugins
+        Array(@plugin_load_events).each do |event|
+          announce(event[:type] == :card ? event.merge(in_turn: false) : event.merge(between_turns: true))
+        end
+      end
+      nil
+    end
 
     # How long #shutdown waits for the running anytime commands, in all.
     SHUTDOWN_JOIN_SECONDS = 3.0

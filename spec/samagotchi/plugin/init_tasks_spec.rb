@@ -10,7 +10,7 @@ require "samagotchi/plugin/context"
 
 # Plugin init tasks (chi.init, docs/plugins.md): Engine#add_init_task,
 # #start_init_tasks!, the turn's wait for tools (#await_init_tasks), their
-# events.
+# events, and the load events announced before the first turn.
 RSpec.describe "Plugin init tasks" do
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
@@ -215,5 +215,28 @@ RSpec.describe "Plugin init tasks" do
     expect(stopped.pop(timeout: 1)).to eq(:cancelled)
     expect(events(:plugin_init_finished) + events(:card)).to be_empty
     engine.start_init_tasks!
+  end
+
+  describe "Engine#announce_load_events!" do
+    it "announces the load warnings and what plugins showed while loading, once, between turns" do
+      engine.instance_variable_get(:@guardrail_failures).add("hook x.rb", "missing", required: true)
+      engine.instance_variable_get(:@plugin_failures).add("plugin plugin.rb (bundle b)", "boom", required: false)
+      engine.instance_variable_set(:@plugin_load_events, [
+                                     { type: :hook_notice, hook: "plugin.rb (bundle b)", text: "loaded", level: :info },
+                                     { type: :card, id: "c", source: "b", title: "hi", body: "", level: :info, actions: [], in_turn: true }
+                                   ])
+      expect(engine.guardrail_warning).to be_nil
+      engine.announce_load_events!
+      engine.announce_load_events!
+      expect(seen.map { |e| [e[:type], e[:label], e[:between_turns], e[:in_turn]] }).to eq(
+        [[:guardrail_warning, nil, nil, nil], [:guardrail_warning, "plugins", nil, nil],
+         [:hook_notice, nil, true, nil], [:card, nil, nil, false]]
+      )
+      expect(engine.guardrail_warning).to include("missing")
+      expect(engine.plugin_warning).to include("boom")
+      sink = []
+      engine.run_turn(session, "hi", on_event: ->(e) { sink << e })
+      expect(sink.map { |e| e[:type] }).not_to include(:guardrail_warning, :hook_notice, :card)
+    end
   end
 end
