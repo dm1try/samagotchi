@@ -24,6 +24,7 @@ plugin:
   file: plugin.rb
   sha256: sha256:6a1a7022…   # shasum -a 256 plugin.rb
 requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2")
+needs: [gh]                  # optional: outside commands it relies on (see memory.md#bundles-that-need-outside-commands)
 ```
 
 The file must be a `.rb` name in the bundle's top directory. It defines a

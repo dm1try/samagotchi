@@ -33,3 +33,53 @@ names of a comma list are read). Its file and index line are untouched.
 
 These startup index reads are harness-injected context assembly and are not
 rendered as `tool>` activity lines.
+
+## Bundles that need outside commands
+
+A bundle's memory can rely on a command chi doesn't ship, such as a GitHub
+protocol that runs `gh` for everything. The bundle's `manifest.yml` says so
+with `needs:`. It's advisory: chi installs nothing and checks no versions.
+It only looks the command up on `PATH` (no subprocess is run).
+
+```yaml
+needs:
+  - command: gh
+    why: reads PRs, issues and CI status        # optional
+    hint: brew install gh && gh auth login     # optional
+  - jq                                          # short form: just the command
+```
+
+A command is a plain executable name (no path, no spaces); anything else,
+or a `needs:` that isn't a list, fails the install. A need applies to the
+whole bundle.
+
+Where a missing need shows up:
+
+- `chi bundle install` / `upgrade` (and `--dry-run`) print one line per
+  missing command, then install anyway:
+  `needs gh: not found on PATH (brew install gh && gh auth login); installed anyway`.
+- `chi bundle status <name>` lists every need:
+  `needs gh (reads PRs, issues and CI status) [ok]` or
+  `needs gh [not found]: brew install gh && gh auth login`.
+- In the system prompt, the index line of each of the bundle's memories
+  gets `[needs gh: not found on PATH]` when a need is missing (nothing when
+  all are found). The check runs whenever the prompt is built: at session
+  start, and again after a model or profile switch. A blank-name
+  `memory_read` shows the index without the marker.
+
+The two checks can disagree. `chi bundle status` looks at the `PATH` of
+the shell it runs in; a worker started by the desktop helper or `chi send`
+can have a shorter one (no `/opt/homebrew/bin`, say). The marker in the
+prompt is the worker's own check, and it's the one that counts for a
+session.
+
+A `PATH` lookup can't tell that `gh` is logged out or broken, so the memory
+itself says what to do when its command fails. Put it in the first lines:
+
+```markdown
+# gh helper
+
+Needs the `gh` command (GitHub CLI), logged in. If `gh` is missing or not
+logged in (a "command not found" or an auth error), tell the user and stop;
+don't try to scrape github.com instead.
+```

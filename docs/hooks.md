@@ -284,6 +284,7 @@ hooks:
     on_error: log
     priority: 100
 trust_level: reviewed        # reviewed | experimental (default)
+needs: [gh]                  # optional: outside commands the memories use (docs/memory.md#bundles-that-need-outside-commands)
 ```
 
 Notes:
