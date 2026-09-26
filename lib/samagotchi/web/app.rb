@@ -926,7 +926,7 @@ module Samagotchi
       def await_bridge_port(session_id, timeout: @bridge_wait_timeout)
         return nil if timeout.nil? || timeout <= 0
 
-        BridgeClient.poll(timeout) { bridge_sidecar_port(session_id) }
+        BridgeClient.poll(timeout, interval: BridgeClient::SPAWN_POLL_INTERVAL) { bridge_sidecar_port(session_id) }
       rescue StandardError
         nil
       end

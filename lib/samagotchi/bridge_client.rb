@@ -89,11 +89,16 @@ module Samagotchi
       port && new(session_id: session_id, port: port, host: host)
     end
 
+    # How often a wait for a new worker's Bridge looks: a missing sidecar is
+    # one stat, and a 0.1 s step cost a create up to 0.1 s (the web's
+    # create landed on 0.53/0.63/0.73 s).
+    SPAWN_POLL_INTERVAL = 0.02
+
     # Wait for a freshly spawned worker to publish its Bridge.
     # @param timeout [Float] seconds
     # @return [BridgeClient, nil] nil when no live sidecar appeared in time
     def self.wait_for(session_id, session_dir:, timeout:, host: HOST)
-      port = poll(timeout) { sidecar_port(session_dir, host: host) }
+      port = poll(timeout, interval: SPAWN_POLL_INTERVAL) { sidecar_port(session_dir, host: host) }
       port && new(session_id: session_id, port: port, host: host)
     end
 
