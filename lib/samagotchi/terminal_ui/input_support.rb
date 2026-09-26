@@ -6,6 +6,7 @@ require "reline"
 
 require_relative "../memory_paths"
 require_relative "../tools/memory"
+require_relative "../session_commands"
 
 module Samagotchi
   class TerminalUI
@@ -24,15 +25,17 @@ module Samagotchi
       PROMPT_HISTORY_STATE_DIR = "samagotchi"
       PROMPT_HISTORY_LIMIT = 20
       DEFAULT_INPUT_ENV = "SAMAGOTCHI_DEFAULT_INPUT"
-      SLASH_COMMANDS = %w[/continue /exit /guardrails /model /models /recap /stats].freeze
       AT_PATH_COMPLETION_PREFIX = "@"
       MEMORY_COMPLETION_PREFIX = "#"
       AT_PATH_COMPLETION_MAX_CANDIDATES = 200
 
       private
 
-      # The /commands Tab offers.
-      def slash_commands = SLASH_COMMANDS
+      # The /commands Tab offers: the session's registry, the REPL's own
+      # among them.
+      def slash_commands = command_registry.completions(:repl)
+
+      def command_registry = @commands&.registry || SessionCommands.builtin_registry
 
       # Whether a new session's first read gets the default input
       # (SAMAGOTCHI_DEFAULT_INPUT); --no-default-input says no.

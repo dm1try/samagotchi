@@ -519,7 +519,7 @@ module Samagotchi
       end
 
       # The attached TUI's commands, for Tab.
-      def slash_commands = (InputSupport::SLASH_COMMANDS + EXIT_COMMANDS + DETACH_COMMANDS).uniq.sort
+      def slash_commands = SessionCommands.builtin_registry.completions(:attached)
 
       # The saved recap, and a new one asked for at once (it arrives as
       # :recap_ready), with the REPL's words.

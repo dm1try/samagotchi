@@ -7,6 +7,7 @@ require_relative "model_profile"
 require_relative "served_model"
 require_relative "turn_flow"
 require_relative "tools/execute"
+require_relative "commands/registry"
 
 module Samagotchi
   # The session commands a REPL and a session worker both run: /model,
@@ -14,7 +15,8 @@ module Samagotchi
   # the Engine and its TurnFlow; the host prints the result's output and
   # runs a continue turn when asked to (#run never runs a turn).
   #
-  # /stats, /recap and /exit are the UI's own, not here.
+  # /stats, /recap and /exit are the UI's own: they are in the registry
+  # (local: for Tab and help) but #run never runs them.
   class SessionCommands
     MODEL_COMMAND = "/model"
     MODELS_COMMAND = "/models"
@@ -38,21 +40,52 @@ module Samagotchi
     #   :resume, :abort, :abort_with_reason or :invalid
     Result = Struct.new(:status, :output, :changed, :model_name, :resume, :shell, :decision, keyword_init: true)
 
-    # @return [Boolean] whether +line+ is one of these commands
-    def self.command?(line)
-      !kind_of_line(line).nil?
+    # Puts the built-in commands into +registry+, in lookup order (!rollback
+    # before !cmd): the ones #run runs, then the UIs' own (local: Tab and
+    # help only).
+    def self.register_builtins(registry)
+      registry.register(ROLLBACK_COMMAND, "discard the interrupted turn and restore the pre-turn state",
+                        id: :rollback) { |_text| rollback }
+      registry.register("!", "run a shell command; its output goes into the conversation",
+                        id: :shell, match: ->(text) { text.match?(/\A!\s*\S/) }) { |text| shell(text) }
+      registry.register(CONTINUE_COMMAND, "answer the continue offer (yes, no or no, <reason>)") do |text|
+        next reply("nothing to continue") unless @turn_flow.awaiting_continue?
+
+        answer = text.delete_prefix(CONTINUE_COMMAND).strip
+        continue_answer(answer.empty? ? CONTINUE_COMMAND : answer)
+      end
+      registry.register(MODELS_COMMAND, "list the hosts' models (/models <text> filters)") do |text|
+        reply(models_listing(text.delete_prefix(MODELS_COMMAND).strip))
+      end
+      registry.register(GUARDRAILS_COMMAND, "list the guardrail rules and approvals (/guardrails revoke N)") do |text|
+        guardrails(text.delete_prefix(GUARDRAILS_COMMAND).strip)
+      end
+      registry.register(MODEL_COMMAND, "show or switch the model",
+                        match: ->(text) { text.match?(/\A\/model(?:\s+.*)?\z/) }) { |text| model(text) }
+      registry.register("/stats", "show the session's stats", local: true)
+      registry.register("/recap", "show the session's recap", local: true)
+      registry.register("/exit", "leave (--delete also deletes the session)", local: true)
+      registry.register("/quit", "leave, like /exit", local: true, uis: [:attached])
+      registry.register("/detach", "leave and keep the worker running", local: true, uis: [:attached])
+      registry
     end
 
-    def self.kind_of_line(line)
-      text = line.to_s.strip
-      return :rollback if text == ROLLBACK_COMMAND
-      return :shell if text.match?(/\A!\s*\S/)
-      return :continue if text == CONTINUE_COMMAND || text.start_with?("#{CONTINUE_COMMAND} ")
-      return :models if text == MODELS_COMMAND || text.start_with?("#{MODELS_COMMAND} ")
-      return :guardrails if text == GUARDRAILS_COMMAND || text.start_with?("#{GUARDRAILS_COMMAND} ")
-      return :model if text.match?(/\A\/model(?:\s+.*)?\z/)
+    # The built-ins alone, for callers without an Engine (and the class
+    # methods below).
+    # @return [Commands::Registry] frozen
+    def self.builtin_registry
+      @builtin_registry ||= register_builtins(Commands::Registry.new).freeze
+    end
 
-      nil
+    # @return [Boolean] whether +line+ is one of these commands
+    def self.command?(line)
+      builtin_registry.command?(line)
+    end
+
+    # @return [Symbol, nil] :rollback, :shell, :continue, :models,
+    #   :guardrails or :model
+    def self.kind_of_line(line)
+      builtin_registry.lookup(line)&.id
     end
 
     # @return [String] the model /model clear goes back to
@@ -62,28 +95,26 @@ module Samagotchi
     #   restores and /model names (the Engine may have started elsewhere, e.g.
     #   on a resumed session's model)
     # @param save [#call] saves a session (a worker passes its state dir)
-    def initialize(engine:, turn_flow:, default_model:, save: ->(session) { session.save })
+    # @param registry [Commands::Registry] the commands #run looks lines up in
+    def initialize(engine:, turn_flow:, default_model:, save: ->(session) { session.save },
+                   registry: self.class.builtin_registry)
       @engine = engine
       @turn_flow = turn_flow
       @default_model = default_model
       @save = save
+      @registry = registry
     end
+
+    # @return [Commands::Registry]
+    attr_reader :registry
 
     # @return [Result, nil] nil when +line+ is not one of these commands
     def run(line)
       text = line.to_s.strip
-      case self.class.kind_of_line(text)
-      when :rollback then rollback
-      when :shell then shell(text)
-      when :continue
-        return reply("nothing to continue") unless @turn_flow.awaiting_continue?
+      entry = @registry.lookup(text)
+      return nil unless entry&.handler
 
-        answer = text.delete_prefix(CONTINUE_COMMAND).strip
-        continue_answer(answer.empty? ? CONTINUE_COMMAND : answer)
-      when :models then reply(models_listing(text.delete_prefix(MODELS_COMMAND).strip))
-      when :guardrails then guardrails(text.delete_prefix(GUARDRAILS_COMMAND).strip)
-      when :model then model(text)
-      end
+      instance_exec(text, &entry.handler)
     end
 
     # Answer the pending continue offer (yes / no / no, <reason>).
