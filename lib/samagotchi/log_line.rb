@@ -16,7 +16,7 @@ module Samagotchi
   # (debug dumps) are indented by four spaces and belong to the record above.
   module LogLine
     LEVELS = %w[DEBUG INFO WARN ERROR].freeze
-    TAGS = %w[turn http worker bridge web attached repl idle recap hooks guardrails config memory model].freeze
+    TAGS = %w[turn http worker bridge web attached repl idle recap hooks plugins guardrails config memory model].freeze
     INDENT = "    "
 
     Record = Struct.new(:ts, :level, :tag, :pid, :sid, :event, :fields, :payload, keyword_init: true)

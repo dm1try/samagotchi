@@ -16,6 +16,7 @@ require_relative "context_window"
 require_relative "kernel_loop"
 require_relative "tools/builtins"
 require_relative "session_commands"
+require_relative "plugin/loader"
 require_relative "log"
 require_relative "log_subscriber"
 require_relative "host_registry"
@@ -59,7 +60,7 @@ module Samagotchi
     # Used by specs and inspection.
     def self.system_prompt_for(profile)
       profile = ModelProfile.normalize(profile) unless profile.is_a?(ModelProfile)
-      new(mode: :assist, profile: profile).assist_system_prompt
+      new(mode: :assist, profile: profile, plugins: false).assist_system_prompt
     end
 
     # @param mode               [Symbol] :assist (harness is single-mode; memory-reliant; kwarg kept for compat, ignored)
@@ -73,7 +74,9 @@ module Samagotchi
     #   prompt's index, dropped from the preloads, refused by memory_read); a mute wins over a preload
     DEFAULT_SYSTEM_MEMORIES = %w[identity].freeze
 
-    def initialize(mode: :assist, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], muted_memories: [], kernel: nil, recap: nil, reminders: nil)
+    # @param plugins            [Boolean] false: load no bundle plugins (a throwaway Engine for a prompt)
+    def initialize(mode: :assist, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], muted_memories: [], kernel: nil, recap: nil, reminders: nil,
+                   plugins: true)
       @mode = mode.to_sym
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
@@ -108,6 +111,10 @@ module Samagotchi
       @tools = Tools::Builtins.registry
       # Likewise the slash commands its SessionCommands run.
       @command_registry = SessionCommands.register_builtins(Commands::Registry.new)
+      # Installed bundles' plugins add commands, tools and hooks to these
+      # (docs/plugins.md); one that fails is announced with the load
+      # failures, and the rest still load.
+      load_plugins if plugins
       guardrail_rules
       # Use the KernelLoop's reminder_store if provided (TerminalUI path),
       # otherwise create our own (SessionManager/one-shot paths). This ensures
@@ -1689,10 +1696,21 @@ module Samagotchi
       Log.error(:hooks, "bundles_load_failed", echo: "[samagotchi:hooks] failed to load bundle hooks: #{e.class}: #{e.message}", error: e.class.name)
     end
 
+    def load_plugins
+      registries = Plugin::Registries.new(commands: @command_registry, tools: @tools, hooks: @hooks)
+      Plugin::Loader.load_installed(registries, failures: @guardrail_failures, settings: bundle_settings)
+    end
+
     # config.yml `bundles:`: each bundle's settings by name, for its hooks.
     # @return [Hash{String => Hash}] {} when absent; a section that isn't a
     #   mapping warns once and counts as absent
     def bundle_settings
+      # Read once: the bundle hooks and the plugins both want it.
+      @bundle_settings ||= read_bundle_settings
+    end
+    private :bundle_settings
+
+    def read_bundle_settings
       data = Samagotchi::ConfigFile.read_yaml(path: Samagotchi::ConfigFile.global_path)
       section = data.is_a?(Hash) ? data["bundles"] : nil
       return {} if section.nil?
@@ -1707,7 +1725,7 @@ module Samagotchi
     rescue StandardError
       {}
     end
-    private :bundle_settings
+    private :read_bundle_settings
 
     # Build (or disable) the idle recap job. On by default: with no recap
     # host or model configured it asks the session's current model on its
