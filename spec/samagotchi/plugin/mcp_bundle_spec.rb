@@ -152,8 +152,16 @@ RSpec.describe "The mcp bundle" do
     FileUtils.rm_rf(tmpdir)
   end
 
+  # An Engine whose init tasks (a server's first start) ran, as its first
+  # turn sees it: the tasks done, their tools applied.
   def engine
-    @engine ||= Samagotchi::Engine.new(mode: :assist, client: client)
+    @engine ||= Samagotchi::Engine.new(mode: :assist, client: client).tap do |built|
+      @init_events = []
+      built.subscribe(observer: ->(e) { @init_events << e })
+      built.start_init_tasks!
+      built.instance_variable_get(:@init_tasks).each { |task| task.thread&.join(10) }
+      built.apply_staged_tools!
+    end
   end
 
   def tools = engine.instance_variable_get(:@tools)
@@ -173,10 +181,11 @@ RSpec.describe "The mcp bundle" do
   let(:session_dir) { File.join(tmpdir, "session").tap { |dir| FileUtils.mkdir_p(dir) } }
   let(:tiny_png) { File.expand_path("../../fixtures/images/tiny.png", __dir__) }
 
+  # What the Engine's load and init tasks showed: notices and cards.
   def load_events
-    events = []
-    engine.send(:announce_guardrail_failures, ->(e) { events << e })
-    events
+    engine
+    engine.send(:announce_guardrail_failures, ->(e) { @init_events << e })
+    @init_events.select { |e| %i[hook_notice card].include?(e[:type]) }
   end
 
   def server_pid
@@ -299,14 +308,25 @@ RSpec.describe "The mcp bundle" do
         "fake" => fake }
     end
 
-    it "skips each broken one with a notice at the first turn; the rest works; startup waits one timeout" do
+    it "starts them in init tasks: chi's start doesn't wait; each broken one is a warn card; the rest works" do
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      built = Samagotchi::Engine.new(mode: :assist, client: client)
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+      built.shutdown
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       engine
+      # Side by side: one startup_timeout (the hung one's), not one each.
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3.5
-      notices = load_events.select { |e| e[:type] == :hook_notice }.map { |e| e[:text] }
-      expect(notices).to contain_exactly(
-        "MCP server gone didn't start: can't start /nonexistent/mcp-server: No such file or directory; its tools are left out",
-        "MCP server hung didn't start: initialize timed out after 2s; its tools are left out"
+      cards = load_events.select { |e| e[:type] == :card }
+      expect(cards.map { |c| [c[:title], c[:body], c[:level]] }).to contain_exactly(
+        ["Starting MCP server gone (first run, saving its tools): failed",
+         "MCP server gone didn't start: can't start /nonexistent/mcp-server: No such file or directory; its tools are left out", :warn],
+        ["Starting MCP server hung (first run, saving its tools): failed",
+         "MCP server hung didn't start: initialize timed out after 2s; its tools are left out", :warn]
+      )
+      finished = @init_events.select { |e| e[:type] == :plugin_init_finished }
+      expect(finished.map { |e| [e[:label], e[:ok], e[:summary]] }).to include(
+        ["Starting MCP server fake (first run, saving its tools)", true, "fake ready, 8 tools"]
       )
       expect(tools.entries.map(&:name).grep(/\Amcp_/)).to all(start_with("mcp_fake_"))
       expect(call_tool("mcp_fake_echo", { "text" => "ok" })).to eq("echo: ok")
@@ -324,7 +344,7 @@ RSpec.describe "The mcp bundle" do
   context "with a name clash" do
     let(:servers) { { "fake" => fake, "fake-" => fake.merge("tools" => ["echo"]) } }
 
-    it "leaves the second out with a notice" do
+    it "leaves the second out with one notice" do
       expect(tools["mcp_fake_echo"]).not_to be_nil
       notices = load_events.select { |e| e[:type] == :hook_notice }.map { |e| e[:text] }
       expect(notices).to eq(["MCP tool fake-/echo left out: tool mcp_fake_echo is registered twice"])
@@ -443,6 +463,36 @@ RSpec.describe "The mcp bundle" do
       File.write(mode_file, "")
       cancel = false
       expect(call_tool("mcp_fake_echo", { "text" => "again" })).to eq("echo: again")
+    end
+
+    context "when the cache is over a day old" do
+      let(:cache_file) { File.join(ENV["XDG_STATE_HOME"], "samagotchi", "plugins", "mcp", "tools-fake.json") }
+
+      before do
+        File.write(cache_file, JSON.generate(cache.merge("saved_at" => (Time.now - (25 * 3600)).utc.iso8601)))
+        File.write(tools_file, "echo\n")
+      end
+
+      it "still registers the cached tools; a quiet refresh lists them with a server of its own and replaces them" do
+        next_engine
+        # The refresh's server, stopped after listing; the session's isn't started.
+        expect(spawned).to eq(2)
+        expect(alive?(File.readlines(pids_file).last.to_i)).to be(false)
+        expect(@init_events.map { |e| e[:type] }).not_to include(:plugin_init_started, :plugin_init_finished)
+        expect(cache["tools"].map { |t| t["name"] }).to eq(%w[echo])
+        expect(Time.iso8601(cache["saved_at"])).to be > Time.now - 60
+        expect(mcp_tools).to eq(%w[mcp_fake_echo])
+        expect(mcp_card).to eq("**fake**: cached (not started), 1 tool\n- `mcp_fake_echo`")
+      end
+
+      it "leaves the refresh to the worker that holds the lock" do
+        File.open("#{cache_file}.lock", File::CREAT | File::RDWR) do |lock|
+          lock.flock(File::LOCK_EX)
+          next_engine
+        end
+        expect(spawned).to eq(1)
+        expect(mcp_tools).to eq(%w[mcp_fake_echo mcp_fake_add mcp_fake_slow])
+      end
     end
 
     %w[hang exit].each do |mode|

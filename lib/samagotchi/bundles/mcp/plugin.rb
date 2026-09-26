@@ -36,6 +36,8 @@ class Plugin
   DESCRIPTION_CHARS = 1024
   PREVIEW_CHARS = 60
   NAME_CHARS = 48
+  # A cached tool list older than this is refreshed in the background.
+  CACHE_TTL = 24 * 60 * 60
   IMAGE_EXT = { "image/png" => "png", "image/jpeg" => "jpg", "image/gif" => "gif", "image/webp" => "webp" }.freeze
 
   # A JSON-RPC client for one MCP server over stdio: newline-delimited JSON
@@ -226,7 +228,7 @@ class Plugin
   # tools/list as the server answers it (what the cache keeps), +tools+
   # the ones chi offers (the tools: filter applied, each with chi_name).
   Server = Struct.new(:name, :config, :service, :state, :error, :tools, :listed, :timeout, :cwd, :command, :env,
-                      :digest, keyword_init: true)
+                      :digest, :cached_at, keyword_init: true)
 
   def initialize(settings = {})
     @settings = settings
@@ -234,13 +236,19 @@ class Plugin
     @startup_timeout = positive(settings["startup_timeout"]) || STARTUP_TIMEOUT
     @servers = []
     @publish = Mutex.new
+    # The tools left out so far (a name clash): said once, not at each
+    # publish.
+    @left_out = []
   end
 
   # Each server's tools come from its cache (tools-<server>.json in the
   # bundle's data dir, keyed by a digest of its config) when there is one:
   # the server then starts on the first call of one of its tools (start:
-  # lazy, the default). Without a cache (the first run, a changed config),
-  # or with start: eager, it starts now and its tools/list is cached.
+  # lazy, the default), and a cache older than a day is refreshed quietly
+  # in the background. Without a cache (the first run, a changed config)
+  # the server starts in an init task (chi.init) that every UI shows; a
+  # turn sent meanwhile waits for its tools. start: eager starts it with
+  # every session.
   def register(chi)
     @chi = chi
     ctx = chi.ctx
@@ -253,11 +261,23 @@ class Plugin
       server.service = chi.service(name) { |svc| start(server, svc, ctx) }
       server
     end
-    boots = @servers.reject { |server| server.config["start"].to_s != "eager" && load_cache(server, ctx) }
-    # Started now, side by side: a slow or broken server costs chi's start
-    # one startup_timeout, not one each.
-    boots.map { |server| Thread.new { boot(server, ctx) } }.each(&:join)
-    @servers.each { |server| declare(chi, server, ctx) if %i[running cached].include?(server.state) }
+    # Two startup_timeouts: initialize, then tools/list.
+    wait = @startup_timeout * 2
+    @servers.each do |server|
+      if load_cache(server, ctx)
+        declare(chi, server, ctx)
+        if server.config["start"].to_s == "eager"
+          chi.init("Starting MCP server #{server.name}", timeout: wait) { boot(server, ctx) }
+        elsif server.cached_at.nil? || Time.now - server.cached_at > CACHE_TTL
+          chi.init("Refreshing MCP server #{server.name}'s tools", quiet: true, timeout: wait) { refresh(server, ctx) }
+        end
+      else
+        why = File.exist?(cache_path(server, ctx)) ? "config changed" : "first run"
+        chi.init("Starting MCP server #{server.name} (#{why}, saving its tools)", provides_tools: true, timeout: wait) do
+          boot(server, ctx)
+        end
+      end
+    end
     chi.command "/mcp", "list the MCP servers, their state and their tools", anytime: true do |_args, command_ctx|
       command_ctx.card(title: "MCP servers", body: listing, id: "mcp-servers")
       nil
@@ -300,16 +320,57 @@ class Plugin
     client
   end
 
-  # Start a server at load.
+  # Start a server in an init task; its tools replace the cached ones (or
+  # come for the first time) when they differ.
+  # @return [String] the task's summary
+  # @raise [Client::Error] it didn't start (the task's warn card says why)
   def boot(server, ctx)
+    before = server.listed
     client = server.service.value
     server.state = :running
     ctx.log.info("mcp_server_started", server: server.name, pid: client.pid, tools: server.listed.size)
+    publish(ctx) if server.listed != before
+    count = server.listed.size
+    "#{server.name} ready, #{count} tool#{"s" unless count == 1}"
   rescue StandardError => e
+    had_tools = server.state == :cached
     server.state = :failed
     server.error = e.message
     ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message)
-    ctx.notify("MCP server #{server.name} didn't start: #{e.message}; its tools are left out", level: :warn)
+    publish(ctx) if had_tools
+    raise Client::Error, "MCP server #{server.name} didn't start: #{e.message}; its tools are left out"
+  end
+
+  # The quiet daily refresh of a cached server's list: a server of its own
+  # (not the session's: that one still starts on the first call), listed
+  # and stopped. The cache is rewritten (its clock too) and a changed list
+  # replaces the tools. One worker at a time (a lock file); the others skip.
+  def refresh(server, ctx)
+    File.open("#{cache_path(server, ctx)}.lock", File::CREAT | File::RDWR) do |lock|
+      return nil unless lock.flock(File::LOCK_EX | File::LOCK_NB)
+
+      cancelled = -> { ctx.cancelled? }
+      client = Client.new(server.command, env: server.env, cwd: server.cwd,
+                                          log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) })
+      begin
+        client.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {},
+                                       clientInfo: { name: "chi", version: Samagotchi::VERSION } },
+                       timeout: @startup_timeout, cancelled: cancelled)
+        client.notify("notifications/initialized")
+        listed = list_tools(client, cancelled)
+      ensure
+        client.close
+      end
+      # Started meanwhile: its own list is the fresh one.
+      return nil unless server.state == :cached
+
+      changed = listed != server.listed
+      server.listed = listed
+      save_cache(server, ctx)
+      ctx.log.info("mcp_tools_refreshed", server: server.name, tools: listed.size, changed: changed)
+      publish(ctx) if changed
+    end
+    nil
   end
 
   # tools/list, every page.
@@ -340,6 +401,11 @@ class Plugin
     return false unless data.is_a?(Hash) && data["digest"] == server.digest && data["tools"].is_a?(Array)
 
     server.listed = data["tools"].select { |tool| tool.is_a?(Hash) && tool["name"] }
+    server.cached_at = begin
+      Time.iso8601(data["saved_at"].to_s)
+    rescue ArgumentError
+      nil
+    end
     server.state = :cached
     true
   rescue SystemCallError, JSON::ParserError
@@ -373,7 +439,9 @@ class Plugin
       end
       tool["chi_name"] = name
     rescue ArgumentError => e
-      ctx.notify("MCP tool #{server.name}/#{tool["name"]} left out: #{e.message}", level: :warn)
+      text = "MCP tool #{server.name}/#{tool["name"]} left out: #{e.message}"
+      ctx.notify(text, level: :warn) unless @left_out.include?(text)
+      @left_out << text
     end
   end
 
