@@ -91,6 +91,23 @@ RSpec.describe "Cards" do
     end
   end
 
+  describe "ctx.notify outside a turn" do
+    it "is announced as a notice between turns, which the CardStore keeps; a turn's is a turn event" do
+      ctx = Samagotchi::Plugin::Context.new(bundle: "sample", label: "plugin.rb (bundle sample)", settings: {},
+                                            host: engine.send(:plugin_host))
+      store = Samagotchi::Bridge::CardStore.new
+      engine.subscribe(observer: store)
+      ctx.notify("saved", level: :warn)
+      engine.register_hook(:before_turn) { |_e| ctx.notify("in a turn") }
+      engine.run_turn(session, "hi", on_event: ->(_e) {})
+
+      notices = seen.select { |e| e[:type] == :hook_notice }
+      expect(notices.map { |e| [e[:text], e[:level], e[:between_turns]] }).to eq([["saved", :warn, true], ["in a turn", :info, nil]])
+      expect(notices.first[:hook]).to eq("plugin.rb (bundle sample)")
+      expect(store.list.map { |e| e[:text] }).to eq(["saved"])
+    end
+  end
+
   describe Samagotchi::Bridge::CardStore do
     subject(:store) { described_class.new(capacity: 3) }
 

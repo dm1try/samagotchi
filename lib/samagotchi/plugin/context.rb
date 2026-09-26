@@ -82,8 +82,7 @@ module Samagotchi
       end
 
       # One line to the user, labelled by the plugin, like a hook's
-      # event[:notify]. During a turn every UI shows it; outside one only
-      # the ones that watch the event log do.
+      # event[:notify]. Every UI shows it, during a turn or between turns.
       # @param level [Symbol] :info or :warn
       def notify(text, level: :info)
         @host.notify.call(text.to_s, level, @label)

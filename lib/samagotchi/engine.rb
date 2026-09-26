@@ -400,7 +400,7 @@ module Samagotchi
     # a failed turn's prompt handed back and the continue offer, which live
     # UIs need in the event log, emitted outside any turn's stream.
     ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged prompt_restored continue_offered continue_resolved
-                             command_queued command_ran context_added card].freeze
+                             command_queued command_ran context_added card hook_notice].freeze
 
     # Put a transport-level event into the ordered event log. Unlike turn
     # events it reaches only persistent observers (no turn sink, no memory
@@ -959,14 +959,24 @@ module Samagotchi
     end
     private :hook_runtime
 
-    # One line to the user, as a turn event (:hook_notice): the turn's sink
-    # (the REPL) and the observers (bridge, log). Hooks fire inside a turn,
-    # so the sink is the running turn's.
+    # One line to the user (:hook_notice). During a turn it is a turn
+    # event: the turn's sink (the REPL) and the observers (bridge, log).
+    # Outside one (a plugin's command at the prompt) it is announced with
+    # between_turns: true, which every UI shows as cards are shown.
     def hook_notify(text, level, hook)
-      sink = @activity_mutex.synchronize { @turn_event_sink }
+      sink = nil
+      in_turn = @activity_mutex.synchronize do
+        sink = @turn_event_sink
+        @turn_running
+      end
       level = (level || :info).to_sym
       level = :info unless %i[info warn].include?(level)
-      emit_event(sink, { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level })
+      notice = { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level }
+      if in_turn
+        emit_event(sink, notice)
+      else
+        announce(notice.merge(between_turns: true))
+      end
       nil
     end
     private :hook_notify
