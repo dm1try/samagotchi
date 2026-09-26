@@ -29,7 +29,8 @@ module Samagotchi
     #
     # A plugin tool's params are what its live row showed (its preview),
     # saved with the result as tool_params (native: one per call, chat: one
-    # per result). The web server has no Engine and runs no plugins, so a
+    # per result); its label ("chrome: screenshot") likewise as tool_labels,
+    # the part's label:. The web server has no Engine and runs no plugins, so a
     # result without them (older sessions) falls back to the given
     # registry: the built-ins', and a plugin tool's arguments as key="value"
     # from the parsers' args:, as the live row shows them for a tool
@@ -90,10 +91,19 @@ module Samagotchi
 
         joined = responses.empty? ? nil : responses.map { |r| field(r, :content).to_s }.join(JOINER)
         outputs = split_outputs(joined, calls.length)
-        shown = responses.flat_map { |r| Array(field(r, :tool_params)) }
-        shown = [] unless shown.length == calls.length
+        shown = saved_list(responses, :tool_params, calls.length)
+        labels = saved_list(responses, :tool_labels, calls.length)
         images = split_images(responses, calls.length)
-        calls.each_with_index.map { |call, i| tool_part(call, outputs[i], registry, shown[i], images[i]) }
+        calls.each_with_index.map do |call, i|
+          tool_part(call, outputs[i], registry, shown[i], images[i], label: labels[i])
+        end
+      end
+
+      # A per-call list saved with the joined result(s), or none when its
+      # length doesn't match the calls.
+      def saved_list(responses, key, count)
+        list = responses.flat_map { |r| Array(field(r, key)) }
+        list.length == count ? list : []
       end
 
       # Each call's images from the joined tool_response(s).
@@ -114,7 +124,7 @@ module Samagotchi
           call = LLM::NativeToolNormalizer.normalize(ref) || { name: ref.name }
           response = by_id[field(raw, :id)] || (field(responses[i], :tool_call_id).nil? ? responses[i] : nil)
           tool_part(call, response && field(response, :content).to_s, registry, field(response, :tool_params),
-                    response && field(response, :images))
+                    response && field(response, :images), label: field(response, :tool_labels))
         end
       end
 
@@ -135,10 +145,11 @@ module Samagotchi
       end
 
       # +shown+ is the saved params line, when it is a String.
-      def tool_part(call, output, registry, shown = nil, images = nil)
+      def tool_part(call, output, registry, shown = nil, images = nil, label: nil)
         name = call[:name].to_s
         params = shown.is_a?(String) ? shown : ToolActivity.tool_activity_params(name, call, registry: registry)
         part = { tool: name, params: params.to_s }
+        part[:label] = label if label.is_a?(String) && !label.empty?
         unless output.nil?
           part[:output] = output.length > OUTPUT_MAX ? output[0, OUTPUT_MAX] : output
           part[:output_truncated] = true if output.length > OUTPUT_MAX

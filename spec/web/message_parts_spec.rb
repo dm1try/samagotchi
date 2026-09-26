@@ -141,6 +141,17 @@ RSpec.describe Samagotchi::Web::MessageParts do
         .to eq(['command="ls"', "BANANA42 ×3"])
     end
 
+    it "gives the part the label saved with the result (tool_labels), none for a built-in" do
+      content = qwen_call("execute", command: "ls") + qwen
+      saved = [{ content: "[execute]\nok\n\n---\n\n#{output.first[:content]}", tool_labels: [nil, "echo: args"] }]
+      tools = described_class.for_message({ content: content }, saved)[:tools]
+      expect(tools.map { |t| t[:label] }).to eq([nil, "echo: args"])
+      expect(tools.first).not_to have_key(:label)
+      chat = { content: "", tool_calls: [{ id: "c1", name: "echo_args", arguments: {} }] }
+      expect(described_class.for_message(chat, [{ "content" => "x", "tool_call_id" => "c1", "tool_labels" => "echo: args" }])[:tools].first)
+        .to include(tool: "echo_args", label: "echo: args")
+    end
+
     it "ignores a saved list whose length doesn't match the calls" do
       saved = [{ content: output.first[:content], tool_params: %w[a b] }]
       expect(described_class.for_message({ content: qwen }, saved)[:tools].first[:params]).to eq('text="BANANA42" times="3"')

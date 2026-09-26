@@ -147,7 +147,8 @@ RSpec.describe Samagotchi::KernelLoop do
     it "saves a plugin tool's params line on its result (tool_params), and the next prompt leaves it out" do
       registry = Samagotchi::Tools::Builtins.registry
       registry.register("save_note", schema: { parameters: { properties: {} } }, handler: ->(*) { "saved" },
-                                     source: "sample-plugin", preview: ->(call) { "PREVIEW:#{call[:args]["path"]}" })
+                                     source: "sample-plugin", preview: ->(call) { "PREVIEW:#{call[:args]["path"]}" },
+                                     label: "notes: save")
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
@@ -158,13 +159,16 @@ RSpec.describe Samagotchi::KernelLoop do
       result = described_class.new(client: client, tools: registry).run([{ role: "user", content: "check" }])
       tool_response = result.conversation.find { |message| message[:role] == "tool_response" }
       expect(tool_response[:tool_params]).to eq([nil, "PREVIEW:w.md"])
+      expect(tool_response[:tool_labels]).to eq([nil, "notes: save"])
       expect(prompts[1]).not_to include("PREVIEW")
+      expect(prompts[1]).not_to include("notes: save")
     end
 
     it "adds no tool_params for built-in calls" do
       allow(client).to receive(:complete).and_return(%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done")
       tool_response = kernel.run([{ role: "user", content: "check" }]).conversation.find { |m| m[:role] == "tool_response" }
       expect(tool_response).not_to have_key(:tool_params)
+      expect(tool_response).not_to have_key(:tool_labels)
     end
 
     it "escapes literal control tokens in tool results before reinserting them into the next prompt" do

@@ -148,6 +148,25 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(events.first[:params]).to include("pwd")
     end
 
+    it "carries a plugin tool's label, and the run returns it to save with the result" do
+      registry = Samagotchi::Tools::Builtins.registry
+      registry.register("mcp_chrome_screenshot", schema: { parameters: { properties: {} } }, handler: ->(*) { "ok" },
+                                                 source: "mcp", label: "chrome: screenshot")
+      labelled = Struct.new(:hooks, :tools) do
+        def dispatch_tool_call(call) = { output: "[#{call[:name]}]\nok", activity: { tool: call[:name], status: "ok" } }
+      end.new(hooks, registry)
+      result = described_class.new(labelled).run({ name: "mcp_chrome_screenshot" }, iteration: 1, call_index: 1, call_count: 1,
+                                                 on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
+      expect(events.first).to include(type: :tool_call_started, tool: "mcp_chrome_screenshot", label: "chrome: screenshot")
+      expect(result[:shown_label]).to eq("chrome: screenshot")
+
+      events.clear
+      result = described_class.new(labelled).run({ name: "execute", content: "ls" }, iteration: 1, call_index: 1, call_count: 1,
+                                                 on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
+      expect(events.first).not_to have_key(:label)
+      expect(result).not_to have_key(:shown_label)
+    end
+
     it "is emitted for a denied call too, before tool_call_completed" do
       hooks.register(:before_tool_call) { |e| e[:blocked] = true }
       run

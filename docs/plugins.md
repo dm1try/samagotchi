@@ -155,10 +155,13 @@ in the chat path's `tools:`, after chi's own tools.
   (`{ type: "object", properties: {…}, required: [...] }`), an MCP server's
   `inputSchema` for example.
 - `label`: the activity line's verb (`echoing`). The default is `calling tool`.
+  The web shows it in place of the tool's name, in its rows, step titles and
+  tally (the mcp bundle's `chrome: screenshot`).
 - `preview`: `->(args) { "…" }` for the activity line's parameters. The
   default is `key="value"` for each argument (a list or object as JSON). If
-  it raises, the default is shown. A web page reloaded later shows the
-  default too: the web server doesn't run plugins.
+  it raises, the default is shown. Both are saved with the call's result, so
+  a web page reloaded later shows the same row: the web server doesn't run
+  plugins.
 - `targets`: `->(args) { { paths: [...], command: "…", cwd: "…" } }`, each
   key optional, says what a call acts on, for [guardrails](#guardrails).
 

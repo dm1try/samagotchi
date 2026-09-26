@@ -139,8 +139,10 @@ module Samagotchi
             append_text(event[:iteration], "text", event[:content])
           end
         when :tool_call_started
-          parts << { kind: "tool", iteration: event[:iteration], call_index: event[:call_index],
-                     tool: event[:tool], params: event[:params], status: "running" }
+          part = { kind: "tool", iteration: event[:iteration], call_index: event[:call_index],
+                   tool: event[:tool], params: event[:params], status: "running" }
+          part[:label] = event[:label] if event[:label]
+          parts << part
         when :tool_call_completed
           tool = parts.reverse_each.find do |part|
             part[:kind] == "tool" && part[:iteration] == event[:iteration] && part[:call_index] == event[:call_index]

@@ -337,6 +337,7 @@ module Samagotchi
         tool_images = []
         image_counts = []
         shown_params = []
+        shown_labels = []
         results = calls.map.with_index do |call, call_index|
           run = tool_runner.run(call, iteration: iteration_index + 1, call_index: call_index + 1,
                                       call_count: calls.length, on_stream_event: on_stream_event,
@@ -345,6 +346,7 @@ module Samagotchi
           tool_images.concat(Array(run[:images]))
           image_counts << Array(run[:images]).size
           shown_params << run[:shown_params]
+          shown_labels << run[:shown_label]
           run[:output]
         end.join("\n\n---\n\n")
         emit_stream_event(on_stream_event, type: :tool_dispatch_completed, iteration: iteration_index + 1, call_count: calls.length)
@@ -357,6 +359,7 @@ module Samagotchi
         # A plugin tool's params line, one per call in call order (nil for
         # a built-in), for the web's reload; the prompt never reads it.
         tool_response[:tool_params] = shown_params if shown_params.any?
+        tool_response[:tool_labels] = shown_labels if shown_labels.any?
         conversation << tool_response
         pending_tool_calls = true
       rescue Client::RequestCancelled => e

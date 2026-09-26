@@ -26,18 +26,21 @@ module Samagotchi
     # @param call_index [Integer] 1-based position of the call in its batch
     # @return [Hash] output:, capped_output:, truncated:, activity:,
     #   images: (refs) when the tool returned images the model gets to see, and
-    #   shown_params: the params line the live row showed, only for a tool
-    #   that isn't built in (the loops save it with the result, so a reload
-    #   without the plugin shows the same line)
+    #   shown_params: the params line the live row showed, and shown_label:
+    #   its label ("chrome: screenshot"), only for a tool that isn't built in
+    #   (the loops save them with the result, so a reload without the plugin
+    #   shows the same row)
     def run(call, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
       # The gate runs first, so tool_call_started shows the call that runs.
       verdict = evaluate(call, iteration, params)
       call = verdict.call
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
-      emit(on_stream_event,
-           type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
-           tool: call[:name], call: call.dup, params: params)
+      label = plugin_label(call[:name])
+      started = { type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
+                  tool: call[:name], call: call.dup, params: params }
+      started[:label] = label if label
+      emit(on_stream_event, started)
 
       # The ask comes after tool_call_started: the UI shows the tool line,
       # then the approval under it.
@@ -63,6 +66,7 @@ module Samagotchi
       run = { output: output, capped_output: capped, truncated: truncated, activity: result[:activity] }
       run[:images] = images if images&.any?
       run[:shown_params] = params if params && plugin_tool?(call[:name])
+      run[:shown_label] = label if label
       run
     end
 
@@ -136,6 +140,12 @@ module Samagotchi
     def plugin_tool?(name)
       entry = tools && !name.nil? ? tools[name] : nil
       !entry.nil? && !entry.core?
+    end
+
+    # A plugin tool's label, what the UIs show for its raw name.
+    def plugin_label(name)
+      label = plugin_tool?(name) ? tools[name].label.to_s.strip : ""
+      label.empty? ? nil : label
     end
 
     # The Engine sets the kernel's gate (its context, later the approval

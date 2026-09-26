@@ -45,6 +45,12 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect { JSON.generate(turn) }.not_to raise_error
   end
 
+  it "keeps a plugin tool's label on its part" do
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "mcp_chrome_screenshot", label: "chrome: screenshot", params: "" })
+    expect(acc.current_turn[:parts].last).to include(tool: "mcp_chrome_screenshot", label: "chrome: screenshot")
+  end
+
   it "keeps a hook's notice as a part, in order" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :generation_chunk, iteration: 1, content: "Hm" },
