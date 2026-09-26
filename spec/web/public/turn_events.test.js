@@ -193,11 +193,20 @@ test("commandView: who ran what, what it said, and whether the conversation must
                 changed: ["messages"], model_name: "m1" };
 
   assert.deepEqual(commandView(ran, ME), { label: "tui", line: "!rollback", text: "salvaged turn discarded", busy: false,
-                                           failed: false, resync: true, modelName: "m1" });
+                                           failed: false, resync: true, modelName: "m1", anytime: false, commandId: null });
   assert.deepEqual(commandView({ ...ran, client_id: ME, status: "busy", output: "busy: wait for the turn to end", changed: [] }, ME),
                    { label: null, line: "!rollback", text: "busy: wait for the turn to end", busy: true, failed: false,
-                     resync: false, modelName: "m1" });
+                     resync: false, modelName: "m1", anytime: false, commandId: null });
   assert.equal(commandView({ ...ran, status: "error" }, ME).failed, true);
+});
+
+test("commandView: an anytime command's queued and ran events name the bubble they share", () => {
+  const queued = { type: "command_queued", command_id: "c9", client_id: ME, line: "/btw why?", anytime: true };
+  assert.deepEqual(commandView(queued, ME), { label: null, line: "/btw why?", text: "", busy: false, failed: false,
+                                              resync: false, modelName: null, anytime: true, commandId: "c9" });
+  const ran = commandView({ ...queued, type: "command_ran", status: "ok", output: "", changed: [] }, ME);
+  assert.equal(ran.anytime, true);
+  assert.equal(ran.commandId, "c9");
 });
 
 test("snapshotEvents replays a reminder turn's reminders (its prompt is empty)", () => {

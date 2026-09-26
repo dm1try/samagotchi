@@ -395,26 +395,35 @@ module Samagotchi
     # An anytime command (/help, a plugin's /btw; D8) runs now, on its own
     # thread, never queued behind a turn: it is never busy. The Bridge calls
     # this with the event log held, so its command_ran (announced when it
-    # finishes) comes after its command_queued. Its handler reads copies
-    # (ctx.messages) and shows things through ctx only; nothing is saved.
+    # finishes) comes after its command_queued. The cards it shows go out at
+    # once (btw's "thinking…" card), after its command_queued, which the
+    # UIs draw its line at (Engine#running_anytime). Its handler reads
+    # copies (ctx.messages) and shows things through ctx only; nothing is
+    # saved.
     def start_anytime_command(command)
       @anytime_threads.select!(&:alive?)
       @anytime_threads << Thread.new do
-        result, shown = run_command_line(command)
-        @engine.synchronize_events do
-          announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed))
-          shown.each { |event| @engine.announce(event) }
+        result = begin
+          @engine.running_anytime { @commands.run(command[:line]) }
+        rescue StandardError => e
+          SessionCommands::Result.new(status: :error, output: "#{command[:line].split.first}: #{e.message}", changed: [])
         end
+        result ||= SessionCommands::Result.new(status: :error, output: "not a session command", changed: [])
+        announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed),
+                                  anytime: true)
       rescue StandardError => e
         Log.warn(:worker, "anytime_command_failed", line: command[:line], error: e.class.name, msg: e.message)
       end
     end
 
-    def announce_command(command, status:, output:, changed:)
+    # @param anytime [Boolean] an anytime command's: its line was shown at
+    #   its command_queued already
+    def announce_command(command, status:, output:, changed:, anytime: false)
       text = output.to_s
       event = { type: :command_ran, command_id: command[:command_id], client_id: command[:client_id], line: command[:line],
                 status: status, output: text[0, COMMAND_OUTPUT_LIMIT], changed: changed.map(&:to_s),
                 model_name: @engine.effective_model_name }
+      event[:anytime] = true if anytime
       event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
       @engine.announce(event)
     end

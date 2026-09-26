@@ -534,8 +534,15 @@ module Samagotchi
     def run_input_line(session, input)
       return if input.empty?
 
-      # /model, /models, !rollback, !cmd, /continue (shared with workers)
-      if (command = @commands.run(input))
+      # /model, /models, !rollback, !cmd, /continue (shared with workers);
+      # an anytime command's cards print as it shows them (btw's
+      # "thinking…" before the answer).
+      command = if command_registry.lookup(input)&.anytime
+                  @engine.running_anytime { @commands.run(input) }
+                else
+                  @commands.run(input)
+                end
+      if command
         show_command_result(command)
         persist_recent_history(input) if command.shell
         return
@@ -1087,15 +1094,14 @@ module Samagotchi
 
     # D8: an anytime command runs on its own thread while the turn goes on
     # (it reads copies, and shows things through its ctx). What it prints
-    # while the turn runs goes above the live region now; once the turn has
-    # ended it waits for the prompt's flush, with the cards it showed then.
+    # while the turn runs goes above the live region now, its cards as it
+    # shows them (#handle_card_event); once the turn has ended it waits for
+    # the prompt's flush.
     # @return [true]
     def start_anytime_command(line)
       Thread.new do
-        result, shown = @engine.holding_announcements { @commands.run(line) }
-        output = result&.output
+        output = @engine.running_anytime { @commands.run(line) }&.output
         items = output.nil? ? [] : [{ type: :command_output, text: "\nmodel> #{output}" }]
-        items.concat(shown)
         items.each { |item| @engine.turn_running? ? show_pending_item(item) : @pending_cards << item }
       rescue StandardError => e
         @pending_cards << { type: :command_output, text: "\nmodel> #{line.split.first}: #{e.message}" }
@@ -1579,21 +1585,29 @@ module Samagotchi
     # open prompt (after the command that showed it). One shown during a
     # turn is a turn event: the turn's sink prints it where it happens
     # (EventRenderer; the Screen draws it above the live region).
+    #
+    # An anytime command's (event[:anytime]) print as it shows them: on the
+    # main thread (the command runs at the prompt) or beside a running turn
+    # (above the live region), else at the next flush.
     def handle_card_event(event)
-      case event[:type]
-      when :card then @pending_cards << event unless event[:in_turn]
-      when :hook_notice then @pending_cards << event if event[:between_turns]
-      end
+      return unless (event[:type] == :card && !event[:in_turn]) || (event[:type] == :hook_notice && event[:between_turns])
+      return show_pending_item(event) if event[:anytime] && (Thread.current == Thread.main || @engine.turn_running?)
+
+      @pending_cards << event
     end
 
     # Print the cards, notices and anytime commands' output kept since the
-    # last flush (main thread).
+    # last flush (main thread). A card replaced later in the same batch (the
+    # same id: btw's "thinking…", then its answer) prints once, as its last.
     def flush_pending_cards
-      loop do
-        show_pending_item(@pending_cards.pop(true))
-      end
+      items = []
+      loop { items << @pending_cards.pop(true) }
     rescue ThreadError
-      nil # empty
+      items.each_with_index do |item, index|
+        replaced = item[:type] == :card && items.drop(index + 1).any? { |later| later[:type] == :card && later[:id] == item[:id] }
+        show_pending_item(item) unless replaced
+      end
+      nil
     end
 
     # A card, a notice, or an anytime command's output (:command_output).

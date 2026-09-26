@@ -702,7 +702,7 @@ RSpec.describe Samagotchi::Worker do
         end
 
         ["slow", "slow, no boundary"].each do |prompt|
-          it "runs at once while a turn runs (#{prompt}), never busy, its cards after its command_ran" do
+          it "runs at once while a turn runs (#{prompt}), never busy, its cards announced between its queued and ran" do
             start_worker(poll_interval: 5)
             post_turn(prompt)
             expect(next_turn&.first).to eq(prompt)
@@ -715,9 +715,12 @@ RSpec.describe Samagotchi::Worker do
             expect(done).to include(status: "ok", output: "side: q")
             expect(wait_until { events_seen.any? { |e| e[:type] == :turn_completed } }).to be(true)
             card = seen.find { |e| e[:type] == :card }
-            expect(card).to include(title: "side card", in_turn: true)
+            expect(card).to include(title: "side card", in_turn: false, anytime: true)
             queued = seen.find { |e| e[:type] == :command_queued }
-            expect(queued[:event_seq]).to be < done[:event_seq]
+            expect(queued).to include(line: "/side q", anytime: true)
+            expect(queued[:event_seq]).to be < card[:event_seq]
+            expect(card[:event_seq]).to be < done[:event_seq]
+            expect(done).to include(anytime: true)
             expect(seen.count { |e| e[:type] == :command_ran }).to eq(1)
           end
         end

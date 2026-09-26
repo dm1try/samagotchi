@@ -599,7 +599,10 @@ module Samagotchi
         next false if expired?("command_expired", deadline, sid: session_id, client_id: command[:client_id])
 
         @on_command.call(command)
-        @engine.announce(type: :command_queued, **command)
+        # An anytime command runs now, beside a turn (D8): the UIs show its
+        # line here, so the cards it shows come after it.
+        anytime = command_registry.lookup(line)&.anytime ? { anytime: true } : {}
+        @engine.announce(type: :command_queued, **command, **anytime)
         true
       end
       return deadline_passed("command") unless queued

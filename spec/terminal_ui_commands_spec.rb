@@ -127,9 +127,29 @@ RSpec.describe Samagotchi::TerminalUI do
     it "prints a plugin's notice between turns under its bundle's name, and a card shown again marked (updated)" do
       engine.send(:hook_notify, "saved", :info, "plugin.rb (bundle sample-plugin)")
       engine.show_card(source: "b", title: "One", id: "c1")
+      agent.send(:flush_pending_cards)
       engine.show_card(source: "b", title: "Two", id: "c1")
       agent.send(:flush_pending_cards)
       expect(lines).to eq(["sample-plugin> saved", "┌ One · b", "└", "┌ Two (updated) · b", "└"])
+    end
+
+    it "prints a card replaced within one flush once, as its last" do
+      engine.show_card(source: "b", title: "thinking", id: "c1")
+      engine.show_card(source: "b", title: "other", id: "c2")
+      engine.show_card(source: "b", title: "answer", id: "c1")
+      agent.send(:flush_pending_cards)
+      expect(lines).to eq(["┌ other · b", "└", "┌ answer · b", "└"])
+    end
+
+    it "prints an anytime command's cards as it shows them at the prompt (main thread), each version" do
+      engine.command_registry.register("/side", "side", anytime: true, source: "b") do |_args|
+        engine.show_card(source: "b", title: "thinking…", id: "c1")
+        seen_during = lines.dup
+        engine.show_card(source: "b", title: "the answer", id: "c1")
+        "done #{seen_during.size}"
+      end
+      agent.send(:run_input_line, nil, "/side")
+      expect(lines).to eq(["┌ thinking… · b", "└", "┌ the answer (updated) · b", "└", "", "model> done 2"])
     end
 
     it "leaves a turn's card to the turn's sink" do

@@ -125,6 +125,28 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
       expect(reader).not_to have_received(:prefill_next)
     end
 
+    it "prints an anytime command's cards mid-turn as it shows them, not as the turn's" do
+      started = Queue.new
+      engine.command_registry.register("/side", "side", anytime: true, source: "b") do |_args|
+        engine.show_card(source: "b", title: "thinking…", id: "c1")
+        engine.show_card(source: "b", title: "answer", id: "c1")
+        started << Thread.current
+        nil
+      end
+      lines_mid_turn = nil
+      allow(engine).to receive(:turn_running?).and_return(true)
+      allow(engine).to receive(:run_turn) do
+        repl_input << [:line, "/side q"]
+        started.pop.join(2)
+        lines_mid_turn = surface.lines.flat_map { |line| line.split("\n") }
+        result
+      end
+
+      agent.send(:run_engine_turn, session, "go")
+
+      expect(lines_mid_turn).to include("┌ thinking… · b", "┌ answer (updated) · b")
+    end
+
     it "keeps an anytime command's output for the prompt's flush once the turn has ended" do
       engine.command_registry.register("/side", "side", anytime: true, source: "b") { |_args| "later" }
       thread = nil

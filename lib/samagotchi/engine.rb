@@ -464,6 +464,8 @@ module Samagotchi
     # @raise [ArgumentError] a card without a title, or a bad action
     def show_card(source:, title:, body: "", actions: [], level: :info, id: nil)
       card = build_card(source: source, title: title, body: body, actions: actions, level: level, id: id)
+      return announce_anytime(card.merge(in_turn: false))[:id] if anytime_thread?
+
       sink = nil
       in_turn = @activity_mutex.synchronize do
         sink = @turn_event_sink
@@ -477,6 +479,31 @@ module Samagotchi
       end
       card[:id]
     end
+
+    # Run an anytime command's block (D8): the cards and notices it shows on
+    # this thread are announced at once, marked anytime: true, and are
+    # never a running turn's events. They belong to the command, not the
+    # turn, and a UI shows them after the command's own line (a web
+    # command bubble drawn at its command_queued), even mid-turn.
+    # @return the block's value
+    def running_anytime
+      key = :"samagotchi_anytime_#{object_id}"
+      outer = Thread.current[key]
+      Thread.current[key] = true
+      yield
+    ensure
+      Thread.current[key] = outer
+    end
+
+    def anytime_thread? = Thread.current[:"samagotchi_anytime_#{object_id}"] == true
+    private :anytime_thread?
+
+    def announce_anytime(event)
+      event = event.merge(anytime: true)
+      announce(event)
+      event
+    end
+    private :announce_anytime
 
     # Run the block holding back the cards and between-turns notices it
     # announces on this thread, so the caller announces them after its own
@@ -1013,7 +1040,9 @@ module Samagotchi
       level = (level || :info).to_sym
       level = :info unless %i[info warn].include?(level)
       notice = { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level }
-      if in_turn
+      if anytime_thread?
+        announce_anytime(notice.merge(between_turns: true))
+      elsif in_turn
         emit_event(sink, notice)
       else
         announce_or_hold(notice.merge(between_turns: true))

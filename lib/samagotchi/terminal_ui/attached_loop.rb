@@ -195,6 +195,10 @@ module Samagotchi
         when :used_memories_updated
           @memory_names = Array(event[:used_memory_names])
           refresh_status
+        # Another client's anytime command: its line now, before the cards
+        # it shows (its command_ran comes when it's done).
+        when :command_queued
+          @screen.commit(prompt_line(event[:client_id], event[:line])) if event[:anytime] && !own?(event[:client_id])
         when :command_ran
           command_ran(event)
           return first_command_ran(event) if @first_command_id && event[:command_id] == @first_command_id
@@ -390,7 +394,7 @@ module Samagotchi
       end
 
       def command_ran(event)
-        @screen.commit(prompt_line(event[:client_id], event[:line])) unless own?(event[:client_id])
+        @screen.commit(prompt_line(event[:client_id], event[:line])) unless own?(event[:client_id]) || event[:anytime]
         output = event[:output].to_s
         if output.empty?
           nil

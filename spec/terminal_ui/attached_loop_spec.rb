@@ -241,6 +241,18 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(lines.index("┌ Mid · sample-plugin")).to be > lines.index { |line| line.include?("go") }
     end
 
+    it "shows another client's anytime command line at its command_queued, before its cards, once" do
+      feed(snapshot,
+           { type: :command_queued, command_id: "a1", client_id: "web:1", line: "/btw why?", anytime: true },
+           card("b1", "btw: why?", anytime: true),
+           { type: :command_ran, command_id: "a1", client_id: "web:1", line: "/btw why?", status: "ok", output: "",
+             changed: [], anytime: true },
+           { type: :command_queued, command_id: "m1", client_id: "web:1", line: "/model" })
+
+      shown = lines.grep(/btw|model/)
+      expect(shown).to eq(["web> /btw why?", "┌ btw: why? · sample-plugin"])
+    end
+
     it "on a resync shows only the cards not shown yet" do
       feed(snapshot, card("c1", "Hello"))
       resync = snapshot(type: :reset)
