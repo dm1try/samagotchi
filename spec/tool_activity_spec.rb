@@ -43,6 +43,18 @@ RSpec.describe Samagotchi::ToolActivity do
       .to include(action: "calling tool", params: 'query="open bugs" limit="5"')
   end
 
+  it "takes the parsers' args: when the call has them, a list or object as JSON" do
+    call = { name: "jira_search", content: "raw", args: { "query" => "bug", "labels" => ["a"], "opts" => { "x" => 1 } } }
+    expect(described_class.tool_activity_params("jira_search", call, registry: registry))
+      .to eq('query="bug" labels="[\\"a\\"]" opts="{\\"x\\":1}"')
+  end
+
+  it "falls back to key=value when the preview raises" do
+    tools = registry(preview: ->(_call) { raise "boom" })
+    call = { name: "jira_search", args: { "query" => "bug" } }
+    expect(described_class.tool_activity_params("jira_search", call, registry: tools)).to eq('query="bug"')
+  end
+
   it "reaches the tool_call_started params (the spinner) and the completed activity through ToolRunner" do
     kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
     kernel.tools = registry

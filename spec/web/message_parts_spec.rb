@@ -105,6 +105,28 @@ RSpec.describe Samagotchi::Web::MessageParts do
     end
   end
 
+  describe "a plugin tool" do
+    let(:qwen) { qwen_call("echo_args", text: "BANANA42", times: 3) }
+    let(:output) { [{ content: "[echo_args]\necho: text=BANANA42 times=3 (Integer)" }] }
+
+    it "shows its arguments as key=\"value\" without a registry that knows it (the web's reload)" do
+      gemma = '<|tool_call>call:echo_args{text:<|"|>BANANA42<|"|>,times:3}<tool_call|>'
+      chat = { content: "", tool_calls: [{ id: "c1", name: "echo_args", arguments: { "text" => "BANANA42", "times" => 3 } }] }
+      [described_class.for_message({ content: qwen }, output), described_class.for_message({ content: gemma }, output),
+       described_class.for_message(chat, [{ content: "x", tool_call_id: "c1" }])].each do |parts|
+        expect(parts[:tools].first).to include(tool: "echo_args", params: 'text="BANANA42" times="3"')
+      end
+    end
+
+    it "shows its preview from a registry that has it" do
+      registry = Samagotchi::Tools::Builtins.registry
+      registry.register("echo_args", schema: { parameters: { properties: { times: { type: "integer" } } } },
+                                     handler: ->(*) { "" }, source: "sample-plugin",
+                                     preview: ->(call) { "#{call[:args]["text"]} ×#{call[:args]["times"]}" })
+      expect(described_class.for_message({ content: qwen }, output, registry: registry)[:tools].first[:params]).to eq("BANANA42 ×3")
+    end
+  end
+
   describe "a message it can't read" do
     it "gives no tools for an unclosed call block" do
       expect(described_class.for_message({ content: "<tool_call>\n<function=execute>\n<parameter=command>\nls" }, [])).to be_nil

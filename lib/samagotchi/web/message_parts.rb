@@ -4,6 +4,7 @@ require_relative "../model_profile"
 require_relative "../tool_call_parser"
 require_relative "../tool_activity"
 require_relative "../llm/native_tool_normalizer"
+require_relative "../tools/builtins"
 
 module Samagotchi
   module Web
@@ -19,6 +20,12 @@ module Samagotchi
     #     tool_calls ({id, name, arguments}), then one tool_response per call
     #     (tool_call_id).
     # A message that can't be read gives no parts, never an error.
+    #
+    # A plugin tool's params come from the given registry's entry (its
+    # preview). The web server has no Engine, so it passes none: the
+    # built-ins', and a plugin tool's arguments show as key="value" from
+    # the parsers' args:, as the live row shows them for a tool without a
+    # preview.
     module MessageParts
       JOINER = "\n\n---\n\n"
       # A joined output's pieces each start with "[tool]": split there first,
@@ -38,15 +45,16 @@ module Samagotchi
 
       # @param message [Hash] a saved model message (symbol or string keys)
       # @param responses [Array<Hash>] the tool_response messages after it
+      # @param registry [Tools::Registry] the session's tools
       # @return [Hash, nil] { thinking:, tools: [{ tool:, params:, output:,
       #   output_truncated: }] } with only what it found; nil for nothing
-      def for_message(message, responses)
+      def for_message(message, responses, registry: Tools::Builtins.default)
         content = field(message, :content).to_s
         calls = field(message, :tool_calls)
         tools = if calls.is_a?(Array) && !calls.empty?
-                  native_tools(calls, responses)
+                  native_tools(calls, responses, registry)
                 else
-                  markup_tools(content, responses)
+                  markup_tools(content, responses, registry)
                 end
         parts = {}
         thinking = [field(message, :thinking).to_s.strip, thinking_of(content)].reject(&:empty?).join("\n\n")
@@ -66,7 +74,7 @@ module Samagotchi
         blocks.map(&:strip).reject(&:empty?).join("\n\n")
       end
 
-      def markup_tools(content, responses)
+      def markup_tools(content, responses, registry)
         calls = []
         calls.concat(ToolCallParser::Qwen.new(ModelProfile.qwen36).parse(content)) if content.include?("<tool_call>")
         calls.concat(ToolCallParser::Gemma.new(ModelProfile.gemma4).parse(content)) if content.include?("<|tool_call>")
@@ -74,16 +82,16 @@ module Samagotchi
 
         joined = responses.empty? ? nil : responses.map { |r| field(r, :content).to_s }.join(JOINER)
         outputs = split_outputs(joined, calls.length)
-        calls.each_with_index.map { |call, i| tool_part(call, outputs[i]) }
+        calls.each_with_index.map { |call, i| tool_part(call, outputs[i], registry) }
       end
 
-      def native_tools(calls, responses)
+      def native_tools(calls, responses, registry)
         by_id = responses.to_h { |r| [field(r, :tool_call_id), r] }
         calls.each_with_index.map do |raw, i|
           ref = CallRef.new(field(raw, :name).to_s, field(raw, :arguments))
           call = LLM::NativeToolNormalizer.normalize(ref) || { name: ref.name }
           response = by_id[field(raw, :id)] || (field(responses[i], :tool_call_id).nil? ? responses[i] : nil)
-          tool_part(call, response && field(response, :content).to_s)
+          tool_part(call, response && field(response, :content).to_s, registry)
         end
       end
 
@@ -103,9 +111,9 @@ module Samagotchi
         head + [rest.empty? ? nil : rest.join(JOINER)]
       end
 
-      def tool_part(call, output)
+      def tool_part(call, output, registry)
         name = call[:name].to_s
-        part = { tool: name, params: ToolActivity.tool_activity_params(name, call).to_s }
+        part = { tool: name, params: ToolActivity.tool_activity_params(name, call, registry: registry).to_s }
         unless output.nil?
           part[:output] = output.length > OUTPUT_MAX ? output[0, OUTPUT_MAX] : output
           part[:output_truncated] = true if output.length > OUTPUT_MAX

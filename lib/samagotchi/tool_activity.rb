@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "log"
 require_relative "tools/execute"
 require_relative "tools/read"
 require_relative "tools/write"
@@ -153,7 +154,14 @@ module Samagotchi
     def registry_params(entry, call)
       return nil if entry&.core?
       return nil if entry.nil? && !call[:args].is_a?(Hash)
-      return entry.preview.call(call) if entry&.preview
+      if entry&.preview
+        begin
+          return entry.preview.call(call)
+        rescue StandardError => e
+          Log.warn(:plugins, "plugin_preview_failed", tool: entry.name, error: e.class.name,
+                                                      msg: "#{entry.name} preview failed: #{e.message}")
+        end
+      end
 
       given = call[:args].is_a?(Hash) ? call[:args] : call.except(:name)
       parts = given.filter_map do |key, value|
