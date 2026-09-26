@@ -30,3 +30,14 @@ test("passes a precomputed pct through", () => {
 test("ignores chunks without token counts", () => {
   assert.equal(extractCtxPct({ payload: { content: "hi" } }, 1000), null);
 });
+
+// Shape of the kernel's :context_status event (kernel_loop emit_context_status_event).
+test("reads usage.estimated_pct from a context_status event", () => {
+  const event = {
+    type: "context_status", iteration: 1, status: "ctx 12% (ok)", bucket: "ok", source: "estimate",
+    usage: { window_tokens: 32768, window_source: "props", estimated_used_tokens: 3932,
+             estimated_remaining_tokens: 28836, estimated_pct: 12.0, source: "estimate" },
+  };
+  assert.equal(extractCtxPct(event), 12.0);
+  assert.equal(extractCtxPct(event, 1000), 12.0);
+});
