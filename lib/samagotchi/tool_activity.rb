@@ -36,7 +36,7 @@ module Samagotchi
         action: tool_activity_action(tool_name, registry: registry),
         tool: tool_name,
         params: tool_activity_params(tool_name, call, registry: registry),
-        status: tool_activity_status(result)
+        status: tool_activity_status(result, tool_name)
       }
     end
 
@@ -63,8 +63,23 @@ module Samagotchi
       end
     end
 
-    def tool_activity_status(result)
-      result.to_s.start_with?("Error:") ? "error" : "ok"
+    # "error" for an "Error:" result, and for an execute whose command
+    # exited non-zero (its last "exit: N" line; no number: killed by a
+    # signal), so the turn tally's "(N failed)" counts it.
+    def tool_activity_status(result, tool_name = nil)
+      text = result.to_s
+      return "error" if text.start_with?("Error:")
+      return "error" if tool_name == Tools::Execute::NAME && execute_failed?(text)
+
+      "ok"
+    end
+
+    def execute_failed?(text)
+      exit_line = text.lines.reverse_each.find { |line| line.start_with?("exit: ") }
+      return false unless exit_line
+
+      code = exit_line[/\Aexit: (\d*)/, 1]
+      code != "0"
     end
 
     def tool_activity_params(tool_name, call, registry: nil)

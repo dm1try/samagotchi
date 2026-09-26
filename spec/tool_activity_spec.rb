@@ -64,4 +64,25 @@ RSpec.describe Samagotchi::ToolActivity do
     expect(events.find { |e| e[:type] == :tool_call_started }[:params]).to eq('query="bug"')
     expect(events.find { |e| e[:type] == :tool_call_completed }[:activity]).to include(params: 'query="bug"', status: "ok")
   end
+
+  describe "status" do
+    it "counts an execute that exited non-zero as an error" do
+      expect(described_class.tool_activity_status("stderr:\nls: /nonexistent: No such file\nexit: 1", "execute")).to eq("error")
+      expect(described_class.tool_activity_status("exit: 2 (no output)", "execute")).to eq("error")
+      expect(described_class.tool_activity_status("stdout:\nkilled\nexit: ", "execute")).to eq("error")
+    end
+
+    it "keeps exit 0, other tools' text and results without an exit line ok" do
+      expect(described_class.tool_activity_status("stdout:\nexit: 1\nexit: 0", "execute")).to eq("ok")
+      expect(described_class.tool_activity_status("exit: 0 (no output)", "execute")).to eq("ok")
+      expect(described_class.tool_activity_status("exit: 1", "read")).to eq("ok")
+      expect(described_class.tool_activity_status("done", "execute")).to eq("ok")
+      expect(described_class.tool_activity_status("Error: cwd not found: /x", "execute")).to eq("error")
+    end
+
+    it "carries it into the activity event" do
+      expect(described_class.tool_activity_event("execute", { name: "execute", content: "false" }, "exit: 1 (no output)")[:status])
+        .to eq("error")
+    end
+  end
 end
