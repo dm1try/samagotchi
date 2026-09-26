@@ -61,13 +61,13 @@ test("turnHistoryHtml with parts: each step expands to its thinking, text and ca
   assert.equal(html,
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
     '<details class="turn-work done"><summary>3 steps · 2 tool calls</summary>' +
-    '<details class="gen"><summary>Let me check. · 1 tool call</summary><div class="thinking-body">plan &lt;a&gt;</div><div class="gen-text">Let me check.</div>' +
+    '<details class="gen"><summary>Let me check. · 1 tool call</summary><details class="thinking"><summary>thinking</summary><div class="thinking-body">plan &lt;a&gt;</div></details><div class="gen-text">Let me check.</div>' +
     '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok">done</span><span class="activity-tool">execute</span>' +
     '<span class="activity-params">command=&quot;true&quot;</span><span class="activity-duration">7ms</span><div class="activity-output" title="exit: 0">exit: 0</div></div></div></details>' +
     '<details class="gen"><summary>working with read · 1 tool call</summary>' +
     '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok">done</span><span class="activity-tool">read</span>' +
     `<span class="activity-params">path=&quot;R.md&quot;</span><span class="activity-duration">1.2s</span><div class="activity-output" title="${"x".repeat(310)}">${"x".repeat(300)}…</div></div></div></details>` +
-    '<details class="gen"><summary>thinking</summary><div class="thinking-body">sum up</div></details>' +
+    '<details class="gen"><summary>thinking</summary><details class="thinking"><summary>thinking</summary><div class="thinking-body">sum up</div></details></details>' +
     '</details>' +
     '<div class="bubble output">Both fine.</div><div class="turn-timing">turn 1 · 19s</div>');
 });
