@@ -46,7 +46,12 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 
 ## Memory Bundles — shareable packs
 
-Bundles are versioned directories/zips/tar.gz/git URLs containing `manifest.yml` + `*.md`. They are shareable and installable.
+Bundles are versioned directories/zips/tar.gz/git URLs with a `manifest.yml` and any of: memories (`*.md`), `hooks/*.rb` (bundle hooks, `docs/hooks.md`), `guardrails/*.yml` (rules, `docs/guardrails.md`), a `plugin.rb` (commands, tools, hooks, services; `docs/plugins.md`). They are shareable and installable.
+
+- Manifest: `files:` (memory → `sha256:`), `hooks:` (file → sha256/event/on_error/priority), `plugin: {file: plugin.rb, sha256: sha256:…}`, `requires_chi: ">= 0.1.30"` (gem-style), `needs:` (outside commands looked up on `PATH`, advisory; `docs/memory.md` "Bundles that need outside commands").
+- Integrity: each file's sha256 is recorded at install; a hook/plugin/rule file changed afterwards is not loaded (rules: every call denied) until reinstalled. It is an integrity check, not proof of authorship.
+- Installing = trusting its Ruby code (hooks, plugin), like a gem. Install only copies; the code runs at the next session start (`Engine.new`), so a running worker needs a restart to pick it up.
+- A bundle without `*.md` (btw, mcp) adds no line to the prompt's memory index.
 
 ### CLI — `bin/chi bundle`
 
@@ -99,4 +104,4 @@ bin/chi bundle build --scope system --out updated.zip
 
 ## Current system bundle
 
-`samagotchi-system` (`lib/samagotchi/bundles/system/manifest.yml`) ships `identity.md` + `self_map.md` + `config_modification_protocol.md` + this guide itself. It is auto-installed/upgraded on first `Engine` creation (`SystemBundle.ensure!`) — no manual install needed. Bump `manifest.yml` `version` when editing bundled files so existing installs upgrade (3-way merge).
+`samagotchi-system` (`lib/samagotchi/bundles/system/manifest.yml`) ships `identity.md` + `self_map.md` + `config_modification_protocol.md` + `delegated.md` + this guide itself. It is auto-installed/upgraded on first `Engine` creation (`SystemBundle.ensure!`) — no manual install needed. Bump `manifest.yml` `version` when editing bundled files so existing installs upgrade (3-way merge).
