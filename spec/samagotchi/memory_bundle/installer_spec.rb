@@ -333,6 +333,60 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
   end
 
+  describe "upgrade: files the new version no longer ships" do
+    def bundle_version(dir, files, version)
+      FileUtils.rm_rf(File.join(tmpdir, dir))
+      write_bundle(File.join(tmpdir, dir), files, name: "drop-bundle", version: version)
+    end
+
+    def upgrade(source, force: false, dry_run: false)
+      described_class.new(source: source, name: "drop-bundle", scope: "system", strict: true, upgrade: true,
+                          force: force, dry_run: dry_run).tap(&:run)
+    end
+
+    let(:index_path) { File.join(system_memories_dir, "index.md") }
+    let(:old_path) { File.join(system_memories_dir, "old.md") }
+
+    before do
+      installer_for(source: bundle_version("v1", { "keep.md" => "# Keep\n", "old.md" => "# Old\n" }, "0.1.0"),
+                    name: "drop-bundle", scope: "system").run
+    end
+
+    it "removes an unedited dropped file and its index line" do
+      expect(File.read(index_path)).to include("old")
+      up = upgrade(bundle_version("v2", { "keep.md" => "# Keep\n" }, "0.1.1"))
+
+      expect(File.exist?(old_path)).to be false
+      expect(File.exist?(File.join(system_memories_dir, "keep.md"))).to be true
+      expect(File.read(index_path)).not_to match(/^.*\bold\b/)
+      expect(up.results["old.md"][:status]).to eq("removed")
+      expect(up.summary).to include("Removed (no longer in the bundle): old.md")
+      data = JSON.parse(File.read(File.join(bundles_dir, "drop-bundle", "manifest.json")))
+      expect(data["files"].keys).to eq(["keep.md"])
+    end
+
+    it "keeps an edited dropped file with a one-line note" do
+      File.write(old_path, "# Old\nmy notes\n")
+      up = upgrade(bundle_version("v2", { "keep.md" => "# Keep\n" }, "0.1.1"))
+
+      expect(File.read(old_path)).to include("my notes")
+      expect(up.results["old.md"][:status]).to eq("kept_pruned")
+      expect(up.warnings).to include("Kept old.md: no longer in the bundle but edited locally (use --force to remove)")
+    end
+
+    it "removes an edited dropped file with --force" do
+      File.write(old_path, "# Old\nmy notes\n")
+      upgrade(bundle_version("v2", { "keep.md" => "# Keep\n" }, "0.1.1"), force: true)
+      expect(File.exist?(old_path)).to be false
+    end
+
+    it "only reports the removal on a dry run" do
+      up = upgrade(bundle_version("v2", { "keep.md" => "# Keep\n" }, "0.1.1"), dry_run: true)
+      expect(File.exist?(old_path)).to be true
+      expect(up.results["old.md"][:status]).to eq("would_remove")
+    end
+  end
+
   describe "#summary" do
     it "reports installed and skipped files" do
       bundle_dir = write_bundle(tmpdir, {

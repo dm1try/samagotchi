@@ -269,21 +269,9 @@ module Samagotchi
         # Like the rules, the bundle's plugin replaces an earlier one.
         plugin_file_for_provenance = install_plugin(manifest, normalized_dir, provenance)
 
-        # Handle pruned files (removed from bundle) — report warnings
+        # Files the previous version shipped and this one doesn't.
         if @upgrade && existing_provenance && existing_provenance[:files]
-          existing_provenance[:files].keys.each do |old_key|
-            old_key_str = old_key.to_s
-            next if all_files_in_bundle.include?(old_key_str) || all_files_in_bundle.include?(old_key.to_s.to_sym.to_s)
-            # File was in previous bundle but not in new bundle
-            old_target = File.join(target_dir, old_key_str)
-            if File.exist?(old_target) && !@dry_run
-              base_path = provenance.base_path(old_key_str)
-              if File.exist?(base_path) && Merger.current_modified?(base_path, old_target) && !@force
-                @warnings << "Bundle no longer includes #{old_key_str} but local file has edits — keeping (use --force to remove)"
-                @results[old_key_str] = { status: "kept_pruned", reason: "local edits preserved" } unless @results.key?(old_key_str)
-              end
-            end
-          end
+          prune_dropped_files(existing_provenance[:files], all_files_in_bundle, target_dir, target_scope, provenance)
         end
 
         # Verify checksums if we have a manifest (strict).
@@ -406,11 +394,15 @@ module Samagotchi
         conflicts = @results.select { |_, r| r[:status].to_s == "conflict" }.keys
         would_install = @results.select { |_, r| r[:status].to_s == "would_install" }.keys
         fast_forward = @results.select { |_, r| r[:status].to_s == "fast_forward" }.keys
+        removed = @results.select { |_, r| r[:status].to_s == "removed" }.keys
+        would_remove = @results.select { |_, r| r[:status].to_s == "would_remove" }.keys
 
         lines << "Installed: #{installed.join(', ')}" unless installed.empty?
         lines << "Updated: #{updated.join(', ')}" unless updated.empty?
         lines << "Would install: #{would_install.join(', ')}" unless would_install.empty?
         lines << "Fast-forward: #{fast_forward.join(', ')}" unless fast_forward.empty?
+        lines << "Removed (no longer in the bundle): #{removed.join(', ')}" unless removed.empty?
+        lines << "Would remove (no longer in the bundle): #{would_remove.join(', ')}" unless would_remove.empty?
         lines << "Kept (local edits preserved): #{kept.join(', ')}" unless kept.empty?
         lines << "Skipped: #{skipped.join(', ')}" unless skipped.empty?
         lines << "Conflicts: #{conflicts.join(', ')}" unless conflicts.empty?
@@ -421,6 +413,44 @@ module Samagotchi
       end
 
       private
+
+      # A file the previous version installed that this one doesn't ship is
+      # removed (with its index line) when it still matches what was
+      # installed, or with --force; one the user edited is kept with a note.
+      def prune_dropped_files(previous_files, bundle_files, target_dir, scope, provenance)
+        previous_files.each do |old_key, meta|
+          key = old_key.to_s
+          next if bundle_files.include?(key)
+          target = File.join(target_dir, key)
+          next unless File.exist?(target)
+
+          if @force || installed_unchanged?(target, meta, provenance.base_path(key))
+            @results[key] = { status: @dry_run ? "would_remove" : "removed", reason: "no longer in the bundle" }
+            next if @dry_run
+            FileUtils.rm_f(target)
+            remove_target_index(scope, key)
+          else
+            @results[key] = { status: "kept_pruned", reason: "local edits preserved" }
+            @warnings << "Kept #{key}: no longer in the bundle but edited locally (use --force to remove)"
+          end
+        end
+      end
+
+      # Whether the file on disk is what the previous install wrote: its
+      # recorded checksum, else the base snapshot. Unknown counts as edited.
+      def installed_unchanged?(target, meta, base_path)
+        current = Digest::SHA256.hexdigest(File.read(target))
+        recorded = meta.is_a?(Hash) ? (meta[:checksum] || meta["checksum"]).to_s.sub(/\Asha256:/, "") : ""
+        return current == recorded unless recorded.empty?
+        File.exist?(base_path) && current == Digest::SHA256.hexdigest(File.read(base_path))
+      end
+
+      def remove_target_index(scope, file_key)
+        IndexUpdater.remove_index(scope, file_key.delete_suffix(".md"))
+        IndexUpdater.remove_index(scope, file_key) # legacy "name.md" line
+      rescue StandardError
+        # Best-effort, like update_target_index.
+      end
 
       # One warning per need not found on this PATH (read-only, so dry-run
       # too). Installing goes ahead: needs are advisory.
