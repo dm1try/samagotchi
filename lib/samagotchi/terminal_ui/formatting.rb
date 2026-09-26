@@ -46,7 +46,7 @@ module Samagotchi
         head = paint("┌ #{title}", card[:level].to_s == "warn" ? 33 : 1)
         head += paint(" · #{source}", 90) unless source.empty?
         lines = [head]
-        wrap_plain(card[:body].to_s, width - 2).each { |line| lines << (line.empty? ? rail : "#{rail} #{line}") }
+        wrap_plain(strip_markdown(card[:body].to_s), width - 2).each { |line| lines << (line.empty? ? rail : "#{rail} #{line}") }
         Array(card[:actions]).each do |action|
           command = action[:command].to_s
           label = action[:label].to_s
@@ -56,6 +56,17 @@ module Samagotchi
         end
         lines << paint("└", 90)
         lines.join("\n")
+      end
+
+      # A card body's markdown made plain, cheaply (there is no terminal
+      # markdown): **x** and __x__ are x, backticks and code fences go, and
+      # so do headings' #s. Lists stay as they are.
+      def strip_markdown(text)
+        text.gsub(/^[ \t]*```.*(?:\n|\z)/, "")
+            .gsub(/^[ \t]{0,3}\#{1,6}[ \t]+/, "")
+            .gsub(/\*\*(.+?)\*\*/, '\1')
+            .gsub(/__(.+?)__/, '\1')
+            .delete("`")
       end
 
       # The columns a card is wrapped to: the terminal's (a view with a

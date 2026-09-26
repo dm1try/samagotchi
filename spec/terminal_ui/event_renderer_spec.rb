@@ -91,6 +91,20 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
       expect(renderer.card_shown?("c2")).to be false
     end
 
+    it "shows the body's markdown plain: bold, code and headings' marks go, lists stay" do
+      body = "## Counts\nThis session has **2** messages, __new__.\n\n- from the `sample-plugin` bundle\n```\nx = 1\n```"
+      renderer.call(card.merge(body: body, actions: []))
+      expect(view.lines.last.split("\n")).to eq([
+        "┌ Hello · sample-plugin",
+        "│ Counts",
+        "│ This session has 2 messages, new.",
+        "│",
+        "│ - from the sample-plugin bundle",
+        "│ x = 1",
+        "└"
+      ])
+    end
+
     it "splits a word longer than a line" do
       expect(view.wrap_plain("#{"x" * 25} y", 10)).to eq(["xxxxxxxxxx", "xxxxxxxxxx", "xxxxx y"])
       expect(view.wrap_plain(" \n ", 10)).to eq([])
