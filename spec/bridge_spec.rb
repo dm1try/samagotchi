@@ -1250,6 +1250,15 @@ RSpec.describe Samagotchi::Bridge do
         expect(res.code).to eq("404")
       end
 
+      it "takes the Engine's plugin commands too (a card's action)" do
+        queued = []
+        start_bridge(on_command: ->(command) { queued << command })
+        @engine.command_registry.register("/hello", "greet", source: "sample-plugin") { |_args| "hi" }
+
+        expect(post_command(JSON.generate(line: "/hello again")).first).to eq(202)
+        expect(queued.map { |c| c[:line] }).to eq(["/hello again"])
+      end
+
       it "answers 501 when nothing runs commands (a Bridge without a worker loop)" do
         start_bridge
 

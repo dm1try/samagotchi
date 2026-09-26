@@ -572,7 +572,10 @@ module Samagotchi
       return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }] unless parsed.is_a?(Hash)
 
       line = fetched(parsed, "line").to_s.strip
-      unless SessionCommands.command?(line)
+      # The Engine's own commands: the built-ins and its plugins' (a card's
+      # action is a plugin command line).
+      registry = @engine.respond_to?(:command_registry) ? @engine.command_registry : SessionCommands.builtin_registry
+      unless registry.command?(line)
         return [{ "Allow" => "POST" }, 400, { error: "unknown_command", detail: "not a session command: #{line[0, 80]}" }]
       end
 
