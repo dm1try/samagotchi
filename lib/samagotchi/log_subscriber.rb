@@ -91,7 +91,8 @@ module Samagotchi
       log(:info, :generation_completed, iteration: event[:iteration],
                                         ms: since(@generation_started_at.delete(event[:iteration])),
                                         served_model: event[:served_model], requested_model: event[:requested_model],
-                                        content_length: event[:content_length])
+                                        content_length: event[:content_length],
+                                        thinking_chars: event[:thinking_chars])
     end
 
     def on_generation_retrying(event)

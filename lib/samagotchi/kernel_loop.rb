@@ -238,6 +238,9 @@ module Samagotchi
         # This generation's own server counts (the run-long
         # context_state[:server_usage] can hold an earlier one's).
         generation_usage = nil
+        # The thinking this generation streamed, for the log (a stuck
+        # thinking generation shows as thinking_chars=N content_length=…).
+        streamed_thinking = 0
         # Fire :before_generation hook
         gen_event = { type: :before_generation, iteration: iteration_index + 1 }
         fire_hook(:before_generation, gen_event) if @hooks
@@ -253,6 +256,7 @@ module Samagotchi
               served_model = named if named.is_a?(String) && !named.strip.empty?
               split = stream_splitter.feed(chunk[:content])
               partial_assistant_buffer << split[:text]
+              streamed_thinking += split[:thinking].to_s.length
               if on_stream_event
                 emit_stream_event(
                   on_stream_event,
@@ -267,6 +271,7 @@ module Samagotchi
             on_retry: lambda { |retry_event|
               # The retry streams from the start: its counts replace these.
               generation_usage = nil
+              streamed_thinking = 0
               next unless on_stream_event
 
               emit_stream_event(
@@ -286,6 +291,7 @@ module Samagotchi
           type: :generation_completed,
           iteration: iteration_index + 1,
           content_length: response.to_s.length,
+          thinking_chars: thinking_chars(response.to_s, streamed_thinking),
           served_model: served_model,
           requested_model: resolved_model_name
         )
@@ -828,6 +834,15 @@ module Samagotchi
       @parser
     end
     private
+
+    # The generation's thinking: what the stream split into the thinking
+    # lane (Qwen), else what the profile's thought blocks hold (Gemma's
+    # stream isn't split).
+    def thinking_chars(response, streamed)
+      return streamed if streamed.positive?
+
+      response.length - strip_thought_blocks(response).length
+    end
 
     # Remove thought blocks from model output. The format depends on profile
     # (Gemma 4 <|think|>/channel blocks vs Qwen 3.6 literal think tokens);

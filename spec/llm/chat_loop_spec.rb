@@ -210,7 +210,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         .to include(context_window_tokens: 32_768, context_window_source: :server)
       chunk = events.select { |e| e[:type] == :generation_chunk }.last
       expect(chunk).to include(text: "done", thinking: "hmm", content: "hmmdone")
-      expect(events.select { |e| e[:type] == :generation_completed }.last[:content_length]).to eq(4)
+      expect(events.select { |e| e[:type] == :generation_completed }.last).to include(content_length: 4, thinking_chars: 3)
     end
 
     it "takes a remote host's window from its model list, without probing a /props it doesn't have" do

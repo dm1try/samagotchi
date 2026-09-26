@@ -740,6 +740,36 @@ Need to inspect the filesystem first.
       expect(completed).to include(served_model: "ornith-1.5", requested_model: "qwen-asked")
     end
 
+    it "counts the generation's thinking in :generation_completed (Gemma: its thought blocks)" do
+      events = []
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        kwargs[:on_chunk]&.call(content: "<|think|>hmm, well", payload: {})
+        kwargs[:on_chunk]&.call(content: "<|channel>Hi", payload: {})
+        "<|think|>hmm, well<|channel>Hi"
+      end
+
+      kernel.run([{ role: "user", content: "hi" }], on_stream_event: ->(event) { events << event })
+
+      completed = events.find { |event| event[:type] == :generation_completed }
+      expect(completed).to include(content_length: 30, thinking_chars: 18)
+    end
+
+    it "counts the thinking a Qwen stream split off, and zero without any" do
+      events = []
+      responses = ["<think>\nlooping on a thought</think>\n\nok", "plain"]
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        response = responses.shift
+        kwargs[:on_chunk]&.call(content: response, payload: {})
+        response
+      end
+      qwen = described_class.new(client: client, profile: Samagotchi::ModelProfile.qwen36)
+
+      2.times { qwen.run([{ role: "user", content: "hi" }], on_stream_event: ->(event) { events << event }) }
+
+      counts = events.select { |event| event[:type] == :generation_completed }.map { |event| event[:thinking_chars] }
+      expect(counts).to eq(["\nlooping on a thought".length, 0])
+    end
+
     it "returns a canceled result when client generation is cancelled" do
       allow(client).to receive(:complete).and_raise(Samagotchi::Client::RequestCancelled.new(:manual))
 

@@ -30,7 +30,8 @@ RSpec.describe Samagotchi::LogSubscriber do
          { type: :generation_started, iteration: 1, profile: "qwen36" })
     now[0] = 101.5
     feed({ type: :generation_chunk, iteration: 1, text: "x" },
-         { type: :generation_completed, iteration: 1, served_model: "Qwen3.6", requested_model: "qwen", content_length: 42 },
+         { type: :generation_completed, iteration: 1, served_model: "Qwen3.6", requested_model: "qwen", content_length: 42,
+           thinking_chars: 900 },
          { type: :tool_call_started, iteration: 1, call_index: 0, tool: "read" })
     now[0] = 101.75
     feed({ type: :tool_call_completed, iteration: 1, call_index: 0, tool: "read", output: "[read]\nfile body", output_truncated: false })
@@ -40,7 +41,8 @@ RSpec.describe Samagotchi::LogSubscriber do
     expect(records.map { |r| [r.level, r.tag, r.sid, r.event, r.fields] }).to eq([
       ["INFO", "turn", "01234567", "turn_started", { "session" => "0123456789abcdef", "prompt_chars" => "13", "client_id" => "web:tab1" }],
       ["INFO", "turn", "01234567", "generation_completed",
-       { "iteration" => "1", "ms" => "1500", "served_model" => "Qwen3.6", "requested_model" => "qwen", "content_length" => "42" }],
+       { "iteration" => "1", "ms" => "1500", "served_model" => "Qwen3.6", "requested_model" => "qwen", "content_length" => "42",
+         "thinking_chars" => "900" }],
       ["INFO", "turn", "01234567", "tool_call_completed", { "iteration" => "1", "tool" => "read", "ms" => "250", "output_chars" => "16" }],
       ["INFO", "turn", "01234567", "turn_completed", { "ms" => "3000", "result_chars" => "10", "tools" => "1" }]
     ])
