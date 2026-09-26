@@ -206,6 +206,9 @@ module Samagotchi
       @recap_handle = @engine.subscribe(observer: ->(event) { handle_recap_ready(event) })
       @question_handle = @engine.subscribe(observer: ->(event) { handle_question_event(event) })
       @card_handle = @engine.subscribe(observer: ->(event) { handle_card_event(event) })
+      # The plugins' slow setup, in the background from here on (a
+      # --non-interactive run leaves it to its turn).
+      @engine.start_init_tasks! unless @non_interactive
       # Synchronous TUI handler for in-turn ask_user_question: the turn thread IS the
       # REPL thread (run_engine_turn runs Engine#run_turn inline), so we must render
       # and collect input on the SAME thread without parking on a second thread.

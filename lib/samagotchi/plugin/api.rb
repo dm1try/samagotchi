@@ -29,6 +29,7 @@ module Samagotchi
         @commands = []
         @tools = []
         @services = []
+        @inits = []
         @committed = false
       end
 
@@ -165,6 +166,28 @@ module Samagotchi
         service
       end
 
+      # Slow setup (downloading a model, indexing a repo, logging in, an
+      # MCP server's first start) that must not hold chi's start: the block
+      # runs on its own thread once the session's UI can show it, not in
+      # #register. It gets the Context (ctx.cancelled? says chi is shutting
+      # down) and returns a short summary ("3 tools") or raises (the UIs
+      # show a warn card). Every UI shows it running (the label) and done.
+      # @param label [String] what it does, shown while it runs
+      # @param provides_tools [Boolean] it registers tools (chi.replace_tools):
+      #   a turn sent meanwhile waits for it before its first model request,
+      #   up to +timeout+; a Ctrl-C ends the wait
+      # @param quiet [Boolean] shown only if it fails (a background refresh)
+      # @param timeout [Numeric, nil] seconds a turn waits for it (default 60)
+      def init(label, provides_tools: false, quiet: false, timeout: nil, &block)
+        raise ArgumentError, "init needs a block" unless block
+        raise ArgumentError, "init needs a label" if label.to_s.strip.empty?
+        raise ArgumentError, "this chi runs no init tasks (plugins: false)" unless @registries.init
+
+        @inits << { label: label.to_s.strip, provides_tools: provides_tools ? true : false, quiet: quiet ? true : false,
+                    timeout: timeout && Float(timeout), block: block }
+        nil
+      end
+
       # Stop the services the plugin started: its load failed after all.
       def abort!
         @services.reverse_each(&:stop)
@@ -204,11 +227,17 @@ module Samagotchi
                                                      msg: "#{label} #{hook[:event]} hook failed: #{e.message}")
           end
         end
+        @inits.each do |init|
+          block = init[:block]
+          @registries.init.call(@bundle, init[:label], @label, provides_tools: init[:provides_tools], quiet: init[:quiet],
+                                                              timeout: init[:timeout]) { block.call(context) }
+        end
         @committed = true
       end
 
       # @return [Hash] how many of each it registered (for the log)
-      def counts = { commands: @commands.size, tools: @tools.size, hooks: @hooks.size, services: @services.size }
+      def counts = { commands: @commands.size, tools: @tools.size, hooks: @hooks.size, services: @services.size,
+                     inits: @inits.size }
 
       # A checked tool declaration (#tool's arguments).
       # @return [Hash] {name:, schema:, label:, preview:, targets:, block:}

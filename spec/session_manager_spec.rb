@@ -767,11 +767,11 @@ RSpec.describe Samagotchi::SessionManager do
       }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
     end
 
-    it "does not run the initial prompt of a session stopped before the worker took it" do
+    it "does not run the initial prompt of a session stopped before the worker took it, nor its plugins' init tasks" do
       session.last_prompt = "hello"
       session.status = Samagotchi::Session::STATUS_STOPPED
       session.save(state_dir: tmpdir)
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
                                               turn_running?: false, last_activity_at: 0.0)
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
@@ -780,10 +780,11 @@ RSpec.describe Samagotchi::SessionManager do
       expect {
         described_class.run_session_loop(session.id, state_dir: tmpdir)
       }.to raise_error(SystemExit)
+      expect(engine).not_to have_received(:start_init_tasks!)
     end
 
     it "records the worker as owner, with its own pid, while it runs" do
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
                                               turn_running?: false, last_activity_at: 0.0)
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       owner_seen = nil
@@ -836,7 +837,7 @@ RSpec.describe Samagotchi::SessionManager do
       session.status = Samagotchi::Session::STATUS_STOPPED
       session.save(state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
       expect(Samagotchi::Engine).to receive(:new)
         .with(hash_including(mode: :assist, model_name: "gemma4"))
         .and_return(engine)
@@ -860,7 +861,7 @@ RSpec.describe Samagotchi::SessionManager do
       session.status = Samagotchi::Session::STATUS_STOPPED
       session.save(state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
                                               turn_running?: false, last_activity_at: 0.0)
       expect(Samagotchi::Engine).to receive(:new) do |**kwargs|
         expect(kwargs).not_to have_key(:recap)
@@ -878,7 +879,7 @@ RSpec.describe Samagotchi::SessionManager do
       session.messages = [{ role: "user", content: "earlier" }, { role: "model", content: "reply" }]
       session.save(state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], start_idle: nil, stop_idle: nil, reminder_store: nil,
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], start_idle: nil, stop_idle: nil, reminder_store: nil,
                                               turn_running?: false, last_activity_at: 0.0)
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
@@ -909,7 +910,7 @@ RSpec.describe Samagotchi::SessionManager do
       session.status = Samagotchi::Session::STATUS_STOPPED
       session.save(state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
       reminder_callback = nil
       allow(Samagotchi::Engine).to receive(:new) do |**kwargs|
         reminder_callback = kwargs.dig(:reminders, :callback)
@@ -958,7 +959,7 @@ RSpec.describe Samagotchi::SessionManager do
       session.last_prompt = "hello"
       session.save(state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, messages_checkpoint: [])
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, messages_checkpoint: [])
       result = instance_double(Samagotchi::KernelLoop::Result, output: "hi")
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       allow(engine).to receive(:start_idle)
@@ -986,7 +987,7 @@ RSpec.describe Samagotchi::SessionManager do
       session.last_prompt = "earlier"
       session.save(state_dir: tmpdir)
 
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       allow(engine).to receive(:start_idle)
       allow(engine).to receive(:reminder_store).and_return(nil)
@@ -1018,7 +1019,7 @@ RSpec.describe Samagotchi::SessionManager do
     let(:sidecar) { File.join(session_dir, "bridge.json") }
     let(:reminders) { Samagotchi::ReminderStore.new }
     let(:engine) do
-      instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil,
+      instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil,
                                           reminder_store: reminders, turn_running?: false, last_activity_at: 0.0,
                                           messages_checkpoint: [], used_memory_names: [], write_recap_now: nil)
     end
@@ -1378,7 +1379,7 @@ RSpec.describe Samagotchi::SessionManager do
       described_class.write_turn_input(session.id, prompt: "from web", client_id: "web:1", enqueued_id: "e1", state_dir: tmpdir)
       write_sidecar("port" => 1, "session_id" => session.id) # an old worker's sidecar: next write is .txt
       described_class.write_turn_input(session.id, prompt: "plain", state_dir: tmpdir)
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
       runs = []
       allow(engine).to receive(:run_turn) do |_session, prompt, origin:, **|
         runs << [prompt, origin]
@@ -1394,7 +1395,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "runs a turn queued with no_interrupt under the raised iteration limit" do
       described_class.write_turn_input(session.id, prompt: "long", client_id: "tui:1", no_interrupt: true, state_dir: tmpdir)
       described_class.write_turn_input(session.id, prompt: "short", state_dir: tmpdir)
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
       runs = []
       allow(engine).to receive(:run_turn) do |_session, prompt, max_iterations:, **|
         runs << [prompt, max_iterations]
@@ -1410,7 +1411,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "marks the session running on disk while a turn runs, and stops before the next queued turn" do
       described_class.write_turn_input(session.id, prompt: "one", state_dir: tmpdir)
       described_class.write_turn_input(session.id, prompt: "two", state_dir: tmpdir)
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
       runs = []
       allow(engine).to receive(:run_turn) do |_session, prompt, **|
         runs << [prompt, Samagotchi::Session.load(session.id, state_dir: tmpdir).status]
@@ -1427,7 +1428,7 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     it "announces who sent input merged into a running turn" do
-      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
+      engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
       announced = []
       allow(engine).to receive(:announce) { |event| announced << event }
       drained = nil

@@ -146,6 +146,10 @@ module Samagotchi
         # A session stopped before this worker took the lock (e.g. a stop
         # right after create) must not run its initial prompt.
         exit(0) if stopped_on_disk?
+        # Plugins' slow setup (chi.init: an MCP server's first start), in
+        # the background, shown by the UIs; a turn waits only for the ones
+        # that bring tools.
+        @engine.start_init_tasks!
         loop do
           # Check if the session was externally marked as stopped
           exit(0) if Session.load(@session_id, state_dir: @state_dir).status == Session::STATUS_STOPPED

@@ -374,6 +374,32 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     end
   end
 
+  describe "chi.init" do
+    it "adds a task that runs only when started, with the Context; a bad one is a load error" do
+      install_source("slow-setup", <<~RUBY)
+        class Plugin
+          def register(chi)
+            chi.init("Indexing the repo", provides_tools: true, timeout: 7) { |ctx| "indexed for \#{ctx.bundle}" }
+          end
+        end
+      RUBY
+      install_source("bad-init", <<~RUBY)
+        class Plugin
+          def register(chi) = chi.init(" ") { nil }
+        end
+      RUBY
+      finished = []
+      engine.subscribe(observer: ->(e) { finished << e if e[:type] == :plugin_init_finished })
+      task = engine.instance_variable_get(:@init_tasks).first
+      expect(task.to_h.slice(:bundle, :label, :provides_tools, :quiet, :timeout, :state))
+        .to eq(bundle: "slow-setup", label: "Indexing the repo", provides_tools: true, quiet: false, timeout: 7.0, state: :pending)
+      expect(engine.plugin_failures.message).to include("init needs a label")
+      engine.start_init_tasks!
+      task.thread.join(2)
+      expect(finished.map { |e| e[:summary] }).to eq(["indexed for slow-setup"])
+    end
+  end
+
   describe "chi.on" do
     before { install }
 

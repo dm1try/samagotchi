@@ -125,6 +125,8 @@ module Samagotchi
       # Plugins' tool sets from chi.replace_tools, by bundle, until the
       # turn thread applies them (#apply_staged_tools!).
       @staged_tools = {}
+      # chi.init tasks (#add_init_task), started by #start_init_tasks!.
+      @init_tasks = []
       @lifecycle_mutex = Mutex.new
       @shut_down = false
       load_plugins if plugins
@@ -414,7 +416,8 @@ module Samagotchi
     # a failed turn's prompt handed back and the continue offer, which live
     # UIs need in the event log, emitted outside any turn's stream.
     ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged prompt_restored continue_offered continue_resolved
-                             command_queued command_ran context_added card hook_notice].freeze
+                             command_queued command_ran context_added card hook_notice
+                             plugin_init_started plugin_init_finished].freeze
 
     # Put a transport-level event into the ordered event log. Unlike turn
     # events it reaches only persistent observers (no turn sink, no memory
@@ -476,6 +479,8 @@ module Samagotchi
       card = build_card(source: source, title: title, body: body, actions: actions, level: level, id: id)
       return hold_load_event(card.merge(in_turn: true))[:id] if @loading_plugins
       return announce_anytime(card.merge(in_turn: false))[:id] if anytime_thread?
+      # A plugin's init task (chi.init): never a running turn's event.
+      return announce(card.merge(in_turn: false)) && card[:id] if current_init_task
 
       sink = nil
       in_turn = @activity_mutex.synchronize do
@@ -518,6 +523,132 @@ module Samagotchi
       thread
     end
 
+    # ── Plugin init tasks (chi.init) ──────────────────────────────────────
+
+    # A plugin's slow setup (docs/plugins.md, Init tasks): run on its own
+    # thread once the owner can show it (#start_init_tasks!), announced as
+    # plugin_init_started / plugin_init_finished unless quiet. A turn waits
+    # for the running ones that provide tools before its first model request
+    # (#await_init_tasks), up to each one's timeout. +cancel+ is its own
+    # controller, cancelled only by #shutdown: a Ctrl-C ends a turn's wait,
+    # not the task.
+    InitTask = Struct.new(:id, :bundle, :label, :plugin_label, :provides_tools, :quiet, :timeout, :block, :cancel,
+                          :thread, :state, :started_at, keyword_init: true) do
+      # What the task's block reads: whether chi is shutting down.
+      def cancelled? = cancel.cancelled?
+    end
+
+    # How long a task may hold a turn when it gives no timeout.
+    INIT_TASK_TIMEOUT = 60.0
+
+    # Add a plugin's init task (Plugin::Api#init at commit); it starts with
+    # #start_init_tasks!.
+    def add_init_task(bundle:, label:, plugin_label:, provides_tools:, quiet:, timeout:, &block)
+      @lifecycle_mutex.synchronize do
+        @init_tasks << InitTask.new(id: "#{bundle}-#{@init_tasks.size + 1}", bundle: bundle.to_s, label: label.to_s,
+                                    plugin_label: plugin_label, provides_tools: provides_tools ? true : false,
+                                    quiet: quiet ? true : false, timeout: timeout || INIT_TASK_TIMEOUT, block: block,
+                                    cancel: CancellationController.new, state: :pending)
+      end
+      nil
+    end
+
+    # Start the init tasks not started yet, each on its own thread. The
+    # worker calls it once its Bridge is up, the REPL once it renders
+    # events, and every turn (a -p run has only that); later calls start
+    # nothing new.
+    def start_init_tasks!
+      @lifecycle_mutex.synchronize do
+        return if @shut_down
+
+        @init_tasks.each do |task|
+          next unless task.state == :pending
+
+          task.state = :starting
+          task.started_at = monotonic_now
+          task.thread = Thread.new { run_init_task(task) }
+          task.thread.report_on_exception = false
+        end
+      end
+      nil
+    end
+
+    # The running init tasks a UI shows (not the quiet ones), for a UI that
+    # joins while they run (Bridge#snapshot, with the event log held).
+    # @return [Array<Hash>] {bundle:, id:, label:}
+    def init_tasks
+      @lifecycle_mutex.synchronize do
+        @init_tasks.select { |task| task.state == :running && !task.quiet }
+                   .map { |task| { bundle: task.bundle, id: task.id, label: task.label } }
+      end
+    end
+
+    # Wait for the running init tasks that provide tools, each up to its
+    # timeout from its start, while +controller+ isn't cancelled; tell the
+    # turn's sink what it waits for (:plugin_init_wait). A task that ends
+    # late or fails leaves the turn without its tools.
+    # @return [Boolean] whether it waited
+    def await_init_tasks(controller = nil, on_event = nil)
+      waiting = @lifecycle_mutex.synchronize do
+        @init_tasks.select { |task| task.provides_tools && %i[starting running].include?(task.state) }
+      end
+      return false if waiting.empty?
+
+      emit_event(on_event, { type: :plugin_init_wait,
+                             tasks: waiting.map { |task| { bundle: task.bundle, id: task.id, label: task.label } } })
+      started = monotonic_now
+      loop do
+        now = monotonic_now
+        left = waiting.select { |task| %i[starting running].include?(task.state) && now < task.started_at + task.timeout }
+        break if left.empty? || controller&.cancelled?
+
+        sleep(INIT_WAIT_POLL)
+      end
+      Log.info(:plugins, "init_wait", ms: ((monotonic_now - started) * 1000).round,
+                                      cancelled: controller&.cancelled? ? true : nil)
+      true
+    end
+
+    INIT_WAIT_POLL = 0.05
+
+    # The init task this thread runs, or nil.
+    def current_init_task = Thread.current[:"samagotchi_init_#{object_id}"]
+    private :current_init_task
+
+    def run_init_task(task)
+      Thread.current[:"samagotchi_init_#{object_id}"] = task
+      synchronize_events do
+        task.state = :running
+        announce({ type: :plugin_init_started, bundle: task.bundle, id: task.id, label: task.label }) unless task.quiet
+      end
+      Log.info(:plugins, "init_started", bundle: task.bundle, id: task.id, label: task.label)
+      summary = task.block.call(task)
+      finish_init_task(task, ok: true, summary: summary.is_a?(String) ? summary : nil)
+    rescue StandardError => e
+      finish_init_task(task, ok: false, error: e.message)
+    end
+    private :run_init_task
+
+    def finish_init_task(task, ok:, summary: nil, error: nil)
+      Log.public_send(ok ? :info : :warn, :plugins, "init_finished", bundle: task.bundle, id: task.id, ok: ok,
+                                                                      ms: ((monotonic_now - task.started_at) * 1000).round,
+                                                                      msg: error)
+      shut_down = @lifecycle_mutex.synchronize { @shut_down }
+      synchronize_events do
+        task.state = ok ? :done : :failed
+        next if shut_down || (task.quiet && ok)
+
+        unless task.quiet
+          announce({ type: :plugin_init_finished, bundle: task.bundle, id: task.id, label: task.label, ok: ok,
+                     summary: summary, error: error }.compact)
+        end
+        # A failure stays on screen (and for a UI that joins later) as a card.
+        show_card(source: task.bundle, title: "#{task.label}: failed", body: error.to_s, level: :warn,
+                  id: "init-#{task.id}") unless ok
+      end
+    end
+    private :finish_init_task
+
     # How long #shutdown waits for the running anytime commands, in all.
     SHUTDOWN_JOIN_SECONDS = 3.0
 
@@ -532,7 +663,9 @@ module Samagotchi
         return self if @shut_down
 
         @shut_down = true
-        @anytime_threads.dup
+        # An init task's requests end (a server's boot), so it finishes.
+        @init_tasks.each { |task| task.cancel.cancel!(:shutdown) }
+        @anytime_threads.dup + @init_tasks.filter_map(&:thread)
       end
       # #stop_idle's work (the scheduler's stop is idempotent), where the
       # callers haven't stopped it already.
@@ -545,6 +678,7 @@ module Samagotchi
       end
       left = threads.count(&:alive?)
       Log.warn(:plugins, "anytime_commands_left", count: left) if left.positive?
+      @init_tasks.each { |task| task.thread&.kill if task.thread&.alive? }
       @services.stop_all
       self
     end
@@ -1100,6 +1234,8 @@ module Samagotchi
       end
       if anytime_thread?
         announce_anytime(notice.merge(between_turns: true))
+      elsif current_init_task
+        announce(notice.merge(between_turns: true))
       elsif in_turn
         emit_event(sink, notice)
       else
@@ -1557,8 +1693,13 @@ module Samagotchi
         @kernel.vision = vision if @kernel.respond_to?(:vision=)
         refuse_images!(vision) unless image_refs.empty?
         announce_guardrail_failures(on_event)
-        # Plugins' tool sets that changed since the last turn, before the
-        # system prompt declares the tools.
+        # Plugins' slow setup that brings tools (an MCP server's first
+        # start): the turn waits for it here, before the system prompt
+        # declares the tools; a Ctrl-C ends the wait (the turn is cancelled
+        # at its first request).
+        start_init_tasks!
+        await_init_tasks(effective_controller, on_event)
+        # Plugins' tool sets that changed since the last turn.
         apply_staged_tools!
 
         # Fire :session_start on the very first turn
@@ -1903,7 +2044,11 @@ module Samagotchi
         },
         tools_changed: -> { tools_changed! },
         services: @services,
-        stage_tools: ->(bundle, specs, context) { stage_tools(bundle, specs, context) }
+        stage_tools: ->(bundle, specs, context) { stage_tools(bundle, specs, context) },
+        init: lambda { |bundle, label, plugin_label, provides_tools:, quiet:, timeout:, &block|
+          add_init_task(bundle: bundle, label: label, plugin_label: plugin_label, provides_tools: provides_tools,
+                        quiet: quiet, timeout: timeout, &block)
+        }
       )
       # What plugins show while they load (an MCP server that didn't
       # start) waits for the first turn, beside the load warnings: no UI
@@ -1980,7 +2125,10 @@ module Samagotchi
         },
         # Nothing to cancel while the Engine is still being built (a
         # server that starts as its plugin loads).
-        cancelled: -> { @activity_mutex && active_cancel_controller&.cancelled? },
+        # An init task's is its own (a Ctrl-C ends a turn, not the task).
+        cancelled: lambda {
+          (task = current_init_task) ? task.cancelled? : @activity_mutex && active_cancel_controller&.cancelled?
+        },
         card: ->(**card) { show_card(**card) },
         ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:|
           ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller)
