@@ -329,18 +329,23 @@ module Samagotchi
 
         emit_stream_event(on_stream_event, type: :tool_dispatch_started, iteration: iteration_index + 1, call_count: calls.length)
         tool_images = []
+        shown_params = []
         results = calls.map.with_index do |call, call_index|
           run = tool_runner.run(call, iteration: iteration_index + 1, call_index: call_index + 1,
                                       call_count: calls.length, on_stream_event: on_stream_event,
                                       max_tool_output_chars: effective_max_tool_output_chars)
           tool_activity << run[:activity]
           tool_images.concat(Array(run[:images]))
+          shown_params << run[:shown_params]
           run[:output]
         end.join("\n\n---\n\n")
         emit_stream_event(on_stream_event, type: :tool_dispatch_completed, iteration: iteration_index + 1, call_count: calls.length)
         # The joined results carry every call's images, in call order.
         tool_response = { role: "tool_response", content: results }
         tool_response[:images] = tool_images unless tool_images.empty?
+        # A plugin tool's params line, one per call in call order (nil for
+        # a built-in), for the web's reload; the prompt never reads it.
+        tool_response[:tool_params] = shown_params if shown_params.any?
         conversation << tool_response
         pending_tool_calls = true
       rescue Client::RequestCancelled => e

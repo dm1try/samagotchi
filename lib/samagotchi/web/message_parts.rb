@@ -21,11 +21,13 @@ module Samagotchi
     #     (tool_call_id).
     # A message that can't be read gives no parts, never an error.
     #
-    # A plugin tool's params come from the given registry's entry (its
-    # preview). The web server has no Engine, so it passes none: the
-    # built-ins', and a plugin tool's arguments show as key="value" from
-    # the parsers' args:, as the live row shows them for a tool without a
-    # preview.
+    # A plugin tool's params are what its live row showed (its preview),
+    # saved with the result as tool_params (native: one per call, chat: one
+    # per result). The web server has no Engine and runs no plugins, so a
+    # result without them (older sessions) falls back to the given
+    # registry: the built-ins', and a plugin tool's arguments as key="value"
+    # from the parsers' args:, as the live row shows them for a tool
+    # without a preview.
     module MessageParts
       JOINER = "\n\n---\n\n"
       # A joined output's pieces each start with "[tool]": split there first,
@@ -82,7 +84,9 @@ module Samagotchi
 
         joined = responses.empty? ? nil : responses.map { |r| field(r, :content).to_s }.join(JOINER)
         outputs = split_outputs(joined, calls.length)
-        calls.each_with_index.map { |call, i| tool_part(call, outputs[i], registry) }
+        shown = responses.flat_map { |r| Array(field(r, :tool_params)) }
+        shown = [] unless shown.length == calls.length
+        calls.each_with_index.map { |call, i| tool_part(call, outputs[i], registry, shown[i]) }
       end
 
       def native_tools(calls, responses, registry)
@@ -91,7 +95,7 @@ module Samagotchi
           ref = CallRef.new(field(raw, :name).to_s, field(raw, :arguments))
           call = LLM::NativeToolNormalizer.normalize(ref) || { name: ref.name }
           response = by_id[field(raw, :id)] || (field(responses[i], :tool_call_id).nil? ? responses[i] : nil)
-          tool_part(call, response && field(response, :content).to_s, registry)
+          tool_part(call, response && field(response, :content).to_s, registry, field(response, :tool_params))
         end
       end
 
@@ -111,9 +115,11 @@ module Samagotchi
         head + [rest.empty? ? nil : rest.join(JOINER)]
       end
 
-      def tool_part(call, output, registry)
+      # +shown+ is the saved params line, when it is a String.
+      def tool_part(call, output, registry, shown = nil)
         name = call[:name].to_s
-        part = { tool: name, params: ToolActivity.tool_activity_params(name, call, registry: registry).to_s }
+        params = shown.is_a?(String) ? shown : ToolActivity.tool_activity_params(name, call, registry: registry)
+        part = { tool: name, params: params.to_s }
         unless output.nil?
           part[:output] = output.length > OUTPUT_MAX ? output[0, OUTPUT_MAX] : output
           part[:output_truncated] = true if output.length > OUTPUT_MAX

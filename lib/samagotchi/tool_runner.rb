@@ -19,8 +19,11 @@ module Samagotchi
     end
 
     # @param call_index [Integer] 1-based position of the call in its batch
-    # @return [Hash] output:, capped_output:, truncated:, activity:, and
-    #   images: (refs) when the tool read an image the model gets to see
+    # @return [Hash] output:, capped_output:, truncated:, activity:,
+    #   images: (refs) when the tool read an image the model gets to see, and
+    #   shown_params: the params line the live row showed, only for a tool
+    #   that isn't built in (the loops save it with the result, so a reload
+    #   without the plugin shows the same line)
     def run(call, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
       # The gate runs first, so tool_call_started shows the call that runs.
@@ -54,6 +57,7 @@ module Samagotchi
 
       run = { output: output, capped_output: capped, truncated: truncated, activity: result[:activity] }
       run[:images] = images if images&.any?
+      run[:shown_params] = params if params && plugin_tool?(call[:name])
       run
     end
 
@@ -86,6 +90,12 @@ module Samagotchi
 
     # The kernel's tools, for the activity line of a tool that isn't built in.
     def tools = @kernel.respond_to?(:tools) ? @kernel.tools : nil
+
+    # A tool the registry has from a plugin (not core, not unknown).
+    def plugin_tool?(name)
+      entry = tools && !name.nil? ? tools[name] : nil
+      !entry.nil? && !entry.core?
+    end
 
     # The Engine sets the kernel's gate (its context, later the approval
     # flow); a bare kernel (specs) gets one that only runs the hooks.

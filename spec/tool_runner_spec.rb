@@ -189,4 +189,29 @@ RSpec.describe Samagotchi::ToolRunner do
       end
     end
   end
+
+  describe "shown_params (the live row's params line, saved for the web's reload)" do
+    let(:registry) do
+      Samagotchi::Tools::Builtins.registry.tap do |r|
+        r.register("save_note", schema: { parameters: { properties: {} } }, handler: ->(*) { "ok" },
+                                source: "sample-plugin", preview: ->(call) { "#{call[:args]["path"]} (#{call[:args]["text"].length} chars)" })
+      end
+    end
+    let(:runner) do
+      k = kernel
+      tools = registry
+      k.define_singleton_method(:tools) { tools }
+      described_class.new(k)
+    end
+
+    it "is the preview a plugin tool showed" do
+      result = run({ name: "save_note", args: { "path" => "w.md", "text" => "hello world!" } })
+      expect(result[:shown_params]).to eq("w.md (12 chars)")
+      expect(events.first[:params]).to eq("w.md (12 chars)")
+    end
+
+    it "is absent for a built-in, so its saved result stays as it was" do
+      expect(run).not_to have_key(:shown_params)
+    end
+  end
 end

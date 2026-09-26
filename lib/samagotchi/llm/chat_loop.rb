@@ -169,8 +169,9 @@ module Samagotchi
 
       # The shape the engine persists: role and content (parts stay an
       # Array), plus a model turn's tool_calls and thinking (the host's
-      # reasoning, never sent back), a result's tool_call_id and the image
-      # refs of a user message or a tool result.
+      # reasoning, never sent back), a result's tool_call_id, the image
+      # refs of a user message or a tool result, and a plugin tool result's
+      # tool_params (the live row's params line, never sent back).
       def plain(conversation)
         conversation.map do |entry|
           content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
@@ -179,6 +180,7 @@ module Samagotchi
           message[:tool_call_id] = entry[:tool_call_id] if entry[:tool_call_id]
           message[:images] = entry[:images] if entry[:images].is_a?(Array) && !entry[:images].empty?
           message[:thinking] = entry[:thinking] if entry[:thinking].is_a?(String) && !entry[:thinking].empty?
+          message[:tool_params] = entry[:tool_params] if entry[:tool_params]
           ContextNote::KEYS.each { |key| message[key] = entry[key] if entry.key?(key) }
           message
         end
@@ -377,6 +379,8 @@ module Samagotchi
             # the full one; D-P2-6).
             entry = { role: "tool_response", content: run[:capped_output], tool_call_id: tool_call.id }
             entry[:images] = run[:images] if run[:images]&.any?
+            # A plugin tool's params line, for the web's reload; never sent.
+            entry[:tool_params] = run[:shown_params] if run[:shown_params]
             @conversation << entry
           end
           emit(type: :tool_dispatch_completed, iteration: iteration, call_count: tool_calls.length)

@@ -610,6 +610,32 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  describe "a plugin tool's params line (tool_params)" do
+    let(:registry) do
+      Samagotchi::Tools::Builtins.registry.tap do |r|
+        r.register("save_note", schema: { parameters: { properties: {} } }, handler: ->(*) { "ok" },
+                                source: "sample-plugin", preview: ->(call) { "#{call[:args]["path"]} (saved)" })
+      end
+    end
+
+    it "is saved on its result and never sent to the model" do
+      allow(fake_kernel).to receive(:tools).and_return(registry)
+      backend.adapter = adapter = FakeChatAdapter.new(tools(["c1", "save_note", { "path" => "w.md" }]), text("done"))
+
+      result = run
+
+      expect(result.conversation[2]).to include(role: "tool_response", tool_call_id: "c1", tool_params: "w.md (saved)")
+      run(result.conversation + [{ role: "user", content: "again" }])
+      adapter.requests.each { |request| request[:messages].each { |m| expect(m).not_to have_key(:tool_params) } }
+    end
+
+    it "is not added for a built-in's result" do
+      allow(fake_kernel).to receive(:tools).and_return(registry)
+      backend.adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "echo hi" }]), text("done"))
+      expect(run.conversation[2]).not_to have_key(:tool_params)
+    end
+  end
+
   describe "a context note" do
     let(:note) do
       { role: "system", kind: "note", note_id: "n1", source: "session", from_session: "abc", from_cwd: "/w",

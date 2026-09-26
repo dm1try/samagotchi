@@ -125,6 +125,26 @@ RSpec.describe Samagotchi::Web::MessageParts do
                                      preview: ->(call) { "#{call[:args]["text"]} ×#{call[:args]["times"]}" })
       expect(described_class.for_message({ content: qwen }, output, registry: registry)[:tools].first[:params]).to eq("BANANA42 ×3")
     end
+
+    it "prefers the params line saved with the result (tool_params) over the registry" do
+      saved = [{ content: output.first[:content], tool_params: ["BANANA42 ×3"] }]
+      expect(described_class.for_message({ content: qwen }, saved)[:tools].first[:params]).to eq("BANANA42 ×3")
+      chat = { content: "", tool_calls: [{ id: "c1", name: "echo_args", arguments: { "text" => "BANANA42" } }] }
+      expect(described_class.for_message(chat, [{ "content" => "x", "tool_call_id" => "c1", "tool_params" => "saved" }])[:tools].first[:params])
+        .to eq("saved")
+    end
+
+    it "keeps a built-in's own params next to a saved plugin line (nil in the list)" do
+      content = qwen_call("execute", command: "ls") + qwen
+      saved = [{ content: "[execute]\nok\n\n---\n\n#{output.first[:content]}", tool_params: [nil, "BANANA42 ×3"] }]
+      expect(described_class.for_message({ content: content }, saved)[:tools].map { |t| t[:params] })
+        .to eq(['command="ls"', "BANANA42 ×3"])
+    end
+
+    it "ignores a saved list whose length doesn't match the calls" do
+      saved = [{ content: output.first[:content], tool_params: %w[a b] }]
+      expect(described_class.for_message({ content: qwen }, saved)[:tools].first[:params]).to eq('text="BANANA42" times="3"')
+    end
   end
 
   describe "a message it can't read" do
