@@ -7,7 +7,8 @@ module Samagotchi
   module Guardrails
     # Declarative rules from config.yml's `guardrails:` section (and, later,
     # installed bundles). All the fields a rule gives must match:
-    #   tool:    a tool name, a list, or "shell" (execute + task_create)
+    #   tool:    a tool name, a list, or "shell" (execute + task_create);
+    #            a name may be a glob ("mcp_*", "mcp_{git,gh}_*")
     #   command: a Ruby regex on a shell tool's command
     #   path:    "outside_repo", or a glob on the resolved paths (absolute
     #            or "**/…" globs match the absolute path; others the path
@@ -27,11 +28,15 @@ module Samagotchi
       Rule = Struct.new(:id, :tools, :command, :path, :verdict, :reason, :scopes, :source, keyword_init: true) do
         def matches?(targets)
           return false unless targets
-          return false if tools && !tools.include?(targets.tool)
+          return false if tools && !tool_matches?(targets.tool)
           return false if command && !(targets.command && command.match?(targets.command))
           return false if path && !path_matches?(targets)
 
           true
+        end
+
+        def tool_matches?(name)
+          tools.any? { |tool| Rules.glob?(tool) ? File.fnmatch(tool, name.to_s, File::FNM_EXTGLOB) : tool == name }
         end
 
         def path_matches?(targets)
@@ -90,6 +95,9 @@ module Samagotchi
 
         names.flat_map { |n| n == "shell" ? Targets::SHELL_TOOLS : [n] }.uniq
       end
+
+      # Whether a rule's tool name is a glob.
+      def self.glob?(name) = name.match?(/[*?\[{]/)
 
       def self.regex_of(value, label)
         return nil if value.nil?

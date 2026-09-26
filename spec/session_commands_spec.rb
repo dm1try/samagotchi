@@ -353,6 +353,14 @@ RSpec.describe Samagotchi::SessionCommands do
                              "  core: deny writes", "approvals (0):\n  (none)")
     end
 
+    it "lists a tool glob as given" do
+      rules = Samagotchi::Guardrails::Rules.parse(
+        [{ "id" => "mcp-ask", "tool" => "mcp_*", "verdict" => "ask", "reason" => "an MCP tool" }], source: "config"
+      )
+      engine.instance_variable_set(:@guardrail_rules, Samagotchi::Guardrails::Rules.new(rules))
+      expect(commands.run("/guardrails").output).to include("  1. mcp-ask: ask (tool mcp_*) — an MCP tool [config]")
+    end
+
     it "lists disabled rules as such, and disable entries that match nothing" do
       rules = Samagotchi::Guardrails::Rules.parse(
         [{ "id" => "git-push", "tool" => "shell", "command" => "git push", "verdict" => "ask", "reason" => "publishes" }],

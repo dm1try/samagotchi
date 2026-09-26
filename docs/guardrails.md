@@ -85,7 +85,7 @@ guardrails:
   enabled: true              # false: no rules, and hooks' asks are dropped (a deny still applies)
   rules:
     - id: git-push
-      tool: shell            # execute + task_create; or a tool name, or a list
+      tool: shell            # execute + task_create; or a tool name, a glob, or a list
       command: '\bgit\s+push\b'   # Ruby regex on the command
       verdict: ask           # ask | deny
       reason: git push publishes commits
@@ -95,6 +95,17 @@ guardrails:
       path: outside_repo     # or a glob: "**/.git/hooks/**", "/etc/**", "config/*.yml"
       verdict: ask
       reason: writes outside the repository
+```
+
+A tool name may be a glob, so one rule covers a plugin's tools (an MCP server's,
+say): `tool: "mcp_*"` or `tool: ["mcp_{git,gh}_*", web_fetch]` (`*`, `?`, `[…]` and
+`{a,b}`, matched with `File.fnmatch`). `/guardrails` lists the glob as given.
+
+```yaml
+    - id: mcp-ask
+      tool: "mcp_*"          # every MCP tool (the mcp bundle's mcp_<server>_<tool>)
+      verdict: ask
+      reason: an MCP server's tool
 ```
 
 All the fields a rule gives must match. Absolute and `**/` globs match the

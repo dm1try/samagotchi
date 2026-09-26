@@ -44,6 +44,16 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       expect(verdict_for({ name: "read", content: "a" }, set)).to be_allow
     end
 
+    it "matches a tool glob (an MCP server's tools), with the exact names beside it" do
+      set = rules({ id: "mcp-ask", tool: ["mcp_*", "web_fetch"], verdict: "ask" })
+      expect(verdict_for({ name: "mcp_everything_echo", args: { "message" => "x" } }, set)).to be_ask
+      expect(verdict_for({ name: "web_fetch", content: "https://x" }, set)).to be_ask
+      expect(verdict_for({ name: "read", content: "mcp_x" }, set)).to be_allow
+      braces = rules({ id: "two", tool: "mcp_{git,gh}_*", verdict: "deny" })
+      expect(verdict_for({ name: "mcp_gh_create_issue", args: {} }, braces)).to be_deny
+      expect(verdict_for({ name: "mcp_fs_read", args: {} }, braces)).to be_allow
+    end
+
     it "matches outside_repo" do
       set = rules({ id: "out", tool: %w[write edit], path: "outside_repo", verdict: "ask" })
       expect(verdict_for({ name: "write", path: "../x", content: "" }, set)).to be_ask
