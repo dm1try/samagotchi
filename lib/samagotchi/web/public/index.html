@@ -337,6 +337,16 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 .model-pick select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .model-pick option{color:var(--text);background:var(--bg-panel)}
 @media(max-width:600px){.model-pick{max-width:60%}}
+/* The / autocomplete: a list over the composer card's top edge. It wears the glass edge and shadow, but opaque:
+   inside the dock's own backdrop-filter a second blur sees nothing, and the history would show through its text. */
+#commandList{position:absolute;left:10px;width:min(640px,calc(100% - 20px));bottom:calc(100% + 8px);max-height:min(260px,40vh);overflow-y:auto;border-radius:12px;padding:4px;z-index:20;display:flex;flex-direction:column;gap:1px;background:var(--bg-panel);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
+#commandList[hidden]{display:none}
+#commandList .command-option{display:flex;align-items:baseline;gap:10px;padding:7px 10px;border-radius:8px;cursor:pointer;min-width:0}
+#commandList .command-option.active{background:color-mix(in srgb,var(--accent-bg) 85%,transparent)}
+#commandList .command-name{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:600;color:var(--text);white-space:nowrap}
+#commandList .command-desc{flex:1;min-width:0;font-size:13px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#commandList .command-note{font-size:11px;color:var(--text-faint);white-space:nowrap}
+@media(max-width:600px){#commandList{left:6px;width:calc(100% - 12px)}#commandList .command-option{flex-wrap:wrap;row-gap:0;padding:8px 10px}#commandList .command-desc{flex-basis:100%;order:3}}
 #composer #actionMenu{position:absolute;right:14px;bottom:44px;background:var(--bg-panel);border:1px solid var(--border-strong);border-radius:8px;padding:4px;display:none;flex-direction:column;gap:2px;z-index:10;min-width:180px}
 #composer #actionMenu.visible{display:flex}
 #composer #actionMenu button{justify-content:flex-start;background:transparent;color:var(--text);padding:8px 10px;border-radius:6px;text-align:left}
@@ -512,10 +522,11 @@ a{color:var(--accent)}
     <div id="lightbox" hidden><img alt=""></div>
     <div id="dock">
       <div id="composer" style="position:relative">
+        <div id="commandList" role="listbox" aria-label="Commands" hidden></div>
         <div id="composeGrip" title="Drag to make the message box taller (double-click resets)"></div>
         <div class="compose-col">
           <div id="chips" hidden></div>
-          <textarea id="prompt" placeholder="Ask chi anything…"></textarea>
+          <textarea id="prompt" placeholder="Ask chi anything…" aria-controls="commandList" aria-autocomplete="list" aria-expanded="false"></textarea>
         </div>
         <div class="actions-col">
           <label id="modelPick" class="model-pick" title="The model the new chat starts on" hidden><select id="modelSelect" aria-label="Model for the new chat"></select></label>
