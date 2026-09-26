@@ -216,6 +216,26 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     end
   end
 
+  describe "chi.tools_changed!" do
+    it "drops the built system prompts, so the next turn declares the tools again" do
+      install_source("late-tools", <<~RUBY)
+        class Plugin
+          def register(chi)
+            @chi = chi
+            chi.command("/changed", "say the tools changed") { @chi.tools_changed! }
+          end
+        end
+      RUBY
+      commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                                 default_model: "Gemma-4B-it", registry: engine.command_registry)
+      built = engine.system_prompt
+      expect(engine.system_prompt).to equal(built)
+      commands.run("/changed")
+      expect(engine.system_prompt).not_to equal(built)
+      expect(engine.system_prompt).to eq(built)
+    end
+  end
+
   describe "chi.on" do
     before { install }
 

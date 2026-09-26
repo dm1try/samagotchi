@@ -96,6 +96,15 @@ module Samagotchi
         nil
       end
 
+      # Say the session's tools changed after #register (a plugin that
+      # registers tools late): the system prompts are built again for the
+      # next turn, so the model sees the new set. That costs the server its
+      # cached prompt prefix once, so call it only when the set changed.
+      def tools_changed!
+        @registries.tools_changed&.call
+        nil
+      end
+
       # Register what was staged. Called by Loader after #register.
       def commit!
         context = @context

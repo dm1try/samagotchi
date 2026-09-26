@@ -1805,9 +1805,16 @@ module Samagotchi
         commands: @command_registry, tools: @tools, hooks: @hooks,
         context_for: lambda { |bundle, settings, label|
           Plugin::Context.new(bundle: bundle, label: label, settings: settings, host: host)
-        }
+        },
+        tools_changed: -> { tools_changed! }
       )
       Plugin::Loader.load_installed(registries, failures: @plugin_failures, settings: bundle_settings)
+    end
+
+    # The tools changed (a plugin's chi.tools_changed!): the system prompts,
+    # which declare them, are built again on the next turn.
+    def tools_changed!
+      @system_prompts = nil
     end
 
     # What a Plugin::Context reads and calls: the session now, and the

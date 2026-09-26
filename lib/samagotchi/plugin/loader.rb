@@ -12,8 +12,9 @@ module Samagotchi
   module Plugin
     # What a plugin registers into: an Engine's own registries.
     # +context_for+ is (bundle_name, settings, label) → the Plugin::Context
-    # its handlers get.
-    Registries = Struct.new(:commands, :tools, :hooks, :context_for, keyword_init: true)
+    # its handlers get; +tools_changed+ drops what was built from the tools
+    # (the Engine's system prompts).
+    Registries = Struct.new(:commands, :tools, :hooks, :context_for, :tools_changed, keyword_init: true)
 
     # Loads installed bundles' plugins (manifest plugin: {file:, sha256:})
     # into an Engine's registries (docs/plugins.md).
