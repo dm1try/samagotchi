@@ -5,7 +5,7 @@ scope: system
 description: Default system memories — identity, self map, config modification protocol, memory guide and the delegated-session rules
 files:
   identity.md: sha256:e7acc00e1dc4e45be2cf3fdbfbde0f88b438a12c08a60037753044c124d52fcc
-  self_map.md: sha256:c74cbf2bd76a597399eb21fafb2670a9cd34a74032529967d7f953da86b8192f
-  config_modification_protocol.md: sha256:ea0c50a00ff1ef79aab7ef6b4f6086f7bca0149ed33a21b36c883d8d2a134a7d
+  self_map.md: sha256:d42481b930ef6e59deb1e5c989a9a171e834569b42be9a8d3dda6b2379b0a5ff
+  config_modification_protocol.md: sha256:292b33f146b7caf7e36eb8e692d86516a8202818fee3097e7b8fb887a6d132b7
   memory_guide.md: sha256:c2fd1f31d4324fc0970a0c69ef0c749354e4f7b4a55714effc67c7344211f142
   delegated.md: sha256:8f7965b6165c3526abb0cd39e44a8b73a8d6a26755049bdcd007baf0b0771087

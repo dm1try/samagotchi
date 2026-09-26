@@ -82,6 +82,7 @@ bundles:
         env: {NODE_OPTIONS: "--no-warnings"}   # optional, added to chi's env
         cwd: ~/scratch                         # optional; default the session's cwd
         tools: [read_*, list_directory]        # optional filter (globs)
+        attach_image_paths: true               # default: an answer that is only an image's path (temp dir/cwd) is attached as a picture
 ```
 
 A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cover every MCP tool; see `docs/guardrails.md`.
