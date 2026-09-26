@@ -4,6 +4,8 @@ require "tmpdir"
 require "samagotchi/kernel_loop"
 require "samagotchi/tools/builtins"
 require "samagotchi/vision_support"
+require "samagotchi/llm/chat_loop"
+require_relative "support/fake_chat_adapter"
 
 # Any tool's result can carry images (a String that responds to #images):
 # ToolRunner stores each one with the session, or adds a line saying why
@@ -81,6 +83,23 @@ RSpec.describe "tool results with images" do
       stub_const("Samagotchi::ImageStore::MAX_SOURCE_BYTES", 10)
       result = run([{ bytes: File.binread(png_path), name: "big.png" }])
       expect(result[:output]).to end_with("Error: big.png is too large (over 50 MB)")
+    end
+  end
+
+  describe "the chat loop" do
+    it "follows the tool message with one user message holding both pictures" do
+      kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client),
+                                          tools: registry_with([{ path: png_path }, { path: gif_path }]))
+      kernel.vision = vision
+      adapter = FakeChatAdapter.new(FakeChatAdapter.tools(["c1", "shots", {}]), FakeChatAdapter.text("two"))
+      result = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
+                                        .complete(messages: [{ role: "user", content: "shoot" }], model_name: "m")
+
+      wire = adapter.requests.last[:messages]
+      expect(wire.map { |m| m[:role] }).to eq(%w[user assistant tool user])
+      expect(wire[2][:content]).to eq("[shots]\ntwo shots")
+      expect(wire[3][:content].map { |part| part[:type] }).to eq(%w[text image_url image_url])
+      expect(result.conversation.find { |m| m[:role] == "tool_response" }[:images].size).to eq(2)
     end
   end
 
