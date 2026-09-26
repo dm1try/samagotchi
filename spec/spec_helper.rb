@@ -5,6 +5,18 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "fileutils"
 require "tmpdir"
 
+# Start from none of the developer's SAMAGOTCHI_* settings: a shell may point
+# the debug log somewhere, and a suite run by chi's own execute tool inherits
+# the worker's environment (SAMAGOTCHI_HOSTS_JSON with the real hosts, the
+# spawner's CLI flags such as SAMAGOTCHI_GUARDRAILS_ENABLED=false). Specs set
+# what they need. The suite's own switches stay; :integration examples get
+# the rest back, all but the log settings.
+SPEC_ENV_SWITCHES = %w[SAMAGOTCHI_INTEGRATION SAMAGOTCHI_MACOS_BUILD].freeze
+REAL_SAMAGOTCHI_ENV = ENV.to_h.select { |key, _| key.start_with?("SAMAGOTCHI_") && !SPEC_ENV_SWITCHES.include?(key) }
+                         .reject { |key, _| key.start_with?("SAMAGOTCHI_LOG_") }.freeze
+SPEC_ENV_CLEAR = -> { ENV.keys.each { |key| ENV.delete(key) if key.start_with?("SAMAGOTCHI_") && !SPEC_ENV_SWITCHES.include?(key) } }
+SPEC_ENV_CLEAR.call
+
 # Isolate specs from the developer's ~/.config/samagotchi/config.yml (hosts,
 # memories, aliases...) with a minimal fixture config. Only :integration
 # examples see the real config, so they can reach the live model server; unit
@@ -28,10 +40,6 @@ at_exit { FileUtils.remove_entry(SPEC_XDG_CONFIG_HOME) if File.directory?(SPEC_X
 SPEC_XDG_STATE_HOME = Dir.mktmpdir("samagotchi-spec-state")
 ENV["XDG_STATE_HOME"] = SPEC_XDG_STATE_HOME
 at_exit { FileUtils.remove_entry(SPEC_XDG_STATE_HOME) if File.directory?(SPEC_XDG_STATE_HOME) }
-
-# The developer's shell may point the debug log somewhere, or raise or turn
-# off its level: specs set what they need, so start from none of it.
-%w[SAMAGOTCHI_LOG_FILE SAMAGOTCHI_LOG_LEVEL SAMAGOTCHI_LOG_DISABLE].each { |key| ENV.delete(key) }
 
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
@@ -87,6 +95,7 @@ RSpec.configure do |config|
     skip "Set SAMAGOTCHI_INTEGRATION=1 to run integration tests" unless ENV["SAMAGOTCHI_INTEGRATION"] == "1"
 
     ENV["XDG_CONFIG_HOME"] = REAL_XDG_CONFIG_HOME
+    ENV.update(REAL_SAMAGOTCHI_ENV)
     ENV.delete("SAMAGOTCHI_RECAP_ENABLED")
     # The real config's log.file must never receive spec lines (workers
     # spawned here inherit it too).
@@ -96,8 +105,8 @@ RSpec.configure do |config|
     example.run
   ensure
     ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
+    SPEC_ENV_CLEAR.call
     ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
-    ENV.delete("SAMAGOTCHI_LOG_DISABLE")
     Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
   end
