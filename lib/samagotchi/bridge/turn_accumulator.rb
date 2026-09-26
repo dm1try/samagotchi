@@ -38,6 +38,41 @@ module Samagotchi
         @mutex.synchronize { @turn && Marshal.load(Marshal.dump(@turn)) }
       end
 
+      # The turn in progress as conversation messages, for a plugin's
+      # ctx.messages mid-turn (plan O1): its prompt (with its images), the
+      # model's text so far, and the lines merged into it, in order. Tool
+      # calls and thinking are left out.
+      # @return [Array<Hash>] [] with no turn running
+      def current_messages
+        @mutex.synchronize { @turn ? self.class.messages_of(@turn) : [] }
+      end
+
+      # @param turn [Hash] #current_turn's shape
+      # @return [Array<Hash>] {role: "user"|"model", content:, images:}
+      def self.messages_of(turn)
+        messages = []
+        text = +""
+        flush = lambda do
+          messages << { role: "model", content: text.dup } unless text.strip.empty?
+          text.clear
+        end
+        unless turn[:prompt].nil?
+          prompt = { role: "user", content: turn[:prompt].to_s }
+          prompt[:images] = turn[:images] if turn[:images]
+          messages << prompt
+        end
+        Array(turn[:parts]).each do |part|
+          case part[:kind]
+          when "text" then text << part[:text].to_s
+          when "input"
+            flush.call
+            messages << { role: "user", content: part[:text].to_s }
+          end
+        end
+        flush.call
+        messages
+      end
+
       # @return [String, nil] the last idle recap, until a turn makes it stale
       def recap
         @mutex.synchronize { @recap }

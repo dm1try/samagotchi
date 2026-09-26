@@ -148,6 +148,8 @@ module Samagotchi
       @port = @server.local_address.ip_port
       @capture_handle = @engine.subscribe(observer: capture_observer)
       @accumulator_handle = @engine.subscribe(observer: @accumulator)
+      # A plugin's ctx.messages mid-turn holds the turn so far (plan O1).
+      @engine.running_turn_messages = -> { @accumulator.current_messages }
       @cards_handle = @engine.subscribe(observer: @cards)
       @accept_thread = Thread.new { accept_loop }
       @accept_thread.report_on_exception = false
@@ -171,6 +173,7 @@ module Samagotchi
       end
       @capture_handle&.unsubscribe
       @accumulator_handle&.unsubscribe
+      @engine.running_turn_messages = nil
       @cards_handle&.unsubscribe
       # A turn post killed between its enqueue and its reply looks failed to
       # the web, which then queues the prompt again from the input file.

@@ -15,8 +15,9 @@ module Samagotchi
     # Engine#show_card's keywords and returns the id, +ask_model+ takes
     # (chat messages, timeout:, max_tokens:, cancel_controller:) and returns
     # the answer text.
-    Host = Struct.new(:session_id, :cwd, :messages, :notify, :ask_user, :cancelled, :card, :ask_model,
-                      keyword_init: true)
+    # +messages_partial+ says whether +messages+ leaves out a running turn.
+    Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
+                      :ask_model, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -86,12 +87,19 @@ module Samagotchi
         end
       end
 
-      # The conversation so far, a frozen copy. While a turn runs it is the
-      # conversation before that turn.
+      # The conversation so far, a frozen copy, without the system prompt.
+      # While a turn runs, a session worker's (attached TUI, web) adds the
+      # turn so far: its prompt, the model's text and the lines merged into
+      # it; the REPL's is the conversation before that turn
+      # (#messages_partial?).
       # @return [Array<Hash>]
       def messages
         Array(@host.messages.call).map { |message| message.dup.freeze }.freeze
       end
+
+      # Whether #messages leaves out a running turn (the REPL mid-turn), so
+      # a plugin can say what its answer is about.
+      def messages_partial? = !!@host.messages_partial&.call
 
       # One line to the user, labelled by the plugin, like a hook's
       # event[:notify]. Every UI shows it, during a turn or between turns.

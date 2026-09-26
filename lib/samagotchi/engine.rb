@@ -827,6 +827,10 @@ module Samagotchi
 
     def session_state_dir = @session_state_dir || Session.default_state_dir
 
+    # What a Bridge adds to a plugin's ctx.messages while a turn runs (the
+    # turn so far, as messages); nil without a Bridge (the REPL).
+    attr_writer :running_turn_messages
+
     def guardrail_state_dir=(state_dir)
       # Also where list_sessions and send_note look for other sessions.
       @state_dir = state_dir
@@ -1824,7 +1828,8 @@ module Samagotchi
       Plugin::Host.new(
         session_id: -> { @session&.id },
         cwd: -> { @session&.working_directory },
-        messages: -> { messages_checkpoint },
+        messages: -> { plugin_messages },
+        messages_partial: -> { turn_running? && @running_turn_messages.nil? },
         notify: ->(text, level, label) { hook_notify(text, level, label) },
         ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
           hook_ask_user(question, options, header, allow_freeform, hook)
@@ -1836,6 +1841,21 @@ module Samagotchi
         }
       )
     end
+
+    # A plugin's ctx.messages: the conversation without the system prompt
+    # (the REPL's starts with it, a worker's new session doesn't), and,
+    # while a turn runs, the turn so far from the Bridge (plan O1). Read
+    # with the event log held, so a turn is in exactly one of the two.
+    def plugin_messages
+      synchronize_events do
+        messages = messages_checkpoint || []
+        first = messages.first
+        messages = messages.drop(1) if first && first[:role].to_s == "system" && first[:kind].to_s.empty?
+        running = turn_running? && @running_turn_messages ? Array(@running_turn_messages.call) : []
+        messages + running
+      end
+    end
+    private :plugin_messages
 
     # ctx.ask_model's request: the session's current model on its host, as
     # a turn resolves them (a /model switch counts), through its own
