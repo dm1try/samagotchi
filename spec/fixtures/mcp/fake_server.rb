@@ -21,8 +21,13 @@ TOOLS = [
   { name: "mixed", description: "Text, an image and a resource.", inputSchema: { type: "object", properties: {} } },
   { name: "slow", description: "Takes 30 s.", inputSchema: { type: "object", properties: {} } },
   { name: "crash", description: "Exits mid-call.", inputSchema: { type: "object", properties: {} } },
-  { name: "Weird-Name.v2", description: "A name that needs sanitizing.", inputSchema: { type: "object", properties: {} } }
+  { name: "Weird-Name.v2", description: "A name that needs sanitizing.", inputSchema: { type: "object", properties: {} } },
+  { name: "path", description: "Answers the path it is given (like chrome-devtools-mcp --slim's screenshot).",
+    inputSchema: { type: "object", properties: { path: { type: "string" } } } }
 ].freeze
+
+# spec/fixtures/images/tiny.png (3×2).
+TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAMAAAACAQMAAACnuvRZAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6gkXExgsFXZ2gAAAAAxJREFUCNdjYGBgAAAABAABJzQnCgAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0wOS0yM1QxOToyNDo0NCswMDowMGbCXVYAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMDktMjNUMTk6MjQ6NDQrMDA6MDAXn+XqAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTA5LTIzVDE5OjI0OjQ0KzAwOjAwQIrENQAAAABJRU5ErkJggg=="
 
 def reply(id, result = nil, error: nil)
   message = { jsonrpc: "2.0", id: id }
@@ -58,11 +63,12 @@ $stdin.each_line do |line|
     when "add" then reply(id, text((args["a"] + args["b"]).to_s))
     when "fail" then reply(id, { content: [{ type: "text", text: "it broke" }], isError: true })
     when "mixed"
-      reply(id, { content: [{ type: "text", text: "first" }, { type: "image", data: "AAAA", mimeType: "image/png" },
+      reply(id, { content: [{ type: "text", text: "first" }, { type: "image", data: TINY_PNG, mimeType: "image/png" },
                             { type: "resource", resource: { uri: "file:///x.txt", text: "inline" } },
                             { type: "resource_link", uri: "file:///y.txt", name: "y" }, { type: "text", text: "last" }] })
     when "slow" then Thread.new { sleep(30) } # never answers in time
     when "crash" then exit(4)
+    when "path" then reply(id, text(args["path"]))
     else reply(id, error: { code: -32_602, message: "unknown tool" })
     end
   end

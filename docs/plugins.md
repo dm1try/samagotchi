@@ -516,6 +516,9 @@ bundles:
         cwd: ~/scratch                         # default: where chi runs
         tools: [read_*, list_directory]        # optional: only these (globs)
         timeout: 120                           # optional: this server's per-call timeout
+      chrome:
+        command: [npx, -y, "chrome-devtools-mcp@latest", --slim, --headless]
+        attach_image_paths: true               # the default; false leaves a path as text
 ```
 
 - **Start.** When a session starts, each server is a service started at
@@ -531,10 +534,20 @@ bundles:
   [Schemas on the native paths](#schemas-on-the-native-paths)); its label is
   `<server>: <tool>` and its preview the arguments, short.
 - **Calls.** A call is `tools/call`. The text blocks of the answer are joined;
-  an image, audio or a resource without text is a short placeholder
-  (`[image: image/png]`). `isError` makes it `Error: …`. A call that takes
+  audio or a resource without text is a short placeholder
+  (`[audio: audio/wav]`). `isError` makes it `Error: …`. A call that takes
   longer than the timeout is an `Error:`, and a cancelled turn stops the
   wait; both send `notifications/cancelled` to the server.
+- **Images.** An `image` block goes to the model as a picture
+  ([Returning images](#returning-images): at most 4 per call, a line
+  instead when the model can't see images). Its place in the text is a line,
+  `[image 1: image/png, attached]`, so the model knows the order. A text
+  block that is **only the absolute path of an image file** is attached too
+  (`[image 1: screenshot.png, attached]` after the path), but only when the
+  file is under the system temp dir or the server's `cwd`: a server's text
+  can't pull in any image on disk. `chrome-devtools-mcp --slim` answers
+  `screenshot` that way; without `--slim`, `take_screenshot` returns an image
+  block. `attach_image_paths: false` on a server leaves such paths as text.
 - **A server that exits** fails its calls with `Error: MCP server x is not
   running (…)`, and there is one notice. It is not restarted until chi
   restarts (a new session, or the worker's next start).

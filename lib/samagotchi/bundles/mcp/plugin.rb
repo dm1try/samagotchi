@@ -13,12 +13,19 @@
 #           cwd: ~/scratch      # default: where chi runs
 #           tools: [echo, add]  # optional: only these (globs work)
 #           timeout: 120        # optional: this server's per-call timeout
+#           attach_image_paths: true  # default: a result that is only the path of an
+#                                     # image in the temp dir or cwd attaches it
 #
+# Image blocks in a result go to the model as images (text: "[image 1:
+# image/png, attached]"); so does a text block that is only the absolute
+# path of an image file under the system temp dir or the server's cwd
+# (chrome-devtools-mcp --slim answers a screenshot that way).
 # A server that doesn't start, answer or list its tools is skipped with a
 # notice; the rest of chi works. /mcp lists the servers and their tools.
 require "json"
 require "open3"
 require "shellwords"
+require "tmpdir"
 
 class Plugin
   PROTOCOL_VERSION = "2025-06-18"
@@ -27,6 +34,7 @@ class Plugin
   DESCRIPTION_CHARS = 1024
   PREVIEW_CHARS = 60
   NAME_CHARS = 48
+  IMAGE_EXT = { "image/png" => "png", "image/jpeg" => "jpg", "image/gif" => "gif", "image/webp" => "webp" }.freeze
 
   # A JSON-RPC client for one MCP server over stdio: newline-delimited JSON
   # on the process's stdin and stdout; stderr goes to the log.
@@ -213,7 +221,7 @@ class Plugin
   end
 
   # One configured server: its service, state and tools.
-  Server = Struct.new(:name, :config, :service, :state, :error, :tools, :timeout, keyword_init: true)
+  Server = Struct.new(:name, :config, :service, :state, :error, :tools, :timeout, :cwd, keyword_init: true)
 
   def initialize(settings = {})
     @settings = settings
@@ -253,6 +261,7 @@ class Plugin
 
     env = server.config["env"].is_a?(Hash) ? server.config["env"] : {}
     cwd = server.config["cwd"] ? File.expand_path(server.config["cwd"].to_s) : ctx.cwd
+    server.cwd = cwd
     client = Client.new(command, env: env, cwd: cwd,
                                  log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) },
                                  on_exit: ->(reason) { exited(server, reason, ctx) })
@@ -326,22 +335,40 @@ class Plugin
     client = server.service.value
     result = client.request("tools/call", { name: tool, arguments: args }, timeout: server.timeout,
                                                                            cancelled: -> { ctx.cancelled? })
-    text = content_text(result)
-    result["isError"] ? "Error: #{text.empty? ? "the tool failed" : text}" : text
+    text, images = content(result, server, tool)
+    return "Error: #{text.empty? ? "the tool failed" : text}" if result["isError"]
+
+    images.empty? ? text : Samagotchi::Plugin::ToolResult.new(text, images: images)
   rescue Client::Dead => e
     "Error: MCP server #{server.name} is not running (#{e.message})"
   rescue Client::Error, Samagotchi::Plugin::Service::Stopped => e
     "Error: #{e.message}"
   end
 
-  def content_text(result)
+  # The answer's text, and the images to attach: its image blocks, and a
+  # text block that is only an image's path (#image_path).
+  # @return [Array(String, Array<Hash>)]
+  def content(result, server, tool)
     blocks = Array(result["content"])
-    return JSON.generate(result["structuredContent"]) if blocks.empty? && result["structuredContent"]
+    return [JSON.generate(result["structuredContent"]), []] if blocks.empty? && result["structuredContent"]
 
-    blocks.map do |block|
+    images = []
+    text = blocks.map do |block|
       case block["type"]
-      when "text" then block["text"].to_s
-      when "image" then "[image: #{block["mimeType"] || "unknown type"}]"
+      when "text"
+        line = block["text"].to_s
+        path = image_path(line, server)
+        next line unless path
+
+        images << { path: path, name: File.basename(path) }
+        "#{line}\n[image #{images.size}: #{File.basename(path)}, attached]"
+      when "image"
+        mime = block["mimeType"] || "unknown type"
+        bytes = block["data"].to_s.unpack1("m")
+        next "[image: #{mime}, empty]" if bytes.empty?
+
+        images << { bytes: bytes, name: "#{tool}-#{images.size + 1}.#{IMAGE_EXT.fetch(mime, "img")}" }
+        "[image #{images.size}: #{mime}, attached]"
       when "audio" then "[audio: #{block["mimeType"] || "unknown type"}]"
       when "resource"
         resource = block["resource"] || {}
@@ -350,6 +377,32 @@ class Plugin
       else "[#{block["type"] || "unknown"} content]"
       end
     end.join("\n")
+    [text, images]
+  end
+
+  # The path when +text+ is only the absolute path of an image file under
+  # the system temp dir or the server's cwd (a server's text can't pull
+  # in any image on disk), and the server's attach_image_paths isn't off.
+  def image_path(text, server)
+    return nil if server.config["attach_image_paths"] == false
+
+    path = text.strip
+    return nil unless path.start_with?("/") && !path.include?("\n") && File.file?(path)
+
+    real = File.realpath(path)
+    roots = [Dir.tmpdir, server.cwd].compact.map { |dir| File.realpath(dir) rescue nil }.compact
+    return nil unless roots.any? { |root| real.start_with?(root.end_with?("/") ? root : "#{root}/") }
+
+    image_magic?(real) ? real : nil
+  rescue SystemCallError
+    nil
+  end
+
+  # png, jpeg, gif or webp by the file's first bytes.
+  def image_magic?(path)
+    head = File.binread(path, 12).to_s.b
+    head.start_with?("\x89PNG\r\n\x1a\n".b, "\xFF\xD8\xFF".b, "GIF87a", "GIF89a") ||
+      (head.start_with?("RIFF") && head[8, 4] == "WEBP")
   end
 
   # The process ended while chi runs: one notice; the calls say so.

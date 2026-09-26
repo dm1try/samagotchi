@@ -162,6 +162,17 @@ RSpec.describe "The mcp bundle" do
     tools[name].handler.call({ name: name, args: args }, nil)
   end
 
+  # Through ToolRunner, with the session's images in +session_dir+.
+  def run_tool(name, args = {}, vision: nil)
+    kernel = engine.instance_variable_get(:@kernel)
+    kernel.vision = vision || Samagotchi::VisionContext.new(session_dir: session_dir, resizer: Samagotchi::ImageResizer.new(nil))
+    Samagotchi::ToolRunner.new(kernel).run({ name: name, args: args }, iteration: 1, call_index: 1, call_count: 1,
+                                                                       on_stream_event: nil, max_tool_output_chars: nil)
+  end
+
+  let(:session_dir) { File.join(tmpdir, "session").tap { |dir| FileUtils.mkdir_p(dir) } }
+  let(:tiny_png) { File.expand_path("../../fixtures/images/tiny.png", __dir__) }
+
   def load_events
     events = []
     engine.send(:announce_guardrail_failures, ->(e) { events << e })
@@ -172,6 +183,12 @@ RSpec.describe "The mcp bundle" do
     engine.instance_variable_get(:@services).to_a.first.value.pid
   end
 
+  it "installs cleanly (the manifest's sha256 is plugin.rb's)" do
+    installer = Samagotchi::MemoryBundle::Installer.new(source: MCP_SHIPPED, name: "mcp", scope: "system", strict: true)
+    installer.run
+    expect(installer.warnings).to be_empty
+  end
+
   it "installs with no memory file (nothing in the index) and loads as a plugin" do
     expect(Dir.glob(File.join(system_dir, "*.md")).map { |f| File.basename(f) }).not_to include("mcp.md")
     expect(engine.plugin_failures.any?).to be(false)
@@ -180,7 +197,7 @@ RSpec.describe "The mcp bundle" do
   it "registers each tool as mcp_<server>_<tool>, sanitized, with its inputSchema, label and preview" do
     names = tools.entries.map(&:name).grep(/\Amcp_/)
     expect(names).to eq(%w[mcp_fake_echo mcp_fake_add mcp_fake_fail mcp_fake_mixed mcp_fake_slow mcp_fake_crash
-                           mcp_fake_weird_name_v2])
+                           mcp_fake_weird_name_v2 mcp_fake_path])
     echo = tools["mcp_fake_echo"]
     expect(echo.schema).to include(name: "mcp_fake_echo", description: "Echo the text back.")
     expect(echo.schema[:parameters]).to include(properties: { text: { type: "string", description: "what to echo" } },
@@ -194,8 +211,67 @@ RSpec.describe "The mcp bundle" do
     expect(call_tool("mcp_fake_echo", { "text" => "BANANA42" })).to eq("echo: BANANA42")
     expect(call_tool("mcp_fake_add", { "a" => 2, "b" => 3.5 })).to eq("5.5")
     expect(call_tool("mcp_fake_mixed"))
-      .to eq("first\n[image: image/png]\ninline\n[resource link: file:///y.txt]\nlast")
+      .to eq("first\n[image 1: image/png, attached]\ninline\n[resource link: file:///y.txt]\nlast")
     expect(call_tool("mcp_fake_fail")).to eq("Error: it broke")
+  end
+
+  describe "images" do
+    it "attaches an image block's picture (decoded), the text saying where it was" do
+      result = run_tool("mcp_fake_mixed")
+      expect(result[:output]).to eq("[mcp_fake_mixed]\nfirst\n[image 1: image/png, attached]\ninline\n[resource link: file:///y.txt]\nlast")
+      expect(result[:images].map { |ref| ref.slice(:name, :width, :height, :source) })
+        .to eq([{ name: "mixed-1.png", width: 3, height: 2, source: "tool" }])
+      expect(File.binread(File.join(session_dir, result[:images].first[:file]))).to eq(File.binread(tiny_png))
+    end
+
+    it "keeps the text and says so when the model can't see images" do
+      blind = Samagotchi::VisionContext.new(session_dir: session_dir,
+                                            capability: Samagotchi::VisionSupport::Answer.new(value: false, reason: "no"))
+      result = run_tool("mcp_fake_mixed", vision: blind)
+      expect(result[:output]).to end_with("last\nmixed-1.png is an image; this model can't see images")
+      expect(result).not_to have_key(:images)
+    end
+
+    it "attaches an image whose path is the whole answer, when it is in the temp dir" do
+      shot = File.join(tmpdir, "screenshot.png")
+      FileUtils.cp(tiny_png, shot)
+      result = run_tool("mcp_fake_path", { "path" => shot })
+      expect(result[:output]).to eq("[mcp_fake_path]\n#{shot}\n[image 1: screenshot.png, attached]")
+      expect(result[:images].map { |ref| ref[:name] }).to eq(["screenshot.png"])
+    end
+
+    context "when the server runs elsewhere" do
+      let(:servers) { { "fake" => fake.merge("cwd" => tmpdir) } }
+
+      it "leaves a path outside the temp dir and the server's cwd as text (and a text file, and a relative path)" do
+        notes = File.join(tmpdir, "notes.png")
+        File.write(notes, "not really a png")
+        [tiny_png, notes, "screenshot.png"].each do |path|
+          result = run_tool("mcp_fake_path", { "path" => path })
+          expect(result[:output]).to eq("[mcp_fake_path]\n#{path}")
+          expect(result).not_to have_key(:images)
+        end
+      end
+    end
+
+    context "when the image is in the server's cwd" do
+      let(:servers) { { "fake" => fake.merge("cwd" => File.dirname(tiny_png)) } }
+
+      it "attaches it" do
+        allow(Dir).to receive(:tmpdir).and_return("/nonexistent-tmp")
+        expect(run_tool("mcp_fake_path", { "path" => tiny_png })[:images].size).to eq(1)
+      end
+    end
+
+    context "with attach_image_paths: false" do
+      let(:servers) { { "fake" => fake.merge("attach_image_paths" => false) } }
+
+      it "leaves the path as text" do
+        shot = File.join(tmpdir, "screenshot.png")
+        FileUtils.cp(tiny_png, shot)
+        expect(run_tool("mcp_fake_path", { "path" => shot })).not_to have_key(:images)
+      end
+    end
   end
 
   it "times out a call by the settings' timeout" do
@@ -263,7 +339,7 @@ RSpec.describe "The mcp bundle" do
     expect(engine.command_registry.lookup("/mcp").anytime).to be(true)
     engine.running_anytime { commands.run("/mcp") }
     expect(cards.last).to include(title: "MCP servers", id: "mcp-servers", source: "mcp")
-    expect(cards.last[:body]).to start_with("**fake**: running (pid #{server_pid}), 7 tools\n- `mcp_fake_echo`\n")
+    expect(cards.last[:body]).to start_with("**fake**: running (pid #{server_pid}), 8 tools\n- `mcp_fake_echo`\n")
   end
 
   it "stops the server process when the Engine shuts down" do
