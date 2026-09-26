@@ -1,0 +1,276 @@
+# frozen_string_literal: true
+
+require "spec_helper"
+require "tmpdir"
+require "fileutils"
+require "json"
+require "rbconfig"
+require "samagotchi/engine"
+require "samagotchi/session"
+require "samagotchi/session_commands"
+require "samagotchi/turn_flow"
+require "samagotchi/memory_bundle/installer"
+
+MCP_SHIPPED = File.expand_path("../../../lib/samagotchi/bundles/mcp", __dir__)
+MCP_FAKE = File.expand_path("../../fixtures/mcp/fake_server.rb", __dir__)
+
+def alive?(pid)
+  Process.kill(0, pid)
+  true
+rescue Errno::ESRCH
+  false
+end
+
+# The mcp bundle's JSON-RPC client, against spec/fixtures/mcp/fake_server.rb.
+RSpec.describe "The mcp bundle's client" do
+  let(:client_class) do
+    mod = Module.new
+    mod.module_eval(File.read(File.join(MCP_SHIPPED, "plugin.rb")), "plugin.rb", 1)
+    mod::Plugin::Client
+  end
+  let(:logged) { Queue.new }
+  let(:exits) { Queue.new }
+  let(:env) { {} }
+  let(:client) do
+    client_class.new([RbConfig.ruby, MCP_FAKE], env: env, log: ->(event, **fields) { logged << [event, fields] },
+                                                on_exit: ->(reason) { exits << reason })
+  end
+
+  after { client.close }
+
+  def initialize!
+    client.request("initialize", { protocolVersion: "2025-06-18", capabilities: {} }, timeout: 5)
+  end
+
+  it "initializes, answers the server's ping on the way, and lists tools; stderr goes to the log" do
+    expect(initialize!).to include("serverInfo" => { "name" => "fake", "version" => "1" })
+    client.notify("notifications/initialized")
+    expect(client.request("tools/list", nil, timeout: 5)["tools"].map { |t| t["name"] }).to eq(%w[echo add fail mixed])
+    Timeout.timeout(2) { sleep(0.05) until logged.size.positive? }
+    expect(logged.pop).to eq(["stderr", { line: "fake mcp server starting (normal)" }])
+  end
+
+  it "raises an error answer" do
+    initialize!
+    expect { client.request("tools/call", { name: "nope" }, timeout: 5) }
+      .to raise_error(client_class::Error, "unknown tool (-32602)")
+  end
+
+  context "logging what it received" do
+    let(:log_file) { File.join(Dir.mktmpdir("mcp-log-"), "received.jsonl") }
+    let(:env) { { "FAKE_MCP_LOG" => log_file } }
+
+    def received = File.readlines(log_file).map { |line| JSON.parse(line) }
+
+    it "sends notifications/cancelled when the wait is cancelled" do
+      initialize!
+      cancel = false
+      Thread.new { sleep(0.3); cancel = true }
+      expect { client.request("tools/call", { name: "slow" }, timeout: 10, cancelled: -> { cancel }) }
+        .to raise_error(client_class::Cancelled)
+      Timeout.timeout(2) { sleep(0.05) until received.any? { |m| m["method"] == "notifications/cancelled" } }
+      call = received.find { |m| m["method"] == "tools/call" }
+      expect(received.last).to include("method" => "notifications/cancelled",
+                                       "params" => { "requestId" => call["id"], "reason" => "cancelled by the user" })
+      expect(received.find { |m| m["id"] == "srv-1" }).to include("result" => {})
+    end
+
+    it "times out, and says so to the server" do
+      initialize!
+      expect { client.request("tools/call", { name: "slow" }, timeout: 0.3) }
+        .to raise_error(client_class::Timeout, "tools/call timed out after 0.3s")
+      Timeout.timeout(2) { sleep(0.05) until received.any? { |m| m["method"] == "notifications/cancelled" } }
+    end
+  end
+
+  it "fails a waiting call when the server exits, once, and every call after" do
+    initialize!
+    expect { client.request("tools/call", { name: "crash" }, timeout: 5) }
+      .to raise_error(client_class::Dead, "the server exited (status 4)")
+    expect(exits.pop(timeout: 2)).to eq("the server exited (status 4)")
+    expect { client.request("tools/list", nil, timeout: 5) }.to raise_error(client_class::Dead)
+    expect(exits.size).to eq(0)
+  end
+
+  it "ends the process on close, without an exit notice" do
+    initialize!
+    pid = client.pid
+    client.close
+    expect(alive?(pid)).to be(false)
+    expect(exits.size).to eq(0)
+  end
+
+  it "kills a server that ignores stdin EOF" do
+    client = client_class.new([RbConfig.ruby, "-e", "trap('TERM') {}; $stdin.read; sleep 30"])
+    pid = client.pid
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    client.close
+    expect(alive?(pid)).to be(false)
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+  end
+
+  it "raises Dead for a command that doesn't exist" do
+    expect { client_class.new(["/nonexistent/mcp-server"]) }.to raise_error(client_class::Dead, /can't start/)
+  end
+end
+
+# The shipped mcp bundle (lib/samagotchi/bundles/mcp), installed into an Engine.
+RSpec.describe "The mcp bundle" do
+  let(:tmpdir) { Dir.mktmpdir("mcp-") }
+  let(:system_dir) { File.join(tmpdir, "mem") }
+  let(:client) { instance_double(Samagotchi::Client, complete: nil) }
+  let(:fake) { { "command" => [RbConfig.ruby, MCP_FAKE] } }
+  let(:servers) { { "fake" => fake } }
+  let(:settings) { { "servers" => servers, "startup_timeout" => 2, "timeout" => 5 } }
+
+  around do |example|
+    saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME")
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
+    ENV["XDG_STATE_HOME"] = File.join(tmpdir, "state")
+    example.run
+  ensure
+    %w[SAMAGOTCHI_DEFAULT_MODEL XDG_STATE_HOME].each { |key| saved.key?(key) ? ENV[key] = saved[key] : ENV.delete(key) }
+  end
+
+  before do
+    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(system_dir, ".bundles")
+    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
+    Samagotchi::MemoryBundle::Installer.project_dir_base_override = File.join(tmpdir, "proj")
+    FileUtils.mkdir_p(system_dir)
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+    allow_any_instance_of(Samagotchi::Engine).to receive(:bundle_settings).and_return("mcp" => settings)
+    Samagotchi::MemoryBundle::Installer.new(source: MCP_SHIPPED, name: "mcp", scope: "system", strict: true).run
+  end
+
+  after do
+    @engine&.shutdown
+    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
+    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
+    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
+    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
+    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
+    FileUtils.rm_rf(tmpdir)
+  end
+
+  def engine
+    @engine ||= Samagotchi::Engine.new(mode: :assist, client: client)
+  end
+
+  def tools = engine.instance_variable_get(:@tools)
+
+  def call_tool(name, args = {})
+    tools[name].handler.call({ name: name, args: args }, nil)
+  end
+
+  def load_events
+    events = []
+    engine.send(:announce_guardrail_failures, ->(e) { events << e })
+    events
+  end
+
+  def server_pid
+    engine.instance_variable_get(:@services).to_a.first.value.pid
+  end
+
+  it "installs with no memory file (nothing in the index) and loads as a plugin" do
+    expect(Dir.glob(File.join(system_dir, "*.md")).map { |f| File.basename(f) }).not_to include("mcp.md")
+    expect(engine.plugin_failures.any?).to be(false)
+  end
+
+  it "registers each tool as mcp_<server>_<tool>, sanitized, with its inputSchema, label and preview" do
+    names = tools.entries.map(&:name).grep(/\Amcp_/)
+    expect(names).to eq(%w[mcp_fake_echo mcp_fake_add mcp_fake_fail mcp_fake_mixed mcp_fake_slow mcp_fake_crash
+                           mcp_fake_weird_name_v2])
+    echo = tools["mcp_fake_echo"]
+    expect(echo.schema).to include(name: "mcp_fake_echo", description: "Echo the text back.")
+    expect(echo.schema[:parameters]).to include(properties: { text: { type: "string", description: "what to echo" } },
+                                                required: ["text"])
+    expect(echo.label).to eq("fake: echo")
+    expect(echo.preview.call({ name: "mcp_fake_echo", args: { "text" => "hi there" } })).to eq("text=hi there")
+    expect(echo.source).to eq("mcp")
+  end
+
+  it "calls a tool: text joined, other content as placeholders, isError as Error:" do
+    expect(call_tool("mcp_fake_echo", { "text" => "BANANA42" })).to eq("echo: BANANA42")
+    expect(call_tool("mcp_fake_add", { "a" => 2, "b" => 3.5 })).to eq("5.5")
+    expect(call_tool("mcp_fake_mixed"))
+      .to eq("first\n[image: image/png]\ninline\n[resource link: file:///y.txt]\nlast")
+    expect(call_tool("mcp_fake_fail")).to eq("Error: it broke")
+  end
+
+  it "times out a call by the settings' timeout" do
+    settings["timeout"] = 0.3
+    expect(call_tool("mcp_fake_slow")).to eq("Error: tools/call timed out after 0.3s")
+  end
+
+  it "stops waiting when the turn is cancelled" do
+    allow(engine).to receive(:active_cancel_controller).and_return(double(cancelled?: true))
+    expect(call_tool("mcp_fake_slow")).to eq("Error: tools/call was cancelled")
+  end
+
+  it "says a dead server's calls fail, with one notice" do
+    notices = []
+    engine.subscribe(observer: ->(e) { notices << e if e[:type] == :hook_notice })
+    expect(call_tool("mcp_fake_crash")).to eq("Error: MCP server fake is not running (the server exited (status 4))")
+    expect(call_tool("mcp_fake_echo", { "text" => "x" })).to start_with("Error: MCP server fake is not running")
+    Timeout.timeout(2) { sleep(0.05) until notices.any? }
+    expect(notices.map { |n| n[:text] }).to eq(["MCP server fake stopped: the server exited (status 4); its tools fail until chi restarts"])
+  end
+
+  context "with a broken server beside a working one" do
+    let(:servers) do
+      { "gone" => { "command" => ["/nonexistent/mcp-server"] }, "hung" => fake.merge("env" => { "FAKE_MCP_MODE" => "hang" }),
+        "fake" => fake }
+    end
+
+    it "skips each broken one with a notice at the first turn; the rest works; startup waits one timeout" do
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      engine
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3.5
+      notices = load_events.select { |e| e[:type] == :hook_notice }.map { |e| e[:text] }
+      expect(notices).to contain_exactly(
+        "MCP server gone didn't start: can't start /nonexistent/mcp-server: No such file or directory; its tools are left out",
+        "MCP server hung didn't start: initialize timed out after 2s; its tools are left out"
+      )
+      expect(tools.entries.map(&:name).grep(/\Amcp_/)).to all(start_with("mcp_fake_"))
+      expect(call_tool("mcp_fake_echo", { "text" => "ok" })).to eq("echo: ok")
+    end
+  end
+
+  context "with a server's tools: filter" do
+    let(:servers) { { "fake" => fake.merge("tools" => ["echo", "a*"]) } }
+
+    it "registers only those" do
+      expect(tools.entries.map(&:name).grep(/\Amcp_/)).to eq(%w[mcp_fake_echo mcp_fake_add])
+    end
+  end
+
+  context "with a name clash" do
+    let(:servers) { { "fake" => fake, "fake-" => fake.merge("tools" => ["echo"]) } }
+
+    it "leaves the second out with a notice" do
+      expect(tools["mcp_fake_echo"]).not_to be_nil
+      notices = load_events.select { |e| e[:type] == :hook_notice }.map { |e| e[:text] }
+      expect(notices).to eq(["MCP tool fake-/echo left out: tool mcp_fake_echo is registered twice"])
+    end
+  end
+
+  it "/mcp shows the servers, their state and tools as a card" do
+    commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                               default_model: "Gemma-4B-it", registry: engine.command_registry)
+    cards = []
+    engine.subscribe(observer: ->(e) { cards << e if e[:type] == :card })
+    expect(engine.command_registry.lookup("/mcp").anytime).to be(true)
+    engine.running_anytime { commands.run("/mcp") }
+    expect(cards.last).to include(title: "MCP servers", id: "mcp-servers", source: "mcp")
+    expect(cards.last[:body]).to start_with("**fake**: running (pid #{server_pid}), 7 tools\n- `mcp_fake_echo`\n")
+  end
+
+  it "stops the server process when the Engine shuts down" do
+    pid = server_pid
+    expect(alive?(pid)).to be(true)
+    engine.shutdown
+    expect(alive?(pid)).to be(false)
+    expect(call_tool("mcp_fake_echo", { "text" => "x" })).to eq("Error: service mcp:fake is stopped")
+  end
+end

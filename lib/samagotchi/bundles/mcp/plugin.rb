@@ -1,0 +1,391 @@
+# The mcp bundle (docs/plugins.md, The mcp bundle): tools from MCP servers.
+# Each server in config.yml runs as a child process (stdio only in v1) for
+# the session's life; its tools are the model's as mcp_<server>_<tool>.
+#
+#   bundles:
+#     mcp:
+#       timeout: 60            # seconds per tool call (default 60)
+#       startup_timeout: 10    # seconds for initialize and tools/list (default 10)
+#       servers:
+#         everything:
+#           command: [npx, -y, "@modelcontextprotocol/server-everything"]
+#           env: {DEBUG: "0"}   # added to chi's environment
+#           cwd: ~/scratch      # default: where chi runs
+#           tools: [echo, add]  # optional: only these (globs work)
+#           timeout: 120        # optional: this server's per-call timeout
+#
+# A server that doesn't start, answer or list its tools is skipped with a
+# notice; the rest of chi works. /mcp lists the servers and their tools.
+require "json"
+require "open3"
+require "shellwords"
+
+class Plugin
+  PROTOCOL_VERSION = "2025-06-18"
+  CALL_TIMEOUT = 60
+  STARTUP_TIMEOUT = 10
+  DESCRIPTION_CHARS = 1024
+  PREVIEW_CHARS = 60
+  NAME_CHARS = 48
+
+  # A JSON-RPC client for one MCP server over stdio: newline-delimited JSON
+  # on the process's stdin and stdout; stderr goes to the log.
+  class Client
+    # The request failed: an error answer, a timeout, or the server is gone.
+    class Error < StandardError; end
+    class Timeout < Error; end
+    class Cancelled < Error; end
+    # The server's process ended (or never started).
+    class Dead < Error; end
+
+    POLL_SECONDS = 0.1
+
+    attr_reader :pid
+
+    # @param command [Array<String>]
+    # @param env [Hash] added to the environment
+    # @param cwd [String]
+    # @param log [#call] (event, fields) for stderr lines and protocol noise
+    # @param on_exit [#call, nil] called once, with the reason, when the
+    #   process ends while the client is open
+    def initialize(command, env: {}, cwd: Dir.pwd, log: ->(*) {}, on_exit: nil)
+      @log = log
+      @on_exit = on_exit
+      @mutex = Mutex.new
+      @write_mutex = Mutex.new
+      @pending = {}
+      @next_id = 0
+      @dead = nil
+      @closing = false
+      @stdin, @stdout, @stderr, @wait = Open3.popen3(env.to_h { |k, v| [k.to_s, v.to_s] }, *command,
+                                                     chdir: cwd, pgroup: true)
+      @pid = @wait.pid
+      @reader = Thread.new { read_loop }
+      @err_reader = Thread.new { stderr_loop }
+    rescue SystemCallError => e
+      raise Dead, "can't start #{command.first}: #{e.message.sub(/ - .*\z/m, "")}"
+    end
+
+    # @return [String, nil] why the server is gone, or nil while it runs
+    def dead = @mutex.synchronize { @dead }
+
+    # Send a request and wait for its answer.
+    # @param cancelled [#call, nil] polled while waiting; true sends
+    #   notifications/cancelled and raises Cancelled
+    # @return [Hash] the result
+    def request(method, params = nil, timeout:, cancelled: nil)
+      queue = Queue.new
+      id = @mutex.synchronize do
+        raise Dead, @dead if @dead
+
+        @next_id += 1
+        @pending[@next_id] = queue
+        @next_id
+      end
+      write({ jsonrpc: "2.0", id: id, method: method, params: params }.compact)
+      deadline = monotonic + timeout
+      loop do
+        left = deadline - monotonic
+        if left <= 0
+          cancel(id, "timed out")
+          raise Timeout, "#{method} timed out after #{format("%g", timeout)}s"
+        end
+        if cancelled&.call
+          cancel(id, "cancelled by the user")
+          raise Cancelled, "#{method} was cancelled"
+        end
+        message = queue.pop(timeout: [left, POLL_SECONDS].min)
+        next unless message
+        raise Dead, message[:dead] if message[:dead]
+        if (error = message["error"])
+          raise Error, "#{error["message"] || "error"} (#{error["code"]})"
+        end
+
+        return message["result"] || {}
+      end
+    ensure
+      @mutex.synchronize { @pending.delete(id) } if id
+    end
+
+    def notify(method, params = nil)
+      write({ jsonrpc: "2.0", method: method, params: params }.compact)
+    end
+
+    # End the process: stdin closed first (most servers leave then), then
+    # TERM and KILL to its process group.
+    def close
+      @mutex.synchronize { @closing = true }
+      [@stdin].each { |io| io.close unless io.closed? }
+      unless @wait.join(1)
+        signal("TERM")
+        signal("KILL") unless @wait.join(1)
+        @wait.join(1)
+      end
+      [@stdout, @stderr].each { |io| io.close unless io.closed? }
+      [@reader, @err_reader].each { |t| t.join(1) }
+      nil
+    rescue IOError
+      nil
+    end
+
+    private
+
+    def write(message)
+      line = JSON.generate(message)
+      @write_mutex.synchronize do
+        @stdin.write(line, "\n")
+        @stdin.flush
+      end
+    rescue IOError, SystemCallError => e
+      raise Dead, dead || "the server's stdin is closed (#{e.class})"
+    end
+
+    def cancel(id, reason)
+      notify("notifications/cancelled", { requestId: id, reason: reason })
+    rescue Dead
+      nil
+    end
+
+    def read_loop
+      @stdout.each_line do |line|
+        next if line.strip.empty?
+
+        message = begin
+          JSON.parse(line)
+        rescue JSON::ParserError
+          @log.call("bad_line", line: line[0, 200])
+          next
+        end
+        dispatch(message) if message.is_a?(Hash)
+      end
+    rescue IOError
+      nil
+    ensure
+      ended
+    end
+
+    def dispatch(message)
+      if message.key?("method")
+        # A request from the server (ping, roots/list, …): ping is answered,
+        # the rest aren't supported. A notification is logged.
+        return @log.call("server_notification", method: message["method"]) unless message.key?("id")
+
+        answer = if message["method"] == "ping"
+                   { jsonrpc: "2.0", id: message["id"], result: {} }
+                 else
+                   { jsonrpc: "2.0", id: message["id"], error: { code: -32_601, message: "not supported by chi" } }
+                 end
+        begin
+          write(answer)
+        rescue Dead
+          nil
+        end
+      else
+        queue = @mutex.synchronize { @pending[message["id"]] }
+        queue&.push(message)
+      end
+    end
+
+    def stderr_loop
+      @stderr.each_line { |line| @log.call("stderr", line: line.chomp[0, 500]) }
+    rescue IOError
+      nil
+    end
+
+    def ended
+      status = @wait.value
+      reason = "the server exited (#{status.exitstatus ? "status #{status.exitstatus}" : "signal #{status.termsig}"})"
+      waiting, closing = @mutex.synchronize do
+        @dead ||= reason
+        [@pending.values, @closing]
+      end
+      waiting.each { |queue| queue.push({ dead: reason }) }
+      @on_exit&.call(reason) unless closing
+    end
+
+    def signal(name)
+      Process.kill(name, -@pid)
+    rescue Errno::ESRCH, Errno::EPERM
+      nil
+    end
+
+    def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  end
+
+  # One configured server: its service, state and tools.
+  Server = Struct.new(:name, :config, :service, :state, :error, :tools, :timeout, keyword_init: true)
+
+  def initialize(settings = {})
+    @settings = settings
+    @timeout = positive(settings["timeout"]) || CALL_TIMEOUT
+    @startup_timeout = positive(settings["startup_timeout"]) || STARTUP_TIMEOUT
+    @servers = []
+  end
+
+  def register(chi)
+    ctx = chi.ctx
+    configs = @settings["servers"]
+    configs = {} unless configs.is_a?(Hash)
+    @servers = configs.map do |name, config|
+      server = Server.new(name: name.to_s, config: config.is_a?(Hash) ? config : {}, state: :starting, tools: [])
+      server.timeout = positive(server.config["timeout"]) || @timeout
+      server.service = chi.service(name) { |svc| start(server, svc, ctx) }
+      server
+    end
+    # Started now (eagerly), side by side: a slow or broken server costs
+    # chi's start one startup_timeout, not one each.
+    @servers.map { |server| Thread.new { boot(server, ctx) } }.each(&:join)
+    @servers.each { |server| register_tools(chi, server, ctx) if server.state == :running }
+    chi.command "/mcp", "list the MCP servers, their state and their tools", anytime: true do |_args, command_ctx|
+      command_ctx.card(title: "MCP servers", body: listing, id: "mcp-servers")
+      nil
+    end
+  end
+
+  private
+
+  # The service's start: spawn, initialize, list the tools.
+  def start(server, svc, ctx)
+    command = server.config["command"]
+    command = Shellwords.split(command) if command.is_a?(String)
+    command = Array(command).map(&:to_s)
+    raise Client::Error, "no command (bundles: mcp: servers: #{server.name}: command: [...])" if command.empty?
+
+    env = server.config["env"].is_a?(Hash) ? server.config["env"] : {}
+    cwd = server.config["cwd"] ? File.expand_path(server.config["cwd"].to_s) : ctx.cwd
+    client = Client.new(command, env: env, cwd: cwd,
+                                 log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) },
+                                 on_exit: ->(reason) { exited(server, reason, ctx) })
+    svc.on_stop { client.close }
+    client.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {},
+                                   clientInfo: { name: "chi", version: Samagotchi::VERSION } },
+                   timeout: @startup_timeout)
+    client.notify("notifications/initialized")
+    server.tools = list_tools(client)
+    client
+  end
+
+  def boot(server, ctx)
+    client = server.service.value
+    server.state = :running
+    ctx.log.info("mcp_server_started", server: server.name, pid: client.pid, tools: server.tools.size)
+  rescue StandardError => e
+    server.state = :failed
+    server.error = e.message
+    ctx.log.warn("mcp_server_failed", server: server.name, error: e.class.name, msg: e.message)
+    ctx.notify("MCP server #{server.name} didn't start: #{e.message}; its tools are left out", level: :warn)
+  end
+
+  # tools/list, every page.
+  def list_tools(client)
+    tools = []
+    cursor = nil
+    20.times do
+      result = client.request("tools/list", cursor ? { cursor: cursor } : nil, timeout: @startup_timeout)
+      tools.concat(Array(result["tools"]).select { |tool| tool.is_a?(Hash) && tool["name"] })
+      cursor = result["nextCursor"]
+      break unless cursor
+    end
+    tools
+  end
+
+  def register_tools(chi, server, ctx)
+    wanted = server.config["tools"] && Array(server.config["tools"]).map(&:to_s)
+    server.tools = server.tools.select { |tool| wanted.any? { |w| File.fnmatch(w, tool["name"], File::FNM_EXTGLOB) } } if wanted
+    server.tools.each do |tool|
+      name = tool_name(server.name, tool["name"])
+      chi.tool(name, description(tool), schema: tool["inputSchema"] || { "type" => "object", "properties" => {} },
+                                        label: "#{server.name}: #{tool["name"]}", preview: ->(args) { preview(args) }) do |args, call_ctx|
+        call(server, tool["name"], args, call_ctx)
+      end
+      tool["chi_name"] = name
+    rescue ArgumentError => e
+      ctx.notify("MCP tool #{server.name}/#{tool["name"]} left out: #{e.message}", level: :warn)
+    end
+  end
+
+  # mcp_<server>_<tool> in the tool name rule: a-z, 0-9 and _, at most 48.
+  def tool_name(server, tool)
+    "mcp_#{server}_#{tool}".downcase.gsub(/[^a-z0-9_]+/, "_").squeeze("_")[0, NAME_CHARS].sub(/_+\z/, "")
+  end
+
+  def description(tool)
+    text = tool["description"].to_s.strip
+    text = tool["title"].to_s if text.empty?
+    text.length > DESCRIPTION_CHARS ? "#{text[0, DESCRIPTION_CHARS - 1]}…" : text
+  end
+
+  def preview(args)
+    line = args.map { |key, value| "#{key}=#{value.is_a?(String) ? value : JSON.generate(value)}" }.join(" ")
+    line = line.gsub(/\s+/, " ")
+    line.length > PREVIEW_CHARS ? "#{line[0, PREVIEW_CHARS - 1]}…" : line
+  end
+
+  # A tools/call, as the model's tool result.
+  def call(server, tool, args, ctx)
+    client = server.service.value
+    result = client.request("tools/call", { name: tool, arguments: args }, timeout: server.timeout,
+                                                                           cancelled: -> { ctx.cancelled? })
+    text = content_text(result)
+    result["isError"] ? "Error: #{text.empty? ? "the tool failed" : text}" : text
+  rescue Client::Dead => e
+    "Error: MCP server #{server.name} is not running (#{e.message})"
+  rescue Client::Error, Samagotchi::Plugin::Service::Stopped => e
+    "Error: #{e.message}"
+  end
+
+  def content_text(result)
+    blocks = Array(result["content"])
+    return JSON.generate(result["structuredContent"]) if blocks.empty? && result["structuredContent"]
+
+    blocks.map do |block|
+      case block["type"]
+      when "text" then block["text"].to_s
+      when "image" then "[image: #{block["mimeType"] || "unknown type"}]"
+      when "audio" then "[audio: #{block["mimeType"] || "unknown type"}]"
+      when "resource"
+        resource = block["resource"] || {}
+        resource["text"] || "[resource: #{resource["uri"]}]"
+      when "resource_link" then "[resource link: #{block["uri"]}]"
+      else "[#{block["type"] || "unknown"} content]"
+      end
+    end.join("\n")
+  end
+
+  # The process ended while chi runs: one notice; the calls say so.
+  def exited(server, reason, ctx)
+    return unless server.state == :running
+
+    server.state = :exited
+    server.error = reason
+    ctx.log.warn("mcp_server_exited", server: server.name, msg: reason)
+    ctx.notify("MCP server #{server.name} stopped: #{reason}; its tools fail until chi restarts", level: :warn)
+  end
+
+  def listing
+    return "No servers. Add them in config.yml under `bundles: mcp: servers:` (docs/plugins.md, The mcp bundle)." if @servers.empty?
+
+    @servers.map do |server|
+      head = "**#{server.name}**: #{state_text(server)}"
+      tools = server.tools.map { |tool| tool["chi_name"] }.compact
+      tools.empty? ? head : "#{head}\n#{tools.map { |t| "- `#{t}`" }.join("\n")}"
+    end.join("\n\n")
+  end
+
+  def state_text(server)
+    case server.state
+    when :running
+      count = server.tools.count { |tool| tool["chi_name"] }
+      "running (pid #{server.service.value.pid}), #{count} tool#{"s" unless count == 1}"
+    when :starting then "starting"
+    else "#{server.state == :failed ? "failed" : "stopped"}: #{server.error}"
+    end
+  rescue Samagotchi::Plugin::Service::Stopped
+    "stopped"
+  end
+
+  def positive(value)
+    number = Float(value.to_s, exception: false)
+    number&.positive? ? number : nil
+  end
+end
