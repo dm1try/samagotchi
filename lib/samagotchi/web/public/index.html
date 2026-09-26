@@ -39,6 +39,10 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.output.streaming{border-left-color:var(--accent);opacity:.95}
 /* A generation opens its answer bubble empty: hidden until text streams (the thinking box shows progress meanwhile). */
 .bubble.output.streaming:empty{display:none}
+/* The answer's pop: the promoted bubble is held at the narration box's height (inline max-height, scrolled to its tail) until the rendered markdown lands, then grows to its content while the content fades in; both classes go 400 ms later. */
+.bubble.output.boxed{overflow:hidden;transition:max-height 360ms ease}
+.bubble.output.revealing>:not(.copy-btn){animation:fadeIn 240ms ease}
+@media (prefers-reduced-motion:reduce){.bubble.output.boxed{transition:none}.bubble.output.revealing>:not(.copy-btn){animation:none}}
 .turn-timing{margin-top:8px;color:var(--text-muted);font-size:11px;font-variant-numeric:tabular-nums}
 .turn-timing.live{color:var(--accent)}
 .bubble.output.markdown{white-space:normal}
