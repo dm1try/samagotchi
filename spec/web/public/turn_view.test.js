@@ -108,3 +108,19 @@ test("turnHistoryHtml: a canceled multi-step turn keeps its partial text in the 
   assert.match(html, /Both checks passed:/);
   assert.match(html, /<\/details><div class="turn-timing">turn 1 · 12s · canceled<\/div><div class="bubble cancel">✕ canceled \(user\)<\/div>$/);
 });
+
+test("turnHistoryHtml with parts: a call's images are thumbs on its reloaded row, as live", () => {
+  const items = [
+    { role: "user", content: "shoot" },
+    { role: "assistant", content: "", parts: { tools: [
+      { tool: "mcp_chrome_screenshot", params: "", output: "[mcp_chrome_screenshot]\n/tmp/s.png", images: [{ file: "images/aa.png", name: "s.png" }] },
+      { tool: "execute", params: 'command="true"', output: "[execute]\n" },
+    ] } },
+    { role: "assistant", content: "A page." },
+  ];
+  const seen = [];
+  const html = turnHistoryHtml(items, normalizeTiming({}), { thumbs: (images) => { if (!images?.length) return ""; seen.push(images); return `<div class="thumbs">${images.map((i) => i.name).join(",")}</div>`; } });
+  assert.deepEqual(seen, [[{ file: "images/aa.png", name: "s.png" }]]);
+  assert.match(html, /<span class="activity-tool">mcp_chrome_screenshot<\/span>.*\/tmp\/s\.png<\/div><div class="thumbs">s\.png<\/div><\/div>/);
+  assert.equal(html.match(/class="thumbs"/g).length, 1);
+});

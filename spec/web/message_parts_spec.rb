@@ -158,4 +158,36 @@ RSpec.describe Samagotchi::Web::MessageParts do
       expect(described_class.for_message({ content: qwen_call("execute", command: "ls") }, [])).to be_nil
     end
   end
+
+  describe "a call's images (the tool row's thumbs after a reload)" do
+    let(:shot) { { "file" => "images/aaaaaaaaaaaaaaaa.png", "name" => "shot.png", "width" => 3, "height" => 2, "mime" => "image/png", "bytes" => 9, "source" => "tool" } }
+    let(:gif) { shot.merge("file" => "images/bbbbbbbbbbbbbbbb.gif", "name" => "a.gif") }
+    let(:shown) { { file: "images/aaaaaaaaaaaaaaaa.png", name: "shot.png", width: 3, height: 2 } }
+
+    it "native: splits the joined list by image_counts, each call its own" do
+      content = "#{qwen_call('read', path: 'a.png')}#{qwen_call('execute', command: 'true')}#{qwen_call('shots', {})}"
+      response = { "content" => "[read]\nImage\n\n---\n\n[execute]\n\n\n---\n\n[shots]\ntwo",
+                   "images" => [shot, gif, shot], "image_counts" => [1, 0, 2] }
+
+      tools = described_class.for_message({ content: content }, [response])[:tools]
+      expect(tools.map { |t| t[:images]&.map { |i| i[:name] } }).to eq([["shot.png"], nil, ["a.gif", "shot.png"]])
+      expect(tools.first[:images]).to eq([shown])
+    end
+
+    it "native, an older session without image_counts: a lone call gets them, several get none" do
+      one = described_class.for_message({ content: qwen_call("read", path: "a.png") }, [{ content: "[read]\nx", images: [shot] }])
+      expect(one[:tools].first[:images]).to eq([shown])
+      two = described_class.for_message({ content: "#{qwen_call('read', path: 'a')}#{qwen_call('read', path: 'b')}" },
+                                        [{ content: "[read]\nx\n\n---\n\n[read]\ny", images: [shot] }])
+      expect(two[:tools].map { |t| t[:images] }).to eq([nil, nil])
+    end
+
+    it "chat: each call's images from its own tool_response" do
+      message = { role: "model", content: "", tool_calls: [{ id: "c1", name: "execute", arguments: {} },
+                                                           { id: "c2", name: "shots", arguments: {} }] }
+      responses = [{ content: "[execute]\n", tool_call_id: "c1" }, { content: "[shots]\ntwo", tool_call_id: "c2", images: [shot] }]
+      tools = described_class.for_message(message, responses)[:tools]
+      expect(tools.map { |t| t[:images] }).to eq([nil, [shown]])
+    end
+  end
 end

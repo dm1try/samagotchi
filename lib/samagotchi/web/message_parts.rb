@@ -5,6 +5,7 @@ require_relative "../tool_call_parser"
 require_relative "../tool_activity"
 require_relative "../llm/native_tool_normalizer"
 require_relative "../tools/builtins"
+require_relative "../image_store"
 
 module Samagotchi
   module Web
@@ -20,6 +21,11 @@ module Samagotchi
     #     tool_calls ({id, name, arguments}), then one tool_response per call
     #     (tool_call_id).
     # A message that can't be read gives no parts, never an error.
+    #
+    # A call's images (a read image, a plugin or MCP tool's) are on its
+    # tool_response: chat, per call; native, one list for every call, split
+    # by the saved image_counts (older sessions without them: only a lone
+    # call gets them).
     #
     # A plugin tool's params are what its live row showed (its preview),
     # saved with the result as tool_params (native: one per call, chat: one
@@ -49,7 +55,7 @@ module Samagotchi
       # @param responses [Array<Hash>] the tool_response messages after it
       # @param registry [Tools::Registry] the session's tools
       # @return [Hash, nil] { thinking:, tools: [{ tool:, params:, output:,
-      #   output_truncated: }] } with only what it found; nil for nothing
+      #   output_truncated:, images: }] } with only what it found; nil for nothing
       def for_message(message, responses, registry: Tools::Builtins.default)
         content = field(message, :content).to_s
         calls = field(message, :tool_calls)
@@ -86,7 +92,19 @@ module Samagotchi
         outputs = split_outputs(joined, calls.length)
         shown = responses.flat_map { |r| Array(field(r, :tool_params)) }
         shown = [] unless shown.length == calls.length
-        calls.each_with_index.map { |call, i| tool_part(call, outputs[i], registry, shown[i]) }
+        images = split_images(responses, calls.length)
+        calls.each_with_index.map { |call, i| tool_part(call, outputs[i], registry, shown[i], images[i]) }
+      end
+
+      # Each call's images from the joined tool_response(s).
+      def split_images(responses, count)
+        images = responses.flat_map { |r| Array(field(r, :images)) }
+        return [] if images.empty?
+
+        counts = responses.flat_map { |r| Array(field(r, :image_counts)) }
+        return count == 1 ? [images] : [] unless counts.length == count && counts.sum == images.length
+
+        counts.map { |n| images.shift(n) }
       end
 
       def native_tools(calls, responses, registry)
@@ -95,7 +113,8 @@ module Samagotchi
           ref = CallRef.new(field(raw, :name).to_s, field(raw, :arguments))
           call = LLM::NativeToolNormalizer.normalize(ref) || { name: ref.name }
           response = by_id[field(raw, :id)] || (field(responses[i], :tool_call_id).nil? ? responses[i] : nil)
-          tool_part(call, response && field(response, :content).to_s, registry, field(response, :tool_params))
+          tool_part(call, response && field(response, :content).to_s, registry, field(response, :tool_params),
+                    response && field(response, :images))
         end
       end
 
@@ -116,7 +135,7 @@ module Samagotchi
       end
 
       # +shown+ is the saved params line, when it is a String.
-      def tool_part(call, output, registry, shown = nil)
+      def tool_part(call, output, registry, shown = nil, images = nil)
         name = call[:name].to_s
         params = shown.is_a?(String) ? shown : ToolActivity.tool_activity_params(name, call, registry: registry)
         part = { tool: name, params: params.to_s }
@@ -124,6 +143,8 @@ module Samagotchi
           part[:output] = output.length > OUTPUT_MAX ? output[0, OUTPUT_MAX] : output
           part[:output_truncated] = true if output.length > OUTPUT_MAX
         end
+        refs = Array(images).select { |ref| ref.is_a?(Hash) }
+        part[:images] = refs.map { |ref| ImageStore.symbolize(ref).slice(:file, :name, :width, :height) } unless refs.empty?
         part
       end
 

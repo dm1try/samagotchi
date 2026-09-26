@@ -126,6 +126,7 @@ RSpec.describe "tool results with images" do
       result = kernel.run([{ role: "user", content: "take two shots" }])
       tool_response = result.conversation.find { |m| m[:role] == "tool_response" }
       expect(tool_response[:images].map { |ref| ref[:name] }).to eq(%w[tiny.png tiny.gif])
+      expect(tool_response[:image_counts]).to eq([2])
       expect(calls.last[1][:images].size).to eq(2)
 
       # A reload: the saved conversation (string keys) sends the same images.
