@@ -67,7 +67,9 @@ test("turnHistoryHtml with parts: each step expands to its thinking, text and ca
     '<details class="gen"><summary>working with read · 1 tool call</summary>' +
     '<div class="activity-body"><div class="activity-row" data-key="2:1"><span class="activity-status ok">done</span><span class="activity-tool">read</span>' +
     `<span class="activity-params">path=&quot;R.md&quot;</span><span class="activity-duration">1.2s</span><div class="activity-output" title="${"x".repeat(310)}">${"x".repeat(300)}…</div></div></div></details>` +
-    '<details class="gen"><summary>thinking</summary><details class="thinking"><summary>thinking</summary><div class="thinking-body">sum up</div></details></details>' +
+    // A thinking-only step: one header, the body directly under it (no
+    // nested wrap that would repeat "thinking"), as the live view leaves it.
+    '<details class="gen"><summary>thinking</summary><div class="thinking-body">sum up</div></details>' +
     '</details>' +
     '<div class="bubble output">Both fine.</div><div class="turn-timing">turn 1 · 19s</div>');
 });
