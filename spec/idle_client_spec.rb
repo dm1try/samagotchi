@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/idle_client"
+require "samagotchi/cancellation_controller"
 require_relative "support/fake_provider_server"
 
 RSpec.describe Samagotchi::IdleClient do
@@ -183,6 +184,38 @@ RSpec.describe Samagotchi::IdleClient do
       expect(Samagotchi::LLM::OpenAIChat).to receive(:new)
         .with(hash_including(timeout: described_class::DEFAULT_TIMEOUT_SECONDS)).and_call_original
       described_class.new(model: "m", base_url: "http://x/v1")
+    end
+  end
+
+  describe "#ask" do
+    it "sends the messages as given with the limit, no tools and thinking off" do
+      reply(content: " The answer. ")
+      answer = client.ask([{ role: "system", content: "brief" }, { role: "user", content: "q?" }], max_tokens: 300)
+
+      expect(answer.text).to eq("The answer.")
+      expect(request_body).to include("max_tokens" => 300, "reasoning_effort" => "none",
+                                      "chat_template_kwargs" => { "enable_thinking" => false })
+      expect(request_body["messages"].last).to eq("role" => "user", "content" => "q?")
+      expect(request_body["tools"]).to be_nil.or eq([])
+    end
+
+    it "keeps an answer cut off by the limit, marked with …" do
+      reply(content: "It started to say something and", finish_reason: "length")
+      expect(client.ask([{ role: "user", content: "q" }]).text).to eq("It started to say something and…")
+    end
+
+    it "raises RequestCancelled for a cancelled controller, and sends nothing" do
+      controller = Samagotchi::CancellationController.new
+      controller.cancel!(:manual)
+      expect { client.ask([{ role: "user", content: "q" }], cancel_controller: controller) }
+        .to raise_error(Samagotchi::LLM::RequestCancelled)
+      expect(server.requests).to be_empty
+    end
+
+    it "raises SummarizeError when the server can't be reached" do
+      dead = described_class.new(model: "m", base_url: "http://127.0.0.1:#{server.port}/v1")
+      server.stop
+      expect { dead.ask([{ role: "user", content: "q" }]) }.to raise_error(described_class::SummarizeError)
     end
   end
 end

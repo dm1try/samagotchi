@@ -96,16 +96,33 @@ module Samagotchi
       raise SummarizeError, "recap summarization failed: #{e.class}: #{e.message}"
     end
 
+    # One side answer (a plugin's ctx.ask_model): +messages+ as they are, no
+    # tools, thinking off. An answer cut off by +max_tokens+ is kept as it
+    # is, marked with "…". Cancelling +cancel_controller+ aborts the request.
+    # @return [Summary] the answer ("" when the model said nothing)
+    # @raise [SummarizeError] any failure but a cancel
+    # @raise [LLM::RequestCancelled] +cancel_controller+ was cancelled
+    def ask(messages, max_tokens: MAX_TOKENS, cancel_controller: nil)
+      content, served = generate(messages, max_tokens: max_tokens, cancel_controller: cancel_controller, whole_sentences: false)
+      Summary.new(text: content.to_s.strip, model: served)
+    rescue SummarizeError, LLM::RequestCancelled
+      raise
+    rescue StandardError => e
+      raise SummarizeError, "the model request failed: #{e.class}: #{e.message}"
+    end
+
     private
 
     # One plain /chat/completions request. Returns the cleaned assistant text
     # ("" when there is nothing after stripping) and the served model's name
     # (nil when the reply names none). Raises SummarizeError when
-    # the reply has neither content nor reasoning_content.
-    def generate(messages)
+    # the reply has neither content nor reasoning_content. Cut off by
+    # +max_tokens+, the text keeps its finished sentences (+whole_sentences+)
+    # or all of it, with "…".
+    def generate(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, whole_sentences: true)
       response = @chat.chat(
-        messages: messages, model: @model, tools: [],
-        options: { max_tokens: MAX_TOKENS, **THINKING_OFF }
+        messages: messages, model: @model, tools: [], cancel_controller: cancel_controller,
+        options: { max_tokens: max_tokens, **THINKING_OFF }
       )
       content = response.text
       reasoning = response.reasoning
@@ -121,7 +138,7 @@ module Samagotchi
       # in the text.
       text = self.class.strip_thinking(content.empty? ? reasoning : content)
       # Cut off by max_tokens: keep the sentences that finished ("" if none).
-      text = self.class.full_sentences(text) if cut_off
+      text = whole_sentences ? self.class.full_sentences(text) : "#{text}…" if cut_off && !text.empty?
       [text, response.model]
     rescue LLM::ProtocolError => e
       raise SummarizeError, "server returned no parseable assistant content (#{e.message})"

@@ -1830,9 +1830,28 @@ module Samagotchi
           hook_ask_user(question, options, header, allow_freeform, hook)
         },
         cancelled: -> { active_cancel_controller&.cancelled? },
-        card: ->(**card) { show_card(**card) }
+        card: ->(**card) { show_card(**card) },
+        ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:|
+          ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller)
+        }
       )
     end
+
+    # ctx.ask_model's request: the session's current model on its host, as
+    # a turn resolves them (a /model switch counts), through its own
+    # IdleClient, so it shares nothing with the turn's backend.
+    # @return [String] the answer
+    def ask_side_model(request, timeout:, max_tokens:, cancel_controller:)
+      target = session_model_recap_target
+      client = IdleClient.new(model: target[:model], base_url: target[:base_url], api_key_env: target[:api_key_env],
+                              timeout: timeout)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      answer = client.ask(request, max_tokens: max_tokens, cancel_controller: cancel_controller)
+      Log.info(:plugins, "ask_model", model: target[:label], answer_model: answer.model, chars: answer.text.length,
+                                      ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
+      answer.text
+    end
+    private :ask_side_model
 
     # config.yml `bundles:`: each bundle's settings by name, for its hooks.
     # @return [Hash{String => Hash}] {} when absent; a section that isn't a
