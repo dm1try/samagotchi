@@ -358,6 +358,12 @@ Where it shows:
 | attached TUI | where it happens | as it arrives |
 | web | a row of the running step | between the turns |
 
+In the web, a turn's block collapses when the turn ends. A `:warn` card, and
+any card of a turn that ended without completing (cancelled, failed, the
+worker gone), then moves out of the block, after the turn's end line, so it
+stays in sight; a reload puts it in the same place. An `:info` card of a
+completed turn stays in its step.
+
 An [anytime command](#anytime-true)'s cards show as it shows them, after its
 line, in every UI, whether a turn runs or not.
 
