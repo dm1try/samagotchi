@@ -116,7 +116,7 @@ module Samagotchi
       # on the session's model.
       @default_model = ModelProfile.required_model_name(nil)
       @commands = SessionCommands.new(engine: @engine, turn_flow: @turn_flow,
-                                      default_model: @default_model,
+                                      default_model: @default_model, registry: @engine.command_registry,
                                       save: ->(session) { session.save(state_dir: @state_dir) })
       # Start the shared idle scheduler so the worker can trigger turns when
       # reminders are due (even with no user input).

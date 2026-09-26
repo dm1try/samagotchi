@@ -60,6 +60,23 @@ RSpec.describe Samagotchi::SessionCommands do
     end
   end
 
+  describe "the Engine's registry" do
+    it "holds the built-ins, one registry per Engine" do
+      other = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "beta:Qwen3-14B")
+      expect(engine.command_registry.entries.map(&:name)).to eq(described_class.builtin_registry.entries.map(&:name))
+      expect(engine.command_registry).not_to be(other.command_registry)
+      expect(engine.command_registry).not_to be_frozen
+    end
+
+    it "is what #run looks lines up in, so a command added to it runs" do
+      engine.command_registry.register("/hello", "say hello", source: "test") { |_text| reply("hi") }
+      commands = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma4-small",
+                                     registry: engine.command_registry)
+      expect(commands.run("/hello").output).to eq("hi")
+      expect(described_class.command?("/hello")).to be(false)
+    end
+  end
+
   it "answers nil for a line that isn't one of its commands" do
     expect(commands.run("hello")).to be_nil
     expect(commands.run("/stats")).to be_nil

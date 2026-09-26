@@ -15,6 +15,7 @@ require_relative "cancellation_controller"
 require_relative "context_window"
 require_relative "kernel_loop"
 require_relative "tools/builtins"
+require_relative "session_commands"
 require_relative "log"
 require_relative "log_subscriber"
 require_relative "host_registry"
@@ -105,6 +106,8 @@ module Samagotchi
       # The tools this session offers (the prompts' declarations and the
       # kernel's dispatch): the built-ins, per Engine.
       @tools = Tools::Builtins.registry
+      # Likewise the slash commands its SessionCommands run.
+      @command_registry = SessionCommands.register_builtins(Commands::Registry.new)
       guardrail_rules
       # Use the KernelLoop's reminder_store if provided (TerminalUI path),
       # otherwise create our own (SessionManager/one-shot paths). This ensures
@@ -344,6 +347,10 @@ module Samagotchi
       @profile_resolution ||= apply_profile(resolve_profile)
     end
     attr_reader :host_registry, :client
+
+    # @return [Commands::Registry] the commands this session runs: the
+    #   built-ins, and the ones bundle plugins add
+    attr_reader :command_registry
 
     def bare_model_name(full_ref)
       @host_registry.bare_name(full_ref)
