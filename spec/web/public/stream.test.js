@@ -247,6 +247,18 @@ test("openStream hands a context_added (a note joined the conversation) to its h
   assert.deepEqual(seen, ["slack"]);
 });
 
+test("openStream hands a card (a plugin's) to its handler", () => {
+  let es;
+  const seen = [];
+  openStream("abc", 0, { card: (data) => seen.push([data.id, data.title]) }, {
+    EventSourceImpl: class extends FakeEventSource { constructor(url) { super(url); es = this; } },
+  });
+
+  es.dispatch("card", { data: JSON.stringify({ id: "c1", title: "Hello" }) });
+
+  assert.deepEqual(seen, [["c1", "Hello"]]);
+});
+
 class ClosingEventSource {
   constructor() { this.listeners = new Map(); this.readyState = 1; this.onerror = null; }
   addEventListener(type, fn) { this.listeners.set(type, fn); }

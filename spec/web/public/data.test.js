@@ -160,6 +160,16 @@ test("getSession({ parts: true }) asks for what each saved step did (the turn vi
   assert.deepEqual(calls, [["/api/sessions/abc?parts=1", false], ["/api/sessions/abc", false]]);
 });
 
+test("getSession({ cards: true }) asks for the cards alone (their rendered bodies)", async () => {
+  const calls = [];
+  const fetchImpl = (path, opts) => {
+    calls.push([String(path), "cards" in opts]);
+    return Promise.resolve(okResponse({ cards: [] }));
+  };
+  await getSession("abc", { cards: true, fetchImpl });
+  assert.deepEqual(calls, [["/api/sessions/abc?cards=1", false]]);
+});
+
 test("sendTurn posts the prompt to the turn route", async () => {
   const calls = [];
   await sendTurn("abc", "prompt text", {
