@@ -8,4 +8,4 @@ files: {}
 plugin:
   file: plugin.rb
   sha256: sha256:f7bfcaae51863c0dc2b057b0d30f79b7bed7935891e817fa7373f787e5c4ca5e
-requires_chi: ">= 0.1.36"
+requires_chi: ">= 0.1.37"
