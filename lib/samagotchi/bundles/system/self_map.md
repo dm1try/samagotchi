@@ -29,6 +29,8 @@
   only the quickstart.
 - `lib/samagotchi/tools/<tool>.rb`: each tool's real limits and defaults (e.g. `execute.rb`,
   `output_guardrails.rb`). Tool descriptions are summaries, not the spec.
+- A tool that isn't in `lib/samagotchi/tools/` comes from an installed bundle's plugin
+  (`plugin.rb`; `chi self` lists the bundles); see `docs/plugins.md`.
 - `lib/samagotchi/hooks.rb`, `hooks/loader.rb`: hook events and config format.
 - `lib/samagotchi/config.rb`: settings registry (YAML key ↔ `SAMAGOTCHI_*` env ↔ `--flag`).
 - `lib/samagotchi/session.rb`: session storage. `tools/memory.rb`, `model_overlay.rb`: memories.
