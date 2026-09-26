@@ -143,6 +143,11 @@ module Samagotchi
         rules_dir = prov && prov_data && prov_data[:guardrails].is_a?(Hash) ? prov.guardrails_dir : File.join(target_dir, "guardrails")
         rules_to_copy = Dir.exist?(rules_dir) ? Dir.glob(File.join(rules_dir, "*.yml")).sort : []
 
+        # ── Plugin: the installed bundle's, with its requires_chi ──
+        plugin_src = prov && prov_data ? prov.plugin_path(prov_data) : nil
+        plugin_src = nil unless plugin_src && File.file?(plugin_src)
+        requires_chi = prov_data && prov_data[:requires_chi]
+
         # Determine trust_level for the built bundle
         build_trust_level = @trust_level
         if (build_trust_level.nil? || build_trust_level.empty?) && prov_data && prov_data[:trust_level]
@@ -174,6 +179,8 @@ module Samagotchi
             rules_to_copy.each { |src| FileUtils.cp(src, File.join(rules_staging, File.basename(src))) }
           end
 
+          FileUtils.cp(plugin_src, File.join(staging, File.basename(plugin_src))) if plugin_src
+
           Manifest.write(
             dir: staging,
             name: resolved_name,
@@ -182,7 +189,9 @@ module Samagotchi
             description: @description,
             files: files_map,
             hooks: hooks_map.empty? ? nil : hooks_map,
-            trust_level: build_trust_level
+            trust_level: build_trust_level,
+            plugin: plugin_src && { file: File.basename(plugin_src), sha256: Digest::SHA256.hexdigest(File.binread(plugin_src)) },
+            requires_chi: requires_chi
           )
 
           case format

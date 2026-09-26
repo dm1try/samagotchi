@@ -37,6 +37,42 @@ module Samagotchi
         File.join(@bundle_dir, "guardrails")
       end
 
+      # The installed plugin file's dir (plugin/<file>).
+      def plugin_dir
+        File.join(@bundle_dir, "plugin")
+      end
+
+      # The plugin file as installed, or nil when the bundle has none.
+      def plugin_path(data = read)
+        file = data && data[:plugin].is_a?(Hash) ? data[:plugin][:file].to_s : ""
+        file.empty? ? nil : File.join(plugin_dir, file)
+      end
+
+      # The plugin's base snapshot (bases/plugin/<file>), for bundle diff.
+      def plugin_base_path(file)
+        File.join(@bundle_dir, "bases", "plugin", file.to_s)
+      end
+
+      # Yields [name, data] for each installed bundle with a plugin, by
+      # name. A manifest that doesn't parse is yielded as {error:} when its
+      # bundle has a plugin/ dir.
+      def self.each_installed_with_plugin
+        return enum_for(:each_installed_with_plugin) unless block_given?
+        dir = bundles_dir
+        return unless Dir.exist?(dir)
+        Dir[File.join(dir, "*", "manifest.json")].sort.each do |mjson|
+          name = File.basename(File.dirname(mjson))
+          begin
+            data = JSON.parse(File.read(mjson), symbolize_names: true)
+          rescue JSON::ParserError, SystemCallError => e
+            yield name, { error: "manifest.json is unreadable: #{e.message}" } if Dir.exist?(File.join(File.dirname(mjson), "plugin"))
+            next
+          end
+          next unless data.is_a?(Hash) && data[:plugin].is_a?(Hash)
+          yield name, data
+        end
+      end
+
       # Yields [name, data] for each installed bundle with guardrail rule
       # files, by name. A manifest that doesn't parse is yielded as
       # {error:} when its bundle has a guardrails/ dir (its rules can't be
@@ -75,8 +111,12 @@ module Samagotchi
       # @param hooks_files [Hash] basename => path for hook file snapshots (optional)
       # @param guardrails_files [Hash] basename => installed rule file; the
       #   sha256 of each is recorded (the Engine checks it at load)
+      # @param plugin_file [String, nil] the installed plugin file; its name
+      #   and sha256 are recorded (the Engine checks it at load) with a base
+      #   snapshot
+      # @param requires_chi [String, nil] the manifest's requirement
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
-                guardrails_files: {})
+                guardrails_files: {}, plugin_file: nil, requires_chi: nil)
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -174,6 +214,15 @@ module Samagotchi
           end
         end
         manifest_data["source_commit"] = source_commit.to_s if source_commit && !source_commit.to_s.empty?
+        FileUtils.rm_rf(File.join(bases_dir, "plugin"))
+        if plugin_file
+          content = File.binread(plugin_file.to_s)
+          manifest_data["plugin"] = { "file" => File.basename(plugin_file.to_s),
+                                      "sha256" => "sha256:#{Digest::SHA256.hexdigest(content)}" }
+          FileUtils.mkdir_p(File.join(bases_dir, "plugin"))
+          File.binwrite(plugin_base_path(File.basename(plugin_file.to_s)), content)
+        end
+        manifest_data["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
 
         # Write aside and rename, so a reader in another process (a parallel
         # chi start) never parses a truncated manifest.json.

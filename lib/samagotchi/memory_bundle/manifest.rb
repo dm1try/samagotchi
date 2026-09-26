@@ -16,10 +16,17 @@ module Samagotchi
     #   files:
     #     identity.md: sha256:abc123...
     #     commit_preferences.md: sha256:def456...
+    #   plugin:                # optional — the bundle's plugin.rb (docs/plugins.md)
+    #     file: plugin.rb
+    #     sha256: sha256:0a1b...
+    #   requires_chi: ">= 0.1.28"   # optional — a Gem::Requirement for chi's VERSION
     class Manifest
       class ValidationError < StandardError; end
 
-      attr_reader :name, :version, :scope, :description, :files, :hooks, :trust_level
+      # A plugin file is a plain .rb name in the bundle's top directory.
+      PLUGIN_FILE = /\A[A-Za-z0-9_][A-Za-z0-9_.-]*\.rb\z/
+
+      attr_reader :name, :version, :scope, :description, :files, :hooks, :trust_level, :plugin, :requires_chi
 
       def initialize(path:)
         @path = path
@@ -31,6 +38,8 @@ module Samagotchi
         @files    = parse_files(raw["files"] || {})
         @hooks    = parse_hooks(raw["hooks"] || {})
         @trust_level = (raw["trust_level"] || "experimental").to_s
+        @plugin = parse_plugin(raw["plugin"])
+        @requires_chi = parse_requires_chi(raw["requires_chi"])
       end
 
       def self.read(dir:)
@@ -56,8 +65,28 @@ module Samagotchi
         sha.to_s.start_with?("sha256:") ? sha.to_s[7..] : sha.to_s
       end
 
+      # @return [String, nil] the plugin's sha256 hex, "sha256:" stripped
+      def checksum_for_plugin
+        sha = @plugin && @plugin[:sha256].to_s
+        return nil if sha.nil? || sha.empty?
+
+        sha.delete_prefix("sha256:")
+      end
+
+      # Why chi +version+ can't load this bundle's plugin, or nil when it can
+      # (or the bundle names no requirement).
+      def self.requires_chi_failure(requirement, version)
+        return nil if requirement.nil? || requirement.to_s.strip.empty?
+        return nil if Gem::Requirement.new(*requirement.to_s.split(",").map(&:strip)).satisfied_by?(Gem::Version.new(version.to_s))
+
+        "it requires chi #{requirement} (this is chi #{version})"
+      rescue ArgumentError, Gem::Requirement::BadRequirementError => e
+        "its requires_chi #{requirement.inspect} is not a version requirement (#{e.message})"
+      end
+
       # Writes a fresh manifest.yml from computed checksums at `dir`.
-      def self.write(dir:, name:, version:, scope: nil, description: "", files:, hooks: nil, trust_level: nil)
+      def self.write(dir:, name:, version:, scope: nil, description: "", files:, hooks: nil, trust_level: nil,
+                     plugin: nil, requires_chi: nil)
         FileUtils.mkdir_p(dir)
         manifest = {
           "name" => name,
@@ -75,6 +104,11 @@ module Samagotchi
           end
         end
         manifest["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
+        if plugin
+          sha = plugin[:sha256].to_s
+          manifest["plugin"] = { "file" => plugin[:file].to_s, "sha256" => sha.start_with?("sha256:") ? sha : "sha256:#{sha}" }
+        end
+        manifest["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
         File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
       end
 
@@ -103,6 +137,29 @@ module Samagotchi
                      "sha256:#{str}"
                    end
         end
+      end
+
+      # plugin: {file:, sha256:} → {file:, sha256:} (sha "" when not given),
+      # or nil; a file that isn't a plain .rb name is a validation error.
+      def parse_plugin(raw)
+        return nil if raw.nil?
+        raise ValidationError, "plugin: must be a mapping with file: and sha256:" unless raw.is_a?(Hash)
+
+        file = (raw["file"] || raw[:file]).to_s.strip
+        unless file.match?(PLUGIN_FILE)
+          raise ValidationError, "plugin file must be a .rb file name in the bundle's top directory, not #{file.inspect}"
+        end
+
+        sha = (raw["sha256"] || raw[:sha256]).to_s.strip
+        sha = "sha256:#{sha}" unless sha.empty? || sha.start_with?("sha256:")
+        { file: file, sha256: sha }
+      end
+
+      def parse_requires_chi(raw)
+        return nil if raw.nil?
+
+        text = raw.to_s.strip
+        text.empty? ? nil : text
       end
 
       def parse_hooks(raw)

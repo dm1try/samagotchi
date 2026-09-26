@@ -9,6 +9,7 @@ require_relative "source"
 require_relative "placeholder"
 require_relative "index_updater"
 require_relative "merger"
+require_relative "../version"
 
 module Samagotchi
   module MemoryBundle
@@ -263,6 +264,10 @@ module Samagotchi
           end
         end
 
+        # ── Plugin: <file> into <bundle_dir>/plugin/ (docs/plugins.md) ────
+        # Like the rules, the bundle's plugin replaces an earlier one.
+        plugin_file_for_provenance = install_plugin(manifest, normalized_dir, provenance)
+
         # Handle pruned files (removed from bundle) — report warnings
         if @upgrade && existing_provenance && existing_provenance[:files]
           existing_provenance[:files].keys.each do |old_key|
@@ -366,7 +371,9 @@ module Samagotchi
               trust_level: manifest.respond_to?(:trust_level) ? manifest.trust_level : nil,
               source_commit: source_commit,
               hooks_files: hooks_files_for_provenance,
-              guardrails_files: guardrail_files_for_provenance
+              guardrails_files: guardrail_files_for_provenance,
+              plugin_file: plugin_file_for_provenance,
+              requires_chi: manifest.requires_chi
             )
           end
         end
@@ -410,6 +417,41 @@ module Samagotchi
       end
 
       private
+
+      # Copy the manifest's plugin file into the bundle's plugin/ dir,
+      # warning when its sha256 differs from the declared one or this chi
+      # doesn't meet requires_chi (the Engine then won't load it).
+      # @return [String, nil] the installed file (nil: none, or a dry run)
+      def install_plugin(manifest, source_dir, provenance)
+        plugin = manifest&.plugin
+        unless plugin
+          FileUtils.rm_rf(provenance.plugin_dir) unless @dry_run
+          return nil
+        end
+
+        src = File.join(source_dir, plugin[:file])
+        raise InstallError, "the manifest names plugin #{plugin[:file]}, which the bundle doesn't have" unless File.file?(src)
+
+        if (failure = Manifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION))
+          @warnings << "Plugin #{plugin[:file]} won't load: #{failure}"
+        end
+        if @dry_run
+          @results[plugin[:file]] = { status: "would_install" }
+          return nil
+        end
+
+        FileUtils.rm_rf(provenance.plugin_dir)
+        FileUtils.mkdir_p(provenance.plugin_dir)
+        dest = File.join(provenance.plugin_dir, plugin[:file])
+        FileUtils.cp(src, dest)
+        @results[plugin[:file]] = { status: @upgrade && provenance.read ? "updated" : "installed" }
+        expected = manifest.checksum_for_plugin
+        actual = Digest::SHA256.hexdigest(File.binread(dest))
+        if @strict && expected && actual != expected
+          @warnings << "Checksum mismatch for plugin #{plugin[:file]}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
+        end
+        dest
+      end
 
       def update_target_index(scope, file_path, file_key)
         byte_count = File.exist?(file_path) ? File.size(file_path) : 0

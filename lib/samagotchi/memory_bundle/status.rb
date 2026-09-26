@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 require "digest"
 require_relative "provenance"
+require_relative "manifest"
+require_relative "../version"
 require_relative "index_updater"
 require_relative "../memory_paths"
 
@@ -38,7 +40,23 @@ module Samagotchi
             base_path: base_path
           }
         end
-        { provenance: data, scope: scope, target_dir: target_dir, files: details }
+        { provenance: data, scope: scope, target_dir: target_dir, files: details, plugin: plugin_status(provenance, data) }
+      end
+
+      # The installed plugin: {file:, path:, state:, requires_chi:,
+      # requires_failure:}; state is "ok", "modified" (its sha256 differs
+      # from the installed one: it won't load) or "missing". nil without one.
+      def self.plugin_status(provenance, data)
+        path = provenance.plugin_path(data)
+        return nil unless path
+
+        recorded = data[:plugin][:sha256].to_s.delete_prefix("sha256:")
+        state = if !File.file?(path) then "missing"
+                elsif Digest::SHA256.hexdigest(File.binread(path)) == recorded then "ok"
+                else "modified"
+                end
+        { file: File.basename(path), path: path, state: state, requires_chi: data[:requires_chi],
+          requires_failure: Manifest.requires_chi_failure(data[:requires_chi], Samagotchi::VERSION) }
       end
 
       def self.resolve_target_dir(scope)

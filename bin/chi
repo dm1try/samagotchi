@@ -267,7 +267,7 @@ if ARGV[0] == "bundle"
     puts "    List installed bundles and their provenance."
     puts ""
     puts "  build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
-    puts "    Build local memories and installed hooks into a shareable bundle (dir or zip)."
+    puts "    Build local memories and installed hooks (and plugin) into a shareable bundle (dir or zip)."
     puts "    --scope selects source dir (default: system). --out inferred from extension; default <name>.zip."
     puts "    FILES... optional allowlist of *.md basenames to include (default: all)."
     exit 0
@@ -407,6 +407,7 @@ if ARGV[0] == "bundle"
         hook_cnt = manifest.hooks.size
         puts "Hooks: #{hook_cnt} hook(s) (#{manifest.hooks.keys.join(', ')})"
       end
+      puts "Plugin: #{manifest.plugin[:file]} (loads at the next chi start)" if manifest&.plugin
       puts "Provenance written to: #{Samagotchi::MemoryBundle::Provenance.bundles_dir}/#{bundle_name}/" if manifest
       exit 0
     rescue Samagotchi::MemoryBundle::Installer::InstallError => e
@@ -483,6 +484,7 @@ if ARGV[0] == "bundle"
       if manifest && manifest.hooks && !manifest.hooks.empty?
         puts "Hooks: #{manifest.hooks.size} hook(s) (#{manifest.hooks.keys.join(', ')})"
       end
+      puts "Plugin: #{manifest.plugin[:file]} (loads at the next chi start)" if manifest&.plugin && !dry_run
       if dry_run
         puts "(dry-run: no changes written)" 
         exit 0
@@ -633,6 +635,12 @@ if ARGV[0] == "bundle"
           puts "    #{hk}: event=#{event} on_error=#{on_error} priority=#{prio} [#{exists}]"
         end
       end
+      if (plugin = st[:plugin])
+        note = plugin[:state] == "modified" ? " (edited after install: not loaded; reinstall the bundle)" : ""
+        puts "  Plugin: #{plugin[:file]} [#{plugin[:state]}]#{note}"
+        puts "    requires_chi: #{plugin[:requires_chi]}" if plugin[:requires_chi]
+        puts "    not loaded: #{plugin[:requires_failure]}" if plugin[:requires_failure]
+      end
     else
       bundles_dir = Samagotchi::MemoryBundle::Provenance.bundles_dir
       unless File.directory?(bundles_dir)
@@ -648,7 +656,10 @@ if ARGV[0] == "bundle"
           mods = st[:files].values.count { |v| v[:modified] || v[:missing] }
           hooks_count = (st[:provenance][:hooks] || {}).size
           hook_info = hooks_count > 0 ? " hooks=#{hooks_count}" : ""
-          puts "  #{bname} v#{st[:provenance][:version]} scope=#{st[:scope]} files=#{st[:files].size}#{hook_info} issues=#{mods}"
+          plugin = st[:plugin]
+          mods += 1 if plugin && (plugin[:state] != "ok" || plugin[:requires_failure])
+          plugin_info = plugin ? " plugin=#{plugin[:file]}" : ""
+          puts "  #{bname} v#{st[:provenance][:version]} scope=#{st[:scope]} files=#{st[:files].size}#{hook_info}#{plugin_info} issues=#{mods}"
         end
       end
     end
@@ -671,6 +682,17 @@ if ARGV[0] == "bundle"
     target_dir = Samagotchi::MemoryBundle::Installer.new(source: ".", name: bname, scope: scope).send(:resolve_target_dir, scope)
     files = data[:files] || {}
     hooks = data[:hooks] || {}
+    plugin_path = prov.plugin_path(data)
+    plugin_file = plugin_path && File.basename(plugin_path)
+    show_plugin = lambda do
+      puts "=== plugin/#{plugin_file} ==="
+      puts "--- base (provenance) ---"
+      base = prov.plugin_base_path(plugin_file)
+      puts File.exist?(base) ? File.read(base) : "(no base)"
+      puts "--- current (on-disk) ---"
+      puts File.exist?(plugin_path) ? File.read(plugin_path) : "(missing)"
+      puts "--- metadata: sha256=#{data[:plugin][:sha256]}#{data[:requires_chi] ? " requires_chi=#{data[:requires_chi]}" : ""}"
+    end
     if file_arg
       # Try file first, then hook
       if files.key?(file_arg.to_sym) || files.key?(file_arg)
@@ -695,6 +717,8 @@ if ARGV[0] == "bundle"
           m = meta.transform_keys(&:to_s)
           puts "--- metadata: event=#{m['event']} on_error=#{m['on_error']} priority=#{m['priority']} sha256=#{m['sha256']}"
         end
+      elsif plugin_file && [plugin_file, "plugin/#{plugin_file}"].include?(file_arg)
+        show_plugin.call
       else
         puts "=== #{file_arg} ==="
         puts "(not found in bundle)"
@@ -726,6 +750,10 @@ if ARGV[0] == "bundle"
           m = meta.transform_keys(&:to_s)
           puts "--- metadata: event=#{m['event']} on_error=#{m['on_error']} priority=#{m['priority']} sha256=#{m['sha256']}"
         end
+        puts ""
+      end
+      if plugin_file
+        show_plugin.call
         puts ""
       end
     end

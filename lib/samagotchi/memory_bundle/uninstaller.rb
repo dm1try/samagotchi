@@ -101,6 +101,8 @@ module Samagotchi
           FileUtils.rm_rf(provenance.hooks_dir) if Dir.exist?(provenance.hooks_dir)
         end
 
+        plugin_path = provenance.plugin_path(data)
+        @removed_files << "plugin/#{File.basename(plugin_path)}" if plugin_path && File.exist?(plugin_path)
         FileUtils.rm_rf(provenance.bundle_dir)
         true
       end
