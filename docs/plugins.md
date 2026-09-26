@@ -404,6 +404,12 @@ only against this API (`lib/samagotchi/bundles/btw/plugin.rb`).
   before that turn, and the card says so. In a worker it includes the turn
   so far.
 - Settings: `bundles: btw: {max_tokens: 1024, timeout: 120}`.
+- It ships no memory, so it adds no line to the prompt's memory index. Its
+  0.1.0 shipped `btw.md` as one, and `chi bundle upgrade btw` leaves that file
+  (and its index line) behind. Drop it with `chi bundle uninstall btw`, then
+  `chi bundle install btw`. After an upgrade already ran, delete
+  `~/.config/samagotchi/memories/btw.md` and its `**btw**` line in `index.md`
+  there by hand.
 
 ## Loading, and when it fails
 

@@ -1,3 +1,0 @@
-# btw
-
-`/btw <question>` asks the session's model a side question about this conversation, even while a turn runs. The answer shows as a card in the REPL, the attached TUI and the web, and nothing else sees it: not the conversation, not the saved session, not the next turn. The card's **Keep as session** (`/btw keep <id>`) starts a child session (↳ under this one) from the conversation, the question and the answer. Answers are kept for the last 10 questions while the session's worker runs; after that `keep` says expired. In the REPL, a question asked during a turn is about the conversation before that turn. Settings in config.yml: `bundles: btw: {max_tokens: 1024, timeout: 120}`.

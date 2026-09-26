@@ -84,6 +84,12 @@ RSpec.describe "The btw bundle" do
     expect([entry.name, entry.anytime, entry.source]).to eq(["/btw", true, "btw"])
   end
 
+  it "installs no memory, so the prompt's memory index gets no line from it" do
+    expect(File.exist?(File.join(system_dir, "btw.md"))).to be(false)
+    index = File.join(system_dir, "index.md")
+    expect(File.exist?(index) ? File.read(index) : "").not_to include("**btw**")
+  end
+
   it "shows thinking… at once, then the answer in the same card, and changes nothing in the session" do
     before = Marshal.load(Marshal.dump(session.messages))
 
