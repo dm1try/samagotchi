@@ -1,0 +1,12 @@
+---
+name: btw
+version: 0.1.0
+scope: system
+description: "/btw <question>: a side answer about the conversation, as a card in every UI, even mid-turn; Keep as session forks it into a child session"
+trust_level: reviewed
+files:
+  btw.md: sha256:d9661b86b01a068af7e2b78d50e9c600272921d3eccbbe071313621d8a78c1d0
+plugin:
+  file: plugin.rb
+  sha256: sha256:d12a970e7e5ada617fc7d55ee1de80b576835092d268af620f3f7241188e3297
+requires_chi: ">= 0.1.30"
