@@ -457,6 +457,40 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
     expect(screen.lines.grep(/not available/)).to be_empty
   end
 
+  describe "the session's commands, from its snapshot" do
+    let(:commands) do
+      Samagotchi::SessionCommands.builtin_registry.listing +
+        [{ "name" => "/hello", "description" => "greet", "anytime" => false, "local" => false, "uis" => nil,
+           "source" => "sample-plugin" }]
+    end
+    let(:joined) { snapshot.tap { |frame| frame["snapshot"]["commands"] = commands } }
+
+    before do
+      allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: "{}"))
+      allow(client).to receive(:post_turn).and_return(ack)
+    end
+
+    it "sends a plugin's command to the worker, and an unknown /foo to the model as a prompt" do
+      run_with(["/hello again", "/foo bar"], first: joined)
+
+      expect(client).to have_received(:post_command).once.with(line: "/hello again", client_id: "tui:1")
+      expect(client).to have_received(:post_turn).once.with(prompt: "/foo bar", client_id: "tui:1")
+    end
+
+    it "sends /hello as a prompt when the snapshot doesn't name it (an older worker)" do
+      run_with(["/hello"])
+
+      expect(client).to have_received(:post_turn).once.with(prompt: "/hello", client_id: "tui:1")
+      expect(client).not_to have_received(:post_command)
+    end
+
+    it "completes plugin commands, with the attached TUI's own" do
+      run_with([], first: joined)
+
+      expect(attached.send(:slash_commands)).to include("/hello", "/detach", "/model")
+    end
+  end
+
   it "says so when the worker is older than the command route" do
     allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 404, body: '{"error":"not_found"}'))
 

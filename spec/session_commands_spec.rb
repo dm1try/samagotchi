@@ -48,15 +48,15 @@ RSpec.describe Samagotchi::SessionCommands do
                                                              pending_tool_calls: true, tool_activity: [], canceled: false))
   end
 
-  describe ".command?" do
+  describe ".builtin_registry" do
     it "knows the commands a worker runs, and nothing else" do
-      expect(%w[/model /models /guardrails !rollback /continue].map { |c| described_class.command?(c) }).to all(be(true))
-      expect(described_class.command?("/guardrails revoke 2")).to be(true)
-      expect(described_class.command?("/guardrailsx")).to be(false)
-      expect(described_class.command?("/model beta:x --default")).to be(true)
-      expect(described_class.command?("/continue no, too slow")).to be(true)
-      expect(described_class.command?("!ls -la")).to be(true)
-      expect(%w[/stats /recap /exit /detach hello ! /modelx].map { |c| described_class.command?(c) }).to all(be(false))
+      expect(%w[/model /models /guardrails !rollback /continue].map { |c| described_class.builtin_registry.command?(c) }).to all(be(true))
+      expect(described_class.builtin_registry.command?("/guardrails revoke 2")).to be(true)
+      expect(described_class.builtin_registry.command?("/guardrailsx")).to be(false)
+      expect(described_class.builtin_registry.command?("/model beta:x --default")).to be(true)
+      expect(described_class.builtin_registry.command?("/continue no, too slow")).to be(true)
+      expect(described_class.builtin_registry.command?("!ls -la")).to be(true)
+      expect(%w[/stats /recap /exit /detach hello ! /modelx].map { |c| described_class.builtin_registry.command?(c) }).to all(be(false))
     end
   end
 
@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::SessionCommands do
       commands = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma4-small",
                                      registry: engine.command_registry)
       expect(commands.run("/hello  you ").output).to eq("hi you")
-      expect(described_class.command?("/hello")).to be(false)
+      expect(described_class.builtin_registry.command?("/hello")).to be(false)
     end
 
     it "runs a bundle's command with no output as nil, and a raise as an error" do
@@ -210,8 +210,8 @@ RSpec.describe Samagotchi::SessionCommands do
     end
 
     it "is a command with an argument too" do
-      expect(described_class.command?("/models qwen")).to be(true)
-      expect(described_class.command?("/modelsx")).to be(false)
+      expect(described_class.builtin_registry.command?("/models qwen")).to be(true)
+      expect(described_class.builtin_registry.command?("/modelsx")).to be(false)
     end
   end
 

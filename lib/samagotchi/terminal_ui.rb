@@ -1084,7 +1084,7 @@ module Samagotchi
     end
 
     def command_line?(line)
-      SessionCommands.command?(line) || stats_command?(line) || recap_command?(line) || exit_command?(line)
+      command_registry.command?(line) || stats_command?(line) || recap_command?(line) || exit_command?(line)
     end
 
     # The kernel's drain at an iteration boundary: queued lines, #memory

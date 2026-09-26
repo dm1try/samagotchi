@@ -1259,6 +1259,16 @@ RSpec.describe Samagotchi::Bridge do
         expect(queued.map { |c| c[:line] }).to eq(["/hello again"])
       end
 
+      it "names the Engine's commands in its snapshot, plugins' too" do
+        start_bridge
+        @engine.command_registry.register("/hello", "greet", anytime: true, source: "sample-plugin") { |_args| "hi" }
+
+        commands = @bridge.snapshot[:commands]
+        expect(commands.map { |c| c[:name] }).to include("/model", "/stats", "/hello")
+        expect(commands.find { |c| c[:name] == "/hello" })
+          .to eq(name: "/hello", description: "greet", anytime: true, local: false, uis: nil, source: "sample-plugin")
+      end
+
       it "answers 501 when nothing runs commands (a Bridge without a worker loop)" do
         start_bridge
 

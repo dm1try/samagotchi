@@ -70,22 +70,11 @@ module Samagotchi
       registry
     end
 
-    # The built-ins alone, for callers without an Engine (and the class
-    # methods below).
+    # The built-ins alone, for callers without an Engine (an attached TUI
+    # before its snapshot names the session's commands, specs).
     # @return [Commands::Registry] frozen
     def self.builtin_registry
       @builtin_registry ||= register_builtins(Commands::Registry.new).freeze
-    end
-
-    # @return [Boolean] whether +line+ is one of these commands
-    def self.command?(line)
-      builtin_registry.command?(line)
-    end
-
-    # @return [Symbol, nil] :rollback, :shell, :continue, :models,
-    #   :guardrails or :model
-    def self.kind_of_line(line)
-      builtin_registry.lookup(line)&.id
     end
 
     # @return [String] the model /model clear goes back to

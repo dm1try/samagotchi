@@ -609,6 +609,8 @@ RSpec.describe Samagotchi::Web::App do
           "continue_offer" => { "context" => { "original_prompt" => "first" }, "no_interrupt" => false },
           "guardrail_warning" => "hook g.rb (config) failed to load (x)",
           "plugin_warning" => "plugin plugin.rb (bundle b) failed to load (x)",
+          "commands" => [{ "name" => "/hello", "description" => "greet", "anytime" => true, "local" => false,
+                           "uis" => nil, "source" => "sample-plugin" }],
           "event_seq" => 40,
           "event_id" => "40-e1"
         },
@@ -636,6 +638,8 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["continue_offer"]).to eq("context" => { "original_prompt" => "first" }, "no_interrupt" => false)
       expect(payload["guardrail_warning"]).to eq("hook g.rb (config) failed to load (x)")
       expect(payload["plugin_warning"]).to eq("plugin plugin.rb (bundle b) failed to load (x)")
+      # The composer's autocomplete: the worker's commands, its plugins' too.
+      expect(payload["commands"].map { |c| c["name"] }).to eq(["/hello"])
       expect(payload.dig("session", "status")).to eq("running")
       # The model turns run on now (after a /model), not the file's.
       expect(payload.dig("session", "model_name")).to eq("Qwen3-14B")

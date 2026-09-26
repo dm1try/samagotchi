@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "samagotchi/commands/registry"
 require "samagotchi/session_commands"
 
@@ -37,6 +38,32 @@ RSpec.describe Samagotchi::Commands::Registry do
     expect { registry.register("/a", "again") }.to raise_error(ArgumentError, /already registered/)
     registry.freeze
     expect { registry.register("/b", "b") }.to raise_error(FrozenError)
+  end
+
+  describe "#listing and .from_listing (a snapshot's commands)" do
+    it "lists each entry for a UI without an Engine" do
+      registry.register("/hello", "greet", anytime: true, source: "sample-plugin")
+      registry.register("/detach", "detach", local: true, uis: [:attached])
+      expect(registry.listing).to eq([
+        { name: "/hello", description: "greet", anytime: true, local: false, uis: nil, source: "sample-plugin" },
+        { name: "/detach", description: "detach", local: true, anytime: false, uis: ["attached"], source: "core" }
+      ])
+    end
+
+    it "keeps the base's entries (their match) and adds the listed ones it lacks, JSON keys too" do
+      base = Samagotchi::SessionCommands.builtin_registry
+      listing = JSON.parse(JSON.generate(base.listing + [{ name: "/hello", description: "greet", anytime: true,
+                                                           local: false, uis: nil, source: "sample-plugin" }]))
+      rebuilt = described_class.from_listing(listing, base: base)
+
+      expect(rebuilt.lookup("!ls").id).to eq(:shell)
+      expect(rebuilt.lookup("/model x").id).to eq(:model)
+      hello = rebuilt.lookup("/hello again")
+      expect([hello.name, hello.anytime, hello.source]).to eq(["/hello", true, "sample-plugin"])
+      expect(rebuilt.lookup("/foo")).to be_nil
+      expect(rebuilt.completions(:attached)).to include("/hello", "/detach")
+      expect(base.lookup("/hello")).to be_nil
+    end
   end
 
   describe "the built-ins (SessionCommands.builtin_registry)" do

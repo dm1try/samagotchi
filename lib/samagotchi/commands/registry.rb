@@ -8,7 +8,7 @@ module Samagotchi
     # An entry the UI runs itself (/stats, /exit, …) is +local+: it is listed
     # for Tab completion and help, and #lookup never returns it.
     class Registry
-      # @!attribute id [Symbol] what SessionCommands.kind_of_line answers
+      # @!attribute id [Symbol] the entry's key (:model, :rollback, …)
       # @!attribute name [String] "/model", "!rollback", …
       # @!attribute anytime [Boolean] may run while a turn runs
       # @!attribute local [Boolean] the UI runs it; completion and help only
@@ -28,6 +28,28 @@ module Samagotchi
 
       def initialize
         @entries = []
+      end
+
+      # A UI without an Engine (attached) learns the session's commands from
+      # its snapshot (#listing): +base+'s entries as they are (their match
+      # and ids), then each listed one +base+ lacks, matched by its name
+      # (a bundle's command; the worker runs it).
+      # @param listing [Array<Hash>] #listing, with String or Symbol keys
+      # @return [Registry]
+      def self.from_listing(listing, base:)
+        registry = new
+        base.entries.each { |entry| registry.send(:add, entry) }
+        known = base.entries.map(&:name)
+        Array(listing).each do |item|
+          item = item.transform_keys(&:to_sym)
+          name = item[:name].to_s
+          next if name.empty? || known.include?(name)
+
+          known << name
+          registry.register(name, item[:description].to_s, anytime: item[:anytime] == true, local: item[:local] == true,
+                                                           uis: item[:uis]&.map(&:to_sym), source: item[:source] || "core")
+        end
+        registry
       end
 
       # @param match [#call, nil] the default matches the name alone or the
@@ -55,6 +77,16 @@ module Samagotchi
       # @return [Array<Entry>] every entry, in registration order
       def entries = @entries.dup
 
+      # What a snapshot tells a UI without an Engine (see .from_listing).
+      # @return [Array<Hash>] {name:, description:, anytime:, local:, uis:,
+      #   source:} per entry, in registration order
+      def listing
+        @entries.map do |entry|
+          { name: entry.name, description: entry.description, anytime: entry.anytime ? true : false,
+            local: entry.local ? true : false, uis: entry.uis&.map(&:to_s), source: entry.source }
+        end
+      end
+
       # @param ui [Symbol] :repl or :attached
       # @return [Array<String>] the /names Tab offers in +ui+, sorted
       def completions(ui)
@@ -67,6 +99,10 @@ module Samagotchi
       end
 
       private
+
+      def add(entry)
+        @entries << entry
+      end
 
       def default_match(name)
         ->(text) { text == name || text.start_with?("#{name} ") }

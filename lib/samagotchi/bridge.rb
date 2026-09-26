@@ -187,10 +187,11 @@ module Samagotchi
     # the turn in progress, turns queued behind it, the idle recap since the
     # last turn, the recap saved with the session (also from before the last
     # turns: {text:, covered:, turns_since:, created_at:}), a pending continue offer, the guardrail and plugin load warnings, the
-    # last cards and between-turns notices (CardStore#list), and the event_seq it all covers.
+    # last cards and between-turns notices (CardStore#list), the session's commands (Commands::Registry#listing:
+    # what an attached TUI routes and completes, the web's autocomplete), and the event_seq it all covers.
     # Taken with the log held, so no event is half-applied.
     # @return [Hash] {messages:, current_turn:, queued:, recap:, saved_recap:, continue_offer:, guardrail_warning:,
-    #   plugin_warning:, cards:, event_seq:, event_id:}
+    #   plugin_warning:, cards:, commands:, event_seq:, event_id:}
     def snapshot
       @engine.synchronize_events do
         seq = @engine.event_count
@@ -204,6 +205,7 @@ module Samagotchi
           guardrail_warning: @engine.guardrail_warning,
           plugin_warning: @engine.plugin_warning,
           cards: @cards.list,
+          commands: command_registry.listing,
           event_seq: seq,
           event_id: event_id(seq)
         }
@@ -211,6 +213,11 @@ module Samagotchi
     end
 
     private
+
+    # The Engine's commands: the built-ins and its plugins'.
+    def command_registry
+      @engine.respond_to?(:command_registry) ? @engine.command_registry : SessionCommands.builtin_registry
+    end
 
     # The single shared capture observer: appends every event to the ring.
     # O(1) and non-blocking.
@@ -575,8 +582,7 @@ module Samagotchi
       line = fetched(parsed, "line").to_s.strip
       # The Engine's own commands: the built-ins and its plugins' (a card's
       # action is a plugin command line).
-      registry = @engine.respond_to?(:command_registry) ? @engine.command_registry : SessionCommands.builtin_registry
-      unless registry.command?(line)
+      unless command_registry.command?(line)
         return [{ "Allow" => "POST" }, 400, { error: "unknown_command", detail: "not a session command: #{line[0, 80]}" }]
       end
 

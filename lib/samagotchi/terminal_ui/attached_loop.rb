@@ -257,7 +257,7 @@ module Samagotchi
         return exit_and_delete if exit_command?(text.delete_suffix(DELETE_FLAG).rstrip) && text.end_with?(" #{DELETE_FLAG}")
         command = text.split(/\s+/, 2).first
         if @continue_offer
-          return answer_continue(text) unless SessionCommands.command?(text) || [STATS_COMMAND, RECAP_COMMAND].include?(command)
+          return answer_continue(text) unless command_registry.command?(text) || [STATS_COMMAND, RECAP_COMMAND].include?(command)
 
           # Not an answer: the read left no echo, so show what ran.
           echo_answer(text)
@@ -268,7 +268,7 @@ module Samagotchi
           show_stats
         elsif command == RECAP_COMMAND
           show_recap
-        elsif SessionCommands.command?(text)
+        elsif command_registry.command?(text)
           # The history keeps !cmds, as the REPL's does (prompts: #send_prompt).
           persist_recent_history(text) if shell_line?(text)
           send_command(text)
@@ -519,7 +519,12 @@ module Samagotchi
       end
 
       # The attached TUI's commands, for Tab.
-      def slash_commands = SessionCommands.builtin_registry.completions(:attached)
+      def slash_commands = command_registry.completions(:attached)
+
+      # The session's commands as its worker's snapshot names them (its
+      # plugins' too); the built-ins until one arrives, or from a worker too
+      # old to name them. An unknown /foo is a prompt, as in the REPL.
+      def command_registry = @command_registry || SessionCommands.builtin_registry
 
       # The saved recap, and a new one asked for at once (it arrives as
       # :recap_ready), with the REPL's words.
@@ -719,6 +724,9 @@ module Samagotchi
           render_join_header(Array(snapshot[:messages]))
           @screen.commit("guardrails> #{snapshot[:guardrail_warning]}") if snapshot[:guardrail_warning]
           @screen.commit("plugins> #{snapshot[:plugin_warning]}") if snapshot[:plugin_warning]
+        end
+        if snapshot[:commands]
+          @command_registry = Commands::Registry.from_listing(snapshot[:commands], base: SessionCommands.builtin_registry)
         end
         cards = Array(snapshot[:cards])
         render_snapshot_cards(cards.reject { |card| card[:current] }, joining: !reset)

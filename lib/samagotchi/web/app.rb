@@ -12,6 +12,7 @@ require_relative "../bridge_client"
 require_relative "../bridge/bounded_queue"
 require_relative "../session"
 require_relative "../session_manager"
+require_relative "../session_commands"
 require_relative "../host_registry"
 require_relative "../model_profile"
 require_relative "../project_scope"
@@ -471,6 +472,9 @@ module Samagotchi
           guardrail_warning: turn_snapshot && turn_snapshot["guardrail_warning"],
           plugin_warning: turn_snapshot && turn_snapshot["plugin_warning"],
           cards: cards_for_display(turn_snapshot),
+          # The composer's / autocomplete; the built-ins until a worker
+          # names its plugins' too.
+          commands: turn_snapshot&.fetch("commands", nil) || SessionCommands.builtin_registry.listing,
           markdown_warning: @markdown_renderer.warning,
           pending_question: pending,
           last_event_seq: last_event_seq,
