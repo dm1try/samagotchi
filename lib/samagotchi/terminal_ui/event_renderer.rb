@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "set"
+
 module Samagotchi
   class TerminalUI
     # Renders one UI's view of Engine turn events: the thinking spinner while
@@ -18,6 +20,8 @@ module Samagotchi
         @clock = clock
         @streamed_tool_activity = Hash.new(0)
         @tool_started_at = {}
+        # Card ids shown so far (across turns): one shown again is updated.
+        @card_ids = Set.new
       end
 
       # Deep-convert a string-keyed event (JSON from the Bridge) to the local
@@ -65,8 +69,23 @@ module Samagotchi
           @view.print_line("guardrails> #{event[:message]}")
         when :hook_notice
           @view.print_line(self.class.hook_notice_line(event))
+        when :card
+          render_card(event)
         end
       end
+
+      # Print a card (a :card event or a snapshot's card) as a framed block;
+      # one whose id was shown before is printed again, marked (updated).
+      # @param updated [Boolean] marked (updated) anyway (a snapshot's card)
+      def render_card(card, updated: false)
+        id = card[:id].to_s
+        updated ||= !id.empty? && @card_ids.include?(id)
+        @card_ids << id unless id.empty?
+        @view.print_line(@view.card_block(card, updated: updated))
+      end
+
+      # @return [Boolean] whether a card with this id was shown here
+      def card_shown?(id) = @card_ids.include?(id.to_s)
 
       # A hook's notice as one line: "<bundle>> text" for a bundle hook,
       # "hook> text" for a config or turn hook (a warn one says so).

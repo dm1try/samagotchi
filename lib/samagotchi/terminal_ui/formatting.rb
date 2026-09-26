@@ -31,6 +31,71 @@ module Samagotchi
         " #{paint(refs.map { |ref| "→ image #{ref[:width]}×#{ref[:height]}" }.join(", "), 90)}"
       end
 
+      # A card (Engine#show_card) as a framed block: the title and its
+      # source, the body as wrapped plain text (no terminal markdown), and
+      # one `→ <command>` line per action, the label after it when it says
+      # more. +updated+: a card shown again under its id.
+      # @param card [Hash] title:, source:, body:, level:, actions:
+      # @param width [Integer, nil] columns (#card_width by default)
+      def card_block(card, updated: false, width: nil)
+        width = [(width || card_width).to_i, 24].max
+        rail = paint("│", 90)
+        title = card[:title].to_s
+        title += " (updated)" if updated
+        source = card[:source].to_s
+        head = paint("┌ #{title}", card[:level].to_s == "warn" ? 33 : 1)
+        head += paint(" · #{source}", 90) unless source.empty?
+        lines = [head]
+        wrap_plain(card[:body].to_s, width - 2).each { |line| lines << (line.empty? ? rail : "#{rail} #{line}") }
+        Array(card[:actions]).each do |action|
+          command = action[:command].to_s
+          label = action[:label].to_s
+          line = "#{rail} #{paint("→ #{command}", 36)}"
+          line += paint("  #{label}", 90) unless label.empty? || label == command
+          lines << line
+        end
+        lines << paint("└", 90)
+        lines.join("\n")
+      end
+
+      # The columns a card is wrapped to: the terminal's (a view with a
+      # surface asks it).
+      def card_width
+        surface = instance_variable_defined?(:@screen) ? @screen : instance_variable_get(:@surface)
+        surface.respond_to?(:columns) ? surface.columns : (IO.console&.winsize&.last || 80)
+      end
+
+      # +text+ wrapped at word boundaries to +width+ columns, its own line
+      # breaks kept (a blank line stays blank), a word longer than a line
+      # split. Trailing blank lines dropped.
+      def wrap_plain(text, width)
+        width = [width, 8].max
+        lines = text.gsub("\r\n", "\n").rstrip.split("\n", -1).flat_map do |raw|
+          raw = raw.rstrip
+          next [""] if raw.empty?
+
+          indent = raw[/\A */]
+          out = []
+          line = +""
+          raw.split(/ +/).reject(&:empty?).each do |word|
+            while word.length > width - indent.length
+              out << "#{indent}#{line}".rstrip unless line.empty?
+              line = +""
+              out << "#{indent}#{word[0, width - indent.length]}"
+              word = word[(width - indent.length)..]
+            end
+            if !line.empty? && indent.length + line.length + 1 + word.length > width
+              out << "#{indent}#{line}"
+              line = +""
+            end
+            line << (line.empty? ? word : " #{word}")
+          end
+          out << "#{indent}#{line}" unless line.empty?
+          out
+        end
+        text.strip.empty? ? [] : lines
+      end
+
       private
 
       # The recap shown on return: dim, one "recap>" block, noting how many

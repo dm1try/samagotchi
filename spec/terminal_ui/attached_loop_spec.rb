@@ -203,6 +203,44 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     expect(screen.lines).to include("hook> warning: careful")
   end
 
+  describe "cards" do
+    def lines = screen.lines.flat_map { |line| line.split("\n") }
+
+    def card(id, title, **extra)
+      { type: "card", id: id, source: "sample-plugin", title: title, body: "b", level: "info",
+        actions: [{ label: "Again", command: "/hello again" }] }.merge(extra)
+    end
+
+    it "prints a live card as a block, and one shown again marked (updated)" do
+      feed(snapshot, card("c1", "Hello"), card("c1", "Hello 2"))
+      expect(lines).to include("┌ Hello · sample-plugin", "│ b", "│ → /hello again  Again", "└",
+                                      "┌ Hello 2 (updated) · sample-plugin")
+    end
+
+    it "shows a snapshot's cards and notices since the last turn when joining, the running turn's after it" do
+      joined = snapshot(current_turn: { prompt: "go", parts: [] })
+      joined[:snapshot][:cards] = [
+        card("old", "Old", turns_since: 1, current: false),
+        { type: "hook_notice", hook: "plugin.rb (bundle sample-plugin)", text: "saved", level: "info", turns_since: 0, current: false },
+        card("new", "New", turns_since: 0, current: false, updated: true),
+        card("mid", "Mid", in_turn: true, turns_since: 0, current: true)
+      ]
+      feed(joined)
+
+      titles = lines.grep(/\A┌|sample-plugin> /)
+      expect(titles).to eq(["sample-plugin> saved", "┌ New (updated) · sample-plugin", "┌ Mid · sample-plugin"])
+      expect(lines.index("┌ Mid · sample-plugin")).to be > lines.index { |line| line.include?("go") }
+    end
+
+    it "on a resync shows only the cards not shown yet" do
+      feed(snapshot, card("c1", "Hello"))
+      resync = snapshot(type: :reset)
+      resync[:snapshot][:cards] = [card("c1", "Hello", turns_since: 0), card("c2", "Other", turns_since: 3)]
+      feed(resync)
+      expect(lines.grep(/\A┌/)).to eq(["┌ Hello · sample-plugin", "┌ Other · sample-plugin"])
+    end
+  end
+
   it "shows a guardrail load warning" do
     feed({ type: :guardrail_warning, message: "hook g.rb (config) failed to load (LoadError: x)" })
     expect(screen.lines.last).to eq("guardrails> hook g.rb (config) failed to load (LoadError: x)")

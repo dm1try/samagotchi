@@ -50,6 +50,53 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     expect(view.lines).to eq(['known-names> rejected execute: "x" looks like "y"', "hook> warning: stopped the turn: enough"])
   end
 
+  describe "cards" do
+    let(:view) do
+      Class.new do
+        include Samagotchi::TerminalUI::Formatting
+        attr_reader :lines
+
+        def initialize = @lines = []
+        def print_line(text) = @lines << text
+        def color_output? = false
+        def card_width = 40
+      end.new
+    end
+    let(:card) do
+      { type: :card, id: "c1", source: "sample-plugin", title: "Hello", level: :info,
+        body: "hello, Dmitry (session 3f2a, 2 messages). A longer line that wraps at the frame's width.\n\n  - kept indent",
+        actions: [{ label: "Again", command: "/hello again" }, { label: "/x", command: "/x" }] }
+    end
+
+    it "prints a framed block: the title and source, the wrapped body, the actions" do
+      renderer.call(card)
+      expect(view.lines.last.split("\n")).to eq([
+        "┌ Hello · sample-plugin",
+        "│ hello, Dmitry (session 3f2a, 2",
+        "│ messages). A longer line that wraps at",
+        "│ the frame's width.",
+        "│",
+        "│   - kept indent",
+        "│ → /hello again  Again",
+        "│ → /x",
+        "└"
+      ])
+    end
+
+    it "prints a card shown again under its id, marked (updated)" do
+      renderer.call(card)
+      renderer.call(card.merge(title: "Hello 2", body: "", actions: []))
+      expect(view.lines.last.split("\n")).to eq(["┌ Hello 2 (updated) · sample-plugin", "└"])
+      expect(renderer.card_shown?("c1")).to be true
+      expect(renderer.card_shown?("c2")).to be false
+    end
+
+    it "splits a word longer than a line" do
+      expect(view.wrap_plain("#{"x" * 25} y", 10)).to eq(["xxxxxxxxxx", "xxxxxxxxxx", "xxxxx y"])
+      expect(view.wrap_plain(" \n ", 10)).to eq([])
+    end
+  end
+
   it "prints a guardrail load warning" do
     renderer.call({ type: :guardrail_warning, message: "hook g.rb (config) failed to load (x)" })
     expect(view.lines).to eq(["guardrails> hook g.rb (config) failed to load (x)"])

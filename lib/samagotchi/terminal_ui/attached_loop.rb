@@ -719,6 +719,8 @@ module Samagotchi
           render_join_header(Array(snapshot[:messages]))
           @screen.commit("guardrails> #{snapshot[:guardrail_warning]}") if snapshot[:guardrail_warning]
         end
+        cards = Array(snapshot[:cards])
+        render_snapshot_cards(cards.reject { |card| card[:current] }, joining: !reset)
         offer = snapshot[:continue_offer]
         had_offer = !@continue_offer.nil?
         @continue_offer = offer && { context: offer[:context], no_interrupt: offer[:no_interrupt] }
@@ -727,6 +729,7 @@ module Samagotchi
           sync_continue_slot
         end
         render_current_turn(snapshot[:current_turn])
+        render_snapshot_cards(cards.select { |card| card[:current] }, joining: !reset)
         Array(snapshot[:queued]).each do |entry|
           next if own?(entry[:client_id])
 
@@ -827,6 +830,20 @@ module Samagotchi
         return text if text.length <= JOIN_ANSWER_CHARS
 
         "(… earlier text)\n…#{text[-JOIN_ANSWER_CHARS..]}"
+      end
+
+      # The snapshot's cards and between-turns notices (Bridge CardStore):
+      # on join the ones since the last turn (and the running turn's), as
+      # the join header shows the last exchange; on a resync only cards not
+      # shown here yet.
+      def render_snapshot_cards(entries, joining:)
+        entries.each do |entry|
+          if entry[:type].to_s == "hook_notice"
+            @screen.commit(EventRenderer.hook_notice_line(entry)) if joining && entry[:turns_since].to_i.zero?
+          elsif joining ? entry[:turns_since].to_i.zero? : !@renderer.card_shown?(entry[:id])
+            @renderer.render_card(entry, updated: entry[:updated] == true)
+          end
+        end
       end
 
       def render_current_turn(turn)
