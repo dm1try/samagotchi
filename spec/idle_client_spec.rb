@@ -142,6 +142,14 @@ RSpec.describe Samagotchi::IdleClient do
       expect(client.summarize("summarize this").text).to eq(reasoning)
     end
 
+    # A server that ignored the thinking switch thought until max_tokens:
+    # its finished sentences are thinking, never a recap.
+    it "gives no recap when the reasoning was cut off by max_tokens" do
+      reasoning = "Here's a thinking process: 1. Analyze the input. It is a chat. 2. Draft the"
+      reply({ content: "", reasoning_content: reasoning }, finish_reason: "length")
+      expect(client.summarize("summarize this")).to be_nil
+    end
+
     it "prefers content over reasoning_content when both are present" do
       reply(content: "direct answer", reasoning_content: "thinking...")
       expect(client.summarize("summarize this").text).to eq("direct answer")

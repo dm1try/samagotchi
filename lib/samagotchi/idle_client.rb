@@ -105,11 +105,17 @@ module Samagotchi
       reasoning = response.reasoning
       raise SummarizeError, "server returned no parseable assistant content" if content.empty? && reasoning.empty?
 
-      # Prefer content, fall back to reasoning_content (e.g. Qwen3.6), and
-      # strip thinking tokens some models (Qwen, Gemma) leave in the text.
+      cut_off = response.finish_reason == "length"
+      # Reasoning cut off by max_tokens is the model's thinking, not a recap
+      # (a server that ignores the thinking switch thinks until the limit).
+      return ["", response.model] if content.empty? && cut_off
+
+      # Prefer content, fall back to a finished reasoning_content (e.g.
+      # Qwen3.6), and strip thinking tokens some models (Qwen, Gemma) leave
+      # in the text.
       text = self.class.strip_thinking(content.empty? ? reasoning : content)
       # Cut off by max_tokens: keep the sentences that finished ("" if none).
-      text = self.class.full_sentences(text) if response.finish_reason == "length"
+      text = self.class.full_sentences(text) if cut_off
       [text, response.model]
     rescue LLM::ProtocolError => e
       raise SummarizeError, "server returned no parseable assistant content (#{e.message})"
