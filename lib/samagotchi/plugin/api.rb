@@ -2,6 +2,7 @@
 
 require_relative "../log"
 require_relative "../tools/args"
+require_relative "service"
 
 module Samagotchi
   module Plugin
@@ -26,6 +27,7 @@ module Samagotchi
         @hooks = []
         @commands = []
         @tools = []
+        @services = []
       end
 
       # A slash command the session runs: the block gets the text after the
@@ -96,6 +98,32 @@ module Samagotchi
         nil
       end
 
+      # A long-lived thing the plugin keeps (a server process): the block
+      # starts it and returns what #value gives; in it, svc.on_stop { }
+      # says how to stop it. It starts on first svc.value, or now with
+      # eager: true (a raise then fails the plugin's load, unless the
+      # plugin rescues it). The Engine stops its services when it shuts
+      # down (the REPL or the session's worker exits), newest first.
+      # @param name [String, Symbol] unique in the plugin
+      # @return [Service]
+      def service(name, eager: false, &block)
+        raise ArgumentError, "service #{name.inspect} needs a block" unless block
+        name = "#{@bundle}:#{name}"
+        raise ArgumentError, "service #{name} is registered twice" if @services.any? { |svc| svc.name == name }
+        raise ArgumentError, "this chi has no services (plugins: false)" unless @registries.services
+
+        service = @registries.services.add(Service.new(name, &block))
+        @services << service
+        service.start if eager
+        service
+      end
+
+      # Stop the services the plugin started: its load failed after all.
+      def abort!
+        @services.reverse_each(&:stop)
+        nil
+      end
+
       # Say the session's tools changed after #register (a plugin that
       # registers tools late): the system prompts are built again for the
       # next turn, so the model sees the new set. That costs the server its
@@ -146,7 +174,7 @@ module Samagotchi
       end
 
       # @return [Hash] how many of each it registered (for the log)
-      def counts = { commands: @commands.size, tools: @tools.size, hooks: @hooks.size }
+      def counts = { commands: @commands.size, tools: @tools.size, hooks: @hooks.size, services: @services.size }
 
       # A tool call's arguments as a plugin sees them: the parsers' args:
       # (a call built without one, in a spec say: the call without its

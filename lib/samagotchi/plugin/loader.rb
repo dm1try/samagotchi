@@ -13,8 +13,9 @@ module Samagotchi
     # What a plugin registers into: an Engine's own registries.
     # +context_for+ is (bundle_name, settings, label) → the Plugin::Context
     # its handlers get; +tools_changed+ drops what was built from the tools
-    # (the Engine's system prompts).
-    Registries = Struct.new(:commands, :tools, :hooks, :context_for, :tools_changed, keyword_init: true)
+    # (the Engine's system prompts); +services+ (Plugin::Services) is what
+    # Engine#shutdown stops.
+    Registries = Struct.new(:commands, :tools, :hooks, :context_for, :tools_changed, :services, keyword_init: true)
 
     # Loads installed bundles' plugins (manifest plugin: {file:, sha256:})
     # into an Engine's registries (docs/plugins.md).
@@ -58,6 +59,7 @@ module Samagotchi
         reason = data[:error] || unloadable_reason(file, data)
         return failed(bundle_name, basename, reason, failures) if reason
 
+        api = nil
         plugin = instantiate(bundle_name, file, settings)
         plugin_label = label(bundle_name, basename)
         api = Api.new(bundle: bundle_name, label: plugin_label, registries: registries,
@@ -67,6 +69,7 @@ module Samagotchi
         Log.info(TAG, "plugin_loaded", bundle: bundle_name, file: basename, **api.counts)
         true
       rescue Exception => e # rubocop:disable Lint/RescueException -- a plugin's SyntaxError or exit must not stop chi
+        api&.abort!
         raise if e.is_a?(Interrupt)
 
         failed(bundle_name, basename, "#{e.class}: #{e.message}", failures)

@@ -183,4 +183,45 @@ RSpec.describe Samagotchi::Plugin::Loader do
     RUBY
     expect(fire_before_turn(engine)[:after]).to be true
   end
+
+  describe "chi.service" do
+    before { $plugin_service_log = [] }
+    after { $plugin_service_log = nil }
+
+    def service_plugin(eager:, fail_after: false)
+      <<~RUBY
+        class Plugin
+          def register(chi)
+            svc = chi.service(:srv, eager: #{eager}) do |s|
+              $plugin_service_log << :started
+              s.on_stop { $plugin_service_log << :stopped }
+              :client
+            end
+            chi.command("/srv", "use it") { svc.value.to_s }
+            raise "late boom" if #{fail_after}
+          end
+        end
+      RUBY
+    end
+
+    it "starts an eager service at load" do
+      install_plugin("svc", service_plugin(eager: true))
+      engine
+      expect($plugin_service_log).to eq([:started])
+    end
+
+    it "starts a lazy one on first use" do
+      install_plugin("svc", service_plugin(eager: false))
+      eng = engine
+      expect($plugin_service_log).to eq([])
+      expect(eng.command_registry.lookup("/srv").handler.call("")).to eq("client")
+      expect($plugin_service_log).to eq([:started])
+    end
+
+    it "stops the services of a plugin whose load failed after starting them" do
+      install_plugin("svc", service_plugin(eager: true, fail_after: true))
+      expect { engine }.to output(/late boom/).to_stderr
+      expect($plugin_service_log).to eq(%i[started stopped])
+    end
+  end
 end

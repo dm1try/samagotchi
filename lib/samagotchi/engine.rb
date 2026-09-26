@@ -118,6 +118,8 @@ module Samagotchi
       # Installed bundles' plugins add commands, tools and hooks to these
       # (docs/plugins.md); one that fails is announced with the load
       # failures, and the rest still load.
+      # Their services (chi.service), which #shutdown stops.
+      @services = Plugin::Services.new
       load_plugins if plugins
       guardrail_rules
       # Use the KernelLoop's reminder_store if provided (TerminalUI path),
@@ -1841,7 +1843,8 @@ module Samagotchi
         context_for: lambda { |bundle, settings, label|
           Plugin::Context.new(bundle: bundle, label: label, settings: settings, host: host)
         },
-        tools_changed: -> { tools_changed! }
+        tools_changed: -> { tools_changed! },
+        services: @services
       )
       Plugin::Loader.load_installed(registries, failures: @plugin_failures, settings: bundle_settings)
     end
