@@ -37,7 +37,10 @@ module Samagotchi
         parts.concat(telemetry) unless telemetry.empty?
         parts << stdout_block unless stdout_block.nil?
         parts << stderr_block unless stderr_block.nil?
-        parts << "exit: #{status.exitstatus}"
+        # "(no output)" says nothing matched: a bare "exit: 0" reads to a
+        # model as "done, something happened".
+        silent = stdout_block.nil? && stderr_block.nil?
+        parts << (silent ? "exit: #{status.exitstatus} (no output)" : "exit: #{status.exitstatus}")
         parts.join("\n")
       rescue CommandTimedOut => e
         # Keep the "Error:" first line (callers classify on it) and return

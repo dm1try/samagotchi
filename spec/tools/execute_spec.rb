@@ -44,6 +44,17 @@ RSpec.describe Samagotchi::Tools::Execute do
       expect(result).to include("exit: 42")
     end
 
+    it "says when a command printed nothing" do
+      expect(described_class.call("true")).to eq("exit: 0 (no output)")
+      expect(described_class.call("false")).to eq("exit: 1 (no output)")
+    end
+
+    it "keeps a bare exit line when there was output" do
+      result = described_class.call("echo hi")
+      expect(result).to end_with("\nexit: 0")
+      expect(result).not_to include("no output")
+    end
+
     it "captures Ruby syntax errors" do
       result = described_class.call("ruby -e 'def bad('")
       expect(result).not_to include("exit: 0")
