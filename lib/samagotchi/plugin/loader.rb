@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "api"
+require_relative "context"
 require_relative "../hooks"
 require_relative "../log"
 require_relative "../version"
@@ -10,8 +11,8 @@ require_relative "../memory_bundle/provenance"
 module Samagotchi
   module Plugin
     # What a plugin registers into: an Engine's own registries.
-    # +context_for+ is (bundle_name, settings) → the Plugin::Context its
-    # handlers get.
+    # +context_for+ is (bundle_name, settings, label) → the Plugin::Context
+    # its handlers get.
     Registries = Struct.new(:commands, :tools, :hooks, :context_for, keyword_init: true)
 
     # Loads installed bundles' plugins (manifest plugin: {file:, sha256:})
@@ -57,8 +58,9 @@ module Samagotchi
         return failed(bundle_name, basename, reason, failures) if reason
 
         plugin = instantiate(bundle_name, file, settings)
-        api = Api.new(bundle: bundle_name, label: "#{basename} (bundle #{bundle_name})", registries: registries,
-                      context: registries.context_for&.call(bundle_name, settings))
+        plugin_label = label(bundle_name, basename)
+        api = Api.new(bundle: bundle_name, label: plugin_label, registries: registries,
+                      context: registries.context_for&.call(bundle_name, settings, plugin_label))
         plugin.register(api)
         api.commit!
         Log.info(TAG, "plugin_loaded", bundle: bundle_name, file: basename, **api.counts)
@@ -68,6 +70,9 @@ module Samagotchi
 
         failed(bundle_name, basename, "#{e.class}: #{e.message}", failures)
       end
+
+      # What a plugin's hooks, notices and failures are named by.
+      def label(bundle_name, basename) = "#{basename} (bundle #{bundle_name})"
 
       # Why the installed file can't be loaded, or nil.
       def unloadable_reason(file, data)

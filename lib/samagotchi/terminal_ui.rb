@@ -600,7 +600,7 @@ module Samagotchi
       if result.shell
         @surface.commit(result.output)
         @surface.commit("")
-      else
+      elsif !result.output.nil?
         @surface.commit("\nmodel> #{result.output}")
       end
       sync_model_mirrors if result.changed.include?(:model)

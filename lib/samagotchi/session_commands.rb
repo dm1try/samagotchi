@@ -113,6 +113,7 @@ module Samagotchi
       text = line.to_s.strip
       entry = @registry.lookup(text)
       return nil unless entry&.handler
+      return run_bundle_command(entry, text) unless entry.source == "core"
 
       instance_exec(text, &entry.handler)
     end
@@ -141,6 +142,16 @@ module Samagotchi
     private
 
     def model_name = @engine.effective_model_name
+
+    # A bundle plugin's command: its handler gets the text after the name;
+    # what it returns is the output (nil: nothing to show), and a raise is
+    # an error result.
+    def run_bundle_command(entry, text)
+      output = entry.handler.call(text.delete_prefix(entry.name).strip)
+      reply(output.nil? ? nil : output.to_s)
+    rescue StandardError => e
+      reply("#{entry.name}: #{e.class}: #{e.message}", status: :error)
+    end
 
     def reply(output, status: :ok, changed: [])
       Result.new(status: status, output: output, changed: changed, model_name: model_name, resume: false, shell: false)

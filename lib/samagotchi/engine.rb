@@ -1697,8 +1697,29 @@ module Samagotchi
     end
 
     def load_plugins
-      registries = Plugin::Registries.new(commands: @command_registry, tools: @tools, hooks: @hooks)
+      host = plugin_host
+      registries = Plugin::Registries.new(
+        commands: @command_registry, tools: @tools, hooks: @hooks,
+        context_for: lambda { |bundle, settings, label|
+          Plugin::Context.new(bundle: bundle, label: label, settings: settings, host: host)
+        }
+      )
       Plugin::Loader.load_installed(registries, failures: @guardrail_failures, settings: bundle_settings)
+    end
+
+    # What a Plugin::Context reads and calls: the session now, and the
+    # hook runtime's notify and ask_user.
+    def plugin_host
+      Plugin::Host.new(
+        session_id: -> { @session&.id },
+        cwd: -> { @session&.working_directory },
+        messages: -> { messages_checkpoint },
+        notify: ->(text, level, label) { hook_notify(text, level, label) },
+        ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
+          hook_ask_user(question, options, header, allow_freeform, hook)
+        },
+        cancelled: -> { active_cancel_controller&.cancelled? }
+      )
     end
 
     # config.yml `bundles:`: each bundle's settings by name, for its hooks.

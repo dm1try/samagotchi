@@ -68,12 +68,21 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(engine.command_registry).not_to be_frozen
     end
 
-    it "is what #run looks lines up in, so a command added to it runs" do
-      engine.command_registry.register("/hello", "say hello", source: "test") { |_text| reply("hi") }
+    it "is what #run looks lines up in, so a bundle's command added to it runs" do
+      engine.command_registry.register("/hello", "say hello", source: "some-bundle") { |args| "hi #{args}" }
       commands = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma4-small",
                                      registry: engine.command_registry)
-      expect(commands.run("/hello").output).to eq("hi")
+      expect(commands.run("/hello  you ").output).to eq("hi you")
       expect(described_class.command?("/hello")).to be(false)
+    end
+
+    it "runs a bundle's command with no output as nil, and a raise as an error" do
+      engine.command_registry.register("/quiet", "nothing", source: "b") { |_args| nil }
+      engine.command_registry.register("/boom", "raises", source: "b") { |_args| raise "nope" }
+      commands = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma4-small",
+                                     registry: engine.command_registry)
+      expect(commands.run("/quiet").to_h).to include(status: :ok, output: nil)
+      expect(commands.run("/boom").to_h).to include(status: :error, output: "/boom: RuntimeError: nope")
     end
   end
 

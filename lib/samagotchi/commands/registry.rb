@@ -16,7 +16,8 @@ module Samagotchi
       #   :attached) for completion; nil means every UI
       # @!attribute match [#call] line (stripped) → whether it is this command
       # @!attribute handler [Proc, nil] runs it; SessionCommands instance_execs
-      #   a built-in's with the line
+      #   a built-in's with the line, and calls a bundle's with the text
+      #   after the name
       # @!attribute source [String] "core", or the bundle that added it
       Entry = Struct.new(:id, :name, :description, :anytime, :local, :uis, :match, :handler, :source,
                          keyword_init: true) do
