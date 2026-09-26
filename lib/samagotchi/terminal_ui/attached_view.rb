@@ -48,6 +48,8 @@ module Samagotchi
         @lock = Monitor.new
         @ticker = nil
         @tally = TurnTally.new
+        # Plugins' init tasks running now (chi.init), id => "bundle: label".
+        @init_tasks = {}
         reset_turn_feedback
       end
 
@@ -124,14 +126,35 @@ module Samagotchi
         end
       end
 
-      # The turn's answer (or a merge's) is out: the slot goes. The tally
-      # keeps counting until the next turn starts (a merge goes on).
+      # The turn's answer (or a merge's) is out: the slot goes (unless a
+      # plugin's init task still runs). The tally keeps counting until the
+      # next turn starts (a merge goes on).
       def finish_thinking_spinner
         @lock.synchronize do
           reset_feedback_state
-          @screen.clear_slot(:activity)
+          @init_tasks.empty? ? @screen.clear_slot(:activity) : redraw_status
         end
       end
+
+      # A plugin's init task runs (between turns too): the slot turns with
+      # its label until it ends.
+      # @param task [Hash] {bundle:, id:, label:} (an event or a snapshot's)
+      def init_started(task)
+        @lock.synchronize do
+          @init_tasks[task[:id].to_s] = "#{task[:bundle]}: #{task[:label]}"
+          redraw_status
+        end
+      end
+
+      def init_finished(task)
+        @lock.synchronize do
+          @init_tasks.delete(task[:id].to_s)
+          redraw_status
+        end
+      end
+
+      # The turn waits for them: the slot already shows them.
+      def init_wait_feedback(_event); end
 
       # Pick up a turn joined mid-way (from the Bridge snapshot): the model's
       # text so far, or the tool it is running, and the tally of its tool
@@ -222,6 +245,7 @@ module Samagotchi
         frame = FRAMES[((now - @origin) / FRAME_INTERVAL).floor % FRAMES.length]
         return "#{frame} #{@retry}" if @retry
         return "#{frame} #{@tool}…" if @tool
+        return "#{frame} #{@init_tasks.values.join(" · ")}…" if !@thinking && @init_tasks.any?
         return nil unless @thinking
 
         waited = @waiting_since ? now - @waiting_since : 0

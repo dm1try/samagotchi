@@ -133,6 +133,40 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(lines).to eq(["sample-plugin> saved", "┌ One · b", "└", "┌ Two (updated) · b", "└"])
     end
 
+    it "prints a plugin's init task as a line when it starts and one when it is done; a failure is its card" do
+      gate = Queue.new
+      engine.add_init_task(bundle: "mcp", label: "Starting MCP server x", plugin_label: "x", provides_tools: true,
+                           quiet: false, timeout: 5) { gate.pop }
+      engine.add_init_task(bundle: "mcp", label: "Starting MCP server y", plugin_label: "x", provides_tools: true,
+                           quiet: false, timeout: 5) { raise "gone" }
+      engine.start_init_tasks!
+      Timeout.timeout(2) { sleep(0.01) until engine.instance_variable_get(:@init_tasks).last.state == :failed }
+      gate << "x ready, 3 tools"
+      engine.instance_variable_get(:@init_tasks).each { |task| task.thread.join(2) }
+      expect(lines).to be_empty
+      agent.send(:flush_pending_cards)
+      expect(lines).to contain_exactly("mcp> Starting MCP server x…", "mcp> Starting MCP server y…",
+                                       "┌ Starting MCP server y: failed · mcp", "│ gone", "└", "mcp> ✓ x ready, 3 tools")
+      expect(lines.last).to eq("mcp> ✓ x ready, 3 tools")
+    end
+
+    it "prints the load warnings announced before the first turn at the open prompt" do
+      # As if the plugin had failed while the Engine loaded (the REPL
+      # announced them as it started).
+      engine.instance_variable_set(:@guardrail_failures_announced, false)
+      engine.instance_variable_get(:@plugin_failures).add("plugin plugin.rb (bundle b)", "boom", required: false)
+      engine.announce_load_events!
+      agent.send(:flush_pending_cards)
+      expect(lines).to eq(["plugins> plugin plugin.rb (bundle b) failed to load (boom)"])
+    end
+
+    it "says what a turn waits for while plugins' init tasks bring tools, until the model starts" do
+      agent.init_wait_feedback({ tasks: [{ bundle: "mcp", id: "mcp-1", label: "Starting x" }] })
+      expect(agent.send(:spinner_row_lines, "|", width: 80)).to eq(["chi> waiting for mcp: Starting x... |"])
+      agent.generation_feedback_started({})
+      expect(agent.send(:spinner_row_lines, "|", width: 80).first).to include("model> thinking... |")
+    end
+
     it "prints a card replaced within one flush once, as its last" do
       engine.show_card(source: "b", title: "thinking", id: "c1")
       engine.show_card(source: "b", title: "other", id: "c2")

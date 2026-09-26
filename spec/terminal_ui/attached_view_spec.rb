@@ -40,6 +40,19 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
     expect(view.context_status).to eq(est_pct: 7, bucket: "low")
   end
 
+  it "turns the activity row for a plugin's init task until it ends, between turns and while a turn waits" do
+    view.init_started({ bundle: "mcp", id: "mcp-1", label: "Starting chrome" })
+    expect(screen.statuses.last).to eq("| mcp: Starting chrome…")
+    feed({ type: :turn_started }, { type: :plugin_init_wait, tasks: [{ bundle: "mcp", id: "mcp-1", label: "Starting chrome" }] })
+    expect(screen.statuses.last).to eq("| mcp: Starting chrome…")
+    feed({ type: :generation_started, iteration: 1 })
+    expect(screen.statuses.last).to eq("| thinking…")
+    view.finish_thinking_spinner
+    expect(screen.statuses.last).to eq("| mcp: Starting chrome…")
+    view.init_finished({ id: "mcp-1" })
+    expect(screen.statuses.last).to be_nil
+  end
+
   it "keeps the end of the model's text within the terminal width" do
     feed({ type: :generation_started, iteration: 1 },
          { type: :generation_chunk, iteration: 1, content: "#{"a" * 60}END" })

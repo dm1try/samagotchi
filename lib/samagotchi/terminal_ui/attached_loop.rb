@@ -219,6 +219,13 @@ module Samagotchi
         # collected just as a turn started describes the chat before it.
         when :recap_ready then @screen.commit(recap_block(event[:recap])) unless @running || event[:recap].to_s.strip.empty?
         when :guardrail_warning then @screen.commit(EventRenderer.load_warning_line(event))
+        # A plugin's slow setup: the activity row turns while it runs; a
+        # line when it is done (a failure is a warn card).
+        when :plugin_init_started then @view.init_started(event)
+        when :plugin_init_finished
+          @view.init_finished(event)
+          line = EventRenderer.init_line(event)
+          @screen.commit(line) if line
         when :generation_completed
           take_served_model(event[:served_model], event[:requested_model])
           @renderer.call(event)
@@ -732,6 +739,7 @@ module Samagotchi
         if snapshot[:commands]
           @command_registry = Commands::Registry.from_listing(snapshot[:commands], base: SessionCommands.builtin_registry)
         end
+        Array(snapshot[:init_tasks]).each { |task| @view.init_started(task) }
         cards = Array(snapshot[:cards])
         render_snapshot_cards(cards.reject { |card| card[:current] }, joining: !reset)
         offer = snapshot[:continue_offer]

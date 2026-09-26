@@ -71,6 +71,9 @@ module Samagotchi
           @view.print_line(self.class.hook_notice_line(event))
         when :card
           render_card(event)
+        # A turn waits for plugins' slow setup before its first request.
+        when :plugin_init_wait
+          @view.init_wait_feedback(event)
         end
       end
 
@@ -102,6 +105,20 @@ module Samagotchi
         text = event[:text].to_s
         text = "warning: #{text}" if event[:level].to_s == "warn"
         "#{label}> #{text}"
+      end
+
+      # A plugin's init task (chi.init) as one line: "<bundle>> <label>…"
+      # as it starts, "<bundle>> ✓ <summary>" when it is done. A failed
+      # one is a warn card, not a line.
+      # @return [String, nil]
+      def self.init_line(event)
+        case event[:type].to_s
+        when "plugin_init_started" then "#{event[:bundle]}> #{event[:label]}…"
+        when "plugin_init_finished"
+          return nil unless event[:ok]
+
+          "#{event[:bundle]}> ✓ #{event[:summary] || "#{event[:label]}: done"}"
+        end
       end
 
       # Start a turn's bookkeeping and reset the view's per-turn feedback.

@@ -775,6 +775,19 @@ RSpec.describe Samagotchi::Bridge do
         expect(@bridge.snapshot[:guardrail_warning]).to eq("hook g.rb (config) failed to load (LoadError: x)")
       end
 
+      it "carries the plugins' init tasks while they run" do
+        start_bridge
+        gate = Queue.new
+        @engine.add_init_task(bundle: "b", label: "Warming up", plugin_label: "x", provides_tools: false, quiet: false,
+                              timeout: 5) { gate.pop }
+        expect(@bridge.snapshot[:init_tasks]).to eq([])
+        @engine.start_init_tasks!
+        wait_until { @bridge.snapshot[:init_tasks].any? }
+        expect(@bridge.snapshot[:init_tasks]).to eq([{ bundle: "b", id: "b-1", label: "Warming up" }])
+        gate << :go
+        wait_until { @bridge.snapshot[:init_tasks].empty? }
+      end
+
       it "is followed by BridgeClient#follow: snapshot first, then gap-free live events" do
         start_bridge
         release = hold_turn_after({ type: :generation_chunk, iteration: 1, content: "half " },

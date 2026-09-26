@@ -202,4 +202,16 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     expect(view.lines).to be_empty
     expect(view.calls).to be_empty
   end
+
+  describe ".init_line" do
+    it "says a task started, and done with its summary; nothing for a failure (its card says it)" do
+      started = { "type" => "plugin_init_started", "bundle" => "mcp", "id" => "mcp-1", "label" => "Starting x" }
+      expect(described_class.init_line(described_class.symbolize(started))).to eq("mcp> Starting x…")
+      expect(described_class.init_line({ type: :plugin_init_finished, bundle: "mcp", label: "Starting x", ok: true,
+                                          summary: "x ready, 2 tools" })).to eq("mcp> ✓ x ready, 2 tools")
+      expect(described_class.init_line({ type: :plugin_init_finished, bundle: "b", label: "Indexing", ok: true }))
+        .to eq("b> ✓ Indexing: done")
+      expect(described_class.init_line({ type: :plugin_init_finished, bundle: "b", label: "x", ok: false, error: "e" })).to be_nil
+    end
+  end
 end

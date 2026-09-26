@@ -206,9 +206,13 @@ module Samagotchi
       @recap_handle = @engine.subscribe(observer: ->(event) { handle_recap_ready(event) })
       @question_handle = @engine.subscribe(observer: ->(event) { handle_question_event(event) })
       @card_handle = @engine.subscribe(observer: ->(event) { handle_card_event(event) })
-      # The plugins' slow setup, in the background from here on (a
-      # --non-interactive run leaves it to its turn).
-      @engine.start_init_tasks! unless @non_interactive
+      # The REPL renders events from here on: the load warnings and notices
+      # now (at the first prompt), and the plugins' slow setup in the
+      # background. A --non-interactive run leaves both to its turn.
+      unless @non_interactive
+        @engine.announce_load_events!
+        @engine.start_init_tasks!
+      end
       # Synchronous TUI handler for in-turn ask_user_question: the turn thread IS the
       # REPL thread (run_engine_turn runs Engine#run_turn inline), so we must render
       # and collect input on the SAME thread without parking on a second thread.
@@ -708,7 +712,19 @@ module Samagotchi
       reset_thinking_tool_notification
     end
 
+    # A turn waits for plugins' slow setup (chi.init) before its first
+    # request: the spinner says what for, until the model starts.
+    def init_wait_feedback(event)
+      labels = Array(event[:tasks]).map { |task| "#{task[:bundle]}: #{task[:label]}" }
+      @spinner_lock.synchronize do
+        @init_wait_status = "chi> waiting for #{labels.join(" · ")}..."
+        start_thinking_spinner
+        refresh_thinking_spinner_status
+      end
+    end
+
     def generation_feedback_started(event = {})
+      @init_wait_status = nil
       @context_window_tokens = event[:context_window_tokens] if event[:context_window_tokens]
       clear_retry_spinner_status
       @latest_server_context_status = nil
@@ -1247,6 +1263,7 @@ module Samagotchi
       @spinner_lock.synchronize do
         # Off even when the rows are gone already, so the ticker ends.
         @thinking_spinner_active = false
+        @init_wait_status = nil
         @thinking_waiting_since = nil
         next unless @surface.clear_slot(:activity)
 
@@ -1593,7 +1610,18 @@ module Samagotchi
     # An anytime command's (event[:anytime]) print as it shows them: on the
     # main thread (the command runs at the prompt) or beside a running turn
     # (above the live region), else at the next flush.
+    #
+    # A plugin's init task (chi.init) prints a line as it starts and one
+    # when it is done; a load warning announced before the first turn, one.
+    # Beside a running turn they print at once; a --non-interactive run
+    # prints only its answer.
     def handle_card_event(event)
+      if INIT_EVENTS.include?(event[:type])
+        return if @non_interactive
+        return show_pending_item(event) if @engine.turn_running?
+
+        return @pending_cards << event
+      end
       return unless (event[:type] == :card && !event[:in_turn]) || (event[:type] == :hook_notice && event[:between_turns])
       return show_pending_item(event) if event[:anytime] && (Thread.current == Thread.main || @engine.turn_running?)
 
@@ -1614,11 +1642,18 @@ module Samagotchi
       nil
     end
 
-    # A card, a notice, or an anytime command's output (:command_output).
+    INIT_EVENTS = %i[plugin_init_started plugin_init_finished guardrail_warning].freeze
+
+    # A card, a notice, an anytime command's output (:command_output), a
+    # plugin init task's line or a load warning.
     def show_pending_item(item)
       case item[:type]
       when :card then @renderer.render_card(item)
       when :command_output then @surface.commit(item[:text])
+      when :guardrail_warning then @surface.commit(EventRenderer.load_warning_line(item))
+      when :plugin_init_started, :plugin_init_finished
+        line = EventRenderer.init_line(item)
+        @surface.commit(line) if line
       else @surface.commit(EventRenderer.hook_notice_line(item))
       end
     end
@@ -1887,6 +1922,8 @@ module Samagotchi
       if retry_spinner_status_active?
         return [retry_spinner_status_line(frame, width)]
       end
+
+      return ["#{@init_wait_status} #{frame}"[0, width]] if @init_wait_status
 
       preamble_active = turn_preamble_status_base(frame)
       base = preamble_active || first_token_wait_status(frame) || "model> thinking... #{frame}"
