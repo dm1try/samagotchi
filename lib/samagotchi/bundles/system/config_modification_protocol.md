@@ -60,8 +60,29 @@ Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top
 - `hosts:` map of `name → {host, port | url, transport, api, api_key_env, profile, first_token_timeout, enabled}` (`ConfigFile.hosts_config`, `host_registry.rb` `HostEntry`). Names lowercased; `url:` (http/https, optional path) replaces host/port, never both; `api_key_env:` names the env var holding the API key (never write a key into config.yml); `transport` overrides `server.transport`; `first_token_timeout` (seconds, `0` = off; a negative or non-number warns and is ignored) overrides `server.first_token_timeout` for that host; workers inherit via `SAMAGOTCHI_HOSTS_JSON` (`hosts_json_for_env`, `session_manager.rb`).
 - `models:` map of model id or alias → `{profile}` (`ConfigFile.model_settings`). Keys match case-insensitively. `profile` (here or on a host) is `qwen36|gemma4`: the raw prompt format for native hosts. Precedence: `--profile`/`SAMAGOTCHI_MODEL_PROFILE` > `models:` > `hosts.<name>.profile` > the llama.cpp server's chat template > the name (`qwen`/`gemma`) > `qwen36` (`ModelProfile.resolve`). Set one when a model's name hides its family (e.g. a Qwen fine-tune under another name on mlx, which has no template to read).
 - `hooks:` map of `hooks_dir` + per-event lists `{path, on_error}` (`Hooks::Loader.load`). `hooks_dir` may start with `~`.
+- `bundles:` map of installed bundle name → its settings (one Hash, string keys, handed to the bundle's hook/plugin `initialize(settings)`). Read when a session's Engine starts: after a change restart the session's worker (`chi sessions stop <id>`) or the REPL. Unknown keys are ignored by the bundle, not validated. `chi bundle list` names the bundles; each bundle's keys are in `docs/plugins.md` / `docs/guardrails.md`.
 
-**Preservation rule**: `ConfigFile.write_default_model!` and `ConfigFile.write_model_alias!` both load raw YAML (including nested sections and maps), mutate one key (`raw_data["default"]["model"] = ...` for new form), write atomically via `tmp`+`rename`. Never overwrite the file with only scalar keys — that would clobber `hooks:` / `model_aliases:` / `hosts:` / `recap:`.
+```yaml
+bundles:
+  known-names:
+    names: [dzmitrydziadou]    # protected besides home/login/git/repo names
+    mode: reject               # reject | correct | ask
+  btw:
+    max_tokens: 1024
+    timeout: 120
+  mcp:                         # tools become mcp_<server>_<tool>; /mcp lists them
+    timeout: 60                # per call, seconds; startup_timeout: 10
+    servers:
+      files:                   # server name
+        command: [npx, -y, "@modelcontextprotocol/server-filesystem", ~/scratch]  # stdio only; array (or one string, shell-split)
+        env: {NODE_OPTIONS: "--no-warnings"}   # optional, added to chi's env
+        cwd: ~/scratch                         # optional; default the session's cwd
+        tools: [read_*, list_directory]        # optional filter (globs)
+```
+
+A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cover every MCP tool; see `docs/guardrails.md`.
+
+**Preservation rule**: `ConfigFile.write_default_model!` and `ConfigFile.write_model_alias!` both load raw YAML (including nested sections and maps), mutate one key (`raw_data["default"]["model"] = ...` for new form), write atomically via `tmp`+`rename`. Never overwrite the file with only scalar keys — that would clobber `hooks:` / `model_aliases:` / `hosts:` / `recap:` / `bundles:`.
 
 ## Workflow for any config edit
 
@@ -101,5 +122,5 @@ Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top
 - Precedence is `CLI > ENV > file > default` (`Config.resolve`). Real `ENV` still wins over file (`load_global_env!` `unless env.key?` for legacy sync), and CLI (`--recap-base-url`) wins over both via `Config.reload!(cli_overrides:)`.
 - `--recap_base_url` (underscore) is rejected as unknown — use `--recap-base-url` (kebab). Same for all registry flags.
 - `model_aliases` require restart or `/model` reload to take effect; document the change.
-- Keep edits minimal: touch only the key you intend to change; preserve `hosts:`/`hooks:` maps.
+- Keep edits minimal: touch only the key you intend to change; preserve `hosts:`/`hooks:`/`bundles:` maps. Adding a `bundles: <name>:` entry does not install the bundle (`chi bundle install <name>`).
 - To silence legacy warnings, migrate flat `SAMAGOTCHI_*` keys to nested form and delete the flat entry atomically.
