@@ -3,6 +3,7 @@
 require_relative "../log"
 require_relative "../tools/args"
 require_relative "service"
+require_relative "tool_result"
 
 module Samagotchi
   module Plugin
@@ -158,7 +159,8 @@ module Samagotchi
             tool[:name], schema: tool[:schema], source: @bundle, label: tool[:label],
                          handler: lambda { |call, _kctx|
                            result = block.call(Api.args_of(call, parameters), context)
-                           result.nil? ? "" : result.to_s
+                           # A String (a ToolResult too, with its images) as it is.
+                           result.is_a?(String) ? result : result.to_s
                          },
                          preview: preview && ->(call) { preview.call(Api.args_of(call, parameters))&.to_s },
                          targets: targets && ->(call) { targets.call(Api.args_of(call, parameters)) }

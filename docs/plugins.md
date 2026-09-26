@@ -162,7 +162,8 @@ in the chat path's `tools:`, after chi's own tools.
   key optional, says what a call acts on, for [guardrails](#guardrails).
 
 The block returns the result text. If it starts with `Error:`, it counts as
-a failure. If it raises, the model gets `Error: <message>`.
+a failure. If it raises, the model gets `Error: <message>`. To return images
+too, see [Returning images](#returning-images).
 
 #### `args`
 
@@ -231,6 +232,35 @@ is what `targets:` says:
 
 A tool without `targets:` is matched by its name only. A `targets:` that
 raises counts as nothing (it is logged). See [guardrails.md](guardrails.md).
+
+#### Returning images
+
+A tool can hand the model images too. The block returns a
+`Samagotchi::Plugin::ToolResult`, which is the text plus `images:`:
+
+```ruby
+chi.tool "screenshot", "Take a screenshot of the page." do |_args, ctx|
+  path = take_screenshot(ctx)                          # a PNG file
+  Samagotchi::Plugin::ToolResult.new("Took a screenshot.", images: [{ path: path }])
+end
+```
+
+- An image is `{ path: "/abs/file.png" }` or `{ bytes: png, name: "shot.png" }`
+  (raw bytes, not base64). png, jpeg, gif and webp are sent; bmp, tiff and
+  heic are converted if ImageMagick or sips is there. A large image is scaled
+  down (`image.max_side`, `image.max_bytes`), like one the model `read`s.
+- Each image is stored with the session (`images/`) and goes to the model
+  after the tool's text, the same way a `read` of an image file does. The
+  web tool row and the terminal show it.
+- At most **4** images per result are attached; each one past that gets a
+  line (`shot5.png is not attached: at most 4 images per tool result`).
+- An entry that isn't `{path:}` or `{bytes:}`, or isn't an image, becomes an
+  `Error: …` line for that image. The text and the other images still go.
+- A model that can't see images (`vision: false`, or known text-only) gets a
+  line instead of each image: `shot.png is an image; this model can't see
+  images`. Say what the image shows in the text, if it matters then.
+- `ToolResult` is a String, so hooks, the log and the activity line see the
+  text as before.
 
 #### When the tools change
 

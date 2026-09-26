@@ -233,6 +233,50 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     end
   end
 
+  describe "returning images (Plugin::ToolResult)" do
+    let(:png_path) { File.expand_path("../../fixtures/images/tiny.png", __dir__) }
+    let(:session_dir) { File.join(tmpdir, "session") }
+
+    before do
+      install_source("shots", <<~RUBY)
+        class Plugin
+          def register(chi)
+            chi.tool("shoot", "take shots", params: { path: { type: "string" } }) do |args, _ctx|
+              Samagotchi::Plugin::ToolResult.new("took 2 shots",
+                images: [{ path: args["path"] }, { bytes: File.binread(args["path"]), name: "frame.png" }, { oops: true }])
+            end
+            chi.tool("plain", "text only") { 42 }
+          end
+        end
+      RUBY
+      FileUtils.mkdir_p(session_dir)
+    end
+
+    def run(call)
+      Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,
+                                                   on_stream_event: nil, max_tool_output_chars: nil)
+    end
+
+    it "attaches the images, and a bad entry is an Error: line for that image only" do
+      kernel.vision = Samagotchi::VisionContext.new(session_dir: session_dir, resizer: Samagotchi::ImageResizer.new(nil))
+      result = run(name: "shoot", args: { "path" => png_path })
+      expect(result[:output]).to eq("[shoot]\ntook 2 shots\nError: image 3 is not {path:} or {bytes:, name:}")
+      expect(result[:images].map { |ref| ref[:name] }).to eq(%w[tiny.png frame.png])
+    end
+
+    it "keeps the text when the model can't see images" do
+      kernel.vision = Samagotchi::VisionContext.new(session_dir: session_dir,
+                                                    capability: Samagotchi::VisionSupport::Answer.new(value: false, reason: "no"))
+      result = run(name: "shoot", args: { "path" => png_path })
+      expect(result[:output]).to start_with("[shoot]\ntook 2 shots\ntiny.png is an image; this model can't see images\n")
+      expect(result).not_to have_key(:images)
+    end
+
+    it "leaves a block that returns something else as its text" do
+      expect(run(name: "plain", args: {})[:output]).to eq("[plain]\n42")
+    end
+  end
+
   describe "chi.tools_changed!" do
     it "drops the built system prompts, so the next turn declares the tools again" do
       install_source("late-tools", <<~RUBY)
