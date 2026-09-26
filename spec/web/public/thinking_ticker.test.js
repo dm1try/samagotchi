@@ -25,6 +25,16 @@ test("currentSentence: newline boundary", () => {
   assert.equal(currentSentence("line one\nline two\n"), "line two");
 });
 
+test("currentSentence: a bare list number is a marker, not a sentence", () => {
+  assert.equal(currentSentence("Plan:\n1. check the log\n2. write it up\n"), "2. write it up");
+  assert.equal(currentSentence("1. check the log\n2. write"), "1. check the log");
+  assert.equal(currentSentence("Recent:\n118. `d48e707` - Attached TUI stays up\n119. `x` - next"), "118. `d48e707` - Attached TUI stays up");
+  // The number alone is not a sentence yet.
+  assert.equal(currentSentence("Recent:\n118. "), "Recent:");
+  // A number that ends a real sentence still splits.
+  assert.equal(currentSentence("It took 3. Then more."), "Then more.");
+});
+
 test("currentSentence: ellipsis …", () => {
   assert.equal(currentSentence("Wait… then act."), "then act.");
   assert.equal(currentSentence("Wait…"), "Wait…");
