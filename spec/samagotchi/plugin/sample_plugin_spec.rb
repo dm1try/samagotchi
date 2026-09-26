@@ -140,7 +140,10 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       expect(tools["echo_args"].source).to eq("sample-plugin")
       expect(tools["echo_args"].schema).to eq(
         name: "echo_args", description: "Echo the arguments back. A test tool from the sample-plugin bundle.",
-        parameters: { type: "object", properties: { text: { type: "string", description: "Any text to echo" } },
+        parameters: { type: "object",
+                      properties: { text: { type: "string", description: "Any text to echo" },
+                                    times: { type: "integer", description: "How many times (optional)" },
+                                    loud: { type: "boolean", description: "Shout it (optional)" } },
                       required: ["text"] }
       )
     end
@@ -153,9 +156,33 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     end
 
     it "runs through the kernel's dispatch with the parsed args, labelled for the activity line" do
-      result = kernel.dispatch_tool_call(name: "echo_args", content: "hi there", text: "hi there")
-      expect(result[:output]).to eq("[echo_args]\necho: content=hi there text=hi there")
+      result = kernel.dispatch_tool_call(name: "echo_args", content: "hi there", args: { "text" => "hi there" })
+      expect(result[:output]).to eq("[echo_args]\necho: text=hi there")
       expect(result[:activity][:action]).to eq("echoing")
+      expect(result[:activity][:params]).to eq('text="hi there"')
+    end
+
+    describe "typed args from each parser" do
+      def echo(call) = kernel.dispatch_tool_call(call)[:output]
+
+      it "Gemma: the native call's values, typed by the schema" do
+        text = '<|tool_call>call:echo_args{text:<|"|>BANANA42<|"|>,times:3,loud:true}<tool_call|>'
+        call = Samagotchi::ToolCallParser.for_profile(Samagotchi::ModelProfile.gemma4).parse(text).first
+        expect(echo(call)).to eq("[echo_args]\necho: text=BANANA42 times=3 (Integer) loud=true (TrueClass)")
+      end
+
+      it "Qwen: <parameter=…> text, typed by the schema" do
+        text = "<tool_call>\n<function=echo_args>\n<parameter=text>\nBANANA42\n</parameter>\n" \
+               "<parameter=times>\n3\n</parameter>\n<parameter=loud>\nfalse\n</parameter>\n</function>\n</tool_call>"
+        call = Samagotchi::ToolCallParser.for_profile(Samagotchi::ModelProfile.qwen36).parse(text).first
+        expect(echo(call)).to eq("[echo_args]\necho: text=BANANA42 times=3 (Integer) loud=false (FalseClass)")
+      end
+
+      it "chat: the JSON arguments, a number given as text typed too" do
+        ref = Struct.new(:name, :arguments).new("echo_args", '{"text":"BANANA42","times":"3"}')
+        call = Samagotchi::LLM::NativeToolNormalizer.normalize(ref)
+        expect(echo(call)).to eq("[echo_args]\necho: text=BANANA42 times=3 (Integer)")
+      end
     end
 
     it "shows a card when it runs" do

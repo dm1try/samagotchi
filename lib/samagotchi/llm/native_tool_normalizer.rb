@@ -67,7 +67,8 @@ module Samagotchi
             content: args["path"].to_s,
             path: nil, scope: nil,
             start_line: args["start_line"], end_line: args["end_line"],
-            cwd: nil, env: nil, description: nil
+            cwd: nil, env: nil, description: nil,
+            args: args.is_a?(Hash) ? args : {}
           }
         },
         Tools::Write::NAME => lambda { |args|
@@ -256,16 +257,18 @@ module Samagotchi
           { "__raw__" => str }
         end
 
-        # Unknown tool: hand back enough for `dispatch` to render the standard
-        # "unknown tool" error. `content` is the joined argument values (harmless;
-        # the unknown-tool branch of dispatch ignores it).
+        # A registry (plugin) tool, or an unknown one: the arguments as args:
+        # (typed by the schema at dispatch), plus enough for `dispatch` to
+        # render the standard "unknown tool" error. `content` is the joined
+        # argument values (harmless; the unknown-tool branch ignores it).
         def passthrough(name, args)
           {
             name: name,
             content: args.is_a?(Hash) ? args.values.join(" ") : name,
             path: nil, scope: nil,
             start_line: nil, end_line: nil,
-            cwd: nil, env: nil, description: nil
+            cwd: nil, env: nil, description: nil,
+            args: args.is_a?(Hash) ? args : {}
           }
         end
       end

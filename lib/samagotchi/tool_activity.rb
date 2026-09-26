@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require_relative "tools/execute"
 require_relative "tools/read"
 require_relative "tools/write"
@@ -145,14 +146,20 @@ module Samagotchi
     def registry_entry(registry, tool_name) = registry && !tool_name.nil? ? registry[tool_name] : nil
 
     # A registry tool's params: its preview, else each given argument as
-    # key="value"; nil for a tool the registry doesn't know, and for a
-    # built-in without its own words above (the reminder tools).
+    # key="value" (the parsers' args:, which a registry-less reader such as
+    # the web's reload also has); nil for a tool the registry doesn't know
+    # that has no args:, and for a built-in without its own words above
+    # (the reminder tools).
     def registry_params(entry, call)
-      return nil if entry.nil? || entry.core?
-      return entry.preview.call(call) if entry.preview
+      return nil if entry&.core?
+      return nil if entry.nil? && !call[:args].is_a?(Hash)
+      return entry.preview.call(call) if entry&.preview
 
-      parts = call.except(:name).filter_map do |key, value|
-        "#{key}=#{preview_tool_param(value)}" unless value.nil? || value.to_s.strip.empty?
+      given = call[:args].is_a?(Hash) ? call[:args] : call.except(:name)
+      parts = given.filter_map do |key, value|
+        next if value.nil? || value.to_s.strip.empty?
+
+        "#{key}=#{preview_tool_param(value.is_a?(Hash) || value.is_a?(Array) ? JSON.generate(value) : value)}"
       end
       parts.empty? ? nil : parts.join(" ")
     end

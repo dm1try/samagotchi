@@ -74,6 +74,28 @@ RSpec.describe Samagotchi::ToolCallParser do
     end
   end
 
+  describe "a tool that is not a built-in (a plugin's): its arguments on args:" do
+    it "Gemma: a Hash of the native values, nested ones included; built-ins get none" do
+      parser = described_class::Gemma.new(Samagotchi::ModelProfile.normalize(:gemma4))
+      call = parser.parse('<|tool_call>call:save_note{path:<|"|>n.md<|"|>,meta:{tags:[<|"|>a<|"|>],priority:2}}<tool_call|>').first
+      expect(call).to include(name: "save_note", args: { "path" => "n.md", "meta" => { "tags" => ["a"], "priority" => 2 } })
+      expect(parser.parse('<|tool_call>call:read{path:<|"|>x<|"|>}<tool_call|>').first).not_to have_key(:args)
+    end
+
+    it "Gemma: the flat scan when the body doesn't parse" do
+      parser = described_class::Gemma.new(Samagotchi::ModelProfile.normalize(:gemma4))
+      call = parser.parse('<|tool_call>call:save_note{path:"n.md" text:"hi"}<tool_call|>').first
+      expect(call[:args]).to eq("path" => "n.md", "text" => "hi")
+    end
+
+    it "Qwen: the <parameter=…> text as given" do
+      parser = described_class::Qwen.new(Samagotchi::ModelProfile.normalize(:qwen36))
+      call = parser.parse("<tool_call>\n<function=save_note>\n<parameter=path>\nn.md\n</parameter>\n" \
+                          "<parameter=meta>\n{\"priority\": 2}\n</parameter>\n</function>\n</tool_call>").first
+      expect(call).to include(name: "save_note", args: { "path" => "n.md", "meta" => '{"priority": 2}' })
+    end
+  end
+
   describe "Qwen#strip_thought" do
     let(:parser) { described_class::Qwen.new(Samagotchi::ModelProfile.normalize(:qwen36)) }
 

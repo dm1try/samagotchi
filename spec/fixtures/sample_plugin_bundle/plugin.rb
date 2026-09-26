@@ -25,10 +25,14 @@ class Plugin
       nil
     end
 
+    # args are typed by the params: a string shows as it is, anything else
+    # with its class (times=3 (Integer)).
     chi.tool "echo_args", "Echo the arguments back. A test tool from the sample-plugin bundle.",
-             params: { text: { type: "string", description: "Any text to echo", required: true } },
+             params: { text: { type: "string", description: "Any text to echo", required: true },
+                       times: { type: "integer", description: "How many times (optional)" },
+                       loud: { type: "boolean", description: "Shout it (optional)" } },
              label: "echoing" do |args, ctx|
-      echo = "echo: " + args.map { |key, value| "#{key}=#{value}" }.join(" ")
+      echo = "echo: " + args.map { |key, value| value.is_a?(String) ? "#{key}=#{value}" : "#{key}=#{value.inspect} (#{value.class})" }.join(" ")
       ctx.card(title: "echo_args ran", body: echo)
       echo
     end

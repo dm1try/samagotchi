@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../log"
+require_relative "../tools/args"
 
 module Samagotchi
   module Plugin
@@ -48,16 +49,22 @@ module Samagotchi
       end
 
       # A tool the model can call: the block gets the call's arguments (a
-      # frozen Hash, symbol keys, as the parsers give them) and the Context,
-      # and returns the result text ("Error: …" marks a failure). A raise is
-      # the model's "Error: <message>".
+      # frozen Hash, string keys, typed by the schema: see Tools::Args) and
+      # the Context, and returns the result text ("Error: …" marks a
+      # failure). A raise is the model's "Error: <message>".
       # @param name [String] a-z, 0-9 and _; a name the session already has
       #   is a load error
-      # @param params [Hash] name => {type:, description:, required:}
+      # @param params [Hash] name => a JSON Schema property ({type:,
+      #   description:, enum:, items:, properties:, …}) plus required: true
+      # @param schema [Hash, nil] instead of params: the parameters as one
+      #   JSON Schema object ({type: "object", properties:, required: […]}),
+      #   an MCP server's inputSchema for example
       # @param label [String, nil] the activity line's action
       # @param preview [#call, nil] args → the activity line's params
-      # @param targets [#call, nil] args → what guardrail rules match (P3)
-      def tool(name, description, params: {}, label: nil, preview: nil, targets: nil, &block)
+      # @param targets [#call, nil] args → what guardrail rules match: a Hash
+      #   with paths: (absolute or relative to the cwd), command: (a shell
+      #   command) and cwd:, each optional
+      def tool(name, description, params: {}, schema: nil, label: nil, preview: nil, targets: nil, &block)
         raise ArgumentError, "tool #{name.inspect} needs a block" unless block
         name = name.to_s
         raise ArgumentError, "tool name #{name.inspect} must be a-z, 0-9 and _ (at most 48)" unless name.match?(TOOL_NAME)
@@ -68,7 +75,9 @@ module Samagotchi
         raise ArgumentError, "tool #{name}: preview must respond to #call" if preview && !preview.respond_to?(:call)
         raise ArgumentError, "tool #{name}: targets must respond to #call" if targets && !targets.respond_to?(:call)
 
-        @tools << { name: name, schema: tool_schema(name, description, params), label: label&.to_s, preview: preview,
+        parameters = schema ? schema_parameters(name, schema) : params_schema(name, params)
+        @tools << { name: name, schema: { name: name, description: description.to_s, parameters: parameters },
+                    label: label&.to_s, preview: preview,
                     targets: targets, block: block }
         nil
       end
@@ -100,14 +109,15 @@ module Samagotchi
           block = tool[:block]
           preview = tool[:preview]
           targets = tool[:targets]
+          parameters = tool[:schema][:parameters]
           @registries.tools.register(
             tool[:name], schema: tool[:schema], source: @bundle, label: tool[:label],
                          handler: lambda { |call, _kctx|
-                           result = block.call(Api.args_of(call), context)
+                           result = block.call(Api.args_of(call, parameters), context)
                            result.nil? ? "" : result.to_s
                          },
-                         preview: preview && ->(call) { preview.call(Api.args_of(call))&.to_s },
-                         targets: targets && ->(call) { targets.call(Api.args_of(call)) }
+                         preview: preview && ->(call) { preview.call(Api.args_of(call, parameters))&.to_s },
+                         targets: targets && ->(call) { targets.call(Api.args_of(call, parameters)) }
           )
         end
         @hooks.each do |hook|
@@ -129,16 +139,28 @@ module Samagotchi
       # @return [Hash] how many of each it registered (for the log)
       def counts = { commands: @commands.size, tools: @tools.size, hooks: @hooks.size }
 
-      # A tool call's arguments as a plugin sees them: the parsed call
-      # without its name, frozen.
-      def self.args_of(call)
-        call.reject { |key, _| key == :name }.freeze
+      # A tool call's arguments as a plugin sees them: the parsers' args:
+      # (a call built without one, in a spec say: the call without its
+      # name), string keys, typed by +parameters+, frozen.
+      def self.args_of(call, parameters = nil)
+        given = call[:args].is_a?(Hash) ? call[:args] : call.reject { |key, _| key == :name || key == :args }
+        Tools::Args.coerce(given, parameters).freeze
+      end
+
+      # A JSON Schema with symbol keys (property names included), as
+      # ToolDeclarations::TOOL_SCHEMAS has them.
+      def self.symbolize(value)
+        case value
+        when Hash then value.to_h { |key, item| [key.to_sym, symbolize(item)] }
+        when Array then value.map { |item| symbolize(item) }
+        else value
+        end
       end
 
       private
 
-      # {name:, description:, parameters:} as in ToolDeclarations::TOOL_SCHEMAS.
-      def tool_schema(name, description, params)
+      # The parameters object from params: (name => property spec).
+      def params_schema(name, params)
         raise ArgumentError, "tool #{name}: params must be a Hash" unless params.is_a?(Hash)
 
         required = []
@@ -147,11 +169,25 @@ module Samagotchi
           raise ArgumentError, "tool #{name}: parameter name #{param.inspect} is not a plain word" unless param.match?(PARAM_NAME)
           raise ArgumentError, "tool #{name}: parameter #{param} must be a Hash {type:, description:}" unless spec.is_a?(Hash)
 
-          spec = spec.transform_keys(&:to_sym)
-          required << param if spec[:required]
-          acc[param.to_sym] = { type: (spec[:type] || "string").to_s, description: spec[:description].to_s }
+          spec = Api.symbolize(spec)
+          required << param if spec.delete(:required) == true
+          acc[param.to_sym] = { type: (spec.delete(:type) || "string").to_s, description: spec.delete(:description).to_s }.merge(spec)
         end
-        { name: name, description: description.to_s, parameters: { type: "object", properties: properties, required: required } }
+        { type: "object", properties: properties, required: required }
+      end
+
+      # The parameters object from schema: (a JSON Schema object).
+      def schema_parameters(name, schema)
+        raise ArgumentError, "tool #{name}: schema must be a Hash" unless schema.is_a?(Hash)
+
+        schema = Api.symbolize(schema)
+        raise ArgumentError, "tool #{name}: schema must be {type: \"object\", properties: {…}}" unless schema.fetch(:type, "object").to_s == "object"
+
+        properties = schema[:properties] || {}
+        raise ArgumentError, "tool #{name}: schema properties must be a Hash" unless properties.is_a?(Hash)
+
+        { type: "object", properties: properties, required: Array(schema[:required]).map(&:to_s) }
+          .merge(schema.except(:type, :properties, :required))
       end
     end
   end

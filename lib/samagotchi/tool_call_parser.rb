@@ -20,6 +20,7 @@ require_relative "tools/send_note"
 require_relative "tools/delegate"
 require_relative "tools/delegate_result"
 require_relative "tools/ask_user_question"
+require_relative "tools/args"
 
 module Samagotchi
   # Per-profile strategy for parsing raw model output into internal tool
@@ -294,8 +295,11 @@ module Samagotchi
             multi_select: params["multi_select"],
             allow_freeform: params["allow_freeform"] }
         else
-          # For future/unknown tools, pass along whatever the model provided
-          { name: name, content: strip_gemma_delimiters(params_raw), path: nil, scope: nil }
+          # A registry (plugin) tool, or an unknown one: its arguments as a
+          # Hash on args: (typed by the schema at dispatch), and the raw text
+          # as content for the unknown-tool error.
+          args = Tools::Args.parse_gemma(params_raw, @string_delim) || params
+          { name: name, content: strip_gemma_delimiters(params_raw), path: nil, scope: nil, args: args }
         end
       end
 
@@ -609,7 +613,9 @@ module Samagotchi
              allow_freeform: qwen_param_value(params, "allow_freeform")
            }
         else
-           { name: name, content: params.to_s, path: nil, scope: nil }
+           # A registry (plugin) tool, or an unknown one: the parameters as
+           # given (text; typed by the schema at dispatch).
+           { name: name, content: params.to_s, path: nil, scope: nil, args: params }
         end
       end
 

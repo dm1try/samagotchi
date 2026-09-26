@@ -172,6 +172,7 @@ RSpec.describe Samagotchi::LLM::NativeToolNormalizer do
       expect(mapped[:name]).to eq("frobnicate")
       expect(mapped[:path]).to be_nil
       expect(mapped[:scope]).to be_nil
+      expect(mapped[:args]).to eq("x" => "1")
     end
 
     it "defensively handles a nil arguments (no raise)" do
