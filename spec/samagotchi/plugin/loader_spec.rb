@@ -224,4 +224,26 @@ RSpec.describe Samagotchi::Plugin::Loader do
       expect($plugin_service_log).to eq(%i[started stopped])
     end
   end
+
+  it "gives #register the ctx; a notice or card shown as it loads waits for the first turn, after the load warnings" do
+    install_plugin("broken", "raise 'nope'\n")
+    install_plugin("starter", <<~RUBY)
+      class Plugin
+        def register(chi)
+          chi.ctx.notify("server x didn't start", level: :warn)
+          chi.ctx.card(title: "starter", body: "ready")
+          chi.command("/starter", "x") { chi.ctx.settings.size.to_s }
+        end
+      end
+    RUBY
+    eng = nil
+    expect { eng = engine }.to output(/bundle 'broken'/).to_stderr
+    expect(eng.command_registry.lookup("/starter")).not_to be_nil
+    events = []
+    eng.send(:announce_guardrail_failures, ->(e) { events << e })
+
+    expect(events.map { |e| e[:type] }).to eq(%i[guardrail_warning hook_notice card])
+    expect(events[1]).to include(hook: "plugin.rb (bundle starter)", text: "server x didn't start", level: :warn)
+    expect(events[2]).to include(source: "starter", title: "starter", in_turn: true)
+  end
 end

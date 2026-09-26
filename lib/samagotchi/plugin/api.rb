@@ -30,6 +30,13 @@ module Samagotchi
         @services = []
       end
 
+      # The Context the plugin's handlers get, for #register itself: its
+      # settings, log, data_dir, and ctx.notify / ctx.card, which, shown
+      # while chi starts, wait for the first turn (beside the plugins' load
+      # warnings).
+      # @return [Context, nil]
+      def ctx = @context
+
       # A slash command the session runs: the block gets the text after the
       # name (stripped, "" for none) and the Context, and returns what to
       # show (a String) or nil for nothing. A raise is shown as an error.

@@ -471,6 +471,7 @@ module Samagotchi
     # @raise [ArgumentError] a card without a title, or a bad action
     def show_card(source:, title:, body: "", actions: [], level: :info, id: nil)
       card = build_card(source: source, title: title, body: body, actions: actions, level: level, id: id)
+      return hold_load_event(card.merge(in_turn: true))[:id] if @loading_plugins
       return announce_anytime(card.merge(in_turn: false))[:id] if anytime_thread?
 
       sink = nil
@@ -1012,7 +1013,8 @@ module Samagotchi
 
     # Once per Engine, on its first turn: what failed to load, so every UI
     # (REPL, attached TUI, web) shows it: the guardrails, then the plugins
-    # (label: "plugins"; the UIs say guardrails without one).
+    # (label: "plugins"; the UIs say guardrails without one), then the
+    # notices and cards plugins showed as they loaded.
     def announce_guardrail_failures(on_event)
       return if @guardrail_failures_announced
 
@@ -1021,6 +1023,7 @@ module Samagotchi
       emit_event(on_event, { type: :guardrail_warning, message: message }) if message
       plugins = @plugin_failures.message
       emit_event(on_event, { type: :guardrail_warning, message: plugins, label: "plugins" }) if plugins
+      Array(@plugin_load_events).each { |event| emit_event(on_event, event) }
     end
     private :announce_guardrail_failures
 
@@ -1082,14 +1085,16 @@ module Samagotchi
     # Outside one (a plugin's command at the prompt) it is announced with
     # between_turns: true, which every UI shows as cards are shown.
     def hook_notify(text, level, hook)
+      level = (level || :info).to_sym
+      level = :info unless %i[info warn].include?(level)
+      notice = { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level }
+      return hold_load_event(notice) && nil if @loading_plugins
+
       sink = nil
       in_turn = @activity_mutex.synchronize do
         sink = @turn_event_sink
         @turn_running
       end
-      level = (level || :info).to_sym
-      level = :info unless %i[info warn].include?(level)
-      notice = { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level }
       if anytime_thread?
         announce_anytime(notice.merge(between_turns: true))
       elsif in_turn
@@ -1893,7 +1898,20 @@ module Samagotchi
         tools_changed: -> { tools_changed! },
         services: @services
       )
+      # What plugins show while they load (an MCP server that didn't
+      # start) waits for the first turn, beside the load warnings: no UI
+      # is there yet, and the Engine isn't built.
+      @plugin_load_events = []
+      @loading_plugins = true
       Plugin::Loader.load_installed(registries, failures: @plugin_failures, settings: bundle_settings)
+    ensure
+      @loading_plugins = false
+    end
+
+    # Keep a notice or card a plugin showed while loading (#load_plugins).
+    def hold_load_event(event)
+      @plugin_load_events << event
+      event
     end
 
     # The tools changed (a plugin's chi.tools_changed!): the system prompts,
