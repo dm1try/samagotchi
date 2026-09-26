@@ -400,7 +400,7 @@ module Samagotchi
     # a failed turn's prompt handed back and the continue offer, which live
     # UIs need in the event log, emitted outside any turn's stream.
     ANNOUNCEABLE_EVENTS = %i[turn_enqueued input_merged prompt_restored continue_offered continue_resolved
-                             command_queued command_ran context_added].freeze
+                             command_queued command_ran context_added card].freeze
 
     # Put a transport-level event into the ordered event log. Unlike turn
     # events it reaches only persistent observers (no turn sink, no memory
@@ -442,6 +442,63 @@ module Samagotchi
         message
       end
     end
+
+    # ── Cards ───────────────────────────────────────────────────────────────
+
+    CARD_LEVELS = %i[info warn].freeze
+    MAX_CARD_ACTIONS = 6
+
+    # Show a card in every UI (docs/plugins.md, Cards): {type: :card, id:,
+    # source:, title:, body:, level:, actions: [{label:, command:}], in_turn:}.
+    # During a turn it is a turn event (the turn's sink and the observers),
+    # else it is announced. A card with the id of an earlier one replaces it
+    # (btw's "thinking…" → the answer).
+    # @param source [String] who shows it (a bundle's name)
+    # @param actions [Array<Hash>] {label:, command:}; a command is a line
+    #   the session runs, as typed (D3)
+    # @return [String] the card's id
+    # @raise [ArgumentError] a card without a title, or a bad action
+    def show_card(source:, title:, body: "", actions: [], level: :info, id: nil)
+      card = build_card(source: source, title: title, body: body, actions: actions, level: level, id: id)
+      sink = nil
+      in_turn = @activity_mutex.synchronize do
+        sink = @turn_event_sink
+        @turn_running
+      end
+      card[:in_turn] = in_turn ? true : false
+      if in_turn
+        emit_event(sink, card)
+      else
+        announce(card)
+      end
+      card[:id]
+    end
+
+    def build_card(source:, title:, body:, actions:, level:, id:)
+      title = title.to_s.strip
+      raise ArgumentError, "a card needs a title" if title.empty?
+
+      level = level.to_s.to_sym
+      raise ArgumentError, "card level must be one of #{CARD_LEVELS.join(", ")}" unless CARD_LEVELS.include?(level)
+
+      actions = Array(actions)
+      raise ArgumentError, "a card has at most #{MAX_CARD_ACTIONS} actions" if actions.size > MAX_CARD_ACTIONS
+
+      actions = actions.map do |action|
+        raise ArgumentError, "a card action is a Hash {label:, command:}" unless action.is_a?(Hash)
+
+        action = action.transform_keys(&:to_sym)
+        command = action[:command].to_s.strip
+        raise ArgumentError, "a card action needs a command" if command.empty? || command.include?("\n")
+
+        label = action[:label].to_s.strip
+        { label: label.empty? ? command : label, command: command }
+      end
+      id = id.to_s.strip
+      { type: :card, id: id.empty? ? SecureRandom.hex(4) : id, source: source.to_s, title: title, body: body.to_s,
+        level: level, actions: actions }
+    end
+    private :build_card
 
     # ── Model switching ────────────────────────────────────────────────────────
 
@@ -1718,7 +1775,8 @@ module Samagotchi
         ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
           hook_ask_user(question, options, header, allow_freeform, hook)
         },
-        cancelled: -> { active_cancel_controller&.cancelled? }
+        cancelled: -> { active_cancel_controller&.cancelled? },
+        card: ->(**card) { show_card(**card) }
       )
     end
 

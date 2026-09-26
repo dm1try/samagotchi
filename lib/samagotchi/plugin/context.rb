@@ -9,8 +9,9 @@ module Samagotchi
     # The Engine's side of a Context: callables, so the Engine itself is
     # never handed out. +messages+ returns the conversation, +notify+ takes
     # (text, level, label), +ask_user+ takes (question:, options:, header:,
-    # allow_freeform:, hook:) like the hook runtime's.
-    Host = Struct.new(:session_id, :cwd, :messages, :notify, :ask_user, :cancelled, keyword_init: true)
+    # allow_freeform:, hook:) like the hook runtime's, +card+ takes
+    # Engine#show_card's keywords and returns the id.
+    Host = Struct.new(:session_id, :cwd, :messages, :notify, :ask_user, :cancelled, :card, keyword_init: true)
 
     # What a plugin's handlers get as +ctx+ (docs/plugins.md): the session
     # they run for, the bundle's settings and storage, a log, and the
@@ -87,6 +88,19 @@ module Samagotchi
       def notify(text, level: :info)
         @host.notify.call(text.to_s, level, @label)
         nil
+      end
+
+      # A card in every UI: a title, a body (markdown in the web, plain
+      # text in the terminal) and actions, each a command line the session
+      # runs when the user picks it (docs/plugins.md, Cards). Showing a card
+      # with an earlier card's id replaces that card.
+      # @param actions [Array<Hash>] {label:, command:} ("/hello again")
+      # @param level [Symbol] :info or :warn
+      # @param id [String, nil] an earlier card's id to replace it
+      # @return [String] the card's id
+      # @raise [ArgumentError] no title, a bad level or action
+      def card(title:, body: "", actions: [], level: :info, id: nil)
+        @host.card.call(source: @bundle, title: title, body: body, actions: actions, level: level, id: id)
       end
 
       # A single-select question through the question flow, like a hook's

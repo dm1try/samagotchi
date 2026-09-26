@@ -124,6 +124,13 @@ module Samagotchi
       log(level, :hook_notice, hook: event[:hook], msg: event[:text].to_s[0, 300])
     end
 
+    # A card shown to the user (Engine#show_card): whose, which, and its
+    # title (the body is the plugin's text; not logged).
+    def on_card(event)
+      log(:info, :card, source: event[:source], id: event[:id], actions: Array(event[:actions]).size,
+                        msg: event[:title].to_s[0, 300])
+    end
+
     def on_recap_ready(event)
       log(:info, :recap_ready, chars: event[:recap].to_s.length, generation: event[:generation], covered: event[:covered])
     end

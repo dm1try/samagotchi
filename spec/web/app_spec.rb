@@ -773,6 +773,52 @@ RSpec.describe Samagotchi::Web::App do
       end
     end
 
+    describe "cards (the worker's snapshot[:cards])" do
+      let(:live) do
+        { "snapshot" => { "messages" => [], "cards" => [
+          { "type" => "card", "id" => "c1", "source" => "b", "title" => "Hi", "body" => "some **bold** <b>x</b>",
+            "level" => "info", "actions" => [{ "label" => "Again", "command" => "/hello again" }],
+            "in_turn" => false, "turns_since" => 0, "current" => false },
+          { "type" => "card", "id" => "c2", "source" => "b", "title" => "Empty", "body" => "", "level" => "warn",
+            "actions" => [], "in_turn" => true, "turns_since" => 1, "current" => false },
+          { "type" => "hook_notice", "hook" => "plugin.rb (bundle b)", "text" => "saved", "level" => "info",
+            "in_turn" => false, "turns_since" => 0, "current" => false }
+        ] }, "session_state_snapshot" => { "status" => "idle", "event_seq" => 9 } }
+      end
+
+      def cards_of(app, path)
+        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+        JSON.parse(app.call(env_for(path))[2].first)
+      end
+
+      it "hands out each card's body rendered as markdown when the renderer is on; notices as they are" do
+        cards = cards_of(build_app(state_dir: Dir.mktmpdir, markdown: true), "/api/sessions/s1")["cards"]
+
+        expect(cards.map { |c| c["id"] || c["type"] }).to eq(%w[c1 c2 hook_notice])
+        expect(cards[0]["body_html"]).to include("<strong>bold</strong>")
+        expect(cards[0]["body_html"]).not_to include("<b>x</b>")
+        expect(cards[0]["actions"]).to eq([{ "label" => "Again", "command" => "/hello again" }])
+        expect(cards[1]["body_html"]).to eq("")
+        expect(cards[2]).not_to have_key("body_html")
+      end
+
+      it "hands out the escaped text in a <pre> without markdown" do
+        cards = cards_of(build_app(state_dir: Dir.mktmpdir), "/api/sessions/s1")["cards"]
+        expect(cards[0]["body_html"]).to eq("<pre>some **bold** &lt;b&gt;x&lt;/b&gt;</pre>")
+      end
+
+      it "answers ?cards=1 with the cards alone (the page's re-read when a card arrives)" do
+        payload = cards_of(build_app(state_dir: Dir.mktmpdir), "/api/sessions/s1?cards=1")
+        expect(payload.keys).to eq(["cards"])
+        expect(payload["cards"].size).to eq(3)
+      end
+
+      it "is empty without a live worker" do
+        app = build_app(manager: FakeResponsesManager.new, state_dir: Dir.mktmpdir)
+        expect(JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["cards"]).to eq([])
+      end
+    end
+
     describe "?parts=1 (the turn view's reload: what each step did)" do
       let(:live) do
         { "snapshot" => { "messages" => [

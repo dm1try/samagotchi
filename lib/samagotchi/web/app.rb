@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "cgi"
 require "fileutils"
 require "json"
 require "time"
@@ -422,6 +423,11 @@ module Samagotchi
         # behind it, all at one event_seq the client streams on from.
         live = bridge_get_json(id, "snapshot")
         turn_snapshot = live && live["snapshot"]
+        # ?cards=1: the page's re-read when a card arrives, for its rendered
+        # body (the stream carries the card's plain text only).
+        if req.params["cards"] == "1"
+          return json_response(200, { cards: cards_for_display(turn_snapshot) })
+        end
         snapshot = live && live["session_state_snapshot"]
         last_event_seq = snapshot ? snapshot["event_seq"] : bridge_event_seq(id)
         current_turn = turn_snapshot && turn_snapshot["current_turn"]
@@ -463,6 +469,7 @@ module Samagotchi
           saved_recap: saved_recap_for(id, session, turn_snapshot),
           continue_offer: turn_snapshot && turn_snapshot["continue_offer"],
           guardrail_warning: turn_snapshot && turn_snapshot["guardrail_warning"],
+          cards: cards_for_display(turn_snapshot),
           markdown_warning: @markdown_renderer.warning,
           pending_question: pending,
           last_event_seq: last_event_seq,
@@ -473,6 +480,26 @@ module Samagotchi
         })
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
+      end
+
+      # The worker's last cards and between-turns notices (Bridge
+      # snapshot[:cards]), a card's body as body_html: rendered markdown
+      # when the renderer is on, else the escaped text in a <pre>.
+      # @return [Array<Hash>] [] without a live worker
+      def cards_for_display(turn_snapshot)
+        Array(turn_snapshot && turn_snapshot["cards"]).filter_map do |card|
+          next unless card.is_a?(Hash)
+          next card unless card["type"].to_s == "card"
+
+          card.merge("body_html" => card_body_html(card["body"].to_s))
+        end
+      end
+
+      def card_body_html(body)
+        return "" if body.strip.empty?
+
+        html = @markdown_renderer.render(body) if @markdown_renderer.available?
+        html || "<pre>#{CGI.escapeHTML(body)}</pre>"
       end
 
       def handle_question_answer(req, id)

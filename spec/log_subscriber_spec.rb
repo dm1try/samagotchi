@@ -104,6 +104,16 @@ RSpec.describe Samagotchi::LogSubscriber do
     ])
   end
 
+  it "writes a card with its source, id and title, not its body" do
+    feed({ type: :card, id: "c1", source: "sample-plugin", title: "Hello", body: "secret body", level: :info,
+           actions: [{ label: "Again", command: "/hello again" }] })
+
+    expect(records.map { |r| [r.event, r.fields] }).to eq([
+      ["card", { "source" => "sample-plugin", "id" => "c1", "actions" => "1", "msg" => "Hello" }]
+    ])
+    expect(File.read(path)).not_to include("secret body")
+  end
+
   it "writes a tool call whose output is invalid UTF-8 (any bytes a command printed)" do
     feed({ type: :tool_call_completed, iteration: 1, call_index: 0, tool: "execute",
            output: (+"[execute]\nbad \xFF\xFE bytes").force_encoding(Encoding::UTF_8) })

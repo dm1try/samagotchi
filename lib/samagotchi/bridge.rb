@@ -8,6 +8,7 @@ require "securerandom"
 require "time"
 
 require_relative "bridge/bounded_queue"
+require_relative "bridge/card_store"
 require_relative "bridge/event_id"
 require_relative "bridge/ring_buffer"
 require_relative "bridge/sse_writer"
@@ -90,6 +91,7 @@ module Samagotchi
       @port = port
       @ring = RingBuffer.new(capacity: ring_capacity)
       @accumulator = TurnAccumulator.new
+      @cards = CardStore.new
       @heartbeat_interval = heartbeat_interval
       @epoch = SecureRandom.hex(4)
 
@@ -146,6 +148,7 @@ module Samagotchi
       @port = @server.local_address.ip_port
       @capture_handle = @engine.subscribe(observer: capture_observer)
       @accumulator_handle = @engine.subscribe(observer: @accumulator)
+      @cards_handle = @engine.subscribe(observer: @cards)
       @accept_thread = Thread.new { accept_loop }
       @accept_thread.report_on_exception = false
       write_sidecar
@@ -168,6 +171,7 @@ module Samagotchi
       end
       @capture_handle&.unsubscribe
       @accumulator_handle&.unsubscribe
+      @cards_handle&.unsubscribe
       # A turn post killed between its enqueue and its reply looks failed to
       # the web, which then queues the prompt again from the input file.
       await_answers(REQUEST_GRACE_SECONDS)
@@ -182,10 +186,11 @@ module Samagotchi
     # the event log: the Engine's messages (not the lagging copy on disk),
     # the turn in progress, turns queued behind it, the idle recap since the
     # last turn, the recap saved with the session (also from before the last
-    # turns: {text:, covered:, turns_since:, created_at:}), a pending continue offer, the guardrail load warning, and the
-    # event_seq it all covers.
+    # turns: {text:, covered:, turns_since:, created_at:}), a pending continue offer, the guardrail load warning, the
+    # last cards and between-turns notices (CardStore#list), and the event_seq it all covers.
     # Taken with the log held, so no event is half-applied.
-    # @return [Hash] {messages:, current_turn:, queued:, recap:, saved_recap:, continue_offer:, guardrail_warning:, event_seq:, event_id:}
+    # @return [Hash] {messages:, current_turn:, queued:, recap:, saved_recap:, continue_offer:, guardrail_warning:,
+    #   cards:, event_seq:, event_id:}
     def snapshot
       @engine.synchronize_events do
         seq = @engine.event_count
@@ -197,6 +202,7 @@ module Samagotchi
           saved_recap: @engine.saved_recap,
           continue_offer: @accumulator.continue_offer,
           guardrail_warning: @engine.guardrail_warning,
+          cards: @cards.list,
           event_seq: seq,
           event_id: event_id(seq)
         }
