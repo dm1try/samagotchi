@@ -147,6 +147,7 @@ module Samagotchi
         plugin_src = prov && prov_data ? prov.plugin_path(prov_data) : nil
         plugin_src = nil unless plugin_src && File.file?(plugin_src)
         requires_chi = prov_data && prov_data[:requires_chi]
+        needs = prov_data && prov_data[:needs]
 
         # Determine trust_level for the built bundle
         build_trust_level = @trust_level
@@ -191,7 +192,8 @@ module Samagotchi
             hooks: hooks_map.empty? ? nil : hooks_map,
             trust_level: build_trust_level,
             plugin: plugin_src && { file: File.basename(plugin_src), sha256: Digest::SHA256.hexdigest(File.binread(plugin_src)) },
-            requires_chi: requires_chi
+            requires_chi: requires_chi,
+            needs: needs
           )
 
           case format

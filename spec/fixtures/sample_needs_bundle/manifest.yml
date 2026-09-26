@@ -1,0 +1,11 @@
+name: sample-needs
+version: 1.0.0
+description: "Sample bundle whose memory needs outside commands: one surely missing, one (sh) always there"
+files:
+  gh_helper.md: sha256:bf496c90dc9371e6416b6581b9bd393593f8b02778d531c8e87c059ebca94c24
+needs:
+  - command: chi-surely-missing-cmd
+    why: stands in for gh in specs and smoke runs
+    hint: put an executable chi-surely-missing-cmd on PATH
+  - sh
+trust_level: reviewed

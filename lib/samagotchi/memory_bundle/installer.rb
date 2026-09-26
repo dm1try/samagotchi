@@ -10,6 +10,7 @@ require_relative "placeholder"
 require_relative "index_updater"
 require_relative "merger"
 require_relative "../version"
+require_relative "../bundle_needs"
 
 module Samagotchi
   module MemoryBundle
@@ -304,6 +305,8 @@ module Samagotchi
           end
         end
 
+        warn_missing_needs(manifest) if manifest
+
         # Write provenance (only if we had a manifest and not dry_run).
         if manifest && !@dry_run
           skip_provenance = @upgrade && @conflicts.any? && !@force
@@ -373,7 +376,8 @@ module Samagotchi
               hooks_files: hooks_files_for_provenance,
               guardrails_files: guardrail_files_for_provenance,
               plugin_file: plugin_file_for_provenance,
-              requires_chi: manifest.requires_chi
+              requires_chi: manifest.requires_chi,
+              needs: manifest.needs
             )
           end
         end
@@ -417,6 +421,15 @@ module Samagotchi
       end
 
       private
+
+      # One warning per need not found on this PATH (read-only, so dry-run
+      # too). Installing goes ahead: needs are advisory.
+      def warn_missing_needs(manifest)
+        BundleNeeds.missing(manifest.needs).each do |need|
+          hint = need[:hint] ? " (#{need[:hint]})" : ""
+          @warnings << "needs #{need[:command]}: not found on PATH#{hint}; #{@dry_run ? "would install" : "installed"} anyway"
+        end
+      end
 
       # Copy the manifest's plugin file into the bundle's plugin/ dir,
       # warning when its sha256 differs from the declared one or this chi

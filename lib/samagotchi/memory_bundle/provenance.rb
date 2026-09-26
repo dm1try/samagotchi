@@ -115,8 +115,9 @@ module Samagotchi
       #   and sha256 are recorded (the Engine checks it at load) with a base
       #   snapshot
       # @param requires_chi [String, nil] the manifest's requirement
+      # @param needs [Array<Hash>] the manifest's needs ({command:, why:, hint:})
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
-                guardrails_files: {}, plugin_file: nil, requires_chi: nil)
+                guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil)
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -223,6 +224,7 @@ module Samagotchi
           File.binwrite(plugin_base_path(File.basename(plugin_file.to_s)), content)
         end
         manifest_data["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
+        manifest_data["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } if needs.is_a?(Array) && !needs.empty?
 
         # Write aside and rename, so a reader in another process (a parallel
         # chi start) never parses a truncated manifest.json.

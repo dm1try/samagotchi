@@ -435,4 +435,41 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(installer.warnings.any? { |w| w.include?("Checksum mismatch for hook") }).to be true
     end
   end
+
+  describe "needs" do
+    let(:fixture) { File.expand_path("../../fixtures/sample_needs_bundle", __dir__) }
+
+    it "records the needs in provenance and warns about a missing one, installing anyway" do
+      installer = installer_for(source: fixture, name: "sample-needs", scope: "system")
+      installer.run
+
+      expect(File.exist?(File.join(system_memories_dir, "gh_helper.md"))).to be true
+      expect(installer.warnings).to include(
+        "needs chi-surely-missing-cmd: not found on PATH (put an executable chi-surely-missing-cmd on PATH); installed anyway"
+      )
+      expect(installer.warnings.grep(/needs sh/)).to be_empty
+      expect(installer.summary).to include("needs chi-surely-missing-cmd: not found on PATH")
+
+      data = Samagotchi::MemoryBundle::Provenance.new(name: "sample-needs").read
+      expect(data[:needs]).to eq([
+        { command: "chi-surely-missing-cmd", why: "stands in for gh in specs and smoke runs",
+          hint: "put an executable chi-surely-missing-cmd on PATH" },
+        { command: "sh" }
+      ])
+    end
+
+    it "warns on a dry run too, without writing provenance" do
+      installer = described_class.new(source: fixture, name: "sample-needs", scope: "system", dry_run: true)
+      installer.run
+      expect(installer.warnings).to include(a_string_matching(/needs chi-surely-missing-cmd: .*; would install anyway/))
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "sample-needs").read).to be_nil
+    end
+
+    it "drops the stored needs when a reinstall's manifest has none" do
+      installer_for(source: fixture, name: "sample-needs", scope: "system").run
+      plain = write_bundle(tmpdir, { "gh_helper.md" => "# gh helper\n" }, name: "sample-needs")
+      installer_for(source: plain, name: "sample-needs", scope: "system", force: true).run
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "sample-needs").read).not_to have_key(:needs)
+    end
+  end
 end

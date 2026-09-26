@@ -70,6 +70,18 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     expect(manifest["hooks"]).to be_nil
   end
 
+  it "keeps the installed bundle's needs (symbol-keyed provenance) in the built manifest" do
+    fixture = File.expand_path("../../fixtures/sample_needs_bundle", __dir__)
+    Samagotchi::MemoryBundle::Installer.new(source: fixture, name: "sample-needs", scope: "system", strict: true).run
+    out = File.join(tmpdir, "out-needs")
+    described_class.new(scope: "system", name: "sample-needs", version: "1.0.0", out: out).run
+    expect(YAML.load_file(File.join(out, "manifest.yml"))["needs"]).to eq([
+      { "command" => "chi-surely-missing-cmd", "why" => "stands in for gh in specs and smoke runs",
+        "hint" => "put an executable chi-surely-missing-cmd on PATH" },
+      { "command" => "sh" }
+    ])
+  end
+
   it "names a project bundle after the repository, also from a linked worktree" do
     repo = File.join(File.realpath(tmpdir), "My Repo")
     FileUtils.mkdir_p(repo)
