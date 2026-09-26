@@ -69,6 +69,18 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.output.markdown table{border-collapse:collapse;display:block;max-width:100%;overflow:auto}
 .bubble.output.markdown th,.bubble.output.markdown td{border:1px solid var(--border-strong);padding:5px 8px;font-size:14px}
 .bubble.output.markdown th{background:var(--bg-inset);font-weight:600}
+/* Plugins' slow setup (chi.init, init_row.js): a quiet line per task over the composer. */
+#initRow{display:flex;flex-direction:column;gap:2px;padding:6px 12px 2px;font-size:12px;line-height:1.4;color:var(--text-3)}
+#initRow[hidden]{display:none}
+.init-task{display:flex;align-items:center;gap:7px;min-width:0;transition:opacity .4s ease}
+.init-task.fading{opacity:0}
+.init-bundle{flex:none;padding:0 5px;border:1px solid var(--border-strong);border-radius:4px;font-size:11px;color:var(--text-muted)}
+.init-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.init-task.done .init-text{color:var(--ok-text)}
+.init-mark{flex:none;width:10px;text-align:center;color:var(--ok)}
+.init-spin{flex:none;width:10px;height:10px;border:1.5px solid var(--border-strong);border-top-color:var(--accent);border-radius:50%;animation:init-spin .8s linear infinite}
+@keyframes init-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.init-spin{animation:none;border-top-color:var(--accent)}.init-task{transition:none}}
 .markdown-warning{margin:0 16px 4px;padding:8px 10px;border:1px solid var(--warn);border-radius:8px;background:var(--warn-bg);color:var(--warn-bright);font-size:12px;line-height:1.4}
 .bubble.user{border-left:3px solid var(--accent);background:var(--accent-bg);align-self:flex-end;max-width:85%;margin-left:auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
 .bubble.user.queued{border-left-style:dashed;opacity:.8}
@@ -515,6 +527,7 @@ a{color:var(--accent)}
     </div>
     <div id="lightbox" hidden><img alt=""></div>
     <div id="dock">
+      <div id="initRow" role="status" aria-live="polite" hidden></div>
       <div id="composer" style="position:relative">
         <div id="commandList" role="listbox" aria-label="Commands" hidden></div>
         <div id="composeGrip" title="Drag to make the message box taller (double-click resets)"></div>

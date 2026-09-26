@@ -471,6 +471,8 @@ module Samagotchi
           continue_offer: turn_snapshot && turn_snapshot["continue_offer"],
           guardrail_warning: turn_snapshot && turn_snapshot["guardrail_warning"],
           plugin_warning: turn_snapshot && turn_snapshot["plugin_warning"],
+          # Plugins' slow setup still running (chi.init): the page's init row.
+          init_tasks: turn_snapshot ? Array(turn_snapshot["init_tasks"]) : [],
           cards: cards_for_display(turn_snapshot),
           # The composer's / autocomplete; the built-ins until a worker
           # names its plugins' too.
