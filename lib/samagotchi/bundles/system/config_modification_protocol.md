@@ -60,6 +60,24 @@ Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top
 - `hosts:` map of `name → {host, port | url, transport, api, api_key_env, profile, first_token_timeout, enabled}` (`ConfigFile.hosts_config`, `host_registry.rb` `HostEntry`). Names lowercased; `url:` (http/https, optional path) replaces host/port, never both; `api_key_env:` names the env var holding the API key (never write a key into config.yml); `transport` overrides `server.transport`; `first_token_timeout` (seconds, `0` = off; a negative or non-number warns and is ignored) overrides `server.first_token_timeout` for that host; workers inherit via `SAMAGOTCHI_HOSTS_JSON` (`hosts_json_for_env`, `session_manager.rb`).
 - `models:` map of model id or alias → `{profile}` (`ConfigFile.model_settings`). Keys match case-insensitively. `profile` (here or on a host) is `qwen36|gemma4`: the raw prompt format for native hosts. Precedence: `--profile`/`SAMAGOTCHI_MODEL_PROFILE` > `models:` > `hosts.<name>.profile` > the llama.cpp server's chat template > the name (`qwen`/`gemma`) > `qwen36` (`ModelProfile.resolve`). Set one when a model's name hides its family (e.g. a Qwen fine-tune under another name on mlx, which has no template to read).
 - `hooks:` map of `hooks_dir` + per-event lists `{path, on_error}` (`Hooks::Loader.load`). `hooks_dir` may start with `~`.
+- `guardrails:` tool-call rules (`docs/guardrails.md`; read in `Engine#guardrail_rules`, parsed by `Guardrails::Rules.parse`): `enabled` (bool, default true; `false` drops rules and hooks' asks, a deny still applies; env `SAMAGOTCHI_GUARDRAILS_ENABLED`), `rules:` (list), `disable:` (list of rule ids, `id` or `bundle:id`, switching off a bundle's or config rule without editing it). A rule takes only `id`, `tool`, `command`, `path`, `verdict`, `reason`, `scopes`: `id` required; at least one of `tool` (a name, `shell` = execute + task_create, a `File.fnmatch` glob like `"mcp_*"`, or a list), `command` (a Ruby regex on the shell command), `path` (a glob, or `outside_repo`); `verdict` `ask|deny`; `scopes` (for `ask`) a subset of `once, session, repo, rule`. **Any parse error (an unknown key, a bad regex, no verdict) makes chi deny every tool call** until fixed, so validate with `YAML.safe_load` and keep the list shape. Rules load when a session starts: restart the worker/REPL after an edit. Installed bundles' rule files (`chi bundle install guardrails`) add to them; `/guardrails` lists what loaded.
+
+```yaml
+guardrails:
+  enabled: true
+  rules:
+    - id: git-push
+      tool: shell
+      command: '\bgit\s+push\b'
+      verdict: ask
+      reason: git push publishes commits
+    - id: mcp-ask
+      tool: "mcp_*"
+      verdict: ask
+      reason: an MCP server's tool
+  disable: [guardrails:git-rebase]
+```
+
 - `bundles:` map of installed bundle name → its settings (one Hash, string keys, handed to the bundle's hook/plugin `initialize(settings)`). Read when a session's Engine starts: after a change restart the session's worker (`chi sessions stop <id>`) or the REPL. Unknown keys are ignored by the bundle, not validated. `chi bundle list` names the bundles; each bundle's keys are in `docs/plugins.md` / `docs/guardrails.md`.
 
 ```yaml
@@ -83,11 +101,12 @@ bundles:
         cwd: ~/scratch                         # optional; default the session's cwd
         tools: [read_*, list_directory]        # optional filter (globs)
         attach_image_paths: true               # default: an answer that is only an image's path (temp dir/cwd) is attached as a picture
+        start: lazy                            # default: tools from the saved tools/list, the server starts on the first call; eager: with every session
 ```
 
-A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cover every MCP tool; see `docs/guardrails.md`.
+A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cover every MCP tool; see `docs/guardrails.md`. The mcp bundle saves each server's tool list in `$XDG_STATE_HOME/samagotchi/plugins/mcp/tools-<server>.json` (keyed by a digest of command/env/cwd): a changed server config is picked up by the next session start, which shows "Starting MCP server x (config changed, …)".
 
-**Preservation rule**: `ConfigFile.write_default_model!` and `ConfigFile.write_model_alias!` both load raw YAML (including nested sections and maps), mutate one key (`raw_data["default"]["model"] = ...` for new form), write atomically via `tmp`+`rename`. Never overwrite the file with only scalar keys — that would clobber `hooks:` / `model_aliases:` / `hosts:` / `recap:` / `bundles:`.
+**Preservation rule**: `ConfigFile.write_default_model!` and `ConfigFile.write_model_alias!` both load raw YAML (including nested sections and maps), mutate one key (`raw_data["default"]["model"] = ...` for new form), write atomically via `tmp`+`rename`. Never overwrite the file with only scalar keys — that would clobber `hooks:` / `model_aliases:` / `hosts:` / `recap:` / `guardrails:` / `bundles:`.
 
 ## Workflow for any config edit
 
@@ -127,5 +146,5 @@ A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cov
 - Precedence is `CLI > ENV > file > default` (`Config.resolve`). Real `ENV` still wins over file (`load_global_env!` `unless env.key?` for legacy sync), and CLI (`--recap-base-url`) wins over both via `Config.reload!(cli_overrides:)`.
 - `--recap_base_url` (underscore) is rejected as unknown — use `--recap-base-url` (kebab). Same for all registry flags.
 - `model_aliases` require restart or `/model` reload to take effect; document the change.
-- Keep edits minimal: touch only the key you intend to change; preserve `hosts:`/`hooks:`/`bundles:` maps. Adding a `bundles: <name>:` entry does not install the bundle (`chi bundle install <name>`).
+- Keep edits minimal: touch only the key you intend to change; preserve `hosts:`/`hooks:`/`guardrails:`/`bundles:` maps. Adding a `bundles: <name>:` entry does not install the bundle (`chi bundle install <name>`).
 - To silence legacy warnings, migrate flat `SAMAGOTCHI_*` keys to nested form and delete the flat entry atomically.
