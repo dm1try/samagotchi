@@ -70,6 +70,10 @@ bundles:
   btw:
     max_tokens: 1024
     timeout: 120
+  loop-guard:
+    deny_after: 2              # same call + same result N times in a turn -> deny the next
+    stop_after: 4              # stop the turn at this many denies
+    mode: deny                 # deny | notify (warn only); ignore_tools: [task_wait, ...]
   mcp:                         # tools become mcp_<server>_<tool>; /mcp lists them
     timeout: 60                # per call, seconds; startup_timeout: 10
     servers:

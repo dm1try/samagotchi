@@ -25,7 +25,8 @@
 - Bundles extend me: memories, `hooks/*.rb`, `guardrails/*.yml`, and a `plugin.rb` that adds slash
   commands (`anytime:` ones run mid-turn), model tools, hooks, cards, side answers (`ask_model`),
   child sessions and services (e.g. MCP server processes). Shipped: `btw` (`/btw` side question),
-  `mcp` (MCP server tools), `guardrails` (rules), `known-names` (typo guard). `chi bundle list`
+  `mcp` (MCP server tools), `guardrails` (rules), `known-names` (typo guard), `loop-guard`
+  (denies a repeated tool call with the same result, stops the turn after a few). `chi bundle list`
   shows installed + available; `chi bundle install <name>`. Settings: config.yml `bundles: <name>:`
   (`config_modification_protocol`), read at session start: after an install or a settings change,
   tell the user to restart the session. API and bundle docs: `docs/plugins.md`.
