@@ -1,9 +1,9 @@
 name: sample-plugin
 version: 1.0.0
-description: "Sample bundle with a plugin: /hello, the echo_args tool and an after_turn hook"
+description: "Sample bundle with a plugin: /hello (a card), the echo_args tool (a card mid-turn) and an after_turn hook"
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:3475a3aa5cc8e51d6043f62860105e5c85270149d7effca17b096bb4794a0a55
+  sha256: sha256:54afb01ba644e292aa25a99ba00735324ce8fb124a7d6af49d6a6ac11fc63bc6
 requires_chi: ">= 0.1.28"
 trust_level: reviewed

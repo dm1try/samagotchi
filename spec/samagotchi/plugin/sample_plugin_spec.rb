@@ -94,6 +94,22 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       expect(engine.command_registry.completions(:repl)).to include("/hello")
     end
 
+    it "shows a card with one action; each /hello updates it (the same id)" do
+      engine.session = session
+      cards = []
+      engine.subscribe(observer: ->(e) { cards << e if e[:type] == :card })
+      commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
+                                                 default_model: "Gemma-4B-it", registry: engine.command_registry)
+      commands.run("/hello")
+      commands.run("/hello again")
+
+      expect(cards.map { |c| [c[:id], c[:source], c[:title]] })
+        .to eq([["hello", "sample-plugin", "hello, there"], ["hello", "sample-plugin", "hello, again"]])
+      expect(cards.last[:body]).to include("**2** messages", "said hello 2 times")
+      expect(cards.last[:actions]).to eq([{ label: "Again", command: "/hello again" }])
+      expect(cards.last[:in_turn]).to be false
+    end
+
     it "gets the bundle's settings" do
       allow_any_instance_of(Samagotchi::Engine).to receive(:bundle_settings).and_return("sample-plugin" => { "greeting" => "hey" })
       commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
@@ -126,6 +142,13 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       result = kernel.dispatch_tool_call(name: "echo_args", content: "hi there", text: "hi there")
       expect(result[:output]).to eq("[echo_args]\necho: content=hi there text=hi there")
       expect(result[:activity][:action]).to eq("echoing")
+    end
+
+    it "shows a card when it runs" do
+      cards = []
+      engine.subscribe(observer: ->(e) { cards << e if e[:type] == :card })
+      kernel.dispatch_tool_call(name: "echo_args", text: "hi")
+      expect(cards.map { |c| [c[:title], c[:body]] }).to eq([["echo_args ran", "echo: text=hi"]])
     end
   end
 

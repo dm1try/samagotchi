@@ -22,7 +22,7 @@ name: my-bundle
 version: 1.0.0
 plugin:
   file: plugin.rb
-  sha256: sha256:3475a3aa…   # shasum -a 256 plugin.rb
+  sha256: sha256:54afb01b…   # shasum -a 256 plugin.rb
 requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2")
 ```
 
@@ -40,6 +40,9 @@ class Plugin
   def register(chi)
     chi.command "/hello", "greet, and say what the plugin sees" do |args, ctx|
       who = args.empty? ? "there" : args
+      ctx.card(id: "hello", title: "#{@greeting}, #{who}",
+               body: "This session has **#{ctx.messages.size}** messages.",
+               actions: [{ label: "Again", command: "/hello again" }])
       "#{@greeting}, #{who} (#{ctx.messages.size} messages)"
     end
 
@@ -127,11 +130,56 @@ session's life, and each read gives the session as it is now.
 | `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use |
 | `ctx.log` | `ctx.log.info(:event, key: value)`: debug-log records tagged `plugins`, with `bundle=<bundle>` |
 | `ctx.messages` | the conversation, as a frozen copy. While a turn runs, it is the conversation before that turn |
-| `ctx.notify(text, level: :info)` | one line to the user, like a hook's `event[:notify]`. During a turn (a tool, a hook) every UI shows it. A command at the REPL prompt doesn't show it yet, so return the text instead |
+| `ctx.notify(text, level: :info)` | one line to the user, like a hook's `event[:notify]`, labelled by the bundle (`my-bundle> …`). Every UI shows it, during a turn (a tool, a hook) or between turns (a command) |
+| `ctx.card(title:, body: "", actions: [], level: :info, id: nil)` | a card in every UI, returning its id: see [Cards](#cards) |
 | `ctx.ask_user(question:, options:, header: nil, allow_freeform: false)` | a question, like a hook's `event[:ask_user]` |
 | `ctx.cancelled?` | whether the running turn was cancelled (a long tool should stop) |
 
 The Engine itself is never handed to a plugin.
+
+## Cards
+
+A card is a small framed message with buttons: a title, a body and
+actions. Core draws it in all three UIs; a plugin has no JS or CSS of its
+own.
+
+```ruby
+id = ctx.card(title: "Build finished", body: "**3** warnings in `lib/`",
+              actions: [{ label: "Show them", command: "/warnings" }],
+              level: :warn)
+ctx.card(id: id, title: "Build finished", body: "no warnings left")  # replaces it
+```
+
+- `title:` is required. `body:` is markdown in the web and plain text in
+  the terminal (wrapped; there is no terminal markdown).
+- `actions:` are up to 6 `{label:, command:}`. A command is a line the
+  session runs as if the user typed it: `/hello again`, `/model x`, a
+  plugin's own command. The web shows a button; the terminal shows
+  `→ /hello again`, to type.
+- `level:` is `:info` or `:warn` (the warning colour).
+- `id:` names an earlier card to replace. Without one a new id is made. The
+  web updates the card in place; the terminal prints it again, marked
+  `(updated)`. A card that waits for something (a model's answer) shows
+  first, then is replaced.
+- A bad card (no title, a bad level or action) raises `ArgumentError`.
+
+Where it shows:
+
+| | during a turn (a tool, a hook) | between turns (a command) |
+|---|---|---|
+| REPL | where it happens, above the live region | at the prompt, after the command's output |
+| attached TUI | where it happens | as it arrives |
+| web | a row of the running step | between the turns |
+
+A worker keeps its last 20 cards, and the notices a plugin sent between
+turns, for a UI that joins later. The web shows them where they arrived
+after a reload; the attached TUI shows the ones since the last turn when it
+joins. They live as long as the worker: an idle exit or a restart forgets
+them, and they are not saved with the session.
+
+The event is `{type: :card, id:, source:, title:, body:, level:, actions:,
+in_turn:}` (`source` is the bundle), logged as `card` with its source, id and
+title.
 
 ## Loading, and when it fails
 
@@ -148,7 +196,7 @@ What `register` adds takes effect only when it returns. A plugin that raises
 halfway adds nothing.
 
 A plugin that fails to load is shown on stderr at start, and in every UI on
-the first turn (`plugin plugin.rb (bundle x) failed to load (…)`). The rest
+the first turn (`plugins> plugin plugin.rb (bundle x) failed to load (…)`). The rest
 of chi, including the other plugins, works as usual. Unlike a required
 guardrail, a plugin failure does not deny tool calls.
 
@@ -188,8 +236,10 @@ gem.
 
 These are planned (`~/.claude/plans/plugins.md`):
 
-- Cards: `ctx.card(title:, body:, actions:)`, rendered in all three UIs.
-- Plugin commands in the attached TUI and the web, and `anytime:` commands.
+- Plugin commands typed in the attached TUI and the web, completion there,
+  and `anytime:` commands. Until then a card's action runs from the web's
+  button and typed in the REPL; typed in the attached TUI it goes to the
+  model.
 - Structured, schema-typed tool arguments, and `targets:` for guardrails.
 - `ctx.ask_model` for a side answer, and `ctx.sessions` to fork or send to
   other sessions.
