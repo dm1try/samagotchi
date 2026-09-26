@@ -98,18 +98,27 @@ runs **at once, on its own thread, beside the running turn**, and the turn
 goes on:
 
 - In a worker (attached, web) it runs as soon as it arrives. It is never
-  queued, so it is never busy, mid-turn or at the turn's end. Its output
-  (the `command_ran`) comes when it finishes, and its cards after that.
-- In the REPL, typed while a turn runs, it starts on a thread. Its output
-  prints above the live region while the turn runs, or at the prompt once
-  the turn has ended.
+  queued, so it is never busy, mid-turn or at the turn's end. The UIs show
+  its line when it arrives (its `command_queued` says `anytime: true`),
+  then its cards and notices **as it shows them**, and its output (the
+  `command_ran`) when it finishes. So a card can say "working…" first and
+  be replaced by the result.
+- In the REPL, typed while a turn runs, it starts on a thread. Its cards
+  print as it shows them, above the live region; its output prints there
+  too while the turn runs, or at the prompt once the turn has ended.
 
-Between turns an anytime command runs like any other.
+Between turns an anytime command runs like any other, except that its
+cards print as it shows them rather than after its output.
+
+An anytime command's cards and notices belong to the command, never to the
+running turn: they are not rows of the turn's step, and their events carry
+`anytime: true`.
 
 Its block runs on another thread than the turn, so it must be thread-safe:
 
 - Read the conversation through `ctx.messages`, a frozen copy. While a turn
-  runs, it is the conversation **before** that turn.
+  runs, a worker's holds that turn so far; the REPL's is the conversation
+  **before** that turn (`ctx.messages_partial?` says so).
 - Show things only through `ctx` (`ctx.card`, `ctx.notify`), and return
   the text to show.
 - Keep your own state (instance variables) behind a `Mutex` if two
@@ -256,11 +265,14 @@ session's life, and each read gives the session as it is now.
 | `ctx.settings` | the bundle's settings, frozen |
 | `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use |
 | `ctx.log` | `ctx.log.info(:event, key: value)`: debug-log records tagged `plugins`, with `bundle=<bundle>` |
-| `ctx.messages` | the conversation, as a frozen copy. While a turn runs, it is the conversation before that turn |
+| `ctx.messages` | the conversation, as a frozen copy, without the system prompt. While a turn runs, a session worker's (attached, web) adds that turn so far: its prompt, the model's text and the lines merged into it (no tool calls or thinking); the REPL's is the conversation before that turn |
+| `ctx.messages_partial?` | whether `ctx.messages` leaves out a running turn (the REPL mid-turn), so a plugin can say what its answer is about |
 | `ctx.notify(text, level: :info)` | one line to the user, like a hook's `event[:notify]`, labelled by the bundle (`my-bundle> …`). Every UI shows it, during a turn (a tool, a hook) or between turns (a command) |
 | `ctx.card(title:, body: "", actions: [], level: :info, id: nil)` | a card in every UI, returning its id: see [Cards](#cards) |
 | `ctx.ask_user(question:, options:, header: nil, allow_freeform: false)` | a question, like a hook's `event[:ask_user]` |
 | `ctx.cancelled?` | whether the running turn was cancelled (a long tool should stop) |
+| `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
+| `ctx.sessions` | fork, send to and read other sessions: see [Other sessions](#other-sessions-ctxsessions) |
 
 The Engine itself is never handed to a plugin.
 
@@ -300,6 +312,9 @@ Where it shows:
 | attached TUI | where it happens | as it arrives |
 | web | a row of the running step | between the turns |
 
+An [anytime command](#anytime-true)'s cards show as it shows them, after its
+line, in every UI, whether a turn runs or not.
+
 A worker keeps its last 20 cards, and the notices a plugin sent between
 turns, for a UI that joins later. The web shows them where they arrived
 after a reload; the attached TUI shows the ones since the last turn when it
@@ -309,6 +324,86 @@ them, and they are not saved with the session.
 The event is `{type: :card, id:, source:, title:, body:, level:, actions:,
 in_turn:}` (`source` is the bundle), logged as `card` with its source, id and
 title.
+
+## Side answers: `ctx.ask_model`
+
+```ruby
+answer = ctx.ask_model(messages: ctx.messages, prompt: "what did we decide about the cache?",
+                       system: "Answer briefly.", timeout: 120, max_tokens: 400)
+```
+
+One request to the session's current model on its host, resolved as a turn
+resolves them (a `/model` switch counts). It has **no tools**, thinking is
+off, and it writes nothing: the conversation, the saved session and the
+next turn never see it, and no hook fires. It returns the answer text.
+
+- `messages:` go as a transcript, filtered like the idle recap's: no system
+  prompt, tool calls, tool output or thinking, and an image is a line
+  naming it (`[image shot.png]`). A long one keeps its tail (32,000
+  characters). The transcript and `prompt:` go in one user message.
+- `system:` has a short default ("answer about the conversation below,
+  briefly, and don't continue its task").
+- `max_tokens:` defaults to 1024. An answer cut off by it ends with `…`.
+- `cancel:` takes a `Samagotchi::CancellationController`; cancelling it
+  aborts the request.
+- It blocks until the answer comes, so call it from an anytime command or a
+  thread of your own. A local server that runs one request at a time
+  (llama.cpp with one slot) answers it after a running turn's current
+  request.
+- It raises `Samagotchi::Plugin::ModelError` when the request fails or
+  times out (the message says why), and `Samagotchi::Plugin::ModelCancelled`
+  when cancelled.
+
+It goes through the host's OpenAI API (`/v1/chat/completions`), which
+llama.cpp serves on a native host too.
+
+## Other sessions: `ctx.sessions`
+
+```ruby
+id = ctx.sessions.fork(messages: ctx.messages + [{ role: "user", content: q }, { role: "model", content: a }],
+                       title: "btw: #{q}")
+ctx.sessions.send(id, "go on from here")
+ctx.sessions.read(id)  # => {id:, title:, status:, parent_id:, running:, messages:}
+```
+
+- `fork(messages:, title: nil, prompt: nil)` starts a child session in its
+  own worker, from these messages, in this session's folder and model. It
+  shows in every list as a child of this one (`↳ parent`), and the user can
+  attach to it. It returns the child's id.
+  - Without `prompt:` the child waits idle. With one, it runs it as its first
+    turn, and counts against `session.max_children` (like `delegate`).
+  - `title:` is what the lists show until its first turn (else the prompt, or
+    the first user message).
+  - An image a message names is copied into the child. One whose file is
+    gone is dropped, with `[image x.png was not copied]` in its message.
+- `send(id, text)` sends a user message to a session (an id or a unique
+  prefix); it runs as a turn, and a stopped session is woken. It waits up to
+  5 s for the session's worker, so call it from an anytime command or a
+  thread of your own, never from a tool or hook of a running turn. A
+  session open in a chi REPL can't take it.
+- `read(id)` gives a session now: from its worker when one runs (with a
+  running turn so far, `running: true`), else as saved. `messages` has no
+  system prompt.
+- Each raises `Samagotchi::Plugin::Sessions::Error` with the reason.
+
+## The btw bundle
+
+`chi bundle install btw` installs the bundle shipped with chi. It is written
+only against this API (`lib/samagotchi/bundles/btw/plugin.rb`).
+
+- `/btw <question>` asks the session's model a side question about the
+  conversation, even while a turn runs. A card `btw: <question>` shows
+  "thinking…" at once, and the same card then shows the answer. Nothing else
+  sees the answer.
+- The card's **Keep as session** runs `/btw keep <id>`. It forks the
+  conversation, the question and the answer into an idle child session, and
+  shows a card `kept as <id>`.
+- The last 10 answers can be kept, while the session's worker (or REPL)
+  runs. After that, or after a restart, `keep` says expired.
+- In the REPL, a question asked during a turn is about the conversation
+  before that turn, and the card says so. In a worker it includes the turn
+  so far.
+- Settings: `bundles: btw: {max_tokens: 1024, timeout: 120}`.
 
 ## Loading, and when it fails
 
@@ -365,7 +460,5 @@ gem.
 
 These are planned (`~/.claude/plans/plugins.md`):
 
-- `ctx.ask_model` for a side answer, and `ctx.sessions` to fork or send to
-  other sessions.
 - `chi.service` for long-lived processes, such as MCP servers.
 - `chi.prompt` for sections of the system prompt.
