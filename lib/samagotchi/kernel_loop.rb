@@ -885,7 +885,7 @@ module Samagotchi
         result = "Error: unknown tool '#{call[:name]}'. Available: #{available}"
         return {
           output: result,
-          activity: ToolActivity.tool_activity_event(call[:name], call, result)
+          activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: @tools)
         }
       end
 
@@ -896,7 +896,7 @@ module Samagotchi
       dump_log("tool_result", result, tool: call[:name])
       dispatched = {
         output: "[#{call[:name]}]\n#{result}",
-        activity: ToolActivity.tool_activity_event(call[:name], call, result)
+        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: @tools)
       }
       # An image the read tool found: ToolRunner attaches it (or says why not).
       if result.respond_to?(:image_path)
@@ -909,7 +909,7 @@ module Samagotchi
       result = "Error: #{e.message}"
       {
         output: "[#{call[:name]}] #{result}",
-        activity: ToolActivity.tool_activity_event(call[:name], call, result)
+        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: @tools)
       }
     end
 

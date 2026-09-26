@@ -22,11 +22,11 @@ module Samagotchi
     # @return [Hash] output:, capped_output:, truncated:, activity:, and
     #   images: (refs) when the tool read an image the model gets to see
     def run(call, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
-      params = ToolActivity.tool_activity_params(call[:name], call)
+      params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
       # The gate runs first, so tool_call_started shows the call that runs.
       verdict = evaluate(call, iteration, params)
       call = verdict.call
-      params = ToolActivity.tool_activity_params(call[:name], call)
+      params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
       emit(on_stream_event,
            type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
            tool: call[:name], call: call.dup, params: params)
@@ -84,6 +84,9 @@ module Samagotchi
       [result.merge(output: "[#{call[:name]}] Error: #{e.message}"), []]
     end
 
+    # The kernel's tools, for the activity line of a tool that isn't built in.
+    def tools = @kernel.respond_to?(:tools) ? @kernel.tools : nil
+
     # The Engine sets the kernel's gate (its context, later the approval
     # flow); a bare kernel (specs) gets one that only runs the hooks.
     def gate
@@ -121,7 +124,7 @@ module Samagotchi
                else
                  "[#{call[:name]}] Error: #{verdict.deny_text}"
                end
-      activity = ToolActivity.tool_activity_event(call[:name], call, output)
+      activity = ToolActivity.tool_activity_event(call[:name], call, output, registry: tools)
       { output: output, activity: activity.merge(status: "blocked", guardrail: verdict.to_activity) }
     end
 

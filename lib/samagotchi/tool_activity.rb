@@ -20,22 +20,25 @@ require_relative "tools/delegate_result"
 module Samagotchi
   # The one-line summary of a tool call that the UIs show ("reading file",
   # path="…", ok/error/blocked). Both loops and KernelLoop#dispatch build it
-  # from here.
+  # from here. The built-ins have their own words below; any other tool in
+  # the given Tools::Registry gets its entry's label and preview, or
+  # "calling tool" and its arguments as key=value.
   module ToolActivity
     TOOL_ACTIVITY_PREVIEW_LIMIT = 80
 
     module_function
 
-    def tool_activity_event(tool_name, call, result)
+    # @param registry [Tools::Registry, nil] the session's tools
+    def tool_activity_event(tool_name, call, result, registry: nil)
       {
-        action: tool_activity_action(tool_name),
+        action: tool_activity_action(tool_name, registry: registry),
         tool: tool_name,
-        params: tool_activity_params(tool_name, call),
+        params: tool_activity_params(tool_name, call, registry: registry),
         status: tool_activity_status(result)
       }
     end
 
-    def tool_activity_action(tool_name)
+    def tool_activity_action(tool_name, registry: nil)
       case tool_name
       when Tools::Execute::NAME then "running command"
       when Tools::Read::NAME then "reading file"
@@ -54,7 +57,7 @@ module Samagotchi
       when Tools::SendNote::NAME then "sending a note"
       when Tools::Delegate::NAME then "delegating"
       when Tools::DelegateResult::NAME then "waiting for a delegate"
-      else "calling tool"
+      else registry_entry(registry, tool_name)&.label || "calling tool"
       end
     end
 
@@ -62,7 +65,7 @@ module Samagotchi
       result.to_s.start_with?("Error:") ? "error" : "ok"
     end
 
-    def tool_activity_params(tool_name, call)
+    def tool_activity_params(tool_name, call, registry: nil)
       case tool_name
       when Tools::Execute::NAME
         "command=#{preview_tool_param(call[:content])}"
@@ -135,8 +138,23 @@ module Samagotchi
         parts << "options=#{preview_tool_param(Array(opts).join(","))}" if opts && !Array(opts).empty?
         parts.join(" ")
       else
-        nil
+        registry_params(registry_entry(registry, tool_name), call)
       end
+    end
+
+    def registry_entry(registry, tool_name) = registry && !tool_name.nil? ? registry[tool_name] : nil
+
+    # A registry tool's params: its preview, else each given argument as
+    # key="value"; nil for a tool the registry doesn't know, and for a
+    # built-in without its own words above (the reminder tools).
+    def registry_params(entry, call)
+      return nil if entry.nil? || entry.core?
+      return entry.preview.call(call) if entry.preview
+
+      parts = call.except(:name).filter_map do |key, value|
+        "#{key}=#{preview_tool_param(value)}" unless value.nil? || value.to_s.strip.empty?
+      end
+      parts.empty? ? nil : parts.join(" ")
     end
 
     def format_line_range(call)
