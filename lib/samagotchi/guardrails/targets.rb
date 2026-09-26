@@ -16,6 +16,11 @@ module Samagotchi
 
       attr_reader :tool, :command, :paths, :cwd, :repo_root
 
+      # @return [Hash, nil] a plugin tool's arguments (call[:args]), for an
+      #   approval of a call whose targets name no command or path; nil for
+      #   chi's own tools
+      attr_reader :args
+
       # @param call [Hash] the parsed tool call
       # @param context [Context]
       # @param model_key [String, nil] for a memory_write model overlay
@@ -27,6 +32,7 @@ module Samagotchi
         command = nil
         paths = []
         cwd = base
+        args = nil
         case tool
         when *SHELL_TOOLS
           command = call[:content].to_s
@@ -44,8 +50,10 @@ module Samagotchi
           given_cwd = given[:cwd].to_s.strip
           cwd = File.expand_path(given_cwd, base) unless given_cwd.empty?
           paths.concat(given[:paths].map { |path| absolute(path, cwd) })
+          entry = registry && registry[tool]
+          args = call[:args] if entry && !entry.core? && call[:args].is_a?(Hash)
         end
-        new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd))
+        new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd), args: args)
       end
 
       # What a plugin tool's targets: callable says the call acts on:
@@ -85,7 +93,8 @@ module Samagotchi
         nil
       end
 
-      def initialize(tool:, command:, paths:, cwd:, repo_root:)
+      def initialize(tool:, command:, paths:, cwd:, repo_root:, args: nil)
+        @args = args
         @tool = tool
         @command = command
         @paths = paths

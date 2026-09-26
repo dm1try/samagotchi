@@ -100,6 +100,9 @@ guardrails:
 A tool name may be a glob, so one rule covers a plugin's tools (an MCP server's,
 say): `tool: "mcp_*"` or `tool: ["mcp_{git,gh}_*", web_fetch]` (`*`, `?`, `[…]` and
 `{a,b}`, matched with `File.fnmatch`). `/guardrails` lists the glob as given.
+A plugin tool whose `targets:` name no command or path (an MCP tool) is asked
+about with its arguments (`mcp_x_sum: a=20 b=22`), and an approval of "this
+call" is keyed by them.
 
 ```yaml
     - id: mcp-ask

@@ -30,6 +30,20 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       expect(payload).to include(kind: "approval", header: "Approve tool call?", allow_freeform: true, multi_select: false)
     end
 
+    it "shows a plugin tool's arguments when its targets name no command or path, cut" do
+      registry = Samagotchi::Tools::Registry.new
+      registry.register("mcp_x_echo", schema: { name: "mcp_x_echo" }, handler: ->(*) { "" }, source: "mcp")
+      c = { name: "mcp_x_echo", args: { "message" => "hello there", "n" => 3, "flag" => true, "id" => "abc" } }
+      v = Samagotchi::Guardrails::Verdict.new(call: c)
+      v.ask!("an MCP tool", rule: "mcp-ask", source: "config")
+      v.context = context
+      v.targets = Samagotchi::Guardrails::Targets.for(c, context, registry: registry)
+      expect(described_class.payload(v)[:question].lines.first).to eq("mcp_x_echo: flag=true id=abc message=\"hello there\" n=3\n")
+      long = c.merge(args: { "text" => "x" * 400 })
+      v.targets = Samagotchi::Guardrails::Targets.for(long, context, registry: registry)
+      expect(described_class.payload(v)[:question].lines.first.chomp.length).to eq("mcp_x_echo: ".length + 300)
+    end
+
     it "names the repo and branch, and carries the structured approval" do
       system("git", "-C", dir, "init", "-q", "-b", "main", out: File::NULL, err: File::NULL)
       system("git", "-C", dir, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "x",

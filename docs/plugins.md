@@ -519,8 +519,9 @@ bundles:
         reason: an MCP server's tool
   ```
 
-  An MCP tool has no `targets:`, so approving one "for the session" approves
-  that tool with any arguments.
+  An MCP tool has no `targets:`, so the question shows its arguments
+  (`mcp_everything_get_sum: a=20 b=22`), and "Allow this call for the
+  session" (or in this repo) allows that tool with those arguments only.
 
 ## Shutdown
 

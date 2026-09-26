@@ -4,6 +4,7 @@ require "json"
 require "fileutils"
 require "time"
 require_relative "../log"
+require_relative "approval"
 
 module Samagotchi
   module Guardrails
@@ -81,11 +82,14 @@ module Samagotchi
         removed
       end
 
-      # tool + the normalized command, or the sorted paths.
+      # tool + the normalized command, or the sorted paths; for a plugin
+      # tool with neither (an MCP tool), its arguments, so "this call" is
+      # this call.
       def self.key_for(verdict)
         t = verdict.targets
         return "#{verdict.call[:name]}:" unless t
         return "#{t.tool}:#{t.command.to_s.strip.gsub(/\s+/, " ")}" if t.command
+        return "#{t.tool}:#{Approval.args_text(t.args)}" if t.paths.empty?
 
         "#{t.tool}:#{t.paths.sort.join("\n")}"
       end

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+
 module Samagotchi
   module Guardrails
     # An ask as a question for the user (Engine#open_question), and the
@@ -77,6 +79,23 @@ module Samagotchi
         end
       end
 
+      # How much of a plugin tool's arguments the question shows.
+      ARGS_CHARS = 300
+
+      # A plugin tool's arguments (Targets#args), as the question shows
+      # them and an approval is keyed by, when its targets name no command
+      # or path (an MCP tool): `a=20 b="x y"`, keys sorted, values as JSON.
+      # "" for none (chi's own tools).
+      # @param limit [Integer, nil] cut to this many characters (with …)
+      def args_text(args, limit: nil)
+        return "" unless args.is_a?(Hash) && !args.empty?
+
+        text = args.sort_by { |key, _| key.to_s }.map do |key, value|
+          "#{key}=#{value.is_a?(String) && value.match?(/\A[^\s"=]+\z/) ? value : JSON.generate(value)}"
+        end.join(" ")
+        limit && text.length > limit ? "#{text[0, limit - 1]}…" : text
+      end
+
       # execute: git push origin main
       #   in /path/to/repo (repo samagotchi, branch main)
       #   why: git push publishes commits (rule git-push, bundle guardrails)
@@ -84,6 +103,7 @@ module Samagotchi
         targets = verdict.targets
         tool = targets&.tool || verdict.call[:name].to_s
         what = targets&.command || (targets && targets.paths.join(", "))
+        what = Approval.args_text(targets&.args, limit: ARGS_CHARS) if what.to_s.empty?
         lines = ["#{tool}: #{what}"]
         if targets
           repo = targets.repo_root

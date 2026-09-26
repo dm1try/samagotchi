@@ -62,6 +62,24 @@ RSpec.describe Samagotchi::Guardrails::Approvals do
     expect(store.entries.first["key"]).to eq("write:#{repo}/a.txt")
   end
 
+  it "keys a plugin tool with no targets (an MCP tool) by its arguments, and chi's own tools as before" do
+    registry = Samagotchi::Tools::Registry.new
+    registry.register("mcp_x_sum", schema: { name: "mcp_x_sum" }, handler: ->(*) { "" }, source: "mcp")
+    ctx = Samagotchi::Guardrails::Context.new(cwd: repo, session_id: "s1")
+    verdict = lambda do |call, reg = registry|
+      v = Samagotchi::Guardrails::Verdict.new(call: call).ask!("mcp", rule: "mcp-ask", source: "config")
+      v.context = ctx
+      v.targets = Samagotchi::Guardrails::Targets.for(call, ctx, registry: reg)
+      v
+    end
+    store.add(verdict.call({ name: "mcp_x_sum", args: { "b" => 22, "a" => 20 } }), "session")
+    expect(store.entries.first["key"]).to eq("mcp_x_sum:a=20 b=22")
+    expect(store.match(verdict.call({ name: "mcp_x_sum", args: { "a" => 20, "b" => 22 } }))).not_to be_nil
+    expect(store.match(verdict.call({ name: "mcp_x_sum", args: { "a" => 1, "b" => 2 } }))).to be_nil
+    web = verdict.call({ name: "web_fetch", content: "https://x", args: { "url" => "https://x" } })
+    expect(described_class.key_for(web)).to eq("web_fetch:")
+  end
+
   it "stores an entry once, and revokes by index" do
     2.times { store.add(ask, "repo") }
     store.add(ask, "session")
