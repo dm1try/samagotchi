@@ -1243,6 +1243,8 @@ RSpec.describe Samagotchi::Bridge do
         start_bridge(on_command: ->(_) { raise "must not be called" })
 
         expect(post_command(JSON.generate(line: "hello")).first).to eq(400)
+        expect(post_command(JSON.generate(line: "/foo")).last["detail"]).to eq("not a session command: /foo (known: !<cmd>, !rollback, /continue, " \
+                                                 "/guardrails, /help, /model, /models; /help lists them)")
         expect(post_command(JSON.generate(line: "/recap")).first).to eq(400)
         expect(post_command("{nope").first).to eq(400)
         res = Net::HTTP.post(URI("http://127.0.0.1:#{@bridge_port}/session/other/command"),

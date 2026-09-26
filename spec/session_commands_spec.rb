@@ -60,6 +60,27 @@ RSpec.describe Samagotchi::SessionCommands do
     end
   end
 
+  describe "/help" do
+    it "lists every command: the session's, the bundles' (with their source), then the UIs' own, marked by UI" do
+      engine.command_registry.register("/hello", "greet", source: "sample-plugin") { |_args| "hi" }
+      engine.command_registry.register("/side", "ask aside", anytime: true, source: "btw") { |_args| nil }
+      commands = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma4-small",
+                                     registry: engine.command_registry)
+
+      result = commands.run("/help")
+
+      lines = result.output.lines.map(&:rstrip)
+      expect(lines.first).to eq("commands:")
+      expect(lines.map { |l| l.split.first }.drop(1))
+        .to eq(%w[!<cmd> !rollback /continue /guardrails /help /model /models /hello /side /detach /exit /quit /recap /stats])
+      expect(lines).to include("  /hello       greet  (sample-plugin)", "  /side        ask aside  (btw; mid-turn too)",
+                               "  /detach      leave and keep the worker running  (attached only)",
+                               "  /stats       show the session's stats  (terminal only)")
+      expect(result.status).to eq(:ok)
+      expect(engine.command_registry.lookup("/help").anytime).to be(true)
+    end
+  end
+
   describe "the Engine's registry" do
     it "holds the built-ins, one registry per Engine" do
       other = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "beta:Qwen3-14B")

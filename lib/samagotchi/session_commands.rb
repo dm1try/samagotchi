@@ -21,6 +21,7 @@ module Samagotchi
     MODEL_COMMAND = "/model"
     MODELS_COMMAND = "/models"
     GUARDRAILS_COMMAND = "/guardrails"
+    HELP_COMMAND = "/help"
     # A remote catalog has hundreds of ids (OpenRouter ~380): plain /models
     # shows this many per host; /models <text> lists every match.
     MODELS_PER_HOST = 20
@@ -62,6 +63,7 @@ module Samagotchi
       end
       registry.register(MODEL_COMMAND, "show or switch the model",
                         match: ->(text) { text.match?(/\A\/model(?:\s+.*)?\z/) }) { |text| model(text) }
+      registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)
       registry.register("/recap", "show the session's recap", local: true)
       registry.register("/exit", "leave (--delete also deletes the session)", local: true)
@@ -96,6 +98,27 @@ module Samagotchi
 
     # @return [Commands::Registry]
     attr_reader :registry
+
+    # /help: every command in the registry, the UIs' own and the bundles'
+    # too: the session's commands first, then the bundles', then the UIs'
+    # own (marked by UI), each group by name.
+    # @return [String]
+    def help_listing
+      entries = @registry.entries.sort_by { |entry| [help_group(entry), entry.name] }
+      width = entries.map { |entry| self.class.display_name(entry).length }.max
+      lines = entries.map do |entry|
+        notes = []
+        notes << entry.source unless entry.source == "core"
+        notes << "mid-turn too" if entry.anytime
+        notes << (entry.uis ? "#{entry.uis.join(" and ")} only" : "terminal only") if entry.local
+        line = "  #{self.class.display_name(entry).ljust(width)}  #{entry.description}"
+        notes.empty? ? line : "#{line}  (#{notes.join("; ")})"
+      end
+      "commands:\n#{lines.join("\n")}"
+    end
+
+    # How help and errors name an entry (the shell's "!" is "!<cmd>").
+    def self.display_name(entry) = entry.name == SHELL_BANG_PREFIX ? "#{SHELL_BANG_PREFIX}<cmd>" : entry.name
 
     # @return [Result, nil] nil when +line+ is not one of these commands
     def run(line)
@@ -140,6 +163,12 @@ module Samagotchi
       reply(output.nil? ? nil : output.to_s)
     rescue StandardError => e
       reply("#{entry.name}: #{e.class}: #{e.message}", status: :error)
+    end
+
+    def help_group(entry)
+      return 2 if entry.local
+
+      entry.source == "core" ? 0 : 1
     end
 
     def reply(output, status: :ok, changed: [])
