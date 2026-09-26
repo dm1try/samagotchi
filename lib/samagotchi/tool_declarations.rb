@@ -325,7 +325,7 @@ module Samagotchi
       },
       {
         name: "delegate",
-        description: "Hand a task to a child chi session that runs in parallel in this folder and returns only its final reply (its trace stays out of this context). The child is a normal session: it shows in the lists as a child of this one and the user can attach to it. With session, send a follow-up to one of this session's children instead. Children keep running if this turn is canceled; delegate_result waits for them later.",
+        description: "Hand a task to a child chi session that runs in parallel in this folder and returns only its final reply (its trace stays out of this context). The child is a normal session: it shows in the lists as a child of this one and the user can attach to it. With session, send a follow-up to one of this session's children instead. Children keep running if this turn is canceled; delegate_result waits for them later. A child stays until stopped: once its work is done, stop it with execute `chi sessions stop ID` (a follow-up with session wakes it again).",
         parameters: {
           type: "object",
           properties: {
