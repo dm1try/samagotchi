@@ -251,6 +251,9 @@ module Samagotchi
           profile_source: @profile_source
         )
         served_model = nil
+        # This generation's own server counts (the run-long
+        # context_state[:server_usage] can hold an earlier one's).
+        generation_usage = nil
         # Fire :before_generation hook
         gen_event = { type: :before_generation, iteration: iteration_index + 1 }
         fire_hook(:before_generation, gen_event) if @hooks
@@ -260,7 +263,7 @@ module Samagotchi
             cancel_controller: cancel_controller,
             model_name: resolved_model_name,
             on_chunk: lambda { |chunk|
-              capture_server_usage(chunk[:payload], context_state)
+              generation_usage = capture_server_usage(chunk[:payload], context_state) || generation_usage
               # llama.cpp names the loaded model in the stream's last payload.
               named = chunk[:payload]["model"] if chunk[:payload].is_a?(Hash)
               served_model = named if named.is_a?(String) && !named.strip.empty?
@@ -277,7 +280,11 @@ module Samagotchi
                 )
               end
             },
-            on_retry: (on_stream_event ? lambda { |retry_event|
+            on_retry: lambda { |retry_event|
+              # The retry streams from the start: its counts replace these.
+              generation_usage = nil
+              next unless on_stream_event
+
               emit_stream_event(
                 on_stream_event,
                 {
@@ -285,10 +292,11 @@ module Samagotchi
                   iteration: iteration_index + 1
                 }.merge(retry_event)
               )
-            } : nil),
+            },
             images: images
           )
         )
+        refresh_context_display(context_state, generation_usage, context_window)
         emit_stream_event(
           on_stream_event,
           type: :generation_completed,
@@ -376,7 +384,7 @@ module Samagotchi
         tool_activity: tool_activity,
         canceled: false,
         cancellation_reason: nil,
-        context_status: context_status
+        context_status: context_state[:display] || context_status
       )
     rescue StandardError => e
       LLM::FailedTurn.attach(e, conversation && duplicate_conversation(conversation))
@@ -581,6 +589,9 @@ module Samagotchi
 
       usage = estimate_context_usage(prompt, server_usage: state[:server_usage], window: window, image_tokens: image_tokens)
       bucket = context_status_bucket(usage[:estimated_pct])
+      # The status line's value, every iteration; the gate below decides
+      # only the event and the model's guidance line.
+      state[:display] = { est_pct: usage[:estimated_pct], bucket: bucket }
       emit_status = should_emit_context_status?(state: state, bucket: bucket, iteration_index: iteration_index)
       previous_bucket = state[:last_bucket]
       state[:last_bucket] = bucket
@@ -602,9 +613,22 @@ module Samagotchi
       { est_pct: usage[:estimated_pct], bucket: bucket }
     end
 
+    # @return [Hash, nil] the payload's normalized counts, when it has any
     def capture_server_usage(payload, state)
       normalized = ContextUsage.normalize(payload)
       state[:server_usage] = normalized if normalized
+      normalized
+    end
+
+    # After a generation: the status line's value from what the server
+    # reported for it (prompt + answer), so a turn's value counts its last
+    # answer. Without counts the pre-generation estimate stays.
+    def refresh_context_display(state, usage, window)
+      return unless usage
+
+      display = context_display(used_tokens: usage[:total_tokens],
+                                window_tokens: usage[:context_window_tokens] || window&.tokens)
+      state[:display] = display if display
     end
 
     def initial_context_status_state(conversation)
@@ -795,6 +819,17 @@ module Samagotchi
     # whether the model called a tool / returning the final answer".
     def strip_model_thought(text)
       strip_thought_blocks(text)
+    end
+
+    # The status line's context value ({est_pct:, bucket:}) for +used_tokens+
+    # of +window_tokens+; nil without both, or with context.status off. The
+    # chat loop builds its value with it too.
+    def context_display(used_tokens:, window_tokens:)
+      return nil unless context_status_enabled?
+      return nil unless ContextWindow.positive_integer?(used_tokens) && ContextWindow.positive_integer?(window_tokens)
+
+      pct = (used_tokens.to_f / window_tokens) * 100.0
+      { est_pct: pct, bucket: context_status_bucket(pct) }
     end
 
     # Per-profile parse strategy. Rebuilt when the active profile changes

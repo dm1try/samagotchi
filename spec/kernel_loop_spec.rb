@@ -223,6 +223,97 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(prompts[1]).not_to include("CONTEXT_STATUS")
     end
 
+    describe "the status line's context value (Result#context_status)" do
+      let(:under_twenty) do
+        { window_tokens: 10_000, estimated_used_tokens: 500, estimated_remaining_tokens: 9_500, estimated_pct: 5.0 }
+      end
+
+      it "is there under the first threshold, with no event and no line for the model" do
+        events = []
+        prompts = []
+        allow(client).to receive(:complete) do |prompt|
+          prompts << prompt
+          "ok"
+        end
+        allow(kernel).to receive(:estimate_context_usage).and_return(under_twenty)
+
+        result = kernel.run([{ role: "user", content: "hello" }], on_stream_event: ->(e) { events << e })
+
+        expect(result.context_status).to eq(est_pct: 5.0, bucket: "under20")
+        expect(events.none? { |e| e[:type] == :context_status }).to be(true)
+        expect(prompts.first).not_to include("[CONTEXT:")
+      end
+
+      it "is there on a turn that stays in the bucket of the last one" do
+        allow(client).to receive(:complete).and_return("ok")
+        allow(kernel).to receive(:estimate_context_usage).and_return(under_twenty.merge(estimated_pct: 35.0))
+        first = kernel.run([{ role: "user", content: "hello" }])
+        conversation = first.conversation + [{ role: "user", content: "again" }]
+
+        second = kernel.run(conversation)
+
+        expect(second.context_status).to eq(est_pct: 35.0, bucket: "20plus")
+      end
+
+      it "counts the answer from the server's final counts" do
+        ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"] = "10000"
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          kwargs[:on_chunk].call(content: "ok", payload: { "content" => "ok" })
+          kwargs[:on_chunk].call(content: "", payload: { "stop" => true, "tokens_evaluated" => 1_000, "tokens_predicted" => 200 })
+          "ok"
+        end
+        allow(kernel).to receive(:estimate_context_usage).and_return(under_twenty)
+
+        result = kernel.run([{ role: "user", content: "hello" }])
+
+        expect(result.context_status).to eq(est_pct: 12.0, bucket: "under20")
+      end
+
+      it "does not reuse an earlier generation's counts for one that reports none" do
+        calls = 0
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          calls += 1
+          if calls == 1
+            kwargs[:on_chunk].call(content: "", payload: { "tokens_evaluated" => 3_000, "tokens_predicted" => 1_000 })
+            %(<|tool_call>call:execute{command: "echo hi"}<tool_call|>)
+          else
+            kwargs[:on_chunk].call(content: "done", payload: { "content" => "done" })
+            "done"
+          end
+        end
+        allow(kernel).to receive(:estimate_context_usage).and_return(under_twenty, under_twenty.merge(estimated_pct: 7.5))
+
+        result = kernel.run([{ role: "user", content: "check" }])
+
+        expect(result.context_status).to eq(est_pct: 7.5, bucket: "under20")
+      end
+
+      it "drops a failed attempt's counts when the request is retried" do
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          kwargs[:on_chunk].call(content: "", payload: { "tokens_evaluated" => 9_000, "tokens_predicted" => 500 })
+          kwargs[:on_retry].call(attempt: 1)
+          kwargs[:on_chunk].call(content: "ok", payload: { "content" => "ok" })
+          "ok"
+        end
+        allow(kernel).to receive(:estimate_context_usage).and_return(under_twenty)
+
+        result = kernel.run([{ role: "user", content: "hello" }])
+
+        expect(result.context_status).to eq(est_pct: 5.0, bucket: "under20")
+      end
+
+      it "is nil with context.status off" do
+        ENV["SAMAGOTCHI_CONTEXT_STATUS"] = "0"
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          kwargs[:on_chunk].call(content: "", payload: { "tokens_evaluated" => 1_000, "tokens_predicted" => 200 })
+          "ok"
+        end
+        allow(kernel).to receive(:estimate_context_usage).and_return(under_twenty)
+
+        expect(kernel.run([{ role: "user", content: "hello" }]).context_status).to be_nil
+      end
+    end
+
     it "leaves the model a line on a rise into a bucket that asks for a change, in the prompt from that request on" do
       prompts = []
       responses = [%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done"]
