@@ -145,6 +145,20 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .gen.live>summary::before{content:"";display:inline-block;width:7px;height:7px;margin:0 8px 1px 2px;border-radius:50%;background:var(--accent);vertical-align:middle;animation:step-pulse 1.6s ease-in-out infinite}
 @keyframes step-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 0%,transparent)}}
 @media (prefers-reduced-motion:reduce){.gen.live>summary::before{animation:none}}
+/* A step's thinking is a one-line ticker: the newest complete sentence,
+   ellipsed to one line (the collapsed .bubble.thinking look, scoped to .gen
+   so it never reaches .bubble.thinking after promote). The prefix is a
+   .thinking-tag; the sentence a text node. A subtle fade on change, removed
+   at close (reload parity) and off under prefers-reduced-motion. */
+.gen details.thinking>summary{cursor:pointer;color:var(--text-muted);font-size:12px;font-weight:500;font-style:italic;user-select:none;list-style:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gen details.thinking>summary::-webkit-details-marker{display:none}
+.gen details.thinking>summary::before{content:"▸ ";color:var(--think)}
+.gen details.thinking[open]>summary::before{content:"▾ "}
+.gen details.thinking .thinking-tag{color:var(--think-text)}
+.gen details.thinking summary{transition:opacity 120ms ease}
+.gen details.thinking summary.thinking-fade{animation:thinking-fade 120ms ease-out}
+@keyframes thinking-fade{from{opacity:.4}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.gen details.thinking summary.thinking-fade{animation:none}}
 .gen-text{margin-top:6px;white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.55}
 .gen:not(.live) .gen-text{font-size:14px;color:var(--text-2)}
 .gen-text:empty{display:none}
