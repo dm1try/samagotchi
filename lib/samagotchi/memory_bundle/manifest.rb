@@ -20,13 +20,20 @@ module Samagotchi
     #     file: plugin.rb
     #     sha256: sha256:0a1b...
     #   requires_chi: ">= 0.1.28"   # optional — a Gem::Requirement for chi's VERSION
+    #   needs:                 # optional — outside commands the memories rely on
+    #     - command: gh        #   (checked on PATH, never installed; docs/memory.md)
+    #       why: reads PRs     #   optional
+    #       hint: brew install gh   # optional
+    #     - jq                 #   short form: just the command
     class Manifest
       class ValidationError < StandardError; end
 
       # A plugin file is a plain .rb name in the bundle's top directory.
       PLUGIN_FILE = /\A[A-Za-z0-9_][A-Za-z0-9_.-]*\.rb\z/
+      # A need is a plain executable name: no path, no spaces.
+      NEED_COMMAND = /\A[A-Za-z0-9][A-Za-z0-9._+-]*\z/
 
-      attr_reader :name, :version, :scope, :description, :files, :hooks, :trust_level, :plugin, :requires_chi
+      attr_reader :name, :version, :scope, :description, :files, :hooks, :trust_level, :plugin, :requires_chi, :needs
 
       def initialize(path:)
         @path = path
@@ -40,6 +47,7 @@ module Samagotchi
         @trust_level = (raw["trust_level"] || "experimental").to_s
         @plugin = parse_plugin(raw["plugin"])
         @requires_chi = parse_requires_chi(raw["requires_chi"])
+        @needs = self.class.parse_needs(raw["needs"])
       end
 
       def self.read(dir:)
@@ -86,7 +94,7 @@ module Samagotchi
 
       # Writes a fresh manifest.yml from computed checksums at `dir`.
       def self.write(dir:, name:, version:, scope: nil, description: "", files:, hooks: nil, trust_level: nil,
-                     plugin: nil, requires_chi: nil)
+                     plugin: nil, requires_chi: nil, needs: nil)
         FileUtils.mkdir_p(dir)
         manifest = {
           "name" => name,
@@ -109,8 +117,39 @@ module Samagotchi
           manifest["plugin"] = { "file" => plugin[:file].to_s, "sha256" => sha.start_with?("sha256:") ? sha : "sha256:#{sha}" }
         end
         manifest["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
+        needs = parse_needs(needs)
+        manifest["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } unless needs.empty?
         File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
       end
+
+      # needs: → [{command:, why:, hint:}] (why/hint a String or nil), [] when
+      # absent. Takes the manifest's string-keyed YAML or the symbol-keyed
+      # form provenance stores. Duplicates merge (the first one's why/hint
+      # win); a list that isn't one, or a command that isn't a plain name,
+      # is a ValidationError.
+      def self.parse_needs(raw)
+        return [] if raw.nil?
+        raise ValidationError, "needs: must be a list of commands" unless raw.is_a?(Array)
+
+        raw.each_with_object([]) do |item, acc|
+          unless item.is_a?(Hash) || item.is_a?(String) || item.is_a?(Symbol)
+            raise ValidationError, "needs: each item must be a command name or a mapping with command:, not #{item.inspect}"
+          end
+
+          need = item.is_a?(Hash) ? item.transform_keys(&:to_s) : { "command" => item }
+          command = need["command"].to_s.strip
+          raise ValidationError, "needs: #{command.inspect} is not a plain command name" unless command.match?(NEED_COMMAND)
+          next if acc.any? { |n| n[:command] == command }
+
+          acc << { command: command, why: optional_text(need["why"]), hint: optional_text(need["hint"]) }
+        end
+      end
+
+      def self.optional_text(value)
+        text = value.to_s.strip
+        text.empty? ? nil : text
+      end
+      private_class_method :optional_text
 
       private
 

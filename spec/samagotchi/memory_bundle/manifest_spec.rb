@@ -186,4 +186,55 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
       expect(m.checksum_for_hook("guardrails.rb")).to eq("abc")
     end
   end
+
+  describe "needs" do
+    it "is empty when the manifest has none" do
+      expect(described_class.new(path: write_manifest({})).needs).to eq([])
+    end
+
+    it "parses the long form and the short form" do
+      path = write_manifest({ "needs" => [{ "command" => "gh", "why" => "reads PRs", "hint" => "brew install gh" }, "jq"] })
+      expect(described_class.new(path: path).needs).to eq([
+        { command: "gh", why: "reads PRs", hint: "brew install gh" },
+        { command: "jq", why: nil, hint: nil }
+      ])
+    end
+
+    it "merges duplicate commands, the first one's why and hint winning" do
+      path = write_manifest({ "needs" => [{ "command" => "gh", "why" => "first" }, { "command" => "gh", "why" => "second" }] })
+      expect(described_class.new(path: path).needs).to eq([{ command: "gh", why: "first", hint: nil }])
+    end
+
+    it "rejects a command that is a path or has spaces" do
+      ["/usr/bin/gh", "gh auth", "", "-x"].each do |bad|
+        path = write_manifest({ "needs" => [bad] })
+        expect { described_class.new(path: path) }.to raise_error(described_class::ValidationError, /plain command name/)
+      end
+    end
+
+    it "rejects needs that isn't a list, or an item that isn't a name or mapping" do
+      expect { described_class.new(path: write_manifest({ "needs" => "gh" })) }
+        .to raise_error(described_class::ValidationError, /must be a list/)
+      expect { described_class.new(path: write_manifest({ "needs" => [42] })) }
+        .to raise_error(described_class::ValidationError, /each item/)
+    end
+
+    it "round-trips through write in the long form, dropping empty why/hint" do
+      dest = File.join(tmpdir, "out")
+      described_class.write(dir: dest, name: "n", version: "1", files: {},
+                            needs: [{ command: "gh", why: "reads PRs", hint: nil }, { command: "jq" }])
+      expect(YAML.load_file(File.join(dest, "manifest.yml"))["needs"])
+        .to eq([{ "command" => "gh", "why" => "reads PRs" }, { "command" => "jq" }])
+      expect(described_class.read(dir: dest).needs).to eq([
+        { command: "gh", why: "reads PRs", hint: nil },
+        { command: "jq", why: nil, hint: nil }
+      ])
+    end
+
+    it "writes no needs key when there are none" do
+      dest = File.join(tmpdir, "out")
+      described_class.write(dir: dest, name: "n", version: "1", files: {}, needs: [])
+      expect(YAML.load_file(File.join(dest, "manifest.yml"))).not_to have_key("needs")
+    end
+  end
 end
