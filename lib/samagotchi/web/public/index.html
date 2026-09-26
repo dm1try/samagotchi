@@ -160,6 +160,10 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 @keyframes thinking-fade{from{opacity:.4}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){.gen details.thinking summary.thinking-fade{animation:none}}
 .gen-text{margin-top:6px;white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.55}
+/* The live step's narration box: the complete sentences so far, one per line, three visual lines high (3 × the 1.55 line-height), scrolled to the newest; each new line fades in. */
+.gen-text.streaming>.narration{max-height:4.65em;overflow:auto;scrollbar-width:thin;white-space:normal}
+.narration>.sentence{animation:fadeIn 160ms ease}
+@media (prefers-reduced-motion:reduce){.narration>.sentence{animation:none}}
 .gen:not(.live) .gen-text{font-size:14px;color:var(--text-2)}
 .gen-text:empty{display:none}
 .gen .activity-body{margin-top:6px}
