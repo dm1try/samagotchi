@@ -299,7 +299,7 @@ Notes:
 - Ordering: bundle hooks fire by `(priority, bundle_name, hook_name)` (lower priority first), then plain `config.yml` hooks in registration order.
 - Settings: a hook class with `initialize(settings = {})` gets the bundle's section of `config.yml` `bundles:` (see [Settings](#settings)).
 - A bundle can also ship a `plugin.rb` whose `chi.on(event)` blocks are bundle hooks too, next to commands and tools; see [Plugins](plugins.md).
-- Shipped bundles: `chi bundle install guardrails` (rules, see [Guardrails](guardrails.md#the-guardrails-bundle)) and `chi bundle install known-names` (a hook, see [Guardrails](guardrails.md#the-known-names-bundle)), and `chi bundle install btw` (a plugin: `/btw`, see [Plugins](plugins.md#the-btw-bundle)).
+- Shipped bundles: `chi bundle install guardrails` (rules, see [Guardrails](guardrails.md#the-guardrails-bundle)) and `chi bundle install known-names` (a hook, see [Guardrails](guardrails.md#the-known-names-bundle)), `chi bundle install btw` (a plugin: `/btw`, see [Plugins](plugins.md#the-btw-bundle)) and `chi bundle install mcp` (a plugin: tools from MCP servers, see [Plugins](plugins.md#the-mcp-bundle)).
 - Installing a bundle executes its hook code at `Engine` startup. Only install bundles you trust, as you would a gem. Hooks are **not** executed at install time (copy-only); they are `module_eval`'d at `Engine.new` inside per-bundle `Samagotchi::Bundles::<name>` namespaces (no top-level `require` collisions). Keep hook files side-effect-free at load time; do work in `#call` — top-level side effects (require, IO, `at_exit`, global assignment) run once per `Engine.new` (class redefinition is idempotent).
 
 Lifecycle:

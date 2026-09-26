@@ -17,7 +17,7 @@
 - `bin/chi send [-m TEXT] (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context (see [Sessions: Sending a message](sessions.md#sending-a-message))
 - `bin/chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
 - `bin/chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles
-- `bin/chi bundle install|upgrade|uninstall|status|diff|bundles|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `install guardrails`, `install known-names` and `install btw` install the bundles shipped with chi (see [Guardrails](guardrails.md) and [Plugins](plugins.md#the-btw-bundle))
+- `bin/chi bundle install|upgrade|uninstall|status|diff|bundles|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `install guardrails`, `install known-names`, `install btw` and `install mcp` install the bundles shipped with chi (see [Guardrails](guardrails.md) and [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle))
 
 ## Flags
 

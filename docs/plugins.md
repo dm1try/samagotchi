@@ -247,6 +247,51 @@ This is a bundle hook, the same as a `hooks/*.rb` file. See
 `plugin.rb (bundle my-bundle)`. The block may take only the event. If it
 raises, the error is logged and the hook is skipped.
 
+### `chi.service(name, eager: false) { |svc| … }`
+
+A long-lived thing the plugin keeps for the session: a server process, a
+connection. The block starts it, and what it returns is the service's value.
+Inside the block, `svc.on_stop { … }` says how to stop it.
+
+```ruby
+def register(chi)
+  server = chi.service(:index, eager: true) do |svc|
+    io = IO.popen(["my-indexer", "--stdio"], "r+")
+    svc.on_stop { io.close }
+    io
+  end
+  chi.tool("index_query", "…", params: { q: { type: "string", required: true } }) do |args, _ctx|
+    server.value.puts(args["q"])
+    server.value.gets
+  end
+end
+```
+
+- `chi.service` returns the service. `service.value` starts it on first use
+  and returns what the block returned; later calls return the same value.
+  With `eager: true` it starts at once, inside `register`, so a raise there
+  fails the plugin's load unless the plugin rescues it.
+- A block that raises leaves the service unstarted: its `on_stop` callbacks
+  so far run, and the next `value` tries again.
+- `service.running?`, `service.state` (`:idle`, `:running`, `:stopped`) and
+  `service.stop`.
+- The services stop when chi leaves: the REPL exits, or the session's
+  worker exits (an idle exit, `/exit`, a crash, TERM). See
+  [Shutdown](#shutdown). A stopped service never starts again; `value`
+  raises `Samagotchi::Plugin::Service::Stopped`.
+- A plugin whose load fails after it started services has them stopped.
+- `kill -9` runs nothing: a child process is orphaned then. Most stdio
+  servers leave when their stdin closes, which it does as chi's process
+  ends.
+
+### `chi.ctx`
+
+The plugin's context (the `ctx` its handlers get), for `register` itself:
+its settings, log and data_dir, for example. A `ctx.notify` or `ctx.card`
+while chi starts (inside `register`) waits for the session's first turn,
+where every UI shows it after the plugins' load warnings; no UI is there
+before.
+
 ### Names
 
 A command or tool name that the session already has is a **load error**.
@@ -412,6 +457,81 @@ only against this API (`lib/samagotchi/bundles/btw/plugin.rb`).
   `~/.config/samagotchi/memories/btw.md` and its `**btw**` line in `index.md`
   there by hand.
 
+## The mcp bundle
+
+`chi bundle install mcp` installs the bundle shipped with chi. It is written
+only against this API (`lib/samagotchi/bundles/mcp/plugin.rb`), and adds
+tools from [MCP](https://modelcontextprotocol.io) servers. It has no memory
+file, so it costs the prompt nothing but its tools. Stdio servers only, for
+now.
+
+```yaml
+# config.yml
+bundles:
+  mcp:
+    timeout: 60             # seconds per tool call (default 60)
+    startup_timeout: 10     # seconds for initialize and tools/list (default 10)
+    servers:
+      everything:
+        command: [npx, -y, "@modelcontextprotocol/server-everything"]
+      files:
+        command: [npx, -y, "@modelcontextprotocol/server-filesystem", ~/scratch]
+        env: {NODE_OPTIONS: "--no-warnings"}   # added to chi's environment
+        cwd: ~/scratch                         # default: where chi runs
+        tools: [read_*, list_directory]        # optional: only these (globs)
+        timeout: 120                           # optional: this server's per-call timeout
+```
+
+- **Start.** When a session starts, each server is a service started at
+  once, all side by side: the process is spawned, then `initialize`,
+  `notifications/initialized` and `tools/list`. A server that doesn't start,
+  answer or list its tools within `startup_timeout` is skipped, with a notice
+  on the first turn (`mcp> warning: MCP server x didn't start: …`).
+  The rest of chi works as usual.
+- **Tools.** Each tool is the model's as `mcp_<server>_<tool>`, lower case,
+  with anything but a-z, 0-9 and `_` made `_`, cut at 48 characters. A name
+  that clashes is left out, with a notice. The tool's `inputSchema` is its
+  schema (flattened on the native paths, see
+  [Schemas on the native paths](#schemas-on-the-native-paths)); its label is
+  `<server>: <tool>` and its preview the arguments, short.
+- **Calls.** A call is `tools/call`. The text blocks of the answer are joined;
+  an image, audio or a resource without text is a short placeholder
+  (`[image: image/png]`). `isError` makes it `Error: …`. A call that takes
+  longer than the timeout is an `Error:`, and a cancelled turn stops the
+  wait; both send `notifications/cancelled` to the server.
+- **A server that exits** fails its calls with `Error: MCP server x is not
+  running (…)`, and there is one notice. It is not restarted until chi
+  restarts (a new session, or the worker's next start).
+- **Stop.** The servers stop with chi ([Shutdown](#shutdown)): stdin is
+  closed, then TERM and KILL go to the server's process group.
+- **`/mcp`** (anytime) shows a card with the servers, their state (running
+  with its pid, failed, stopped) and their tools.
+- The server's stderr goes to the debug log (`plugins` records, bundle=mcp).
+- **Guardrails.** A rule's `tool:` can be a glob, so one rule covers every
+  MCP tool:
+
+  ```yaml
+  guardrails:
+    rules:
+      - id: mcp-ask
+        tool: "mcp_*"
+        verdict: ask
+        reason: an MCP server's tool
+  ```
+
+  An MCP tool has no `targets:`, so approving one "for the session" approves
+  that tool with any arguments.
+
+## Shutdown
+
+When the REPL exits, or a session's worker exits (an idle exit, `/exit`, a
+crash, TERM), chi shuts the session's Engine down:
+
+1. The idle jobs (reminders, the recap) stop.
+2. The anytime commands still running get up to 3 seconds, all together,
+   to finish, so their output reaches the UIs.
+3. The plugins' services stop, the newest first.
+
 ## Loading, and when it fails
 
 Plugins load when a session starts (`Engine.new`, in the REPL or a
@@ -467,5 +587,4 @@ gem.
 
 These are planned (`~/.claude/plans/plugins.md`):
 
-- `chi.service` for long-lived processes, such as MCP servers.
 - `chi.prompt` for sections of the system prompt.
