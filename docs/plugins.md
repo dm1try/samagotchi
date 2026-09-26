@@ -22,7 +22,7 @@ name: my-bundle
 version: 1.0.0
 plugin:
   file: plugin.rb
-  sha256: sha256:54afb01b…   # shasum -a 256 plugin.rb
+  sha256: sha256:6a1a7022…   # shasum -a 256 plugin.rb
 requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2")
 ```
 
@@ -59,7 +59,8 @@ class Plugin
 end
 ```
 
-`spec/fixtures/sample_plugin_bundle` is this bundle. Install it with
+`spec/fixtures/sample_plugin_bundle` is this bundle, plus the `/hello-slow`
+of [anytime](#anytime-true). Install it with
 `chi bundle install spec/fixtures/sample_plugin_bundle`.
 
 Settings work as they do for hooks ([hooks.md](hooks.md#settings)). An
@@ -75,11 +76,60 @@ This adds a slash command. `name` is `/name` (a–z, 0–9, `_` and `-`).
 block returns the text to show (a String), or nil to show nothing. If the
 block raises, the user sees `/name: <error>`.
 
-For now a plugin command runs in the **in-process REPL** (`chi --no-shared`),
-typed at the prompt between turns. The attached TUI and the web don't
-offer it yet. They will in a later version, together with `anytime: true`
-(a command that runs while a turn runs). Today `anytime:` is stored and
-does nothing else.
+A plugin command works in all three UIs:
+
+- **REPL** (`chi --no-shared`): typed at the prompt, and Tab completes it.
+- **Attached TUI** (the default `chi`): the worker's snapshot names the
+  session's commands, so the TUI sends `/hello` to the worker and Tab
+  completes it. It needs a worker started after the bundle was installed.
+- **Web**: typed in the composer; a `/` opens a list of the session's
+  commands (arrows move, ⏎ or Tab picks, Esc closes). A card's action button
+  runs it too.
+
+A line that is not a known command keeps its old meaning: in the terminal
+UIs `/foo` goes to the model as a prompt; the web refuses it and names the
+commands it knows.
+
+#### `anytime: true`
+
+A normal command waits for its turn: typed while a turn runs, it is refused
+as busy (the REPL puts it back into the prompt). An `anytime: true` command
+runs **at once, on its own thread, beside the running turn**, and the turn
+goes on:
+
+- In a worker (attached, web) it runs as soon as it arrives. It is never
+  queued, so it is never busy, mid-turn or at the turn's end. Its output
+  (the `command_ran`) comes when it finishes, and its cards after that.
+- In the REPL, typed while a turn runs, it starts on a thread. Its output
+  prints above the live region while the turn runs, or at the prompt once
+  the turn has ended.
+
+Between turns an anytime command runs like any other.
+
+Its block runs on another thread than the turn, so it must be thread-safe:
+
+- Read the conversation through `ctx.messages`, a frozen copy. While a turn
+  runs, it is the conversation **before** that turn.
+- Show things only through `ctx` (`ctx.card`, `ctx.notify`), and return
+  the text to show.
+- Keep your own state (instance variables) behind a `Mutex` if two
+  commands, or a command and a hook, may touch it at once.
+
+```ruby
+chi.command "/hello-slow", "greet after 2 s, even mid-turn", anytime: true do |args, ctx|
+  sleep 2
+  ctx.card(title: "slow hello, #{args.empty? ? "there" : args}",
+           body: "Ran beside the turn; it saw #{ctx.messages.size} messages.")
+  nil
+end
+```
+
+#### `/help`
+
+`/help` (itself an anytime command) lists every command the session knows:
+chi's own, each bundle's with the bundle's name, and the terminal UIs' own
+(`/stats`, `/exit`, `/detach` …), marked `terminal only` or `attached only`.
+It works in all three UIs.
 
 ### `chi.tool(name, description, params:, label:, preview:, targets:) { |args, ctx| … }`
 
@@ -150,8 +200,10 @@ id = ctx.card(title: "Build finished", body: "**3** warnings in `lib/`",
 ctx.card(id: id, title: "Build finished", body: "no warnings left")  # replaces it
 ```
 
-- `title:` is required. `body:` is markdown in the web and plain text in
-  the terminal (wrapped; there is no terminal markdown).
+- `title:` is required. `body:` is markdown in the web. The terminal shows
+  it wrapped, with the markdown cheaply stripped: `**bold**` and `__x__`
+  lose their marks, backticks and code fences go, headings lose their `#`s,
+  and lists stay as they are.
 - `actions:` are up to 6 `{label:, command:}`. A command is a line the
   session runs as if the user typed it: `/hello again`, `/model x`, a
   plugin's own command. The web shows a button; the terminal shows
@@ -236,10 +288,6 @@ gem.
 
 These are planned (`~/.claude/plans/plugins.md`):
 
-- Plugin commands typed in the attached TUI and the web, completion there,
-  and `anytime:` commands. Until then a card's action runs from the web's
-  button and typed in the REPL; typed in the attached TUI it goes to the
-  model.
 - Structured, schema-typed tool arguments, and `targets:` for guardrails.
 - `ctx.ask_model` for a side answer, and `ctx.sessions` to fork or send to
   other sessions.
