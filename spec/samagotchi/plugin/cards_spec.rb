@@ -68,6 +68,21 @@ RSpec.describe "Cards" do
       expect(cards.first[:actions]).to eq([{ label: "/x y", command: "/x y" }])
     end
 
+    it "holds back what a block announces on its thread for the caller (a worker's command), not a turn's" do
+      value, held = engine.holding_announcements do
+        engine.show_card(source: "b", title: "held")
+        engine.send(:hook_notify, "held too", :info, "plugin.rb (bundle b)")
+        Thread.new { engine.show_card(source: "b", title: "other thread") }.join
+        :done
+      end
+
+      expect(value).to eq(:done)
+      expect(held.map { |e| e[:title] || e[:text] }).to eq(["held", "held too"])
+      expect(cards.map { |c| c[:title] }).to eq(["other thread"])
+      engine.show_card(source: "b", title: "after")
+      expect(cards.map { |c| c[:title] }).to eq(["other thread", "after"])
+    end
+
     it "refuses a card without a title, a bad level or a bad action" do
       expect { engine.show_card(source: "b", title: " ") }.to raise_error(ArgumentError, /title/)
       expect { engine.show_card(source: "b", title: "t", level: :error) }.to raise_error(ArgumentError, /level/)

@@ -611,6 +611,22 @@ RSpec.describe Samagotchi::Worker do
         expect(queued[:event_seq]).to be < done[:event_seq]
       end
 
+      it "runs a plugin command, and the cards it shows follow its command_ran (as its output)" do
+        engine.command_registry.register("/hi", "greet", source: "b") do |_args|
+          engine.show_card(source: "b", title: "Hi card")
+          "hi"
+        end
+        start_worker(poll_interval: 5)
+
+        command_id = JSON.parse(post_command("/hi").body)["command_id"]
+        done = ran(command_id)
+        wait_until(timeout: 2) { events_seen.any? { |e| e[:type] == :card } }
+        card = seen.find { |e| e[:type] == :card }
+        expect(done).to include(status: "ok", output: "hi")
+        expect(card).to include(title: "Hi card", in_turn: false)
+        expect(card[:event_seq]).to eq(done[:event_seq] + 1)
+      end
+
       it "refuses lines that aren't commands, and other sessions" do
         start_worker(poll_interval: 5)
 

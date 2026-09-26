@@ -358,7 +358,8 @@ module Samagotchi
 
     def run_command(command)
       awaiting = @turn_flow.awaiting_continue?
-      result = begin
+      # The cards a command shows follow its command_ran, as its output.
+      result, shown = @engine.holding_announcements do
         @commands.run(command[:line])
       rescue StandardError => e
         SessionCommands::Result.new(status: :error, output: "#{command[:line].split.first}: #{e.message}", changed: [])
@@ -370,6 +371,7 @@ module Samagotchi
           @engine.announce(type: :continue_resolved, decision: result.decision.to_s, client_id: command[:client_id])
         end
         announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed))
+        shown.each { |event| @engine.announce(event) }
       end
       @session.save(state_dir: @state_dir) unless Array(result.changed).empty? || stopped_on_disk?
       # An offer answered without a turn ("no") is activity: the recap

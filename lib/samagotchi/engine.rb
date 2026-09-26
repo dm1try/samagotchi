@@ -472,10 +472,32 @@ module Samagotchi
       if in_turn
         emit_event(sink, card)
       else
-        announce(card)
+        announce_or_hold(card)
       end
       card[:id]
     end
+
+    # Run the block holding back the cards and between-turns notices it
+    # announces on this thread, so the caller announces them after its own
+    # event (a worker's command: its command_ran first, as the REPL prints
+    # the command's output before its cards).
+    # @return [Array(Object, Array<Hash>)] the block's value and the held events
+    def holding_announcements
+      key = :"samagotchi_held_#{object_id}"
+      outer = Thread.current[key]
+      Thread.current[key] = []
+      value = yield
+      [value, Thread.current[key]]
+    ensure
+      Thread.current[key] = outer
+    end
+
+    # Announce +event+ now, or keep it for #holding_announcements' caller.
+    def announce_or_hold(event)
+      held = Thread.current[:"samagotchi_held_#{object_id}"]
+      held ? held << event : announce(event)
+    end
+    private :announce_or_hold
 
     def build_card(source:, title:, body:, actions:, level:, id:)
       title = title.to_s.strip
@@ -989,7 +1011,7 @@ module Samagotchi
       if in_turn
         emit_event(sink, notice)
       else
-        announce(notice.merge(between_turns: true))
+        announce_or_hold(notice.merge(between_turns: true))
       end
       nil
     end
