@@ -1,8 +1,9 @@
 # Plugins
 
 A bundle can ship one Ruby file, its **plugin**, that adds slash commands,
-tools and hooks to every session. Its hooks are ordinary bundle hooks
-([hooks.md](hooks.md)). Its commands and tools work like chi's own.
+tools, hooks and background setup to every session. Its hooks are ordinary
+bundle hooks ([hooks.md](hooks.md)). Its commands and tools work like chi's
+own.
 
 This is the first version of the plugin API. More of it comes later: see
 [Not yet](#not-yet).
@@ -265,9 +266,37 @@ end
 #### When the tools change
 
 The system prompt is built once, after the plugins load, so the server can
-keep its cached prompt prefix. A plugin whose tools change later (an MCP
-server that answers late) calls `chi.tools_changed!`: the next turn builds
-the prompt again, which costs that cache once.
+keep its cached prompt prefix. A plugin whose tools are known only later
+declares them with [`chi.replace_tools`](#chireplace_tools--set--),
+which rebuilds the prompt for the next turn when the set changed; that
+costs the cache once. `chi.tools_changed!` alone says the tools changed
+without replacing any.
+
+### `chi.replace_tools { |set| … }`
+
+The plugin's whole tool set, after `register` (from an init task, a
+command, a tool call). The block declares tools on `set` with
+`set.tool(...)`, which takes `chi.tool`'s arguments:
+
+```ruby
+@chi.replace_tools do |set|
+  listed.each do |t|
+    set.tool("idx_#{t[:name]}", t[:description], params: t[:params]) { |args, ctx| query(t, args) }
+  end
+end
+```
+
+- The set is **staged**: the session applies it at the start of the next
+  turn, before that turn's system prompt, on the turn's own thread. So it is
+  safe from any thread, and a turn never sees half a set.
+- The plugin's tools not in the set go, new ones are added, and one whose
+  schema or label changed is registered again. Unchanged ones stay as they
+  are. If anything changed, the prompt is built again.
+- A later set replaces an earlier staged one.
+- A name that another bundle (or chi) has is left out, with a notice. A bad
+  tool raises `ArgumentError` at once, as `chi.tool` does, and nothing is
+  staged.
+- Inside `register`, use `chi.tool`: `replace_tools` raises there.
 
 ### `chi.on(event, priority: 100) { |event, ctx| … }`
 
@@ -314,13 +343,66 @@ end
   servers leave when their stdin closes, which it does as chi's process
   ends.
 
+### `chi.init(label, provides_tools: false, quiet: false, timeout: nil) { |ctx| … }`
+
+Slow setup that must not hold chi's start: downloading a model, indexing a
+repo, logging in, starting a server for the first time. `register` itself
+should return at once (everything in it runs before the session's UI is
+up), so it hands the slow part to `chi.init`. The block runs **on its own
+thread** once the session can show it: in a worker right after its Bridge
+is up (so a new web chat opens at once), in the REPL at its first prompt.
+
+```ruby
+class Plugin
+  def initialize(settings = {})
+    @model = settings["model"] || "small-embedder"
+  end
+
+  def register(chi)
+    @chi = chi
+    chi.init("Downloading #{@model}", provides_tools: true, timeout: 120) do |ctx|
+      path = download(@model, into: ctx.data_dir) { ctx.cancelled? }   # stop when chi shuts down
+      @chi.replace_tools do |set|
+        set.tool("embed_search", "Search the repo by meaning.",
+                 params: { query: { type: "string", required: true } }) { |args, _ctx| search(path, args["query"]) }
+      end
+      "#{@model} ready"
+    end
+  end
+end
+```
+
+- **What the UIs show.** Every UI shows a running task (web: a spinner line
+  over the composer, `mcp · Starting MCP server chrome (first run, saving
+  its tools)…`; the attached TUI: its activity row; the REPL: a line) and a
+  line when it is done: `✓` and what the block returned, a short summary
+  (`chrome ready, 3 tools`), or `<label>: done` for anything else. A UI that
+  joins while it runs sees it too.
+- **A raise** is a warn card, `<label>: failed`, with the message.
+- **`provides_tools: true`**: the task brings tools (with
+  `chi.replace_tools`). A turn sent while it runs starts at once (the user's
+  message shows), then waits for it **before its first model request**, so
+  the model sees the tools; the UIs keep showing the task meanwhile. The
+  wait lasts at most `timeout` seconds from the task's start (default 60).
+  A Ctrl-C cancels the turn and ends its wait, but not the task, whose
+  tools come with the next turn. A task that fails or ends late leaves the
+  turn without its tools. Tasks without `provides_tools` never hold a turn.
+- **`quiet: true`**: nothing is shown unless it fails (a background
+  refresh).
+- **`ctx.cancelled?`** in the block says chi is shutting down: the block
+  should stop then. It is the task's own, not the running turn's.
+- `ctx.notify` and `ctx.card` from the block show between turns, even while
+  a turn runs.
+- Each task runs once per session start. A `-p … --non-interactive` run
+  starts them with its turn and shows nothing but the answer.
+
 ### `chi.ctx`
 
 The plugin's context (the `ctx` its handlers get), for `register` itself:
 its settings, log and data_dir, for example. A `ctx.notify` or `ctx.card`
-while chi starts (inside `register`) waits for the session's first turn,
-where every UI shows it after the plugins' load warnings; no UI is there
-before.
+while chi starts (inside `register`) is shown once the session's UI can show
+it (a worker's Bridge is up, the REPL's first prompt), after the plugins'
+load warnings; a UI that joins later still gets it.
 
 ### Names
 
@@ -519,14 +601,46 @@ bundles:
       chrome:
         command: [npx, -y, "chrome-devtools-mcp@latest", --slim, --headless]
         attach_image_paths: true               # the default; false leaves a path as text
+        start: lazy                            # the default; eager: start it with every session
 ```
 
-- **Start.** When a session starts, each server is a service started at
-  once, all side by side: the process is spawned, then `initialize`,
-  `notifications/initialized` and `tools/list`. A server that doesn't start,
-  answer or list its tools within `startup_timeout` is skipped, with a notice
-  on the first turn (`mcp> warning: MCP server x didn't start: …`).
-  The rest of chi works as usual.
+- **Start: from a cache, on the first call.** A server's `tools/list` is
+  saved in the bundle's data dir (`$XDG_STATE_HOME/samagotchi/plugins/mcp/
+  tools-<server>.json`), keyed by a digest of its `command`, `env` (names
+  and values: only the digest is stored) and `cwd`. A session with a saved
+  list registers the tools at once and **doesn't start the server**: the
+  first call of one of its tools does (the call's row shows the wait). So a
+  session that never uses MCP spawns nothing, and a new chat opens without
+  waiting for `npx`. If the live list differs from the saved one, the saved
+  one is replaced, and so are the tools, from the next turn on.
+- **The first run** (no saved list, or the config changed) starts the
+  server in an [init task](#chiinitlabel-provides_tools-false-quiet-false-timeout-nil--ctx--):
+  every UI shows `Starting MCP server x (first run, saving its tools)`, and
+  a turn sent meanwhile waits for its tools. A server that doesn't start,
+  answer or list its tools within `startup_timeout` (each step) is a warn
+  card, `…: failed`, and its tools are left out. The rest of chi works as
+  usual.
+- **Freshness.** A saved list older than a day is still used, and a quiet
+  background task lists the tools again with a server of its own (then
+  stops it), saves them, and replaces the tools if they changed. One worker
+  does it at a time.
+- **A cached server that doesn't start** (the command is gone, it crashes)
+  fails that call with `Error: MCP server x didn't start: …` and one notice;
+  later calls answer the same at once, and its tools are left out from the
+  next turn. The saved list stays: the next session tries again.
+- **`start: eager`** on a server starts it with every session (in an init
+  task, after the Bridge is up), for a server whose start does something
+  you want at once.
+- **`npx -y …@latest` checks the npm registry on every start** (~3.4 s for
+  `chrome-devtools-mcp`, against ~0.9 s for the installed binary). The cache
+  hides it from new chats, but not from the first call. For a faster first
+  call, install the server once and run it directly:
+
+  ```yaml
+  chrome:
+    command: [chrome-devtools-mcp, --slim, --headless]   # after npm i -g chrome-devtools-mcp
+  ```
+
 - **Tools.** Each tool is the model's as `mcp_<server>_<tool>`, lower case,
   with anything but a-z, 0-9 and `_` made `_`, cut at 48 characters. A name
   that clashes is left out, with a notice. The tool's `inputSchema` is its
@@ -553,8 +667,8 @@ bundles:
   restarts (a new session, or the worker's next start).
 - **Stop.** The servers stop with chi ([Shutdown](#shutdown)): stdin is
   closed, then TERM and KILL go to the server's process group.
-- **`/mcp`** (anytime) shows a card with the servers, their state (running
-  with its pid, failed, stopped) and their tools.
+- **`/mcp`** (anytime) shows a card with the servers, their state (cached
+  (not started), running with its pid, failed, stopped) and their tools.
 - The server's stderr goes to the debug log (`plugins` records, bundle=mcp).
 - **Guardrails.** A rule's `tool:` can be a glob, so one rule covers every
   MCP tool:
@@ -632,8 +746,10 @@ When the REPL exits, or a session's worker exits (an idle exit, `/exit`, a
 crash, TERM), chi shuts the session's Engine down:
 
 1. The idle jobs (reminders, the recap) stop.
-2. The anytime commands still running get up to 3 seconds, all together,
-   to finish, so their output reaches the UIs.
+2. The plugins' init tasks are cancelled (`ctx.cancelled?` turns true).
+   They and the anytime commands still running get up to 3 seconds, all
+   together, to finish, so their output reaches the UIs; an init task
+   announces nothing after this.
 3. The plugins' services stop, the newest first.
 
 ## Loading, and when it fails
@@ -650,8 +766,9 @@ worker), after the bundle hooks. The steps are:
 What `register` adds takes effect only when it returns. A plugin that raises
 halfway adds nothing.
 
-A plugin that fails to load is shown on stderr at start, and in every UI on
-the first turn (`plugins> plugin plugin.rb (bundle x) failed to load (…)`). The rest
+A plugin that fails to load is shown on stderr at start, and in every UI as
+soon as the session's UI is up (`plugins> plugin plugin.rb (bundle x) failed
+to load (…)`); a UI that joins later gets it too. The rest
 of chi, including the other plugins, works as usual. Unlike a required
 guardrail, a plugin failure does not deny tool calls.
 
