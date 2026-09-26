@@ -118,8 +118,12 @@ module Samagotchi
       # Installed bundles' plugins add commands, tools and hooks to these
       # (docs/plugins.md); one that fails is announced with the load
       # failures, and the rest still load.
-      # Their services (chi.service), which #shutdown stops.
+      # Their services (chi.service), which #shutdown stops, and the anytime
+      # commands running now (#spawn_anytime), which it waits for.
       @services = Plugin::Services.new
+      @anytime_threads = []
+      @lifecycle_mutex = Mutex.new
+      @shut_down = false
       load_plugins if plugins
       guardrail_rules
       # Use the KernelLoop's reminder_store if provided (TerminalUI path),
@@ -496,6 +500,49 @@ module Samagotchi
       yield
     ensure
       Thread.current[key] = outer
+    end
+
+    # Start an anytime command on its own thread (D8), one #shutdown waits
+    # for, so its command_ran is announced before the process leaves.
+    # @return [Thread]
+    def spawn_anytime(&block)
+      thread = Thread.new(&block)
+      @lifecycle_mutex.synchronize do
+        @anytime_threads.select!(&:alive?)
+        @anytime_threads << thread
+      end
+      thread
+    end
+
+    # How long #shutdown waits for the running anytime commands, in all.
+    SHUTDOWN_JOIN_SECONDS = 3.0
+
+    # The REPL or the session's worker is leaving (/exit, an idle exit, a
+    # crash, TERM): stop the idle jobs, give the running anytime commands
+    # up to +join_timeout+ seconds to finish (their command_ran is
+    # announced), then stop the plugins' services, newest first. Once;
+    # later calls do nothing.
+    # @return [self]
+    def shutdown(join_timeout: SHUTDOWN_JOIN_SECONDS)
+      threads = @lifecycle_mutex.synchronize do
+        return self if @shut_down
+
+        @shut_down = true
+        @anytime_threads.dup
+      end
+      # #stop_idle's work (the scheduler's stop is idempotent), where the
+      # callers haven't stopped it already.
+      @idle_scheduler&.stop
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + join_timeout
+      threads.each do |thread|
+        next if thread == Thread.current
+
+        thread.join([deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC), 0].max)
+      end
+      left = threads.count(&:alive?)
+      Log.warn(:plugins, "anytime_commands_left", count: left) if left.positive?
+      @services.stop_all
+      self
     end
 
     def anytime_thread? = Thread.current[:"samagotchi_anytime_#{object_id}"] == true

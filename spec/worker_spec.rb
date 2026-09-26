@@ -245,6 +245,25 @@ RSpec.describe Samagotchi::Worker do
       expect(File.exist?(sidecar)).to be(false)
     end
 
+    it "shuts its Engine down as it idle-exits: the plugins' services stop" do
+      stopped = []
+      services = engine.instance_variable_get(:@services)
+      services.add(Samagotchi::Plugin::Service.new("b:srv") { |svc| svc.on_stop { stopped << :srv } }).value
+      start_worker(poll_interval: 0.05, idle_exit_minutes: 0.002)
+
+      expect(@thread.join(2)&.value).to eq(:idle_exit)
+      expect(stopped).to eq([:srv])
+    end
+
+    it "shuts its Engine down when it crashes" do
+      allow(engine).to receive(:shutdown).and_call_original
+      allow(Samagotchi::SessionManager).to receive(:find_new_input_files).and_raise(RuntimeError, "boom")
+      worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
+                                   idle_exit_minutes: 0, poll_interval: 5)
+      expect { worker.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(1) }
+      expect(engine).to have_received(:shutdown)
+    end
+
     it "writes a recap as it idle-exits" do
       session.model_name = "Qwen3-14B"
       session.save(state_dir: tmpdir)
@@ -723,6 +742,24 @@ RSpec.describe Samagotchi::Worker do
             expect(done).to include(anytime: true)
             expect(seen.count { |e| e[:type] == :command_ran }).to eq(1)
           end
+        end
+
+        it "is waited for as the worker leaves on /exit: its command_ran is announced (P2 (d))" do
+          gate = Queue.new
+          engine.command_registry.register("/slowside", "a slow side question", anytime: true, source: "b") do |_args|
+            gate.pop
+            "slow side done"
+          end
+          start_worker(poll_interval: 5)
+          command_id = JSON.parse(post_command("/slowside").body)["command_id"]
+          Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
+                         JSON.generate(client_id: "tui:9"), "Content-Type" => "application/json")
+          sleep(0.3)
+          expect(@thread).to be_alive # waiting for the command
+          gate << true
+
+          expect(@thread.join(2)&.value).to eq(:exit_requested)
+          expect(ran(command_id)).to include(status: "ok", output: "slow side done", anytime: true)
         end
 
         it "runs between turns too, and a normal command still waits its turn" do

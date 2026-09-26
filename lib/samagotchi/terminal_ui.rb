@@ -268,6 +268,11 @@ module Samagotchi
       else
         keep_after_exit(session)
       end
+    ensure
+      # However it ends (the early returns too; the Engine was built in
+      # #initialize): the anytime commands finish, the plugins' services
+      # stop (a server process).
+      @engine&.shutdown
     end
 
     # The session stays: the recap first, then the resume line, last.
@@ -1099,7 +1104,7 @@ module Samagotchi
     # the prompt's flush.
     # @return [true]
     def start_anytime_command(line)
-      Thread.new do
+      @engine.spawn_anytime do
         output = @engine.running_anytime { @commands.run(line) }&.output
         items = output.nil? ? [] : [{ type: :command_output, text: "\nmodel> #{output}" }]
         items.each { |item| @engine.turn_running? ? show_pending_item(item) : @pending_cards << item }

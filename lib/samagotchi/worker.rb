@@ -78,8 +78,6 @@ module Samagotchi
       @poll_interval = poll_interval || FALLBACK_TICK_SECONDS
       @waker = Waker.new
       @command_queue = Thread::Queue.new
-      # The anytime commands running now (#start_anytime_command).
-      @anytime_threads = []
       # The client_id of a client that asked the worker to exit (POST /exit).
       @exit_requested = nil
       @exit_requested_by = nil
@@ -188,6 +186,10 @@ module Samagotchi
         Session.mark_error(@session_id, reason: e.message, state_dir: @state_dir)
         exit(1)
       ensure
+        # The anytime commands finish and the plugins' services stop (a
+        # server process), whatever the way out; the Bridge last, so a
+        # command's command_ran still reaches its UI on a crash.
+        @engine&.shutdown
         @bridge&.stop
       end
     end
@@ -401,8 +403,7 @@ module Samagotchi
     # copies (ctx.messages) and shows things through ctx only; nothing is
     # saved.
     def start_anytime_command(command)
-      @anytime_threads.select!(&:alive?)
-      @anytime_threads << Thread.new do
+      @engine.spawn_anytime do
         result = begin
           @engine.running_anytime { @commands.run(command[:line]) }
         rescue StandardError => e

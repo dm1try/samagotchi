@@ -566,6 +566,38 @@ file2.rb")
       expect(seen.first).to include("prior prompt") # prior history present in context
     end
 
+    describe "Engine#shutdown as it leaves (the plugins' services stop)" do
+      def shut_down?(agent)
+        engine = agent.instance_variable_get(:@engine)
+        engine.instance_variable_get(:@shut_down)
+      end
+
+      it "shuts down after an early return (--non-interactive with no prompt)" do
+        agent = described_class.new(mode: "assist", client: client, non_interactive: true)
+        agent.run
+        expect(shut_down?(agent)).to be(true)
+      end
+
+      it "shuts down after a -p --non-interactive turn" do
+        allow(client).to receive(:complete).and_return("done")
+        agent = described_class.new(mode: "assist", prompt: "hi", client: client, non_interactive: true)
+        agent.run
+        expect(shut_down?(agent)).to be(true)
+      end
+
+      it "shuts down when the REPL ends, and when it raises" do
+        allow(Reline).to receive(:readmultiline).and_return(nil)
+        agent = described_class.new(mode: "assist", client: client)
+        agent.run
+        expect(shut_down?(agent)).to be(true)
+
+        crashing = described_class.new(mode: "assist", client: client)
+        allow(crashing).to receive(:assist_loop).and_raise(RuntimeError, "boom")
+        expect { crashing.run }.to raise_error(RuntimeError, "boom")
+        expect(shut_down?(crashing)).to be(true)
+      end
+    end
+
     # Scenario 4: a plain interactive session (no prompt) drops into the REPL.
     it "drops into the REPL for a plain interactive session (no prompt)" do
       allow(Reline).to receive(:readmultiline).and_return("hello", nil)
