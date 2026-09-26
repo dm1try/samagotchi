@@ -243,7 +243,7 @@ if ARGV[0] == "bundle"
   bundle_args = ARGV[1..] || []
   sub = bundle_args[0]
   if sub.nil? || %w[-h --help help].include?(sub)
-    puts "Usage: bin/chi bundle <install|upgrade|uninstall|status|diff|bundles|build> [options]"
+    puts "Usage: bin/chi bundle <install|upgrade|uninstall|status|diff|list|build> [options]"
     puts ""
     puts "  install <source> [--scope system|project] [--force]"
     puts "    Install a memory bundle from a directory, zip, tar archive, or git URL."
@@ -263,8 +263,8 @@ if ARGV[0] == "bundle"
     puts "  diff <bundle> [file]"
     puts "    Show diffs between base/current/incoming for a bundle."
     puts ""
-    puts "  bundles"
-    puts "    List installed bundles and their provenance."
+    puts "  list"
+    puts "    List installed bundles and the ones shipped with chi that aren't installed."
     puts ""
     puts "  build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
     puts "    Build local memories and installed hooks (and plugin) into a shareable bundle (dir or zip)."
@@ -366,7 +366,7 @@ if ARGV[0] == "bundle"
           puts ""
           puts "  install <source> [--scope system|project] [--force]"
           puts "    Install a memory bundle from a directory, zip, tar archive, or git URL,"
-          puts "    or a bundle shipped with chi by name (guardrails, known-names)."
+          puts "    or a bundle shipped with chi by name (see: chi bundle list)."
           puts "    --force overwrites existing entries; default skips them."
           exit 0
         elsif arg == "--scope" && nxt
@@ -760,29 +760,32 @@ if ARGV[0] == "bundle"
     end
     exit 0
 
-  when "bundles"
-    require "json"
-    bundles_dir = Samagotchi::MemoryBundle::Provenance.bundles_dir
-    unless File.directory?(bundles_dir)
-      puts "No installed bundles."
-      exit 0
-    end
+  when "list"
+    listing = Samagotchi::MemoryBundle::Listing
+    shipped = listing.shipped
+    installed = listing.installed(shipped: shipped)
+    available = listing.available(shipped: shipped, installed: installed)
 
-    entries = Dir.entries(bundles_dir).reject { |e| e.start_with?(".") }
-    if entries.empty?
+    # One column width for both sections, so the names line up.
+    name_w = (installed.map { |b| b.name.length } + available.map { |s| s.source.length }).max.to_i
+    ver_w = (installed.map { |b| (b.version || "?").to_s.length } + available.map { |s| s.version.length }).max.to_i + 1
+
+    if installed.empty?
       puts "No installed bundles."
     else
-      puts "Installed memory bundles:"
+      puts "Installed:"
+      installed.each do |b|
+        next puts("  #{b.name.ljust(name_w)}  (#{b.error})") if b.error
+        line = "  #{b.name.ljust(name_w)}  #{"v#{b.version || "?"}".ljust(ver_w)}  scope=#{b.scope || "?"}  files=#{b.files}  installed=#{b.installed_at || "?"}"
+        line += "  (shipped v#{b.upgrade.version}: chi bundle upgrade #{b.upgrade.source})" if b.upgrade
+        puts line
+      end
+    end
+    unless available.empty?
       puts ""
-      entries.sort.each do |name|
-        prov = Samagotchi::MemoryBundle::Provenance.new(name: name)
-        data = prov.read
-        next unless data
-        version = data[:version] || "?"
-        scope = data[:scope] || "?"
-        installed_at = data[:installed_at] || "?"
-        file_count = (data[:files] || {}).size
-        puts "  #{name}  v#{version}  scope=#{scope}  files=#{file_count}  installed=#{installed_at}"
+      puts "Available (shipped with chi, install with: chi bundle install <name>):"
+      available.each do |s|
+        puts "  #{s.source.ljust(name_w)}  #{"v#{s.version}".ljust(ver_w)}  #{s.description}".rstrip
       end
     end
 
@@ -871,7 +874,7 @@ if ARGV[0] == "bundle"
     end
 
   else
-    warn "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, bundles, build"
+    warn "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build"
     exit 1
   end
 
@@ -909,7 +912,7 @@ parser = OptionParser.new do |opts|
            bin/chi sessions <list|stop|delete|prune|clean>
            bin/chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
            bin/chi send [-m TEXT] ID...         a message into sessions, as if typed there
-           bin/chi bundle <install|upgrade|uninstall|status|diff|bundles|build>
+           bin/chi bundle <install|upgrade|uninstall|status|diff|list|build>
            bin/chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
            bin/chi self                         version, paths, model and bundles
     (each subcommand takes --help)
