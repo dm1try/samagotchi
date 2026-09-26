@@ -194,6 +194,15 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     expect(screen.lines).to include("guardrails> hook g.rb (config) failed to load (LoadError: x)")
   end
 
+  it "shows the plugins' load warning, from a snapshot and live, labelled plugins" do
+    joined = snapshot
+    joined[:snapshot][:plugin_warning] = "plugin plugin.rb (bundle b) failed to load (x)"
+    feed(joined, { type: :guardrail_warning, message: "plugin p.rb (bundle c) failed to load (y)", label: "plugins" })
+
+    expect(screen.lines).to include("plugins> plugin plugin.rb (bundle b) failed to load (x)",
+                                    "plugins> plugin p.rb (bundle c) failed to load (y)")
+  end
+
   it "shows a hook's notice, live and from a snapshot's turn parts" do
     feed({ type: :hook_notice, hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" })
     expect(screen.lines.last).to eq("known-names> rejected execute")

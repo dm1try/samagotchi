@@ -66,7 +66,7 @@ module Samagotchi
         when :turn_completed
           render_turn_summary(event[:turn_summary]) if event[:turn_summary]
         when :guardrail_warning
-          @view.print_line("guardrails> #{event[:message]}")
+          @view.print_line(self.class.load_warning_line(event))
         when :hook_notice
           @view.print_line(self.class.hook_notice_line(event))
         when :card
@@ -86,6 +86,12 @@ module Samagotchi
 
       # @return [Boolean] whether a card with this id was shown here
       def card_shown?(id) = @card_ids.include?(id.to_s)
+
+      # What failed to load, labelled by what it is: guardrails (the
+      # default) or plugins.
+      def self.load_warning_line(event)
+        "#{event[:label] || "guardrails"}> #{event[:message]}"
+      end
 
       # A hook's notice as one line: "<bundle>> text" for a bundle hook,
       # "hook> text" for a config or turn hook (a warn one says so).

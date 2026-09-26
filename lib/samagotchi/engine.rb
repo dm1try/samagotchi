@@ -104,6 +104,9 @@ module Samagotchi
       # to load is announced, and a required guardrail's failure denies
       # every tool call. Rules load now too, so their errors are announced.
       @guardrail_failures = Guardrails::LoadFailures.new
+      # Plugins that failed to load: announced apart, as plugins (not
+      # guardrails: no tool call is denied for them).
+      @plugin_failures = Guardrails::LoadFailures.new
       @hooks = load_hooks_from_config
       load_hooks_from_bundles
       # The tools this session offers (the prompts' declarations and the
@@ -900,14 +903,20 @@ module Samagotchi
     # @return [Guardrails::Approvals]
     attr_reader :guardrail_approvals
 
+    # @return [Guardrails::LoadFailures] the plugins that failed to load
+    attr_reader :plugin_failures
+
     # Once per Engine, on its first turn: what failed to load, so every UI
-    # (REPL, attached TUI, web) shows it.
+    # (REPL, attached TUI, web) shows it: the guardrails, then the plugins
+    # (label: "plugins"; the UIs say guardrails without one).
     def announce_guardrail_failures(on_event)
       return if @guardrail_failures_announced
 
       @guardrail_failures_announced = true
       message = @guardrail_failures.message
       emit_event(on_event, { type: :guardrail_warning, message: message }) if message
+      plugins = @plugin_failures.message
+      emit_event(on_event, { type: :guardrail_warning, message: plugins, label: "plugins" }) if plugins
     end
     private :announce_guardrail_failures
 
@@ -915,6 +924,11 @@ module Samagotchi
     # failed), for a UI that joins later (Bridge#snapshot).
     def guardrail_warning
       @guardrail_failures.message if @guardrail_failures_announced
+    end
+
+    # The plugins' load warning the first turn announced, likewise.
+    def plugin_warning
+      @plugin_failures.message if @guardrail_failures_announced
     end
 
     # The context the gate sees for a tool call now.
@@ -1771,7 +1785,7 @@ module Samagotchi
           Plugin::Context.new(bundle: bundle, label: label, settings: settings, host: host)
         }
       )
-      Plugin::Loader.load_installed(registries, failures: @guardrail_failures, settings: bundle_settings)
+      Plugin::Loader.load_installed(registries, failures: @plugin_failures, settings: bundle_settings)
     end
 
     # What a Plugin::Context reads and calls: the session now, and the

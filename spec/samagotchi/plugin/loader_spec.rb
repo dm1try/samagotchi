@@ -6,6 +6,7 @@ require "fileutils"
 require "yaml"
 require "digest"
 require "samagotchi/engine"
+require "samagotchi/terminal_ui/event_renderer"
 require "samagotchi/memory_bundle/installer"
 
 RSpec.describe Samagotchi::Plugin::Loader do
@@ -79,7 +80,7 @@ RSpec.describe Samagotchi::Plugin::Loader do
     install_plugin("marker", hook_plugin)
     event = fire_before_turn(engine)
     expect(event[:marks]).to eq(["hit", "plugin.rb (bundle marker)"])
-    expect(engine.guardrail_failures.any?).to be false
+    expect(engine.plugin_failures.any?).to be false
   end
 
   it "gives the plugin its bundle's settings from config.yml bundles:" do
@@ -96,7 +97,8 @@ RSpec.describe Samagotchi::Plugin::Loader do
   describe "a plugin that can't load" do
     def expect_not_loaded(eng, reason)
       expect(fire_before_turn(eng)[:marks]).to be_nil
-      failure = eng.guardrail_failures.list.first
+      failure = eng.plugin_failures.list.first
+      expect(eng.guardrail_failures.any?).to be false
       expect(failure.what).to eq("plugin plugin.rb (bundle marker)")
       expect(failure.reason).to match(reason)
       expect(failure.required).to be false
@@ -108,7 +110,22 @@ RSpec.describe Samagotchi::Plugin::Loader do
       eng = nil
       expect { eng = engine }.to output(/bundle 'marker' plugin 'plugin.rb' not loaded: its sha256/).to_stderr
       expect_not_loaded(eng, /sha256/)
-      expect(eng.guardrail_failures.message).not_to match(/denied/)
+      expect(eng.plugin_failures.message).not_to match(/denied/)
+    end
+
+    it "is announced on the first turn labelled plugins, apart from the guardrails, and kept for the snapshot" do
+      path = install_plugin("marker", hook_plugin)
+      File.write(path, hook_plugin.sub("hit", "tampered"))
+      eng = nil
+      expect { eng = engine }.to output.to_stderr
+      eng.guardrail_failures.add("hook g.rb (config)", "LoadError: x", required: false)
+      expect(eng.plugin_warning).to be_nil
+      events = []
+      eng.send(:announce_guardrail_failures, ->(e) { events << e })
+
+      expect(events.map { |e| [e[:label], e[:message][/\A\S+ \S+/]] }).to eq([[nil, "hook g.rb"], ["plugins", "plugin plugin.rb"]])
+      expect(eng.plugin_warning).to start_with("plugin plugin.rb (bundle marker) failed to load (")
+      expect(Samagotchi::TerminalUI::EventRenderer.load_warning_line(events.last)).to start_with("plugins> plugin plugin.rb")
     end
 
     it "is not loaded when chi doesn't meet requires_chi" do

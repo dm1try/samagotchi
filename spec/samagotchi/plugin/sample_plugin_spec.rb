@@ -155,7 +155,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       expect { eng = Samagotchi::Engine.new(mode: :assist, client: client) }
         .to output(%r{command /model is already registered \(core\)}).to_stderr
       expect(eng.instance_variable_get(:@tools).key?("fine_tool")).to be false
-      expect(eng.guardrail_failures.list.map(&:what)).to eq(["plugin plugin.rb (bundle clash)"])
+      expect(eng.plugin_failures.list.map(&:what)).to eq(["plugin plugin.rb (bundle clash)"])
 
       install_source("clash", "class Plugin; def register(chi) = chi.tool(\"read\", \"mine\") { \"\" }; end\n")
       expect { Samagotchi::Engine.new(mode: :assist, client: client) }.to output(/tool read is already registered \(core\)/).to_stderr

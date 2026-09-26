@@ -114,7 +114,7 @@ module Samagotchi
     end
 
     def on_guardrail_warning(event)
-      log(:warn, :guardrail_warning, msg: event[:message].to_s[0, 300])
+      log(:warn, :guardrail_warning, label: event[:label], msg: event[:message].to_s[0, 300])
     end
 
     # A hook's notice to the user: who said it and what (its text is the

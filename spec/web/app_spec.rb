@@ -608,6 +608,7 @@ RSpec.describe Samagotchi::Web::App do
           "saved_recap" => { "text" => "We did things.", "covered" => 4, "turns_since" => 0, "created_at" => "t" },
           "continue_offer" => { "context" => { "original_prompt" => "first" }, "no_interrupt" => false },
           "guardrail_warning" => "hook g.rb (config) failed to load (x)",
+          "plugin_warning" => "plugin plugin.rb (bundle b) failed to load (x)",
           "event_seq" => 40,
           "event_id" => "40-e1"
         },
@@ -634,6 +635,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["saved_recap"]).to eq("text" => "We did things.", "turns_since" => 0)
       expect(payload["continue_offer"]).to eq("context" => { "original_prompt" => "first" }, "no_interrupt" => false)
       expect(payload["guardrail_warning"]).to eq("hook g.rb (config) failed to load (x)")
+      expect(payload["plugin_warning"]).to eq("plugin plugin.rb (bundle b) failed to load (x)")
       expect(payload.dig("session", "status")).to eq("running")
       # The model turns run on now (after a /model), not the file's.
       expect(payload.dig("session", "model_name")).to eq("Qwen3-14B")

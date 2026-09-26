@@ -469,6 +469,7 @@ module Samagotchi
           saved_recap: saved_recap_for(id, session, turn_snapshot),
           continue_offer: turn_snapshot && turn_snapshot["continue_offer"],
           guardrail_warning: turn_snapshot && turn_snapshot["guardrail_warning"],
+          plugin_warning: turn_snapshot && turn_snapshot["plugin_warning"],
           cards: cards_for_display(turn_snapshot),
           markdown_warning: @markdown_renderer.warning,
           pending_question: pending,

@@ -214,7 +214,7 @@ module Samagotchi
         # Written while the session sat idle: shown at the open prompt. One
         # collected just as a turn started describes the chat before it.
         when :recap_ready then @screen.commit(recap_block(event[:recap])) unless @running || event[:recap].to_s.strip.empty?
-        when :guardrail_warning then @screen.commit("guardrails> #{event[:message]}")
+        when :guardrail_warning then @screen.commit(EventRenderer.load_warning_line(event))
         when :generation_completed
           take_served_model(event[:served_model], event[:requested_model])
           @renderer.call(event)
@@ -718,6 +718,7 @@ module Samagotchi
           @screen.commit(recap_block(saved[:text], turns_since: saved[:turns_since])) if saved && !saved[:text].to_s.strip.empty?
           render_join_header(Array(snapshot[:messages]))
           @screen.commit("guardrails> #{snapshot[:guardrail_warning]}") if snapshot[:guardrail_warning]
+          @screen.commit("plugins> #{snapshot[:plugin_warning]}") if snapshot[:plugin_warning]
         end
         cards = Array(snapshot[:cards])
         render_snapshot_cards(cards.reject { |card| card[:current] }, joining: !reset)

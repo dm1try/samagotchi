@@ -100,6 +100,8 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
   it "prints a guardrail load warning" do
     renderer.call({ type: :guardrail_warning, message: "hook g.rb (config) failed to load (x)" })
     expect(view.lines).to eq(["guardrails> hook g.rb (config) failed to load (x)"])
+    renderer.call({ type: :guardrail_warning, message: "plugin plugin.rb (bundle b) failed to load (x)", label: "plugins" })
+    expect(view.lines.last).to eq("plugins> plugin plugin.rb (bundle b) failed to load (x)")
   end
 
   it "hands a completed tool call to the view (for its tally)" do

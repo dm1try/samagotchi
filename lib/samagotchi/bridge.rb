@@ -186,11 +186,11 @@ module Samagotchi
     # the event log: the Engine's messages (not the lagging copy on disk),
     # the turn in progress, turns queued behind it, the idle recap since the
     # last turn, the recap saved with the session (also from before the last
-    # turns: {text:, covered:, turns_since:, created_at:}), a pending continue offer, the guardrail load warning, the
+    # turns: {text:, covered:, turns_since:, created_at:}), a pending continue offer, the guardrail and plugin load warnings, the
     # last cards and between-turns notices (CardStore#list), and the event_seq it all covers.
     # Taken with the log held, so no event is half-applied.
     # @return [Hash] {messages:, current_turn:, queued:, recap:, saved_recap:, continue_offer:, guardrail_warning:,
-    #   cards:, event_seq:, event_id:}
+    #   plugin_warning:, cards:, event_seq:, event_id:}
     def snapshot
       @engine.synchronize_events do
         seq = @engine.event_count
@@ -202,6 +202,7 @@ module Samagotchi
           saved_recap: @engine.saved_recap,
           continue_offer: @accumulator.continue_offer,
           guardrail_warning: @engine.guardrail_warning,
+          plugin_warning: @engine.plugin_warning,
           cards: @cards.list,
           event_seq: seq,
           event_id: event_id(seq)
