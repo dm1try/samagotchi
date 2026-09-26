@@ -10,6 +10,7 @@ require_relative "memory_bundle/uninstaller"
 require_relative "memory_bundle/status"
 require_relative "memory_bundle/system_bundle"
 require_relative "memory_bundle/builder"
+require_relative "memory_bundle/listing"
 module Samagotchi
   # Namespace for shareable memory bundle functionality.
   module MemoryBundle; end
