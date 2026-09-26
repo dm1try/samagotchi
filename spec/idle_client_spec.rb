@@ -105,6 +105,16 @@ RSpec.describe Samagotchi::IdleClient do
       expect(request_body["chat_template_kwargs"]).to eq("enable_thinking" => false)
     end
 
+    # Splash ignores enable_thinking and thought until max_tokens; the
+    # OpenAI-style knob turns it off there.
+    it "asks for no reasoning effort" do
+      reply(content: "ok")
+
+      client.summarize("summarize this")
+
+      expect(request_body["reasoning_effort"]).to eq("none")
+    end
+
     it "sends the key of a host that needs one, and no header otherwise" do
       keyed = described_class.new(model: "m", base_url: server.base_url, api_key_env: "RECAP_KEY",
                                   env: { "RECAP_KEY" => "sk-recap" })

@@ -34,6 +34,17 @@ module Samagotchi
     # Up to 10 sentences (recap.sentences) need ~350 tokens with thinking off.
     MAX_TOKENS = 512
 
+    # Request fields that turn thinking off. A reasoning model otherwise
+    # spends the budget thinking and the recap stops mid-sentence.
+    # - chat_template_kwargs.enable_thinking: the chat template's switch
+    #   (llama.cpp with Qwen/Gemma templates); templates without it ignore it.
+    # - reasoning_effort "none": the OpenAI-style knob, for servers that
+    #   ignore the template switch (Splash thought until max_tokens).
+    THINKING_OFF = {
+      chat_template_kwargs: { enable_thinking: false },
+      reasoning_effort: "none"
+    }.freeze
+
     # @param base_url [String] the OpenAI API base, e.g. http://host:8081/v1
     # @param api_key_env [String, nil] the variable holding the host's key
     # @param timeout [Numeric] HTTP request timeout. Kept to the recap's own
@@ -94,12 +105,7 @@ module Samagotchi
     def generate(messages)
       response = @chat.chat(
         messages: messages, model: @model, tools: [],
-        options: {
-          max_tokens: MAX_TOKENS,
-          # A reasoning model otherwise spends the budget thinking and the
-          # recap stops mid-sentence. Templates without the switch ignore it.
-          chat_template_kwargs: { enable_thinking: false }
-        }
+        options: { max_tokens: MAX_TOKENS, **THINKING_OFF }
       )
       content = response.text
       reasoning = response.reasoning
