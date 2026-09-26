@@ -135,8 +135,8 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
   describe "chi.tool" do
     before { install }
 
-    it "adds echo_args after the built-ins, with its schema" do
-      expect(tools.names.last).to eq("echo_args")
+    it "adds echo_args and save_note after the built-ins, with its schema" do
+      expect(tools.names.last(2)).to eq(%w[echo_args save_note])
       expect(tools["echo_args"].source).to eq("sample-plugin")
       expect(tools["echo_args"].schema).to eq(
         name: "echo_args", description: "Echo the arguments back. A test tool from the sample-plugin bundle.",
@@ -146,6 +146,29 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
                                     loud: { type: "boolean", description: "Shout it (optional)" } },
                       required: ["text"] }
       )
+    end
+
+    it "declares save_note's nested schema flat in the native prompts and whole on the chat path" do
+      allow(engine).to receive(:profile).and_return(Samagotchi::ModelProfile.qwen36)
+      expect(engine.assist_system_prompt).to include('"description": "How the note is written. One of: \\"plain\\", \\"markdown\\"."')
+      expect(engine.assist_system_prompt).not_to include("additionalProperties")
+      chat = Samagotchi::LLM::ChatLoop.new(kernel: kernel)
+      meta = chat.tool_definitions.last[:function][:parameters][:properties][:meta]
+      expect(meta).to include(additionalProperties: false, properties: { tags: { type: "array", items: { type: "string" } },
+                                                                          priority: { type: "integer" } })
+    end
+
+    it "saves a note, its meta typed from a Qwen call's JSON text" do
+      Dir.mktmpdir do |dir|
+        text = "<tool_call>\n<function=save_note>\n<parameter=path>\n#{dir}/n.md\n</parameter>\n" \
+               "<parameter=text>\nhi\n</parameter>\n<parameter=meta>\n{\"tags\": [\"a\"], \"priority\": \"2\"}\n</parameter>\n" \
+               "</function>\n</tool_call>"
+        call = Samagotchi::ToolCallParser.for_profile(Samagotchi::ModelProfile.qwen36).parse(text).first
+        result = kernel.dispatch_tool_call(call)
+        expect(result[:output]).to eq("[save_note]\nsaved #{dir}/n.md (priority 2, Integer)")
+        expect(result[:activity]).to include(action: "saving note", params: "#{dir}/n.md (2 chars)")
+        expect(File.read("#{dir}/n.md")).to eq("tags: a\npriority: 2\nhi\n")
+      end
     end
 
     it "is declared in the native prompt and the chat path's tools, but not in system_prompt_for's" do

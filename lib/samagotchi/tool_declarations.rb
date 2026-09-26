@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "tools/args"
 
 module Samagotchi
   # Tool-declaration constants, protocol constants, and guidance text.
@@ -463,16 +464,66 @@ module Samagotchi
 
     # The schemas for the chat path's tools: array: +schemas+ with
     # CHAT_PARAM_OVERRIDES merged in and each tool's parameters closed
-    # (additionalProperties: false), so a strict provider rejects made-up
-    # parameters instead of the tool ignoring them.
+    # (additionalProperties: false, unless a plugin's schema says), so a
+    # strict provider rejects made-up parameters instead of the tool
+    # ignoring them. A plugin's schema goes as it is, nesting and all.
     def chat_schemas(schemas = TOOL_SCHEMAS)
       schemas.map do |schema|
         overrides = CHAT_PARAM_OVERRIDES.fetch(schema[:name], {})
         properties = schema[:parameters][:properties].to_h do |name, param|
           [name, param.merge(overrides.fetch(name, {}))]
         end
-        schema.merge(parameters: schema[:parameters].merge(properties: properties, additionalProperties: false))
+        parameters = schema[:parameters].merge(properties: properties)
+        parameters = parameters.merge(additionalProperties: false) unless parameters.key?(:additionalProperties)
+        schema.merge(parameters: parameters)
       end
+    end
+
+    # The schemas the native (Gemma, Qwen) prompts declare: the built-ins
+    # as they are, and each plugin tool's flattened (.flat_schema).
+    # @param registry [Tools::Registry]
+    def native_schemas(registry)
+      registry.entries.map { |entry| entry.core? ? entry.schema : flat_schema(entry.schema) }
+    end
+
+    # A plugin tool's schema in the shape the built-ins have, which is all
+    # the native declarations render: each parameter a type and a
+    # description. What doesn't fit goes into the description in words: an
+    # enum's values, an object's fields, a list's item type. Nested schemas
+    # and additionalProperties are dropped; the call's args are still
+    # typed by the full schema (Tools::Args).
+    def flat_schema(schema)
+      parameters = schema[:parameters] || {}
+      properties = (parameters[:properties] || {}).to_h { |name, param| [name.to_sym, flat_param(param)] }
+      { name: schema[:name], description: schema[:description].to_s,
+        parameters: { type: "object", properties: properties, required: Array(parameters[:required]).map(&:to_s) } }
+    end
+
+    def flat_param(param)
+      param = {} unless param.is_a?(Hash)
+      type = Tools::Args.type_of(param) || "string"
+      description = param[:description].to_s.strip
+      notes = []
+      notes << "One of: #{param[:enum].map { |value| JSON.generate(value) }.join(", ")}." if param[:enum].is_a?(Array)
+      case type
+      when "object"
+        fields = param[:properties].is_a?(Hash) ? param[:properties] : {}
+        notes << "A JSON object with #{fields.map { |name, field| "#{name} (#{field_type(field)})" }.join(", ")}." unless fields.empty?
+      when "array"
+        items = param[:items]
+        notes << "A list of #{field_type(items)} values." if items.is_a?(Hash)
+      end
+      # "Extra fields." then the words: a description without an end mark
+      # would run into them.
+      description += "." unless description.empty? || notes.empty? || description.match?(/[.!?:;]\z/)
+      { type: type, description: [description, *notes].reject(&:empty?).join(" ") }
+    end
+
+    def field_type(field)
+      return "any" unless field.is_a?(Hash)
+
+      type = Tools::Args.type_of(field) || "any"
+      field[:enum].is_a?(Array) ? "#{type}: #{field[:enum].map { |value| JSON.generate(value) }.join("|")}" : type
     end
 
     # Qwen 3.6 <tools> block: the schemas as pretty-printed JSON.

@@ -2118,10 +2118,10 @@ module Samagotchi
     def tool_declarations
       case profile.name
       when "qwen36"
-        ToolDeclarations.qwen_declarations(@tools.schemas)
+        ToolDeclarations.qwen_declarations(ToolDeclarations.native_schemas(@tools))
       else
         # Gemma 4 format
-        ToolDeclarations.gemma_declarations(@tools.schemas)
+        ToolDeclarations.gemma_declarations(ToolDeclarations.native_schemas(@tools))
       end
     end
 
