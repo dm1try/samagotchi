@@ -15,7 +15,7 @@ Example:
 ```yaml
 SAMAGOTCHI_DEFAULT_MODEL: Qwen3-14B-Instruct
 server:
-  host: 192.168.1.29
+  host: 192.0.2.10
   port: 8081
 SAMAGOTCHI_THINKING_UI: spinner
 
@@ -28,8 +28,8 @@ hosts:
     host: localhost
     port: 8080
     transport: llama_cpp
-  recap-box:
-    host: 192.168.1.50
+  small-box:
+    host: 192.0.2.20
     port: 8080
 
 # Idle recap: on by default, written with the session's own model and host
@@ -38,16 +38,16 @@ hosts:
 # url:, else http://host:port/v1) with its api_key_env; base_url is an OpenAI API
 # base as given (e.g. http://h:8081/v1). recap: false turns it off.
 recap:
-  # host_ref: recap-box
-  # model: gemma4-small
+  # host_ref: small-box
+  # model: your-small-model-id
   # inactivity: 180
   # timeout: 30
   # min_user_turns: 2
   # sentences: 2-4   # or 3, 5-7; 1-10 (from the next recap written)
 
 model_aliases:
-  small: gemma4-small
-  tiny: recap-box:gemma4-small  # alias may be bare or host:model (hybrid)
+  small: your-small-model-id
+  tiny: small-box:your-small-model-id  # alias may be bare or host:model (hybrid)
 
 # Plain chi runs its session in a background worker and attaches to it, so the
 # web UI can share it (default true; env SAMAGOTCHI_SESSION_SHARED). false keeps
@@ -134,7 +134,7 @@ Example for oMLX:
 ```yaml
 SAMAGOTCHI_SERVER_TRANSPORT: omlx
 server:
-  host: 192.168.1.29
+  host: 192.0.2.10
   port: 8000
 ```
 
@@ -145,15 +145,16 @@ own chat template on this endpoint. Only the Gemma4 (`<|tool_call>…`) and Qwen
 (`[[…]]`/`<|tool_call>`) tool-call formats are in scope; GLM/Mistral/Kimi/MiniMax
 formats are not parsed.
 
-For an OpenAI Chat Completions server such as [Splash](https://github.com/incoai/splash),
-give its host `api: openai`:
+For an OpenAI Chat Completions server such as [Splash](https://github.com/incoai/splash)
+(a fast inference engine for Macs that works well for a local setup alongside
+llama.cpp), give its host `api: openai`:
 
 ```yaml
 default:
   model: splash:incoai/Qwen3.6-35B-A3B-Splash
 hosts:
   splash:
-    host: 192.168.1.29
+    host: 192.0.2.10
     port: 8000
     api: openai
 ```
@@ -191,7 +192,7 @@ spec. It requires the model to call `execute` and return the current UTC date:
 
 ```shell
 SAMAGOTCHI_INTEGRATION=1 \
-SAMAGOTCHI_SERVER_HOST=192.168.1.29 SAMAGOTCHI_SERVER_PORT=8000 \
+SAMAGOTCHI_SERVER_HOST=192.0.2.10 SAMAGOTCHI_SERVER_PORT=8000 \
 SAMAGOTCHI_DEFAULT_MODEL=incoai/Qwen3.8-27B-Splash \
 bundle exec rspec spec/integration/chat_loop_spec.rb -fd < /dev/null
 ```
@@ -239,7 +240,7 @@ tool calls it made up on the way. The first of these that says something wins:
    models:
      ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M:
        profile: qwen36
-     ista:
+     my-alias:
        profile: qwen36
    ```
 
@@ -248,7 +249,7 @@ tool calls it made up on the way. The first of these that says something wins:
    ```yaml
    hosts:
      mlx:
-       host: 192.168.1.29
+       host: 192.0.2.10
        port: 8081
        transport: mlx
        profile: qwen36

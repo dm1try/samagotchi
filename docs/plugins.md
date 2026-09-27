@@ -814,6 +814,6 @@ gem.
 
 ## Not yet
 
-These are planned (`~/.claude/plans/plugins.md`):
+These are planned:
 
 - `chi.prompt` for sections of the system prompt.
