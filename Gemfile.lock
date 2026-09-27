@@ -37,6 +37,7 @@ GEM
     rack (3.2.7)
     rackup (2.3.1)
       rack (>= 3)
+    rake (13.4.2)
     reline (0.6.3)
       io-console (~> 0.5)
     rexml (3.4.4)
@@ -68,6 +69,7 @@ PLATFORMS
 
 DEPENDENCIES
   commonmarker
+  rake (~> 13)
   rspec (~> 3)
   samagotchi!
   webmock
@@ -91,6 +93,7 @@ CHECKSUMS
   racc (1.8.1) sha256=4a7f6929691dbec8b5209a0b373bc2614882b55fc5d2e447a21aaa691303d62f
   rack (3.2.7) sha256=93e13e1c24f93556671d85d2d79fa228c3485815c50d7e2f265b5330c6528fb7
   rackup (2.3.1) sha256=6c79c26753778e90983761d677a48937ee3192b3ffef6bc963c0950f94688868
+  rake (13.4.2) sha256=cb825b2bd5f1f8e91ca37bddb4b9aaf345551b4731da62949be002fa89283701
   reline (0.6.3) sha256=1198b04973565b36ec0f11542ab3f5cfeeec34823f4e54cebde90968092b1835
   rexml (3.4.4) sha256=19e0a2c3425dfbf2d4fc1189747bdb2f849b6c5e74180401b15734bc97b5d142
   rspec (3.13.2) sha256=206284a08ad798e61f86d7ca3e376718d52c0bc944626b2349266f239f820587

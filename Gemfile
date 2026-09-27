@@ -11,6 +11,10 @@ group :markdown do
   gem "commonmarker"
 end
 
+group :development do
+  gem "rake", "~> 13"
+end
+
 group :test do
   gem "rspec", "~> 3"
   gem "webmock"
