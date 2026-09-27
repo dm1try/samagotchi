@@ -157,7 +157,7 @@ chi bundle install known-names
 ```
 
 installs one `before_tool_call` hook and a short memory. A local model that
-once misspells a name inside a path (`dzmitrydziadou` → `dzmitryziadou`)
+once misspells a name inside a path (`jonathandoe` → `jonathndoe`)
 keeps copying the wrong spelling from its context, and every call after
 that fails. The hook knows the right names and compares strings: the
 user's home folder name, login (`$USER`), git `user.name` words and email
@@ -171,18 +171,18 @@ By default (`mode: reject`) the call is denied with advice in place of the
 usual tail, so the model retries it corrected:
 
 ```
-[execute] Error: denied by guardrail (hook known_names, bundle known-names): "dmitrydedvo" in the command is 1 edit away from the known name "dmitrydedov". The user was not asked. Retry with "dmitrydedov". If "dmitrydedvo" is really what you meant, say so to the user instead of retrying.
+[execute] Error: denied by guardrail (hook known_names, bundle known-names): "johndeo" in the command is 1 edit away from the known name "johndoe". The user was not asked. Retry with "johndoe". If "johndeo" is really what you meant, say so to the user instead of retrying.
 ```
 
-and the user sees one line: `known-names> rejected execute: "dmitrydedvo" looks like "dmitrydedov"`.
+and the user sees one line: `known-names> rejected execute: "johndeo" looks like "johndoe"`.
 
 ```yaml
 bundles:
   known-names:
-    names: [dzmitrydziadou]   # protected besides the derived ones
+    names: [jonathandoe]      # protected besides the derived ones
     mode: reject              # reject | correct | ask
     derive: [home, user, git, repo]
-    ignore: [dmitri]          # a real name that is near a protected one
+    ignore: [jondoe]          # a real name that is near a protected one
     min_length: 6
     max_distance: 2           # default: 1 under 10 characters, else 2
 ```
@@ -190,8 +190,8 @@ bundles:
 `mode: correct` rewrites the call (whole tokens, everywhere they appear) and
 says so; `mode: ask` shows the call with three choices, *Correct it and
 run*, *Run as is*, *Deny*; with no one to ask (`--non-interactive`) or a
-dismissed question it rejects. A real near name (a folder `dmitri` next to
-user `dmitry`, a login one letter from another) is caught too: list it under
+dismissed question it rejects. A real near name (a folder `jondoe` next to
+user `johndoe`, a login one letter from another) is caught too: list it under
 `ignore:`. The hook is `on_error: log`: a bug in it warns and lets the call
 through. As with every bundle hook, a running worker picks it up after its
 next start.

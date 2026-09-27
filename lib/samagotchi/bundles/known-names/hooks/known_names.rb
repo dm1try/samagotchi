@@ -7,10 +7,10 @@
 # a rejection that names the right one breaks the loop.
 #
 # Settings (config.yml, `bundles: known-names:`), all optional:
-#   names: [dzmitrydziadou]      names to protect besides the derived ones
+#   names: [jonathandoe]         names to protect besides the derived ones
 #   mode: reject                 reject (default) | correct | ask
 #   derive: [home, user, git, repo]   which names to derive (default all)
-#   ignore: [dmitri]             names never to protect (a real near name)
+#   ignore: [jondoe]             names never to protect (a real near name)
 #   min_length: 6                shorter names and tokens are skipped
 #   max_distance: 2              edits allowed; default 1 for a name under
 #                                10 characters, 2 otherwise

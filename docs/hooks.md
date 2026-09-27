@@ -118,7 +118,7 @@ is built bare. Defaults belong in the hook.
 ```yaml
 bundles:                 # per bundle, by name, for its hooks
   known-names:
-    names: [dzmitrydziadou]
+    names: [jonathandoe]
     mode: reject
 hooks:
   before_tool_call:

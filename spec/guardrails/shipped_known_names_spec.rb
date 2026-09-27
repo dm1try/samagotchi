@@ -12,18 +12,18 @@ require "samagotchi/hooks"
 RSpec.describe "The known-names bundle" do
   let(:bundle_dir) { File.expand_path("../../lib/samagotchi/bundles/known-names", __dir__) }
   let(:manifest) { YAML.safe_load(File.read(File.join(bundle_dir, "manifest.yml"))) }
-  # A repo named samagotchi whose git user is "Dm1tri Dedov" <dm1try@x.io>.
+  # A repo named samagotchi whose git user is "J0hnni Doe" <j0hnny@example.com>.
   let(:repo) do
     base = File.realpath(Dir.mktmpdir("known-names"))
     dir = File.join(base, "samagotchi")
     Dir.mkdir(dir)
     system("git", "-C", dir, "init", "-q")
-    system("git", "-C", dir, "config", "user.name", "Dm1tri Dedov")
-    system("git", "-C", dir, "config", "user.email", "dm1try@x.io")
+    system("git", "-C", dir, "config", "user.name", "J0hnni Doe")
+    system("git", "-C", dir, "config", "user.email", "j0hnny@example.com")
     dir
   end
   let(:context) { Samagotchi::Guardrails::Context.new(cwd: repo) }
-  let(:settings) { { "names" => ["dzmitrydziadou"] } }
+  let(:settings) { { "names" => ["jonathandoe"] } }
   let(:notices) { [] }
   let(:asked) { [] }
   let(:answer) { nil }
@@ -43,9 +43,9 @@ RSpec.describe "The known-names bundle" do
   let(:gate) { Samagotchi::Guardrails::Gate.new(-> { registry }, context_lookup: -> { context }) }
 
   before do
-    allow(Dir).to receive(:home).and_return("/Users/dmitrydedov")
+    allow(Dir).to receive(:home).and_return("/home/johndoe")
     allow(ENV).to receive(:[]).and_call_original
-    allow(ENV).to receive(:[]).with("USER").and_return("dmitrydedov")
+    allow(ENV).to receive(:[]).with("USER").and_return("johndoe")
   end
 
   after { FileUtils.rm_rf(File.dirname(repo)) }
@@ -54,18 +54,18 @@ RSpec.describe "The known-names bundle" do
   def shell(command) = verdict_for({ name: "execute", content: command })
 
   CAUGHT = {
-    "ls /Users/dmitrydedvo" => %w[dmitrydedvo dmitrydedov],
-    "cat ~/../dmitrydedvo/x" => %w[dmitrydedvo dmitrydedov],
-    "git -C /Users/dmitrydedov/projects/samagothci status" => %w[samagothci samagotchi],
-    "ssh dm1tro@host" => %w[dm1tro Dm1tri],
-    "ls /home/dzmitryziadou/work" => %w[dzmitryziadou dzmitrydziadou],
-    "cd ~/projects && cat /Users/Dmitrydedvo/notes.txt" => %w[Dmitrydedvo dmitrydedov]
+    "ls /home/johndeo" => %w[johndeo johndoe],
+    "cat ~/../johndeo/x" => %w[johndeo johndoe],
+    "git -C /home/johndoe/projects/samagothci status" => %w[samagothci samagotchi],
+    "ssh j0hnno@host" => %w[j0hnno J0hnni],
+    "ls /home/jonathndoe/work" => %w[jonathndoe jonathandoe],
+    "cd ~/projects && cat /home/Johndeo/notes.txt" => %w[Johndeo johndoe]
   }.freeze
 
   LET_THROUGH = [
-    "ls /Users/dmitrydedov", "ls ~/projects", "echo $HOME/x", "cat ~/x", "ls dmitr", "ls dmitrz",
-    "cd samagotchi-known-names && git status", "ls /Users/dmitrydedov/projects/samagotchi", "ps aux | grep processes",
-    "ssh dm1try@host", "echo dzmitrydziadou"
+    "ls /home/johndoe", "ls ~/projects", "echo $HOME/x", "cat ~/x", "ls johnn", "ls johnnz",
+    "cd samagotchi-known-names && git status", "ls /home/johndoe/projects/samagotchi", "ps aux | grep processes",
+    "ssh j0hnny@host", "echo jonathandoe"
   ].freeze
 
   CAUGHT.each do |command, (miss, name)|
@@ -89,31 +89,31 @@ RSpec.describe "The known-names bundle" do
   end
 
   it "scans a read's path and a write's path, not a write's content" do
-    expect(verdict_for({ name: "read", content: "~/../dmitrydedvo/x" }).reason).to include('"dmitrydedvo" in the path')
-    expect(verdict_for({ name: "write", path: "/Users/dmitrydedvo/a.txt", content: "x" })).to be_deny
-    expect(verdict_for({ name: "write", path: "a.txt", content: "dmitrydedvo wrote this" })).to be_allow
+    expect(verdict_for({ name: "read", content: "~/../johndeo/x" }).reason).to include('"johndeo" in the path')
+    expect(verdict_for({ name: "write", path: "/home/johndeo/a.txt", content: "x" })).to be_deny
+    expect(verdict_for({ name: "write", path: "a.txt", content: "johndeo wrote this" })).to be_allow
   end
 
   it "counts two edits for a long name" do
-    v = shell("ls /home/dzmitridzadou")
-    expect(v.reason).to eq('"dzmitridzadou" in the command is 2 edits away from the known name "dzmitrydziadou"')
+    v = shell("ls /home/jonathendou")
+    expect(v.reason).to eq('"jonathendou" in the command is 2 edits away from the known name "jonathandoe"')
   end
 
   describe "settings" do
     context "ignore:" do
-      let(:settings) { { "ignore" => ["dm1tri"] } }
+      let(:settings) { { "ignore" => ["j0hnni"] } }
 
       it "drops a name" do
-        expect(shell("ssh dm1tro@host").reason).to include('known name "dm1try"')
+        expect(shell("ssh j0hnno@host").reason).to include('known name "j0hnny"')
       end
     end
 
     context "min_length:" do
-      let(:settings) { { "names" => ["dzmitrydziadou"], "min_length" => 12 } }
+      let(:settings) { { "names" => ["jonathandoe"], "min_length" => 10 } }
 
       it "skips shorter names and tokens" do
-        expect(shell("ssh dm1tro@host")).to be_allow
-        expect(shell("ls /home/dzmitryziadou")).to be_deny
+        expect(shell("ssh j0hnno@host")).to be_allow
+        expect(shell("ls /home/jonathndoe")).to be_deny
       end
     end
 
@@ -121,16 +121,16 @@ RSpec.describe "The known-names bundle" do
       let(:settings) { { "max_distance" => 2 } }
 
       it "widens the match" do
-        expect(shell("ls dmitrz").reason).to include('2 edits away from the known name "Dm1tri"')
+        expect(shell("ls johnnz").reason).to include('2 edits away from the known name "J0hnni"')
       end
     end
 
     context "derive: []" do
-      let(:settings) { { "names" => ["dzmitrydziadou"], "derive" => [] } }
+      let(:settings) { { "names" => ["jonathandoe"], "derive" => [] } }
 
       it "protects only the configured names" do
-        expect(shell("ls /Users/dmitrydedvo")).to be_allow
-        expect(shell("ls /home/dzmitryziadou")).to be_deny
+        expect(shell("ls /home/johndeo")).to be_allow
+        expect(shell("ls /home/jonathndoe")).to be_deny
       end
     end
   end
@@ -139,17 +139,17 @@ RSpec.describe "The known-names bundle" do
     before { settings.merge!("mode" => "correct") }
 
     it "replaces the near miss in the call (whole tokens, everywhere) and says so" do
-      v = shell("ls /Users/dmitrydedvo/a /Users/dmitrydedvo-old; echo dmitrydedvox")
+      v = shell("ls /home/johndeo/a /home/johndeo-old; echo johndeox")
       expect(v).to be_allow
-      expect(v.call[:content]).to eq("ls /Users/dmitrydedov/a /Users/dmitrydedov-old; echo dmitrydedvox")
-      expect(notices).to eq([{ text: 'corrected "dmitrydedvo" → "dmitrydedov" in execute', level: :info,
+      expect(v.call[:content]).to eq("ls /home/johndoe/a /home/johndoe-old; echo johndeox")
+      expect(notices).to eq([{ text: 'corrected "johndeo" → "johndoe" in execute', level: :info,
                                hook: "known_names.rb (bundle known-names)" }])
     end
 
     it "corrects a path call's path and a command's cwd" do
-      expect(verdict_for({ name: "edit", path: "/Users/dmitrydedvo/a.txt", content: "x" }).call[:path]).to eq("/Users/dmitrydedov/a.txt")
-      v = verdict_for({ name: "execute", content: "ls", cwd: "/Users/dmitrydedvo" })
-      expect(v.call[:cwd]).to eq("/Users/dmitrydedov")
+      expect(verdict_for({ name: "edit", path: "/home/johndeo/a.txt", content: "x" }).call[:path]).to eq("/home/johndoe/a.txt")
+      v = verdict_for({ name: "execute", content: "ls", cwd: "/home/johndeo" })
+      expect(v.call[:cwd]).to eq("/home/johndoe")
     end
   end
 
@@ -157,8 +157,8 @@ RSpec.describe "The known-names bundle" do
     before { settings.merge!("mode" => "ask") }
 
     it "asks with the call and the three options" do
-      shell("ls /Users/dmitrydedvo")
-      expect(asked).to eq([{ question: "execute: execute ls /Users/dmitrydedvo\n\"dmitrydedvo\" looks like a misspelling of \"dmitrydedov\".",
+      shell("ls /home/johndeo")
+      expect(asked).to eq([{ question: "execute: execute ls /home/johndeo\n\"johndeo\" looks like a misspelling of \"johndoe\".",
                              options: ["Correct it and run", "Run as is", "Deny"], header: "known-names", allow_freeform: false,
                              hook: "known_names.rb (bundle known-names)" }])
     end
@@ -167,10 +167,10 @@ RSpec.describe "The known-names bundle" do
       let(:answer) { { selected: ["Correct it and run"], freeform: nil } }
 
       it "runs the corrected call" do
-        v = shell("ls /Users/dmitrydedvo")
+        v = shell("ls /home/johndeo")
         expect(v).to be_allow
-        expect(v.call[:content]).to eq("ls /Users/dmitrydedov")
-        expect(notices.map { |n| n[:text] }).to eq(['corrected "dmitrydedvo" → "dmitrydedov" in execute'])
+        expect(v.call[:content]).to eq("ls /home/johndoe")
+        expect(notices.map { |n| n[:text] }).to eq(['corrected "johndeo" → "johndoe" in execute'])
       end
     end
 
@@ -178,9 +178,9 @@ RSpec.describe "The known-names bundle" do
       let(:answer) { { selected: ["Run as is"], freeform: nil } }
 
       it "runs the call unchanged, quietly" do
-        v = shell("ls /Users/dmitrydedvo")
+        v = shell("ls /home/johndeo")
         expect(v).to be_allow
-        expect(v.call[:content]).to eq("ls /Users/dmitrydedvo")
+        expect(v.call[:content]).to eq("ls /home/johndeo")
         expect(notices).to be_empty
       end
     end
@@ -189,28 +189,28 @@ RSpec.describe "The known-names bundle" do
       let(:answer) { { selected: ["Deny"], freeform: nil } }
 
       it "rejects with the advice" do
-        expect(shell("ls /Users/dmitrydedvo").deny_text).to include('Retry with "dmitrydedov".')
+        expect(shell("ls /home/johndeo").deny_text).to include('Retry with "johndoe".')
       end
     end
 
     it "rejects when there is no one to ask (non-interactive) or the question was dismissed" do
-      expect(shell("ls /Users/dmitrydedvo")).to be_deny
-      expect(notices.map { |n| n[:text] }).to eq(['rejected execute: "dmitrydedvo" looks like "dmitrydedov"'])
+      expect(shell("ls /home/johndeo")).to be_deny
+      expect(notices.map { |n| n[:text] }).to eq(['rejected execute: "johndeo" looks like "johndoe"'])
     end
   end
 
   it "never raises out: a failure inside becomes one warn notice and the call runs" do
     klass = registry && Samagotchi::Hooks::BundleLoader.namespace_for("known-names").const_get(:KnownNames)
     allow(klass).to receive(:distance).and_raise(RuntimeError, "boom")
-    expect(shell("ls /Users/dmitrydedvo")).to be_allow
+    expect(shell("ls /home/johndeo")).to be_allow
     expect(notices).to eq([{ text: "known-names failed: RuntimeError: boom", level: :warn, hook: "known_names.rb (bundle known-names)" }])
   end
 
   describe "the distance" do
     let(:klass) { registry && Samagotchi::Hooks::BundleLoader.namespace_for("known-names").const_get(:KnownNames) }
 
-    { %w[dedov dedvo] => 1, %w[dmitrydedov dmitrydedvo] => 1, %w[samagotchi samagothci] => 1, %w[dmitry dmitri] => 1,
-      %w[dzmitrydziadou dzmitryziadou] => 1, %w[dzmitrydziadou dzmitridzadou] => 2, %w[abc abc] => 0, %w[abc xyz] => 3,
+    { %w[jdoe jdeo] => 1, %w[johndoe johndeo] => 1, %w[samagotchi samagothci] => 1, %w[johnny johnni] => 1,
+      %w[jonathandoe jonathndoe] => 1, %w[jonathandoe jonathendou] => 2, %w[abc abc] => 0, %w[abc xyz] => 3,
       %w[samagotchi samagotchi-tui-steering] => 13, ["", "abc"] => 3 }.each do |(a, b), expected|
       it "#{a.inspect} ~ #{b.inspect} = #{expected}" do
         expect(klass.distance(a, b)).to eq(expected)
