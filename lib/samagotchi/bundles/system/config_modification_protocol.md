@@ -1,6 +1,6 @@
 # Config Modification Protocol
 
-This memory teaches the harness how to safely read and update `~/.config/samagotchi/config.yml` and related global config.
+This memory explains how to safely read and update `~/.config/samagotchi/config.yml` and related global config.
 
 ## Location
 
@@ -8,7 +8,7 @@ This memory teaches the harness how to safely read and update `~/.config/samagot
 - The file is optional. Absence is not an error — treat as empty mapping.
 - Content is YAML; top-level must be a mapping. Valid YAML is `YAML.safe_load(..., permitted_classes: [], aliases: false)` (`ConfigFile.read_yaml`).
 
-## Structure — Unified Convention (Option A)
+## Structure — Unified Convention
 
 Single registry `Samagotchi::Config` (`Config::ENTRIES` in `lib/samagotchi/config.rb`) defines the implicit mapping:
 
@@ -24,16 +24,16 @@ Example `config.yml` (new nested form, preferred):
 
 ```yaml
 default:
-  model: unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M
-  input: "Hey Chi, "
+  model: your-model-id
+  input: "Please "      # text pre-filled at the prompt; a trailing space is kept
 server:
-  host: 192.168.1.29
-  port: 8081
+  host: localhost
+  port: 8080
   transport: llama_cpp  # llama_cpp|mlx|omlx
   first_token_timeout: 120  # seconds a request may wait for its first token; 0 = off; unset: 120 for remote hosts, none for local
 recap:
-  host_ref: recap-box   # or base_url: http://...
-  model: gemma4-small
+  host_ref: small-box   # a name under hosts:, or base_url: http://...
+  model: your-small-model-id
   inactivity: 180
   timeout: 30
   min_user_turns: 2
@@ -52,7 +52,7 @@ log:
   disable: false
 ```
 
-Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top-level) are still read via fallback in `Config.lookup_yaml` but warn `Warning: config key 'SAMAGOTCHI_DEFAULT_MODEL' is legacy UPPER — use 'default.model'` (`ConfigFile.load_global_env!`). Migrate them to nested form and remove the flat entry. The old `LLAMA_HOST`/`LLAMA_PORT` aliases were fully removed (Aug 2026); use `server.host`/`server.port` (nested) or `SAMAGOTCHI_SERVER_HOST`/`SAMAGOTCHI_SERVER_PORT`.
+Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top-level) are still read via fallback in `Config.lookup_yaml` but warn `Warning: config key 'SAMAGOTCHI_DEFAULT_MODEL' is legacy UPPER — use 'default.model'` (`ConfigFile.load_global_env!`). Migrate them to nested form and remove the flat entry. The old `LLAMA_HOST`/`LLAMA_PORT` aliases were removed; use `server.host`/`server.port` (nested) or `SAMAGOTCHI_SERVER_HOST`/`SAMAGOTCHI_SERVER_PORT`.
 
 **Excluded maps** (YAML-only, not part of the flat registry; skipped by scalar loader):
 
@@ -83,7 +83,7 @@ guardrails:
 ```yaml
 bundles:
   known-names:
-    names: [dzmitrydziadou]    # protected besides home/login/git/repo names
+    names: [jonathandoe]       # protected besides home/login/git/repo names
     mode: reject               # reject | correct | ask
   btw:
     max_tokens: 1024
@@ -138,8 +138,7 @@ A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cov
 
 - Prefer `read` + `write`/`edit` on `config.yml`. Do **not** use `memory_write` for config.
 - For single-model switches, prefer the `ConfigFile` helpers (`write_default_model!`, `write_model_alias!`) via `execute` `ruby -I <source dir>/lib -r samagotchi/config -e ...` (`chi self` prints the source dir) if available, otherwise direct nested YAML edit as above.
-- For generic keys, you may also use `ruby -r samagotchi/config -e 'Samagotchi::Config.reload!(cli_overrides: {...})'` in tests, but prefer file edit for persistence.
-- After editing, verify with `YAML.safe_load(File.read(path))` or `XDG_CONFIG_HOME=/tmp/empty bin/chi --help` (shows generated `--recap-base-url` etc.) / `bin/chi bundle status` if relevant.
+- After editing, verify with `YAML.safe_load(File.read(path))` or `chi --help` (shows generated `--recap-base-url` etc.) / `chi bundle list` if relevant.
 
 ## Hints
 

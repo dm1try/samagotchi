@@ -104,4 +104,4 @@ bin/chi bundle build --scope system --out updated.zip
 
 ## Current system bundle
 
-`samagotchi-system` (`lib/samagotchi/bundles/system/manifest.yml`) ships `identity.md` + `self_map.md` + `config_modification_protocol.md` + `delegated.md` + this guide itself. It is auto-installed/upgraded on first `Engine` creation (`SystemBundle.ensure!`) — no manual install needed. Bump `manifest.yml` `version` when editing bundled files so existing installs upgrade (3-way merge).
+`samagotchi-system` (`lib/samagotchi/bundles/system/manifest.yml`) ships `identity.md` + `self_map.md` + `config_modification_protocol.md` + `delegated.md` + this guide itself. It is auto-installed/upgraded on first `Engine` creation (`SystemBundle.ensure!`) — no manual install needed. Its files are managed by chi: a newer chi upgrades them (a 3-way merge keeps local edits and reports conflicts), so put your own preferences in separate memories rather than editing these.
