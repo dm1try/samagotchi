@@ -726,7 +726,6 @@ file2.rb")
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       ENV["SAMAGOTCHI_THINKING_UI"] = "spinner"
-      ENV.delete("SAMAGOTCHI_THINKING_PREVIEW_LINES")
     end
 
     it "renders spinner progress in TTY mode while streaming" do
@@ -742,105 +741,57 @@ file2.rb")
       expect(output).to match(/thinking\.\.\..*done/m)
     end
 
-    it "renders a tail preview line while streaming" do
+    it "shows the newest sentence on the spinner row while streaming" do
       allow(client).to receive(:complete) do |_prompt, **kwargs|
         on_chunk = kwargs[:on_chunk]
-        on_chunk&.call(content: "hello", payload: { "content" => "hello" })
+        on_chunk&.call(content: "Hello there. ", payload: { "content" => "Hello there. " })
         on_chunk&.call(content: " world", payload: { "content" => " world" })
         "done"
       end
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
       allow(agent).to receive(:color_output?).and_return(false)
-      allow(agent).to receive(:thinking_render_min_interval).and_return(0.0)
       output = run_and_render(agent, prompt: "hi")
-      expect(output).to match(/model> .*hello world.*done/m)
+      expect(output).to match(/model> thinking · Hello there\. .*done/m)
+      expect(output).not_to include("world")
     end
 
-    it "renders the preview line in color when color output is enabled" do
+    it "renders the sentence row in color when color output is enabled" do
       allow(client).to receive(:complete) do |_prompt, **kwargs|
         on_chunk = kwargs[:on_chunk]
-        on_chunk&.call(content: "hello", payload: { "content" => "hello" })
+        on_chunk&.call(content: "Hello. ", payload: { "content" => "Hello. " })
         "done"
       end
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
       allow(agent).to receive(:color_output?).and_return(true)
-      allow(agent).to receive(:thinking_render_min_interval).and_return(0.0)
       output = run_and_render(agent, prompt: "hi")
-      expect(output).to match(/#{ansi_escape}model> … hello#{ansi_escape}.*done/m)
+      expect(output).to match(/#{ansi_escape}model> thinking · Hello\. [|\/\\-]#{ansi_escape}.*done/m)
     end
 
-    it "keeps preview lines at a fixed height and pads when content is short" do
-      ENV["SAMAGOTCHI_THINKING_PREVIEW_LINES"] = "3"
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+    def sentence_row(content, width: 60)
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client, surface: RecordingSurface.new)
       allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
+      allow(agent).to receive(:status_effective_width).and_return(width)
       allow(agent).to receive(:color_output?).and_return(false)
-
       agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(:handle_stream_event, type: :generation_chunk, content: "short")
-
-      lines, has_content = agent.send(:thinking_tail_preview_lines)
-      expect(has_content).to be(true)
-      expect(lines.length).to eq(3)
-      expect(lines[0]).to include("short")
-      expect(lines[1].strip).to eq("")
-      expect(lines[2].strip).to eq("")
+      agent.send(:handle_stream_event, type: :generation_chunk, content: content)
+      agent.instance_variable_get(:@surface).slots[:activity].first
     end
 
-    it "caps each preview line to fixed width" do
-      ENV["SAMAGOTCHI_THINKING_PREVIEW_LINES"] = "3"
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(:handle_stream_event, type: :generation_chunk, content: "x" * 500)
-
-      lines, = agent.send(:thinking_tail_preview_lines)
-      expect(lines.length).to eq(3)
-      expect(lines.all? { |line| line.length <= described_class::THINKING_PREVIEW_WIDTH }).to be(true)
+    it "cuts the sentence to the row's width, keeping the spinner frame" do
+      row = sentence_row("#{"x" * 500}. ", width: 60)
+      expect(row).to match(/\Amodel> thinking · x+… [|\/\\-]\z/)
+      expect(row.length).to eq(60)
     end
 
-    it "sanitizes control tokens in preview text before line layout" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
-      allow(agent).to receive(:color_output?).and_return(false)
+    it "leaves control tokens and a Qwen TURN: prefix out" do
+      row = sentence_row("TURN: reading the config\nstart <|tool_call> call:read{path: \"x\"}<tool_call|> ")
+      expect(row).to start_with("model> thinking · reading the config ")
 
-      agent.send(:handle_stream_event, type: :generation_started)
-      raw = "start <|tool_call> call:read{path: \"x\"}<tool_call|> " + ("x" * 120)
-      agent.send(:handle_stream_event, type: :generation_chunk, content: raw)
-
-      lines, has_content = agent.send(:thinking_tail_preview_lines)
-      flattened = lines.join(" ")
-      expect(has_content).to be(true)
-      expect(flattened).not_to include("<|tool_call>")
-      expect(flattened).not_to include("<tool_call|>")
-    end
-
-    it "clamps preview line count config to the supported range" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-
-      ENV["SAMAGOTCHI_THINKING_PREVIEW_LINES"] = "0"
-      expect(agent.send(:thinking_preview_lines_count)).to eq(1)
-
-      ENV["SAMAGOTCHI_THINKING_PREVIEW_LINES"] = "7"
-      expect(agent.send(:thinking_preview_lines_count)).to eq(3)
-
-      ENV["SAMAGOTCHI_THINKING_PREVIEW_LINES"] = "invalid"
-      expect(agent.send(:thinking_preview_lines_count)).to eq(1)
-    end
-
-    it "captures preview text in assist mode" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(:handle_stream_event, type: :generation_chunk, content: "preview me")
-
-      expect(agent.send(:thinking_tail_preview_line)).not_to be_nil
-      expect(agent.send(:thinking_tail_preview_line)).to include("preview me")
+      row = sentence_row("start <|tool_call> call:read{path: \"x\"}<tool_call|> then done. ")
+      expect(row).not_to include("tool_call")
+      expect(row).to include("start")
     end
 
     it "hands the surface the spinner rows for above the prompt and the status rows for below it" do
@@ -850,10 +801,10 @@ file2.rb")
       allow(agent).to receive(:status_server_segment).and_return("")
 
       agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(:handle_stream_event, type: :generation_chunk, content: "hello")
+      agent.send(:handle_stream_event, type: :generation_chunk, content: "Hello. ")
 
       slots = agent.instance_variable_get(:@surface).slots
-      expect(slots[:activity]).to match([a_string_starting_with("model> thinking..."), "model> … hello"])
+      expect(slots[:activity]).to match([a_string_starting_with("model> thinking · Hello. ")])
       expect(slots[:status]).to match([a_string_starting_with("status> model=")])
     end
 

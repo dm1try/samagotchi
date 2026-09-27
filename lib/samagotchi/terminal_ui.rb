@@ -21,7 +21,6 @@ require_relative "owner_lock"
 require_relative "engine"
 require_relative "tools/memory"
 require_relative "output_formatter"
-require_relative "turn_preamble"
 require_relative "turn_flow"
 require_relative "turn_tally"
 require_relative "session_commands"
@@ -33,6 +32,7 @@ require_relative "terminal_ui/legacy_surface"
 require_relative "terminal_ui/live_region"
 require_relative "terminal_ui/question_prompt"
 require_relative "terminal_ui/repl_input"
+require_relative "terminal_ui/thinking_line"
 require_relative "log"
 
 module Samagotchi
@@ -60,17 +60,14 @@ module Samagotchi
     THINKING_UI_SPINNER = "spinner"
     THINKING_UI_OFF = "off"
     THINKING_SPINNER_FRAMES = ["|", "/", "-", "\\"].freeze
-    TURN_PREAMBLE_SPINNER_COLOR = 36
     MEMORY_SPINNER_COLOR = "38;5;208"
     TOOL_SPINNER_COLOR = 32
     NETWORK_RETRY_SPINNER_COLOR = 31
     MEMORY_SPINNER_PREVIEW_LIMIT = 3
     MEMORY_STICKY_PREVIEW_LIMIT = 8
     THINKING_PREVIEW_WIDTH = 120
-    THINKING_PREVIEW_LINES_ENV = "SAMAGOTCHI_THINKING_PREVIEW_LINES"
-    THINKING_PREVIEW_LINES_DEFAULT = 1
-    THINKING_PREVIEW_LINES_MAX = 3
-    THINKING_TAIL_PREVIEW_BUFFER_LIMIT = 4096
+    # Columns a sentence needs on the spinner row; with less, it reads "thinking...".
+    MIN_SENTENCE_ROOM = 12
     THINKING_TOOL_PREVIEW_LIMIT = 56
     THINKING_RENDER_MIN_INTERVAL = 0.08
     # The spinner also turns with time: a ticker redraws it when no chunk
@@ -113,6 +110,7 @@ module Samagotchi
       @spinner_tick_interval = spinner_tick_interval
       @spinner_lock = Monitor.new
       @turn_tally = TurnTally.new
+      @thinking_line = ThinkingLine.new(clock: -> { monotonic_time })
       @prompt         = prompt
       @default_model_name = ModelProfile.required_model_name(nil)
       aliased_model_name = model_name.to_s.strip.empty? ? nil : ConfigFile.resolve_model_alias(model_name)
@@ -728,9 +726,10 @@ module Samagotchi
       @context_window_tokens = event[:context_window_tokens] if event[:context_window_tokens]
       clear_retry_spinner_status
       @latest_server_context_status = nil
-      reset_thinking_tail_preview
-      reset_turn_preamble
-      @spinner_lock.synchronize { start_thinking_spinner }
+      @spinner_lock.synchronize do
+        @thinking_line.reset
+        start_thinking_spinner
+      end
     end
 
     def generation_feedback_retrying(event)
@@ -747,8 +746,9 @@ module Samagotchi
         @thinking_waiting_since = nil
         clear_retry_spinner_status if retry_spinner_status_active?
         capture_server_context_status_from_payload(event[:payload])
-        capture_thinking_tail_chunk(event[:content])
-        capture_turn_preamble_chunk(event[:thinking])
+        # A new sentence shows at once (the line changes at most once a dwell).
+        next refresh_thinking_spinner_status if @thinking_line.chunk(event)
+
         tick_thinking_spinner
       end
     end
@@ -778,8 +778,7 @@ module Samagotchi
     def generation_feedback_finished
       @spinner_lock.synchronize do
         clear_retry_spinner_status
-        reset_thinking_tail_preview
-        reset_turn_preamble
+        @thinking_line.reset
         finish_thinking_spinner
       end
     end
@@ -1191,8 +1190,6 @@ module Samagotchi
       @thinking_spinner_active = true
       @thinking_spinner_index = 0 if @thinking_spinner_index.nil?
       @thinking_spinner_last_render_at = nil
-      @thinking_tail_preview_dirty = false
-      @thinking_preview_has_content = false
       @thinking_waiting_since = monotonic_time
       render_thinking_spinner
       start_thinking_ticker
@@ -1243,17 +1240,11 @@ module Samagotchi
     end
 
     def render_thinking_spinner_if_due
-      return render_thinking_spinner if force_spinner_render?
-
       last = @thinking_spinner_last_render_at
       return render_thinking_spinner if last.nil?
       return if (monotonic_time - last) < thinking_render_min_interval
 
       render_thinking_spinner
-    end
-
-    def force_spinner_render?
-      @thinking_tail_preview_dirty && !@thinking_preview_has_content
     end
 
     public
@@ -1268,101 +1259,10 @@ module Samagotchi
         next unless @surface.clear_slot(:activity)
 
         @thinking_spinner_last_render_at = nil
-        @thinking_tail_preview_dirty = false
-        @thinking_preview_has_content = false
       end
     end
 
     private
-
-    # Only Qwen streams thinking cleanly enough (explicit close marker) for a
-    # reliable turn-preamble extraction; Gemma 4 keeps the raw preview instead.
-    def turn_preamble_enabled?
-      @engine.profile.name == "qwen36" && Samagotchi::Config.get("thinking.turn_preamble") != false
-    end
-
-    def reset_turn_preamble
-      @turn_preamble = TurnPreamble.new
-    end
-
-    def capture_turn_preamble_chunk(thinking_chunk)
-      return unless turn_preamble_enabled?
-
-      (@turn_preamble ||= TurnPreamble.new).feed(thinking_chunk)
-    end
-
-    def turn_preamble_status_base(frame)
-      return nil unless turn_preamble_enabled?
-
-      phrase = @turn_preamble&.phrase
-      return nil if phrase.nil? || phrase.empty?
-
-      "chi> #{phrase} #{frame}"
-    end
-
-    def capture_thinking_tail_chunk(chunk)
-      return unless thinking_tail_preview_enabled?
-      return if chunk.nil? || chunk.empty?
-
-      buffer = String.new(@thinking_tail_preview_buffer.to_s)
-      buffer << chunk.to_s
-      @thinking_tail_preview_buffer = buffer[-THINKING_TAIL_PREVIEW_BUFFER_LIMIT, THINKING_TAIL_PREVIEW_BUFFER_LIMIT] || buffer
-      @thinking_tail_preview_dirty = true
-    end
-
-    def thinking_tail_preview_enabled?
-      @thinking_spinner_active
-    end
-
-    def thinking_tail_preview_line
-      lines, has_content = thinking_tail_preview_lines
-      return nil unless has_content
-
-      lines.first
-    end
-
-    # @param width [Integer] the status width (#status_effective_width)
-    def thinking_tail_preview_lines(width: status_effective_width)
-      line_count = thinking_preview_lines_count
-      prefix = "model> … "
-      continuation = " " * prefix.length
-      preview_width = thinking_preview_width(width)
-      first_width = [preview_width - prefix.length, 1].max
-      continuation_width = [preview_width - continuation.length, 1].max
-
-      text = thinking_tail_preview_text
-      capacity = thinking_tail_preview_capacity(width)
-      text = text[-capacity, capacity] || text
-      chunks = [text.slice(0, first_width).to_s]
-      offset = first_width
-      (line_count - 1).times do
-        chunks << text.slice(offset, continuation_width).to_s
-        offset += continuation_width
-      end
-
-      lines = [cap_preview_line("#{prefix}#{chunks[0]}", width)]
-      chunks.drop(1).each do |chunk|
-        lines << cap_preview_line("#{continuation}#{chunk}", width)
-      end
-
-      [lines, !text.empty?]
-    end
-
-    def thinking_tail_preview_text
-      raw = @thinking_tail_preview_buffer.to_s
-      return "" if raw.empty?
-
-      # OutputFormatter strips both wire-format token families (control +
-      # literal) as the single source of truth; the single-line preview then
-      # collapses whitespace for display.
-      OutputFormatter.strip(raw).gsub(/\s+/, " ").strip
-    end
-
-    def reset_thinking_tail_preview
-      @thinking_tail_preview_buffer = String.new
-      @thinking_tail_preview_dirty = false
-      @thinking_preview_has_content = false
-    end
 
     def retry_spinner_status_line(frame, width)
       data = @retry_spinner_status || {}
@@ -1387,23 +1287,6 @@ module Samagotchi
       [width, THINKING_PREVIEW_WIDTH].min
     end
 
-
-    def thinking_preview_lines_count
-      raw = ENV.fetch(THINKING_PREVIEW_LINES_ENV, THINKING_PREVIEW_LINES_DEFAULT.to_s).to_s.strip
-      value = Integer(raw)
-      value = THINKING_PREVIEW_LINES_DEFAULT unless value.positive?
-      [[value, 1].max, THINKING_PREVIEW_LINES_MAX].min
-    rescue ArgumentError
-      THINKING_PREVIEW_LINES_DEFAULT
-    end
-
-    def thinking_tail_preview_capacity(width)
-      prefix_length = "model> … ".length
-      preview_width = thinking_preview_width(width)
-      first_width = [preview_width - prefix_length, 1].max
-      continuation_width = first_width
-      first_width + ((thinking_preview_lines_count - 1) * continuation_width)
-    end
 
     def thinking_render_min_interval
       value = ENV.fetch(THINKING_RENDER_INTERVAL_ENV, THINKING_RENDER_MIN_INTERVAL.to_s).to_f
@@ -1872,16 +1755,10 @@ module Samagotchi
     def render_thinking_spinner
       frame = THINKING_SPINNER_FRAMES[@thinking_spinner_index % THINKING_SPINNER_FRAMES.length]
       width = status_effective_width
-      spinner_lines = thinking_spinner_status_lines(frame, width: width)
-      preview_lines, preview_has_content = turn_preamble_enabled? ? [[], false] : thinking_tail_preview_lines(width: width)
-      if color_output?
-        preview_lines = preview_lines.map { |text| paint(text, 90) }
-      end
-      # The spinner and preview go above the prompt, the status rows below it.
-      @surface.set_slots(activity: spinner_lines + preview_lines, status: spinner_status_lines(width: width))
+      @thinking_line.tick
+      # The spinner goes above the prompt, the status rows below it.
+      @surface.set_slots(activity: thinking_spinner_status_lines(frame, width: width), status: spinner_status_lines(width: width))
       @thinking_spinner_last_render_at = monotonic_time
-      @thinking_tail_preview_dirty = false
-      @thinking_preview_has_content = preview_has_content
     end
 
     # "model> waiting for the first token... 5s |" once a generation has
@@ -1925,16 +1802,27 @@ module Samagotchi
 
       return ["#{@init_wait_status} #{frame}"[0, width]] if @init_wait_status
 
-      preamble_active = turn_preamble_status_base(frame)
-      base = preamble_active || first_token_wait_status(frame) || "model> thinking... #{frame}"
+      base = first_token_wait_status(frame) || "model> thinking... #{frame}"
       available_for_notification = [width - base.length, 0].max
       memory_notification, tool_notification = thinking_notification_segments(available_for_notification)
       notification = "#{memory_notification}#{tool_notification}"
+      base = thinking_sentence_base(frame, width - notification.length) || base
 
       return ["#{base}#{notification}"] unless color_output?
 
-      base_color = preamble_active ? TURN_PREAMBLE_SPINNER_COLOR : 90
-      ["#{paint(base, base_color)}#{paint_if_present(memory_notification, MEMORY_SPINNER_COLOR)}#{paint_if_present(tool_notification, TOOL_SPINNER_COLOR)}"]
+      ["#{paint(base, 90)}#{paint_if_present(memory_notification, MEMORY_SPINNER_COLOR)}#{paint_if_present(tool_notification, TOOL_SPINNER_COLOR)}"]
+    end
+
+    # "model> thinking · <the newest sentence> |" within +room+ columns (the
+    # web's thinking ticker, ThinkingLine), or nil before the first sentence.
+    def thinking_sentence_base(frame, room)
+      return nil if @thinking_waiting_since || @thinking_line.empty?
+
+      prefix = "model> #{@thinking_line.label} · "
+      room -= prefix.length + frame.length + 1
+      return nil if room < MIN_SENTENCE_ROOM
+
+      "#{prefix}#{@thinking_line.fit(room)} #{frame}"
     end
 
     # ── Ask-user-question adapter (generic TUI renderer) ─────────────────────

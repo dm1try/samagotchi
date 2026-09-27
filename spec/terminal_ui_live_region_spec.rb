@@ -15,12 +15,11 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
   let(:screen) { Samagotchi::TerminalUI::Screen.new(out: term, size: -> { [term.rows, term.columns] }) }
 
   around do |example|
-    keys = %w[SAMAGOTCHI_DEFAULT_MODEL SAMAGOTCHI_HISTORY_FILE SAMAGOTCHI_THINKING_PREVIEW_LINES SAMAGOTCHI_STATUS_LINE XDG_STATE_HOME]
+    keys = %w[SAMAGOTCHI_DEFAULT_MODEL SAMAGOTCHI_HISTORY_FILE SAMAGOTCHI_STATUS_LINE XDG_STATE_HOME]
     saved = ENV.to_h.slice(*keys)
     ENV["SAMAGOTCHI_HISTORY_FILE"] = File.join(history_dir, "history.json")
     ENV["XDG_STATE_HOME"] = history_dir
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Qwen3-14B"
-    ENV.delete("SAMAGOTCHI_THINKING_PREVIEW_LINES")
     ENV.delete("SAMAGOTCHI_STATUS_LINE")
     example.run
   ensure
@@ -124,13 +123,13 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
     run_repl(ui, prompts: ["hi"], events: generation("<think>TURN: Checking\n", "a", "</think>PONG"),
                  on_event: ->(event) { regions << term.lines.last(2) if event[:type] == :generation_chunk })
 
-    expect(regions.last).to match([a_string_starting_with("chi> Checking"), a_string_starting_with("status> model=Qwen3-14B")])
-    expect(shown.grep(/^chi> Checking/)).to be_empty
+    expect(regions.last).to match([a_string_starting_with("model> thinking · Checking"), a_string_starting_with("status> model=Qwen3-14B")])
+    expect(shown.grep(/^model> thinking · Checking/)).to be_empty
     expect(shown).to include("PONG")
   end
 
   # The drift from the smoke-run notes: a spinner row wider than the terminal
-  # (a long turn phrase at 50 columns) wrapped, each redraw landed a row
+  # (a long sentence at 50 columns) wrapped, each redraw landed a row
   # lower and left a copy behind.
   it "keeps one spinner row and one status row when they are wider than the terminal" do
     ui = build_ui
@@ -138,7 +137,7 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
     phrase = "TURN: Comparing the two decimal numbers carefully before answering\n"
     counts = []
     run_repl(ui, prompts: ["hi"], events: generation("<think>#{phrase}", *(["more "] * 8), "</think>PONG"),
-                 on_event: ->(_event) { counts << [shown.grep(/^chi> Comparing/).size, shown.grep(/^status> /).size] })
+                 on_event: ->(_event) { counts << [shown.grep(/^model> thinking · Comparing/).size, shown.grep(/^status> /).size] })
 
     expect(counts).to all(satisfy { |spinner, status| spinner <= 1 && status <= 1 })
     expect(counts).to include([1, 1])

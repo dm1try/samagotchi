@@ -10,13 +10,12 @@ RSpec.describe Samagotchi::TerminalUI, "row builders" do
   let(:ui) { described_class.new(mode: :assist, client: client) }
 
   around do |example|
-    saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_THINKING_PREVIEW_LINES", "SAMAGOTCHI_STATUS_LINE")
+    saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_STATUS_LINE")
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    ENV["SAMAGOTCHI_THINKING_PREVIEW_LINES"] = "2"
     ENV.delete("SAMAGOTCHI_STATUS_LINE")
     example.run
   ensure
-    %w[SAMAGOTCHI_DEFAULT_MODEL SAMAGOTCHI_THINKING_PREVIEW_LINES SAMAGOTCHI_STATUS_LINE].each { |k| ENV.delete(k) }
+    %w[SAMAGOTCHI_DEFAULT_MODEL SAMAGOTCHI_STATUS_LINE].each { |k| ENV.delete(k) }
     saved.each { |k, v| ENV[k] = v }
   end
 
@@ -26,7 +25,7 @@ RSpec.describe Samagotchi::TerminalUI, "row builders" do
     allow(ui).to receive(:thinking_spinner_enabled?).and_return(true)
     allow(ui).to receive(:status_server_segment).and_return("")
     ui.send(:handle_stream_event, type: :generation_started)
-    ui.send(:handle_stream_event, type: :generation_chunk, content: "x" * 200)
+    ui.send(:handle_stream_event, type: :generation_chunk, content: "#{"x" * 200}. ")
     ui.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "notes" })
     expect(ui).not_to receive(:status_effective_width)
   end
@@ -38,16 +37,14 @@ RSpec.describe Samagotchi::TerminalUI, "row builders" do
     expect(ui.send(:idle_status_lines, width: 12)).to eq(["status> mode"])
   end
 
-  it "fits the thinking preview rows to the given width" do
-    rows, has_content = ui.send(:thinking_tail_preview_lines, width: 30)
+  it "fits the sentence to the given width, next to the notifications" do
+    row, = ui.send(:thinking_spinner_status_lines, "|", width: 120)
 
-    expect(has_content).to be(true)
-    expect(rows.length).to eq(2)
-    expect(rows).to all(satisfy { |row| row.length <= 30 })
-    expect(rows.first).to start_with("model> … x")
+    expect(row).to match(/\Amodel> thinking · x+… \| memory_loaded: notes last_tool: memory_read\(name="notes"\)\z/)
+    expect(row.length).to eq(120)
   end
 
-  it "fits the spinner row's notifications to the given width" do
+  it "says thinking... where the sentence has too little room" do
     row, = ui.send(:thinking_spinner_status_lines, "|", width: 41)
 
     expect(row).to eq("model> thinking... | memory_loaded: notes")

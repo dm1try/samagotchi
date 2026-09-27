@@ -18,13 +18,12 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
   let(:history_dir) { Dir.mktmpdir("golden-history") }
 
   around do |example|
-    saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_HISTORY_FILE", "SAMAGOTCHI_THINKING_PREVIEW_LINES", "XDG_STATE_HOME")
+    saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_HISTORY_FILE", "XDG_STATE_HOME")
     ENV["SAMAGOTCHI_HISTORY_FILE"] = File.join(history_dir, "history.json")
     ENV["XDG_STATE_HOME"] = history_dir
-    ENV.delete("SAMAGOTCHI_THINKING_PREVIEW_LINES")
     example.run
   ensure
-    %w[SAMAGOTCHI_DEFAULT_MODEL SAMAGOTCHI_HISTORY_FILE SAMAGOTCHI_THINKING_PREVIEW_LINES XDG_STATE_HOME].each { |k| ENV.delete(k) }
+    %w[SAMAGOTCHI_DEFAULT_MODEL SAMAGOTCHI_HISTORY_FILE XDG_STATE_HOME].each { |k| ENV.delete(k) }
     saved.each { |k, v| ENV[k] = v }
     FileUtils.remove_entry(history_dir)
   end
@@ -158,7 +157,7 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     expect_golden("qwen_answer", output)
   end
 
-  it "renders a Gemma answer with the thinking tail preview" do
+  it "renders a Gemma answer with its thinking sentence" do
     events = generation("gemma4", "<|channel>thought\nweighing ", "options<channel|>", "Hi!")
 
     output = run_turn(model: "gemma-4-e4b", events: events) { |messages| result_for(messages, output: "Hi!") }

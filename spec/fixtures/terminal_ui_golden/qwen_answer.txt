@@ -2,11 +2,11 @@
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[J\e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mmodel> thinking... |\e[0m
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[36mchi> checking the greeting /\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mmodel> thinking · checking the greeting |\e[0m
 \e[90mstatus> model=Qwen3-14B | ctx=3.9% (p=1200 c=40 t=1240)\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[36mchi> checking the greeting -\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mmodel> thinking · checking the greeting /\e[0m
 \e[90mstatus> model=Qwen3-14B | ctx=3.9% (p=1200 c=40 t=1240)\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[36mchi> checking the greeting \\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mmodel> thinking · checking the greeting -\e[0m
 \e[90mstatus> model=Qwen3-14B | ctx=3.9% (p=1200 c=40 t=1240)\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mstatus> model=Qwen3-14B | ctx=3.9% (p=1200 c=40 t=1240)\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mstatus> model=Qwen3-14B | ctx=3.9% (p=1200 c=40 t=1240)\e[0m

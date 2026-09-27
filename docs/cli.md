@@ -457,24 +457,18 @@ call with its parameters, cut to the terminal width. It starts over with each tu
 - The web: the activity panel's summary reads `activity · 12 tool calls (2 failed) · execute ×7 · …`
   (without `last:`: the rows show it).
 
-## Thinking Spinner Preview
+## Thinking Spinner Sentence
 
-When `SAMAGOTCHI_THINKING_UI=spinner`, the preview renderer uses a deterministic layout:
+While the model generates, the spinner row shows the newest complete sentence of its thinking
+(`model> thinking · <sentence> |` in the REPL, `| thinking · <sentence>` in attached mode), or of its
+answer (`writing ·`), like the web's thinking ticker: the same sentence rules (a list number such as
+`118.` is no sentence end; a newline is one), and the row changes at most once every 1.5 s so it
+doesn't flicker. A long sentence is cut with `…`; a Qwen `TURN:` prefix and inline markdown are left
+out. Before the first sentence the row reads `thinking...`. With `TERM=dumb` there is no spinner row.
 
-- Preview lines use a fixed-width app-managed wrapper.
-- Status lines use a configurable width mode (terminal-aware by default).
-- Wrapping is done by the app (not terminal auto-wrap).
-- The preview area always renders a fixed number of logical lines.
-
-Configuration:
-
-- `SAMAGOTCHI_THINKING_PREVIEW_LINES` (default `1`): number of preview lines to render under the spinner. Values are clamped to `1..3`.
-
-Notes:
-
-- Default behavior remains compact (`1` preview line).
-- Setting `2` or `3` enables multi-line preview while keeping spinner redraw height stable.
-- When a memory entry is loaded during thinking, the spinner line also shows a compact inline preview of that tool call (for example `tool: memory_read(name=...)`) for live visibility before end-of-turn tool logs.
+- When a memory entry is loaded during thinking, the spinner line also shows a compact inline preview
+  of that tool call (for example `tool: memory_read(name=...)`) for live visibility before end-of-turn
+  tool logs; the sentence gets the room left.
 
 ## Thinking-Phase Cancellation
 

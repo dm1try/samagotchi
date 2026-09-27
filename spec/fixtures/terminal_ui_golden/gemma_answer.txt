@@ -1,18 +1,14 @@
 \e[?2026h\e[?25l\r\e[JSession: <session-id>
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[J\e[90mstatus> model=gemma-4-e4b\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mmodel> thinking... |\e[0m
-\e[90mmodel> … \e[0m
 \e[90mstatus> model=gemma-4-e4b\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J\e[90mmodel> thinking... /\e[0m
-\e[90mmodel> … weighing\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mmodel> thinking... /\e[0m
 \e[90mstatus> model=gemma-4-e4b\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J\e[90mmodel> thinking... -\e[0m
-\e[90mmodel> … weighing options\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mmodel> thinking · weighing options /\e[0m
 \e[90mstatus> model=gemma-4-e4b\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J\e[90mmodel> thinking... \\e[0m
-\e[90mmodel> … weighing optionsHi!\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mmodel> thinking · weighing options -\e[0m
 \e[90mstatus> model=gemma-4-e4b\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J\e[90mstatus> model=gemma-4-e4b\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mstatus> model=gemma-4-e4b\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mstatus> model=gemma-4-e4b\e[0m
 \e[90mstatus> model=gemma-4-e4b\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[JHi!
