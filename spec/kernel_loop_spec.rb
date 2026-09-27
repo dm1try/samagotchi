@@ -1892,7 +1892,7 @@ end
     it "raises when SAMAGOTCHI_DEFAULT_MODEL is unset" do
       ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
       expect { described_class.new(client: client) }
-        .to raise_error(ArgumentError, /SAMAGOTCHI_DEFAULT_MODEL is required/)
+        .to raise_error(ArgumentError, /no model configured: set default.model in .*config.yml/)
     end
 
     it "infers qwen36 when SAMAGOTCHI_DEFAULT_MODEL contains qwen" do

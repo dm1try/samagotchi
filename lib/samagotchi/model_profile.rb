@@ -11,6 +11,9 @@ module Samagotchi
   #   gemma4  — Gemma 4 format
   class ModelProfile
     MODEL_ENV = "SAMAGOTCHI_DEFAULT_MODEL"
+    # No model anywhere (--model, default.model in config.yml, the env): a
+    # first run before any config. An ArgumentError, as before.
+    MissingModel = Class.new(ArgumentError)
 
     attr_reader :name, :turn_start, :turn_end,
                 :tool_call_open, :tool_call_close,
@@ -122,9 +125,21 @@ module Samagotchi
         end
       end
       value = env[MODEL_ENV].to_s.strip if value.empty?
-      raise ArgumentError, "#{MODEL_ENV} is required" if value.empty?
+      raise MissingModel, missing_model_message if value.empty?
 
       value
+    end
+
+    # One line for the user: where to set the model.
+    def self.missing_model_message
+      path = begin
+        require_relative "config"
+        Samagotchi::ConfigFile.global_path
+      rescue StandardError, LoadError
+        "~/.config/samagotchi/config.yml"
+      end
+      "no model configured: set default.model in #{path} to the model id your server serves " \
+        "(or #{MODEL_ENV}, or pass --model ID); see docs/configuration.md"
     end
 
     def self.from_model_name(model_name)

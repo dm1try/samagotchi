@@ -101,7 +101,7 @@ RSpec.describe Samagotchi::ModelProfile do
     it "raises when model is missing" do
       ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
       expect { described_class.required_model_name }
-        .to raise_error(ArgumentError, /SAMAGOTCHI_DEFAULT_MODEL is required/)
+        .to raise_error(ArgumentError, /no model configured: set default.model in .*config.yml/)
     end
 
     it "returns explicit argument when provided" do
