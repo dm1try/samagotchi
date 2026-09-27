@@ -1,6 +1,6 @@
 ---
 name: known-names
-version: 0.1.0
+version: 0.1.1
 scope: system
 description: Catches a near-miss of a protected name (home folder, login, git name, repo name, names from config) in a tool call and rejects it with the right spelling; mode ask / correct optional
 trust_level: reviewed

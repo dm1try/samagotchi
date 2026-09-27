@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-27
+
 The first public release. chi is an agent harness for local models
 (llama.cpp, mlx-lm, oMLX) and OpenAI-compatible servers, built around memory
 and long-lived sessions.
@@ -36,3 +38,6 @@ and long-lived sessions.
   message into a session, which wakes it if it was stopped).
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
+
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/dm1try/samagotchi/releases/tag/v0.2.0
