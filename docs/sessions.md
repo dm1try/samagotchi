@@ -28,22 +28,22 @@ A session is deleted if **expired by age OR overflow by count** (unless `keep_st
 **CLI:**
 
 ```sh
-bin/chi sessions list [--sort updated_at|created_at] [--order desc|asc] [--limit N] [--scope=all]
-bin/chi sessions list [--live] [--cwd PATH] [--limit N] [--format text|json|tsv] [--scope=all]
-bin/chi sessions stop ID
-bin/chi sessions delete [--force] ID...                    # for good; --force stops a live worker first
-bin/chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
-bin/chi sessions clean [--dry-run] [--days N]             # test sessions: all, or older than N days
+chi sessions list [--sort updated_at|created_at] [--order desc|asc] [--limit N] [--scope=all]
+chi sessions list [--live] [--cwd PATH] [--limit N] [--format text|json|tsv] [--scope=all]
+chi sessions stop ID
+chi sessions delete [--force] ID...                    # for good; --force stops a live worker first
+chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
+chi sessions clean [--dry-run] [--days N]             # test sessions: all, or older than N days
 ```
 
 Examples:
 
 ```sh
-bin/chi sessions list --sort updated_at --order desc --limit 20
-bin/chi sessions prune --dry-run --days 14 --keep 500
-bin/chi sessions prune --days 14 --keep 500          # actually delete
-bin/chi sessions clean --dry-run                     # every test session, whatever its age
-bin/chi sessions clean --dry-run --days 7            # test sessions older than 7 days
+chi sessions list --sort updated_at --order desc --limit 20
+chi sessions prune --dry-run --days 14 --keep 500
+chi sessions prune --days 14 --keep 500          # actually delete
+chi sessions clean --dry-run                     # every test session, whatever its age
+chi sessions clean --dry-run --days 7            # test sessions older than 7 days
 ```
 
 `--dry-run` is the safe preview. Web has no prune endpoint; use the CLI.
@@ -59,8 +59,8 @@ bin/chi sessions clean --dry-run --days 7            # test sessions older than 
 A context note is text pushed into a session as background: not a prompt, and it starts no turn.
 
 ```sh
-bin/chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all
-pbpaste | bin/chi note --source slack 3f2a 8c1d
+chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all
+pbpaste | chi note --source slack 3f2a 8c1d
 ```
 
 - The text comes from `-m` or stdin (a terminal on stdin is a usage error, not a wait). It is stripped; an empty note or one over 16 KiB is refused, never cut. `--source` (default `cli`) names where it came from. `--all` is every live session.
@@ -73,7 +73,7 @@ On macOS, `chi desktop install` does this with a native panel from the Services 
 
 ```sh
 export PATH="$HOME/.local/share/mise/shims:$PATH"   # wherever your ruby lives
-chi="$HOME/projects/samagotchi/bin/chi"
+chi="/full/path/to/chi"   # `command -v chi` in your shell prints it
 list=$("$chi" sessions list --live --scope=all --format tsv)
 [ -z "$list" ] && { osascript -e 'display notification "No live chi sessions" with title "chi note"'; exit 0; }
 picked=$(osascript - "$list" <<'OSA'
@@ -116,10 +116,10 @@ cancel during its thinking, it said it had never been asked.
 `chi send` is the other half of `chi note`: the text goes in as your message, the same as typing it in the attached terminal or the web composer, so a turn runs.
 
 ```sh
-bin/chi send [-m TEXT] (ID|PREFIX)...
-bin/chi send -m "is this the same bug?" 3fa2           # a message
-pbpaste | bin/chi send -m "is this the same bug?" 3fa2  # the clipboard quoted above the message
-pbpaste | bin/chi send 3fa2                             # the clipboard is the message
+chi send [-m TEXT] (ID|PREFIX)...
+chi send -m "is this the same bug?" 3fa2           # a message
+pbpaste | chi send -m "is this the same bug?" 3fa2  # the clipboard quoted above the message
+pbpaste | chi send 3fa2                             # the clipboard is the message
 ```
 
 - With both stdin and `-m`, stdin is context: each line becomes a `> ` quote (as web annotations quote a selection), then a blank line, then the message. With only one, it goes in as is. A terminal on stdin is ignored. Both empty is a usage error; over 16 KiB is refused, never cut.
@@ -144,12 +144,12 @@ The `delegate` tool hands a task to a **child session**: an ordinary chi session
 **Ordering:**
 
 - `Session.list` / `SessionManager.list_sessions` / `GET /api/sessions?sort=&order=&limit=&offset=` default to `updated_at desc` (newest activity first). Also supports `created_at`, `asc`. `X-Total-Count` header when paginated.
-- Web UI (`bin/chi web`): the page's scope is in its URL. Started in a git repo, `chi web` opens `/?dir=<that folder>`: that project's sessions, and new chats start in that folder; the header chip says `<project> · all`, and `all` opens the same place without `?dir` (every session; a new chat there starts in the server's own folder, shown on the start page, and cards name their folder; `← <project>` goes back to the project view it came from, or to the server's own project). One server serves every project: a second `chi web` (from another repo) finds it through `GET /api/info` and prints (with `--open`, opens) its page for its own folder instead of starting another. The 3 latest sessions sit above the chat; "All sessions" (or `/`) opens every session at `#/sessions`, with a search over preview, id and status (Esc or Back returns). The open session is in the URL (`#/s/<id>`), so a reload or a copied link opens it again; the chi logo top left goes back to the empty start for a new chat. The message box grows with its text; drag its top edge to keep it taller (double-click resets). The info bar copies `chi --attach <id>` for a terminal. The start page's model picker (bottom left of the composer, `host:model ▾`) chooses the model a new chat starts on: `GET /api/models` lists the hosts' models as chi spells them (`{default, models: [{name, host, id}], warning?}`; bare for the default host, `host:model` for the others, from the same cached lists as `/models`, a bounded wait, a host that is down noted in `warning`), and `POST /api/sessions` takes `model` (blank means the default). The browser remembers the last choice; a running session's model is in the info bar and changes only with `/model`.
+- Web UI (`chi web`): the page's scope is in its URL. Started in a git repo, `chi web` opens `/?dir=<that folder>`: that project's sessions, and new chats start in that folder; the header chip says `<project> · all`, and `all` opens the same place without `?dir` (every session; a new chat there starts in the server's own folder, shown on the start page, and cards name their folder; `← <project>` goes back to the project view it came from, or to the server's own project). One server serves every project: a second `chi web` (from another repo) finds it through `GET /api/info` and prints (with `--open`, opens) its page for its own folder instead of starting another. The 3 latest sessions sit above the chat; "All sessions" (or `/`) opens every session at `#/sessions`, with a search over preview, id and status (Esc or Back returns). The open session is in the URL (`#/s/<id>`), so a reload or a copied link opens it again; the chi logo top left goes back to the empty start for a new chat. The message box grows with its text; drag its top edge to keep it taller (double-click resets). The info bar copies `chi --attach <id>` for a terminal. The start page's model picker (bottom left of the composer, `host:model ▾`) chooses the model a new chat starts on: `GET /api/models` lists the hosts' models as chi spells them (`{default, models: [{name, host, id}], warning?}`; bare for the default host, `host:model` for the others, from the same cached lists as `/models`, a bounded wait, a host that is down noted in `warning`), and `POST /api/sessions` takes `model` (blank means the default). The browser remembers the last choice; a running session's model is in the info bar and changes only with `/model`.
 - The web frontend is a zero-build ES-module stack in `lib/samagotchi/web/public/`: `data.js` (retrieval, typed SSE `openStream` for a session and `openEvents` for the session list), `sessions_list.js` (the list as a pure reducer over `GET /api/events`: a snapshot replaces it, an upsert keeps a known card in place, a removal drops it), `app.js` (presentation/state; a session with no live stream gets one when its `session` event says `bridge_up`, after one re-read: `event_seq` starts over in each worker, so a dropped stream is never resumed with its old cursor), `format.js` (pure formatters such as `previewOf`). Unit-tested via `npm test` (`node --test spec/web/public/*.test.js`).
 - Selecting a session in the web UI is read-only: `GET /api/sessions/:id` never spawns a worker (it reads a live worker's snapshot when one runs, else the session file). A prompt (`POST /turn`) or a command (`POST /command`) wakes the worker, and `/stream` briefly waits for a freshly-spawned bridge before answering. A caught-up SSE reconnect holds the stream open; `reset` markers are only sent for reconnects behind the ring window, or with a cursor from another worker (event ids are `<event_seq>-<epoch>`, one epoch per worker).
 
 **Test-session hygiene:**
 
 - New sessions set `test_run:true` when `SAMAGOTCHI_ENV=test` or `RACK_ENV=test` or `CI` is set (explicit flag, `metadata_version` 2). Old sessions without the flag load as `test_run:false`.
-- Test runs are tagged and obey the same retention. `bin/chi sessions clean` deletes every test session whatever its age (`--days N`: only those older than N days); a live worker or a `keep_status` status still keeps one. `bin/chi sessions prune --test-only` applies the usual age and count rules to test sessions only.
-- For ad-hoc manual QA use `SAMAGOTCHI_ENV=test XDG_STATE_HOME=/tmp/chi-test-$USER bin/chi ...` to isolate from real state; the flag also marks sessions that `chi web` or an attached `chi` spawn (their workers inherit the environment), so `clean` finds them if they land in the real state.
+- Test runs are tagged and obey the same retention. `chi sessions clean` deletes every test session whatever its age (`--days N`: only those older than N days); a live worker or a `keep_status` status still keeps one. `chi sessions prune --test-only` applies the usual age and count rules to test sessions only.
+- For ad-hoc manual QA use `SAMAGOTCHI_ENV=test XDG_STATE_HOME=/tmp/chi-test-$USER chi ...` to isolate from real state; the flag also marks sessions that `chi web` or an attached `chi` spawn (their workers inherit the environment), so `clean` finds them if they land in the real state.

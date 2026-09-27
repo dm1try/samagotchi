@@ -304,6 +304,6 @@ Notes:
 
 Lifecycle:
 
-- `bin/chi bundle install <source>` copies `hooks/*.rb` to `~/.config/samagotchi/memories/.bundles/<name>/hooks/` and persists metadata + `trust_level` + `source_commit` (git HEAD) to provenance.
+- `chi bundle install <source>` copies `hooks/*.rb` to `~/.config/samagotchi/memories/.bundles/<name>/hooks/` and persists metadata + `trust_level` + `source_commit` (git HEAD) to provenance.
 - `Engine.new` loads `config.yml` hooks first, then bundle hooks via `Provenance.each_installed_holding_hooks` → `Hooks::BundleLoader.load`. Bundle hooks are process-scoped (they survive the per-turn `clear_hooks`; only plain hooks are cleared). Experimental bundles emit a one-line startup warning.
-- `bin/chi bundle status`, `diff`, `uninstall`, `build` are hook-aware (counts, metadata, removal).
+- `chi bundle status`, `diff`, `uninstall`, `build` are hook-aware (counts, metadata, removal).

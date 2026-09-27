@@ -53,7 +53,7 @@ Bundles are versioned directories/zips/tar.gz/git URLs with a `manifest.yml` and
 - Installing = trusting its Ruby code (hooks, plugin), like a gem. Install only copies; the code runs at the next session start (`Engine.new`), so a running worker needs a restart to pick it up.
 - A bundle without `*.md` (btw, mcp, loop-guard) adds no line to the prompt's memory index.
 
-### CLI — `bin/chi bundle`
+### CLI — `chi bundle`
 
 | Command | Purpose |
 |---------|---------|
@@ -71,21 +71,21 @@ Bundles are versioned directories/zips/tar.gz/git URLs with a `manifest.yml` and
 **Example flows:**
 ```bash
 # export your system memories (all files) to zip
-bin/chi bundle build --scope system --out my-prefs.zip
+chi bundle build --scope system --out my-prefs.zip
 
 # export just two entries, custom name/version, to dir
-bin/chi bundle build --scope system --name my-bundle --version 1.2.0 --out ./my-bundle/ identity.md commit_preferences.md
+chi bundle build --scope system --name my-bundle --version 1.2.0 --out ./my-bundle/ identity.md commit_preferences.md
 
 # install a bundle shared by a teammate
-bin/chi bundle install ./my-bundle --scope system
-bin/chi bundle install https://github.com/org/bundle.git#v1.2.0 --scope system --force
+chi bundle install ./my-bundle --scope system
+chi bundle install https://github.com/org/bundle.git#v1.2.0 --scope system --force
 
 # check what would change and upgrade
-bin/chi bundle upgrade ./my-bundle --dry-run
-bin/chi bundle upgrade ./my-bundle  # auto-merges, warns on conflicts
+chi bundle upgrade ./my-bundle --dry-run
+chi bundle upgrade ./my-bundle  # auto-merges, warns on conflicts
 
 # share again after editing
-bin/chi bundle build --scope system --out updated.zip
+chi bundle build --scope system --out updated.zip
 ```
 
 ### Provenance internals (for debugging)
@@ -98,8 +98,8 @@ bin/chi bundle build --scope system --out updated.zip
 1. **Discover first:** read the index (`memory_read ""`) before assuming entries exist. Prefer scoped reads when you know the scope.
 2. **Prefer project scope** for repo decisions; `system` for cross-project identity/preferences.
 3. **One concept per file:** small files merge and share better than monoliths.
-4. **Use bundles for sharing:** `build` → zip → share → `install`. Do not copy raw `~/.config` paths in docs — give `bin/chi bundle install <url>` instructions.
-5. **Respect local edits:** installs skip existing files by default; use `--force` only when the user explicitly wants overwrite. Upgrades preserve edits (`keep`) or report `conflict` — guide the user to resolve via `memory_read`/`memory_write` or `bin/chi bundle diff <bundle>` + `--force`.
+4. **Use bundles for sharing:** `build` → zip → share → `install`. Do not copy raw `~/.config` paths in docs — give `chi bundle install <url>` instructions.
+5. **Respect local edits:** installs skip existing files by default; use `--force` only when the user explicitly wants overwrite. Upgrades preserve edits (`keep`) or report `conflict` — guide the user to resolve via `memory_read`/`memory_write` or `chi bundle diff <bundle>` + `--force`.
 6. **Keep secrets out:** never write tokens/keys to memories — they are plain files and go into bundles.
 
 ## Current system bundle

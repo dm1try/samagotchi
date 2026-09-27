@@ -21,7 +21,7 @@ require "samagotchi"
 # bundles (read-only, offline) — lets the agent find its own code and state.
 if ARGV[0] == "self"
   if %w[-h --help help].include?(ARGV[1])
-    puts "Usage: bin/chi self"
+    puts "Usage: chi self"
     puts "  Print version, source dir, config/memory/session paths, model/host and bundles."
     exit 0
   end
@@ -38,7 +38,7 @@ if ARGV[0] == "sessions"
   sessions_args = ARGV[1..] || []
   sub = sessions_args[0]
   if sub.nil? || %w[-h --help help].include?(sub)
-    puts "Usage: bin/chi sessions <list|stop|delete|prune|clean> [options]"
+    puts "Usage: chi sessions <list|stop|delete|prune|clean> [options]"
     puts "  list [--sort updated_at|created_at] [--order desc|asc] [--limit N]"
     puts "       [--live] [--cwd PATH] [--format text|json|tsv]"
     puts "       --live: sessions a worker runs now (the ones chi note reaches), 10 unless --limit"
@@ -243,7 +243,7 @@ if ARGV[0] == "bundle"
   bundle_args = ARGV[1..] || []
   sub = bundle_args[0]
   if sub.nil? || %w[-h --help help].include?(sub)
-    puts "Usage: bin/chi bundle <install|upgrade|uninstall|status|diff|list|build> [options]"
+    puts "Usage: chi bundle <install|upgrade|uninstall|status|diff|list|build> [options]"
     puts ""
     puts "  install <source> [--scope system|project] [--force]"
     puts "    Install a memory bundle from a directory, zip, tar archive, or git URL."
@@ -362,7 +362,7 @@ if ARGV[0] == "bundle"
       if arg.start_with?("--")
         nxt = rest[i + 1]
         if %w[-h --help help].include?(arg)
-          puts "Usage: bin/chi bundle install <source> [--scope system|project] [--force]"
+          puts "Usage: chi bundle install <source> [--scope system|project] [--force]"
           puts ""
           puts "  install <source> [--scope system|project] [--force]"
           puts "    Install a memory bundle from a directory, zip, tar archive, or git URL,"
@@ -388,7 +388,7 @@ if ARGV[0] == "bundle"
       end
     end
     if source.nil? || source.empty?
-          warn "Usage: bin/chi bundle install <source> [--scope system|project] [--force]"
+          warn "Usage: chi bundle install <source> [--scope system|project] [--force]"
       exit 1
     end
     expanded_source = chi_expand_source(source)
@@ -428,7 +428,7 @@ if ARGV[0] == "bundle"
       if arg.start_with?("--")
         nxt = rest[i + 1]
         if %w[-h --help help].include?(arg)
-          puts "Usage: bin/chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]"
+          puts "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]"
           exit 0
         elsif arg == "--scope" && nxt
           scope = nxt; i += 2
@@ -451,7 +451,7 @@ if ARGV[0] == "bundle"
       end
     end
     if source.nil? || source.empty?
-          warn "Usage: bin/chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run]"
+          warn "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run]"
       exit 1
     end
     expanded_source = chi_expand_source(source)
@@ -562,7 +562,7 @@ if ARGV[0] == "bundle"
       if arg.start_with?("--")
         nxt = rest[i + 1]
         if %w[-h --help help].include?(arg)
-          puts "Usage: bin/chi bundle uninstall <bundle> [--scope system|project] [--force]"
+          puts "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]"
           exit 0
         elsif arg == "--scope" && nxt
           scope = nxt; i += 2
@@ -578,7 +578,7 @@ if ARGV[0] == "bundle"
       end
     end
     if bundle_name.nil? || bundle_name.empty?
-          warn "Usage: bin/chi bundle uninstall <bundle> [--scope system|project] [--force]"
+          warn "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]"
       exit 1
     end
     # Propagate overrides
@@ -672,7 +672,7 @@ if ARGV[0] == "bundle"
     bname = args[0]
     file_arg = args[1]
     if bname.nil? || bname.empty?
-          warn "Usage: bin/chi bundle diff <bundle> [file]"; exit 1
+          warn "Usage: chi bundle diff <bundle> [file]"; exit 1
     end
     prov = Samagotchi::MemoryBundle::Provenance.new(name: bname)
     data = prov.read
@@ -803,7 +803,7 @@ if ARGV[0] == "bundle"
       if arg.start_with?("--")
         nxt = rest[i + 1]
         if %w[-h --help help].include?(arg)
-          puts "Usage: bin/chi bundle build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
+          puts "Usage: chi bundle build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
           puts ""
           puts "  build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
           puts "    Build local memories and installed hooks into a shareable bundle (dir or zip)."
@@ -811,9 +811,9 @@ if ARGV[0] == "bundle"
           puts "    FILES... optional allowlist of *.md basenames to include (default: all)."
           puts ""
           puts "  Examples:"
-          puts "    bin/chi bundle build --scope system"
-          puts "    bin/chi bundle build --scope project --name my-bundle --version 1.0.0 --out bundle.zip"
-          puts "    bin/chi bundle build --scope system --out ./my-bundle/ identity.md work.md"
+          puts "    chi bundle build --scope system"
+          puts "    chi bundle build --scope project --name my-bundle --version 1.0.0 --out bundle.zip"
+          puts "    chi bundle build --scope system --out ./my-bundle/ identity.md work.md"
           exit 0
         elsif arg == "--scope" && nxt && !nxt.start_with?("--")
           scope = nxt; i += 2
@@ -907,14 +907,14 @@ end
 
 parser = OptionParser.new do |opts|
   opts.banner = <<~BANNER
-    Usage: bin/chi [options]
-           bin/chi web [--port PORT] [--open] [--scope=all]   the web UI
-           bin/chi sessions <list|stop|delete|prune|clean>
-           bin/chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
-           bin/chi send [-m TEXT] ID...         a message into sessions, as if typed there
-           bin/chi bundle <install|upgrade|uninstall|status|diff|list|build>
-           bin/chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
-           bin/chi self                         version, paths, model and bundles
+    Usage: chi [options]
+           chi web [--port PORT] [--open] [--scope=all]   the web UI
+           chi sessions <list|stop|delete|prune|clean>
+           chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
+           chi send [-m TEXT] ID...         a message into sessions, as if typed there
+           chi bundle <install|upgrade|uninstall|status|diff|list|build>
+           chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
+           chi self                         version, paths, model and bundles
     (each subcommand takes --help)
 
   BANNER

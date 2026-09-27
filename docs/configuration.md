@@ -72,7 +72,7 @@ Behavior:
 - Real environment variables still win over config-file values.
 - Workers inherit hosts via `SAMAGOTCHI_HOSTS_JSON` propagated through `SessionManager.spawn_options`.
 
-This lets you run `bin/chi` without repeating common defaults such as model
+This lets you run `chi` without repeating common defaults such as model
 and llama host/port on every invocation.
 
 Note: The global config file supports both flat scalar entries (for env vars)

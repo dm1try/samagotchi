@@ -14,7 +14,7 @@ Single registry `Samagotchi::Config` (`Config::ENTRIES` in `lib/samagotchi/confi
 
 - **ENV**: `SAMAGOTCHI_NESTED_PARAM` (UPPER + `SAMAGOTCHI_` + `_` = nesting dot)
 - **YAML**: `nested: { param: value }` → dotted `nested.param` (lower `snake_case`, leaf keeps `_`; kebab alias `base-url` also accepted and normalized)
-- **CLI**: `--nested-param` (kebab, `_` → `-` for both section+leaf; `--nested_param` is rejected as unknown by `bin/chi` with a "did you mean" hint)
+- **CLI**: `--nested-param` (kebab, `_` → `-` for both section+leaf; `--nested_param` is rejected as unknown by `chi` with a "did you mean" hint)
 
 Sections forbid `_`/`-` (`SECTION_RE` `/\A[a-z0-9]+\z/`); leaves keep `snake_case` in YAML (`base_url`) and become kebab in CLI (`base-url`) via registry derivation — no generic string split, registry lookup avoids flat vs nested collision.
 

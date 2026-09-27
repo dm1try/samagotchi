@@ -2,22 +2,22 @@
 
 ## Commands
 
-- `bin/chi` — start a session in a background worker and attach the terminal to it, so the Web UI (or another terminal) can share it (see [Sharing a session](#sharing-a-session))
-- `bin/chi -p "your prompt"` — run a prompt, then stay attached
-- `bin/chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
-- `bin/chi --resume <session-id>` — resume a prior session (in its worker)
-- `bin/chi --no-shared [--resume <session-id>]` — the plain in-process REPL instead, for this run
-- `bin/chi --attach <session-id>` — attach the terminal to a session's worker (e.g. one started from the Web UI), waking one if it has exited
-- A session id can be shortened to any unique prefix (like git): `bin/chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
-- `bin/chi web [--port 4567] [--open] [--scope=all]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
-- `bin/chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
-- `bin/chi web --no-web-turn-view` — show turns as the classic row of bubbles instead of the default turn view (each turn as one block of steps, the running one at the bottom); `?view=turn|chat` on the page URL overrides it (see [Web turn view](#web-turn-view))
-- `bin/chi sessions list|stop|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>` (see [Sessions](sessions.md))
-- `bin/chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
-- `bin/chi send [-m TEXT] (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context (see [Sessions: Sending a message](sessions.md#sending-a-message))
-- `bin/chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
-- `bin/chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles
-- `bin/chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs (see [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) and [the loop-guard bundle](plugins.md#the-loop-guard-bundle))
+- `chi` — start a session in a background worker and attach the terminal to it, so the Web UI (or another terminal) can share it (see [Sharing a session](#sharing-a-session))
+- `chi -p "your prompt"` — run a prompt, then stay attached
+- `chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
+- `chi --resume <session-id>` — resume a prior session (in its worker)
+- `chi --no-shared [--resume <session-id>]` — the plain in-process REPL instead, for this run
+- `chi --attach <session-id>` — attach the terminal to a session's worker (e.g. one started from the Web UI), waking one if it has exited
+- A session id can be shortened to any unique prefix (like git): `chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
+- `chi web [--port 4567] [--open] [--scope=all]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
+- `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
+- `chi web --no-web-turn-view` — show turns as the classic row of bubbles instead of the default turn view (each turn as one block of steps, the running one at the bottom); `?view=turn|chat` on the page URL overrides it (see [Web turn view](#web-turn-view))
+- `chi sessions list|stop|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>` (see [Sessions](sessions.md))
+- `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
+- `chi send [-m TEXT] (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context (see [Sessions: Sending a message](sessions.md#sending-a-message))
+- `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
+- `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles
+- `chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs (see [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) and [the loop-guard bundle](plugins.md#the-loop-guard-bundle))
 
 ## Flags
 
@@ -43,7 +43,7 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 
 Every setting in the config registry (`lib/samagotchi/config.rb`) that exposes a CLI
 flag also works as `--kebab-case VALUE`, e.g. `--server-host`, `--server-port`,
-`--read-truncate-at-bytes`. `bin/chi --help` lists them all.
+`--read-truncate-at-bytes`. `chi --help` lists them all.
 
 **Which loop runs.** There is no backend flag: the model's host decides. A host with
 `api: openai` in config.yml is driven through the OpenAI chat API (streamed; a remote
@@ -56,14 +56,14 @@ it sees one.
 
 | Command | Behavior |
 |---------|----------|
-| `bin/chi` | Start a fresh session in a worker and attach to it. |
-| `bin/chi -p "refactor this"` | Start a session in a worker, send the prompt, **stay attached**. |
-| `bin/chi -p "refactor this" --non-interactive` | Run one turn in this process, save, **exit** (no REPL, no worker). |
-| `bin/chi --non-interactive` | Harmless no-op exit; no session created, no error. |
-| `bin/chi --resume ID` | Resume session `ID` in a worker (or join the worker already running it) and attach. |
-| `bin/chi --resume ID -p "next step" --non-interactive` | Resume `ID`, run the prompt, save, exit. |
-| `bin/chi --resume ID -p "next step"` | Resume `ID`, send the prompt, **stay attached** to that session. |
-| `bin/chi --no-shared [...]` | The same, in the plain in-process REPL. |
+| `chi` | Start a fresh session in a worker and attach to it. |
+| `chi -p "refactor this"` | Start a session in a worker, send the prompt, **stay attached**. |
+| `chi -p "refactor this" --non-interactive` | Run one turn in this process, save, **exit** (no REPL, no worker). |
+| `chi --non-interactive` | Harmless no-op exit; no session created, no error. |
+| `chi --resume ID` | Resume session `ID` in a worker (or join the worker already running it) and attach. |
+| `chi --resume ID -p "next step" --non-interactive` | Resume `ID`, run the prompt, save, exit. |
+| `chi --resume ID -p "next step"` | Resume `ID`, send the prompt, **stay attached** to that session. |
+| `chi --no-shared [...]` | The same, in the plain in-process REPL. |
 
 Notes:
 
@@ -77,9 +77,9 @@ Notes:
 
 ### Sharing a session
 
-Plain `bin/chi` runs the session in a background worker and attaches the terminal
+Plain `chi` runs the session in a background worker and attaches the terminal
 to it (`session.shared`, default `true`). A worker's session can have any number
-of UIs at once: the Web UI and attached terminals (`bin/chi`, `--resume`,
+of UIs at once: the Web UI and attached terminals (`chi`, `--resume`,
 `--attach`). They all see the same turns as they happen, and any of them can send
 a prompt, also while a turn runs (it merges into that turn as steering). The
 first answer to an `ask_user_question` wins; the other UIs close their widget.
@@ -129,12 +129,12 @@ note or image) is deleted as its worker exits, and `/exit` says so; set
 `session.keep_empty: true` to keep such sessions. See
 [Sessions](sessions.md).
 
-`bin/chi sessions stop ID...` stops each session's worker and waits for it to exit, so
-a `bin/chi --resume ID` after it starts a fresh one. A worker still running an
+`chi sessions stop ID...` stops each session's worker and waits for it to exit, so
+a `chi --resume ID` after it starts a fresh one. A worker still running an
 older chi (from before an upgrade) takes turns but not commands; the attached
 terminal and the Web UI say so, with that restart line.
 
-`bin/chi sessions delete [--force] ID...` deletes sessions for good: the
+`chi sessions delete [--force] ID...` deletes sessions for good: the
 session file and its whole directory (notes, images, queued input). Each id
 (or unique prefix) gets one line: `deleted`, or `refused` with the reason. A
 session whose worker runs is refused unless `--force` stops the worker first;
@@ -252,7 +252,7 @@ responses as HTML, enable the renderer for the web server (it uses
 Bundler, `gem install commonmarker`):
 
 ```sh
-bin/chi web --web-markdown
+chi web --web-markdown
 ```
 
 The setting also supports `SAMAGOTCHI_WEB_MARKDOWN=true` or the global config:
@@ -301,7 +301,7 @@ reasoning is saved with each step for this (never sent back to the model);
 steps saved before that have none, so they show no thinking.
 
 ```sh
-bin/chi web --no-web-turn-view   # the classic chat view; --web-turn-view is the default
+chi web --no-web-turn-view   # the classic chat view; --web-turn-view is the default
 ```
 
 The setting also supports `SAMAGOTCHI_WEB_TURN_VIEW=false` or the global config:

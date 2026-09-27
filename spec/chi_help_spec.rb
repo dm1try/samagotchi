@@ -37,7 +37,8 @@ RSpec.describe "chi --help" do
   it "names the subcommands" do
     out, = Open3.capture3(RbConfig.ruby, chi, "--help", stdin_data: "")
 
-    %w[web sessions note bundle self].each { |sub| expect(out).to include("bin/chi #{sub} ") }
+    %w[web sessions note bundle self].each { |sub| expect(out).to include("chi #{sub} ") }
+    expect(out).not_to include("bin/chi") # what an installed gem's user types
   end
 
   it "prints its version with --version" do
