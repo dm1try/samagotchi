@@ -119,6 +119,16 @@ RSpec.describe "The source-links bundle" do
       expect(notices.map { |n| n[:text] }).to eq(["sources: JIRA JIRA-10 → https://myjira.com/browse/JIRA-10"])
     end
 
+    it "stops a bare URL at an unbalanced closing paren" do
+      fire([model("(https://x.com/a)JIRA-4")])
+      expect(notices.map { |n| n[:text] }).to eq(["sources: JIRA JIRA-4 → https://myjira.com/browse/JIRA-4"])
+    end
+
+    it "keeps a balanced paren inside a bare URL" do
+      fire([model("see https://en.wikipedia.org/wiki/JIRA-8_(bar) and JIRA-9")])
+      expect(notices.map { |n| n[:text] }).to eq(["sources: JIRA JIRA-9 → https://myjira.com/browse/JIRA-9"])
+    end
+
     it "skips a ref in a markdown link's label when the target names the same ref" do
       fire([model("[JIRA-123](https://x.com/JIRA-123) plus JIRA-10")])
       expect(notices.map { |n| n[:text] }).to eq(["sources: JIRA JIRA-10 → https://myjira.com/browse/JIRA-10"])
@@ -127,6 +137,11 @@ RSpec.describe "The source-links bundle" do
     it "links a ref in a markdown link's label when the target is something else" do
       fire([model("[fix for JIRA-123](https://github.com/o/r/pull/9)")])
       expect(notices.map { |n| n[:text] }).to eq(["sources: JIRA JIRA-123 → https://myjira.com/browse/JIRA-123"])
+    end
+
+    it "announces a label ref when the target names a different ref (JIRA-1 vs JIRA-12)" do
+      fire([model("[JIRA-1](https://myjira.com/browse/JIRA-12)")])
+      expect(notices.map { |n| n[:text] }).to eq(["sources: JIRA JIRA-1 → https://myjira.com/browse/JIRA-1"])
     end
 
     it "skips a ref in a markdown link's target" do

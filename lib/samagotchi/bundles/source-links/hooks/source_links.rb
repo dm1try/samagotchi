@@ -116,11 +116,35 @@ class SourceLinks
 
   # The [start, end) character ranges of the answer that are a bare URL
   # (scheme-anchored, `[a-z][a-z0-9+.\-]*://\S+`). A ref inside one is not
-  # linked again.
+  # linked again. The span stops at the first `)` that no `(` inside the URL
+  # balances — so `(https://x.com/a)` ends before the `)`, while
+  # `…/Foo_(bar)` keeps it.
   def bare_url_spans(text)
     spans = []
-    text.scan(URL_SPAN) { spans << Regexp.last_match.offset(0) }
+    text.scan(URL_SPAN) do
+      match = Regexp.last_match
+      finish = trim_url_end(match[0], match.begin(0), match.end(0))
+      spans << [match.begin(0), finish] if finish > match.begin(0)
+    end
     spans
+  end
+
+  # The end offset of a URL match after trimming its tail: the span stops at
+  # the first `)` that no `(` inside the URL balances.
+  def trim_url_end(url, start, finish)
+    depth = 0
+    url.each_char.with_index do |char, index|
+      if char == "("
+        depth += 1
+      elsif char == ")"
+        if depth.zero?
+          finish = start + index
+          break
+        end
+        depth -= 1
+      end
+    end
+    finish
   end
 
   # A markdown link's label and target ranges, with the target text. A ref in
@@ -149,8 +173,19 @@ class SourceLinks
     links.any? do |link|
       in_target = start >= link[:target][0] && finish <= link[:target][1]
       in_label = start >= link[:label][0] && finish <= link[:label][1]
-      in_target || (in_label && link[:target_text].include?(text[start...finish]))
+      in_target || (in_label && target_names_ref?(link[:target_text], text[start...finish]))
     end
+  end
+
+  # True when the link target names the ref as a whole token: the lookarounds
+  # reject a ref character (letter, digit or `-`) immediately before or after
+  # the ref. So `[JIRA-1](…/JIRA-12)` is NOT skipped (the target names
+  # JIRA-12), while `[JIRA-123](…/JIRA-123)` is. Note this is stricter than
+  # the bare-text scan's `\b`, which treats `-` as a boundary: `…/JIRA-1-foo`
+  # would match there but not here.
+  def target_names_ref?(target, ref)
+    escaped = Regexp.escape(ref)
+    target.match?(/(?<![A-Za-z0-9\-])#{escaped}(?![A-Za-z0-9\-])/)
   end
 
   # A ref glued to URL punctuation is part of a link too, even when the span
