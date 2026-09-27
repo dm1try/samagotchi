@@ -3,9 +3,13 @@
 An agent harness that relies heavily on memory. Samagotchi is the engine; chi
 (pronounced "chee") is its short name and CLI command.
 
+> **Pre-1.0:** config and commands may change between minor versions (0.2 →
+> 0.3); the [CHANGELOG](CHANGELOG.md) says what changed. chi is used daily and
+> stable.
+
 ## Requirements
 
-- Ruby 3.0+ and Bundler
+- Ruby 3.3+
 - A model server: [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server`
   by default; mlx-lm, oMLX and OpenAI-compatible servers also work
   (see [Configuration](docs/configuration.md#model-server-transport))
@@ -13,12 +17,20 @@ An agent harness that relies heavily on memory. Samagotchi is the engine; chi
 ## Install
 
 ```sh
-git clone https://github.com/dm1try/samagotchi && cd samagotchi
-bundle install
-bin/chi self        # version, source dir, config and memory paths
+gem install samagotchi
+chi self            # version, source dir, config and memory paths
 ```
 
-To put `chi` on your PATH, install it as a local gem: `bundle exec rake gem:install`.
+### From source
+
+```sh
+git clone https://github.com/dm1try/samagotchi && cd samagotchi
+bundle install
+bin/chi self
+```
+
+`bin/chi` runs the checkout; `bundle exec rake gem:install` installs it as a
+local gem, which puts `chi` on your PATH.
 
 ## Configure
 
@@ -38,14 +50,14 @@ Other settings (multiple hosts, transports, timeouts, the idle recap) are in
 ## Use
 
 ```sh
-bin/chi                                       # interactive session the web UI can join too
-bin/chi --no-shared                           # the plain in-process REPL
-bin/chi -p "explain lib/" --non-interactive   # one turn, print the answer, exit
-bin/chi --resume <session-id>                 # continue a saved session
-bin/chi web --open                            # web UI: this project's sessions (--scope=all: every one)
-bin/chi sessions list                         # this project's saved sessions (--scope=all: every one)
-pbpaste | bin/chi note --source slack <id>    # background context for a session (no turn)
-pbpaste | bin/chi send -m "same bug?" <id>    # a message to a session, the clipboard quoted above it
+chi                                       # interactive session the web UI can join too
+chi --no-shared                           # the plain in-process REPL
+chi -p "explain lib/" --non-interactive   # one turn, print the answer, exit
+chi --resume <session-id>                 # continue a saved session
+chi web --open                            # web UI: this project's sessions (--scope=all: every one)
+chi sessions list                         # this project's saved sessions (--scope=all: every one)
+pbpaste | chi note --source slack <id>    # background context for a session (no turn)
+pbpaste | chi send -m "same bug?" <id>    # a message to a session, the clipboard quoted above it
 ```
 
 `@shot.png` in a prompt (or a pasted/dropped image in the web UI) shows the model an image, when it can see them; see [Images](docs/cli.md#images).
@@ -88,6 +100,9 @@ once, for the session, for the repo, or for the whole rule in the repo.
 
 ## Documentation
 
+- [CHANGELOG](CHANGELOG.md): what changed in each release
+- [Releasing](docs/releasing.md): versions, the changelog, how a release is published
+
 - [CLI and REPL](docs/cli.md): flags, sharing a session, web UI, `/model`, status line
 - [Configuration](docs/configuration.md): `config.yml`, hosts, model server transports, timeouts, retries, logs
 - [Memory](docs/memory.md): scopes and model-specific overlays
@@ -105,3 +120,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 bundle exec rspec    # Ruby specs
 npm test             # web frontend specs
 ```
+
+## License
+
+MIT, see [LICENSE](LICENSE).
