@@ -2,10 +2,14 @@
 
 module Samagotchi
   class Bridge
-    # The last cards (Engine#show_card) and between-turns notices
-    # (:hook_notice with between_turns), for a UI that joins later: the
-    # Bridge's snapshot[:cards]. A persistent observer, like
-    # TurnAccumulator.
+    # The last cards (Engine#show_card) and hook notices (:hook_notice),
+    # for a UI that joins later: the Bridge's snapshot[:cards]. A
+    # persistent observer, like TurnAccumulator.
+    #
+    # A turn's own notice (no between_turns) is in_turn like a turn's card,
+    # with the step it came in: +iteration+ and +calls+, the calls of that
+    # iteration started before it (a before_tool_call hook's notice comes
+    # before its call's row, so the web puts it above row calls + 1).
     #
     # A card with an earlier card's id replaces it where it was. Each entry
     # says where it belongs as the recap does: +turns_since+, the turns
@@ -27,6 +31,8 @@ module Samagotchi
         @entries = []
         @turns_done = 0
         @running = false
+        @iteration = nil
+        @calls = 0
       end
 
       def call(event)
@@ -56,7 +62,16 @@ module Samagotchi
 
       def fold(event)
         case event[:type]
-        when :turn_started then @running = true
+        when :turn_started
+          @running = true
+          @iteration = nil
+          @calls = 0
+        when :generation_started
+          @iteration = event[:iteration]
+          @calls = 0
+        when :tool_call_started
+          @iteration = event[:iteration]
+          @calls = event[:call_index].to_i
         when :turn_failed
           @running = false
           settle_during(after_turn: false)
@@ -65,7 +80,7 @@ module Samagotchi
           @turns_done += 1
           settle_during(after_turn: true)
         when :card then add_card(event)
-        when :hook_notice then add_notice(event) if event[:between_turns]
+        when :hook_notice then add_notice(event)
         end
       end
 
@@ -94,7 +109,12 @@ module Samagotchi
       end
 
       def add_notice(event)
-        push(event.slice(:type, :hook, :text, :level).merge(in_turn: false, turns: @turns_done))
+        notice = event.slice(:type, :hook, :text, :level)
+        if event[:between_turns] || !@running
+          push(notice.merge(in_turn: false, turns: @turns_done))
+        else
+          push(notice.merge(in_turn: true, turns: @turns_done, iteration: @iteration, calls: @calls).compact)
+        end
       end
 
       def push(entry)

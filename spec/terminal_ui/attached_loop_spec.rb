@@ -231,6 +231,10 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       joined[:snapshot][:cards] = [
         card("old", "Old", turns_since: 1, current: false),
         { type: "hook_notice", hook: "plugin.rb (bundle sample-plugin)", text: "saved", level: "info", turns_since: 0, current: false },
+        # A turn's own notices: the last turn's steps aren't shown, the running one's come with its parts.
+        { type: "hook_notice", hook: "plugin.rb (bundle sample-plugin)", text: "last turn's", level: "info", in_turn: true, iteration: 1, calls: 0,
+          turns_since: 0, current: false },
+        { type: "hook_notice", hook: "plugin.rb (bundle sample-plugin)", text: "running turn's", level: "info", in_turn: true, turns_since: 0, current: true },
         card("new", "New", turns_since: 0, current: false, updated: true),
         card("mid", "Mid", in_turn: true, turns_since: 0, current: true)
       ]

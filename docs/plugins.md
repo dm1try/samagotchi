@@ -485,9 +485,10 @@ completed turn stays in its step.
 An [anytime command](#anytime-true)'s cards show as it shows them, after its
 line, in every UI, whether a turn runs or not.
 
-A worker keeps its last 20 cards, and the notices a plugin sent between
-turns, for a UI that joins later. The web shows them where they arrived
-after a reload; the attached TUI shows the ones since the last turn when it
+A worker keeps its last 20 cards and hook notices, for a UI that joins
+later. The web shows them where they arrived after a reload (a turn's
+notice as a row of its step, above the call it came before); the attached
+TUI shows the cards and between-turns notices since the last turn when it
 joins. They live as long as the worker: an idle exit or a restart forgets
 them, and they are not saved with the session.
 

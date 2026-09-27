@@ -119,7 +119,7 @@ RSpec.describe "Cards" do
       notices = seen.select { |e| e[:type] == :hook_notice }
       expect(notices.map { |e| [e[:text], e[:level], e[:between_turns]] }).to eq([["saved", :warn, true], ["in a turn", :info, nil]])
       expect(notices.first[:hook]).to eq("plugin.rb (bundle sample)")
-      expect(store.list.map { |e| e[:text] }).to eq(["saved"])
+      expect(store.list.map { |e| [e[:text], e[:in_turn]] }).to eq([["saved", false], ["in a turn", true]])
     end
   end
 
@@ -183,11 +183,39 @@ RSpec.describe "Cards" do
       expect(store.list.first).to include(title: "answer", in_turn: false, current: false, turns_since: 0)
     end
 
-    it "keeps between-turns notices, not a turn's" do
+    it "keeps between-turns notices" do
       store.call({ type: :hook_notice, hook: "plugin.rb (bundle b)", text: "saved", level: :info, between_turns: true })
-      store.call({ type: :hook_notice, hook: "h", text: "in a turn", level: :info })
       expect(store.list).to eq([{ type: :hook_notice, hook: "plugin.rb (bundle b)", text: "saved", level: :info,
                                   in_turn: false, turns_since: 0, current: false }])
+    end
+
+    it "keeps a turn's notices with the step and the calls started before each" do
+      store = described_class.new
+      turn = ->(*types) { types.each { |type| store.call({ type: type }) } }
+      notice = ->(text) { store.call({ type: :hook_notice, hook: "h", text: text, level: :warn }) }
+      turn.call(:turn_started)
+      notice.call("before any step")
+      store.call({ type: :generation_started, iteration: 1 })
+      notice.call("before call 1")
+      store.call({ type: :tool_call_started, iteration: 1, call_index: 1 })
+      notice.call("after call 1")
+      store.call({ type: :generation_started, iteration: 2 })
+      notice.call("in step 2")
+      expect(store.list.last).to include(in_turn: true, current: true, iteration: 2, calls: 0)
+      turn.call(:turn_canceled)
+
+      expect(store.list.map { |e| [e[:text], e[:iteration], e[:calls], e[:in_turn], e[:turns_since], e[:current]] }).to eq(
+        [["before any step", nil, 0, true, 0, false], ["before call 1", 1, 0, true, 0, false],
+         ["after call 1", 1, 1, true, 0, false], ["in step 2", 2, 0, true, 0, false]]
+      )
+      turn.call(:turn_started, :turn_completed)
+      expect(store.list.map { |e| e[:turns_since] }.uniq).to eq([1])
+    end
+
+    it "keeps a notice that comes after its turn ended (an after_turn hook's) before the next turn" do
+      turn(:turn_started, :turn_completed)
+      store.call({ type: :hook_notice, hook: "h", text: "after", level: :info })
+      expect(store.list.first).to include(in_turn: false, turns_since: 0, current: false)
     end
   end
 
