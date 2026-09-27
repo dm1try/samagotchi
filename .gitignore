@@ -4,3 +4,4 @@ memories/
 tmp/
 *.gem
 .samagotchi_memories/
+.claude/
