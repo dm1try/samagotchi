@@ -143,10 +143,7 @@ module Samagotchi
     end
 
     # A plugin tool's label, what the UIs show for its raw name.
-    def plugin_label(name)
-      label = plugin_tool?(name) ? tools[name].label.to_s.strip : ""
-      label.empty? ? nil : label
-    end
+    def plugin_label(name) = ToolActivity.plugin_label(name, registry: tools)
 
     # The Engine sets the kernel's gate (its context, later the approval
     # flow); a bare kernel (specs) gets one that only runs the hooks.

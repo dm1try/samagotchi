@@ -60,6 +60,24 @@ RSpec.describe "Engine guardrail wiring" do
       expect([result.decision, result.scope]).to eq([:allow, "repo"])
     end
 
+    it "asks about a plugin tool by its label, as its row shows it" do
+      engine.interface = :worker
+      engine.instance_variable_get(:@tools).register("mcp_x_echo", schema: { name: "mcp_x_echo" }, handler: ->(*) { "" },
+                                                                   label: "x: echo", source: "mcp")
+      v = Samagotchi::Guardrails::Verdict.new(call: { name: "mcp_x_echo", args: { "message" => "hi" } })
+      v.ask!("an MCP tool", rule: "mcp-ask", source: "config", scopes: %w[once])
+      v.context = engine.guardrail_context
+      v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context)
+      thread = Thread.new { engine.request_approval(v) }
+      deadline = mono + 2
+      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+      pending = engine.pending_question
+      expect(pending[:approval]).to include(tool: "mcp_x_echo", label: "x: echo")
+      expect(pending[:question].lines.first).to start_with("x: echo: ")
+      engine.cancel_question("dismissed", id: pending[:id])
+      thread.join(2)
+    end
+
     it "denies when the worker's question is dismissed" do
       engine.interface = :worker
       result = nil

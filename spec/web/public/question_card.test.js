@@ -27,6 +27,16 @@ test("approvalView shows the command, where and why", () => {
   });
 });
 
+test("a plugin tool's approval names it by its label, as its row does", () => {
+  const pq = {
+    kind: "approval", header: "",
+    approval: { tool: "save_note", label: "saving note", paths: ["/r/secret.md"], cwd: "/r", reason: "secret" },
+  };
+  assert.equal(approvalView(pq).tool, "saving note");
+  assert.equal(summaryText(pq), "Approve saving note?");
+  assert.equal(summaryText(pq, { answer: { selected: ["Allow once"] } }), "saving note: /r/secret.md → Allowed: Allow once");
+});
+
 test("approvalView lists paths outside a repo and names a hook", () => {
   const view = approvalView({
     kind: "approval",

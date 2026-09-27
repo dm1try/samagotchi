@@ -1222,7 +1222,9 @@ module Samagotchi
         return verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it (non-interactive run).")
       end
 
-      payload = Guardrails::Approval.payload(verdict)
+      # A plugin tool is asked about by its label, as its row shows it.
+      label = ToolActivity.plugin_label(verdict.call[:name].to_s, registry: @tools)
+      payload = Guardrails::Approval.payload(verdict, label: label)
       Guardrails::Approval.settle(verdict, open_question(payload), payload[:approval][:scopes])
     end
 

@@ -17,12 +17,15 @@ module Samagotchi
       module_function
 
       # @param verdict [Verdict] an ask, with its targets and context
+      # @param label [String, nil] a plugin tool's label ("chrome:
+      #   screenshot"): the question names the tool by it, as its row does;
+      #   approval[:tool] stays the raw name
       # @return [Hash] open_question fields
-      def payload(verdict)
+      def payload(verdict, label: nil)
         scopes = offered_scopes(verdict)
         targets = verdict.targets
         {
-          question: question_text(verdict),
+          question: question_text(verdict, label: label),
           options: scopes.map { |scope| label(scope, verdict) } + [DENY],
           header: HEADER,
           multi_select: false,
@@ -30,6 +33,7 @@ module Samagotchi
           kind: KIND,
           approval: {
             tool: targets&.tool || verdict.call[:name].to_s,
+            label: label,
             command: targets&.command,
             paths: targets && !targets.paths.empty? ? targets.paths : nil,
             cwd: targets&.cwd,
@@ -99,9 +103,9 @@ module Samagotchi
       # execute: git push origin main
       #   in /path/to/repo (repo samagotchi, branch main)
       #   why: git push publishes commits (rule git-push, bundle guardrails)
-      def question_text(verdict)
+      def question_text(verdict, label: nil)
         targets = verdict.targets
-        tool = targets&.tool || verdict.call[:name].to_s
+        tool = label || targets&.tool || verdict.call[:name].to_s
         what = targets&.command || (targets && targets.paths.join(", "))
         what = Approval.args_text(targets&.args, limit: ARGS_CHARS) if what.to_s.empty?
         lines = ["#{tool}: #{what}"]

@@ -161,6 +161,14 @@ module Samagotchi
 
     def registry_entry(registry, tool_name) = registry && !tool_name.nil? ? registry[tool_name] : nil
 
+    # A plugin tool's label ("chrome: screenshot"), what the UIs show for
+    # its raw name; nil for a built-in, an unknown tool or an empty label.
+    def plugin_label(tool_name, registry:)
+      entry = registry_entry(registry, tool_name)
+      label = entry && !entry.core? ? entry.label.to_s.strip : ""
+      label.empty? ? nil : label
+    end
+
     # A registry tool's params: its preview, else each given argument as
     # key="value" (the parsers' args:, which a registry-less reader such as
     # the web's reload also has); nil for a tool the registry doesn't know

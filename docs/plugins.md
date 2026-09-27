@@ -689,8 +689,9 @@ bundles:
         reason: an MCP server's tool
   ```
 
-  An MCP tool has no `targets:`, so the question shows its arguments
-  (`mcp_everything_get_sum: a=20 b=22`), and "Allow this call for the
+  An MCP tool has no `targets:`, so the question shows its arguments,
+  under the tool's label as its row shows it (`everything: get_sum: a=20
+  b=22`; any plugin tool with a label is asked about by it), and "Allow this call for the
   session" (or in this repo) allows that tool with those arguments only.
 
 ## The loop-guard bundle

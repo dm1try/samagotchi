@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "samagotchi/guardrails"
+require "samagotchi/tools/registry"
 
 RSpec.describe Samagotchi::Guardrails::Approval do
   let(:dir) { File.realpath(Dir.mktmpdir("guard-appr")) }
@@ -42,6 +43,20 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       long = c.merge(args: { "text" => "x" * 400 })
       v.targets = Samagotchi::Guardrails::Targets.for(long, context, registry: registry)
       expect(described_class.payload(v)[:question].lines.first.chomp.length).to eq("mcp_x_echo: ".length + 300)
+    end
+
+    it "names a plugin tool by its label when given one; approval[:tool] stays the raw name" do
+      c = { name: "mcp_x_echo", args: { "message" => "hi" } }
+      v = Samagotchi::Guardrails::Verdict.new(call: c)
+      v.ask!("an MCP tool", rule: "mcp-ask", source: "config")
+      v.context = context
+      registry = Samagotchi::Tools::Registry.new
+      registry.register("mcp_x_echo", schema: { name: "mcp_x_echo" }, handler: ->(*) { "" }, source: "mcp")
+      v.targets = Samagotchi::Guardrails::Targets.for(c, context, registry: registry)
+      payload = described_class.payload(v, label: "x: echo")
+      expect(payload[:question].lines.first).to eq("x: echo: message=hi\n")
+      expect(payload[:approval]).to include(tool: "mcp_x_echo", label: "x: echo")
+      expect(described_class.payload(v)[:approval]).not_to have_key(:label)
     end
 
     it "names the repo and branch, and carries the structured approval" do
