@@ -44,6 +44,7 @@ Gem::Specification.new do |spec|
 
   # Runtime dependencies
   spec.add_dependency "reline", "~> 0.6.3" # the TUI seam uses private LineEditor methods
+  spec.add_dependency "json", ">= 2.9" # Ruby 3.3's json 2.7 pretty-prints {} as "{\n}" in the tool schemas of the prompt
   spec.add_dependency "nokogiri"
   spec.add_dependency "rack", ">= 2.0"
   spec.add_dependency "rackup"
