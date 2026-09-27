@@ -139,7 +139,7 @@ module Samagotchi
     # else fallback to default host.
     def host_for_model(raw_model)
       host_ref, bare = parse_qualified_model(raw_model)
-      # If qualified, try to resolve alias on the bare part (recap-box:small -> recap-box:gemma4-small)
+      # If qualified, try to resolve alias on the bare part (small-box:small -> small-box:gemma-small)
       if host_ref && bare
         begin
           aliases = ConfigFile.model_aliases
@@ -153,7 +153,7 @@ module Samagotchi
         # Unknown prefix — treat as bare model on default host
         return [default_entry, raw_model.to_s.strip]
       end
-      # Unqualified: also try alias resolution for discovery (small -> gemma4-small or small -> recap-box:gemma4-small)
+      # Unqualified: also try alias resolution for discovery (small -> gemma-small or small -> small-box:gemma-small)
       begin
         aliases = ConfigFile.model_aliases
         resolved = aliases.fetch(bare.to_s.strip.downcase, bare)

@@ -184,7 +184,7 @@ module Samagotchi
       # Coercion helpers
       def coerce(entry, raw)
         return nil if raw.nil?
-        # For string, preserve as-is (including trailing spaces like "Hey Chi, ")
+        # For string, preserve as-is (including trailing spaces like "Please ")
         if entry.type == :string
           str = raw.to_s
           return nil if str.empty? && entry.type != :string
@@ -812,7 +812,7 @@ module Samagotchi
     end
 
     # The top-level `models:` map: per-model settings keyed by model id or
-    # alias (downcased), e.g. `models: {ista: {profile: qwen36}}`. Values are
+    # alias (downcased), e.g. `models: {my-alias: {profile: qwen36}}`. Values are
     # kept as written (profile downcased; ModelProfile.resolve validates it);
     # an entry that is not a map is skipped.
     def model_settings(env: ENV, path: global_path(env: env))
@@ -839,7 +839,7 @@ module Samagotchi
 
       aliases = model_aliases(env: env, path: path)
       # Host-qualified handling: "host:alias" -> "host:resolved"
-      # This allows /model recap-box:small where "small" is an alias.
+      # This allows /model small-box:small where "small" is an alias.
       if value.include?(":") || value.include?("/")
         hosts_map = hosts || hosts_config(env: env, path: path)
         host, bare = parse_host_qualified_model(value, hosts: hosts_map)

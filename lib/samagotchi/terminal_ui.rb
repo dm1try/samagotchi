@@ -395,7 +395,7 @@ module Samagotchi
       # unconditionally preserves the original fresh-session prefill behavior.
       # Skip the default input prefill when a user-provided --prompt was used —
       # the explicit prompt means the user is in command and shouldn't see the
-      # default input ("Hey Chi," etc.) on the next REPL prompt.
+      # default input ("Please " etc.) on the next REPL prompt.
       queue_default_input if @prompt.nil?
 
       # The idle layer (reminders + optional recap) is Engine-owned; start the

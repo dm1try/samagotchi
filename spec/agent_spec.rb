@@ -418,7 +418,7 @@ file2.rb")
 
       expect(received_prompt).to include("Small-context retrieval protocol:")
       expect(received_prompt).to include("If the user provides file:line")
-      expect(received_prompt).to include("spec/agent_spec.rb:130")
+      expect(received_prompt).to include("src/app.rb:130")
       expect(received_prompt).to include("Read a full file only when targeted snippet extraction is insufficient")
     end
 
@@ -713,9 +713,9 @@ file2.rb")
     end
 
     it "returns the server segment when host is not localhost" do
-      ENV["SAMAGOTCHI_SERVER_HOST"] = "192.168.1.29"
+      ENV["SAMAGOTCHI_SERVER_HOST"] = "192.0.2.10"
       ENV["SAMAGOTCHI_SERVER_PORT"] = "8080"
-      expect(agent.send(:status_server_segment)).to eq("server=192.168.1.29:8080")
+      expect(agent.send(:status_server_segment)).to eq("server=192.0.2.10:8080")
     end
   end
 
@@ -1788,19 +1788,19 @@ file2.rb")
     end
 
     it "queues prefill when env is set, no resume, and no --no-default-input" do
-      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Hey Chi, "
+      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Please "
       agent = described_class.new(mode: "assist", client: client)
       agent.instance_variable_set(:@resume_session, nil)
-      expect(agent).to receive(:queue_input_prefill).with("Hey Chi, ")
+      expect(agent).to receive(:queue_input_prefill).with("Please ")
       agent.send(:queue_default_input)
     end
 
     it "keeps the default input as given, its trailing space too" do
-      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Hey Chi, "
+      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Please "
       agent = described_class.new(mode: "assist", client: client)
       agent.instance_variable_set(:@resume_session, nil)
       agent.send(:queue_default_input)
-      expect(agent.send(:consume_input_prefill)).to eq("Hey Chi, ")
+      expect(agent.send(:consume_input_prefill)).to eq("Please ")
     end
 
     it "queues no blank prefill" do
@@ -1810,14 +1810,14 @@ file2.rb")
     end
 
     it "does not queue when --no-default-input is true" do
-      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Hey Chi, "
+      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Please "
       agent = described_class.new(mode: "assist", client: client, no_default_input: true)
       expect(agent).not_to receive(:queue_input_prefill)
       agent.send(:queue_default_input)
     end
 
     it "does not queue when resuming a session" do
-      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Hey Chi, "
+      ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Please "
       agent = described_class.new(mode: "assist", client: client)
       agent.instance_variable_set(:@resume_session, double("session", id: "abc-123"))
       expect(agent).not_to receive(:queue_input_prefill)

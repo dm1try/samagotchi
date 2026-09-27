@@ -268,7 +268,7 @@ module Samagotchi
         Array(entries).map { |entry| entry.to_s.gsub(/\r\n?/, "\n").strip }.reject(&:empty?)
       end
 
-      # The text as given ("Hey Chi, " keeps its space); a blank one is none.
+      # The text as given ("Please " keeps its space); a blank one is none.
       def queue_input_prefill(text)
         return if text.to_s.strip.empty?
 

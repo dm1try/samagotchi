@@ -153,7 +153,7 @@ You may make multiple tool calls. After seeing tool results, continue reasoning 
 Small-context retrieval protocol:
   Default to targeted context before full-file reads.
   Retrieval order:
-    1. If the user provides file:line (for example, spec/agent_spec.rb:130), inspect that location first.
+    1. If the user provides file:line (for example, src/app.rb:130), inspect that location first.
     2. Use execute with rg/nl/sed to find the smallest relevant snippet.
     3. Read a full file only when targeted snippet extraction is insufficient.
   Avoid broad reads early in debugging; gather just enough context to decide the next step.

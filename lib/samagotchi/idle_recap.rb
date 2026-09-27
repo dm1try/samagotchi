@@ -107,8 +107,8 @@ module Samagotchi
       # Recap-length S0 spike (Ornith 35B-A3B, 4 sessions): without the
       # example opening, first recaps still began "The user asked the
       # assistant to…" (goal first 25% → 100% with it); without "never by
-      # name" it wrote "Dmitry and Chi"; without the side-details list it
-      # kept the user's city and repo count, and paths and versions.
+      # name" it named the user and Chi; without the side-details list it
+      # kept personal details, repo counts, paths and versions.
       # Recap-polish spike (same 4 sessions): without the "lacks" line 4/20
       # first recaps at 2-4 said "…weren't captured in the transcript"; 0/80
       # with it. (A "short sentences, no dashes" line was dropped: with this
