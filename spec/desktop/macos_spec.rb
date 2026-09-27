@@ -73,6 +73,18 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       expect(config["version"]).to eq("9.9.9")
     end
 
+    it "runs an installed gem's RubyGems wrapper, not the versioned bin/chi inside the gem" do
+      base = File.join(tmp, "gems")
+      FileUtils.mkdir_p(File.join(base, "bin"))
+      File.write(File.join(base, "bin", "chi"), "")
+      spec = Gem::Specification.new { |s| s.name = "samagotchi"; s.version = "9.9.9" }
+      spec.loaded_from = File.join(base, "specifications", "samagotchi-9.9.9.gemspec")
+      allow(spec).to receive(:full_gem_path).and_return(source_dir)
+      allow(Gem).to receive(:loaded_specs).and_return("samagotchi" => spec)
+
+      expect(macos.launch_config["argv"]).to eq(["/opt/ruby/bin/ruby", File.join(base, "bin", "chi")])
+    end
+
     it "copies only the allowlisted variables that are set, and always LANG" do
       env.merge!("XDG_STATE_HOME" => "/s", "GEM_HOME" => "/g", "GITHUB_TOKEN" => "secret",
                  "SAMAGOTCHI_ENV" => "test", "OPENROUTER_API_KEY" => "k", "LANG" => "C",

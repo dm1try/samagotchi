@@ -41,8 +41,11 @@ signed ad hoc, with no notarization and no Xcode project. A build takes a few se
 minutes cold. The app has no Dock icon and keeps running once started. Without `--login` it runs until you log out,
 and opening it from `~/Applications` starts it again.
 
-Install from the checkout or gem you keep: the helper runs **that** chi's `bin/chi`. Installing from a linked git
-worktree prints a warning, because the helper stops working once that worktree is removed.
+Install from the checkout or gem you keep. From a gem install the helper runs the gem's `chi` wrapper (the one on
+your PATH, e.g. `$GEM_HOME/bin/chi`), which picks the newest installed version, so gem upgrades and `gem cleanup`
+don't break it. From a checkout it runs **that** checkout's `bin/chi`; installing from a linked git worktree prints a
+warning, because the helper stops working once that worktree is removed. After switching between a checkout and a
+gem install, run `chi desktop upgrade` from the one you now use.
 
 ## Commands
 
@@ -60,7 +63,7 @@ worktree prints a warning, because the helper stops working once that worktree i
 Apps started by macOS get a bare environment: no shell rc files, so no rbenv/chruby/mise/asdf and none of your
 exports. So `install` writes `~/Library/Application Support/Chi Helper/launch.json` with:
 
-- the absolute path of the Ruby running chi and of its `bin/chi`;
+- the absolute path of the Ruby running chi and of chi itself (the gem's wrapper, or a checkout's `bin/chi`);
 - `LANG=en_US.UTF-8`;
 - only these variables, and only when they are set: `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `GEM_HOME`, `GEM_PATH`,
   `RUBYLIB`. No tokens and no `SAMAGOTCHI_*` settings go in.

@@ -7,6 +7,7 @@ require "open3"
 require "rbconfig"
 require_relative "../version"
 require_relative "../self_report"
+require_relative "../installed_gem"
 
 module Samagotchi
   module Desktop
@@ -51,13 +52,14 @@ module Samagotchi
 
       def initialize(app_dir: nil, support_dir: nil, env: ENV, runner: Runner.new,
                      source_dir: SelfReport::SOURCE_DIR, ruby: RbConfig.ruby, version: VERSION,
-                     arch: nil, sources_dir: SOURCES_DIR, register: true)
+                     arch: nil, sources_dir: SOURCES_DIR, register: true, chi_path: nil)
         home = env["HOME"] || Dir.home
         @app_dir = app_dir || File.join(home, "Applications")
         @support_dir = support_dir || File.join(home, "Library", "Application Support", APP_NAME)
         @env = env
         @runner = runner
         @source_dir = source_dir
+        @chi_path = chi_path || InstalledGem.wrapper(InstalledGem.spec(source_dir)) || File.join(source_dir, "bin", "chi")
         @ruby = ruby
         @version = version
         @arch = arch
@@ -72,12 +74,14 @@ module Samagotchi
       def executable_path = File.join(app_path, "Contents", "MacOS", EXECUTABLE)
       def installed? = File.directory?(app_path)
 
-      # What the helper runs: absolute ruby + this chi's bin/chi (no shims,
-      # which need the shell's PATH), and the allowlisted env.
+      # What the helper runs: absolute ruby + chi (no shims, which need the
+      # shell's PATH), and the allowlisted env. chi is an installed gem's
+      # RubyGems wrapper (it activates the gem and outlives upgrades and
+      # `gem cleanup`), else this checkout's bin/chi.
       def launch_config
         env = { "LANG" => LANG }
         ENV_ALLOWLIST.each { |name| env[name] = @env[name] unless @env[name].to_s.empty? }
-        { "version" => @version, "argv" => [@ruby, File.join(@source_dir, "bin", "chi")], "env" => env }
+        { "version" => @version, "argv" => [@ruby, @chi_path], "env" => env }
       end
 
       def warnings

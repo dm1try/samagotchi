@@ -32,4 +32,21 @@ RSpec.describe Samagotchi::InstalledGem do
       expect(described_class.spec(gem_dir)).to be_nil
     end
   end
+
+  describe ".wrapper" do
+    let(:base) { File.join(gem_dir, "home") }
+
+    before { spec.loaded_from = File.join(base, "specifications", "samagotchi-9.9.9.gemspec") }
+
+    it "is <gem home>/bin/chi when RubyGems wrote it there" do
+      FileUtils.mkdir_p(File.join(base, "bin"))
+      File.write(File.join(base, "bin", "chi"), "")
+      expect(described_class.wrapper(spec)).to eq(File.join(base, "bin", "chi"))
+    end
+
+    it "is nil without the file, and for a source checkout" do
+      expect(described_class.wrapper(spec)).to be_nil
+      expect(described_class.wrapper(nil)).to be_nil
+    end
+  end
 end
