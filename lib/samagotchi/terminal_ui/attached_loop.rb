@@ -881,10 +881,12 @@ module Samagotchi
         end
         Array(turn[:images]).each { |ref| @screen.commit(format_image_line(ref)) }
         tail = nil
+        lane = :writing
         running_tool = nil
         Array(turn[:parts]).each do |part|
           case part[:kind]
-          when "text" then tail = part[:text]
+          when "thinking" then tail, lane = part[:text], :thinking
+          when "text" then tail, lane = part[:text], :writing
           when "tool"
             if part[:status] == "running"
               running_tool = part[:tool]
@@ -896,7 +898,7 @@ module Samagotchi
           when "hook_notice" then @screen.commit(EventRenderer.hook_notice_line(part))
           end
         end
-        @view.resume(tail: tail, tool: running_tool, parts: turn[:parts])
+        @view.resume(tail: tail, lane: lane, tool: running_tool, parts: turn[:parts])
         ask(turn[:pending_question]) if turn[:pending_question]
       end
 

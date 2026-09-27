@@ -4,12 +4,14 @@ require "monitor"
 require_relative "formatting"
 require_relative "../output_formatter"
 require_relative "../turn_tally"
+require_relative "thinking_line"
 
 module Samagotchi
   class TerminalUI
     # EventRenderer's view in attached mode, drawn on a Screen: the
     # thinking feedback is the activity slot, one row right above the prompt
-    # (spinner frame, then the running tool or the tail of the model's text),
+    # (spinner frame, then the running tool or the newest sentence of the
+    # model's thinking or text, ThinkingLine),
     # and every finished line is committed output. The local REPL's
     # multi-line spinner redraws in place, which can't share the terminal
     # with an open prompt.
@@ -26,7 +28,6 @@ module Samagotchi
       include Formatting
 
       FRAMES = ["|", "/", "-", "\\"].freeze
-      TAIL_LIMIT = 400
       # Chunks arrive faster than a status line is worth redrawing.
       MIN_REDRAW_INTERVAL = 0.08
       # Seconds per spinner frame.
@@ -48,6 +49,7 @@ module Samagotchi
         @lock = Monitor.new
         @ticker = nil
         @tally = TurnTally.new
+        @line = ThinkingLine.new(clock: clock)
         # Plugins' init tasks running now (chi.init), id => "bundle: label".
         @init_tasks = {}
         reset_turn_feedback
@@ -70,7 +72,7 @@ module Samagotchi
       def generation_feedback_started(_event = {})
         @lock.synchronize do
           @thinking = true
-          @tail = +""
+          @line.reset
           @tool = nil
           @waiting_since = @clock.call
           redraw_status
@@ -90,8 +92,7 @@ module Samagotchi
         @lock.synchronize do
           @retry = nil
           @waiting_since = nil
-          @tail << event[:content].to_s
-          @tail = @tail[-TAIL_LIMIT..] if @tail.length > TAIL_LIMIT
+          @line.chunk(event)
           redraw_status(throttle: true)
         end
       end
@@ -120,7 +121,7 @@ module Samagotchi
       def generation_feedback_finished
         @lock.synchronize do
           @thinking = false
-          @tail = +""
+          @line.reset
           @waiting_since = nil
           redraw_status
         end
@@ -157,13 +158,14 @@ module Samagotchi
       def init_wait_feedback(_event); end
 
       # Pick up a turn joined mid-way (from the Bridge snapshot): the model's
-      # text so far, or the tool it is running, and the tally of its tool
-      # parts.
-      def resume(tail: nil, tool: nil, parts: nil)
+      # thinking or text so far (+lane+ :thinking or :writing), or the tool it
+      # is running, and the tally of its tool parts.
+      def resume(tail: nil, lane: :writing, tool: nil, parts: nil)
         @lock.synchronize do
           @tally.reset.seed(parts) if parts
           @thinking = true
-          @tail = +tail.to_s
+          @line.reset
+          @line.resume(lane, tail)
           @tool = tool && "running #{tool}"
           @waiting_since = nil
           redraw_status
@@ -199,7 +201,7 @@ module Samagotchi
 
       def reset_feedback_state
         @thinking = false
-        @tail = +""
+        @line.reset
         @tool = nil
         @retry = nil
         @waiting_since = nil
@@ -214,6 +216,7 @@ module Samagotchi
         return if throttle && @last_redraw && (now - @last_redraw) < MIN_REDRAW_INTERVAL
 
         @last_redraw = now
+        @line.tick
         text = status_text
         if text
           tally = @tally.text(width: @screen.columns - 1)
@@ -251,12 +254,10 @@ module Samagotchi
         waited = @waiting_since ? now - @waiting_since : 0
         return "#{frame} waiting for the first token… #{waited.floor}s" if waited >= WAIT_NOTICE_AFTER
 
-        tail = OutputFormatter.strip(@tail).gsub(/\s+/, " ").strip
-        return "#{frame} thinking…" if tail.empty?
+        return "#{frame} thinking…" if @line.empty?
 
-        prefix = "#{frame} model> … "
-        room = [@screen.columns - 1 - prefix.length, 1].max
-        "#{prefix}#{tail.length > room ? tail[-room..] : tail}"
+        prefix = "#{frame} #{@line.label} · "
+        prefix + paint(@line.fit(@screen.columns - 1 - prefix.length), 90)
       end
     end
   end
