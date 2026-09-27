@@ -160,10 +160,10 @@ RSpec.describe Samagotchi::Engine do
     end
 
     it "names the home directory once, with the advice to write it as ~ or $HOME" do
-      allow(Dir).to receive(:home).and_return("/Users/dmitrydedov")
+      allow(Dir).to receive(:home).and_return("/home/jdoe")
       prompt = project_prompt_in(repo)
       expect(prompt.scan("Home directory:").size).to eq(1)
-      expect(prompt).to include("Home directory: /Users/dmitrydedov (write it as ~ or $HOME in commands and paths)")
+      expect(prompt).to include("Home directory: /home/jdoe (write it as ~ or $HOME in commands and paths)")
     end
 
     it "shortens a memories folder under the home directory with ~" do
@@ -445,7 +445,7 @@ RSpec.describe Samagotchi::Engine do
     around do |example|
       saved = ENV.values_at("SAMAGOTCHI_RECAP_BASE_URL", "SAMAGOTCHI_RECAP_MODEL")
       ENV["SAMAGOTCHI_RECAP_BASE_URL"] = "http://localhost:8080/v1"
-      ENV["SAMAGOTCHI_RECAP_MODEL"] = "gemma4-small"
+      ENV["SAMAGOTCHI_RECAP_MODEL"] = "gemma-small"
       example.run
     ensure
       ENV["SAMAGOTCHI_RECAP_BASE_URL"], ENV["SAMAGOTCHI_RECAP_MODEL"] = saved

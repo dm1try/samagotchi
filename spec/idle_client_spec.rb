@@ -9,7 +9,7 @@ RSpec.describe Samagotchi::IdleClient do
   around { |example| FakeProviderServer.without_webmock { example.run } }
 
   let(:server) { FakeProviderServer.start }
-  let(:client) { described_class.new(model: "gemma4-small", base_url: server.base_url) }
+  let(:client) { described_class.new(model: "gemma-small", base_url: server.base_url) }
 
   after { server.stop }
 
@@ -91,7 +91,7 @@ RSpec.describe Samagotchi::IdleClient do
 
       client.summarize("summarize this")
 
-      expect(request_body).to include("model" => "gemma4-small", "temperature" => 0.0, "max_tokens" => 512,
+      expect(request_body).to include("model" => "gemma-small", "temperature" => 0.0, "max_tokens" => 512,
                                       "messages" => [{ "role" => "user", "content" => "summarize this" }])
       expect(request_body).not_to include("tools")
     end

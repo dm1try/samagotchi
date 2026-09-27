@@ -95,12 +95,12 @@ RSpec.describe "delegate tools" do
     end
 
     it "resolves a model alias for the child, a host prefix kept" do
-      allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).with("tiny").and_return("box:gemma4-small")
+      allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).with("tiny").and_return("box:gemma-small")
 
       described_class.call("quick look", model: "tiny", wait: "false", peers: peers)
 
       child = Samagotchi::Session.load((session_files - [parent.id]).first, state_dir: tmpdir)
-      expect(child.model_name).to eq("box:gemma4-small")
+      expect(child.model_name).to eq("box:gemma-small")
     end
 
     it "refuses in a session that is itself a delegate, creating nothing" do

@@ -23,7 +23,7 @@ RSpec.describe Samagotchi::SessionCommands do
   let(:turn_flow) { Samagotchi::TurnFlow.new(engine: engine) }
   let(:saved) { [] }
   let(:commands) do
-    described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma4-small",
+    described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma-small",
                         save: ->(session) { saved << session.model_name })
   end
   let(:session) do
@@ -64,7 +64,7 @@ RSpec.describe Samagotchi::SessionCommands do
     it "lists every command: the session's, the bundles' (with their source), then the UIs' own, marked by UI" do
       engine.command_registry.register("/hello", "greet", source: "sample-plugin") { |_args| "hi" }
       engine.command_registry.register("/side", "ask aside", anytime: true, source: "btw") { |_args| nil }
-      commands = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma4-small",
+      commands = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma-small",
                                      registry: engine.command_registry)
 
       result = commands.run("/help")
@@ -91,7 +91,7 @@ RSpec.describe Samagotchi::SessionCommands do
 
     it "is what #run looks lines up in, so a bundle's command added to it runs" do
       engine.command_registry.register("/hello", "say hello", source: "some-bundle") { |args| "hi #{args}" }
-      commands = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma4-small",
+      commands = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma-small",
                                      registry: engine.command_registry)
       expect(commands.run("/hello  you ").output).to eq("hi you")
       expect(described_class.builtin_registry.command?("/hello")).to be(false)
@@ -100,7 +100,7 @@ RSpec.describe Samagotchi::SessionCommands do
     it "runs a bundle's command with no output as nil, and a raise as an error" do
       engine.command_registry.register("/quiet", "nothing", source: "b") { |_args| nil }
       engine.command_registry.register("/boom", "raises", source: "b") { |_args| raise "nope" }
-      commands = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma4-small",
+      commands = described_class.new(engine: engine, turn_flow: turn_flow, default_model: "alpha:gemma-small",
                                      registry: engine.command_registry)
       expect(commands.run("/quiet").to_h).to include(status: :ok, output: nil)
       expect(commands.run("/boom").to_h).to include(status: :error, output: "/boom: RuntimeError: nope")
@@ -117,7 +117,7 @@ RSpec.describe Samagotchi::SessionCommands do
       result = commands.run("/model")
 
       expect(result.status).to eq(:ok)
-      expect(result.output).to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma4-small, profile=qwen36, name)")
+      expect(result.output).to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name)")
       expect(result.changed).to eq([])
     end
 
@@ -125,32 +125,32 @@ RSpec.describe Samagotchi::SessionCommands do
       allow(engine).to receive(:served_model).and_return(["ornith-1.5", "Qwen3-14B"])
 
       expect(commands.run("/model").output)
-        .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma4-small, profile=qwen36, name); served: ornith-1.5")
+        .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); served: ornith-1.5")
     end
 
     it "switches the Engine's model and saves it on the session" do
-      result = commands.run("/model alpha:gemma4-small")
+      result = commands.run("/model alpha:gemma-small")
 
-      expect(result.output).to eq("runtime model set to alpha:gemma4-small (profile=gemma4, name)")
+      expect(result.output).to eq("runtime model set to alpha:gemma-small (profile=gemma4, name)")
       expect(result.changed).to eq([:model])
-      expect(result.model_name).to eq("alpha:gemma4-small")
-      expect(engine.effective_model_name).to eq("alpha:gemma4-small")
-      expect(session.model_name).to eq("alpha:gemma4-small")
-      expect(saved).to eq(["alpha:gemma4-small"])
+      expect(result.model_name).to eq("alpha:gemma-small")
+      expect(engine.effective_model_name).to eq("alpha:gemma-small")
+      expect(session.model_name).to eq("alpha:gemma-small")
+      expect(saved).to eq(["alpha:gemma-small"])
     end
 
     # A chat host's loop doesn't use a prompt profile: naming one misleads.
     it "names no profile for a chat host's model" do
       expect(commands.run("/model chat:some/model:free").output).to eq("runtime model set to chat:some/model:free")
-      expect(commands.run("/model").output).to eq("runtime model: chat:some/model:free (default: alpha:gemma4-small)")
+      expect(commands.run("/model").output).to eq("runtime model: chat:some/model:free (default: alpha:gemma-small)")
 
       commands.run("/model chat:some/model:free --default")
       expect(commands.run("/model").output).to eq("runtime model: chat:some/model:free")
     end
 
     it "resets to the given default on clear" do
-      expect(commands.run("/model clear").output).to eq("runtime model reset to alpha:gemma4-small (profile=gemma4, name)")
-      expect(engine.effective_model_name).to eq("alpha:gemma4-small")
+      expect(commands.run("/model clear").output).to eq("runtime model reset to alpha:gemma-small (profile=gemma4, name)")
+      expect(engine.effective_model_name).to eq("alpha:gemma-small")
     end
 
     it "moves its default along with --default" do
@@ -163,7 +163,7 @@ RSpec.describe Samagotchi::SessionCommands do
     end
 
     it "refuses a bad alias before switching" do
-      result = commands.run("/model alpha:gemma4-small --alias bad/name")
+      result = commands.run("/model alpha:gemma-small --alias bad/name")
 
       expect(result.output).to eq("invalid alias: alias name must not contain '/'")
       expect(engine.effective_model_name).to eq("beta:Qwen3-14B")

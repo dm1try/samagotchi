@@ -32,13 +32,13 @@ RSpec.describe "Engine#system_prompt per loop" do
   end
 
   it "keeps the native prompt for a raw host" do
-    e = engine("box:gemma4-small", "gemma4")
+    e = engine("box:gemma-small", "gemma4")
 
     expect(e.system_prompt).to start_with("<|think|>\n" + e.assist_system_prompt)
   end
 
   it "answers for a given target, and rebuilds both after a model switch" do
-    e = engine("box:gemma4-small", "gemma4")
+    e = engine("box:gemma-small", "gemma4")
     native = e.system_prompt
     chat = e.system_prompt(registry.resolve("oai:m"))
     expect(chat).not_to include("<|tool_call>")
@@ -48,6 +48,6 @@ RSpec.describe "Engine#system_prompt per loop" do
     e.switch_model!("oai:m")
 
     expect(e.system_prompt).to include("(new index)")
-    expect(e.system_prompt(registry.resolve("box:gemma4-small"))).to include("(new index)")
+    expect(e.system_prompt(registry.resolve("box:gemma-small"))).to include("(new index)")
   end
 end

@@ -32,7 +32,7 @@ RSpec.describe Samagotchi::HostRegistry do
     end
 
     it "routes by alias but keeps the name it was given (as Engine always did)" do
-      allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({ "small" => "box:gemma4-small" })
+      allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({ "small" => "box:gemma-small" })
       target = registry.resolve("small")
 
       expect(target.entry.name).to eq("box")

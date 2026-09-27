@@ -16,7 +16,7 @@ require "samagotchi/model_profile"
 #
 # Run against the local llama.cpp, for example:
 #   SAMAGOTCHI_INTEGRATION=1 \
-#   SAMAGOTCHI_SERVER_HOST=192.168.1.29 SAMAGOTCHI_SERVER_PORT=8081 \
+#   SAMAGOTCHI_SERVER_HOST=192.0.2.10 SAMAGOTCHI_SERVER_PORT=8081 \
 #   SAMAGOTCHI_DEFAULT_MODEL=ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M \
 #   bundle exec rspec spec/integration/chat_loop_spec.rb -fd < /dev/null
 RSpec.describe "chat loop - live tool round trip", :integration do

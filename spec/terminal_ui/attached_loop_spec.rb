@@ -1145,9 +1145,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input parity with the REPL
   end
 
   it "types the default input into a new session's first read, unless told not to" do
-    ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Hey Chi, "
+    ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Please "
 
-    expect(run_loop([nil], default_input: true)).to eq(["Hey Chi, "])
+    expect(run_loop([nil], default_input: true)).to eq(["Please "])
     expect(run_loop([nil], default_input: false)).to eq([nil])
   end
 end

@@ -86,7 +86,7 @@ RSpec.describe Samagotchi::ConfigFile do
         File.write(File.join(config_dir, "config.yml"), <<~YAML)
           SAMAGOTCHI_DEFAULT_MODEL: Qwen3-14B-Instruct
           server:
-            host: 192.168.1.29
+            host: 192.0.2.10
             port: 8081
         YAML
 
@@ -98,7 +98,7 @@ RSpec.describe Samagotchi::ConfigFile do
         expect(ENV["SAMAGOTCHI_DEFAULT_MODEL"]).to eq("Qwen3-14B-Instruct")
 
         client = Samagotchi::Client.new
-        expect(client.instance_variable_get(:@host)).to eq("192.168.1.29")
+        expect(client.instance_variable_get(:@host)).to eq("192.0.2.10")
         expect(client.instance_variable_get(:@port)).to eq(9090)
       end
     end
@@ -137,13 +137,13 @@ RSpec.describe Samagotchi::ConfigFile do
         config_dir = File.join(dir, "samagotchi")
         Dir.mkdir(config_dir)
         File.write(File.join(config_dir, "config.yml"), <<~YAML)
-          SAMAGOTCHI_DEFAULT_INPUT: "Hey Chi, "
+          SAMAGOTCHI_DEFAULT_INPUT: "Please "
         YAML
 
         ENV["XDG_CONFIG_HOME"] = dir
 
         expect(described_class.load_global_env!).to be(true)
-        expect(ENV["SAMAGOTCHI_DEFAULT_INPUT"]).to eq("Hey Chi, ")
+        expect(ENV["SAMAGOTCHI_DEFAULT_INPUT"]).to eq("Please ")
       end
     end
   end
@@ -333,9 +333,9 @@ RSpec.describe Samagotchi::ConfigFile do
 
     it "maps legacy `recap: {host:}` to host_ref from the file" do
       Dir.mktmpdir("samagotchi-config") do |dir|
-        write_recap_yaml(dir, "recap:\n  host: recap-box\n  model: small\n")
+        write_recap_yaml(dir, "recap:\n  host: small-box\n  model: small\n")
         rc = described_class.recap_config
-        expect(rc[:host_ref]).to eq("recap-box")
+        expect(rc[:host_ref]).to eq("small-box")
         expect(rc[:model]).to eq("small")
       end
     end

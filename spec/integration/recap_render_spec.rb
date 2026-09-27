@@ -21,7 +21,7 @@ RSpec.describe "idle session-recap integration", :integration do
     end
     let(:recap_events) { [] }
     let(:base_url) { ENV.fetch("SAMAGOTCHI_RECAP_BASE_URL", "http://localhost:8080/v1") }
-    let(:model) { ENV.fetch("SAMAGOTCHI_RECAP_MODEL", "gemma4-small") }
+    let(:model) { ENV.fetch("SAMAGOTCHI_RECAP_MODEL", "gemma-small") }
 
     let(:engine) do
       Samagotchi::Engine.new(

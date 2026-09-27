@@ -102,7 +102,7 @@ RSpec.describe Samagotchi::TerminalUI do
     it "is restored after a prefilled prompt" do
       hook = proc {}
       Reline.pre_input_hook = hook
-      agent.instance_variable_set(:@next_input_prefill, "Hey Chi, ")
+      agent.instance_variable_set(:@next_input_prefill, "Please ")
       agent.send(:with_next_input_prefill) { expect(Reline.pre_input_hook).not_to be(hook) }
       expect(Reline.pre_input_hook).to be(hook)
     end

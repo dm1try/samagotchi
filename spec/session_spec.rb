@@ -391,13 +391,13 @@ RSpec.describe Samagotchi::Session do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.messages = [
         { role: "system", content: "You are Chi." },
-        { role: "user", content: "Hey Chi, could you write some temporary memory?" },
+        { role: "user", content: "Please could you write some temporary memory?" },
         { role: "assistant", content: "Sure!" }
       ]
       session.save(state_dir: tmpdir)
 
       loaded = described_class.load(session.id, state_dir: tmpdir)
-      expect(loaded.first_preview).to include("Hey Chi")
+      expect(loaded.first_preview).to include("Please")
     end
 
     it "auto-computes and truncates to 80 chars" do

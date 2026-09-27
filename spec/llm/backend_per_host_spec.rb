@@ -25,7 +25,7 @@ RSpec.describe "Engine picks the loop from the host's api" do
   def engine(model) = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: model)
 
   it "uses NativeBackend for a host without api" do
-    expect(engine("box:gemma4-small").backend).to be_a(Samagotchi::LLM::NativeBackend)
+    expect(engine("box:gemma-small").backend).to be_a(Samagotchi::LLM::NativeBackend)
   end
 
   it "uses the chat backend against the host's /v1 for api: openai" do
@@ -35,12 +35,12 @@ RSpec.describe "Engine picks the loop from the host's api" do
   end
 
   it "follows switch_model! both ways, keeping one chat backend" do
-    e = engine("box:gemma4-small")
+    e = engine("box:gemma-small")
     e.switch_model!("oai:some-model")
     chat = e.backend
     expect(chat).to be_a(Samagotchi::LLM::ChatLoop)
 
-    e.switch_model!("box:gemma4-small")
+    e.switch_model!("box:gemma-small")
     expect(e.backend).to be_a(Samagotchi::LLM::NativeBackend)
 
     e.switch_model!("oai:other")
@@ -55,7 +55,7 @@ RSpec.describe "Engine picks the loop from the host's api" do
       "alpha" => { host: "alpha.test", port: 1111, api: :openai },
       "beta" => { host: "beta.test", port: 2222, api: :openai }
     })
-    e = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "alpha:gemma4-small")
+    e = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "alpha:gemma-small")
     expect(e.backend.adapter.base_url).to eq("http://alpha.test:1111/v1")
 
     e.switch_model!("beta:Qwen3-14B")
@@ -65,8 +65,8 @@ RSpec.describe "Engine picks the loop from the host's api" do
 
   it "warns once that SAMAGOTCHI_BACKEND is ignored, and still follows the host" do
     ENV["SAMAGOTCHI_BACKEND"] = "ruby_llm"
-    expect { engine("box:gemma4-small") }.to output(/backend setting .* was removed and is ignored/).to_stderr
-    expect { expect(engine("box:gemma4-small").backend).to be_a(Samagotchi::LLM::NativeBackend) }.not_to output.to_stderr
+    expect { engine("box:gemma-small") }.to output(/backend setting .* was removed and is ignored/).to_stderr
+    expect { expect(engine("box:gemma-small").backend).to be_a(Samagotchi::LLM::NativeBackend) }.not_to output.to_stderr
   end
 
   it "runs a turn through the chosen backend with the bare model name" do

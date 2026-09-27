@@ -8,7 +8,7 @@ require "timeout"
 RSpec.describe Samagotchi::IdleRecap do
   let(:base_time) { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
   let(:messages_json) { "[]" }
-  let(:model) { "gemma4-small" }
+  let(:model) { "gemma-small" }
   let(:base_url) { "http://localhost:8080/v1" }
 
   # Simple double factory for the engine — avoids instance_double's

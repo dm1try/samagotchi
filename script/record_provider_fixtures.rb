@@ -5,7 +5,7 @@
 # (spec/fixtures/providers/openai/). Run it against a live /v1, e.g. the
 # local llama.cpp:
 #
-#   ruby script/record_provider_fixtures.rb http://192.168.1.29:8081/v1 [model]
+#   ruby script/record_provider_fixtures.rb http://localhost:8080/v1 [model]
 #
 # Streams are saved byte for byte (*.sse), plain responses as *.json with a
 # sibling *.status holding the HTTP status. Error fixtures that a local server
@@ -17,7 +17,7 @@ require "net/http"
 require "uri"
 require "fileutils"
 
-base = (ARGV[0] || "http://192.168.1.29:8081/v1").chomp("/")
+base = (ARGV[0] || "http://localhost:8080/v1").chomp("/")
 model = ARGV[1] || "local-model"
 out_dir = File.expand_path("../spec/fixtures/providers/openai", __dir__)
 FileUtils.mkdir_p(out_dir)

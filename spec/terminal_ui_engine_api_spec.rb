@@ -19,7 +19,7 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
 
   around do |example|
     previous = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "alpha:gemma4-small"
+    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "alpha:gemma-small"
     example.run
   ensure
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = previous
@@ -48,7 +48,7 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
       engine = engine_of(ui)
       expect(message).to eq("runtime model set to beta:Qwen3-14B (profile=qwen36, name)")
       expect(engine.effective_model_name).to eq("beta:Qwen3-14B")
-      expect(engine.default_model_name).to eq("alpha:gemma4-small")
+      expect(engine.default_model_name).to eq("alpha:gemma-small")
       expect(engine.client).to be(beta_client)
       expect(kernel_of(ui).client).to be(beta_client)
       expect(engine.profile.name).to eq("qwen36")
@@ -70,7 +70,7 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
 
       expect(kernel_of(ui).client).to be(beta_client)
       expect(engine_of(ui).effective_model_name).to eq("beta:Qwen3-14B")
-      expect(engine_of(ui).default_model_name).to eq("alpha:gemma4-small")
+      expect(engine_of(ui).default_model_name).to eq("alpha:gemma-small")
     end
   end
 

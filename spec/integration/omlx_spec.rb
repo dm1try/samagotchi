@@ -11,16 +11,16 @@ require "samagotchi/kernel_loop"
 # No stubs: this talks to the real host via SAMAGOTCHI_SERVER_HOST/SAMAGOTCHI_SERVER_PORT/SAMAGOTCHI_DEFAULT_MODEL.
 #
 # Prerequisites:
-#   - An oMLX server must be running (default: 192.168.1.29:8000)
+#   - An oMLX server must be running (default: 192.0.2.10:8000)
 #   - SAMAGOTCHI_INTEGRATION=1 environment variable must be set
 #
 # Run with:
-#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_SERVER_HOST=192.168.1.29 SAMAGOTCHI_SERVER_PORT=8000 \
+#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_SERVER_HOST=192.0.2.10 SAMAGOTCHI_SERVER_PORT=8000 \
 #     SAMAGOTCHI_DEFAULT_MODEL=gemma-3-4b-it-4bit SAMAGOTCHI_SERVER_TRANSPORT=omlx \
 #     bundle exec rspec spec/integration/omlx_spec.rb
 #
 # Verbose output:
-#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_SERVER_HOST=192.168.1.29 SAMAGOTCHI_SERVER_PORT=8000 \
+#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_SERVER_HOST=192.0.2.10 SAMAGOTCHI_SERVER_PORT=8000 \
 #     SAMAGOTCHI_DEFAULT_MODEL=gemma-3-4b-it-4bit bundle exec rspec spec/integration/omlx_spec.rb -v
 RSpec.describe "omlx transport - model resolution + forwarding", :integration do
   # The short selector we expect to resolve to a live /v1/models id.

@@ -87,9 +87,9 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       expect(entry.description).to eq("greet, and say what the plugin sees")
       commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),
                                                  default_model: "Gemma-4B-it", registry: engine.command_registry)
-      result = commands.run("/hello  Dmitry ")
+      result = commands.run("/hello  Jordan ")
       expect(result.status).to eq(:ok)
-      expect(result.output).to eq("hello, Dmitry (session #{session.id}, 2 messages)")
+      expect(result.output).to eq("hello, Jordan (session #{session.id}, 2 messages)")
       expect(commands.run("/hello").output).to start_with("hello, there")
       expect(engine.command_registry.completions(:repl)).to include("/hello")
     end

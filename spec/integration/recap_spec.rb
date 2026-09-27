@@ -16,11 +16,11 @@ require "samagotchi/idle_client"
 #
 # Run with:
 #   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_RECAP_BASE_URL=http://localhost:8080/v1 \
-#     SAMAGOTCHI_RECAP_MODEL=gemma4-small \
+#     SAMAGOTCHI_RECAP_MODEL=gemma-small \
 #     bundle exec rspec spec/integration/recap_spec.rb
 #
 # Against the Qwen3.6-35B-A3B model (reasoning_content fallback test):
-#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_RECAP_BASE_URL=http://192.168.1.29:8081/v1 \
+#   SAMAGOTCHI_INTEGRATION=1 SAMAGOTCHI_RECAP_BASE_URL=http://192.0.2.10:8081/v1 \
 #     SAMAGOTCHI_RECAP_MODEL=unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M \
 #     bundle exec rspec spec/integration/recap_spec.rb -v
 #
@@ -43,7 +43,7 @@ RSpec.describe "idle session-recap end-to-end", :integration do
   end
   let(:recap_events) { [] }
   let(:base_url) { ENV["SAMAGOTCHI_RECAP_BASE_URL"] || "http://localhost:8080/v1" }
-  let(:model) { ENV["SAMAGOTCHI_RECAP_MODEL"] || "gemma4-small" }
+  let(:model) { ENV["SAMAGOTCHI_RECAP_MODEL"] || "gemma-small" }
 
   # Build an Engine with a real IdleRecap that emits to our capture array.
   let(:engine) do

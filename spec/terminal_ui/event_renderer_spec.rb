@@ -64,7 +64,7 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     end
     let(:card) do
       { type: :card, id: "c1", source: "sample-plugin", title: "Hello", level: :info,
-        body: "hello, Dmitry (session 3f2a, 2 messages). A longer line that wraps at the frame's width.\n\n  - kept indent",
+        body: "hello, Jordan (session 3f2a, 2 messages). A longer line that wraps at the frame's width.\n\n  - kept indent",
         actions: [{ label: "Again", command: "/hello again" }, { label: "/x", command: "/x" }] }
     end
 
@@ -72,7 +72,7 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
       renderer.call(card)
       expect(view.lines.last.split("\n")).to eq([
         "┌ Hello · sample-plugin",
-        "│ hello, Dmitry (session 3f2a, 2",
+        "│ hello, Jordan (session 3f2a, 2",
         "│ messages). A longer line that wraps at",
         "│ the frame's width.",
         "│",
