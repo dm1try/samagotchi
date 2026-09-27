@@ -2,14 +2,14 @@
 
 source "https://rubygems.org"
 
-ruby ">= 3.0"
+# Runtime dependencies (reline, nokogiri, rack, rackup, webrick) come from
+# samagotchi.gemspec.
+gemspec
 
-gem "reline", "~> 0.6.3" # the TUI seam uses private LineEditor methods (terminal_ui/reline_seam.rb)
-gem "nokogiri"
-gem "commonmarker"
-gem "rack", ">= 2.0"
-gem "rackup"
-gem "webrick"
+# Optional at runtime: Markdown rendering in `chi web` (--web-markdown).
+group :markdown do
+  gem "commonmarker"
+end
 
 group :test do
   gem "rspec", "~> 3"
