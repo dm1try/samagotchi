@@ -39,6 +39,7 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
 | `--no-default-input` | Skip prefilling the first REPL line from `SAMAGOTCHI_DEFAULT_INPUT`. |
 | `-v`, `--verbose` | Log at debug level (raw LLM responses, tool call/result payloads) and print every log record to stderr too. |
+| `--version` | Print `chi <version>` and exit (`chi self` shows it with the paths). |
 
 Every setting in the config registry (`lib/samagotchi/config.rb`) that exposes a CLI
 flag also works as `--kebab-case VALUE`, e.g. `--server-host`, `--server-port`,

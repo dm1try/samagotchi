@@ -2,6 +2,7 @@
 
 require "open3"
 require "rbconfig"
+require "samagotchi/version"
 
 RSpec.describe "chi --help" do
   let(:chi) { File.expand_path("../bin/chi", __dir__) }
@@ -37,6 +38,12 @@ RSpec.describe "chi --help" do
     out, = Open3.capture3(RbConfig.ruby, chi, "--help", stdin_data: "")
 
     %w[web sessions note bundle self].each { |sub| expect(out).to include("bin/chi #{sub} ") }
+  end
+
+  it "prints its version with --version" do
+    out, err, status = Open3.capture3(RbConfig.ruby, chi, "--version", stdin_data: "")
+
+    expect([out, err, status.exitstatus]).to eq(["chi #{Samagotchi::VERSION}\n", "", 0])
   end
 
   it "refuses an unknown flag with one line, not a backtrace" do
