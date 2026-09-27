@@ -13,6 +13,7 @@ require_relative "owner_lock"
 require_relative "bridge_client"
 require_relative "log"
 require_relative "log_path"
+require_relative "installed_gem"
 require_relative "recap_store"
 require_relative "image_store"
 require_relative "terminal_ui"
@@ -689,20 +690,27 @@ module Samagotchi
       session.save(state_dir: state_dir)
     end
 
+    # The worker's command line: this chi's lib/ and ruby. Run from an
+    # installed gem, the worker activates that gem first, so its dependencies
+    # resolve as the gemspec pins them (reline ~> 0.6.3) rather than to the
+    # newest installed version. A source checkout (bin/chi, bundle exec)
+    # keeps the plain -I lib.
+    def self.worker_command(session_id, state_dir:, gem_spec: InstalledGem.spec)
+      boot = "require 'samagotchi/session_manager'; " \
+             "Samagotchi::SessionManager.run_session_loop('#{session_id}', state_dir: #{state_dir.inspect})"
+      boot = "gem 'samagotchi', '= #{gem_spec.version}'; #{boot}" if gem_spec
+      [RbConfig.ruby, "-I", File.expand_path("..", __dir__), "-e", boot]
+    end
+
     private_class_method def self.spawn_worker_for_session(session, state_dir:)
       session_dir = Session.session_dir(session.id, state_dir: state_dir)
       FileUtils.mkdir_p(session_dir)
       FileUtils.mkdir_p(File.join(session_dir, INPUT_DIR))
       FileUtils.mkdir_p(File.join(session_dir, OUTPUT_DIR))
 
-      lib_path = File.expand_path("..", __dir__)
       opts = spawn_options(session)
       env = opts.delete(:env)
-      command = [
-        RbConfig.ruby,
-        "-I", lib_path,
-        "-e", "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('#{session.id}', state_dir: #{state_dir.inspect})"
-      ]
+      command = worker_command(session.id, state_dir: state_dir)
       # The worker writes the pid file itself once it owns the session.
       pid = env ? Process.spawn(env, *command, **opts) : Process.spawn(*command, **opts)
       Log.info(:worker, "spawn", sid: session.id, child_pid: pid)

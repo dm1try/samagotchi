@@ -644,6 +644,22 @@ RSpec.describe Samagotchi::SessionManager do
       expect(File.exist?(pid_file)).to be false
     end
 
+    describe "the worker command" do
+      let(:boot) { "require 'samagotchi/session_manager'; Samagotchi::SessionManager.run_session_loop('abc', state_dir: \"/s\")" }
+
+      it "is a plain -I lib from a source checkout (this suite runs from one, under Bundler's gemspec)" do
+        expect(Samagotchi::InstalledGem.spec).to be_nil
+        expect(described_class.worker_command("abc", state_dir: "/s"))
+          .to eq([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", boot])
+      end
+
+      it "activates the installed gem first, so its pinned dependencies load" do
+        spec = Gem::Specification.new { |s| s.name = "samagotchi"; s.version = "9.9.9" }
+        expect(described_class.worker_command("abc", state_dir: "/s", gem_spec: spec).last)
+          .to eq("gem 'samagotchi', '= 9.9.9'; #{boot}")
+      end
+    end
+
     it "starts the worker in its own process group, so a Ctrl-C on `chi web` does not reach it" do
       spawned_opts = nil
       allow(Process).to receive(:spawn) do |*args, **opts|
