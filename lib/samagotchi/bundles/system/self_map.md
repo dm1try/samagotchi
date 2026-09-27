@@ -26,7 +26,8 @@
   commands (`anytime:` ones run mid-turn), model tools (they can return images I see), hooks,
   cards, side answers (`ask_model`),
   child sessions and services (e.g. MCP server processes). Shipped: `btw` (`/btw` side question),
-  `mcp` (MCP server tools; a screenshot comes as a picture), `guardrails` (rules), `known-names` (typo guard), `loop-guard`
+  `mcp` (MCP server tools; a screenshot comes as a picture), `guardrails` (rules), `known-names` (typo guard), `source-links`
+  (announces source refs like JIRA-123 in an answer as a one-line note), `loop-guard`
   (denies a repeated tool call with the same result, stops the turn after a few). `chi bundle list`
   shows installed + available; `chi bundle install <name>`. Settings: config.yml `bundles: <name>:`
   (`config_modification_protocol`), read at session start: after an install or a settings change,

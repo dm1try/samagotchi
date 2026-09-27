@@ -299,7 +299,7 @@ Notes:
 - Ordering: bundle hooks fire by `(priority, bundle_name, hook_name)` (lower priority first), then plain `config.yml` hooks in registration order.
 - Settings: a hook class with `initialize(settings = {})` gets the bundle's section of `config.yml` `bundles:` (see [Settings](#settings)).
 - A bundle can also ship a `plugin.rb` whose `chi.on(event)` blocks are bundle hooks too, next to commands and tools; see [Plugins](plugins.md).
-- Shipped bundles: `chi bundle install guardrails` (rules, see [Guardrails](guardrails.md#the-guardrails-bundle)) and `chi bundle install known-names` (a hook, see [Guardrails](guardrails.md#the-known-names-bundle)), `chi bundle install btw` (a plugin: `/btw`, see [Plugins](plugins.md#the-btw-bundle)), `chi bundle install mcp` (a plugin: tools from MCP servers, see [Plugins](plugins.md#the-mcp-bundle)) and `chi bundle install loop-guard` (a plugin: breaks tool-call loops, see [Plugins](plugins.md#the-loop-guard-bundle)).
+- Shipped bundles: `chi bundle install guardrails` (rules, see [Guardrails](guardrails.md#the-guardrails-bundle)) and `chi bundle install known-names` (a hook, see [Guardrails](guardrails.md#the-known-names-bundle)), `chi bundle install source-links` (a hook: announces source refs, see [The source-links bundle](#the-source-links-bundle)), `chi bundle install btw` (a plugin: `/btw`, see [Plugins](plugins.md#the-btw-bundle)), `chi bundle install mcp` (a plugin: tools from MCP servers, see [Plugins](plugins.md#the-mcp-bundle)) and `chi bundle install loop-guard` (a plugin: breaks tool-call loops, see [Plugins](plugins.md#the-loop-guard-bundle)).
 - Installing a bundle executes its hook code at `Engine` startup. Only install bundles you trust, as you would a gem. Hooks are **not** executed at install time (copy-only); they are `module_eval`'d at `Engine.new` inside per-bundle `Samagotchi::Bundles::<name>` namespaces (no top-level `require` collisions). Keep hook files side-effect-free at load time; do work in `#call` — top-level side effects (require, IO, `at_exit`, global assignment) run once per `Engine.new` (class redefinition is idempotent).
 
 Lifecycle:
@@ -307,3 +307,60 @@ Lifecycle:
 - `chi bundle install <source>` copies `hooks/*.rb` to `~/.config/samagotchi/memories/.bundles/<name>/hooks/` and persists metadata + `trust_level` + `source_commit` (git HEAD) to provenance.
 - `Engine.new` loads `config.yml` hooks first, then bundle hooks via `Provenance.each_installed_holding_hooks` → `Hooks::BundleLoader.load`. Bundle hooks are process-scoped (they survive the per-turn `clear_hooks`; only plain hooks are cleared). Experimental bundles emit a one-line startup warning.
 - `chi bundle status`, `diff`, `uninstall`, `build` are hook-aware (counts, metadata, removal).
+
+## The source-links bundle
+
+```sh
+chi bundle install source-links
+```
+
+installs one `after_turn` hook and a short memory. When the model's answer
+mentions a known source ref — a JIRA ticket, a GitHub issue, an internal
+wiki page — the user sees one line right after the message:
+
+```
+sources: JIRA JIRA-123 → https://myjira.com/browse/JIRA-123, JIRA JIRA-10 → https://myjira.com/browse/JIRA-10
+```
+
+The note is **not part of the conversation**: it is an event shown to the
+user, never stored in the session file. A UI replays it while the session's
+worker lives (a page reload keeps it; a stopped worker loses it). Only the
+model's final answer is scanned (the last `role: "model"` message), and only
+the first 20 000 characters of it. A ref that is already a link is skipped —
+inside a bare URL (`https://x.com/JIRA-123`), in a markdown link's target, or
+in a markdown link's label when the target names the same ref
+(`[JIRA-123](https://x.com/JIRA-123)`) — while `see https://x.com JIRA-123`
+and `[fix for JIRA-123](https://github.com/o/r/pull/9)` still link. A ref
+glued to URL punctuation (`/browse/JIRA-1`, `?key=JIRA-1`, `JIRA-1/foo`) is
+skipped too; `Ticket:JIRA-5` and `#JIRA-123` are ordinary plain text and do
+link. Refs are deduped within the turn (case-insensitively) and listed in
+first-occurrence order, whatever order the sources are configured in. With no
+sources configured the hook is a silent no-op.
+
+```yaml
+bundles:
+  source-links:
+    sources:
+      - name: JIRA
+        prefix: JIRA              # simple form: \bJIRA-(\d+)\b
+        base_url: https://myjira.com/browse/
+      - name: GitHub
+        pattern: '\bGH-(\d+)\b'   # full form: a regex
+        url: 'https://github.com/org/repo/issues/{match}'
+        case_insensitive: false   # optional, default false
+    max: 10                       # optional: refs per line, default 10
+```
+
+The `prefix:` form compiles to `\b<prefix>-(\d+)\b` and the URL is
+`base_url` + the full ref text (`JIRA-123`). The `pattern:` form takes a
+regex; `{match}` in `url` is replaced with the first capture group (or the
+full match when the pattern has none). `case_insensitive: true` adds the
+`/i` flag. Past `max` refs the line ends with `… +N more`.
+
+Each regex is compiled with a per-regex timeout (0.5 s, per match attempt),
+so a catastrophic pattern is abandoned instead of hanging the turn: that
+source is skipped whole (its partial matches are discarded) with a warning,
+and the others still report. An entry with neither `prefix:` nor `pattern:`,
+or a pattern that does not compile, is skipped with a warning at load. The
+hook is `on_error: log`: a bug in it warns and the turn is unaffected. As with
+every bundle hook, a running worker picks it up after its next start.
