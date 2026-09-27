@@ -55,3 +55,6 @@ and `--resume`. Flag semantics (also in `docs/cli.md`):
 - Prefer `execute` for short commands and `task_create`/`task_wait` for long-running commands. Use `task_get`/`task_list` for nonblocking status checks and `task_stop` to stop a task.
 - Let `task_wait` return its timeout tail before separately reading a task `output_path`; use `done_pattern` when the command emits a reliable completion marker.
 - Sessions are file-based (`~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar). Retention is 14d/500 (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`/`MAX_COUNT`), `updated_at desc` by default, lazy sweep ≤1/24h from `chi web`'s session hub tick (and on `GET /api/sessions`); manual via `bin/chi sessions {list,prune,clean} --dry-run`. Use `XDG_STATE_HOME` for isolated test runs; `test_run` flag auto-set when `SAMAGOTCHI_ENV`/`RACK_ENV`/`CI`.
+
+## Releases
+Releases follow `docs/releasing.md`: versioning (gem == system bundle; other bundles bump their own version), CHANGELOG rules, and the runbook (`rake release:draft_changelog` → the user approves → `rake release:bump[X.Y.Z]` → `rake release:check` → tag `vX.Y.Z` → GitHub Actions publishes). Never publish or push a tag without the user's OK.
