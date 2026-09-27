@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "cgi"
+require "cgi/escape" # CGI.escapeHTML; Ruby 4.0 ships only cgi/escape
 require "fileutils"
 require "json"
 require "time"
