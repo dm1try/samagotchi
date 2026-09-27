@@ -124,3 +124,12 @@ Yanking hides the version from installs; it can't be pushed again. Mark the
 GitHub release as such (`gh release edit vX.Y.Z --prerelease` or edit its
 notes: "yanked: …"), add a `### Fixed` line under Unreleased, and release the
 next patch version.
+
+## Known CI gaps
+
+Some examples pass on macOS but fail on Linux CI. They carry `:ci_todo` and are
+skipped when `CI` is set: `chi send`/`chi note` subprocess specs (a child
+`ruby` without the bundle can't load nokogiri), `--all` on a peer list, the
+desktop fields in `chi self` (Linux has no helper), and KernelLoop's
+`send_note`. `spec/gem_contents_spec.rb` is skipped on Ruby 3.3 under CI
+(`Zlib::BufError` from `Gem::Package.build`). Fix these, then drop the tags.

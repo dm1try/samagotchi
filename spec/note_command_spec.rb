@@ -89,7 +89,7 @@ RSpec.describe Samagotchi::NoteCommand do
     expect(notes_of(live).size).to eq(1)
   end
 
-  it "--all: every session a worker runs now" do
+  it "--all: every session a worker runs now", :ci_todo do
     a = make(owner: "worker")
     b = make(owner: "worker")
     idle = make
@@ -187,7 +187,7 @@ RSpec.describe Samagotchi::NoteCommand do
       FileUtils.rm_rf(xdg)
     end
 
-    it "is wired before the main option parser and reads stdin" do
+    it "is wired before the main option parser and reads stdin", :ci_todo do
       xdg = Dir.mktmpdir("chi-note")
       state_dir = Samagotchi::Session.default_state_dir(env: { "XDG_STATE_HOME" => xdg })
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/w")

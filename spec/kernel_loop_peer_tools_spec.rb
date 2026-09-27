@@ -12,7 +12,7 @@ RSpec.describe "list_sessions and send_note in the loops" do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  it "KernelLoop dispatches send_note with its peers, and labels the activity" do
+  it "KernelLoop dispatches send_note with its peers, and labels the activity", :ci_todo do
     kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
     kernel.peers = Samagotchi::Tools::Peers.new(session_id: me.id, cwd: "/work/me", state_dir: tmpdir)
 

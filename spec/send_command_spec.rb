@@ -244,7 +244,7 @@ RSpec.describe Samagotchi::SendCommand do
       expect(output.lines.map { |line| line[/refused|no session nope|sent/] }).to eq(["refused", "no session nope", "sent"])
     end
 
-    it "is wired before the main option parser, and keeps non-ASCII text without a locale" do
+    it "is wired before the main option parser, and keeps non-ASCII text without a locale", :ci_todo do
       a = make(owner: "worker")
       # A history with non-ASCII in it, read with no locale.
       a.messages = [{ role: "user", content: "caf\u00E9 \u2615" }, { role: "model", content: "\u2014 ok" }]
