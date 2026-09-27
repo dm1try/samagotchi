@@ -29,7 +29,6 @@ module Samagotchi
       def to_s = text
     end
 
-    DEFAULT_MODEL = "gemma4-small"
     DEFAULT_TIMEOUT_SECONDS = 30.0
     # Up to 10 sentences (recap.sentences) need ~350 tokens with thinking off.
     MAX_TOKENS = 512
@@ -50,7 +49,7 @@ module Samagotchi
     # @param timeout [Numeric] HTTP request timeout. Kept to the recap's own
     #   wait budget (not the chat's global request_timeout) so an abandoned
     #   summarize thread can't outlive the recap attempt by minutes.
-    def initialize(model: DEFAULT_MODEL, base_url: nil, api_key_env: nil, timeout: DEFAULT_TIMEOUT_SECONDS, env: ENV)
+    def initialize(model:, base_url: nil, api_key_env: nil, timeout: DEFAULT_TIMEOUT_SECONDS, env: ENV)
       @model = model
       # A recap is best-effort: one short attempt, no retries. The idle job
       # tries again after the next activity, never on its own.
