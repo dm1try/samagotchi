@@ -226,7 +226,7 @@ RSpec.describe Samagotchi::Worker do
       record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "crashed" } }
       expect(record.to_h).to include(level: "ERROR", tag: "worker")
       expect(record.fields).to include("error" => "JSON::GeneratorError")
-      expect(record.payload).to include("Samagotchi::Worker#run")
+      expect(record.payload).to match(%r{worker\.rb:\d+:in [`'](Samagotchi::Worker#)?run'}) # 3.3: `run', 3.4+: 'Samagotchi::Worker#run'
       expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq("error")
     end
 

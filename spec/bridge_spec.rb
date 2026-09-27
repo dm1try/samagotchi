@@ -1167,7 +1167,7 @@ RSpec.describe Samagotchi::Bridge do
       record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "connection_failed" } }
       expect(record.to_h).to include(level: "ERROR", tag: "bridge")
       expect(record.fields).to include("error" => "RuntimeError", "msg" => "boom")
-      expect(record.payload).to include("in 'Samagotchi::Bridge#handle_connection'")
+      expect(record.payload).to match(/in [`'](Samagotchi::Bridge#)?handle_connection'/) # 3.3: `handle_connection', 3.4+ adds the class
     end
 
     it "rejects an unknown session on the read surface with 404" do
