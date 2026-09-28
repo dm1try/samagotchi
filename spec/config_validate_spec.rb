@@ -57,4 +57,12 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
       "config: unknown key 'SAMAGOTCHI_DEFALT_MODEL' (did you mean 'default.model'?)"
     ])
   end
+
+  it "no longer knows the dead bridge.enable and thinking.preview_lines" do
+    expect(Samagotchi::Config.find_by_key("bridge.enable")).to be_nil
+    expect(Samagotchi::Config.find_by_key("thinking.preview_lines")).to be_nil
+    expect(problems("bridge: {enable: true}\nthinking: {preview_lines: 3}\n")).to eq([
+      "config: unknown key 'bridge'", "config: unknown key 'thinking.preview_lines'"
+    ])
+  end
 end

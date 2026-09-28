@@ -903,7 +903,8 @@ end
 scratch = ARGV[0] == "scratch"
 ARGV.shift if scratch
 
-options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, web: false, web_port: nil, web_open: false, web_markdown: nil, web_turn_view: nil }
+# no_interrupt / no_default_input start from config.yml or the env; the flags below turn them on.
+options = { verbose: false, no_interrupt: Samagotchi::Config.get("no_interrupt"), non_interactive: false, no_default_input: Samagotchi::Config.get("no_default_input"), web: false, web_port: nil, web_open: false, web_markdown: nil, web_turn_view: nil }
 cli_overrides = {}
 
 if ARGV.any? { |arg| arg == "--backend" || arg.start_with?("--backend=") }

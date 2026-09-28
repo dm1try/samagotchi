@@ -612,7 +612,10 @@ described in their own sections.
 | `web.turn_view` | `true` | yes | One block per turn; `false` = the row of bubbles. |
 | `web.annotate_presets` | `Agreed\|Could you please elaborate?` | yes | Quick replies next to Annotate in `chi web`, `\|`-separated (a YAML list works too); `""` in the file or on the CLI leaves only Annotate (an empty env value means the default). See [CLI](cli.md#web-annotate-presets). |
 | `history.file` | state dir | | Prompt history path. |
+| `no_interrupt` | `false` | `--no-interrupt` | Raise the tool-call limit of a turn to 1000; a top-level key. |
+| `no_default_input` | `false` | `--no-default-input` | Don't pre-fill `default.input`; a top-level key. |
 | `skip_agent_md` | `false` | | Don't load AGENT.md; a top-level key (see below). |
 
-`max_tool_output_chars` and `skip_agent_md` have no section: in `config.yml`
-they are top-level keys as written (`max_tool_output_chars: 20000`).
+`max_tool_output_chars`, `skip_agent_md`, `no_interrupt` and
+`no_default_input` have no section: in `config.yml` they are top-level keys as
+written (`max_tool_output_chars: 20000`).
