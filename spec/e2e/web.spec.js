@@ -279,3 +279,18 @@ test("the title badge clears when the tab turns visible before it has focus (Saf
   await card.locator(".question-submit").click();
   await turnEnded(page, 1);
 });
+
+test("the title badge drops a question answered from another client", async ({ page, script }) => {
+  await withNotificationStub(page);
+  script("question");
+  await send(page, "Read a file of my choice");
+  const card = page.locator("#history .bubble.question");
+  await expect(page).toHaveTitle(/^\(1\) Chi/);
+  // Another client answers; this tab stays behind.
+  const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
+  const qid = await card.getAttribute("data-qid");
+  const res = await page.request.post(new URL(`/api/sessions/${id}/answer`, page.url()).href, { data: { id: qid, selected: ["README.md"] } });
+  expect(res.ok()).toBe(true);
+  await turnEnded(page, 1);
+  await expect(page).not.toHaveTitle(/^\(/);
+});

@@ -84,3 +84,23 @@ test("the words: session name and the reason, no question text", () => {
   assert.equal(attentionText(s, { reason: "failed" }).body, "turn failed");
   assert.equal(attentionText({ id: "x" }, { reason: "failed" }).title, "chi session");
 });
+
+test("a question answered (here or in another client) is closed; a new one is closed and needs an answer", () => {
+  const open = { ...base, pending_question: { id: "q1", kind: "question" } };
+  let { state } = trackAttention(initialAttentionState(), "snapshot", { sessions: [open] });
+  assert.deepEqual(trackAttention(state, "session", { session: open }).closed, []);
+  const answered = trackAttention(state, "session", { session: base });
+  assert.deepEqual(answered.closed, ["s1:q1"]);
+  assert.deepEqual(answered.attentions, []);
+  const next = trackAttention(state, "session", { session: { ...base, pending_question: { id: "q2" } } });
+  assert.deepEqual(next.closed, ["s1:q1"]);
+  assert.deepEqual(next.attentions.map((a) => a.key), ["s1:q2"]);
+});
+
+test("a gone session closes its open question; one without a question closes nothing", () => {
+  const open = { ...base, pending_question: { id: "q1", kind: "approval" } };
+  const { state } = trackAttention(initialAttentionState(), "snapshot", { sessions: [open, { ...base, id: "s2" }] });
+  assert.deepEqual(trackAttention(state, "session_gone", { id: "s1" }).closed, ["s1:q1"]);
+  assert.deepEqual(trackAttention(state, "session_gone", { id: "s2" }).closed, []);
+  assert.deepEqual(trackAttention(state, "session_gone", { id: "nope" }).closed, []);
+});
