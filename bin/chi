@@ -47,7 +47,7 @@ if ARGV[0] == "sessions"
     puts "  stop ID...   # stop each session's worker (IDs or unique prefixes); chi --resume ID then starts a fresh one"
     puts "  delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first"
     puts "  prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]"
-    puts "  clean [--dry-run] [--days N]   # test sessions (SAMAGOTCHI_ENV=test, CI): all of them, or those older than N days"
+    puts "  clean [--dry-run] [--days N]   # test sessions (SAMAGOTCHI_ENV=test, CI) and leftover chi scratch ones: all of them, or those older than N days"
     puts "Defaults: days=14 keep=500 keep_status=running (env overrides: SAMAGOTCHI_SESSION_RETENTION_DAYS etc.)"
     exit 0
   end
@@ -152,7 +152,7 @@ if ARGV[0] == "sessions"
     end
     # A delegated session points at its parent: ↳ <parent's short id>.
     row = lambda do |s|
-      flag = s.test_run ? " [test]" : ""
+      flag = s.scratch ? " [scratch]" : (s.test_run ? " [test]" : "")
       child = s.parent_id ? "  ↳ #{s.parent_id[0, 8]}" : ""
       "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}#{child}"
     end

@@ -61,6 +61,16 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(events.map(&:seq)).to eq([1, 2])
     end
 
+    it "never shows a chi scratch session" do
+      shown = save_session(prompt: "kept")
+      scratch = save_session(prompt: "throwaway").tap { |s| s.scratch = true }.save(state_dir: state_dir)
+
+      hub.scan
+
+      expect(hub.snapshot.map { |s| s[:id] }).to eq([shown.id])
+      expect(events.map { |e| e.data[:session][:id] }).not_to include(scratch.id)
+    end
+
     it "emits one session event for a new file, and nothing for a tick with no change" do
       hub.scan
       a = save_session

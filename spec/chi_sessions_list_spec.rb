@@ -32,10 +32,11 @@ RSpec.describe "chi sessions list" do
     Open3.capture3(env, RbConfig.ruby, chi, "sessions", "list", *args, stdin_data: "", chdir: dir)
   end
 
-  def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil, parent_id: nil)
+  def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil, parent_id: nil, scratch: false)
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: cwd, parent_id: parent_id).tap do |s|
       s.last_prompt = prompt
       s.test_run = test_run
+      s.scratch = scratch
       s.save(state_dir: state_dir)
       locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(s.id, state_dir: state_dir), kind: owner) if owner
       sleep(0.01) # distinct updated_at
@@ -52,6 +53,15 @@ RSpec.describe "chi sessions list" do
     expect(out).to include("#{session.id}  idle      #{Samagotchi::Session.load(session.id, state_dir: state_dir).updated_at}  hello there\n")
     expect(out).to include("  a test [test]\n")
     expect(out).to end_with("\n2 session(s) (sort=updated_at order=desc)\n")
+  end
+
+  it "marks a chi scratch session [scratch]" do
+    make("throwaway", scratch: true)
+
+    out, err, status = run_chi
+
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to include("  throwaway [scratch]\n")
   end
 
   it "marks a delegated session with its parent, in the plain and the --live listings; json has parent_id" do

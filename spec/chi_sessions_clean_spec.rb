@@ -18,8 +18,9 @@ RSpec.describe "chi sessions clean" do
     Open3.capture3({ "XDG_STATE_HOME" => xdg_state }, RbConfig.ruby, chi, "sessions", *args, stdin_data: "")
   end
 
-  def make(test_run:, days_old: 0)
-    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", test_run: test_run).tap do |s|
+  def make(test_run:, days_old: 0, scratch: false)
+    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", test_run: test_run,
+                                    scratch: scratch).tap do |s|
       s.messages = [{ role: "user", content: "hi" }, { role: "model", content: "hello" }]
       s.save(state_dir: state_dir)
       next if days_old.zero?
@@ -54,5 +55,16 @@ RSpec.describe "chi sessions clean" do
     expect(status.exitstatus).to eq(0), err
     expect(out).to start_with("Deleted 1 sessions")
     expect([exists?(fresh_test), exists?(old_test)]).to eq([true, false])
+  end
+
+  it "deletes a chi scratch session its process left behind" do
+    leftover = make(test_run: false, scratch: true)
+    real = make(test_run: false)
+
+    out, err, status = run_chi("clean")
+
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to start_with("Deleted 1 sessions")
+    expect([exists?(leftover), exists?(real)]).to eq([false, true])
   end
 end

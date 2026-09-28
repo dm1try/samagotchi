@@ -244,7 +244,8 @@ module Samagotchi
         if stamp != entry.stamp
           session = Session.summary_from_file(path)
           # Corrupt, or missing a field: not a session, as Session.list has it.
-          return drop(id) if session.nil?
+          # A `chi scratch` session is never shown.
+          return drop(id) if session.nil? || session.scratch
 
           # Looked up once per parse (a git call for a session saved before
           # the field), never per tick.

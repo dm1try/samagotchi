@@ -331,6 +331,27 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Dir.exist?(with_input)).to be(true)
       expect(Dir.exist?(fresh)).to be(true)
     end
+
+    it "deletes a leftover scratch session at once, keeping one its REPL still owns" do
+      scratch = lambda do |s|
+        s.messages << { role: "user", content: "hi" }
+        s.scratch = true
+      end
+      leftover = saved(age: Time.now, &scratch)
+      running = saved(age: Time.now, &scratch)
+      lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(running.id, state_dir: tmpdir), kind: "tui")
+
+      # keep_status running doesn't save a leftover: nobody runs it.
+      Samagotchi::Session.mark_running(leftover.id, state_dir: tmpdir)
+      result = described_class.prune_sessions(state_dir: tmpdir, keep_status: "running")
+
+      expect(result[:deleted]).to eq([leftover.id])
+      expect(File.exist?(File.join(tmpdir, "#{leftover.id}.json"))).to be(false)
+      expect(Dir.exist?(File.join(tmpdir, leftover.id))).to be(false)
+      expect(File.exist?(File.join(tmpdir, "#{running.id}.json"))).to be(true)
+    ensure
+      lock&.release
+    end
   end
 
   describe ".delete_session" do

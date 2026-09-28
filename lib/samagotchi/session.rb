@@ -44,6 +44,9 @@ module Samagotchi
     # plugin forked it from (ctx.sessions.fork), else nil.
     # Set before the spawn and kept on respawns, like preloaded_memory_names.
     attr_accessor :parent_id
+    # A `chi scratch` session: deleted when its REPL ends, and by the next
+    # sweep (or `chi sessions clean`) when the process died first.
+    attr_accessor :scratch
 
     # How many image refs a fork's seed lost (SessionManager.spawn_session
     # sets it); not saved.
@@ -53,7 +56,7 @@ module Samagotchi
                    metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
                    first_preview: "", test_run: false, pending_question: nil,
                    used_memory_names: [], project_root: nil,
-                   preloaded_memory_names: [], muted_memory_names: [], parent_id: nil)
+                   preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -72,6 +75,7 @@ module Samagotchi
       @muted_memory_names = self.class.name_list(muted_memory_names)
       @project_root = project_root
       @parent_id = parent_id&.to_s
+      @scratch = !!scratch
     end
 
     # The stored project root, else (a file from before the field) the
@@ -92,7 +96,8 @@ module Samagotchi
     # @param messages [Array<Hash>] a conversation to start from (a fork's
     #   seed); [] by default
     def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
-                         preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [])
+                         preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [],
+                         scratch: false)
       now = Time.now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?
@@ -113,7 +118,8 @@ module Samagotchi
         project_root: ProjectScope.root_for(working_directory),
         preloaded_memory_names: preloaded_memory_names,
         muted_memory_names: muted_memory_names,
-        parent_id: parent_id
+        parent_id: parent_id,
+        scratch: scratch
       )
     end
 
@@ -154,7 +160,8 @@ module Samagotchi
         project_root: data["project_root"],
         preloaded_memory_names: Array(data["preloaded_memory_names"]),
         muted_memory_names: Array(data["muted_memory_names"]),
-        parent_id: data["parent_id"]
+        parent_id: data["parent_id"],
+        scratch: data.fetch("scratch", false)
       )
     rescue JSON::ParserError => e
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
@@ -242,7 +249,8 @@ module Samagotchi
         project_root: data["project_root"],
         preloaded_memory_names: Array(data["preloaded_memory_names"]),
         muted_memory_names: Array(data["muted_memory_names"]),
-        parent_id: data["parent_id"]
+        parent_id: data["parent_id"],
+        scratch: data.fetch("scratch", false)
       )
     rescue JSON::ParserError, KeyError, SystemCallError
       nil
@@ -261,6 +269,9 @@ module Samagotchi
     # +any_age+ makes every session eligible, whatever its age and the
     # count (`chi sessions clean` with no --days: test runs are throwaway).
     #
+    # A scratch session nobody owns (its REPL was killed) goes whatever its
+    # age, its status and the count; +test_only+ takes it too.
+    #
     # @return [Hash] { deleted: [ids], kept: [ids], skipped: [ids] }
     def self.prune(state_dir: default_state_dir, days: DEFAULT_RETENTION_DAYS, max_count: DEFAULT_MAX_COUNT,
                    keep_status: DEFAULT_KEEP_STATUS, dry_run: false, test_only: false, alive_check: nil,
@@ -270,7 +281,7 @@ module Samagotchi
       all = list(state_dir: state_dir, sort: "updated_at", order: "desc")
       # Filter test_only if requested
       if test_only
-        all = all.select(&:test_run)
+        all = all.select { |session| session.test_run || session.scratch }
       end
 
       now = Time.now
@@ -290,7 +301,7 @@ module Samagotchi
         end
 
         # Protected by keep_status
-        if keep_status.include?(session.status.to_s)
+        if keep_status.include?(session.status.to_s) && !session.scratch
           kept << session.id
           next
         end
@@ -327,13 +338,13 @@ module Samagotchi
         overflow = max.positive? && idx >= max
 
         # retain forever when both disabled
-        if max.zero? && cutoff.nil? && !left_empty && !any_age
+        if max.zero? && cutoff.nil? && !left_empty && !any_age && !session.scratch
           kept << session.id
           next
         end
 
         # If neither expired nor overflow, keep
-        unless expired || overflow || left_empty || any_age
+        unless expired || overflow || left_empty || any_age || session.scratch
           kept << session.id
           next
         end
@@ -387,7 +398,8 @@ module Samagotchi
         "project_root" => @project_root,
         "preloaded_memory_names" => Array(@preloaded_memory_names),
         "muted_memory_names" => Array(@muted_memory_names),
-        "parent_id" => @parent_id
+        "parent_id" => @parent_id,
+        "scratch" => @scratch
       }
 
       File.write(temp_path, JSON.pretty_generate(record) + "\n")
