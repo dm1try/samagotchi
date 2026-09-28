@@ -38,7 +38,7 @@ class FakeResponsesManager
     end
   end
 
-  def list_sessions(state_dir: nil, sort: nil, order: nil, limit: nil, offset: 0)
+  def list_sessions(state_dir: nil, sort: nil, order: nil, limit: nil, offset: 0, **)
     []
   end
 
@@ -1530,6 +1530,73 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)).to include("error" => "owned_by_tui")
       expect(Process).not_to have_received(:kill)
       expect(Samagotchi::Session.load(session.id, state_dir: state_dir).status).not_to eq("stopped")
+    end
+
+    describe "POST /api/sessions/:id/archive and /unarchive" do
+      def archived? = Samagotchi::ArchiveStore.archived?(session_dir)
+
+      it "archives, and the list still carries it, marked archived (the page filters at render)" do
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id[0, 8]}/archive", method: "POST"))
+
+        expect(status).to eq(200)
+        expect(JSON.parse(body.first)).to eq("status" => "archived", "session_id" => session.id, "archived" => [session.id],
+                                             "stopped" => [], "discarded" => [])
+        expect(archived?).to be(true)
+        _status, _headers, list = app.call(env_for("/api/sessions"))
+        expect(JSON.parse(list.first).map { |s| [s["id"], s["archived"]] }).to eq([[session.id, true]])
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/unarchive", method: "POST"))
+        expect(status).to eq(200)
+        expect(JSON.parse(body.first)).to eq("status" => "unarchived", "session_id" => session.id, "unarchived" => [session.id])
+        expect(archived?).to be(false)
+      end
+
+      it "stops a live idle worker first (bounded wait)" do
+        @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
+        allow(Samagotchi::SessionManager).to receive(:stop_session) do
+          @lock.release
+          true
+        end
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/archive", method: "POST"))
+
+        expect(status).to eq(200)
+        expect(JSON.parse(body.first)).to include("stopped" => [session.id])
+        expect(Samagotchi::SessionManager).to have_received(:stop_session)
+          .with(session.id, state_dir: state_dir, wait: Samagotchi::Web::App::STOP_WAIT_SECONDS)
+        expect(archived?).to be(true)
+      end
+
+      it "answers 409 busy while a turn runs, owned_by_tui for a REPL's, and archives nothing" do
+        @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
+        Samagotchi::Session.mark_running(session.id, state_dir: state_dir)
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/archive", method: "POST"))
+        expect(status).to eq(409)
+        expect(JSON.parse(body.first)).to include("error" => "busy")
+
+        @lock.release
+        @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/archive", method: "POST"))
+        expect(status).to eq(409)
+        expect(JSON.parse(body.first)).to include("error" => "owned_by_tui")
+        expect(archived?).to be(false)
+      end
+
+      it "answers 409 scratch for a chi scratch session, 404 for an unknown one" do
+        session.scratch = true
+        session.save(state_dir: state_dir)
+
+        status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/archive", method: "POST"))
+        expect(status).to eq(409)
+        expect(JSON.parse(body.first)).to include("error" => "scratch",
+                                                  "detail" => "a scratch session is deleted when you leave; nothing to archive")
+
+        status, = app.call(env_for("/api/sessions/nope/archive", method: "POST"))
+        expect(status).to eq(404)
+        status, = app.call(env_for("/api/sessions/nope/unarchive", method: "POST"))
+        expect(status).to eq(404)
+      end
     end
 
     describe "DELETE /api/sessions/:id" do

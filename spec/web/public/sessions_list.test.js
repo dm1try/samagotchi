@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applySessionEvent, sortedByUpdated, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
+import { applySessionEvent, listedSessions, sortedByUpdated, withChildrenAfterParents } from "../../../lib/samagotchi/web/public/sessions_list.js";
 
 // The page's session list is a projection of the hub's events: a snapshot
 // replaces it, an upsert keeps a known card in place, a new one goes on
@@ -56,4 +56,12 @@ test("the all view puts a delegated session right after its parent; the family k
   // Nothing to group: the same array comes back.
   const plain = [other, orphan];
   assert.equal(withChildrenAfterParents(plain), plain);
+});
+
+test("listedSessions leaves archived sessions out unless asked, and keeps the list's order", () => {
+  const hidden = { id: "h", archived: true };
+  const list = [a, hidden, b];
+  assert.deepEqual(listedSessions(list), [a, b]);
+  assert.deepEqual(listedSessions(list, true), [a, hidden, b]);
+  assert.deepEqual(listedSessions([]), []);
 });

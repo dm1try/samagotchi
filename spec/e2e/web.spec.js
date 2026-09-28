@@ -129,3 +129,34 @@ test("the model picker lists the fake model", async ({ page }) => {
   await expect(select.locator("option")).toHaveText(["fake-script"]);
   await expect(select).toHaveValue("fake-script");
 });
+
+test("archive hides a session from the strip, include archived finds it, unarchive brings it back", async ({ page, script }) => {
+  script("plain");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
+  const stripCard = page.locator(`#topStrip .card[data-id="${id}"]`);
+  await expect(stripCard).toBeVisible();
+
+  await expect(page.locator("#infoBar > button:visible")).toHaveText(["archive", "stop", "delete"]);
+  await page.locator("#infoArchiveBtn").click();
+  await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
+  await expect(page.locator("#toast")).toContainText(`Archived ${id.slice(0, 8)}`);
+  await expect(stripCard).toHaveCount(0);
+  await expect(page.locator("#infoStopBtn")).toBeHidden();
+  // Still on the session.
+  await expect(page).toHaveURL(new RegExp(`#/s/${id}$`));
+
+  await page.locator("#allTile").click();
+  const listed = page.locator(`#allList .card[data-id="${id}"]`);
+  await expect(listed).toHaveCount(0);
+  await page.locator("#includeArchived").check();
+  await expect(listed).toHaveClass(/archived/);
+  await expect(listed.locator(".archived-badge")).toHaveText("archived");
+  await listed.click();
+
+  await expect(page.locator("#infoArchiveBtn")).toHaveText("unarchive");
+  await page.locator("#infoArchiveBtn").click();
+  await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
+  await expect(stripCard).toBeVisible();
+});

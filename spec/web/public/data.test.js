@@ -10,6 +10,8 @@ import {
   cancelTurn,
   stopSession,
   deleteSession,
+  archiveSession,
+  unarchiveSession,
   dismissQuestion,
   listModels,
 } from "../../../lib/samagotchi/web/public/data.js";
@@ -262,4 +264,15 @@ test("deleteSession sends DELETE to the session's URL", async () => {
   });
   assert.deepEqual(calls, [["/api/sessions/3fa2%20b", "DELETE"]]);
   assert.equal(result.status, "deleted");
+});
+
+test("archiveSession and unarchiveSession POST to the session's archive routes", async () => {
+  const calls = [];
+  const fetchImpl = (path, opts) => {
+    calls.push([path, opts.method]);
+    return Promise.resolve(okResponse({ status: "ok" }));
+  };
+  await archiveSession("3fa2", { fetchImpl });
+  await unarchiveSession("3fa2", { fetchImpl });
+  assert.deepEqual(calls, [["/api/sessions/3fa2/archive", "POST"], ["/api/sessions/3fa2/unarchive", "POST"]]);
 });

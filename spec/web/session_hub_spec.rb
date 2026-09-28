@@ -132,6 +132,21 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(events.first.data[:session]).to include(id: a.id, recap: "We fixed the login.")
     end
 
+    it "keeps an archived session, marked archived, once the marker is written (the page filters it)" do
+      a = save_session
+      FileUtils.mkdir_p(session_dir(a))
+      hub.scan
+      expect(events.first.data[:session]).to include(archived: false)
+      events.clear
+
+      Samagotchi::ArchiveStore.archive(a.id, state_dir: state_dir)
+      hub.scan
+
+      expect(types).to eq(%w[session])
+      expect(events.first.data[:session]).to include(id: a.id, archived: true)
+      expect(hub.snapshot.map { |s| s[:id] }).to eq([a.id])
+    end
+
     it "is an empty projection without a state dir, and fills in when the dir appears" do
       hub.scan
 

@@ -2,6 +2,7 @@
 
 require_relative "../session"
 require_relative "../recap_store"
+require_relative "../archive_store"
 require_relative "../bridge_client"
 
 module Samagotchi
@@ -46,6 +47,8 @@ module Samagotchi
           owner: owner&.fetch("kind", nil),
           # The saved recap's first sentence, for the session card.
           recap: RecapStore.preview(session_dir),
+          # Hidden from the strip and the list unless "include archived".
+          archived: ArchiveStore.archived?(session_dir),
           project_root: session.project_root(cache: root_cache),
           # A worker is reachable: its Bridge sidecar is there and the
           # owner lock is held. A sidecar a dead worker left is not up.

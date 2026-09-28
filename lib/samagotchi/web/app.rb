@@ -138,6 +138,9 @@ module Samagotchi
           if (m = %r{\A/api/sessions/([^/]+)/stop\z}.match(req.path_info)) && req.post?
             return handle_stop(req, m[1])
           end
+          if (m = %r{\A/api/sessions/([^/]+)/(archive|unarchive)\z}.match(req.path_info)) && req.post?
+            return m[2] == "archive" ? handle_archive(req, m[1]) : handle_unarchive(req, m[1])
+          end
           if (m = %r{\A/api/sessions/([^/]+)/turn\z}.match(req.path_info)) && req.post?
             return handle_turn(req, m[1])
           end
@@ -224,6 +227,8 @@ module Samagotchi
         offset = sanitize_offset(req.params["offset"])
         return list_from_hub(root, sort: sort, order: order, limit: limit, offset: offset) if @hub
 
+        # Archived ones too, as the hub's: the page filters them at render.
+        scope[:include_archived] = true
         sessions = if @state_dir
                      @manager.list_sessions(state_dir: @state_dir, sort: sort, order: order, limit: limit, offset: offset,
                                             **scope)
@@ -801,6 +806,32 @@ module Samagotchi
         json_response(200, { status: "stopped", session_id: id })
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      # POST /api/sessions/:id/archive: hide it (and its delegates) from the
+      # lists, keep it for good. A live idle worker is stopped first; a turn
+      # running in it or a delegate, a chi REPL's session and a scratch one
+      # are refused (409).
+      def handle_archive(_req, id)
+        result = @manager.archive_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS)
+        (result[:archived] + result[:discarded]).each { |sid| @hub&.touch(sid) }
+        json_response(200, { status: "archived", session_id: result[:id], archived: result[:archived],
+                             stopped: result[:stopped], discarded: result[:discarded] })
+      rescue SessionManager::OwnedByTUI
+        error_response(409, "owned_by_tui", "session #{id} is open in a chi REPL; close it there first")
+      rescue SessionManager::ArchiveRefused => e
+        error_response(409, e.reason == :scratch ? "scratch" : "busy", e.message)
+      rescue ArgumentError => e
+        error_response(404, "not_found", e.message)
+      end
+
+      # POST /api/sessions/:id/unarchive: back to the lists, delegates too.
+      def handle_unarchive(_req, id)
+        result = @manager.unarchive_session(id, state_dir: @state_dir)
+        result[:unarchived].each { |sid| @hub&.touch(sid) }
+        json_response(200, { status: "unarchived", session_id: result[:id], unarchived: result[:unarchived] })
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
       end

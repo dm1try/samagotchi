@@ -376,6 +376,8 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 #infoBar button{padding:4px 12px;border-radius:8px;font-size:12px;font-weight:600}
 #infoBar #infoStopBtn{background:var(--bg-raised);color:var(--warn-text);border:1px solid var(--border-strong)}
 #infoBar #infoStopBtn:hover{background:var(--warn-bg);border-color:var(--warn-border)}
+#infoBar #infoArchiveBtn{background:transparent;color:var(--text-muted);border:1px solid var(--border-strong)}
+#infoBar #infoArchiveBtn:hover{color:var(--text);background:var(--bg-hover)}
 #infoBar #infoDeleteBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
 #infoBar #infoDeleteBtn:hover{color:#fff;background:var(--danger-bg);border-color:var(--danger-bg)}
 /* Phones: the footer is one line; its meta scrolls sideways (all of it stays reachable) and the first-message line, the strip card's title, goes. */
@@ -465,6 +467,13 @@ body.all-view #center, body.all-view #topStrip{display:none}
 #allPath[hidden]{display:none}
 #allPath code{font-family:ui-monospace,monospace;background:var(--bg-hover);padding:1px 4px;border-radius:4px}
 #allHead .count{font-size:11px;color:var(--text-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+#allHead .include-archived{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted);white-space:nowrap;cursor:pointer;user-select:none}
+.card.archived{opacity:.6}
+.card.archived:hover{opacity:.85}
+.card .archived-badge{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid var(--border-strong);color:var(--text-muted)}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:50;display:flex;gap:12px;align-items:center;padding:8px 14px;border-radius:10px;background:var(--bg-raised);color:var(--text);border:1px solid var(--border-strong);box-shadow:0 6px 24px rgba(0,0,0,.25);font-size:13px}
+#toast[hidden]{display:none}
+#toast .toast-action{background:transparent;border:0;color:var(--accent);font-weight:600;cursor:pointer;padding:2px 4px}
 #allList{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-content:start;padding:2px}
 .card.skeleton{pointer-events:none;border-style:dashed;opacity:.9;animation:skeleton-pulse 1.2s ease-in-out infinite}
 .card.skeleton .line{height:10px;background:var(--bg-raised);border-radius:6px}
@@ -548,6 +557,7 @@ a{color:var(--accent)}
       </div>
       <div id="infoBar">
         <div class="info" id="infoText"></div>
+        <button class="ghost" id="infoArchiveBtn" title="Archive: hide from the lists, keep for good" style="display:none">archive</button>
         <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop</button>
         <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
       </div>
@@ -557,12 +567,14 @@ a{color:var(--accent)}
     <div id="allHead">
       <button class="ghost" id="allBack" title="Back to the chat (Esc)">← Back</button>
       <input id="filter" type="search" placeholder="Search… (preview / id / status)" autocomplete="off">
+      <label class="include-archived" title="Show archived sessions too"><input id="includeArchived" type="checkbox"> include archived</label>
       <span class="count" id="count"></span>
     </div>
     <div id="allPath" hidden>Stored in <code></code></div>
     <div id="allList"></div>
   </section>
 </main>
+<div id="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="/assets/app.js"></script>
 </body>
 </html>
