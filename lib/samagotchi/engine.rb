@@ -15,6 +15,7 @@ require_relative "cancellation_controller"
 require_relative "context_window"
 require_relative "kernel_loop"
 require_relative "tools/builtins"
+require_relative "tools/task_runtime"
 require_relative "session_commands"
 require_relative "plugin/loader"
 require_relative "log"
@@ -1907,7 +1908,8 @@ module Samagotchi
             conversation << note if conversation
           elsif canceled && conversation
             conversation << TurnNote.cancelled(result.cancellation_reason, seconds: turn_seconds.call,
-                                                                          shown: TurnNote.interrupted_tail?(conversation))
+                                                                          shown: TurnNote.interrupted_tail?(conversation),
+                                                                          running_tasks: Tools::TaskRuntime.running_created_in(conversation))
             replace_session_messages(session, conversation)
           elsif conversation
             replace_session_messages(session, conversation)
@@ -1949,7 +1951,13 @@ module Samagotchi
       rescue Interrupt
         effective_controller.cancel!(:ctrl_c)
         synchronize_events do
-          replace_session_messages(session, TurnNote.replace_trailing(messages, TurnNote.cancelled(:ctrl_c, seconds: turn_seconds.call))) if messages
+          # Only the pre-turn messages survive here, so tasks this turn
+          # started are missed (plan wait-stop §6).
+          if messages
+            note = TurnNote.cancelled(:ctrl_c, seconds: turn_seconds.call,
+                                               running_tasks: Tools::TaskRuntime.running_created_in(messages))
+            replace_session_messages(session, TurnNote.replace_trailing(messages, note))
+          end
           session.status = Session::STATUS_IDLE
           record_last_turn(session, "canceled", turn_seconds.call, origin)
           emit_event(on_event, with_origin.call({ type: :turn_canceled, cancellation_reason: :ctrl_c }))

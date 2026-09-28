@@ -279,6 +279,31 @@ RSpec.describe "task tools" do
     end
   end
 
+  describe "TaskRuntime.running_created_in" do
+    def tool_response(*outputs, string_keys: false)
+      message = { role: "tool_response", content: outputs.join("\n\n---\n\n") }
+      string_keys ? message.transform_keys(&:to_s) : message
+    end
+
+    it "finds the running tasks this conversation's task_create calls started" do
+      live = extract_field(Samagotchi::Tools::TaskCreate.call("sleep 30"), "task_id")
+      done = extract_field(Samagotchi::Tools::TaskCreate.call("true"), "task_id")
+      other = extract_field(Samagotchi::Tools::TaskCreate.call("sleep 30"), "task_id")
+      sleep 0.1 until Samagotchi::Tools::TaskRuntime.get_record(done).first.fetch("status") != "running"
+      messages = [
+        { role: "user", content: "task_id: #{other}" },
+        tool_response("[execute]\nexit: 0", "[task_create]\ntask_id: #{live}\nstatus: running",
+                      "[task_create]\ntask_id: #{done}\nstatus: running"),
+        tool_response("[task_list]\ntask_id: #{other}", "[task_wait]\ntask_id: #{other}", string_keys: true),
+        tool_response("[task_create]\ntask_id: #{live}\nstatus: running", string_keys: true)
+      ]
+
+      expect(Samagotchi::Tools::TaskRuntime.running_created_in(messages)).to eq([{ id: live, command: "sleep 30" }])
+    ensure
+      [live, other].compact.each { |id| Samagotchi::Tools::TaskStop.call(id) }
+    end
+  end
+
   it "writes command output that can be read from output_path" do
     create_result = Samagotchi::Tools::TaskCreate.call("ruby -e 'puts \"from-output\"'")
     task_id = extract_field(create_result, "task_id")

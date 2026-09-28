@@ -15,6 +15,8 @@ module Samagotchi
     CLOSE = "]"
     FAILED = "the previous turn failed before any answer: "
     RESTORED = "The message went back to the user, who may send it again."
+    TASKS_LISTED = 5
+    TASK_COMMAND_CHARS = 60
 
     module_function
 
@@ -34,11 +36,25 @@ module Samagotchi
     # @param seconds [Numeric, nil] how long the turn had run
     # @param shown [Boolean] visible text had streamed (an `[interrupted]`
     #   model message precedes this note)
-    def cancelled(reason, seconds: nil, shown: false)
+    # @param running_tasks [Array<Hash>] {id:, command:} of this session's
+    #   background tasks still running: a Stop doesn't end them
+    def cancelled(reason, seconds: nil, shown: false, running_tasks: [])
       why = reason.to_s.empty? ? "" : " (#{reason.to_s.tr("_", "-")})"
       after = seconds ? " after #{seconds.round}s" : ""
       what = shown ? "the answer above ends where it was cut off." : "no answer had been shown."
-      message("the previous turn was cancelled#{why}#{after}; #{what}")
+      message("the previous turn was cancelled#{why}#{after}; #{what}#{still_running(running_tasks)}")
+    end
+
+    def still_running(tasks)
+      return "" if tasks.empty?
+
+      listed = tasks.first(TASKS_LISTED).map do |task|
+        command = one_line(task[:command])
+        command = "#{command[0, TASK_COMMAND_CHARS - 1]}…" if command.length > TASK_COMMAND_CHARS
+        "task #{task[:id]} (#{command})"
+      end
+      listed << "#{tasks.size - TASKS_LISTED} more (task_list)" if tasks.size > TASKS_LISTED
+      " Still running: #{listed.join(", ")}. Continue with task_wait <id> or stop with task_stop <id>."
     end
 
     def empty

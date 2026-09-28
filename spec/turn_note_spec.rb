@@ -31,6 +31,19 @@ RSpec.describe Samagotchi::TurnNote do
     expect(described_class.cancelled(nil)[:content]).to eq("[SYSTEM: the previous turn was cancelled; no answer had been shown.]")
   end
 
+  it "lists the background tasks a cancel left running, on one line and capped" do
+    tasks = [{ id: "t1", command: "make   test\n  --verbose" }, { id: "t2", command: "x" * 80 }]
+    expect(described_class.cancelled(:user, seconds: 212, running_tasks: tasks)[:content])
+      .to eq("[SYSTEM: the previous turn was cancelled (user) after 212s; no answer had been shown. " \
+             "Still running: task t1 (make test --verbose), task t2 (#{"x" * 59}…). " \
+             "Continue with task_wait <id> or stop with task_stop <id>.]")
+
+    many = (1..7).map { |i| { id: "t#{i}", command: "c#{i}" } }
+    capped = described_class.cancelled(nil, running_tasks: many)[:content]
+    expect(capped).to include("task t5 (c5), 2 more (task_list).")
+    expect(capped).not_to include("t6")
+  end
+
   it "says an empty turn left the message unanswered" do
     expect(described_class.empty[:content]).to include("no visible answer").and include("still unanswered")
   end

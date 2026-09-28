@@ -94,6 +94,25 @@ module Samagotchi
         end.compact.sort_by { |record| record["created_at"].to_s }.reverse
       end
 
+      # The tasks this conversation's task_create calls started that are
+      # still running. Only task_create results count: records are shared by
+      # every session in the worker's cwd, and task_list shows them all.
+      # A native tool_response joins its calls' results with "---".
+      # @return [Array<Hash>] {id:, command:}, oldest first
+      def running_created_in(messages)
+        ids = Array(messages).flat_map do |message|
+          next [] unless (message[:role] || message["role"]).to_s == "tool_response"
+
+          (message[:content] || message["content"]).to_s.split("\n\n---\n\n").filter_map do |block|
+            block[/\A\[task_create\]\ntask_id: (\S+)/, 1]
+          end
+        end
+        ids.uniq.filter_map do |id|
+          record, _error = get_record(id)
+          { id: id, command: record["command"].to_s } if record&.fetch("status") == "running"
+        end
+      end
+
       def get_record(task_id)
         record = load_record(task_id)
         return [nil, "Error: task not found: #{task_id}"] unless record
