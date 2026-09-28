@@ -24,6 +24,7 @@ module Samagotchi
       Usage: chi send [-m TEXT] (ID|PREFIX)...
              chi send --new [--dir DIR] [--model M] [-m TEXT]
              chi send --wait [--timeout S] [-m TEXT] (--new | ID)
+             chi send --wait [--timeout S] ID
         Sends a message to each session, as if typed in it: a turn starts,
         or a running one picks it up. A stopped session's worker starts.
         -m TEXT     the message; stdin, when piped too, goes above it as a
@@ -35,7 +36,10 @@ module Samagotchi
         --model M   (--new) its model; default the configured one
         --wait      wait for the answer and print it (one session); the
                     other lines go to stderr. Exit 3: it waits for an
-                    answer from you (chi --attach ID or the web)
+                    answer from you (chi --attach ID or the web). With
+                    no message (no -m, nothing piped) nothing is sent: it
+                    waits for the session's next reply, a running turn's
+                    too (after exit 3 or 130, wait again this way)
         --timeout S (--wait) give up after S seconds; default no limit
         Only sessions on this machine. Answers show in the attached TUI
         or web page, not here.
@@ -61,6 +65,7 @@ module Samagotchi
       # With --wait stdout is the answer alone.
       @info = options[:wait] ? @stderr : @stdout
       prompt = compose(utf8(read_stdin), utf8(options[:message]))
+      return run_wait_only(options) if prompt.nil? && options[:wait] && !options[:new]
       unless prompt
         usage_error("no message: pass -m TEXT or pipe it in")
         return 2
@@ -214,10 +219,27 @@ module Samagotchi
       wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout])
     end
 
+    # --wait with no message: the session's next reply, sending nothing,
+    # so an agent can go back to waiting after exit 3 or 130. A running
+    # turn is fine here (nothing joins its queue); a question pending now
+    # was already reported. No message count: a note landing between turns
+    # grows the messages without a turn. An idle session with no worker
+    # waits for whatever wakes one (the web, chi send) rather than calling
+    # it gone.
     # @return [Integer] the exit status
-    def wait_for_reply(id, cursor:, baseline:, timeout:)
+    def run_wait_only(options)
+      id = resolve(options[:ids].first) or return 1
+      session = Session.load(id, state_dir: @state_dir)
+      live = session.status == Session::STATUS_RUNNING || SessionManager.session_owner(id, state_dir: @state_dir)
+      wait_for_reply(id, cursor: ReplyWait.newest_reply(id, state_dir: @state_dir),
+                         baseline: { messages: nil, question_id: session.pending_question&.dig(:id) },
+                         timeout: options[:timeout], owner_grace: live ? WORKER_GONE_AFTER : nil)
+    end
+
+    # @return [Integer] the exit status
+    def wait_for_reply(id, cursor:, baseline:, timeout:, owner_grace: WORKER_GONE_AFTER)
       result = ReplyWait.call(id, state_dir: @state_dir, cursor: cursor, timeout: timeout, baseline: baseline,
-                                  owner_grace: WORKER_GONE_AFTER, poll_interval: POLL_INTERVAL)
+                                  owner_grace: owner_grace, poll_interval: POLL_INTERVAL)
       return reply(result.text) if result.status == :done
 
       attach = "chi --attach #{id}"

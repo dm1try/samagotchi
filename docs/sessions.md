@@ -143,12 +143,14 @@ chi send --new -m "review the diff on feat/x"          # prints "<id>  started",
 git diff | chi send --new -m "review this"             # stdin is quoted context, as above
 chi send --new --wait -m "review the diff on feat/x"   # blocks; stdout is the answer
 chi send --wait -m "and the tests?" 3fa2               # a follow-up in the same session, waits too
+chi send --wait 3fa2                                   # sends nothing: waits for its next reply
 ```
 
 - `--new` takes no ids (one new session per call). `--dir DIR` is its folder, and so its project (default the current one); `--model M` its model (default the configured one; the name isn't checked up front, a wrong one fails the worker's first turn).
 - `--new` prints `<full id>  started` on stdout. With `--wait` that line (and the `sent` line for an existing session) goes to stderr, so stdout is exactly the answer: the reply of the turn the message started, in full. It is the worker's `output/` file, the same one `delegate` reads; a turn that ends with only tool calls and no text has none.
 - `--wait` takes one session: `--new` or one id. A session with a running turn is refused (`busy: a turn is running; wait or attach`, exit 1): the message would run after it, and its reply would come back as the answer.
 - Exit codes with `--wait`: 0 answered; 3 the turn waits for an answer from you (a question or a guardrail approval), with the line `waiting for an answer: …; open it: chi --attach ID or the web`, and the session keeps waiting; 1 the turn ended without a reply (canceled, failed or empty), the worker failed or vanished, the session was stopped, or `--timeout S` passed; 130 on Ctrl-C, which leaves the turn running (`still running: chi --attach ID`). There is no default timeout.
+- `--wait ID` with no message (no `-m`, nothing piped) sends nothing: it waits for the session's next reply and prints and exits as above. A running session is fine (that is the point), so after exit 3 or 130 an agent waits again this way while the user answers in the web or `chi --attach`; the question pending when it starts doesn't count again. An idle session with no worker waits until something wakes one. With `--new`, or two ids, it is a usage error (exit 2).
 - The 16 KiB cap applies: `git diff | chi send --new …` on a big diff is refused; name the branch in the message instead and let the session read it.
 - A session nobody attaches to stalls at its first guardrail ask until someone opens it; left alone it idle-exits after `session.idle_exit_minutes` like any worker. These are ordinary sessions: delete them like any other.
 

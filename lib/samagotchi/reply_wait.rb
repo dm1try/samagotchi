@@ -37,7 +37,8 @@ module Samagotchi
     #   was before the message went in. With it, a turn that grew the
     #   messages (a failed, canceled or empty one leaves its note) and went
     #   idle again ends the wait even if it was never seen running, and a
-    #   question already pending then is not the answer's.
+    #   question already pending then is not the answer's. A nil
+    #   messages: skips the count.
     # @param owner_grace [Numeric, nil] seconds with no live worker before
     #   :worker_gone (one that died before its rescue leaves it running)
     # @return [Result]
@@ -71,7 +72,7 @@ module Samagotchi
 
         if session.status == Session::STATUS_RUNNING
           seen_running = true
-        elsif seen_running || (baseline && session.messages.size > baseline[:messages])
+        elsif seen_running || (baseline&.dig(:messages) && session.messages.size > baseline[:messages])
           # It ran and is idle again with no new reply: canceled, failed or
           # empty. Before it was ever seen running, idle means a
           # file-delivered message its worker has not picked up yet.

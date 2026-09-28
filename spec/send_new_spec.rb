@@ -223,6 +223,57 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     expect(Samagotchi::Session.load(@started.id, state_dir: tmpdir).status).to eq("running")
   end
 
+  describe "with no message (wait only)" do
+    it "sends nothing and prints a running session's next reply, past the question already reported" do
+      asked = make(status: "running", pending_question: { id: "q1", question: "Which branch?" })
+      write_reply(asked, "an older answer")
+      later do
+        update(asked, pending_question: nil)
+        write_reply(asked, "merged into main")
+        update(asked, status: "idle")
+      end
+
+      expect(run("--wait", asked.id[0, 8])).to eq(0), err.string
+      expect(delivered).to be_empty
+      expect(out.string).to eq("merged into main\n")
+      expect(err.string).to be_empty
+    end
+
+    it "waits on an idle session with no worker until one replies" do
+      stub_const("Samagotchi::SendCommand::WORKER_GONE_AFTER", 0.05)
+      owner[0] = nil
+      idle = make(status: "idle")
+      later(0.2) do
+        update(idle, status: "running")
+        write_reply(idle, "hello from the web's turn")
+      end
+
+      expect(run("--wait", idle.id)).to eq(0), err.string
+      expect(out.string).to eq("hello from the web's turn\n")
+      expect(delivered).to be_empty
+    end
+
+    it "reports a new question and a timeout as --wait does" do
+      busy = make(status: "running")
+      later { update(busy, pending_question: { id: "q2", question: "Delete it?" }) }
+      expect(run("--wait", busy.id)).to eq(3)
+      expect(err.string).to end_with("chi send: waiting for an answer: Delete it?; open it: chi --attach #{busy.id} or the web\n")
+
+      expect(run("--wait", "--timeout", "0.1", busy.id)).to eq(1)
+      expect(err.string).to end_with("chi send: still running after 0.1 s: chi --attach #{busy.id}\n")
+      expect(delivered).to be_empty
+    end
+
+    it "is a usage error with --new or with two ids" do
+      a = make(status: "idle")
+      b = make(status: "idle")
+      expect(run("--new", "--wait")).to eq(2)
+      expect(err.string).to include("no message")
+      expect(run("--wait", a.id, b.id)).to eq(2)
+      expect(err.string).to include("--wait takes one session")
+    end
+  end
+
   it "keeps --wait to one session and --timeout to --wait" do
     a = make(status: "idle")
     b = make(status: "idle")
