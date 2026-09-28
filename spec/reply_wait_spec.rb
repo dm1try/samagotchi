@@ -108,6 +108,35 @@ RSpec.describe Samagotchi::ReplyWait do
     expect(wait(timeout: nil).text).to eq("eventually")
   end
 
+  describe "with a baseline" do
+    let(:session) { make(status: "idle") }
+
+    it "ends when the messages grew and it is idle, though never seen running (a turn that failed within one poll)" do
+      s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+      s.messages << { role: "user", content: "[turn failed]" }
+      s.save(state_dir: tmpdir)
+
+      expect(wait(baseline: { messages: 0, question_id: nil }).status).to eq(:no_reply)
+    end
+
+    it "ignores the question pending at the baseline, not a new one" do
+      set(pending_question: { id: "old", question: "Old?" })
+      later { set(pending_question: { id: "new", question: "New?" }) }
+
+      expect(wait(baseline: { messages: 0, question_id: "old" }).question).to include(id: "new")
+    end
+  end
+
+  it "reports a worker gone past the grace, not one that comes back" do
+    owner = [nil]
+    allow(Samagotchi::SessionManager).to receive(:session_owner) { owner[0] }
+    expect(wait(owner_grace: 0.1).status).to eq(:worker_gone)
+
+    later(0.05) { owner[0] = { "pid" => 1 } }
+    later(0.3) { write_reply("came back") }
+    expect(wait(owner_grace: 0.15).text).to eq("came back")
+  end
+
   it "raises for a missing session" do
     expect { described_class.call("nope", state_dir: tmpdir, cursor: nil) }.to raise_error(ArgumentError)
   end

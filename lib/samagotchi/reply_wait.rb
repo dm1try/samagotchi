@@ -17,7 +17,7 @@ module Samagotchi
     POLL_INTERVAL = 0.5
 
     # @!attribute status [Symbol] :done, :waiting_for_answer, :no_reply,
-    #   :error, :stopped, :canceled or :timeout
+    #   :error, :stopped, :canceled, :timeout or :worker_gone
     # @!attribute text [String, nil] the reply (:done) or the worker's error
     #   (:error)
     # @!attribute file [String, nil] the reply's filename, the next cursor
@@ -33,17 +33,26 @@ module Samagotchi
     # @param timeout [Numeric, nil] seconds; nil waits with no limit
     # @param poll_interval [Float]
     # @param cancelled [#call] true stops the wait (:canceled)
+    # @param baseline [Hash, nil] {messages:, question_id:} as the session
+    #   was before the message went in. With it, a turn that grew the
+    #   messages (a failed, canceled or empty one leaves its note) and went
+    #   idle again ends the wait even if it was never seen running, and a
+    #   question already pending then is not the answer's.
+    # @param owner_grace [Numeric, nil] seconds with no live worker before
+    #   :worker_gone (one that died before its rescue leaves it running)
     # @return [Result]
     # @raise [ArgumentError] no such session
-    def call(id, state_dir:, cursor:, timeout: nil, poll_interval: POLL_INTERVAL, cancelled: -> { false })
+    def call(id, state_dir:, cursor:, timeout: nil, poll_interval: POLL_INTERVAL, cancelled: -> { false },
+             baseline: nil, owner_grace: nil)
       deadline = timeout && (monotonic + timeout.to_f)
       seen_running = false
+      gone_since = nil
 
       loop do
         session = Session.load(id, state_dir: state_dir)
 
-        if (file = newest_reply(id, state_dir: state_dir)) && newer?(file, cursor)
-          return Result.new(status: :done, text: File.read(File.join(reply_dir(id, state_dir: state_dir), file)), file: file)
+        if (reply = reply_past(id, state_dir: state_dir, cursor: cursor))
+          return reply
         end
 
         case session.status
@@ -53,7 +62,8 @@ module Samagotchi
           return Result.new(status: :stopped)
         end
 
-        if (pending = session.pending_question)
+        pending = session.pending_question
+        if pending && !(baseline && pending[:id] == baseline[:question_id])
           return Result.new(status: :waiting_for_answer, question: pending)
         end
 
@@ -61,17 +71,35 @@ module Samagotchi
 
         if session.status == Session::STATUS_RUNNING
           seen_running = true
-        elsif seen_running
+        elsif seen_running || (baseline && session.messages.size > baseline[:messages])
           # It ran and is idle again with no new reply: canceled, failed or
           # empty. Before it was ever seen running, idle means a
           # file-delivered message its worker has not picked up yet.
-          return Result.new(status: :no_reply)
+          # The worker writes the reply before its idle save, so the read
+          # above has it; one more look costs nothing should that change.
+          return reply_past(id, state_dir: state_dir, cursor: cursor) || Result.new(status: :no_reply)
+        end
+
+        if owner_grace
+          if SessionManager.session_owner(id, state_dir: state_dir)
+            gone_since = nil
+          elsif monotonic - (gone_since ||= monotonic) > owner_grace
+            return Result.new(status: :worker_gone)
+          end
         end
 
         return Result.new(status: :timeout) if deadline && monotonic > deadline
 
         sleep(poll_interval)
       end
+    end
+
+    # @return [Result, nil] :done with the newest reply past the cursor
+    def reply_past(id, state_dir:, cursor:)
+      file = newest_reply(id, state_dir: state_dir)
+      return nil unless file && newer?(file, cursor)
+
+      Result.new(status: :done, text: File.read(File.join(reply_dir(id, state_dir: state_dir), file)), file: file)
     end
 
     # @return [String, nil] the newest reply filename (sortable timestamps)
