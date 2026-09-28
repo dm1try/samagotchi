@@ -22,9 +22,10 @@ RSpec.describe "chi sessions archive" do
     FileUtils.rm_rf(xdg_state)
   end
 
+  # Not test runs, so the list lines don't gain [test] when CI is set.
   def make(prompt, id: nil, owner: nil, parent: nil, scratch: false)
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app",
-                                    parent_id: parent&.id, scratch: scratch).tap do |s|
+                                    parent_id: parent&.id, scratch: scratch, test_run: false).tap do |s|
       s.id = id if id
       s.last_prompt = prompt
       s.save(state_dir: state_dir)
