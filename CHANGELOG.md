@@ -10,6 +10,10 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- Web notifications: a session that needs you (a question or approval, a
+  failed turn, a turn done after 10 s or more) while the tab is in the
+  background counts in the page title, `(N) Chi`, and with the new bell in the
+  top bar on, shows an OS notification that opens the session.
 - `chi scratch`: a one-time session in the terminal that leaves nothing behind.
   It is deleted however it ends, saves no memories and starts no other
   sessions; one left by a killed process goes at the next sweep or
