@@ -172,13 +172,21 @@ test("restoreAction never refills a prompt this page didn't send (a replay after
   assert.deepEqual(restoreAction(initial, opts), { refill: null, own: false, label: null });
 });
 
-import { commandView, continueLine, isCommandLine } from "../../../lib/samagotchi/web/public/turn_events.js";
+import { commandView, continueLine, isCommandLine, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("isCommandLine: a composer line starting with / or ! goes to the command route", () => {
   assert.equal(isCommandLine("/model x"), true);
   assert.equal(isCommandLine("  !ls"), true);
   assert.equal(isCommandLine("hello /model"), false);
   assert.equal(isCommandLine(""), false);
+});
+
+test("webLocalReply: /archive and /exit are answered by the page, other commands go to the worker", () => {
+  assert.match(webLocalReply("/archive"), /^\/archive: use the archive button/);
+  assert.match(webLocalReply("  /EXIT now "), /^\/exit: /);
+  assert.equal(webLocalReply("/model x"), null);
+  assert.equal(webLocalReply("/archived"), null);
+  assert.equal(webLocalReply("!exit"), null);
 });
 
 test("continueLine: the card's answers as /continue commands", () => {

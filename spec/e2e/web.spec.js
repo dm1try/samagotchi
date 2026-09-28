@@ -308,3 +308,19 @@ test("a first turn that fails shows its prompt and why, once live and again afte
   await shown();
   await expect(page.locator("#history .hint")).toHaveCount(0);
 });
+
+test("/archive and /exit typed in the composer get a local reply, not a worker error", async ({ page, script }) => {
+  script("plain");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  for (const [line, reply] of [["/archive", /^\/archive: use the archive button/], ["/exit", /^\/exit: /]]) {
+    await page.locator("#prompt").fill(line);
+    await page.locator("#actionBtn").click();
+    const bubble = page.locator("#history .bubble.command").last();
+    await expect(bubble.locator(".command-line")).toHaveText(line);
+    await expect(bubble.locator(".command-output")).toHaveText(reply);
+    await expect(bubble).not.toHaveClass(/failed/);
+    await expect(page.locator("#prompt")).toHaveValue("");
+  }
+  await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
+});
