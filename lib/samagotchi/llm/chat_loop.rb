@@ -392,26 +392,21 @@ module Samagotchi
           emit(type: :tool_dispatch_completed, iteration: iteration, call_count: tool_calls.length)
         end
 
-        # Queued steering joins the conversation as one user message.
-        # Returns true when there was any. After a cancel it stays queued, so
-        # it runs as the next turn instead of dying with this one. +answer+ is
-        # the answer the merge follows, for the UIs.
+        # Queued steering joins the conversation as one user message, a
+        # plugin's steers each as its own after it (Steer). Returns true when
+        # there was any. After a cancel it stays queued, so it runs as the
+        # next turn instead of dying with this one. +answer+ is the answer the
+        # merge follows, for the UIs; given, the drain is told it is the
+        # after-answer site (plugin steers are dropped there).
         def inject_pending_input(iteration, answer: nil)
           return false unless @pending_input
           return false if @cancel_controller&.cancelled?
 
-          lines = begin
-            @pending_input.call
-          rescue StandardError
-            nil
-          end
-          return false if lines.nil? || lines.empty?
+          merge = Steer.merge(Steer.drain(@pending_input, at_answer: !answer.nil?))
+          return false if merge.empty?
 
-          content = lines.map { |line| line.to_s.strip }.reject(&:empty?).join("\n\n")
-          return false if content.empty?
-
-          @conversation << { role: "user", content: content }
-          emit(type: :pending_input_merged, iteration: iteration, count: lines.length, content: content,
+          @conversation.concat(merge.messages)
+          emit(type: :pending_input_merged, iteration: iteration, **merge.event_fields,
                answer: answer.to_s.empty? ? nil : answer)
           true
         end

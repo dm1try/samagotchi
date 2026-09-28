@@ -1274,6 +1274,67 @@ it "leaves input queued after a cancel instead of merging it into the dying turn
         .to eq([["after the tool", nil], ["after the answer", "first answer"]])
     end
 
+    describe "plugin steers (items from the Engine's drain)" do
+      it "appends a steer as its own user message after the merged user line, mid-turn" do
+        responses = [%(<|tool_call>call:execute{command: "true"}<tool_call|>), "done"]
+        allow(client).to receive(:complete) { responses.shift }
+        calls = []
+        drain = lambda do |at_answer: false|
+          calls << at_answer
+          calls.length == 2 ? ["user line", { text: "how's it going?", source: "check-in" }] : []
+        end
+        events = []
+
+        result = kernel.run([{ role: "user", content: "hi" }], pending_input: drain,
+                                                              on_stream_event: ->(event) { events << event })
+
+        tail = result.conversation.last(3)
+        expect(tail[0]).to eq(role: "user", content: "user line")
+        expect(tail[1]).to eq(role: "user", kind: "steer", source: "check-in", content: "how's it going?")
+        expect(tail[2][:role]).to eq("model")
+        merged = events.find { |event| event[:type] == :pending_input_merged }
+        expect(merged).to include(count: 1, content: "user line", steers: [{ source: "check-in", text: "how's it going?" }])
+      end
+
+      it "a steer-only merge has count 0 and no content" do
+        responses = [%(<|tool_call>call:execute{command: "true"}<tool_call|>), "done"]
+        allow(client).to receive(:complete) { responses.shift }
+        items = [[], [{ text: "nudge", source: "check-in" }]]
+        events = []
+
+        result = kernel.run([{ role: "user", content: "hi" }], pending_input: ->(at_answer: false) { items.shift || [] },
+                                                              on_stream_event: ->(event) { events << event })
+
+        expect(result.conversation.count { |m| m[:kind] == "steer" }).to eq(1)
+        expect(events.find { |event| event[:type] == :pending_input_merged })
+          .to include(count: 0, content: nil, steers: [{ source: "check-in", text: "nudge" }])
+      end
+
+      it "tells the drain which site it is: at_answer only after a final answer" do
+        responses = [%(<|tool_call>call:execute{command: "true"}<tool_call|>), "done"]
+        allow(client).to receive(:complete) { responses.shift }
+        calls = []
+
+        kernel.run([{ role: "user", content: "hi" }], pending_input: lambda { |at_answer: false|
+          calls << at_answer
+          []
+        })
+
+        expect(calls).to eq([false, false, true])
+      end
+
+      it "leaves the merge event without steers: for user lines only" do
+        allow(client).to receive(:complete).and_return("done")
+        queue.push("steer me")
+        events = []
+
+        kernel.run([{ role: "user", content: "hi" }], pending_input: queue.method(:drain),
+                                                      on_stream_event: ->(event) { events << event })
+
+        expect(events.find { |event| event[:type] == :pending_input_merged }).not_to have_key(:steers)
+      end
+    end
+
     it "survives a draining proc that raises" do
       allow(client).to receive(:complete).and_return("done")
       bad_drain = -> { raise "boom" }

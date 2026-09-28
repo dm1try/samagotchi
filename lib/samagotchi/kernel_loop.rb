@@ -12,6 +12,7 @@ require_relative "llm/errors"
 require_relative "log"
 require_relative "hooks"
 require_relative "pending_input_queue"
+require_relative "steer"
 require_relative "thought_stream_splitter"
 require_relative "tools/builtins"
 require_relative "muted_memories"
@@ -438,6 +439,8 @@ module Samagotchi
     # append them as ONE merged user message at the conversation tail and emit
     # :pending_input_merged. Tail-append only: head mutation would invalidate
     # the server-side prefix KV cache. Returns true when a message was injected.
+    # A plugin's steers (Steer) follow the user's message, each its own
+    # message; after an answer the Engine's drain has already dropped them.
     # After a cancel the input stays queued: it runs as the next turn instead
     # of dying with this one. +answer+ (a proc, called only on a merge) is the
     # answer the merge follows: the UIs show it, the turn summary has only the
@@ -446,24 +449,16 @@ module Samagotchi
       return false unless pending_input
       return false if cancel_controller&.cancelled?
 
-      lines = begin
-        pending_input.call
-      rescue StandardError
-        nil
-      end
-      return false if lines.nil? || lines.empty?
-
-      content = lines.map { |line| line.to_s.strip }.reject(&:empty?).join("\n\n")
-      return false if content.empty?
+      merge = Steer.merge(Steer.drain(pending_input, at_answer: !answer.nil?))
+      return false if merge.empty?
 
       answer = answer.call.to_s if answer
-      conversation << { role: "user", content: content }
+      conversation.concat(merge.messages)
       emit_stream_event(
         on_stream_event,
         type: :pending_input_merged,
         iteration: iteration,
-        count: lines.length,
-        content: content,
+        **merge.event_fields,
         answer: answer.to_s.strip.empty? ? nil : answer
       )
       true

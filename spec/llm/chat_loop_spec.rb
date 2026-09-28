@@ -452,6 +452,35 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(result.conversation.map { |m| [m[:role], m[:content]] }.last(3))
         .to eq([["model", "first"], ["user", "also this"], ["model", "second"]])
     end
+    it "appends a plugin steer as its own user message after the user's line, and sends its text only" do
+      backend.adapter = adapter = FakeChatAdapter.new(tools(["c1", "read", { "path" => "x" }]), text("done"))
+      items = [[], ["user line", { text: "nudge", source: "check-in" }]]
+
+      result = run(pending_input: ->(at_answer: false) { items.shift || [] })
+
+      expect(result.conversation.map { |m| m.slice(:role, :kind, :source, :content) }.last(3))
+        .to eq([{ role: "user", content: "user line" },
+                { role: "user", kind: "steer", source: "check-in", content: "nudge" },
+                { role: "model", content: "done" }])
+      expect(adapter.requests.last[:messages].last(2))
+        .to eq([{ role: "user", content: [{ type: "text", text: "user line" }] },
+                { role: "user", content: [{ type: "text", text: "nudge" }] }])
+      expect(events.find { |e| e[:type] == :pending_input_merged })
+        .to include(count: 1, content: "user line", steers: [{ source: "check-in", text: "nudge" }])
+    end
+
+    it "tells the drain it is the after-answer site only after a final answer" do
+      backend.adapter = FakeChatAdapter.new(tools(["c1", "read", { "path" => "x" }]), text("done"))
+      calls = []
+
+      run(pending_input: lambda { |at_answer: false|
+        calls << at_answer
+        []
+      })
+
+      expect(calls).to eq([false, false, true])
+    end
+
     it "leaves input queued after a cancel instead of merging it into the dying turn" do
       controller = Samagotchi::CancellationController.new
       queue = []

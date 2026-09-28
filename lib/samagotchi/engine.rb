@@ -234,6 +234,9 @@ module Samagotchi
       @activity_seq = 0
       @turn_running = false
       @active_cancel_controller = nil
+      # Plugin steers ({text:, source:}) waiting for the running turn's next
+      # boundary (#steer); guarded by @activity_mutex.
+      @steers = []
       # Reminder names the interactive REPL's IdleReminders callback marked due;
       # the REPL polls them to decide when to run a synthetic reminder turn.
       @due_reminder_names = []
@@ -315,6 +318,58 @@ module Samagotchi
     def turn_running?
       @activity_mutex.synchronize { @turn_running }
     end
+
+    # Put +text+ into the running turn, as a UI's steering does: it joins the
+    # conversation at the loop's next iteration boundary as its own user
+    # message (kind: "steer", source:). Callable from any thread; never
+    # blocks. With no turn running it does nothing (it never starts one).
+    # True means queued, not merged: at the after-answer boundary, and when
+    # the turn ends first, it is dropped (logged).
+    # @return [Boolean] whether it was queued
+    def steer(text, source:)
+      text = text.to_s.strip
+      return false if text.empty?
+
+      @activity_mutex.synchronize do
+        return false unless @turn_running
+
+        @steers << { text: text, source: source.to_s }
+      end
+      true
+    end
+
+    # The drain a turn's loop gets: the caller's lines (a UI's steering; nil
+    # in a --non-interactive run) and the plugin steers. At the after-answer
+    # boundary the steers are dropped: the model answered, and a nudge would
+    # only restart the turn. The steer part fails on its own, never taking
+    # the user's lines with it.
+    def turn_drain(pending_input)
+      lambda do |at_answer: false|
+        lines = pending_input ? Array(pending_input.call) : []
+        lines + take_steers(at_answer)
+      end
+    end
+    private :turn_drain
+
+    def take_steers(drop)
+      steers = @activity_mutex.synchronize do
+        taken = @steers
+        @steers = []
+        taken
+      end
+      return steers unless drop
+
+      log_dropped_steers(steers, "answered")
+      []
+    rescue StandardError
+      []
+    end
+    private :take_steers
+
+    def log_dropped_steers(steers, why)
+      steers.each { |steer| Log.info(:turn, "steer_dropped", source: steer[:source], why: why, chars: steer[:text].length) }
+    end
+    private :log_dropped_steers
 
     # @return [Array<String>] reminder names queued for a synthetic REPL turn
     def due_reminder_names
@@ -1860,7 +1915,7 @@ module Samagotchi
           cancel_controller: effective_controller,
           model_name: bare_for_backend,
           max_tool_output_chars: max_tool_output_chars,
-          pending_input: pending_input
+          pending_input: turn_drain(pending_input)
         )
 
         # Persist deduped used memories onto the session for Web + reload.
@@ -1994,10 +2049,12 @@ module Samagotchi
         # treats the just-finished turn as activity and re-arms its window.
         # Always runs, even if an exception occurred.
         set_turn_running(false)
-        @activity_mutex.synchronize do
+        left = @activity_mutex.synchronize do
           @active_cancel_controller = nil
           @turn_event_sink = nil
+          @steers.tap { @steers = [] }
         end
+        log_dropped_steers(left, "turn_ended")
         record_activity
         # Clear hooks so they remain turn-scoped and never leak into the next turn.
         clear_hooks
