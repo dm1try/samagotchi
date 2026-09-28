@@ -9,25 +9,6 @@ require "samagotchi/config"
 RSpec.describe "docs/configuration.md YAML examples" do
   doc_path = File.expand_path("../docs/configuration.md", __dir__)
 
-  # The maps Config's registry leaves to their own readers, with the keys
-  # each entry may hold (nil: entry names and contents are free-form).
-  # ConfigFile.hosts_config / model_settings / Engine#guardrail_rules.
-  map_entry_keys = {
-    "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision enabled],
-    "models" => %w[profile vision],
-    "model_aliases" => nil,
-    "hooks" => nil,
-    "bundles" => nil,
-    "memories" => nil
-  }
-  section_keys = { "guardrails" => %w[rules disable] }
-
-  # Registry leaves the file may set, by section; "" holds top-level leaves.
-  registry = Samagotchi::Config.all_entries.select(&:config_exposed?).each_with_object(Hash.new { |h, k| h[k] = [] }) do |entry, acc|
-    *section, leaf = entry.yaml_path
-    acc[section.join(".")].push(leaf, leaf.tr("_", "-"), *Array(entry.yaml_aliases))
-  end
-
   # [line, yaml] for every ```yaml fence, dedented (a fence may sit in a list item).
   blocks = lambda do |text|
     text.to_enum(:scan, /^( *)```yaml\n(.*?)^\1```/m).map do
@@ -36,37 +17,12 @@ RSpec.describe "docs/configuration.md YAML examples" do
     end
   end
 
+  # The loader's own check (unknown keys, map entry keys), plus no legacy flat keys.
   problems_in = lambda do |data|
-    problems = []
-    unless data.is_a?(Hash)
-      next ["top level is not a mapping"]
-    end
+    next ["top level is not a mapping"] unless data.is_a?(Hash)
 
-    data.each do |key, value|
-      key = key.to_s
-      if key.start_with?("SAMAGOTCHI_")
-        problems << "legacy flat key #{key}"
-      elsif map_entry_keys.key?(key)
-        allowed = map_entry_keys[key]
-        next if allowed.nil? || !value.is_a?(Hash)
-
-        value.each do |name, entry|
-          next unless entry.is_a?(Hash)
-
-          (entry.keys.map(&:to_s) - allowed).each { |k| problems << "unknown key #{key}.#{name}.#{k}" }
-        end
-      elsif registry.key?(key) || section_keys.key?(key)
-        # An all-commented section is nil; recap: false turns recaps off.
-        next if value.nil? || (key == "recap" && value == false)
-        next problems << "#{key} is not a mapping" unless value.is_a?(Hash)
-
-        allowed = registry.fetch(key, []) + section_keys.fetch(key, [])
-        (value.keys.map(&:to_s) - allowed).each { |k| problems << "unknown key #{key}.#{k}" }
-      elsif !registry[""].include?(key)
-        problems << "unknown top-level key #{key}"
-      end
-    end
-    problems + Samagotchi::Config.validate_yaml_sections(data)
+    data.keys.map(&:to_s).grep(/\ASAMAGOTCHI_/).map { |k| "legacy flat key #{k}" } +
+      Samagotchi::Config.validate_yaml_sections(data)
   end
 
   it "has YAML examples to check" do
@@ -91,7 +47,7 @@ RSpec.describe "docs/configuration.md YAML examples" do
       recap: {host: a}
     YAML
     expect(problems_in.call(data)).to contain_exactly(
-      "legacy flat key SAMAGOTCHI_DEFAULT_MODEL", "unknown key server.colour", "unknown key hosts.a.colour"
+      "legacy flat key SAMAGOTCHI_DEFAULT_MODEL", "config: unknown key 'server.colour'", "config: unknown key 'hosts.a.colour'"
     )
   end
 end

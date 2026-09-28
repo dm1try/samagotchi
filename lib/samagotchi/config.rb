@@ -154,6 +154,21 @@ module Samagotchi
       Entry.new(key: "bridge.enable",            yaml_path: %w[bridge enable],            type: :bool,   default: false,            expose: %i[env config]),
     ].freeze
 
+    # Top-level maps read by their own code, whose entry names and contents
+    # are the user's: ConfigFile.model_aliases / preloaded_memories,
+    # Hooks::Loader, Engine#read_bundle_settings.
+    FREE_FORM_MAPS = %w[model_aliases hooks bundles memories].freeze
+    # Maps of named entries and the keys an entry may hold
+    # (ConfigFile.hosts_config, ConfigFile.model_settings).
+    MAP_ENTRY_KEYS = {
+      "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision enabled].freeze,
+      "models" => %w[profile vision].freeze
+    }.freeze
+    # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
+    SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze }.freeze
+    # Removed settings that warn on their own (Engine.warn_removed_backend_setting).
+    REMOVED_KEYS = %w[backend].freeze
+
     # Fast lookup maps
     BY_KEY = ENTRIES.each_with_object({}) { |e, h| h[e.key] = e }.freeze
     BY_ENV = ENTRIES.each_with_object({}) do |e, h|
@@ -393,28 +408,98 @@ module Samagotchi
         reload!(cli_overrides: overrides)
       end
 
-      # Validation for top-level sections
+      # Problems with the keys of a parsed config.yml, one message per key the
+      # code doesn't read (with a "did you mean" when a known key is close).
+      # Every config-exposed entry in ENTRIES is known as written; names under
+      # the maps are the user's, and host/model entries may hold the keys
+      # their readers take. Legacy flat keys warn in ConfigFile.load_global_env!.
       def validate_yaml_sections(data)
         return [] unless data.is_a?(Hash)
-        errors = []
-        # Legacy flat UPPER keys are handled separately — don't flag them here
-        legacy_keys = BY_ENV.keys
-        data.each_key do |k|
-          next if %w[hosts hooks model_aliases models guardrails bundles].include?(k.to_s)
-          next if legacy_keys.include?(k.to_s)
-          # Section-less registry keys (max_tool_output_chars) are valid as written.
-          next if find_by_key(k)
-          # Sections are top-level keys that map to hashes (e.g., default, recap)
-          # If key contains _ or -, suggest dotted form
-          if k.to_s.include?("_")
-            errors << "top-level key '#{k}' contains '_' — use nested form '#{k.to_s.tr('_', '.')}' (e.g., default.model)"
-          end
-          # Check section name shape if its value is a Hash
-          if data[k].is_a?(Hash) && k.to_s.match?(/[_-]/)
-            errors << "section '#{k}' must match #{SECTION_RE.inspect} (no _ or -)"
+
+        data.flat_map do |key, value|
+          key = key.to_s
+          if find_by_env(key)&.config_exposed? || FREE_FORM_MAPS.include?(key) || REMOVED_KEYS.include?(key)
+            []
+          elsif MAP_ENTRY_KEYS.key?(key)
+            map_entry_problems(key, value)
+          elsif value.is_a?(Hash) && (known_sections.include?(key) || ENTRIES.any? { |e| e.yaml_path.size > 1 && e.section == key })
+            value.keys.filter_map { |leaf| key_problem("#{key}.#{leaf}") }
+          elsif known_sections.include?(key)
+            # An all-commented section is nil; recap: false turns recaps off.
+            value.nil? || (key == "recap" && value == false) ? [] : ["config: '#{key}' must be a mapping of settings; ignored"]
+          else
+            [key_problem(key)].compact
           end
         end
-        errors
+      end
+
+      # Dotted keys config.yml may set: config-exposed entries (snake and kebab
+      # leaf, yaml_aliases), the extra section keys and the map names.
+      def known_config_keys
+        @known_config_keys ||= ENTRIES.select(&:config_exposed?).flat_map do |entry|
+          *section, leaf = entry.yaml_path
+          [leaf, leaf.tr("_", "-"), *Array(entry.yaml_aliases)].map { |l| [*section, l].join(".") }
+        end.to_set.merge(SECTION_EXTRA_KEYS.flat_map { |s, leaves| leaves.map { |l| "#{s}.#{l}" } })
+                                .merge(FREE_FORM_MAPS).merge(MAP_ENTRY_KEYS.keys).freeze
+      end
+
+      private
+
+      def known_sections
+        @known_sections ||= known_config_keys.filter_map { |k| k.split(".").first if k.include?(".") }.to_set.freeze
+      end
+
+      # nil when +dotted+ is a key the file may hold.
+      def key_problem(dotted)
+        return nil if known_config_keys.include?(dotted)
+
+        entry = find_by_key(dotted) || find_by_env(dotted)
+        if entry
+          where = entry.cli_exposed? ? "#{entry.env_key} or #{entry.cli_flag}" : entry.env_key
+          return "config: '#{dotted}' can't be set in config.yml; use #{where}"
+        end
+
+        canonical = ENTRIES.select(&:config_exposed?).map(&:key) + known_sections.to_a +
+                    SECTION_EXTRA_KEYS.flat_map { |s, leaves| leaves.map { |l| "#{s}.#{l}" } } + FREE_FORM_MAPS + MAP_ENTRY_KEYS.keys
+        # A legacy-looking flat key compares by its nested form.
+        probe = dotted.start_with?("SAMAGOTCHI_") ? dotted.delete_prefix("SAMAGOTCHI_").downcase : dotted
+        unknown_key_message(dotted, probe, canonical)
+      end
+
+      def map_entry_problems(map, value)
+        return [] unless value.is_a?(Hash)
+
+        allowed = MAP_ENTRY_KEYS.fetch(map)
+        value.flat_map do |name, entry|
+          next [] unless entry.is_a?(Hash)
+
+          (entry.keys.map(&:to_s) - allowed).map do |k|
+            unknown_key_message("#{map}.#{name}.#{k}", k, allowed, prefix: "#{map}.#{name}.")
+          end
+        end
+      end
+
+      # "config: unknown key 'x'", with a "did you mean" naming the candidates
+      # within edit distance 2 of +probe+ (closest first) and the ones that
+      # share its last segment, at most three.
+      def unknown_key_message(key, probe, candidates, prefix: "")
+        candidates = candidates.uniq
+        near = candidates.map { |c| [levenshtein(probe, c), c] }.select { |d, _| d <= 2 }.sort.map(&:last)
+        close = (near + candidates.select { |c| c.split(".").last == probe.split(".").last }).uniq.first(3)
+        hint = close.empty? ? "" : " (did you mean #{close.map { |c| "'#{prefix}#{c}'" }.join(' or ')}?)"
+        "config: unknown key '#{key}'#{hint}"
+      end
+
+      def levenshtein(a, b)
+        prev = (0..b.size).to_a
+        a.each_char.with_index(1) do |ca, i|
+          cur = [i]
+          b.each_char.with_index(1) do |cb, j|
+            cur << [prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca == cb ? 0 : 1)].min
+          end
+          prev = cur
+        end
+        prev.last
       end
     end
   end
@@ -507,14 +592,17 @@ module Samagotchi
       existed = File.file?(path)
       raw = read_yaml(env: env, path: path) || {}
       if existed
-        Samagotchi::Config.validate_yaml_sections(raw).each { |w| Log.warn(:config, "invalid_section", echo: "Warning: #{w}") }
+        Samagotchi::Config.validate_yaml_sections(raw).each { |w| Log.warn(:config, "config_key", echo: "Warning: #{w}") }
         # Warn on legacy UPPER keys; the nested key wins when both are set.
+        # Any other flat key is unknown to validate_yaml_sections.
         raw.each_key do |k|
           entry = Samagotchi::Config.find_by_env(k)
-          if entry && !Samagotchi::Config.lookup_nested(raw, entry.yaml_path, entry).nil?
+          next unless entry&.config_exposed?
+
+          if !Samagotchi::Config.lookup_nested(raw, entry.yaml_path, entry).nil?
             nested = entry.yaml_path.join(".")
             Log.warn(:config, "legacy_key", echo: "Warning: config: both '#{k}' and '#{nested}' are set; using '#{nested}', remove the flat key", key: k.to_s)
-          elsif k.to_s.match?(/\A[A-Z_]{2,}\z/) && k.to_s.start_with?("SAMAGOTCHI_")
+          else
             Log.warn(:config, "legacy_key", echo: "Warning: config key '#{k}' is legacy UPPER — use '#{k.to_s.downcase.sub(/^samagotchi_/, '').tr('_', '.')}' (e.g., default.model)", key: k.to_s)
           end
         end

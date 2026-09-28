@@ -113,7 +113,7 @@ A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cov
 1. **Read** the current file via `read` tool (or `ConfigFile.global_path`). If `File.file?` false, start from `{}`.
 2. `YAML.safe_load` (permitted_classes: [], aliases: false). If data nil or not Hash, treat as `{}` or raise with path.
 3. Mutate the intended **nested** key in the raw hash. Preserve all other keys byte-for-byte where possible. Example for default model: `raw_data["default"] ||= {}; raw_data["default"]["model"] = "new-model"; raw_data.delete("SAMAGOTCHI_DEFAULT_MODEL")` to migrate legacy.
-4. **Validate** (see below) before writing. Also run `Samagotchi::Config.validate_yaml_sections` — it rejects top-level `_` (suggest `default.model`) except the section-less registry keys (`max_tool_output_chars`, `skip_agent_md`), which are valid top-level keys as written, and warns on legacy flat keys.
+4. **Validate** (see below) before writing. Also run `Samagotchi::Config.validate_yaml_sections` — it returns one `config: unknown key '…' (did you mean '…'?)` per key chi doesn't read (every config-exposed `Config::ENTRIES` key is known as written, including the section-less `max_tool_output_chars` and `skip_agent_md`; names under `hosts:`/`models:`/`model_aliases:`/`hooks:`/`bundles:`/`memories:` are free-form, host and model entries are checked against `Config::MAP_ENTRY_KEYS`). An empty list means no warning at start.
 5. **Write atomically**: `FileUtils.mkdir_p(File.dirname(path))`, `File.write("#{path}.tmp", YAML.dump(raw_data))`, `File.rename("#{path}.tmp", path)`.
 6. Update in-process state: `write_default_model!` sets `ENV["SAMAGOTCHI_DEFAULT_MODEL"]` and `Samagotchi::Config.reload!`; otherwise the harness picks it up on next `Config.get` (live resolve) or restart. CLI overrides (`--default-model`) win over file until process exit.
 
@@ -132,7 +132,7 @@ A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cov
 - **Hosts**: each entry needs `host`, `port` 1-65535, `transport` and `api` optional (a raw `api` must match `transport`), name must match `/\A[a-z0-9][a-z0-9._-]*\z/i`.
 - **Hooks**: each entry must have `path` (relative to `hooks_dir`), `on_error` is `skip` (default) or `log`. Class name must match file basename snake→Pascal.
 - **Scalars via registry**: `Config.coerce` validates `String/Numeric/true/false` per `type: :string/:integer/:float/:bool/:enum`; invalid values warn and fall back to entry `default`.
-- **Sections**: `validate_yaml_sections` rejects top-level keys containing `_` (suggest dotted; section-less registry keys like `max_tool_output_chars` are accepted as written) and section names containing `_`/`-`.
+- **Keys**: `validate_yaml_sections` flags unknown keys (with a suggestion), a registry section that isn't a mapping, and env/CLI-only keys (`model.profile`).
 
 ## Tools to use
 

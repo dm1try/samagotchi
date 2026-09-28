@@ -181,6 +181,19 @@ RSpec.describe Samagotchi::ConfigFile do
       end
     end
 
+    it "warns once per unknown key when it loads the file" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        FileUtils.mkdir_p(File.join(dir, "samagotchi"))
+        File.write(File.join(dir, "samagotchi", "config.yml"), "default: {modle: m}\nbogus: 1\n")
+        ENV["XDG_CONFIG_HOME"] = dir
+
+        expect { described_class.load_global_env! }.to output(
+          "Warning: config: unknown key 'default.modle' (did you mean 'default.model'?)\n" \
+          "Warning: config: unknown key 'bogus'\n"
+        ).to_stderr
+      end
+    end
+
     it "loads SAMAGOTCHI_DEFAULT_INPUT as a scalar string" do
       Dir.mktmpdir("samagotchi-config") do |dir|
         config_dir = File.join(dir, "samagotchi")

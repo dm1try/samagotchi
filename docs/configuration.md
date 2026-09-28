@@ -78,6 +78,9 @@ Behavior:
 - Top level is a YAML mapping of sections (`default:`, `server:`, `recap:`, …)
   and the maps described below. Keys are lower `snake_case`, one level per
   dot: `server.read_timeout` is `server: {read_timeout: 600}`.
+- A key chi doesn't read warns at start, with the closest known key:
+  `config: unknown key 'default.modle' (did you mean 'default.model'?)`.
+  Names you choose under the maps below (host names, model ids) don't warn.
 - Environment variables and CLI flags win over config-file values.
 - Workers inherit hosts via `SAMAGOTCHI_HOSTS_JSON` propagated through `SessionManager.spawn_options`.
 
