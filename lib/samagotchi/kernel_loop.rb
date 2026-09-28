@@ -10,6 +10,7 @@ require_relative "prompt_literal_guard"
 require_relative "client"
 require_relative "llm/errors"
 require_relative "log"
+require_relative "empty_answer_retry"
 require_relative "hooks"
 require_relative "pending_input_queue"
 require_relative "steer"
@@ -211,6 +212,9 @@ module Samagotchi
       tool_activity = []
       qwen_recovery_attempts = 0
       qwen_partial_tool_call = nil
+      empty_retries = 0
+      empty_retry_limit = EmptyAnswerRetry.limit
+      @retry_generation = false
       context_status = nil
       stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
       partial_assistant_buffer = +""
@@ -327,7 +331,25 @@ module Samagotchi
 
           pending_tool_calls = false
           answer = -> { PromptLiteralGuard.restore(strip_thought_blocks(response), profile: @profile) }
-          unless inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller, answer: answer)
+          empty = strip_thought_blocks(response.to_s).strip.empty?
+          retry_empty = empty && empty_retries < empty_retry_limit && !cancel_controller&.cancelled?
+          # The empty generation goes (its thinking would be sent again and
+          # prime the same loop); an empty answer that will be retried is no
+          # answer site, so a plugin's steer joins the retry.
+          conversation.pop if retry_empty
+          unless inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller,
+                                       answer: retry_empty ? nil : answer)
+            if retry_empty
+              empty_retries += 1
+              @retry_generation = true
+              emit_stream_event(on_stream_event, type: :empty_answer_retry, iteration: iteration_index + 1,
+                                                 attempt: empty_retries, of: empty_retry_limit,
+                                                 thinking_chars: thinking_chars(response.to_s, streamed_thinking))
+              conversation << TurnNote.empty_retry
+              next
+            end
+            # The Engine's TurnNote.empty says it all: the spent nudge goes.
+            drop_last_empty_retry!(conversation) if empty && empty_retries.positive?
             break
           end
           # Queued steering keeps the turn going: loop again so the model
@@ -523,7 +545,9 @@ module Samagotchi
       kwargs[:n_predict] = n_predict if n_predict && client_supports_keyword?(:n_predict)
       resolved_model_name = completion_model_name(model_name)
       kwargs[:model] = resolved_model_name if resolved_model_name && client_supports_keyword?(:model)
-      kwargs[:sampling] = @sampling if @sampling && !@sampling.empty? && client_supports_keyword?(:sampling)
+      sampling = @retry_generation ? EmptyAnswerRetry.sampling(@sampling) : @sampling
+      @retry_generation = false
+      kwargs[:sampling] = sampling if sampling && !sampling.empty? && client_supports_keyword?(:sampling)
       kwargs
     end
 
@@ -882,6 +906,12 @@ module Samagotchi
 
     def duplicate_conversation(messages)
       messages.map(&:dup)
+    end
+
+    def drop_last_empty_retry!(conversation)
+      nudge = TurnNote.empty_retry
+      index = conversation.rindex { |entry| entry[:kind] == nudge[:kind] && entry[:content] == nudge[:content] }
+      conversation.delete_at(index) if index
     end
 
     def last_model_content(conversation)
