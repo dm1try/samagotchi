@@ -309,6 +309,49 @@ Workers get `hosts:` (with `profile:`) through `SAMAGOTCHI_HOSTS_JSON` and read 
 `--profile` reaches the worker a chi starts, but a worker that another process wakes later (`chi web`, `--attach`
 after an idle exit) gets that process's environment, so put a lasting choice in config.
 
+## Sampling
+
+chi asks chat hosts (`api: openai`) for greedy decoding (`temperature: 0.0`) and sends native hosts no sampling
+fields, so their server's defaults apply (llama.cpp: temperature 0.8). `sampling:` on a `hosts:` entry or a `models:`
+entry sets request fields for the model's turns:
+
+```yaml
+hosts:
+  work:
+    url: https://llm.example.com/v1
+    api: openai
+    api_key_env: WORK_API_KEY
+    sampling: { temperature: 0.6, presence_penalty: 1.5 }
+models:
+  qwen3.6-35b-a3b:
+    sampling: { temperature: 0.6, top_p: 0.95, repeat_penalty: 1.1 }
+```
+
+- The fields go into the request as written; chi doesn't check the names, since providers differ (`repeat_penalty`,
+  `min_p`, `dry_multiplier` are llama.cpp's; `presence_penalty` is OpenAI-style). A provider that refuses one fails
+  the turn with its error (`host work rejected the request: HTTP 400: …`; one server answered a `presence_penalty`
+  with "the requested logits or output transformation is not supported"): remove the last field you added from that
+  host's or model's `sampling:`, or set it to `null` in the model's entry. A nested map passes through too, e.g.
+  `chat_template_kwargs: { enable_thinking: false }`.
+- A `models:` entry's fields win over its host's, field by field (the host can set a penalty and the model move only
+  the temperature). The entry is found the way `profile:` is (the name as typed, alias-resolved or without its host
+  prefix).
+- `temperature: null` (or `~`) sends no temperature, so the provider's default applies (vLLM takes it from the
+  model's `generation_config.json`).
+- Fields chi sets itself are refused with a warning: `model`, `messages`, `prompt`, `stream`, `stream_options`,
+  `tools`, `tool_choice`, `stop`, `n_predict`, `max_tokens`, `n`, `parallel_tool_calls`, `response_format`,
+  `cache_prompt`. A `sampling:` that isn't a map warns and is skipped.
+- Greedy decoding can make a heavily quantized thinking model loop in its reasoning ("Let me write the reply…"
+  for minutes) or end with an empty answer. Qwen's own advice for its thinking models is `temperature: 0.6,
+  top_p: 0.95` (not greedy), with `presence_penalty` between 0 and 2 against endless repetition.
+- The idle recap and side questions keep their own short, deterministic settings.
+
+`/model` shows what applies (`sampling: temperature=0.6 presence_penalty=1.5 (hosts.work)`), and each request's
+`stream` line in the debug log carries a `sampling=` field with what was sent. The fields are read every turn, so a
+`/model` switch takes the new model's. A worker gets `hosts:` (with `sampling:`) when it starts, through
+`SAMAGOTCHI_HOSTS_JSON`, and reads `models:` from the config file each turn: after changing a host's `sampling:`,
+stop the session's worker (`chi sessions stop`) for it to take effect.
+
 ## Llama HTTP Timeouts
 
 Long-running llama.cpp completions can exceed Ruby's default HTTP read timeout.

@@ -993,6 +993,15 @@ module Samagotchi
     # no prompt profile.
     def chat_model? = @host_registry.resolve(@effective_model_name).entry.chat?
 
+    # "temperature=0.6 (hosts.work)" for /model: the effective model's
+    # configured sampling, nil when none.
+    def sampling_summary
+      target = @host_registry.resolve(@effective_model_name)
+      SamplingSettings.summary(target, names: model_lookup_names(target))
+    rescue StandardError
+      nil
+    end
+
     # The model the server serves for the current model, and the name asked
     # for: what the last generation of that name reported, else llama.cpp's
     # model_alias (/props, one short cached probe; not with probe: false),

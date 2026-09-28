@@ -128,6 +128,15 @@ RSpec.describe Samagotchi::SessionCommands do
         .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); served: ornith-1.5")
     end
 
+    it "names the configured sampling of the model" do
+      allow(Samagotchi::ConfigFile).to receive(:model_settings)
+        .and_return("qwen3-14b" => { profile: nil, sampling: { temperature: 0.6, presence_penalty: 1.5 } })
+
+      expect(commands.run("/model").output)
+        .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); " \
+               "sampling: temperature=0.6 presence_penalty=1.5 (models: qwen3-14b)")
+    end
+
     it "switches the Engine's model and saves it on the session" do
       result = commands.run("/model alpha:gemma-small")
 
