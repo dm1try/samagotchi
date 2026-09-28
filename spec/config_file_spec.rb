@@ -52,6 +52,19 @@ RSpec.describe Samagotchi::ConfigFile do
         expect(described_class.find_by_key("web.turn_view").cli_flag).to eq("--web-turn-view")
       end
 
+      it "defaults the annotate presets to two, set from the file, env or cli; \"\" is none but not from env" do
+        key = "web.annotate_presets"
+        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch(key)).to eq("Agreed|Could you please elaborate?")
+        expect(described_class.resolve(key, file_data: { "web" => { "annotate_presets" => "Yes|No" } }, env: {})).to eq("Yes|No")
+        expect(described_class.resolve(key, file_data: { "web" => { "annotate_presets" => %w[Yes Why?] } }, env: {})).to eq("Yes|Why?")
+        expect(described_class.resolve(key, file_data: {}, env: { "SAMAGOTCHI_WEB_ANNOTATE_PRESETS" => "Ok" })).to eq("Ok")
+        expect(described_class.resolve(key, file_data: {}, env: {}, cli_overrides: { key => "A|B" })).to eq("A|B")
+        expect(described_class.find_by_key(key).cli_flag).to eq("--web-annotate-presets")
+        expect(described_class.resolve(key, file_data: {}, env: {}, cli_overrides: { key => "" })).to eq("")
+        expect(described_class.resolve(key, file_data: { "web" => { "annotate_presets" => "" } }, env: {})).to eq("")
+        expect(described_class.resolve(key, file_data: {}, env: { "SAMAGOTCHI_WEB_ANNOTATE_PRESETS" => "" })).to eq("Agreed|Could you please elaborate?")
+      end
+
       it "defaults a worker's idle exit to 30 minutes, overridable in fractions" do
         expect(described_class.resolve("session.idle_exit_minutes", file_data: {}, env: {})).to eq(30.0)
         expect(described_class.resolve("session.idle_exit_minutes", file_data: {},

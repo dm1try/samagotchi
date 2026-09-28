@@ -17,6 +17,7 @@ require_relative "../host_registry"
 require_relative "../model_profile"
 require_relative "../project_scope"
 require_relative "../version"
+require_relative "../config"
 require_relative "../output_formatter"
 require_relative "../image_store"
 require_relative "../context_note"
@@ -71,6 +72,9 @@ module Samagotchi
       # @param turn_view [Boolean] the page's per-turn view (web.turn_view,
       #   the default); false is the classic row of bubbles; ?view=turn|chat
       #   overrides it for one page load
+      # @param annotate_presets [String, Array] the quick replies next to
+      #   Annotate (web.annotate_presets, "|"-separated); "" shows none. The
+      #   page parses them (annotate_presets.js).
       # @param hub [SessionHub, nil] the session projection GET /api/events
       #   streams from; without one the route answers 503
       # @param registry [HostRegistry, nil] the hosts GET /api/models lists
@@ -79,6 +83,7 @@ module Samagotchi
       #   waits for the hosts' lists
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
                      bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, turn_view: true, hub: nil,
+                     annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT)
         @manager = manager || SessionManager
@@ -92,6 +97,7 @@ module Samagotchi
         @bridge_wait_timeout = bridge_wait_timeout
         @markdown_renderer = MarkdownRenderer.new(enabled: markdown)
         @turn_view = turn_view
+        @annotate_presets = annotate_presets.is_a?(Array) ? annotate_presets.join("|") : annotate_presets.to_s
         @hub = hub
         @events_heartbeat = events_heartbeat
         @events_queue = events_queue
@@ -1255,6 +1261,8 @@ module Samagotchi
       def index_data_attributes(req)
         attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(Dir.pwd) }
         attrs["turn-view"] = "1" if turn_view?(req.params["view"])
+        # Always there: an empty one means no presets, not the default.
+        attrs["annotate-presets"] = @annotate_presets
         dir, = scope_dir(req.params["dir"])
         root = dir && ProjectScope.root_for(dir)
         if root

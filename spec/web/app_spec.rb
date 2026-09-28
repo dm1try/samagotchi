@@ -86,7 +86,7 @@ RSpec.describe Samagotchi::Web::App do
   # bridge_wait_timeout: 0 — no real worker is spawned in these specs, so the
   # create handler must not wait for a bridge sidecar.
   # turn_view: nil leaves the app's own default (the turn view).
-  def build_app(manager: nil, state_dir: nil, markdown: false, turn_view: nil, session_class: StubSessionLoader)
+  def build_app(manager: nil, state_dir: nil, markdown: false, turn_view: nil, session_class: StubSessionLoader, **extra)
     manager ||= FakeResponsesManager.new
     described_class.new(
       manager: manager,
@@ -94,7 +94,8 @@ RSpec.describe Samagotchi::Web::App do
       session_class: session_class,
       bridge_wait_timeout: 0,
       markdown: markdown,
-      **(turn_view.nil? ? {} : { turn_view: turn_view })
+      **(turn_view.nil? ? {} : { turn_view: turn_view }),
+      **extra
     )
   end
 
@@ -1196,6 +1197,17 @@ RSpec.describe Samagotchi::Web::App do
       expect(page.call("/?view=turn", turn_view: false)).to include(' data-turn-view="1"')
       expect(page.call("/?view=nope")).to include(' data-turn-view="1"')
       expect(page.call("/?view=nope", turn_view: false)).not_to include("data-turn-view")
+    end
+
+    # The page parses them (annotate_presets.js); an empty one is kept so
+    # it means "none", not the default.
+    it "hands the page the annotate presets, escaped, empty kept, a list joined" do
+      page = ->(**opts) { build_app(**opts).call(env_for("/"))[2].first }
+
+      expect(page.call).to include(' data-annotate-presets="Agreed|Could you please elaborate?"')
+      expect(page.call(annotate_presets: %(Say "hi" & <b>|No))).to include(' data-annotate-presets="Say &quot;hi&quot; &amp; &lt;b&gt;|No"')
+      expect(page.call(annotate_presets: "")).to include(' data-annotate-presets=""')
+      expect(page.call(annotate_presets: %w[Agreed Why?])).to include(' data-annotate-presets="Agreed|Why?"')
     end
   end
 

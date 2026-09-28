@@ -355,6 +355,32 @@ and `?view=turn` the turn view, whatever the config says; the parameter is dropp
 when you switch between the project and all-sessions views. The terminal
 UIs are not affected.
 
+### Web annotate presets
+
+Selecting text in an answer, a thinking block, a tool row or one of your
+messages shows **Annotate**, which quotes the selection into the composer
+for a note under it. Next to it sit quick replies, by default `Agreed` and
+`Could you please elaborate?`: a click quotes the selection the same way
+with that text already written as the note. It only fills the composer,
+never sends, so you can collect several quotes and edit before sending.
+
+The list is `web.annotate_presets`, `|`-separated (at most five; a preset
+can't contain `|`; a YAML list works too):
+
+```sh
+chi web --web-annotate-presets "Yes|No|Why this way?"
+chi web --web-annotate-presets ""   # only Annotate
+```
+
+```yaml
+web:
+  annotate_presets: "Agreed|Could you please elaborate?"
+```
+
+`SAMAGOTCHI_WEB_ANNOTATE_PRESETS` overrides the file, but an empty value
+there means the default, not "none": use `""` in the file or on the command
+line. A `chi web` that already runs keeps its list; restart it.
+
 ## Runtime Model Switch (Assist Mode)
 
 In interactive assist mode, you can switch the request model without restarting:

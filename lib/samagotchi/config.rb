@@ -141,6 +141,8 @@ module Samagotchi
       Entry.new(key: "web.markdown",             yaml_path: %w[web markdown],             type: :bool,    default: false,           expose: %i[env config cli]),
       # The page shows each turn as one block of generations (the live one at the bottom); false brings back the row of bubbles; ?view=turn|chat overrides it per page load.
       Entry.new(key: "web.turn_view",            yaml_path: %w[web turn_view],            type: :bool,    default: true,           expose: %i[env config cli]),
+      # Quick replies next to Annotate in the page's selection bubble, "|"-separated (a YAML list works too); "" leaves only Annotate.
+      Entry.new(key: "web.annotate_presets",     yaml_path: %w[web annotate_presets],     type: :string, default: "Agreed|Could you please elaborate?", expose: %i[env config cli]),
 
       Entry.new(key: "no_interrupt",             yaml_path: %w[no_interrupt],             type: :bool,   default: false,            expose: %i[env config cli]),
       Entry.new(key: "no_default_input",         yaml_path: %w[no_default_input],         type: :bool,   default: false,            expose: %i[env config cli]),
@@ -186,7 +188,8 @@ module Samagotchi
         return nil if raw.nil?
         # For string, preserve as-is (including trailing spaces like "Please ")
         if entry.type == :string
-          str = raw.to_s
+          # A YAML list for a "|"-separated setting (web.annotate_presets).
+          str = raw.is_a?(Array) ? raw.join("|") : raw.to_s
           return nil if str.empty? && entry.type != :string
           return str
         end

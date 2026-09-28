@@ -605,6 +605,7 @@ described in their own sections.
 | `web.host` | `127.0.0.1` | yes | `127.0.0.1`, `::1` or `localhost`. |
 | `web.markdown` | `false` | yes | Render answers as Markdown in `chi web`. |
 | `web.turn_view` | `true` | yes | One block per turn; `false` = the row of bubbles. |
+| `web.annotate_presets` | `Agreed\|Could you please elaborate?` | yes | Quick replies next to Annotate in `chi web`, `\|`-separated (a YAML list works too); `""` in the file or on the CLI leaves only Annotate (an empty env value means the default). See [CLI](cli.md#web-annotate-presets). |
 | `history.file` | state dir | | Prompt history path. |
 | `skip_agent_md` | `false` | | Don't load AGENT.md; env only (see below). |
 

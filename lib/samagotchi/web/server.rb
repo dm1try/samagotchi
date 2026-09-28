@@ -9,6 +9,7 @@ require "webrick"
 
 require_relative "app"
 require_relative "session_hub"
+require_relative "../config"
 require_relative "../project_scope"
 require_relative "../log"
 require_relative "../version"
@@ -51,7 +52,8 @@ module Samagotchi
       # open) its page for +dir+ and leave it be; else start one.
       # @param scope ["project", "all"] "all": the plain page, every session
       # @return [Integer] the exit status
-      def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false, turn_view: true)
+      def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false, turn_view: true,
+                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default)
         host = resolve_host(host)
         port = resolve_port(port)
         url = scope_url(host, port, dir: dir, scope: scope)
@@ -65,7 +67,8 @@ module Samagotchi
           warn in_use_message(port)
           1
         else
-          start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, turn_view: turn_view) ? 0 : 1
+          start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, turn_view: turn_view,
+                annotate_presets: annotate_presets) ? 0 : 1
         end
       rescue Interrupt
         # Ctrl-C: the server has stopped (start's ensure); one line, and the
@@ -78,13 +81,14 @@ module Samagotchi
       #   from; built over the app's state dir unless given
       # @return [Boolean] false when the port was taken (said so on stderr)
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
-                     turn_view: true, hub: nil)
+                     turn_view: true, annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil)
         port = resolve_port(port)
         host = resolve_host(host)
         url ||= "http://#{url_host(host)}:#{port}/"
 
         hub ||= SessionHub.new(state_dir: state_dir || Session.default_state_dir, manager: manager || SessionManager)
-        app = App.new(manager: manager, state_dir: state_dir, markdown: markdown, turn_view: turn_view, hub: hub)
+        app = App.new(manager: manager, state_dir: state_dir, markdown: markdown, turn_view: turn_view,
+                      annotate_presets: annotate_presets, hub: hub)
         Samagotchi::Log.info(:web, "start", url: "http://#{host}:#{port}", version: Samagotchi::VERSION)
         hub.start
         # Said once the port is bound: a second chi web racing for it gets
