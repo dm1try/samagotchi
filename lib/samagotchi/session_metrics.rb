@@ -14,13 +14,12 @@ module Samagotchi
   # event to its SessionObserver): the REPL, the -p/--non-interactive/--resume
   # paths and SessionManager background workers.
   #
-  # Collected dimensions:
-  #   - tokens (input/output/total), with a provenance flag (:server|:estimate)
-  #   - turn count, tool calls (total / per-tool / error count)
-  #   - iterations (tool-call rounds) per turn, aggregated
-  #   - generation latency (monotonic clock across generation_* events)
-  #   - cancellations and network retries
-  #   - session wall-clock (first activity -> last activity)
+  # Each finished turn leaves a record (status, timings, model, prompt and
+  # completion tokens, tool calls, iterations, retries); session totals are
+  # sums over the records, so a worker that stops and wakes again (a new
+  # collector) keeps counting: #session_id= loads the records already saved.
+  # Only prompt and completion counts, which every backend reports the same
+  # way, are kept.
   #
   # A snapshot is surfaced via Engine#session_state_snapshot and (optionally)
   # persisted to a sibling analytics.json next to the session file. The event
@@ -70,18 +69,7 @@ module Samagotchi
       @clock = clock || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
       @wall_clock = wall_clock || -> { Time.now }
       @session_id = nil
-      @turns = 0
-      @tokens_in = 0
-      @tokens_out = 0
-      @tokens_total = 0
-      @token_source = nil # :server | :estimate
-      @tool_calls_total = 0
-      @tool_calls_by_tool = Hash.new(0)
-      @tool_errors = 0
-      @iterations_total = 0
-      @gen_latency_ms = 0
-      @cancellations = 0
-      @retries = 0
+      @state_dir = nil
       @started_at = nil
       @last_activity_at = nil
       @turn = nil
@@ -98,14 +86,25 @@ module Samagotchi
       end
     end
 
+    # The sessions dir analytics.json is read from and saved to (nil: the
+    # XDG default). Set it before #session_id=.
+    attr_writer :state_dir
+
     # Set the session id the collector is aggregating for. Safe to call multiple
-    # times; the first non-empty id wins so later turns don't clobber it.
+    # times; the first non-empty id wins so later turns don't clobber it. The
+    # first one loads the records a earlier process saved for it, once
+    # (#snapshot, on hot paths, never reads the disk).
     # @param id [String, nil]
     # @return [void]
     def session_id=(id)
       return if id.nil? || id.to_s.empty?
 
-      @mutex.synchronize { @session_id ||= id.to_s }
+      @mutex.synchronize do
+        next if @session_id
+
+        @session_id = id.to_s
+        load_persisted
+      end
     end
 
     # Event sink. Safe to call from any thread; errors are isolated by the
@@ -150,7 +149,6 @@ module Samagotchi
       when :generation_retrying
         # The retry streams from the start: its counts replace the ones so far.
         @mutex.synchronize do
-          @retries += 1
           if @turn
             @turn.retries += 1
             reset_generation_tokens
@@ -159,7 +157,6 @@ module Samagotchi
       when :turn_completed
         end_turn(status: "completed")
       when :turn_canceled
-        @mutex.synchronize { @cancellations += 1 }
         end_turn(status: "canceled", reason: event[:cancellation_reason])
       when :turn_failed
         end_turn(status: "failed")
@@ -170,32 +167,37 @@ module Samagotchi
       nil
     end
 
+    # The session totals are sums over the turn records (the ones loaded from
+    # disk and this process's), with the running turn's calls, iterations and
+    # finished generations counted at once, so /stats agrees mid-turn.
     # @return [Hash] the current summary snapshot
     def snapshot
       @mutex.synchronize do
+        records = @turn_records
+        turn = @turn
+        in_flight = turn ? turn.tool_calls_by_id.values : []
+        tools = @tool_records + in_flight
         {
           session_id: @session_id,
-          turns: @turns,
-          tokens_in: @tokens_in,
-          tokens_out: @tokens_out,
-          tokens_total: @tokens_total,
-          token_source: @token_source,
+          turns: records.size + (turn ? 1 : 0),
+          cancellations: records.count { |record| record[:status] == "canceled" },
+          tokens: {
+            prompt_sum: sum(records, :prompt_tokens_sum) + (turn&.prompt_sum || 0),
+            completion_sum: sum(records, :completion_tokens) + (turn&.completion_sum || 0),
+            source: combined_source(records.map { |record| record[:token_source] } + (turn&.token_sources || []))
+          },
           context_window_tokens: @context_window_tokens,
           context_window_source: @context_window_source,
           profile: @profile,
           profile_source: @profile_source,
           served_model: @served_model,
           served_model_for: @served_model_for,
-          # The running turn's calls, iterations and finished generations
-          # count at once (the per-tool counts do too), so /stats agrees
-          # mid-turn; end_turn moves them into the totals.
-          tool_calls_total: @tool_calls_total + (@turn&.tool_calls || 0),
-          tool_calls_by_tool: @tool_calls_by_tool.dup,
-          tool_errors: @tool_errors + (@turn&.tool_errors || 0),
-          iterations_total: @iterations_total + (@turn&.iteration_count || 0),
-          gen_latency_ms: @gen_latency_ms + (@turn&.gen_latency_accum || 0),
-          cancellations: @cancellations,
-          retries: @retries,
+          tool_calls_total: tools.size,
+          tool_calls_by_tool: tools.map { |tool| tool[:tool].to_s }.reject(&:empty?).tally,
+          tool_errors: @tool_records.count { |tool| tool[:status] == "error" },
+          iterations_total: sum(records, :iterations) + (turn&.iteration_count || 0),
+          gen_latency_ms: (sum(records, :gen_ms) + (turn&.gen_latency_accum || 0)).round,
+          retries: sum(records, :retries) + (turn&.retries || 0),
           started_at: @started_at,
           last_activity_at: @last_activity_at,
           session_duration_ms: elapsed_ms(@session_started_monotonic),
@@ -219,11 +221,10 @@ module Samagotchi
       # Omitting state_dir lets Session.session_dir fall back to the default
       # (XDG) location; passing an explicit nil would override it and break
       # File.join.
-      dir = state_dir ? Session.session_dir(sid, state_dir: state_dir) : Session.session_dir(sid)
-      FileUtils.mkdir_p(dir)
+      FileUtils.mkdir_p(dir = session_dir(sid, state_dir || @state_dir))
       path = File.join(dir, "analytics.json")
       temp_path = "#{path}.tmp"
-      File.write(temp_path, JSON.pretty_generate(merged_persisted_snapshot(path)) + "\n")
+      File.write(temp_path, JSON.pretty_generate(snapshot.merge(active_turn: nil, active_tools: [])) + "\n")
       File.rename(temp_path, path)
       true
     rescue StandardError
@@ -234,10 +235,12 @@ module Samagotchi
 
     def begin_turn(event)
       @mutex.synchronize do
-        @session_id ||= event[:session_id].to_s if event[:session_id]
+        unless @session_id || event[:session_id].to_s.empty?
+          @session_id = event[:session_id].to_s
+          load_persisted
+        end
         @started_at ||= now.iso8601(3)
         @session_started_monotonic ||= monotonic_time
-        @turns += 1
         @turn = TurnState.new(
           session_id: @session_id,
           iteration_count: 0,
@@ -286,10 +289,6 @@ module Samagotchi
           record.merge!(turn_token_fields(@turn))
           @turn_records << record
         end
-        @iterations_total += @turn.iteration_count if @turn
-        @gen_latency_ms += @turn.gen_latency_accum if @turn
-        @tool_calls_total += @turn.tool_calls if @turn
-        @tool_errors += @turn.tool_errors if @turn
         @turn = nil
       end
     end
@@ -330,8 +329,6 @@ module Samagotchi
       end
       turn.completion_last = completion
       turn.completion_sum += completion
-      @tokens_out += completion
-      @tokens_total = @tokens_in + @tokens_out
       started = turn.gen_started_at
       return unless started
 
@@ -375,7 +372,6 @@ module Samagotchi
 
         @turn.tool_calls += 1
         tool = event[:tool].to_s
-        @tool_calls_by_tool[tool] += 1 unless tool.empty?
         iteration = event[:iteration].to_i
         call_index = event[:call_index].to_i
         key = tool_key(iteration, call_index)
@@ -414,10 +410,9 @@ module Samagotchi
     end
 
     # Accumulate token counts from a streamed generation_chunk payload.
-    # Server-first: prefer real timings/usage. Input tokens keep a running MAX
-    # (the prompt grows across tool-call iterations); completion tokens are
-    # tracked as a per-generation MAX and summed at generation_completed so
-    # multi-generation turns count every generation. When a generation reports
+    # Server-first: prefer real timings/usage. Prompt and completion tokens
+    # are tracked as a per-generation MAX (the server's counts are cumulative
+    # per request) and folded into the turn when the generation ends. When a generation reports
     # no server tokens at all we fall back to the chars/4 estimate summed across
     # its chunks (mutually exclusive with server counting to avoid double
     # counting a final chunk that carries timings while earlier chunks do not).
@@ -428,14 +423,11 @@ module Samagotchi
       usage = TokenUsage.from_payload(payload)
       if usage
         @mutex.synchronize do
-          @token_source = :server
-          @tokens_in = [@tokens_in, usage[:prompt_tokens].to_i].max
           if @turn
             @turn.gen_prompt_max = [@turn.gen_prompt_max, usage[:prompt_tokens].to_i].max
             @turn.gen_completion_max = [@turn.gen_completion_max, usage[:completion_tokens].to_i].max
             @turn.gen_had_server = true
           end
-          @tokens_total = @tokens_in + @tokens_out
         end
       else
         @mutex.synchronize do
@@ -443,9 +435,7 @@ module Samagotchi
           return unless chars && chars.positive?
           return if @turn && @turn.gen_had_server
 
-          @token_source ||= :estimate
           @turn.gen_estimate_sum += TokenUsage.estimate(payload_content(payload, event)) if @turn
-          @tokens_total = @tokens_in + @tokens_out
         end
       end
     end
@@ -501,42 +491,49 @@ module Samagotchi
       end
     end
 
-    def merged_persisted_snapshot(path)
-      current = snapshot.merge(active_turn: nil, active_tools: [])
-      return current unless File.file?(path)
-
-      prior = JSON.parse(File.read(path))
-      return current unless prior.is_a?(Hash)
-
-      current.merge(
-        started_at: earliest_timestamp(prior["started_at"], current[:started_at]),
-        last_activity_at: latest_timestamp(prior["last_activity_at"], current[:last_activity_at]),
-        turn_records: merge_records(prior["turn_records"], current[:turn_records]),
-        tool_records: merge_records(prior["tool_records"], current[:tool_records])
-      )
-    rescue JSON::ParserError
-      current
+    def session_dir(sid, state_dir)
+      # Omitting state_dir lets Session.session_dir fall back to the default
+      # (XDG) location; passing an explicit nil would override it.
+      state_dir ? Session.session_dir(sid, state_dir: state_dir) : Session.session_dir(sid)
     end
 
-    def merge_records(prior, current)
-      (Array(prior) + Array(current)).each_with_object({}) do |record, by_id|
-        next unless record.is_a?(Hash)
+    # The records an earlier process saved for this session (a missing or
+    # broken file, or an older shape: nothing, or zeros where keys are
+    # missing). Caller holds the mutex.
+    def load_persisted
+      path = File.join(session_dir(@session_id, @state_dir), "analytics.json")
+      return unless File.file?(path)
 
-        id = record["id"] || record[:id]
-        by_id[id] = record if id
-      end.values
+      prior = JSON.parse(File.read(path))
+      return unless prior.is_a?(Hash)
+
+      @turn_records = loaded_records(prior["turn_records"]) + @turn_records
+      @tool_records = loaded_records(prior["tool_records"]) + @tool_records
+      @started_at = earliest_timestamp(prior["started_at"], @started_at)
+      @last_activity_at ||= prior["last_activity_at"]
+    rescue JSON::ParserError, SystemCallError
+      nil
+    end
+
+    def loaded_records(records)
+      Array(records).filter_map { |record| record.transform_keys(&:to_sym) if record.is_a?(Hash) && record["id"] }
+    end
+
+    def sum(records, key)
+      records.sum { |record| record[key].is_a?(Numeric) ? record[key] : 0 }
+    end
+
+    # server, estimate, or mixed when both kinds of counts (or a turn that
+    # was already mixed) are in; nil before any.
+    def combined_source(sources)
+      kinds = sources.compact.map(&:to_s).flat_map { |source| source == "mixed" ? %w[server estimate] : [source] }.uniq
+      kinds.size > 1 ? "mixed" : kinds.first
     end
 
     def earliest_timestamp(*timestamps)
       timestamps.compact.min_by { |value| Time.iso8601(value.to_s) }
     rescue ArgumentError
       timestamps.compact.first
-    end
-
-    def latest_timestamp(*timestamps)
-      timestamps.compact.max_by { |value| Time.iso8601(value.to_s) }
-    rescue ArgumentError
-      timestamps.compact.last
     end
   end
 end

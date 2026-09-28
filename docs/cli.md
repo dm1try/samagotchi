@@ -145,7 +145,8 @@ A worker nobody uses exits after `session.idle_exit_minutes` (30 by default, `0`
 for never): no turn running or queued, no UI attached (an open web tab or an
 attached terminal counts, even an idle one) and no reminder registered. The next
 prompt or `--attach` wakes a new worker with the conversation intact; `/stats`
-counters start over (the recap is saved with the session).
+keeps counting from the turns before (they are saved in the session's
+`analytics.json`, one record per turn), and the recap is saved with the session.
 
 A session you leave with nothing in it (no prompt sent, no `/model` switch, no
 note or image) is deleted as its worker exits, and `/exit` says so; set

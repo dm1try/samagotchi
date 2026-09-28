@@ -159,7 +159,7 @@ RSpec.describe Samagotchi::SessionManager do
     before do
       %w[input output notes images].each { |sub| FileUtils.mkdir_p(File.join(session_dir, sub)) }
       %w[pid owner.lock bridge.json].each { |name| File.write(File.join(session_dir, name), "") }
-      File.write(File.join(session_dir, "analytics.json"), JSON.generate("turns" => 0))
+      File.write(File.join(session_dir, "analytics.json"), JSON.generate("turns" => 0, "turn_records" => []))
       File.write(File.join(session_dir, "output", "1.txt"), "")
     end
 
@@ -206,8 +206,8 @@ RSpec.describe Samagotchi::SessionManager do
       expect(empty?).to be false
     end
 
-    it "is false when analytics counted a turn" do
-      File.write(File.join(session_dir, "analytics.json"), JSON.generate("turns" => 1))
+    it "is false when analytics recorded a turn" do
+      File.write(File.join(session_dir, "analytics.json"), JSON.generate("turns" => 1, "turn_records" => [{ "id" => "t1" }]))
 
       expect(empty?).to be false
     end

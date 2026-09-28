@@ -1082,6 +1082,14 @@ module Samagotchi
     # its own.
     attr_writer :session_state_dir
 
+    # The metrics load the session's saved records from its state dir, once.
+    def bind_metrics(session)
+      return unless session.respond_to?(:id) && session.id
+
+      @metrics.state_dir = session_state_dir
+      @metrics.session_id = session.id
+    end
+
     def session_state_dir = @session_state_dir || Session.default_state_dir
 
     # What a Bridge adds to a plugin's ctx.messages while a turn runs (the
@@ -1634,6 +1642,8 @@ module Samagotchi
       @session = session
       # One session per REPL/worker process: its records carry this sid.
       Log.session_id = session.id if session.respond_to?(:id) && session.id
+      # A woken worker's /stats and status line count the turns before it.
+      bind_metrics(session)
       sync_used_memories_from_session(session)
     end
 
@@ -1760,7 +1770,7 @@ module Samagotchi
       begin
         image_refs, image_error = turn_image_refs(session, continue ? [] : images)
         # Emit turn_started event
-        @metrics.session_id = session.id
+        bind_metrics(session)
         turn_started = { type: :turn_started, session_id: session.id, prompt: prompt }
         turn_started[:continue] = true if continue
         turn_started[:images] = image_refs unless image_refs.empty?

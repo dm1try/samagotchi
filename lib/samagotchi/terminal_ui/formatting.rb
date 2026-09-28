@@ -229,11 +229,11 @@ module Samagotchi
       def format_session_metrics(snapshot)
         return "(no metrics yet)" unless snapshot.is_a?(Hash)
 
-        # A symbol locally; a string when the snapshot came over the Bridge.
-        token_src = snapshot[:token_source]&.to_s
-        token_src_label = case token_src
+        tokens = snapshot[:tokens] || {}
+        token_src_label = case tokens[:source]
                           when "server" then "server-reported"
                           when "estimate" then "estimated (chars/4)"
+                          when "mixed" then "server-reported, some estimated"
                           else "n/a"
                           end
 
@@ -245,7 +245,8 @@ module Samagotchi
           lines << "  by tool:        #{by_tool.map { |k, v| "#{k}=#{v}" }.join(", ")}"
         end
         lines << "iterations:       #{snapshot[:iterations_total]}"
-        lines << "tokens in/out:    #{snapshot[:tokens_in]}/#{snapshot[:tokens_out]} (total #{snapshot[:tokens_total]}, #{token_src_label})"
+        # Summed over every request: each prompt is sent in full again.
+        lines << "tokens in/out:    #{tokens[:prompt_sum].to_i}/#{tokens[:completion_sum].to_i} (all requests, #{token_src_label})"
         lines << "gen latency (ms): #{snapshot[:gen_latency_ms]}"
         lines << "cancellations:    #{snapshot[:cancellations]}"
         lines << "retries:          #{snapshot[:retries]}"

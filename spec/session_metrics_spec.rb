@@ -15,10 +15,8 @@ RSpec.describe Samagotchi::SessionMetrics do
   it "starts empty" do
     snap = metrics.snapshot
     expect(snap[:turns]).to eq(0)
-    expect(snap[:tokens_in]).to eq(0)
-    expect(snap[:tokens_out]).to eq(0)
+    expect(snap[:tokens]).to eq(prompt_sum: 0, completion_sum: 0, source: nil)
     expect(snap[:tool_calls_total]).to eq(0)
-    expect(snap[:token_source]).to be_nil
   end
 
   it "keeps the model the server last said it served, and the name asked for then" do
@@ -51,10 +49,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     snap = metrics.snapshot
     expect(snap[:session_id]).to eq("sess-1")
     expect(snap[:turns]).to eq(1)
-    expect(snap[:tokens_in]).to eq(120)
-    expect(snap[:tokens_out]).to eq(30)
-    expect(snap[:tokens_total]).to eq(150)
-    expect(snap[:token_source]).to eq(:server)
+    expect(snap[:tokens]).to eq(prompt_sum: 120, completion_sum: 30, source: "server")
     expect(snap[:tool_calls_total]).to eq(2)
     expect(snap[:tool_errors]).to eq(1)
     expect(snap[:tool_calls_by_tool]).to eq("read" => 1, "execute" => 1)
@@ -138,10 +133,8 @@ RSpec.describe Samagotchi::SessionMetrics do
     ])
 
     snap = metrics.snapshot
-    expect(snap[:token_source]).to eq(:estimate)
-    # 11 chars / 4.0 -> ceil -> 3
-    expect(snap[:tokens_out]).to eq(3)
-    expect(snap[:tokens_total]).to eq(snap[:tokens_out])
+    # 11 chars / 4.0 -> ceil -> 3; an estimate has no prompt count
+    expect(snap[:tokens]).to eq(prompt_sum: 0, completion_sum: 3, source: "estimate")
   end
 
   it "sums completion tokens across multiple generations in a tool-call loop" do
@@ -157,10 +150,8 @@ RSpec.describe Samagotchi::SessionMetrics do
     ])
 
     snap = metrics.snapshot
-    expect(snap[:tokens_in]).to eq(150) # running max of the growing prompt
-    expect(snap[:tokens_out]).to eq(35) # 10 + 25 summed across generations
-    expect(snap[:tokens_total]).to eq(185)
-    expect(snap[:token_source]).to eq(:server)
+    # Every request's prompt and answer, summed across generations.
+    expect(snap[:tokens]).to eq(prompt_sum: 250, completion_sum: 35, source: "server")
   end
 
   it "does not double count when timings arrive only on the final chunk" do
@@ -175,8 +166,7 @@ RSpec.describe Samagotchi::SessionMetrics do
 
     snap = metrics.snapshot
     # Server path wins: completion tokens = predicted_n (7), not 7 + estimate(27 chars).
-    expect(snap[:token_source]).to eq(:server)
-    expect(snap[:tokens_out]).to eq(7)
+    expect(snap[:tokens]).to include(completion_sum: 7, source: "server")
   end
 
   describe "the turn record's tokens" do
@@ -252,7 +242,7 @@ RSpec.describe Samagotchi::SessionMetrics do
       expect(metrics.snapshot[:turn_records].last).to include(
         status: "failed", generations: 1, prompt_tokens: 100, completion_tokens: 7, token_source: "server"
       )
-      expect(metrics.snapshot[:tokens_out]).to eq(7)
+      expect(metrics.snapshot[:tokens][:completion_sum]).to eq(7)
     end
 
     it "counts a retried generation's estimate once" do
@@ -305,8 +295,7 @@ RSpec.describe Samagotchi::SessionMetrics do
     ])
 
     snap = metrics.snapshot
-    expect(snap[:tokens_in]).to eq(20)
-    expect(snap[:tokens_out]).to eq(4)
+    expect(snap[:tokens]).to include(prompt_sum: 20, completion_sum: 4)
     expect(snap[:gen_latency_ms]).to be >= 0
   end
 
@@ -319,7 +308,7 @@ RSpec.describe Samagotchi::SessionMetrics do
       { type: :turn_completed, result: double(respond_to?: false) }
     ])
 
-    expect(metrics.snapshot[:tokens_out]).to eq(5)
+    expect(metrics.snapshot[:tokens][:completion_sum]).to eq(5)
   end
 
   it "persists a summary to the session directory" do
@@ -361,20 +350,58 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:active_tools]).to be_empty
   end
 
-  it "merges completed timing records when a later worker persists analytics" do
+  it "keeps the earlier records in its state dir when a later worker persists analytics" do
     state_dir = Dir.mktmpdir
     first = described_class.new
+    first.state_dir = state_dir
     first.call(type: :turn_started, session_id: "resumed", prompt: "one")
     first.call(type: :turn_completed, result: double(respond_to?: false))
-    first.persist(state_dir: state_dir)
+    first.persist
 
     second = described_class.new
+    second.state_dir = state_dir
     second.call(type: :turn_started, session_id: "resumed", prompt: "two")
     second.call(type: :turn_completed, result: double(respond_to?: false))
-    second.persist(state_dir: state_dir)
+    second.persist
 
     path = File.join(Samagotchi::Session.session_dir("resumed", state_dir: state_dir), "analytics.json")
     expect(JSON.parse(File.read(path)).fetch("turn_records").size).to eq(2)
+  end
+
+  # A worker that stops (idle exit, `chi sessions stop`) and wakes again is
+  # a new collector for the same session: its totals must cover both.
+  it "totals every process's turns when two collectors persist to one dir in turn" do
+    xdg = Dir.mktmpdir
+    original = ENV["XDG_STATE_HOME"]
+    ENV["XDG_STATE_HOME"] = xdg
+    turn = lambda do |metrics, prompt_tokens, tool|
+      metrics.session_id = "restarted"
+      metrics.call(type: :turn_started, session_id: "restarted", prompt: "p")
+      metrics.call(type: :generation_started, iteration: 1)
+      metrics.call(type: :generation_chunk, iteration: 1, content: "a",
+                   payload: { "usage" => { "prompt_tokens" => prompt_tokens, "completion_tokens" => 10 } })
+      metrics.call(type: :tool_dispatch_started, iteration: 1, call_count: 1)
+      metrics.call(type: :tool_call_started, iteration: 1, call_index: 1, tool: tool)
+      metrics.call(type: :tool_call_completed, iteration: 1, call_index: 1, tool: tool, status: "ok")
+      metrics.call(type: :generation_completed, iteration: 1)
+      metrics.call(type: :turn_completed)
+      metrics.persist
+    end
+
+    turn.call(described_class.new, 100, "read")
+    second = described_class.new
+    turn.call(second, 150, "shell")
+
+    path = File.join(Samagotchi::Session.session_dir("restarted"), "analytics.json")
+    written = JSON.parse(File.read(path))
+    expect(written["turns"]).to eq(2)
+    expect(written["iterations_total"]).to eq(2)
+    expect(written["tool_calls_total"]).to eq(2)
+    expect(written["tool_calls_by_tool"]).to eq("read" => 1, "shell" => 1)
+    expect(written["tokens"]).to eq("prompt_sum" => 250, "completion_sum" => 20, "source" => "server")
+    expect(second.snapshot).to include(turns: 2, tool_calls_total: 2)
+  ensure
+    ENV["XDG_STATE_HOME"] = original
   end
 
   it "is error-isolated and never raises on bad input" do

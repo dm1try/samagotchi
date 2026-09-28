@@ -631,7 +631,7 @@ module Samagotchi
         if EMPTY_SKELETON_DIRS.include?(name)
           File.directory?(path) && (!EMPTY_DIRS.include?(name) || Dir.children(path).empty?)
         elsif name == "analytics.json"
-          JSON.parse(File.read(path))["turns"].to_i.zero?
+          Array(JSON.parse(File.read(path))["turn_records"]).empty?
         else
           EMPTY_SKELETON_FILES.include?(name)
         end
