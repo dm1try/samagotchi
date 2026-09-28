@@ -63,7 +63,7 @@ module Samagotchi
       end
       true
     rescue SessionManager::OwnedByTUI => e
-      where = e.message[/session (\S+)/, 1].to_s == id ? "it is" : "a delegate of it is"
+      where = e.session_id == id ? "it is" : "a delegate of it is"
       @stdout.puts("#{short}  refused: #{where} open in a chi REPL; close it there first")
       false
     rescue SessionManager::ArchiveRefused => e

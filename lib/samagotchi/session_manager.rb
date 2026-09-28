@@ -75,7 +75,12 @@ module Samagotchi
     # Raised when the interactive TUI owns the session: it runs its own Engine
     # and reads no input files, so a worker must not be spawned or signalled.
     class OwnedByTUI < StandardError
+      # @return [String] the session the REPL owns (a delegate's, when an
+      #   archive met one)
+      attr_reader :session_id
+
       def initialize(session_id)
+        @session_id = session_id
         super("session #{session_id} is owned by an interactive TUI")
       end
     end

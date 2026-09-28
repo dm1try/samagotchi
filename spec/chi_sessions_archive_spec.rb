@@ -70,6 +70,14 @@ RSpec.describe "chi sessions archive" do
     expect(archived?(busy)).to be(false)
   end
 
+  it "tells a REPL on a delegate from one on the session itself" do
+    parent = make("parent", id: "aaaa1111-0000")
+    make("child", parent: parent, owner: "tui")
+
+    expect(run("archive", "aaaa")).to eq(1)
+    expect(out.string).to eq("aaaa1111  refused: a delegate of it is open in a chi REPL; close it there first\n")
+  end
+
   it "unarchives, says so for one that isn't archived, and names an unknown id" do
     session = make("back", id: "aaaa1111-0000")
     Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)

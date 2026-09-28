@@ -181,8 +181,16 @@ RSpec.describe "Session archive" do
       open_one = make(owner: "tui")
 
       expect { Samagotchi::SessionManager.archive_session(open_one.id, state_dir: tmpdir) }
-        .to raise_error(Samagotchi::SessionManager::OwnedByTUI)
+        .to raise_error(Samagotchi::SessionManager::OwnedByTUI) { |e| expect(e.session_id).to eq(open_one.id) }
       expect(archived?(open_one)).to be(false)
+    end
+
+    it "names the delegate a chi REPL owns in the error's session_id" do
+      parent = make
+      child = make(parent: parent, owner: "tui")
+
+      expect { Samagotchi::SessionManager.archive_session(parent.id, state_dir: tmpdir) }
+        .to raise_error(Samagotchi::SessionManager::OwnedByTUI) { |e| expect(e.session_id).to eq(child.id) }
     end
 
     it "refuses a scratch session: it is deleted when you leave" do
