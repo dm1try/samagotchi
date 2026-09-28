@@ -15,10 +15,16 @@ module Samagotchi
 
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] (ID|PREFIX)...
+             chi send --new [--dir DIR] [--model M] [-m TEXT]
         Sends a message to each session, as if typed in it: a turn starts,
         or a running one picks it up. A stopped session's worker starts.
-        -m TEXT   the message; stdin, when piped too, goes above it as a
-                  quote (context); without -m, stdin is the message
+        -m TEXT     the message; stdin, when piped too, goes above it as a
+                    quote (context); without -m, stdin is the message
+        --new       start a new session with the message instead, as the
+                    web does, and print its id
+        --dir DIR   (--new) its folder, the project it belongs to; default
+                    the current one
+        --model M   (--new) its model; default the configured one
         Only sessions on this machine. Answers show in the attached TUI
         or web page, not here.
         Find ids with: chi sessions list --live [--scope=all] [--format tsv]
@@ -51,6 +57,8 @@ module Samagotchi
         return 1
       end
 
+      return start_new(prompt, options) ? 0 : 1 if options[:new]
+
       # One id at a time, so each line follows the order of the ids given.
       seen = {}
       results = options[:ids].uniq.map do |given|
@@ -77,6 +85,10 @@ module Samagotchi
         when "-m", "--message"
           options[:message] = @argv.shift or return usage_error("#{arg} needs a value")
         when /\A--message=(.*)\z/m then options[:message] = Regexp.last_match(1)
+        when "--new" then options[:new] = true
+        when "--dir", "--model"
+          options[arg.delete_prefix("--").to_sym] = @argv.shift or return usage_error("#{arg} needs a value")
+        when /\A--(dir|model)=(.*)\z/m then options[Regexp.last_match(1).to_sym] = Regexp.last_match(2)
         # Starting a turn in every live session at once is too easy to do
         # by accident.
         when "--all" then return usage_error("there is no --all: name the sessions")
@@ -84,8 +96,20 @@ module Samagotchi
         else options[:ids] << arg
         end
       end
+      return new_options(options) if options[:new]
+      %i[dir model].each { |key| return usage_error("--#{key} needs --new") if options[key] }
       return usage_error("give session ids") if options[:ids].empty?
 
+      options
+    end
+
+    def new_options(options)
+      return usage_error("--new takes no session ids: it starts one session") unless options[:ids].empty?
+
+      if options[:dir]
+        options[:dir] = File.expand_path(options[:dir])
+        return usage_error("no folder #{options[:dir]}") unless File.directory?(options[:dir])
+      end
       options
     end
 
@@ -121,6 +145,21 @@ module Samagotchi
       message = e.is_a?(Session::AmbiguousId) ? e.message : "no session #{given}"
       error_line("chi send: #{message}")
       nil
+    end
+
+    # A worker session like the web start page's: saved as running with the
+    # message before its worker spawns, so lists and the web show it at
+    # once. The full id, so a script can pass it on. The model name isn't
+    # checked here (nor in the web): a wrong one fails in the worker.
+    # @return [Boolean] whether it started
+    def start_new(prompt, options)
+      session = SessionManager.spawn_session(prompt: prompt, working_directory: options[:dir],
+                                             model_name: options[:model], state_dir: @state_dir)
+      @stdout.puts("#{session.id}  started")
+      true
+    rescue StandardError => e
+      error_line("chi send: could not start a session: #{e.message}")
+      false
     end
 
     # @return [Boolean] whether the message was queued
