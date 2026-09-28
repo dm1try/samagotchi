@@ -1,22 +1,18 @@
 # frozen_string_literal: true
 
 require_relative "../session"
+require_relative "../reply_wait"
 require_relative "output_guardrails"
 require_relative "peers"
 
 module Samagotchi
-  # Loaded on first use: session_manager requires terminal_ui, which
-  # requires KernelLoop and so these tools (a require cycle otherwise).
-  autoload :SessionManager, File.expand_path("../session_manager", __dir__)
-
   module Tools
     # Waiting for a delegated session's next reply, shared by delegate and
-    # delegate_result. A reply is the child's output/<timestamp>.txt file
-    # (the worker writes one per turn that ended with visible text, just
-    # before its idle save), so "new" means a filename past the cursor: the
-    # newest one this parent was already given. The cursors live in this
-    # process (a worker runs one session), keyed by parent and child; a
-    # worker respawn loses them, which only repeats the newest reply once.
+    # delegate_result: ReplyWait in the tools' words, with a cursor per
+    # child (the newest reply this parent was already given). The cursors
+    # live in this process (a worker runs one session), keyed by parent and
+    # child; a worker respawn loses them, which only repeats the newest reply
+    # once.
     module DelegateWait
       TIMEOUT_DEFAULT = 600
       POLL_INTERVAL = 0.5
@@ -40,70 +36,34 @@ module Samagotchi
       def call(child_id, peers:, timeout: TIMEOUT_DEFAULT, poll_interval: POLL_INTERVAL)
         sd = peers.state_dir || Session.default_state_dir
         key = [peers.session_id, child_id]
-        cursor = seen[key]
-        deadline = monotonic + timeout.to_i
-        seen_running = false
-
-        loop do
-          session = Session.load(child_id, state_dir: sd)
-
-          if (file = newest_reply(child_id, state_dir: sd)) && newer?(file, cursor)
-            seen[key] = file
-            return reply_result(child_id, File.read(File.join(reply_dir(child_id, state_dir: sd), file)))
-          end
-
-          case session.status
-          when Session::STATUS_ERROR
-            return result(child_id, "error", "the child's worker failed: #{session.last_prompt.to_s.strip}; its session shows what happened")
-          when Session::STATUS_STOPPED
-            return result(child_id, "stopped", "the child was stopped (chi sessions stop); delegate with session: #{child_id} starts it again with a message")
-          end
-
-          if (pending = session.pending_question)
-            return result(child_id, "waiting_for_answer", waiting_text(child_id, pending))
-          end
-
-          if peers.respond_to?(:cancelled?) && peers.cancelled?
-            return result(child_id, "canceled", "wait canceled; the child keeps running; delegate_result #{child_id} waits again")
-          end
-
-          if session.status == Session::STATUS_RUNNING
-            seen_running = true
-          elsif seen_running
-            # It ran and is idle again with no new reply: canceled, failed or
-            # empty. Before it was ever seen running, idle means a
-            # file-delivered follow-up its worker has not picked up yet.
-            return result(child_id, "no_reply", "the child's turn ended without a reply (canceled, failed or empty); its session shows what happened")
-          end
-
-          return timeout_result(child_id, timeout) if monotonic > deadline
-
-          sleep(poll_interval)
+        cancelled = -> { peers.respond_to?(:cancelled?) && peers.cancelled? }
+        wait = ReplyWait.call(child_id, state_dir: sd, cursor: seen[key], timeout: timeout.to_i,
+                                        poll_interval: poll_interval, cancelled: cancelled)
+        case wait.status
+        when :done
+          seen[key] = wait.file
+          reply_result(child_id, wait.text)
+        when :error
+          result(child_id, "error", "the child's worker failed: #{wait.text}; its session shows what happened")
+        when :stopped
+          result(child_id, "stopped", "the child was stopped (chi sessions stop); delegate with session: #{child_id} starts it again with a message")
+        when :waiting_for_answer
+          result(child_id, "waiting_for_answer", waiting_text(child_id, wait.question))
+        when :canceled
+          result(child_id, "canceled", "wait canceled; the child keeps running; delegate_result #{child_id} waits again")
+        when :no_reply
+          result(child_id, "no_reply", "the child's turn ended without a reply (canceled, failed or empty); its session shows what happened")
+        else
+          timeout_result(child_id, timeout)
         end
       rescue ArgumentError => e
         "Error: #{e.message}"
       end
 
-      # @return [String, nil] the newest reply filename (sortable timestamps)
-      def newest_reply(child_id, state_dir:)
-        dir = reply_dir(child_id, state_dir: state_dir)
-        return nil unless Dir.exist?(dir)
-
-        Dir.children(dir).select { |f| f.end_with?(".txt") }.max
-      end
-
       # Point the cursor at the newest reply now, so only a later one counts
       # (a follow-up sent to a child that already answered).
       def mark_seen(parent_id, child_id, state_dir:)
-        seen[[parent_id, child_id]] = newest_reply(child_id, state_dir: state_dir)
-      end
-
-      def reply_dir(child_id, state_dir:)
-        File.join(Session.session_dir(child_id, state_dir: state_dir), SessionManager::OUTPUT_DIR)
-      end
-
-      def newer?(file, cursor)
-        cursor.nil? || file > cursor
+        seen[[parent_id, child_id]] = ReplyWait.newest_reply(child_id, state_dir: state_dir)
       end
 
       def reply_result(child_id, text)
@@ -145,9 +105,6 @@ module Samagotchi
         ].join("\n")
       end
 
-      def monotonic
-        Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      end
     end
   end
 end
