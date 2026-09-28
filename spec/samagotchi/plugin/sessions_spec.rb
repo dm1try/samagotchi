@@ -53,6 +53,18 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       expect(sessions.fork(messages: [])).to match(/\A[\w-]{36}\z/)
     end
 
+    context "from a scratch session" do
+      let(:host) do
+        Samagotchi::Plugin::Host.new(session_id: -> { session_id }, cwd: -> { tmpdir }, model_name: -> { "gemma4" },
+                                     state_dir: -> { tmpdir }, scratch: -> { true })
+      end
+
+      it "raises: the child would outlive it" do
+        expect { sessions.fork(messages: []) }.to raise_error(described_class::Error, /scratch session starts no other sessions/)
+        expect(Samagotchi::SessionManager.children_of(parent.id, state_dir: tmpdir)).to be_empty
+      end
+    end
+
     context "without a session yet" do
       let(:session_id) { nil }
 

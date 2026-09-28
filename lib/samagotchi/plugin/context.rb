@@ -19,7 +19,7 @@ module Samagotchi
     # +messages_partial+ says whether +messages+ leaves out a running turn;
     # +model_name+ and +state_dir+ are what ctx.sessions forks with.
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
-                      :ask_model, :model_name, :state_dir, keyword_init: true)
+                      :ask_model, :model_name, :state_dir, :scratch, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.

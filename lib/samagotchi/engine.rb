@@ -75,11 +75,16 @@ module Samagotchi
     # @param muted_memories     [Array<String>] --mute list: memories hidden from this session (not in the
     #   prompt's index, dropped from the preloads, refused by memory_read); a mute wins over a preload
     DEFAULT_SYSTEM_MEMORIES = %w[identity].freeze
+    # What memory_write answers in a scratch session.
+    SCRATCH_MEMORY_WRITE = "Error: scratch session: nothing is saved"
 
     # @param plugins            [Boolean] false: load no bundle plugins (a throwaway Engine for a prompt)
+    # @param scratch            [Boolean] a `chi scratch` session: memory writes are refused, and there is no
+    #   delegate (a child would outlive it) nor plugin fork
     def initialize(mode: :assist, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], muted_memories: [], kernel: nil, recap: nil, reminders: nil,
-                   plugins: true)
+                   plugins: true, scratch: false)
       @mode = mode.to_sym
+      @scratch = scratch
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
       @default_model_name = ModelProfile.required_model_name(model_name)
@@ -114,6 +119,12 @@ module Samagotchi
       # The tools this session offers (the prompts' declarations and the
       # kernel's dispatch): the built-ins, per Engine.
       @tools = Tools::Builtins.registry
+      if @scratch
+        # A scratch session's children would outlive it; its memories
+        # would too (write and edit into the memories: ScratchWrites).
+        [Tools::Delegate::NAME, Tools::DelegateResult::NAME].each { |name| @tools.unregister(name) }
+        @tools[Tools::MemoryWrite::NAME].handler = ->(_call, _kctx) { SCRATCH_MEMORY_WRITE }
+      end
       # Likewise the slash commands its SessionCommands run.
       @command_registry = SessionCommands.register_builtins(Commands::Registry.new)
       # Installed bundles' plugins add commands, tools and hooks to these
@@ -1086,7 +1097,8 @@ module Samagotchi
     # The gate's core checks, in order.
     def guardrail_checks
       rules = guardrail_rules
-      [@guardrail_failures, rules.hook_asks, guardrail_protected_paths, rules]
+      [@guardrail_failures, rules.hook_asks, guardrail_protected_paths, (@scratch_writes ||= Guardrails::ScratchWrites.new if @scratch),
+       rules].compact
     end
 
     # The YAML rules: config.yml's `guardrails:` section (rules, disable) and
@@ -2189,7 +2201,8 @@ module Samagotchi
           ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller)
         },
         model_name: -> { @session&.model_name || @effective_model_name },
-        state_dir: -> { session_state_dir }
+        state_dir: -> { session_state_dir },
+        scratch: -> { @scratch }
       )
     end
 
