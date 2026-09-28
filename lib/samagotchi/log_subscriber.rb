@@ -27,7 +27,6 @@ module Samagotchi
       question_requested: [],
       question_answered: %i[id],
       question_cancelled: %i[id reason],
-      pending_input_merged: %i[iteration count],
       generation_cancelled: %i[iteration]
     }.freeze
 
@@ -69,6 +68,15 @@ module Samagotchi
       log(:info, :turn_completed, ms: since(@turn_started_at), result_chars: summary[:output].to_s.length,
                                   tools: Array(summary[:tool_activity]).size,
                                   exhausted: summary[:exhausted] || nil, **origin(event))
+    end
+
+    # A plugin's steers by count and source, never their text.
+    def on_pending_input_merged(event)
+      steers = Array(event[:steers])
+      log(:info, :pending_input_merged, **event.slice(:iteration, :count),
+                                        steers: steers.empty? ? nil : steers.size,
+                                        steer_sources: steers.empty? ? nil : steers.map { |s| s[:source] }.uniq.join(","),
+                                        **origin(event))
     end
 
     def on_turn_canceled(event)

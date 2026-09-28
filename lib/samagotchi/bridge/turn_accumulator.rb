@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../kernel_loop"
+require_relative "../steer"
 
 module Samagotchi
   class Bridge
@@ -32,7 +33,7 @@ module Samagotchi
       end
 
       # @return [Hash, nil] a copy of the turn in progress: prompt, origin,
-      #   continue, ordered parts (thinking / text / tool / input / reminder / hook_notice),
+      #   continue, ordered parts (thinking / text / tool / input / steer / reminder / hook_notice),
       #   pending_question and the last event_seq folded in
       def current_turn
         @mutex.synchronize { @turn && Marshal.load(Marshal.dump(@turn)) }
@@ -67,6 +68,9 @@ module Samagotchi
           when "input"
             flush.call
             messages << { role: "user", content: part[:text].to_s }
+          when "steer"
+            flush.call
+            messages << Steer.message(text: part[:text], source: part[:source])
           end
         end
         flush.call
@@ -156,8 +160,15 @@ module Samagotchi
           tool[:output_truncated] = capped || !!event[:output_truncated]
           tool[:images] = event[:images] if event[:images]
         when :pending_input_merged
-          parts << { kind: "input", iteration: event[:iteration], text: event[:content].to_s.dup, origins: @merged_origins }
-          @merged_origins = []
+          # A steer-only merge (count 0) has no user part: the origins stay
+          # for the user lines' own merge.
+          unless event[:content].nil?
+            parts << { kind: "input", iteration: event[:iteration], text: event[:content].to_s.dup, origins: @merged_origins }
+            @merged_origins = []
+          end
+          Array(event[:steers]).each do |steer|
+            parts << { kind: "steer", iteration: event[:iteration], source: steer[:source].to_s, text: steer[:text].to_s.dup }
+          end
         when :reminder_injected
           parts << { kind: "reminder", reminders: Array(event[:reminders]).map(&:dup) }
         when :hook_notice

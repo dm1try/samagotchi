@@ -12,6 +12,7 @@ require_relative "reline_seam"
 require_relative "../bridge_client"
 require_relative "../log"
 require_relative "../context_note"
+require_relative "../steer"
 require_relative "../model_profile"
 require_relative "../output_formatter"
 require_relative "../session_commands"
@@ -844,12 +845,15 @@ module Samagotchi
         # The id stays findable: the detach line and chi sessions list show it.
         Log.session_id = @client.session_id
         Log.info(:attached, "joined", session: @client.session_id, messages: exchange.size)
-        last_user = exchange.rindex { |m| m[:role].to_s == "user" }
+        last_user = exchange.rindex { |m| Steer.prompt?(m) }
         render_join_notes(messages)
         return unless last_user
 
         @screen.commit(prompt_line(nil, exchange[last_user][:content]))
         Array(exchange[last_user][:images]).each { |ref| @screen.commit(format_image_line(ref)) }
+        exchange[(last_user + 1)..].select { |m| Steer.steer?(m) }.each do |m|
+          @screen.commit(format_steer_line(source: m[:source], text: m[:content]))
+        end
         # The saved answer is raw: the latest keeps its thinking, and one may
         # be only a tool call.
         answer = exchange[(last_user + 1)..].reverse_each
@@ -862,7 +866,7 @@ module Samagotchi
       # The context notes that came since the last prompt (all of them in a
       # session with none), after the exchange the header shows.
       def render_join_notes(messages, after_exchange: false)
-        last_user = messages.rindex { |m| m[:role].to_s == "user" }
+        last_user = messages.rindex { |m| Steer.prompt?(m) }
         return if after_exchange != !last_user.nil?
 
         messages[(last_user ? last_user + 1 : 0)..].select { |m| ContextNote.note?(m) }.each do |m|
@@ -922,6 +926,7 @@ module Samagotchi
               @screen.commit(snapshot_tool_line(part))
             end
           when "input" then @screen.commit("input> #{part[:text]}")
+          when "steer" then @screen.commit(format_steer_line(source: part[:source], text: part[:text]))
           when "reminder" then @screen.commit(reminder_line(part[:reminders]))
           when "hook_notice" then @screen.commit(EventRenderer.hook_notice_line(part))
           end

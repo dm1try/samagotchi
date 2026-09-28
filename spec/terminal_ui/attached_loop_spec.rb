@@ -944,6 +944,26 @@ end
     end
   end
 
+  describe "a plugin's steer" do
+    let(:steer) { Samagotchi::Steer.message(text: "how is it going?", source: "check-in") }
+
+    it "is not the prompt in the join header: the prompt, the steer's line, the answer" do
+      other = described_class.new(client: client, screen: screen, client_id: "tui:2")
+      messages = [{ role: "user", content: "fix it" }, { role: "model", content: "" }, steer, { role: "model", content: "fixed" }]
+      other.handle_event(JSON.parse(JSON.generate(joined.tap { |event| event[:snapshot][:messages] = messages })))
+
+      expect(screen.lines).to eq(["user> fix it", "check-in> nudged: how is it going?", "fixed"])
+    end
+
+    it "shows a running turn's steer part on join" do
+      other = described_class.new(client: client, screen: screen, client_id: "tui:2")
+      turn = { prompt: "go", origin: { client_id: "web:1" }, parts: [{ kind: "steer", source: "check-in", text: "status?" }] }
+      other.handle_event(JSON.parse(JSON.generate(joined.merge(snapshot: joined[:snapshot].merge(current_turn: turn)))))
+
+      expect(screen.lines).to include("check-in> nudged: status?")
+    end
+  end
+
   it "renders a reminder turn by its reminders, live and from a join" do
     feed({ type: :turn_started, prompt: nil, continue: true, origin: { client_id: "system:reminder" } },
          { type: :reminder_injected, reminders: [{ name: "stretch", description: "Stand up", interval_minutes: 1 }] })

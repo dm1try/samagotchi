@@ -25,6 +25,18 @@ RSpec.describe Samagotchi::LogSubscriber do
     events.each { |event| subscriber.call(event) }
   end
 
+  it "logs a merge's steers by count and source, never their text" do
+    feed({ type: :pending_input_merged, iteration: 3, count: 1, content: "user text",
+           steers: [{ source: "check-in", text: "secret nudge" }] },
+         { type: :pending_input_merged, iteration: 4, count: 1, content: "more" })
+
+    expect(records.map { |r| r.fields }).to eq([
+      { "iteration" => "3", "count" => "1", "steers" => "1", "steer_sources" => "check-in" },
+      { "iteration" => "4", "count" => "1" }
+    ])
+    expect(File.read(path)).not_to include("secret nudge", "user text")
+  end
+
   it "writes a turn with its generations and tools, timed by pairing starts and ends" do
     feed({ type: :turn_started, session_id: "0123456789abcdef", prompt: "secret prompt", origin: { client_id: "web:tab1" } },
          { type: :generation_started, iteration: 1, profile: "qwen36" })

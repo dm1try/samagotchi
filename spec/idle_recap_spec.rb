@@ -58,6 +58,12 @@ RSpec.describe Samagotchi::IdleRecap do
         messages = [{ "role" => "user", "content" => "Hello" }]
         expect(Samagotchi::IdleRecap::TranscriptFilter.build(messages)).to eq("Hello")
       end
+      it "leaves a plugin's steer out: it is a prod to the model, not what the user said" do
+        messages = [{ "role" => "user", "content" => "Hello" },
+                    { "role" => "user", "kind" => "steer", "source" => "check-in", "content" => "status?" },
+                    { "role" => "model", "content" => "Hi" }]
+        expect(Samagotchi::IdleRecap::TranscriptFilter.build(messages)).to eq("Hello\n\nHi")
+      end
       it "names a user message's images, and never carries their bytes" do
         ref = { "file" => "images/0123456789abcdef.png", "name" => "shot.png", "mime" => "image/png", "width" => 3, "height" => 2 }
         messages = [{ "role" => "user", "content" => "what is this?", "images" => [ref] },

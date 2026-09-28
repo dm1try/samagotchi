@@ -13,6 +13,7 @@ require_relative "../bridge/bounded_queue"
 require_relative "../session"
 require_relative "../session_manager"
 require_relative "../session_commands"
+require_relative "../steer"
 require_relative "../host_registry"
 require_relative "../model_profile"
 require_relative "../project_scope"
@@ -1126,7 +1127,7 @@ module Samagotchi
         return nil unless saved
 
         messages = Array(session.messages)
-        since = messages.drop(saved[:covered].to_i).count { |m| (m[:role] || m["role"]).to_s == "user" }
+        since = messages.drop(saved[:covered].to_i).count { |m| Samagotchi::Steer.prompt?(m) }
         { text: saved[:text], turns_since: since }
       rescue StandardError
         nil

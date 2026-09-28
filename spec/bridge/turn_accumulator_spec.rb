@@ -94,6 +94,36 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     ])
   end
 
+  it "records a plugin's steers after the user's input, the input keeping its senders" do
+    origins = [{ client_id: "tui:1", enqueued_id: "e2" }]
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :input_merged, count: 1, origins: origins },
+         { type: :pending_input_merged, iteration: 2, count: 1, content: "also this",
+           steers: [{ source: "check-in", text: "how's it going?" }] })
+
+    expect(acc.current_turn[:parts]).to eq([
+      { kind: "input", iteration: 2, text: "also this", origins: origins },
+      { kind: "steer", iteration: 2, source: "check-in", text: "how's it going?" }
+    ])
+    expect(described_class.messages_of(acc.current_turn).last(2)).to eq([
+      { role: "user", content: "also this" },
+      { role: "user", kind: "steer", source: "check-in", content: "how's it going?" }
+    ])
+  end
+
+  it "a steer-only merge adds no input part and leaves the senders for the user's own merge" do
+    origins = [{ client_id: "web:1", enqueued_id: "e3" }]
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :input_merged, count: 1, origins: origins },
+         { type: :pending_input_merged, iteration: 2, count: 0, content: nil, steers: [{ source: "check-in", text: "nudge" }] },
+         { type: :pending_input_merged, iteration: 3, count: 1, content: "late line" })
+
+    expect(acc.current_turn[:parts]).to eq([
+      { kind: "steer", iteration: 2, source: "check-in", text: "nudge" },
+      { kind: "input", iteration: 3, text: "late line", origins: origins }
+    ])
+  end
+
   it "keeps queued turns until they start or merge" do
     feed({ type: :turn_enqueued, enqueued_id: "e1", client_id: "web:1", prompt: "one" },
          { type: :turn_enqueued, enqueued_id: "e2", client_id: "tui:1", prompt: "two" },

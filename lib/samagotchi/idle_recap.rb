@@ -7,6 +7,7 @@ require "time"
 
 require_relative "idle_client"
 require_relative "output_formatter"
+require_relative "steer"
 require_relative "recap_store"
 require_relative "log"
 
@@ -60,6 +61,9 @@ module Samagotchi
 
           case message["role"]
           when "user"
+            # A plugin's steer is a prod to the model, not what the user said.
+            next nil if Steer.steer?(message)
+
             # An image is a line naming it (refs only, never its bytes).
             [message["content"].to_s, *image_lines(message["images"])].reject(&:empty?).join("\n")
           when "model", "assistant"
@@ -411,7 +415,7 @@ module Samagotchi
       parsed = safe_parse(@engine.messages_json_for_recap)
       return :too_short if parsed.nil?
 
-      user_turns = parsed.count { |message| message.is_a?(Hash) && message["role"] == "user" }
+      user_turns = parsed.count { |message| Steer.prompt?(message) }
       if parsed.empty? || user_turns < @min_user_turns
         drop_stale(parsed)
         return :too_short

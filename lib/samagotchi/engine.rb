@@ -8,6 +8,7 @@ require "yaml"
 
 require_relative "config"
 require_relative "context_note"
+require_relative "steer"
 require_relative "turn_note"
 require_relative "model_profile"
 require_relative "thought_stream_splitter"
@@ -1746,7 +1747,7 @@ module Samagotchi
 
       messages = @activity_mutex.synchronize { @session&.messages } || []
       covered = state[:covered].to_i
-      turns_since = Array(messages).drop(covered).count { |m| m.is_a?(Hash) && (m["role"] || m[:role]).to_s == "user" }
+      turns_since = Array(messages).drop(covered).count { |m| Steer.prompt?(m) }
       { text: state[:text], covered: covered, turns_since: turns_since, created_at: state[:created_at] }
     end
 

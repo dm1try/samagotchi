@@ -40,6 +40,12 @@ module Samagotchi
       (message[:kind] || message["kind"]).to_s == KIND
     end
 
+    # A user message that is a prompt or the user's steering, not a steer:
+    # what "the last prompt" and "user turns" count.
+    def prompt?(message)
+      message.is_a?(Hash) && (message[:role] || message["role"]).to_s == "user" && !steer?(message)
+    end
+
     # Call a loop's drain: +at_answer+ goes only to a drain that takes it
     # (the Engine's); a caller's own drain (a queue's #drain) is called bare.
     # A failing drain drains nothing (the loop keeps going).

@@ -23,6 +23,16 @@ module Samagotchi
         paint("[image #{ImageRef.label(ImageStore.symbolize(ref))}]", 90)
       end
 
+      STEER_PREVIEW = 80
+
+      # "check-in> nudged: <text>", dim, one line cut: a plugin's steer
+      # (Steer) in the running turn or the join's last exchange.
+      def format_steer_line(source:, text:)
+        first = text.to_s.strip.split("\n").first.to_s
+        first = "#{first[0, STEER_PREVIEW - 1]}…" if first.length > STEER_PREVIEW || text.to_s.strip.include?("\n")
+        paint("#{source.to_s.empty? ? "plugin" : source}> nudged: #{first}", 90)
+      end
+
       # " → image 1280×800" after a tool line whose tool read an image.
       def format_tool_image_suffix(images)
         refs = Array(images).map { |ref| ImageStore.symbolize(ref) }

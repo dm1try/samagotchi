@@ -35,6 +35,14 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     [base.merge(type: :tool_call_started, call: { name: activity[:tool] }), base.merge(type: :tool_call_completed, activity: activity)]
   end
 
+  it "prints a line per plugin steer after the merge note, and no note for a steer-only merge" do
+    view.define_singleton_method(:format_steer_line) { |source:, text:| "#{source}> nudged: #{text}" }
+    renderer.call({ type: :pending_input_merged, count: 1, content: "also", steers: [{ source: "check-in", text: "status?" }] })
+    renderer.call({ type: :pending_input_merged, count: 0, content: nil, answer: nil, steers: [{ source: "check-in", text: "again" }] })
+
+    expect(view.lines).to eq(["(1 message merged into the running turn)", "check-in> nudged: status?", "check-in> nudged: again"])
+  end
+
   it "prints the answer a merge follows, then the merge note" do
     renderer.call({ type: :pending_input_merged, count: 1, content: "also", answer: "the essay" })
     renderer.call({ type: :pending_input_merged, count: 2, content: "a\n\nb" })
@@ -213,5 +221,21 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
         .to eq("b> ✓ Indexing: done")
       expect(described_class.init_line({ type: :plugin_init_finished, bundle: "b", label: "x", ok: false, error: "e" })).to be_nil
     end
+  end
+end
+
+RSpec.describe Samagotchi::TerminalUI::Formatting, "#format_steer_line" do
+  let(:view) do
+    Class.new do
+      include Samagotchi::TerminalUI::Formatting
+
+      def color_output? = false
+    end.new
+  end
+
+  it "is one line: the source, nudged:, the text's first line cut" do
+    expect(view.format_steer_line(source: "check-in", text: "status?")).to eq("check-in> nudged: status?")
+    expect(view.format_steer_line(source: "check-in", text: "a" * 100)).to eq("check-in> nudged: #{"a" * 79}…")
+    expect(view.format_steer_line(source: "", text: "one\ntwo")).to eq("plugin> nudged: one…")
   end
 end
