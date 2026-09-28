@@ -103,9 +103,12 @@ module Samagotchi
       Engine.system_prompt_for(profile)
     end
 
+    # @param scratch [Boolean] `chi scratch`: a new session that is deleted
+    #   however the REPL ends, saves no memories and writes no recap
     def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], muted_memories: [], non_interactive: false, surface: nil,
-                   spinner_tick_interval: THINKING_TICK_INTERVAL)
+                   spinner_tick_interval: THINKING_TICK_INTERVAL, scratch: false)
       @mode           = mode.to_sym
+      @scratch        = scratch
       # nil: no ticker thread (specs that compare exact frames).
       @spinner_tick_interval = spinner_tick_interval
       @spinner_lock = Monitor.new
@@ -176,7 +179,8 @@ module Samagotchi
         memories: @requested_memories,
         muted_memories: @muted_memory_names,
         kernel: @kernel,
-        recap: recap_config,
+        recap: scratch ? nil : recap_config,
+        scratch: scratch,
         reminders: {
           callback: lambda { |due_names|
             # When a reminder is due, queue a synthetic turn that
@@ -242,9 +246,13 @@ module Samagotchi
         model_name: @effective_model_name,
         working_directory: Dir.pwd,
         preloaded_memory_names: @requested_memories,
-        muted_memory_names: @muted_memory_names
+        muted_memory_names: @muted_memory_names,
+        scratch: @scratch
       )
       claim_session!(session.id) unless @owner_lock
+      # Saved at once, so a process killed before its first turn leaves a
+      # file the sweep knows to delete.
+      session.save if @scratch
       # Attach before building the prompt so it can name the session id.
       @engine.session = session
       messages = messages_for(session)
@@ -266,7 +274,9 @@ module Samagotchi
 
       assist_loop(session: session, messages: messages)
       # After the idle layer has stopped: nothing writes the session now.
-      if @delete_on_exit
+      if @scratch
+        nil # deleted below, however the REPL ended
+      elsif @delete_on_exit
         delete_after_exit(session)
       elsif @discard_on_exit
         discard_after_exit(session)
@@ -278,6 +288,21 @@ module Samagotchi
       # #initialize): the anytime commands finish, the plugins' services
       # stop (a server process).
       @engine&.shutdown
+      # A scratch session goes on every way out: /exit, Ctrl-D, an error,
+      # SIGTERM or SIGHUP (Ruby raises those here). Only kill -9 leaves it
+      # to the sweep.
+      delete_scratch(session, quiet: @non_interactive || !$!.nil?) if @scratch && session
+    end
+
+    # Delete the scratch session, the last thing the REPL does. Quiet after
+    # a one-shot or on the way out of an error or a signal.
+    def delete_scratch(session, quiet:)
+      @owner_lock&.release
+      @owner_lock = nil
+      SessionManager.delete_session(session.id)
+      @surface.commit("Scratch session deleted.") unless quiet
+    rescue StandardError => e
+      warn "Scratch session #{session.id} was not deleted (#{e.message}): chi sessions delete #{session.id}"
     end
 
     # The session stays: the recap first, then the resume line, last.
@@ -356,6 +381,9 @@ module Samagotchi
         @surface.commit("Resumed session: #{session.id}")
         saved = @engine.saved_recap
         @surface.commit(recap_block(saved[:text], turns_since: saved[:turns_since])) if saved
+      elsif @scratch
+        messages = [system_message]
+        @surface.commit("Scratch session: nothing is kept, it is deleted when you leave.")
       else
         messages = [system_message]
         @surface.commit("Session: #{session.id}")

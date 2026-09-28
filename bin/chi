@@ -881,6 +881,11 @@ if ARGV[0] == "bundle"
   exit 0
 end
 
+# `chi scratch`: the run options below, for a session that leaves nothing
+# behind (TerminalUI scratch:). The word goes before OptionParser sees it.
+scratch = ARGV[0] == "scratch"
+ARGV.shift if scratch
+
 options = { verbose: false, no_interrupt: false, non_interactive: false, no_default_input: false, web: false, web_port: nil, web_open: false, web_markdown: nil, web_turn_view: nil }
 cli_overrides = {}
 
@@ -908,6 +913,7 @@ end
 parser = OptionParser.new do |opts|
   opts.banner = <<~BANNER
     Usage: chi [options]
+           chi scratch [options]            a one-time session in this terminal: nothing is kept
            chi web [--port PORT] [--open] [--scope=all]   the web UI
            chi sessions <list|stop|delete|prune|clean>
            chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
@@ -981,10 +987,20 @@ end
 # The subcommands with their own parsers ran above; what parse! leaves is
 # `web` or nothing. Anything else is a typo, not a prompt: refuse it rather
 # than start a session.
-stray = ARGV.first == "web" ? ARGV[1] : ARGV.first
+web = ARGV.first == "web" && !scratch
+stray = web ? ARGV[1] : ARGV.first
 if stray
-  warn "Error: #{ARGV.first == "web" ? "unexpected argument" : "unknown command"} #{stray} (see chi --help)"
+  warn "Error: #{web || scratch ? "unexpected argument" : "unknown command"} #{stray} (see chi --help)"
   exit 1
+end
+
+# A scratch session is new, runs here and goes when it ends.
+if scratch
+  flag = { resume: "--resume", attach: "--attach", shared: "--shared" }.find { |key, _flag| options[key] }&.last
+  if flag
+    warn "Error: chi scratch starts a new session in this terminal and keeps nothing; it can't take #{flag}"
+    exit 1
+  end
 end
 
 # Apply CLI precedence: CLI > ENV > file
@@ -1082,7 +1098,11 @@ if options[:memories] || options[:muted]
 end
 
 require "samagotchi/launch_mode"
-launch, launch_note = Samagotchi::LaunchMode.resolve(options, shared_config: Samagotchi::Config.get("session.shared"))
+launch, launch_note = if scratch
+                        [:repl, nil]
+                      else
+                        Samagotchi::LaunchMode.resolve(options, shared_config: Samagotchi::Config.get("session.shared"))
+                      end
 warn launch_note if launch_note
 
 if launch == :attached
@@ -1124,7 +1144,8 @@ begin
     memories: options[:memories] || [],
     muted_memories: options[:muted] || [],
     non_interactive: options[:non_interactive],
-    model_name: options[:model]
+    model_name: options[:model],
+    scratch: scratch
   ).run
 rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::TerminalUI::SessionNotFound, Samagotchi::ModelProfile::MissingModel => e
   warn "Error: #{e.message}"

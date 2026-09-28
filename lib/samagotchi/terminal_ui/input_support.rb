@@ -240,7 +240,10 @@ module Samagotchi
         nil
       end
 
+      # A scratch session keeps nothing, its typed lines neither.
       def persist_recent_history(input)
+        return if @scratch
+
         entries = normalize_history_entries(load_history_entries_from_disk)
         entries << input
         trimmed_entries = entries.last(PROMPT_HISTORY_LIMIT)
