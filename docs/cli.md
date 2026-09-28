@@ -90,7 +90,8 @@ and `--shared` are refused. Its first line says it is a scratch session.
 - It never shows in `chi web`. A process killed with `kill -9` leaves its
   session behind, marked `"scratch": true` in its session.json: `chi sessions
   list` shows it as `[scratch]`, and the next sweep or `chi sessions clean`
-  deletes it.
+  deletes it. `chi --resume` and `--attach` refuse it (exit 1), so it never
+  turns into a kept session.
 - Memories are read and preloaded as usual, but nothing is saved: `memory_write`
   answers "scratch session: nothing is saved", and `write`/`edit` into the
   memories folder are denied (a guardrail, rule `scratch-session`). `execute`

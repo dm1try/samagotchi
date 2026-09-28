@@ -4,6 +4,7 @@ require "open3"
 require "rbconfig"
 require "tmpdir"
 require "json"
+require "samagotchi/session"
 require "support/fake_provider_server"
 
 # `chi scratch`: the run options, for a plain REPL session that leaves
@@ -53,6 +54,24 @@ RSpec.describe "chi scratch" do
       expect(status.exitstatus).to eq(1)
       expect(err).to eq("Error: chi scratch starts a new session in this terminal and keeps nothing; it can't take #{flag}\n")
       expect(left).to be_empty
+    end
+  end
+
+  %w[--resume --attach].each do |flag|
+    it "refuses #{flag} on a scratch session a killed REPL left behind, and keeps it for the sweep" do
+      Dir.mktmpdir do |dir|
+        env = { "XDG_CONFIG_HOME" => File.join(dir, "config"), "XDG_STATE_HOME" => File.join(dir, "state"), "HOME" => dir,
+                "SAMAGOTCHI_SERVER_PORT" => "9" }
+        state_dir = Samagotchi::Session.default_state_dir(env: env)
+        leftover = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: dir, scratch: true)
+        leftover.save(state_dir: state_dir)
+
+        _out, err, status = Open3.capture3(env, RbConfig.ruby, chi, flag, leftover.id[0, 8], stdin_data: "", chdir: dir)
+
+        expect(status.exitstatus).to eq(1)
+        expect(err).to eq("Error: that's a leftover scratch session; it is deleted at the next sweep (chi sessions clean)\n")
+        expect(Samagotchi::Session.load(leftover.id, state_dir: state_dir).scratch).to be(true)
+      end
     end
   end
 

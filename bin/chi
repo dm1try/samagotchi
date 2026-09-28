@@ -1089,6 +1089,22 @@ rescue Samagotchi::Session::AmbiguousId => e
   exit 1
 end
 
+# A `chi scratch` session a killed REPL left behind would turn into a kept
+# one if opened again; the next sweep deletes it.
+%i[resume attach].each do |key|
+  next unless options[key]
+
+  leftover = begin
+    Samagotchi::Session.load(options[key]).scratch
+  rescue ArgumentError
+    false # no such session: the launch says so
+  end
+  next unless leftover
+
+  warn "Error: that's a leftover scratch session; it is deleted at the next sweep (chi sessions clean)"
+  exit 1
+end
+
 # --memory and --mute names are checked here, before the launch: a worker's
 # stderr goes nowhere, so its engine's warnings would not be seen. Warnings
 # only; the session starts either way.
