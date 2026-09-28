@@ -76,6 +76,15 @@ RSpec.describe "task tools" do
       expect(result).to eq("Error: env key is reserved: RUBYOPT")
     end
 
+    it "doesn't start a task once the turn is stopped" do
+      kctx = Struct.new(:peers).new(Struct.new(:cancelled?).new(true))
+
+      result = Samagotchi::Tools::Builtins::HANDLERS.fetch("task_create").call({ content: "true" }, kctx)
+
+      expect(result).to eq("Error: not run, the user stopped the turn")
+      expect(Samagotchi::Tools::TaskList.call).to eq("No tasks found.")
+    end
+
     it "spawns a non-login shell so profile files can't clobber inherited PATH" do
       expect(Process).to receive(:spawn) do |*args, **_kwargs|
         expect(args[1..2]).to eq(["/bin/sh", "-c"])

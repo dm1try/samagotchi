@@ -68,12 +68,16 @@ module Samagotchi
         Edit::NAME => lambda do |call, _kctx|
           Edit.call(call[:content], path: call[:path], start_line: call[:start_line], end_line: call[:end_line])
         end,
-        TaskCreate::NAME => ->(call, _kctx) { TaskCreate.call(call[:content], cwd: call[:cwd], env: call[:env]) },
+        TaskCreate::NAME => lambda do |call, kctx|
+          next Execute::NOT_RUN_ON_STOP if cancelled_proc(kctx).call
+
+          TaskCreate.call(call[:content], cwd: call[:cwd], env: call[:env])
+        end,
         TaskWait::NAME => lambda do |call, kctx|
           TaskWait.call(call[:content], timeout: call[:timeout], tail_lines: call[:tail_lines],
                                         done_pattern: call[:done_pattern], cancelled: cancelled_proc(kctx))
         end,
-        Execute::NAME => ->(call, _kctx) { Execute.call(call[:content], cwd: call[:cwd]) },
+        Execute::NAME => ->(call, kctx) { Execute.call(call[:content], cwd: call[:cwd], cancelled: cancelled_proc(kctx)) },
         RegisterReminder::NAME => lambda do |call, kctx|
           RegisterReminder.call(call[:content], reminder_store: kctx.reminder_store, description: call[:description],
                                                 interval_minutes: call[:interval_minutes])

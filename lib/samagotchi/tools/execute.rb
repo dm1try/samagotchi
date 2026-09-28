@@ -18,16 +18,22 @@ module Samagotchi
       TIMEOUT_SEC = 30
       STOP_GRACE_SEC = 1.0
       STOP_POLL_INTERVAL_SEC = 0.05
+      WAIT_SLICE_SEC = 0.2
+      NOT_RUN_ON_STOP = "Error: not run, the user stopped the turn"
 
       def self.name        = NAME
 
-      def self.call(command, cwd: nil)
+      # @param cancelled [#call] true once the user stopped the turn: the
+      #   command is killed (or not started) and its output so far returned
+      def self.call(command, cwd: nil, cancelled: -> { false })
+        return NOT_RUN_ON_STOP if cancelled.call
+
         command = command.strip
         resolved_cwd = resolve_cwd(cwd)
         return "Error: cwd not found: #{resolved_cwd}" unless resolved_cwd
 
         timeout_sec = timeout_seconds
-        stdout, stderr, status = run_command(command, timeout_sec: timeout_sec, cwd: resolved_cwd)
+        stdout, stderr, status = run_command(command, timeout_sec: timeout_sec, cwd: resolved_cwd, cancelled: cancelled)
 
         stdout_block = output_block("stdout", stdout)
         stderr_block = output_block("stderr", stderr)
@@ -45,19 +51,29 @@ module Samagotchi
       rescue CommandTimedOut => e
         # Keep the "Error:" first line (callers classify on it) and return
         # whatever the command printed before it was killed.
-        parts = ["Error: command timed out after #{timeout_sec}s"]
-        parts << output_block("stdout", e.stdout)
-        parts << output_block("stderr", e.stderr)
-        parts.compact.join("\n")
+        stopped_result("Error: command timed out after #{timeout_sec}s", e)
+      rescue CommandCancelled => e
+        stopped_result("Error: command stopped by the user after #{e.elapsed.round}s (killed; rerun it if still needed)", e)
       rescue => e
         "Error: #{e.message}"
       end
 
-      def self.run_command(command, timeout_sec:, cwd:)
+      def self.stopped_result(first_line, error)
+        parts = [first_line]
+        parts << output_block("stdout", error.stdout)
+        parts << output_block("stderr", error.stderr)
+        parts.compact.join("\n")
+      end
+      private_class_method :stopped_result
+
+      def self.run_command(command, timeout_sec:, cwd:, cancelled: -> { false })
         stdout_text = ""
         stderr_text = ""
         status = nil
         timed_out = false
+        was_cancelled = false
+        started = monotonic_time
+        deadline = started + timeout_sec
 
         Open3.popen3(command, chdir: cwd, pgroup: true) do |stdin, stdout, stderr, wait_thr|
           stdin.close
@@ -65,14 +81,24 @@ module Samagotchi
           stderr_reader = reader_thread_for(stderr)
 
           begin
-            if wait_thr.join(timeout_sec)
-              status = wait_thr.value
-            else
-              timed_out = true
-              terminate_process_tree(wait_thr.pid)
-              wait_thr.join
-              status = wait_thr.value
+            until wait_thr.join(WAIT_SLICE_SEC)
+              if cancelled.call
+                was_cancelled = true
+                break
+              elsif monotonic_time > deadline
+                timed_out = true
+                break
+              end
             end
+            terminate_process_tree(wait_thr.pid) if timed_out || was_cancelled
+            wait_thr.join
+            status = wait_thr.value
+          rescue Exception # rubocop:disable Lint/RescueException -- kill the child, then re-raise
+            # An Interrupt (or anything else) mid-wait: the child is in its own
+            # process group, so it never saw the SIGINT. Kill it, or the reads
+            # below block until it closes stdout.
+            terminate_process_tree(wait_thr.pid)
+            raise
           ensure
             # Read the buffered output before closing the pipes. For a process
             # that exits almost instantly (e.g. `echo hello`), the background
@@ -86,6 +112,7 @@ module Samagotchi
         end
 
         raise CommandTimedOut.new(stdout_text, stderr_text) if timed_out
+        raise CommandCancelled.new(stdout_text, stderr_text, monotonic_time - started) if was_cancelled
 
         [stdout_text, stderr_text, status]
       end
@@ -207,6 +234,17 @@ module Samagotchi
           @stdout = stdout
           @stderr = stderr
           super("command timed out")
+        end
+      end
+
+      class CommandCancelled < StandardError
+        attr_reader :stdout, :stderr, :elapsed
+
+        def initialize(stdout, stderr, elapsed)
+          @stdout = stdout
+          @stderr = stderr
+          @elapsed = elapsed
+          super("command stopped by the user")
         end
       end
     end

@@ -164,6 +164,47 @@ RSpec.describe Samagotchi::Tools::Execute do
       expect(result).not_to include("exit:")
     end
 
+    describe "on Stop" do
+      def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      # A grandchild killed with the group may take a moment to be reaped.
+      def running?(pattern)
+        deadline = now + 1
+        sleep 0.05 while (alive = system("pgrep", "-f", pattern, out: File::NULL)) && now < deadline
+        alive
+      end
+
+      it "kills the command, keeping its output so far" do
+        started = now
+        result = described_class.call("echo before; sleep 31.71", cancelled: -> { now - started > 0.3 })
+
+        expect(now - started).to be < 1.5
+        expect(result).to start_with("Error: command stopped by the user after 0s (killed; rerun it if still needed)\n")
+        expect(result).to include("stdout:\nbefore")
+        expect(result).not_to include("exit:")
+        expect(running?("sleep 31.71")).to be(false)
+      end
+
+      it "doesn't start a command once the turn is stopped" do
+        Dir.mktmpdir do |dir|
+          marker = File.join(dir, "ran")
+          result = described_class.call("touch #{marker}", cancelled: -> { true })
+
+          expect(result).to eq("Error: not run, the user stopped the turn")
+          expect(File.exist?(marker)).to be(false)
+        end
+      end
+
+      it "kills the command on an Interrupt mid-wait instead of hanging on its output" do
+        started = now
+        interrupt = -> { now - started > 0.3 ? raise(Interrupt) : false }
+
+        expect { described_class.call("sleep 31.72", cancelled: interrupt) }.to raise_error(Interrupt)
+        expect(now - started).to be < 1.5
+        expect(running?("sleep 31.72")).to be(false)
+      end
+    end
+
     it "keeps partial output from a compound command whose last part hangs" do
       ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
 
