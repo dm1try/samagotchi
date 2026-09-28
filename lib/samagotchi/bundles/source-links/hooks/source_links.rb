@@ -1,8 +1,11 @@
 # frozen_string_literal: true
 
-# An after_turn hook that announces the source refs the model's answer
-# mentions — a JIRA ticket, a GitHub issue, an internal wiki page — as one
-# line right after the turn:
+# An after_turn hook that links the source refs the model's answer
+# mentions — a JIRA ticket, a GitHub issue, an internal wiki page. In the
+# web, each ref in the answer becomes a link (`[JIRA-123](https://…)`,
+# through event[:present]: display only, the model's text stays as it was,
+# and it survives a reload). Every UI also gets one line right after the
+# turn, the terminals' only view of the links:
 #
 #   sources: JIRA JIRA-123 → https://myjira.com/browse/JIRA-123, JIRA JIRA-10 → https://myjira.com/browse/JIRA-10
 #
@@ -20,10 +23,14 @@
 #           url: 'https://github.com/org/repo/issues/{match}'
 #           case_insensitive: false   # optional, default false
 #       max: 10                       # optional: refs per line, default 10
+#       note: false                   # optional: no sources line (the web
+#                                     # links stay), default true
 #
 # The note is not stored in the conversation: it is an event, replayed by a
 # UI only while the session's worker lives (a reload keeps it; a stopped
-# worker loses it). The hook is inert until sources are configured.
+# worker loses it). The links are stored as the answer's display. A ref in
+# code (a `span` or a fenced block) or in a markdown link is not linked in
+# the answer. The hook is inert until sources are configured.
 class SourceLinks
   # The answer is scanned only up to this many characters: the primary
   # ReDoS guard, bounding the input a user-supplied regex can chew on.
@@ -38,25 +45,33 @@ class SourceLinks
   # and a markdown link (label in group 1, target in group 2).
   URL_SPAN = %r{[a-z][a-z0-9+.\-]*://\S+}i
   MARKDOWN_LINK = /\[([^\]]*)\]\(([^)]*)\)/
+  # A fenced code block's opening line (up to 3 spaces, then ``` or ~~~).
+  FENCE_OPEN = /\A {0,3}(`{3,}|~{3,})/
 
   def initialize(settings = {})
     settings = {} unless settings.is_a?(Hash)
     @sources = compile_sources(settings["sources"])
     max = settings["max"].to_i
     @max = max.positive? ? max : DEFAULT_MAX
+    @note = settings["note"] != false
   end
 
   def call(event)
     return unless event.is_a?(Hash) && event[:type] == :after_turn
     return unless event[:status].to_s == "completed"
+    return if @sources.empty?
 
     text = last_model_text(event[:messages])
     return if text.nil? || text.empty?
 
-    found = collect(text[0, MAX_SCAN])
-    return if found.empty?
-
-    event[:notify]&.call(line(found), level: :info)
+    hits = occurrences(text[0, MAX_SCAN])
+    if @note
+      found = collect(hits)
+      event[:notify]&.call(line(found), level: :info) unless found.empty?
+    end
+    # The answer as shown: the model's text unless an earlier hook changed
+    # it (then its offsets differ, so it is scanned again).
+    event[:present]&.call { |shown| link(shown, shown == text ? hits : nil) }
   end
 
   private
@@ -76,42 +91,126 @@ class SourceLinks
     nil
   end
 
-  # [name, ref, url] for every ref found, in first-occurrence order (by the
-  # ref's offset in the answer, whatever order the sources are configured
-  # in), deduped by the ref text case-insensitively. A source whose regex
-  # times out is skipped whole: its partial matches are discarded, the
-  # others still report.
-  def collect(text)
+  # Every ref the note may name, as {start:, finish:, name:, ref:, url:,
+  # quiet:}, by offset (whatever order the sources are configured in). The
+  # skip rules below drop a ref that is already a link; +quiet+ marks one
+  # the note names but the answer does not link (in code, or in a markdown
+  # link's label: a link can't hold another). A source whose regex times out
+  # is skipped whole: its partial matches are discarded, the others still
+  # report.
+  def occurrences(text)
     url_spans = bare_url_spans(text)
     links = markdown_links(text)
-    seen = {}
+    code = code_spans(text)
+    labels = links.map { |link| link[:label] }
     found = []
     @sources.each do |source|
       hits = []
-      local_seen = {}
       begin
         text.scan(source[:regex]) do
           match = Regexp.last_match
-          ref = match[0]
-          key = ref.downcase
-          next if inside_any?(url_spans, match.begin(0), match.end(0))
+          start = match.begin(0)
+          finish = match.end(0)
+          next if inside_any?(url_spans, start, finish)
           next if inside_markdown_link?(links, text, match)
           next if url_adjacent?(text, match)
-          next if seen.key?(key) || local_seen.key?(key)
 
-          local_seen[key] = true
-          hits << [match.begin(0), source[:name], ref, source[:url].call(ref, match)]
+          quiet = inside_any?(code, start, finish) || inside_any?(labels, start, finish)
+          hits << { start: start, finish: finish, name: source[:name], ref: match[0],
+                    url: source[:url].call(match[0], match), quiet: quiet }
         end
       rescue Regexp::TimeoutError
         Samagotchi::Log.warn(:hooks, "source_links_timeout",
                              echo: "[samagotchi:hooks] source-links: #{source[:name]} timed out; skipped")
         next
       end
-      seen.merge!(local_seen)
       found.concat(hits)
     end
-    found.sort_by! { |offset, _name, _ref, _url| offset }
-    found.map { |_offset, name, ref, url| [name, ref, url] }
+    # By offset; on a tie (two sources on one ref) the first configured wins.
+    found.each_with_index.sort_by { |hit, index| [hit[:start], index] }.map(&:first)
+  end
+
+  # [name, ref, url] for the note: first-occurrence order, deduped by the
+  # ref text case-insensitively.
+  def collect(hits)
+    seen = {}
+    hits.filter_map do |hit|
+      key = hit[:ref].downcase
+      next if seen.key?(key)
+
+      seen[key] = true
+      [hit[:name], hit[:ref], hit[:url]]
+    end
+  end
+
+  # +text+ with each ref as a markdown link, every occurrence; the part
+  # beyond MAX_SCAN stays as it is. +hits+ are the scan of that text when
+  # the caller has it.
+  def link(text, hits = nil)
+    head = text[0, MAX_SCAN]
+    hits ||= occurrences(head)
+    out = +""
+    pos = 0
+    hits.each do |hit|
+      next if hit[:quiet] || hit[:start] < pos # two sources on one ref: the first wins
+
+      out << head[pos...hit[:start]] << "[#{hit[:ref].gsub(/[\[\]]/) { |c| "\\#{c}" }}](#{link_target(hit[:url])})"
+      pos = hit[:finish]
+    end
+    return text if pos.zero?
+
+    out << head[pos..] << text[MAX_SCAN..].to_s
+  end
+
+  # A URL as a markdown link target: whitespace and what would end it
+  # (parentheses, angle brackets) percent-encoded.
+  def link_target(url)
+    url.gsub(/[\s()<>]/) { |c| c.bytes.map { |b| format("%%%02X", b) }.join }
+  end
+
+  # The [start, end) ranges of the answer that are code: fenced blocks
+  # (``` or ~~~, to the closing fence or the end) and inline spans (a run
+  # of backticks to the next run of the same length). A line walk and a
+  # lookup per backtick run, no regex over the whole answer.
+  def code_spans(text)
+    fences = fenced_blocks(text)
+    runs = []
+    text.scan(/`+/) { runs << [Regexp.last_match.begin(0), Regexp.last_match.end(0)] }
+    runs.reject! { |start, finish| inside_any?(fences, start, finish) }
+    by_length = Hash.new { |hash, key| hash[key] = [] }
+    runs.each_with_index { |(start, finish), index| by_length[finish - start] << index }
+    spans = []
+    index = 0
+    while index < runs.size
+      start, finish = runs[index]
+      same = by_length[finish - start]
+      closing = same.bsearch { |other| other > index }
+      if closing
+        spans << [start, runs[closing][1]]
+        index = closing + 1
+      else
+        index += 1
+      end
+    end
+    fences + spans
+  end
+
+  def fenced_blocks(text)
+    blocks = []
+    open = nil
+    offset = 0
+    text.each_line do |line|
+      marker = line[FENCE_OPEN, 1]
+      if open.nil? && marker
+        open = [offset, marker]
+      elsif open && marker && marker[0] == open[1][0] && marker.length >= open[1].length && line.strip == marker
+        blocks << [open[0], offset + line.length]
+        open = nil
+      end
+      offset += line.length
+    end
+    blocks << [open[0], text.length] if open
+    blocks
   end
 
   # The [start, end) character ranges of the answer that are a bare URL

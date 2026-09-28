@@ -356,7 +356,8 @@ chi bundle install source-links
 
 installs one `after_turn` hook and a short memory. When the model's answer
 mentions a known source ref — a JIRA ticket, a GitHub issue, an internal
-wiki page — the user sees one line right after the message:
+wiki page — the web links it in the answer (below), and every UI shows one
+line right after the message:
 
 ```
 sources: JIRA JIRA-123 → https://myjira.com/browse/JIRA-123, JIRA JIRA-10 → https://myjira.com/browse/JIRA-10
@@ -389,7 +390,18 @@ bundles:
         url: 'https://github.com/org/repo/issues/{match}'
         case_insensitive: false   # optional, default false
     max: 10                       # optional: refs per line, default 10
+    note: false                   # optional: no sources line, default true
 ```
+
+**In the web** the refs are also links in the answer itself: each
+occurrence becomes `[JIRA-123](https://myjira.com/browse/JIRA-123)` through
+[`event[:present]`](#presenting-the-answer-display-only), so the model's
+text stays as it was, and the links survive a reload and a stopped worker
+(they are the answer's `display` in the session file). The same skip rules
+apply, and a ref in code (a `` `span` `` or a fenced block) or anywhere in a
+markdown link is left as it is; past the first 20 000 characters the answer
+is unchanged. The terminals see only the line; `note: false` drops it and
+keeps the web links.
 
 The `prefix:` form compiles to `\b<prefix>-(\d+)\b` and the URL is
 `base_url` + the full ref text (`JIRA-123`). The `pattern:` form takes a

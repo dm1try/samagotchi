@@ -3,6 +3,7 @@
 require "yaml"
 require "digest"
 require "samagotchi/hooks"
+require "samagotchi/answer_display"
 
 # The source-links bundle (lib/samagotchi/bundles/source-links): an
 # after_turn hook that announces the source refs (JIRA tickets, GitHub
@@ -282,6 +283,95 @@ RSpec.describe "The source-links bundle" do
       settings.replace("sources" => [{ "name" => "Empty" }, { "pattern" => "(" }])
       expect { fire([model("JIRA-123")]) }.not_to raise_error
       expect(notices).to be_empty
+    end
+  end
+
+  describe "the links in the answer (event[:present])" do
+    # Fire :after_turn with a presenter, as the Engine does, and return the
+    # display text (nil: nothing to present).
+    def present(content, display: nil)
+      messages = [user("q"), model(content).merge(display ? { display: display } : {})]
+      answer = Samagotchi::AnswerDisplay.new(messages)
+      event = { type: :after_turn, status: "completed", messages: messages }
+      event[:present] = answer.presenter(event)
+      registry.fire(:after_turn, event)
+      answer.changed? ? answer.text : nil
+    end
+
+    def jira(ref) = "[#{ref}](https://myjira.com/browse/#{ref})"
+
+    it "links every occurrence, the note still lists each ref once" do
+      expect(present("See JIRA-1, then JIRA-2 and JIRA-1 again.")).to eq("See #{jira("JIRA-1")}, then #{jira("JIRA-2")} and #{jira("JIRA-1")} again.")
+      expect(notices.map { |n| n[:text] }.first).to start_with("sources: JIRA JIRA-1 → ")
+    end
+
+    it "leaves a ref in a code span, a fenced block (``` or ~~~, closed or not) or a markdown link alone" do
+      text = <<~MD
+        Plain JIRA-1, `JIRA-2`, ``a `JIRA-3` b``, [JIRA-4](https://x.test/JIRA-4), [fix for JIRA-5](https://gh.test/pull/9).
+
+        ```ruby
+        JIRA-6
+        ```
+
+        ~~~
+        JIRA-7
+        ~~~
+
+        After JIRA-8 and https://x.test/JIRA-9 and /browse/JIRA-10.
+
+        ````
+        JIRA-11
+      MD
+
+      expect(present(text)).to eq(text.sub("Plain JIRA-1", "Plain #{jira("JIRA-1")}").sub("After JIRA-8", "After #{jira("JIRA-8")}"))
+      # The note is as before: a ref in code or in another link's label is still named.
+      expect(notices.map { |n| n[:text] }.first.scan(/JIRA JIRA-\d+/)).to eq(
+        ["JIRA JIRA-1", "JIRA JIRA-2", "JIRA JIRA-3", "JIRA JIRA-5", "JIRA JIRA-6", "JIRA JIRA-7", "JIRA JIRA-8", "JIRA JIRA-11"]
+      )
+    end
+
+    it "links a ref after a lone backtick (no closing run: not code)" do
+      expect(present("a ` JIRA-1")).to eq("a ` #{jira("JIRA-1")}")
+    end
+
+    it "leaves the text beyond the 20k scan cap as it is" do
+      tail = "#{"x" * 20_000} JIRA-2 end"
+      expect(present("JIRA-1 #{tail}")).to eq("#{jira("JIRA-1")} #{tail}")
+    end
+
+    it "presents nothing when there is no ref to link" do
+      expect(present("nothing here, `JIRA-1` only in code")).to be_nil
+    end
+
+    it "builds on an earlier hook's display" do
+      expect(present("see JIRA-1", display: "**see** JIRA-1")).to eq("**see** #{jira("JIRA-1")}")
+    end
+
+    it "keeps the link target in one piece: spaces and parentheses are percent-encoded" do
+      settings.replace("sources" => [{ "name" => "Wiki", "pattern" => "\\bWIKI-(\\d+)\\b", "url" => "https://w.test/Page_(x) {match}" }])
+      expect(present("see WIKI-7")).to eq("see [WIKI-7](https://w.test/Page_%28x%29%207)")
+    end
+
+    it "links one ref two sources match once, by the first configured" do
+      settings["sources"] << { "name" => "Any", "pattern" => "\\b[A-Z]+-\\d+\\b", "url" => "https://any.test/{match}" }
+      expect(present("JIRA-1 and ABC-2")).to eq("#{jira("JIRA-1")} and [ABC-2](https://any.test/ABC-2)")
+    end
+
+    it "with a timed-out source still links the others" do
+      settings["sources"].unshift({ "name" => "Evil", "pattern" => "(a{0,10}){10}$", "url" => "https://x/{match}" })
+      tail = "a" * 20_000
+      expect(present("JIRA-1 #{tail}")).to eq("#{jira("JIRA-1")} #{tail}")
+    end
+
+    it "note: false drops the line and keeps the links" do
+      settings["note"] = false
+      expect(present("see JIRA-1")).to eq("see #{jira("JIRA-1")}")
+      expect(notices).to be_empty
+    end
+
+    it "does nothing on a chi without event[:present] but the note" do
+      expect { fire([model("see JIRA-1")]) }.not_to raise_error
+      expect(notices.size).to eq(1)
     end
   end
 
