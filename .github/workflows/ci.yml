@@ -20,14 +20,25 @@ jobs:
       fail-fast: false
       matrix:
         ruby: ["3.3", "3.4", "4.0"]
-    # TODO once the repository is public: a macos-latest job on Ruby 3.4
-    # (the desktop helper, pbpaste). Private-repo macOS minutes cost 10x.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true # bundle install from the committed Gemfile.lock
+      - name: Specs (:integration and :macos_build skip themselves)
+        run: bundle exec rspec --format progress
+
+  rspec-macos:
+    # The desktop helper and pbpaste paths are macOS-only.
+    name: rspec (macOS, Ruby 3.4)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
       - name: Specs (:integration and :macos_build skip themselves)
         run: bundle exec rspec --format progress
 
