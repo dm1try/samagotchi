@@ -15,6 +15,7 @@ require_relative "log"
 require_relative "log_path"
 require_relative "installed_gem"
 require_relative "recap_store"
+require_relative "archive_store"
 require_relative "image_store"
 require_relative "terminal_ui"
 
@@ -92,6 +93,29 @@ module Samagotchi
         @session_id = session_id
         @reason = reason
         super(reason == :still_stopping ? "session #{session_id}'s worker is still shutting down" : "session #{session_id}'s worker is running")
+      end
+    end
+
+    # An archive that can't happen now: a turn runs in the session or in one
+    # of its children (+busy_id+ names which), or it is a scratch session.
+    class ArchiveRefused < StandardError
+      attr_reader :session_id, :reason, :busy_id
+
+      def initialize(session_id, reason, busy_id: nil)
+        @session_id = session_id
+        @reason = reason
+        @busy_id = busy_id
+        super(archive_refused_message)
+      end
+
+      private
+
+      def archive_refused_message
+        case @reason
+        when :scratch then "a scratch session is deleted when you leave; nothing to archive"
+        when :busy_child then "its delegate #{@busy_id[0, 8]} is running a turn; wait for it or stop it first"
+        else "a turn is running; wait for it or cancel it first"
+        end
       end
     end
 
@@ -190,9 +214,11 @@ module Samagotchi
 
     # List all sessions, reading status from persisted session.json files.
     # +project_root+: only that project's sessions (nil: every session).
-    def self.list_sessions(state_dir: nil, sort: "updated_at", order: "desc", limit: nil, offset: 0, project_root: nil)
+    # +include_archived+: archived sessions too (Session#archived says which).
+    def self.list_sessions(state_dir: nil, sort: "updated_at", order: "desc", limit: nil, offset: 0, project_root: nil,
+                           include_archived: false)
       Session.list(state_dir: state_dir || Session.default_state_dir, sort: sort, order: order, limit: limit,
-                   offset: offset, project_root: project_root)
+                   offset: offset, project_root: project_root, include_archived: include_archived)
     end
 
     # Prune sessions per retention policy. Delegates to Session.prune with live-worker guard.
@@ -211,17 +237,19 @@ module Samagotchi
     # @param limit [Integer, nil] taken after the filters
     # @param include_tests [Boolean] false leaves out test runs
     # @param exclude [String, nil] a session id to leave out (the asker)
+    # @param include_archived [Boolean] archived sessions too
     # @return [Array<Hash>] {id:, short_id:, desc:, preview:, cwd:, project:,
     #   updated_at:, status:, live:, busy:, owner:, recap:, parent_id:,
-    #   parent_short_id:}; busy = live with
+    #   parent_short_id:, archived:}; busy = live with
     #   a turn running, recap = the saved recap's first sentence, project =
     #   Session#project_root
     def self.session_summaries(live: false, cwd: nil, limit: nil, include_tests: true, exclude: nil, state_dir: nil,
-                               project_root: nil)
+                               project_root: nil, include_archived: false)
       sd = state_dir || Session.default_state_dir
       root = cwd && folder_path(cwd)
       roots = {}
-      summaries = Session.list(state_dir: sd, sort: "updated_at", order: "desc", project_root: project_root).lazy
+      summaries = Session.list(state_dir: sd, sort: "updated_at", order: "desc", project_root: project_root,
+                                           include_archived: include_archived).lazy
                          .reject { |s| (!include_tests && s.test_run) || s.id == exclude }
                          .select { |s| root.nil? || in_folder?(s.working_directory, root) }
                          .filter_map do |s|
@@ -232,18 +260,87 @@ module Samagotchi
         { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), preview: summary_preview(s), cwd: s.working_directory,
           project: s.project_root(cache: roots), updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING,
           owner: owner, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)),
-          parent_id: s.parent_id, parent_short_id: s.parent_id&.[](0, 8) }
+          parent_id: s.parent_id, parent_short_id: s.parent_id&.[](0, 8), archived: s.archived }
       end
       (limit ? summaries.first(limit) : summaries.to_a)
     end
 
     # The sessions delegated by +parent_id+ (the `delegate` tool), newest
     # first, as .session_summaries rows. A running one (busy) counts against
-    # session.max_children.
+    # session.max_children. Archived ones too.
     def self.children_of(parent_id, state_dir: nil)
       return [] if parent_id.to_s.empty?
 
-      session_summaries(state_dir: state_dir, include_tests: true).select { |s| s[:parent_id] == parent_id.to_s }
+      session_summaries(state_dir: state_dir, include_tests: true, include_archived: true)
+        .select { |s| s[:parent_id] == parent_id.to_s }
+    end
+
+    # Archive a session and its delegated children (ArchiveStore): hidden
+    # from every list, kept by the retention sweep. A live idle worker is
+    # stopped first; the marker is written even while it shuts down.
+    # @return [Hash] {id:, archived: [ids], stopped: [ids], discarded: [ids]};
+    #   discarded: empty sessions their stopping worker deleted
+    # @raise [ArgumentError] unknown id (Session::AmbiguousId for a prefix of several)
+    # @raise [OwnedByTUI] a chi REPL owns it or one of its children
+    # @raise [ArchiveRefused] a turn runs in it or in a child, or it is a
+    #   scratch session
+    def self.archive_session(id_or_prefix, state_dir: nil, wait: 5)
+      sd = state_dir || Session.default_state_dir
+      id = archive_target(id_or_prefix, sd)
+      raise ArchiveRefused.new(id, :scratch) if Session.load(id, state_dir: sd).scratch
+
+      tree = [id, *descendant_ids(id, sd)]
+      owners = tree.to_h { |sid| [sid, session_owner(sid, state_dir: sd)] }
+      tree.each do |sid|
+        owner = owners[sid]
+        next unless owner
+
+        raise OwnedByTUI, sid if owner["kind"] == "tui"
+        next unless Session.load(sid, state_dir: sd).status == Session::STATUS_RUNNING
+
+        raise ArchiveRefused.new(id, sid == id ? :busy : :busy_child, busy_id: sid)
+      end
+
+      stopped = tree.select { |sid| owners[sid] }
+      stopped.each { |sid| stop_session(sid, state_dir: sd, wait: wait) }
+      archived, discarded = tree.partition { |sid| ArchiveStore.archive(sid, state_dir: sd) }
+      { id: id, archived: archived, stopped: stopped, discarded: discarded }
+    end
+
+    # Unarchive a session and its delegated children.
+    # @return [Hash] {id:, unarchived: [ids that were archived]}
+    # @raise [ArgumentError] unknown id
+    def self.unarchive_session(id_or_prefix, state_dir: nil)
+      sd = state_dir || Session.default_state_dir
+      id = archive_target(id_or_prefix, sd)
+      unarchived = [id, *descendant_ids(id, sd)].select { |sid| ArchiveStore.unarchive(sid, state_dir: sd) }
+      { id: id, unarchived: unarchived }
+    end
+
+    private_class_method def self.archive_target(id_or_prefix, state_dir)
+      given = id_or_prefix.to_s
+      raise ArgumentError, "no session #{given}" unless given.match?(/\A[\w-]+\z/)
+
+      id = Session.resolve_id(given, state_dir: state_dir)
+      raise ArgumentError, "no session #{given}" unless Session.exist?(id, state_dir: state_dir)
+
+      id
+    end
+
+    # Children, their children, …: a delegated session doesn't delegate
+    # further today, a plugin's fork may.
+    private_class_method def self.descendant_ids(id, state_dir)
+      seen = [id]
+      queue = [id]
+      until queue.empty?
+        children_of(queue.shift, state_dir: state_dir).each do |child|
+          next if seen.include?(child[:id])
+
+          seen << child[:id]
+          queue << child[:id]
+        end
+      end
+      seen.drop(1)
     end
 
     SUMMARY_PREVIEW_LIMIT = 120

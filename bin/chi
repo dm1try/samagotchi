@@ -38,13 +38,15 @@ if ARGV[0] == "sessions"
   sessions_args = ARGV[1..] || []
   sub = sessions_args[0]
   if sub.nil? || %w[-h --help help].include?(sub)
-    puts "Usage: chi sessions <list|stop|delete|prune|clean> [options]"
+    puts "Usage: chi sessions <list|stop|archive|unarchive|delete|prune|clean> [options]"
     puts "  list [--sort updated_at|created_at] [--order desc|asc] [--limit N]"
-    puts "       [--live] [--cwd PATH] [--format text|json|tsv]"
+    puts "       [--live] [--cwd PATH] [--format text|json|tsv] [--archived]"
     puts "       --live: sessions a worker runs now (the ones chi note reaches), 10 unless --limit"
     puts "       --cwd PATH: sessions in PATH or below; json/tsv (id<TAB>description) are for scripts"
     puts "       [--scope=all]: every project's sessions; by default only this git project's (all outside a repo)"
+    puts "       --archived: archived sessions too (marked [archived]; json: archived: true)"
     puts "  stop ID...   # stop each session's worker (IDs or unique prefixes); chi --resume ID then starts a fresh one"
+    puts "  archive ID...   # hide sessions (and their delegates) from every list and keep them for good; unarchive ID... brings them back"
     puts "  delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first"
     puts "  prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]"
     puts "  clean [--dry-run] [--days N]   # test sessions (SAMAGOTCHI_ENV=test, CI) and leftover chi scratch ones: all of them, or those older than N days"
@@ -60,6 +62,7 @@ if ARGV[0] == "sessions"
   order = nil
   limit = nil
   live = sessions_args.include?("--live")
+  include_archived = sessions_args.include?("--archived")
   cwd = nil
   format = nil
   scope = nil
@@ -89,6 +92,9 @@ if ARGV[0] == "sessions"
   when "delete"
     require "samagotchi/session_delete_command"
     exit Samagotchi::SessionDeleteCommand.new(sessions_args[1..]).run
+  when "archive", "unarchive"
+    require "samagotchi/session_archive_command"
+    exit Samagotchi::SessionArchiveCommand.new(sub, sessions_args[1..]).run
   when "list"
     unless format.nil? || %w[text json tsv].include?(format)
       warn "Unknown format #{format.inspect}: use --format text|json|tsv"
@@ -107,7 +113,8 @@ if ARGV[0] == "sessions"
     # and test runs stay out.
     if live || cwd || (format && format != "text")
       summaries = Samagotchi::SessionManager.session_summaries(
-        live: live, cwd: cwd, limit: limit || (live ? 10 : nil), include_tests: false, project_root: project
+        live: live, cwd: cwd, limit: limit || (live ? 10 : nil), include_tests: false, project_root: project,
+        include_archived: include_archived
       )
       case format
       when "json"
@@ -115,7 +122,8 @@ if ARGV[0] == "sessions"
         # or nil; recap: the saved recap's first sentence, or nil; project:
         # its git project's root, or nil
         # parent_id: the session that delegated it (the delegate tool), or nil
-        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id]
+        # archived: hidden from the lists (only with --archived can it be true)
+        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id archived]
         puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
       when "tsv"
         summaries.each { |summary| puts "#{summary[:id]}\t#{summary[:desc]}" }
@@ -131,7 +139,8 @@ if ARGV[0] == "sessions"
           end
           # A delegated session points at its parent.
           child = summary[:parent_short_id] ? "  ↳ #{summary[:parent_short_id]}" : ""
-          puts "#{summary[:id]}  #{state.ljust(8)}  #{summary[:updated_at]}  #{desc}#{child}"
+          flag = summary[:archived] ? " [archived]" : ""
+          puts "#{summary[:id]}  #{state.ljust(8)}  #{summary[:updated_at]}  #{desc}#{flag}#{child}"
         end
         if project
           puts "#{summaries.empty? ? "" : "\n"}#{scope_note.call(summaries.size)}"
@@ -143,7 +152,8 @@ if ARGV[0] == "sessions"
     end
     sort ||= "updated_at"
     order ||= "desc"
-    sessions = Samagotchi::SessionManager.list_sessions(sort: sort, order: order, limit: limit, project_root: project)
+    sessions = Samagotchi::SessionManager.list_sessions(sort: sort, order: order, limit: limit, project_root: project,
+                                                        include_archived: include_archived)
     # The saved recap's first sentence, else the last prompt, cut as before.
     state_dir = Samagotchi::Session.default_state_dir
     list_text = lambda do |s|
@@ -153,6 +163,7 @@ if ARGV[0] == "sessions"
     # A delegated session points at its parent: ↳ <parent's short id>.
     row = lambda do |s|
       flag = s.scratch ? " [scratch]" : (s.test_run ? " [test]" : "")
+      flag += " [archived]" if s.archived
       child = s.parent_id ? "  ↳ #{s.parent_id[0, 8]}" : ""
       "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}#{child}"
     end
@@ -214,7 +225,7 @@ if ARGV[0] == "sessions"
     end
     exit 0
   else
-    warn "Unknown sessions subcommand: #{sub}. Use: list, stop, delete, prune, clean"
+    warn "Unknown sessions subcommand: #{sub}. Use: list, stop, archive, unarchive, delete, prune, clean"
     exit 1
   end
 end
@@ -915,7 +926,7 @@ parser = OptionParser.new do |opts|
     Usage: chi [options]
            chi scratch [options]            a one-time session in this terminal: nothing is kept
            chi web [--port PORT] [--open] [--scope=all]   the web UI
-           chi sessions <list|stop|delete|prune|clean>
+           chi sessions <list|stop|archive|unarchive|delete|prune|clean>
            chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
            chi send [-m TEXT] ID...         a message into sessions, as if typed there
            chi bundle <install|upgrade|uninstall|status|diff|list|build>

@@ -23,6 +23,7 @@ require_relative "host_registry"
 require_relative "llm/backend"
 require_relative "llm/openai_chat"
 require_relative "session"
+require_relative "archive_store"
 require_relative "session_observer"
 require_relative "tool_declarations"
 require_relative "session_metrics"
@@ -1543,6 +1544,9 @@ module Samagotchi
         @question_answer = answer
         @question_cv.broadcast
         answer
+      end.tap do
+        # A human answered: the session is back in the lists (ArchiveStore).
+        ArchiveStore.user_input(@session&.id, state_dir: session_state_dir)
       end
     end
 

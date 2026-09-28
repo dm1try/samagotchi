@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "tmpdir"
 require "samagotchi/engine"
 require "samagotchi/session"
 
@@ -113,6 +114,24 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       engine.answer_question(id: session.pending_question[:id], selected: ["Dogs"])
       turn_thread.join(2)
       expect(session.pending_question).to be_nil
+    end
+
+    it "brings an archived session back to the lists: a human answered" do
+      state_dir = Dir.mktmpdir("engine-question-archive")
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd)
+      session.save(state_dir: state_dir)
+      Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)
+      engine = build_engine(session: session)
+      engine.session_state_dir = state_dir
+      allow(session).to receive(:save)
+      turn_thread, = request_in_background(engine, payload)
+
+      engine.answer_question(id: engine.pending_question[:id], selected: ["Dogs"])
+      turn_thread.join(2)
+
+      expect(Samagotchi::ArchiveStore.archived?(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))).to be(false)
+    ensure
+      FileUtils.rm_rf(state_dir) if state_dir
     end
 
     it "blocks until answer_question is called from another thread and returns answer JSON" do

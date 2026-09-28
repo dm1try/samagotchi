@@ -86,7 +86,7 @@ RSpec.describe "TerminalUI images" do
     let(:surface) { RecordingSurface.new }
     let(:agent) { Samagotchi::TerminalUI.new(mode: :assist, client: client, surface: surface) }
     let(:engine) { agent.instance_variable_get(:@engine) }
-    let(:session) { instance_double(Samagotchi::Session, messages: []) }
+    let(:session) { instance_double(Samagotchi::Session, id: "s1", messages: []) }
     let(:result) { Samagotchi::KernelLoop::Result.new(output: "a red square", conversation: [], tool_activity: []) }
 
     before do

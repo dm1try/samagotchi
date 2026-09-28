@@ -9,11 +9,11 @@
 - `chi --no-shared [--resume <session-id>]` — the plain in-process REPL instead, for this run
 - `chi scratch [options]` — a one-time session in the plain in-process REPL, in this folder, that leaves nothing behind (see [Scratch sessions](#scratch-sessions))
 - `chi --attach <session-id>` — attach the terminal to a session's worker (e.g. one started from the Web UI), waking one if it has exited
-- A session id can be shortened to any unique prefix (like git): `chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
+- A session id can be shortened to any unique prefix (like git): `chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop`, `sessions archive` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
 - `chi web [--port 4567] [--open] [--scope=all]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
 - `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
 - `chi web --no-web-turn-view` — show turns as the classic row of bubbles instead of the default turn view (each turn as one block of steps, the running one at the bottom); `?view=turn|chat` on the page URL overrides it (see [Web turn view](#web-turn-view))
-- `chi sessions list|stop|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>` (see [Sessions](sessions.md))
+- `chi sessions list|stop|archive|unarchive|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md))
 - `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
 - `chi send [-m TEXT] (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context (see [Sessions: Sending a message](sessions.md#sending-a-message))
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
@@ -156,6 +156,17 @@ note or image) is deleted as its worker exits, and `/exit` says so; set
 a `chi --resume ID` after it starts a fresh one. A worker still running an
 older chi (from before an upgrade) takes turns but not commands; the attached
 terminal and the Web UI say so, with that restart line.
+
+`chi sessions archive ID...` hides sessions from every list (the terminal's,
+the web's, `list_sessions`) and keeps them for good: the retention sweep never
+deletes an archived session, nor counts it. Its delegates go with it. A live
+worker is stopped first; a session running a turn (or with a delegate running
+one), open in a plain REPL, or a `chi scratch` one is refused. `chi sessions
+list --archived` shows them too, marked `[archived]` (`archived: true` in
+`--format json`); `chi sessions unarchive ID...` brings them back, and so does
+a message you send to one (the web, an attached terminal, `chi send`), but not
+a delegate's follow-up or a reminder. See
+[Sessions](sessions.md#archiving-a-session).
 
 `chi sessions delete [--force] ID...` deletes sessions for good: the
 session file and its whole directory (notes, images, queued input). Each id

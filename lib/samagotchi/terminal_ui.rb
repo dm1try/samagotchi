@@ -259,6 +259,7 @@ module Samagotchi
 
       if @prompt && @non_interactive
         # Headless / CI mode: run directly without TTY rendering.
+        ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir)
         result = @engine.run_turn(
           session,
           @prompt,
@@ -1052,6 +1053,8 @@ module Samagotchi
       # Build the (memoized) prompt now so --memory activations show in this
       # turn's status lines, including after /model rebuilt it.
       seed_system_prompt
+      # A prompt the user typed brings an archived session back to the lists.
+      ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir) if prompt && !continue
       result = with_steering do
         @engine.run_turn(
           session,

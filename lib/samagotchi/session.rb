@@ -8,6 +8,9 @@ require "time"
 require_relative "project_scope"
 
 module Samagotchi
+  # archive_store requires this file.
+  autoload :ArchiveStore, File.expand_path("archive_store", __dir__)
+
   class Session
     METADATA_VERSION = 3
     STATE_SUBDIR = File.join("samagotchi", "sessions")
@@ -47,6 +50,9 @@ module Samagotchi
     # A `chi scratch` session: deleted when its REPL ends, and by the next
     # sweep (or `chi sessions clean`) when the process died first.
     attr_accessor :scratch
+    # Archived (ArchiveStore): hidden from the lists. Set by .list (with
+    # include_archived); not saved in session.json.
+    attr_accessor :archived
 
     # How many image refs a fork's seed lost (SessionManager.spawn_session
     # sets it); not saved.
@@ -76,6 +82,7 @@ module Samagotchi
       @project_root = project_root
       @parent_id = parent_id&.to_s
       @scratch = !!scratch
+      @archived = false
     end
 
     # The stored project root, else (a file from before the field) the
@@ -193,14 +200,19 @@ module Samagotchi
     # Supports sort: created_at|updated_at and order: asc|desc.
     # +project_root+ keeps only that project's sessions (Session#project_root),
     # before offset/limit so pages count within the project.
+    # Archived sessions (ArchiveStore) are left out unless +include_archived+;
+    # everything built on .list follows (the lists, the summaries, the
+    # retention prune, which then neither deletes nor counts them).
     def self.list(state_dir: default_state_dir, sort: "updated_at", order: "desc", limit: nil, offset: 0,
-                  project_root: nil)
+                  project_root: nil, include_archived: false)
       return [] unless Dir.exist?(state_dir)
 
       sort_key = SORT_KEYS.include?(sort.to_s) ? sort.to_s : "updated_at"
       sort_order = SORT_ORDERS.include?(order.to_s) ? order.to_s : "desc"
 
       sessions = Dir.glob(File.join(state_dir, "*#{FILE_EXT}")).filter_map { |path| summary_from_file(path) }
+      sessions.each { |s| s.archived = ArchiveStore.archived?(session_dir(s.id, state_dir: state_dir)) }
+      sessions.reject!(&:archived) unless include_archived
       if project_root
         roots = {}
         sessions.select! { |s| s.project_root(cache: roots) == project_root }
@@ -272,6 +284,9 @@ module Samagotchi
     # A scratch session nobody owns (its REPL was killed) goes whatever its
     # age, its status and the count; +test_only+ takes it too.
     #
+    # Archived sessions are not in .list, so they are neither deleted nor
+    # counted. One unarchived is aged from when it was unarchived, if later.
+    #
     # @return [Hash] { deleted: [ids], kept: [ids], skipped: [ids] }
     def self.prune(state_dir: default_state_dir, days: DEFAULT_RETENTION_DAYS, max_count: DEFAULT_MAX_COUNT,
                    keep_status: DEFAULT_KEEP_STATUS, dry_run: false, test_only: false, alive_check: nil,
@@ -332,6 +347,8 @@ module Samagotchi
           rescue ArgumentError
             updated = File.mtime(path) rescue now
           end
+          unarchived = ArchiveStore.unarchived_at(session_dir(session.id, state_dir: state_dir))
+          updated = unarchived if unarchived && unarchived > updated
           expired = updated < cutoff
         end
 

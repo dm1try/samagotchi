@@ -23,6 +23,8 @@ A session is deleted if **expired by age OR overflow by count** (unless `keep_st
 
 **Deleting a session:** `chi sessions delete ID...`, `/exit --delete` in a terminal and the Web UI's delete all go through `SessionManager.delete_session`: it resolves a unique prefix, removes `<id>.json` and the whole `<id>/` dir, and returns what it removed. A session a plain REPL has open (`owner.lock` kind `tui`) is always refused. One a worker runs is refused unless the caller asks to stop it: then it stops the worker as `chi sessions stop` does and deletes once `owner.lock` is free (`--force` on the CLI, 10 s; the web always, 2 s; `/exit --delete` after the worker agreed to exit, 10 s). A worker that outlives the wait leaves the session in place. The web's route is `DELETE /api/sessions/:id` (200 `{status: "deleted", session_id, stopped}`; 409 `owned_by_tui` or `still_stopping`; 404).
 
+<a id="archiving-a-session"></a>**Archiving a session:** `chi sessions archive ID...` goes through `SessionManager.archive_session`: it writes `<id>/archived` (`{"archived_at": …}`; not a session.json field, which every save rewrites) for the session and its delegated children. `Session.list` leaves archived sessions out unless `include_archived:`, and everything built on it follows: `chi sessions list` (`--archived` shows them, `[archived]`), the summaries (`--live`, json/tsv, the desktop panel, the agent's `list_sessions`) and the retention prune, which neither deletes nor counts them against `max_count`. `children_of` (max_children, `delegate_result`) still sees them, and `--resume`/`--attach ID`, `chi send`/`chi note ID` reach them as before. Refused: a turn running in the session or in one of its children (naming the child), a plain REPL owning it, a `chi scratch` session. A live idle worker is stopped first, and the marker is written even if it is still shutting down. Input a human typed brings a session back (`{"unarchived_at": …}`): a prompt from the web, an attached or plain terminal or `chi send` (origin `web:*`, `tui:*`, `cli:send`, none), steering merged into a running turn, a `/continue` answer or a question answered; a delegate's follow-up, a plugin's turn, a reminder, the idle recap, a note and just opening it don't. A child's input brings only the child back. The retention sweep ages an unarchived session from when it was unarchived, so unarchiving an old session doesn't let the next sweep take it. `chi sessions unarchive ID...` brings back the whole family.
+
 **Lazy sweep:** automatic prune runs at most once per 24h on `GET /api/sessions` (Web). No background thread or cron. Manual prune is always available.
 
 **CLI:**
@@ -31,6 +33,8 @@ A session is deleted if **expired by age OR overflow by count** (unless `keep_st
 chi sessions list [--sort updated_at|created_at] [--order desc|asc] [--limit N] [--scope=all]
 chi sessions list [--live] [--cwd PATH] [--limit N] [--format text|json|tsv] [--scope=all]
 chi sessions stop ID
+chi sessions archive ID...                            # hide from every list, keep for good; unarchive ID... undoes it
+chi sessions list --archived                          # archived sessions too, marked [archived]
 chi sessions delete [--force] ID...                    # for good; --force stops a live worker first
 chi sessions prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]
 chi sessions clean [--dry-run] [--days N]             # test sessions: all, or older than N days

@@ -7,6 +7,7 @@ require_relative "turn_note"
 require_relative "context_note"
 require_relative "worker_idle_exit"
 require_relative "session_manager"
+require_relative "archive_store"
 require_relative "log"
 require_relative "turn_flow"
 require_relative "session_commands"
@@ -286,6 +287,7 @@ module Samagotchi
       # list); the Engine resets it to idle when it ends.
       @session.status = Session::STATUS_RUNNING
       @session.save(state_dir: @state_dir)
+      user_input(origin&.dig(:client_id))
       drop_continue_offer(origin)
       @turn_flow.before_prompt_turn
       @merged_this_turn = []
@@ -381,6 +383,7 @@ module Samagotchi
         shown.each { |event| @engine.announce(event) }
       end
       @session.save(state_dir: @state_dir) unless Array(result.changed).empty? || stopped_on_disk?
+      user_input(command[:client_id]) if resolved
       # An offer answered without a turn ("no") is activity: the recap
       # written at the offer (it says the turn stopped) gets rewritten.
       @engine.record_activity if resolved && !result.resume
@@ -536,6 +539,7 @@ module Samagotchi
             FileUtils.rm_f(claimed_file)
           end
         end
+        merged.each { |_prompt, origin| user_input(origin&.dig(:client_id)) }
         unless merged.empty?
           @engine.announce(type: :input_merged, count: merged.size, origins: merged.filter_map(&:last))
           @merged_this_turn.concat(merged)
@@ -626,6 +630,12 @@ module Samagotchi
 
     def log_idle_exit
       Log.info(:worker, "idle_exit", idle_s: @idle_exit.idle_seconds.round)
+    end
+
+    # A human's input (ArchiveStore.user_input?) un-archives the session;
+    # a delegate's, a plugin's or a reminder's doesn't.
+    def user_input(client_id)
+      ArchiveStore.user_input(@session_id, state_dir: @state_dir) if ArchiveStore.user_input?(client_id)
     end
 
     def stopped_on_disk?

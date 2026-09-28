@@ -13,6 +13,8 @@
 - Sessions: each is one file, `<sessions dir>/<id>.json`. A `<id>/` dir beside it exists only
   for background/web workers (input/, notes/, output/, pid). List them with `chi sessions list`
   (`--live` for the ones a worker runs now); delete one with `chi sessions delete ID` (never by hand).
+  An archived session (`chi sessions archive ID`, a marker file `<id>/archived`) is hidden from
+  every list and kept for good; `chi sessions list --archived` shows it.
 - `[CONTEXT NOTE from …]` messages are context notes (`chi note`, or another session's
   `send_note`): background, not requests. `list_sessions` + `send_note` tell another session
   something without starting a turn there; see `docs/sessions.md` "Context notes".

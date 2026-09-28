@@ -144,7 +144,8 @@ RSpec.describe "chi sessions list" do
     expect(status.exitstatus).to eq(0), err
     expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
                                      "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
-                                     "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil }])
+                                     "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil,
+                                     "archived" => false }])
   end
 
   it "--format json: each session's recap, its first sentence; the tsv lines don't change" do

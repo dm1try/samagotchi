@@ -194,6 +194,54 @@ RSpec.describe Samagotchi::Worker do
       expect(engine.due_reminder_names).to be_empty
     end
 
+    describe "an archived session (ArchiveStore)" do
+      def archived? = Samagotchi::ArchiveStore.archived?(session_dir)
+
+      before { Samagotchi::ArchiveStore.archive(session.id, state_dir: tmpdir) }
+
+      %w[web:tab1 tui:4242 cli:send].each do |client_id|
+        it "comes back to the lists on a prompt from #{client_id}" do
+          start_worker(poll_interval: 0.2)
+          Samagotchi::SessionManager.write_turn_input(session.id, prompt: "hi", client_id: client_id, state_dir: tmpdir)
+
+          expect(next_turn&.first).to eq("hi")
+          expect(archived?).to be(false)
+        end
+      end
+
+      %w[delegate:1234abcd plugin].each do |client_id|
+        it "stays archived on a turn from #{client_id}" do
+          start_worker(poll_interval: 0.2)
+          Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: client_id, state_dir: tmpdir)
+
+          expect(next_turn&.first).to eq("task")
+          expect(archived?).to be(true)
+        end
+      end
+
+      it "stays archived on a reminder turn" do
+        allow(engine).to receive(:reminders_due?).and_return(true)
+        start_worker(poll_interval: 5)
+        @reminder_callback.call(["stretch"])
+
+        expect(next_turn&.first).to be_nil
+        expect(archived?).to be(true)
+      end
+
+      it "comes back when the user steers into a delegate's turn" do
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          Samagotchi::SessionManager.write_turn_input(session.id, prompt: "also this", client_id: "web:tab1", state_dir: tmpdir)
+          turns << [prompt, mono, kwargs[:pending_input].call]
+          result
+        end
+        start_worker(poll_interval: 0.2)
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: "delegate:1234abcd", state_dir: tmpdir)
+
+        expect(next_turn&.last).to eq(["also this"])
+        expect(archived?).to be(false)
+      end
+    end
+
     it "runs a turn posted while another runs right after it" do
       release = Queue.new
       allow(engine).to receive(:run_turn) do |_session, prompt, **|
@@ -808,6 +856,13 @@ RSpec.describe Samagotchi::Worker do
           started = seen.select { |e| e[:type] == :turn_started }.last
           expect(started).to include(continue: true, prompt: nil, origin: { client_id: "web:2" })
           expect(wait_until { saved_messages == ["long task", "r1", "OK"] }).to be(true)
+        end
+
+        it "brings an archived session back when a user answers it" do
+          Samagotchi::ArchiveStore.archive(session.id, state_dir: tmpdir)
+          ran(JSON.parse(post_command("/continue no", client_id: "web:2").body)["command_id"])
+
+          expect(Samagotchi::ArchiveStore.archived?(session_dir)).to be(false)
         end
 
         it "tells the recap an offer is open, and records activity when no ends it, so a new recap follows" do
