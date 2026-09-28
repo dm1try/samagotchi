@@ -63,8 +63,10 @@ test("turnNoticePlace: a turn notice's step (0-based) and the row it came before
   assert.deepEqual(turnNoticePlace({ type: "hook_notice", in_turn: true, iteration: 2, calls: 0 }), { step: 1, rowKey: "2:1" });
   assert.deepEqual(turnNoticePlace({ type: "hook_notice", in_turn: true, iteration: 1, calls: 2 }), { step: 0, rowKey: "1:3" });
   assert.deepEqual(turnNoticePlace({ type: "hook_notice", in_turn: true, iteration: 3 }), { step: 2, rowKey: "3:1" });
-  // No step known (before the first generation), or not a turn's notice: before the turn's answer.
-  assert.equal(turnNoticePlace({ type: "hook_notice", in_turn: true, calls: 0 }), null);
+  // Before the first generation (a before_turn hook's): the first step, above its first row.
+  assert.deepEqual(turnNoticePlace({ type: "hook_notice", in_turn: true, calls: 0 }), { step: 0, rowKey: "1:1" });
+  // A bad iteration, or not a turn's notice: before the turn's answer.
+  assert.equal(turnNoticePlace({ type: "hook_notice", in_turn: true, iteration: 0 }), null);
   assert.equal(turnNoticePlace({ type: "hook_notice", in_turn: false, iteration: 1, calls: 0 }), null);
   assert.equal(turnNoticePlace(null), null);
 });
