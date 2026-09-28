@@ -53,7 +53,7 @@ RSpec.describe "The known-names bundle" do
   def verdict_for(call) = gate.evaluate(call, iteration: 1, params: "#{call[:name]} #{call[:content] || call[:path]}")
   def shell(command) = verdict_for({ name: "execute", content: command })
 
-  CAUGHT = {
+  caught = {
     "ls /home/johndeo" => %w[johndeo johndoe],
     "cat ~/../johndeo/x" => %w[johndeo johndoe],
     "git -C /home/johndoe/projects/samagothci status" => %w[samagothci samagotchi],
@@ -62,13 +62,13 @@ RSpec.describe "The known-names bundle" do
     "cd ~/projects && cat /home/Johndeo/notes.txt" => %w[Johndeo johndoe]
   }.freeze
 
-  LET_THROUGH = [
+  let_through = [
     "ls /home/johndoe", "ls ~/projects", "echo $HOME/x", "cat ~/x", "ls johnn", "ls johnnz",
     "cd samagotchi-known-names && git status", "ls /home/johndoe/projects/samagotchi", "ps aux | grep processes",
     "ssh j0hnny@host", "echo jonathandoe"
   ].freeze
 
-  CAUGHT.each do |command, (miss, name)|
+  caught.each do |command, (miss, name)|
     it "rejects: #{command}" do
       v = shell(command)
       expect(v).to be_deny
@@ -81,7 +81,7 @@ RSpec.describe "The known-names bundle" do
     end
   end
 
-  LET_THROUGH.each do |command|
+  let_through.each do |command|
     it "lets through: #{command}" do
       expect(shell(command)).to be_allow
       expect(notices).to be_empty

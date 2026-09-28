@@ -67,6 +67,13 @@ RSpec.configure do |config|
     # The log facade is process-wide: unconfigured again, it resolves its
     # file from this example's config (the temp XDG_STATE_HOME by default).
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
+    # Hooks::BundleLoader evals each bundle hook into a Samagotchi::Bundles
+    # module that lives for the process: chi builds one Engine, the suite
+    # hundreds. Fresh modules, or each load redefines the last one's constants
+    # and methods ("already initialized constant" warnings).
+    if defined?(Samagotchi::Bundles)
+      Samagotchi::Bundles.constants.each { |name| Samagotchi::Bundles.send(:remove_const, name) }
+    end
     # ConfigFile prints each config warning once per process.
     Samagotchi::ConfigFile.reset_warnings! if defined?(Samagotchi::ConfigFile)
     # The REPL spinner's ticker thread draws until the spinner finishes, and

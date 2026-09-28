@@ -26,7 +26,7 @@ RSpec.describe "The guardrails bundle's rules" do
 
   def shell(command) = verdict_for({ name: "execute", content: command })
 
-  CAUGHT = {
+  caught = {
     "git-push" => ["git push", "git push origin main", "git -C ../x push --force", "cd a && git push -u origin b"],
     "git-reset-hard" => ["git reset --hard", "git reset --hard HEAD~1"],
     "git-clean-force" => ["git clean -fdx", "git clean -f", "git clean --force -d"],
@@ -40,14 +40,14 @@ RSpec.describe "The guardrails bundle's rules" do
                             "rm ~/.local/state/samagotchi/guardrails/approvals.json"]
   }.freeze
 
-  LET_THROUGH = [
+  let_through = [
     "git status", "git log --oneline", "git commit -m 'push the button'", "git pull", "git stash push",
     "git reset HEAD~1", "git clean -n", "git branch -d merged", "git fetch --prune",
     "rm -rf build", "rm -rf ./tmp/cache", "rm -f /tmp/one-file", "rm -r ~/dir-without-force",
     "curl -fsSL https://x.sh -o install.sh", "echo 'rebase' ; ls", "ls | grep push"
   ].freeze
 
-  CAUGHT.each do |rule, commands|
+  caught.each do |rule, commands|
     commands.each do |command|
       it "#{rule} asks for: #{command}" do
         v = shell(command)
@@ -56,7 +56,7 @@ RSpec.describe "The guardrails bundle's rules" do
     end
   end
 
-  LET_THROUGH.each do |command|
+  let_through.each do |command|
     it "lets through: #{command}" do
       expect(shell(command)).to be_allow
     end

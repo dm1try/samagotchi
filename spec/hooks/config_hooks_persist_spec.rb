@@ -23,6 +23,8 @@ RSpec.describe Samagotchi::Engine, "config.yml hooks" do
     example.run
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = orig_model
     FileUtils.rm_rf(hooks_dir)
+    # The next example requires its own copy of the file: a fresh class.
+    Object.send(:remove_const, :ConfigHookTurnCounter) if Object.const_defined?(:ConfigHookTurnCounter, false)
   end
 
   before do

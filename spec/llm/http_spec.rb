@@ -23,7 +23,7 @@ RSpec.describe Samagotchi::LLM::HTTP do
   after { server.stop }
 
   def post_request(target = uri)
-    Net::HTTP::Post.new(target).tap { |request| request.body = "{}" }
+    Net::HTTP::Post.new(target, "Content-Type" => "application/json").tap { |request| request.body = "{}" }
   end
 
   def closed_port
