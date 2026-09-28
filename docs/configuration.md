@@ -8,7 +8,7 @@ Chi reads its settings from three places; the first that sets a value wins:
 2. an environment variable (`SAMAGOTCHI_SERVER_PORT=8081`),
 3. the global config file (`server: {port: 8081}`),
 
-then the built-in default.
+then the built-in default. [All settings](#all-settings) lists them.
 
 Default path:
 
@@ -529,6 +529,82 @@ modalities check: without a media marker the prompt can't carry an image.
 If an AGENT.md file is present in the project root, samagotchi injects its
 contents into the system prompt under a "Project specific description:" section.
 
-To skip loading AGENT.md, set:
+To skip loading AGENT.md, set `skip_agent_md` (env `SAMAGOTCHI_SKIP_AGENT_MD=true`).
 
-`SAMAGOTCHI_SKIP_AGENT_MD=true`
+## All settings
+
+Every setting below takes the three forms described in
+[Environment variables](#environment-variables): a nested key in
+`config.yml`, `SAMAGOTCHI_<DOTTED_NAME>` in the environment and, where the CLI
+column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
+`model_aliases:`, `hooks:`, `guardrails:` rules, `bundles:`, `memories:`) are
+described in their own sections.
+
+| Setting | Default | CLI | What it does |
+|---|---|---|---|
+| `default.model` | (required) | `--model` | The model a new session starts with; `host:model` pins a host. |
+| `default.input` | none | | Text pre-filled at the first prompt (a trailing space is kept); `--no-default-input` skips it. See [CLI](cli.md). |
+| `default.n_predict` | server's | yes | Most tokens one generation may produce (native hosts). |
+| `model.profile` | none | `--profile` | Prompt profile for every model (`qwen36`, `gemma4`); env and CLI only. See "Prompt profile". |
+| `server.transport` | `llama_cpp` | yes | `llama_cpp`, `mlx` or `omlx`; see "Model Server Transport". |
+| `server.host` | `localhost` | yes | The model server when there is no `hosts:` map. |
+| `server.port` | `8080` | yes | Its port. |
+| `server.open_timeout` | `10` | yes | Connection timeout, seconds. |
+| `server.read_timeout` | `600` | yes | Read timeout, seconds. |
+| `server.first_token_timeout` | 120 remote, off local | | Seconds to the first token; `0` = off. `hosts.<name>.first_token_timeout` wins. |
+| `recap.enabled` | on | | `false` (or `recap: false`) turns the idle recap off. |
+| `recap.model` | session's | yes | Model that writes the recap. |
+| `recap.host_ref` | session's | yes | A `hosts:` name to ask (`host:` is accepted too). |
+| `recap.base_url` | none | yes | An OpenAI API base to ask instead (`http://h:8081/v1`). |
+| `recap.inactivity` | `180` | yes | Idle seconds before a recap. |
+| `recap.timeout` | `30` | yes | Seconds a recap request may take. |
+| `recap.min_user_turns` | `2` | yes | Prompts a session needs before it gets a recap. |
+| `recap.sentences` | `2-4` | yes | Recap length, `N` or `N-M` (1–10). |
+| `session.shared` | `true` | | Plain `chi` runs its session in a worker and attaches; `--no-shared` per run. |
+| `session.idle_exit_minutes` | `30` | yes | An unused worker exits after this; `0` = never. |
+| `session.keep_empty` | `false` | | Keep sessions nothing happened in. |
+| `session.max_children` | `4` | | Running delegated sessions one session may have. |
+| `session.retention_days` | `14` | yes | Delete sessions not updated for N days; `0` = forever. See [Sessions](sessions.md). |
+| `session.max_count` | `500` | yes | Keep the newest N; `0` = uncapped. |
+| `session.keep_status` | `running` | yes | Comma list of statuses never pruned. |
+| `session.sweep_interval_hours` | `24` | yes | How often the retention sweep runs. |
+| `image.max_side` | `1568` | | See "Images". |
+| `image.max_bytes` | `3750000` | | See "Images". |
+| `image.max_per_request` | `20` | | See "Images". |
+| `guardrails.enabled` | `true` | | See [Guardrails](guardrails.md). |
+| `log.file` | state dir | yes | See "Debug Log File". |
+| `log.disable` | `false` | yes | No file logging. |
+| `log.level` | `info` | yes | `debug`, `info`, `warn`, `error`. |
+| `status.line` | `on` | yes | The REPL status line, `on` or `off`. |
+| `status.width_mode` | `terminal_cap` | yes | `terminal_cap` (terminal width up to `max_width`) or `fixed`. |
+| `status.max_width` | `160` | yes | Cap for `terminal_cap`. |
+| `status.fixed_width` | `120` | yes | Width for `fixed`. |
+| `context.status` | `true` | yes | Context-usage telemetry for the model. See [context telemetry](internals/context-telemetry.md). |
+| `context.window_tokens` | server's, else 256000 | yes | Context window when the server doesn't report one. |
+| `context.chars_per_token` | `4.0` | yes | Estimate ratio when the server reports no usage. |
+| `context.status_thresholds` | `20,40,60,80` | yes | Percentages that trigger a status. |
+| `context.status_cadence` | `0` | yes | Also every N rounds; `0` = thresholds only. |
+| `thinking.ui` | `spinner` | yes | `spinner` or `off`. |
+| `thinking.render_interval` | `0.08` | yes | Seconds between thinking redraws. |
+| `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
+| `max_tool_output_chars` | `10000` | yes | Tool output kept in the conversation; env or CLI (see below). |
+| `retry.max` | `5` | yes | See "Llama Network Retry Behavior". |
+| `retry.base_delay` | `0.5` | yes | |
+| `retry.max_delay` | `8.0` | yes | |
+| `read.truncate_at_bytes` | `65536` | yes | A `read` result larger than this is cut to a preview. |
+| `read.preview_bytes` | `12288` | yes | Size of that preview. |
+| `read.hard_max_bytes` | `2097152` | yes | Largest file `read` opens. |
+| `read.telemetry_threshold_pct` | `80` | yes | A `read` result that alone fills this % of the context window carries a token estimate. |
+| `execute.truncate_at_bytes` | `65536` | yes | The same for `execute` output. |
+| `execute.preview_bytes` | `12288` | yes | |
+| `execute.telemetry_threshold_pct` | `80` | yes | |
+| `web.port` | `4567` | `--port` | `chi web`'s port. See [CLI](cli.md). |
+| `web.host` | `127.0.0.1` | yes | `127.0.0.1`, `::1` or `localhost`. |
+| `web.markdown` | `false` | yes | Render answers as Markdown in `chi web`. |
+| `web.turn_view` | `true` | yes | One block per turn; `false` = the row of bubbles. |
+| `history.file` | state dir | | Prompt history path. |
+| `skip_agent_md` | `false` | | Don't load AGENT.md; env only (see below). |
+
+`max_tool_output_chars` and `skip_agent_md` have no section; in `config.yml`
+the loader currently warns about a top-level key with `_`, so set them in
+the environment or on the command line.
