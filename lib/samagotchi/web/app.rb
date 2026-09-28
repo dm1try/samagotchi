@@ -1129,7 +1129,16 @@ module Samagotchi
           message = { role: norm_role, content: stripped }
           images = m[:images] || m["images"]
           message[:images] = Array(images).map { |ref| ImageStore.symbolize(ref).slice(:file, :name, :width, :height) } if norm_role == "user" && images.is_a?(Array) && !images.empty?
-          message[:html] = @markdown_renderer.render(stripped) if norm_role == "assistant" && !stripped.empty? && @markdown_renderer.available?
+          if norm_role == "assistant"
+            # What an after_turn hook presented (AnswerDisplay): rendered and
+            # copied in place of the answer, sanitised the same way; content
+            # stays the model's text, which the page finds the bubble by.
+            display = m[:display] || m["display"]
+            shown = display.is_a?(String) ? Samagotchi::OutputFormatter.strip_markup(display) : ""
+            message[:display] = shown unless shown.strip.empty?
+            rendered = message[:display] || stripped
+            message[:html] = @markdown_renderer.render(rendered) if !rendered.empty? && @markdown_renderer.available?
+          end
           message[:parts] = did if did
           filtered << message
         end

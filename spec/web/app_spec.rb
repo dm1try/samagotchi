@@ -699,6 +699,66 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["saved_recap"]).to eq("text" => "Earlier.", "turns_since" => 1)
     end
 
+    describe "an answer's display (AnswerDisplay, set by an after_turn hook)" do
+      let(:answer) { "see JIRA-1 and `JIRA-1`" }
+      let(:display) { "see [JIRA-1](https://j.test/browse/JIRA-1) and `JIRA-1`" }
+      let(:live) do
+        { "snapshot" => { "messages" => [
+          { "role" => "user", "content" => "q" },
+          { "role" => "model", "content" => answer, "display" => display }
+        ] }, "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } }
+      end
+
+      def answer_of(app, query)
+        allow(app).to receive(:bridge_get_json).with("s1", "snapshot").and_return(live)
+        JSON.parse(app.call(env_for("/api/sessions/s1#{query}"))[2].first)["messages"].last
+      end
+
+      it "renders the display in place of the answer, on the tail, the full and the parts read; content stays the model's" do
+        app = build_app(state_dir: Dir.mktmpdir, markdown: true)
+
+        ["?tail=1", "", "?parts=1"].each do |query|
+          message = answer_of(app, query)
+          expect(message).to include("content" => answer, "display" => display)
+          expect(message["html"]).to include('<a href="https://j.test/browse/JIRA-1"')
+          expect(message["html"]).to include("<code>JIRA-1</code>")
+        end
+      end
+
+      it "reads it from a stopped session's file (symbol keys)" do
+        loader = Class.new(StubSessionLoader) do
+          def self.load(id, state_dir: nil)
+            super.tap { |s| s.messages = [{ role: "user", content: "q" }, { role: "model", content: "a JIRA-1", display: "a [JIRA-1](https://j.test/JIRA-1)" }] }
+          end
+        end
+        app = build_app(state_dir: Dir.mktmpdir, markdown: true, session_class: loader)
+
+        message = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["messages"].last
+
+        expect(message["html"]).to include('href="https://j.test/JIRA-1"')
+      end
+
+      it "sanitises it like an answer: no raw HTML, no script links" do
+        live["snapshot"]["messages"].last["display"] =
+          %(<script>alert(1)</script>\n\ntext <img src=x onerror="alert(2)"> <b onclick="x()">b</b>\n\n[a](javascript:alert(3)) [ok](https://ok.test))
+        message = answer_of(build_app(state_dir: Dir.mktmpdir, markdown: true), "?tail=1")
+        html = Nokogiri::HTML5.fragment(message["html"])
+
+        expect(html.css("script, img, b")).to be_empty
+        expect(html.xpath(".//@*").map(&:name)).not_to include(a_string_starting_with("on"))
+        expect(html.css("a").map { |a| a["href"] }).to eq([nil, "https://ok.test"])
+        expect(html.text).to include("<script>alert(1)</script>")
+      end
+
+      it "a blank or non-string display is ignored" do
+        live["snapshot"]["messages"].last["display"] = "  "
+        message = answer_of(build_app(state_dir: Dir.mktmpdir, markdown: true), "?tail=1")
+
+        expect(message).not_to have_key("display")
+        expect(message["html"]).not_to include("<a ")
+      end
+    end
+
     describe "?tail=1 (the page's re-read at the end of a turn)" do
       let(:live) do
         { "snapshot" => { "messages" => [
