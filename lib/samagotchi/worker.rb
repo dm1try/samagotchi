@@ -435,6 +435,7 @@ module Samagotchi
                 status: status, output: text[0, COMMAND_OUTPUT_LIMIT], changed: changed.map(&:to_s),
                 model_name: @engine.effective_model_name }
       event[:anytime] = true if anytime
+      event[:card] = true if command[:card]
       event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
       @engine.announce(event)
     end

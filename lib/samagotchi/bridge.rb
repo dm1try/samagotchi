@@ -604,6 +604,8 @@ module Samagotchi
       return BAD_DEADLINE unless deadline_valid?(deadline)
 
       command = { command_id: SecureRandom.uuid, client_id: fetched(parsed, "client_id"), line: line }
+      # A card's action: the UIs leave its line out (the card is the echo).
+      command[:card] = true if fetched(parsed, "card") == true
       queued = @engine.synchronize_events do
         next false if expired?("command_expired", deadline, sid: session_id, client_id: command[:client_id])
 

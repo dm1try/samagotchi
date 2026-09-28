@@ -423,6 +423,8 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
   await expect(answer(page)).toHaveText("Found so far: the README is an e2e project file. Nothing is left.");
   await expect(page.locator("#history .bubble.user")).toHaveCount(1);
   await expect(page.locator("#history .plugin-card .card-action")).toHaveCount(0);
+  // The card is the echo: no "/checkin nudge" bubble.
+  await expect(page.locator("#history .bubble.command")).toHaveCount(0);
 
   await page.reload();
   await turnEnded(page, 1);

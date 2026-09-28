@@ -615,7 +615,8 @@ module Samagotchi
         client = live_bridge_client(id)
         return error_response(503, "not_live", "no live bridge for session #{id}") unless client
 
-        reply = client.post_command(line: line, client_id: body["client_id"])
+        # card: a card's action; its command events say so (no echo).
+        reply = client.post_command(line: line, client_id: body["client_id"], card: body["card"] == true)
         case reply.status
         when 202 then json_response(202, reply.json || { status: "accepted" })
         when 400 then error_response(400, reply.json&.dig("error") || "unknown_command", reply.json&.dig("detail") || "not a session command")

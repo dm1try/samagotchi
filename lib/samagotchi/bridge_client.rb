@@ -162,9 +162,13 @@ module Samagotchi
     # !rollback, !cmd, /continue) for the worker to run. 202 = queued (body
     # carries the command_id its :command_ran will name), 400 = not a
     # command, 404 = a worker older than the route, 408 = too late.
+    # @param card [Boolean] the line is a card's action: its command_queued
+    #   and command_ran carry card: true, and the UIs show no echo of it
     # @return [Response]
-    def post_command(line:, client_id: nil)
-      post("command", { line: line, client_id: client_id, deadline: deadline }, read_body: true)
+    def post_command(line:, client_id: nil, card: false)
+      payload = { line: line, client_id: client_id, deadline: deadline }
+      payload[:card] = true if card
+      post("command", payload, read_body: true)
     end
 
     # POST /session/:id/exit: ask the worker to exit now. 200 = it will

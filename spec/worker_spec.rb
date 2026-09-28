@@ -644,9 +644,11 @@ RSpec.describe Samagotchi::Worker do
 
       def port = JSON.parse(File.read(sidecar))["port"]
 
-      def post_command(line, client_id: "tui:9", session_id: session.id)
+      def post_command(line, client_id: "tui:9", session_id: session.id, card: nil)
+        body = { line: line, client_id: client_id }
+        body[:card] = card unless card.nil?
         Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session_id}/command"),
-                       JSON.generate(line: line, client_id: client_id), "Content-Type" => "application/json")
+                       JSON.generate(body), "Content-Type" => "application/json")
       end
 
       def events_seen
@@ -692,6 +694,17 @@ RSpec.describe Samagotchi::Worker do
         expect(done).to include(status: "ok", output: "hi")
         expect(card).to include(title: "Hi card", in_turn: false)
         expect(card[:event_seq]).to eq(done[:event_seq] + 1)
+      end
+
+      it "marks a card's action card: true on its command_queued and command_ran (the UIs show no echo)" do
+        start_worker(poll_interval: 5)
+
+        command_id = JSON.parse(post_command("/model", card: true).body)["command_id"]
+        done = ran(command_id)
+        queued = seen.find { |e| e[:type] == :command_queued && e[:command_id] == command_id }
+        expect([queued[:card], done[:card]]).to eq([true, true])
+        plain = ran(JSON.parse(post_command("/model", card: "yes").body)["command_id"])
+        expect(plain).not_to have_key(:card)
       end
 
       it "refuses lines that aren't commands, and other sessions" do

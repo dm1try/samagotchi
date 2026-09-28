@@ -257,6 +257,17 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(shown).to eq(["web> /btw why?", "┌ btw: why? · sample-plugin"])
     end
 
+    it "shows no line for another client's card action (the card is its echo), anytime or not" do
+      feed(snapshot,
+           { type: :command_queued, command_id: "n1", client_id: "web:1", line: "/checkin nudge", anytime: true, card: true },
+           { type: :command_ran, command_id: "n1", client_id: "web:1", line: "/checkin nudge", status: "ok", output: "",
+             changed: [], anytime: true, card: true },
+           { type: :command_ran, command_id: "n2", client_id: "web:1", line: "/checkin later", status: "ok", output: "",
+             changed: [], card: true })
+
+      expect(lines.grep(/checkin/)).to eq([])
+    end
+
     it "on a resync shows only the cards not shown yet" do
       feed(snapshot, card("c1", "Hello"))
       resync = snapshot(type: :reset)

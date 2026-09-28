@@ -464,7 +464,11 @@ ctx.card(id: id, title: "Build finished", body: "no warnings left")  # replaces 
 - `actions:` are up to 6 `{label:, command:}`. A command is a line the
   session runs as if the user typed it: `/hello again`, `/model x`, a
   plugin's own command. The web shows a button; the terminal shows
-  `→ /hello again`, to type.
+  `→ /hello again`, to type. A button's command leaves no echo: the web
+  sends it with `card: true` (`POST /api/sessions/:id/command`), its
+  `command_queued` and `command_ran` carry `card: true`, and no UI shows
+  its line; the web shows a bubble only when the command answers with
+  text or fails.
 - `level:` is `:info` or `:warn` (the warning colour).
 - `id:` names an earlier card to replace. Without one a new id is made. The
   web updates the card in place; the terminal prints it again, marked
