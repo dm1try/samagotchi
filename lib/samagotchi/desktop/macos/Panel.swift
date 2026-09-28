@@ -1,6 +1,7 @@
 // The Spotlight-like panel: a message line on top, the text (selection or
-// clipboard) below it as quoted context, then the sessions. ⏎ sends a
-// message (`chi send`), ⌘⏎ a note (`chi note`), ⇧⏎ is a newline.
+// clipboard) below it as quoted context, then a "New session" row and the
+// sessions. ⏎ sends a message (`chi send`, or `chi send --new` on the new
+// row), ⌘⏎ a note (`chi note`), ⇧⏎ is a newline.
 import AppKit
 import SwiftUI
 
@@ -16,6 +17,8 @@ final class PanelModel: ObservableObject {
   @Published var source = ""
   @Published var sessions: [LiveSession] = []
   @Published var selected: Set<String> = []
+  /// The "New session" row; never together with sessions (`--new` takes no ids).
+  @Published var newSelected = false
   @Published var phase: Phase = .loading
   @Published var message = ""
 
@@ -28,21 +31,45 @@ final class PanelModel: ObservableObject {
   var trimmedPrompt: String { prompt.trimmingCharacters(in: .whitespacesAndNewlines) }
   var hasContext: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
   var sendEnabled: Bool {
-    canSend && !selected.isEmpty && (!trimmedPrompt.isEmpty || hasContext)
+    canSend && (newSelected || !selected.isEmpty) && (!trimmedPrompt.isEmpty || hasContext)
   }
   var live: [LiveSession] { sessions.filter { !$0.recent } }
   var recent: [LiveSession] { sessions.filter(\.recent) }
 
-  /// The last choice, where still live; else the only live session. A
-  /// recent (stopped) one is never preselected: a message would wake it.
+  /// The last choice, where still live; else the only live session; else,
+  /// with none live, the new row. A recent (stopped) one is never
+  /// preselected: a message would wake it.
   func preselect() {
     let last = Set(UserDefaults.standard.stringArray(forKey: Self.lastChoiceKey) ?? [])
     selected = last.intersection(Set(live.map(\.id)))
     if selected.isEmpty, live.count == 1 { selected = [live[0].id] }
+    newSelected = live.isEmpty
   }
 
   func toggle(_ id: String) {
-    if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
+    if selected.contains(id) { selected.remove(id) } else { selected.insert(id); newSelected = false }
+  }
+
+  func toggleNew() {
+    newSelected.toggle()
+    if newSelected { selected = [] }
+  }
+
+  /// Where a new session starts: the helper runs in $HOME, which is in no
+  /// project, so the folder of the most recently updated live session, else
+  /// of the newest recent one, else home.
+  var newSessionDir: String {
+    let exists = { (s: LiveSession) -> Bool in
+      var dir: ObjCBool = false
+      return s.cwd.map { FileManager.default.fileExists(atPath: $0, isDirectory: &dir) && dir.boolValue } ?? false
+    }
+    let newest = { (list: [LiveSession]) in list.filter(exists).max { ($0.updated ?? .distantPast) < ($1.updated ?? .distantPast) } }
+    return (newest(live) ?? newest(recent))?.cwd ?? NSHomeDirectory()
+  }
+
+  var newSessionFolder: String {
+    let dir = newSessionDir
+    return dir == NSHomeDirectory() ? "~" : (dir as NSString).lastPathComponent
   }
 
   /// In list order, only ids that are live and UUID-shaped.
@@ -103,10 +130,7 @@ struct PanelView: View {
           Text("Looking for live sessions…").foregroundColor(.secondary)
         }.padding(10)
       default:
-        if model.sessions.isEmpty {
-          Text(model.phase == .failed && !model.message.isEmpty ? "" : "No live or recent sessions. Start one with `chi` in a terminal.")
-            .foregroundColor(.secondary).padding(10)
-        }
+        newRow
         ForEach(Array(model.sessions.prefix(9).enumerated()), id: \.element.id) { index, session in
           if session.recent && index == model.live.count {
             HStack(spacing: 6) {
@@ -121,6 +145,28 @@ struct PanelView: View {
     }
     .padding(6)
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  var newRow: some View {
+    let on = model.newSelected
+    return Button(action: { model.toggleNew() }) {
+      HStack(spacing: 10) {
+        Image(systemName: on ? "plus.circle.fill" : "plus.circle")
+          .font(.system(size: 16))
+          .foregroundColor(on ? .accentColor : .secondary)
+        VStack(alignment: .leading, spacing: 1) {
+          Text("New session in \(model.newSessionFolder)").font(.system(size: 13, weight: .medium)).lineLimit(1)
+          Text(LiveSession.shorten(model.newSessionDir)).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
+        }
+        Spacer()
+        Text("⌘0").font(.system(size: 11, design: .rounded)).foregroundColor(.secondary)
+      }
+      .padding(.horizontal, 8).padding(.vertical, 6)
+      .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .help("start a session with the message, as the web does (chi send --new); a note needs a session")
   }
 
   func row(_ session: LiveSession, index: Int) -> some View {
@@ -274,12 +320,12 @@ final class PanelController: NSObject, NSWindowDelegate {
     return true
   }
 
-  /// ⌘1…⌘9 toggle a session.
+  /// ⌘1…⌘9 toggle a session, ⌘0 the new row.
   private func handleKey(_ event: NSEvent) -> Bool {
     guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-          let chars = event.charactersIgnoringModifiers, let n = Int(chars), (1...9).contains(n),
+          let chars = event.charactersIgnoringModifiers, let n = Int(chars),
           n <= model.sessions.count else { return false }
-    model.toggle(model.sessions[n - 1].id)
+    if n == 0 { model.toggleNew() } else { model.toggle(model.sessions[n - 1].id) }
     return true
   }
 
@@ -290,6 +336,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     model.text = text
     model.source = source
     model.message = ""
+    model.newSelected = false
     model.phase = .loading
     placeOnActiveScreen()
     panel.makeKeyAndOrderFront(nil)
@@ -323,10 +370,14 @@ final class PanelController: NSObject, NSWindowDelegate {
 
   func send(_ kind: SendKind) {
     let ids = model.selectedIds
-    guard model.sendEnabled, !ids.isEmpty else { NSSound.beep(); return }
+    let new = model.newSelected
+    // A note into a session that doesn't exist yet makes no sense.
+    guard model.sendEnabled, new ? kind == .message : !ids.isEmpty else { NSSound.beep(); return }
     model.phase = .sending
     model.message = ""
-    UserDefaults.standard.set(ids.filter { id in model.live.contains { $0.id == id } }, forKey: PanelModel.lastChoiceKey)
+    if !new {
+      UserDefaults.standard.set(ids.filter { id in model.live.contains { $0.id == id } }, forKey: PanelModel.lastChoiceKey)
+    }
     let prompt = model.trimmedPrompt
     let command: String
     var args: [String]
@@ -335,7 +386,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     case .message:
       // stdin is the quoted context; without -m, chi takes it as the message.
       command = "chi send"
-      args = ["send"]
+      args = new ? ["send", "--new", "--dir", model.newSessionDir] : ["send"]
       if !prompt.isEmpty { args += ["-m", prompt] }
       stdin = model.hasContext ? Data(model.text.utf8) : nil
     case .note:
@@ -346,7 +397,7 @@ final class PanelController: NSObject, NSWindowDelegate {
       let parts = [prompt, model.hasContext ? model.text : ""].filter { !$0.isEmpty }
       stdin = Data(parts.joined(separator: "\n\n").utf8)
     }
-    args += ids
+    if !new { args += ids }
     runner.run(args, stdin: stdin) { [weak self] result in
       guard let self else { return }
       switch result {
@@ -362,9 +413,10 @@ final class PanelController: NSObject, NSWindowDelegate {
           self.model.message = "\(command) took over \(Int(self.runner.timeout)) s and was stopped; \(what). \(out)"
         } else if r.status == 0 {
           self.model.phase = .sent
-          self.model.message = out.isEmpty ? "Sent." : out
+          // --new prints "<full id>  started".
+          self.model.message = out.isEmpty ? "Sent." : new ? "started \(out.prefix(8))…" : out
           // Long enough to read a "waits for the session's next start" line.
-          let linger = out.contains("waits for") || out.contains("started its worker") ? 3.0 : 1.0
+          let linger = out.contains("waits for") || out.contains("started") ? 3.0 : 1.0
           DispatchQueue.main.asyncAfter(deadline: .now() + linger) { [weak self] in
             if self?.model.phase == .sent { self?.panel.close() }
           }

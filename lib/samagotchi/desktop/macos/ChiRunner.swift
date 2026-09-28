@@ -49,18 +49,24 @@ struct LiveSession: Decodable, Identifiable, Equatable {
   /// Only UUID-shaped ids go into chi's argv, so nothing can turn into a flag.
   var valid: Bool { UUID(uuidString: id) != nil }
 
-  var shortCwd: String {
-    guard let cwd else { return "" }
+  var shortCwd: String { cwd.map(Self.shorten) ?? "" }
+
+  /// A path with the home folder as "~".
+  static func shorten(_ path: String) -> String {
     let home = NSHomeDirectory()
-    return cwd.hasPrefix(home) ? "~" + cwd.dropFirst(home.count) : cwd
+    return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
+  }
+
+  var updated: Date? {
+    guard let updatedAt else { return nil }
+    let precise = ISO8601DateFormatter()
+    precise.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return precise.date(from: updatedAt) ?? ISO8601DateFormatter().date(from: updatedAt)
   }
 
   /// "just now", "5m ago", "2h ago", "yesterday", "3d ago", or "".
   func age(now: Date = Date()) -> String {
-    guard let updatedAt else { return "" }
-    let precise = ISO8601DateFormatter()
-    precise.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    guard let date = precise.date(from: updatedAt) ?? ISO8601DateFormatter().date(from: updatedAt) else { return "" }
+    guard let date = updated else { return "" }
     let seconds = max(0, now.timeIntervalSince(date))
     switch seconds {
     case ..<60: return "just now"

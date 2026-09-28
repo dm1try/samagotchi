@@ -27,6 +27,12 @@ it's still live; if there's only one live session, that one is (a recent one nev
 session starts its worker; a note to one waits for its next start, and the panel shows chi's line saying so. After a
 send the panel shows chi's line and closes. On an error it stays open and shows the error.
 
+The first row, **New session in <folder>** (⌘0), starts a session with the message instead: `chi send --new --dir
+<folder>`, so it shows in `chi web` at once (see [Starting a session](sessions.md#starting-a-session)). The folder is
+that of the most recently updated live session, else of the newest recent one, else your home folder. It is ticked
+alone (ticking it clears the sessions and the reverse) and is preselected when no session is live. ⌘⏎ on it beeps: a
+note needs a session. After the send the panel shows `started <id>…` for 3 s.
+
 A session open in a `chi --no-shared` REPL isn't listed: it takes no notes or messages.
 
 ## Install
