@@ -978,6 +978,18 @@ module Samagotchi
       {}
     end
 
+    # The first +names+ (model as typed, alias-resolved, bare, …) whose
+    # models: entry sets +field+: [key, value], or nil. VisionSupport and
+    # SamplingSettings look a model up the same way.
+    def model_setting(names, field, models: nil)
+      models ||= model_settings
+      Array(names).map { |name| name.to_s.strip.downcase }.reject(&:empty?).uniq.each do |key|
+        value = models.dig(key, field)
+        return [key, value] unless value.nil?
+      end
+      nil
+    end
+
     def resolve_model_alias(raw, env: ENV, path: global_path(env: env), hosts: nil)
       value = raw.to_s.strip
       return value if value.empty?

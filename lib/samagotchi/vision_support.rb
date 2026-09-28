@@ -50,12 +50,8 @@ module Samagotchi
       rescue StandardError
         {}
       end
-      [target.model, target.bare_model].map { |name| name.to_s.strip.downcase }.uniq.each do |key|
-        value = models.dig(key, :vision)
-        next if value.nil?
-
-        return Answer.new(value: value, reason: value ? nil : "models: #{key} sets vision: false")
-      end
+      key, value = ConfigFile.model_setting([target.model, target.bare_model], :vision, models: models)
+      return Answer.new(value: value, reason: value ? nil : "models: #{key} sets vision: false") if key
       return nil if entry.vision.nil?
 
       Answer.new(value: entry.vision, reason: entry.vision ? nil : "hosts.#{entry.name} sets vision: false")
