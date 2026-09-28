@@ -52,7 +52,7 @@ log:
   disable: false
 ```
 
-Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top-level) are still read via fallback in `Config.lookup_yaml` but warn `Warning: config key 'SAMAGOTCHI_DEFAULT_MODEL' is legacy UPPER — use 'default.model'` (`ConfigFile.load_global_env!`). Migrate them to nested form and remove the flat entry. The old `LLAMA_HOST`/`LLAMA_PORT` aliases were removed; use `server.host`/`server.port` (nested) or `SAMAGOTCHI_SERVER_HOST`/`SAMAGOTCHI_SERVER_PORT`.
+Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top-level) are still read via fallback in `Config.lookup_yaml` but warn `Warning: config key 'SAMAGOTCHI_DEFAULT_MODEL' is legacy UPPER — use 'default.model'` (`ConfigFile.load_global_env!`). When a file has both, the nested key wins and the warning names both. Migrate them to nested form and remove the flat entry. The old `LLAMA_HOST`/`LLAMA_PORT` aliases were removed; use `server.host`/`server.port` (nested) or `SAMAGOTCHI_SERVER_HOST`/`SAMAGOTCHI_SERVER_PORT`.
 
 **Excluded maps** (YAML-only, not part of the flat registry; skipped by scalar loader):
 

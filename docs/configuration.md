@@ -111,8 +111,9 @@ Most settings also have a CLI flag: the dotted name in kebab case
 Older configs used the environment names as top-level keys
 (`SAMAGOTCHI_DEFAULT_MODEL: my-model`). They are still read, but every run
 warns (`config key 'SAMAGOTCHI_DEFAULT_MODEL' is legacy UPPER — use
-'default.model'`), and a flat key wins over the nested one when a file has
-both. Move each to its nested form (`default: {model: my-model}`) and delete
+'default.model'`). When a file has both, the nested key wins and the warning
+names both (`both 'SAMAGOTCHI_DEFAULT_MODEL' and 'default.model' are set;
+using 'default.model', remove the flat key`). Move each to its nested form (`default: {model: my-model}`) and delete
 the flat line. `/model --default` already writes the nested form.
 
 ## Model Server Transport

@@ -289,21 +289,31 @@ module Samagotchi
         end
       end
 
-      # Lookup yaml_path in nested hash, accepting snake leaf, kebab alias,
-      # entry-specific yaml_aliases, and legacy flat UPPER keys (e.g.,
-      # SAMAGOTCHI_DEFAULT_MODEL) for transition.
+      # Lookup yaml_path in nested hash, accepting snake leaf, kebab alias and
+      # entry-specific yaml_aliases, then legacy flat UPPER keys (e.g.,
+      # SAMAGOTCHI_DEFAULT_MODEL) for transition: the nested key wins when a
+      # file has both (ConfigFile.load_global_env! warns about that).
       def lookup_yaml(data, yaml_path)
         entry = ENTRIES.find { |e| e.yaml_path == yaml_path }
-        # Legacy flat top-level fallback (transition): e.g., file contains SAMAGOTCHI_DEFAULT_MODEL
-        if entry && data.is_a?(Hash)
-          if data.key?(entry.env_key)
-            return data[entry.env_key]
-          end
-          Array(entry.aliases).each do |a|
-            return data[a] if data.key?(a)
-            return data[a.to_sym] if data.key?(a.to_sym)
-          end
+        nested = lookup_nested(data, yaml_path, entry)
+        return nested unless nested.nil?
+
+        lookup_legacy(data, entry)
+      end
+
+      # The legacy flat key's value for +entry+, or nil.
+      def lookup_legacy(data, entry)
+        return nil unless entry && data.is_a?(Hash)
+
+        [entry.env_key, *Array(entry.aliases)].each do |key|
+          return data[key] if data.key?(key)
+          return data[key.to_sym] if data.key?(key.to_sym)
         end
+        nil
+      end
+
+      # The nested key's value for +yaml_path+, or nil.
+      def lookup_nested(data, yaml_path, entry = nil)
         cur = data
         yaml_path.each_with_index do |seg, idx|
           return nil unless cur.is_a?(Hash)
@@ -496,9 +506,13 @@ module Samagotchi
       raw = read_yaml(env: env, path: path) || {}
       if existed
         Samagotchi::Config.validate_yaml_sections(raw).each { |w| Log.warn(:config, "invalid_section", echo: "Warning: #{w}") }
-        # Warn on legacy UPPER keys
+        # Warn on legacy UPPER keys; the nested key wins when both are set.
         raw.each_key do |k|
-          if k.to_s.match?(/\A[A-Z_]{2,}\z/) && k.to_s.start_with?("SAMAGOTCHI_")
+          entry = Samagotchi::Config.find_by_env(k)
+          if entry && !Samagotchi::Config.lookup_nested(raw, entry.yaml_path, entry).nil?
+            nested = entry.yaml_path.join(".")
+            Log.warn(:config, "legacy_key", echo: "Warning: config: both '#{k}' and '#{nested}' are set; using '#{nested}', remove the flat key", key: k.to_s)
+          elsif k.to_s.match?(/\A[A-Z_]{2,}\z/) && k.to_s.start_with?("SAMAGOTCHI_")
             Log.warn(:config, "legacy_key", echo: "Warning: config key '#{k}' is legacy UPPER — use '#{k.to_s.downcase.sub(/^samagotchi_/, '').tr('_', '.')}' (e.g., default.model)", key: k.to_s)
           end
         end

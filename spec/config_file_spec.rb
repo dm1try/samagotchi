@@ -145,6 +145,24 @@ RSpec.describe Samagotchi::ConfigFile do
       end
     end
 
+    it "prefers the nested key over a legacy flat one and names both in one warning" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        FileUtils.mkdir_p(File.join(dir, "samagotchi"))
+        File.write(File.join(dir, "samagotchi", "config.yml"), <<~YAML)
+          SAMAGOTCHI_DEFAULT_MODEL: flat-a
+          default:
+            model: nested-b
+        YAML
+        ENV["XDG_CONFIG_HOME"] = dir
+
+        expect { described_class.load_global_env! }.to output(
+          "Warning: config: both 'SAMAGOTCHI_DEFAULT_MODEL' and 'default.model' are set; using 'default.model', remove the flat key\n"
+        ).to_stderr
+        expect(Samagotchi::Config.get("default.model")).to eq("nested-b")
+        expect(ENV["SAMAGOTCHI_DEFAULT_MODEL"]).to eq("nested-b")
+      end
+    end
+
     it "loads SAMAGOTCHI_DEFAULT_INPUT as a scalar string" do
       Dir.mktmpdir("samagotchi-config") do |dir|
         config_dir = File.join(dir, "samagotchi")
