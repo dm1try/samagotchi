@@ -177,10 +177,11 @@ test("archive hides a session from the strip, include archived finds it, unarchi
 // records what would be shown (window.__notes). The page starts behind.
 async function withNotificationStub(page) {
   await page.addInitScript(() => {
-    window.__front = false;
+    window.__visible = false;
+    window.__focused = false;
     window.__notes = [];
-    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (window.__front ? "visible" : "hidden") });
-    document.hasFocus = () => window.__front;
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (window.__visible ? "visible" : "hidden") });
+    document.hasFocus = () => window.__focused;
     // The permission outlives a reload, as a browser's does.
     window.Notification = class {
       static get permission() { return sessionStorage.getItem("stub_permission") || "default"; }
@@ -189,7 +190,14 @@ async function withNotificationStub(page) {
       close() {}
     };
     window.__setFront = (front) => {
-      window.__front = front;
+      window.__visible = front;
+      window.__focused = front;
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+    // Safari's order on a tab switch: visible first, focus later (or no
+    // focus event at all inside an already focused window).
+    window.__showTab = () => {
+      window.__visible = true;
       document.dispatchEvent(new Event("visibilitychange"));
     };
   });
@@ -253,6 +261,20 @@ test("the title badge counts while behind and clears when the tab comes to the f
   expect(await notes(page)).toEqual([]);
   await page.evaluate(() => window.__setFront(true));
   await expect(page).not.toHaveTitle(/^\(/);
+  await card.locator(".question-option", { hasText: "README.md" }).click();
+  await card.locator(".question-submit").click();
+  await turnEnded(page, 1);
+});
+
+test("the title badge clears when the tab turns visible before it has focus (Safari's order)", async ({ page, script }) => {
+  await withNotificationStub(page);
+  script("question");
+  await send(page, "Read a file of my choice");
+  const card = page.locator("#history .bubble.question");
+  await expect(page).toHaveTitle(/^\(1\) Chi/);
+  await page.evaluate(() => window.__showTab());
+  await expect(page).not.toHaveTitle(/^\(/);
+  await page.evaluate(() => window.__setFront(true));
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
   await turnEnded(page, 1);
