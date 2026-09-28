@@ -3,6 +3,7 @@
 require "open3"
 require "rbconfig"
 require "samagotchi/version"
+require_relative "support/bounded_capture"
 
 RSpec.describe "chi --help" do
   let(:chi) { File.expand_path("../bin/chi", __dir__) }
@@ -55,16 +56,16 @@ RSpec.describe "chi --help" do
   end
 
   it "refuses an unknown command instead of starting a session" do
-    _out, err, status = Open3.capture3({ "SAMAGOTCHI_SESSION_SHARED" => "0" }, "timeout", "10", RbConfig.ruby, chi,
-                                       "bogus", "--non-interactive", stdin_data: "")
+    _out, err, status = BoundedCapture.capture3({ "SAMAGOTCHI_SESSION_SHARED" => "0" }, RbConfig.ruby, chi,
+                                               "bogus", "--non-interactive", stdin_data: "", timeout: 10)
 
     expect(status.exitstatus).to eq(1)
     expect(err).to eq("Error: unknown command bogus (see chi --help)\n")
   end
 
   it "refuses a stray argument after web" do
-    _out, err, status = Open3.capture3("timeout", "10", RbConfig.ruby, chi, "web", "extra", "--port", "45898",
-                                       stdin_data: "")
+    _out, err, status = BoundedCapture.capture3(RbConfig.ruby, chi, "web", "extra", "--port", "45898",
+                                               stdin_data: "", timeout: 10)
 
     expect(status.exitstatus).to eq(1)
     expect(err).to eq("Error: unexpected argument extra (see chi --help)\n")

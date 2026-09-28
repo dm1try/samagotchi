@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-require "open3"
 require "rbconfig"
 require "tmpdir"
 require "fileutils"
+require_relative "support/bounded_capture"
 
 # A first run with no config at all: one line naming config.yml's
 # default.model, not a backtrace, whichever way the session would start.
@@ -19,7 +19,7 @@ RSpec.describe "chi without a configured model" do
 
   [[], ["--no-shared"], ["-p", "hi", "--non-interactive"]].each do |args|
     it "says where to set the model (chi #{args.join(" ")})".rstrip do
-      _out, err, status = Open3.capture3(env, "timeout", "20", RbConfig.ruby, chi, *args, stdin_data: "")
+      _out, err, status = BoundedCapture.capture3(env, RbConfig.ruby, chi, *args, stdin_data: "", timeout: 20)
 
       expect(status.exitstatus).to eq(1)
       expect(err).to eq("Error: no model configured: set default.model in #{home}/config/samagotchi/config.yml " \
