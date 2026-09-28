@@ -179,6 +179,100 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:tokens_out]).to eq(7)
   end
 
+  describe "the turn record's tokens" do
+    def usage(prompt, completion) = { "usage" => { "prompt_tokens" => prompt, "completion_tokens" => completion } }
+
+    it "folds each generation: last prompt, sums, context at the end, model and counts" do
+      feed([
+        { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+        { type: :generation_started, iteration: 1 },
+        { type: :generation_chunk, iteration: 1, content: "a", payload: usage(100, 10) },
+        { type: :tool_dispatch_started, iteration: 1, call_count: 1 },
+        { type: :tool_call_started, iteration: 1, call_index: 1, tool: "read" },
+        { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "read", status: "error" },
+        { type: :generation_completed, iteration: 1, served_model: "ornith" },
+        { type: :generation_started, iteration: 2 },
+        { type: :generation_chunk, iteration: 2, content: "b", payload: usage(130, 20) },
+        { type: :generation_completed, iteration: 2, served_model: "ornith" },
+        { type: :turn_completed }
+      ])
+
+      expect(metrics.snapshot[:turn_records].last).to include(
+        model: "ornith", generations: 2, prompt_tokens: 130, prompt_tokens_sum: 230, completion_tokens: 30,
+        context_used_tokens: 150, token_source: "server", tool_calls: 1, tool_errors: 1, iterations: 1, retries: 0
+      )
+      expect(metrics.snapshot[:turn_records].last[:gen_ms]).to be_a(Integer)
+    end
+
+    it "keeps the prompt per generation, not the largest in the session" do
+      feed([
+        { type: :turn_started, session_id: "sess-1", prompt: "one" },
+        { type: :generation_started, iteration: 1 },
+        { type: :generation_chunk, iteration: 1, content: "a", payload: usage(900, 5) },
+        { type: :generation_completed, iteration: 1 },
+        { type: :turn_completed },
+        # /compact or a new model: a smaller prompt afterwards.
+        { type: :turn_started, session_id: "sess-1", prompt: "two" },
+        { type: :generation_started, iteration: 1 },
+        { type: :generation_chunk, iteration: 1, content: "b", payload: usage(200, 5) },
+        { type: :generation_completed, iteration: 1 },
+        { type: :turn_completed }
+      ])
+
+      expect(metrics.snapshot[:turn_records].last).to include(prompt_tokens: 200, context_used_tokens: 205)
+    end
+
+    it "marks a turn mixed when one generation has server counts and another only an estimate" do
+      feed([
+        { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+        { type: :generation_started, iteration: 1 },
+        { type: :generation_chunk, iteration: 1, content: "a", payload: usage(100, 10) },
+        { type: :generation_completed, iteration: 1 },
+        { type: :generation_started, iteration: 2 },
+        # A cancelled OpenAI stream: no usage chunk.
+        { type: :generation_chunk, iteration: 2, content: "x" * 40, payload: { "content" => "x" * 40 } },
+        { type: :generation_cancelled, iteration: 2 },
+        { type: :turn_canceled, cancellation_reason: :user }
+      ])
+
+      expect(metrics.snapshot[:turn_records].last).to include(
+        status: "canceled", generations: 2, prompt_tokens: 100, completion_tokens: 20, context_used_tokens: 110,
+        token_source: "mixed"
+      )
+    end
+
+    it "keeps the tokens of a generation still open when the turn fails" do
+      feed([
+        { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+        { type: :generation_started, iteration: 1 },
+        { type: :generation_chunk, iteration: 1, content: "a", payload: usage(100, 7) },
+        { type: :turn_failed, message: "stream broke" }
+      ])
+
+      expect(metrics.snapshot[:turn_records].last).to include(
+        status: "failed", generations: 1, prompt_tokens: 100, completion_tokens: 7, token_source: "server"
+      )
+      expect(metrics.snapshot[:tokens_out]).to eq(7)
+    end
+
+    it "counts a retried generation's estimate once" do
+      feed([
+        { type: :turn_started, session_id: "sess-1", prompt: "hi" },
+        { type: :generation_started, iteration: 1 },
+        { type: :generation_chunk, iteration: 1, content: "x" * 40, payload: { "content" => "x" * 40 } },
+        { type: :generation_retrying, iteration: 1, attempt: 1 },
+        { type: :generation_chunk, iteration: 1, content: "x" * 40, payload: { "content" => "x" * 40 } },
+        { type: :generation_completed, iteration: 1 },
+        { type: :turn_completed }
+      ])
+
+      expect(metrics.snapshot[:turn_records].last).to include(
+        generations: 1, completion_tokens: 10, prompt_tokens: nil, context_used_tokens: nil,
+        token_source: "estimate", retries: 1
+      )
+    end
+  end
+
   it "counts retries and cancellations" do
     feed([
       { type: :turn_started, session_id: "sess-3", prompt: "x" },

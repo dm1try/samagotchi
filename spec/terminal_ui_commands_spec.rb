@@ -28,6 +28,7 @@ RSpec.describe Samagotchi::TerminalUI do
     it "renders the session metrics summary via format_session_metrics" do
       metrics = agent.instance_variable_get(:@engine).metrics
       metrics.call(type: :turn_started, session_id: "s", prompt: "x")
+      metrics.call(type: :generation_started)
       metrics.call(type: :generation_chunk, payload: { "timings" => { "prompt_n" => 10, "predicted_n" => 5 } })
       metrics.call(type: :generation_completed)
       metrics.call(type: :turn_completed, result: double(respond_to?: false))
