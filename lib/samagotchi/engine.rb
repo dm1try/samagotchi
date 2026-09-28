@@ -1285,18 +1285,21 @@ module Samagotchi
 
     # Keep what the after_turn hooks presented as the answer's `display`
     # and tell the observers (:answer_display), after the turn_completed
-    # they already had: the web re-reads the answer then. Terminals are not
+    # they already had: the web re-reads the answer then. A turn_completed
+    # with display_pending (after_turn hooks were about to run) always gets
+    # one, `display: nil` when nothing was presented, so the web holds the
+    # answer's pop until then and never swaps it after. Terminals are not
     # sinks of it; they printed the answer already. The session is saved by
     # the caller, as after every turn.
-    def store_answer_display(session, display)
-      return unless display.changed?
-
+    def store_answer_display(session, display, pending: false)
       synchronize_events do
         messages = Array(session.messages)
-        next unless messages.last.equal?(display.target)
-
-        replace_session_messages(session, messages[0...-1] + [display.target.merge(AnswerDisplay::KEY => display.text)])
-        @session_observer.notify({ type: :answer_display, display: display.text })
+        if display.changed? && messages.last.equal?(display.target)
+          replace_session_messages(session, messages[0...-1] + [display.target.merge(AnswerDisplay::KEY => display.text)])
+          @session_observer.notify({ type: :answer_display, display: display.text })
+        elsif pending
+          @session_observer.notify({ type: :answer_display, display: nil })
+        end
       end
     end
     private :store_answer_display
@@ -1889,6 +1892,9 @@ module Samagotchi
         # placeholder text) is a turn the model should know ended that way.
         empty = !canceled && !resumable &&
                 (response.strip.empty? || (result.respond_to?(:empty_answer?) && result.empty_answer?))
+        # after_turn hooks run below and may present the answer (the web
+        # holds its pop until it knows).
+        display_pending = !canceled && @hooks.any?(:after_turn)
         synchronize_events do
           if empty
             # The placeholder is for the UIs (a new array: it must not leak
@@ -1919,7 +1925,8 @@ module Samagotchi
             emit_event(on_event, with_origin.call({
               type: :turn_completed,
               result: result,
-              turn_summary: turn_summary(result)
+              turn_summary: turn_summary(result),
+              display_pending: display_pending
             }))
           end
         end
@@ -1933,7 +1940,7 @@ module Samagotchi
                        messages: hook_messages(session.messages) }
         after_turn[:present] = display.presenter(after_turn)
         @hooks.fire(:after_turn, after_turn)
-        store_answer_display(session, display)
+        store_answer_display(session, display, pending: display_pending)
 
         # Fire :session_end after every turn (turn-level lifecycle)
         @hooks.fire(:session_end, { type: :session_end, session_id: session.id })

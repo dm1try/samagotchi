@@ -104,27 +104,41 @@ RSpec.describe "Presenting the answer from after_turn" do
     bundle_hook("links.rb", 10) { |e| e[:present].call { |text| "#{text}!" } }
     seen = []
     engine.subscribe(observer: lambda { |e|
-      seen << [e[:type], engine.messages_checkpoint.last[:display]] if %i[turn_completed answer_display].include?(e[:type])
+      next unless %i[turn_completed answer_display].include?(e[:type])
+
+      seen << [e[:type], engine.messages_checkpoint.last[:display], e[:display_pending], e[:display]]
     })
 
     engine.run_turn(session, "hi")
 
     # At turn_completed the display is not there yet (the hooks run after
-    # it); the web re-reads on :answer_display, when it is.
-    expect(seen).to eq([[:turn_completed, nil], [:answer_display, "see JIRA-1!"]])
+    # it) but may come (display_pending); the web re-reads on
+    # :answer_display, when it is.
+    expect(seen).to eq([[:turn_completed, nil, true, nil], [:answer_display, "see JIRA-1!", nil, "see JIRA-1!"]])
   end
 
-  it "announces nothing when no hook changed the display, or one failed" do
+  it "says so (display: nil) when no hook changed the display, or one failed" do
     bundle_hook("same.rb", 10) { |e| e[:present].call { |text| text } }
     bundle_hook("bad.rb", 20) { |e| e[:present].call { :not_a_string } }
     bundle_hook("raises.rb", 30) { |_e| raise "boom" }
-    types = []
-    engine.subscribe(observer: ->(e) { types << e[:type] })
+    events = []
+    engine.subscribe(observer: ->(e) { events << e.slice(:type, :display_pending, :display) })
 
     engine.run_turn(session, "hi")
 
-    expect(types).not_to include(:answer_display)
+    expect(events.select { |e| %i[turn_completed answer_display].include?(e[:type]) })
+      .to eq([{ type: :turn_completed, display_pending: true }, { type: :answer_display, display: nil }])
     expect(session.messages.last).not_to have_key(:display)
+  end
+
+  it "promises no display without after_turn hooks" do
+    events = []
+    engine.subscribe(observer: ->(e) { events << e.slice(:type, :display_pending) })
+
+    engine.run_turn(session, "hi")
+
+    expect(events).to include({ type: :turn_completed, display_pending: false })
+    expect(events.map { |e| e[:type] }).not_to include(:answer_display)
   end
 
   it "saves it in session.json" do

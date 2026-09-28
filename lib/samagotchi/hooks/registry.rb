@@ -194,6 +194,13 @@ module Samagotchi
         end
       end
 
+      # Whether a #fire of +name+ would call any hook.
+      # @param name [Symbol]
+      # @return [Boolean]
+      def any?(name)
+        !ordered_procs(name).empty?
+      end
+
       # Like #fire, and yields the event after each hook (a raising one
       # too), so the caller can fold what that hook did before the next one
       # runs (the guardrail gate keeps a deny sticky this way).
