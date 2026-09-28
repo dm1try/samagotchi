@@ -14,7 +14,10 @@ module Samagotchi
 
       def self.name = NAME
 
-      def self.call(task_id, timeout: TIMEOUT_DEFAULT, tail_lines: TAIL_LINES_DEFAULT, done_pattern: nil)
+      # @param cancelled [#call] true once the user stopped the turn: the
+      #   wait returns then, and the task keeps running
+      def self.call(task_id, timeout: TIMEOUT_DEFAULT, tail_lines: TAIL_LINES_DEFAULT, done_pattern: nil,
+                    cancelled: -> { false })
         timeout = TIMEOUT_DEFAULT if blank?(timeout)
         tail_lines = TAIL_LINES_DEFAULT if blank?(tail_lines)
         timeout = timeout.to_i
@@ -27,7 +30,8 @@ module Samagotchi
         return completion_pattern if completion_pattern.is_a?(String)
 
         task_id = task_id.to_s.strip
-        deadline = monotonic_time + timeout
+        started = monotonic_time
+        deadline = started + timeout
 
         loop do
           record, error = TaskRuntime.get_record(task_id)
@@ -40,6 +44,8 @@ module Samagotchi
             output_tail = TaskRuntime.output_tail_lines(record.fetch("output_path"), tail_lines)
             return format_response(record, wait_result: "pattern_matched", output_tail: output_tail) if completion_pattern.match?(output_tail)
           end
+
+          return cancelled_response(task_id, tail_lines, started) if cancelled.call
 
           break if monotonic_time > deadline
           sleep(POLL_INTERVAL)
@@ -55,7 +61,24 @@ module Samagotchi
         "Error: #{e.message}"
       end
 
-      def self.format_response(record, wait_result: nil, output_tail: nil)
+      # The task may have finished between the poll and the Stop: then the
+      # normal finished result. Only a task still running says so.
+      def self.cancelled_response(task_id, tail_lines, started)
+        record, error = TaskRuntime.get_record(task_id)
+        return "Error: #{error}" if error
+        return format_response(record) unless record.fetch("status") == "running"
+
+        output_tail = TaskRuntime.output_tail_lines(record.fetch("output_path"), tail_lines)
+        note = [
+          "note: the user stopped the turn while waiting; the task is STILL RUNNING.",
+          "  To keep waiting: task_wait #{task_id}. If it is stuck or no longer needed: task_stop #{task_id}.",
+          "waited: #{(monotonic_time - started).round}s"
+        ]
+        format_response(record, wait_result: "canceled", output_tail: output_tail, extra: note)
+      end
+      private_class_method :cancelled_response
+
+      def self.format_response(record, wait_result: nil, output_tail: nil, extra: [])
         lines = [
           "task_id: #{record.fetch("id")}",
           "status: #{record.fetch("status")}",
@@ -66,6 +89,7 @@ module Samagotchi
         return lines.join("\n") unless wait_result
 
         lines << "wait_result: #{wait_result}"
+        lines.concat(extra)
         lines << "output_tail:"
         lines << output_tail.rstrip unless output_tail.empty?
         lines.join("\n")

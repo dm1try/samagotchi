@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "samagotchi/tools/builtins"
 require "samagotchi/tools/task_create"
 require "samagotchi/tools/task_get"
 require "samagotchi/tools/task_list"
@@ -212,6 +213,50 @@ RSpec.describe "task tools" do
       expect(result).to include("task_id: #{task_id}")
       expect(result).to include("status: failed")
       expect(result).to include("stop_reason: stopped_by_user")
+    end
+
+    it "returns on Stop and leaves a running task running" do
+      create_result = Samagotchi::Tools::TaskCreate.call("echo before; sleep 30")
+      task_id = extract_field(create_result, "task_id")
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      cancelled = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) - started > 0.2 }
+
+      result = described_class.call(task_id, cancelled: cancelled)
+
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+      expect(result).to include("status: running")
+      expect(result).to include("wait_result: canceled")
+      expect(result).to include("STILL RUNNING")
+      expect(result).to include("task_wait #{task_id}").and include("task_stop #{task_id}")
+      expect(result).to match(/^waited: \d+s$/)
+      expect(result).to include("output_tail:\nbefore")
+      expect(Samagotchi::Tools::TaskRuntime.get_record(task_id).first.fetch("status")).to eq("running")
+    ensure
+      Samagotchi::Tools::TaskStop.call(task_id) if task_id
+    end
+
+    it "sees Stop through the kernel's peers in the built-in handler" do
+      create_result = Samagotchi::Tools::TaskCreate.call("sleep 30")
+      task_id = extract_field(create_result, "task_id")
+      peers = Struct.new(:cancelled?).new(true)
+      kctx = Struct.new(:peers).new(peers)
+
+      result = Samagotchi::Tools::Builtins::HANDLERS.fetch("task_wait").call({ content: task_id }, kctx)
+
+      expect(result).to include("wait_result: canceled")
+    ensure
+      Samagotchi::Tools::TaskStop.call(task_id) if task_id
+    end
+
+    it "gives the finished result when the task ended before the Stop was seen" do
+      create_result = Samagotchi::Tools::TaskCreate.call("true")
+      task_id = extract_field(create_result, "task_id")
+      sleep 0.1 until Samagotchi::Tools::TaskRuntime.get_record(task_id).first.fetch("status") != "running"
+
+      result = described_class.call(task_id, cancelled: -> { true })
+
+      expect(result).to include("status: completed")
+      expect(result).not_to include("wait_result")
     end
 
     it "returns an error for an unknown task id" do

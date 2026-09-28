@@ -69,9 +69,9 @@ module Samagotchi
           Edit.call(call[:content], path: call[:path], start_line: call[:start_line], end_line: call[:end_line])
         end,
         TaskCreate::NAME => ->(call, _kctx) { TaskCreate.call(call[:content], cwd: call[:cwd], env: call[:env]) },
-        TaskWait::NAME => lambda do |call, _kctx|
+        TaskWait::NAME => lambda do |call, kctx|
           TaskWait.call(call[:content], timeout: call[:timeout], tail_lines: call[:tail_lines],
-                                        done_pattern: call[:done_pattern])
+                                        done_pattern: call[:done_pattern], cancelled: cancelled_proc(kctx))
         end,
         Execute::NAME => ->(call, _kctx) { Execute.call(call[:content], cwd: call[:cwd]) },
         RegisterReminder::NAME => lambda do |call, kctx|
@@ -93,6 +93,13 @@ module Samagotchi
       }.freeze
 
       module_function
+
+      # Stop flips the turn's controller, seen through the Engine's PeerView
+      # (as DelegateWait does); a bare kernel has no peers: never cancelled.
+      def cancelled_proc(kctx)
+        peers = kctx.peers
+        -> { peers.respond_to?(:cancelled?) && peers.cancelled? }
+      end
 
       # @return [Registry] a new registry with the built-ins, in
       #   TOOL_SCHEMAS order (an Engine's own, which bundles add to)
