@@ -116,6 +116,23 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       expect(session.pending_question).to be_nil
     end
 
+    it "saves the question into the engine's session state dir (the file the hub watches)" do
+      state_dir = Dir.mktmpdir("engine-question-state")
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd)
+      engine = build_engine(session: session)
+      engine.session_state_dir = state_dir
+      turn_thread, = request_in_background(engine, payload)
+
+      on_disk = Samagotchi::Session.load(session.id, state_dir: state_dir)
+      expect(on_disk.pending_question[:id]).to eq(engine.pending_question[:id])
+
+      engine.answer_question(id: engine.pending_question[:id], selected: ["Dogs"])
+      turn_thread.join(2)
+      expect(Samagotchi::Session.load(session.id, state_dir: state_dir).pending_question).to be_nil
+    ensure
+      FileUtils.rm_rf(state_dir) if state_dir
+    end
+
     it "brings an archived session back to the lists: a human answered" do
       state_dir = Dir.mktmpdir("engine-question-archive")
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd)

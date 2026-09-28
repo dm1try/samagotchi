@@ -85,7 +85,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with images" do
     expect(failed).to include(error_kind: :vision_unsupported, retryable: false)
     expect(failed[:summary]).to include("can't take images: the server has no vision model loaded", "send text only")
     expect(session.messages).to eq(before)
-    expect(Samagotchi::Session.load(session.id).messages).to eq(before)
+    expect(Samagotchi::Session.load(session.id, state_dir: @state_dir).messages).to eq(before)
   end
 
   it "fails the turn for a ref outside the session's images (traversal)" do

@@ -1411,7 +1411,7 @@ module Samagotchi
       # Persist to session file for WEB stub + resume (generic for all UIs)
       if @session
         @session.pending_question = pending.dup
-        begin; @session.save; rescue StandardError; nil; end
+        begin; @session.save(state_dir: session_state_dir); rescue StandardError; nil; end
       end
       # Generic emit for all UIs (TUI, WEB, Bridge, future). Observers that
       # stash this event (e.g. TerminalUI handle_question_event) will
@@ -1434,7 +1434,7 @@ module Samagotchi
               @pending_question = nil
               if @session
                 @session.pending_question = nil
-                begin; @session.save; rescue StandardError; nil; end
+                begin; @session.save(state_dir: session_state_dir); rescue StandardError; nil; end
               end
               emit_event(nil, { type: :question_answered, id: id, answer: ans })
               return ans
@@ -1445,7 +1445,7 @@ module Samagotchi
               @pending_question = nil
               if @session
                 @session.pending_question = nil
-                begin; @session.save; rescue StandardError; nil; end
+                begin; @session.save(state_dir: session_state_dir); rescue StandardError; nil; end
               end
               emit_event(nil, { type: :question_answered, id: id, answer: sync_res })
               return sync_res
@@ -1463,7 +1463,7 @@ module Samagotchi
         @question_mutex.synchronize { @pending_question = nil }
         if @session
           @session.pending_question = nil
-          begin; @session.save; rescue StandardError; nil; end
+          begin; @session.save(state_dir: session_state_dir); rescue StandardError; nil; end
         end
         return { error: "no answer", detail: "handler failed to capture selection", id: id }
       end
@@ -1485,7 +1485,7 @@ module Samagotchi
           @pending_question = nil
           if @session
             @session.pending_question = nil
-            begin; @session.save; rescue StandardError; nil; end
+            begin; @session.save(state_dir: session_state_dir); rescue StandardError; nil; end
           end
           emit_event(nil, { type: :question_cancelled, id: id, reason: active_cancel_controller.reason.to_s })
           return { error: "cancelled", reason: active_cancel_controller.reason.to_s, id: id }
@@ -1496,7 +1496,7 @@ module Samagotchi
       @question_mutex.synchronize { @pending_question = nil }
       if @session
         @session.pending_question = nil
-        begin; @session.save; rescue StandardError; nil; end
+        begin; @session.save(state_dir: session_state_dir); rescue StandardError; nil; end
       end
       if answer
         emit_event(nil, { type: :question_answered, id: id, answer: answer })
@@ -1925,7 +1925,7 @@ module Samagotchi
         end
         replace_session_messages(session, kept) if kept
         session.status = Session::STATUS_IDLE
-        begin; session.save; rescue StandardError; nil; end
+        begin; session.save(state_dir: session_state_dir); rescue StandardError; nil; end
         failed = { type: :turn_failed, error_class: e.class.name, message: e.message }
         # A provider error says what kind it is, for one line per kind in the UIs.
         if e.is_a?(LLM::ProviderError)
