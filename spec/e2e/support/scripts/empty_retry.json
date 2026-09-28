@@ -1,0 +1,8 @@
+{
+  "delay": 0.03,
+  "nudge_counts": true,
+  "iterations": [
+    {"thinking": "Let me write the reply. Let me write the reply. Let me write the reply."},
+    {"thinking": "Answer now.", "text": "PONG after the retry."}
+  ]
+}

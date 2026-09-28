@@ -264,3 +264,9 @@ test("promptOps: a steer-only merge adds no prompt bubble, even after an unmatch
   const event = { type: "pending_input_merged", count: 0, content: null, steers: [{ source: "check-in", text: "x" }] };
   assert.deepEqual(promptOps(event, { myId: "web:a", known: () => false, unmatchedMerge: true }), []);
 });
+
+import { emptyRetryLine } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+test("emptyRetryLine says the loop asks again, with the attempt", () => {
+  assert.equal(emptyRetryLine({ attempt: 1, of: 1 }), "↻ empty answer, asking again (1/1)");
+});

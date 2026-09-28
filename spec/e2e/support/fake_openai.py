@@ -5,7 +5,10 @@
 # (reasoning_content), "text" (content) word by word ("delay" s apart, default 0.12) and its "tools" as
 # native tool_calls deltas, so the worker (api: openai) runs real tools. "hold" seconds wait before an
 # iteration's first chunk (a stable mid-turn moment). With "steer_keeps_count": true a user message right after a
-# tool result (steering merged mid-turn, a plugin's nudge) doesn't restart the count. /v1/models lists "fake-script";
+# tool result (steering merged mid-turn, a plugin's nudge) doesn't restart the count.
+# With "nudge_counts": true a system message after the
+# last user message (an empty-answer retry's nudge) counts as a step too, so an empty iteration can be followed by
+# an answer. /v1/models lists "fake-script";
 # no upstream needed.
 # empty: a 200 stream whose only delta is content "" with finish_reason stop (nemotron's empty answer).
 # stall: a 200 that sends only OpenRouter's keep-alive comments (every 0.3 s) until the client hangs up or 600 s pass,
@@ -73,10 +76,11 @@ class H(http.server.BaseHTTPRequestHandler):
         messages = json.loads(body or b"{}").get("messages") or []
         # Tool results since the last user message: one per call the worker ran this turn.
         done = 0
-        keeps = bool(script.get("steer_keeps_count")); prev = None
+        keeps = bool(script.get("steer_keeps_count")); nudges = bool(script.get("nudge_counts")); prev = None; seen_user = False
         for msg in messages:
-            if msg.get("role") == "user" and not (keeps and prev in ("tool", "user")): done = 0
+            if msg.get("role") == "user" and not (keeps and prev in ("tool", "user")): done = 0; seen_user = True
             elif msg.get("role") == "tool": done += 1
+            elif msg.get("role") == "system" and nudges and seen_user: done += 1
             prev = msg.get("role")
         its = script["iterations"]
         it = its[min(done, len(its) - 1)]

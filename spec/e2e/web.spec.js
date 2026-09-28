@@ -82,6 +82,23 @@ test("a reload after the turn shows the same turn and answer", async ({ page, sc
   expect(await answer(page).innerHTML()).toBe(before.answer);
 });
 
+// The first generation has thinking only: the loop asks again in the same
+// turn, the empty step says so, and a reload shows one turn with the answer.
+test("an empty answer is asked again in the same turn, and a reload shows one turn", async ({ page, script }) => {
+  script("empty_retry");
+  await send(page, "Say pong");
+  await expect(answer(page)).toHaveText("PONG after the retry.");
+  await turnEnded(page, 1);
+  await expect(page.locator("#history .turn-work .hook-notice")).toHaveText("↻ empty answer, asking again (1/1)");
+  await expect(page.locator("#history .bubble.output")).toHaveCount(1);
+  await page.reload();
+  await turnEnded(page, 1);
+  await expect(page.locator("#history .bubble.user")).toHaveCount(1);
+  await expect(answer(page)).toHaveText("PONG after the retry.");
+  await expect(page.locator("#history .bubble.output")).toHaveCount(1);
+  await expect(page.locator("#history .hook-notice")).toHaveCount(0);
+});
+
 // Nothing streams after the turn: the meter and the card read the saved context.
 test("a reload after the turn shows the context meter and the card's ctx", async ({ page, script }) => {
   script("plain");

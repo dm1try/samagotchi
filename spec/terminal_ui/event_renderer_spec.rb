@@ -43,6 +43,14 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     expect(view.lines).to eq(["(1 message merged into the running turn)", "check-in> nudged: status?", "check-in> nudged: again"])
   end
 
+  it "prints a line when the loop asks again after an empty answer, ending the spinner first" do
+    view.define_singleton_method(:format_empty_retry_line) { |event| "retry #{event[:attempt]}/#{event[:of]}" }
+    renderer.call({ type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1 })
+
+    expect(view.calls).to include(:finish_thinking_spinner)
+    expect(view.lines).to eq(["retry 1/1"])
+  end
+
   it "prints the answer a merge follows, then the merge note" do
     renderer.call({ type: :pending_input_merged, count: 1, content: "also", answer: "the essay" })
     renderer.call({ type: :pending_input_merged, count: 2, content: "a\n\nb" })
@@ -237,5 +245,17 @@ RSpec.describe Samagotchi::TerminalUI::Formatting, "#format_steer_line" do
     expect(view.format_steer_line(source: "check-in", text: "status?")).to eq("check-in> nudged: status?")
     expect(view.format_steer_line(source: "check-in", text: "a" * 100)).to eq("check-in> nudged: #{"a" * 79}…")
     expect(view.format_steer_line(source: "", text: "one\ntwo")).to eq("plugin> nudged: one…")
+  end
+end
+
+RSpec.describe Samagotchi::TerminalUI::Formatting, "#format_empty_retry_line" do
+  it "says the loop asks again, with the attempt" do
+    view = Class.new do
+      include Samagotchi::TerminalUI::Formatting
+
+      def color_output? = false
+    end.new
+
+    expect(view.format_empty_retry_line({ attempt: 1, of: 2 })).to eq("↻ empty answer, asking again (1/2)")
   end
 end
