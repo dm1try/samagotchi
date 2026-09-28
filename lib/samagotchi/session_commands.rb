@@ -67,6 +67,7 @@ module Samagotchi
       registry.register("/stats", "show the session's stats", local: true)
       registry.register("/recap", "show the session's recap", local: true)
       registry.register("/exit", "leave (--delete also deletes the session)", local: true)
+      registry.register("/archive", "leave and archive the session: hidden from the lists, kept for good", local: true)
       registry.register("/quit", "leave, like /exit", local: true, uis: [:attached])
       registry.register("/detach", "leave and keep the worker running", local: true, uis: [:attached])
       registry

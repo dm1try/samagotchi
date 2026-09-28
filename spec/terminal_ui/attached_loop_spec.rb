@@ -1511,6 +1511,69 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     end
   end
 
+  describe "/archive" do
+    let(:archived) { [] }
+    let(:archive_session) do
+      lambda do |id|
+        archived << id
+        { id: id, archived: [id], stopped: [], discarded: [] }
+      end
+    end
+    let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", archive_session: archive_session) }
+
+    it "asks the worker to exit, then archives the session" do
+      allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting"}'))
+
+      expect(run_lines("/archive")).to eq(:detached)
+
+      expect(client).to have_received(:request_exit).with(client_id: "tui:1")
+      expect(archived).to eq(["s-1234"])
+      expect(screen.lines.last).to eq("Detached; archived session s-1234. chi sessions list --archived finds it.")
+    end
+
+    it "leaves an empty session to the worker, which discards it as it leaves" do
+      allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting","discard":true}'))
+
+      run_lines("/archive")
+
+      expect(archived).to be_empty
+      expect(screen.lines.last).to eq("Detached; the session was empty, so it is discarded.")
+    end
+
+    it "archives when the worker stays up for another UI: the archive stops it, as the web's does" do
+      allow(client).to receive(:request_exit).and_return(response(409, '{"status":"held","reason":"client_connected"}'))
+
+      run_lines("/archive")
+
+      expect(archived).to eq(["s-1234"])
+      expect(screen.lines.last).to start_with("Detached; archived session s-1234.")
+    end
+
+    it "says so when the archive is refused (a turn running)" do
+      allow(client).to receive(:request_exit).and_return(response(409, '{"status":"held","reason":"turn_running"}'))
+      refusing = ->(id) { raise Samagotchi::SessionManager::ArchiveRefused.new(id, :busy) }
+      loop_ui = described_class.new(client: client, screen: screen, client_id: "tui:1", archive_session: refusing)
+      allow(client).to receive(:follow) do |**, &block|
+        block.call("type" => "snapshot", "snapshot" => idle)
+        stream
+      end
+
+      loop_ui.run(input: ->(_prompt, _prefill) { "/archive" })
+
+      expect(screen.lines.last).to eq("Detached; session s-1234 was not archived (a turn is running; wait for it or " \
+                                      "cancel it first). Re-attach with: chi --attach s-1234")
+    end
+
+    it "archives nothing when the exit request fails" do
+      allow(client).to receive(:request_exit).and_raise(Errno::ECONNREFUSED)
+
+      run_lines("/archive")
+
+      expect(archived).to be_empty
+      expect(screen.lines.last).to end_with("Not archived.")
+    end
+  end
+
   it "only detaches on /detach (any case) and Ctrl-D, leaving the worker up" do
     allow(client).to receive(:request_exit)
     allow(client).to receive(:post_turn)

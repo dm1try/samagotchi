@@ -70,9 +70,9 @@ RSpec.describe Samagotchi::Commands::Registry do
     let(:builtins) { Samagotchi::SessionCommands.builtin_registry }
 
     it "offers the same Tab lists the REPL and the attached TUI had" do
-      expect(builtins.completions(:repl)).to eq(%w[/continue /exit /guardrails /help /model /models /recap /stats])
+      expect(builtins.completions(:repl)).to eq(%w[/archive /continue /exit /guardrails /help /model /models /recap /stats])
       expect(builtins.completions(:attached))
-        .to eq(%w[/continue /detach /exit /guardrails /help /model /models /quit /recap /stats])
+        .to eq(%w[/archive /continue /detach /exit /guardrails /help /model /models /quit /recap /stats])
     end
 
     it "is frozen, and each command #run runs has a handler" do

@@ -14,9 +14,11 @@ and commands may change between minor versions. How releases are made:
   It is deleted however it ends, saves no memories and starts no other
   sessions; one left by a killed process goes at the next sweep or
   `chi sessions clean`.
-- Archiving a session: `chi sessions archive ID` hides it (and its delegates)
-  from every list and keeps it for good; `chi sessions list --archived` finds
-  it, and a message you send to it brings it back.
+- Archiving a session: `chi sessions archive ID`, `/archive` in a terminal or
+  `archive` in the web's info bar hides it (and its delegates) from every list
+  and keeps it for good; `chi sessions list --archived` and "include archived"
+  in the web's all sessions find it, and a message you send to it brings it
+  back.
 
 ## [0.2.0] - 2026-09-27
 

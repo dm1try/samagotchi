@@ -66,4 +66,47 @@ RSpec.describe "TerminalUI and archived sessions" do
 
     expect(archived?).to be(false)
   end
+
+  describe "/archive" do
+    def repl(**opts)
+      Samagotchi::TerminalUI.new(client: client, surface: surface, **opts).tap do |ui|
+        allow(ui).to receive(:drain_pending_question?)
+        allow(ui).to receive(:recap_after_exit)
+      end
+    end
+
+    before { Samagotchi::ArchiveStore.unarchive(session.id, state_dir: state_dir) }
+
+    it "leaves the REPL and archives the session" do
+      ui = repl(session_id: session.id)
+      allow(ui).to receive(:poll_input_with_reminder_check).and_return("/archive")
+
+      ui.run
+
+      expect(archived?).to be(true)
+      expect(surface.lines.last).to eq("Archived session #{session.id}. chi sessions list --archived finds it.")
+      expect(Samagotchi::SessionManager.session_owner(session.id)).to be_nil
+    end
+
+    it "discards an empty session instead" do
+      ui = repl
+      allow(ui).to receive(:poll_input_with_reminder_check).and_return("/archive")
+
+      ui.run
+
+      expect(surface.lines.last).to eq("The session was empty, so it is discarded.")
+      expect(Samagotchi::Session.list(include_archived: true).map(&:id)).to eq([session.id])
+    end
+
+    it "is refused in a chi scratch REPL, which goes on and deletes its session at the end" do
+      ui = repl(scratch: true)
+      allow(ui).to receive(:poll_input_with_reminder_check).and_return("/archive", nil)
+
+      ui.run
+
+      expect(surface.lines).to include("a scratch session is deleted when you leave; nothing to archive")
+      expect(surface.lines.last).to eq("Scratch session deleted.")
+      expect(Samagotchi::Session.list(include_archived: true).map(&:id)).to eq([session.id])
+    end
+  end
 end

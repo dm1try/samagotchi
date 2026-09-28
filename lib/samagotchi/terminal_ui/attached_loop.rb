@@ -41,6 +41,8 @@ module Samagotchi
       DELETE_FLAG = "--delete"
       # How long /exit --delete waits for the worker to let go.
       DELETE_WAIT = 10
+      # Leave, and archive the session (hidden from the lists, kept for good).
+      ARCHIVE_COMMAND = "/archive"
       # A second Ctrl-C at an empty idle prompt within this many seconds detaches.
       DETACH_WINDOW = 2.0
       DETACH_HINT = "Ctrl-D to detach, /exit stops the worker"
@@ -82,11 +84,15 @@ module Samagotchi
       #   the first read (a new session with no -p, as the REPL)
       # @param clock [#call] monotonic seconds (the Ctrl-C detach window)
       # @param delete_session [#call] session id -> deletes it (/exit --delete)
+      # @param archive_session [#call] session id -> archives it (/archive);
+      #   SessionManager.archive_session's result
       def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false,
                      default_input: false, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
-                     delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) })
+                     delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) },
+                     archive_session: ->(id) { SessionManager.archive_session(id, wait: DELETE_WAIT) })
         @client = client
         @delete_session = delete_session
+        @archive_session = archive_session
         @screen = screen
         @client_id = client_id
         @view = AttachedView.new(screen)
@@ -266,6 +272,7 @@ module Samagotchi
         return submit(nil) if DETACH_COMMANDS.include?(text.downcase)
         return exit_worker if exit_command?(text)
         return exit_and_delete if exit_command?(text.delete_suffix(DELETE_FLAG).rstrip) && text.end_with?(" #{DELETE_FLAG}")
+        return exit_and_archive if text.casecmp?(ARCHIVE_COMMAND)
         command = text.split(/\s+/, 2).first
         if @continue_offer
           return answer_continue(text) unless command_registry.command?(text) || [STATS_COMMAND, RECAP_COMMAND].include?(command)
@@ -327,6 +334,27 @@ module Samagotchi
         detach("#{exit_failed_line(e.message)} Not deleted.")
       rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, ArgumentError => e
         detach("Detached; the worker is stopping, but session #{id} was not deleted (#{e.message}): chi sessions delete #{id}")
+      end
+
+      # /archive: the worker is asked to exit as for /exit, then the session
+      # is archived. A worker staying up for another UI (or reminders, a
+      # queued prompt) is stopped by the archive, as the web's archive
+      # stops it; a turn running refuses it. An empty session: the worker
+      # deletes it as it leaves.
+      def exit_and_archive
+        reply = @client.request_exit(client_id: @client_id)
+        id = @client.session_id
+        return detach("Detached; the session was empty, so it is discarded.") if reply.status == 200 && discards?(reply)
+        return detach("#{exit_line(reply)} Not archived.") unless [200, 409].include?(reply.status)
+
+        result = @archive_session.call(id)
+        return detach("Detached; the session was empty, so it is discarded.") if result[:discarded].include?(id)
+
+        detach("Detached; archived session #{id}. chi sessions list --archived finds it.")
+      rescue SystemCallError, IOError => e
+        detach("#{exit_failed_line(e.message)} Not archived.")
+      rescue SessionManager::ArchiveRefused, SessionManager::OwnedByTUI, ArgumentError => e
+        detach("Detached; session #{id} was not archived (#{e.message}). Re-attach with: chi --attach #{id}")
       end
 
       def exit_line(reply)

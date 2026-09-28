@@ -52,6 +52,9 @@ module Samagotchi
     STATS_COMMAND = "/stats"
     # /exit --delete: delete the session on the way out.
     EXIT_DELETE_FLAG = "--delete"
+    # Leave, then archive the session (hidden from the lists, kept for good).
+    ARCHIVE_COMMAND = "/archive"
+    SCRATCH_ARCHIVE_REFUSED = "a scratch session is deleted when you leave; nothing to archive"
     RECAP_COMMAND = "/recap"
     # The prompt while a question waits for its answer (its choices are in
     # the notes slot).
@@ -281,6 +284,8 @@ module Samagotchi
         delete_after_exit(session)
       elsif @discard_on_exit
         discard_after_exit(session)
+      elsif @archive_on_exit
+        archive_after_exit(session)
       else
         keep_after_exit(session)
       end
@@ -354,6 +359,17 @@ module Samagotchi
       @surface.commit("Deleted session #{session.id}.")
     rescue SessionManager::DeleteRefused, SessionManager::OwnedByTUI, ArgumentError, SystemCallError => e
       @surface.commit("Session #{session.id} was not deleted (#{e.message}): chi sessions delete #{session.id}")
+    end
+
+    # /archive: give up the session, then archive it (hidden from the lists,
+    # kept for good). An empty one is discarded instead (#discard_on_exit?).
+    def archive_after_exit(session)
+      @owner_lock&.release
+      @owner_lock = nil
+      SessionManager.archive_session(session.id)
+      @surface.commit("Archived session #{session.id}. chi sessions list --archived finds it.")
+    rescue SessionManager::ArchiveRefused, SessionManager::OwnedByTUI, ArgumentError, SystemCallError => e
+      @surface.commit("Session #{session.id} was not archived (#{e.message}): chi sessions archive #{session.id}")
     end
 
     # Take the session's OwnerLock for this process's lifetime: the TUI runs
@@ -527,6 +543,12 @@ module Samagotchi
         break if input.nil?
         if exit_command?(input)
           @delete_on_exit ||= delete_on_exit?(input)
+          break
+        end
+        if archive_command?(input)
+          next @surface.commit(SCRATCH_ARCHIVE_REFUSED) if @scratch
+
+          @archive_on_exit = true
           break
         end
         # Not an answer to a continue offer either.
@@ -1029,6 +1051,8 @@ module Samagotchi
     def delete_on_exit?(input) = input.to_s.strip.downcase.split.last == EXIT_DELETE_FLAG
 
     def detach_command?(input) = input.to_s.strip.casecmp?("/detach")
+
+    def archive_command?(input) = input.to_s.strip.casecmp?(ARCHIVE_COMMAND)
 
     def clone_messages(messages)
       Array(messages).map(&:dup)

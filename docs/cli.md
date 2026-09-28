@@ -167,7 +167,9 @@ list --archived` shows them too, marked `[archived]` (`archived: true` in
 a message you send to one (the web, an attached terminal, `chi send`), but not
 a delegate's follow-up or a reminder. The web archives from the info bar
 (`archive`, before `stop`); "include archived" by the all-sessions search
-finds archived sessions. See
+finds archived sessions. `/archive` in a terminal leaves the session and
+archives it (an empty session is discarded instead; `chi scratch` refuses
+it). See
 [Sessions](sessions.md#archiving-a-session).
 
 `chi sessions delete [--force] ID...` deletes sessions for good: the

@@ -62,7 +62,7 @@ pbpaste | chi send -m "same bug?" <id>    # a message to a session, the clipboar
 
 `@shot.png` in a prompt (or a pasted/dropped image in the web UI) shows the model an image, when it can see them; see [Images](docs/cli.md#images).
 
-`/model` switches models, Ctrl-C cancels a turn, and Ctrl-D or `/detach` detaches (the session keeps running; `chi --attach ID` comes back). `/exit` detaches and stops the session's worker too, unless something still needs it (a running turn, another UI); `chi --resume ID` picks the conversation up again. `/exit --delete` also deletes the session once the worker has gone; `chi sessions delete ID` deletes one from the shell. `chi sessions archive ID` hides a session from every list and keeps it for good; `chi sessions list --archived` finds it again.
+`/model` switches models, Ctrl-C cancels a turn, and Ctrl-D or `/detach` detaches (the session keeps running; `chi --attach ID` comes back). `/exit` detaches and stops the session's worker too, unless something still needs it (a running turn, another UI); `chi --resume ID` picks the conversation up again. `/exit --delete` also deletes the session once the worker has gone; `chi sessions delete ID` deletes one from the shell. `/archive` (or `chi sessions archive ID`) hides a session from every list and keeps it for good; `chi sessions list --archived` finds it again.
 
 ### Context notes
 
