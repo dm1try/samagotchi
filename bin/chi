@@ -123,7 +123,8 @@ if ARGV[0] == "sessions"
         # its git project's root, or nil
         # parent_id: the session that delegated it (the delegate tool), or nil
         # archived: hidden from the lists (only with --archived can it be true)
-        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id archived]
+        # ctx_pct: how full the context was after the last turn, or nil
+        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id archived ctx_pct]
         puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
       when "tsv"
         summaries.each { |summary| puts "#{summary[:id]}\t#{summary[:desc]}" }
@@ -140,7 +141,8 @@ if ARGV[0] == "sessions"
           # A delegated session points at its parent.
           child = summary[:parent_short_id] ? "  ↳ #{summary[:parent_short_id]}" : ""
           flag = summary[:archived] ? " [archived]" : ""
-          puts "#{summary[:id]}  #{state.ljust(8)}  #{summary[:updated_at]}  #{desc}#{flag}#{child}"
+          ctx = Samagotchi::SessionMetrics.context_label(summary[:ctx_pct])
+          puts "#{summary[:id]}  #{state.ljust(8)}  #{ctx.ljust(8)}  #{summary[:updated_at]}  #{desc}#{flag}#{child}"
         end
         if project
           puts "#{summaries.empty? ? "" : "\n"}#{scope_note.call(summaries.size)}"
@@ -165,7 +167,11 @@ if ARGV[0] == "sessions"
       flag = s.scratch ? " [scratch]" : (s.test_run ? " [test]" : "")
       flag += " [archived]" if s.archived
       child = s.parent_id ? "  ↳ #{s.parent_id[0, 8]}" : ""
-      "#{s.id}  #{s.status.ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}#{child}"
+      # How full the context was after the last turn: "ctx 12%", blank when unknown.
+      ctx = Samagotchi::SessionMetrics.context_label(
+        Samagotchi::SessionMetrics.saved_context_pct(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
+      )
+      "#{s.id}  #{s.status.ljust(8)}  #{ctx.ljust(8)}  #{s.updated_at}  #{list_text.call(s)}#{flag}#{child}"
     end
     if project
       sessions.each { |s| puts row.call(s) }

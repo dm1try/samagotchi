@@ -3,6 +3,7 @@
 require_relative "../session"
 require_relative "../recap_store"
 require_relative "../archive_store"
+require_relative "../session_metrics"
 require_relative "../bridge_client"
 
 module Samagotchi
@@ -47,6 +48,8 @@ module Samagotchi
           owner: owner&.fetch("kind", nil),
           # The saved recap's first sentence, for the session card.
           recap: RecapStore.preview(session_dir),
+          # How full the context was after the last turn (%), or nil.
+          ctx_pct: SessionMetrics.saved_context_pct(session_dir)&.round(1),
           # Hidden from the strip and the list unless "include archived".
           archived: ArchiveStore.archived?(session_dir),
           project_root: session.project_root(cache: root_cache),

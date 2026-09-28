@@ -80,6 +80,17 @@ test("a reload after the turn shows the same turn and answer", async ({ page, sc
   expect(await answer(page).innerHTML()).toBe(before.answer);
 });
 
+// Nothing streams after the turn: the meter and the card read the saved context.
+test("a reload after the turn shows the context meter and the card's ctx", async ({ page, script }) => {
+  script("plain");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  await page.reload();
+  await turnEnded(page, 1);
+  await expect(page.locator("#infoBar .meta")).toContainText(/ctx \d+%/);
+  await expect(page.locator("#topStrip .card .ctx").first()).toHaveText(/^\d+%$/);
+});
+
 test("cancel mid-turn shows the canceled turn, and the next send works", async ({ page, script }) => {
   script("hold");
   await send(page, "Take your time");

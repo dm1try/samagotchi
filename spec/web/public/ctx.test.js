@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractCtxPct } from "../../../lib/samagotchi/web/public/ctx.js";
+import { extractCtxPct, savedCtxPct, cardCtxText } from "../../../lib/samagotchi/web/public/ctx.js";
 
 // Final /completion chunk from our llama.cpp (trimmed): counts, no n_ctx.
 const llamaFinal = { stop: true, tokens_evaluated: 120, tokens_predicted: 30, timings: { prompt_n: 3, predicted_n: 30 } };
@@ -40,4 +40,18 @@ test("reads usage.estimated_pct from a context_status event", () => {
   };
   assert.equal(extractCtxPct(event), 12.0);
   assert.equal(extractCtxPct(event, 1000), 12.0);
+});
+
+test("savedCtxPct: the saved context's fill, null without both counts", () => {
+  assert.equal(savedCtxPct({ used_tokens: 250, window_tokens: 1000, window_source: "server" }), 25);
+  assert.equal(savedCtxPct({ used_tokens: 250, window_tokens: null }), null);
+  assert.equal(savedCtxPct({ used_tokens: null, window_tokens: 1000 }), null);
+  assert.equal(savedCtxPct(null), null);
+});
+
+test("cardCtxText: a rounded percentage, empty when unknown", () => {
+  assert.equal(cardCtxText(12.4), "12%");
+  assert.equal(cardCtxText(0.2), "0%");
+  assert.equal(cardCtxText(null), "");
+  assert.equal(cardCtxText(undefined), "");
 });

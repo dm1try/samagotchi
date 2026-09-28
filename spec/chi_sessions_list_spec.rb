@@ -50,7 +50,7 @@ RSpec.describe "chi sessions list" do
     out, err, status = run_chi
 
     expect(status.exitstatus).to eq(0), err
-    expect(out).to include("#{session.id}  idle      #{Samagotchi::Session.load(session.id, state_dir: state_dir).updated_at}  hello there\n")
+    expect(out).to include("#{session.id}  idle      #{" " * 8}  #{Samagotchi::Session.load(session.id, state_dir: state_dir).updated_at}  hello there\n")
     expect(out).to include("  a test [test]\n")
     expect(out).to end_with("\n2 session(s) (sort=updated_at order=desc)\n")
   end
@@ -64,17 +64,47 @@ RSpec.describe "chi sessions list" do
     expect(out).to include("  throwaway [scratch]\n")
   end
 
+  def save_context(session, used_tokens, window_tokens)
+    dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, "analytics.json"),
+               JSON.generate("turn_records" => [{ "id" => "t1" }],
+                             "context" => { "used_tokens" => used_tokens, "window_tokens" => window_tokens }))
+  end
+
+  it "shows how full the context was after the last turn, in the plain and the --live listings; json has ctx_pct" do
+    counted = make("counted", live: true)
+    save_context(counted, 1234, 10_000)
+    scratch = make("throwaway", scratch: true)
+    save_context(scratch, 500, 1000)
+    unknown = make("no window yet")
+    save_context(unknown, 500, nil)
+
+    out, err, status = run_chi
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to include("#{counted.id}  idle      ctx 12%   ")
+    expect(out).to match(/#{scratch.id}  idle      ctx 50%   .*  throwaway \[scratch\]\n/)
+    expect(out).to include("#{unknown.id}  idle      #{" " * 8}  ")
+
+    live_out, = run_chi("--live")
+    expect(live_out).to include("#{counted.id}  live      ctx 12%   ")
+
+    json, = run_chi("--format", "json", "--scope=all")
+    by_id = JSON.parse(json).to_h { |row| [row["id"], row["ctx_pct"]] }
+    expect(by_id).to include(counted.id => 12.3, unknown.id => nil)
+  end
+
   it "marks a delegated session with its parent, in the plain and the --live listings; json has parent_id" do
     parent = make("the plan")
     child = make("count the specs", live: true, parent_id: parent.id)
 
     out, err, status = run_chi
     expect(status.exitstatus).to eq(0), err
-    expect(out).to include("#{child.id}  idle      #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  count the specs  ↳ #{parent.id[0, 8]}\n")
+    expect(out).to include("#{child.id}  idle      #{" " * 8}  #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  count the specs  ↳ #{parent.id[0, 8]}\n")
     expect(out).to match(/#{parent.id}  idle .* the plan\n/)
 
     out, _err, _status = run_chi("--live")
-    expect(out).to include("#{child.id}  live      #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  app · count the specs  ↳ #{parent.id[0, 8]}\n")
+    expect(out).to include("#{child.id}  live      #{" " * 8}  #{Samagotchi::Session.load(child.id, state_dir: state_dir).updated_at}  app · count the specs  ↳ #{parent.id[0, 8]}\n")
 
     out, _err, _status = run_chi("--format=json")
     by_id = JSON.parse(out).to_h { |row| [row["id"], row["parent_id"]] }
@@ -145,7 +175,7 @@ RSpec.describe "chi sessions list" do
     expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
                                      "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
                                      "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil,
-                                     "archived" => false }])
+                                     "archived" => false, "ctx_pct" => nil }])
   end
 
   it "--format json: each session's recap, its first sentence; the tsv lines don't change" do

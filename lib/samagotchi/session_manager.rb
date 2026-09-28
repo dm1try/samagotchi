@@ -8,6 +8,7 @@ require "securerandom"
 require "rbconfig"
 
 require_relative "session"
+require_relative "session_metrics"
 require_relative "turn_note"
 require_relative "owner_lock"
 require_relative "bridge_client"
@@ -260,6 +261,7 @@ module Samagotchi
         { id: s.id, short_id: s.id[0, 8], desc: summary_desc(s), preview: summary_preview(s), cwd: s.working_directory,
           project: s.project_root(cache: roots), updated_at: s.updated_at, status: s.status, live: owned, busy: owned && s.status == Session::STATUS_RUNNING,
           owner: owner, recap: RecapStore.preview(Session.session_dir(s.id, state_dir: sd)),
+          ctx_pct: SessionMetrics.saved_context_pct(Session.session_dir(s.id, state_dir: sd))&.round(1),
           parent_id: s.parent_id, parent_short_id: s.parent_id&.[](0, 8), archived: s.archived }
       end
       (limit ? summaries.first(limit) : summaries.to_a)

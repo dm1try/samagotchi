@@ -131,6 +131,16 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(recap: "We fixed the login.")
     end
 
+    it "gives how full the context was after the last turn, nil when unknown" do
+      s = session
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(ctx_pct: nil)
+
+      FileUtils.mkdir_p(session_dir(s))
+      File.write(File.join(session_dir(s), "analytics.json"),
+                 JSON.generate(context: { used_tokens: 1234, window_tokens: 10_000, window_source: "server" }))
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(ctx_pct: 12.3)
+    end
+
     it "falls back to the working directory's project for a session saved before project_root" do
       s = session(working_directory: File.expand_path("..", __dir__))
       s.project_root = nil

@@ -458,6 +458,27 @@ RSpec.describe Samagotchi::SessionMetrics do
 end
 
 RSpec.describe Samagotchi::TokenUsage do
+  describe "SessionMetrics.saved_context_pct" do
+    let(:dir) { Dir.mktmpdir }
+
+    def save(data) = File.write(File.join(dir, "analytics.json"), JSON.generate(data))
+
+    it "reads the saved context's fill" do
+      save("context" => { "used_tokens" => 250, "window_tokens" => 1000 })
+      expect(Samagotchi::SessionMetrics.saved_context_pct(dir)).to eq(25.0)
+    end
+
+    it "is nil without a file, a context, either count, or with a broken file" do
+      expect(Samagotchi::SessionMetrics.saved_context_pct(dir)).to be_nil
+      save("turns" => 3)
+      expect(Samagotchi::SessionMetrics.saved_context_pct(dir)).to be_nil
+      save("context" => { "used_tokens" => 250, "window_tokens" => nil })
+      expect(Samagotchi::SessionMetrics.saved_context_pct(dir)).to be_nil
+      File.write(File.join(dir, "analytics.json"), "{")
+      expect(Samagotchi::SessionMetrics.saved_context_pct(dir)).to be_nil
+    end
+  end
+
   describe ".from_payload" do
     it "extracts llama.cpp timings" do
       result = described_class.from_payload("timings" => { "prompt_n" => 50, "predicted_n" => 12 })

@@ -1069,7 +1069,11 @@ module Samagotchi
           turn_records: Array(source["turn_records"]),
           tool_records: Array(source["tool_records"]),
           active_turn: source["active_turn"],
-          active_tools: Array(source["active_tools"])
+          active_tools: Array(source["active_tools"]),
+          # The context last seen and the token sums, for the ctx meter
+          # before the next turn streams (live over saved).
+          context: source["context"],
+          tokens: source["tokens"]
         }
       end
 

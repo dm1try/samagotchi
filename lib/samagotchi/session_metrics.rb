@@ -64,6 +64,31 @@ module Samagotchi
       keyword_init: true
     )
 
+    # How full the context was after the session's last counted turn, from
+    # its saved analytics.json: a percentage, or nil when the file, the count
+    # or the window is missing (the session lists read it per row).
+    # @param session_dir [String]
+    # @return [Float, nil]
+    def self.saved_context_pct(session_dir)
+      context = JSON.parse(File.read(File.join(session_dir, "analytics.json")))["context"]
+      return nil unless context.is_a?(Hash)
+
+      used = context["used_tokens"]
+      window = context["window_tokens"]
+      return nil unless used.is_a?(Numeric) && window.is_a?(Numeric) && window.positive?
+
+      used * 100.0 / window
+    rescue JSON::ParserError, SystemCallError, TypeError
+      nil
+    end
+
+    # "ctx 12%" for the session lists, "" when unknown.
+    # @param pct [Float, nil]
+    # @return [String]
+    def self.context_label(pct)
+      pct ? "ctx #{pct.round}%" : ""
+    end
+
     def initialize(clock: nil, wall_clock: nil)
       @mutex = Monitor.new
       @clock = clock || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
