@@ -126,6 +126,9 @@ Chi talks to a model server over HTTP and supports three transports:
   continuous batching + tiered SSD KV cache) using the same `/v1/completions`
   and `/v1/models` endpoints as `mlx`.
 
+> **mlx and oMLX** are not verified with recent chi versions; llama.cpp and
+> OpenAI-compatible hosts (`api: openai`) are the tested paths.
+
 Select the transport with `server.transport` (`llama_cpp`, `mlx`, or `omlx`;
 env `SAMAGOTCHI_SERVER_TRANSPORT`). `server.host`/`server.port` are reused for all three —
 only the request/response shape differs. oMLX's default server port is `8000` (not
@@ -142,7 +145,7 @@ Without `api:` a host uses the raw-prompt loop, as before. The loop follows the
 model's host, so `/model other-host:model` can move a session between the two.
 Workers started by plain `chi`, `chi web` or `--attach` get the same hosts, `api:` included.
 
-Example for mlx-lm:
+Example for mlx-lm (not verified with recent chi versions, like oMLX below):
 
 ```yaml
 server:
@@ -233,7 +236,7 @@ chi uses, so raw `[[…]]`/`<|tool_call>` markers stream through untouched.
 
 `default.model` (config default) and `/model` (runtime effective) pick the model; the status line and `/model`
 output always render the runtime effective model (showing default when diverged). Which prompt format it gets is the
-prompt profile (see "Prompt profile" below). How the selector reaches the request differs by transport:
+prompt profile (see "Prompt profile" below). How the selector reaches the request differs by transport (mlx and oMLX: not verified with recent chi versions):
 
 - **mlx** (`mlx_lm.server`): the `model` field is omitted entirely — the server
   uses whatever was loaded via its own `--model` CLI flag.
@@ -507,7 +510,7 @@ Whether a model can see images is found out before a turn with images is sent:
 - a native llama.cpp host: `/props` must report `modalities.vision` (the server
   runs with `--mmproj`) and a media marker, and the prompt profile must know the
   chat template's image wrapping (qwen36 does; gemma4 not yet);
-- mlx and oMLX hosts: no;
+- mlx and oMLX hosts: no (not verified with recent chi versions);
 - an OpenAI-API host: a local llama.cpp's `/props`, else the host's model list
   (OpenRouter's `architecture.input_modalities`); when it doesn't say, the image
   is sent and a refusal is reported.
