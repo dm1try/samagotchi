@@ -80,10 +80,16 @@ module Samagotchi
     # +messages+ plus +note+, in place of a note already at the tail (behind
     # context notes at most): failed retries leave one note, not a pile.
     def replace_trailing(messages, note)
+      without_trailing(messages) << note
+    end
+
+    # A copy of +messages+ without the note at its tail (behind context
+    # notes at most).
+    def without_trailing(messages)
       list = Array(messages).dup
       index = trailing_index(list)
       list.delete_at(index) if index
-      list << note
+      list
     end
 
     # The index of the note at the tail of +list+ (behind context notes at

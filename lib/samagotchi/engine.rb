@@ -1976,8 +1976,10 @@ module Samagotchi
             # The placeholder is for the UIs (a new array: it must not leak
             # into the result); the note is for the model, so it goes on the
             # result's conversation too, which the REPL keeps as-is.
+            # A retry's nudge at the tail goes: this note says it all.
             note = TurnNote.empty
-            saved = (conversation || session.messages).dup
+            conversation&.replace(TurnNote.without_trailing(conversation))
+            saved = TurnNote.without_trailing(conversation || session.messages)
             saved << { role: "model", content: "[No response]" } if response.strip.empty?
             replace_session_messages(session, saved + [note])
             conversation << note if conversation

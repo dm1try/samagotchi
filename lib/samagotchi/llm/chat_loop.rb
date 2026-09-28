@@ -15,6 +15,8 @@ require_relative "../tool_runner"
 require_relative "../tool_declarations"
 require_relative "../vision_context"
 require_relative "../log"
+require_relative "../empty_answer_retry"
+require_relative "../turn_note"
 
 module Samagotchi
   module LLM
@@ -275,6 +277,8 @@ module Samagotchi
           # usage: the text, and each image's estimate (not its base64).
           @prompt_text = conversation.sum("") { |entry| entry[:content].to_s }
           @image_tokens = ImagePlan.estimated_tokens(conversation)
+          @empty_retries = 0
+          @empty_retry_limit = EmptyAnswerRetry.limit
         end
 
         EMPTY_ANSWER = "(the model returned an empty answer)"
@@ -295,7 +299,12 @@ module Samagotchi
               # Kept before a merge too: the model answers the merged line
               # knowing what it just said.
               @conversation << with_thinking({ role: "model", content: last_text }, response) unless last_text.empty?
-              next if inject_pending_input(iteration, answer: last_text)
+              retry_empty = last_text.empty? && retry_empty_answer?(iteration, response)
+              # An empty answer that will be retried is no answer site: a
+              # plugin's steer joins the retry instead of being dropped, and
+              # queued input (a user's line, a steer) goes in place of the nudge.
+              next if inject_pending_input(iteration, answer: retry_empty ? nil : last_text)
+              next if retry_empty && nudge_empty_answer(iteration, response)
 
               # Shown, not saved: an empty answer (content "" + stop, seen from
               # a remote host) would otherwise end the turn with nothing.
@@ -317,6 +326,31 @@ module Samagotchi
 
         private
 
+        # A retry is left, and the answer wasn't cut short by a full context
+        # (a length stop while thinking is retried: a thinking loop cut by
+        # the provider's output cap, not a full window).
+        def retry_empty_answer?(iteration, response)
+          return false if @empty_retries >= @empty_retry_limit || @cancel_controller&.cancelled?
+
+          if response.finish_reason.to_s == "length" &&
+             EmptyAnswerRetry.context_full?(response.usage&.total_tokens, @window&.tokens)
+            Log.info(:turn, "empty_answer_not_retried", iteration: iteration, why: "context full")
+            return false
+          end
+          true
+        end
+
+        # The hidden nudge before the next generation (EmptyAnswerRetry),
+        # which runs at the retry temperature. Returns true.
+        def nudge_empty_answer(iteration, response)
+          @empty_retries += 1
+          @retry_generation = true
+          emit(type: :empty_answer_retry, iteration: iteration, attempt: @empty_retries, of: @empty_retry_limit,
+               finish_reason: response.finish_reason, thinking_chars: response.reasoning.to_s.length)
+          @conversation << TurnNote.empty_retry
+          true
+        end
+
         # The host's reasoning, kept on the model message as +thinking+ for
         # the web turn view's reload (the whole of it, as the live view
         # shows). Only saved: #assistant_message builds the wire message from
@@ -329,14 +363,17 @@ module Samagotchi
         # One streamed request. Returns [response, nil], or [reason, partial
         # text] when it was cancelled.
         def generate(iteration)
-          window = @loop.context_window(@model_name)
+          window = @window = @loop.context_window(@model_name)
+          options = @loop.sampling
+          options = EmptyAnswerRetry.sampling(options) if @retry_generation
+          @retry_generation = false
           emit(type: :generation_started, iteration: iteration, context_window_tokens: window&.tokens,
                context_window_source: window&.source)
           @loop.fire_hook(:before_generation, { type: :before_generation, iteration: iteration })
           streamed = +""
           response = @loop.adapter.chat(
             messages: @loop.wire_messages(@conversation), tools: @loop.tool_definitions, model: @model_name,
-            cancel_controller: @cancel_controller, session_id: @loop.session_id, options: @loop.sampling,
+            cancel_controller: @cancel_controller, session_id: @loop.session_id, options: options,
             on_delta: lambda { |content:, reasoning:, payload:|
               streamed << content
               emit(type: :generation_chunk, iteration: iteration, content: reasoning + content, text: content,
@@ -347,7 +384,7 @@ module Samagotchi
           record_context_status(response.usage, window)
           emit(type: :generation_completed, iteration: iteration, content_length: response.text.length,
                thinking_chars: response.reasoning.to_s.length, served_model: response.model,
-               requested_model: @model_name)
+               requested_model: @model_name, finish_reason: response.finish_reason)
           dump_response(response, iteration)
           @loop.fire_hook(:after_generation, { type: :after_generation, iteration: iteration, response: response.text,
                                                messages: AnswerDisplay.strip_all(@conversation).map(&:dup).freeze })

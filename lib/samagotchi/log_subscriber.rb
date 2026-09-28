@@ -27,7 +27,8 @@ module Samagotchi
       question_requested: [],
       question_answered: %i[id],
       question_cancelled: %i[id reason],
-      generation_cancelled: %i[iteration]
+      generation_cancelled: %i[iteration],
+      empty_answer_retry: %i[iteration attempt of finish_reason thinking_chars]
     }.freeze
 
     # @param session_id [#call] the session the events are about (the
@@ -100,7 +101,7 @@ module Samagotchi
                                         ms: since(@generation_started_at.delete(event[:iteration])),
                                         served_model: event[:served_model], requested_model: event[:requested_model],
                                         content_length: event[:content_length],
-                                        thinking_chars: event[:thinking_chars])
+                                        thinking_chars: event[:thinking_chars], finish_reason: event[:finish_reason])
     end
 
     def on_generation_retrying(event)

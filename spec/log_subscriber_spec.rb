@@ -61,6 +61,17 @@ RSpec.describe Samagotchi::LogSubscriber do
     expect(File.read(path)).not_to include("secret prompt", "the answer", "file body")
   end
 
+  it "writes an empty-answer retry and a generation's finish reason" do
+    feed({ type: :generation_started, iteration: 1 },
+         { type: :generation_completed, iteration: 1, content_length: 0, thinking_chars: 240_000, finish_reason: "length" },
+         { type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1, finish_reason: "length", thinking_chars: 240_000 })
+
+    expect(records.map { |r| [r.event, r.fields.slice("finish_reason", "attempt", "of", "thinking_chars")] }).to eq([
+      ["generation_completed", { "finish_reason" => "length", "thinking_chars" => "240000" }],
+      ["empty_answer_retry", { "finish_reason" => "length", "attempt" => "1", "of" => "1", "thinking_chars" => "240000" }]
+    ])
+  end
+
   it "logs generation_started at debug only" do
     Samagotchi::Log.configure(path: path, level: :debug)
     feed({ type: :generation_started, iteration: 2, profile: "gemma4", context_window_tokens: 8192 })

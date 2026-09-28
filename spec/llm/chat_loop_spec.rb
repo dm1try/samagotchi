@@ -172,7 +172,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(result.conversation).to eq([{ role: "user", content: "hi" }, { role: "model", content: "hello back" }])
     end
 
-    it "says so when the model returns an empty answer, and keeps it out of the conversation" do
+    it "says so when the model returns an empty answer after its retry, and keeps both out of the conversation" do
       backend.adapter = FakeChatAdapter.new(text(""))
 
       result = run([{ role: "user", content: "hi" }])
@@ -180,7 +180,9 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(result.text).to eq("(the model returned an empty answer)")
       expect(result).to be_empty_answer
       expect(result).not_to be_exhausted
-      expect(result.conversation).to eq([{ role: "user", content: "hi" }])
+      # The nudge stays at the tail: the Engine's TurnNote.empty replaces it.
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }, Samagotchi::TurnNote.empty_retry])
+      expect(backend.adapter.requests.length).to eq(2)
     end
 
     it "calls an answer that was only thinking empty too" do
@@ -427,6 +429,119 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       parts = [{ type: "text", text: "look" }]
 
       expect(run([{ role: "user", content: parts }]).conversation.first[:content]).to eq(parts)
+    end
+  end
+
+  describe "empty answer retry" do
+    let(:nudge) { Samagotchi::TurnNote.empty_retry }
+
+    def with_limit(value)
+      original = ENV.fetch("SAMAGOTCHI_RETRY_EMPTY_ANSWER", nil)
+      ENV["SAMAGOTCHI_RETRY_EMPTY_ANSWER"] = value.to_s
+      yield
+    ensure
+      original.nil? ? ENV.delete("SAMAGOTCHI_RETRY_EMPTY_ANSWER") : ENV["SAMAGOTCHI_RETRY_EMPTY_ANSWER"] = original
+    end
+
+    it "asks again in the same turn with a hidden nudge, at 0.6, and answers" do
+      backend.adapter = adapter = FakeChatAdapter.new(text("", reasoning: "Let me write the reply. " * 20), text("PONG"))
+
+      result = run([{ role: "user", content: "hi" }])
+
+      expect(result.text).to eq("PONG")
+      expect(result).not_to be_empty_answer
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }, nudge, { role: "model", content: "PONG" }])
+      expect(adapter.requests.map { |r| r[:options] }).to eq([{}, { temperature: 0.6 }])
+      expect(adapter.requests.last[:messages].last).to eq(role: "system", content: nudge[:content])
+      retry_event = events.find { |e| e[:type] == :empty_answer_retry }
+      expect(retry_event).to include(iteration: 1, attempt: 1, of: 1, finish_reason: "stop", thinking_chars: 480)
+      expect(events.map { |e| e[:type] }.each_cons(2)).to include(%i[empty_answer_retry generation_started])
+    end
+
+    it "keeps a configured temperature for the retry, and goes back to the turn's sampling after it" do
+      allow(fake_kernel).to receive(:sampling).and_return({ temperature: 0.2, top_p: 0.9 })
+      backend.adapter = adapter = FakeChatAdapter.new(text(""), tools(["c1", "read", { "path" => "a" }]), text("done"))
+
+      run
+
+      expect(adapter.requests.map { |r| r[:options] }).to eq([{ temperature: 0.2, top_p: 0.9 }] * 3)
+    end
+
+    it "counts per turn: an empty answer after the retry is used up ends as today" do
+      backend.adapter = adapter = FakeChatAdapter.new(text(""), tools(["c1", "read", { "path" => "a" }]), text(""))
+
+      result = run
+
+      expect(result).to be_empty_answer
+      expect(adapter.requests.length).to eq(3)
+      expect(events.count { |e| e[:type] == :empty_answer_retry }).to eq(1)
+    end
+
+    it "does nothing with retry.empty_answer 0" do
+      with_limit(0) do
+        backend.adapter = adapter = FakeChatAdapter.new(text(""), text("late"))
+        result = run([{ role: "user", content: "hi" }])
+
+        expect(result).to be_empty_answer
+        expect(result.conversation).to eq([{ role: "user", content: "hi" }])
+        expect(adapter.requests.length).to eq(1)
+      end
+    end
+
+    it "retries up to the configured count" do
+      with_limit(2) do
+        backend.adapter = FakeChatAdapter.new(text(""), text(""), text("third"))
+
+        expect(run.text).to eq("third")
+        expect(events.select { |e| e[:type] == :empty_answer_retry }.map { |e| e[:attempt] }).to eq([1, 2])
+      end
+    end
+
+    it "retries a length stop (a thinking loop cut by the output cap), not one with the context full" do
+      cut = Samagotchi::LLM::ChatResponse.new(text: "", reasoning: "loop", tool_calls: [], finish_reason: "length",
+                                              usage: Samagotchi::LLM::Usage.new(prompt_tokens: 1000, completion_tokens: 64_000, source: :server))
+      allow(backend).to receive(:context_window).and_return(Samagotchi::ContextWindow::Resolved.new(tokens: 200_000, source: :server))
+      backend.adapter = FakeChatAdapter.new(cut, text("PONG"))
+      expect(run.text).to eq("PONG")
+
+      events.clear
+      allow(backend).to receive(:context_window).and_return(Samagotchi::ContextWindow::Resolved.new(tokens: 70_000, source: :server))
+      backend.adapter = FakeChatAdapter.new(cut, text("PONG"))
+      expect(run).to be_empty_answer
+      expect(events.map { |e| e[:type] }).not_to include(:empty_answer_retry)
+    end
+
+    it "lets queued input go first, in place of the nudge, and carries a plugin steer into it" do
+      backend.adapter = adapter = FakeChatAdapter.new(text(""), text("answered"))
+      calls = []
+      items = [[], [{ text: "check in", source: "check-in" }]]
+
+      result = run(pending_input: lambda { |at_answer: false|
+        calls << at_answer
+        items.shift || []
+      })
+
+      expect(calls).to eq([false, false, false, true])
+      expect(result.text).to eq("answered")
+      expect(result.conversation.map { |m| m.slice(:role, :kind, :content) })
+        .to eq([{ role: "user", content: "go" }, { role: "user", kind: "steer", content: "check in" },
+                { role: "model", content: "answered" }])
+      expect(events.map { |e| e[:type] }).not_to include(:empty_answer_retry)
+      expect(adapter.requests.last[:options]).to eq({})
+    end
+
+    it "is not retried once the turn is cancelled" do
+      controller = Samagotchi::CancellationController.new
+      backend.adapter = adapter = FakeChatAdapter.new(text(""), text("late"))
+      allow(adapter).to receive(:chat).and_wrap_original do |original, **kwargs|
+        original.call(**kwargs).tap { controller.cancel!(:user) }
+      end
+
+      result = run(cancel_controller: controller)
+
+      expect(adapter).to have_received(:chat).once
+      expect(events.map { |e| e[:type] }).not_to include(:empty_answer_retry)
+      expect(result).to be_empty_answer
     end
   end
 
