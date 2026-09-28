@@ -187,7 +187,7 @@ RSpec.describe Samagotchi::NoteCommand do
       FileUtils.rm_rf(xdg)
     end
 
-    it "is wired before the main option parser and reads stdin", :ci_todo do
+    it "is wired before the main option parser and reads stdin" do
       xdg = Dir.mktmpdir("chi-note")
       state_dir = Samagotchi::Session.default_state_dir(env: { "XDG_STATE_HOME" => xdg })
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/w")
@@ -200,7 +200,10 @@ RSpec.describe Samagotchi::NoteCommand do
       expect(stdout).to include("waits for the session's next start (1 note queued)")
 
       # No locale at all, as an app started from Finder or launchd has it.
-      bare = { "XDG_STATE_HOME" => xdg, "HOME" => Dir.home, "PATH" => "#{File.dirname(RbConfig.ruby)}:/usr/bin:/bin" }
+      # GEM_HOME/GEM_PATH as Bundler set them: CI installs the gems under
+      # vendor/bundle, where a bare ruby can't find nokogiri.
+      bare = ENV.to_h.slice("GEM_HOME", "GEM_PATH")
+                .merge("XDG_STATE_HOME" => xdg, "HOME" => Dir.home, "PATH" => "#{File.dirname(RbConfig.ruby)}:/usr/bin:/bin")
       _out, stderr, status = Open3.capture3(bare, RbConfig.ruby, chi, "note", session.id, stdin_data: "h\u00E9llo",
                                             unsetenv_others: true)
       expect(status.exitstatus).to eq(0), stderr
