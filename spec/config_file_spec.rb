@@ -163,6 +163,24 @@ RSpec.describe Samagotchi::ConfigFile do
       end
     end
 
+    it "takes section-less keys at the top level without a warning" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        FileUtils.mkdir_p(File.join(dir, "samagotchi"))
+        File.write(File.join(dir, "samagotchi", "config.yml"), <<~YAML)
+          max_tool_output_chars: 5000
+          skip_agent_md: true
+        YAML
+        ENV["XDG_CONFIG_HOME"] = dir
+
+        expect { described_class.load_global_env! }.not_to output.to_stderr
+        expect(Samagotchi::Config.get("max_tool_output_chars")).to eq(5000)
+        expect(Samagotchi::Config.get("skip_agent_md")).to be(true)
+      ensure
+        ENV.delete("SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS")
+        ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
+      end
+    end
+
     it "loads SAMAGOTCHI_DEFAULT_INPUT as a scalar string" do
       Dir.mktmpdir("samagotchi-config") do |dir|
         config_dir = File.join(dir, "samagotchi")

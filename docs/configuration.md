@@ -533,7 +533,8 @@ modalities check: without a media marker the prompt can't carry an image.
 If an AGENT.md file is present in the project root, samagotchi injects its
 contents into the system prompt under a "Project specific description:" section.
 
-To skip loading AGENT.md, set `skip_agent_md` (env `SAMAGOTCHI_SKIP_AGENT_MD=true`).
+To skip loading AGENT.md, set `skip_agent_md: true` at the top level of
+`config.yml` (env `SAMAGOTCHI_SKIP_AGENT_MD=true`).
 
 ## All settings
 
@@ -591,7 +592,7 @@ described in their own sections.
 | `thinking.ui` | `spinner` | yes | `spinner` or `off`. |
 | `thinking.render_interval` | `0.08` | yes | Seconds between thinking redraws. |
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
-| `max_tool_output_chars` | `10000` | yes | Tool output kept in the conversation; env or CLI (see below). |
+| `max_tool_output_chars` | `10000` | yes | Tool output kept in the conversation; a top-level key (see below). |
 | `retry.max` | `5` | yes | See "Llama Network Retry Behavior". |
 | `retry.base_delay` | `0.5` | yes | |
 | `retry.max_delay` | `8.0` | yes | |
@@ -608,8 +609,7 @@ described in their own sections.
 | `web.turn_view` | `true` | yes | One block per turn; `false` = the row of bubbles. |
 | `web.annotate_presets` | `Agreed\|Could you please elaborate?` | yes | Quick replies next to Annotate in `chi web`, `\|`-separated (a YAML list works too); `""` in the file or on the CLI leaves only Annotate (an empty env value means the default). See [CLI](cli.md#web-annotate-presets). |
 | `history.file` | state dir | | Prompt history path. |
-| `skip_agent_md` | `false` | | Don't load AGENT.md; env only (see below). |
+| `skip_agent_md` | `false` | | Don't load AGENT.md; a top-level key (see below). |
 
-`max_tool_output_chars` and `skip_agent_md` have no section; in `config.yml`
-the loader currently warns about a top-level key with `_`, so set them in
-the environment or on the command line.
+`max_tool_output_chars` and `skip_agent_md` have no section: in `config.yml`
+they are top-level keys as written (`max_tool_output_chars: 20000`).

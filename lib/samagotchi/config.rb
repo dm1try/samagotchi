@@ -402,6 +402,8 @@ module Samagotchi
         data.each_key do |k|
           next if %w[hosts hooks model_aliases models guardrails bundles].include?(k.to_s)
           next if legacy_keys.include?(k.to_s)
+          # Section-less registry keys (max_tool_output_chars) are valid as written.
+          next if find_by_key(k)
           # Sections are top-level keys that map to hashes (e.g., default, recap)
           # If key contains _ or -, suggest dotted form
           if k.to_s.include?("_")
