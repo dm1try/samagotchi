@@ -1062,7 +1062,7 @@ module Samagotchi
         params = part[:params].to_s.strip
         params_suffix = params.empty? ? "" : " #{paint(params, 90)}"
         status = part[:status].to_s
-        "#{paint('tool>', 36)} #{part[:tool]}#{params_suffix}: #{paint(status, status == "ok" ? 32 : 31)}" \
+        "#{paint('tool>', 36)} #{part[:tool]}#{params_suffix}: #{paint(status, status_color(status))}" \
           "#{format_tool_image_suffix(part[:images])}"
       end
     end

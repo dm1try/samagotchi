@@ -13,9 +13,13 @@ module Samagotchi
         params = activity[:params].to_s.strip
         params_suffix = params.empty? ? "" : " #{paint(params, 90)}"
         status = activity[:status].to_s
-        status_color = status == "ok" ? 32 : 31
         elapsed_suffix = duration_ms.nil? ? "" : " (#{format_elapsed_duration(duration_ms)})"
-        "#{paint('tool>', 36)} #{activity[:action]} (#{activity[:tool]}#{params_suffix}): #{paint(status, status_color)}#{elapsed_suffix}"
+        "#{paint('tool>', 36)} #{activity[:action]} (#{activity[:tool]}#{params_suffix}): #{paint(status, status_color(status))}#{elapsed_suffix}"
+      end
+
+      # Green ok, yellow stopped (a wait the user's Stop ended), red the rest.
+      def status_color(status)
+        { "ok" => 32, "stopped" => 33 }.fetch(status, 31)
       end
 
       # "[image shot.png 1280×800 · ~1.3k tokens]", dim: a turn's image.

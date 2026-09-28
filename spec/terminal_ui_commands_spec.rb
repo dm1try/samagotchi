@@ -273,6 +273,17 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(output).to include("(125ms)")
     end
 
+    it "shows a wait the user's Stop ended as stopped, in yellow" do
+      allow(agent).to receive(:paint) { |text, code| "<#{code}>#{text}" }
+      output = agent.send(
+        :format_tool_activity_line,
+        { action: "waiting for task", tool: "task_wait", params: "", status: "stopped" },
+        duration_ms: 17_000
+      )
+
+      expect(output).to end_with("<33>stopped (17s)")
+    end
+
     it "prints the completed interactive turn elapsed time" do
       session = double(id: "timed-turn")
       original_stdout = $stdout

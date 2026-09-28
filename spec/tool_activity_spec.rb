@@ -80,6 +80,13 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(described_class.tool_activity_status("Error: cwd not found: /x", "execute")).to eq("error")
     end
 
+    it "calls a task_wait the user's Stop ended stopped, not ok" do
+      canceled = "task_id: t1\nstatus: running\nwait_result: canceled\nnote: the user stopped the turn while waiting\noutput_tail:"
+      expect(described_class.tool_activity_status(canceled, "task_wait")).to eq("stopped")
+      expect(described_class.tool_activity_status(canceled.sub("canceled", "timeout"), "task_wait")).to eq("ok")
+      expect(described_class.tool_activity_status("wait_result: canceled", "read")).to eq("ok")
+    end
+
     it "carries it into the activity event" do
       expect(described_class.tool_activity_event("execute", { name: "execute", content: "false" }, "exit: 1 (no output)")[:status])
         .to eq("error")
