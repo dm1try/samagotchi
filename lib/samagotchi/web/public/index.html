@@ -278,8 +278,11 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 /* In a step: a row, lighter (no float), like the step's notices. */
 .gen .bubble.plugin-card{margin:6px 0 4px;box-shadow:inset 0 1px 0 var(--glass-highlight);padding:8px 10px}
 .hint{color:var(--text-muted);font-size:13px;padding:12px}
-#annotateBtn{position:fixed;z-index:20;font-size:12px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.5)}
-#annotateBtn[hidden]{display:none}
+/* The selection bubble (app.js Annotate): Annotate + the presets (web.annotate_presets), small pills with a gap (they wrap on a narrow page). */
+#annotateBar{position:fixed;z-index:20;display:flex;flex-wrap:wrap;gap:4px;max-width:calc(100vw - 16px)}
+#annotateBar[hidden]{display:none}
+#annotateBar button{font-size:12px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+#annotateBar .annotate-preset{background:var(--bg-raised);color:var(--text-2);border:1px solid var(--border-strong);padding:3px 10px;max-width:32ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Copy buttons (copy.js): top-right in an answer and a code block, left of a prompt (its right edge is the page's); shown on hover or focus, always (dim) on touch. They hold no text: "copied ✓" is CSS content. */
 .bubble.output,.bubble.user{position:relative}
 .copy-btn{position:absolute;top:6px;right:6px;z-index:1;display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:24px;padding:0 5px;border-radius:6px;background:var(--bg-raised);border:1px solid var(--border-strong);color:var(--text-muted);font-size:11px;line-height:1;white-space:nowrap;user-select:none;-webkit-user-select:none;opacity:0;transition:opacity .12s ease,color .12s ease}

@@ -134,6 +134,34 @@ test("an approval card: allowing it runs the tool", async ({ page, script }) => 
   await expect(row.locator(".activity-output")).toContainText("E2E_APPROVED");
 });
 
+// Annotate presets: a pill quotes the selection with its text as the note
+// into the composer and sends nothing. The selection is set with a Range
+// (a mouse drag is the same selectionchange, less exact).
+test("an annotate preset fills the composer with the quote and never sends", async ({ page, script }) => {
+  script("plain");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  const turnPosts = [];
+  page.on("request", (req) => { if (req.method() === "POST" && /\/turn$/.test(req.url())) turnPosts.push(req.url()); });
+  await page.evaluate(() => {
+    const text = [...document.querySelectorAll("#history .bubble.output")].pop().querySelector("p").firstChild;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, "PONG from the fake model.".length);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+  const bar = page.locator("#annotateBar");
+  await expect(bar.locator("button")).toHaveText(["Annotate", "Agreed", "Could you please elaborate?"]);
+  await bar.getByRole("button", { name: "Agreed" }).click();
+  await expect(page.locator("#prompt")).toHaveValue("> PONG from the fake model.\n\nAgreed");
+  await expect(bar).toBeHidden();
+  await expect(page.locator("#prompt")).toBeFocused();
+  await expect(page.locator("#history .bubble.user")).toHaveCount(1);
+  expect(turnPosts).toEqual([]);
+});
+
 test("the model picker lists the fake model", async ({ page }) => {
   const select = page.locator("#modelSelect");
   await expect(page.locator("#modelPick")).toBeVisible();
