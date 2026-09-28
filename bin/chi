@@ -123,8 +123,10 @@ if ARGV[0] == "sessions"
         # its git project's root, or nil
         # parent_id: the session that delegated it (the delegate tool), or nil
         # archived: hidden from the lists (only with --archived can it be true)
+        # scratch: a `chi scratch` session (deleted when its REPL ends, a
+        # leftover one at the next sweep)
         # ctx_pct: how full the context was after the last turn, or nil
-        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id archived ctx_pct]
+        keys = %i[id short_id desc cwd project updated_at live busy owner recap parent_id archived scratch ctx_pct]
         puts JSON.generate(summaries.map { |summary| summary.slice(*keys) })
       when "tsv"
         summaries.each { |summary| puts "#{summary[:id]}\t#{summary[:desc]}" }
@@ -140,7 +142,8 @@ if ARGV[0] == "sessions"
           end
           # A delegated session points at its parent.
           child = summary[:parent_short_id] ? "  ↳ #{summary[:parent_short_id]}" : ""
-          flag = summary[:archived] ? " [archived]" : ""
+          flag = summary[:scratch] ? " [scratch]" : ""
+          flag += " [archived]" if summary[:archived]
           ctx = Samagotchi::SessionMetrics.context_label(summary[:ctx_pct])
           puts "#{summary[:id]}  #{state.ljust(8)}  #{ctx.ljust(8)}  #{summary[:updated_at]}  #{desc}#{flag}#{child}"
         end

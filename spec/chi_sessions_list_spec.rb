@@ -64,6 +64,20 @@ RSpec.describe "chi sessions list" do
     expect(out).to include("  throwaway [scratch]\n")
   end
 
+  it "marks it in the --live, --cwd and --format text listings too; json has scratch" do
+    scratch = make("throwaway", scratch: true, owner: "worker")
+    plain = make("kept", live: true)
+
+    [%w[--cwd /work], %w[--format text], %w[--live]].each do |args|
+      out, err, status = run_chi(*args)
+      expect(status.exitstatus).to eq(0), err
+      expect(out).to match(/  (app · )?throwaway \[scratch\]\n/), "#{args.join(" ")}: #{out}"
+      expect(out).to match(/  (app · )?kept\n/)
+    end
+    rows = JSON.parse(run_chi("--format", "json").first).to_h { |row| [row["id"], row["scratch"]] }
+    expect(rows).to eq(scratch.id => true, plain.id => false)
+  end
+
   def save_context(session, used_tokens, window_tokens)
     dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
     FileUtils.mkdir_p(dir)
@@ -175,7 +189,7 @@ RSpec.describe "chi sessions list" do
     expect(JSON.parse(out)).to eq([{ "id" => live.id, "short_id" => live.id[0, 8], "desc" => "app · fix it",
                                      "cwd" => "/work/app", "project" => nil, "updated_at" => Samagotchi::Session.load(live.id, state_dir: state_dir).updated_at,
                                      "live" => true, "busy" => false, "owner" => "worker", "recap" => nil, "parent_id" => nil,
-                                     "archived" => false, "ctx_pct" => nil }])
+                                     "archived" => false, "scratch" => false, "ctx_pct" => nil }])
   end
 
   it "--format json: each session's recap, its first sentence; the tsv lines don't change" do
