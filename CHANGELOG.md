@@ -27,6 +27,13 @@ and commands may change between minor versions. How releases are made:
   it shows in the web at once (`--dir`, `--model`); `chi send --wait` (new or
   one existing session) blocks and prints the answer, exit 3 when the turn
   waits for your answer.
+- The `check-in` bundle (`chi bundle install check-in`): after 50 tool calls
+  in one turn with no answer (then every 50 more) a card asks you to nudge
+  the model, let it keep going or stop the turn; `mode: nudge` nudges it by
+  itself. `/checkin` shows and changes it for the session.
+- Plugins can steer the running turn: `ctx.steer(text)` and a hook's
+  `event[:steer]` put text into the turn as its own message at the loop's
+  next step, shown as `<bundle>> nudged: …`; `ctx.stop_turn(reason)` stops it.
 
 ## [0.2.0] - 2026-09-27
 

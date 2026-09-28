@@ -1,0 +1,10 @@
+---
+name: check-in
+version: 0.1.0
+scope: system
+description: "Checks on a long turn: after N tool calls with no answer, a card asks the user (Nudge / Keep going / Stop), or the model is nudged to say what it has found"
+trust_level: reviewed
+plugin:
+  file: plugin.rb
+  sha256: sha256:e8192207749de8e74f3b70b9ae6cee584f4765ff320d3b97a07ee7b2f72368bb
+# requires_chi: set at the release that has ctx.steer (docs/releasing.md)

@@ -752,6 +752,63 @@ Not caught (yet):
 - alternating calls (A, B, A, B) that each return something new;
 - thinking that goes in circles inside one long generation.
 
+## The check-in bundle
+
+`chi bundle install check-in` installs the bundle shipped with chi. It is
+written only against this API (`lib/samagotchi/bundles/check-in/plugin.rb`):
+`chi.on` hooks, `ctx.card`, `ctx.steer`, `ctx.stop_turn` and one anytime
+command. It has no memory file.
+
+A turn can run a long time on its own, reading and searching, without saying
+what it has found. check-in counts the turn's tool calls, and when there are
+`after` of them with no answer yet (then every `every` more) it checks in:
+
+- **`mode: ask`** (the default): a card, one per turn, updated in place at
+  each check-in: "50 tool calls, no answer yet", how long the turn has run
+  and its last few tools, and three actions:
+  - **Nudge** (`/checkin nudge`): puts `message` into the running turn
+    (`ctx.steer`); the model reads it at its next step and answers or says
+    what is left. Every UI shows `check-in> nudged: …`.
+  - **Keep going** (`/checkin later`): closes the card until the next
+    check-in.
+  - **Stop** (`/checkin stop`): stops the turn.
+
+  When the turn ends the card loses its actions ("The turn ended after N tool
+  calls"), so no stale buttons stay. In the attached terminal the actions are
+  `→ /checkin nudge` lines to type; the command runs beside the turn.
+- **`mode: nudge`**: nudges the model by itself, with a notice line.
+- **`mode: notify`**: a notice line only.
+
+The count is per turn: a new turn (a prompt, a continue, a reminder) starts
+from zero; steering merged into the running turn doesn't reset it. The polling
+tools are not counted. A nudge that arrives after the model's final answer is
+dropped (logged), never restarting a turn that is done.
+
+```yaml
+# config.yml
+bundles:
+  check-in:
+    after: 50          # tool calls in one turn before the first check-in
+    every: 50          # then again every this many more
+    mode: ask          # ask | nudge | notify
+    message: "You've made {calls} tool calls in this turn without answering. Say briefly what you've found so far and what's left, then answer now or continue."
+    ignore_tools: [task_wait, task_get, delegate_result]
+```
+
+`{calls}` in `message` is the count. The default asks for what has been found
+and what is left, not "how's it going?": a small model tends to answer that
+with a line and carry on unchanged.
+
+`/checkin` (anytime) for this session, until its worker restarts:
+
+| | |
+|---|---|
+| `/checkin` | on or off, the mode, the threshold and this turn's count |
+| `/checkin on` / `off` | check in, or not |
+| `/checkin 30` | check in after 30 tool calls, then every 30 |
+| `/checkin mode ask` / `nudge` / `notify` | the mode |
+| `/checkin nudge` / `later` / `stop` | the card's actions, also by hand |
+
 ## Shutdown
 
 When the REPL exits, or a session's worker exits (an idle exit, `/exit`, a
