@@ -1369,10 +1369,18 @@ module Samagotchi
       Hooks::Runtime.new(
         notify: ->(text:, level:, hook:) { hook_notify(text, level, hook) },
         ask_user: ->(question:, options:, header:, allow_freeform:, hook:) { hook_ask_user(question, options, header, allow_freeform, hook) },
-        stop_turn: ->(reason:, hook:) { hook_stop_turn(reason, hook) }
+        stop_turn: ->(reason:, hook:) { hook_stop_turn(reason, hook) },
+        steer: ->(text:, hook:) { steer(text, source: hook_source(hook)) }
       )
     end
     private :hook_runtime
+
+    # What a steer is attributed to: the bundle of a bundle hook's label
+    # ("<file> (bundle <name>)"), the label of any other.
+    def hook_source(hook)
+      hook.to_s[/\(bundle (.+)\)\z/, 1] || hook.to_s
+    end
+    private :hook_source
 
     # One line to the user (:hook_notice). During a turn it is a turn
     # event: the turn's sink (the REPL) and the observers (bridge, log).
@@ -2313,6 +2321,8 @@ module Samagotchi
           (task = current_init_task) ? task.cancelled? : @activity_mutex && active_cancel_controller&.cancelled?
         },
         card: ->(**card) { show_card(**card) },
+        steer: ->(text, source) { steer(text, source: source) },
+        stop_turn: ->(reason, label) { hook_stop_turn(reason, label) },
         ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:|
           ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller)
         },

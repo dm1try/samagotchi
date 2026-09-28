@@ -59,7 +59,7 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 
 Every event also carries the hook runtime (next section): `hook:` (the label
 of the hook about to run) and the callables `notify:`, `ask_user:`,
-`stop_turn:`.
+`stop_turn:`, `steer:`.
 
 `messages:` is a **read-only copy**: a frozen array of copied message hashes
 (`{role:, content:, …}`). A hook that mutates it, or its strings, gets
@@ -69,8 +69,8 @@ cheap).
 ## What a hook can do: the runtime
 
 Besides reading (and, on `:before_tool_call`, voting on) its event, a hook
-can talk to the user through three callables the registry puts on every
-event:
+can talk to the user, and to the running turn, through four callables the
+registry puts on every event:
 
 ```ruby
 class Watchful
@@ -94,6 +94,14 @@ class Watchful
       # that call, and the rest of the batch is denied; from :after_turn or
       # :session_end it does nothing (false).
       event[:stop_turn].call("too many iterations without progress") if event[:iteration] > 20
+    when :after_tool_call
+      # Put text into the running turn, as the user's steering does: at the
+      # loop's next boundary it joins the conversation as its own user
+      # message, and every UI shows a nudge line ("<bundle> nudged: …").
+      # True when queued; false with no turn, and from :after_turn or
+      # :session_end. A steer that arrives after the model's final answer is
+      # dropped (logged), not merged: it never keeps a finished turn going.
+      event[:steer].call("Say briefly what you have found so far.") if event[:iteration] == 30
     end
   end
 end
@@ -102,6 +110,10 @@ end
 `event[:hook]` is the label the notices carry: `known_names.rb (bundle
 known-names)` for a bundle hook, `audit.rb (config)` for a config hook,
 `turn hook` for one registered at runtime.
+
+A steer is saved in the session as `{role: "user", kind: "steer", source:
+"<bundle>", content: "…"}`; the model reads only its text, as a user turn.
+Its `source` is the hook's bundle (a config or turn hook's label otherwise).
 
 Timing: a notice from `:after_turn` or `:session_end` shows after the turn's
 end line. A question from `:before_tool_call` shows **before** the tool

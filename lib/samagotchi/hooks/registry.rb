@@ -15,14 +15,15 @@ module Samagotchi
       takes_settings ? klass.new(settings.is_a?(Hash) ? settings : {}) : klass.new
     end
 
-    # What a hook can do beyond reading its event: the Engine's three
+    # What a hook can do beyond reading its event: the Engine's
     # callables, each given the hook's label. +notify+ takes
     # (text:, level:, hook:) and shows one line to the user; +ask_user+
     # takes (question:, options:, header:, allow_freeform:, hook:) and
     # returns the answer hash or nil; +stop_turn+ takes (reason:, hook:) and
-    # cancels the running turn (true when it did). A registry without one
-    # gives hooks no-op helpers.
-    Runtime = Struct.new(:notify, :ask_user, :stop_turn, keyword_init: true)
+    # cancels the running turn (true when it did); +steer+ takes (text:,
+    # hook:) and puts the text into the running turn (Engine#steer, true
+    # when queued). A registry without one gives hooks no-op helpers.
+    Runtime = Struct.new(:notify, :ask_user, :stop_turn, :steer, keyword_init: true)
 
     # A thread-safe registry for named hook callbacks.
     #
@@ -172,6 +173,9 @@ module Samagotchi
       #   event[:stop_turn].call(reason) -> true when the turn was cancelled;
       #     in a before_tool_call event it also denies the call; from
       #     after_turn / session_end it does nothing (false)
+      #   event[:steer].call(text) -> true when the text was queued for the
+      #     running turn's next boundary (its own user message, source: the
+      #     hook's bundle); from after_turn / session_end false
       # and after_turn's fire site adds one more (AnswerDisplay):
       #   event[:present].call { |text| new_text } -> the answer's display
       #     text after the call (chained in hook order), nil without an answer
@@ -245,7 +249,7 @@ module Samagotchi
         end
       end
 
-      # The three helpers, once per fire; a fire site's own keys stay.
+      # The helpers, once per fire; a fire site's own keys stay.
       def with_runtime(event)
         return unless event.is_a?(Hash)
 
@@ -264,6 +268,11 @@ module Samagotchi
             event[:guardrail].deny!("the turn was stopped by #{event[:hook]}: #{reason}")
           end
           @runtime&.stop_turn&.call(reason: reason.to_s, hook: event[:hook]) ? true : false
+        }
+        event[:steer] ||= lambda { |text|
+          next false if TURN_OVER_EVENTS.include?(event[:type])
+
+          @runtime&.steer&.call(text: text.to_s, hook: event[:hook]) ? true : false
         }
       end
     end

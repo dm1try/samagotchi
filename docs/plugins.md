@@ -305,7 +305,7 @@ end
 
 This is a bundle hook, the same as a `hooks/*.rb` file. See
 [hooks.md](hooks.md#hook-events) for the events and for what `event[:notify]`,
-`event[:ask_user]` and `event[:stop_turn]` do; on `:after_turn`,
+`event[:ask_user]`, `event[:stop_turn]` and `event[:steer]` do; on `:after_turn`,
 `event[:present]` sets how the answer is shown in the web
 ([Presenting the answer](hooks.md#presenting-the-answer-display-only)). Its label is
 `plugin.rb (bundle my-bundle)`. The block may take only the event. If it
@@ -437,6 +437,8 @@ session's life, and each read gives the session as it is now.
 | `ctx.card(title:, body: "", actions: [], level: :info, id: nil)` | a card in every UI, returning its id: see [Cards](#cards) |
 | `ctx.ask_user(question:, options:, header: nil, allow_freeform: false)` | a question, like a hook's `event[:ask_user]` |
 | `ctx.cancelled?` | whether the running turn was cancelled (a long tool should stop) |
+| `ctx.steer(text)` | put text into the running turn, like a hook's `event[:steer]`: its own user message at the loop's next boundary, shown as `my-bundle> nudged: …`. Returns true when queued, false with no turn running (it never starts one; that is `ctx.sessions`' send). Dropped (logged) if the model answers or the turn ends first. Safe from any thread: an anytime command, a hook, your own |
+| `ctx.stop_turn(reason)` | stop the running turn after a warn notice with the reason, like a hook's `event[:stop_turn]`; true when it stopped one now |
 | `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
 | `ctx.sessions` | fork, send to and read other sessions: see [Other sessions](#other-sessions-ctxsessions) |
 

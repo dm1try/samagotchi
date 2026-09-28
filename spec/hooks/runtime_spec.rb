@@ -173,4 +173,47 @@ RSpec.describe "The hook runtime through the Engine" do
       expect(events.count { |e| e[:type] == :hook_notice }).to eq(1)
     end
   end
+
+  describe "steer" do
+    let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client) }
+
+    before do
+      replies = [%(<|tool_call>call:execute{command: "true"}<tool_call|>), "done"]
+      allow(client).to receive(:complete) { replies.shift || "done" }
+    end
+
+    it "from after_tool_call puts the text into the turn as its own user message, source the hook" do
+      results = []
+      engine.register_hook(:after_tool_call) { |e| results << e[:steer].call("how is it going?") }
+      events = []
+
+      engine.run_turn(session, "go", on_event: ->(e) { events << e })
+
+      expect(results).to eq([true])
+      expect(session.messages).to include(role: "user", kind: "steer", source: "turn hook", content: "how is it going?")
+      expect(events.find { |e| e[:type] == :pending_input_merged })
+        .to include(count: 0, content: nil, steers: [{ source: "turn hook", text: "how is it going?" }])
+    end
+
+    it "is false from after_turn and session_end (the turn is over)" do
+      results = []
+      engine.register_hook(:after_turn) { |e| results << e[:steer].call("late") }
+      engine.register_hook(:session_end) { |e| results << e[:steer].call("later") }
+
+      engine.run_turn(session, "go")
+
+      expect(results).to eq([false, false])
+      expect(session.messages.none? { |m| m[:kind] == "steer" }).to be(true)
+    end
+
+    it "is attributed to a bundle hook's bundle" do
+      engine.instance_variable_get(:@hooks).register_bundle("check-in", :after_tool_call, hook_name: "plugin.rb") do |e|
+        e[:steer].call("nudge")
+      end
+
+      engine.run_turn(session, "go")
+
+      expect(session.messages).to include(role: "user", kind: "steer", source: "check-in", content: "nudge")
+    end
+  end
 end

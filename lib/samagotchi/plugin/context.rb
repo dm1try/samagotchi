@@ -18,8 +18,10 @@ module Samagotchi
     # the answer text.
     # +messages_partial+ says whether +messages+ leaves out a running turn;
     # +model_name+ and +state_dir+ are what ctx.sessions forks with.
+    # +steer+ takes (text, source) and +stop_turn+ (reason, label), each
+    # true when it acted on a running turn.
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
-                      :ask_model, :model_name, :state_dir, :scratch, keyword_init: true)
+                      :ask_model, :model_name, :state_dir, :scratch, :steer, :stop_turn, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -177,6 +179,25 @@ module Samagotchi
 
       # Whether the running turn was cancelled (a long tool should stop).
       def cancelled? = !!@host.cancelled.call
+
+      # Put +text+ into the running turn, as a user's steering does: at the
+      # loop's next boundary (after the tool calls in flight) it joins the
+      # conversation as its own user message, shown in every UI as a nudge
+      # from this bundle. It never starts a turn. True means queued: if the
+      # model answers first, or the turn ends, it is dropped (logged).
+      # Callable from a hook, a command (an anytime one runs beside the
+      # turn) or your own thread.
+      # @return [Boolean] whether a turn was running and the text queued
+      def steer(text)
+        !!@host.steer&.call(text.to_s, @bundle)
+      end
+
+      # Stop the running turn, after a notice with +reason+, as a hook's
+      # event[:stop_turn] does (for commands and threads).
+      # @return [Boolean] whether a running turn was stopped now
+      def stop_turn(reason)
+        !!@host.stop_turn&.call(reason.to_s, @label)
+      end
 
       private
 
