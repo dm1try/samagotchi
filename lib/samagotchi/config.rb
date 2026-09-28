@@ -601,7 +601,7 @@ module Samagotchi
             nested = entry.yaml_path.join(".")
             Log.warn(:config, "legacy_key", echo: "Warning: config: both '#{k}' and '#{nested}' are set; using '#{nested}', remove the flat key", key: k.to_s)
           else
-            Log.warn(:config, "legacy_key", echo: "Warning: config key '#{k}' is legacy UPPER — use '#{k.to_s.downcase.sub(/^samagotchi_/, '').tr('_', '.')}' (e.g., default.model)", key: k.to_s)
+            Log.warn(:config, "legacy_key", echo: "Warning: config key '#{k}' is legacy UPPER — use '#{entry.yaml_path.join('.')}'", key: k.to_s)
           end
         end
       end

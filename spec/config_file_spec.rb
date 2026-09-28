@@ -194,6 +194,20 @@ RSpec.describe Samagotchi::ConfigFile do
       end
     end
 
+    it "names the nested key in a legacy flat key's warning" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        FileUtils.mkdir_p(File.join(dir, "samagotchi"))
+        File.write(File.join(dir, "samagotchi", "config.yml"), "SAMAGOTCHI_SESSION_MAX_COUNT: 9\n")
+        ENV["XDG_CONFIG_HOME"] = dir
+
+        expect { described_class.load_global_env! }.to output(
+          "Warning: config key 'SAMAGOTCHI_SESSION_MAX_COUNT' is legacy UPPER — use 'session.max_count'\n"
+        ).to_stderr
+      ensure
+        ENV.delete("SAMAGOTCHI_SESSION_MAX_COUNT")
+      end
+    end
+
     it "loads SAMAGOTCHI_DEFAULT_INPUT as a scalar string" do
       Dir.mktmpdir("samagotchi-config") do |dir|
         config_dir = File.join(dir, "samagotchi")
