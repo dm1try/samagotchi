@@ -928,7 +928,7 @@ parser = OptionParser.new do |opts|
            chi web [--port PORT] [--open] [--scope=all]   the web UI
            chi sessions <list|stop|archive|unarchive|delete|prune|clean>
            chi note [--source NAME] [-m TEXT] ID...|--all   background context for sessions
-           chi send [-m TEXT] ID...         a message into sessions, as if typed there
+           chi send [-m TEXT] ID...|--new   a message into sessions, as if typed there
            chi bundle <install|upgrade|uninstall|status|diff|list|build>
            chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
            chi self                         version, paths, model and bundles

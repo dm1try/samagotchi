@@ -58,6 +58,7 @@ chi web --open                            # web UI: this project's sessions (--s
 chi sessions list                         # this project's saved sessions (--scope=all: every one)
 pbpaste | chi note --source slack <id>    # background context for a session (no turn)
 pbpaste | chi send -m "same bug?" <id>    # a message to a session, the clipboard quoted above it
+chi send --new --wait -m "review feat/x"  # a new session you can watch in the web; prints the answer
 ```
 
 `@shot.png` in a prompt (or a pasted/dropped image in the web UI) shows the model an image, when it can see them; see [Images](docs/cli.md#images).
@@ -78,7 +79,9 @@ reply (a normal session: `chi --attach <id>` steers it).
 
 `chi send` is the other half: the text goes in as your message, the same as
 typing it in the attached terminal or the web composer, and a turn runs. Piped
-stdin plus `-m` puts the stdin above the message as a `>` quote.
+stdin plus `-m` puts the stdin above the message as a `>` quote. `chi send --new`
+starts a session with the message instead (it shows in the web at once), and
+`--wait` blocks and prints the answer.
 
 ### Send to chi (macOS)
 

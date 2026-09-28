@@ -19,6 +19,10 @@ and commands may change between minor versions. How releases are made:
   and keeps it for good; `chi sessions list --archived` and "include archived"
   in the web's all sessions find it, and a message you send to it brings it
   back.
+- `chi send --new` starts a session with the message, the way the web does, so
+  it shows in the web at once (`--dir`, `--model`); `chi send --wait` (new or
+  one existing session) blocks and prints the answer, exit 3 when the turn
+  waits for your answer.
 
 ## [0.2.0] - 2026-09-27
 

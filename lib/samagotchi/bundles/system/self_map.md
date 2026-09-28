@@ -20,6 +20,8 @@
   something without starting a turn there; see `docs/sessions.md` "Context notes".
 - `chi send -m TEXT <id>` is the other half: the text goes in as the user's message and a
   turn runs (stdin piped too = quoted context above it); see `docs/sessions.md` "Sending a message".
+  `chi send --new --wait -m TEXT` starts a session the user can watch in the web and prints its
+  answer (exit 3: it waits for the user's answer); see "Starting a session".
 - `delegate` hands a task to a child session that runs in parallel and returns only its final
   reply (`delegate_result` waits for it; `session:` sends a follow-up to a child). A child is a
   normal session: it shows in `chi sessions list` with `↳ <parent>`, and the user can steer it

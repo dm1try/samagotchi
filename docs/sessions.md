@@ -134,6 +134,24 @@ pbpaste | chi send 3fa2                             # the clipboard is the messa
 
 The Automator action above works for messages too: swap its last line for `pbpaste | "$chi" send -m "what do you make of this?" $(print -r -- "$picked" | cut -f1)`.
 
+### Starting a session
+
+`chi send --new` starts a new session with the message, the way the web start page does: a worker runs it, so it is in `chi web` and `chi sessions list` at once and streams live there; `chi --attach ID` joins it. `--wait` blocks until the answer and prints it, which makes it an agent's one-shot the user can watch (unlike `chi -p … --non-interactive`, which runs in-process and saves the session only at the end).
+
+```sh
+chi send --new -m "review the diff on feat/x"          # prints "<id>  started", returns at once
+git diff | chi send --new -m "review this"             # stdin is quoted context, as above
+chi send --new --wait -m "review the diff on feat/x"   # blocks; stdout is the answer
+chi send --wait -m "and the tests?" 3fa2               # a follow-up in the same session, waits too
+```
+
+- `--new` takes no ids (one new session per call). `--dir DIR` is its folder, and so its project (default the current one); `--model M` its model (default the configured one; the name isn't checked up front, a wrong one fails the worker's first turn).
+- `--new` prints `<full id>  started` on stdout. With `--wait` that line (and the `sent` line for an existing session) goes to stderr, so stdout is exactly the answer: the reply of the turn the message started, in full. It is the worker's `output/` file, the same one `delegate` reads; a turn that ends with only tool calls and no text has none.
+- `--wait` takes one session: `--new` or one id. A session with a running turn is refused (`busy: a turn is running; wait or attach`, exit 1): the message would run after it, and its reply would come back as the answer.
+- Exit codes with `--wait`: 0 answered; 3 the turn waits for an answer from you (a question or a guardrail approval), with the line `waiting for an answer: …; open it: chi --attach ID or the web`, and the session keeps waiting; 1 the turn ended without a reply (canceled, failed or empty), the worker failed or vanished, the session was stopped, or `--timeout S` passed; 130 on Ctrl-C, which leaves the turn running (`still running: chi --attach ID`). There is no default timeout.
+- The 16 KiB cap applies: `git diff | chi send --new …` on a big diff is refused; name the branch in the message instead and let the session read it.
+- A session nobody attaches to stalls at its first guardrail ask until someone opens it; left alone it idle-exits after `session.idle_exit_minutes` like any worker. These are ordinary sessions: delete them like any other.
+
 ## Delegating
 
 The `delegate` tool hands a task to a **child session**: an ordinary chi session in a worker of its own, started in the parent's `working_directory` with the task, verbatim, as its first user message, on the parent's model unless the call names one (`model:` takes a name or an alias, resolved as `--model` is; nothing checks the host serves it, so an unknown one fails the child's first turn). Children run in parallel and only their **final reply** comes back to the parent: the child's newest `output/<timestamp>.txt` file, which the worker writes at the end of each turn that produced visible text, cut head-and-tail like an `execute` result. Nothing of the child's trace enters the parent's context. Nothing is hidden: a child shows in `chi sessions list` (`↳ <parent>`), the web (a `↳` chip on its card, `delegated by` in its info bar, listed right after its parent in the all-sessions view) and the `list_sessions` tool (`child`; the parent shows as `parent` in the child's own list); the user can `chi --attach <child id>` and steer it mid-run, and `chi send` and `send_note` reach it like any session.
