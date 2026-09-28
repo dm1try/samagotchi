@@ -408,6 +408,11 @@ module Samagotchi
         # spelled as GET /api/models lists it); blank means the default.
         model = (body["model"] || body["model_name"]).to_s.strip
         folder[:model_name] = model unless model.empty?
+        # preview: an idle session's first message, sent as its first turn
+        # next; the list and the notifications name the session by it
+        # until that turn is saved.
+        preview = idle ? body["preview"].to_s.strip : ""
+        folder[:title] = preview unless preview.empty?
         begin
           session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
         rescue ArgumentError => e

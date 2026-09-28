@@ -383,6 +383,8 @@ test("a first turn that fails shows its prompt and why, once live and again afte
     await expect(page.locator("#history .bubble.cancel")).toHaveText("✕ turn failed: server error from host main: HTTP 500: boom");
   };
   await shown();
+  // Back in the composer, as for a later turn that fails.
+  await expect(page.locator("#prompt")).toHaveValue("Say pong");
   await page.reload();
   await shown();
   await expect(page.locator("#history .hint")).toHaveCount(0);

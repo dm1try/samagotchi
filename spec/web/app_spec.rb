@@ -1084,6 +1084,18 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "POST /api/sessions idle with a preview" do
+    it "names the idle session by the first message it is about to get; a prompted session takes none" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager)
+      app.call(env_for("/api/sessions", method: "POST", body: '{"idle":true,"preview":" Say pong "}'))
+      app.call(env_for("/api/sessions", method: "POST", body: '{"idle":true,"preview":"  "}'))
+      app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi","preview":"other"}'))
+
+      expect(manager.spawn_calls.map { |c| [c[:prompt], c[:extra]] }).to eq([[nil, { title: "Say pong" }], [nil, {}], ["hi", {}]])
+    end
+  end
+
   # A registry as GET /api/models reads it: list_all_models(force:) answers
   # per host {models:, error:}; default_entry names the default host.
   class FakeModelRegistry
