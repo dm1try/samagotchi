@@ -2,8 +2,13 @@
 
 ## Global Config File
 
-Chi can preload a global config file and expose those entries as environment
-variables before the app boots.
+Chi reads its settings from three places; the first that sets a value wins:
+
+1. a CLI flag (`--server-port 8081`),
+2. an environment variable (`SAMAGOTCHI_SERVER_PORT=8081`),
+3. the global config file (`server: {port: 8081}`),
+
+then the built-in default.
 
 Default path:
 
@@ -13,15 +18,17 @@ Default path:
 Example:
 
 ```yaml
-SAMAGOTCHI_DEFAULT_MODEL: Qwen3-14B-Instruct
+default:
+  model: Qwen3-14B-Instruct
 server:
   host: 192.0.2.10
   port: 8081
-SAMAGOTCHI_THINKING_UI: spinner
+thinking:
+  ui: spinner
 
 # Multi-host (optional): aggregated /models and per-model routing.
-# Bare SAMAGOTCHI_DEFAULT_MODEL uses the default host; host:model pins to a host.
-# Transport per host overrides SAMAGOTCHI_SERVER_TRANSPORT; api: openai makes a
+# A bare default.model uses the default host; host:model pins to a host.
+# transport: on a host overrides server.transport; api: openai makes a
 # host use the OpenAI chat API instead of chi's raw prompt.
 hosts:
   main:
@@ -68,25 +75,45 @@ memories:
 Behavior:
 
 - The file is optional.
-- Top level is a YAML mapping of scalar env overrides plus nested sections.
-- Real environment variables still win over config-file values.
+- Top level is a YAML mapping of sections (`default:`, `server:`, `recap:`, …)
+  and the maps described below. Keys are lower `snake_case`, one level per
+  dot: `server.read_timeout` is `server: {read_timeout: 600}`.
+- Environment variables and CLI flags win over config-file values.
 - Workers inherit hosts via `SAMAGOTCHI_HOSTS_JSON` propagated through `SessionManager.spawn_options`.
 
 This lets you run `chi` without repeating common defaults such as model
 and llama host/port on every invocation.
 
-Note: The global config file supports both flat scalar entries (for env vars)
-and nested sections like `hosts:`, `recap:`, `hooks:`, `guardrails:` (see
-[Guardrails](guardrails.md)), `bundles:` (a bundle's settings for its hooks,
-see [Hooks: Settings](hooks.md#settings)), `model_aliases:`,
-`memories:`. Scalar entries are loaded as environment
-variables; non-scalar sections are skipped by the env-loader and parsed by
-their respective subsystems (e.g. the hooks system, `HostRegistry`). The
-`memories:` list is the persistent baseline for preloaded memory entries —
+Besides the settings sections, the file holds maps that are read by their
+own subsystems: `hosts:` (below), `models:` (see "Prompt profile" and
+"Images"), `model_aliases:`, `hooks:` (see [Hooks](hooks.md)),
+`guardrails:` (see [Guardrails](guardrails.md)), `bundles:` (a bundle's
+settings for its hooks, see [Hooks: Settings](hooks.md#settings)) and
+`memories:`. Their entry names (host names, model ids, aliases) are yours to
+choose. The `memories:` list is the persistent baseline for preloaded memory entries —
 the same name shape as `--memory` (bare name or `scope/name`), merged under
 any per-run `--memory` values (config baseline first, deduped). A per-run
 `--mute NAME` removes an entry from the merged list for that session (see
 "Muting a memory" in cli.md).
+
+### Environment variables
+
+Every setting has an environment variable: `SAMAGOTCHI_` plus its dotted
+name in upper case, with `_` for each dot. `default.model` is
+`SAMAGOTCHI_DEFAULT_MODEL`, `server.read_timeout` is
+`SAMAGOTCHI_SERVER_READ_TIMEOUT`. Use them to override the file for one run or
+one shell (`SAMAGOTCHI_LOG_LEVEL=debug chi`); keep lasting choices in the file.
+Most settings also have a CLI flag: the dotted name in kebab case
+(`--server-read-timeout 900`); `chi --help` lists them.
+
+### Legacy flat keys
+
+Older configs used the environment names as top-level keys
+(`SAMAGOTCHI_DEFAULT_MODEL: my-model`). They are still read, but every run
+warns (`config key 'SAMAGOTCHI_DEFAULT_MODEL' is legacy UPPER — use
+'default.model'`), and a flat key wins over the nested one when a file has
+both. Move each to its nested form (`default: {model: my-model}`) and delete
+the flat line. `/model --default` already writes the nested form.
 
 ## Model Server Transport
 
@@ -99,11 +126,10 @@ Chi talks to a model server over HTTP and supports three transports:
   continuous batching + tiered SSD KV cache) using the same `/v1/completions`
   and `/v1/models` endpoints as `mlx`.
 
-Select the transport with `SAMAGOTCHI_SERVER_TRANSPORT` (`llama_cpp`, `mlx`, or
-`omlx`). `SAMAGOTCHI_SERVER_HOST`/`SAMAGOTCHI_SERVER_PORT` are reused for all three —
+Select the transport with `server.transport` (`llama_cpp`, `mlx`, or `omlx`;
+env `SAMAGOTCHI_SERVER_TRANSPORT`). `server.host`/`server.port` are reused for all three —
 only the request/response shape differs. oMLX's default server port is `8000` (not
-`8080`), so point `SAMAGOTCHI_SERVER_PORT` at it, e.g. `SAMAGOTCHI_SERVER_PORT=8000`.
-With `hosts:` each entry may set `transport: llama_cpp|mlx|omlx` to override the
+`8080`), so point `server.port` at it. With `hosts:` each entry may set `transport: llama_cpp|mlx|omlx` to override the
 global transport per host (`lib/samagotchi/host_registry.rb`).
 
 Each host may also set `api:`, which says how chi talks to it:
@@ -119,8 +145,8 @@ Workers started by plain `chi`, `chi web` or `--attach` get the same hosts, `api
 Example for mlx-lm:
 
 ```yaml
-SAMAGOTCHI_SERVER_TRANSPORT: mlx
 server:
+  transport: mlx
   host: 127.0.0.1
   port: 8080
 ```
@@ -132,8 +158,8 @@ mlx_lm.server --model mlx-community/Qwen3-14B-Instruct-4bit
 Example for oMLX:
 
 ```yaml
-SAMAGOTCHI_SERVER_TRANSPORT: omlx
 server:
+  transport: omlx
   host: 192.0.2.10
   port: 8000
 ```
@@ -205,7 +231,7 @@ oMLX's known tool-call limitation (a stream filter that strips markup) only
 affects its `/v1/chat/completions` endpoint, not the `/v1/completions` endpoint
 chi uses, so raw `[[…]]`/`<|tool_call>` markers stream through untouched.
 
-`SAMAGOTCHI_DEFAULT_MODEL` (config default) and `/model` (runtime effective) pick the model; the status line and `/model`
+`default.model` (config default) and `/model` (runtime effective) pick the model; the status line and `/model`
 output always render the runtime effective model (showing default when diverged). Which prompt format it gets is the
 prompt profile (see "Prompt profile" below). How the selector reaches the request differs by transport:
 
@@ -217,7 +243,7 @@ prompt profile (see "Prompt profile" below). How the selector reaches the reques
   (case-insensitive) first, then substring, then passed through unchanged. That
   resolved id is usually prefixed (e.g. `mlx-community--gemma-3-4b-it-4bit`), so a
   short selector such as `gemma-3-4b-it-4bit` is what you set in
-  `SAMAGOTCHI_DEFAULT_MODEL`. An unknown selector passes through raw and oMLX 404s,
+  `default.model`. An unknown selector passes through raw and oMLX 404s,
   listing its available models; if `/v1/models` is unreachable, samagotchi falls
   back to the raw selector and lets the server decide (its own 400/404). Either
   error fails the turn with the server's message (see "Server errors" below). Runtime
@@ -231,8 +257,8 @@ syntax, thought tags and stop sequences. That is the prompt profile, `qwen36` or
 worse output: a ChatML model under `gemma4` never hits a stop sequence, generates until its limit and then runs the
 tool calls it made up on the way. The first of these that says something wins:
 
-1. `--profile NAME` (or `--model-profile NAME`), then `SAMAGOTCHI_MODEL_PROFILE`: for every model in the process,
-   including one picked later with `/model`.
+1. `--profile NAME` (or `--model-profile NAME`), then `SAMAGOTCHI_MODEL_PROFILE` (`model.profile` has no config-file
+   form): for every model in the process, including one picked later with `/model`.
 2. `models:` in `config.yml`, keyed by model id or alias (case-insensitive; the name as typed, alias-resolved or
    without its host prefix):
 
@@ -277,10 +303,16 @@ after an idle exit) gets that process's environment, so put a lasting choice in 
 ## Llama HTTP Timeouts
 
 Long-running llama.cpp completions can exceed Ruby's default HTTP read timeout.
-Configure these environment variables to avoid premature request failures:
+Raise these to avoid premature request failures:
 
-- `SAMAGOTCHI_SERVER_OPEN_TIMEOUT` (default: `10`) connection timeout in seconds.
-- `SAMAGOTCHI_SERVER_READ_TIMEOUT` (default: `600`) response read timeout in seconds.
+- `server.open_timeout` (default: `10`, env `SAMAGOTCHI_SERVER_OPEN_TIMEOUT`) connection timeout in seconds.
+- `server.read_timeout` (default: `600`, env `SAMAGOTCHI_SERVER_READ_TIMEOUT`) response read timeout in seconds.
+
+```yaml
+server:
+  open_timeout: 10
+  read_timeout: 900
+```
 
 A streamed answer also has a **first-token limit**: the seconds it may take to show its first text, reasoning or
 tool call. A remote provider can keep a queued request open for minutes with SSE keep-alive comments
@@ -308,9 +340,10 @@ prompt caches hit and every turn is answered by the same model. Servers that don
 
 To explicitly route requests to a named model in llama.cpp, set:
 
-- `SAMAGOTCHI_DEFAULT_MODEL` (required): model name/id sent as the `model` field on `/completion` requests.
+- `default.model` (required; env `SAMAGOTCHI_DEFAULT_MODEL`, `--model` per run): model name/id sent as the `model`
+  field on `/completion` requests.
 
-When `SAMAGOTCHI_DEFAULT_MODEL` is unset or blank, Samagotchi fails fast with a clear startup/configuration error.
+When `default.model` is unset or blank, Samagotchi fails fast with a clear startup/configuration error.
 
 With several `hosts:`, an unqualified model name goes to the host whose `/models`
 list has it (after `/models` ran), by exact id first, then by substring. A
@@ -335,9 +368,16 @@ Transient network failures are retried automatically with exponential backoff.
 
 Configuration:
 
-- `SAMAGOTCHI_RETRY_MAX` (default `5`): number of retries after the first failed attempt.
-- `SAMAGOTCHI_RETRY_BASE_DELAY` (default `0.5`): backoff base delay in seconds.
-- `SAMAGOTCHI_RETRY_MAX_DELAY` (default `8.0`): cap for backoff delay in seconds.
+- `retry.max` (default `5`, env `SAMAGOTCHI_RETRY_MAX`): number of retries after the first failed attempt.
+- `retry.base_delay` (default `0.5`, env `SAMAGOTCHI_RETRY_BASE_DELAY`): backoff base delay in seconds.
+- `retry.max_delay` (default `8.0`, env `SAMAGOTCHI_RETRY_MAX_DELAY`): cap for backoff delay in seconds.
+
+```yaml
+retry:
+  max: 5
+  base_delay: 0.5
+  max_delay: 8.0
+```
 
 Assist-mode UX:
 
