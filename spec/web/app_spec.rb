@@ -579,6 +579,22 @@ RSpec.describe Samagotchi::Web::App do
       expect(app.send(:messages_for_display, [note])).to eq([{ role: "note", content: "deploy frozen", label: "slack" }])
     end
 
+    it "shows a plugin's steer as role steer with its source and the step that answered it, never as a prompt" do
+      messages = [{ role: "user", content: "look" },
+                  { role: "model", content: "", tool_calls: [{ id: "c1", name: "read" }] },
+                  { role: "tool_response", content: "[read]\nx" },
+                  { role: "model", content: "reading more" },
+                  { role: "tool_response", content: "[read]\ny" },
+                  Samagotchi::Steer.message(text: "status?", source: "check-in"),
+                  { role: "model", content: "found it" }]
+
+      shown = build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, messages)
+
+      expect(shown).to eq([{ role: "user", content: "look" }, { role: "assistant", content: "reading more" },
+                           { role: "steer", content: "status?", source: "check-in", step: 3 },
+                           { role: "assistant", content: "found it" }])
+    end
+
     it "includes last_event_seq = nil when no bridge is live" do
       manager = FakeResponsesManager.new(responses: %w[one two three])
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)

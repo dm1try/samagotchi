@@ -124,3 +124,32 @@ test("turnHistoryHtml with parts: a call's images are thumbs on its reloaded row
   assert.match(html, /<span class="activity-tool">mcp_chrome_screenshot<\/span>.*\/tmp\/s\.png<\/div><div class="thumbs">s\.png<\/div><\/div>/);
   assert.equal(html.match(/class="thumbs"/g).length, 1);
 });
+
+test("turnHistoryHtml: a plugin's steer is the first row of the step that answered it, not a prompt", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "Let me check." },
+    { role: "steer", content: "say what <you> found", source: "check-in", step: 2 },
+    { role: "assistant", content: "Both fine." },
+  ];
+  const html = turnHistoryHtml(items, timing, { thumbs });
+  assert.equal((html.match(/bubble user/g) || []).length, 1);
+  assert.match(html, /<details class="gen"><summary>[^<]*<\/summary><details class="steer-row"><summary>check-in nudged the model<\/summary><div class="steer-text">say what &lt;you&gt; found<\/div><\/details><div class="activity-body">.*read/);
+});
+
+test("turnHistoryHtml: a steer the answer answered is a bubble after the block, before the answer", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "Let me check." },
+    { role: "steer", content: "wrap up", source: "check-in", step: 3 },
+    { role: "assistant", content: "Both fine." },
+  ];
+  const html = turnHistoryHtml(items, timing, { thumbs });
+  assert.match(html, /<\/details><details class="bubble steer-row"><summary>check-in nudged the model<\/summary><div class="steer-text">wrap up<\/div><\/details><div class="bubble output/);
+});
+
+test("turnHistoryHtml: a steer in a turn with no block is a bubble after the prompt", () => {
+  const items = [{ role: "user", content: "p" }, { role: "steer", content: "s", source: "check-in", step: 1 }, { role: "assistant", content: "a" }];
+  const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }), { thumbs });
+  assert.match(html, /<\/div><\/div><details class="bubble steer-row"><summary>check-in nudged the model<\/summary>/);
+});

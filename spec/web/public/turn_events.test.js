@@ -248,3 +248,19 @@ test("hookNoticeLabel names a bundle hook by its bundle, any other hook as hook"
   assert.equal(hookNoticeLabel("turn hook"), "hook");
   assert.equal(hookNoticeLabel(undefined), "hook");
 });
+
+test("snapshotEvents: a running turn's steer part replays as a steer-only merge", () => {
+  const events = snapshotEvents({ current_turn: { prompt: "p", origin: {}, parts: [
+    { kind: "text", iteration: 1, text: "hm" },
+    { kind: "steer", iteration: 2, source: "check-in", text: "status?" },
+  ] } });
+  assert.deepEqual(events.slice(-2), [
+    { type: "generation_completed" },
+    { type: "pending_input_merged", count: 0, content: null, steers: [{ source: "check-in", text: "status?" }] },
+  ]);
+});
+
+test("promptOps: a steer-only merge adds no prompt bubble, even after an unmatched input_merged", () => {
+  const event = { type: "pending_input_merged", count: 0, content: null, steers: [{ source: "check-in", text: "x" }] };
+  assert.deepEqual(promptOps(event, { myId: "web:a", known: () => false, unmatchedMerge: true }), []);
+});

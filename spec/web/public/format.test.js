@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { leadTrimmed, previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace } from "../../../lib/samagotchi/web/public/format.js";
+import { leadTrimmed, previewOf, relativeTime, escapeHtml, messageBodyHtml, normalize, modelLabel, userBodyHtml, noteHtml, steerRowHtml, recapLabel, canStopSession, goneSessionNotice, withLiveStatus, withoutWorker, recapPlace } from "../../../lib/samagotchi/web/public/format.js";
 
 test("noteHtml: who sent the context note, then its text, both escaped", () => {
   assert.equal(
@@ -230,4 +230,10 @@ test("delegatedBy names the parent by its short id, with its preview when the pa
   assert.deepEqual(delegatedBy("3f2a1c9e-0000-4000-8000-000000000000", { last_prompt: "plan the  release" }), {
     text: "\u21B3 3f2a1c9e", title: "delegated by session 3f2a1c9e: plan the release",
   });
+});
+
+test("steerRowHtml: who nudged the model, the text collapsed and escaped; a bubble on its own", () => {
+  assert.equal(steerRowHtml({ source: "check-in", text: "a <b>" }),
+    '<details class="steer-row"><summary>check-in nudged the model</summary><div class="steer-text">a &lt;b&gt;</div></details>');
+  assert.match(steerRowHtml({ text: "x" }, { bubble: true }), /^<details class="bubble steer-row"><summary>nudged the model</);
 });

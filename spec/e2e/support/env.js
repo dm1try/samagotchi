@@ -27,6 +27,10 @@ hosts:
 retry:
   max: 0
 recap: false
+bundles:
+  check-in:
+    after: 3
+    every: 100
 web:
   markdown: true
 guardrails:
@@ -119,6 +123,10 @@ export async function startEnv() {
       XDG_STATE_HOME: dirs.state,
       SAMAGOTCHI_ENV: "test",
     });
+    // The check-in bundle (installed like a user would), for its scenario;
+    // after: 3 leaves the other scripts' turns alone.
+    execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", "check-in"],
+      { cwd: dirs.project, env: childEnv, stdio: "ignore" });
     const webPort = await freePort();
     const webLog = fs.openSync(path.join(root, "web.log"), "a");
     const web = spawn(path.join(CHECKOUT, "bin", "chi"), ["web", "--port", String(webPort)],

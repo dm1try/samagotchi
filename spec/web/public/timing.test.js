@@ -226,3 +226,27 @@ test("turnGroups: a canceled multi-step turn without parts keeps every text as a
   assert.equal(turnGroups(plain, oneStep)[0].answer, 1);
   assert.equal(turnGroups(plain.map(({ parts, ...m }) => m), oneStep)[0].answer, 1);
 });
+
+test("turnGroups: a plugin's steer goes to the step that answered it (its `step`), never starting a turn", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "Let me check." },
+    { role: "steer", content: "status?", source: "check-in", step: 2 },
+    { role: "assistant", content: "Both fine." },
+  ];
+  const [group, ...rest] = turnGroups(items, TIMING);
+  assert.equal(rest.length, 0);
+  assert.equal(group.answer, 3);
+  assert.deepEqual(group.steps.map((s) => [s.iteration, s.steers]), [[1, []], [2, [2]]]);
+  assert.deepEqual(group.steers, []);
+});
+
+test("turnGroups: a steer answered by the answer (no such step) stays on the group, as one in a turn with no steps", () => {
+  const past = [{ role: "user", content: "p" }, { role: "steer", content: "s", step: 3 }, { role: "assistant", content: "a" }];
+  const answered = turnGroups(past, TIMING)[0];
+  assert.deepEqual([answered.steps.map((s) => s.steers), answered.steers], [[[], []], [1]]);
+
+  const plain = [{ role: "user", content: "p" }, { role: "steer", content: "s", step: 1 }, { role: "assistant", content: "a" }];
+  const group = turnGroups(plain, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }))[0];
+  assert.deepEqual([group.steps, group.steers], [[], [1]]);
+});

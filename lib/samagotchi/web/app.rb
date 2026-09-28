@@ -1133,6 +1133,13 @@ module Samagotchi
         nil
       end
 
+      # The step (iteration) that answered the steer at +index+: one past
+      # the model messages between it and the prompt before it.
+      def steer_step(list, index)
+        list[0...index].reverse_each.take_while { |m| !Samagotchi::Steer.prompt?(m) }
+                       .count { |m| %w[model assistant].include?((m[:role] || m["role"]).to_s) } + 1
+      end
+
       def read_history(id)
         raw = @manager.read_responses(id, since_time: nil, state_dir: @state_dir)
         raw.map { |chunk| OutputFormatter.strip(chunk) }.reject(&:empty?)
@@ -1154,6 +1161,12 @@ module Samagotchi
           content = (m[:content] || m["content"]).to_s
           if Samagotchi::ContextNote.note?(m)
             filtered << { role: "note", content: Samagotchi::ContextNote.text_of(m), label: Samagotchi::ContextNote.label_of(m) }
+            next
+          end
+          # A plugin's steer: a row of the step that answered it, which the
+          # page finds by `step`.
+          if Samagotchi::Steer.steer?(m)
+            filtered << { role: "steer", content: content, source: (m[:source] || m["source"]).to_s, step: steer_step(list, index) }
             next
           end
           next if role == "system"

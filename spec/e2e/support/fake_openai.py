@@ -4,7 +4,9 @@
 # request's tool results since the last user message pick the iteration; each streams its "thinking"
 # (reasoning_content), "text" (content) word by word ("delay" s apart, default 0.12) and its "tools" as
 # native tool_calls deltas, so the worker (api: openai) runs real tools. "hold" seconds wait before an
-# iteration's first chunk (a stable mid-turn moment). /v1/models lists "fake-script"; no upstream needed.
+# iteration's first chunk (a stable mid-turn moment). With "steer_keeps_count": true a user message right after a
+# tool result (steering merged mid-turn, a plugin's nudge) doesn't restart the count. /v1/models lists "fake-script";
+# no upstream needed.
 # empty: a 200 stream whose only delta is content "" with finish_reason stop (nemotron's empty answer).
 # stall: a 200 that sends only OpenRouter's keep-alive comments (every 0.3 s) until the client hangs up or 600 s pass,
 # the shape of a queued free model (checks the first-token limit).
@@ -71,9 +73,11 @@ class H(http.server.BaseHTTPRequestHandler):
         messages = json.loads(body or b"{}").get("messages") or []
         # Tool results since the last user message: one per call the worker ran this turn.
         done = 0
+        keeps = bool(script.get("steer_keeps_count")); prev = None
         for msg in messages:
-            if msg.get("role") == "user": done = 0
+            if msg.get("role") == "user" and not (keeps and prev in ("tool", "user")): done = 0
             elif msg.get("role") == "tool": done += 1
+            prev = msg.get("role")
         its = script["iterations"]
         it = its[min(done, len(its) - 1)]
         delay = float(script.get("delay", 0.12))

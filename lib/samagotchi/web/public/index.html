@@ -258,6 +258,14 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .gen .hook-notice{font-size:13px;color:var(--text-3);padding:5px 2px 5px 8px;border-top:1px solid var(--border);border-left:2px solid var(--text-faint);white-space:pre-wrap;word-break:break-word}
 .gen .activity-body>.hook-notice:first-child{border-top:none}
 .gen .hook-notice.warn{border-left-color:var(--warn);color:var(--warn-text)}
+/* A plugin's steer (a nudge into the running turn): a row of its step, or a bubble; its text collapsed. */
+.steer-row{font-size:13px;color:var(--text-3);border-left:2px solid var(--accent-border)}
+.steer-row>summary{cursor:pointer;list-style:none;font-style:italic}
+.steer-row>summary::-webkit-details-marker{display:none}
+.steer-row>summary::before{content:"↪ ";font-style:normal;color:var(--accent)}
+.steer-text{white-space:pre-wrap;word-break:break-word;color:var(--text-muted);margin-top:4px}
+.gen>.steer-row{padding:4px 2px 4px 8px;margin:2px 0 6px}
+.bubble.steer-row{background:transparent;padding:6px 12px;border-left-width:3px}
 /* A plugin's card (card.js): the question card's glass with a cool tint; its actions are commands the session runs. */
 .bubble.plugin-card{border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--glass-bg));padding:10px 12px;transition:box-shadow .3s ease}
 .bubble.plugin-card.warn{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 7%,var(--glass-bg))}

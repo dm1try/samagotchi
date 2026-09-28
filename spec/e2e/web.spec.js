@@ -354,3 +354,30 @@ test("/archive and /exit typed in the composer get a local reply, not a worker e
   }
   await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
 });
+
+// check-in (after: 3 in the e2e config): the card comes up in the running
+// step after the 3rd call; Nudge puts its message into the turn as a nudge
+// row of that step, and the model's next step answers it.
+test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, live and after a reload", async ({ page, script }) => {
+  script("check_in");
+  await send(page, "Look through the README");
+  const card = page.locator("#history > .plugin-card").filter({ hasText: "3 tool calls, no answer yet" });
+  await expect(card).toBeVisible();
+  await card.locator(".card-action", { hasText: "Nudge" }).click();
+  // The step that answers it shows it (open, live), before the answer.
+  const row = page.locator("#history .steer-row");
+  await expect(row.locator("summary")).toHaveText("check-in nudged the model");
+  await expect(row).toBeVisible();
+  await turnEnded(page, 1);
+  await expect(answer(page)).toHaveText("Found so far: the README is an e2e project file. Nothing is left.");
+  await expect(page.locator("#history .bubble.user")).toHaveCount(1);
+  await expect(page.locator("#history .plugin-card .card-action")).toHaveCount(0);
+
+  await page.reload();
+  await turnEnded(page, 1);
+  await expect(page.locator("#history .bubble.user")).toHaveCount(1);
+  const reloaded = page.locator("#history .steer-row");
+  await expect(reloaded).toHaveCount(1);
+  await expect(reloaded.locator("summary")).toHaveText("check-in nudged the model");
+  await expect(reloaded.locator(".steer-text")).toContainText("You've made 3 tool calls in this turn");
+});
