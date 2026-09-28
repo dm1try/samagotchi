@@ -1,8 +1,9 @@
 // Playwright fixtures: `chi` is the isolated chi of this worker (started
 // once, torn down after the last test or a failure), `script(name)` picks the
-// fake model's script, and `page` opens chi web's start page.
+// fake model's script, `fakeMode(mode)` makes it answer otherwise (an error;
+// back to the script after the test), and `page` opens chi web's start page.
 import { test as base, expect } from "@playwright/test";
-import { startEnv, stopEnv, useScript } from "./env.js";
+import { startEnv, stopEnv, useMode, useScript } from "./env.js";
 
 export const test = base.extend({
   chi: [async ({}, use) => {
@@ -16,6 +17,14 @@ export const test = base.extend({
 
   script: async ({ chi }, use) => {
     await use((name) => useScript(chi, name));
+  },
+
+  fakeMode: async ({ chi }, use) => {
+    try {
+      await use((mode) => useMode(chi, mode));
+    } finally {
+      useMode(chi, "script");
+    }
   },
 
   page: async ({ page, chi }, use) => {

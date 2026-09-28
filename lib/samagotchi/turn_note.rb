@@ -13,6 +13,8 @@ module Samagotchi
     KIND = "turn_note"
     OPEN = "[SYSTEM: "
     CLOSE = "]"
+    FAILED = "the previous turn failed before any answer: "
+    RESTORED = "The message went back to the user, who may send it again."
 
     module_function
 
@@ -21,11 +23,11 @@ module Samagotchi
     #   failed user message is not in the conversation any more)
     # @param continued [Boolean] it was a continue turn (no user message)
     def failed(summary, restored: false, continued: false)
-      tail = if restored then "The message went back to the user, who may send it again."
+      tail = if restored then RESTORED
              elsif continued then "The continued turn stopped there."
              else "The user's last message was not answered."
              end
-      message("the previous turn failed before any answer: #{one_line(summary)}. #{tail}")
+      message("#{FAILED}#{one_line(summary)}. #{tail}")
     end
 
     # @param reason [Symbol, String, nil] the cancel reason (:ctrl_c, :user…)
@@ -57,10 +59,34 @@ module Samagotchi
     # context notes at most): failed retries leave one note, not a pile.
     def replace_trailing(messages, note)
       list = Array(messages).dup
+      index = trailing_index(list)
+      list.delete_at(index) if index
+      list << note
+    end
+
+    # The index of the note at the tail of +list+ (behind context notes at
+    # most), or nil.
+    def trailing_index(list)
       index = list.length - 1
       index -= 1 while index >= 0 && (list[index][:role] || list[index]["role"]).to_s == "system" && !note?(list[index])
-      list.delete_at(index) if index >= 0 && note?(list[index])
-      list << note
+      index >= 0 && note?(list[index]) ? index : nil
+    end
+
+    # The failure summary of the note at the tail of +messages+ (behind
+    # context notes at most) when it says a failed turn's prompt went back
+    # to the user, else nil: the prompt is not in the conversation any more
+    # (the session's last_prompt holds it), so a UI shows it from here.
+    def restored_failure(messages)
+      list = Array(messages)
+      index = trailing_index(list)
+      return nil unless index
+
+      text = (list[index][:content] || list[index]["content"]).to_s
+      prefix = "#{OPEN}#{FAILED}"
+      suffix = ". #{RESTORED}#{CLOSE}"
+      return nil unless text.start_with?(prefix) && text.end_with?(suffix)
+
+      text[prefix.length...-suffix.length]
     end
 
     # The last message is a reply cut short (`[interrupted]`).

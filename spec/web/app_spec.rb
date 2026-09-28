@@ -957,6 +957,25 @@ RSpec.describe Samagotchi::Web::App do
       end
     end
 
+    it "shows a failed turn whose prompt went back to the user (failed_turn), until the next prompt" do
+      state_dir = Dir.mktmpdir
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd)
+      session.last_prompt = "Say pong"
+      session.messages = [Samagotchi::TurnNote.failed("HTTP 500: boom", restored: true)]
+      session.save(state_dir: state_dir)
+      app = described_class.new(manager: Samagotchi::SessionManager, session_class: Samagotchi::Session,
+                                state_dir: state_dir, bridge_wait_timeout: 0)
+      read = -> { JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first) }
+
+      expect(read.call).to include("messages" => [], "failed_turn" => { "prompt" => "Say pong", "summary" => "HTTP 500: boom" })
+
+      session.messages += [{ role: "user", content: "Say pong" }, { role: "model", content: "PONG" }]
+      session.save(state_dir: state_dir)
+      expect(read.call["failed_turn"]).to be_nil
+    ensure
+      FileUtils.rm_rf(state_dir)
+    end
+
     it "has no saved recap for a session without one" do
       payload = JSON.parse(build_app(state_dir: Dir.mktmpdir).call(env_for("/api/sessions/s1"))[2].first)
       expect(payload["saved_recap"]).to be_nil

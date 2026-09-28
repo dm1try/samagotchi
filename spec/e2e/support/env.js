@@ -139,6 +139,12 @@ export function useScript(env, name) {
   fs.copyFileSync(path.join(SCRIPTS, `${name}.json`), path.join(env.dirs.fake, "script.json"));
 }
 
+// The fake's mode (fake_openai.py's header: 500, stall, …); "script" plays
+// the script again.
+export function useMode(env, mode) {
+  fs.writeFileSync(path.join(env.dirs.fake, "mode"), `${mode}\n`);
+}
+
 export async function stopEnv(env) {
   if (!env?.root) return;
   const { root } = env;

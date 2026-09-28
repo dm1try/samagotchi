@@ -294,3 +294,17 @@ test("the title badge drops a question answered from another client", async ({ p
   await turnEnded(page, 1);
   await expect(page).not.toHaveTitle(/^\(/);
 });
+
+test("a first turn that fails shows its prompt and why, once live and again after a reload", async ({ page, fakeMode }) => {
+  fakeMode("500");
+  await send(page, "Say pong");
+  const shown = async () => {
+    await expect(page.locator("#history > *")).toHaveCount(2);
+    await expect(page.locator("#history .bubble.user.failed .user-message")).toHaveText("Say pong");
+    await expect(page.locator("#history .bubble.cancel")).toHaveText("✕ turn failed: server error from host main: HTTP 500: boom");
+  };
+  await shown();
+  await page.reload();
+  await shown();
+  await expect(page.locator("#history .hint")).toHaveCount(0);
+});

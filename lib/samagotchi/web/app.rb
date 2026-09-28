@@ -469,6 +469,7 @@ module Samagotchi
           session: session_json,
           history: read_history(id),
           messages: messages_for_display(raw_messages, parts: req.params["parts"] == "1"),
+          failed_turn: failed_turn_for(session, raw_messages),
           current_turn: current_turn,
           queued: turn_snapshot ? Array(turn_snapshot["queued"]) : [],
           recap: turn_snapshot && turn_snapshot["recap"],
@@ -1180,6 +1181,17 @@ module Samagotchi
         filtered
       rescue StandardError
         []
+      end
+
+      # The last turn failed and its prompt went back to the user: the
+      # prompt (session.last_prompt) and why, for the page to show after the
+      # conversation as it did live. nil otherwise.
+      def failed_turn_for(session, msgs)
+        summary = Samagotchi::TurnNote.restored_failure(msgs)
+        prompt = session.last_prompt.to_s
+        return nil if summary.nil? || prompt.strip.empty?
+
+        { prompt: prompt, summary: summary }
       end
 
       # The parts of the assistant message at +index+, with the tool_response

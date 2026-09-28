@@ -34,4 +34,16 @@ RSpec.describe Samagotchi::TurnNote do
   it "says an empty turn left the message unanswered" do
     expect(described_class.empty[:content]).to include("no visible answer").and include("still unanswered")
   end
+
+  it "reads back a restored failure's summary from the tail, behind context notes" do
+    context = { role: "system", content: "ctx", kind: "context_note" }
+    user = { role: "user", content: "hi" }
+    restored = described_class.failed("server error from host main: HTTP 500: boom", restored: true)
+    expect(described_class.restored_failure([user, restored, context])).to eq("server error from host main: HTTP 500: boom")
+    expect(described_class.restored_failure([restored.transform_keys(&:to_s)])).to eq("server error from host main: HTTP 500: boom")
+    expect(described_class.restored_failure([restored, user])).to be_nil
+    expect(described_class.restored_failure([described_class.failed("HTTP 500")])).to be_nil
+    expect(described_class.restored_failure([described_class.empty])).to be_nil
+    expect(described_class.restored_failure([])).to be_nil
+  end
 end
