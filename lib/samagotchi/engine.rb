@@ -905,9 +905,12 @@ module Samagotchi
       target = @host_registry.resolve(@effective_model_name)
       served, served_for = served_model_for(snapshot, target: target)
       snapshot = snapshot.merge(served_model: served, served_model_for: served_for)
-      unless snapshot[:context_window_tokens]
+      unless snapshot.dig(:context, :window_tokens)
         window = current_context_window(target)
-        snapshot = snapshot.merge(context_window_tokens: window.tokens, context_window_source: window.source) if window
+        if window
+          snapshot = snapshot.merge(context: snapshot[:context].merge(window_tokens: window.tokens,
+                                                                      window_source: window.source.to_s))
+        end
       end
       # The chat loop uses no prompt profile: drop one a native turn reported.
       return snapshot.except(:profile, :profile_source) if target.entry.chat?
@@ -917,6 +920,15 @@ module Samagotchi
         snapshot = snapshot.merge(profile: resolution.profile.name, profile_source: resolution.label)
       end
       snapshot
+    end
+
+    # The status line's ctx from the saved context, for a worker that has run
+    # no turn yet (it woke after an idle exit): nil when either count is
+    # unknown or context.status is off.
+    def saved_context_status(context)
+      return nil unless context && @kernel.respond_to?(:context_display)
+
+      @kernel.context_display(used_tokens: context[:used_tokens], window_tokens: context[:window_tokens])
     end
 
     # The effective model is on a chat host (api: openai), whose loop uses
@@ -954,12 +966,13 @@ module Samagotchi
     #     :recap_min_user_turns and :recap_inactivity_seconds (nil when not)
     def session_state_snapshot
       served_pair = served_model(probe: false)
+      metrics = @metrics.snapshot
       {
         status: @session&.status,
         message_count: (@session&.messages || []).size,
         last_prompt: @session&.last_prompt,
         event_seq: @session_observer&.event_count,
-        metrics: @metrics.snapshot,
+        metrics: metrics,
         pending_question: @question_mutex.synchronize { @pending_question&.dup },
         used_memory_names: @used_memory_mutex.synchronize { @used_memory_names.dup },
         preloaded_memory_names: preloaded_memory_names,
@@ -968,7 +981,7 @@ module Samagotchi
         model_name: @effective_model_name,
         served_model: served_pair[0],
         served_model_for: served_pair[1],
-        context_status: @last_context_status&.dup,
+        context_status: @last_context_status&.dup || saved_context_status(metrics[:context]),
         recap_enabled: !@recap.nil?,
         recap_min_user_turns: @recap&.min_user_turns,
         recap_inactivity_seconds: @recap&.inactivity&.to_i

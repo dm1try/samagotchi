@@ -172,15 +172,15 @@ RSpec.describe "Engine#stats_snapshot" do
 
     snapshot = engine_with(client).stats_snapshot
 
-    expect(snapshot).to include(context_window_tokens: 131_072, context_window_source: :server,
-                                profile: "qwen36", profile_source: "server (chat_template)")
+    expect(snapshot[:context]).to include(window_tokens: 131_072, window_source: "server")
+    expect(snapshot).to include(profile: "qwen36", profile_source: "server (chat_template)")
   end
 
   it "falls back to the configured window when the server has none" do
     snapshot = engine_with(FakeResolvingClient.new(nil)).stats_snapshot
 
-    expect(snapshot[:context_window_tokens]).to be_a(Integer)
-    expect(snapshot[:context_window_source]).not_to eq(:server)
+    expect(snapshot.dig(:context, :window_tokens)).to be_a(Integer)
+    expect(snapshot.dig(:context, :window_source)).not_to eq("server")
   end
 
   it "keeps what a turn reported" do
@@ -188,7 +188,8 @@ RSpec.describe "Engine#stats_snapshot" do
     engine.metrics.call(type: :generation_started, iteration: 1, context_window_tokens: 4096, context_window_source: :server,
                           profile: "gemma4", profile_source: "env")
 
-    expect(engine.stats_snapshot).to include(context_window_tokens: 4096, profile: "gemma4", profile_source: "env")
+    expect(engine.stats_snapshot).to include(profile: "gemma4", profile_source: "env")
+    expect(engine.stats_snapshot[:context]).to include(window_tokens: 4096)
   end
 
   # What a turn reported belongs to the model it ran on: after /model to
@@ -202,7 +203,7 @@ RSpec.describe "Engine#stats_snapshot" do
     snapshot = engine.stats_snapshot
     expect(snapshot).to include(profile: "qwen36")
     expect(snapshot[:profile_source]).not_to eq("env")
-    expect(snapshot[:context_window_tokens]).not_to eq(4096)
+    expect(snapshot.dig(:context, :window_tokens)).to be_a(Integer).and(satisfy { |tokens| tokens != 4096 })
   end
 
   # A single-model llama.cpp answers any name with the model it loaded.

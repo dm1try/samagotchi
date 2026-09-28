@@ -394,12 +394,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
                 tokens: { prompt_sum: 10, completion_sum: 5, source: "server" }, gen_latency_ms: 120,
                 cancellations: 0, retries: 0 }
     allow(client).to receive(:get_json).with("stats")
-      .and_return(JSON.parse(JSON.generate(metrics: metrics.merge(context_window_tokens: 128_000, context_window_source: :server))))
+      .and_return(JSON.parse(JSON.generate(metrics: metrics.merge(context: { used_tokens: 12_800, window_tokens: 128_000, window_source: "server" }))))
 
     run_with(["/stats"])
 
     expect(screen.lines).to include(a_string_including("turns:            2"),
                                     a_string_including("tokens in/out:    10/5 (all requests, server-reported)"),
+                                    a_string_including("context used:     12800 tokens (10.0%)"),
                                     a_string_including("context window:   128000 tokens (server)"))
   end
 

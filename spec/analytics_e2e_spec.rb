@@ -66,6 +66,22 @@ RSpec.describe "SessionMetrics end-to-end (real KernelLoop flow)" do
     expect(written["active_turn"]).to be_nil
   end
 
+  # A worker woken after an idle exit has run no turn: the attached status
+  # line's ctx comes from the saved context.
+  it "gives a new engine's status line the saved context before its first turn" do
+    session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd)
+    Samagotchi::Engine.new(mode: :assist, client: AnalyticsChunkClient.new, model_name: "gemma4").run_turn(session, "hi")
+
+    woken = Samagotchi::Engine.new(mode: :assist, client: AnalyticsChunkClient.new, model_name: "gemma4")
+    expect(woken.session_state_snapshot[:context_status]).to be_nil
+    woken.session = session
+
+    snap = woken.session_state_snapshot
+    window = snap.dig(:metrics, :context, :window_tokens)
+    expect(snap.dig(:metrics, :context, :used_tokens)).to eq(51)
+    expect(snap[:context_status]).to include(est_pct: 51 * 100.0 / window)
+  end
+
   it "persists into the engine's session state dir, not the default one" do
     engine = Samagotchi::Engine.new(mode: :assist, client: AnalyticsChunkClient.new, model_name: "gemma4")
     engine.session_state_dir = state_dir = File.join(@xdg, "elsewhere")

@@ -186,8 +186,7 @@ module Samagotchi
             completion_sum: sum(records, :completion_tokens) + (turn&.completion_sum || 0),
             source: combined_source(records.map { |record| record[:token_source] } + (turn&.token_sources || []))
           },
-          context_window_tokens: @context_window_tokens,
-          context_window_source: @context_window_source,
+          context: context_block(records),
           profile: @profile,
           profile_source: @profile_source,
           served_model: @served_model,
@@ -511,12 +510,31 @@ module Samagotchi
       @tool_records = loaded_records(prior["tool_records"]) + @tool_records
       @started_at = earliest_timestamp(prior["started_at"], @started_at)
       @last_activity_at ||= prior["last_activity_at"]
+      # The window last seen, until this process's first generation reports.
+      window = prior["context"].is_a?(Hash) ? prior["context"] : {}
+      if window["window_tokens"] && @context_window_tokens.nil?
+        @context_window_tokens = window["window_tokens"]
+        @context_window_source = window["window_source"]
+      end
     rescue JSON::ParserError, SystemCallError
       nil
     end
 
     def loaded_records(records)
       Array(records).filter_map { |record| record.transform_keys(&:to_sym) if record.is_a?(Hash) && record["id"] }
+    end
+
+    # The context as the newest turn with a count left it, and the window
+    # now; readers compute the percentage.
+    def context_block(records)
+      last = records.reverse_each.find { |record| record[:context_used_tokens].is_a?(Numeric) }
+      {
+        used_tokens: last&.dig(:context_used_tokens),
+        window_tokens: @context_window_tokens,
+        window_source: @context_window_source&.to_s,
+        source: last&.dig(:token_source),
+        at: last&.dig(:completed_at)
+      }
     end
 
     def sum(records, key)

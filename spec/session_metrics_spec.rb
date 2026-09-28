@@ -99,7 +99,7 @@ RSpec.describe Samagotchi::SessionMetrics do
   end
 
   it "keeps the latest context window :generation_started reported" do
-    expect(metrics.snapshot).to include(context_window_tokens: nil, context_window_source: nil)
+    expect(metrics.snapshot[:context]).to include(window_tokens: nil, window_source: nil)
 
     feed([
       { type: :turn_started, session_id: "sess-1", prompt: "hi" },
@@ -108,7 +108,53 @@ RSpec.describe Samagotchi::SessionMetrics do
       { type: :generation_started, iteration: 3 }
     ])
 
-    expect(metrics.snapshot).to include(context_window_tokens: 128_000, context_window_source: :server)
+    expect(metrics.snapshot[:context]).to include(window_tokens: 128_000, window_source: "server")
+  end
+
+  describe "the context block" do
+    def turn(prompt_tokens, completion_tokens, window: 1000)
+      [
+        { type: :turn_started, session_id: "ctx-sess", prompt: "p" },
+        { type: :generation_started, iteration: 1, context_window_tokens: window, context_window_source: :server },
+        { type: :generation_chunk, iteration: 1, content: "a",
+          payload: { "usage" => { "prompt_tokens" => prompt_tokens, "completion_tokens" => completion_tokens } } },
+        { type: :generation_completed, iteration: 1 },
+        { type: :turn_completed }
+      ]
+    end
+
+    it "is the newest turn's context used, with the window now" do
+      feed(turn(100, 20) + turn(300, 50))
+
+      context = metrics.snapshot[:context]
+      expect(context).to include(used_tokens: 350, window_tokens: 1000, window_source: "server", source: "server")
+      expect(context[:at]).to eq(metrics.snapshot[:turn_records].last[:completed_at])
+    end
+
+    it "keeps the last count when the newest turn has only an estimate" do
+      feed(turn(300, 50) + [
+        { type: :turn_started, session_id: "ctx-sess", prompt: "p" },
+        { type: :generation_started, iteration: 1 },
+        { type: :generation_chunk, iteration: 1, content: "abcd", payload: { "content" => "abcd" } },
+        { type: :generation_cancelled, iteration: 1 },
+        { type: :turn_canceled, cancellation_reason: :user }
+      ])
+
+      expect(metrics.snapshot[:context]).to include(used_tokens: 350, source: "server")
+    end
+
+    it "comes back, window too, in a new collector for the session" do
+      state_dir = Dir.mktmpdir
+      metrics.state_dir = state_dir
+      feed(turn(300, 50, window: 4096))
+      metrics.persist
+
+      woken = described_class.new
+      woken.state_dir = state_dir
+      woken.session_id = "ctx-sess"
+
+      expect(woken.snapshot[:context]).to include(used_tokens: 350, window_tokens: 4096, window_source: "server")
+    end
   end
 
   it "keeps the latest prompt profile :generation_started reported" do

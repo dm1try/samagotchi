@@ -250,9 +250,12 @@ module Samagotchi
         lines << "gen latency (ms): #{snapshot[:gen_latency_ms]}"
         lines << "cancellations:    #{snapshot[:cancellations]}"
         lines << "retries:          #{snapshot[:retries]}"
-        if snapshot[:context_window_tokens]
-          lines << "context window:   #{snapshot[:context_window_tokens]} tokens (#{snapshot[:context_window_source]})"
+        context = snapshot[:context] || {}
+        if context[:used_tokens]
+          pct = context[:window_tokens].to_i.positive? ? format(" (%.1f%%)", context[:used_tokens] * 100.0 / context[:window_tokens]) : ""
+          lines << "context used:     #{context[:used_tokens]} tokens#{pct}"
         end
+        lines << "context window:   #{context[:window_tokens]} tokens (#{context[:window_source]})" if context[:window_tokens]
         lines << "prompt profile:   #{snapshot[:profile]} (#{snapshot[:profile_source]})" if snapshot[:profile]
         if snapshot[:served_model]
           asked = snapshot[:served_model_for]
