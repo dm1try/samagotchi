@@ -178,8 +178,9 @@ RSpec.describe Samagotchi::Tools::Execute do
         started = now
         result = described_class.call("echo before; sleep 31.71", cancelled: -> { now - started > 0.3 })
 
-        expect(now - started).to be < 1.5
-        expect(result).to start_with("Error: command stopped by the user after 0s (killed; rerun it if still needed)\n")
+        expect(now - started).to be < 5
+        # The seconds are wall-clock (0 locally, 1 on a slow runner): the shape only.
+        expect(result).to match(/\AError: command stopped by the user after \d+s \(killed; rerun it if still needed\)\n/)
         expect(result).to include("stdout:\nbefore")
         expect(result).not_to include("exit:")
         expect(running?("sleep 31.71")).to be(false)
@@ -200,7 +201,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         interrupt = -> { now - started > 0.3 ? raise(Interrupt) : false }
 
         expect { described_class.call("sleep 31.72", cancelled: interrupt) }.to raise_error(Interrupt)
-        expect(now - started).to be < 1.5
+        expect(now - started).to be < 5
         expect(running?("sleep 31.72")).to be(false)
       end
     end
