@@ -44,7 +44,20 @@ server:
   port: 8080
 ```
 
-Other settings (multiple hosts, transports, timeouts, the idle recap) are in
+`server:` is a llama.cpp `llama-server`. For any other OpenAI-compatible
+server (vLLM, LM Studio, Ollama, a gateway), name it under `hosts:` with
+`api: openai` instead:
+
+```yaml
+default:
+  model: local:qwen3:8b    # host:model; the ids are in GET <url>/models
+hosts:
+  local:
+    url: http://localhost:11434/v1   # the API base, /v1 included
+    api: openai
+```
+
+`chi self` shows the model and host chi will use. Other settings (multiple hosts, transports, timeouts, the idle recap) are in
 [Configuration](docs/configuration.md).
 
 ## Use

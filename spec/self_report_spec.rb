@@ -168,7 +168,16 @@ RSpec.describe Samagotchi::SelfReport do
     context "when the server doesn't answer" do
       let(:props_answer) { Samagotchi::Client::ServerProps.new(body: nil, status: :network_error) }
 
-      it "says so" do
+      it "asks whether it is running" do
+        write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
+        expect(field("served model")).to eq("unknown (the server didn't answer; is it running?)")
+      end
+    end
+
+    context "when the server answers /props with an error" do
+      let(:props_answer) { Samagotchi::Client::ServerProps.new(body: nil, status: :http_error) }
+
+      it "says it had no answer there" do
         write_config("hosts:\n  main:\n    host: 10.0.0.5\n    port: 8081\n")
         expect(field("served model")).to eq("unknown (no answer from the server's /props)")
       end

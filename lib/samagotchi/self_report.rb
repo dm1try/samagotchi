@@ -116,6 +116,7 @@ module Samagotchi
       client = registry.client_for(entry)
       props = client.server_props(model: bare) if client.respond_to?(:server_props)
       return "reported per turn (the server has no /props)" if props.nil?
+      return "unknown (the server didn't answer; is it running?)" if props.status == :network_error
 
       served = ServedModel.from_props(props)
       return "unknown (no answer from the server's /props)" unless served

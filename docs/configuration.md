@@ -15,12 +15,13 @@ Default path:
 - `$XDG_CONFIG_HOME/samagotchi/config.yml`
 - Fallback when `XDG_CONFIG_HOME` is unset: `~/.config/samagotchi/config.yml`
 
-Example:
+Example (every section is optional except `default.model`; README.md has a
+minimal one):
 
 ```yaml
 default:
   model: Qwen3-14B-Instruct
-server:
+server:                 # the model server when there is no hosts: map below
   host: 192.0.2.10
   port: 8081
 thinking:
@@ -65,11 +66,12 @@ session:
   # keep_empty: false       # true keeps sessions nothing happened in (default: deleted when left)
   # max_children: 4         # running sessions one session may have delegated at a time (the delegate tool)
 
-# Baseline memories preloaded into the system prompt (same shape as --memory).
+# Baseline memories preloaded into the system prompt (same shape as --memory);
+# name entries you have, or chi warns at each start.
 # CLI --memory entries are appended after these, deduped.
 memories:
-  - system/user_preferences
-  - project/feature-env-template
+  # - system/user_preferences
+  # - project/feature-env-template
 ```
 
 Behavior:
