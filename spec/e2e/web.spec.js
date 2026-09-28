@@ -7,7 +7,9 @@ import { APPROVAL_COMMAND } from "./support/env.js";
 async function send(page, prompt) {
   await page.locator("#prompt").fill(prompt);
   await page.locator("#actionBtn").click();
-  await expect(page.locator("#history .bubble.user").last()).toHaveText(prompt);
+  // Contains, not equals: a fast failure adds its "failed" badge to the
+  // bubble's text before this check runs.
+  await expect(page.locator("#history .bubble.user").last()).toContainText(prompt);
 }
 
 // The turn is over: its timing line is final, Cancel is gone, Send is enabled.
