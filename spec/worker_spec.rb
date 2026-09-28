@@ -871,7 +871,8 @@ RSpec.describe Samagotchi::Worker do
           ran(JSON.parse(post_command("/continue no").body)["command_id"])
 
           expect(@recap_offer_seam.call).to be(false)
-          expect(engine.activity_seq).to be > seq
+          # Recorded after command_ran and the session's save: wait for it.
+          expect(wait_until { engine.activity_seq > seq }).to be(true)
         end
 
         it "discards the interrupted turn on no" do
