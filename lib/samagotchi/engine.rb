@@ -1900,7 +1900,7 @@ module Samagotchi
             }))
           end
         end
-        @metrics.persist
+        @metrics.persist(state_dir: session_state_dir)
 
         # Fire :after_turn hook (runs even on cancel/success), with a read-only
         # copy of the conversation the turn stored, and event[:present] for
@@ -1924,7 +1924,7 @@ module Samagotchi
           record_last_turn(session, "canceled", turn_seconds.call, origin)
           emit_event(on_event, with_origin.call({ type: :turn_canceled, cancellation_reason: :ctrl_c }))
         end
-        @metrics.persist
+        @metrics.persist(state_dir: session_state_dir)
         raise
       rescue StandardError => e
         # Keep what the turn got to (the prompt plus the loop's completed
@@ -1948,7 +1948,7 @@ module Samagotchi
           failed.merge!(error_kind: e.kind, retryable: e.retryable?, host: e.host, summary: e.summary)
         end
         emit_event(on_event, with_origin.call(failed))
-        @metrics.persist
+        @metrics.persist(state_dir: session_state_dir)
         raise
       ensure
         # A completed turn is activity: release the turn flag and advance the

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "samagotchi/token_usage"
 require "samagotchi/context_usage"
 
@@ -21,6 +22,16 @@ RSpec.describe "Usage parsing" do
       expect(tokens(payload)).to eq(expected)
       expect(context(payload).values_at(:prompt_tokens, :completion_tokens)).to eq(expected)
     end
+  end
+
+  # Recorded from llama.cpp with most of the prompt in the prompt cache: the
+  # last event's timings.prompt_n is only the uncached part.
+  it "reads the whole prompt from a cached native /completion stream" do
+    path = File.expand_path("fixtures/providers/llamacpp/completion_cached_stream.sse", __dir__)
+    events = File.readlines(path).filter_map { |line| JSON.parse(line.delete_prefix("data: ")) if line.start_with?("data: ") }
+    expect(events.last.dig("timings", "prompt_n")).to eq(4)
+    expect(events.map { |event| tokens(event) }.uniq.last).to eq([489, 8])
+    expect(events.map { |event| tokens(event)[0] }.uniq).to eq([489])
   end
 
   it "has no numbers for an empty payload" do

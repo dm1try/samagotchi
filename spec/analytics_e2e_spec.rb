@@ -69,4 +69,15 @@ RSpec.describe "SessionMetrics end-to-end (real KernelLoop flow)" do
     expect(written["turn_records"]).to include(hash_including("status" => "completed"))
     expect(written["active_turn"]).to be_nil
   end
+
+  it "persists into the engine's session state dir, not the default one" do
+    engine = Samagotchi::Engine.new(mode: :assist, client: AnalyticsChunkClient.new, model_name: "gemma4")
+    engine.session_state_dir = state_dir = File.join(@xdg, "elsewhere")
+    session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd)
+
+    engine.run_turn(session, "hi")
+
+    expect(File).to exist(File.join(state_dir, session.id, "analytics.json"))
+    expect(File).not_to exist(File.join(Samagotchi::Session.session_dir(session.id), "analytics.json"))
+  end
 end
