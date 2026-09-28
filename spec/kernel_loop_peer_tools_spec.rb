@@ -8,11 +8,15 @@ require "samagotchi/kernel_loop"
 RSpec.describe "list_sessions and send_note in the loops" do
   let(:tmpdir) { Dir.mktmpdir("kernel-peers") }
   let(:me) { Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/me").tap { |s| s.save(state_dir: tmpdir) } }
-  let(:other) { Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/other").tap { |s| s.save(state_dir: tmpdir) } }
+  # test_run: false, or CI=1 marks it a test run, which list_sessions leaves out.
+  let(:other) do
+    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/other", test_run: false)
+                       .tap { |s| s.save(state_dir: tmpdir) }
+  end
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  it "KernelLoop dispatches send_note with its peers, and labels the activity", :ci_todo do
+  it "KernelLoop dispatches send_note with its peers, and labels the activity" do
     kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
     kernel.peers = Samagotchi::Tools::Peers.new(session_id: me.id, cwd: "/work/me", state_dir: tmpdir)
 

@@ -22,8 +22,10 @@ RSpec.describe Samagotchi::NoteCommand do
     FileUtils.rm_rf(tmpdir)
   end
 
+  # test_run: false, or CI=1 marks them test runs, which --all leaves out.
   def make(owner: nil, status: nil)
-    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app").tap do |s|
+    Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/work/app",
+                                    test_run: false).tap do |s|
       s.last_prompt = "hi"
       s.status = status if status
       s.save(state_dir: tmpdir)
@@ -89,7 +91,7 @@ RSpec.describe Samagotchi::NoteCommand do
     expect(notes_of(live).size).to eq(1)
   end
 
-  it "--all: every session a worker runs now", :ci_todo do
+  it "--all: every session a worker runs now" do
     a = make(owner: "worker")
     b = make(owner: "worker")
     idle = make
