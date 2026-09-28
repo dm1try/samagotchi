@@ -80,12 +80,6 @@ RSpec.configure do |config|
 
   # Really compile the macOS desktop helper (swiftc, codesign): slow, and
   # needs the Command Line Tools. Own switch, not :integration's.
-  # Examples that fail on Linux CI but pass on macOS; skipped under CI until
-  # someone looks at them (docs/releasing.md, "Known CI gaps").
-  config.before(:each, :ci_todo) do
-    skip "Linux CI follow-up (:ci_todo)" if ENV["CI"]
-  end
-
   config.around(:each, :macos_build) do |example|
     skip "Set SAMAGOTCHI_MACOS_BUILD=1 to compile the desktop helper" unless ENV["SAMAGOTCHI_MACOS_BUILD"] == "1"
 

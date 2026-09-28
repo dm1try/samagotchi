@@ -125,11 +125,21 @@ GitHub release as such (`gh release edit vX.Y.Z --prerelease` or edit its
 notes: "yanked: …"), add a `### Fixed` line under Unreleased, and release the
 next patch version.
 
-## Known CI gaps
+## CI on Linux
 
-Some examples pass on macOS but fail on Linux CI. They carry `:ci_todo` and are
-skipped when `CI` is set: `chi send`/`chi note` subprocess specs (a child
-`ruby` without the bundle can't load nokogiri), `--all` on a peer list, the
-desktop fields in `chi self` (Linux has no helper), and KernelLoop's
-`send_note`. `spec/gem_contents_spec.rb` is skipped on Ruby 3.3 under CI
-(`Zlib::BufError` from `Gem::Package.build`). Fix these, then drop the tags.
+The suite runs the same on Linux CI as on macOS, with no CI-only skips. A few
+things differ there, and a new spec that trips on them fails only on CI:
+
+- `CI` set marks every new session a test run, and `--all`, `list_sessions`
+  and friends leave test runs out. A spec that lists sessions makes them with
+  `test_run: false`.
+- The gems live under `vendor/bundle`: a child `ruby` started with a bare env
+  (`unsetenv_others: true`) needs `GEM_HOME`/`GEM_PATH` to find nokogiri.
+- Ruby 3.3's zlib raises `Zlib::BufError` when a thread interrupt lands in a
+  deflate (ruby/zlib#57, fixed in Ruby 3.4's zlib): build gems in a child
+  process, as `spec/gem_contents_spec.rb` does.
+
+To run it locally, use Docker with the Ruby build CI uses
+(`ruby-X.Y.Z-ubuntu-24.04-x64.tar.gz` from ruby/ruby-builder's releases) on
+`ubuntu:24.04` with `LANG=C.UTF-8`, `zip` and `git`, and run
+`CI=1 BUNDLE_PATH=… bundle exec rspec`.
