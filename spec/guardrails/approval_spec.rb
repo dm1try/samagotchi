@@ -45,6 +45,20 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       expect(described_class.payload(v)[:question].lines.first.chomp.length).to eq("mcp_x_echo: ".length + 300)
     end
 
+    it "gives the card a plugin tool's arguments (approval[:args]) only when there is no command or path" do
+      registry = Samagotchi::Tools::Registry.new
+      registry.register("mcp_x_echo", schema: { name: "mcp_x_echo" }, handler: ->(*) { "" }, source: "mcp")
+      c = { name: "mcp_x_echo", args: { "message" => "hello there", "n" => 3 } }
+      v = Samagotchi::Guardrails::Verdict.new(call: c)
+      v.ask!("an MCP tool", rule: "mcp-ask", source: "config")
+      v.context = context
+      v.targets = Samagotchi::Guardrails::Targets.for(c, context, registry: registry)
+      expect(described_class.payload(v)[:approval][:args]).to eq("message=\"hello there\" n=3")
+      v.targets = Samagotchi::Guardrails::Targets.for(c.merge(args: {}), context, registry: registry)
+      expect(described_class.payload(v)[:approval]).not_to have_key(:args)
+      expect(described_class.payload(ask)[:approval]).not_to have_key(:args)
+    end
+
     it "names a plugin tool by its label when given one; approval[:tool] stays the raw name" do
       c = { name: "mcp_x_echo", args: { "message" => "hi" } }
       v = Samagotchi::Guardrails::Verdict.new(call: c)

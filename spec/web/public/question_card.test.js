@@ -37,6 +37,15 @@ test("a plugin tool's approval names it by its label, as its row does", () => {
   assert.equal(summaryText(pq, { answer: { selected: ["Allow once"] } }), "saving note: /r/secret.md → Allowed: Allow once");
 });
 
+test("approvalView: a tool without a command or path shows its args, or nothing", () => {
+  const pq = (approval) => ({ kind: "approval", approval: { tool: "mcp_x_echo", cwd: "/r", reason: "mcp", ...approval } });
+  const withArgs = approvalView(pq({ args: "message=\"hi\" n=3" }));
+  assert.equal(withArgs.what, "message=\"hi\" n=3");
+  assert.equal(withArgs.isCommand, false);
+  assert.equal(approvalView(pq({})).what, "");
+  assert.equal(summaryText(pq({}), { answer: { selected: ["Allow once"] } }), "mcp_x_echo → Allowed: Allow once");
+});
+
 test("approvalView lists paths outside a repo and names a hook", () => {
   const view = approvalView({
     kind: "approval",

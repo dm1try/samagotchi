@@ -36,6 +36,8 @@ module Samagotchi
             label: label,
             command: targets&.command,
             paths: targets && !targets.paths.empty? ? targets.paths : nil,
+            # No command or path (an MCP tool): its arguments, as the question.
+            args: args_for_card(targets),
             cwd: targets&.cwd,
             repo_root: targets&.repo_root,
             branch: verdict.context&.branch(targets&.cwd || verdict.context.cwd),
@@ -45,6 +47,13 @@ module Samagotchi
             scopes: scopes
           }.compact
         }
+      end
+
+      def args_for_card(targets)
+        return nil if targets.nil? || targets.command || !targets.paths.empty?
+
+        text = Approval.args_text(targets.args, limit: ARGS_CHARS)
+        text.empty? ? nil : text
       end
 
       # Settle +verdict+ from open_question's result.
