@@ -1,0 +1,157 @@
+// One isolated chi for the e2e suite: a temp HOME / XDG_CONFIG_HOME /
+// XDG_STATE_HOME, the scripted fake OpenAI server (fake_openai.py, mode
+// "script") as hosts.main, and `bin/chi web` on a free port. stop() kills
+// the web server, every session worker and the fake, then removes the dirs,
+// and throws if a process under the temp root survives.
+import { execFileSync, spawn } from "node:child_process";
+import fs from "node:fs";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const CHECKOUT = path.resolve(HERE, "../../..");
+export const SCRIPTS = path.join(HERE, "scripts");
+
+// The rule the approval scenario trips (scripts/approval.json runs this command).
+export const APPROVAL_COMMAND = "echo E2E_APPROVED";
+
+function config(fakePort) {
+  return `default:
+  model: fake-script
+hosts:
+  main:
+    url: http://127.0.0.1:${fakePort}/v1
+    api: openai
+retry:
+  max: 0
+recap: false
+web:
+  markdown: true
+guardrails:
+  rules:
+    - id: e2e-ask
+      tool: shell
+      command: '${APPROVAL_COMMAND}'
+      verdict: ask
+      reason: the e2e approval scenario
+`;
+}
+
+export function freePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+async function waitFor(url, what, proc, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (proc.exitCode !== null) throw new Error(`${what} exited (${proc.exitCode}) before it answered ${url}`);
+    try {
+      const res = await fetch(url);
+      if (res.ok) return;
+    } catch { /* not up yet */ }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`${what} did not answer ${url} within ${timeoutMs} ms`);
+}
+
+// Every process whose command line names the temp root: the fake server and
+// the session workers (run_session_loop(..., state_dir: "<root>/state/...")).
+function pidsUnder(root) {
+  try {
+    return execFileSync("pgrep", ["-f", root], { encoding: "utf8" }).split("\n").filter(Boolean).map(Number)
+      .filter((pid) => pid !== process.pid);
+  } catch {
+    return []; // pgrep exits 1 when nothing matches
+  }
+}
+
+function signal(pid, sig) {
+  try { process.kill(pid, sig); } catch { /* already gone */ }
+}
+
+async function settle(check, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (check()) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return check();
+}
+
+export async function startEnv() {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "chi-e2e-")));
+  const dirs = {
+    root,
+    home: path.join(root, "home"),
+    config: path.join(root, "home", ".config"),
+    state: path.join(root, "state"),
+    fake: path.join(root, "fake"),
+    project: path.join(root, "project"),
+  };
+  for (const d of [path.join(dirs.config, "samagotchi"), dirs.state, dirs.fake, dirs.project]) fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(dirs.project, "README.md"), "# e2e project\n\nA file the scripted turns read.\n");
+  fs.writeFileSync(path.join(dirs.fake, "mode"), "script\n");
+
+  const env = { root, dirs, procs: [] };
+  try {
+    const fakePort = await freePort();
+    fs.writeFileSync(path.join(dirs.config, "samagotchi", "config.yml"), config(fakePort));
+    const fake = spawn("python3", [path.join(HERE, "fake_openai.py"), String(fakePort), dirs.fake],
+      { stdio: ["ignore", "ignore", fs.openSync(path.join(root, "fake.log"), "a")] });
+    env.procs.push(fake);
+    await waitFor(`http://127.0.0.1:${fakePort}/v1/models`, "fake_openai.py", fake);
+
+    // Nothing from the caller's chi settings leaks in (SAMAGOTCHI_WEB_PORT, …).
+    const childEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("SAMAGOTCHI_")));
+    Object.assign(childEnv, {
+      HOME: dirs.home,
+      XDG_CONFIG_HOME: dirs.config,
+      XDG_STATE_HOME: dirs.state,
+      SAMAGOTCHI_ENV: "test",
+    });
+    const webPort = await freePort();
+    const webLog = fs.openSync(path.join(root, "web.log"), "a");
+    const web = spawn(path.join(CHECKOUT, "bin", "chi"), ["web", "--port", String(webPort)],
+      { cwd: dirs.project, env: childEnv, stdio: ["ignore", webLog, webLog] });
+    env.procs.push(web);
+    env.baseURL = `http://127.0.0.1:${webPort}`;
+    await waitFor(`${env.baseURL}/api/models`, "chi web", web);
+    return env;
+  } catch (e) {
+    await stopEnv(env).catch(() => {});
+    throw e;
+  }
+}
+
+// The fake serves <fake dir>/script.json to every request: pick a scenario's
+// script before its turn starts.
+export function useScript(env, name) {
+  fs.copyFileSync(path.join(SCRIPTS, `${name}.json`), path.join(env.dirs.fake, "script.json"));
+}
+
+export async function stopEnv(env) {
+  if (!env?.root) return;
+  const { root } = env;
+  for (const p of env.procs) if (p.exitCode === null) signal(p.pid, "SIGTERM");
+  for (const pid of pidsUnder(root)) signal(pid, "SIGTERM");
+  let clean = await settle(() => env.procs.every((p) => p.exitCode !== null) && pidsUnder(root).length === 0, 5000);
+  if (!clean) {
+    for (const p of env.procs) if (p.exitCode === null) signal(p.pid, "SIGKILL");
+    for (const pid of pidsUnder(root)) signal(pid, "SIGKILL");
+    clean = await settle(() => pidsUnder(root).length === 0, 3000);
+  }
+  const left = pidsUnder(root);
+  if (process.env.E2E_KEEP) console.log(`e2e: kept ${root}`);
+  else fs.rmSync(root, { recursive: true, force: true });
+  if (left.length) throw new Error(`e2e: processes under ${root} survived SIGKILL: ${left.join(" ")}`);
+}

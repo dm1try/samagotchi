@@ -1,0 +1,6 @@
+{
+  "delay": 0.03,
+  "iterations": [
+    {"thinking": "A short answer will do, nothing to run.", "text": "PONG from the fake model. It streams word by word. Then the turn ends."}
+  ]
+}

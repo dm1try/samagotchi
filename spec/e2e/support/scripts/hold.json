@@ -1,0 +1,6 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"hold": 60, "text": "This answer never arrives: the turn is canceled while the model holds."}
+  ]
+}

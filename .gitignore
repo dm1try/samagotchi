@@ -5,3 +5,4 @@ tmp/
 *.gem
 .samagotchi_memories/
 .claude/
+node_modules/

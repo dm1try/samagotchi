@@ -119,6 +119,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 ```sh
 bundle exec rspec    # Ruby specs
 npm test             # web frontend specs
+npm run e2e          # web UI happy paths in Chromium, fake model (once: npx playwright install chromium)
 ```
 
 ## License

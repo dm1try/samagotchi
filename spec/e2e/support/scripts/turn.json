@@ -1,0 +1,11 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"thinking": "First a no-op command to see the shell works, then the file.", "text": "Let me check the shell first.",
+     "tools": [{"name": "execute", "arguments": {"command": "true"}}]},
+    {"thinking": "The shell is fine. Now a small read.",
+     "tools": [{"name": "read", "arguments": {"path": "README.md", "start_line": 1, "end_line": 3}}]},
+    {"thinking": "Both steps worked: a short markdown summary.",
+     "text": "Both checks passed:\n\n- the shell answers (`true` exited 0)\n- `README.md` is readable\n\nAll **good**."}
+  ]
+}

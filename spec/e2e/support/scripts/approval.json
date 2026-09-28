@@ -1,0 +1,8 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"text": "Running the command that needs approval.",
+     "tools": [{"name": "execute", "arguments": {"command": "echo E2E_APPROVED"}}]},
+    {"text": "The approved command ran."}
+  ]
+}
