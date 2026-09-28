@@ -61,6 +61,12 @@ module Samagotchi
       message("the previous turn ended with no visible answer (thinking only, or nothing). The user's last message is still unanswered.")
     end
 
+    # The hidden nudge before a retry of an empty answer (EmptyAnswerRetry):
+    # the model never sees its empty generation, so it is told what happened.
+    def empty_retry
+      message("your last reply had no visible answer. Answer the user's last message now, briefly.")
+    end
+
     def note?(entry)
       return false unless entry.respond_to?(:[])
 

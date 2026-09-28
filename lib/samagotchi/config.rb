@@ -125,6 +125,9 @@ module Samagotchi
       Entry.new(key: "retry.max",                yaml_path: %w[retry max],                type: :integer, default: 5,               expose: %i[env config cli]),
       Entry.new(key: "retry.base_delay",         yaml_path: %w[retry base_delay],         type: :float,   default: 0.5,             expose: %i[env config cli]),
       Entry.new(key: "retry.max_delay",          yaml_path: %w[retry max_delay],          type: :float,   default: 8.0,             expose: %i[env config cli]),
+      # Asks again in the same turn after an empty answer (EmptyAnswerRetry);
+      # 0 = off, capped at 3. No CLI flag: workers get no CLI args.
+      Entry.new(key: "retry.empty_answer",       yaml_path: %w[retry empty_answer],       type: :integer, default: 1,               expose: %i[env config]),
 
       Entry.new(key: "read.truncate_at_bytes",        yaml_path: %w[read truncate_at_bytes],        type: :integer, default: 65_536,   expose: %i[env config cli]),
       Entry.new(key: "read.preview_bytes",            yaml_path: %w[read preview_bytes],            type: :integer, default: 12_288,   expose: %i[env config cli]),
