@@ -96,6 +96,21 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(hub.snapshot.first[:last_prompt]).to eq("after")
     end
 
+    it "emits a session event when a question opens and when it closes" do
+      a = save_session
+      hub.scan
+      events.clear
+
+      a.pending_question = { id: "q1", question: "Which?" }
+      a.save(state_dir: state_dir)
+      hub.scan
+      a.pending_question = nil
+      a.save(state_dir: state_dir)
+      hub.scan
+
+      expect(events.map { |e| e.data[:session][:pending_question] }).to eq([{ id: "q1", kind: "question" }, nil])
+    end
+
     it "emits session_gone for a deleted file and drops it from the projection" do
       a = save_session
       hub.scan

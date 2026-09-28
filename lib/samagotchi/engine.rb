@@ -1249,6 +1249,19 @@ module Samagotchi
     end
     private :hook_messages
 
+    # How the turn ended, on the session (Session#last_turn): the caller's
+    # save puts it in the file the session hub watches.
+    def record_last_turn(session, outcome, seconds, origin)
+      client_id = origin.is_a?(Hash) ? origin[:client_id].to_s : ""
+      source = if client_id.start_with?("#{Tools::Delegate::CLIENT_PREFIX}:") then "delegate"
+               elsif client_id == SessionManager::REMINDER_CLIENT_ID then "reminder"
+               else "client"
+               end
+      session.last_turn = { "outcome" => outcome, "ended_at" => Time.now.iso8601(3),
+                            "seconds" => seconds.round(1), "origin" => source }
+    end
+    private :record_last_turn
+
     # Keep what the after_turn hooks presented as the answer's `display`
     # and tell the observers (:answer_display), after the turn_completed
     # they already had: the web re-reads the answer then. Terminals are not
@@ -1871,6 +1884,7 @@ module Samagotchi
             replace_session_messages(session, conversation)
           end
           session.status = Session::STATUS_IDLE
+          record_last_turn(session, canceled ? "canceled" : "completed", turn_seconds.call, origin)
           if canceled
             emit_event(on_event, with_origin.call({
               type: :turn_canceled,
@@ -1907,6 +1921,7 @@ module Samagotchi
         synchronize_events do
           replace_session_messages(session, TurnNote.replace_trailing(messages, TurnNote.cancelled(:ctrl_c, seconds: turn_seconds.call))) if messages
           session.status = Session::STATUS_IDLE
+          record_last_turn(session, "canceled", turn_seconds.call, origin)
           emit_event(on_event, with_origin.call({ type: :turn_canceled, cancellation_reason: :ctrl_c }))
         end
         @metrics.persist
@@ -1925,6 +1940,7 @@ module Samagotchi
         end
         replace_session_messages(session, kept) if kept
         session.status = Session::STATUS_IDLE
+        record_last_turn(session, "failed", turn_seconds.call, origin)
         begin; session.save(state_dir: session_state_dir); rescue StandardError; nil; end
         failed = { type: :turn_failed, error_class: e.class.name, message: e.message }
         # A provider error says what kind it is, for one line per kind in the UIs.

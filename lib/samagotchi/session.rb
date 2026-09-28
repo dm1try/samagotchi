@@ -50,6 +50,11 @@ module Samagotchi
     # A `chi scratch` session: deleted when its REPL ends, and by the next
     # sweep (or `chi sessions clean`) when the process died first.
     attr_accessor :scratch
+    # How the last turn ended, for the web's notifications (the hub sends
+    # it in the summary): {"outcome" => "completed"|"failed"|"canceled",
+    # "ended_at" => iso8601, "seconds" => Float, "origin" =>
+    # "client"|"reminder"|"delegate"}; nil before the first turn.
+    attr_accessor :last_turn
     # Archived (ArchiveStore): hidden from the lists. Set by .list (with
     # include_archived); not saved in session.json.
     attr_accessor :archived
@@ -62,7 +67,8 @@ module Samagotchi
                    metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
                    first_preview: "", test_run: false, pending_question: nil,
                    used_memory_names: [], project_root: nil,
-                   preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false)
+                   preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
+                   last_turn: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -82,6 +88,7 @@ module Samagotchi
       @project_root = project_root
       @parent_id = parent_id&.to_s
       @scratch = !!scratch
+      @last_turn = last_turn
       @archived = false
     end
 
@@ -168,7 +175,8 @@ module Samagotchi
         preloaded_memory_names: Array(data["preloaded_memory_names"]),
         muted_memory_names: Array(data["muted_memory_names"]),
         parent_id: data["parent_id"],
-        scratch: data.fetch("scratch", false)
+        scratch: data.fetch("scratch", false),
+        last_turn: data["last_turn"]
       )
     rescue JSON::ParserError => e
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
@@ -244,6 +252,7 @@ module Samagotchi
     def self.summary_from_file(path)
       data = JSON.parse(File.read(path))
       used_mems = data["used_memory_names"] || data["used_memories"] || []
+      pending = data["pending_question"]
       new(
         id: data.fetch("id"),
         metadata_version: data.fetch("metadata_version", 1),
@@ -257,12 +266,14 @@ module Samagotchi
         last_prompt: data.fetch("last_prompt", ""),
         first_preview: data.fetch("first_preview", ""),
         test_run: data.fetch("test_run", false),
+        pending_question: pending.is_a?(Hash) ? symbolize_message_keys(pending) : nil,
         used_memory_names: Array(used_mems),
         project_root: data["project_root"],
         preloaded_memory_names: Array(data["preloaded_memory_names"]),
         muted_memory_names: Array(data["muted_memory_names"]),
         parent_id: data["parent_id"],
-        scratch: data.fetch("scratch", false)
+        scratch: data.fetch("scratch", false),
+        last_turn: data["last_turn"]
       )
     rescue JSON::ParserError, KeyError, SystemCallError
       nil
@@ -416,7 +427,8 @@ module Samagotchi
         "preloaded_memory_names" => Array(@preloaded_memory_names),
         "muted_memory_names" => Array(@muted_memory_names),
         "parent_id" => @parent_id,
-        "scratch" => @scratch
+        "scratch" => @scratch,
+        "last_turn" => @last_turn
       }
 
       File.write(temp_path, JSON.pretty_generate(record) + "\n")

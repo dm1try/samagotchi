@@ -151,6 +151,23 @@ RSpec.describe Samagotchi::Session do
       expect(JSON.parse(File.read(File.join(tmpdir, "#{plain.id}.json")))).to include("parent_id" => nil)
     end
 
+    it "round-trips last_turn and reads the pending question in the summary too" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      last = { "outcome" => "failed", "ended_at" => "2026-09-28T10:00:00.000+02:00", "seconds" => 12.5, "origin" => "client" }
+      session.last_turn = last
+      session.pending_question = { id: "q1", kind: "approval", question: "Run it?" }
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+
+      expect(described_class.load(session.id, state_dir: tmpdir).last_turn).to eq(last)
+      summary = described_class.summary_from_file(path)
+      expect(summary.last_turn).to eq(last)
+      expect(summary.pending_question).to include(id: "q1", kind: "approval")
+
+      plain = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").save(state_dir: tmpdir)
+      expect(described_class.summary_from_file(File.join(tmpdir, "#{plain.id}.json"))).to have_attributes(last_turn: nil, pending_question: nil)
+    end
+
     it "reads a session file written before the memory-name fields as empty lists" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)

@@ -125,6 +125,47 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     end
   end
 
+  describe "last_turn" do
+    it "says how the turn ended, how long it took and who asked, by the time its end is announced" do
+      allow(kernel).to receive(:run).and_return(kernel_result)
+      seen = nil
+      engine.subscribe(observer: ->(e) { seen = session.last_turn if e[:type] == :turn_completed })
+
+      engine.run_turn(session, "hi")
+
+      expect(seen).to include("outcome" => "completed", "origin" => "client")
+      expect(seen["seconds"]).to be_a(Float)
+      expect(Time.iso8601(seen["ended_at"])).to be_within(5).of(Time.now)
+    end
+
+    it "records a cancel, a Ctrl-C and a failure" do
+      allow(kernel).to receive(:run).and_return(kernel_result(canceled: true, cancellation_reason: :manual))
+      engine.run_turn(session, "hi")
+      expect(session.last_turn["outcome"]).to eq("canceled")
+
+      allow(kernel).to receive(:run).and_raise(Interrupt)
+      expect { engine.run_turn(session, "hi") }.to raise_error(Interrupt)
+      expect(session.last_turn["outcome"]).to eq("canceled")
+
+      allow(kernel).to receive(:run).and_raise(RuntimeError, "boom")
+      expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
+      expect(session.last_turn["outcome"]).to eq("failed")
+    end
+
+    it "maps the origin: a delegate, a reminder, a client, none" do
+      allow(kernel).to receive(:run).and_return(kernel_result)
+      {
+        { client_id: "delegate:abcd1234" } => "delegate",
+        { client_id: "system:reminder" } => "reminder",
+        { client_id: "web:tab-1" } => "client",
+        nil => "client"
+      }.each do |origin, expected|
+        engine.run_turn(session, "hi", origin: origin)
+        expect(session.last_turn["origin"]).to eq(expected)
+      end
+    end
+  end
+
   describe "when the turn's end is announced" do
     it "has the session's messages already updated, placeholder included" do
       allow(kernel).to receive(:run).and_return(

@@ -52,8 +52,21 @@ module Samagotchi
           project_root: session.project_root(cache: root_cache),
           # A worker is reachable: its Bridge sidecar is there and the
           # owner lock is held. A sidecar a dead worker left is not up.
-          bridge_up: bridge_up?(session_dir, owner)
+          bridge_up: bridge_up?(session_dir, owner),
+          # For the tab's notifications (notify.js): an open question and
+          # how the last turn ended.
+          pending_question: pending_question_for(session),
+          last_turn: session.respond_to?(:last_turn) ? session.last_turn : nil
         }
+      end
+
+      # The open question as {id:, kind:} ("approval" for a guardrail's,
+      # else "question"); nil when there is none. The text stays out.
+      def pending_question_for(session)
+        pending = session.respond_to?(:pending_question) ? session.pending_question : nil
+        return nil unless pending.is_a?(Hash) && pending[:id]
+
+        { id: pending[:id], kind: pending[:kind].to_s == "approval" ? "approval" : "question" }
       end
 
       # status is turn state (idle/running). The live worker's snapshot is the

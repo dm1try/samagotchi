@@ -25,6 +25,26 @@ RSpec.describe Samagotchi::Web::SessionSummary do
     Samagotchi::Session.session_dir(s.id, state_dir: state_dir)
   end
 
+  describe "the notification fields" do
+    it "reduces the pending question to its id and kind, and passes last_turn through" do
+      s = session
+      s.pending_question = { id: "q1", question: "Which?", header: "Pick" }
+      s.last_turn = { "outcome" => "completed", "ended_at" => "t", "seconds" => 11.0, "origin" => "client" }
+
+      json = described_class.build(s, owner: nil, session_dir: session_dir(s))
+
+      expect(json[:pending_question]).to eq(id: "q1", kind: "question")
+      expect(json[:last_turn]).to eq(s.last_turn)
+      s.pending_question = { id: "q2", kind: "approval" }
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))[:pending_question]).to eq(id: "q2", kind: "approval")
+    end
+
+    it "is nil for a session with neither" do
+      s = session
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(pending_question: nil, last_turn: nil)
+    end
+  end
+
   describe ".displayed_status" do
     it "shows a 'running' with no live owner as idle (a worker died mid-turn)" do
       expect(described_class.displayed_status(session(status: "running"), owner: nil)).to eq("idle")
