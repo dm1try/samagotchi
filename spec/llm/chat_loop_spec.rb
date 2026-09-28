@@ -53,6 +53,16 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     expect(seen).to eq([nil, "sess-1"])
   end
 
+  it "sends the kernel's sampling as the request options of every generation, none without" do
+    run
+    allow(fake_kernel).to receive(:sampling).and_return({ temperature: 0.6 })
+    backend.adapter = FakeChatAdapter.new(tools(["c1", "read", { "path" => "a.rb" }]), text("done"))
+    run
+
+    expect(adapter.requests.map { |r| r[:options] }).to eq([{}])
+    expect(backend.adapter.requests.map { |r| r[:options] }).to eq([{ temperature: 0.6 }, { temperature: 0.6 }])
+  end
+
   it "names the model the adapter reports in :generation_completed, next to the one asked for" do
     served = FakeChatAdapter.text("hi").with(model: "vendor/served-1")
     described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(served))

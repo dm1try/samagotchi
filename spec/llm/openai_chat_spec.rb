@@ -5,6 +5,8 @@ require "samagotchi/llm/openai_chat"
 require "samagotchi/cancellation_controller"
 require "samagotchi/host_registry"
 require_relative "../support/fake_provider_server"
+require "fileutils"
+require "tmpdir"
 
 RSpec.describe Samagotchi::LLM::OpenAIChat do
   around { |example| FakeProviderServer.without_webmock { example.run } }
@@ -85,6 +87,54 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       )
       expect(request.json["tools"].first.dig("function", "name")).to eq("execute")
       expect(request.header("authorization")).to be_nil
+    end
+
+    describe "sampling options" do
+      let(:log_dir) { Dir.mktmpdir("samagotchi-log") }
+      let(:log_path) { File.join(log_dir, "chi.log") }
+      after do
+        Samagotchi::Log.reset!
+        FileUtils.remove_entry(log_dir)
+      end
+
+      def stream_lines
+        File.open(log_path) { |io| Samagotchi::LogLine.each_record(io).select { |r| r.event == "stream" } }
+      end
+
+      it "sends configured keys, a configured temperature replacing 0.0 (one temperature key), and logs them" do
+        Samagotchi::Log.configure(path: log_path, level: :info)
+        replay("text_stream.sse")
+
+        adapter.chat(messages: messages, tools: tools, model: "m",
+                     options: { temperature: 0.6, presence_penalty: 1.5, chat_template_kwargs: { enable_thinking: false } })
+
+        request = server.requests.last
+        expect(request.body.scan('"temperature"').length).to eq(1)
+        expect(request.json).to include("temperature" => 0.6, "presence_penalty" => 1.5,
+                                        "chat_template_kwargs" => { "enable_thinking" => false }, "model" => "m", "stream" => true)
+        expect(stream_lines.last.fields).to include(
+          "sampling" => 'temperature=0.6 presence_penalty=1.5 chat_template_kwargs={"enable_thinking":false}'
+        )
+      end
+
+      it "leaves out a key set to nil (the provider's default temperature)" do
+        replay("text_stream.sse")
+
+        adapter.chat(messages: messages, tools: tools, model: "m", options: { temperature: nil })
+
+        expect(server.requests.last.json).not_to have_key("temperature")
+      end
+
+      it "sends and logs temperature 0.0 without options" do
+        Samagotchi::Log.configure(path: log_path, level: :info)
+        replay("text_stream.sse")
+
+        adapter.chat(messages: messages, tools: tools, model: "m")
+
+        expect(server.requests.last.json.keys).to contain_exactly("model", "messages", "temperature", "stream",
+                                                                  "stream_options", "tools", "tool_choice")
+        expect(stream_lines.last.fields).to include("sampling" => "temperature=0.0")
+      end
     end
 
     it "sends the session id as a Session-Id header, and no header without one" do

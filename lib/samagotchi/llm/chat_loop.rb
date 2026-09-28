@@ -132,6 +132,11 @@ module Samagotchi
         @kernel.respond_to?(:vision) ? @kernel.vision : nil
       end
 
+      # The turn's request parameters (the Engine sets them on the kernel).
+      def sampling
+        @kernel.respond_to?(:sampling) ? @kernel.sampling || {} : {}
+      end
+
       def strip_model_thought(text)
         @kernel.respond_to?(:strip_model_thought) ? @kernel.strip_model_thought(text) : text
       end
@@ -331,7 +336,7 @@ module Samagotchi
           streamed = +""
           response = @loop.adapter.chat(
             messages: @loop.wire_messages(@conversation), tools: @loop.tool_definitions, model: @model_name,
-            cancel_controller: @cancel_controller, session_id: @loop.session_id,
+            cancel_controller: @cancel_controller, session_id: @loop.session_id, options: @loop.sampling,
             on_delta: lambda { |content:, reasoning:, payload:|
               streamed << content
               emit(type: :generation_chunk, iteration: iteration, content: reasoning + content, text: content,

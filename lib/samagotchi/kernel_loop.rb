@@ -175,6 +175,9 @@ module Samagotchi
     # The turn's VisionContext (images: capability, files, limits), set by
     # the Engine per turn; nil sends no images (placeholders instead).
     attr_accessor :vision
+    # The turn's request parameters (SamplingSettings.for), set by the Engine
+    # per turn; empty or nil sends none.
+    attr_accessor :sampling
     # Tools::Peers (or the Engine's live view of it): the session
     # list_sessions and send_note speak for; nil outside a session.
     attr_accessor :peers

@@ -44,6 +44,7 @@ require_relative "served_model"
 require_relative "image_store"
 require_relative "vision_context"
 require_relative "vision_support"
+require_relative "sampling_settings"
 require_relative "answer_display"
 
 module Samagotchi
@@ -1861,6 +1862,7 @@ module Samagotchi
         # Before anything of the turn is kept or a reminder is used up.
         vision = turn_vision(session)
         @kernel.vision = vision if @kernel.respond_to?(:vision=)
+        @kernel.sampling = turn_sampling if @kernel.respond_to?(:sampling=)
         refuse_images!(vision) unless image_refs.empty?
         announce_guardrail_failures(on_event)
         # Plugins' slow setup that brings tools (an MCP server's first
@@ -2086,6 +2088,15 @@ module Samagotchi
       target = @host_registry.resolve(@effective_model_name)
       VisionContext.new(session_dir: Session.session_dir(session.id, state_dir: session_state_dir),
                         capability: -> { VisionSupport.for(target, profile: profile, adapter: vision_adapter(target)) })
+    end
+
+    # The effective model's request parameters (hosts: and models:
+    # sampling), read per turn: /model can change the model between turns.
+    def turn_sampling
+      target = @host_registry.resolve(@effective_model_name)
+      SamplingSettings.for(target, names: model_lookup_names(target))
+    rescue StandardError
+      SamplingSettings::EMPTY
     end
 
     def vision_adapter(target)
@@ -2625,10 +2636,14 @@ module Samagotchi
       end
 
       target = @host_registry.resolve(@effective_model_name)
-      # As typed (maybe an alias), the part after a host prefix, alias-resolved, bare.
+      ModelProfile.resolve(names: model_lookup_names(target), entry: target.entry, client: target.client, bare_model: target.bare_model)
+    end
+
+    # The names a models: entry may be under: as typed (maybe an alias), the
+    # part after a host prefix, alias-resolved, bare.
+    def model_lookup_names(target)
       typed = @model_lookup_names.first
-      names = @model_lookup_names + [@host_registry.parse_qualified_model(typed).last, target.bare_model]
-      ModelProfile.resolve(names: names.compact, entry: target.entry, client: target.client, bare_model: target.bare_model)
+      (@model_lookup_names + [@host_registry.parse_qualified_model(typed).last, target.bare_model]).compact
     end
 
     # Everything that holds a profile follows the resolution: the kernel's

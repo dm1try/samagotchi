@@ -111,9 +111,9 @@ module Samagotchi
       # @return [ChatResponse]
       def chat(messages:, model:, tools: [], cancel_controller: nil, on_delta: nil, on_retry: nil, options: {},
                session_id: nil)
-        request = post_request("#{@base_url}/chat/completions", request_body(messages, tools, model, options),
-                               session_id: session_id)
-        log_fields = { model: model, purpose: @purpose }
+        body = request_body(messages, tools, model, options)
+        request = post_request("#{@base_url}/chat/completions", body, session_id: session_id)
+        log_fields = { model: model, purpose: @purpose, sampling: sampling_summary(body) }
         return chat_once(request, cancel_controller, log_fields) unless @stream
 
         assembly = Assembly.new
@@ -209,7 +209,15 @@ module Samagotchi
           body[:tools] = tools
           body[:tool_choice] = "auto"
         end
-        body.merge(options || {})
+        # A configured value replaces chi's own (temperature); nil drops it.
+        body.merge(options || {}).compact
+      end
+
+      # The body's fields beyond the conversation and the stream, for the
+      # log line: "temperature=0.6 presence_penalty=1.5".
+      def sampling_summary(body)
+        extra = body.except(:model, :messages, :stream, :stream_options, :tools, :tool_choice)
+        extra.empty? ? nil : extra.map { |key, value| "#{key}=#{value.is_a?(String) ? value : value.to_json}" }.join(" ")
       end
 
       # A String stays a String; an Array of parts passes as given.
