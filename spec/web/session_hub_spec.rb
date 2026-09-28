@@ -297,6 +297,29 @@ RSpec.describe Samagotchi::Web::SessionHub do
       lock&.release
     end
 
+    it "emits the running turn's card with actions when pending_card.json appears, and again when it goes" do
+      a = save_session(status: "running")
+      lock = acquire(a)
+      File.write(File.join(lock_dir(a), "bridge.json"), JSON.generate(port: 4321, started_at: Time.now.iso8601(3)))
+      hub.scan
+      events.clear
+
+      Samagotchi::Bridge::PendingCard.new(lock_dir(a)).tap do |pending|
+        pending.call({ type: :card, id: "check-in-1", source: "check-in", in_turn: true,
+                       actions: [{ label: "Nudge", command: "/checkin nudge" }] })
+        hub.scan
+        expect(types).to eq(%w[session])
+        expect(events.last.data[:session][:pending_card]).to eq(id: "check-in-1", bundle: "check-in")
+
+        pending.call({ type: :turn_completed })
+        hub.scan
+        expect(types).to eq(%w[session session])
+        expect(events.last.data[:session][:pending_card]).to be_nil
+      end
+    ensure
+      lock&.release
+    end
+
     it "sees the owner go, on the next tick, with no file change: owner nil, bridge_up false, a 'running' shown idle" do
       a = save_session(status: "running")
       lock = acquire(a)

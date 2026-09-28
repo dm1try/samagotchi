@@ -5,6 +5,7 @@ require_relative "../recap_store"
 require_relative "../archive_store"
 require_relative "../session_metrics"
 require_relative "../bridge_client"
+require_relative "../bridge/pending_card"
 
 module Samagotchi
   module Web
@@ -27,6 +28,7 @@ module Samagotchi
       # @return [Hash] symbol keys
       def build(session, owner:, session_dir:, status: displayed_status(session, owner: owner), root_cache: nil)
         used = session.respond_to?(:used_memory_names) ? Array(session.used_memory_names) : []
+        up = bridge_up?(session_dir, owner)
         {
           id: session.id,
           status: status,
@@ -55,10 +57,12 @@ module Samagotchi
           project_root: session.project_root(cache: root_cache),
           # A worker is reachable: its Bridge sidecar is there and the
           # owner lock is held. A sidecar a dead worker left is not up.
-          bridge_up: bridge_up?(session_dir, owner),
-          # For the tab's notifications (notify.js): an open question and
-          # how the last turn ended.
+          bridge_up: up,
+          # For the tab's notifications (notify.js): an open question, the
+          # running turn's open card with actions, and how the last turn
+          # ended.
           pending_question: pending_question_for(session),
+          pending_card: up ? Bridge::PendingCard.read(session_dir) : nil,
           last_turn: session.respond_to?(:last_turn) ? session.last_turn : nil
         }
       end

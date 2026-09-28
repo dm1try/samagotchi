@@ -10,6 +10,7 @@ require "time"
 require_relative "bridge/bounded_queue"
 require_relative "bridge/card_store"
 require_relative "bridge/event_id"
+require_relative "bridge/pending_card"
 require_relative "bridge/ring_buffer"
 require_relative "bridge/sse_writer"
 require_relative "bridge/turn_accumulator"
@@ -92,6 +93,7 @@ module Samagotchi
       @ring = RingBuffer.new(capacity: ring_capacity)
       @accumulator = TurnAccumulator.new
       @cards = CardStore.new
+      @pending_card = PendingCard.new(session_dir)
       @heartbeat_interval = heartbeat_interval
       @epoch = SecureRandom.hex(4)
 
@@ -151,6 +153,9 @@ module Samagotchi
       # A plugin's ctx.messages mid-turn holds the turn so far (plan O1).
       @engine.running_turn_messages = -> { @accumulator.current_messages } if @engine.respond_to?(:running_turn_messages=)
       @cards_handle = @engine.subscribe(observer: @cards)
+      # One a worker that died left is not open.
+      @pending_card.clear
+      @pending_card_handle = @engine.subscribe(observer: @pending_card)
       @accept_thread = Thread.new { accept_loop }
       @accept_thread.report_on_exception = false
       write_sidecar
@@ -175,6 +180,8 @@ module Samagotchi
       @accumulator_handle&.unsubscribe
       @engine.running_turn_messages = nil if @engine.respond_to?(:running_turn_messages=)
       @cards_handle&.unsubscribe
+      @pending_card_handle&.unsubscribe
+      @pending_card&.clear
       # A turn post killed between its enqueue and its reply looks failed to
       # the web, which then queues the prompt again from the input file.
       await_answers(REQUEST_GRACE_SECONDS)

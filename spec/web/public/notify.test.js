@@ -104,3 +104,34 @@ test("a gone session closes its open question; one without a question closes not
   assert.deepEqual(trackAttention(state, "session_gone", { id: "s2" }).closed, []);
   assert.deepEqual(trackAttention(state, "session_gone", { id: "nope" }).closed, []);
 });
+
+// A running turn's card with actions (check-in's) asks like a question: the
+// hub's summary carries pending_card {id, bundle} while it is open.
+test("a new card with actions needs you, once per card id", () => {
+  const open = { ...base, status: "running", pending_card: { id: "check-in-1", bundle: "check-in" } };
+  assert.deepEqual(attentionFor(base, open), { reason: "card", sessionId: "s1", key: "s1:card:check-in-1" });
+  assert.equal(attentionFor(open, { ...open, updated_at: "later" }), null);
+  const again = { ...open, pending_card: { id: "check-in-2", bundle: "check-in" } };
+  assert.equal(attentionFor(open, again).key, "s1:card:check-in-2");
+  assert.equal(attentionText(open, { reason: "card" }).body, "needs you");
+});
+
+test("a card resolved, or its turn ended, is closed; a gone session closes it too", () => {
+  const open = { ...base, status: "running", pending_card: { id: "c1", bundle: "check-in" } };
+  const { state } = trackAttention(initialAttentionState(), "snapshot", { sessions: [base] });
+  const shown = trackAttention(state, "session", { session: open });
+  assert.deepEqual(shown.attentions.map((a) => a.reason), ["card"]);
+  assert.deepEqual(trackAttention(shown.state, "session", { session: open }).closed, []);
+  const resolved = trackAttention(shown.state, "session", { session: { ...open, pending_card: null } });
+  assert.deepEqual(resolved.closed, ["s1:card:c1"]);
+  assert.deepEqual(resolved.attentions, []);
+  const ended = trackAttention(shown.state, "session", { session: { ...base, pending_card: null, last_turn: turn("canceled", 30) } });
+  assert.deepEqual(ended.closed, ["s1:card:c1"]);
+  assert.deepEqual(trackAttention(shown.state, "session_gone", { id: "s1" }).closed, ["s1:card:c1"]);
+});
+
+test("an open card in the first snapshot seeds and never notifies", () => {
+  const open = { ...base, pending_card: { id: "c1", bundle: "check-in" } };
+  const { attentions } = trackAttention(initialAttentionState(), "snapshot", { sessions: [open] });
+  assert.deepEqual(attentions, []);
+});

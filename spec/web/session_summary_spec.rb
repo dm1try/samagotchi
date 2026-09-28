@@ -41,7 +41,21 @@ RSpec.describe Samagotchi::Web::SessionSummary do
 
     it "is nil for a session with neither" do
       s = session
-      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(pending_question: nil, last_turn: nil)
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(pending_question: nil, pending_card: nil,
+                                                                                           last_turn: nil)
+    end
+
+    it "carries the open card with actions (pending_card.json) only while the worker is up" do
+      s = session(status: "running")
+      dir = session_dir(s)
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "pending_card.json"), '{"id":"check-in-1","bundle":"check-in"}')
+      owner = { "kind" => "worker", "pid" => 1 }
+      expect(described_class.build(s, owner: owner, session_dir: dir)[:pending_card]).to be_nil # no Bridge sidecar
+      File.write(File.join(dir, "bridge.json"), '{"port":1}')
+      expect(described_class.build(s, owner: owner, session_dir: dir)[:pending_card]).to eq(id: "check-in-1", bundle: "check-in")
+      # A file a dead worker left is not open.
+      expect(described_class.build(s, owner: nil, session_dir: dir)[:pending_card]).to be_nil
     end
   end
 

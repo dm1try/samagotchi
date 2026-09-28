@@ -398,3 +398,30 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
   await expect(reloaded.locator("summary")).toHaveText("check-in nudged the model");
   await expect(reloaded.locator(".steer-text")).toContainText("You've made 3 tool calls in this turn");
 });
+
+// A check-in card asks the user as a question does: a tab behind shows one
+// "needs you" notification and a badge; resolving the card (here from
+// another client, the tab untouched) drops the badge while the turn runs.
+test("check-in in a background tab: one 'needs you' notification; the card resolved drops the badge", async ({ page, script }) => {
+  await withNotificationStub(page);
+  await page.locator("#notifyBtn").click();
+  await expect(page.locator("#notifyBtn")).toHaveAttribute("data-state", "on");
+
+  script("check_in");
+  await send(page, "Look through the README");
+  const card = page.locator("#history > .plugin-card").filter({ hasText: "3 tool calls, no answer yet" });
+  await expect(card).toBeVisible();
+  await expect.poll(() => notes(page)).toEqual([
+    expect.objectContaining({ title: "Look through the README", body: "needs you", tag: expect.stringMatching(/:card:check-in-/) }),
+  ]);
+  await expect(page).toHaveTitle(/^\(1\) Chi/);
+
+  const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
+  const res = await page.request.post(new URL(`/api/sessions/${id}/command`, page.url()).href, { data: { line: "/checkin later" } });
+  expect(res.ok()).toBe(true);
+  await expect(page.locator("#history .plugin-card .card-action")).toHaveCount(0);
+  await expect(page).not.toHaveTitle(/^\(/);
+  await expect(page.locator("#cancelBtn")).toBeVisible();
+  await turnEnded(page, 1);
+  expect(await notes(page)).toHaveLength(1);
+});
