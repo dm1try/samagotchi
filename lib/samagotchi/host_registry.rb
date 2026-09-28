@@ -28,9 +28,10 @@ module Samagotchi
     # come from it); api_key_env: the variable holding the host's API key;
     # profile: the configured prompt profile name, if any;
     # first_token_timeout: the configured first-token limit (see #first_token_limit);
-    # vision: the configured true/false (VisionSupport), nil when unset.
+    # vision: the configured true/false (VisionSupport), nil when unset;
+    # sampling: the configured request parameters (SamplingSettings), nil when unset.
     HostEntry = Struct.new(:name, :host, :port, :transport, :client, :api, :scheme, :url, :api_key_env, :profile,
-                           :first_token_timeout, :vision, keyword_init: true) do
+                           :first_token_timeout, :vision, :sampling, keyword_init: true) do
       # Talks the OpenAI chat API (the chat loop); nil and raw apis use the
       # raw-prompt loop.
       def chat? = api == :openai
@@ -86,7 +87,7 @@ module Samagotchi
         entry = HostEntry.new(name: key.to_s.downcase, host: cfg[:host], port: cfg[:port].to_i, transport: transport,
                               api: cfg[:api]&.to_sym, scheme: cfg[:scheme], url: cfg[:url], api_key_env: cfg[:api_key_env],
                               profile: cfg[:profile], first_token_timeout: cfg[:first_token_timeout],
-                              vision: cfg[:vision])
+                              vision: cfg[:vision], sampling: cfg[:sampling])
         entry.client = Client.new(host: cfg[:host], port: cfg[:port], transport: transport, scheme: cfg[:scheme],
                                   first_token_timeout: entry.first_token_limit, name: entry.name)
         @entries[entry.name] = entry

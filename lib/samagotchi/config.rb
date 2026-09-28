@@ -159,8 +159,8 @@ module Samagotchi
     # Maps of named entries and the keys an entry may hold
     # (ConfigFile.hosts_config, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
-      "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision enabled].freeze,
-      "models" => %w[profile vision].freeze
+      "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision sampling enabled].freeze,
+      "models" => %w[profile vision sampling].freeze
     }.freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
     SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze }.freeze
@@ -565,6 +565,43 @@ module Samagotchi
       nil
     end
 
+    # Request keys chi sets itself; a `sampling:` map can't override them.
+    # (Length caps would need their own semantics.)
+    SAMPLING_RESERVED_KEYS = %w[model messages prompt stream stream_options tools tool_choice stop n_predict
+                                max_tokens n parallel_tool_calls response_format cache_prompt].freeze
+
+    # A `sampling:` setting (hosts entry or models: entry): request parameters
+    # passed through to the provider as written (keys symbolized, nested maps
+    # too, so e.g. chat_template_kwargs works). A null value means "don't
+    # send it" (drops chi's own temperature default). Not a map: warns once,
+    # nil. Reserved keys warn once and are dropped. nil when nothing is left.
+    def sampling_map(value, where)
+      return nil if value.nil?
+      unless value.is_a?(Hash)
+        warn_once "Warning: #{where}: sampling must be a map of request parameters; ignored"
+        return nil
+      end
+
+      result = value.each_with_object({}) do |(raw_key, raw_value), acc|
+        key = raw_key.to_s.strip
+        next if key.empty?
+        if SAMPLING_RESERVED_KEYS.include?(key)
+          warn_once "Warning: #{where}: sampling.#{key} is set by chi; ignored"
+          next
+        end
+        acc[key.to_sym] = deep_symbolize(raw_value)
+      end
+      result.empty? ? nil : result.freeze
+    end
+
+    def deep_symbolize(value)
+      case value
+      when Hash then value.to_h { |k, v| [k.to_s.to_sym, deep_symbolize(v)] }.freeze
+      when Array then value.map { |v| deep_symbolize(v) }.freeze
+      else value
+      end
+    end
+
     # Forget the warnings already printed (specs).
     def reset_warnings!
       @warned = nil
@@ -685,6 +722,7 @@ module Samagotchi
           profile = (raw_cfg["profile"] || raw_cfg[:profile]).to_s.strip.downcase
           first_token_timeout = raw_cfg.key?("first_token_timeout") ? raw_cfg["first_token_timeout"] : raw_cfg[:first_token_timeout]
           vision = ConfigFile.vision_flag(raw_cfg.key?("vision") ? raw_cfg["vision"] : raw_cfg[:vision], "hosts entry '#{name}'")
+          sampling = ConfigFile.sampling_map(raw_cfg.key?("sampling") ? raw_cfg["sampling"] : raw_cfg[:sampling], "hosts entry '#{name}'")
           unless first_token_timeout.nil? || (first_token_timeout.is_a?(Numeric) && !first_token_timeout.negative?)
             warn_once "Warning: hosts entry '#{name}': first_token_timeout must be seconds (0 = off); using the default"
             first_token_timeout = nil
@@ -748,7 +786,7 @@ module Samagotchi
                                   api: api_val&.to_sym, original_name: name, scheme: scheme,
                                   url: url.empty? ? nil : url, api_key_env: api_key_env.empty? ? nil : api_key_env,
                                   profile: profile.empty? ? nil : profile, first_token_timeout: first_token_timeout,
-                                  vision: vision }
+                                  vision: vision, sampling: sampling }
         end
       end
 
@@ -851,7 +889,7 @@ module Samagotchi
         location = v[:url] ? { "url" => v[:url] } : { "host" => v[:host], "port" => v[:port] }
         location.merge("transport" => v[:transport]&.to_s, "api" => v[:api]&.to_s, "api_key_env" => v[:api_key_env],
                        "profile" => v[:profile], "first_token_timeout" => v[:first_token_timeout],
-                       "vision" => v[:vision]).compact
+                       "vision" => v[:vision], "sampling" => v[:sampling]).compact
       end
       JSON.generate(simple)
     rescue StandardError
@@ -933,6 +971,8 @@ module Samagotchi
         vision = vision_flag(v.key?("vision") ? v["vision"] : v[:vision], "models: #{key}")
         result[key] = { profile: profile.empty? ? nil : profile }
         result[key][:vision] = vision unless vision.nil?
+        sampling = sampling_map(v.key?("sampling") ? v["sampling"] : v[:sampling], "models: #{key}")
+        result[key][:sampling] = sampling if sampling
       end
     rescue StandardError
       {}
