@@ -439,6 +439,16 @@ body.has-session #scope .scope-where{display:none}
 }
 /* The ▾ glyph draws tiny at the pill's 11 px: at 20 px it is about as tall
    as the pill text's capitals (phone and desktop alike). */
+/* The bell (notifications): quiet at the top bar's right end; filled in the accent when on, struck through when the browser blocks it. */
+#notifyBtn{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;min-height:0;background:transparent;border:1px solid transparent;border-radius:999px;color:var(--text-muted)}
+#notifyBtn[hidden]{display:none}
+#notifyBtn:hover{color:var(--text-2);border-color:var(--border)}
+#notifyBtn svg{fill:none;stroke:currentColor;stroke-width:1.3;stroke-linejoin:round;stroke-linecap:round}
+#notifyBtn .slash{display:none}
+#notifyBtn[data-state="on"]{color:var(--accent)}
+#notifyBtn[data-state="on"] .bell{fill:currentColor;fill-opacity:.22}
+#notifyBtn[data-state="denied"]{color:var(--text-faint)}
+#notifyBtn[data-state="denied"] .slash{display:inline}
 #stripShow .pill-arrow{font-size:20px;line-height:0;vertical-align:-3px}
 .card .folder{font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;color:var(--text-3)}
 .card .parent{font-family:ui-monospace,monospace;white-space:nowrap;color:var(--text-3)}
@@ -526,6 +536,7 @@ a{color:var(--accent)}
     <button type="button" id="newBtn" class="brand" title="New chat"><span class="brand-name">chi</span><span class="brand-new">+<span class="brand-new-word"> new chat</span></span></button>
     <div id="scope" hidden></div>
     <button type="button" class="strip-toggle" id="stripShow" title="Show the latest sessions"><span class="pill-arrow" aria-hidden="true">▾</span> sessions</button>
+    <button type="button" id="notifyBtn" aria-label="Notifications" aria-pressed="false" hidden><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path class="bell" d="M8 1.75a4 4 0 0 0-4 4v2.6L2.75 10.6v.9h10.5v-.9L12 8.35v-2.6a4 4 0 0 0-4-4Z"/><path class="clapper" d="M6.5 13a1.5 1.5 0 0 0 3 0"/><path class="slash" d="M2.5 2.5l11 11"/></svg></button>
   </div>
   <section id="topStrip" aria-label="Latest sessions" class="loading"><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div></section>
   <section id="center">

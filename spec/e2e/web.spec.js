@@ -160,3 +160,89 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
   await expect(stripCard).toBeVisible();
 });
+
+// Notifications: the tab says whether it is in front through a stubbed
+// visibilityState/hasFocus (window.__setFront), and a stub Notification
+// records what would be shown (window.__notes). The page starts behind.
+async function withNotificationStub(page) {
+  await page.addInitScript(() => {
+    window.__front = false;
+    window.__notes = [];
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (window.__front ? "visible" : "hidden") });
+    document.hasFocus = () => window.__front;
+    // The permission outlives a reload, as a browser's does.
+    window.Notification = class {
+      static get permission() { return sessionStorage.getItem("stub_permission") || "default"; }
+      static async requestPermission() { sessionStorage.setItem("stub_permission", "granted"); return "granted"; }
+      constructor(title, options = {}) { window.__notes.push({ title, body: options.body, tag: options.tag }); }
+      close() {}
+    };
+    window.__setFront = (front) => {
+      window.__front = front;
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+  });
+  await page.reload();
+}
+
+const notes = (page) => page.evaluate(() => window.__notes);
+
+test("the bell asks for permission once and stays on across a reload", async ({ page }) => {
+  await withNotificationStub(page);
+  const bell = page.locator("#notifyBtn");
+  await expect(bell).toHaveAttribute("data-state", "off");
+  await bell.click();
+  await expect(bell).toHaveAttribute("data-state", "on");
+  await expect(bell).toHaveAttribute("aria-pressed", "true");
+  await page.reload();
+  await expect(bell).toHaveAttribute("data-state", "on");
+  await bell.click();
+  await expect(bell).toHaveAttribute("data-state", "off");
+  await page.reload();
+  await expect(bell).toHaveAttribute("data-state", "off");
+});
+
+test("a question in a background tab: one notification and a title badge; in front it clears; a reload shows none", async ({ page, script }) => {
+  await withNotificationStub(page);
+  await page.locator("#notifyBtn").click();
+  await expect(page.locator("#notifyBtn")).toHaveAttribute("data-state", "on");
+
+  script("question");
+  await send(page, "Read a file of my choice");
+  const card = page.locator("#history .bubble.question");
+  await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
+  await expect.poll(() => notes(page)).toEqual([
+    expect.objectContaining({ title: "Read a file of my choice", body: "needs an answer", tag: expect.stringMatching(/:/) }),
+  ]);
+  await expect(page).toHaveTitle(/^\(1\) Chi/);
+
+  // A reload with the question still open: old state, no notification.
+  await page.reload();
+  await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
+  await expect(page.locator("#topStrip .card").first()).toBeVisible();
+  await expect(page).not.toHaveTitle(/^\(/);
+  expect(await notes(page)).toEqual([]);
+
+  // Back in front: nothing counts, and the badge is gone.
+  await page.evaluate(() => window.__setFront(true));
+  await card.locator(".question-option", { hasText: "README.md" }).click();
+  await card.locator(".question-submit").click();
+  await turnEnded(page, 1);
+  expect(await notes(page)).toEqual([]);
+  await expect(page).not.toHaveTitle(/^\(/);
+});
+
+test("the title badge counts while behind and clears when the tab comes to the front", async ({ page, script }) => {
+  await withNotificationStub(page);
+  script("question");
+  await send(page, "Read a file of my choice");
+  const card = page.locator("#history .bubble.question");
+  await expect(page).toHaveTitle(/^\(1\) Chi/);
+  // No bell: the badge still counts, and no notification is shown.
+  expect(await notes(page)).toEqual([]);
+  await page.evaluate(() => window.__setFront(true));
+  await expect(page).not.toHaveTitle(/^\(/);
+  await card.locator(".question-option", { hasText: "README.md" }).click();
+  await card.locator(".question-submit").click();
+  await turnEnded(page, 1);
+});
