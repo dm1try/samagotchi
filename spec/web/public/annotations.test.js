@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { annotationSource, appendQuote, quoteBlock, sourceLabel } from "../../../lib/samagotchi/web/public/annotations.js";
+import { annotateBarLeft, annotationSource, appendQuote, quoteBlock, sourceLabel } from "../../../lib/samagotchi/web/public/annotations.js";
 
 // A stand-in element: `closest` walks a chain of { matches, el } pairs.
 function fakeEl(chain, { tool, classes = [] } = {}) {
@@ -71,4 +71,14 @@ test("annotationSource quotes a step's narration in the turn view, not the live 
   assert.equal(sourceLabel("step"), "From your earlier step:");
   const live = fakeEl({}, { classes: ["gen-text", "streaming"] });
   assert.equal(annotationSource(fakeEl({ ".gen-text": live })), null);
+});
+
+// The bar (324 px wide) in a 1400 px window, under the selection's last line.
+test("annotateBarLeft: right-aligned to the selection's end; left-aligned to its line start where that would clamp", () => {
+  assert.equal(annotateBarLeft({ left: 400, right: 900 }, 324, 1400), 576);
+  // Ends near the bubble's left edge (x 237..257): by the text, not the gutter.
+  assert.equal(annotateBarLeft({ left: 237, right: 257 }, 324, 1400), 237);
+  // Still kept in the window at both edges.
+  assert.equal(annotateBarLeft({ left: 2, right: 20 }, 324, 1400), 8);
+  assert.equal(annotateBarLeft({ left: 1300, right: 1395 }, 324, 1400), 1068);
 });
