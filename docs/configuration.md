@@ -431,6 +431,14 @@ retry:
   max_delay: 8.0
 ```
 
+`retry.empty_answer` is a different thing: the request worked, but the model's answer had no visible text and no
+tool calls (thinking only, or nothing; a thinking loop cut by the provider's output cap looks like this). chi then
+asks again in the same turn with a hidden note ("your last reply had no visible answer…"), at `temperature: 0.6`
+unless `sampling:` sets one; the REPL prints `↻ empty answer, asking again (1/1)` and the web shows it as a row of
+the step. `retry.empty_answer` (default `1`, at most `3`, env `SAMAGOTCHI_RETRY_EMPTY_ANSWER`, no CLI flag) is how
+many times per turn; `0` ends the turn at the empty answer as before. An answer cut because the context is full
+(90 % or more) is not retried. When the retries run out the turn ends with "(the model returned an empty answer)".
+
 Assist-mode UX:
 
 - While waiting, retry notices are rendered in the existing thinking spinner area as a red `network error: retrying ...` status.
@@ -644,6 +652,7 @@ described in their own sections.
 | `retry.max` | `5` | yes | See "Llama Network Retry Behavior". |
 | `retry.base_delay` | `0.5` | yes | |
 | `retry.max_delay` | `8.0` | yes | |
+| `retry.empty_answer` | `1` | | Times a turn asks again after an empty answer (at most 3, `0` = off). See "Llama Network Retry Behavior". |
 | `read.truncate_at_bytes` | `65536` | yes | A `read` result larger than this is cut to a preview. |
 | `read.preview_bytes` | `12288` | yes | Size of that preview. |
 | `read.hard_max_bytes` | `2097152` | yes | Largest file `read` opens. |
