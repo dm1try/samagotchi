@@ -118,6 +118,28 @@ RSpec.describe Samagotchi::Client do
       expect(request.body).to include('"n_predict":1024')
     end
 
+    it "adds the sampling fields, never over the request's own, and drops nil ones" do
+      client = described_class.new(host: "localhost", port: 8080)
+      http = instance_double(Net::HTTP)
+      response = double("response", code: "200")
+      request = nil
+
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(http).to receive(:request) do |built_request, &block|
+        request = built_request
+        block.call(response)
+      end
+      allow(response).to receive(:read_body).and_yield("data: {\"content\":\"ok\"}\n")
+
+      client.complete("prompt", stop: ["done"], n_predict: 64,
+                                sampling: { temperature: 0.6, repeat_penalty: 1.1, min_p: nil, n_predict: 9, stream: false, prompt: "x" })
+
+      body = JSON.parse(request.body)
+      expect(body).to include("temperature" => 0.6, "repeat_penalty" => 1.1, "n_predict" => 64, "stream" => true,
+                              "prompt" => "prompt", "stop" => ["done"])
+      expect(body).not_to have_key("min_p")
+    end
+
     it "includes model when provided" do
       client = described_class.new(host: "localhost", port: 8080)
       http = instance_double(Net::HTTP)

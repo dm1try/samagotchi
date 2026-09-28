@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require_relative "config"
 
 module Samagotchi
@@ -27,6 +28,14 @@ module Samagotchi
 
       pairs = params.map { |key, value| "#{key}=#{value.nil? ? "(not sent)" : value.inspect}" }
       "#{pairs.join(" ")} (#{sources.join(", ")})"
+    end
+
+    # Request fields as the http log line shows them:
+    # "temperature=0.6 presence_penalty=1.5", nil for none.
+    def self.log_text(fields)
+      return nil if fields.nil? || fields.empty?
+
+      fields.map { |key, value| "#{key}=#{value.is_a?(String) ? value : JSON.generate(value)}" }.join(" ")
     end
 
     def self.resolve(target, names, models)

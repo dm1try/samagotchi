@@ -8,6 +8,7 @@ require_relative "cancellation_controller"
 require_relative "llm/http"
 require_relative "vision_context"
 require_relative "vision_support"
+require_relative "sampling_settings"
 
 module Samagotchi
   # Thin HTTP client for llama.cpp's native /completion endpoint, or an
@@ -182,11 +183,14 @@ module Samagotchi
     # @param on_retry    [Proc, nil]     optional callback before retry sleep
     # @param images      [Array<String>] base64 images, one per
     #   ImagePlan::NATIVE_PLACEHOLDER in the prompt (llama.cpp only)
+    # @param sampling    [Hash]          request fields to add (SamplingSettings):
+    #   temperature, penalties, …; they can't replace the fields above
     # @return [String] the generated text
     def complete(prompt, stop: ["<end_of_turn>", "<|tool_response>"], n_predict: nil, model: nil, on_chunk: nil, cancel_controller: nil, on_retry: nil,
-                 images: [])
+                 images: [], sampling: {})
       images = Array(images)
-      return stream_completion(scrub_utf8(prompt), stop, n_predict, model, on_chunk, cancel_controller, on_retry) if images.empty?
+      request = { stop: stop, n_predict: n_predict, model: model, sampling: sampling }
+      return stream_completion(scrub_utf8(prompt), request, on_chunk, cancel_controller, on_retry) if images.empty?
 
       # The media marker is random per server process: a restart between the
       # /props read and the request makes the prompt fail to tokenize, so
@@ -196,7 +200,7 @@ module Samagotchi
         attempts += 1
         payload_prompt = { prompt_string: scrub_utf8(prompt.gsub(ImagePlan::NATIVE_PLACEHOLDER, media_marker!(model))),
                            multimodal_data: images }
-        stream_completion(payload_prompt, stop, n_predict, model, on_chunk, cancel_controller, on_retry)
+        stream_completion(payload_prompt, request, on_chunk, cancel_controller, on_retry)
       rescue LLM::BadRequest => e
         raise unless attempts == 1 && e.message.include?("Failed to tokenize prompt")
 
@@ -205,11 +209,12 @@ module Samagotchi
       end
     end
 
-    private def stream_completion(prompt, stop, n_predict, model, on_chunk, cancel_controller, on_retry)
+    private def stream_completion(prompt, fields, on_chunk, cancel_controller, on_retry)
       uri = completion_uri
       request = Net::HTTP::Post.new(uri)
       request["Content-Type"] = "application/json"
-      request.body = completion_payload(prompt, stop: stop, n_predict: n_predict, model: model).to_json
+      request.body = completion_payload(prompt, **fields).to_json
+      model = fields[:model]
 
       result = +""
       reset_on_retry = lambda do |event|
@@ -219,7 +224,8 @@ module Samagotchi
       end
       @http.stream_lines(uri, request, cancel_controller: cancel_controller, on_retry: reset_on_retry,
                                        on_network_error: ->(_error) { invalidate_context_window! },
-                                       log_fields: { model: model, purpose: "chat" }) do |line, shown|
+                                       log_fields: { model: model, purpose: "chat",
+                                                     sampling: SamplingSettings.log_text(sendable_sampling(fields[:sampling])) }) do |line, shown|
         parsed_chunk = parse_stream_line(line)
         next unless parsed_chunk
 
@@ -337,12 +343,18 @@ module Samagotchi
       URI("#{@scheme}://#{@host}:#{@port}#{@transport.completion_path}")
     end
 
-    def completion_payload(prompt, stop:, n_predict:, model:)
+    def completion_payload(prompt, stop:, n_predict:, model:, sampling: {})
       payload = { prompt: prompt, stop: stop, stream: true }
       payload[@transport.token_limit_key] = n_predict if n_predict && n_predict.to_i.positive?
       model_name = @transport.model_for_payload(model)
       payload[:model] = model_name if model_name
-      payload
+      sendable_sampling(sampling).merge(payload)
+    end
+
+    # The sampling fields that go out: no nil (nothing to drop here: the
+    # server's defaults apply) and none of the reserved request fields.
+    def sendable_sampling(sampling)
+      (sampling || {}).reject { |key, value| value.nil? || ConfigFile::SAMPLING_RESERVED_KEYS.include?(key.to_s) }
     end
 
     # Conversation content (system prompt + tool responses + model output) can

@@ -523,6 +523,7 @@ module Samagotchi
       kwargs[:n_predict] = n_predict if n_predict && client_supports_keyword?(:n_predict)
       resolved_model_name = completion_model_name(model_name)
       kwargs[:model] = resolved_model_name if resolved_model_name && client_supports_keyword?(:model)
+      kwargs[:sampling] = @sampling if @sampling && !@sampling.empty? && client_supports_keyword?(:sampling)
       kwargs
     end
 

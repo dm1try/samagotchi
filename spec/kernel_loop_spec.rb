@@ -1811,6 +1811,22 @@ end
       expect(prompt).to include("<|im_start|>assistant")
     end
 
+    it "passes the turn's sampling to the client, and none when it is empty" do
+      seen = []
+      allow(client).to receive(:complete) do |_prompt, **kwargs|
+        seen << kwargs
+        "done"
+      end
+
+      qwen_kernel.run([{ role: "user", content: "hi" }])
+      qwen_kernel.sampling = { temperature: 0.6 }
+      qwen_kernel.run([{ role: "user", content: "hi" }])
+      qwen_kernel.sampling = {}
+      qwen_kernel.run([{ role: "user", content: "hi" }])
+
+      expect(seen.map { |kwargs| kwargs[:sampling] }).to eq([nil, { temperature: 0.6 }, nil])
+    end
+
     it "returns nil when no default.n_predict is configured" do
       original_xdg = ENV["XDG_CONFIG_HOME"]
       Dir.mktmpdir("samagotchi-empty") do |dir|

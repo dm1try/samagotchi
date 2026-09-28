@@ -3,6 +3,7 @@
 require "json"
 require "uri"
 require_relative "../config"
+require_relative "../sampling_settings"
 require_relative "errors"
 require_relative "http"
 require_relative "usage"
@@ -216,8 +217,7 @@ module Samagotchi
       # The body's fields beyond the conversation and the stream, for the
       # log line: "temperature=0.6 presence_penalty=1.5".
       def sampling_summary(body)
-        extra = body.except(:model, :messages, :stream, :stream_options, :tools, :tool_choice)
-        extra.empty? ? nil : extra.map { |key, value| "#{key}=#{value.is_a?(String) ? value : value.to_json}" }.join(" ")
+        SamplingSettings.log_text(body.except(:model, :messages, :stream, :stream_options, :tools, :tool_choice))
       end
 
       # A String stays a String; an Array of parts passes as given.
