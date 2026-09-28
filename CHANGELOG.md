@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi scratch`: a one-time session in the terminal that leaves nothing behind.
+  It is deleted however it ends, saves no memories and starts no other
+  sessions; one left by a killed process goes at the next sweep or
+  `chi sessions clean`.
+
 ## [0.2.0] - 2026-09-27
 
 The first public release. chi is an agent harness for local models

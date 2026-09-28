@@ -7,6 +7,7 @@
 - `chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
 - `chi --resume <session-id>` — resume a prior session (in its worker)
 - `chi --no-shared [--resume <session-id>]` — the plain in-process REPL instead, for this run
+- `chi scratch [options]` — a one-time session in the plain in-process REPL, in this folder, that leaves nothing behind (see [Scratch sessions](#scratch-sessions))
 - `chi --attach <session-id>` — attach the terminal to a session's worker (e.g. one started from the Web UI), waking one if it has exited
 - A session id can be shortened to any unique prefix (like git): `chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
 - `chi web [--port 4567] [--open] [--scope=all]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
@@ -64,6 +65,7 @@ it sees one.
 | `chi --resume ID -p "next step" --non-interactive` | Resume `ID`, run the prompt, save, exit. |
 | `chi --resume ID -p "next step"` | Resume `ID`, send the prompt, **stay attached** to that session. |
 | `chi --no-shared [...]` | The same, in the plain in-process REPL. |
+| `chi scratch [-p ...] [--non-interactive]` | A new session in the plain REPL, deleted when it ends. |
 
 Notes:
 
@@ -74,6 +76,27 @@ Notes:
   turn context (a `-p` run on a resumed session never clobbers existing history).
 - Non-interactive runs (`-p` with `--non-interactive`, or bare `--non-interactive`)
   print only the final result output — no spinner, status line, or REPL.
+
+### Scratch sessions
+
+`chi scratch` is `chi --no-shared` for a session you won't keep: a quick
+question, a try-out. It takes the run options (`-p`, `--non-interactive`,
+`--model`, `--profile`, `--memory`, `--mute`, `-v`, …); `--resume`, `--attach`
+and `--shared` are refused. Its first line says it is a scratch session.
+
+- The session is deleted however it ends: `/exit`, Ctrl-D, Ctrl-C at the
+  prompt, an error, SIGTERM or SIGHUP. There is no recap, and the lines typed
+  are not added to the prompt history.
+- It never shows in `chi web`. A process killed with `kill -9` leaves its
+  session behind, marked `"scratch": true` in its session.json: `chi sessions
+  list` shows it as `[scratch]`, and the next sweep or `chi sessions clean`
+  deletes it.
+- Memories are read and preloaded as usual, but nothing is saved: `memory_write`
+  answers "scratch session: nothing is saved", and `write`/`edit` into the
+  memories folder are denied (a guardrail, rule `scratch-session`). `execute`
+  can still write files anywhere, memories included.
+- No child sessions: the `delegate` tools are not offered, and a plugin's
+  `ctx.sessions.fork` (btw's side session) refuses, since they would outlive it.
 
 ### Sharing a session
 
