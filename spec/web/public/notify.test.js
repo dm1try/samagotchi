@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { attentionFor, attentionText, initialAttentionState, trackAttention } from "../../../lib/samagotchi/web/public/notify.js";
+import { attentionFor, attentionText, createNotifyGate, initialAttentionState, trackAttention } from "../../../lib/samagotchi/web/public/notify.js";
 
 // What in a session's summary change needs the user: an open question,
 // a failed turn, a long turn done. The first snapshot only seeds.
@@ -134,4 +134,82 @@ test("an open card in the first snapshot seeds and never notifies", () => {
   const open = { ...base, pending_card: { id: "c1", bundle: "check-in" } };
   const { attentions } = trackAttention(initialAttentionState(), "snapshot", { sessions: [open] });
   assert.deepEqual(attentions, []);
+});
+
+// Several tabs: a BroadcastChannel stand-in (a message reaches the other
+// tabs, never the sender) and a scheduler the test runs by hand.
+function channels(n) {
+  const all = [];
+  for (let i = 0; i < n; i++) {
+    const ch = { onmessage: null, postMessage(data) { for (const other of all) if (other !== ch) other.onmessage?.({ data }); } };
+    all.push(ch);
+  }
+  return all;
+}
+function clock() {
+  const timers = new Map();
+  let next = 1;
+  return {
+    schedule: (fn) => { timers.set(next, fn); return next++; },
+    cancel: (id) => timers.delete(id),
+    run() { const fns = [...timers.values()]; timers.clear(); fns.forEach((fn) => fn()); },
+    get size() { return timers.size; },
+  };
+}
+const q1 = { reason: "question", sessionId: "s1", key: "s1:q1" };
+
+test("a tab behind holds an attention and drops it when a tab in front has it", () => {
+  const [front, behind] = channels(2);
+  const c = clock();
+  const seen = [];
+  const a = createNotifyGate({ channel: front, schedule: c.schedule, cancel: c.cancel });
+  const b = createNotifyGate({ channel: behind, schedule: c.schedule, cancel: c.cancel, onSeen: (keys) => seen.push(...keys) });
+  const delivered = [];
+  b.offer(q1, () => delivered.push(q1.key));
+  a.seenInFront([q1.key]);
+  c.run();
+  assert.deepEqual(delivered, []);
+  assert.deepEqual(seen, ["s1:q1"]);
+});
+
+test("the front tab's word first: the tab behind never holds it", () => {
+  const [front, behind] = channels(2);
+  const c = clock();
+  const b = createNotifyGate({ channel: behind, schedule: c.schedule, cancel: c.cancel });
+  createNotifyGate({ channel: front }).seenInFront([q1.key]);
+  assert.equal(b.offer(q1, () => assert.fail("delivered")), false);
+  assert.equal(c.size, 0);
+});
+
+test("no tab in front: delivered after the hold; a closed one is dropped", () => {
+  const [ch] = channels(1);
+  const c = clock();
+  const b = createNotifyGate({ channel: ch, schedule: c.schedule, cancel: c.cancel });
+  const delivered = [];
+  b.offer(q1, () => delivered.push(q1.key));
+  b.offer({ ...q1, key: "s1:q2" }, () => delivered.push("s1:q2"));
+  b.drop(["s1:q2"]);
+  c.run();
+  assert.deepEqual(delivered, ["s1:q1"]);
+});
+
+test("without BroadcastChannel every tab delivers at once", () => {
+  const c = clock();
+  const b = createNotifyGate({ channel: null, schedule: c.schedule, cancel: c.cancel });
+  const delivered = [];
+  assert.equal(b.offer(q1, () => delivered.push(q1.key)), true);
+  assert.deepEqual(delivered, ["s1:q1"]);
+  b.seenInFront([q1.key]); // no channel: nothing to tell, no throw
+});
+
+test("a word about other keys or a stray message changes nothing", () => {
+  const [front, behind] = channels(2);
+  const c = clock();
+  const b = createNotifyGate({ channel: behind, schedule: c.schedule, cancel: c.cancel });
+  const delivered = [];
+  b.offer(q1, () => delivered.push(q1.key));
+  createNotifyGate({ channel: front }).seenInFront(["s2:q9"]);
+  front.postMessage({ type: "other" });
+  c.run();
+  assert.deepEqual(delivered, ["s1:q1"]);
 });

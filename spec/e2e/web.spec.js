@@ -327,6 +327,38 @@ test("the title badge clears when the tab turns visible before it has focus (Saf
   await turnEnded(page, 1);
 });
 
+// Two chi tabs: the one in front tells the other (BroadcastChannel), which
+// then neither notifies nor badges; alone behind, it would.
+test("two tabs: one in front, the one behind shows no notification and no badge", async ({ page, script }) => {
+  await withNotificationStub(page);
+  const behind = await page.context().newPage();
+  await behind.goto(page.url());
+  await behind.addInitScript(() => {
+    window.__heard = [];
+    new BroadcastChannel("chi-notify").onmessage = (e) => window.__heard.push(...(e.data?.keys || []));
+  });
+  await withNotificationStub(behind);
+  await behind.locator("#notifyBtn").click();
+  await expect(behind.locator("#notifyBtn")).toHaveAttribute("data-state", "on");
+  await page.evaluate(() => window.__setFront(true));
+
+  script("question");
+  await send(page, "Read a file of my choice");
+  const card = page.locator("#history .bubble.question");
+  await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
+  // The front tab's word reaches the tab behind (a listener of the test's
+  // own on the channel); past its hold, it has neither notified nor badged.
+  const qid = await card.getAttribute("data-qid");
+  await expect.poll(() => behind.evaluate(() => window.__heard)).toContainEqual(expect.stringContaining(qid));
+  await behind.waitForTimeout(600);
+  expect(await notes(behind)).toEqual([]);
+  await expect(behind).not.toHaveTitle(/^\(/);
+  await card.locator(".question-option", { hasText: "README.md" }).click();
+  await card.locator(".question-submit").click();
+  await turnEnded(page, 1);
+  await behind.close();
+});
+
 test("the title badge drops a question answered from another client", async ({ page, script }) => {
   await withNotificationStub(page);
   script("question");
