@@ -41,6 +41,7 @@ require_relative "served_model"
 require_relative "image_store"
 require_relative "vision_context"
 require_relative "vision_support"
+require_relative "answer_display"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -341,7 +342,7 @@ module Samagotchi
       snapshot = @activity_mutex.synchronize { @session&.messages }
       return "[]" if snapshot.nil?
 
-      JSON.generate(Array(snapshot).map(&:dup))
+      JSON.generate(AnswerDisplay.strip_all(snapshot).map(&:dup))
     end
 
     # Emit a :recap_ready event (additive slot) carrying the generated recap
@@ -1231,9 +1232,27 @@ module Samagotchi
     # The conversation as a hook may read it: a frozen array of copied
     # messages, so a hook cannot change what the turn sends or stores.
     def hook_messages(messages)
-      Array(messages).map(&:dup).freeze
+      AnswerDisplay.strip_all(messages).map(&:dup).freeze
     end
     private :hook_messages
+
+    # Keep what the after_turn hooks presented as the answer's `display`
+    # and tell the observers (:answer_display), after the turn_completed
+    # they already had: the web re-reads the answer then. Terminals are not
+    # sinks of it; they printed the answer already. The session is saved by
+    # the caller, as after every turn.
+    def store_answer_display(session, display)
+      return unless display.changed?
+
+      synchronize_events do
+        messages = Array(session.messages)
+        next unless messages.last.equal?(display.target)
+
+        replace_session_messages(session, messages[0...-1] + [display.target.merge(AnswerDisplay::KEY => display.text)])
+        @session_observer.notify({ type: :answer_display, display: display.text })
+      end
+    end
+    private :store_answer_display
 
     # ── The hook runtime (Hooks::Runtime) ─────────────────────────────────────
 
@@ -1854,9 +1873,14 @@ module Samagotchi
         @metrics.persist
 
         # Fire :after_turn hook (runs even on cancel/success), with a read-only
-        # copy of the conversation the turn stored.
-        @hooks.fire(:after_turn, { type: :after_turn, status: canceled ? "canceled" : "completed",
-                                   messages: hook_messages(session.messages) })
+        # copy of the conversation the turn stored, and event[:present] for
+        # a display version of the answer (AnswerDisplay).
+        display = AnswerDisplay.new(session.messages)
+        after_turn = { type: :after_turn, status: canceled ? "canceled" : "completed",
+                       messages: hook_messages(session.messages) }
+        after_turn[:present] = display.presenter(after_turn)
+        @hooks.fire(:after_turn, after_turn)
+        store_answer_display(session, display)
 
         # Fire :session_end after every turn (turn-level lifecycle)
         @hooks.fire(:session_end, { type: :session_end, session_id: session.id })
@@ -2175,7 +2199,7 @@ module Samagotchi
     # with the event log held, so a turn is in exactly one of the two.
     def plugin_messages
       synchronize_events do
-        messages = messages_checkpoint || []
+        messages = AnswerDisplay.strip_all(messages_checkpoint)
         first = messages.first
         messages = messages.drop(1) if first && first[:role].to_s == "system" && first[:kind].to_s.empty?
         running = turn_running? && @running_turn_messages ? Array(@running_turn_messages.call) : []

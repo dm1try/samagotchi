@@ -125,6 +125,11 @@ module Samagotchi
       log(level, :hook_notice, hook: event[:hook], msg: event[:text].to_s[0, 300])
     end
 
+    # after_turn hooks presented the answer (AnswerDisplay): its size only.
+    def on_answer_display(event)
+      log(:info, :answer_display, chars: event[:display].to_s.length)
+    end
+
     # A card shown to the user (Engine#show_card): whose, which, and its
     # title (the body is the plugin's text; not logged).
     def on_card(event)

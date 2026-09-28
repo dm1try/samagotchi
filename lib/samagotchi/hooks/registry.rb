@@ -172,6 +172,9 @@ module Samagotchi
       #   event[:stop_turn].call(reason) -> true when the turn was cancelled;
       #     in a before_tool_call event it also denies the call; from
       #     after_turn / session_end it does nothing (false)
+      # and after_turn's fire site adds one more (AnswerDisplay):
+      #   event[:present].call { |text| new_text } -> the answer's display
+      #     text after the call (chained in hook order), nil without an answer
       #
       # @param name [Symbol] the hook name to fire
       # @param event [Hash] the event payload (may be mutated by hooks)

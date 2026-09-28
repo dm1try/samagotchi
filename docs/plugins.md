@@ -305,7 +305,9 @@ end
 
 This is a bundle hook, the same as a `hooks/*.rb` file. See
 [hooks.md](hooks.md#hook-events) for the events and for what `event[:notify]`,
-`event[:ask_user]` and `event[:stop_turn]` do. Its label is
+`event[:ask_user]` and `event[:stop_turn]` do; on `:after_turn`,
+`event[:present]` sets how the answer is shown in the web
+([Presenting the answer](hooks.md#presenting-the-answer-display-only)). Its label is
 `plugin.rb (bundle my-bundle)`. The block may take only the event. If it
 raises, the error is logged and the hook is skipped.
 

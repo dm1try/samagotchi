@@ -50,7 +50,7 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 |-------|--------------|---------------|
 | `:session_start` | First turn of the session | `{ type: :session_start, session_id: "..." }` |
 | `:before_turn` | Before each turn starts | `{ type: :before_turn, session_id: "...", prompt: "..." (nil on a continue), messages: [...] (the history before this turn) }` |
-| `:after_turn` | After a turn completed or was cancelled (not after one that failed) | `{ type: :after_turn, status: "completed" \| "canceled", messages: [...] (the conversation the turn stored; a cancelled or empty turn ends it with a `kind: turn_note` system message, and a context line is `kind: context`, see [sessions.md](sessions.md#notes-a-turn-leaves-for-the-model)) }` |
+| `:after_turn` | After a turn completed or was cancelled (not after one that failed) | `{ type: :after_turn, status: "completed" \| "canceled", present: (see [Presenting the answer](#presenting-the-answer-display-only)), messages: [...] (the conversation the turn stored; a cancelled or empty turn ends it with a `kind: turn_note` system message, and a context line is `kind: context`, see [sessions.md](sessions.md#notes-a-turn-leaves-for-the-model)) }` |
 | `:before_generation` | Before each LLM API call (both loops) | `{ type: :before_generation, iteration: N }` |
 | `:after_generation` | After LLM returns (both loops) | `{ type: :after_generation, iteration: N, response: "...", messages: [...] (the conversation as sent) }` |
 | `:before_tool_call` | Before tool dispatch (and before `tool_call_started`) | `{ type: :before_tool_call, iteration: N, call: {...}, params: "...", guardrail: Verdict, context: {...}, targets: {...}, blocked: false, block_reason: nil }` |
@@ -107,6 +107,46 @@ Timing: a notice from `:after_turn` or `:session_end` shows after the turn's
 end line. A question from `:before_tool_call` shows **before** the tool
 line (the gate runs first), so its text should name the call. The notices
 are also logged (`turn` tag, `hook_notice`).
+
+## Presenting the answer (display only)
+
+`:after_turn` carries one more callable, `present:`. It changes how the
+turn's answer is **shown**, never what the model said: the block gets the
+current display text (the answer's content until a hook changed it) and
+returns the new one.
+
+```ruby
+class Shout
+  def call(event)
+    return unless event[:type] == :after_turn
+
+    event[:present].call { |text| text.gsub(/\bTODO\b/, "**TODO**") }
+  end
+end
+```
+
+- The result is kept as `display` on the answer's model message in the
+  session file. The model never sees it: the prompts and chat requests take
+  the fields they send, and the copies of the conversation given to hooks
+  (`messages:`), plugins (`ctx.messages`) and the recap leave it out.
+- Calls chain in hook order (bundle hooks by priority, then config hooks,
+  then turn hooks): each block gets what the one before returned. The call
+  returns the display text after it.
+- A block that raises, returns something other than a String, or returns
+  more than 200 000 characters leaves the display as it was (logged as
+  `present_rejected` with the hook's label).
+- It works on the stored conversation's last message only when that is the
+  model's answer: after a cancelled, failed or empty turn there is none, and
+  the call returns nil without running the block.
+- **The web** renders `display` instead of the answer (markdown, sanitised
+  like every answer: raw HTML is escaped, only http(s)/mailto links are
+  kept), on a live turn and after a reload. Its copy button copies the
+  display text. The page learns about it from an `answer_display` event
+  that comes after `turn_completed` (the hooks run after the turn ended).
+- **Terminals** (the REPL, the attached TUI) have printed the answer by then
+  and do not change it; use `event[:notify]` for something they should show.
+
+A plugin gets the same from `chi.on(:after_turn) { |event, ctx| event[:present].call { … } }`.
 
 ## Settings
 

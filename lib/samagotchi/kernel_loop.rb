@@ -17,6 +17,7 @@ require_relative "tools/builtins"
 require_relative "muted_memories"
 require_relative "tool_activity"
 require_relative "tool_runner"
+require_relative "answer_display"
 
 module Samagotchi
   # The KernelLoop drives the model ↔ tool interaction cycle.
@@ -299,7 +300,7 @@ module Samagotchi
         # Fire :after_generation hook (after LLM returns, before tool parse),
         # with a read-only copy of the conversation as sent.
         after_gen_event = { type: :after_generation, iteration: iteration_index + 1, response: response,
-                            messages: conversation.map(&:dup).freeze }
+                            messages: AnswerDisplay.strip_all(conversation).map(&:dup).freeze }
         fire_hook(:after_generation, after_gen_event) if @hooks
         conversation << { role: "model", content: response }
 
@@ -862,7 +863,9 @@ module Samagotchi
     def sanitize_history(messages)
       messages.map do |m|
         if m[:role] == "model"
-          { role: m[:role], content: strip_thought_blocks(m[:content].to_s) }
+          # `display` rides along so the stored conversation keeps it; the
+          # prompt formatter never reads it (AnswerDisplay).
+          { role: m[:role], content: strip_thought_blocks(m[:content].to_s), display: m[:display] }.compact
         else
           m.dup
         end

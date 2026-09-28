@@ -8,6 +8,7 @@ require_relative "usage"
 require_relative "openai_chat"
 require_relative "native_tool_normalizer"
 require_relative "../kernel_loop"
+require_relative "../answer_display"
 require_relative "../context_window"
 require_relative "../context_note"
 require_relative "../tool_runner"
@@ -183,6 +184,7 @@ module Samagotchi
           message[:thinking] = entry[:thinking] if entry[:thinking].is_a?(String) && !entry[:thinking].empty?
           message[:tool_params] = entry[:tool_params] if entry[:tool_params]
           message[:tool_labels] = entry[:tool_labels] if entry[:tool_labels]
+          message[AnswerDisplay::KEY] = entry[AnswerDisplay::KEY] if entry[AnswerDisplay::KEY]
           ContextNote::KEYS.each { |key| message[key] = entry[key] if entry.key?(key) }
           message
         end
@@ -343,7 +345,7 @@ module Samagotchi
                requested_model: @model_name)
           dump_response(response, iteration)
           @loop.fire_hook(:after_generation, { type: :after_generation, iteration: iteration, response: response.text,
-                                               messages: @conversation.map(&:dup).freeze })
+                                               messages: AnswerDisplay.strip_all(@conversation).map(&:dup).freeze })
           [response, nil]
         rescue RequestCancelled => e
           [e.reason, streamed]
