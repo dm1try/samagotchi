@@ -1,24 +1,33 @@
 # frozen_string_literal: true
 
-require "rubygems/package"
+require "open3"
+require "rbconfig"
 require "tmpdir"
 
 # The built gem ships lib/, bin/chi, docs/*.md, README, LICENSE (and
 # CHANGELOG.md once it exists): nothing from the dev tree, no directories.
 RSpec.describe "The built gem" do
   root = File.expand_path("..", __dir__)
-  # Gem::Package.build raises Zlib::BufError on Linux CI's Ruby 3.3 (a CI follow-up).
-  before { skip "Linux CI follow-up: Zlib::BufError on Ruby 3.3" if ENV["CI"] && RUBY_VERSION < "3.4" }
+  # Built and listed once, in a process of its own: Ruby 3.3's zlib (3.1)
+  # raises Zlib::BufError when a thread interrupt hits a deflate, and this
+  # process has threads (ruby/zlib#57, fixed in zlib 3.2.3, Ruby 3.4).
+  lister = <<~RUBY
+    require "rubygems/package"
+    spec = Gem::Specification.load("samagotchi.gemspec")
+    path = Gem::DefaultUserInteraction.use_ui(Gem::SilentUI.new) { Gem::Package.build(spec, true, false, ARGV[0]) }
+    puts Gem::Package.new(path).contents
+  RUBY
 
-  let(:files) do
+  before(:context) do
     Dir.mktmpdir("gem-contents") do |dir|
-      spec = Dir.chdir(root) { Gem::Specification.load("samagotchi.gemspec") }
-      path = Dir.chdir(root) do
-        Gem::DefaultUserInteraction.use_ui(Gem::SilentUI.new) { Gem::Package.build(spec, true, false, File.join(dir, "s.gem")) }
-      end
-      Gem::Package.new(path).contents
+      out, err, status = Open3.capture3(RbConfig.ruby, "-e", lister, File.join(dir, "s.gem"), chdir: root)
+      raise "building the gem failed: #{err}" unless status.success?
+
+      @files = out.lines(chomp: true)
     end
   end
+
+  let(:files) { @files }
 
   it "ships the code, the executable, the docs, README and LICENSE" do
     expect(files).to include("lib/samagotchi.rb", "bin/chi", "README.md", "LICENSE", "docs/configuration.md",
