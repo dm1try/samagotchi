@@ -28,6 +28,10 @@ module Samagotchi
     # budget and no retry (see #server_props).
     CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT = 1
     CONTEXT_WINDOW_PROBE_READ_TIMEOUT = 2
+    # Seconds a probe that got no answer (refused, timed out) is remembered:
+    # a down or hung server then costs one probe per window, not one per
+    # generation, and a new turn doesn't ask again at once.
+    PROPS_FAILURE_TTL = 30
 
     SERVER_TRANSPORT_ENV = "SAMAGOTCHI_SERVER_TRANSPORT"
     DEFAULT_TRANSPORT = :llama_cpp
@@ -149,6 +153,7 @@ module Samagotchi
       transport_fallback = cfg_transport_raw || ENV.fetch(SERVER_TRANSPORT_ENV, DEFAULT_TRANSPORT.to_s)
       @transport = build_transport(resolve_transport(transport || transport_fallback))
       @props_cache = {}
+      @props_failures = {}
       @props_mutex = Mutex.new
       @first_token_timeout = first_token_timeout
       @host_name = name
@@ -273,7 +278,8 @@ module Samagotchi
     # a turn. The probe names the model (`?model=`): a llama.cpp router
     # answers a stub without it, and a single-model server ignores it.
     # Whatever the server answers (a non-200 too) is cached per model; a
-    # network failure is not, so the next call asks again.
+    # network failure for PROPS_FAILURE_TTL seconds, then the next call asks
+    # again.
     def server_props(model: nil)
       path = @transport.props_path
       return nil unless path
@@ -281,10 +287,20 @@ module Samagotchi
       key = model.to_s
       @props_mutex.synchronize do
         return @props_cache[key] if @props_cache.key?(key)
+
+        failed, failed_at = @props_failures[key]
+        return failed if failed && monotonic_now - failed_at < PROPS_FAILURE_TTL
       end
 
       props = probe_props(path, key)
-      @props_mutex.synchronize { @props_cache[key] = props } unless props.status == :network_error
+      @props_mutex.synchronize do
+        if props.status == :network_error
+          @props_failures[key] = [props, monotonic_now]
+        else
+          @props_cache[key] = props
+          @props_failures.delete(key)
+        end
+      end
       props
     end
 
@@ -299,12 +315,16 @@ module Samagotchi
 
     # Forget cached /props answers: the server may have restarted with
     # another -c, or a model switch may have loaded one with a different
-    # window.
+    # window. A recent failure stays until its PROPS_FAILURE_TTL ends: it
+    # holds no stale window, and asking a hung server again at every turn's
+    # start is what it saves.
     def invalidate_context_window!
       @props_mutex.synchronize { @props_cache.clear }
     end
 
     private
+
+    def monotonic_now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     def probe_props(path, model)
       query = model.empty? ? "" : "?#{URI.encode_www_form(model: model)}"

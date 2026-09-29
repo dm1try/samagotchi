@@ -851,14 +851,29 @@ end
       expect(requests.size).to eq(1)
     end
 
-    it "returns nil without retrying or caching when the probe fails" do
+    it "returns nil without retrying when the probe fails, and asks again once the failure is old" do
+      now = 100.0
+      allow(client).to receive(:monotonic_now) { now }
       allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
 
       expect(client.context_window(model: "m")).to be_nil
       expect(Net::HTTP).to have_received(:start).once
 
       stub_probe
+      now += described_class::PROPS_FAILURE_TTL - 1
+      expect(client.context_window(model: "m")).to be_nil
+      now += 1
       expect(client.context_window(model: "m")).to eq(128_000)
+    end
+
+    it "keeps a recent failure across invalidate_context_window! (each turn's start), not an answer" do
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
+      client.context_window(model: "m")
+
+      client.invalidate_context_window!
+      client.context_window(model: "m")
+
+      expect(Net::HTTP).to have_received(:start).once
     end
 
     it "probes again after invalidate_context_window!" do
@@ -902,13 +917,18 @@ end
       expect(props.body).to be_nil
     end
 
-    it "reports a network failure as a failure and asks again next time" do
+    it "reports a network failure as a failure and asks again after PROPS_FAILURE_TTL" do
+      now = 100.0
+      allow(client).to receive(:monotonic_now) { now }
       allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
 
       expect(client.server_props(model: "m")).not_to be_answered
 
       stub_probe
+      expect(client.server_props(model: "m")).not_to be_answered
+      now += described_class::PROPS_FAILURE_TTL
       expect(client.server_props(model: "m")).to be_answered
+      expect(client.server_props(model: "other")).to be_answered
     end
 
     it "answers with a nil body when /props is not JSON" do
@@ -965,6 +985,17 @@ end
     it "is asked once per probe: no silent second attempt after the read timeout" do
       expect(client.server_props(model: "m").status).to eq(:network_error)
       expect(accepted.size).to eq(1)
+    end
+
+    it "costs one probe per failure window, not one per turn or generation" do
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      3.times do
+        client.invalidate_context_window!
+        expect(client.context_window(model: "m")).to be_nil
+      end
+
+      expect(accepted.size).to eq(1)
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.5
     end
   end
 end
