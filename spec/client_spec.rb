@@ -329,6 +329,35 @@ RSpec.describe Samagotchi::Client do
         .to raise_error(RuntimeError, /llama\.cpp request failed \(localhost:8080\): .*bad json/)
     end
 
+    describe "a 404 on the request" do
+      def stub_404(client)
+        http = instance_double(Net::HTTP)
+        response = double("response", code: "404", body: "File Not Found")
+        allow(response).to receive(:[]).with("Retry-After").and_return(nil)
+        allow(Net::HTTP).to receive(:start).and_yield(http)
+        allow(http).to receive(:request) { |_request, &block| block.call(response) }
+        client
+      end
+
+      it "hints at `api: openai` on the native /completion path" do
+        client = stub_404(described_class.new(host: "localhost", port: 8080, name: "main"))
+
+        expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::BadRequest) { |error|
+          expect(error.status).to eq(404)
+          expect(error.summary).to eq("host main rejected the request: HTTP 404: File Not Found; " \
+                                      "does this host speak the OpenAI API? set `api: openai` on it")
+        }
+      end
+
+      it "has no such hint on an OpenAI-compatible transport (/v1/completions)" do
+        client = stub_404(described_class.new(host: "localhost", port: 8080, name: "main", transport: :mlx))
+
+        expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::BadRequest) { |error|
+          expect(error.summary).not_to include("api: openai")
+        }
+      end
+    end
+
     context "with the mlx transport" do
       it "posts a raw prompt to /v1/completions and joins streamed text" do
         client = described_class.new(host: "localhost", port: 8080, transport: :mlx)

@@ -209,6 +209,8 @@ module Samagotchi
       end
     end
 
+    OPENAI_API_HINT = "does this host speak the OpenAI API? set `api: openai` on it"
+
     private def stream_completion(prompt, fields, on_chunk, cancel_controller, on_retry)
       uri = completion_uri
       request = Net::HTTP::Post.new(uri)
@@ -235,6 +237,11 @@ module Samagotchi
         on_chunk&.call(content: content, payload: payload)
       end
       result
+    rescue LLM::BadRequest => e
+      raise unless e.status == 404 && @transport.name == :llama_cpp
+
+      # No native /completion here: likely an OpenAI-compatible server.
+      raise LLM::BadRequest.new(e.message, host: e.host, status: e.status, attempts: e.attempts, hint: OPENAI_API_HINT)
     rescue RequestCancelled, LLM::ProviderError
       raise
     rescue StandardError => e

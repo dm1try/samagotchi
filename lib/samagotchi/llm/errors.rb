@@ -99,11 +99,15 @@ module Samagotchi
     class BadRequest < ProviderError
       TOOLS_HINT = "this model can't use tools, and chi needs them: pick another model (/model) or host"
 
-      def initialize(message = nil, context_overflow: false, tools_unsupported: false, **options)
+      # @param hint [String, nil] what to try, added to the summary
+      def initialize(message = nil, context_overflow: false, tools_unsupported: false, hint: nil, **options)
         @context_overflow = context_overflow
         @tools_unsupported = tools_unsupported
+        @hint = hint
         super(message, **options)
       end
+
+      attr_reader :hint
 
       # The prompt is larger than the model's context window.
       def context_overflow? = @context_overflow
@@ -120,7 +124,7 @@ module Samagotchi
         elsif tools_unsupported?
           "host #{host} rejected the request: #{tools_detail}; #{TOOLS_HINT}"
         else
-          "host #{host} rejected the request: #{detail}"
+          "host #{host} rejected the request: #{detail}#{"; #{hint}" if hint}"
         end
       end
 
