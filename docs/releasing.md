@@ -15,13 +15,13 @@ can run the whole release; the user approves the notes before the tag and the
 - **Every other shipped bundle** (btw, guardrails, known-names, loop-guard,
   mcp) has its own semver in its `manifest.yml` and, when it needs a newer chi,
   a `requires_chi:` line. They never upgrade by themselves: users run
-  `chi bundle upgrade NAME`. So:
+  `chi update` (all of them, with the gem) or `chi bundle upgrade NAME`. So:
   - a change to a bundle's files bumps that bundle's `version:`
     (`rake bundles:check` fails otherwise, once there's a tag to compare with);
   - a bundle that uses something new in chi raises its `requires_chi` in the
     same change; `release:bump` never touches `requires_chi`;
-  - the release notes list the `chi bundle upgrade NAME` steps for every
-    bundle whose version moved.
+  - the release notes say "run `chi update`" and name the bundles whose
+    version moved (what changed in each), not per-bundle upgrade steps.
 - Pre-1.0: config and commands may change in a minor version (0.2 → 0.3); a
   patch version (0.2.0 → 0.2.1) is fixes only.
 
@@ -58,9 +58,9 @@ The agent does each step and stops where the user has to say yes.
 1. **Start from main, up to date and green.** `git checkout main && git pull`;
    CI on main is green.
 2. **Draft the notes.** `bundle exec rake release:draft_changelog`, then edit
-   `## [Unreleased]` in CHANGELOG.md into short user-facing lines. Add the
-   `chi bundle upgrade NAME` steps for bundles whose version moved since the
-   last tag (`git diff vPREV -- lib/samagotchi/bundles/*/manifest.yml`).
+   `## [Unreleased]` in CHANGELOG.md into short user-facing lines. End with
+   "Update with `chi update`", naming the bundles whose version moved since
+   the last tag (`git diff vPREV -- lib/samagotchi/bundles/*/manifest.yml`).
    Pick the version: fixes only → patch, anything else → minor.
 3. **The user approves the notes and the version.** Show them the section.
 4. **Bump.** `bundle exec rake "release:bump[X.Y.Z]"`, review `git diff`.

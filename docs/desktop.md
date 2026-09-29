@@ -53,16 +53,22 @@ don't break it. From a checkout it runs **that** checkout's `bin/chi`; installin
 warning, because the helper stops working once that worktree is removed. After switching between a checkout and a
 gem install, run `chi desktop upgrade` from the one you now use.
 
+`chi update` keeps it current: it rebuilds and restarts the helper only when its Swift sources changed since the
+build (`launch.json` records their digest) or the Ruby it runs moved. A new chi that left the sources alone only
+rewrites `launch.json`, which the app reads at each send, so the app keeps its older version number and that's fine.
+
 ## Commands
 
 | Command | Does |
 |---|---|
 | `chi desktop install [--force] [--login]` | builds, installs and starts it; `--force` replaces an existing copy |
-| `chi desktop upgrade` | rebuilds it for this chi and restarts it, keeping the login setting |
+| `chi desktop upgrade` | rebuilds it for this chi and restarts it, keeping the login setting (always; `chi update` does it only when needed) |
 | `chi desktop uninstall` | quits it and removes the app, its login item, launch file and settings |
 | `chi desktop status` | version against chi's, how it runs chi, state dirs, Service, hotkey, process, login item |
 
-`chi self` has a `desktop` line: `0.1.x (matches)`, `0.1.w (chi is 0.1.x: chi desktop upgrade)` or `not installed`.
+`chi self` has a `desktop` line: `0.1.x (matches)`, `0.1.w (up to date for chi 0.1.x)` (an older build whose sources
+haven't changed), `0.1.w (chi is 0.1.x: chi update)` (a rebuild is due) or `not installed`. `chi desktop status`
+says the same.
 
 ## How it runs chi
 
@@ -92,7 +98,7 @@ Each call is stopped after 10 s. A stopped `chi note` says the note may be partl
 ## Troubleshooting
 
 - **"chi not found at …, run `chi desktop upgrade`"**: the Ruby or checkout in `launch.json` moved (a Ruby upgrade,
-  a removed worktree). Run `chi desktop upgrade` from the chi you use now.
+  a removed worktree). Run `chi desktop upgrade` (or `chi update`) from the chi you use now.
 - **No "Send to chi" in the Services menu:** check `chi desktop status` (service). Try
   `/System/Library/CoreServices/pbs -update`, start the app again, or log out and back in. It must be ticked in
   System Settings → Keyboard → Keyboard Shortcuts… → Services → Text.

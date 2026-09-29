@@ -19,6 +19,7 @@
 - `chi send [-m TEXT] (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context (see [Sessions: Sending a message](sessions.md#sending-a-message)); `--new` starts a session with it instead, and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending; see [Starting a session](sessions.md#starting-a-session))
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
 - `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles
+- `chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, in one table (see [Updating](#updating))
 - `chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs (see [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle) and [the check-in bundle](plugins.md#the-check-in-bundle))
 
 ### First setup
@@ -56,6 +57,65 @@ chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
   none. A server already in the file writes nothing; a file in YAML flow style
   or with anchors gets the lines printed to paste instead. `--dry-run` shows
   what it would write.
+
+### Updating
+
+`chi update` brings an installed chi up to date and prints one table:
+
+```
+component      from   to     status
+chi (gem)      0.2.0  0.3.0  updated
+system bundle  0.2.0  0.3.0  updated (kept your edits in identity.md: chi bundle diff samagotchi-system identity.md)
+btw            0.1.1         up to date
+known-names    0.1.0  0.1.1  updated
+infra_tools    1.0.0         skipped (not from chi)
+Chi Helper     0.2.0         up to date (launch file refreshed)
+workers                      2 live on 0.2.0: they move to 0.3.0 at idle exit (30 min) or chi sessions stop 2ea8c1f0 91b0d2aa
+Also shipped, not installed: check-in, source-links (chi bundle install NAME)
+done
+```
+
+- **The gem.** It asks rubygems.org for the newest samagotchi (5 s timeout)
+  and, when that's newer, runs `gem install samagotchi` with the gem command
+  of the Ruby chi runs on (the real one, not a mise/rbenv/asdf shim). Then it
+  hands over to the new chi, which does the rest and prints the table. Old
+  versions stay installed: running workers and an old `chi web` still use
+  them (so don't `gem cleanup` while they run). Offline, the row says
+  "couldn't check" and the rest still runs; a failed install fails the row
+  and the rest runs on the current version. Under Bundler (`bundle exec`)
+  the row says `bundle update samagotchi` instead.
+- **The system bundle** normally updated itself when the new chi started;
+  the row says what it did.
+- **Shipped bundles**: each one you installed from chi (`chi bundle install
+  NAME`) is upgraded when chi ships a newer version. Memory files get the
+  3-way merge of `chi bundle upgrade`: an unedited file is updated, an edited
+  one that the new version also changes is kept, and the row says so (`chi
+  bundle diff NAME FILE` shows it; `chi bundle upgrade NAME --force` takes the
+  bundle's). Hooks, rules and the plugin are replaced; an edited one didn't
+  load anyway (its sha no longer matched) and the row says it was replaced.
+  A bundle of the same name from elsewhere (a zip, git) is skipped ("not from
+  chi"), a newer installed one is left, one whose new version needs a newer
+  chi is skipped, and bundles you didn't install stay uninstalled.
+- **The desktop helper** (macOS) is rebuilt and restarted only when its Swift
+  sources changed (or the Ruby it runs moved); otherwise only its launch file
+  is refreshed. See [Desktop helper](desktop.md).
+- **Running processes** are reported, never stopped: live workers on another
+  version, and a `chi web` on `web.port` running an older chi (sessions it
+  starts run that version too: restart it).
+
+`--dry-run` shows the table with "would update" and changes nothing. It is
+this version's view: bundles that only a newer gem ships newer show up once
+that gem is installed (the real run installs it first and hands over).
+`--no-gem`, `--no-bundles` and `--no-desktop` leave a part alone for one run;
+`update.gem`, `update.bundles` and `update.desktop: false` in config.yml turn
+one off for good. It exits 0 when nothing failed (kept edits and skips are
+fine), 1 when a part failed, 2 on a usage error. A second run changes nothing
+and ends with "everything is up to date".
+
+From a checkout it refuses (`git pull`, or `chi bundle upgrade NAME` for one
+bundle). After a gem update, the first interactive start of the new version
+(`chi`, `chi web`; not `-p` or `--non-interactive`) says in one line when
+bundles or the helper can be updated.
 
 ## Flags
 

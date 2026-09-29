@@ -685,6 +685,9 @@ described in their own sections.
 | `retry.base_delay` | `0.5` | yes | |
 | `retry.max_delay` | `8.0` | yes | |
 | `retry.empty_answer` | `1` | | Times a turn asks again after an empty answer (at most 3, `0` = off). See "Llama Network Retry Behavior". |
+| `update.gem` | `true` | | `false`: `chi update` never installs a newer gem (`--no-gem` for one run). See [CLI: Updating](cli.md#updating). |
+| `update.bundles` | `true` | | `false`: `chi update` leaves the shipped bundles to `chi bundle upgrade` (`--no-bundles`). |
+| `update.desktop` | `true` | | `false`: `chi update` leaves the desktop helper alone (`--no-desktop`). |
 | `read.truncate_at_bytes` | `65536` | yes | A `read` result larger than this is cut to a preview. |
 | `read.preview_bytes` | `12288` | yes | Size of that preview. |
 | `read.hard_max_bytes` | `2097152` | yes | Largest file `read` opens. |

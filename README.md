@@ -32,6 +32,22 @@ bin/chi self
 `bin/chi` runs the checkout; `bundle exec rake gem:install` installs it as a
 local gem, which puts `chi` on your PATH.
 
+### Updating
+
+```sh
+chi update --dry-run    # what would change
+chi update              # the gem, then the bundles and the desktop helper
+```
+
+`chi update` installs the newest samagotchi from rubygems.org (old versions
+stay installed: running sessions still use them), then brings the rest up to
+the new version: the system bundle, the bundles chi ships that you installed,
+and the macOS helper (rebuilt only when its sources changed). Memory files you
+edited are kept, and the table says which. Running sessions move to the new
+chi when their worker idles out (30 min) or on `chi sessions stop ID`; a
+running `chi web` needs a restart. From a checkout, `git pull` instead. See
+[CLI: Updating](docs/cli.md#updating).
+
 ## Set up
 
 Point chi at your model server; it works out the rest and writes
