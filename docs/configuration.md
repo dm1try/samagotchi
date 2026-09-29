@@ -29,6 +29,7 @@ server:                 # the model server when there is no hosts: map below
   port: 8081
 thinking:
   ui: spinner
+  level: default        # off | low | medium | high | default; see "Thinking"
 
 # Multi-host (optional): aggregated /models and per-model routing.
 # A bare default.model uses the default host; host:model pins to a host.
@@ -369,6 +370,70 @@ models:
 `SAMAGOTCHI_HOSTS_JSON`, and reads `models:` from the config file each turn: after changing a host's `sampling:`,
 stop the session's worker (`chi sessions stop`) for it to take effect.
 
+## Thinking
+
+How much a model thinks before it answers. One level, `off`, `low`, `medium`, `high` or `default`, set per model,
+per host or for everything:
+
+```yaml
+thinking:
+  level: default          # every model without its own level
+hosts:
+  openrouter:
+    url: https://openrouter.ai/api/v1
+    api: openai
+    api_key_env: OPENROUTER_API_KEY
+    thinking: low
+models:
+  qwen3.6-35b-a3b:
+    thinking: off         # unquoted off works (YAML reads it as false)
+```
+
+- `default` sends nothing: the provider's or the chat template's own default, which is chi's behaviour without the
+  setting. For some hybrid models that default is *no* thinking (DeepSeek V3.1 on OpenRouter); `medium` turns it on.
+  `on` isn't a level.
+- Order, first set wins: `--thinking LEVEL` or `SAMAGOTCHI_THINKING_LEVEL`, then the `models:` entry (found the way
+  `profile:` is), then the `hosts:` entry, then `thinking.level` in the file, then `default`. Anything else than a
+  level warns once and counts as unset.
+- The flag reaches the sessions that start with it; a session already running keeps its level. `models:` levels
+  and `thinking.level` in the file are read every turn; a host's `thinking:` reaches a worker when it starts, as
+  its `sampling:` does (`chi sessions stop` to change it).
+- `/model` shows the level and where it came from (`thinking: off (models: qwen3.6-35b-a3b)`), `chi self` too.
+- The idle recap and plugins' side questions always ask with thinking off, whatever the level.
+
+What each backend gets:
+
+| Backend | `off` | `low` / `medium` / `high` |
+|---|---|---|
+| native (`/completion`), `qwen36` | an empty thought after the assistant cue, and no turn preamble | no knob: thinking stays as the model has it, one notice |
+| native, `gemma4` | no `<\|think\|>` token at the start of the system prompt | no knob, one notice |
+| chat host (`api: openai`) | `chat_template_kwargs: {enable_thinking: false}` and `reasoning_effort: "none"` | `reasoning_effort: <level>` |
+
+On chat hosts: llama.cpp honours both off switches but ignores the effort; Splash takes `reasoning_effort` (off only
+through `none`) and scales with it; OpenRouter translates `reasoning_effort` per model (some can't turn thinking off:
+Qwen3-30B-A3B thinks anyway, gpt-oss refuses).
+
+When the model thinks although the level is `off`, chi says so once per session and host
+(`thinking> warning: off wasn't honoured by … (N chars of thinking)`) and logs `thinking_not_honoured` each time.
+When a host answers the thinking fields with an HTTP 400 about reasoning (gpt-oss: "Reasoning is mandatory"), chi
+sends the request again without them, leaves them out for that model from then on, and says so once.
+
+The fields go under the `sampling:` map ("Sampling"): a `sampling:` key wins over the level's, and
+`chat_template_kwargs` merges per sub-key. A `null` there drops a field the level would send, at any depth, for a
+host that refuses one of them:
+
+```yaml
+hosts:
+  strict:
+    url: https://llm.example.com/v1
+    api: openai
+    thinking: off
+    sampling: { reasoning_effort: null }   # sends only enable_thinking: false
+```
+
+A different level changes a native model's system prompt (Gemma's token, Qwen's turn preamble), so the next turn
+reads the whole context again once; on a chat host only the end of the prompt changes.
+
 ## Llama HTTP Timeouts
 
 Long-running llama.cpp completions can exceed Ruby's default HTTP read timeout.
@@ -680,6 +745,8 @@ described in their own sections.
 | `thinking.ui` | `spinner` | yes | `spinner` or `off`. |
 | `thinking.render_interval` | `0.08` | yes | Seconds between thinking redraws. |
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
+| `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't. See "Thinking". |
+| `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |
 | `max_tool_output_chars` | `10000` | yes | Tool output kept in the conversation; a top-level key (see below). |
 | `retry.max` | `5` | yes | See "Llama Network Retry Behavior". |
 | `retry.base_delay` | `0.5` | yes | |

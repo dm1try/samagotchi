@@ -131,6 +131,7 @@ controls exit behavior (`--non-interactive`); `--resume` composes with both.
 | `--no-shared` | Run the plain in-process REPL for this run. |
 | `--attach SESSION_ID` | Attach to a session's worker, waking one if it has exited. |
 | `--model NAME` | Use this model for the run (overrides the configured default and a resumed session's model). |
+| `--thinking LEVEL` | How much the model thinks this run: `off`, `low`, `medium`, `high` or `default` (env `SAMAGOTCHI_THINKING_LEVEL`), over the config's levels. A session already running keeps its own. See "Thinking" in configuration.md. |
 | `--profile NAME` | Prompt profile (`qwen36` or `gemma4`) for every model in this run, over config and the server's template (same as `--model-profile`, env `SAMAGOTCHI_MODEL_PROFILE`). See "Prompt profile" in configuration.md. |
 | `--memory NAME` | Preload a memory entry into the system prompt (repeatable; a comma list too). Merged under the config.yml `memories:` baseline. Works attached: the list is stored on the session, so its worker builds the same prompt on every respawn. |
 | `--mute NAME` | Hide a memory from this session (repeatable; a comma list too): its index line is not in the prompt, `memory_read` refuses it, the identity auto-load skips it, and it is dropped from the preloads (config baseline or `--memory`). A name matches in both scopes (`gh-helper`, `project/gh-helper` and `gh-helper.md` all hide `gh-helper`). Nothing on disk changes. See [Muting a memory](#muting-a-memory). |
