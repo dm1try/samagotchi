@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "llm/openai_chat"
+require_relative "thinking"
 
 module Samagotchi
   # Standalone summarizer for the idle session-recap feature.
@@ -32,17 +33,6 @@ module Samagotchi
     DEFAULT_TIMEOUT_SECONDS = 30.0
     # Up to 10 sentences (recap.sentences) need ~350 tokens with thinking off.
     MAX_TOKENS = 512
-
-    # Request fields that turn thinking off. A reasoning model otherwise
-    # spends the budget thinking and the recap stops mid-sentence.
-    # - chat_template_kwargs.enable_thinking: the chat template's switch
-    #   (llama.cpp with Qwen/Gemma templates); templates without it ignore it.
-    # - reasoning_effort "none": the OpenAI-style knob, for servers that
-    #   ignore the template switch (Splash thought until max_tokens).
-    THINKING_OFF = {
-      chat_template_kwargs: { enable_thinking: false },
-      reasoning_effort: "none"
-    }.freeze
 
     # @param base_url [String] the OpenAI API base, e.g. http://host:8081/v1
     # @param api_key_env [String, nil] the variable holding the host's key
@@ -121,7 +111,7 @@ module Samagotchi
     def generate(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, whole_sentences: true)
       response = @chat.chat(
         messages: messages, model: @model, tools: [], cancel_controller: cancel_controller,
-        options: { max_tokens: max_tokens, **THINKING_OFF }
+        options: { max_tokens: max_tokens, **thinking_fields }
       )
       content = response.text
       reasoning = response.reasoning
@@ -143,5 +133,11 @@ module Samagotchi
       raise SummarizeError, "server returned no parseable assistant content (#{e.message})"
     end
 
+    # A recap or side answer is short and tool-less: thinking off, whatever
+    # the model's level (a reasoning model otherwise spends the budget
+    # thinking and the recap stops mid-sentence).
+    def thinking_fields
+      Thinking.chat_fields(:off)
+    end
   end
 end
