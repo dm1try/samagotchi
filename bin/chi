@@ -791,6 +791,7 @@ if ARGV[0] == "bundle"
         line += "  (shipped v#{b.upgrade.version}: chi bundle upgrade #{b.upgrade.source})" if b.upgrade
         puts line
       end
+      puts "  (or all at once: chi update)" if installed.any?(&:upgrade)
     end
     unless available.empty?
       puts ""
