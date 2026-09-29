@@ -459,9 +459,29 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(status_events.size).to eq(1)
       expect(status_events.first[:status]).to include("CONTEXT_STATUS")
       expect(status_events.first[:status]).to include("src=server")
-      expect(status_events.first[:status]).to include("est_used_tokens=120000")
+      # The server's count plus the tool call and result appended since.
+      expect(status_events.first[:status][/est_used_tokens=(\d+)/, 1].to_i).to be_between(120_001, 120_100)
       expect(status_events.first[:status]).to include("bucket=40plus")
       expect(prompts.first).not_to include("CONTEXT_STATUS")
+    end
+
+    it "adds what the turn appended since the server's last count to the line the model gets (a big tool result)" do
+      prompts = []
+      responses = [%(<|tool_call>call:execute{command: "head -c 40000 /dev/zero | tr '\\\\0' a"}<tool_call|>), "done"]
+      allow(client).to receive(:complete) do |prompt, **kwargs|
+        prompts << prompt
+        kwargs[:on_chunk]&.call(content: "", payload: { "usage" => { "prompt_tokens" => 5_000, "completion_tokens" => 20 },
+                                                        "n_ctx" => 20_000 })
+        responses.shift
+      end
+
+      result = kernel.run([{ role: "user", content: "read it" }], max_tool_output_chars: 50_000)
+
+      # 5,000 counted by the server + ~10,000 for the 40,000-character result.
+      line = result.conversation.find { |m| m[:kind] == "context" }
+      expect(line).not_to be_nil
+      expect(line[:content]).to start_with("[CONTEXT: about 75% of the context window is in use (as the server reports; bucket=60plus).")
+      expect(prompts[1]).to include(line[:content])
     end
 
     it "uses the configured window when the server reports usage but no n_ctx" do

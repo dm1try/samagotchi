@@ -296,6 +296,9 @@ module Samagotchi
             images: images
           )
         )
+        # What the server's prompt count covers, so the next estimate adds
+        # only what the turn appended since (answer, tool results).
+        context_state[:counted] = { chars: prompt.length, image_tokens: image_tokens } if generation_usage
         refresh_context_display(context_state, generation_usage, context_window)
         emit_stream_event(
           on_stream_event,
@@ -614,7 +617,8 @@ module Samagotchi
     def emit_context_status_event(on_stream_event, prompt, iteration_index:, state:, window: nil, image_tokens: 0)
       return nil unless context_status_enabled?
 
-      usage = estimate_context_usage(prompt, server_usage: state[:server_usage], window: window, image_tokens: image_tokens)
+      usage = estimate_context_usage(prompt, server_usage: state[:server_usage], window: window, image_tokens: image_tokens,
+                                             counted: state[:counted])
       bucket = context_status_bucket(usage[:estimated_pct])
       # The status line's value, every iteration; the gate below decides
       # only the event and the model's guidance line.
@@ -682,7 +686,12 @@ module Samagotchi
     # `window` is this iteration's ContextWindow::Resolved (resolved here when
     # not given). A window the stream payload reports itself still wins.
     # +image_tokens+: the images' estimate (their base64 is not in +prompt+).
-    def estimate_context_usage(prompt, server_usage: nil, window: nil, image_tokens: 0)
+    # +counted+: the prompt the server's prompt_tokens counted ({chars:,
+    # image_tokens:}); what +prompt+ has on top of it (the answer, tool
+    # results since) is added as an estimate, so the value doesn't read low
+    # during a long tool loop. A prompt shorter than that one (trimmed) or
+    # none known: the server's count alone.
+    def estimate_context_usage(prompt, server_usage: nil, window: nil, image_tokens: 0, counted: nil)
       window ||= ContextWindow.resolve(client: @client, model: @current_model_name)
       window_source = window.source
       if server_usage && server_usage[:context_window_tokens]
@@ -691,7 +700,7 @@ module Samagotchi
 
       if server_usage && server_usage[:prompt_tokens]
         window_tokens = server_usage[:context_window_tokens] || window.tokens
-        estimated_used_tokens = server_usage[:prompt_tokens]
+        estimated_used_tokens = server_usage[:prompt_tokens] + appended_tokens(prompt, image_tokens, counted)
         estimated_remaining_tokens = [window_tokens - estimated_used_tokens, 0].max
         estimated_pct = (estimated_used_tokens.to_f / window_tokens) * 100.0
 
@@ -718,6 +727,16 @@ module Samagotchi
         estimated_pct: estimated_pct,
         source: "estimate"
       }
+    end
+
+    # The estimate for what +prompt+ added since the +counted+ one.
+    def appended_tokens(prompt, image_tokens, counted)
+      return 0 unless counted
+
+      chars = prompt.length - counted[:chars]
+      return 0 unless chars.positive?
+
+      (chars / context_chars_per_token).ceil + [image_tokens - counted[:image_tokens].to_i, 0].max
     end
 
     def context_chars_per_token
