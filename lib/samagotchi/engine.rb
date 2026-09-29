@@ -2850,6 +2850,8 @@ module Samagotchi
       end
 
       merged = Array(baseline).dup
+      # For the warning when one can't be loaded: it names where it came from.
+      @config_memories = merged.dup
       Array(cli_memories).each do |raw|
         raw.to_s.split(",").map(&:strip).reject(&:empty?).each do |name|
           merged << name unless merged.include?(name)
@@ -2882,7 +2884,8 @@ module Samagotchi
           scope, actual_name = split_memory_scope(name)
           body = Tools::MemoryRead.call(actual_name, scope: scope)
           if body.start_with?("Error:")
-            Log.warn(:memory, "preload_failed", echo: "Warning: --memory '#{name}' could not be loaded (#{body})", memory: name)
+            source = Array(@config_memories).include?(raw) ? "memory '#{name}' (from config memories:)" : "--memory '#{name}'"
+            Log.warn(:memory, "preload_failed", echo: "Warning: #{source} could not be loaded (#{body})", memory: name)
             next
           end
           # Record activated names so the UI can echo them in the sticky

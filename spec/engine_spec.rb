@@ -216,6 +216,23 @@ RSpec.describe Samagotchi::Engine do
       expect(prompt.scan("memory name: baseline_b").size).to eq(1)
     end
 
+    it "names where a memory that can't be loaded came from: config memories: or --memory" do
+      allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return(%w[gone_config])
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil|
+        name.to_s.empty? ? "" : "Error: memory '#{name}' not found"
+      end
+      echoes = []
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+      allow(Samagotchi::Log).to receive(:warn).with(:memory, "preload_failed", anything) { |*, **fields| echoes << fields[:echo] }
+      engine = build_engine(profile: "gemma4", memories: ["gone_cli"])
+      engine.system_prompt
+
+      expect(echoes).to eq([
+        "Warning: memory 'gone_config' (from config memories:) could not be loaded (Error: memory 'gone_config' not found)",
+        "Warning: --memory 'gone_cli' could not be loaded (Error: memory 'gone_cli' not found)"
+      ])
+    end
+
     it "uses only the config baseline when --memory is not given" do
       allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return(%w[only_from_config])
       allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil|
