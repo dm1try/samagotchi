@@ -68,4 +68,24 @@ RSpec.describe "memory_read with muted memories" do
     engine.send(:capture_used_memory_from_event, event)
     expect(engine.used_memory_names).to eq(["cli_usage"])
   end
+
+  it "Engine follows every memory read with used_memories_updated (the names read, not muted ones)" do
+    allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return([])
+    engine = Samagotchi::Engine.new(mode: :assist, client: client, profile: "gemma4", kernel: kernel,
+                                    muted_memories: ["gh-helper"])
+    seen = []
+    sink = ->(e) { seen << e }
+    engine.send(:emit_event, sink, { type: :tool_call_started, call: { name: "memory_read", content: "gh-helper, cli_usage, notes.md" } })
+    engine.send(:emit_event, sink, { type: :tool_call_started, call: { name: "read", content: "memories/notes.md" } })
+    engine.send(:emit_event, sink, { type: :tool_call_started, call: { name: "memory_read", content: "gh-helper" } })
+    engine.send(:emit_event, sink, { type: :tool_call_started, call: { name: "execute", content: "ls" } })
+
+    updates = seen.select { |e| e[:type] == :used_memories_updated }
+    expect(seen.map { |e| e[:type] }).to eq(%i[tool_call_started used_memories_updated tool_call_started used_memories_updated
+                                               tool_call_started tool_call_started])
+    expect(updates.map { |e| e.slice(:used_memory_names, :read_names) }).to eq([
+      { used_memory_names: %w[cli_usage notes], read_names: %w[cli_usage notes] },
+      { used_memory_names: %w[cli_usage notes], read_names: %w[notes] }
+    ])
+  end
 end

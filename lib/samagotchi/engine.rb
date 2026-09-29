@@ -1139,6 +1139,9 @@ module Samagotchi
       base.empty? ? nil : base
     end
 
+    # A memory read (memory_read, or read of a memories/*.md file) as it
+    # starts: its names join used_memory_names.
+    # @return [Array<String>, nil] the names this call read, nil for any other event
     def capture_used_memory_from_event(event)
       return unless event.is_a?(Hash) && event[:type] == :tool_call_started
 
@@ -1149,6 +1152,7 @@ module Samagotchi
       return if names.empty?
 
       add_used_memory_names(names)
+      names
     end
 
     # ── Guardrails ─────────────────────────────────────────────────────────────
@@ -2677,7 +2681,7 @@ module Samagotchi
 
     def emit_event(on_event, event)
       # Capture used memories synchronously in the turn thread.
-      begin
+      read_names = begin
         capture_used_memory_from_event(event)
       rescue StandardError
         nil
@@ -2696,6 +2700,11 @@ module Samagotchi
       # Persistent subscribers: receive a copy with a locally-monotonic
       # `event_seq`, fan out with per-subscriber error isolation.
       @session_observer.notify(event)
+      # Every memory read, after its tool_call_started: the whole list for
+      # the UIs' memory line, and the names this call read (read_names).
+      return unless read_names
+
+      emit_event(on_event, { type: :used_memories_updated, used_memory_names: used_memory_names, read_names: read_names })
     end
 
     # The window as the target's loop would see it (see ChatLoop#context_window:

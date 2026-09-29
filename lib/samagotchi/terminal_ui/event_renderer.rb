@@ -55,6 +55,8 @@ module Samagotchi
         when :tool_call_started
           @tool_started_at[tool_call_key(event)] = @clock.call
           @view.tool_call_feedback_started(event)
+        when :used_memories_updated
+          @view.used_memories_updated(event) if @view.respond_to?(:used_memories_updated)
         when :tool_call_completed
           @view.clear_generation_retry
           @view.tool_call_feedback_completed(event)

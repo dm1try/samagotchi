@@ -746,6 +746,12 @@ file2.rb")
       ENV["SAMAGOTCHI_THINKING_UI"] = "spinner"
     end
 
+    # A memory read as the Engine hands it to the REPL: its tool_call_started,
+    # then the used_memories_updated it follows it with.
+    def memory_read_event(agent, event)
+      agent.instance_variable_get(:@engine).send(:emit_event, agent.method(:handle_stream_event), event)
+    end
+
     it "renders spinner progress in TTY mode while streaming" do
       allow(client).to receive(:complete) do |_prompt, **kwargs|
         on_chunk = kwargs[:on_chunk]
@@ -857,7 +863,7 @@ file2.rb")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
 
-      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
+      memory_read_event(agent, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
 
       expect(agent.send(:spinner_status_lines).join).to include("mem: refactoring_backlog")
       expect(agent.send(:sticky_status_lines).join).to include("mem: refactoring_backlog")
@@ -868,7 +874,7 @@ file2.rb")
       allow(agent).to receive(:color_output?).and_return(false)
 
       agent.capture_context_status({ est_pct: 35.2, bucket: "20plus" })
-      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
+      memory_read_event(agent, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
 
       status = agent.send(:spinner_status_lines).first
       expect(status).to include("model=")
@@ -968,7 +974,7 @@ file2.rb")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
 
-      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
+      memory_read_event(agent, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
       expect(agent.send(:thinking_spinner_status_lines, "/").first).to include("memory_loaded: refactoring_backlog")
 
       agent.send(:handle_stream_event, type: :generation_completed)
@@ -981,7 +987,7 @@ file2.rb")
       allow(agent).to receive(:color_output?).and_return(false)
 
       agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
+      memory_read_event(agent, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
 
       line = agent.send(:thinking_spinner_status_lines, "\\").first
       expect(line).to include("thinking... \\")
@@ -1009,7 +1015,7 @@ file2.rb")
       expect(agent).to receive(:render_thinking_spinner).at_least(:once)
       agent.instance_variable_set(:@thinking_spinner_active, true)
 
-      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
+      memory_read_event(agent, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
     end
 
     it "renders retry status in the same spinner line" do
@@ -1092,7 +1098,7 @@ file2.rb")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
 
-      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
+      memory_read_event(agent, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
       expect(agent.send(:thinking_spinner_status_lines, "/").first).to include("memory_loaded: crawler_exploration_ideas")
 
       allow(agent).to receive(:handle_stream_event)
@@ -1127,7 +1133,7 @@ file2.rb")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
 
-      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
+      memory_read_event(agent, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
 
       expect(agent.send(:spinner_status_lines).join).to include("mem: crawler_exploration_ideas")
       expect(agent.send(:sticky_status_lines).join).to include("mem: crawler_exploration_ideas")
@@ -1139,7 +1145,7 @@ file2.rb")
       allow(agent).to receive(:color_output?).and_return(false)
 
       agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
+      memory_read_event(agent, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
       expect(agent.send(:spinner_status_lines).join).to include("refactoring_backlog")
       expect(agent.send(:sticky_status_lines).join).to include("refactoring_backlog")
 
@@ -1155,7 +1161,7 @@ file2.rb")
       allow(agent).to receive(:color_output?).and_return(false)
 
       agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
+      memory_read_event(agent, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
       expect(agent.send(:sticky_status_lines).join).to include("refactoring_backlog")
 
       agent.send(:handle_stream_event, type: :generation_completed)

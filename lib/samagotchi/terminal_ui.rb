@@ -794,8 +794,21 @@ module Samagotchi
         @thinking_waiting_since = nil
         clear_retry_spinner_status
         @turn_tally.started(key: tally_key(event), tool: event[:tool], params: event[:params])
-        memory_loaded = capture_memory_tool_call(event)
-        capture_thinking_tool_call(event) if memory_loaded
+        @last_tool_call_event = event
+        refresh_thinking_spinner_status
+      end
+    end
+
+    # The Engine's memory list: after a memory read (read_names, right after
+    # its tool_call_started) and at the end of a turn (preloads).
+    def used_memories_updated(event)
+      @spinner_lock.synchronize do
+        Array(event[:used_memory_names]).each { |name| add_unique_memory_name(:@session_memory_names, name) }
+        added = Array(event[:read_names]).select { |name| add_unique_memory_name(:@thinking_memory_names, name) }
+        next if added.empty?
+
+        @thinking_recent_memory_loaded = added.last
+        capture_thinking_tool_call(@last_tool_call_event) if @last_tool_call_event
         refresh_thinking_spinner_status
       end
     end
@@ -1310,17 +1323,6 @@ module Samagotchi
       Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
-    def capture_memory_tool_call(event)
-      call = event[:call].is_a?(Hash) ? event[:call] : {}
-      memory_name = memory_name_from_tool_call(call)
-      return false if memory_name.nil? || memory_name.empty?
-
-      added_to_thinking = add_unique_memory_name(:@thinking_memory_names, memory_name)
-      add_unique_memory_name(:@session_memory_names, memory_name)
-      @thinking_recent_memory_loaded = memory_name if added_to_thinking
-      added_to_thinking
-    end
-
     def capture_thinking_tool_call(event)
       call = event[:call].is_a?(Hash) ? event[:call] : {}
       name = call[:name].to_s.strip
@@ -1376,33 +1378,6 @@ module Samagotchi
       names << value
       instance_variable_set(ivar_name, names)
       true
-    end
-
-    def memory_name_from_tool_call(call)
-      tool_name = call[:name].to_s
-      case tool_name
-      when Tools::MemoryRead::NAME
-        normalize_memory_name(call[:content])
-      when Tools::Read::NAME
-        memory_name_from_read_path(call[:content])
-      else
-        nil
-      end
-    end
-
-    def normalize_memory_name(raw)
-      value = raw.to_s.strip
-      return nil if value.empty?
-
-      File.basename(value, ".md")
-    end
-
-    def memory_name_from_read_path(raw_path)
-      path = raw_path.to_s.strip.tr("\\", "/")
-      return nil if path.empty?
-      return nil unless path.match?(/memories[\/].+\.md\z/)
-
-      normalize_memory_name(path)
     end
 
     def reset_thinking_memory_names

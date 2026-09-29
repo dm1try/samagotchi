@@ -26,7 +26,9 @@ RSpec.describe Samagotchi::TerminalUI, "row builders" do
     allow(ui).to receive(:status_server_segment).and_return("")
     ui.send(:handle_stream_event, type: :generation_started)
     ui.send(:handle_stream_event, type: :generation_chunk, content: "#{"x" * 200}. ")
-    ui.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "notes" })
+    # Through the Engine, which follows a memory read with used_memories_updated.
+    ui.instance_variable_get(:@engine).send(:emit_event, ui.method(:handle_stream_event),
+                                            { type: :tool_call_started, call: { name: "memory_read", content: "notes" } })
     expect(ui).not_to receive(:status_effective_width)
   end
 
@@ -99,5 +101,47 @@ RSpec.describe Samagotchi::TerminalUI, "tool tally row" do
     ui.send(:handle_stream_event, type: :turn_started)
     ui.send(:handle_stream_event, type: :generation_started)
     expect(ui.send(:thinking_spinner_status_lines, "|", width: 80).size).to eq(1)
+  end
+end
+
+# The REPL's memory names come from the Engine (its used_memories_updated),
+# so a comma list read in one memory_read counts as its names.
+RSpec.describe Samagotchi::TerminalUI, "memory names in the status" do
+  let(:client) { instance_double(Samagotchi::Client) }
+  let(:ui) { described_class.new(mode: :assist, client: client, spinner_tick_interval: nil) }
+
+  before do
+    ui.instance_variable_set(:@surface, RecordingSurface.new)
+    allow(ui).to receive(:color_output?).and_return(false)
+    allow(ui).to receive(:thinking_spinner_enabled?).and_return(true)
+    allow(ui).to receive(:status_server_segment).and_return("")
+    allow(ui).to receive(:status_effective_width).and_return(200)
+  end
+
+  # An event as the Engine hands it to the REPL's on_event sink.
+  def engine_event(event)
+    ui.instance_variable_get(:@engine).send(:emit_event, ui.method(:handle_stream_event), event)
+  end
+
+  def read_memory(content)
+    engine_event(type: :tool_call_started, tool: "memory_read", call: { name: "memory_read", content: content })
+  end
+
+  it "splits a comma list read at once into its names" do
+    engine_event(type: :generation_started)
+    read_memory("notes, cli_usage")
+    read_memory("notes")
+
+    expect(ui.send(:status_memory_segment, :sticky)).to eq("mem: notes, cli_usage")
+    expect(ui.send(:status_memory_segment, :spinner)).to eq("mem: notes, cli_usage")
+    row, = ui.send(:thinking_spinner_status_lines, "|", width: 200)
+    expect(row).to include("memory_loaded: cli_usage last_tool: memory_read")
+  end
+
+  it "counts a memory file read with read" do
+    engine_event(type: :generation_started)
+    engine_event(type: :tool_call_started, tool: "read", call: { name: "read", content: "/x/memories/style.md" })
+
+    expect(ui.send(:status_memory_segment, :sticky)).to eq("mem: style")
   end
 end
