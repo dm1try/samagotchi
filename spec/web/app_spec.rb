@@ -446,6 +446,23 @@ RSpec.describe Samagotchi::Web::App do
       expect(Samagotchi::SessionManager).to have_received(:retention_sweep_if_due).with(state_dir: state_dir)
     end
 
+    it "answers 400 invalid_model for a model whose host isn't configured" do
+      manager = Class.new(FakeResponsesManager) do
+        def spawn_session(prompt:, state_dir: nil, **kw)
+          raise Samagotchi::ModelProfile::UnknownHost, "unknown host 'nosuch' in model '#{kw[:model_name]}'"
+        end
+      end.new
+      app = described_class.new(manager: manager, session_class: Samagotchi::Session, state_dir: state_dir,
+                                bridge_wait_timeout: 0, hub: hub)
+
+      status, _, body = app.call(env_for("/api/sessions", method: "POST",
+                                                          body: JSON.generate(prompt: "hi", model: "nosuch:org/model")))
+
+      expect(status).to eq(400)
+      expect(JSON.parse(body.first)).to include("error" => "invalid_model",
+                                                "detail" => "unknown host 'nosuch' in model 'nosuch:org/model'")
+    end
+
     it "has the projection hold a created session before the 201 goes out" do
       manager = Class.new(FakeResponsesManager) do
         def spawn_session(prompt:, state_dir: nil, **kw)

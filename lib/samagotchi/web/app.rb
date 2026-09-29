@@ -415,9 +415,9 @@ module Samagotchi
         folder[:title] = preview unless preview.empty?
         begin
           session = @manager.spawn_session(prompt: idle ? nil : prompt.to_s, state_dir: @state_dir, **folder)
-        rescue ArgumentError => e
-          return error_response(400, "invalid_model", e.message) if e.message.match?(/SAMAGOTCHI_DEFAULT_MODEL/)
-          raise
+        rescue ModelProfile::MissingModel => e
+          # No model configured, or one qualified with an unknown host.
+          return error_response(400, "invalid_model", e.message)
         end
         # The worker's Bridge is the single live transport: wait (bounded) for
         # it so the client can attach without client-side polling.

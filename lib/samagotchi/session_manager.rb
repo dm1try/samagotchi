@@ -148,7 +148,7 @@ module Samagotchi
       sd = state_dir || Session.default_state_dir
       session = Session.new_session(
         mode: mode,
-        model_name: model_name || Samagotchi::ModelProfile.required_model_name,
+        model_name: Samagotchi::ModelProfile.check_host!(Samagotchi::ModelProfile.required_model_name(model_name)),
         working_directory: working_directory || Dir.pwd,
         preloaded_memory_names: memories,
         muted_memory_names: muted_memories,

@@ -509,6 +509,16 @@ RSpec.describe Samagotchi::SessionManager do
   end
 
   describe ".spawn_session" do
+    it "refuses a model qualified with a host config.yml doesn't have, before anything is saved or spawned" do
+      allow(Process).to receive(:spawn).and_return(12_345)
+      stub_const("ENV", ENV.to_h.merge("SAMAGOTCHI_HOSTS_JSON" => JSON.generate("main" => { "host" => "localhost", "port" => 8080 })))
+
+      expect { described_class.spawn_session(prompt: "hi", model_name: "nosuch:org/model", state_dir: tmpdir) }
+        .to raise_error(Samagotchi::ModelProfile::UnknownHost, /unknown host 'nosuch'.*configured hosts are main/)
+      expect(Process).not_to have_received(:spawn)
+      expect(Dir.glob(File.join(tmpdir, "sessions", "*"))).to be_empty
+    end
+
     it "starts a session with no prompt idle, with nothing to run" do
       allow(Process).to receive(:spawn).and_return(12_345)
 

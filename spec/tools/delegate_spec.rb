@@ -95,12 +95,20 @@ RSpec.describe "delegate tools" do
     end
 
     it "resolves a model alias for the child, a host prefix kept" do
+      allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).and_call_original
       allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).with("tiny").and_return("box:gemma-small")
 
       described_class.call("quick look", model: "tiny", wait: "false", peers: peers)
 
       child = Samagotchi::Session.load((session_files - [parent.id]).first, state_dir: tmpdir)
       expect(child.model_name).to eq("box:gemma-small")
+    end
+
+    it "refuses a model whose host isn't configured, creating nothing" do
+      out = described_class.call("quick look", model: "nosuch:org/model", wait: "false", peers: peers)
+
+      expect(out).to match(/\AError: unknown host 'nosuch' in model 'nosuch:org\/model'; the configured hosts are /)
+      expect(session_files).to contain_exactly(parent.id)
     end
 
     it "refuses in a session that is itself a delegate, creating nothing" do
