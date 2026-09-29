@@ -224,7 +224,7 @@ test("an annotate preset fills the composer with the quote and never sends", asy
   expect(turnPosts).toEqual([]);
 });
 
-test("the model picker lists the fake model", async ({ page }) => {
+test("the model picker lists the fake model", { tag: "@stage" }, async ({ page }) => {
   const button = page.locator("#modelPick");
   await expect(button).toBeVisible();
   await expect(button).toHaveText("fake-script");
@@ -249,7 +249,7 @@ const MANY_MODELS = {
   ],
 };
 
-test("the model picker searches: 'deepseek4.1 fla' picks the flash with ⏎, Recent keeps two picks, Esc changes nothing", async ({ page, script }) => {
+test("the model picker searches: 'deepseek4.1 fla' picks the flash with ⏎, Recent keeps two picks, Esc changes nothing", { tag: "@stage" }, async ({ page, script }) => {
   await page.route("**/api/models", (route) => route.fulfill({ json: MANY_MODELS }));
   await page.reload();
   const button = page.locator("#modelPick");
