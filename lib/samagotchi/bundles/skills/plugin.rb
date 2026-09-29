@@ -34,6 +34,8 @@ class Plugin
     rest = rest.to_s.strip
     case verb
     when "save" then save(rest, ctx)
+    when "list" then rest.empty? ? list : USAGE
+    when "show" then show(rest)
     else USAGE
     end
   end
@@ -82,6 +84,36 @@ class Plugin
     TEXT
   end
 
+  # /skill list: the skill_* memories of both scopes, with their index line's
+  # date and description.
+  def list
+    skills = memory_dirs.flat_map do |scope, dir|
+      index = index_lines(dir)
+      Dir.glob(File.join(dir, "skill_*.md")).filter_map do |path|
+        name = File.basename(path, ".md").delete_prefix("skill_")
+        next unless skill_name(name) == name
+
+        date, description = index.fetch("skill_#{name}", [nil, nil])
+        line = +"#{name} · #{scope}"
+        line << " · #{date}" if date
+        line << " — #{description}" if description
+        line
+      end.sort
+    end
+    return "no skills yet: after a task we did together, /skill save [name]" if skills.empty?
+
+    "skills:\n#{skills.map { |line| "  #{line}" }.join("\n")}"
+  end
+
+  # /skill show <name>: the skill as saved (project first).
+  def show(rest)
+    name = skill_name(rest)
+    return USAGE unless name
+
+    path = skill_path(name) or return "no skill #{name} (/skill list shows them)"
+    "skill #{name} · #{scope_of(path)}\n\n#{File.read(path).strip}"
+  end
+
   # --- skills on disk --------------------------------------------------------
 
   # "release", "skill_release", "Release-Notes" → "release", "release-notes";
@@ -104,6 +136,20 @@ class Plugin
       return path if File.file?(path)
     end
     nil
+  end
+
+  def scope_of(path) = memory_dirs.key(File.dirname(path)) || "?"
+
+  # The managed index.md lines, {name => [date, description]}:
+  # "- **name** · scope · date · bytes — description".
+  def index_lines(dir)
+    path = File.join(dir, "index.md")
+    return {} unless File.file?(path)
+
+    File.readlines(path, chomp: true).each_with_object({}) do |line, lines|
+      match = line.match(/\A- \*\*(?<name>[^*]+)\*\* · [^·]+ · (?<date>[^·]+?) · [^—]+?(?: — (?<description>.+))?\z/)
+      lines[match[:name]] = [match[:date].strip, match[:description]&.strip] if match
+    end
   end
 
   # --- helpers ---------------------------------------------------------------

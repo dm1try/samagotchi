@@ -16,7 +16,10 @@ RSpec.describe "The skills plugin" do
   let(:source) { File.expand_path("../../../lib/samagotchi/bundles/skills/plugin.rb", __dir__) }
   let(:tmpdir) { Dir.mktmpdir("skills-") }
   let(:system_dir) { File.join(tmpdir, "mem") }
-  let(:project_dir) { File.join(tmpdir, "proj") }
+  # MemoryRead takes the project override as the project's own dir,
+  # IndexUpdater as the base the project key goes under: this one path is
+  # both.
+  let(:project_dir) { File.join(tmpdir, "proj", Samagotchi::MemoryPaths.project_key) }
   let(:ctx) do
     Class.new do
       attr_reader :notices, :sent, :data_dir
@@ -48,12 +51,16 @@ RSpec.describe "The skills plugin" do
   before do
     Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
     Samagotchi::MemoryBundle::Installer.project_dir_base_override = project_dir
+    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = system_dir
+    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = File.dirname(project_dir)
     FileUtils.mkdir_p([system_dir, project_dir])
   end
 
   after do
     Samagotchi::MemoryBundle::Installer.system_dir_override = nil
     Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
+    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
+    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 
@@ -79,6 +86,34 @@ RSpec.describe "The skills plugin" do
     expect(p[:commands]["/skill"].last).to be(true)
     expect(skill(p)).to start_with("usage: /skill save")
     expect(skill(p, "frobnicate")).to start_with("usage: /skill save")
+  end
+
+  def write_skill(name, content, scope: "project", description: nil)
+    Samagotchi::Tools::MemoryWrite.call(content, path: "skill_#{name}", scope: scope, description: description)
+  end
+
+  describe "/skill list and show" do
+    it "lists both scopes' skills with their index date and description, and shows one (project first)" do
+      expect(skill(plugin, "list")).to eq("no skills yet: after a task we did together, /skill save [name]")
+
+      write_skill("release", "# Skill: release\n\n## Steps\n1. tag\n", description: "Release a new version: tag, push")
+      write_skill("deploy", "# Skill: deploy (system)\n", scope: "system")
+      write_skill("deploy", "# Skill: deploy (project)\n")
+      Samagotchi::Tools::MemoryWrite.call("not a skill", path: "notes", scope: "project")
+      File.write(File.join(project_dir, "skill_release.qwen36.md"), "an overlay")
+      today = Date.today.iso8601
+
+      expect(skill(plugin, "list")).to eq(<<~TEXT.strip)
+        skills:
+          deploy · project · #{today}
+          release · project · #{today} — Release a new version: tag, push
+          deploy · system · #{today}
+      TEXT
+      expect(skill(plugin, "show release")).to eq("skill release · project\n\n# Skill: release\n\n## Steps\n1. tag")
+      expect(skill(plugin, "show skill_deploy")).to eq("skill deploy · project\n\n# Skill: deploy (project)")
+      expect(skill(plugin, "show nope")).to eq("no skill nope (/skill list shows them)")
+      expect(skill(plugin, "show")).to start_with("usage:")
+    end
   end
 
   describe "/skill save" do
