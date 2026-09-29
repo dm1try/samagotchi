@@ -1,6 +1,7 @@
 # Desktop helper (macOS)
 
-`chi desktop` installs **Chi Helper**, a small native app. It sends text you selected in any app to a chi session,
+`chi desktop` installs **Chi Helper**, a small native app. It sends text you selected in any app (or a screenshot,
+an image: see [Images](#images)) to a chi session,
 either with a question as [your message](sessions.md#sending-a-message) (a turn runs, and the answer shows in the
 attached terminal or web page), or as a [context note](sessions.md#context-notes) (the model sees it on its next
 turn, and no turn starts).
@@ -34,6 +35,32 @@ alone (ticking it clears the sessions and the reverse) and is preselected when n
 note needs a session. After the send the panel shows `started <id>…` for 3 s.
 
 A session open in a `chi --no-shared` REPL isn't listed: it takes no notes or messages.
+
+## Images
+
+The panel also sends images, as attachments of the message (`chi send --image`, see
+[Sending a message](sessions.md#sending-a-message)):
+
+- **A screenshot:** ⌃⇧⌘4 (a region to the clipboard), then ⌃⌥⌘N. The panel shows it as a thumbnail, named
+  `clipboard.png`; the context box stays empty.
+- **Finder:** right-click image files → Services → **Send to chi** (the same Service as for text, so its shortcut
+  works here too), or ⌘C on them and ⌃⌥⌘N. Up to 20 at once.
+- **Other apps:** a picture selected in Preview, Safari's Copy Image, anything that puts image data on the clipboard.
+- **Drop** image files or the floating screenshot thumbnail (⇧⌘4 to a file) anywhere on the open panel: they are
+  added to the ones there.
+
+When the clipboard holds both text and a picture (cells copied in Numbers or Excel), the text wins, as before. The
+thumbnails sit under the message line, 48 px high, the file name as a tooltip; hover one for its ✕.
+
+- A message is required with images: the line says "Say something about the image…", and ⏎ does nothing until
+  there is text (the context box counts).
+- Notes are text only: ⌘⏎ with images beeps and says "Notes are text only: ⏎ sends the image as a message".
+- The session's model must see images. A text-only one fails the turn in the session (the attached terminal or the
+  web shows why); the panel has already said it was sent.
+- A session busy with a turn runs the image message as its next turn: the line says `(runs after the current turn)`.
+- Clipboard and dropped image data goes to temp files under `$TMPDIR/chi-helper`, deleted after the send or when
+  the panel closes; files from Finder are sent as they are, never touched. A send with images may take up to 30 s
+  (converting, a worker starting) before the panel gives up.
 
 ## Install
 
@@ -106,4 +133,6 @@ Each call is stopped after 10 s. A stopped `chi note` says the note may be partl
   restarts or you log out: macOS caches Services.
 - **⌃⌥⌘N does nothing:** `status` says whether another app holds it. macOS doesn't report clashes with its own
   shortcuts.
+- **"Send to chi" missing on images in Finder or Preview** after an upgrade: the Services cache still has the old
+  (text-only) entry; `/System/Library/CoreServices/pbs -update`, restart the helper, or log out and back in.
 - **"No live sessions":** start one with `chi` in a terminal; `chi sessions list --live --scope=all` shows the same list.
