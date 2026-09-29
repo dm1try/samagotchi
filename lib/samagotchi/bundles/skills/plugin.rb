@@ -4,21 +4,36 @@
 # model to save, follow and update skills; this bundle adds `/skill` for the
 # user and keeps an eye on the model's rewrites.
 #
+# History: before memory_write, write or edit changes a skill's file, the
+# file as it was is kept under $XDG_STATE_HOME/samagotchi/plugins/skills/
+# history/<scope>/<name>/<UTC time>.md (state, not the memories dir, so
+# bundle build and dotfile syncs never see it), history_keep per skill. The
+# after_tool_call of that call (calls run one at a time; that event carries
+# no call, so the before side stashes it) compares the file on disk and
+# shows a line: "skill release updated (+2 −1): …" or "skill release saved
+# (project, 14 lines)".
+#
 # Settings (config.yml, bundles: skills:):
 #   history_keep: 20   older versions kept per skill
 #   nudge: true        steer the model once when a skill's step fails
 require "date"
+require "fileutils"
 
 class Plugin
+  WRITE_TOOLS = %w[memory_write write edit].freeze
+  NOTICE_WIDTH = 60 # the changed line in an update's notice
   USAGE = "usage: /skill save [name] [--system] | list | show <name> | diff <name> [N]"
 
   def initialize(settings = {})
     settings = {} unless settings.is_a?(Hash)
     @history_keep = positive(settings["history_keep"]) || 20
     @nudge = settings.key?("nudge") ? settings["nudge"] != false : true
+    @stash = nil
   end
 
   def register(chi)
+    chi.on(:before_tool_call) { |event, ctx| before_tool_call(event, ctx) }
+    chi.on(:after_tool_call) { |event, ctx| after_tool_call(event, ctx) }
     chi.command "/skill", "skills (steps of a task we did): save [name] [--system], list, show <name>, diff <name> [N]",
                 anytime: true do |args, ctx|
       command(args.to_s.strip, ctx)
@@ -26,6 +41,75 @@ class Plugin
   end
 
   private
+
+  # --- a skill's file changes ----------------------------------------------
+
+  def before_tool_call(event, ctx)
+    @stash = nil
+    tool = event.dig(:call, :name).to_s
+    return unless WRITE_TOOLS.include?(tool)
+
+    path = Array(event.dig(:targets, :paths)).find { |target| skill_at(target) }
+    return unless path
+
+    scope, name = skill_at(path)
+    old = File.file?(path) ? File.read(path) : nil
+    keep_version(ctx, scope, name, old) if old
+    @stash = { tool: tool, path: File.expand_path(path), scope: scope, name: name, old: old }
+  end
+
+  # Success is the file changed on disk, whatever the output says. A call
+  # that didn't match the stash (a cancelled turn fires no before) drops it.
+  def after_tool_call(event, ctx)
+    stash = @stash
+    @stash = nil
+    return unless stash && stash[:tool] == event[:tool].to_s
+
+    now = File.file?(stash[:path]) ? File.read(stash[:path]) : nil
+    return if now.nil? || now == stash[:old]
+
+    ctx.notify(change_notice(stash, now))
+  end
+
+  def change_notice(stash, now)
+    name = stash[:name]
+    return "skill #{name} saved (#{stash[:scope]}, #{now.lines.size} lines)" unless stash[:old]
+
+    ops = line_diff(stash[:old].lines(chomp: true), now.lines(chomp: true))
+    added = ops.count { |op, _| op == :add }
+    removed = ops.count { |op, _| op == :del }
+    first = ops.find { |op, _| op == :add } || ops.find { |op, _| op == :del }
+    line = first ? cut(first.last.strip) : ""
+    "skill #{name} updated (+#{added} −#{removed})#{line.empty? ? "" : ": #{line}"} · /skill diff #{name}"
+  end
+
+  # --- history ---------------------------------------------------------------
+
+  # Keep +content+ as the newest version, unless it is the newest already (a
+  # denied or failed write leaves the file as it was).
+  def keep_version(ctx, scope, name, content)
+    dir = history_dir(ctx, scope, name)
+    FileUtils.mkdir_p(dir)
+    newest = versions(dir).first
+    return if newest && File.read(newest) == content
+
+    stamp = Time.now.utc.strftime("%Y%m%dT%H%M%S.%6NZ")
+    path = File.join(dir, "#{stamp}.md")
+    File.write("#{path}.tmp", content)
+    File.rename("#{path}.tmp", path)
+    versions(dir).drop(@history_keep).each { |old| File.delete(old) }
+  rescue SystemCallError => e
+    ctx.log.warn(:history_failed, skill: name, error: e.class.name, msg: e.message)
+  end
+
+  # history/system/<name>, history/project-<project folder>/<name>
+  def history_dir(ctx, scope, name)
+    key = scope == "system" ? "system" : "project-#{File.basename(memory_dirs["project"])}"
+    File.join(ctx.data_dir, "history", key, name)
+  end
+
+  # The kept versions, newest first.
+  def versions(dir) = Dir.glob(File.join(dir, "*.md")).sort.reverse
 
   # --- /skill ----------------------------------------------------------------
 
@@ -138,6 +222,16 @@ class Plugin
     nil
   end
 
+  # [scope, name] when +path+ is a skill_<name>.md right in a memories dir.
+  def skill_at(path)
+    path = File.expand_path(path.to_s)
+    scope = memory_dirs.key(File.dirname(path))
+    name = File.basename(path, ".md").delete_prefix("skill_")
+    return nil unless scope && File.basename(path) == "skill_#{name}.md" && skill_name(name) == name
+
+    [scope, name]
+  end
+
   def scope_of(path) = memory_dirs.key(File.dirname(path)) || "?"
 
   # The managed index.md lines, {name => [date, description]}:
@@ -153,6 +247,35 @@ class Plugin
   end
 
   # --- helpers ---------------------------------------------------------------
+
+  # The lines of +a+ and +b+ as [:eq|:del|:add, line], in order (a longest
+  # common subsequence; skills are short).
+  def line_diff(a, b)
+    lcs = Array.new(a.size + 1) { Array.new(b.size + 1, 0) }
+    (a.size - 1).downto(0) do |i|
+      (b.size - 1).downto(0) do |j|
+        lcs[i][j] = a[i] == b[j] ? lcs[i + 1][j + 1] + 1 : [lcs[i + 1][j], lcs[i][j + 1]].max
+      end
+    end
+    ops = []
+    i = j = 0
+    while i < a.size && j < b.size
+      if a[i] == b[j]
+        ops << [:eq, a[i]]
+        i += 1
+        j += 1
+      elsif lcs[i + 1][j] >= lcs[i][j + 1]
+        ops << [:del, a[i]]
+        i += 1
+      else
+        ops << [:add, b[j]]
+        j += 1
+      end
+    end
+    ops.concat(a[i..].map { |line| [:del, line] }, b[j..].map { |line| [:add, line] })
+  end
+
+  def cut(text) = text.length > NOTICE_WIDTH ? "#{text[0, NOTICE_WIDTH - 1]}…" : text
 
   def positive(value)
     number = Integer(value.to_s, exception: false)

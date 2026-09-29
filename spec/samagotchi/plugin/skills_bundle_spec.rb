@@ -33,6 +33,7 @@ RSpec.describe "The skills plugin" do
       end
 
       def notify(text, level: :info) = @notices << [text, level]
+      def log = Logger.new(nil)
 
       def sessions
         ctx = self
@@ -116,6 +117,82 @@ RSpec.describe "The skills plugin" do
     end
   end
 
+  # A write of +tool+ to +path+ as the ToolRunner runs it: the before hook,
+  # the write (unless denied), the after hook.
+  def write_call(p, tool, path, content, denied: false)
+    fire(p, :before_tool_call, call: { name: tool }, targets: { paths: [path] })
+    File.write(path, content) unless denied
+    fire(p, :after_tool_call, tool: tool, output: denied ? "[#{tool}] Error: denied" : "ok")
+  end
+
+  def fire(p, type, **event)
+    p[:hooks][type].each { |block| block.call({ type: type, **event }, ctx) }
+  end
+
+  def history(scope, name)
+    key = scope == "system" ? "system" : "project-#{File.basename(project_dir)}"
+    Dir.glob(File.join(ctx.data_dir, "history", key, name, "*.md")).sort
+  end
+
+  describe "history and the change notice" do
+    let(:path) { File.join(project_dir, "skill_release.md") }
+    let(:v1) { "# Skill: release\n\n## Steps\n1. Run `scripts/check.sh`; stop if it fails.\n2. Tag it.\n" }
+    let(:v2) { "# Skill: release\n\n## Steps\n1. Run `scripts/verify.sh`; stop if it fails.\n2. Tag it.\n3. Push.\n" }
+
+    it "says a new skill was saved, keeps the old version before an update and says what changed" do
+      p = plugin
+      write_call(p, "memory_write", path, v1)
+      expect(ctx.notices.last).to eq(["skill release saved (project, 5 lines)", :info])
+      expect(history("project", "release")).to be_empty
+
+      write_call(p, "edit", path, v2)
+      expect(ctx.notices.last.first)
+        .to eq("skill release updated (+2 −1): 1. Run `scripts/verify.sh`; stop if it fails. · /skill diff release")
+      expect(history("project", "release").map { |f| File.read(f) }).to eq([v1])
+    end
+
+    it "cuts a long changed line, and covers the system scope and the write tool" do
+      p = plugin
+      sys = File.join(system_dir, "skill_deploy.md")
+      File.write(sys, "a\n")
+      write_call(p, "write", sys, "a\n#{"x" * 100}\n")
+      expect(ctx.notices.last.first).to eq("skill deploy updated (+1 −0): #{"x" * 59}… · /skill diff deploy")
+      expect(history("system", "deploy").size).to eq(1)
+    end
+
+    it "shows nothing for a denied or unchanged write, and keeps one copy of the same content" do
+      p = plugin
+      File.write(path, v1)
+      write_call(p, "memory_write", path, v1, denied: true)
+      write_call(p, "memory_write", path, v1)
+      expect(ctx.notices).to be_empty
+      expect(history("project", "release").size).to eq(1)
+    end
+
+    it "keeps history_keep versions, the newest" do
+      p = plugin("history_keep" => 2)
+      File.write(path, "0\n")
+      (1..4).each { |n| write_call(p, "memory_write", path, "#{n}\n") }
+      expect(history("project", "release").map { |f| File.read(f) }).to eq(["2\n", "3\n"])
+    end
+
+    it "leaves other files alone: other memories, overlays, files elsewhere, a mismatched after" do
+      p = plugin
+      [File.join(project_dir, "notes.md"), File.join(project_dir, "skill_release.qwen36.md"),
+       File.join(tmpdir, "skill_release.md")].each do |other|
+        File.write(other, "old")
+        write_call(p, "write", other, "new")
+      end
+      File.write(path, v1)
+      fire(p, :before_tool_call, call: { name: "edit" }, targets: { paths: [path] })
+      File.write(path, v2)
+      fire(p, :after_tool_call, tool: "execute", output: "exit: 0")
+      fire(p, :after_tool_call, tool: "edit", output: "ok")
+      fire(p, :after_tool_call, tool: "memory_read", output: "x")
+      expect(ctx.notices).to be_empty
+    end
+  end
+
   describe "/skill save" do
     it "sends this session a request holding the skill's shape, the name and the project scope" do
       reply = skill(plugin, "save Release")
@@ -192,6 +269,37 @@ RSpec.describe "The skills bundle, installed" do
   end
 
   let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client).tap { |e| e.session_state_dir = state_dir } }
+
+  let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir) }
+  let(:events) { [] }
+
+  before do
+    engine.session = session
+    engine.subscribe(observer: ->(e) { events << e })
+  end
+
+  def tool_call(name, **args)
+    body = args.map { |key, value| %(#{key}: <|"|>#{value}<|"|>) }.join(", ")
+    %(<|tool_call>call:#{name}{#{body}}<tool_call|>)
+  end
+
+  def notices = events.select { |e| e[:type] == :hook_notice }.map { |e| e[:text] }
+
+  it "keeps the old version and shows the change when the model rewrites a skill in a real turn" do
+    replies = [tool_call("memory_write", name: "skill_release", scope: "system", content: "# Skill: release\n1. check\n",
+                         description: "Release this repo"),
+               tool_call("memory_write", name: "skill_release", scope: "system", content: "# Skill: release\n1. verify\n"),
+               "done"]
+    allow(client).to receive(:complete) { replies.shift || "done" }
+
+    engine.run_turn(session, "save it, then fix it")
+
+    expect(File.read(File.join(system_dir, "skill_release.md"))).to eq("# Skill: release\n1. verify\n")
+    expect(notices).to eq(["skill release saved (system, 2 lines)",
+                           "skill release updated (+1 −1): 1. verify · /skill diff release"])
+    kept = Dir.glob(File.join(tmpdir, "state", "samagotchi", "plugins", "skills", "history", "system", "release", "*.md"))
+    expect(kept.map { |f| File.read(f) }).to eq(["# Skill: release\n1. check\n"])
+  end
 
   it "installs cleanly, with no memory, as an anytime command" do
     expect(@installer.warnings).to be_empty
