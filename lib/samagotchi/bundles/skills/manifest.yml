@@ -6,5 +6,5 @@ description: "Skills (skill_<name> memories, the steps of a task done together):
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:25de54933244898be97282ffe47df2e260e15e705c69976f4c561db3d47c543b
+  sha256: sha256:76758d41e75db107e0a6f7ce35b9eac4944052746af16aeba30f38210cc436dc
 requires_chi: ">= 0.4.0"

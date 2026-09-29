@@ -13,6 +13,14 @@
 # shows a line: "skill release updated (+2 −1): …" or "skill release saved
 # (project, 14 lines)".
 #
+# The nudge (nudge: true), for models that skip a failing step instead of
+# fixing the skill: in a turn that read a skill (memory_read of a skill_*
+# name, or a read of its file), the first failing tool call after it (an
+# execute with "exit: N", N ≠ 0, or with no exit line an Error: line near
+# the top; any tool's "[tool] Error: …") steers the model once to find out
+# why and fix the skill. At the turn's end, a failed step with no rewrite of
+# the skill gets a notice line.
+#
 # Settings (config.yml, bundles: skills:):
 #   history_keep: 20   older versions kept per skill
 #   nudge: true        steer the model once when a skill's step fails
@@ -22,6 +30,10 @@ require "fileutils"
 class Plugin
   WRITE_TOOLS = %w[memory_write write edit].freeze
   NOTICE_WIDTH = 60 # the changed line in an update's notice
+  NUDGE = "A step of skill %s failed. Find out why before skipping it; if the skill is out of date, fix it now: " \
+          "memory_write the whole skill, its title and every section as they were, that step fixed, a Changelog " \
+          "line added."
+  NOT_FAILURES = %w[memory_read memory_write].freeze
   USAGE = "usage: /skill save [name] [--system] | list | show <name> | diff <name> [N]"
 
   def initialize(settings = {})
@@ -29,9 +41,12 @@ class Plugin
     @history_keep = positive(settings["history_keep"]) || 20
     @nudge = settings.key?("nudge") ? settings["nudge"] != false : true
     @stash = nil
+    reset_turn
   end
 
   def register(chi)
+    chi.on(:before_turn) { |_event, _ctx| reset_turn }
+    chi.on(:after_turn) { |_event, ctx| after_turn(ctx) }
     chi.on(:before_tool_call) { |event, ctx| before_tool_call(event, ctx) }
     chi.on(:after_tool_call) { |event, ctx| after_tool_call(event, ctx) }
     chi.command "/skill", "skills (steps of a task we did): save [name] [--system], list, show <name>, diff <name> [N]",
@@ -47,6 +62,7 @@ class Plugin
   def before_tool_call(event, ctx)
     @stash = nil
     tool = event.dig(:call, :name).to_s
+    note_read(tool, event)
     return unless WRITE_TOOLS.include?(tool)
 
     path = Array(event.dig(:targets, :paths)).find { |target| skill_at(target) }
@@ -63,11 +79,13 @@ class Plugin
   def after_tool_call(event, ctx)
     stash = @stash
     @stash = nil
+    step_failed(event) if @nudge && !@read.empty?
     return unless stash && stash[:tool] == event[:tool].to_s
 
     now = File.file?(stash[:path]) ? File.read(stash[:path]) : nil
     return if now.nil? || now == stash[:old]
 
+    @written << stash[:name]
     ctx.notify(change_notice(stash, now))
   end
 
@@ -81,6 +99,59 @@ class Plugin
     first = ops.find { |op, _| op == :add } || ops.find { |op, _| op == :del }
     line = first ? cut(first.last.strip) : ""
     "skill #{name} updated (+#{added} −#{removed})#{line.empty? ? "" : ": #{line}"} · /skill diff #{name}"
+  end
+
+  # --- the nudge ------------------------------------------------------------
+
+  def reset_turn
+    @read = []      # skills read this turn, in order
+    @written = []   # skills changed this turn
+    @failed = false # a step failed after a skill was read
+    @nudged = false
+  end
+
+  def note_read(tool, event)
+    names = case tool
+            when "memory_read"
+              event.dig(:call, :content).to_s.split(",").map(&:strip).select { |entry| entry.start_with?("skill_") }
+                   .filter_map { |entry| skill_name(entry) }
+            when "read"
+              Array(event.dig(:targets, :paths)).filter_map { |path| skill_at(path)&.last }
+            else []
+            end
+    @read |= names
+  end
+
+  def step_failed(event)
+    tool = event[:tool].to_s
+    return if NOT_FAILURES.include?(tool) || !failure?(tool, event[:output].to_s)
+
+    @failed = true
+    return if @nudged
+
+    @nudged = !!event[:steer]&.call(format(NUDGE, @read.join(", ")))
+  end
+
+  # A tool error ("[x] Error: …" raised, "[x]\nError: …" returned), or an
+  # execute that exited non-zero; its "exit: N" line may be cut off by the
+  # hook's output cap, and then an Error: line near the top counts.
+  def failure?(tool, output)
+    return true if output.match?(/\A\[#{Regexp.escape(tool)}\](?: |\n)Error:/)
+    return false unless tool == "execute"
+
+    exit_line = output.match(/^exit: (\d+)(?: \(no output\))?\s*\z/)
+    return exit_line[1] != "0" if exit_line
+
+    output.lines.first(20).any? { |line| line.match?(/\A\s*Error:/i) }
+  end
+
+  def after_turn(ctx)
+    return unless @nudge && @failed
+
+    missed = @read - @written
+    return unless missed.size == @read.size
+
+    ctx.notify("skill #{missed.join(", ")} was followed, a step failed, the skill wasn't updated")
   end
 
   # --- history ---------------------------------------------------------------

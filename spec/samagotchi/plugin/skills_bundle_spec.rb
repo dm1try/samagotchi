@@ -252,6 +252,77 @@ RSpec.describe "The skills plugin" do
     end
   end
 
+  describe "the nudge" do
+    let(:steered) { [] }
+    let(:path) { File.join(project_dir, "skill_release.md") }
+    let(:steer) { ->(text) { steered << text && true } }
+
+    def read_skill(p, names = "skill_release")
+      fire(p, :before_tool_call, call: { name: "memory_read", content: names }, targets: { paths: [] })
+      fire(p, :after_tool_call, tool: "memory_read", output: "# Skill: release", steer: steer)
+    end
+
+    def run(p, tool, output)
+      fire(p, :before_tool_call, call: { name: tool }, targets: { paths: [] })
+      fire(p, :after_tool_call, tool: tool, output: output, steer: steer)
+    end
+
+    it "steers once at the first failing step after a skill was read, and notes it at the turn's end" do
+      p = plugin
+      fire(p, :before_turn, prompt: "release 1.3.0")
+      run(p, "execute", "[execute]\nstderr:\nno such file\nexit: 1") # before the read: not the skill's
+      read_skill(p, "notes, skill_release")
+      run(p, "execute", "[execute]\nstdout:\nok\nexit: 0")
+      run(p, "execute", "[execute]\nstderr:\nbash: scripts/check.sh: No such file or directory\nexit: 127")
+      run(p, "read", "[read] Error: file not found")
+
+      expect(steered).to eq(["A step of skill release failed. Find out why before skipping it; if the skill is out of " \
+                             "date, fix it now: memory_write the whole skill, its title and every section as they " \
+                             "were, that step fixed, a Changelog line added."])
+      fire(p, :after_turn, status: "completed")
+      expect(ctx.notices).to eq([["skill release was followed, a step failed, the skill wasn't updated", :info]])
+    end
+
+    it "is quiet when the skill was updated, or nothing failed, and starts over each turn" do
+      p = plugin
+      fire(p, :before_turn, prompt: "go")
+      fire(p, :before_tool_call, call: { name: "read" }, targets: { paths: [path] })
+      fire(p, :after_tool_call, tool: "read", output: "x", steer: steer)
+      run(p, "execute", "[execute]\nError: command timed out after 60s")
+      File.write(path, "old\n")
+      write_call(p, "memory_write", path, "new\n")
+      fire(p, :after_turn, status: "completed")
+      expect(steered.size).to eq(1)
+      expect(ctx.notices.map(&:first)).to eq(["skill release updated (+1 −1): new · /skill diff release"])
+
+      fire(p, :before_turn, prompt: "again")
+      run(p, "execute", "[execute]\nexit: 2 (no output)")
+      read_skill(p)
+      run(p, "execute", "[execute]\nexit: 0 (no output)")
+      fire(p, :after_turn, status: "completed")
+      expect(steered.size).to eq(1)
+      expect(ctx.notices.size).to eq(1)
+    end
+
+    it "reads an execute whose exit line was cut off by an Error: line near the top" do
+      p = plugin
+      read_skill(p)
+      run(p, "execute", "[execute]\nstdout:\n#{"x\n" * 30}Error: late")
+      expect(steered).to be_empty
+      run(p, "execute", "[execute]\nstdout:\nError: bad config\n#{"x\n" * 30}")
+      expect(steered.size).to eq(1)
+    end
+
+    it "is off with nudge: false" do
+      p = plugin("nudge" => false)
+      read_skill(p)
+      run(p, "execute", "[execute]\nexit: 1 (no output)")
+      fire(p, :after_turn, status: "completed")
+      expect(steered).to be_empty
+      expect(ctx.notices).to be_empty
+    end
+  end
+
   describe "/skill save" do
     it "sends this session a request holding the skill's shape, the name and the project scope" do
       reply = skill(plugin, "save Release")
@@ -358,6 +429,19 @@ RSpec.describe "The skills bundle, installed" do
                            "skill release updated (+1 −1): 1. verify · /skill diff release"])
     kept = Dir.glob(File.join(tmpdir, "state", "samagotchi", "plugins", "skills", "history", "system", "release", "*.md"))
     expect(kept.map { |f| File.read(f) }).to eq(["# Skill: release\n1. check\n"])
+  end
+
+  it "nudges the model when a step of a skill it read fails in a real turn" do
+    File.write(File.join(system_dir, "skill_release.md"), "# Skill: release\n1. Run `false`; stop if it fails.\n")
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_call_original
+    replies = [tool_call("memory_read", name: "skill_release"), tool_call("execute", command: "false"), "skipped it"]
+    allow(client).to receive(:complete) { replies.shift || "done" }
+
+    engine.run_turn(session, "release please")
+
+    expect(session.messages).to include(role: "user", kind: "steer", source: "skills",
+                                        content: a_string_starting_with("A step of skill release failed."))
+    expect(notices).to eq(["skill release was followed, a step failed, the skill wasn't updated"])
   end
 
   it "installs cleanly, with no memory, as an anytime command" do
