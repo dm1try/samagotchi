@@ -63,6 +63,34 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     expect(backend.adapter.requests.map { |r| r[:options] }).to eq([{ temperature: 0.6 }, { temperature: 0.6 }])
   end
 
+  describe "thinking level" do
+    def options_for(thinking, sampling = {})
+      allow(fake_kernel).to receive(:thinking).and_return(thinking)
+      allow(fake_kernel).to receive(:sampling).and_return(sampling)
+      run
+      adapter.requests.last[:options]
+    end
+
+    it "sends the level's fields, nothing for default" do
+      expect(options_for(:off)).to eq(chat_template_kwargs: { enable_thinking: false }, reasoning_effort: "none")
+      expect(options_for(:low)).to eq(reasoning_effort: "low")
+      expect(options_for(:default)).to eq({})
+    end
+
+    it "lets sampling win per key, merging chat_template_kwargs per sub-key" do
+      sampling = { reasoning_effort: "minimal", temperature: 0.6, chat_template_kwargs: { foo: 1 } }
+
+      expect(options_for(:off, sampling)).to eq(chat_template_kwargs: { enable_thinking: false, foo: 1 },
+                                                reasoning_effort: "minimal", temperature: 0.6)
+    end
+
+    it "drops a field sampling sets to null, at any depth" do
+      expect(options_for(:off, { reasoning_effort: nil })).to eq(chat_template_kwargs: { enable_thinking: false })
+      expect(options_for(:off, { chat_template_kwargs: { enable_thinking: nil } })).to eq(chat_template_kwargs: {}, reasoning_effort: "none")
+      expect(options_for(:default, { temperature: nil })).to eq({})
+    end
+  end
+
   it "names the model the adapter reports in :generation_completed, next to the one asked for" do
     served = FakeChatAdapter.text("hi").with(model: "vendor/served-1")
     described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(served))

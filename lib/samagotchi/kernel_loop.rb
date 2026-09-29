@@ -179,6 +179,9 @@ module Samagotchi
     # The turn's request parameters (SamplingSettings.for), set by the Engine
     # per turn; empty or nil sends none.
     attr_accessor :sampling
+    # The turn's thinking level (Thinking.resolve), set by the Engine per
+    # turn; its own accessor, since the native path sends @sampling as is.
+    attr_accessor :thinking
     # Tools::Peers (or the Engine's live view of it): the session
     # list_sessions and send_note speak for; nil outside a session.
     attr_accessor :peers

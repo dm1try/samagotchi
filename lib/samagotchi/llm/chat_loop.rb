@@ -17,6 +17,7 @@ require_relative "../vision_context"
 require_relative "../log"
 require_relative "../empty_answer_retry"
 require_relative "../turn_note"
+require_relative "../thinking"
 
 module Samagotchi
   module LLM
@@ -139,6 +140,26 @@ module Samagotchi
         @kernel.respond_to?(:sampling) ? @kernel.sampling || {} : {}
       end
 
+      # The turn's thinking level (the Engine sets it on the kernel).
+      def thinking
+        (@kernel.respond_to?(:thinking) && @kernel.thinking) || Thinking::DEFAULT
+      end
+
+      # The request fields the thinking level adds (Thinking.chat_fields).
+      def thinking_fields
+        Thinking.chat_fields(thinking)
+      end
+
+      # One generation's options: the thinking fields under the sampling
+      # (a sampling key wins, chat_template_kwargs merges per sub-key), the
+      # empty-answer retry's temperature on top, then every null dropped at
+      # any depth (a sampling null means "don't send it").
+      def request_options(retry_generation: false)
+        options = deep_merge(thinking_fields, sampling)
+        options = EmptyAnswerRetry.sampling(options) if retry_generation
+        deep_compact(options)
+      end
+
       def strip_model_thought(text)
         @kernel.respond_to?(:strip_model_thought) ? @kernel.strip_model_thought(text) : text
       end
@@ -198,6 +219,18 @@ module Samagotchi
       end
 
       private
+
+      def deep_merge(base, over)
+        base.merge(over) { |_key, a, b| a.is_a?(Hash) && b.is_a?(Hash) ? deep_merge(a, b) : b }
+      end
+
+      def deep_compact(hash)
+        hash.each_with_object({}) do |(key, value), out|
+          next if value.nil?
+
+          out[key] = value.is_a?(Hash) ? deep_compact(value) : value
+        end
+      end
 
       # Ids of the calls whose assistant turn is followed by a tool message
       # for every one of them (before the next non-tool message).
@@ -364,8 +397,7 @@ module Samagotchi
         # text] when it was cancelled.
         def generate(iteration)
           window = @window = @loop.context_window(@model_name)
-          options = @loop.sampling
-          options = EmptyAnswerRetry.sampling(options) if @retry_generation
+          options = @loop.request_options(retry_generation: @retry_generation)
           @retry_generation = false
           emit(type: :generation_started, iteration: iteration, context_window_tokens: window&.tokens,
                context_window_source: window&.source)

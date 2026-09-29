@@ -46,6 +46,7 @@ require_relative "image_store"
 require_relative "vision_context"
 require_relative "vision_support"
 require_relative "sampling_settings"
+require_relative "thinking"
 require_relative "answer_display"
 
 module Samagotchi
@@ -1880,6 +1881,7 @@ module Samagotchi
         vision = turn_vision(session)
         @kernel.vision = vision if @kernel.respond_to?(:vision=)
         @kernel.sampling = turn_sampling if @kernel.respond_to?(:sampling=)
+        @kernel.thinking = turn_thinking if @kernel.respond_to?(:thinking=)
         refuse_images!(vision) unless image_refs.empty?
         announce_guardrail_failures(on_event)
         # Plugins' slow setup that brings tools (an MCP server's first
@@ -2117,6 +2119,14 @@ module Samagotchi
       SamplingSettings.for(target, names: model_lookup_names(target))
     rescue StandardError
       SamplingSettings::EMPTY
+    end
+
+    # The effective model's thinking level (Thinking.resolve), read each turn.
+    def turn_thinking
+      target = @host_registry.resolve(@effective_model_name)
+      Thinking.resolve(target, names: model_lookup_names(target)).first
+    rescue StandardError
+      Thinking::DEFAULT
     end
 
     def vision_adapter(target)

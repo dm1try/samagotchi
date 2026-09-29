@@ -25,11 +25,13 @@ RSpec.describe Samagotchi::Engine, "#run_turn sampling" do
   end
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Ornith", working_directory: Dir.pwd) }
   let(:sampling_set) { [] }
+  let(:thinking_set) { [] }
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     allow(kernel).to receive(:vision=)
     allow(kernel).to receive(:sampling=) { |value| sampling_set << value }
+    allow(kernel).to receive(:thinking=) { |value| thinking_set << value }
     allow(kernel).to receive(:run) do |messages, **|
       Samagotchi::KernelLoop::Result.new(output: "ok", conversation: messages + [{ role: "model", content: "ok" }],
                                          exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
@@ -53,5 +55,18 @@ RSpec.describe Samagotchi::Engine, "#run_turn sampling" do
     engine.run_turn(session, "hi")
 
     expect(sampling_set).to eq([{}])
+  end
+
+  it "resolves the effective model's thinking level each turn and sets it on the kernel" do
+    models = { "ornith" => { profile: nil, thinking: :off } }
+    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return(models)
+
+    engine.run_turn(session, "hi")
+    models["ornith"][:thinking] = :high
+    engine.run_turn(session, "again")
+    models["ornith"].delete(:thinking)
+    engine.run_turn(session, "and again")
+
+    expect(thinking_set).to eq(%i[off high default])
   end
 end
