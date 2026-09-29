@@ -16,6 +16,8 @@ export const SCRIPTS = path.join(HERE, "scripts");
 
 // The rule the approval scenario trips (scripts/approval.json runs this command).
 export const APPROVAL_COMMAND = "echo E2E_APPROVED";
+// The file whose edit asks (scripts/edit.json writes it, then edits it).
+export const EDIT_ASK_FILE = "e2e-settings.conf";
 
 function config(fakePort) {
   return `default:
@@ -40,6 +42,11 @@ guardrails:
       command: '${APPROVAL_COMMAND}'
       verdict: ask
       reason: the e2e approval scenario
+    - id: e2e-edit-ask
+      tool: edit
+      path: '**/${EDIT_ASK_FILE}'
+      verdict: ask
+      reason: the e2e edit preview scenario
 `;
 }
 

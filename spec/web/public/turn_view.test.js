@@ -163,3 +163,14 @@ test("turnHistoryHtml: a saved task_wait record the user's Stop ended reloads as
   const html = turnHistoryHtml(items, stopped, { thumbs });
   assert.match(html, /<span class="activity-status stopped">stopped<\/span><span class="activity-tool">task_wait<\/span>/);
 });
+
+test("turnHistoryHtml with parts: an edit's row keeps its collapsed diff after a reload", () => {
+  const diff = { text: "@@ -1 +1 @@\n-a\n+b", added: 1, removed: 1, new_file: false };
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "", parts: { tools: [{ tool: "edit", params: 'path="k.conf"', output: "[edit]\nEdited", diff }] } },
+    { role: "assistant", content: "Done." },
+  ];
+  const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 500 }] }), { thumbs });
+  assert.match(html, /<div class="activity-output"[^>]*>Edited<\/div><details class="activity-diff"><summary>diff \+1 \u22121<\/summary><pre class="diff">/);
+});

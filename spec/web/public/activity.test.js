@@ -136,3 +136,12 @@ test("output_truncated flag is preserved", () => {
   });
   assert.equal(row.output_truncated, true);
 });
+
+test("addCompleted keeps an edit's diff on the row", () => {
+  const m = newActivity();
+  addStarted(m, { iteration: 1, call_index: 1, tool: "edit" });
+  const diff = { text: "@@ -1 +1 @@\n-a\n+b", added: 1, removed: 1 };
+  assert.deepEqual(addCompleted(m, { iteration: 1, call_index: 1, tool: "edit", output: "Edited", diff }).diff, diff);
+  addStarted(m, { iteration: 1, call_index: 2, tool: "execute" });
+  assert.equal("diff" in addCompleted(m, { iteration: 1, call_index: 2, tool: "execute", output: "ok" }), false);
+});

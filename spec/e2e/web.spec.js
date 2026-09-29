@@ -1,7 +1,7 @@
 // Happy paths of the web UI against a scripted fake model (support/scripts).
 // Assertions are on page state only; every wait is on the DOM, no sleeps.
 import { test, expect } from "./support/fixtures.js";
-import { APPROVAL_COMMAND } from "./support/env.js";
+import { APPROVAL_COMMAND, EDIT_ASK_FILE } from "./support/env.js";
 
 // Types into the composer and sends (Start on the start page, Send in a session).
 async function send(page, prompt) {
@@ -151,6 +151,34 @@ test("an approval card: allowing it runs the tool", async ({ page, script }) => 
   const row = page.locator("#history .activity-row").filter({ hasText: "execute" });
   await expect(row.locator(".activity-status")).toHaveText("done");
   await expect(row.locator(".activity-output")).toContainText("E2E_APPROVED");
+});
+
+test("an edit's approval card shows its diff; the row keeps the change after a reload", async ({ page, script }) => {
+  script("edit");
+  await send(page, "Make the font bigger");
+  const card = page.locator("#history .bubble.question.approval");
+  await expect(card.locator(".approval-what")).toContainText(EDIT_ASK_FILE);
+  await expect(card.locator(".approval-diff .diff-del")).toHaveText("-font_size 12");
+  await expect(card.locator(".approval-diff .diff-add")).toHaveText("+font_size 14");
+  await card.locator(".question-option").first().click();
+  await card.locator(".question-submit").click();
+  await expect(answer(page)).toHaveText("The font size is 14 now.");
+  await turnEnded(page, 1);
+  const editRow = () => page.locator("#history .activity-row").filter({ has: page.locator(".activity-tool", { hasText: /^edit$/ }) });
+  const check = async () => {
+    const diff = editRow().locator(".activity-diff");
+    await expect(diff.locator("summary")).toHaveText("diff +1 \u22121");
+    await expect(diff).not.toHaveAttribute("open", "");
+    await diff.locator("summary").click({ force: true });
+    await expect(diff.locator(".diff-add")).toHaveText("+font_size 14");
+  };
+  // The steps block is open after a live turn; a reload collapses it.
+  await check();
+  await page.reload();
+  await turnEnded(page, 1);
+  await page.locator("#history .turn-work > summary").click();
+  await page.locator("#history details.gen").nth(1).locator("> summary").click();
+  await check();
 });
 
 // Annotate presets: a pill quotes the selection with its text as the note

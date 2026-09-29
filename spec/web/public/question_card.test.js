@@ -125,3 +125,11 @@ test("nextCardAction: same card, keep a resolved one, replace a pending one", ()
   assert.equal(nextCardAction({ cardId: "q1", pendingId: null }, { id: "q1" }), "same");
   assert.equal(nextCardAction({ cardId: 7, pendingId: null }, { id: "7" }), "same");
 });
+
+test("approvalView passes an edit's dry-run diff on as preview, and adds nothing without one", () => {
+  const preview = { text: "@@ -1 +1 @@\n-a\n+b", added: 1, removed: 1, truncated: false, new_file: false };
+  const edit = { ...approval, approval: { ...approval.approval, tool: "edit", command: undefined, paths: ["/x/kitty.conf"], preview } };
+  assert.deepEqual(approvalView(edit).preview, preview);
+  assert.equal(approvalView(edit).what, "/x/kitty.conf");
+  assert.equal("preview" in approvalView(approval), false);
+});

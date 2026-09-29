@@ -6,7 +6,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 :root{--bg:#0b0d11;--bg-panel:#151821;--bg-inset:#0f1115;--bg-raised:#22262f;--bg-hover:#1b1f27;--border:#1f232b;--border-strong:#2d333f;--text:#e6e8eb;--text-bright:#f0f3f6;--text-2:#c9d1d9;--text-3:#9aa4b2;--text-muted:#8b949e;--text-faint:#6e7681;--accent:#7aa5ff;--accent-strong:#1f6feb;--accent-bg:#1b2336;--accent-ring:rgba(122,165,255,.18);--primary:#2a68d1;--ok:#3fb950;--ok-text:#7ee787;--ok-bg:#1a2e1a;--warn:#d29922;--warn-text:#e3b341;--warn-bright:#f2cc60;--warn-bg:#2b2108;--warn-border:#6b5416;--danger:#f85149;--danger-bg:#da3633;--danger-text:#ff7b72;--danger-bg-dim:#3d1f1f;--think:#8957e5;--think-text:#d2a8ff;--accent-border:#223150;--accent-tint:color-mix(in srgb,var(--accent) 7%,transparent);
-  --glass-bg:color-mix(in srgb,var(--bg-panel) 70%,transparent);--glass-border:rgba(255,255,255,.08);--glass-highlight:rgba(255,255,255,.05);--glass-shadow:0 8px 30px rgba(0,0,0,.35)}
+  --glass-bg:color-mix(in srgb,var(--bg-panel) 70%,transparent);--glass-border:rgba(255,255,255,.08);--glass-highlight:rgba(255,255,255,.05);--glass-shadow:0 8px 30px rgba(0,0,0,.35);
+  --diff-add-bg:rgba(63,185,80,.14);--diff-add-text:#aff5b4;--diff-del-bg:rgba(248,81,73,.14);--diff-del-text:#ffc1bc}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),radial-gradient(900px 700px at 100% 100%,color-mix(in srgb,var(--think) 9%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;display:flex;flex-direction:column}
 /* Glass: the composer card, the strip cards, the all-sessions cards and the question cards (by selector, so app.js is untouched). */
@@ -130,9 +131,15 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .activity-status,.activity-tool{flex-shrink:0;white-space:nowrap}
 .activity-params{min-width:0}
 .activity-output{flex:1 1 100%;min-width:0}
+/* An edit/write's change: a closed "diff +3 −1" under the output, lined up with it. */
+.activity-diff{flex:1 1 100%;min-width:0;margin:2px 0 2px 60px}
+.activity-diff>summary{cursor:pointer;font-size:12px;color:var(--text-muted);width:max-content;font-variant-numeric:tabular-nums}
+.activity-diff>summary:hover{color:var(--text-2)}
+.activity-diff[open]>summary{margin-bottom:4px}
 @media(max-width:600px){
   .activity-params{flex:1 1 0}
   .activity-output{margin-left:0}
+  .activity-diff{margin-left:0}
 }
 .bubble.thinking{border-left:3px solid var(--think);background:color-mix(in srgb,var(--think) 6%,var(--bg-panel));padding:8px 12px}
 .bubble.thinking:not([open]),.bubble.activity:not([open]){padding:3px 10px;background:transparent;border-color:transparent;align-self:flex-start;border-radius:6px;transition:background .12s ease}
@@ -253,6 +260,20 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .approval-where,.approval-why{font-size:12px;color:var(--text-muted);word-break:break-all}
 .approval-why{color:var(--warn-text)}
 .approval-label{color:var(--text-faint)}
+/* A diff (diff_view.js): the approval card's dry run and a tool row's change. */
+.approval-diff{margin:0 0 6px}
+.diff{margin:0;padding:4px 0;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;font-size:12px;line-height:1.45;overflow:auto;max-height:420px}
+.diff code{display:block;min-width:max-content}
+.diff-line{display:block;padding:0 10px;white-space:pre;color:var(--text-2)}
+.diff-add{background:var(--diff-add-bg);color:var(--diff-add-text)}
+.diff-del{background:var(--diff-del-bg);color:var(--diff-del-text)}
+.diff-hunk{color:var(--text-faint)}
+.diff-meta{color:var(--text-faint);font-style:italic}
+.diff-note{font-size:12px;color:var(--text-muted);margin:0 0 4px}
+.diff-note.warn{color:var(--warn-text)}
+.diff-more{margin-top:4px}
+.diff-more>summary{cursor:pointer;font-size:12px;color:var(--accent);width:max-content}
+.diff-more[open]>summary{display:none}
 .bubble.guardrail-warning{border-left:3px solid var(--danger);background:color-mix(in srgb,var(--danger) 8%,var(--bg-panel));color:var(--danger-text);font-size:13px;padding:8px 12px;white-space:pre-wrap}
 .bubble.hook-notice{border-left:3px solid var(--text-faint);background:var(--bg-panel);color:var(--text-3);font-size:13px;padding:8px 12px;white-space:pre-wrap}
 .bubble.hook-notice.warn{border-left-color:var(--warn);color:var(--warn-text)}

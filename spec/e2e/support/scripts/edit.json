@@ -1,0 +1,10 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"text": "Writing the settings file.",
+     "tools": [{"name": "write", "arguments": {"path": "e2e-settings.conf", "content": "font_size 12\ntheme dark\n"}}]},
+    {"text": "Changing the font size, which needs approval.",
+     "tools": [{"name": "edit", "arguments": {"path": "e2e-settings.conf", "old_text": "font_size 12", "new_text": "font_size 14"}}]},
+    {"text": "The font size is 14 now."}
+  ]
+}

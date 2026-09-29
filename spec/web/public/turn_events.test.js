@@ -320,3 +320,10 @@ import { emptyRetryLine } from "../../../lib/samagotchi/web/public/turn_events.j
 test("emptyRetryLine says the loop asks again, with the attempt", () => {
   assert.equal(emptyRetryLine({ attempt: 1, of: 1 }), "↻ empty answer, asking again (1/1)");
 });
+
+test("snapshotEvents passes an edit's diff on, so a mid-turn join shows it", () => {
+  const diff = { text: "@@ -1 +1 @@\n-a\n+b", added: 1, removed: 1 };
+  const turn = { prompt: "p", parts: [{ kind: "tool", iteration: 1, call_index: 1, tool: "edit", params: "x", status: "ok", output: "Edited", diff }] };
+  const completed = snapshotEvents({ current_turn: turn, queued: [] }).find((e) => e.type === "tool_call_completed");
+  assert.deepEqual(completed.diff, diff);
+});
