@@ -116,6 +116,7 @@ module Samagotchi
       def route(env)
         req = Rack::Request.new(env)
         return forbidden unless local_host_header?(env)
+        return cross_origin if cross_site?(env)
 
         case [req.request_method, req.path_info]
         when ["GET", "/"], ["GET", "/index.html"]
@@ -211,6 +212,28 @@ module Samagotchi
         return LOOPBACK_PEERS.include?(env["REMOTE_ADDR"].to_s) if host.empty?
 
         LOOPBACK_NAMES.include?(host.downcase.sub(/:\d*\z/, ""))
+      end
+
+      # Another website's page in the desktop browser can send "simple"
+      # requests here (a text/plain POST needs no preflight) and would start
+      # sessions that run commands. Refused: any request but GET/HEAD from
+      # another site (Sec-Fetch-Site cross-site/same-site, or an Origin other
+      # than exactly this server's: another local port and "null" are
+      # foreign), and GETs of /api/* the same way (no blind reads, no SSE
+      # subscriptions). The page itself is same-origin; curl, Net::HTTP and
+      # chi's own clients send neither header and pass. A link followed from
+      # another site still opens the page (a top-level GET).
+      def cross_site?(env)
+        foreign = %w[cross-site same-site].include?(env["HTTP_SEC_FETCH_SITE"].to_s.downcase)
+        origin = env["HTTP_ORIGIN"]
+        foreign ||= !origin.nil? && origin.downcase != "http://#{env["HTTP_HOST"].to_s.downcase}"
+        return false unless foreign
+
+        !%w[GET HEAD].include?(env["REQUEST_METHOD"]) || env["PATH_INFO"].to_s.start_with?("/api/")
+      end
+
+      def cross_origin
+        error_response(403, "cross_origin", "requests from other websites are refused")
       end
 
       def forbidden
