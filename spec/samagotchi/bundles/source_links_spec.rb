@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require "yaml"
+require "open3"
+require "tmpdir"
+require "fileutils"
 require "digest"
 require "samagotchi/hooks"
 require "samagotchi/answer_display"
@@ -298,6 +301,148 @@ RSpec.describe "The source-links bundle" do
       event[:present] = answer.presenter(event)
       registry.fire(:after_turn, event)
       expect(answer.text).to eq("N! and [N-3!](https://n.test/3)")
+    end
+  end
+
+  describe "parsing a git remote URL" do
+    def parse(url)
+      registry # loads the hook's class
+      Samagotchi::Hooks::BundleLoader.send(:namespace_for, "source-links")::SourceLinks.parse_remote_url(url)
+    end
+
+    {
+      "https://user:pw@github.com:8443/o/r.git" => { host: "github.com", repo: "o/r" },
+      "http://git.example.com/o/r" => { host: "git.example.com", repo: "o/r" },
+      "ssh://git@github.com:22/o/r.git/" => { host: "github.com", repo: "o/r" },
+      "git://github.com/o/r.git" => { host: "github.com", repo: "o/r" },
+      "git@github.com:dm1try/samagotchi.git" => { host: "github.com", repo: "dm1try/samagotchi" },
+      "gh:o/r" => { host: "gh", repo: "o/r" },
+      "git@github-work:o/r" => { host: "github-work", repo: "o/r" },
+      "https://gitlab.com/group/sub/proj.git" => { host: "gitlab.com", repo: "group/sub/proj" },
+      "/srv/git/r.git" => nil,
+      "./r" => nil,
+      "../r" => nil,
+      "file:///srv/git/r.git" => nil,
+      "https://github.com/" => nil,
+      "https://github.com/a/../b" => nil,
+      "git@github.com:a/./b.git" => nil,
+      "" => nil
+    }.each do |url, expected|
+      it "#{url.inspect} → #{expected.inspect}" do
+        expect(parse(url)).to eq(expected)
+      end
+    end
+  end
+
+  describe "{repo} and {host} from the project's git remote" do
+    let(:github_pattern) { '(?<![\w/&])(?:(?<repo>[A-Za-z0-9][\w-]*/[\w.-]*\w))?#(?<num>\d+)\b' }
+    let(:github) { { "name" => "GitHub", "pattern" => github_pattern, "url" => "https://github.com/{repo}/issues/{num}" } }
+    let(:settings) { { "sources" => [github] } }
+    let(:tmp) { Dir.mktmpdir("source-links-remote-") }
+
+    around do |example|
+      # The user's own git config (insteadOf rewrites) stays out of it.
+      saved = ENV.to_h.slice("GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM")
+      ENV["GIT_CONFIG_GLOBAL"] = File::NULL
+      ENV["GIT_CONFIG_NOSYSTEM"] = "1"
+      example.run
+    ensure
+      %w[GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM].each { |key| saved.key?(key) ? ENV[key] = saved[key] : ENV.delete(key) }
+      FileUtils.rm_rf(tmp)
+    end
+
+    def git(*args) = system("git", "-C", tmp, *args, out: File::NULL, err: File::NULL) || raise("git #{args.join(" ")} failed")
+
+    def repo_with(remotes)
+      git("init", "-q")
+      remotes.each { |name, url| git("remote", "add", name, url) }
+    end
+
+    def texts = notices.map { |n| n[:text] }
+
+    it "links #12 to the origin's repo, and a qualified ref to its own" do
+      repo_with("origin" => "git@github.com:dm1try/samagotchi.git")
+      Dir.chdir(tmp) { fire([model("See #12 and rails/rails#5.")]) }
+      expect(texts).to eq(["sources: GitHub #12 → https://github.com/dm1try/samagotchi/issues/12, " \
+                           "GitHub rails/rails#5 → https://github.com/rails/rails/issues/5"])
+    end
+
+    it "reads the remote named by remote:" do
+      repo_with("origin" => "git@github.com:me/fork.git", "upstream" => "https://github.com/them/proj.git")
+      github["remote"] = "upstream"
+      Dir.chdir(tmp) { fire([model("#3")]) }
+      expect(texts).to eq(["sources: GitHub #3 → https://github.com/them/proj/issues/3"])
+    end
+
+    it "fills {host} from the remote" do
+      repo_with("origin" => "https://gitlab.example.com/group/sub/proj.git")
+      github["url"] = "https://{host}/{repo}/-/issues/{num}"
+      Dir.chdir(tmp) { fire([model("#4")]) }
+      expect(texts).to eq(["sources: GitHub #4 → https://gitlab.example.com/group/sub/proj/-/issues/4"])
+    end
+
+    it "does not link a remote-derived ref when the remote's host is not remote_host:" do
+      repo_with("origin" => "git@gitlab.com:o/r.git")
+      github["remote_host"] = "github.com"
+      Dir.chdir(tmp) { fire([model("#12 and rails/rails#5")]) }
+      expect(texts).to eq(["sources: GitHub rails/rails#5 → https://github.com/rails/rails/issues/5"])
+    end
+
+    it "compares remote_host case-insensitively and takes a list" do
+      repo_with("origin" => "git@GitHub-Work:o/r.git")
+      github["remote_host"] = ["github.com", "github-work"]
+      Dir.chdir(tmp) { fire([model("#1")]) }
+      expect(texts).to eq(["sources: GitHub #1 → https://github.com/o/r/issues/1"])
+    end
+
+    it "never calls git for a qualified ref" do
+      expect(Open3).not_to receive(:capture2)
+      Dir.chdir(tmp) { fire([model("rails/rails#5")]) }
+      expect(texts).to eq(["sources: GitHub rails/rails#5 → https://github.com/rails/rails/issues/5"])
+    end
+
+    it "does not link #12 outside a git repo, and git says nothing on stderr" do
+      outside = !system("git", "-C", tmp, "rev-parse", "--git-dir", out: File::NULL, err: File::NULL)
+      skip "the tmp dir is inside a git repo" unless outside
+
+      expect do
+        Dir.chdir(tmp) { fire([model("#12")]) }
+      end.not_to output.to_stderr_from_any_process
+      expect(notices).to be_empty
+    end
+
+    it "does not link #12 when the named remote is missing" do
+      repo_with({})
+      Dir.chdir(tmp) { fire([model("#12")]) }
+      expect(notices).to be_empty
+    end
+
+    it "asks git once per worker, across turns" do
+      repo_with("origin" => "git@github.com:o/r.git")
+      expect(Open3).to receive(:capture2).once.and_call_original
+      Dir.chdir(tmp) do
+        fire([model("#1")])
+        fire([model("#2 and #3")])
+      end
+      expect(texts.last).to eq("sources: GitHub #2 → https://github.com/o/r/issues/2, GitHub #3 → https://github.com/o/r/issues/3")
+    end
+
+    it "remembers no remote too" do
+      expect(Open3).to receive(:capture2).once.and_call_original
+      Dir.chdir(tmp) do
+        fire([model("#1")])
+        fire([model("#2")])
+      end
+      expect(notices).to be_empty
+    end
+
+    it "never calls git for a JIRA-only config" do
+      settings.replace("sources" => [{ "name" => "JIRA", "prefix" => "JIRA", "base_url" => "https://myjira.com/browse/" },
+                                     { "name" => "Wiki", "pattern" => '\bW-(\d+)', "url" => "https://w.test/{match}" }])
+      repo_with("origin" => "git@github.com:o/r.git")
+      expect(Open3).not_to receive(:capture2)
+      Dir.chdir(tmp) { fire([model("JIRA-1 W-2 #3")]) }
+      expect(texts).to eq(["sources: JIRA JIRA-1 → https://myjira.com/browse/JIRA-1, Wiki W-2 → https://w.test/2"])
     end
   end
 

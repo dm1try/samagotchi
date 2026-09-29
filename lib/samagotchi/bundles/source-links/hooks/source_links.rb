@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+# Loaded through module_eval: it requires what it uses.
+require "open3"
+
 # An after_turn hook that links the source refs the model's answer
 # mentions — a JIRA ticket, a GitHub issue, an internal wiki page. In the
 # web, each ref in the answer becomes a link (`[JIRA-123](https://…)`,
@@ -52,6 +55,27 @@ class SourceLinks
   # Placeholders every pattern has: {match} (group 1, else the whole ref),
   # and {repo}/{host} (a named group, else the project's git remote).
   BUILTIN_PLACEHOLDERS = %w[match repo host].freeze
+  # `git remote get-url` output: a URL with a scheme, `[user[:pw]@]host[:port]/path`.
+  REMOTE_URL = %r{\A(?:https?|ssh|git)://(?:[^/]*@)?(\[[^\]]*\]|[^/:@]+)(?::[^/]*)?(/.*)?\z}i
+  # scp-like `[user@]host:path`: a colon before any slash; a leading `/` or
+  # `.` is a local path.
+  REMOTE_SCP = %r{\A(?:[^@/:]+@)?([^/:.@][^/:@]*):(.*)\z}
+
+  # The {host:, repo:} a git remote URL names, or nil (a local path,
+  # `file://`, an empty path, or a path with an empty or dot segment).
+  def self.parse_remote_url(url)
+    url = url.to_s.strip
+    # Any other scheme (file://, a transport helper's) is not a web host.
+    match = url.include?("://") ? url.match(REMOTE_URL) : url.match(REMOTE_SCP)
+    return nil unless match
+
+    host = match[1]
+    repo = match[2].to_s.sub(%r{\A/+}, "").sub(%r{/+\z}, "").sub(/\.git\z/, "").sub(%r{/+\z}, "")
+    segments = repo.split("/", -1)
+    return nil if host.empty? || segments.empty? || segments.any? { |segment| ["", ".", ".."].include?(segment) }
+
+    { host: host, repo: repo }
+  end
 
   def initialize(settings = {})
     settings = {} unless settings.is_a?(Hash)
@@ -59,6 +83,9 @@ class SourceLinks
     max = settings["max"].to_i
     @max = max.positive? ? max : DEFAULT_MAX
     @note = settings["note"] != false
+    # [Dir.pwd, remote name] => {host:, repo:} or nil, for the worker's life.
+    @remotes = {}
+    @host_mismatch_logged = {}
   end
 
   def call(event)
@@ -346,7 +373,11 @@ class SourceLinks
       regex = Regexp.new(pattern, flags, timeout: REGEX_TIMEOUT)
       template = entry["url"].to_s
       known = known_placeholders(name, template, regex)
-      { name: name, regex: regex, url: ->(ref, match) { render_url(template, known, match, ref) } }
+      remote = entry["remote"].to_s.strip
+      remote = "origin" if remote.empty?
+      hosts = Array(entry["remote_host"]).map { |host| host.to_s.strip.downcase }.reject(&:empty?)
+      source = { name: name, remote: remote, remote_hosts: hosts }
+      source.merge(regex: regex, url: ->(ref, match) { render_url(template, known, match, ref, source) })
     else
       warn_invalid("a source needs a prefix: or a pattern:")
       nil
@@ -390,13 +421,13 @@ class SourceLinks
   # The URL for one hit: +template+ with its +known+ placeholders filled, or
   # nil when one can't be (a group that didn't take part, a {repo} with an
   # empty or dot segment, no remote): we never build a URL with a hole.
-  def render_url(template, known, match, ref)
+  def render_url(template, known, match, ref, source)
     unresolved = false
     url = template.gsub(PLACEHOLDER) do
       word = Regexp.last_match(1)
       next Regexp.last_match(0) unless known.include?(word)
 
-      value = placeholder_value(word, match, ref)
+      value = placeholder_value(word, match, ref, source)
       unresolved = true if value.nil?
       value.to_s
     end
@@ -404,20 +435,61 @@ class SourceLinks
   end
 
   # One placeholder's escaped value, or nil when it is unresolved.
-  def placeholder_value(word, match, ref)
+  def placeholder_value(word, match, ref, source)
     case word
     when "match" then escape_url(match[1] || ref)
     when /\A\d+\z/ then match[word.to_i]&.then { |value| escape_url(value) }
     when "repo", "host"
       value = match.names.include?(word) ? match[word] : nil
-      value ||= remote_value(word)
+      value ||= remote_value(word, source)
       word == "repo" ? escape_repo(value) : value&.then { |host| escape_url(host) }
     else match[word]&.then { |value| escape_url(value) }
     end
   end
 
-  # {repo} / {host} from the project's git remote; nil when there is none.
-  def remote_value(_word)
+  # {repo} / {host} from the project's git remote (the source's `remote:`,
+  # default origin); nil when there is none, or when its host is not one of
+  # the source's `remote_host:` list.
+  def remote_value(word, source)
+    remote = project_remote(source[:remote])
+    return nil unless remote
+
+    hosts = source[:remote_hosts]
+    unless hosts.empty? || hosts.include?(remote[:host].downcase)
+      key = [source[:name], remote[:host]]
+      unless @host_mismatch_logged[key]
+        @host_mismatch_logged[key] = true
+        Samagotchi::Log.debug(:hooks, "source_links_remote_host_mismatch", source: source[:name],
+                                                                          host: remote[:host], remote_host: hosts.join(","))
+      end
+      return nil
+    end
+    remote[word.to_sym]
+  end
+
+  # The project's (Dir.pwd's) remote +name+ as {host:, repo:}, or nil.
+  # Asked of git lazily (only a hit that needs it) and remembered, nil too,
+  # per [Dir.pwd, name]: git applies insteadOf rewrites and includes, and a
+  # worktree reports its main repo's remote.
+  def project_remote(name)
+    key = [Dir.pwd, name]
+    return @remotes[key] if @remotes.key?(key)
+
+    @remotes[key] = read_remote(key[0], name)
+  end
+
+  def read_remote(dir, name)
+    out, status = Open3.capture2({ "GIT_DIR" => nil, "GIT_WORK_TREE" => nil },
+                                 "git", "-C", dir, "remote", "get-url", name, err: File::NULL)
+    unless status.success?
+      Samagotchi::Log.debug(:hooks, "source_links_no_remote", remote: name, exit: status.exitstatus)
+      return nil
+    end
+    remote = self.class.parse_remote_url(out)
+    Samagotchi::Log.debug(:hooks, "source_links_remote", remote: name, host: remote&.dig(:host), repo: remote&.dig(:repo))
+    remote
+  rescue SystemCallError => e
+    Samagotchi::Log.debug(:hooks, "source_links_no_remote", remote: name, error: e.class.name)
     nil
   end
 
