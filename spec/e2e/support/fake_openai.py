@@ -41,6 +41,10 @@ class H(http.server.BaseHTTPRequestHandler):
         body = self._body(); self._log(body); m = mode()
         if m == "script" and self.path.endswith("/models"):
             return self._send(200, json.dumps({"data": [{"id": "fake-script"}]}))
+        # A scripted turn's /props probe gets the no-props answer at once
+        # (an OpenAI-only host), not the script's held reply.
+        if m == "script" and self.path.split("?")[0] == "/props":
+            return self._send(404, json.dumps({"error": {"message": "no /props (fake, script mode)"}}))
         if m == "script":
             return self._script(body)
         if m == "forward" or self.path.endswith("/models") or self.path.split("?")[0] == "/props":
