@@ -231,6 +231,21 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       expect(names).not_to include("without-hooks")
     end
 
+    it "each_installed_holding_hooks yields a corrupt manifest as {error:} and keeps going" do
+      FileUtils.mkdir_p(File.join(bundles_dir, "a-broken", "hooks"))
+      File.write(File.join(bundles_dir, "a-broken", "manifest.json"), '{"hooks": {"x.rb": {}}, "hooks": ')
+      FileUtils.mkdir_p(File.join(bundles_dir, "a-broken-nohooks"))
+      File.write(File.join(bundles_dir, "a-broken-nohooks", "manifest.json"), "{")
+      FileUtils.mkdir_p(File.join(bundles_dir, "a-list"))
+      File.write(File.join(bundles_dir, "a-list", "manifest.json"), "[]")
+      described_class.new(name: "b-valid").write(files: {}, scope: "system", version: "1.0", source_path: "/src",
+                                                 hooks: { "k.rb" => { "sha256" => "sha256:x", "event" => "e" } })
+      seen = described_class.each_installed_holding_hooks.to_a
+      expect(seen.map(&:first)).to eq(%w[a-broken b-valid])
+      expect(seen.first.last[:error]).to start_with("manifest.json is unreadable")
+      expect(seen.last.last[:hooks]).to include(:"k.rb")
+    end
+
     it "each_installed_holding_hooks is no-op for empty/absent dir" do
       FileUtils.rm_rf(bundles_dir)
       expect { |b| described_class.each_installed_holding_hooks(&b) }.not_to yield_control

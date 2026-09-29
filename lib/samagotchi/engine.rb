@@ -2339,6 +2339,12 @@ module Samagotchi
       require_relative "memory_bundle/provenance"
       settings = bundle_settings
       MemoryBundle::Provenance.each_installed_holding_hooks do |bundle_name, data|
+        if data[:error]
+          Log.warn(:hooks, "bundle_manifest_invalid", echo: "[samagotchi:hooks] bundle '#{bundle_name}': #{data[:error]}; its hooks are not loaded",
+                                                      bundle: bundle_name)
+          @guardrail_failures.add("hooks (bundle #{bundle_name})", data[:error], required: false)
+          next
+        end
         bundle_dir = File.join(MemoryBundle::Provenance.bundles_dir, bundle_name)
         hooks_dir = File.join(bundle_dir, "hooks")
         if (data[:trust_level] || "experimental").to_s == "experimental"

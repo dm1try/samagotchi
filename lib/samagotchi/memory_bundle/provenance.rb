@@ -94,14 +94,23 @@ module Samagotchi
         end
       end
 
+      # Yields [name, data] for each installed bundle with hooks, by name.
+      # A manifest that doesn't parse is yielded as {error:} when its
+      # bundle has a hooks/ dir, and skipped otherwise; the rest still load.
       def self.each_installed_holding_hooks
         return enum_for(:each_installed_holding_hooks) unless block_given?
         dir = self.bundles_dir
         return unless Dir.exist?(dir)
         Dir[File.join(dir, "*", "manifest.json")].sort.each do |mjson|
-          data = JSON.parse(File.read(mjson), symbolize_names: true)
-          next unless data && data[:hooks].is_a?(Hash) && !data[:hooks].empty?
-          yield File.basename(File.dirname(mjson)), data
+          name = File.basename(File.dirname(mjson))
+          begin
+            data = JSON.parse(File.read(mjson), symbolize_names: true)
+          rescue JSON::ParserError, SystemCallError => e
+            yield name, { error: "manifest.json is unreadable: #{e.message}" } if Dir.exist?(File.join(File.dirname(mjson), "hooks"))
+            next
+          end
+          next unless data.is_a?(Hash) && data[:hooks].is_a?(Hash) && !data[:hooks].empty?
+          yield name, data
         end
       end
 
