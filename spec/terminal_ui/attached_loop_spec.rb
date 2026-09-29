@@ -1498,11 +1498,11 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     let(:delete_session) { ->(id) { deleted << id } }
     let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", delete_session: delete_session) }
 
-    %w[/exit /quit exit].each do |command|
-      it "asks the worker to exit, then deletes the session (#{command} --delete)" do
+    ["/exit --delete", "/quit --delete", "exit --delete", "EXIT --DELETE"].each do |line|
+      it "asks the worker to exit, then deletes the session (#{line})" do
         allow(client).to receive(:request_exit).and_return(response(200, '{"status":"exiting"}'))
 
-        expect(run_lines("#{command} --delete")).to eq(:detached)
+        expect(run_lines(line)).to eq(:detached)
 
         expect(client).to have_received(:request_exit).with(client_id: "tui:1", delete: true)
         expect(deleted).to eq(["s-1234"])

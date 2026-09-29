@@ -1647,42 +1647,6 @@ file2.rb")
     end
   end
 
-  describe "#exit_command?" do
-    let(:agent) { described_class.new(mode: "assist", prompt: "hi") }
-
-    it "returns true for 'exit'" do
-      expect(agent.send(:exit_command?, "exit")).to be(true)
-    end
-
-    it "returns true for '/exit'" do
-      expect(agent.send(:exit_command?, "/exit")).to be(true)
-    end
-
-    it "is case-insensitive" do
-      expect(agent.send(:exit_command?, "EXIT")).to be(true)
-      expect(agent.send(:exit_command?, "/EXIT")).to be(true)
-      expect(agent.send(:exit_command?, "Exit")).to be(true)
-    end
-
-    it "ignores surrounding whitespace" do
-      expect(agent.send(:exit_command?, " exit ")).to be(true)
-    end
-
-    it "returns false for similar but different input" do
-      expect(agent.send(:exit_command?, "exit now")).to be(false)
-      expect(agent.send(:exit_command?, "exit!")).to be(false)
-      expect(agent.send(:exit_command?, "no exit")).to be(false)
-      expect(agent.send(:exit_command?, "xit")).to be(false)
-    end
-
-    it "takes --delete after it (delete the session on the way out)" do
-      expect(agent.send(:exit_command?, "/exit --delete")).to be(true)
-      expect(agent.send(:exit_command?, "EXIT --DELETE")).to be(true)
-      expect(agent.send(:exit_command?, "/exit --delete now")).to be(false)
-      expect(agent.send(:exit_command?, "/exit --force")).to be(false)
-    end
-  end
-
   describe "#assist_loop exits with session id" do
     before do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")

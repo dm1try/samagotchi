@@ -340,7 +340,7 @@ REPL alike:
   typed comes back once it closes. The choices then go, and one line stays:
   `? Pick a fruit → Banana`.
 - Ctrl-C cancels the turn and keeps what you typed.
-- In the plain REPL, Ctrl-D on an empty prompt (or `exit`, `/exit`) mid-turn
+- In the plain REPL, Ctrl-D on an empty prompt (or `exit`, `/exit`, `/quit`) mid-turn
   exits once the turn ends: `(exits after this turn; Ctrl-C cancels it)`
   (`/exit --delete` deletes the session then too). In an
   attached terminal it detaches at once and the turn goes on in the worker

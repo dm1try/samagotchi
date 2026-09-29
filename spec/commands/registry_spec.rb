@@ -69,10 +69,22 @@ RSpec.describe Samagotchi::Commands::Registry do
   describe "the built-ins (SessionCommands.builtin_registry)" do
     let(:builtins) { Samagotchi::SessionCommands.builtin_registry }
 
-    it "offers the same Tab lists the REPL and the attached TUI had" do
-      expect(builtins.completions(:repl)).to eq(%w[/archive /continue /exit /guardrails /help /model /models /recap /stats])
+    it "offers the same Tab lists in the REPL and the attached TUI, but /detach (the REPL owns its session)" do
+      expect(builtins.completions(:repl)).to eq(%w[/archive /continue /exit /guardrails /help /model /models /quit /recap /stats])
       expect(builtins.completions(:attached))
         .to eq(%w[/archive /continue /detach /exit /guardrails /help /model /models /quit /recap /stats])
+    end
+
+    # Both terminal UIs dispatch their own commands on these ids.
+    it "names the terminal's own commands by id, whatever the case, with --delete after an exit word" do
+      ids = ["exit", "/exit", "/EXIT --DELETE", "/quit", "/quit --delete", "/archive", "/ARCHIVE", "/detach", "/Detach",
+             "/stats", "/stats now", "/recap"].map { |line| builtins.lookup_local(line)&.id }
+      expect(ids).to eq(%i[exit exit exit exit exit archive archive detach detach stats stats recap])
+      expect(["quit", "exit now", "/exit --force", "/archive now", "/model", "no exit"].map { |line| builtins.lookup_local(line) })
+        .to all(be_nil)
+      expect(builtins.lookup("/exit")).to be_nil
+      expect(%w[/exit\ --delete EXIT\ --DELETE /quit\ --delete].map { |l| Samagotchi::SessionCommands.delete_on_exit?(l) }).to all(be(true))
+      expect(Samagotchi::SessionCommands.delete_on_exit?("/exit")).to be(false)
     end
 
     it "is frozen, and each command #run runs has a handler" do

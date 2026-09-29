@@ -31,19 +31,9 @@ module Samagotchi
       include Formatting
       include InputSupport
 
-      STATS_COMMAND = "/stats"
-      RECAP_COMMAND = "/recap"
       PROMPT = "> "
-      # Detach and leave the worker up.
-      DETACH_COMMANDS = %w[/detach].freeze
-      # Detach and ask the worker to exit (bare `exit` too, as in the REPL).
-      EXIT_COMMANDS = %w[/exit /quit].freeze
-      # After an exit command: delete the session once the worker has gone.
-      DELETE_FLAG = "--delete"
       # How long /exit --delete waits for the worker to let go.
       DELETE_WAIT = 10
-      # Leave, and archive the session (hidden from the lists, kept for good).
-      ARCHIVE_COMMAND = "/archive"
       # A second Ctrl-C at an empty idle prompt within this many seconds detaches.
       DETACH_WINDOW = 2.0
       DETACH_HINT = "Ctrl-D to detach, /exit stops the worker"
@@ -269,23 +259,26 @@ module Samagotchi
 
         text = line.strip
         return answer_question(text) if @question
-        # Before the continue offer: neither is an answer to it.
-        return submit(nil) if DETACH_COMMANDS.include?(text.downcase)
-        return exit_worker if exit_command?(text)
-        return exit_and_delete if exit_command?(text.delete_suffix(DELETE_FLAG).rstrip) && text.end_with?(" #{DELETE_FLAG}")
-        return exit_and_archive if text.casecmp?(ARCHIVE_COMMAND)
-        command = text.split(/\s+/, 2).first
+
+        # The terminal's own commands (SessionCommands registers them, the
+        # REPL reads the same words). Before the continue offer: the
+        # leaving ones are no answer to it.
+        local = command_registry.lookup_local(text)&.id
+        return submit(nil) if local == :detach
+        return SessionCommands.delete_on_exit?(text) ? exit_and_delete : exit_worker if local == :exit
+        return exit_and_archive if local == :archive
+
         if @continue_offer
-          return answer_continue(text) unless command_registry.command?(text) || [STATS_COMMAND, RECAP_COMMAND].include?(command)
+          return answer_continue(text) unless local || command_registry.command?(text)
 
           # Not an answer: the read left no echo, so show what ran.
           echo_answer(text)
         end
         return if text.empty?
 
-        if command == STATS_COMMAND
+        if local == :stats
           show_stats
-        elsif command == RECAP_COMMAND
+        elsif local == :recap
           show_recap
         elsif command_registry.command?(text)
           # The history keeps !cmds, as the REPL's does (prompts: #send_prompt).
@@ -313,8 +306,6 @@ module Samagotchi
       rescue SystemCallError, IOError => e
         detach(exit_failed_line(e.message))
       end
-
-      def exit_command?(text) = EXIT_COMMANDS.include?(text.downcase) || text.casecmp?("exit")
 
       # /exit --delete: the worker exits as for /exit, then the session is
       # deleted. When the worker stays up (another UI, queued input, ...),

@@ -19,10 +19,10 @@ RSpec.describe Samagotchi::TerminalUI do
 
   describe "stats REPL commands" do
     it "treats /stats as the stats command" do
-      expect(agent.send(:stats_command?, "/stats")).to be(true)
-      expect(agent.send(:stats_command?, "  /stats  ")).to be(true)
-      expect(agent.send(:stats_command?, "hello")).to be(false)
-      expect(agent.send(:stats_command?, "/analytics")).to be(false)
+      expect(agent.send(:local_command, "/stats")).to eq(:stats)
+      expect(agent.send(:local_command, "  /stats  ")).to eq(:stats)
+      expect(agent.send(:local_command, "hello")).to be_nil
+      expect(agent.send(:local_command, "/analytics")).to be_nil
     end
 
     it "renders the session metrics summary via format_session_metrics" do

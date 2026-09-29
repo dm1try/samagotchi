@@ -217,9 +217,10 @@ test("isCommandLine: a composer line starting with / or ! goes to the command ro
   assert.equal(isCommandLine(""), false);
 });
 
-test("webLocalReply: /archive and /exit are answered by the page, other commands go to the worker", () => {
+test("webLocalReply: /archive, /exit and /quit are answered by the page, other commands go to the worker", () => {
   assert.match(webLocalReply("/archive"), /^\/archive: use the archive button/);
   assert.match(webLocalReply("  /EXIT now "), /^\/exit: /);
+  assert.match(webLocalReply("/quit"), /^\/quit: close the tab to leave/);
   assert.equal(webLocalReply("/model x"), null);
   assert.equal(webLocalReply("/archived"), null);
   assert.equal(webLocalReply("!exit"), null);

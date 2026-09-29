@@ -15,8 +15,10 @@ module Samagotchi
   # the Engine and its TurnFlow; the host prints the result's output and
   # runs a continue turn when asked to (#run never runs a turn).
   #
-  # /stats, /recap and /exit are the UI's own: they are in the registry
-  # (local: for Tab and help) but #run never runs them.
+  # /stats, /recap, /exit, /quit, /archive and /detach are the terminal
+  # UIs' own: they are in the registry (local:) for Tab and help, and so
+  # both TUIs read the same words (Registry#lookup_local gives the entry,
+  # its id says what to do), but #run never runs them.
   class SessionCommands
     MODEL_COMMAND = "/model"
     MODELS_COMMAND = "/models"
@@ -30,6 +32,8 @@ module Samagotchi
     SHELL_BANG_PREFIX = "!"
     RESERVED_MODEL_ARGS = %w[clear default none off].freeze
     ALIAS_USAGE = "usage /model <model> --alias <name> [--default]"
+    # /exit --delete: delete the session on the way out.
+    EXIT_DELETE_FLAG = "--delete"
 
     # @!attribute status [Symbol] :ok, or :error when the line was refused
     # @!attribute output [String, nil] what to tell the user
@@ -66,12 +70,27 @@ module Samagotchi
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)
       registry.register("/recap", "show the session's recap", local: true)
-      registry.register("/exit", "leave (--delete also deletes the session)", local: true)
-      registry.register("/archive", "leave and archive the session: hidden from the lists, kept for good", local: true)
-      registry.register("/quit", "leave, like /exit", local: true, uis: [:attached])
-      registry.register("/detach", "leave and keep the worker running", local: true, uis: [:attached])
+      # Bare `exit` too; any case; --delete after it.
+      registry.register("/exit", "leave (--delete also deletes the session)", local: true,
+                                                                              match: exit_match("/?exit"))
+      registry.register("/quit", "leave, like /exit", id: :exit, local: true, match: exit_match("/quit"))
+      registry.register("/archive", "leave and archive the session: hidden from the lists, kept for good", local: true,
+                                                                                                          match: ->(text) { text.casecmp?("/archive") })
+      # The REPL owns its session: it answers /detach with a note, and doesn't offer it.
+      registry.register("/detach", "leave and keep the worker running", local: true, uis: [:attached],
+                                                                        match: ->(text) { text.casecmp?("/detach") })
       registry
     end
+
+    # @param word [String] the regexp source of the exit word
+    def self.exit_match(word)
+      pattern = /\A#{word}(?:\s+#{EXIT_DELETE_FLAG})?\z/i
+      ->(text) { text.match?(pattern) }
+    end
+    private_class_method :exit_match
+
+    # @return [Boolean] an exit line (/exit, /quit, exit) that deletes the session too
+    def self.delete_on_exit?(line) = line.to_s.split.last.to_s.casecmp?(EXIT_DELETE_FLAG)
 
     # The built-ins alone, for callers without an Engine (an attached TUI
     # before its snapshot names the session's commands, specs).

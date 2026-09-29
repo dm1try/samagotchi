@@ -74,6 +74,14 @@ module Samagotchi
 
       def command?(line) = !lookup(line).nil?
 
+      # @return [Entry, nil] the first entry the UI runs itself (local) that
+      #   matches +line+, whatever its uis (a UI answers the others' too:
+      #   the REPL's /detach note)
+      def lookup_local(line)
+        text = line.to_s.strip
+        @entries.find { |entry| entry.local && entry.match?(text) }
+      end
+
       # @return [Array<Entry>] every entry, in registration order
       def entries = @entries.dup
 

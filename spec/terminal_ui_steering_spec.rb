@@ -191,6 +191,46 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(agent.instance_variable_get(:@delete_on_exit)).to be(true)
   end
 
+  # The same exit words as the attached TUI's (SessionCommands' local entries).
+  ["/quit", "/QUIT --delete", "EXIT --DELETE"].each do |line|
+    it "ends the loop on #{line}, as on /exit" do
+      allow(agent).to receive(:poll_input_with_reminder_check).and_return(line, "never read", nil)
+      allow(agent).to receive(:run_input_line)
+      allow(agent).to receive(:drain_pending_question?)
+
+      agent.send(:run_assist_loop, session: used_session, messages: [])
+
+      expect(agent).not_to have_received(:run_input_line)
+      expect(agent.instance_variable_get(:@delete_on_exit)).to be(line.downcase.end_with?("--delete"))
+    end
+  end
+
+  it "exits after the turn on /quit typed during it" do
+    allow(engine).to receive(:run_turn) do
+      repl_input << [:line, "/quit"]
+      result
+    end
+
+    agent.send(:run_engine_turn, session, "go")
+
+    expect(surface.lines).to include("(exits after this turn; Ctrl-C cancels it)")
+    expect(agent.instance_variable_get(:@exit_after_turn)).to be(true)
+  end
+
+  it "puts /archive typed during a turn back in the prompt instead of merging it into the turn" do
+    drained = nil
+    allow(engine).to receive(:run_turn) do |*, pending_input:, **|
+      repl_input << [:line, "/archive"]
+      drained = pending_input.call
+      result
+    end
+
+    agent.send(:run_engine_turn, session, "go")
+
+    expect(drained).to eq([])
+    expect(surface.lines).to include(described_class::COMMAND_BUSY)
+  end
+
   it "ends the loop on /exit --delete without the resume line" do
     allow(agent).to receive(:poll_input_with_reminder_check).and_return("/exit --delete", nil)
     allow(agent).to receive(:run_input_line)

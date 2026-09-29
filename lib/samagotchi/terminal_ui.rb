@@ -47,13 +47,7 @@ module Samagotchi
     include Formatting
     include InputSupport
 
-    STATS_COMMAND = "/stats"
-    # /exit --delete: delete the session on the way out.
-    EXIT_DELETE_FLAG = "--delete"
-    # Leave, then archive the session (hidden from the lists, kept for good).
-    ARCHIVE_COMMAND = "/archive"
     SCRATCH_ARCHIVE_REFUSED = "a scratch session is deleted when you leave; nothing to archive"
-    RECAP_COMMAND = "/recap"
     # The prompt while a question waits for its answer (its choices are in
     # the notes slot).
     QUESTION_PROMPT = "? "
@@ -544,21 +538,22 @@ module Samagotchi
           end
         end
         break if input.nil?
-        if exit_command?(input)
-          @delete_on_exit ||= delete_on_exit?(input)
+        local = local_command(input)
+        if local == :exit
+          @delete_on_exit ||= SessionCommands.delete_on_exit?(input)
           break
         end
-        if archive_command?(input)
+        if local == :archive
           next @surface.commit(SCRATCH_ARCHIVE_REFUSED) if @scratch
 
           @archive_on_exit = true
           break
         end
         # Not an answer to a continue offer either.
-        next detach_note if detach_command?(input)
+        next detach_note if local == :detach
 
         # /stats and /recap run; the offer stays open.
-        if @turn_flow.awaiting_continue? && !stats_command?(input) && !recap_command?(input)
+        if @turn_flow.awaiting_continue? && !%i[stats recap].include?(local)
           answer_continue_offer(session, input)
         else
           # The ? read left no echo: show what ran.
@@ -611,8 +606,7 @@ module Samagotchi
         persist_recent_history(input) if command.shell
         return
       end
-      return @surface.commit("\nmodel> session stats:\n#{format_session_metrics(@engine.stats_snapshot)}") if stats_command?(input)
-      return @surface.commit("\nmodel> #{handle_recap_command}") if recap_command?(input)
+      return if show_local_command(input)
 
       @turn_flow.before_prompt_turn
       persist_recent_history(input)
@@ -998,12 +992,20 @@ module Samagotchi
       @repl_input.prefill(input) ? "prompt restored for retry" : "the failed prompt is in the input history (↑)"
     end
 
-    def stats_command?(input)
-      input.to_s.strip == STATS_COMMAND
-    end
+    # The id of the terminal's own command +input+ is (:exit, :archive,
+    # :detach, :stats, :recap; SessionCommands registers them), or nil.
+    def local_command(input) = command_registry.lookup_local(input)&.id
 
-    def recap_command?(input)
-      input.to_s.strip == RECAP_COMMAND
+    # /stats and /recap, which show and change nothing (at the prompt, a
+    # continue offer's ? prompt, or during a turn).
+    # @return [Boolean] whether +input+ was one
+    def show_local_command(input)
+      case local_command(input)
+      when :stats then @surface.commit("\nmodel> session stats:\n#{format_session_metrics(@engine.stats_snapshot)}")
+      when :recap then @surface.commit("\nmodel> #{handle_recap_command}")
+      else return false
+      end
+      true
     end
 
     # /recap: the saved recap, and a new one asked for at once when the
@@ -1019,18 +1021,6 @@ module Samagotchi
 
     # A resumed session doesn't get the default input either.
     def default_input_wanted? = !@resume_session && !@no_default_input
-
-    # exit or /exit, with --delete to delete the session on the way out.
-    def exit_command?(input)
-      words = input.to_s.strip.downcase.split
-      %w[exit /exit].include?(words.first) && (words.size == 1 || words == [words.first, EXIT_DELETE_FLAG])
-    end
-
-    def delete_on_exit?(input) = input.to_s.strip.downcase.split.last == EXIT_DELETE_FLAG
-
-    def detach_command?(input) = input.to_s.strip.casecmp?("/detach")
-
-    def archive_command?(input) = input.to_s.strip.casecmp?(ARCHIVE_COMMAND)
 
     def clone_messages(messages)
       Array(messages).map(&:dup)
@@ -1090,11 +1080,13 @@ module Samagotchi
     # in the prompt.
     # @return [Boolean, :back] whether the turn took it, :back to put it back
     def steer_line(line)
-      return exit_after_turn(delete: delete_on_exit?(line)) if line.nil? || exit_command?(line)
-      return detach_note if detach_command?(line)
+      local = local_command(line) unless line.nil?
+      return exit_after_turn(delete: SessionCommands.delete_on_exit?(line)) if line.nil? || local == :exit
+      return detach_note if local == :detach
       return false if @active_cancel_controller&.cancelled?
       return start_anytime_command(line) if command_registry.lookup(line)&.anytime
-      return command_during_turn(line) if command_line?(line)
+      # A command, never steering text (/archive waits, back in the prompt).
+      return command_during_turn(line) if local || command_registry.command?(line)
       return true if line.strip.empty?
       # Steering merges text only: a line with images runs as the next turn.
       return image_line_waits if ImageInput.extract(line).any?
@@ -1128,15 +1120,10 @@ module Samagotchi
 
     # @return [true, :back]
     def command_during_turn(line)
-      if stats_command?(line)
-        @surface.commit("\nmodel> session stats:\n#{format_session_metrics(@engine.stats_snapshot)}")
-      elsif recap_command?(line)
-        @surface.commit("\nmodel> #{handle_recap_command}")
-      else
-        @surface.commit(COMMAND_BUSY)
-        return :back
-      end
-      true
+      return true if show_local_command(line)
+
+      @surface.commit(COMMAND_BUSY)
+      :back
     end
 
     # D8: an anytime command runs on its own thread while the turn goes on
@@ -1154,10 +1141,6 @@ module Samagotchi
         @pending_cards << { type: :command_output, text: "\nmodel> #{line.split.first}: #{e.message}" }
       end
       true
-    end
-
-    def command_line?(line)
-      command_registry.command?(line) || stats_command?(line) || recap_command?(line) || exit_command?(line)
     end
 
     # The kernel's drain at an iteration boundary: queued lines, sent as
