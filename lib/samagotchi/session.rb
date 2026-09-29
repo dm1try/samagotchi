@@ -26,7 +26,10 @@ module Samagotchi
     # keep_status defaults (SessionManager resolves the settings).
     DEFAULT_RETENTION_DAYS = 14
     DEFAULT_MAX_COUNT = 500
-    DEFAULT_KEEP_STATUS = [STATUS_RUNNING].freeze
+    # status is turn state; a live owner (the prune alive_check) is what
+    # protects a session in use, so no status is kept by default: a
+    # "running" left by a crashed worker must not keep it forever.
+    DEFAULT_KEEP_STATUS = [].freeze
     SORT_KEYS = %w[created_at updated_at].freeze
     SORT_ORDERS = %w[asc desc].freeze
 

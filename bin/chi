@@ -50,7 +50,7 @@ if ARGV[0] == "sessions"
     puts "  delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first"
     puts "  prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]"
     puts "  clean [--dry-run] [--days N]   # test sessions (SAMAGOTCHI_ENV=test, CI) and leftover chi scratch ones: all of them, or those older than N days"
-    puts "Defaults: days=14 keep=500 keep_status=running (config: session.retention_days, session.max_count, session.keep_status)"
+    puts "Defaults: days=14 keep=500 keep_status=none (config: session.retention_days, session.max_count, session.keep_status)"
     exit 0
   end
   dry_run = sessions_args.include?("--dry-run")

@@ -354,6 +354,67 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
+  describe ".prune_sessions with the default keep_status" do
+    # status is turn state: a "running" left by a crashed worker protects
+    # nothing; the live owner (worker or REPL lock) is what keeps a session.
+    def aged(status:, days_old: 20)
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.messages << { role: "user", content: "hi" }
+      session.status = status
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      data = JSON.parse(File.read(path))
+      data["updated_at"] = data["created_at"] = (Time.now - days_old * 86_400).iso8601(3)
+      File.write(path, JSON.generate(data))
+      session
+    end
+
+    def session_dir(session) = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+
+    it "keeps no status by default" do
+      expect(Samagotchi::Config.get("session.keep_status").to_s).to eq("")
+      expect(Samagotchi::Session::DEFAULT_KEEP_STATUS).to eq([])
+    end
+
+    it "prunes an old session left running by a dead worker, and keeps old ones a worker or a REPL still owns" do
+      crashed = aged(status: Samagotchi::Session::STATUS_RUNNING)
+      # The crashed worker's lock file is left behind, no longer held.
+      Samagotchi::OwnerLock.acquire(session_dir(crashed), kind: "worker").release
+      worker_running = aged(status: Samagotchi::Session::STATUS_RUNNING)
+      worker_idle = aged(status: Samagotchi::Session::STATUS_IDLE)
+      repl = aged(status: Samagotchi::Session::STATUS_IDLE)
+      locks = [
+        Samagotchi::OwnerLock.acquire(session_dir(worker_running), kind: "worker"),
+        Samagotchi::OwnerLock.acquire(session_dir(worker_idle), kind: "worker"),
+        Samagotchi::OwnerLock.acquire(session_dir(repl), kind: "tui")
+      ]
+
+      result = described_class.prune_sessions(state_dir: tmpdir)
+
+      expect(result[:deleted]).to eq([crashed.id])
+      expect(File.exist?(File.join(tmpdir, "#{crashed.id}.json"))).to be(false)
+      expect(result[:kept]).to contain_exactly(worker_running.id, worker_idle.id, repl.id)
+      [worker_running, worker_idle, repl].each do |s|
+        expect(File.exist?(File.join(tmpdir, "#{s.id}.json"))).to be(true)
+      end
+    ensure
+      locks&.each(&:release)
+    end
+
+    it "keeps an owned session past the count limit too" do
+      owned = aged(status: Samagotchi::Session::STATUS_RUNNING, days_old: 1)
+      newer = aged(status: Samagotchi::Session::STATUS_IDLE, days_old: 0)
+      lock = Samagotchi::OwnerLock.acquire(session_dir(owned), kind: "worker")
+
+      result = described_class.prune_sessions(state_dir: tmpdir, days: 0, max_count: 1)
+
+      expect(result[:kept]).to contain_exactly(owned.id, newer.id)
+      expect(result[:deleted]).to be_empty
+    ensure
+      lock&.release
+    end
+  end
+
   describe ".delete_session" do
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|

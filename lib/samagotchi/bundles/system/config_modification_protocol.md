@@ -41,7 +41,7 @@ recap:
 session:
   retention_days: 14
   max_count: 500
-  keep_status: running
+  keep_status: ""        # the default: no status protects a session from pruning; a live worker or REPL always does
   sweep_interval_hours: 24
   idle_exit_minutes: 30   # a background worker nobody uses exits; 0 = never
   shared: true            # the default: plain `chi` runs its session in a background worker and attaches (as `chi --shared`); false keeps the in-process REPL (env SAMAGOTCHI_SESSION_SHARED; no CLI flag, `--no-shared` opts out per run)

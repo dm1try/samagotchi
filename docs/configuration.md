@@ -726,7 +726,7 @@ described in their own sections.
 | `session.max_children` | `4` | | Running delegated sessions one session may have. |
 | `session.retention_days` | `14` | yes | Delete sessions not updated for N days; `0` = forever. See [Sessions](sessions.md). |
 | `session.max_count` | `500` | yes | Keep the newest N; `0` = uncapped. |
-| `session.keep_status` | `running` | yes | Comma list of statuses never pruned. |
+| `session.keep_status` | none | yes | Comma list of statuses never pruned (a session a worker or `chi` has open is never pruned anyway). |
 | `session.sweep_interval_hours` | `24` | yes | How often the retention sweep runs. |
 | `image.max_side` | `1568` | | See "Images". |
 | `image.max_bytes` | `3750000` | | See "Images". |
