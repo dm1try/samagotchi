@@ -180,6 +180,8 @@ module Samagotchi
       #   is (Net::HTTP's own silent retry of an idempotent GET included)
       # @param check_status [Boolean] false: return an error response instead
       #   of raising its ProviderError
+      # @raise [RequestCancelled] when +cancel_controller+ cancels (with or
+      #   without retries)
       def fetch(uri, request, retries: true, check_status: true, open_timeout: nil, read_timeout: nil,
                 cancel_controller: nil, log_fields: {})
         identify(request)
@@ -194,9 +196,15 @@ module Samagotchi
           end
         end
         logged(current) do
-          next attempt.call(current.merge!(attempts: 1)) unless retries
+          next with_retries(cancel_controller, nil, nil, current, &attempt) if retries
 
-          with_retries(cancel_controller, nil, nil, current, &attempt)
+          cancellable(cancel_controller, current) do
+            attempt.call(current.merge!(attempts: 1))
+          rescue StandardError => e
+            raise RequestCancelled.new(cancel_controller.reason) if !e.is_a?(RequestCancelled) && cancel_controller&.cancelled?
+
+            raise
+          end
         end
       end
 
@@ -217,10 +225,29 @@ module Samagotchi
       # errors. The block gets a hash to put the attempt's Net::HTTP in, so a
       # cancel can reach its socket.
       def with_retries(cancel_controller, on_retry, on_network_error, current = { mutex: Mutex.new })
+        cancellable(cancel_controller, current) do
+          retrying(cancel_controller, on_retry, on_network_error, current) { |state| yield(state) }
+        end
+      end
+
+      # Runs the block with +cancel_controller+ able to abort it: a cancel
+      # closes the socket in current[:http] (or raises RequestCancelled in
+      # this thread while there is none).
+      def cancellable(cancel_controller, current)
         requesting_thread = Thread.current
         listener_id = cancel_controller&.on_cancel { |reason| abort_request(current, requesting_thread, reason) }
         raise RequestCancelled.new(cancel_controller.reason) if cancel_controller&.cancelled?
 
+        yield
+      ensure
+        # A cancel can call the listener after remove_listener returned (the
+        # controller calls listeners outside its lock); :done keeps it from
+        # raising into this thread once the request is over.
+        current[:mutex].synchronize { current[:done] = true }
+        cancel_controller&.remove_listener(listener_id)
+      end
+
+      def retrying(cancel_controller, on_retry, on_network_error, current)
         attempts = 0
         loop do
           attempts += 1
@@ -259,12 +286,6 @@ module Samagotchi
             current.delete(:http)
           end
         end
-      ensure
-        # A cancel can call the listener after remove_listener returned (the
-        # controller calls listeners outside its lock); :done keeps it from
-        # raising into this thread once the request is over.
-        current[:mutex].synchronize { current[:done] = true }
-        cancel_controller&.remove_listener(listener_id)
       end
 
       # Runs one attempt (the block) under the first-token limit: a watchdog
@@ -334,7 +355,7 @@ module Samagotchi
                         ms: elapsed_ms(current), attempts: retried(current))
         result
       rescue RequestCancelled => e
-        Log.info(:http, "cancelled", **log_base(current), ms: elapsed_ms(current), reason: e.reason&.to_s)
+        Log.public_send(current[:level], :http, "cancelled", **log_base(current), ms: elapsed_ms(current), reason: e.reason&.to_s)
         raise
       rescue StandardError => e
         failure_level = current[:level] == :info ? :error : :debug

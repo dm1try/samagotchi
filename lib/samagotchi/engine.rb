@@ -21,6 +21,7 @@ require_relative "session_commands"
 require_relative "plugin/loader"
 require_relative "log"
 require_relative "log_subscriber"
+require_relative "client"
 require_relative "host_registry"
 require_relative "llm/backend"
 require_relative "llm/openai_chat"
@@ -1859,6 +1860,9 @@ module Samagotchi
       # stay unchanged for callers that don't pass it.
       with_origin = origin ? ->(event) { event.merge(origin: origin) } : ->(event) { event }
       begin
+        # A Stop cuts the /props probes this thread makes for the turn
+        # (window, served model, vision) instead of waiting their timeout.
+        probe_cancel_before = Client.swap_probe_cancel(effective_controller)
         image_refs, image_error = turn_image_refs(session, continue ? [] : images)
         # Emit turn_started event
         bind_metrics(session)
@@ -2071,6 +2075,7 @@ module Samagotchi
         # treats the just-finished turn as activity and re-arms its window.
         # Always runs, even if an exception occurred.
         set_turn_running(false)
+        Client.swap_probe_cancel(probe_cancel_before)
         left = @activity_mutex.synchronize do
           @active_cancel_controller = nil
           @turn_event_sink = nil

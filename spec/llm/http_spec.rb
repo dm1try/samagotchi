@@ -445,6 +445,17 @@ RSpec.describe Samagotchi::LLM::HTTP do
       expect(http_records.map { |r| [r.level, r.event, r.fields["reason"]] }).to eq([%w[INFO cancelled ctrl_c]])
     end
 
+    it "writes a cancelled probe as DEBUG: a Stop is no probe failure" do
+      controller = Samagotchi::CancellationController.new
+      controller.cancel!(:user)
+      props = URI("#{server.base_url}/props")
+
+      expect { http.fetch(props, Net::HTTP::Get.new(props), retries: false, cancel_controller: controller, log_fields: { purpose: "probe" }) }
+        .to raise_error(Samagotchi::LLM::RequestCancelled)
+
+      expect(http_records.map { |r| [r.level, r.event, r.fields["reason"]] }).to eq([%w[DEBUG cancelled user]])
+    end
+
     it "keeps probes and model lists at DEBUG, failures included" do
       server.enqueue("/v1/props", status: 404, json: { error: "no" })
       server.enqueue("/v1/models", json: { data: [] })
@@ -518,6 +529,59 @@ it "makes one attempt with retries: false" do
 
       expect { http.fetch(dead, Net::HTTP::Get.new(dead), retries: false) }.to raise_error(Errno::ECONNREFUSED)
       expect(sleeps).to be_empty
+    end
+
+    context "with retries: false and a cancel" do
+      let(:controller) { Samagotchi::CancellationController.new }
+      # Accepts and never answers.
+      let(:hung) { TCPServer.new("127.0.0.1", 0) }
+      let(:hung_uri) { URI("http://127.0.0.1:#{hung.addr[1]}/props") }
+      let(:accepted) { Queue.new }
+
+      before do
+        @acceptor = Thread.new do
+          loop { accepted << hung.accept }
+        rescue IOError, Errno::EBADF
+          nil
+        end
+      end
+
+      after do
+        @acceptor.kill
+        hung.close
+        accepted.size.times { accepted.pop.close }
+      end
+
+      it "closes the socket of a request waiting for its answer" do
+        Thread.new do
+          accepted.pop.tap { |socket| accepted << socket }
+          sleep 0.05
+          controller.cancel!(:user)
+        end
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        expect { http.fetch(hung_uri, Net::HTTP::Get.new(hung_uri), retries: false, cancel_controller: controller) }
+          .to raise_error(Samagotchi::LLM::RequestCancelled) { |error| expect(error.reason).to eq(:user) }
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+      end
+
+      it "does not send a request that is already cancelled" do
+        controller.cancel!(:user)
+
+        expect { http.fetch(hung_uri, Net::HTTP::Get.new(hung_uri), retries: false, cancel_controller: controller) }
+          .to raise_error(Samagotchi::LLM::RequestCancelled)
+        sleep 0.05
+        expect(accepted).to be_empty
+      end
+
+      it "never raises into the caller after the request is over" do
+        server.enqueue("/v1/models", json: { data: [] })
+        models = URI("#{server.base_url}/models")
+
+        http.fetch(models, Net::HTTP::Get.new(models), retries: false, cancel_controller: controller)
+
+        expect { controller.cancel!(:user); sleep 0.05 }.not_to raise_error
+      end
     end
   end
 

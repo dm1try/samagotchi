@@ -997,5 +997,40 @@ end
       expect(accepted.size).to eq(1)
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.5
     end
+
+    it "ends at a Stop of the thread's turn (Client.probe_cancel), uncached" do
+      stub_const("#{described_class}::CONTEXT_WINDOW_PROBE_READ_TIMEOUT", 5)
+      controller = Samagotchi::CancellationController.new
+      previous = described_class.swap_probe_cancel(controller)
+      Thread.new do
+        accepted.pop.tap { |socket| accepted << socket }
+        sleep 0.05
+        controller.cancel!(:user)
+      end
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      expect(client.server_props(model: "m").status).to eq(:cancelled)
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+
+      described_class.swap_probe_cancel(previous)
+      stub_const("#{described_class}::CONTEXT_WINDOW_PROBE_READ_TIMEOUT", 0.2)
+      expect(client.server_props(model: "m").status).to eq(:network_error)
+      expect(accepted.size).to eq(2)
+    ensure
+      described_class.swap_probe_cancel(previous)
+    end
+
+    it "leaves a probe on another thread alone" do
+      stub_const("#{described_class}::CONTEXT_WINDOW_PROBE_READ_TIMEOUT", 0.3)
+      controller = Samagotchi::CancellationController.new
+      previous = described_class.swap_probe_cancel(controller)
+      other = Thread.new { client.server_props(model: "m") }
+      accepted.pop.tap { |socket| accepted << socket }
+      controller.cancel!(:user)
+
+      expect(other.value.status).to eq(:network_error)
+    ensure
+      described_class.swap_probe_cancel(previous)
+    end
   end
 end

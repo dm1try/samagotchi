@@ -114,7 +114,7 @@ module Samagotchi
     end
 
     # One /props probe's outcome. `answered?` is false when the probe failed:
-    # a network error, a timeout or any non-200 (llama.cpp answers 503 while
+    # a network error, a timeout, a turn's cancel or any non-200 (llama.cpp answers 503 while
     # it loads a model). `body` is the parsed JSON of a 200, or nil when it
     # isn't JSON.
     ServerProps = Data.define(:body, :status) do
@@ -125,6 +125,21 @@ module Samagotchi
 
     # Moved to its own file; the old name keeps working.
     CancellationController = Samagotchi::CancellationController
+
+    PROBE_CANCEL_KEY = :samagotchi_probe_cancel
+
+    # The cancel a /props probe made on this thread listens to: a turn sets
+    # its own (Engine#run_turn), so a Stop cuts the probes it makes before
+    # its first request. Probes on other threads (chi self, /model, a
+    # status snapshot) have none and run to their timeout.
+    def self.probe_cancel = Thread.current[PROBE_CANCEL_KEY]
+
+    # Sets this thread's probe cancel; returns the one it replaces.
+    def self.swap_probe_cancel(controller)
+      previous = Thread.current[PROBE_CANCEL_KEY]
+      Thread.current[PROBE_CANCEL_KEY] = controller
+      previous
+    end
 
     # @param sleeper [#call, nil] waits between retries (specs pass a no-op)
     # @param scheme [String, nil] "https" for a TLS server (default http)
@@ -279,7 +294,8 @@ module Samagotchi
     # answers a stub without it, and a single-model server ignores it.
     # Whatever the server answers (a non-200 too) is cached per model; a
     # network failure for PROPS_FAILURE_TTL seconds, then the next call asks
-    # again.
+    # again. A probe cut by this thread's Client.probe_cancel answers
+    # :cancelled, uncached, and the turn's next request ends it.
     def server_props(model: nil)
       path = @transport.props_path
       return nil unless path
@@ -294,8 +310,9 @@ module Samagotchi
 
       props = probe_props(path, key)
       @props_mutex.synchronize do
-        if props.status == :network_error
-          @props_failures[key] = [props, monotonic_now]
+        case props.status
+        when :cancelled then nil
+        when :network_error then @props_failures[key] = [props, monotonic_now]
         else
           @props_cache[key] = props
           @props_failures.delete(key)
@@ -332,10 +349,13 @@ module Samagotchi
       response = @http.fetch(uri, Net::HTTP::Get.new(uri), retries: false, check_status: false,
                                   log_fields: { model: model.empty? ? nil : model, purpose: "probe" },
                                   open_timeout: CONTEXT_WINDOW_PROBE_OPEN_TIMEOUT,
-                                  read_timeout: CONTEXT_WINDOW_PROBE_READ_TIMEOUT)
+                                  read_timeout: CONTEXT_WINDOW_PROBE_READ_TIMEOUT,
+                                  cancel_controller: Client.probe_cancel)
       return ServerProps.new(body: nil, status: :http_error) unless response.code.to_s == "200"
 
       ServerProps.new(body: parse_props(response.body), status: :ok)
+    rescue RequestCancelled
+      ServerProps.new(body: nil, status: :cancelled)
     rescue StandardError
       ServerProps.new(body: nil, status: :network_error)
     end
