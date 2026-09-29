@@ -11,7 +11,8 @@
      }
     }
    ],
-   "text": "Let me look around first."
+   "text": "Let me look around first.",
+   "hold": 1.5
   },
   {
    "thinking": "Now the README.",
