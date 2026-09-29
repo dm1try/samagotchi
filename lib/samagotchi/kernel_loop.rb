@@ -841,14 +841,6 @@ module Samagotchi
       end
     end
 
-    # Parse tool calls from raw model output using the active profile's
-    # ToolCallParser strategy (Gemma 4 or Qwen 3.6).
-    # Thought content is intentionally left intact while a tool-call turn is in
-    # progress to preserve same-turn reasoning context between tool calls.
-    def parse_tool_calls(text)
-      parser.parse(text.to_s)
-    end
-
     public
 
     # Public wrapper so other loops (e.g. the chat loop) can strip
