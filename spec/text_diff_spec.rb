@@ -1,10 +1,16 @@
 # frozen_string_literal: true
 
 require "samagotchi/text_diff"
-require "benchmark"
 
 RSpec.describe Samagotchi::TextDiff do
   def diff(before, after, **opts) = described_class.unified(before, after, **opts)
+
+  # Seconds the block took (Benchmark is not a default gem from Ruby 4.0).
+  def elapsed
+    start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    yield
+    Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+  end
 
   def numbered(range) = range.map { |i| "line #{i}\n" }.join
 
@@ -92,8 +98,8 @@ RSpec.describe Samagotchi::TextDiff do
     before = numbered(1..5000)
     rewrite = (1..5000).map { |i| "other #{i}\n" }.join
     dense = before.lines.each_with_index.map { |l, i| (i % 3).zero? ? "x#{i}\n" : l }.join
-    expect(Benchmark.realtime { diff(before, rewrite) }).to be < 0.5
-    expect(Benchmark.realtime { diff(before, dense) }).to be < 1.0
+    expect(elapsed { diff(before, rewrite) }).to be < 0.5
+    expect(elapsed { diff(before, dense) }).to be < 1.0
   end
 
   it "rebuilds the after text from its edit script (random edits)" do
