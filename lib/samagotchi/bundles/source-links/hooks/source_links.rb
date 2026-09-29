@@ -25,9 +25,23 @@ require "open3"
 #           pattern: '\bGH-(\d+)\b'   # full form: a regex
 #           url: 'https://github.com/org/repo/issues/{match}'
 #           case_insensitive: false   # optional, default false
+#         - name: Issues              # `#12` → this project's repo,
+#                                     # `owner/repo#12` → that repo
+#           pattern: '(?<![\w/&])(?:(?<repo>[A-Za-z0-9][\w-]*/[\w.-]*\w))?#(?<num>\d+)\b'
+#           url: 'https://github.com/{repo}/issues/{num}'
+#           remote: origin            # optional: the git remote {repo}/{host}
+#                                     # come from, default origin
+#           remote_host: github.com   # optional: a host or a list; else a
+#                                     # remote on another host links nothing
 #       max: 10                       # optional: refs per line, default 10
 #       note: false                   # optional: no sources line (the web
 #                                     # links stay), default true
+#
+# A `url:` template takes {match} (group 1, else the whole ref), {1}…{9}
+# (numbered groups), {name} (named groups), and {repo}/{host}: the named
+# group when it took part, else the project's (Dir.pwd's) git remote, asked
+# of git once per worker. A ref with a placeholder that can't be filled is
+# not linked; a `{word}` that is none of these stays text (warned at load).
 #
 # The note is not stored in the conversation: it is an event, replayed by a
 # UI only while the session's worker lives (a reload keeps it; a stopped

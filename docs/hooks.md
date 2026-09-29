@@ -386,9 +386,11 @@ in a markdown link's label when the target names the same ref
 and `[fix for JIRA-123](https://github.com/o/r/pull/9)` still link. A ref
 glued to URL punctuation (`/browse/JIRA-1`, `?key=JIRA-1`, `JIRA-1/foo`) is
 skipped too; `Ticket:JIRA-5` and `#JIRA-123` are ordinary plain text and do
-link. Refs are deduped within the turn (case-insensitively) and listed in
-first-occurrence order, whatever order the sources are configured in. With no
-sources configured the hook is a silent no-op.
+link. The line names each URL once (compared case-insensitively: `#12` and
+`dm1try/samagotchi#12` may be one issue, and with `case_insensitive: true`
+`JIRA-1` and `jira-1` are one ticket), in first-occurrence order, whatever
+order the sources are configured in. With no sources configured the hook is a
+silent no-op.
 
 ```yaml
 bundles:
@@ -417,9 +419,8 @@ keeps the web links.
 
 The `prefix:` form compiles to `\b<prefix>-(\d+)\b` and the URL is
 `base_url` + the full ref text (`JIRA-123`). The `pattern:` form takes a
-regex; `{match}` in `url` is replaced with the first capture group (or the
-full match when the pattern has none). `case_insensitive: true` adds the
-`/i` flag. Past `max` refs the line ends with `… +N more`.
+regex and a `url:` template with placeholders (below). `case_insensitive:
+true` adds the `/i` flag. Past `max` refs the line ends with `… +N more`.
 
 Each regex is compiled with a per-regex timeout (0.5 s, per match attempt),
 so a catastrophic pattern is abandoned instead of hanging the turn: that
@@ -428,3 +429,84 @@ and the others still report. An entry with neither `prefix:` nor `pattern:`,
 or a pattern that does not compile, is skipped with a warning at load. The
 hook is `on_error: log`: a bug in it warns and the turn is unaffected. As with
 every bundle hook, a running worker picks it up after its next start.
+
+### Placeholders, and the project's own repo
+
+A `url:` template (the `pattern:` form only; `base_url:` is always
+`base_url` + the ref) can use:
+
+| placeholder | value | when it can't be filled |
+|---|---|---|
+| `{match}` | the first capture group, else the whole ref | never: it falls back to the ref |
+| `{1}` … `{9}` | a numbered capture group | the group didn't take part: the ref is **not linked** |
+| `{name}` | a named capture group `(?<name>…)` | the group didn't take part: **not linked** |
+| `{repo}`, `{host}` | the named group `repo` / `host` when the pattern has one and it took part; else the project's git remote | neither: **not linked** |
+
+A ref with a placeholder that can't be filled is left out of both the line
+and the answer: no URL is built with a hole in it (another source on the same
+ref can still link it). A `{word}` or `{N}` that is none of the above (not a
+group of the pattern, or `{7}` in a two-group pattern) stays as literal text,
+with one warning when the source is loaded. Every value is percent-encoded
+(everything outside `A-Za-z0-9-._~`, `/` included), except that `{repo}`
+keeps its `/` between segments (GitLab's `group/sub/proj`); a `{repo}` with an
+empty, `.` or `..` segment counts as unfilled.
+
+So one source links both `#12` in this project and a cross-repo ref:
+
+```yaml
+bundles:
+  source-links:
+    sources:
+      - name: GitHub
+        # `#12` → this project's repo; `owner/repo#12` → that repo
+        pattern: '(?<![\w/&])(?:(?<repo>[A-Za-z0-9][\w-]*/[\w.-]*\w))?#(?<num>\d+)\b'
+        url: 'https://github.com/{repo}/issues/{num}'
+        remote_host: github.com
+```
+
+```
+sources: GitHub #12 → https://github.com/dm1try/samagotchi/issues/12, GitHub rails/rails#5 → https://github.com/rails/rails/issues/5
+```
+
+GitHub redirects `/issues/N` to `/pull/N` and back, so one URL covers issues
+and pull requests. The lookbehind keeps `&#123;`, `x/#1` and a partial
+`b/c#1` inside `a/b/c#1` out; code and URLs are skipped as always. `PR #12`
+links, `PR#12` doesn't (a `#` right after a letter). The pattern is loose on
+purpose: a bare `#\d+` also matches "step #2", and `and/or#5` or `TCP/IP#3`
+read as qualified refs. A stricter variant wants `PR #`, `issue #` or a
+qualified ref:
+
+```yaml
+        pattern: '(?<![\w/&])(?:(?<repo>[A-Za-z0-9][\w-]*/[\w.-]*\w)#|\b(?:PR|[Ii]ssue) #)(?<num>\d+)\b'
+```
+
+**Where `{repo}` and `{host}` come from.** Without a named group that took
+part, they come from `git remote get-url <remote>` run in the session's
+working directory (the worker's; the in-process REPL's is the terminal's
+current directory). `remote:` picks the remote, default `origin` — a fork
+sets `remote: upstream`. Git applies `insteadOf` rewrites and includes, and a
+worktree reports its main repo's remote. The URL forms understood are
+`https://`, `http://`, `ssh://`, `git://` (credentials and port dropped) and
+scp-like `[user@]host:owner/repo`; the repo is the path without a trailing
+`.git` or `/`. A local path, `file://`, no git, no repo or no such remote
+leaves the ref unlinked, silently (a debug log line only). Git is asked only
+when a hit needs it — a JIRA source or a qualified ref never runs it — and
+the answer, even "none", is remembered for the worker's life: a remote
+changed mid-session counts after the worker's next start.
+
+`remote_host:` (a host or a list, compared case-insensitively) applies the
+remote-derived links only when the remote's host is one of them, so a
+`https://github.com/{repo}/…` template never points a GitLab project's `#12`
+at github.com. A qualified ref is linked whatever the local remote is. An SSH
+alias (`git@github-work:o/r.git` from a multi-account `~/.ssh/config`) or an
+`insteadOf` mirror reports its own host; list it too:
+`remote_host: [github.com, github-work]`.
+
+Two Ruby regex notes. With named groups in a pattern, a plain `(…)` doesn't
+capture and gets no number, so `{1}` is the first *named* group, and so is
+`{match}` (in the example above `{match}` is the repo part): use either named
+or numbered groups in one pattern, and named placeholders with named groups.
+And a pattern with a `host` (or `repo`) group lets the model's text choose the
+link's domain (or repo): the escaping rules out URL injection, but the choice
+of the target is the model's.
+

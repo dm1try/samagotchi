@@ -436,6 +436,12 @@ RSpec.describe "The source-links bundle" do
       expect(notices).to be_empty
     end
 
+    it "the documented pattern links PR #12, and not PR#12, &#123;, x/#1 or a/b/c#1" do
+      repo_with("origin" => "git@github.com:o/r.git")
+      Dir.chdir(tmp) { fire([model("PR #12, PR#13, &#123; x/#1 a/b/c#1")]) }
+      expect(texts).to eq(["sources: GitHub #12 → https://github.com/o/r/issues/12"])
+    end
+
     it "never calls git for a JIRA-only config" do
       settings.replace("sources" => [{ "name" => "JIRA", "prefix" => "JIRA", "base_url" => "https://myjira.com/browse/" },
                                      { "name" => "Wiki", "pattern" => '\bW-(\d+)', "url" => "https://w.test/{match}" }])
