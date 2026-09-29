@@ -15,6 +15,11 @@ module Samagotchi
         name.empty? ? nil : new(env_name: name, host: host.to_s, env: env)
       end
 
+      # What to try after a 401/403 from a host that has no api_key_env.
+      def self.missing_hint(host)
+        "the server may want an API key: put it in an environment variable and name it with api_key_env: on host #{host}"
+      end
+
       # Sets the header, or raises AuthError when the variable is not set.
       def authorize(request)
         key = env[env_name].to_s
@@ -22,6 +27,9 @@ module Samagotchi
 
         request["Authorization"] = "Bearer #{key}"
       end
+
+      # What to try after a 401/403 with the key sent.
+      def hint = "check #{env_name} (the API key for host #{host})"
     end
   end
 end

@@ -404,8 +404,10 @@ module Samagotchi
         status = response.code.to_i
         return if status.between?(200, 299)
 
-        raise ProviderErrors.from_response(status: status, body: response.body.to_s, host: @label,
-                                           retry_after: response["Retry-After"])
+        error = ProviderErrors.from_response(status: status, body: response.body.to_s, host: @label,
+                                             retry_after: response["Retry-After"])
+        error.hint ||= @api_key ? @api_key.hint : ApiKey.missing_hint(@label) if error.is_a?(AuthError)
+        raise error
       end
 
       def abort_request(current, requesting_thread, reason)

@@ -858,6 +858,27 @@ describe "API keys" do
 
     expect(server.requests.last.header("Authorization")).to be_nil
   end
+
+  it "says how to give a key when a host without api_key_env answers 401" do
+    server.default("/completion", status: 401, json: { error: { code: 401, message: "Invalid API Key", type: "authentication_error" } })
+    client = described_class.new(host: "127.0.0.1", port: server.port, name: "box")
+
+    expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::AuthError) { |error|
+      expect(error.summary).to include("Invalid API Key")
+      expect(error.summary).to include("api_key_env")
+      expect(error.summary).to include("host box")
+    }
+  end
+
+  it "names the variable to check when a keyed host answers 401, never the key" do
+    env["BOX_KEY"] = "sk-box-1"
+    server.default("/completion", status: 401, json: { error: { code: 401, message: "Invalid API Key", type: "authentication_error" } })
+
+    expect { keyed.complete("prompt") }.to raise_error(Samagotchi::LLM::AuthError) { |error|
+      expect(error.summary).to include("BOX_KEY")
+      expect(error.summary).not_to include("sk-box-1")
+    }
+  end
 end
 
   describe "#context_window" do

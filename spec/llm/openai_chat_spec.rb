@@ -268,6 +268,16 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       expect { keyed.chat(messages: messages, tools: [], model: "m") }
         .to raise_error(Samagotchi::LLM::AuthError) { |error| expect(error.message).not_to include("sk-test-123") }
     end
+
+    it "names the variable to check after a 401" do
+      env["EXAMPLE_KEY"] = "sk-test-123"
+      server.default("/v1/chat/completions", status: 401, json: FakeProviderServer.fixture("error_401.hand-written.json"))
+
+      expect { keyed.chat(messages: messages, tools: [], model: "m") }.to raise_error(Samagotchi::LLM::AuthError) { |error|
+        expect(error.summary).to end_with("; check EXAMPLE_KEY (the API key for host fw)")
+        expect(error.summary).not_to include("sk-test-123")
+      }
+    end
   end
 
   describe "errors" do

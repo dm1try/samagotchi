@@ -91,9 +91,12 @@ module Samagotchi
     end
 
     class AuthError < ProviderError
+      # What to try (LLM::ApiKey), added to the summary.
+      attr_accessor :hint
+
       def kind = :auth
 
-      def summary = "auth failed for host #{host}: #{detail}"
+      def summary = "auth failed for host #{host}: #{detail}#{"; #{hint}" if hint}"
     end
 
     class BadRequest < ProviderError
