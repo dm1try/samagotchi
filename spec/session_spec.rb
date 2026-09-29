@@ -590,10 +590,11 @@ RSpec.describe Samagotchi::Session do
     end
 
     # status is turn state; a live owner is what protects a session in use.
-    it "prunes an old session left 'running' by a dead worker" do
+    # (session.keep_status defaults to "running"; this is keep_status "".)
+    it "prunes an old session left 'running' by a dead worker when no status is kept" do
       s_old, path_old = save_aged(status: described_class::STATUS_RUNNING)
 
-      result = described_class.prune(state_dir: tmpdir, days: 14, max_count: 500)
+      result = described_class.prune(state_dir: tmpdir, days: 14, max_count: 500, keep_status: [])
       expect(result[:deleted]).to include(s_old.id)
       expect(File.exist?(path_old)).to be false
     end

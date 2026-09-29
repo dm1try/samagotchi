@@ -121,7 +121,7 @@ module Samagotchi
       end
 
       def self.resolve_host(host)
-        host = (host || ENV.fetch("SAMAGOTCHI_WEB_HOST", DEFAULT_HOST)).to_s.strip
+        host = (host || Samagotchi::Config.get("web.host")).to_s.strip
         host = DEFAULT_HOST if host.empty?
         return host if %w[127.0.0.1 ::1 localhost].include?(host)
 
@@ -167,7 +167,7 @@ module Samagotchi
       end
 
       def self.resolve_port(port)
-        raw = port || ENV.fetch("SAMAGOTCHI_WEB_PORT", DEFAULT_PORT.to_s)
+        raw = port || Samagotchi::Config.get("web.port")
         parsed = raw.to_s.to_i
         parsed.positive? ? parsed : DEFAULT_PORT
       end

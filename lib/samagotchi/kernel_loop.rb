@@ -112,16 +112,10 @@ module Samagotchi
     CONTEXT_LINE_PREFIX = "[CONTEXT: "
     CONTEXT_LINE_KIND = "context"
     CONTEXT_GUIDANCE_FROM_RANK = 2
-    CONTEXT_STATUS_ENABLED_ENV = "SAMAGOTCHI_CONTEXT_STATUS"
-    CONTEXT_CHARS_PER_TOKEN_ENV = "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"
-    CONTEXT_THRESHOLDS_ENV = "SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"
-    CONTEXT_CADENCE_ENV = "SAMAGOTCHI_CONTEXT_STATUS_CADENCE"
 
     DEFAULT_CONTEXT_CHARS_PER_TOKEN = 4.0
     DEFAULT_CONTEXT_THRESHOLDS = [20, 40, 60, 80].freeze
-    DEFAULT_CONTEXT_CADENCE = 0
     DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
-    TOOL_OUTPUT_CHARS_ENV = "SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS"
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
 
@@ -197,7 +191,7 @@ module Samagotchi
     # @param cancel_controller [CancellationController, nil] optional cancellation source
     # @param model_name [String, nil]            optional per-run model override
     # @param max_tool_output_chars [Integer, nil] per-output char cap for the
-    #   :tool_call_completed event's `output:` (nil → env/DEFAULT_MAX_TOOL_OUTPUT_CHARS)
+    #   :tool_call_completed event's `output:` (nil → max_tool_output_chars)
     # @param pending_input [#call, nil]  optional drain proc returning
     #   Array<String> of user steering messages queued while the turn runs.
     #   Drained at iteration boundaries (llama.cpp's /completion cannot accept
@@ -527,18 +521,13 @@ module Samagotchi
 
     # Resolve the per-output character cap for the emitted tool call events.
     #
-    # Precedence: an explicit override wins, then the SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS
-    # env var, then DEFAULT_MAX_TOOL_OUTPUT_CHARS. A non-positive value falls back
-    # to the default (there is intentionally no "unlimited" — live UIs get a
+    # Precedence: an explicit override wins, then max_tool_output_chars
+    # (Config). A non-positive value falls back to
+    # DEFAULT_MAX_TOOL_OUTPUT_CHARS (there is intentionally no "unlimited" — live UIs get a
     # bounded `output:` plus a truthful `output_truncated:` flag).
     # Class-level so the chat loop resolves it the same way.
     def self.resolve_output_char_cap(override)
-      cfg_val = begin
-        v = Samagotchi::Config.get("max_tool_output_chars") rescue nil
-        v.to_i if v
-      end
-      value = override || cfg_val || ENV[TOOL_OUTPUT_CHARS_ENV]
-      parsed = value.to_i
+      parsed = (override || Samagotchi::Config.get("max_tool_output_chars")).to_i
       parsed.positive? ? parsed : DEFAULT_MAX_TOOL_OUTPUT_CHARS
     end
 
@@ -565,8 +554,8 @@ module Samagotchi
     end
 
     def completion_n_predict
-      v = Samagotchi::Config.get("default.n_predict") rescue nil
-      v.to_i if v && v.to_i.positive?
+      value = Samagotchi::Config.get("default.n_predict").to_i
+      value if value.positive?
     end
 
     def completion_model_name(override = nil)
@@ -687,14 +676,7 @@ module Samagotchi
     end
 
     def context_status_enabled?
-      cfg = begin Samagotchi::Config.get("context.status") rescue nil end
-      unless cfg.nil?
-        return !!cfg
-      end
-      value = ENV[CONTEXT_STATUS_ENABLED_ENV]
-      return true if value.nil?
-
-      !(value == "0" || value.casecmp?("false"))
+      Samagotchi::Config.get("context.status") != false
     end
 
     # `window` is this iteration's ContextWindow::Resolved (resolved here when
@@ -739,30 +721,18 @@ module Samagotchi
     end
 
     def context_chars_per_token
-      cfg = begin Samagotchi::Config.get("context.chars_per_token") rescue nil end
-      if cfg && cfg.to_f.positive?
-        v = cfg.to_f
-        return v.positive? ? v : DEFAULT_CONTEXT_CHARS_PER_TOKEN
-      end
-      value = ENV.fetch(CONTEXT_CHARS_PER_TOKEN_ENV, DEFAULT_CONTEXT_CHARS_PER_TOKEN.to_s).to_f
+      value = Samagotchi::Config.get("context.chars_per_token").to_f
       value.positive? ? value : DEFAULT_CONTEXT_CHARS_PER_TOKEN
     end
 
     def context_status_thresholds
-      cfg = begin Samagotchi::Config.get("context.status_thresholds") rescue nil end
-      raw = cfg && !cfg.to_s.strip.empty? ? cfg.to_s : ENV.fetch(CONTEXT_THRESHOLDS_ENV, DEFAULT_CONTEXT_THRESHOLDS.join(","))
+      raw = Samagotchi::Config.get("context.status_thresholds").to_s
       parsed = raw.split(",").map { |value| value.strip.to_i }.select { |value| value.between?(1, 99) }.uniq.sort
       parsed.empty? ? DEFAULT_CONTEXT_THRESHOLDS : parsed
     end
 
     def context_status_cadence
-      cfg = begin Samagotchi::Config.get("context.status_cadence") rescue nil end
-      if !cfg.nil?
-        v = cfg.to_i
-        return [v, 0].max
-      end
-      value = ENV.fetch(CONTEXT_CADENCE_ENV, DEFAULT_CONTEXT_CADENCE.to_s).to_i
-      [value, 0].max
+      [Samagotchi::Config.get("context.status_cadence").to_i, 0].max
     end
 
     # 0 for the bucket under the first threshold, then one per threshold.

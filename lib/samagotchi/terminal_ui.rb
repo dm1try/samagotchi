@@ -51,7 +51,6 @@ module Samagotchi
     # The prompt while a question waits for its answer (its choices are in
     # the notes slot).
     QUESTION_PROMPT = "? "
-    THINKING_UI_ENV = "SAMAGOTCHI_THINKING_UI"
     THINKING_UI_SPINNER = "spinner"
     THINKING_UI_OFF = "off"
     THINKING_SPINNER_FRAMES = ["|", "/", "-", "\\"].freeze
@@ -70,15 +69,9 @@ module Samagotchi
     # chunk it says how long the first token has taken.
     THINKING_TICK_INTERVAL = 0.25
     THINKING_WAIT_NOTICE_AFTER = 2.0
-    THINKING_RENDER_INTERVAL_ENV = "SAMAGOTCHI_THINKING_RENDER_INTERVAL"
-    STATUS_LINE_ENV = "SAMAGOTCHI_STATUS_LINE"
-    STATUS_LINE_ON = "on"
     STATUS_LINE_OFF = "off"
-    STATUS_WIDTH_MODE_ENV = "SAMAGOTCHI_STATUS_WIDTH_MODE"
     STATUS_WIDTH_MODE_TERMINAL_CAP = "terminal_cap"
     STATUS_WIDTH_MODE_FIXED = "fixed"
-    STATUS_FIXED_WIDTH_ENV = "SAMAGOTCHI_STATUS_FIXED_WIDTH"
-    STATUS_MAX_WIDTH_ENV = "SAMAGOTCHI_STATUS_MAX_WIDTH"
     STATUS_MAX_WIDTH_DEFAULT = 160
     REMINDER_PENDING_POLL_INTERVAL = 0.5
     # What a command sent during a turn gets, as from a worker (Worker::BUSY_OUTPUT).
@@ -1296,7 +1289,7 @@ module Samagotchi
 
 
     def thinking_render_min_interval
-      value = ENV.fetch(THINKING_RENDER_INTERVAL_ENV, THINKING_RENDER_MIN_INTERVAL.to_s).to_f
+      value = Samagotchi::Config.get("thinking.render_interval").to_f
       return THINKING_RENDER_MIN_INTERVAL unless value.positive?
 
       value
@@ -1509,7 +1502,7 @@ module Samagotchi
 
 
     def status_width_mode
-      mode = ENV.fetch(STATUS_WIDTH_MODE_ENV, STATUS_WIDTH_MODE_TERMINAL_CAP).to_s.strip.downcase
+      mode = Samagotchi::Config.get("status.width_mode").to_s.strip.downcase
       return STATUS_WIDTH_MODE_FIXED if mode == STATUS_WIDTH_MODE_FIXED
 
       STATUS_WIDTH_MODE_TERMINAL_CAP
@@ -1527,11 +1520,11 @@ module Samagotchi
     end
 
     def status_fixed_width
-      env_positive_int(STATUS_FIXED_WIDTH_ENV, THINKING_PREVIEW_WIDTH)
+      positive_int(Samagotchi::Config.get("status.fixed_width"), THINKING_PREVIEW_WIDTH)
     end
 
     def status_max_width
-      env_positive_int(STATUS_MAX_WIDTH_ENV, STATUS_MAX_WIDTH_DEFAULT)
+      positive_int(Samagotchi::Config.get("status.max_width"), STATUS_MAX_WIDTH_DEFAULT)
     end
 
     def terminal_columns
@@ -1543,11 +1536,11 @@ module Samagotchi
       end
       return columns if columns.positive?
 
-      env_positive_int("COLUMNS", status_max_width)
+      positive_int(ENV.fetch("COLUMNS", nil), status_max_width)
     end
 
-    def env_positive_int(key, default)
-      value = ENV.fetch(key, default.to_s).to_i
+    def positive_int(raw, default)
+      value = raw.to_i
       value.positive? ? value : default
     end
 
@@ -1614,7 +1607,7 @@ module Samagotchi
     def thinking_spinner_enabled?
       return false unless $stdout.tty?
 
-      mode = ENV.fetch(THINKING_UI_ENV, THINKING_UI_SPINNER).to_s.strip.downcase
+      mode = Samagotchi::Config.get("thinking.ui").to_s.strip.downcase
       return false if mode.empty? || mode == THINKING_UI_OFF || mode == "false" || mode == "0"
 
       mode == THINKING_UI_SPINNER && ENV.fetch("TERM", "") != "dumb"

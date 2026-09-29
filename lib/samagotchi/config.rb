@@ -118,7 +118,7 @@ module Samagotchi
       Entry.new(key: "context.status_thresholds", yaml_path: %w[context status_thresholds],type: :string, default: "20,40,60,80",    expose: %i[env config cli]),
       Entry.new(key: "context.status_cadence",   yaml_path: %w[context status_cadence],   type: :integer, default: 0,               expose: %i[env config cli]),
 
-      Entry.new(key: "thinking.ui",              yaml_path: %w[thinking ui],              type: :string, default: nil,              expose: %i[env config cli]),
+      Entry.new(key: "thinking.ui",              yaml_path: %w[thinking ui],              type: :string, default: "spinner",        expose: %i[env config cli]),
       Entry.new(key: "thinking.render_interval", yaml_path: %w[thinking render_interval], type: :float,   default: 0.08,            expose: %i[env config cli]),
       Entry.new(key: "thinking.turn_preamble",   yaml_path: %w[thinking turn_preamble],   type: :bool,   default: true,             expose: %i[env config cli]),
       # How much models think: off|low|medium|high|default, parsed by Thinking
@@ -815,15 +815,16 @@ module Samagotchi
         end
       end
 
-      # If no hosts defined, synthesize "default" from SAMAGOTCHI_SERVER_HOST/PORT
+      # If no hosts defined, synthesize "default" from server.host/port/transport.
       if normalized.empty?
-        default_host = env.fetch("SAMAGOTCHI_SERVER_HOST", "localhost").to_s.strip
+        opts = { file_data: data, env: env, cli_overrides: Samagotchi::Config.cli_overrides }
+        default_host = Samagotchi::Config.resolve("server.host", **opts).to_s.strip
         default_host = "localhost" if default_host.empty?
-        default_port = env.fetch("SAMAGOTCHI_SERVER_PORT", "8080").to_s.strip
-        default_port = default_port.empty? ? 8080 : default_port.to_i
+        default_port = Samagotchi::Config.resolve("server.port", **opts).to_i
         default_port = 8080 if default_port <= 0 || default_port > 65535
-        transport_env = env.fetch("SAMAGOTCHI_SERVER_TRANSPORT", "").to_s.strip.downcase
-        transport_sym = VALID_TRANSPORTS_FOR_CONFIG.include?(transport_env) ? transport_env.to_sym : nil
+        transport_sym = Samagotchi::Config.resolve_with_origin("server.transport", **opts).then do |value, origin|
+          origin == :default ? nil : value.to_sym
+        end
         normalized["default"] = { name: "default", host: default_host, port: default_port, transport: transport_sym, original_name: "default" }
       end
       normalized

@@ -195,8 +195,8 @@ module Samagotchi
       def self.output_block(label, content)
         return nil if content.nil? || content.empty?
 
-        truncate_at_bytes = OutputGuardrails.env_positive_int("SAMAGOTCHI_EXECUTE_TRUNCATE_AT_BYTES", OutputGuardrails::DEFAULT_TRUNCATE_AT_BYTES)
-        preview_bytes = OutputGuardrails.env_positive_int("SAMAGOTCHI_EXECUTE_PREVIEW_BYTES", OutputGuardrails::DEFAULT_PREVIEW_BYTES)
+        truncate_at_bytes = OutputGuardrails.config_positive_int("execute.truncate_at_bytes", OutputGuardrails::DEFAULT_TRUNCATE_AT_BYTES)
+        preview_bytes = OutputGuardrails.config_positive_int("execute.preview_bytes", OutputGuardrails::DEFAULT_PREVIEW_BYTES)
         bytes = content.bytesize
         return "#{label}:\n#{content}" if bytes <= truncate_at_bytes
 
@@ -220,7 +220,7 @@ module Samagotchi
       def self.telemetry_lines_for(content)
         OutputGuardrails.telemetry_lines_for(
           content: content,
-          threshold_env: "SAMAGOTCHI_EXECUTE_TELEMETRY_THRESHOLD_PCT",
+          threshold_key: "execute.telemetry_threshold_pct",
           threshold_default: OutputGuardrails::DEFAULT_TELEMETRY_THRESHOLD_PCT,
           token_key: "estimated_tokens_for_command_output",
           pct_key: "estimated_window_pct_for_command_output"

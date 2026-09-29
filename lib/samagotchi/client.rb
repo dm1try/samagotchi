@@ -13,12 +13,12 @@ require_relative "sampling_settings"
 module Samagotchi
   # Thin HTTP client for llama.cpp's native /completion endpoint, or an
   # OpenAI-compatible /v1/completions endpoint (e.g. mlx_lm.server or oMLX).
-  # Configure via environment variables (see Samagotchi::Config):
-  #   SAMAGOTCHI_SERVER_HOST  (default: localhost)
-  #   SAMAGOTCHI_SERVER_PORT  (default: 8080; oMLX's default is 8000, set it to match)
-  #   SAMAGOTCHI_SERVER_OPEN_TIMEOUT (default: 10 seconds)
-  #   SAMAGOTCHI_SERVER_READ_TIMEOUT (default: 600 seconds)
-  #   SAMAGOTCHI_SERVER_TRANSPORT (llama_cpp|mlx|omlx, default: llama_cpp)
+  # Configured by the server.* settings (Samagotchi::Config):
+  #   server.host  (default: localhost)
+  #   server.port  (default: 8080; oMLX's default is 8000, set it to match)
+  #   server.open_timeout (default: 10 seconds)
+  #   server.read_timeout (default: 600 seconds)
+  #   server.transport (llama_cpp|mlx|omlx, default: llama_cpp)
   class Client
     # The shared HTTP layer's errors, under their old names.
     RequestCancelled = LLM::RequestCancelled
@@ -33,7 +33,6 @@ module Samagotchi
     # generation, and a new turn doesn't ask again at once.
     PROPS_FAILURE_TTL = 30
 
-    SERVER_TRANSPORT_ENV = "SAMAGOTCHI_SERVER_TRANSPORT"
     DEFAULT_TRANSPORT = :llama_cpp
     VALID_TRANSPORTS = %i[llama_cpp mlx omlx].freeze
 
@@ -154,21 +153,12 @@ module Samagotchi
     def initialize(host: nil, port: nil, open_timeout: nil, read_timeout: nil, transport: nil, sleeper: nil, scheme: nil,
                    first_token_timeout: nil, name: nil, api_key_env: nil, env: ENV)
       # Unified config precedence: CLI > ENV > file > default (via Samagotchi::Config)
-      cfg_host = nil; cfg_port = nil; cfg_transport_raw = nil
-      begin
-        cfg_host       = Samagotchi::Config.get("server.host")
-        cfg_port       = Samagotchi::Config.get("server.port")
-        cfg_transport_raw = Samagotchi::Config.get("server.transport")
-      rescue StandardError
-        nil
-      end
-      @host          = host || cfg_host
-      @port          = (port || cfg_port).to_i
+      @host          = host || Samagotchi::Config.get("server.host")
+      @port          = (port || Samagotchi::Config.get("server.port")).to_i
       @scheme        = scheme || "http"
       @open_timeout  = Samagotchi::Config.positive_seconds("server.open_timeout", open_timeout)
       @read_timeout  = Samagotchi::Config.positive_seconds("server.read_timeout", read_timeout)
-      transport_fallback = cfg_transport_raw || ENV.fetch(SERVER_TRANSPORT_ENV, DEFAULT_TRANSPORT.to_s)
-      @transport = build_transport(resolve_transport(transport || transport_fallback))
+      @transport = build_transport(resolve_transport(transport))
       @props_cache = {}
       @props_failures = {}
       @props_mutex = Mutex.new
@@ -370,7 +360,7 @@ module Samagotchi
     end
 
     def resolve_transport(transport)
-      value = (transport || ENV.fetch(SERVER_TRANSPORT_ENV, DEFAULT_TRANSPORT.to_s)).to_s.strip.downcase.to_sym
+      value = (transport || Samagotchi::Config.get("server.transport")).to_s.strip.downcase.to_sym
       VALID_TRANSPORTS.include?(value) ? value : DEFAULT_TRANSPORT
     end
 

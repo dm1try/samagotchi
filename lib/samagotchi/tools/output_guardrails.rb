@@ -13,13 +13,14 @@ module Samagotchi
 
       module_function
 
-      def env_positive_int(key, default)
-        value = ENV.fetch(key, default.to_s).to_i
+      # The config setting +key+ (read.*, execute.*, context.*) when positive, else +default+.
+      def config_positive_int(key, default)
+        value = Samagotchi::Config.get(key).to_i
         value.positive? ? value : default
       end
 
-      def env_positive_float(key, default)
-        value = ENV.fetch(key, default.to_s).to_f
+      def config_positive_float(key, default)
+        value = Samagotchi::Config.get(key).to_f
         value.positive? ? value : default
       end
 
@@ -57,10 +58,10 @@ module Samagotchi
         build_preview_parts(head: head, tail: tail, total_bytes: content.bytesize)
       end
 
-      def telemetry_lines_for(content:, threshold_env:, threshold_default:, token_key:, pct_key:)
-        chars_per_token = env_positive_float("SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN", DEFAULT_CHARS_PER_TOKEN)
+      def telemetry_lines_for(content:, threshold_key:, threshold_default:, token_key:, pct_key:)
+        chars_per_token = config_positive_float("context.chars_per_token", DEFAULT_CHARS_PER_TOKEN)
         window_tokens = ContextWindow.current.tokens
-        telemetry_threshold_pct = env_positive_float(threshold_env, threshold_default)
+        telemetry_threshold_pct = config_positive_float(threshold_key, threshold_default)
 
         estimated_tokens = (content.length / chars_per_token).ceil
         estimated_window_pct = (estimated_tokens.to_f / window_tokens) * 100.0

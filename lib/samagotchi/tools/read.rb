@@ -52,9 +52,9 @@ module Samagotchi
 
         size = File.size(path)
 
-        hard_max_bytes = OutputGuardrails.env_positive_int("SAMAGOTCHI_READ_HARD_MAX_BYTES", DEFAULT_HARD_MAX_BYTES)
-        truncate_at_bytes = OutputGuardrails.env_positive_int("SAMAGOTCHI_READ_TRUNCATE_AT_BYTES", OutputGuardrails::DEFAULT_TRUNCATE_AT_BYTES)
-        preview_bytes = OutputGuardrails.env_positive_int("SAMAGOTCHI_READ_PREVIEW_BYTES", OutputGuardrails::DEFAULT_PREVIEW_BYTES)
+        hard_max_bytes = OutputGuardrails.config_positive_int("read.hard_max_bytes", DEFAULT_HARD_MAX_BYTES)
+        truncate_at_bytes = OutputGuardrails.config_positive_int("read.truncate_at_bytes", OutputGuardrails::DEFAULT_TRUNCATE_AT_BYTES)
+        preview_bytes = OutputGuardrails.config_positive_int("read.preview_bytes", OutputGuardrails::DEFAULT_PREVIEW_BYTES)
 
         if size > hard_max_bytes
           return "Error: file too large: #{path} (#{size} bytes, hard limit #{hard_max_bytes} bytes)."
@@ -105,7 +105,7 @@ module Samagotchi
       def self.telemetry_lines_for(content)
         OutputGuardrails.telemetry_lines_for(
           content: content,
-          threshold_env: "SAMAGOTCHI_READ_TELEMETRY_THRESHOLD_PCT",
+          threshold_key: "read.telemetry_threshold_pct",
           threshold_default: OutputGuardrails::DEFAULT_TELEMETRY_THRESHOLD_PCT,
           token_key: "estimated_tokens_for_preview",
           pct_key: "estimated_window_pct_for_preview"

@@ -63,7 +63,6 @@ module Samagotchi
     class QuestionNotPending < ArgumentError; end
 
     AGENT_DESCRIPTION_FILE = "AGENT.md"
-    SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
 
     # Build a system prompt string for the given profile.
     # Used by specs and inspection.
@@ -1828,7 +1827,7 @@ module Samagotchi
     # @param max_iterations [Integer] max kernel iterations
     # @param cancel_controller [CancellationController, nil]
     # @param max_tool_output_chars [Integer, nil] per-output char cap for the
-    #   :tool_call_completed event's `output:` (nil → env/DEFAULT_MAX_TOOL_OUTPUT_CHARS)
+    #   :tool_call_completed event's `output:` (nil → max_tool_output_chars)
     # @return [KernelLoop::Result]
     # @param pending_input [#call, nil] optional drain proc returning
     #   Array<String> of steering messages queued while the turn runs; drained
@@ -3086,8 +3085,7 @@ module Samagotchi
     end
 
     def skip_agent_description?
-      value = ENV[SKIP_AGENT_DESCRIPTION_ENV]
-      value == "1" || value&.casecmp?("true")
+      Config.get("skip_agent_md") == true
     end
 
     def rg_available?

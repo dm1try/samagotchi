@@ -21,9 +21,6 @@ module Samagotchi
     # the listener falls back to raising RequestCancelled in the requesting
     # thread, as Client did before.
     class HTTP
-      RETRY_MAX_ENV = "SAMAGOTCHI_RETRY_MAX"
-      RETRY_BASE_DELAY_ENV = "SAMAGOTCHI_RETRY_BASE_DELAY"
-      RETRY_MAX_DELAY_ENV = "SAMAGOTCHI_RETRY_MAX_DELAY"
       DEFAULT_RETRY_MAX = 5
       DEFAULT_RETRY_BASE_DELAY = 0.5
       DEFAULT_RETRY_MAX_DELAY = 8.0
@@ -46,15 +43,14 @@ module Samagotchi
       # Exponential backoff: base_delay * 2^(attempt-1), capped at max_delay,
       # for up to +max+ retries (max + 1 attempts).
       RetryPolicy = Data.define(:max, :base_delay, :max_delay) do
-        # retry.* from config, then the SAMAGOTCHI_RETRY_* env, then defaults.
+        # retry.* (Config); a value out of range is the default.
         def self.from_config
           new(
-            max: config_value("retry.max") { |v| v.is_a?(Integer) && v >= 0 } ||
-              env_integer(RETRY_MAX_ENV, DEFAULT_RETRY_MAX),
+            max: config_value("retry.max") { |v| v.is_a?(Integer) && v >= 0 } || DEFAULT_RETRY_MAX,
             base_delay: config_value("retry.base_delay") { |v| v.is_a?(Numeric) && v.positive? }&.to_f ||
-              env_float(RETRY_BASE_DELAY_ENV, DEFAULT_RETRY_BASE_DELAY),
+              DEFAULT_RETRY_BASE_DELAY,
             max_delay: config_value("retry.max_delay") { |v| v.is_a?(Numeric) && v.positive? }&.to_f ||
-              env_float(RETRY_MAX_DELAY_ENV, DEFAULT_RETRY_MAX_DELAY)
+              DEFAULT_RETRY_MAX_DELAY
           )
         end
 
@@ -65,16 +61,6 @@ module Samagotchi
           yield(value) ? value : nil
         rescue StandardError
           nil
-        end
-
-        def self.env_integer(name, default)
-          value = ENV.fetch(name, default.to_s).to_i
-          value.negative? ? default : value
-        end
-
-        def self.env_float(name, default)
-          value = ENV.fetch(name, default.to_s).to_f
-          value.positive? ? value : default
         end
 
         # Seconds to wait before retrying after failed attempt +attempt+

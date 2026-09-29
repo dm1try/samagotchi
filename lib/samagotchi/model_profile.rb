@@ -116,18 +116,12 @@ module Samagotchi
       end
     end
 
-    def self.required_model_name(model_name = nil, env: ENV)
+    def self.required_model_name(model_name = nil)
       value = model_name.to_s.strip
       if value.empty?
-        begin
-          require_relative "config"
-          cfg = Samagotchi::Config.get("default.model") rescue nil
-          value = cfg.to_s.strip unless cfg.nil? || cfg.to_s.strip.empty?
-        rescue StandardError
-          nil
-        end
+        require_relative "config"
+        value = Samagotchi::Config.get("default.model").to_s.strip
       end
-      value = env[MODEL_ENV].to_s.strip if value.empty?
       raise MissingModel, missing_model_message if value.empty?
 
       value
@@ -181,7 +175,7 @@ module Samagotchi
     end
 
     def self.from_env
-      from_model_name(required_model_name(nil, env: ENV))
+      from_model_name(required_model_name(nil))
     end
 
     # ── Resolution: which profile a model gets ───────────────────────────
