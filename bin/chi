@@ -251,6 +251,12 @@ if ARGV[0] == "send"
   exit Samagotchi::SendCommand.new(ARGV[1..] || []).run
 end
 
+# `chi bootstrap`: find a model server and write config.yml, before OptionParser (--model, --name are its own)
+if ARGV[0] == "bootstrap"
+  require "samagotchi/bootstrap_command"
+  exit Samagotchi::BootstrapCommand.new(ARGV[1..] || []).run
+end
+
 # `chi desktop`: the native "Send to chi" helper, before OptionParser (its own flags)
 if ARGV[0] == "desktop"
   require "samagotchi/desktop_command"
@@ -934,6 +940,7 @@ end
 parser = OptionParser.new do |opts|
   opts.banner = <<~BANNER
     Usage: chi [options]
+           chi bootstrap [HOST[:PORT]|URL]  first setup: find the model server, write config.yml
            chi scratch [options]            a one-time session in this terminal: nothing is kept
            chi web [--port PORT] [--open] [--scope=all]   the web UI
            chi sessions <list|stop|archive|unarchive|delete|prune|clean>
