@@ -13,7 +13,8 @@ module Samagotchi
                            and start it: Services > "Send to chi", or ⌃⌥⌘N with the clipboard,
                            sends text to a live session as a context note. --login: start it
                            at login too (else it runs until you log out)
-        upgrade            rebuild it for this chi and restart it
+        upgrade            rebuild it for this chi and restart it (chi update does this only
+                           when its sources changed)
         uninstall          remove it, its settings and its launch file
         status             installed version, how it runs chi, Service and process state
     TEXT
@@ -96,11 +97,13 @@ module Samagotchi
 
       version = if s[:app_version] == s[:chi_version]
                   "#{s[:app_version]} (matches chi)"
+                elsif s[:stale]
+                  "#{s[:app_version] || "?"} (chi is #{s[:chi_version]}: chi update)"
                 else
-                  "#{s[:app_version] || "?"} (chi is #{s[:chi_version]}: chi desktop upgrade)"
+                  "#{s[:app_version] || "?"} (up to date: chi #{s[:chi_version]} changed nothing in it)"
                 end
       launch = s[:launch_argv].empty? ? "(none)" : s[:launch_argv].join(" ")
-      launch += s[:launch_ok] ? " (ok)" : " (missing: chi desktop upgrade)"
+      launch += s[:launch_ok] ? " (ok)" : " (missing: chi update)"
       dirs = s[:baked_dirs].empty? ? "(defaults)" : s[:baked_dirs].map { |name, value| "#{name}=#{value}" }.join(" ")
       service = s[:service] ? "registered" : "not registered (try chi desktop upgrade, or log out and back in)"
       running = s[:running] ? "running" : "not running (open -g \"#{s[:app_path]}\")"

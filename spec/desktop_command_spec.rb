@@ -131,15 +131,26 @@ RSpec.describe Samagotchi::DesktopCommand do
     it "says to upgrade on a version mismatch or a stale launch file, and what's missing" do
       allow(macos).to receive(:status).and_return(
         installed: true, app_path: "/A/Chi Helper.app", chi_version: "0.1.20", app_version: "0.1.19",
-        launch_argv: ["/r/ruby", "/c/bin/chi"], launch_ok: false, baked_dirs: {},
+        launch_argv: ["/r/ruby", "/c/bin/chi"], launch_ok: false, stale: true, baked_dirs: {},
         service: false, running: false, login: "notRegistered", hotkey: { "keys" => "⌃⌥⌘N", "registered" => false }
       )
       run("status")
-      expect(out.string).to include("0.1.19 (chi is 0.1.20: chi desktop upgrade)",
-                                    "(missing: chi desktop upgrade)", "(defaults)",
+      expect(out.string).to include("0.1.19 (chi is 0.1.20: chi update)",
+                                    "(missing: chi update)", "(defaults)",
                                     "not registered", "not running", "⌃⌥⌘N taken by another app",
                                     "off (chi desktop install --force --login)")
     end
+  end
+
+  it "says an older app is up to date when its sources didn't change" do
+    allow(macos).to receive(:status).and_return(
+      installed: true, app_path: "/A/Chi Helper.app", chi_version: "0.1.20", app_version: "0.1.19",
+      launch_argv: ["/r/ruby", "/c/bin/chi"], launch_ok: true, stale: false, baked_dirs: {},
+      service: true, running: true, login: "enabled", hotkey: nil
+    )
+    run("status")
+    expect(out.string).to include("0.1.19 (up to date: chi 0.1.20 changed nothing in it)")
+    expect(out.string).not_to include("chi update")
   end
 
   it "is reachable from bin/chi" do

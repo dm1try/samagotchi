@@ -170,14 +170,17 @@ module Samagotchi
     end
 
     # The Chi Helper app's version against this chi's (read from its
-    # Info.plist; no process or Services checks: chi desktop status has those).
+    # Info.plist and launch file; no process or Services checks: chi desktop
+    # status has those). An older app is fine while its sources are unchanged.
     def desktop_summary(env)
       return "- (macOS only)" unless Desktop.supported?
 
-      version = Desktop::MacOS.new(env: env).app_version
+      helper = Desktop::MacOS.new(env: env)
+      version = helper.app_version
       return "not installed" unless version
+      return "#{version} (matches)" if version == VERSION
 
-      version == VERSION ? "#{version} (matches)" : "#{version} (chi is #{VERSION}: chi desktop upgrade)"
+      helper.stale? ? "#{version} (chi is #{VERSION}: chi update)" : "#{version} (up to date for chi #{VERSION})"
     end
 
     # "samagotchi-system 0.1.5 (shipped 0.1.5), other 1.0.0"

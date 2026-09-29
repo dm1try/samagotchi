@@ -81,9 +81,17 @@ RSpec.describe Samagotchi::SelfReport do
       expect(field("desktop")).to eq("#{Samagotchi::VERSION} (matches)")
     end
 
-    it "says to upgrade when the helper is another version" do
+    it "says chi update when the helper is another version built from other sources" do
       install_helper("0.0.1")
-      expect(field("desktop")).to eq("0.0.1 (chi is #{Samagotchi::VERSION}: chi desktop upgrade)")
+      expect(field("desktop")).to eq("0.0.1 (chi is #{Samagotchi::VERSION}: chi update)")
+    end
+
+    it "says an older helper is up to date when its sources are unchanged" do
+      install_helper("0.0.1")
+      helper = Samagotchi::Desktop::MacOS.new(env: { "HOME" => tmp })
+      FileUtils.mkdir_p(File.dirname(helper.launch_path))
+      File.write(helper.launch_path, JSON.generate("version" => "0.0.1", "argv" => [RbConfig.ruby], "sources_sha" => helper.sources_sha))
+      expect(field("desktop")).to eq("0.0.1 (up to date for chi #{Samagotchi::VERSION})")
     end
 
     it "says macOS only elsewhere" do

@@ -290,6 +290,58 @@ RSpec.describe Samagotchi::Desktop::MacOS do
     end
   end
 
+  describe "#stale? and the launch file refresh" do
+    before do
+      File.write(File.join(tmp, "ruby"), "")
+      FileUtils.mkdir_p(File.join(source_dir, "bin"))
+      File.write(File.join(source_dir, "bin", "chi"), "")
+    end
+
+    def helper(version: "9.9.9", env: self.env)
+      described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner, source_dir: source_dir,
+                          ruby: File.join(tmp, "ruby"), version: version, arch: "arm64", sources_dir: sources_dir)
+    end
+
+    it "records the sources' digest; a new version with the same sources isn't stale, only its launch file is outdated" do
+      helper.install
+      expect(JSON.parse(File.read(launch_file))["sources_sha"]).to eq(helper.sources_sha)
+      expect(helper.stale?).to be(false)
+      expect(helper.launch_outdated?).to be(false)
+
+      newer = helper(version: "9.9.10", env: env.merge("XDG_STATE_HOME" => "/elsewhere"))
+      expect(newer.stale?).to be(false)
+      expect(newer.launch_outdated?).to be(true)
+
+      runner.calls.clear
+      newer.refresh_launch_file
+      expect(runner.calls).to be_empty
+      launch = JSON.parse(File.read(launch_file))
+      expect(launch["version"]).to eq("9.9.10")
+      expect(launch["env"]).not_to include("XDG_STATE_HOME")
+      expect(newer.launch_outdated?).to be(false)
+      expect(newer.status).to include(stale: false, app_version: "9.9.9")
+    end
+
+    it "is stale when a Swift source changed, the launch file has no digest, or its ruby is gone" do
+      helper.install
+      File.write(File.join(sources_dir, "Panel.swift"), "// panel v2")
+      expect(helper.stale?).to be(true)
+
+      helper.install(force: true)
+      expect(helper.stale?).to be(false)
+      File.write(launch_file, JSON.generate(JSON.parse(File.read(launch_file)).except("sources_sha")))
+      expect(helper.stale?).to be(true)
+
+      helper.install(force: true)
+      File.delete(File.join(tmp, "ruby"))
+      expect(helper.stale?).to be(true)
+    end
+
+    it "is not stale when not installed" do
+      expect(helper.stale?).to be(false)
+    end
+  end
+
   describe "#status" do
     it "reports not installed" do
       expect(macos.status).to include(installed: false, chi_version: "9.9.9")

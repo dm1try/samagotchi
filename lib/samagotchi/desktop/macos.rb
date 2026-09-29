@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "erb"
 require "fileutils"
 require "json"
@@ -81,7 +82,42 @@ module Samagotchi
       def launch_config
         env = { "LANG" => LANG }
         ENV_ALLOWLIST.each { |name| env[name] = @env[name] unless @env[name].to_s.empty? }
-        { "version" => @version, "argv" => [@ruby, @chi_path], "env" => env }
+        { "version" => @version, "argv" => [@ruby, @chi_path], "env" => env, "sources_sha" => sources_sha }
+      end
+
+      # A digest of what a build compiles: the Swift sources and the
+      # Info.plist template. The launch file records the one it was built
+      # from, so a new chi rebuilds only when these changed.
+      def sources_sha
+        files = Dir[File.join(@sources_dir, "*.swift")].sort + [File.join(SOURCES_DIR, "Info.plist.erb")]
+        Digest::SHA256.hexdigest(files.map { |f| "#{File.basename(f)}\0#{File.binread(f)}" }.join("\0"))
+      end
+
+      # Whether the installed app needs a rebuild (chi desktop upgrade): its
+      # sources changed since the build (a launch file without a digest
+      # counts as changed), or the launch file's ruby or chi is gone (a Ruby
+      # upgrade moved them).
+      def stale?
+        return false unless installed?
+
+        launch = read_launch
+        launch["sources_sha"] != sources_sha || !launch_ok?(launch)
+      end
+
+      # The launch file names another chi version or path than this one:
+      # refresh_launch_file fixes that without a rebuild.
+      def launch_outdated?
+        launch = read_launch
+        launch["version"] != @version || Array(launch["argv"]) != launch_config["argv"]
+      end
+
+      # Rewrite the launch file for this chi, keeping the env it was
+      # installed with. The app reads it at each send: no restart.
+      def refresh_launch_file
+        config = launch_config
+        env = read_launch["env"]
+        config["env"] = env if env.is_a?(Hash)
+        write_launch_file(config)
       end
 
       def warnings
@@ -155,9 +191,9 @@ module Samagotchi
         result = { installed: installed?, app_path: app_path, chi_version: @version }
         return result unless result[:installed]
 
-        launch = (JSON.parse(File.read(launch_path)) rescue nil)
-        argv = launch.is_a?(Hash) ? Array(launch["argv"]) : []
-        env = launch.is_a?(Hash) && launch["env"].is_a?(Hash) ? launch["env"] : {}
+        launch = read_launch
+        argv = Array(launch["argv"])
+        env = launch["env"].is_a?(Hash) ? launch["env"] : {}
         dump, = @runner.run([PBS, "-dump"])
         _, running = @runner.run(["pgrep", "-x", EXECUTABLE])
         hotkey = (JSON.parse(File.read(hotkey_path)) rescue nil)
@@ -166,7 +202,8 @@ module Samagotchi
           login: login,
           hotkey: hotkey.is_a?(Hash) ? hotkey : nil,
           launch_argv: argv,
-          launch_ok: !argv.empty? && argv.all? { |path| File.exist?(path) },
+          launch_ok: launch_ok?(launch),
+          stale: stale?,
           baked_dirs: env.select { |name, _| name.start_with?("XDG_") },
           service: dump.include?(BUNDLE_ID),
           running: running
@@ -232,10 +269,22 @@ module Samagotchi
         @arch ||= RbConfig::CONFIG["host_cpu"] == "arm64" ? "arm64" : `uname -m`.strip
       end
 
-      def write_launch_file
+      def read_launch
+        launch = JSON.parse(File.read(launch_path))
+        launch.is_a?(Hash) ? launch : {}
+      rescue SystemCallError, JSON::ParserError
+        {}
+      end
+
+      def launch_ok?(launch)
+        argv = Array(launch["argv"])
+        !argv.empty? && argv.all? { |path| File.exist?(path) }
+      end
+
+      def write_launch_file(config = launch_config)
         FileUtils.mkdir_p(@support_dir)
         tmp = "#{launch_path}.tmp"
-        File.write(tmp, JSON.pretty_generate(launch_config) + "\n")
+        File.write(tmp, JSON.pretty_generate(config) + "\n")
         File.rename(tmp, launch_path)
       end
 
