@@ -45,6 +45,15 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect { JSON.generate(turn) }.not_to raise_error
   end
 
+  it "keeps what an edit changed on its part, for a client that joins mid-turn" do
+    diff = { text: "@@ -1 +1 @@\n-a\n+b", added: 1, removed: 1, truncated: false, new_file: false }
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "edit", params: "path=x" },
+         { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "edit", output: "Edited x", diff: diff,
+           activity: { status: "ok" } })
+    expect(acc.current_turn[:parts].last).to include(tool: "edit", diff: diff)
+  end
+
   it "keeps a plugin tool's label on its part" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :tool_call_started, iteration: 1, call_index: 1, tool: "mcp_chrome_screenshot", label: "chrome: screenshot", params: "" })

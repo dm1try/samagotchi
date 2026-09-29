@@ -209,7 +209,7 @@ module Samagotchi
       # reasoning, never sent back), a result's tool_call_id, the image
       # refs of a user message or a tool result, and a plugin tool result's
       # tool_params and tool_labels (the live row's params line and label,
-      # never sent back).
+      # never sent back), and an edit/write result's tool_diffs (never sent).
       def plain(conversation)
         conversation.map do |entry|
           content = entry[:content].is_a?(Array) ? entry[:content] : entry[:content].to_s
@@ -220,6 +220,7 @@ module Samagotchi
           message[:thinking] = entry[:thinking] if entry[:thinking].is_a?(String) && !entry[:thinking].empty?
           message[:tool_params] = entry[:tool_params] if entry[:tool_params]
           message[:tool_labels] = entry[:tool_labels] if entry[:tool_labels]
+          message[:tool_diffs] = entry[:tool_diffs] if entry[:tool_diffs]
           message[AnswerDisplay::KEY] = entry[AnswerDisplay::KEY] if entry[AnswerDisplay::KEY]
           ContextNote::KEYS.each { |key| message[key] = entry[key] if entry.key?(key) }
           message
@@ -490,6 +491,8 @@ module Samagotchi
             # A plugin tool's params line, for the web's reload; never sent.
             entry[:tool_params] = run[:shown_params] if run[:shown_params]
             entry[:tool_labels] = run[:shown_label] if run[:shown_label]
+            # What an edit/write changed, for the web's reload; never sent.
+            entry[:tool_diffs] = run[:diff] if run[:diff]
             @conversation << entry
           end
           emit(type: :tool_dispatch_completed, iteration: iteration, call_count: tool_calls.length)

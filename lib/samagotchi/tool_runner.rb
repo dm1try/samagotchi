@@ -4,6 +4,8 @@ require_relative "tool_activity"
 require_relative "guardrails"
 require_relative "vision_context"
 require_relative "log"
+require_relative "edit_preview"
+require_relative "tools/tool_path"
 
 module Samagotchi
   # The single per-call path both loops use: the tool_call_started and
@@ -17,6 +19,10 @@ module Samagotchi
     # that returns many screenshots can't flood the context).
     MAX_IMAGES_PER_RESULT = 4
 
+    # file_before for a call that isn't an edit/write, or won't run.
+    NOT_AN_EDIT = Object.new.freeze
+    private_constant :NOT_AN_EDIT
+
     # @param kernel [KernelLoop] read lazily: Engine sets its hooks after
     #   the kernel is built.
     def initialize(kernel)
@@ -29,7 +35,9 @@ module Samagotchi
     #   shown_params: the params line the live row showed, and shown_label:
     #   its label ("chrome: screenshot"), only for a tool that isn't built in
     #   (the loops save them with the result, so a reload without the plugin
-    #   shows the same row)
+    #   shows the same row), and diff: what an edit/write changed in its
+    #   file (EditPreview.change; also on tool_call_completed, never in the
+    #   model's output)
     def run(call, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
       # The gate runs first, so tool_call_started shows the call that runs.
@@ -45,7 +53,9 @@ module Samagotchi
       # The ask comes after tool_call_started: the UI shows the tool line,
       # then the approval under it.
       settle_ask(verdict) if verdict.ask?
+      before = verdict.deny? ? NOT_AN_EDIT : file_before(call)
       result = verdict.deny? ? denied(call, verdict) : dispatch(call)
+      diff = file_change(call, before)
       result = approved(result, verdict) if verdict.allow? && verdict.decided_by
       result, images = attach_images(call, result) if result[:images]
 
@@ -61,16 +71,39 @@ module Samagotchi
       completed = { type: :tool_call_completed, iteration: iteration, call_count: call_count, call_index: call_index,
                     tool: call[:name], output: capped, output_truncated: truncated, activity: result[:activity] }
       completed[:images] = images if images&.any?
+      completed[:diff] = diff if diff
       emit(on_stream_event, completed)
 
       run = { output: output, capped_output: capped, truncated: truncated, activity: result[:activity] }
       run[:images] = images if images&.any?
       run[:shown_params] = params if params && plugin_tool?(call[:name])
       run[:shown_label] = label if label
+      run[:diff] = diff if diff
       run
     end
 
     private
+
+    # edit/write only: the file just before the call runs. The row diffs it
+    # with the file after, whatever the result says, so an edit that fails
+    # after writing still shows its change and one that wrote nothing shows
+    # none.
+    def file_before(call)
+      return NOT_AN_EDIT unless EditPreview.tool?(call[:name])
+
+      EditPreview.snapshot(Tools::ToolPath.normalize(call[:path]))
+    rescue StandardError
+      NOT_AN_EDIT
+    end
+
+    def file_change(call, before)
+      return nil if before.equal?(NOT_AN_EDIT)
+
+      EditPreview.change(before, EditPreview.snapshot(Tools::ToolPath.normalize(call[:path])))
+    rescue StandardError => e
+      Log.warn(:turn, "edit_diff_failed", tool: call[:name], error: "#{e.class}: #{e.message}")
+      nil
+    end
 
     # A tool's output can hold bytes that aren't UTF-8 (`printf '\xff'`, a
     # binary file). They become "?" here, before the output reaches the

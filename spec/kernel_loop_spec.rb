@@ -3,6 +3,7 @@
 require "samagotchi/kernel_loop"
 require "samagotchi/hooks"
 require "samagotchi/session"
+require "samagotchi/web/message_parts"
 require "fileutils"
 require "tmpdir"
 
@@ -162,6 +163,43 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(tool_response[:tool_labels]).to eq([nil, "notes: save"])
       expect(prompts[1]).not_to include("PREVIEW")
       expect(prompts[1]).not_to include("notes: save")
+    end
+
+    it "saves what an edit/write changed on its result (tool_diffs, one per call), read back after a reload" do
+      Dir.mktmpdir("kernel-diffs") do |dir|
+        path = File.join(dir, "notes.txt")
+        File.write(path, "one\ntwo\n")
+        prompts = []
+        allow(client).to receive(:complete) do |prompt|
+          prompts << prompt
+          next "done" if prompts.length > 1
+
+          %(<|tool_call>call:execute{command: "echo hi"}<tool_call|>) +
+            %(<|tool_call>call:write{path:<|"|>#{path}<|"|>,content:<|"|>one\nTWO\n<|"|>}<tool_call|>)
+        end
+        result = kernel.run([{ role: "user", content: "check" }])
+        tool_response = result.conversation.find { |message| message[:role] == "tool_response" }
+        expect(tool_response[:tool_diffs]).to eq(
+          [nil, { text: "@@ -1,2 +1,2 @@\n one\n-two\n+TWO", added: 1, removed: 1, truncated: false, new_file: false }]
+        )
+        expect(prompts[1]).not_to include("@@")
+
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: dir)
+        session.messages.concat(result.conversation)
+        session.save(state_dir: dir)
+        messages = Samagotchi::Session.load(session.id, state_dir: dir).messages
+        model = messages.find { |m| m[:content].to_s.include?("call:write") }
+        tools = Samagotchi::Web::MessageParts.for_message(model, messages.select { |m| m[:role] == "tool_response" })[:tools]
+        expect(tools.map { |t| t[:tool] }).to eq(%w[execute write])
+        expect(tools.first).not_to have_key(:diff)
+        expect(tools.last[:diff]).to include("added" => 1, "removed" => 1, "text" => "@@ -1,2 +1,2 @@\n one\n-two\n+TWO")
+      end
+    end
+
+    it "adds no tool_diffs when no call changed a file" do
+      allow(client).to receive(:complete).and_return(%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done")
+      tool_response = kernel.run([{ role: "user", content: "check" }]).conversation.find { |m| m[:role] == "tool_response" }
+      expect(tool_response).not_to have_key(:tool_diffs)
     end
 
     it "adds no tool_params for built-in calls" do

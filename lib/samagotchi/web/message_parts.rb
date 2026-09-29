@@ -93,9 +93,10 @@ module Samagotchi
         outputs = split_outputs(joined, calls.length)
         shown = saved_list(responses, :tool_params, calls.length)
         labels = saved_list(responses, :tool_labels, calls.length)
+        diffs = saved_list(responses, :tool_diffs, calls.length)
         images = split_images(responses, calls.length)
         calls.each_with_index.map do |call, i|
-          tool_part(call, outputs[i], registry, shown[i], images[i], label: labels[i])
+          tool_part(call, outputs[i], registry, shown[i], images[i], label: labels[i], diff: diffs[i])
         end
       end
 
@@ -124,7 +125,8 @@ module Samagotchi
           call = LLM::NativeToolNormalizer.normalize(ref) || { name: ref.name }
           response = by_id[field(raw, :id)] || (field(responses[i], :tool_call_id).nil? ? responses[i] : nil)
           tool_part(call, response && field(response, :content).to_s, registry, field(response, :tool_params),
-                    response && field(response, :images), label: field(response, :tool_labels))
+                    response && field(response, :images), label: field(response, :tool_labels),
+                                                          diff: field(response, :tool_diffs))
         end
       end
 
@@ -145,7 +147,9 @@ module Samagotchi
       end
 
       # +shown+ is the saved params line, when it is a String.
-      def tool_part(call, output, registry, shown = nil, images = nil, label: nil)
+      # +diff+ is what an edit/write changed (EditPreview.change), saved as
+      # tool_diffs.
+      def tool_part(call, output, registry, shown = nil, images = nil, label: nil, diff: nil)
         name = call[:name].to_s
         params = shown.is_a?(String) ? shown : ToolActivity.tool_activity_params(name, call, registry: registry)
         part = { tool: name, params: params.to_s }
@@ -156,6 +160,7 @@ module Samagotchi
         end
         refs = Array(images).select { |ref| ref.is_a?(Hash) }
         part[:images] = refs.map { |ref| ImageStore.symbolize(ref).slice(:file, :name, :width, :height) } unless refs.empty?
+        part[:diff] = diff if diff.is_a?(Hash)
         part
       end
 

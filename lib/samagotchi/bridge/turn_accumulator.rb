@@ -159,6 +159,7 @@ module Samagotchi
           tool[:output] = capped ? output[0, @max_output_chars] : output.dup
           tool[:output_truncated] = capped || !!event[:output_truncated]
           tool[:images] = event[:images] if event[:images]
+          tool[:diff] = event[:diff] if event[:diff]
         when :pending_input_merged
           # A steer-only merge (count 0) has no user part: the origins stay
           # for the user lines' own merge.

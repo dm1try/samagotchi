@@ -373,6 +373,7 @@ module Samagotchi
         image_counts = []
         shown_params = []
         shown_labels = []
+        diffs = []
         results = calls.map.with_index do |call, call_index|
           run = tool_runner.run(call, iteration: iteration_index + 1, call_index: call_index + 1,
                                       call_count: calls.length, on_stream_event: on_stream_event,
@@ -382,6 +383,7 @@ module Samagotchi
           image_counts << Array(run[:images]).size
           shown_params << run[:shown_params]
           shown_labels << run[:shown_label]
+          diffs << run[:diff]
           run[:output]
         end.join("\n\n---\n\n")
         emit_stream_event(on_stream_event, type: :tool_dispatch_completed, iteration: iteration_index + 1, call_count: calls.length)
@@ -395,6 +397,9 @@ module Samagotchi
         # a built-in), for the web's reload; the prompt never reads it.
         tool_response[:tool_params] = shown_params if shown_params.any?
         tool_response[:tool_labels] = shown_labels if shown_labels.any?
+        # What each edit/write changed (nil for other calls), in call order,
+        # for the web's reload; the prompt never reads it.
+        tool_response[:tool_diffs] = diffs if diffs.any?
         conversation << tool_response
         pending_tool_calls = true
       rescue Client::RequestCancelled => e

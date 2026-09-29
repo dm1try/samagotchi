@@ -4,6 +4,9 @@ require "spec_helper"
 require "samagotchi/llm/backend"
 require "samagotchi/llm/chat_loop"
 require "samagotchi/hooks"
+require "samagotchi/session"
+require "samagotchi/tools/write"
+require "samagotchi/web/message_parts"
 require "fileutils"
 require "tmpdir"
 require_relative "../support/fake_chat_adapter"
@@ -867,6 +870,38 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       allow(fake_kernel).to receive(:tools).and_return(registry)
       backend.adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "echo hi" }]), text("done"))
       expect(run.conversation[2].keys).not_to include(:tool_params, :tool_labels)
+    end
+  end
+
+  describe "what an edit/write changed (tool_diffs)" do
+    it "is saved on its result through plain(), never sent, and read back after a reload" do
+      Dir.mktmpdir("chat-diffs") do |dir|
+        path = File.join(dir, "kitty.conf")
+        File.write(path, "font_size 12\n")
+        allow(fake_kernel).to receive(:dispatch_tool_call) do |call|
+          { output: "[write]\n#{Samagotchi::Tools::Write.call(call[:content], path: call[:path])}",
+            activity: { tool: "write", status: "ok" } }
+        end
+        backend.adapter = adapter = FakeChatAdapter.new(
+          tools(["c1", "write", { "path" => path, "content" => "font_size 14\n" }], ["c2", "read", { "path" => path }]),
+          text("done")
+        )
+
+        result = run
+        diff = { text: "@@ -1 +1 @@\n-font_size 12\n+font_size 14", added: 1, removed: 1, truncated: false, new_file: false }
+        expect(result.conversation[2]).to include(role: "tool_response", tool_call_id: "c1", tool_diffs: diff)
+        expect(result.conversation[3].keys).not_to include(:tool_diffs)
+        run(result.conversation + [{ role: "user", content: "again" }])
+        adapter.requests.each { |request| request[:messages].each { |m| expect(m.keys).not_to include(:tool_diffs) } }
+
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: dir)
+        session.messages.concat(result.conversation)
+        session.save(state_dir: dir)
+        messages = Samagotchi::Session.load(session.id, state_dir: dir).messages
+        tools = Samagotchi::Web::MessageParts.for_message(messages[1], messages[2..3])[:tools]
+        expect(tools.first[:diff]).to include("text" => diff[:text], "new_file" => false)
+        expect(tools.last).not_to have_key(:diff)
+      end
     end
   end
 

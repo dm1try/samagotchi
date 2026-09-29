@@ -3,6 +3,9 @@
 require "samagotchi/tool_runner"
 require "samagotchi/hooks"
 require "samagotchi/tools/builtins"
+require "samagotchi/tools/edit"
+require "samagotchi/tools/write"
+require "tmpdir"
 
 # ToolRunner's per-call contract around the before_tool_call veto. The loop
 # level (text the model gets, both loops) is in
@@ -232,6 +235,62 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "is absent for a built-in, so its saved result stays as it was" do
       expect(run).not_to have_key(:shown_params)
+    end
+  end
+
+  describe "diff (what an edit/write changed, for its row)" do
+    around { |ex| Dir.mktmpdir { |dir| @dir = dir; ex.run } }
+
+    let(:kernel) do
+      k = Struct.new(:hooks, :dispatched) do
+        def dispatch_tool_call(call)
+          dispatched << call
+          out = case call[:name]
+                when "edit" then Samagotchi::Tools::Edit.call(call[:content], path: call[:path])
+                when "write" then Samagotchi::Tools::Write.call(call[:content], path: call[:path])
+                when "sneaky" then File.write(call[:path], "changed\n") && "Error: failed after writing"
+                else "ran"
+                end
+          { output: "[#{call[:name]}]\n#{out}", activity: { tool: call[:name], status: "ok" } }
+        end
+      end
+      k.new(hooks, dispatched)
+    end
+
+    def path(name = "f.txt") = File.join(@dir, name)
+
+    it "is on tool_call_completed and the run, and the model-facing output is unchanged" do
+      File.write(path, "a\nb\n")
+      result = run({ name: "edit", path: path, content: "<old>b</old><new>B</new>" })
+      diff = { text: "@@ -1,2 +1,2 @@\n a\n-b\n+B", added: 1, removed: 1, truncated: false, new_file: false }
+      expect(result[:diff]).to eq(diff)
+      expect(events.last).to include(type: :tool_call_completed, diff: diff)
+      expect(result[:output]).to eq("[edit]\nEdited #{path}: replaced 1 bytes with 1 bytes")
+      expect(result[:capped_output]).to eq(result[:output])
+    end
+
+    it "marks a written new file" do
+      expect(run({ name: "write", path: path("new.txt"), content: "x\n" })[:diff]).to include(new_file: true, added: 1)
+    end
+
+    it "is absent when the file didn't change (an edit that errors before writing)" do
+      File.write(path, "a\n")
+      result = run({ name: "edit", path: path, content: "<old>zzz</old><new>B</new>" })
+      expect(result).not_to have_key(:diff)
+      expect(events.last).not_to have_key(:diff)
+    end
+
+    it "shows a change the call made even when its result is an error" do
+      File.write(path, "orig\n")
+      stub_const("Samagotchi::EditPreview::TOOLS", %w[edit write sneaky])
+      expect(run({ name: "sneaky", path: path })[:diff]).to include(added: 1, removed: 1)
+    end
+
+    it "is absent for a denied edit and for other tools" do
+      File.write(path, "a\n")
+      hooks.register(:before_tool_call) { |e| e[:blocked] = true if e[:call][:name] == "edit" }
+      expect(run({ name: "edit", path: path, content: "<old>a</old><new>b</new>" })).not_to have_key(:diff)
+      expect(run).not_to have_key(:diff)
     end
   end
 end
