@@ -23,7 +23,8 @@ export default defineConfig({
   // on ?view=stage: the running turn in #turnStage, then handed off into
   // #history.
   projects: [
-    { name: "chromium" },
+    // @stage-only: the stage view's own scenarios (stage.spec.js).
+    { name: "chromium", grepInvert: /@stage-only/ },
     { name: "stage", grep: /@stage/, use: { view: "stage" } },
   ],
 });

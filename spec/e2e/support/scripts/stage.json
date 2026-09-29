@@ -1,0 +1,69 @@
+{
+ "delay": 0.005,
+ "iterations": [
+  {
+   "thinking": "First the shell.",
+   "tools": [
+    {
+     "name": "execute",
+     "arguments": {
+      "command": "sleep 0.4; echo one"
+     }
+    }
+   ],
+   "text": "Let me look around first."
+  },
+  {
+   "thinking": "Now the README.",
+   "tools": [
+    {
+     "name": "read",
+     "arguments": {
+      "path": "README.md",
+      "start_line": 1,
+      "end_line": 2
+     }
+    }
+   ]
+  },
+  {
+   "thinking": "A longer check next, it takes a moment.",
+   "tools": [
+    {
+     "name": "execute",
+     "arguments": {
+      "command": "sleep 0.6; echo two"
+     }
+    }
+   ],
+   "text": "Checking the shell once more, this time with a longer command that waits a little while before it answers, so that this one narration sentence runs well over two whole lines of the stage's headline slot, which must keep its height of exactly two lines whatever the sentence, and never push the tool row or the trail down."
+  },
+  {
+   "thinking": "The README again, to compare.",
+   "tools": [
+    {
+     "name": "read",
+     "arguments": {
+      "path": "README.md"
+     }
+    }
+   ]
+  },
+  {
+   "thinking": "One last command.",
+   "tools": [
+    {
+     "name": "execute",
+     "arguments": {
+      "command": "sleep 0.4; echo three"
+     }
+    }
+   ],
+   "text": "Almost done."
+  },
+  {
+   "thinking": "All checks ran: a long summary.",
+   "text": "## Summary\n\n- line 1: the check went fine\n- line 2: the check went fine\n- line 3: the check went fine\n- line 4: the check went fine\n- line 5: the check went fine\n- line 6: the check went fine\n- line 7: the check went fine\n- line 8: the check went fine\n- line 9: the check went fine\n- line 10: the check went fine\n- line 11: the check went fine\n- line 12: the check went fine\n- line 13: the check went fine\n- line 14: the check went fine\n- line 15: the check went fine\n- line 16: the check went fine\n- line 17: the check went fine\n- line 18: the check went fine\n- line 19: the check went fine\n- line 20: the check went fine\n- line 21: the check went fine\n- line 22: the check went fine\n- line 23: the check went fine\n- line 24: the check went fine\n- line 25: the check went fine\n- line 26: the check went fine\n- line 27: the check went fine\n- line 28: the check went fine\n- line 29: the check went fine\n- line 30: the check went fine\n- line 31: the check went fine\n- line 32: the check went fine\n- line 33: the check went fine\n- line 34: the check went fine\n- line 35: the check went fine\n- line 36: the check went fine\n- line 37: the check went fine\n- line 38: the check went fine\n- line 39: the check went fine\n- line 40: the check went fine\n\nAll **good**."
+  }
+ ]
+}
