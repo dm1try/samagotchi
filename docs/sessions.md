@@ -120,8 +120,9 @@ cancel during its thinking, it said it had never been asked.
 `chi send` is the other half of `chi note`: the text goes in as your message, the same as typing it in the attached terminal or the web composer, so a turn runs.
 
 ```sh
-chi send [-m TEXT] (ID|PREFIX)...
+chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...
 chi send -m "is this the same bug?" 3fa2           # a message
+chi send --image shot.png -m "why is this red?" 3fa2  # with an image
 pbpaste | chi send -m "is this the same bug?" 3fa2  # the clipboard quoted above the message
 pbpaste | chi send 3fa2                             # the clipboard is the message
 ```
@@ -130,7 +131,8 @@ pbpaste | chi send 3fa2                             # the clipboard is the messa
 - It goes through the same path as the web composer (`SessionManager.deliver_turn`): the worker's Bridge when it is up, so every attached UI shows it as your message (client id `cli:send`, shown like any user message); the input file when the worker is on its way out. During a running turn it is merged into that turn at the next step, like a message typed then.
 - A session with no worker gets one started (like `--attach` or the web composer). A session open in a plain REPL (`--no-shared`) refuses it. Only sessions on this machine: Bridges listen on 127.0.0.1.
 - Fire and forget: it returns once the message is queued and never prints the answer; that shows in whatever is attached. A guardrail "ask" waits for a UI to answer it, so with nothing attached the turn stalls there until one attaches (`chi --attach ID`).
-- One line per session: `sent`, `sent (the running turn picks it up)`, `sent (started its worker)`, `refused: …` or `failed: …`. Exit 0 when all were sent, 1 when any was refused, failed or not found, 2 for a usage error. There is no `--all`.
+- `--image PATH` (repeatable, up to 20) sends images with the message, as the web composer's chips do. Each file is read once before anything is sent (bmp, tiff and heic converted to png, large ones downscaled, as for `@path`); a missing file or one that isn't an image is a usage error (exit 2) and nothing is sent. Each session gets its own copy in `<session>/images/`. Text is still required (`-m` or stdin; context alone counts), also with `--wait`. The session's model must see images: a text-only one fails the turn in the session (the line here still says `sent`). A running turn doesn't take images mid-turn: the message runs as the next turn, and the line says `(runs after the current turn)`. With `--new` the session starts idle with the message as its preview, then the message goes in as its first turn once its worker is up (`<id>  started with 1 image`); if the worker doesn't come up in 5 s the session is kept, with its id on the `failed:` line.
+- One line per session: `sent`, `sent with 2 images`, `sent (the running turn picks it up)`, `sent (started its worker)`, `refused: …` or `failed: …`. Exit 0 when all were sent, 1 when any was refused, failed or not found, 2 for a usage error. There is no `--all`.
 
 The Automator action above works for messages too: swap its last line for `pbpaste | "$chi" send -m "what do you make of this?" $(print -r -- "$picked" | cut -f1)`.
 

@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi send --image PATH` (repeatable, up to 20): images go with the message
+  as attachments, the same as the web composer's chips; converted and
+  downscaled once, then copied into each session. Works with `--new` (the
+  session starts idle, then gets the message with its images) and `--wait`.
+  A missing file or a non-image stops the send before anything goes out.
+
 ## [0.3.0] - 2026-09-29
 
 ### Added

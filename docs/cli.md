@@ -16,7 +16,7 @@
 - `chi web --no-web-turn-view` — show turns as the classic row of bubbles instead of the default turn view (each turn as one block of steps, the running one at the bottom); `?view=turn|chat` on the page URL overrides it (see [Web turn view](#web-turn-view))
 - `chi sessions list|stop|archive|unarchive|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md))
 - `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
-- `chi send [-m TEXT] (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context (see [Sessions: Sending a message](sessions.md#sending-a-message)); `--new` starts a session with it instead, and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending; see [Starting a session](sessions.md#starting-a-session))
+- `chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context, and `--image` attaches images (see [Sessions: Sending a message](sessions.md#sending-a-message)); `--new` starts a session with it instead, and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending; see [Starting a session](sessions.md#starting-a-session))
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
 - `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles
 - `chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, in one table (see [Updating](#updating))
@@ -350,7 +350,7 @@ turns.
 
 ### Images
 
-A model that can see images gets them three ways:
+A model that can see images gets them these ways:
 
 - **`@path` in a prompt** (REPL, attached terminal, `-p`): `what's wrong in
   @shot.png?`, `@~/Desktop/a.jpg`, `@"my shot.png"`. Each `@` token that names an
@@ -365,6 +365,12 @@ A model that can see images gets them three ways:
 - **The Web UI**: paste or drop images into the composer. Each shows as a chip
   (× removes it) and is sent with the message; an image alone is sent as
   `[image: name]`. Messages show thumbnails; a click opens one full size.
+- **`chi send --image PATH`** (repeatable, up to 20) with a message, from a
+  script or another terminal: `chi send --image shot.png -m "why is this red?"
+  3fa2`. The attached terminal and the web show it like an image typed there.
+- **The desktop panel** (macOS, [Desktop](desktop.md#images)): a screenshot on
+  the clipboard, an image selected in Finder, or one dropped on the panel goes
+  as an attachment with the message.
 
 Images are downscaled to a 1568 px long side (with `sips` on macOS or
 ImageMagick; without either, a larger image is refused with a hint) and stored
