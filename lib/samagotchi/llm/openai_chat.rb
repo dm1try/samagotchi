@@ -90,13 +90,13 @@ module Samagotchi
         @host_name = host_name.to_s
         @api_key_env = api_key_env
         @stream = stream
-        @env = env
         @models_ttl = models_ttl
         @models_mutex = Mutex.new
         open_timeout, read_timeout = timeouts(timeout)
         policy = retry_policy || (retries ? nil : HTTP::RetryPolicy.none)
         @http = HTTP.new(label: @host_name, open_timeout: open_timeout, read_timeout: read_timeout,
-                         retry_policy: policy, sleeper: sleeper, first_token_timeout: first_token_timeout)
+                         retry_policy: policy, sleeper: sleeper, first_token_timeout: first_token_timeout,
+                         api_key: ApiKey.for(api_key_env, host: @host_name, env: env))
       end
 
       # @param messages [Array<Hash>] wire messages (role, content, tool_calls,
@@ -286,25 +286,11 @@ module Samagotchi
         Net::HTTP::Post.new(uri).tap do |request|
           request["Content-Type"] = "application/json"
           request["Session-Id"] = session_id.to_s unless session_id.to_s.empty?
-          authorize(request)
           request.body = JSON.generate(body)
         end
       end
 
-      def get_request(uri)
-        Net::HTTP::Get.new(uri).tap { |request| authorize(request) }
-      end
-
-      def authorize(request)
-        return unless @api_key_env
-
-        key = @env[@api_key_env].to_s
-        if key.strip.empty?
-          raise AuthError.new("#{@host_name}: set #{@api_key_env} (the API key for host #{@host_name})",
-                              host: @host_name)
-        end
-        request["Authorization"] = "Bearer #{key}"
-      end
+      def get_request(uri) = Net::HTTP::Get.new(uri)
 
       def model_entries(body)
         return [] unless body.is_a?(Hash)

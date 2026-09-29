@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/client"
+require "samagotchi/host_registry"
 require_relative "support/fake_provider_server"
 
 RSpec.describe Samagotchi::Client do
@@ -800,6 +801,62 @@ describe "server errors" do
     server.default("/models", status: 401, json: FakeProviderServer.fixture("error_401.hand-written.json"))
 
     expect { client.list_models }.to raise_error(Samagotchi::LLM::AuthError)
+  end
+end
+
+# A llama.cpp server started with --api-key wants `Authorization: Bearer`
+# on every route; the key comes from the host's api_key_env, as on the
+# OpenAI path.
+describe "API keys" do
+  around { |example| FakeProviderServer.without_webmock { example.run } }
+
+  let(:server) { FakeProviderServer.start }
+  let(:env) { {} }
+  let(:keyed) do
+    described_class.new(host: "127.0.0.1", port: server.port, name: "box", api_key_env: "BOX_KEY", env: env,
+                        sleeper: ->(_seconds) {})
+  end
+
+  after { server.stop }
+
+  it "sends the key as a bearer token on /completion, /props and /models" do
+    env["BOX_KEY"] = "sk-box-1"
+    server.default("/completion", sse: "data: {\"content\":\"Hi\",\"stop\":true}\n\n")
+    server.default("/props", json: { default_generation_settings: { n_ctx: 4096 } })
+    server.default("/models", json: { data: [] })
+
+    expect(keyed.complete("prompt")).to eq("Hi")
+    expect(keyed.context_window(model: "m")).to eq(4096)
+    keyed.list_models
+
+    expect(server.requests.map { |request| [request.path.split("?").first, request.header("Authorization")] })
+      .to eq([["/completion", "Bearer sk-box-1"], ["/props", "Bearer sk-box-1"], ["/models", "Bearer sk-box-1"]])
+  end
+
+  it "is given the key by a hosts: entry with api_key_env" do
+    env["BOX_KEY"] = "sk-box-1"
+    server.default("/completion", sse: "data: {\"content\":\"Hi\",\"stop\":true}\n\n")
+    registry = Samagotchi::HostRegistry.new(
+      hosts_config: { "box" => { host: "127.0.0.1", port: server.port, api_key_env: "BOX_KEY" } }, env: env
+    )
+
+    expect(registry.entries["box"].client.complete("prompt")).to eq("Hi")
+    expect(server.requests.last.header("Authorization")).to eq("Bearer sk-box-1")
+  end
+
+  it "raises AuthError naming the variable when it is not set, without a request" do
+    expect { keyed.complete("prompt") }
+      .to raise_error(Samagotchi::LLM::AuthError, /BOX_KEY/) { |error| expect(error.host).to eq("box") }
+    expect(server.requests).to be_empty
+  end
+
+  it "sends no header for a host without api_key_env" do
+    server.default("/completion", sse: "data: {\"content\":\"Hi\",\"stop\":true}\n\n")
+    client = described_class.new(host: "127.0.0.1", port: server.port, name: "box")
+
+    client.complete("prompt")
+
+    expect(server.requests.last.header("Authorization")).to be_nil
   end
 end
 

@@ -6,6 +6,7 @@ require_relative "../config"
 require_relative "../version"
 require_relative "../log"
 require_relative "errors"
+require_relative "api_key"
 
 module Samagotchi
   module LLM
@@ -101,8 +102,12 @@ module Samagotchi
       # @param sleeper [#call] waits the given seconds (specs pass a no-op)
       # @param first_token_timeout [Numeric, nil] seconds a stream may take to
       #   show something (see #stream_lines); nil: no limit
-      def initialize(label:, open_timeout:, read_timeout:, retry_policy: nil, sleeper: nil, first_token_timeout: nil)
+      # @param api_key [ApiKey, nil] sent on every request; nil: no
+      #   Authorization header (a local server)
+      def initialize(label:, open_timeout:, read_timeout:, retry_policy: nil, sleeper: nil, first_token_timeout: nil,
+                     api_key: nil)
         @label = label
+        @api_key = api_key
         @open_timeout = open_timeout
         @read_timeout = read_timeout
         @first_token_timeout = first_token_timeout&.positive? ? first_token_timeout : nil
@@ -210,8 +215,11 @@ module Samagotchi
 
       private
 
+      # User-Agent, and the host's key when it has one (AuthError, before
+      # any request, when its variable is not set).
       def identify(request)
         request["User-Agent"] = Samagotchi::USER_AGENT
+        @api_key&.authorize(request)
       end
 
       def start(uri, open_timeout: nil, read_timeout: nil, max_retries: nil, &block)

@@ -89,7 +89,8 @@ module Samagotchi
                               profile: cfg[:profile], first_token_timeout: cfg[:first_token_timeout],
                               vision: cfg[:vision], sampling: cfg[:sampling])
         entry.client = Client.new(host: cfg[:host], port: cfg[:port], transport: transport, scheme: cfg[:scheme],
-                                  first_token_timeout: entry.first_token_limit, name: entry.name)
+                                  first_token_timeout: entry.first_token_limit, name: entry.name,
+                                  api_key_env: entry.api_key_env, env: env)
         @entries[entry.name] = entry
       end
       # Fallback single entry (should already be synthesized by hosts_config, but guard)
