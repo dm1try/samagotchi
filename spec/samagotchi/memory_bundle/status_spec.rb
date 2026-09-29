@@ -32,6 +32,14 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
     expect(needs.map { |n| [n[:command], n[:found]] }).to eq([["chi-surely-missing-cmd", false], ["sh", true]])
   end
 
+  it "finds each installed file's index line (lines name the entry without .md)" do
+    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = system_dir
+    Samagotchi::MemoryBundle::Installer.new(source: fixture, name: "sample-needs", scope: "system").run
+    files = described_class.bundle_status("sample-needs")[:files]
+    expect(files).not_to be_empty
+    expect(files.transform_values { |f| f[:index_present] }).to all(satisfy { |_k, v| v == true })
+  end
+
   it "has no needs for a bundle that declares none" do
     expect(described_class.needs_status({})).to eq([])
   end
