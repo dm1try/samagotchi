@@ -8,6 +8,19 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Skills: a memory named `skill_<name>` holds the steps of a task you did with
+  chi. Say "let's memorize this" and chi saves it; next time it reads and
+  follows it, and fixes a step that turned out different in the same turn
+  (docs/memory.md, Skills). The system bundle's identity and memory guide
+  teach it; users get the new text with this release's system bundle.
+- The `skills` bundle (`chi bundle install skills`): `/skill save [name]
+  [--system]`, `/skill list`, `/skill show`, `/skill diff`; older versions of
+  each skill kept (`history_keep`) with a one-line diff after every update;
+  a nudge when a followed skill's step fails and the model goes on without
+  fixing it (docs/plugins.md, The skills bundle).
+
 ### Security
 
 - `chi web` and the worker Bridge refuse requests from other websites: before,

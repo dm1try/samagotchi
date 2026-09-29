@@ -34,6 +34,46 @@ names of a comma list are read). Its file and index line are untouched.
 These startup index reads are harness-injected context assembly and are not
 rendered as `tool>` activity lines.
 
+## Skills
+
+A **skill** is a memory named `skill_<name>` that holds the steps of a
+repeatable task you and chi did together: a release, a deploy, a data fix.
+chi is told about skills by the system bundle (`identity.md`, every turn, and
+`memory_guide.md`), so this works without installing anything:
+
+- **Saving.** Say "let's memorize this" or "save this as a skill" after the
+  task, and chi writes the skill with `memory_write` (project scope; system
+  when you ask, or when it isn't about this project) and shows it. On a vague
+  one ("I like how we did that") it may ask first.
+- **Following.** The skill's index line (the `description:` of its
+  `memory_write`, "Release a new version of this repo: …") is in every
+  prompt, so next time chi reads the skill and follows it.
+- **Updating.** When a step turned out different (a renamed script, an extra
+  step), chi fixes the skill in the same turn: those steps changed, the rest
+  kept, a dated Changelog line added. No confirmation.
+
+A skill is plain Markdown, no frontmatter:
+
+```markdown
+# Skill: release
+
+## Steps
+1. Run `scripts/verify.sh`; stop if it fails.
+2. …
+## Gotchas
+- …
+## Changelog
+- 2026-09-29 created
+- 2026-09-30 step 1: check.sh was renamed to verify.sh
+```
+
+It is a memory like any other: `memory_read`, `chi --mute skill_release`,
+`chi bundle build` share it. The optional `skills` bundle (`chi bundle install
+skills`, [docs/plugins.md](plugins.md#the-skills-bundle)) adds `/skill save`,
+`/skill list`, `/skill show`, `/skill diff`, keeps older versions with a
+one-line diff after each update, and nudges a model that skips a failing
+step instead of fixing the skill.
+
 ## Bundles that need outside commands
 
 A bundle's memory can rely on a command chi doesn't ship, such as a GitHub

@@ -814,6 +814,56 @@ with a line and carry on unchanged.
 | `/checkin mode ask` / `nudge` / `notify` | the mode |
 | `/checkin nudge` / `later` / `stop` | the card's actions, also by hand |
 
+## The skills bundle
+
+`chi bundle install skills` installs the bundle shipped with chi
+(`lib/samagotchi/bundles/skills/plugin.rb`): one anytime command, `chi.on`
+hooks, `ctx.sessions.send`, `ctx.notify` and `event[:steer]`. It has no memory
+file; skills themselves work without it ([docs/memory.md](memory.md#skills)).
+
+| | |
+|---|---|
+| `/skill save [name] [--system]` | sends this session a request to save what was just done as `skill_<name>` (chi picks a name when none is given), project scope unless `--system`. The request holds the skill's shape, so the result is the same with a model that never read the memory guide. It runs as a turn; sent while a turn runs, it joins that turn at its next step (the request says to finish the task first). An existing skill is updated. In a `--no-shared` REPL, which takes no messages, the command shows the request to send yourself |
+| `/skill list` | the `skill_*` memories of both scopes, with the date and description from the index |
+| `/skill show <name>` | one skill as saved (project first, as `memory_read` looks) |
+| `/skill diff <name> [N]` | the skill now against its N-th newest older version (default 1: before the last change), unified |
+
+**History.** Before `memory_write`, `write` or `edit` changes a
+`skill_<name>.md` in a memories folder, the file as it was is kept under
+`$XDG_STATE_HOME/samagotchi/plugins/skills/history/<scope>/<name>/` (`system`,
+or `project-<project folder>`), the newest `history_keep`. It is state, not a
+memory: `chi bundle build` and a synced `~/.config` never see it. After the
+call a line says what happened:
+
+```
+skills> skill release saved (project, 14 lines)
+skills> skill release updated (+2 −1): 1. Run `scripts/verify.sh`; stop if it fails. · /skill diff release
+```
+
+The line is the file on disk changing, whatever the tool answered; a denied
+write shows nothing.
+
+**The nudge** (`nudge: true`). Some models, finding a skill's step broken,
+skip it and go on without fixing the skill. In a turn that read a skill
+(`memory_read` of a `skill_*` name, or `read` of its file), the first failing
+tool call after it (an `execute` that exited non-zero, a tool error) steers
+the model once: *"A step of skill release failed. Find out why before skipping
+it; if the skill is out of date, fix it now: memory_write the whole skill,
+its title and every section as they were, that step fixed, a Changelog line
+added."* If the turn ends with a failed step and the
+skill not rewritten, one line says so: `skill release was followed, a step
+failed, the skill wasn't updated`. A failure unrelated to the skill (a test
+meant to fail) can set it off too: once per turn, and only after a skill was
+read.
+
+```yaml
+# config.yml
+bundles:
+  skills:
+    history_keep: 20   # older versions kept per skill
+    nudge: true        # steer once when a followed skill's step fails
+```
+
 ## Shutdown
 
 When the REPL exits, or a session's worker exits (an idle exit, `/exit`, a
