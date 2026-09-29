@@ -66,7 +66,7 @@ RSpec.describe Samagotchi::Engine do
 
       session = make_session
       engine.session = session
-      prompt = engine.instance_variable_get(:@prompt_builder).build
+      prompt = engine.instance_variable_get(:@prompt_builder).then { |b| b.send(:system_prompt_with_index, b.base) }
       expect(prompt).to include("Current session id: #{session.id} (resume later with `chi --resume #{session.id}`)")
       expect(prompt).to include("My debug log: #{Samagotchi::LogPath.resolve} (one record per line; this session's carry sid=#{session.id[0, 8]})")
     end
@@ -75,11 +75,11 @@ RSpec.describe Samagotchi::Engine do
       engine = build_engine(profile: "gemma4")
       session = make_session
       engine.session = session
-      plain = engine.instance_variable_get(:@prompt_builder).build
+      plain = engine.instance_variable_get(:@prompt_builder).then { |b| b.send(:system_prompt_with_index, b.base) }
       expect(plain).not_to include("Delegated by session")
 
       session.parent_id = "parent-1234"
-      prompt = engine.instance_variable_get(:@prompt_builder).build
+      prompt = engine.instance_variable_get(:@prompt_builder).then { |b| b.send(:system_prompt_with_index, b.base) }
       expect(prompt).to include("Current session id: #{session.id} (resume later with `chi --resume #{session.id}`)")
       expect(prompt).to match(/^Delegated by session parent-1234: it reads your final reply; reach it with send_note\.$/)
     end

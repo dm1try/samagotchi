@@ -51,11 +51,21 @@ module Samagotchi
       @requested_memories.map { |raw| split_memory_scope(raw).last }.uniq
     end
 
-    # The full prompt: #base wrapped with the index and the rest.
+    # The full prompt: #base wrapped with the index and the rest. Built once
+    # per loop and level (until #reset!) so the prompt prefix, and the
+    # server's KV cache for it, stay stable.
     # @param chat [Boolean] for the chat loop
     # @param thinking [Symbol, nil] the level (Thinking); nil: the effective model's
     def build(chat: false, thinking: nil)
-      system_prompt_with_index(assist_system_prompt(chat: chat, thinking: thinking), chat: chat, thinking: thinking)
+      @built ||= {}
+      @built[[chat, thinking]] ||= system_prompt_with_index(assist_system_prompt(chat: chat, thinking: thinking),
+                                                            chat: chat, thinking: thinking)
+    end
+
+    # Drops the built prompts: the next #build reads the profile, tools,
+    # indexes and memories again (a model or profile switch, changed tools).
+    def reset!
+      @built = nil
     end
 
     # The base prompt (specs, plugins' declarations).

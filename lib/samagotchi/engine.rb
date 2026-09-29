@@ -846,7 +846,7 @@ module Samagotchi
       @profile_resolution = nil
       @model_key = ModelOverlay.key_for(bare)
       @kernel.sync_model_key!(@model_key) if @kernel.respond_to?(:sync_model_key!)
-      @system_prompts = nil
+      @prompt_builder.reset!
       sync_kernel_client!
       @client.invalidate_context_window! if @client.respond_to?(:invalidate_context_window!)
       @metrics.forget_model_reports!
@@ -1718,8 +1718,7 @@ module Samagotchi
       target ||= @host_registry.resolve(@effective_model_name)
       chat = target.entry.chat?
       level = chat ? nil : thinking_level(target)
-      @system_prompts ||= {}
-      @system_prompts[[chat, level]] ||= @prompt_builder.build(chat: chat, thinking: level)
+      @prompt_builder.build(chat: chat, thinking: level)
     end
 
     # The base prompt (specs, plugins' declarations).
@@ -2405,7 +2404,7 @@ module Samagotchi
     # The tools changed (a plugin's chi.tools_changed!): the system prompts,
     # which declare them, are built again on the next turn.
     def tools_changed!
-      @system_prompts = nil
+      @prompt_builder&.reset!
     end
 
     # What a Plugin::Context reads and calls: the session now, and the
@@ -2754,7 +2753,7 @@ module Samagotchi
     # Everything that holds a profile follows the resolution: the kernel's
     # prompt format and parser, and the system prompts built for the old one.
     def apply_profile(resolution)
-      @system_prompts = nil if @profile_resolution && @profile_resolution.profile.name != resolution.profile.name
+      @prompt_builder&.reset! if @profile_resolution && @profile_resolution.profile.name != resolution.profile.name
       @kernel.use_profile!(resolution) if @kernel.respond_to?(:use_profile!)
       resolution
     end
