@@ -225,6 +225,166 @@ RSpec.describe Samagotchi::SendCommand do
     expect(out.string).to include("Usage: chi send", "-m TEXT", "chi sessions list --live")
   end
 
+  describe "--image" do
+    let(:fixtures) { File.expand_path("fixtures/images", __dir__) }
+    let(:png) { File.join(fixtures, "tiny.png") }
+    let(:jpg) { File.join(fixtures, "tiny.jpg") }
+
+    # Each ref names a file in that session's own images/.
+    def images_in(session, input)
+      input.fetch("images").map do |ref|
+        expect(File.file?(File.join(dir_of(session), ref["file"]))).to be(true), "#{ref["file"]} missing in #{short(session)}"
+        ref["name"]
+      end
+    end
+
+    it "copies the image into the session and sends it as a ref with the message" do
+      a = make(owner: "worker")
+      events = serve(a)
+
+      expect(run("--image", png, "-m", "why is this red?", short(a))).to eq(0), err.string
+
+      expect(out.string).to eq("#{short(a)}  sent with 1 image\n")
+      input = inputs_of(a).first
+      expect(input).to include("prompt" => "why is this red?", "client_id" => "cli:send")
+      expect(images_in(a, input)).to eq(["tiny.png"])
+      expect(events.first).to include(type: :turn_enqueued, images: [include(name: "tiny.png")])
+    end
+
+    it "sends each image to each session, from its own images/, ingesting a file once" do
+      a = make(owner: "worker")
+      b = make(owner: "worker")
+      serve(a)
+      serve(b)
+      allow(Samagotchi::ImageStore).to receive(:ingest).and_call_original
+
+      expect(run("--image=#{png}", "--image", jpg, "-m", "look", a.id, b.id)).to eq(0), err.string
+
+      expect(out.string.lines).to eq(["#{short(a)}  sent with 2 images\n", "#{short(b)}  sent with 2 images\n"])
+      expect(images_in(a, inputs_of(a).first)).to eq(["tiny.png", "tiny.jpg"])
+      expect(images_in(b, inputs_of(b).first)).to eq(["tiny.png", "tiny.jpg"])
+      expect(Samagotchi::ImageStore).to have_received(:ingest).twice
+    end
+
+    it "converts an image the model can't take (bmp) to png" do
+      skip "no sips or ImageMagick" unless Samagotchi::ImageResizer.detect.available?
+      a = make(owner: "worker")
+      serve(a)
+
+      expect(run("--image", File.join(fixtures, "tiny.bmp"), "-m", "hm", a.id)).to eq(0), err.string
+      expect(inputs_of(a).first["images"].first["file"]).to end_with(".png")
+    end
+
+    it "says a busy session runs the image message after the current turn" do
+      a = make(owner: "worker", status: Samagotchi::Session::STATUS_RUNNING)
+      serve(a)
+
+      expect(run("--image", png, "-m", "and this?", a.id)).to eq(0)
+      expect(out.string).to eq("#{short(a)}  sent with 1 image (runs after the current turn)\n")
+    end
+
+    it "refuses a missing file, a non-image or too many images before sending anything" do
+      a = make(owner: "worker")
+      serve(a)
+
+      expect(run("--image", "/nope/shot.png", "-m", "x", a.id)).to eq(2)
+      expect(err.string).to include("chi send: /nope/shot.png: no such file")
+      # A text file named .png.
+      expect(run("--image", File.join(fixtures, "text.png"), "-m", "x", a.id)).to eq(2)
+      expect(err.string).to include("chi send: text.png is not an image chi can send")
+      expect(run(*(["--image", png] * 21), "-m", "x", a.id)).to eq(2)
+      expect(err.string).to include("at most 20 images")
+      expect(inputs_of(a)).to be_empty
+    end
+
+    it "needs text with the images, also with --wait (which would otherwise only wait)" do
+      a = make(owner: "worker")
+      tty = StringIO.new("")
+      def tty.tty? = true
+
+      expect(run("--image", png, a.id, stdin: tty)).to eq(2)
+      expect(run("--wait", "--image", png, a.id, stdin: tty)).to eq(2)
+      expect(err.string.scan("chi send: --image needs a message: pass -m TEXT or pipe it in").size).to eq(2)
+      expect(inputs_of(a)).to be_empty
+    end
+
+    it "takes piped context as the text" do
+      a = make(owner: "worker")
+      serve(a)
+
+      expect(run("--image", png, a.id, stdin: StringIO.new("the error log\n"))).to eq(0), err.string
+      expect(inputs_of(a).first).to include("prompt" => "the error log")
+    end
+
+    it "fails the one session it can't copy into and still sends to the others" do
+      a = make(owner: "worker")
+      b = make(owner: "worker")
+      serve(b)
+      allow(Samagotchi::ImageStore).to receive(:copy_file).and_call_original
+      allow(Samagotchi::ImageStore).to receive(:copy_file)
+        .with(anything, from: anything, to: dir_of(a)).and_raise(Errno::ENOSPC, "images")
+
+      expect(run("--image", png, "-m", "x", a.id, b.id)).to eq(1)
+      expect(out.string.lines).to eq(["#{short(a)}  failed: No space left on device - images\n",
+                                      "#{short(b)}  sent with 1 image\n"])
+      expect(inputs_of(a)).to be_empty
+    end
+
+    it "fails a session whose worker predates images, with the reason" do
+      a = make(owner: "worker")
+      engine = Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client),
+                                      kernel: instance_double(Samagotchi::KernelLoop))
+      bridge = Samagotchi::Bridge.new(engine: engine, state_dir: tmpdir, session_id: a.id, heartbeat_interval: 5,
+                                      input_format: 2)
+      bridge.start
+      bridges << bridge
+
+      expect(run("--image", png, "-m", "x", a.id)).to eq(1)
+      expect(out.string).to eq("#{short(a)}  failed: this session's worker predates images: restart it (/exit, then resume)\n")
+      expect(inputs_of(a)).to be_empty
+    end
+
+    it "with --new starts the session idle, waits for its worker, then sends the turn with the image (one worker)" do
+      started = nil
+      worker = nil
+      allow(Process).to receive(:spawn) do
+        # The worker coming up a moment later, as a real one does: it owns
+        # the session, then serves its Bridge.
+        started ||= Samagotchi::Session.list(state_dir: tmpdir).first
+        worker ||= Thread.new do
+          sleep(0.3)
+          locks << Samagotchi::OwnerLock.acquire(dir_of(started), kind: "worker")
+          serve(started)
+        end
+        40_005
+      end
+
+      Dir.mktmpdir("proj") do |dir|
+        expect(run("--new", "--dir", dir, "--image", png, "-m", "what is this?")).to eq(0), err.string
+      end
+
+      worker.join
+      expect(Process).to have_received(:spawn).once
+      expect(out.string).to eq("#{started.id}  started with 1 image\n")
+      session = Samagotchi::Session.load(started.id, state_dir: tmpdir)
+      expect(session.last_prompt).to be_nil
+      expect(session.first_preview).to eq("what is this?")
+      input = inputs_of(started).first
+      expect(input).to include("prompt" => "what is this?")
+      expect(images_in(started, input)).to eq(["tiny.png"])
+    end
+
+    it "with --new keeps the idle session and names it when its worker never comes up" do
+      stub_const("Samagotchi::SessionManager::TURN_BRIDGE_WAIT", 0)
+      allow(Process).to receive(:spawn).and_return(40_006)
+
+      expect(run("--new", "--image", png, "-m", "hi")).to eq(1)
+      started = Samagotchi::Session.list(state_dir: tmpdir).first
+      expect(out.string).to eq("#{started.id}  failed: its worker did not start; the session is kept (chi --attach #{started.id})\n")
+      expect(Process).to have_received(:spawn).once
+    end
+  end
+
   describe "bin/chi send" do
     let(:chi) { File.expand_path("../bin/chi", __dir__) }
 

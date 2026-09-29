@@ -147,6 +147,23 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     expect(err.string).to eq("#{@started.id}  started\n")
   end
 
+  it "with --image starts the session idle, sends the image turn and prints its reply" do
+    allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(instance_double(Samagotchi::BridgeClient))
+    allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, images:, **|
+      delivered << [id, prompt, images.map { |ref| ref[:name] }]
+      later { write_reply(@started, "a red square") }
+      { status: :accepted, ack: {} }
+    end
+    png = File.expand_path("fixtures/images/tiny.png", __dir__)
+
+    expect(run("--new", "--wait", "--image", png, "-m", "what is it?")).to eq(0), err.string
+    expect(Samagotchi::SessionManager).to have_received(:spawn_session)
+      .with(prompt: nil, title: "what is it?", working_directory: nil, model_name: nil, state_dir: tmpdir)
+    expect(delivered).to eq([[@started.id, "what is it?", ["tiny.png"]]])
+    expect(out.string).to eq("a red square\n")
+    expect(err.string).to eq("#{@started.id}  started with 1 image\n")
+  end
+
   it "exits 3 with the attach hint when the turn waits for an answer" do
     later { update(@started, pending_question: { id: "q1", kind: "approval", question: "Run rm -rf build?" }) }
 

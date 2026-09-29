@@ -4,6 +4,7 @@ require_relative "session"
 require_relative "session_manager"
 require_relative "context_quote"
 require_relative "reply_wait"
+require_relative "image_store"
 
 module Samagotchi
   # `chi send`: put text into sessions as the user's message, the same as
@@ -19,16 +20,23 @@ module Samagotchi
     # No live worker this long while waiting: it died before it could mark
     # the session (a worker takes well under a second to start).
     WORKER_GONE_AFTER = 5
+    # The Bridge's cap on one turn's images (Bridge::MAX_TURN_IMAGES).
+    MAX_IMAGES = 20
 
     USAGE = <<~TEXT
-      Usage: chi send [-m TEXT] (ID|PREFIX)...
-             chi send --new [--dir DIR] [--model M] [-m TEXT]
-             chi send --wait [--timeout S] [-m TEXT] (--new | ID)
+      Usage: chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...
+             chi send --new [--dir DIR] [--model M] [-m TEXT] [--image PATH]...
+             chi send --wait [--timeout S] [-m TEXT] [--image PATH]... (--new | ID)
              chi send --wait [--timeout S] ID
         Sends a message to each session, as if typed in it: a turn starts,
         or a running one picks it up. A stopped session's worker starts.
         -m TEXT     the message; stdin, when piped too, goes above it as a
                     quote (context); without -m, stdin is the message
+        --image PATH
+                    an image sent with the message (png, jpeg, gif, webp;
+                    others converted, large ones downscaled); repeat for
+                    more, up to 20. Needs text too (-m or stdin) and a
+                    model that sees images
         --new       start a new session with the message instead, as the
                     web does, and print its id
         --dir DIR   (--new) its folder, the project it belongs to; default
@@ -65,6 +73,11 @@ module Samagotchi
       # With --wait stdout is the answer alone.
       @info = options[:wait] ? @stderr : @stdout
       prompt = compose(utf8(read_stdin), utf8(options[:message]))
+      # Before the wait-only case, which would drop the images.
+      if prompt.nil? && !options[:images].empty?
+        usage_error("--image needs a message: pass -m TEXT or pipe it in")
+        return 2
+      end
       return run_wait_only(options) if prompt.nil? && options[:wait] && !options[:new]
       unless prompt
         usage_error("no message: pass -m TEXT or pipe it in")
@@ -76,6 +89,7 @@ module Samagotchi
         @stderr.puts("chi send: #{e.message}")
         return 1
       end
+      return 2 unless ingest_images(options[:images])
 
       return run_new(prompt, options) if options[:new]
       return run_wait(prompt, options) if options[:wait]
@@ -91,12 +105,14 @@ module Samagotchi
         deliver(id, prompt)
       end
       results.all? ? 0 : 1
+    ensure
+      FileUtils.rm_rf(@image_dir) if @image_dir
     end
 
     private
 
     def parse
-      options = { ids: [] }
+      options = { ids: [], images: [] }
       until @argv.empty?
         arg = @argv.shift
         case arg
@@ -110,6 +126,8 @@ module Samagotchi
         when "--dir", "--model"
           options[arg.delete_prefix("--").to_sym] = @argv.shift or return usage_error("#{arg} needs a value")
         when /\A--(dir|model)=(.*)\z/m then options[Regexp.last_match(1).to_sym] = Regexp.last_match(2)
+        when "--image" then options[:images] << (@argv.shift or return usage_error("#{arg} needs a value"))
+        when /\A--image=(.*)\z/m then options[:images] << Regexp.last_match(1)
         when "--wait" then options[:wait] = true
         when "--timeout" then options[:timeout] = @argv.shift or return usage_error("#{arg} needs a value")
         when /\A--timeout=(.*)\z/ then options[:timeout] = Regexp.last_match(1)
@@ -127,6 +145,7 @@ module Samagotchi
         return usage_error("--timeout takes seconds") unless options[:timeout]&.positive?
       end
       return usage_error("--wait takes one session") if options[:wait] && options[:ids].uniq.size > 1
+      return usage_error("at most #{MAX_IMAGES} images") if options[:images].size > MAX_IMAGES
       return new_options(options) if options[:new]
       %i[dir model].each { |key| return usage_error("--#{key} needs --new") if options[key] }
       return usage_error("give session ids") if options[:ids].empty?
@@ -185,14 +204,22 @@ module Samagotchi
     # fails in the worker.
     # @return [Integer] the exit status
     def run_new(prompt, options)
+      images = !@images.empty?
       begin
-        session = SessionManager.spawn_session(prompt: prompt, working_directory: options[:dir],
-                                               model_name: options[:model], state_dir: @state_dir)
+        # With images the web's way: idle (the message names it in the
+        # lists), the images copied in, then the message as a turn.
+        start = images ? { prompt: nil, title: prompt } : { prompt: prompt }
+        session = SessionManager.spawn_session(**start, working_directory: options[:dir],
+                                                        model_name: options[:model], state_dir: @state_dir)
       rescue StandardError => e
         error_line("chi send: could not start a session: #{e.message}")
         return 1
       end
-      @info.puts("#{session.id}  started")
+      if images
+        return 1 unless deliver_new(session, prompt)
+      else
+        @info.puts("#{session.id}  started")
+      end
       return 0 unless options[:wait]
 
       wait_for_reply(session.id, cursor: nil, baseline: { messages: session.messages.size, question_id: nil },
@@ -270,21 +297,56 @@ module Samagotchi
       0
     end
 
+    # A new idle session's first turn, with the images. Its worker's Bridge
+    # first: deliver_turn wakes a worker when none owns the session yet,
+    # and the spawned one takes its lock only once it runs.
+    # @return [Boolean] whether the message was queued
+    def deliver_new(session, prompt)
+      dir = Session.session_dir(session.id, state_dir: @state_dir)
+      result = nil
+      begin
+        refs = copy_images(dir)
+        if BridgeClient.wait_for(session.id, session_dir: dir, timeout: SessionManager::TURN_BRIDGE_WAIT)
+          result = SessionManager.deliver_turn(session.id, prompt: prompt, client_id: CLIENT_ID, images: refs,
+                                                           state_dir: @state_dir)
+        end
+      rescue StandardError => e
+        @info.puts("#{session.id}  failed: #{e.message}")
+        return false
+      end
+      # Kept, not deleted: it holds the images, and the message shows as
+      # its preview; the user can attach and send it again.
+      unless result
+        @info.puts("#{session.id}  failed: its worker did not start; the session is kept (chi --attach #{session.id})")
+        return false
+      end
+      unless result[:status] == :accepted
+        @info.puts("#{session.id}  failed: #{result.dig(:ack, "detail") || "could not queue it"}")
+        return false
+      end
+
+      @info.puts("#{session.id}  started#{with_images}")
+      true
+    end
+
     # @return [Boolean] whether the message was queued
     def deliver(id, prompt)
       short = id[0, 8]
       owner = SessionManager.session_owner(id, state_dir: @state_dir)
       running = owner && Session.load(id, state_dir: @state_dir).status == Session::STATUS_RUNNING
-      result = SessionManager.deliver_turn(id, prompt: prompt, client_id: CLIENT_ID, state_dir: @state_dir)
+      refs = copy_images(Session.session_dir(id, state_dir: @state_dir))
+      result = SessionManager.deliver_turn(id, prompt: prompt, client_id: CLIENT_ID, images: refs, state_dir: @state_dir)
       unless result[:status] == :accepted
         @info.puts("#{short}  failed: #{result.dig(:ack, "detail") || "could not queue it"}")
         return false
       end
 
+      # A busy worker runs a message with images as its own next turn
+      # rather than merging it into the running one.
       note = if owner.nil? then " (started its worker)"
-             elsif running then " (the running turn picks it up)"
+             elsif running then refs.empty? ? " (the running turn picks it up)" : " (runs after the current turn)"
              end
-      @info.puts("#{short}  sent#{note}")
+      @info.puts("#{short}  sent#{with_images}#{note}")
       true
     rescue SessionManager::OwnedByTUI
       @info.puts("#{short}  refused: it is open in a chi REPL; messages need attached mode")
@@ -292,6 +354,38 @@ module Samagotchi
     rescue StandardError => e
       @info.puts("#{short}  failed: #{e.message}")
       false
+    end
+
+    # Each --image read, converted and downscaled once, into a scratch
+    # session dir; each target then gets copies of the stored files. A file
+    # that can't be sent stops everything before anything is sent.
+    # @return [Boolean] false after the error line
+    def ingest_images(paths)
+      @images = []
+      return true if paths.empty?
+
+      @image_dir = Dir.mktmpdir("chi-send-images")
+      @images = paths.map { |path| ImageStore.ingest(@image_dir, path: path) }
+      true
+    rescue ImageStore::Error => e
+      error_line("chi send: #{e.message}")
+      false
+    end
+
+    # The images' files copied into a session dir, as the refs a turn takes.
+    def copy_images(session_dir)
+      @images.map do |ref|
+        ImageStore.copy_file(ref, from: @image_dir, to: session_dir)
+        { file: ref[:file], name: ref[:name] }
+      end
+    end
+
+    def with_images
+      case @images.size
+      when 0 then ""
+      when 1 then " with 1 image"
+      else " with #{@images.size} images"
+      end
     end
 
     # The text as UTF-8 whatever the locale says: with no LANG/LC_* (an app

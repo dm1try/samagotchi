@@ -262,12 +262,7 @@ module Samagotchi
         next message unless images.is_a?(Array) && !images.empty?
 
         kept, gone = from ? images.partition { |ref| valid_ref?(from, ref) } : [[], images]
-        kept.each do |ref|
-          file = (ref[:file] || ref["file"]).to_s
-          target = File.join(to.to_s, file)
-          FileUtils.mkdir_p(File.dirname(target))
-          FileUtils.cp(File.join(from.to_s, file), target) unless File.exist?(target)
-        end
+        kept.each { |ref| copy_file(ref, from: from, to: to) }
         dropped += gone.size
         message = message.reject { |key, _| key.to_s == "images" }
         message[:images] = kept unless kept.empty?
@@ -278,6 +273,15 @@ module Samagotchi
         message
       end
       [copied, dropped]
+    end
+
+    # One stored image's file from session dir +from+ into +to+ (kept when
+    # it is there already: the name is the content's hash).
+    def self.copy_file(ref, from:, to:)
+      file = (ref[:file] || ref["file"]).to_s
+      target = File.join(to.to_s, file)
+      FileUtils.mkdir_p(File.dirname(target))
+      FileUtils.cp(File.join(from.to_s, file), target) unless File.exist?(target)
     end
 
     # A ref for an image already stored in this session (a web upload),
