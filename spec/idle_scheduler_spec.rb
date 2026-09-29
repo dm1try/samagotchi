@@ -112,7 +112,9 @@ RSpec.describe Samagotchi::IdleScheduler do
       allow(job_b).to receive(:tick) { counts[:b] += 1 }
       scheduler = described_class.new(engine: engine, jobs: [job_a, job_b])
       scheduler.start
-      sleep(1.2) # a few 0.5s poll cycles
+      # A few 0.5 s poll cycles, however long a slow runner takes for them.
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
+      sleep(0.05) until counts.values_at(:a, :b).min >= 2 || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
       scheduler.stop
       expect(counts[:a]).to be >= 2
       expect(counts[:b]).to be >= 2

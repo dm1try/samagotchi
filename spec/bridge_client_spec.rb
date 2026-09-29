@@ -282,7 +282,8 @@ RSpec.describe Samagotchi::BridgeClient do
     client = described_class.new(session_id: "s1", port: server.local_address.ip_port)
     reader = Thread.new { client.stream(running: -> { running }) { chunks += 1 } }
 
-    sleep 0.3
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
+    sleep 0.01 until chunks.positive? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
     expect(chunks).to be > 0
     running = false
     expect(reader.join(1.5)).to eq(reader)
