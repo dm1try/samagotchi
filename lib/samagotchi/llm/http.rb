@@ -396,7 +396,8 @@ module Samagotchi
                                  status: error.is_a?(ProviderError) ? error.status : nil, error: error.class.name,
                                  msg: error.message.to_s[0, 300])
         on_retry&.call(attempt: attempts, max_retries: @retry_policy.max, next_delay: delay,
-                       error_class: error.class.name, error_message: error.message)
+                       error_class: error.class.name, error_message: error.message,
+                       status: error.is_a?(ProviderError) ? error.status : nil)
         wait(delay, cancel_controller)
       end
 

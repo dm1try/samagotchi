@@ -108,6 +108,24 @@ test("openStream falls back to text when JSON.parse fails", () => {
   assert.deepEqual(seen.r, { text: "not-json" });
 });
 
+test("openStream listens for provider retries and plugin init waits", () => {
+  const esHolder = {};
+  const Fake = class extends FakeEventSource {
+    constructor(u) {
+      super(u);
+      esHolder.es = this;
+    }
+  };
+  const seen = [];
+  openStream("abc", 0, {
+    generation_retrying: (d) => seen.push(["retry", d.attempt]),
+    plugin_init_wait: (d) => seen.push(["wait", d.tasks.length]),
+  }, { EventSourceImpl: Fake });
+  esHolder.es.dispatch("generation_retrying", { data: JSON.stringify({ attempt: 2 }) });
+  esHolder.es.dispatch("plugin_init_wait", { data: JSON.stringify({ tasks: [{}] }) });
+  assert.deepEqual(seen, [["retry", 2], ["wait", 1]]);
+});
+
 test("openStream only registers listeners for supplied handlers", () => {
   const seen = [];
   const esHolder = {};

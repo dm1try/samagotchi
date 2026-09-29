@@ -1,5 +1,5 @@
 # Fake OpenAI-compatible server for the web e2e suite (spec/e2e) and smoke runs. Mode is read per request from
-# <dir>/mode (ok|400|401|429|500|malformed|stream_error|stream_error_always|stall|empty|script|forward).
+# <dir>/mode (ok|400|401|429|500|503_then_script|malformed|stream_error|stream_error_always|stall|empty|script|forward).
 # script: a multi-iteration turn from <dir>/script.json (see scripts/turn.json next to this file): the
 # request's tool results since the last user message pick the iteration; each streams its "thinking"
 # (reasoning_content), "text" (content) word by word ("delay" s apart, default 0.12) and its "tools" as
@@ -10,6 +10,7 @@
 # last user message (an empty-answer retry's nudge) counts as a step too, so an empty iteration can be followed by
 # an answer. /v1/models lists "fake-script";
 # no upstream needed.
+# 503_then_script: one 503 with Retry-After: 3 (a provider retry the UIs show), then flips to script.
 # empty: a 200 stream whose only delta is content "" with finish_reason stop (nemotron's empty answer).
 # stall: a 200 that sends only OpenRouter's keep-alive comments (every 0.3 s) until the client hangs up or 600 s pass,
 # the shape of a queued free model (checks the first-token limit).
@@ -55,6 +56,9 @@ class H(http.server.BaseHTTPRequestHandler):
             open(os.path.join(DIR, "mode"), "w").write("forward")
             return self._send(429, json.dumps({"error": {"message": "rate limited"}}), extra={"Retry-After": "2"})
         if m == "500": return self._send(500, json.dumps({"error": {"message": "boom"}}))
+        if m == "503_then_script":
+            open(os.path.join(DIR, "mode"), "w").write("script")
+            return self._send(503, json.dumps({"error": {"message": "overloaded"}}), extra={"Retry-After": "3"})
         if m == "malformed": return self._send(200, "{not json", )
         if m in ("stream_error", "stream_error_always"):
             if m == "stream_error": open(os.path.join(DIR, "mode"), "w").write("forward")

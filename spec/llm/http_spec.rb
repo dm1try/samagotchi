@@ -53,8 +53,8 @@ RSpec.describe Samagotchi::LLM::HTTP do
                                            on_network_error: ->(error) { errors << error }) { |line| lines << line }
 
       expect(lines).to eq(["data: 2", ""])
-      expect(retries.map { |event| event.slice(:attempt, :max_retries, :next_delay) })
-        .to eq([{ attempt: 1, max_retries: 2, next_delay: 0.5 }])
+      expect(retries.map { |event| event.slice(:attempt, :max_retries, :next_delay, :status) })
+        .to eq([{ attempt: 1, max_retries: 2, next_delay: 0.5, status: nil }])
       expect(errors.size).to eq(1)
     end
 
@@ -331,7 +331,7 @@ RSpec.describe Samagotchi::LLM::HTTP do
         shown.call unless line.empty?
       end
 
-      expect(retries.map { |event| event[:error_class] }).to eq(["Samagotchi::LLM::RateLimited"])
+      expect(retries.map { |event| event.slice(:error_class, :status) }).to eq([{ error_class: "Samagotchi::LLM::RateLimited", status: 429 }])
       expect(server.requests.size).to eq(2)
     end
 
