@@ -5,6 +5,9 @@ require_relative "session_manager"
 require_relative "context_quote"
 require_relative "reply_wait"
 require_relative "image_store"
+require_relative "host_registry"
+require_relative "model_profile"
+require_relative "vision_support"
 
 module Samagotchi
   # `chi send`: put text into sessions as the user's message, the same as
@@ -36,7 +39,8 @@ module Samagotchi
                     an image sent with the message (png, jpeg, gif, webp;
                     others converted, large ones downscaled); repeat for
                     more, up to 20. Needs text too (-m or stdin) and a
-                    model that sees images
+                    model that sees images: a session whose model is
+                    known not to is refused before anything is sent
         --new       start a new session with the message instead, as the
                     web does, and print its id
         --dir DIR   (--new) its folder, the project it belongs to; default
@@ -53,6 +57,40 @@ module Samagotchi
         or web page, not here.
         Find ids with: chi sessions list --live [--scope=all] [--format tsv]
     TEXT
+
+    # Whether +model_name+ (a session's; blank: the configured default)
+    # takes images, decided as its worker decides before a turn with images
+    # (Engine#turn_vision: VisionSupport, with models.<name>.vision under
+    # the name as given (maybe an alias), the alias's target, the part
+    # after a host prefix and the bare name, as after /model). A native
+    # host whose /props doesn't answer is unknown here, not a no: the
+    # worker asks again when the turn runs.
+    # @return [VisionSupport::Answer] value nil when unknown
+    def self.vision_answer(model_name, registry: nil)
+      registry ||= HostRegistry.new
+      name = ModelProfile.required_model_name(model_name)
+      aliased = ConfigFile.resolve_model_alias(name)
+      target = registry.resolve(aliased)
+      names = [name, aliased, registry.parse_qualified_model(name).last, target.bare_model].compact.uniq
+      entry = target.entry
+      return VisionSupport.for(target, adapter: registry.adapter_for(entry), names: names) if entry.chat?
+
+      profile = ModelProfile.resolve(names: names, entry: entry, client: target.client, bare_model: target.bare_model).profile
+      answer = VisionSupport.for(target, profile: profile, names: names)
+      props = target.client.respond_to?(:server_props) ? target.client.server_props(model: target.bare_model) : nil
+      return UNKNOWN_VISION if answer.no? && !props&.answered? && !configured_no?(answer)
+
+      answer
+    rescue StandardError
+      UNKNOWN_VISION
+    end
+
+    UNKNOWN_VISION = VisionSupport::Answer.new(value: nil, reason: nil)
+
+    # A no from the config (models: / hosts: vision: false) holds without
+    # the server.
+    def self.configured_no?(answer) = answer.reason.to_s.include?("sets vision: false")
+    private_class_method :configured_no?
 
     # @param argv [Array<String>] the arguments after "send"
     def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil)
@@ -205,6 +243,10 @@ module Samagotchi
     # @return [Integer] the exit status
     def run_new(prompt, options)
       images = !@images.empty?
+      if images && (refusal = vision_refusal(options[:model]))
+        error_line("chi send: refused: #{refusal}")
+        return 1
+      end
       begin
         # With images the web's way: idle (the message names it in the
         # lists), the images copied in, then the message as a turn.
@@ -332,8 +374,13 @@ module Samagotchi
     # @return [Boolean] whether the message was queued
     def deliver(id, prompt)
       short = id[0, 8]
+      session = Session.load(id, state_dir: @state_dir)
+      if !@images.empty? && (refusal = vision_refusal(session.model_name))
+        @info.puts("#{short}  refused: #{refusal}")
+        return false
+      end
       owner = SessionManager.session_owner(id, state_dir: @state_dir)
-      running = owner && Session.load(id, state_dir: @state_dir).status == Session::STATUS_RUNNING
+      running = owner && session.status == Session::STATUS_RUNNING
       refs = copy_images(Session.session_dir(id, state_dir: @state_dir))
       result = SessionManager.deliver_turn(id, prompt: prompt, client_id: CLIENT_ID, images: refs, state_dir: @state_dir)
       unless result[:status] == :accepted
@@ -354,6 +401,19 @@ module Samagotchi
     rescue StandardError => e
       @info.puts("#{short}  failed: #{e.message}")
       false
+    end
+
+    # What to say when +model_name+ is known not to take images, or nil
+    # (it does, or it is unknown: sent as before). Asked once per model.
+    def vision_refusal(model_name)
+      @vision ||= {}
+      answer = @vision[model_name.to_s] ||= self.class.vision_answer(model_name)
+      return nil unless answer.no?
+
+      name = model_name.to_s.strip
+      name = Samagotchi::Config.get("default.model").to_s.strip if name.empty?
+      name = "the model" if name.empty?
+      "#{name} can't take images (#{answer.reason}); send text only or switch the model (/model)"
     end
 
     # Each --image read, converted and downscaled once, into a scratch

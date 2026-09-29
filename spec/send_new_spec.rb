@@ -148,6 +148,8 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
   end
 
   it "with --image starts the session idle, sends the image turn and prints its reply" do
+    # No model server: whether the model sees images is unknown, so it is sent.
+    allow(described_class).to receive(:vision_answer).and_return(described_class::UNKNOWN_VISION)
     allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(instance_double(Samagotchi::BridgeClient))
     allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |id, prompt:, images:, **|
       delivered << [id, prompt, images.map { |ref| ref[:name] }]

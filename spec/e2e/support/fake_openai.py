@@ -8,7 +8,8 @@
 # tool result (steering merged mid-turn, a plugin's nudge) doesn't restart the count.
 # With "nudge_counts": true a system message after the
 # last user message (an empty-answer retry's nudge) counts as a step too, so an empty iteration can be followed by
-# an answer. /v1/models lists "fake-script";
+# an answer. /v1/models lists "fake-script" (or serves <dir>/models.json when there is one, e.g. with
+# "architecture": {"input_modalities": ["text"]} for a text-only model);
 # no upstream needed.
 # 503_then_script: one 503 with Retry-After: 3 (a provider retry the UIs show), then flips to script.
 # json_503_then_script: a 200 whose whole body is a plain JSON 503 error (OpenRouter's "503 inside a 200", no SSE
@@ -43,6 +44,8 @@ class H(http.server.BaseHTTPRequestHandler):
     def _handle(self):
         body = self._body(); self._log(body); m = mode()
         if m == "script" and self.path.endswith("/models"):
+            listed = os.path.join(DIR, "models.json")
+            if os.path.exists(listed): return self._send(200, open(listed).read())
             return self._send(200, json.dumps({"data": [{"id": "fake-script"}]}))
         # A scripted turn's /props probe gets the no-props answer at once
         # (an OpenAI-only host), not the script's held reply.

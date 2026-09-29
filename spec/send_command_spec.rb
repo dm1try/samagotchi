@@ -12,6 +12,7 @@ require "samagotchi/send_command"
 require "samagotchi/owner_lock"
 require "samagotchi/engine"
 require "samagotchi/bridge"
+require_relative "support/fake_provider_server"
 
 RSpec.describe Samagotchi::SendCommand do
   let(:tmpdir) { Dir.mktmpdir("send-command") }
@@ -225,8 +226,61 @@ RSpec.describe Samagotchi::SendCommand do
     expect(out.string).to include("Usage: chi send", "-m TEXT", "chi sessions list --live")
   end
 
+  describe ".vision_answer" do
+    let(:provider) { FakeProviderServer.start }
+    let(:config_home) { Dir.mktmpdir("send-vision") }
+
+    around do |example|
+      FakeProviderServer.without_webmock do
+        saved = ENV["XDG_CONFIG_HOME"]
+        saved_model = ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
+        FileUtils.mkdir_p(File.join(config_home, "samagotchi"))
+        File.write(File.join(config_home, "samagotchi", "config.yml"), <<~YAML)
+          default: {model: "box:txt"}
+          hosts:
+            box: {url: "#{provider.base_url}", api: openai}
+            down: {url: "http://127.0.0.1:9/v1"}
+          model_aliases: {pic: "box:vis", blind: "box:vis"}
+          models:
+            blind: {vision: false}
+        YAML
+        ENV["XDG_CONFIG_HOME"] = config_home
+        Samagotchi::Config.reload!(cli_overrides: {})
+        example.run
+      ensure
+        ENV["XDG_CONFIG_HOME"] = saved
+        ENV["SAMAGOTCHI_DEFAULT_MODEL"] = saved_model
+        Samagotchi::Config.reload!(cli_overrides: {})
+        provider.stop
+        FileUtils.rm_rf(config_home)
+      end
+    end
+
+    it "asks as the worker does: the host's model list, per-model vision: under an alias, unknown for a host it can't ask" do
+      provider.default("/v1/models", json: { data: [{ id: "txt", architecture: { input_modalities: %w[text] } },
+                                                    { id: "vis", architecture: { input_modalities: %w[text image] } }] })
+      provider.default("/props", status: 404, json: { error: { message: "no" } })
+
+      answers = ["box:txt", "", "pic", "blind", "box:other", "down:gemma"].to_h do |model|
+        answer = described_class.vision_answer(model)
+        [model, [answer.value, answer.reason]]
+      end
+
+      expect(answers).to eq("box:txt" => [false, "host box lists txt as text-only"],
+                            "" => [false, "host box lists txt as text-only"],
+                            "pic" => [true, nil],
+                            "blind" => [false, "models: blind sets vision: false"],
+                            "box:other" => [nil, nil],
+                            "down:gemma" => [nil, nil])
+    end
+  end
+
   describe "--image" do
     let(:fixtures) { File.expand_path("fixtures/images", __dir__) }
+
+    # No model server here: whether the model sees images is unknown, as
+    # with a host chi can't ask (the examples below that refuse say no).
+    before { allow(described_class).to receive(:vision_answer).and_return(described_class::UNKNOWN_VISION) }
     let(:png) { File.join(fixtures, "tiny.png") }
     let(:jpg) { File.join(fixtures, "tiny.jpg") }
 
@@ -372,6 +426,61 @@ RSpec.describe Samagotchi::SendCommand do
       input = inputs_of(started).first
       expect(input).to include("prompt" => "what is this?")
       expect(images_in(started, input)).to eq(["tiny.png"])
+    end
+
+    describe "to a model that can't take images" do
+      let(:text_only) { Samagotchi::VisionSupport::Answer.new(value: false, reason: "host main lists gemma4 as text-only") }
+
+      it "refuses that session up front with the reason, sends to the others, and exits 1" do
+        a = make(owner: "worker")
+        b = make(owner: "worker")
+        b.model_name = "vis-model"
+        b.save(state_dir: tmpdir)
+        serve(a)
+        events_b = serve(b)
+        allow(described_class).to receive(:vision_answer) do |model|
+          model == "gemma4" ? text_only : Samagotchi::VisionSupport::Answer.new(value: true, reason: nil)
+        end
+
+        expect(run("--image", png, "-m", "look", a.id, b.id)).to eq(1)
+        expect(out.string.lines).to eq(["#{short(a)}  refused: gemma4 can't take images (host main lists gemma4 as text-only); " \
+                                        "send text only or switch the model (/model)\n",
+                                        "#{short(b)}  sent with 1 image\n"])
+        expect(inputs_of(a)).to be_empty
+        expect(Dir.exist?(File.join(dir_of(a), "images"))).to be(false)
+        expect(events_b.first).to include(type: :turn_enqueued)
+      end
+
+      it "with --wait says so on stderr and exits 1 without sending" do
+        a = make(owner: "worker")
+        serve(a)
+        allow(described_class).to receive(:vision_answer).and_return(text_only)
+
+        expect(run("--wait", "--image", png, "-m", "look", a.id)).to eq(1)
+        expect(err.string).to include("#{short(a)}  refused: gemma4 can't take images")
+        expect(out.string).to eq("")
+        expect(inputs_of(a)).to be_empty
+      end
+
+      it "with --new starts no session" do
+        allow(described_class).to receive(:vision_answer).with("txt").and_return(text_only)
+        allow(Process).to receive(:spawn)
+
+        expect(run("--new", "--model", "txt", "--image", png, "-m", "hi")).to eq(1)
+        expect(err.string).to include("chi send: refused: txt can't take images (host main lists gemma4 as text-only)")
+        expect(Samagotchi::Session.list(state_dir: tmpdir)).to be_empty
+        expect(Process).not_to have_received(:spawn)
+      end
+
+      it "sends as before when it is unknown whether the model sees images, and checks nothing without images" do
+        a = make(owner: "worker")
+        serve(a)
+        allow(described_class).to receive(:vision_answer).and_return(Samagotchi::VisionSupport::Answer.new(value: nil, reason: nil))
+
+        expect(run("--image", png, "-m", "look", a.id)).to eq(0), err.string
+        expect(run("-m", "text", a.id)).to eq(0)
+        expect(described_class).to have_received(:vision_answer).once
+      end
     end
 
     it "with --new keeps the idle session and names it when its worker never comes up" do
