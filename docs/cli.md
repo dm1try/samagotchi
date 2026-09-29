@@ -20,7 +20,7 @@
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
 - `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles
 - `chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, in one table (see [Updating](#updating))
-- `chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs (see [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle) and [the check-in bundle](plugins.md#the-check-in-bundle))
+- `chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs (see [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle), [the check-in bundle](plugins.md#the-check-in-bundle) and [the skills bundle](plugins.md#the-skills-bundle))
 
 ### First setup
 
@@ -71,7 +71,7 @@ known-names    0.1.0  0.1.1  updated
 infra_tools    1.0.0         skipped (not from chi)
 Chi Helper     0.2.0         up to date (launch file refreshed)
 workers                      2 live on 0.2.0: they move to 0.3.0 at idle exit (30 min) or chi sessions stop 2ea8c1f0 91b0d2aa
-Also shipped, not installed: check-in, source-links (chi bundle install NAME)
+Also shipped, not installed: check-in, skills, source-links (chi bundle install NAME)
 done
 ```
 

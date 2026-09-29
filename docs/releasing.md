@@ -12,9 +12,9 @@ can run the whole release; the user approves the notes before the tag and the
   and `lib/samagotchi/bundles/system/manifest.yml` are bumped together (a spec
   and `rake release:check` enforce it). The system bundle upgrades itself when
   chi starts.
-- **Every other shipped bundle** (btw, guardrails, known-names, loop-guard,
-  mcp) has its own semver in its `manifest.yml` and, when it needs a newer chi,
-  a `requires_chi:` line. They never upgrade by themselves: users run
+- **Every other shipped bundle** (btw, check-in, guardrails, known-names,
+  loop-guard, mcp, skills, source-links) has its own semver in its
+  `manifest.yml` and, when it needs a newer chi, a `requires_chi:` line. They never upgrade by themselves: users run
   `chi update` (all of them, with the gem) or `chi bundle upgrade NAME`. So:
   - a change to a bundle's files bumps that bundle's `version:`
     (`rake bundles:check` fails otherwise, once there's a tag to compare with);
