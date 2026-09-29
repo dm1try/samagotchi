@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require "samagotchi/engine"
+require "samagotchi/memory_bundle/provenance"
+require "tmpdir"
+require "fileutils"
 
 RSpec.describe "Engine guardrail wiring" do
   let(:engine) { Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client)) }
@@ -154,5 +157,53 @@ RSpec.describe "Engine guardrail wiring" do
         expect(pending_for(engine, asking(engine))[:approval]).not_to have_key(:preview)
       end
     end
+  end
+end
+
+# A long-lived worker picks up edited rules: config.yml's guardrails: and
+# the installed bundles' rule files are read again when one changes.
+RSpec.describe "Engine guardrail rules reload" do
+  around do |example|
+    Dir.mktmpdir do |dir|
+      saved = ENV["XDG_CONFIG_HOME"]
+      ENV["XDG_CONFIG_HOME"] = dir
+      Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(dir, "bundles")
+      @config = File.join(dir, "samagotchi", "config.yml")
+      FileUtils.mkdir_p(File.dirname(@config))
+      example.run
+    ensure
+      ENV["XDG_CONFIG_HOME"] = saved
+      Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
+    end
+  end
+
+  def write_config(text, bump: 0)
+    File.write(@config, "default: {model: m}\n#{text}")
+    time = Time.now + bump
+    File.utime(time, time, @config)
+  end
+
+  def deny_rule(command) = "guardrails:\n  rules:\n    - {id: no-#{command}, tool: shell, command: 'echo #{command}', verdict: deny, reason: no}\n"
+
+  def verdict(engine, command)
+    engine.instance_variable_get(:@kernel).guardrail_gate.evaluate({ name: "execute", content: "echo #{command}" }, iteration: 1, params: "")
+  end
+
+  it "applies config.yml rules edited after the engine started, and drops a load failure once fixed" do
+    write_config(deny_rule("a"))
+    engine = Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client))
+    expect(verdict(engine, "a")).to be_deny
+
+    write_config(deny_rule("b"), bump: 5)
+    expect(verdict(engine, "a")).not_to be_deny
+    expect(verdict(engine, "b")).to be_deny
+
+    write_config("guardrails:\n  rules: nope\n", bump: 10)
+    expect(verdict(engine, "c")).to be_deny
+    expect(engine.guardrail_failures.list.map(&:what)).to eq(["rules in config.yml"])
+
+    write_config(deny_rule("b"), bump: 15)
+    expect(verdict(engine, "c")).not_to be_deny
+    expect(engine.guardrail_failures.list).to be_empty
   end
 end

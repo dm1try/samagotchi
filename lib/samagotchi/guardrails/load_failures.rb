@@ -7,7 +7,7 @@ module Samagotchi
     # guardrail that silently vanished is the failure this guards against);
     # the rest are only announced.
     class LoadFailures
-      Failure = Struct.new(:what, :reason, :required, keyword_init: true)
+      Failure = Struct.new(:what, :reason, :required, :group, keyword_init: true)
 
       def initialize
         @list = []
@@ -15,8 +15,14 @@ module Samagotchi
       end
 
       # @param what [String] e.g. "hook guard.rb (config)"
-      def add(what, reason, required:)
-        @mutex.synchronize { @list << Failure.new(what: what, reason: reason, required: required) }
+      # @param group [Symbol, nil] what loads it again (#drop): :rules
+      def add(what, reason, required:, group: nil)
+        @mutex.synchronize { @list << Failure.new(what: what, reason: reason, required: required, group: group) }
+      end
+
+      # Forget a group's failures before it loads again.
+      def drop(group)
+        @mutex.synchronize { @list.reject! { |failure| failure.group == group } }
       end
 
       def list = @mutex.synchronize { @list.dup }

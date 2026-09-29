@@ -122,6 +122,7 @@ module Samagotchi
       # to load is announced, and a required guardrail's failure denies
       # every tool call. Rules load now too, so their errors are announced.
       @guardrail_failures = Guardrails::LoadFailures.new
+      @guardrail_rules_mutex = Mutex.new
       # Plugins that failed to load: announced apart, as plugins (not
       # guardrails: no tool call is denied for them).
       @plugin_failures = Guardrails::LoadFailures.new
@@ -1209,27 +1210,53 @@ module Samagotchi
 
     # The YAML rules: config.yml's `guardrails:` section (rules, disable) and
     # installed bundles'. One that doesn't parse is a required load failure
-    # (every call is denied).
+    # (every call is denied). Read again when one of those files changed
+    # (a stat of each per tool call), so a long-lived worker follows edits.
     # @return [Guardrails::Rules]
     def guardrail_rules
-      @guardrail_rules ||= begin
-        section = Samagotchi::ConfigFile.read_yaml(path: Samagotchi::ConfigFile.global_path)
-        section = section["guardrails"] if section.is_a?(Hash)
-        rules = []
-        disable = []
-        begin
-          raise Guardrails::Rules::ParseError, "guardrails must be a mapping" unless section.nil? || section.is_a?(Hash)
-
-          rules = Guardrails::Rules.parse(section && section["rules"], source: "config")
-          disable = Guardrails::Rules.parse_disable(section && section["disable"])
-        rescue Guardrails::Rules::ParseError => e
-          Log.warn(:guardrails, "config_rules_invalid", echo: "[samagotchi:guardrails] config.yml guardrails rules: #{e.message}")
-          @guardrail_failures.add("rules in config.yml", e.message, required: true)
+      @guardrail_rules_mutex.synchronize do
+        stamp = guardrail_rules_stamp
+        if @guardrail_rules.nil? || stamp != @guardrail_rules_stamp
+          @guardrail_failures.drop(:rules)
+          @guardrail_rules = load_guardrail_rules
+          @guardrail_rules_stamp = stamp
         end
-        Guardrails::Rules.new(rules + bundle_guardrail_rules, disable: disable,
-                              enabled: Samagotchi::Config.get("guardrails.enabled") != false)
+        @guardrail_rules
       end
     end
+
+    # [path, mtime, size] of config.yml and every installed bundle's
+    # manifest.json and guardrails/ file.
+    def guardrail_rules_stamp
+      require_relative "memory_bundle/provenance"
+      paths = [Samagotchi::ConfigFile.global_path] +
+              Dir[File.join(MemoryBundle::Provenance.bundles_dir, "*", "{manifest.json,guardrails/*}")]
+      paths.compact.sort.map do |path|
+        stat = File.stat(path)
+        [path, stat.mtime.to_r, stat.size]
+      rescue SystemCallError
+        [path]
+      end
+    end
+
+    def load_guardrail_rules
+      section = Samagotchi::ConfigFile.read_yaml(path: Samagotchi::ConfigFile.global_path)
+      section = section["guardrails"] if section.is_a?(Hash)
+      rules = []
+      disable = []
+      begin
+        raise Guardrails::Rules::ParseError, "guardrails must be a mapping" unless section.nil? || section.is_a?(Hash)
+
+        rules = Guardrails::Rules.parse(section && section["rules"], source: "config")
+        disable = Guardrails::Rules.parse_disable(section && section["disable"])
+      rescue Guardrails::Rules::ParseError => e
+        Log.warn(:guardrails, "config_rules_invalid", echo: "[samagotchi:guardrails] config.yml guardrails rules: #{e.message}")
+        @guardrail_failures.add("rules in config.yml", e.message, required: true, group: :rules)
+      end
+      Guardrails::Rules.new(rules + bundle_guardrail_rules, disable: disable,
+                            enabled: Samagotchi::Config.get("guardrails.enabled") != false)
+    end
+    private :guardrail_rules_stamp, :load_guardrail_rules
 
     # Installed bundles' guardrails/*.yml, by bundle name then file name.
     # A file that is missing, changed since install (sha256) or doesn't
@@ -1240,7 +1267,7 @@ module Samagotchi
       MemoryBundle::Provenance.each_installed_with_guardrails do |bundle_name, data|
         if data[:error]
           Log.warn(:guardrails, "bundle_rules_invalid", echo: "[samagotchi:guardrails] bundle #{bundle_name}: #{data[:error]}", bundle: bundle_name)
-          @guardrail_failures.add("rules (bundle #{bundle_name})", data[:error], required: true)
+          @guardrail_failures.add("rules (bundle #{bundle_name})", data[:error], required: true, group: :rules)
           next
         end
         dir = MemoryBundle::Provenance.new(name: bundle_name).guardrails_dir
@@ -1262,14 +1289,14 @@ module Samagotchi
             rules.concat(Guardrails::Rules.parse(doc["rules"], source: "bundle #{bundle_name}"))
           rescue Guardrails::Rules::ParseError, Psych::Exception => e
             Log.warn(:guardrails, "rules_file_invalid", echo: "[samagotchi:guardrails] #{what}: #{e.message}", bundle: bundle_name, file: basename.to_s)
-            @guardrail_failures.add(what, e.message, required: true)
+            @guardrail_failures.add(what, e.message, required: true, group: :rules)
           end
         end
       end
       rules
     rescue StandardError => e
       Log.error(:guardrails, "bundle_rules_failed", echo: "[samagotchi:guardrails] failed to read installed bundles' rules: #{e.class}: #{e.message}", error: e.class.name)
-      @guardrail_failures.add("bundle rules", "#{e.class}: #{e.message}", required: true)
+      @guardrail_failures.add("bundle rules", "#{e.class}: #{e.message}", required: true, group: :rules)
       rules || []
     end
 
