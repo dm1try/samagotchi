@@ -38,6 +38,28 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
     end
   end
 
+  describe "a default.model whose host isn't configured" do
+    before { ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "nosuch:org/model" }
+
+    it "starts on a valid --model without a word about the default" do
+      ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry, model_name: "beta:Qwen3-14B")
+
+      expect(engine_of(ui).effective_model_name).to eq("beta:Qwen3-14B")
+      expect(kernel_of(ui).client).to be(beta_client)
+    end
+
+    it "refuses to start on it without --model" do
+      expect { Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry) }
+        .to raise_error(Samagotchi::ModelProfile::UnknownHost, /unknown host 'nosuch' in model 'nosuch:org\/model'/)
+    end
+
+    it "lets an Engine (a worker's) start on its session's model" do
+      engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "beta:Qwen3-14B")
+
+      expect(engine.effective_model_name).to eq("beta:Qwen3-14B")
+    end
+  end
+
   describe "runtime /model across hosts" do
     it "moves the Engine, kernel client and profile to the new host's model" do
       ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry)

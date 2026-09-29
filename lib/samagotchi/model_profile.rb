@@ -14,6 +14,9 @@ module Samagotchi
     # No model anywhere (--model, default.model in config.yml, the env): a
     # first run before any config. An ArgumentError, as before.
     MissingModel = Class.new(ArgumentError)
+    # A host-qualified model whose host isn't configured (a MissingModel,
+    # so every surface that reports a missing model reports it the same way).
+    UnknownHost = Class.new(MissingModel)
 
     attr_reader :name, :turn_start, :turn_end,
                 :tool_call_open, :tool_call_close,
@@ -128,6 +131,26 @@ module Samagotchi
       raise MissingModel, missing_model_message if value.empty?
 
       value
+    end
+
+    # Raises UnknownHost when +model_name+ (or the alias it names) is
+    # qualified with a host that isn't configured, instead of sending the
+    # whole ref to the default host as a model id. Where a model comes in
+    # (an Engine starting or switching, a spawned session) calls it.
+    # @param hosts [Hash, nil] the hosts a prefix may name (a HostRegistry's
+    #   entries); config.yml's by default
+    # @return [String] +model_name+
+    def self.check_host!(model_name, env: ENV, hosts: nil)
+      require_relative "config"
+      hosts ||= Samagotchi::ConfigFile.hosts_config(env: env)
+      ref = Samagotchi::ConfigFile.resolve_model_alias(model_name, env: env, hosts: hosts)
+      host = Samagotchi::ConfigFile.unknown_host_prefix(ref, hosts: hosts)
+      return model_name unless host
+
+      names = hosts.keys.map { |k| k.to_s.downcase }.sort
+      near = Samagotchi::Config.near_names(host, names).first(3)
+      hint = near.empty? ? "" : " (did you mean #{near.map { |n| "'#{n}'" }.join(' or ')}?)"
+      raise UnknownHost, "unknown host '#{host}' in model '#{ref}'#{hint}; the configured hosts are #{names.join(', ')}"
     end
 
     # One line for the user: where to set the model.

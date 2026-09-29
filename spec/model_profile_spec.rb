@@ -100,7 +100,7 @@ RSpec.describe Samagotchi::ModelProfile do
 
     it "raises when model is missing" do
       ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
-      expect { described_class.required_model_name }
+      expect { described_class.check_host!(described_class.required_model_name) }
         .to raise_error(ArgumentError, /no model configured: set default.model in .*config.yml/)
     end
 
@@ -112,6 +112,63 @@ RSpec.describe Samagotchi::ModelProfile do
     it "returns environment model when argument is blank" do
       ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
       expect(described_class.required_model_name(" ")).to eq("Gemma-4B-it")
+    end
+
+    context "with a host prefix that names no configured host (.check_host!)" do
+      def write_config(text)
+        path = File.join(ENV["XDG_CONFIG_HOME"], "samagotchi", "config.yml")
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, text)
+        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
+      end
+
+      before do
+        ENV.delete("SAMAGOTCHI_DEFAULT_MODEL")
+        write_config(<<~YAML)
+          hosts:
+            main: {host: localhost, port: 8080}
+            openrouter: {url: "https://openrouter.ai/api/v1", api: openai}
+          model_aliases:
+            gone: oprnrouter:anthropic/claude-sonnet-4
+        YAML
+      end
+
+      it "raises naming the unknown host and the configured ones, with a did-you-mean" do
+        expect { described_class.check_host!("openruter:anthropic/claude-sonnet-4") }
+          .to raise_error(described_class::MissingModel,
+                          "unknown host 'openruter' in model 'openruter:anthropic/claude-sonnet-4' " \
+                          "(did you mean 'openrouter'?); the configured hosts are main, openrouter")
+      end
+
+      it "checks what an alias points to" do
+        expect { described_class.check_host!("gone") }
+          .to raise_error(described_class::MissingModel, /unknown host 'oprnrouter' in model 'oprnrouter:anthropic/)
+      end
+
+      it "checks default.model from config.yml" do
+        write_config(<<~YAML)
+          default:
+            model: nosuch:org/model
+          hosts:
+            main: {host: localhost, port: 8080}
+        YAML
+        expect { described_class.check_host!(described_class.required_model_name) }
+          .to raise_error(described_class::MissingModel,
+                          "unknown host 'nosuch' in model 'nosuch:org/model'; the configured hosts are main")
+      end
+
+      it "keeps model ids whose ':' is a tag, not a host" do
+        %w[qwen3:8b nosuch:x unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M openai/gpt-4o:free hf.co/org/repo:Q4_K_M
+           main:org/model openrouter:anthropic/claude-sonnet-4 openrouter/anthropic/claude].each do |id|
+          expect(described_class.check_host!(id)).to eq(id)
+        end
+      end
+
+      it "checks against the hosts it is given (a HostRegistry's entries)" do
+        expect(described_class.check_host!("alpha:org/model", hosts: { "alpha" => {} })).to eq("alpha:org/model")
+        expect { described_class.check_host!("main:org/model", hosts: { "alpha" => {} }) }
+          .to raise_error(described_class::UnknownHost, /unknown host 'main'.*the configured hosts are alpha/)
+      end
     end
   end
 

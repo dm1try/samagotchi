@@ -92,9 +92,13 @@ module Samagotchi
       @scratch = scratch
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
-      @default_model_name = ModelProfile.required_model_name(model_name)
-      @effective_model_name = @default_model_name
       @host_registry = host_registry || HostRegistry.new
+      # A model given here (a worker's session model) is the one it runs,
+      # so its host is checked; the config default is only checked once it
+      # is used (the REPL checks the model it starts on, #switch_model!).
+      @default_model_name = ModelProfile.required_model_name(model_name)
+      ModelProfile.check_host!(model_name, hosts: @host_registry.entries) unless model_name.to_s.strip.empty?
+      @effective_model_name = @default_model_name
       # An injected client (specs) stands in for every host's client.
       @host_registry.client_override = client if client
       @client = @host_registry.resolve(@effective_model_name).client
@@ -847,7 +851,7 @@ module Samagotchi
     def switch_model!(model_name, persist_default: false)
       # Resolve alias first (alias may point to qualified ref)
       aliased = ConfigFile.resolve_model_alias(model_name)
-      resolved = ModelProfile.required_model_name(aliased)
+      resolved = ModelProfile.check_host!(ModelProfile.required_model_name(aliased), hosts: @host_registry.entries)
       @effective_model_name = resolved
       bare = bare_model_name(resolved)
       @model_lookup_names = [model_name, aliased, resolved]

@@ -179,6 +179,12 @@ module Samagotchi
     BY_CLI = ENTRIES.each_with_object({}) { |e, h| h[e.cli_flag] = e if e.cli_exposed? }.freeze
 
     class << self
+      # The +candidates+ within edit distance 2 of +probe+, closest first
+      # (the "did you mean" of an unknown key or host).
+      def near_names(probe, candidates)
+        candidates.uniq.map { |c| [levenshtein(probe, c), c] }.select { |d, _| d <= 2 }.sort.map(&:last)
+      end
+
       def find_by_key(key)
         BY_KEY[key.to_s]
       end
@@ -485,7 +491,7 @@ module Samagotchi
       # share its last segment, at most three.
       def unknown_key_message(key, probe, candidates, prefix: "")
         candidates = candidates.uniq
-        near = candidates.map { |c| [levenshtein(probe, c), c] }.select { |d, _| d <= 2 }.sort.map(&:last)
+        near = near_names(probe, candidates)
         close = (near + candidates.select { |c| c.split(".").last == probe.split(".").last }).uniq.first(3)
         hint = close.empty? ? "" : " (did you mean #{close.map { |c| "'#{prefix}#{c}'" }.join(' or ')}?)"
         "config: unknown key '#{key}'#{hint}"
@@ -878,6 +884,20 @@ module Samagotchi
         end
       end
       [nil, value]
+    end
+
+    # The host a model ref names when that host isn't configured, or nil.
+    # A ':' in a model id is often a tag (qwen3:8b, org/model:Q4_K_M), so
+    # the prefix counts as a host only when it could be a host name and the
+    # rest looks like a hosted provider's org/model id
+    # ("openrouter:anthropic/claude-sonnet-4"): Ollama-style tags never
+    # hold a '/'.
+    def unknown_host_prefix(raw, hosts:)
+      prefix, rest = raw.to_s.strip.split(":", 2)
+      return nil unless rest&.include?("/") && prefix.match?(HOST_NAME_RE)
+
+      prefix = prefix.downcase
+      hosts.keys.map { |k| k.to_s.downcase }.include?(prefix) ? nil : prefix
     end
 
     def hosts_json_for_env(env: ENV, path: global_path(env: env))

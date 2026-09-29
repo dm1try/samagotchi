@@ -145,6 +145,9 @@ module Samagotchi
         # Re-resolve client after resume may change effective model
         @client = @host_registry.resolve(@effective_model_name).client
       end
+      # The model it starts on names a configured host (a bad default.model
+      # doesn't matter when --model or the session picks another).
+      ModelProfile.check_host!(@effective_model_name, hosts: @host_registry.entries)
       # Only a caller's profile goes in; otherwise the Engine resolves one
       # for the effective model and hands it to the kernel.
       @kernel         = KernelLoop.new(client: @client, profile: profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
@@ -178,7 +181,9 @@ module Samagotchi
         profile: profile,
         session_id: session_id,
         no_interrupt: no_interrupt,
-        model_name: @default_model_name,
+        # nil: the config default, unchecked here (the model the REPL starts
+        # on is checked above, and --model may make the default moot).
+        model_name: nil,
         memories: @requested_memories,
         muted_memories: @muted_memory_names,
         kernel: @kernel,

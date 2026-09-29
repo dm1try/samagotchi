@@ -150,6 +150,8 @@ RSpec.describe Samagotchi::SessionCommands do
 
     # A chat host's loop doesn't use a prompt profile: naming one misleads.
     it "names no profile for a chat host's model" do
+      # --default below would write the suite's shared config.yml.
+      allow(Samagotchi::ConfigFile).to receive(:write_default_model!)
       expect(commands.run("/model chat:some/model:free").output).to eq("runtime model set to chat:some/model:free")
       expect(commands.run("/model").output).to eq("runtime model: chat:some/model:free (default: alpha:gemma-small)")
 
