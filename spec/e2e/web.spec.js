@@ -217,6 +217,76 @@ test("the model picker lists the fake model", async ({ page }) => {
   await expect(page.locator("#modelList .model-option")).toHaveText(["fake-scriptdefault"]);
 });
 
+// ~40 models over two hosts, as an OpenRouter host lists them (its own
+// order); fake-script is the real default so a create still succeeds.
+const OPENROUTER_IDS = [
+  "openai/gpt-5-nano", "deepseek/deepseek-v4.1-flash-lite", "~anthropic/claude-opus-latest",
+  "deepseek/deepseek-v4.1", "qwen/qwen3.6-35b", "deepseek/deepseek-v4.1-flash", "mistral/codestral-flash",
+  "anthropic/claude-sonnet-5.5", "google/gemini-3-flash", "meta/llama-5-70b",
+  ...Array.from({ length: 28 }, (_, i) => `vendor${String.fromCharCode(97 + (i % 26))}/model-${i}`),
+];
+const MANY_MODELS = {
+  default: "fake-script",
+  models: [
+    { name: "fake-script", host: "main", id: "fake-script" },
+    { name: "gemma-4b", host: "main", id: "gemma-4b" },
+    ...OPENROUTER_IDS.map((id) => ({ name: `openrouter:${id}`, host: "openrouter", id })),
+  ],
+};
+
+test("the model picker searches: 'deepseek4.1 fla' picks the flash with ⏎, Recent keeps two picks, Esc changes nothing", async ({ page, script }) => {
+  await page.route("**/api/models", (route) => route.fulfill({ json: MANY_MODELS }));
+  await page.reload();
+  const button = page.locator("#modelPick");
+  const panel = page.locator("#modelPanel");
+  const search = page.locator("#modelSearch");
+  const options = page.locator("#modelList .model-option");
+  await expect(button).toHaveText("fake-script");
+
+  await button.click();
+  await expect(search).toBeFocused();
+  await search.fill("deepseek4.1 fla");
+  await expect(options.first()).toHaveText("openrouter · deepseek/deepseek-v4.1-flash");
+  await expect(options.first()).toHaveClass(/active/);
+  await expect(options.first().locator("mark")).toHaveText(["deepseek", "4.1", "fla"]);
+  await search.press("Enter");
+  await expect(panel).toBeHidden();
+  await expect(button).toHaveText("openrouter:deepseek/deepseek-v4.1-flash");
+  await expect(page.locator("#prompt")).toBeFocused();
+
+  await button.click();
+  await search.fill("fake");
+  await search.press("Enter");
+  await expect(button).toHaveText("fake-script");
+
+  await page.reload();
+  await expect(button).toHaveText("fake-script");
+  await button.click();
+  await expect(page.locator("#modelList .model-group").first()).toHaveText("Recent");
+  await expect(options.nth(0)).toHaveText("fake-scriptdefault");
+  await expect(options.nth(1)).toHaveText("openrouter · deepseek/deepseek-v4.1-flash");
+  // The hosts follow, the default host first, ids A-Z inside a host.
+  await expect(page.locator("#modelList .model-group")).toHaveText(["Recent", "main default host", "openrouter"]);
+  await expect(options.nth(2)).toHaveText("fake-scriptdefault");
+  await expect(options.nth(4)).toHaveText("~anthropic/claude-opus-latest");
+  await expect(page.locator("#modelList .model-option.active")).toHaveText("fake-scriptdefault");
+
+  await search.press("ArrowDown");
+  await search.press("ArrowDown");
+  await search.press("Escape");
+  await expect(panel).toBeHidden();
+  await expect(button).toHaveText("fake-script");
+  await expect(button).toBeFocused();
+
+  // A create sends the chosen model.
+  script("plain");
+  await page.locator("#prompt").fill("Say pong");
+  const create = page.waitForRequest((r) => r.method() === "POST" && new URL(r.url()).pathname === "/api/sessions");
+  await page.locator("#actionBtn").click();
+  expect((await create).postDataJSON().model).toBe("fake-script");
+  await expect(button).toBeHidden();
+});
+
 test("archive hides a session from the strip, include archived finds it, unarchive brings it back", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");
