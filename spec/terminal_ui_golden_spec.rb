@@ -313,6 +313,52 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     end
   end
 
+  it "shows the tools a round runs and their tally" do
+    calls = %w[ls pwd date].each_with_index.flat_map do |command, index|
+      activity = { action: "running command", tool: "execute", params: "command=\"#{command}\"", status: "ok" }
+      [{ type: :tool_call_started, iteration: 1, call_count: 3, call_index: index + 1, tool: "execute",
+         call: { name: "execute", content: command }, params: "command=\"#{command}\"" },
+       { type: :tool_call_completed, iteration: 1, call_count: 3, call_index: index + 1, tool: "execute",
+         output: "", output_truncated: false, activity: activity }]
+    end
+    events = generation("qwen36", "<think>look around</think>", "<tool_call>…</tool_call>") +
+             [{ type: :tool_dispatch_started, iteration: 1, call_count: 3 }] + calls +
+             [{ type: :tool_dispatch_completed, iteration: 1, call_count: 3 }] +
+             generation("qwen36", "Looked.", iteration: 2)
+
+    output = run_turn(model: "Qwen3-14B", events: events) { |messages| result_for(messages, output: "Looked.") }
+
+    expect_golden("tool_tally", output)
+  end
+
+  it "shows the answer a steering merge follows and the merge note" do
+    events = generation("qwen36", "First part.") +
+             [{ type: :pending_input_merged, iteration: 1, count: 1, answer: "First part." }] +
+             generation("qwen36", "Second part.", iteration: 2)
+
+    output = run_turn(model: "Qwen3-14B", events: events) { |messages| result_for(messages, output: "Second part.") }
+
+    expect_golden("steering_merge", output)
+  end
+
+  it "shows a plugin's init task before and during a turn" do
+    task = { bundle: "mcp", id: "mcp-1", label: "starting servers" }
+    engine = nil
+    setup = lambda do |ui|
+      engine = ui.instance_variable_get(:@engine)
+      engine.announce({ type: :plugin_init_started, **task })
+    end
+    events = [{ type: :plugin_init_wait, tasks: [task] }] + generation("qwen36", "Ready.")
+    finish = lambda do |messages|
+      engine.announce({ type: :plugin_init_finished, **task, ok: true, summary: "2 servers" })
+      result_for(messages, output: "Ready.")
+    end
+
+    output = run_session(model: "Qwen3-14B", prompts: ["hi"], turns: [[events, finish]], setup: setup)
+
+    expect_golden("init_task", output)
+  end
+
   it "restores the prompt after the network retries run out" do
     events = [{ type: :generation_started, iteration: 1 }]
     error = Samagotchi::Client::RetryExhausted.new(attempts: 4, last_error: Errno::ECONNREFUSED.new)
