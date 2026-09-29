@@ -9,7 +9,7 @@ module Samagotchi
   # (one background thread for the whole idle layer).
   #
   # Two delivery paths cooperate:
-  #   1. Pull-based: Engine#maybe_inject_reminders / collect_due_reminders
+  #   1. Pull-based: Engine#collect_due_reminders
   #      reads ReminderStore#due_reminders at turn start → injects
   #      [SYSTEM: REMINDERS DUE] → marks all as fired atomically.
   #   2. Synthetic turns: when this job's tick finds due reminders while
@@ -43,7 +43,7 @@ module Samagotchi
       @mutex.synchronize { @due_reminder_name }
     end
 
-    # Get all due reminders (from ReminderStore). Called by Engine#maybe_inject_reminders.
+    # Get all due reminders (from ReminderStore). Called by Engine#collect_due_reminders.
     # Thread-safe. Returns all due reminders, not just one.
     # @return [Array<Hash>] [{name:, description:, interval_minutes:}, ...]
     def due_reminders

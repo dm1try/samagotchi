@@ -90,7 +90,7 @@ module Samagotchi
 
     # Get all due reminders whose interval has elapsed.
     # Returns an Array of {name:, description:, interval_minutes:} hashes.
-    # Called by Engine#maybe_inject_reminders (synchronously, at run_turn start).
+    # Called by Engine#collect_due_reminders (synchronously, at run_turn start).
     # Thread-safe. Returns a frozen copy so the caller can't mutate internal state.
     # @return [Array<Hash>] array of due reminder hashes (may be empty)
     def due_reminders

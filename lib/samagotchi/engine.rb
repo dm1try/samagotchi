@@ -874,10 +874,6 @@ module Samagotchi
       resolved
     end
 
-    def reset_model!
-      switch_model!(@default_model_name)
-    end
-
     # ── Hooks API ──────────────────────────────────────────────────────────────
 
     # Register a hook callback for a named lifecycle event.
@@ -948,8 +944,6 @@ module Samagotchi
       clear_due_reminder_names!
       due
     end
-    # Alias for backward compatibility.
-    alias maybe_inject_reminders collect_due_reminders
 
     # @return [Boolean] whether any reminder is due now (the store's view,
     #   which #collect_due_reminders would inject), regardless of the REPL queue
@@ -2310,29 +2304,6 @@ module Samagotchi
       replace_session_messages(@session, clone_messages(checkpoint))
     end
 
-    # Backward-compatible: runs a prompt through the kernel loop without event forwarding.
-    # @param session  [Session]
-    # @param prompt   [String]
-    # @return [String] model response text
-    def process_prompt_through_kernel(session, prompt)
-      result = run_turn(session, prompt)
-      response = result.respond_to?(:text) ? result.text.to_s : result.to_s
-      if response.strip.empty?
-        session.messages << { role: "model", content: "[No response]" }
-        "[No response]"
-      else
-        response
-      end
-    end
-
-    # Public entrypoint for background session workers.
-    # @param session  [Session]
-    # @param prompt   [String]
-    # @return [String] model response
-    def process_background_prompt(session:, prompt:)
-      process_prompt_through_kernel(session, prompt)
-    end
-
     # Clone a messages array (shallow dup of each element).
     # @param messages [Array<Hash>]
     # @return [Array<Hash>]
@@ -3060,8 +3031,9 @@ module Samagotchi
       @activated_memory_names ||= []
     end
 
-    # System-prompt builders the TerminalUI seeds its conversation from.
-    public :tool_call_hint, :assist_system_prompt, :system_prompt_with_index, :activated_memory_names
+    # The base prompt (specs, plugins' declarations) and the --memory names
+    # the TerminalUI mirrors into its status line.
+    public :assist_system_prompt, :activated_memory_names
 
     def split_memory_scope(raw)
       value = raw.to_s.strip
