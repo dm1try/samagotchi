@@ -273,7 +273,6 @@ file2.rb")
       expect(received_prompt).to include("**foo**")
       expect(received_prompt).not_to include("**bar**")
       expect(agent.send(:sticky_status_lines).join("\n")).to include("mem: foo | muted: bar")
-      expect(agent.send(:memory_sticky_line)).to eq("memories> active this session: foo · muted: bar")
       expect(agent.send(:build_status_lines, scope: :spinner).join).not_to include("muted")
       expect(agent.instance_variable_get(:@engine).muted_memory_names).to eq(["bar"])
     end
@@ -860,8 +859,8 @@ file2.rb")
 
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
 
-      expect(agent.send(:memory_spinner_segment)).to include("mem: refactoring_backlog")
-      expect(agent.send(:memory_sticky_line)).to include("active this session: refactoring_backlog")
+      expect(agent.send(:spinner_status_lines).join).to include("mem: refactoring_backlog")
+      expect(agent.send(:sticky_status_lines).join).to include("mem: refactoring_backlog")
     end
 
     it "builds a generalized status line with mode, context, and memory segments" do
@@ -871,7 +870,7 @@ file2.rb")
       agent.capture_context_status({ est_pct: 35.2, bucket: "20plus" })
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
 
-      status = agent.send(:build_status_line, scope: :spinner)
+      status = agent.send(:spinner_status_lines).first
       expect(status).to include("model=")
       expect(status).to include("ctx=35.2% (20plus)")
       expect(status).to include("| mem:")
@@ -894,7 +893,7 @@ file2.rb")
         }
       )
 
-      status = agent.send(:build_status_line, scope: :spinner)
+      status = agent.send(:spinner_status_lines).first
       expect(status).to include("ctx=15.0%")
       expect(status).to include("p=120")
       expect(status).to include("c=30")
@@ -914,7 +913,7 @@ file2.rb")
         payload: { "stop" => true, "tokens_evaluated" => 120, "tokens_predicted" => 30 }
       )
 
-      expect(agent.send(:build_status_line, scope: :spinner)).to include("ctx=15.0%")
+      expect(agent.send(:spinner_status_lines).first).to include("ctx=15.0%")
     end
 
     it "falls back to estimated CONTEXT_STATUS when server usage is unavailable" do
@@ -926,7 +925,7 @@ file2.rb")
       agent.send(:handle_stream_event, type: :generation_started)
       agent.send(:handle_stream_event, type: :generation_chunk, content: "chunk", payload: { "content" => "chunk" })
 
-      status = agent.send(:build_status_line, scope: :spinner)
+      status = agent.send(:spinner_status_lines).first
       expect(status).to include("ctx=35.2% (20plus)")
       expect(status).not_to include("p=")
       expect(status).not_to include("c=")
@@ -970,11 +969,11 @@ file2.rb")
       allow(agent).to receive(:color_output?).and_return(false)
 
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
-      expect(agent.send(:thinking_spinner_status_line, "/")).to include("memory_loaded: refactoring_backlog")
+      expect(agent.send(:thinking_spinner_status_lines, "/").first).to include("memory_loaded: refactoring_backlog")
 
       agent.send(:handle_stream_event, type: :generation_completed)
 
-      expect(agent.send(:thinking_spinner_status_line, "/")).to include("memory_loaded: refactoring_backlog")
+      expect(agent.send(:thinking_spinner_status_lines, "/").first).to include("memory_loaded: refactoring_backlog")
     end
 
     it "keeps memory notification inline with spinner status during thinking" do
@@ -984,7 +983,7 @@ file2.rb")
       agent.send(:handle_stream_event, type: :generation_started)
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
 
-      line = agent.send(:thinking_spinner_status_line, "\\")
+      line = agent.send(:thinking_spinner_status_lines, "\\").first
       expect(line).to include("thinking... \\")
       expect(line).to include("memory_loaded: crawler_exploration_ideas")
       expect(line).to include("last_tool:")
@@ -998,7 +997,7 @@ file2.rb")
       agent.send(:handle_stream_event, type: :generation_started)
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "execute", content: "echo hi" })
 
-      line = agent.send(:thinking_spinner_status_line, "|")
+      line = agent.send(:thinking_spinner_status_lines, "|").first
       expect(line).not_to include("loaded:")
       expect(line).not_to include("tool:")
     end
@@ -1027,7 +1026,7 @@ file2.rb")
         error_class: "Errno::ECONNREFUSED"
       )
 
-      line = agent.send(:thinking_spinner_status_line, "/")
+      line = agent.send(:thinking_spinner_status_lines, "/").first
       expect(line).to include("network error: retrying")
       expect(line).to include("(1/6 in 0.5s)")
     end
@@ -1046,7 +1045,7 @@ file2.rb")
         error_class: "Net::OpenTimeout"
       )
 
-      line = agent.send(:thinking_spinner_status_line, "-")
+      line = agent.send(:thinking_spinner_status_lines, "-").first
       expect(line).to include("\e[31m")
       expect(line).to include("network error: retrying")
     end
@@ -1094,13 +1093,13 @@ file2.rb")
       allow(agent).to receive(:color_output?).and_return(false)
 
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
-      expect(agent.send(:thinking_spinner_status_line, "/")).to include("memory_loaded: crawler_exploration_ideas")
+      expect(agent.send(:thinking_spinner_status_lines, "/").first).to include("memory_loaded: crawler_exploration_ideas")
 
       allow(agent).to receive(:handle_stream_event)
       agent.send(:run_engine_turn, repl_session, "hi")
 
-      expect(agent.send(:thinking_spinner_status_line, "/")).not_to include("memory_loaded: crawler_exploration_ideas")
-      expect(agent.send(:thinking_spinner_status_line, "/")).not_to include("last_tool: memory_read")
+      expect(agent.send(:thinking_spinner_status_lines, "/").first).not_to include("memory_loaded: crawler_exploration_ideas")
+      expect(agent.send(:thinking_spinner_status_lines, "/").first).not_to include("last_tool: memory_read")
     end
 
     it "prints idle status before the next assist prompt when enabled" do
@@ -1130,8 +1129,8 @@ file2.rb")
 
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
 
-      expect(agent.send(:memory_spinner_segment)).to include("mem: crawler_exploration_ideas")
-      expect(agent.send(:memory_sticky_line)).to include("active this session: crawler_exploration_ideas")
+      expect(agent.send(:spinner_status_lines).join).to include("mem: crawler_exploration_ideas")
+      expect(agent.send(:sticky_status_lines).join).to include("mem: crawler_exploration_ideas")
     end
 
     it "keeps spinner memory names across generation completion within a turn" do
@@ -1141,13 +1140,13 @@ file2.rb")
 
       agent.send(:handle_stream_event, type: :generation_started)
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
-      expect(agent.send(:memory_spinner_segment)).to include("refactoring_backlog")
-      expect(agent.send(:memory_sticky_line)).to include("refactoring_backlog")
+      expect(agent.send(:spinner_status_lines).join).to include("refactoring_backlog")
+      expect(agent.send(:sticky_status_lines).join).to include("refactoring_backlog")
 
       agent.send(:handle_stream_event, type: :generation_completed)
 
-      expect(agent.send(:memory_spinner_segment)).to include("refactoring_backlog")
-      expect(agent.send(:memory_sticky_line)).to include("refactoring_backlog")
+      expect(agent.send(:spinner_status_lines).join).to include("refactoring_backlog")
+      expect(agent.send(:sticky_status_lines).join).to include("refactoring_backlog")
     end
 
     it "keeps session memories across generation completion" do
@@ -1157,11 +1156,11 @@ file2.rb")
 
       agent.send(:handle_stream_event, type: :generation_started)
       agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
-      expect(agent.send(:memory_sticky_line)).to include("refactoring_backlog")
+      expect(agent.send(:sticky_status_lines).join).to include("refactoring_backlog")
 
       agent.send(:handle_stream_event, type: :generation_completed)
 
-      expect(agent.send(:memory_sticky_line)).to include("refactoring_backlog")
+      expect(agent.send(:sticky_status_lines).join).to include("refactoring_backlog")
     end
   end
 
@@ -1627,7 +1626,7 @@ file2.rb")
       gemma_profile = Samagotchi::ModelProfile.gemma4
       agent = described_class.new(mode: "assist", client: client, profile: gemma_profile)
 
-      hint = agent.send(:tool_call_hint)
+      hint = agent.instance_variable_get(:@engine).send(:tool_call_hint)
       expect(hint).to include("<|tool_call>call:")
     end
 
@@ -1635,42 +1634,10 @@ file2.rb")
       qwen_profile = Samagotchi::ModelProfile.qwen36
       agent = described_class.new(mode: "assist", client: client, profile: qwen_profile)
 
-      hint = agent.send(:tool_call_hint)
+      hint = agent.instance_variable_get(:@engine).send(:tool_call_hint)
       expect(hint).to include("<tool_call>")
       expect(hint).to include("<function=")
       expect(hint).to include("<parameter=")
-    end
-  end
-
-  describe "#shell_bang_command?" do
-    let(:agent) { described_class.new(mode: "assist", prompt: "hi") }
-
-    it "returns true for !ls" do
-      expect(agent.send(:shell_bang_command?, "!ls")).to be(true)
-    end
-
-    it "returns true for !ruby -e 'puts 1'" do
-      expect(agent.send(:shell_bang_command?, "!ruby -e 'puts 1'")).to be(true)
-    end
-
-    it "returns true for ! with leading space" do
-      expect(agent.send(:shell_bang_command?, "! ls")).to be(true)
-    end
-
-    it "returns false for ! alone" do
-      expect(agent.send(:shell_bang_command?, "!")).to be(false)
-    end
-
-    it "returns false for normal input" do
-      expect(agent.send(:shell_bang_command?, "hello world")).to be(false)
-    end
-
-    it "returns false for ! at end of line" do
-      expect(agent.send(:shell_bang_command?, "hello !")).to be(false)
-    end
-
-    it "returns false for empty string" do
-      expect(agent.send(:shell_bang_command?, "")).to be(false)
     end
   end
 
@@ -1727,7 +1694,7 @@ file2.rb")
       session = Samagotchi::Session.new_session(
         mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd
       )
-      messages = [{ role: "system", content: agent.send(:assist_system_prompt) }]
+      messages = [{ role: "system", content: agent.instance_variable_get(:@engine).assist_system_prompt }]
       expect do
         agent.send(:assist_loop, session: session, messages: messages)
         agent.send(:keep_after_exit, session)

@@ -65,10 +65,11 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
       ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry)
       expect(kernel_of(ui).client).to be(alpha_client)
 
-      message = ui.send(:handle_model_command, "/model beta:Qwen3-14B")
+      expect { ui.send(:run_input_line, nil, "/model beta:Qwen3-14B") }
+        .to output(/model> runtime model set to beta:Qwen3-14B \(profile=qwen36, name\)/).to_stdout
 
       engine = engine_of(ui)
-      expect(message).to eq("runtime model set to beta:Qwen3-14B (profile=qwen36, name)")
+      expect(ui.instance_variable_get(:@effective_model_name)).to eq("beta:Qwen3-14B")
       expect(engine.effective_model_name).to eq("beta:Qwen3-14B")
       expect(engine.default_model_name).to eq("alpha:gemma-small")
       expect(engine.client).to be(beta_client)
@@ -81,7 +82,7 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
       ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry)
       expect(Samagotchi::ConfigFile).to receive(:write_default_model!).with("beta:Qwen3-14B").once
 
-      ui.send(:handle_model_command, "/model beta:Qwen3-14B --default")
+      expect { ui.send(:run_input_line, nil, "/model beta:Qwen3-14B --default") }.to output.to_stdout
 
       expect(engine_of(ui).default_model_name).to eq("beta:Qwen3-14B")
       expect(ui.instance_variable_get(:@default_model_name)).to eq("beta:Qwen3-14B")

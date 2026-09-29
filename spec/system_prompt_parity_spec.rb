@@ -20,10 +20,6 @@ RSpec.describe "Engine/TerminalUI system-prompt parity" do
                            kernel: instance_double(Samagotchi::KernelLoop), profile: "gemma4")
   end
 
-  it "TerminalUI base prompt == Engine canonical base prompt" do
-    expect(ui.send(:assist_system_prompt)).to eq(engine.send(:assist_system_prompt))
-  end
-
   it "TerminalUI fully-built system prompt == Engine#system_prompt" do
     session = ui.send(:messages_for,
       Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd))

@@ -58,6 +58,15 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(described_class.builtin_registry.command?("!ls -la")).to be(true)
       expect(%w[/stats /recap /exit /detach hello ! /modelx].map { |c| described_class.builtin_registry.command?(c) }).to all(be(false))
     end
+
+    it "takes ! followed by a command (a space between is fine) as a shell command" do
+      ["!ls", "!ruby -e 'puts 1'", "! ls"].each do |line|
+        expect(described_class.builtin_registry.lookup(line)&.id).to eq(:shell)
+      end
+      ["!", "hello !", "hello world", ""].each do |line|
+        expect(described_class.builtin_registry.lookup(line)).to be_nil
+      end
+    end
   end
 
   describe "/help" do

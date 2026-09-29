@@ -47,8 +47,6 @@ module Samagotchi
     include Formatting
     include InputSupport
 
-    AGENT_DESCRIPTION_FILE = "AGENT.md"
-    SKIP_AGENT_DESCRIPTION_ENV = "SAMAGOTCHI_SKIP_AGENT_MD"
     STATS_COMMAND = "/stats"
     # /exit --delete: delete the session on the way out.
     EXIT_DELETE_FLAG = "--delete"
@@ -431,25 +429,7 @@ module Samagotchi
       messages
     end
 
-    # Public entrypoint for background session workers.
-    # Keeps worker call sites out of TerminalUI private API details.
-    def process_background_prompt(session:, prompt:)
-      @engine.process_background_prompt(session: session, prompt: prompt)
-    end
-
     private
-
-    # Generate profile-aware tool calling hint.
-    # Kept as a one-line delegator to Engine (single source of truth).
-    def tool_call_hint
-      return @engine.tool_call_hint
-    end
-
-    # Assist system prompt — delegates wholesale to Engine so the two can
-    # never drift apart. This single delegator fixes the 4-line regression.
-    def assist_system_prompt
-      return @engine.assist_system_prompt
-    end
 
     # Interactive REPL loop. Session seed + messages are built by #run and
     # threaded in here (so --prompt / --resume share one code path). The
@@ -735,18 +715,6 @@ module Samagotchi
       prompt
     end
 
-    # Appends the current memory index to the base system prompt so the agent
-    # is always aware of stored memories without needing to call a tool first.
-    # Delegates wholesale to Engine (single source of truth).
-    def system_prompt_with_index(base)
-      result = @engine.system_prompt_with_index(base)
-      # Mirror any --memory activations the Engine performed so the sticky
-      # status line can surface them. The prompt body injection moved into
-      # Engine; echoing the activated names here is purely a UI concern.
-      sync_engine_activated_memories
-      result
-    end
-
     # Engine owns the system prompt (including --memory activation), but the
     # sticky status line is a UI concern. Mirror the activated names so they
     # appear in the status line.
@@ -754,12 +722,6 @@ module Samagotchi
       @engine.activated_memory_names.each do |name|
         add_unique_memory_name(:@session_memory_names, name)
       end
-    end
-
-    # Render a result from a turn that bypassed Engine#run_turn (continue,
-    # reminder turns) exactly as a :turn_completed would be rendered.
-    def emit_result(result)
-      @renderer.render_turn_summary(@engine.turn_summary(result))
     end
 
     # ── Turn view: the drawing surface EventRenderer calls ──────────────────
@@ -878,16 +840,6 @@ module Samagotchi
 
       state = record[:status] == "failed" ? "failed" : (canceled ? "canceled" : "completed")
       @surface.commit("#{paint('chi>', 36)} turn #{state} (#{format_elapsed_duration(record[:duration_ms])})")
-    end
-
-    def split_memory_scope(raw)
-      value = raw.to_s.strip
-      if value.include?("/")
-        scope, name = value.split("/", 2)
-        return [scope, name] if Tools::VALID_SCOPES.include?(scope)
-      end
-
-      [nil, value]
     end
 
     def read_input(awaiting_continue:)
@@ -1033,27 +985,12 @@ module Samagotchi
       @repl_input.prefill(input) ? "prompt restored for retry" : "the failed prompt is in the input history (↑)"
     end
 
-    def shell_bang_command?(input)
-      input.to_s.match?(/\A!\s*\S/)
-    end
-
     def stats_command?(input)
       input.to_s.strip == STATS_COMMAND
     end
 
     def recap_command?(input)
       input.to_s.strip == RECAP_COMMAND
-    end
-
-    # SessionCommands runs /model; the REPL mirrors the result.
-    def handle_model_command(input)
-      result = @commands.run(input)
-      sync_model_mirrors
-      result.output
-    end
-
-    def handle_models_command
-      @commands.run(SessionCommands::MODELS_COMMAND).output
     end
 
     # /recap: the saved recap, and a new one asked for at once when the
@@ -1084,15 +1021,6 @@ module Samagotchi
 
     def clone_messages(messages)
       Array(messages).map(&:dup)
-    end
-
-    def skip_agent_description?
-      value = ENV[SKIP_AGENT_DESCRIPTION_ENV]
-      value == "1" || value&.casecmp?("true")
-    end
-
-    def rg_available?
-      system("command -v rg", out: File::NULL, err: File::NULL)
     end
 
     # Run one REPL turn (a prompt, or a continue/reminder turn with nil) through
@@ -1477,40 +1405,6 @@ module Samagotchi
       normalize_memory_name(path)
     end
 
-    def memory_spinner_segment
-      segment = memory_spinner_segment_plain
-      return "" if segment.empty?
-
-      color_output? ? paint(segment, MEMORY_SPINNER_COLOR) : segment
-    end
-
-    def memory_spinner_segment_plain
-      names = Array(@thinking_memory_names)
-      return "" if names.empty?
-
-      visible = names.first(MEMORY_SPINNER_PREVIEW_LIMIT)
-      suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
-      " mem: #{visible.join(', ')}#{suffix}"
-    end
-
-    def memory_sticky_line
-      names = Array(@session_memory_names)
-      muted = @engine.muted_memory_names
-      return "" if names.empty? && muted.empty?
-
-      parts = []
-      parts << "active this session: #{preview_names(names)}" unless names.empty?
-      parts << "muted: #{preview_names(muted)}" unless muted.empty?
-      body = "memories> #{parts.join(' · ')}"
-      color_output? ? paint(body, MEMORY_SPINNER_COLOR) : body
-    end
-
-    def preview_names(names, limit: MEMORY_STICKY_PREVIEW_LIMIT)
-      visible = names.first(limit)
-      suffix = names.length > visible.length ? ", +#{names.length - visible.length}" : ""
-      "#{visible.join(', ')}#{suffix}"
-    end
-
     def reset_thinking_memory_names
       @thinking_memory_names = []
     end
@@ -1632,28 +1526,10 @@ module Samagotchi
       ConfigFile.recap_config
     end
 
-    def bare_model_for(full_ref)
-      @host_registry.bare_name(full_ref)
-    end
-
-    def spinner_status_line
-      return "" unless status_line_enabled?
-
-      lines = spinner_status_lines
-      lines.empty? ? "" : lines.first
-    end
-
     def spinner_status_lines(width: status_effective_width)
       return [] unless status_line_enabled?
 
       build_status_lines(scope: :spinner, width: width)
-    end
-
-    def sticky_status_line
-      return "" unless status_line_enabled?
-
-      lines = sticky_status_lines
-      lines.empty? ? "" : lines.first
     end
 
     def sticky_status_lines(width: status_effective_width)
@@ -1662,22 +1538,10 @@ module Samagotchi
       build_status_lines(scope: :sticky, width: width)
     end
 
-    def idle_status_line
-      return "" unless status_line_enabled?
-
-      lines = idle_status_lines
-      lines.empty? ? "" : lines.first
-    end
-
     def idle_status_lines(width: status_effective_width)
       return [] unless status_line_enabled?
 
       build_status_lines(scope: :idle, width: width)
-    end
-
-    def build_status_line(scope:)
-      lines = build_status_lines(scope: scope)
-      lines.empty? ? "" : lines.first
     end
 
     # The status rows for +scope+ (:spinner, :sticky or :idle), cut to +width+.
@@ -1853,11 +1717,6 @@ module Samagotchi
       return nil if waited < THINKING_WAIT_NOTICE_AFTER
 
       "model> waiting for the first token... #{waited.floor}s #{frame}"
-    end
-
-    def thinking_spinner_status_line(frame)
-      lines = thinking_spinner_status_lines(frame)
-      lines.empty? ? "" : lines.first
     end
 
     # The spinner row, then (from a turn's 3rd tool call) its tool tally.
@@ -2061,18 +1920,6 @@ module Samagotchi
         return kind == :line ? line : nil if kind
         return :canceled if controller&.cancelled?
       end
-    end
-
-    # Process a prompt through the kernel loop and return the model response.
-    # Delegates to the internal Engine instance.
-    def process_prompt_through_kernel(session, prompt)
-      @engine.process_prompt_through_kernel(session, prompt)
-    end
-
-    # Write an agent response to the session output directory.
-    def write_session_output(output_dir, response)
-      timestamp = Time.now.strftime("%Y%m%d%H%M%S%9N")
-      File.write(File.join(output_dir, "#{timestamp}.txt"), response.to_s)
     end
   end
 end
