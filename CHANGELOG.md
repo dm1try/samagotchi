@@ -8,13 +8,86 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-30
+
 ### Added
 
+- `chi update`: brings an installed chi up to date in one command: the gem
+  from rubygems, then the system bundle, the shipped bundles you installed and
+  the desktop helper (rebuilt only when its sources changed), shown in one
+  table. Your edits to bundle files are kept and reported, running workers and
+  an old `chi web` are only reported, `--dry-run` shows the plan, and
+  `--no-gem` / `--no-bundles` / `--no-desktop` (or `update.*` in config.yml)
+  skip parts. The first start of a new chi version says in one line when
+  something can be updated.
+- A thinking level per model, host or run: `thinking: off | low | medium |
+  high | default` (`models.<key>.thinking`, `hosts.<name>.thinking`,
+  `thinking.level`, `--thinking LEVEL`). Chat hosts get the matching request
+  fields; native Qwen and Gemma turn thinking off. chi says once when a level
+  can't work on a host, and a host that refuses the thinking fields (gpt-oss
+  on OpenRouter) is asked again without them. `/model` and `chi self` show
+  the level.
+- Edit previews: an edit/write approval shows the diff it would make, in the
+  web card and in the terminal, and every edit/write row gets a
+  "diff +3 −1" that opens to the change (live, after a reload and on a join).
 - `chi send --image PATH` (repeatable, up to 20): images go with the message
   as attachments, the same as the web composer's chips; converted and
   downscaled once, then copied into each session. Works with `--new` (the
   session starts idle, then gets the message with its images) and `--wait`.
   A missing file or a non-image stops the send before anything goes out.
+- The desktop helper takes images: a clipboard screenshot, image files from
+  Finder's Send to chi, other apps' image data, or a drop on the panel; they
+  show as thumbnails and go with the message.
+- source-links 0.3.0: `#12` links to the current project's repo (from its git
+  remote) and `owner/repo#12` to that repo; `url:` templates take `{1}`,
+  `{name}`, `{repo}` and `{host}`, with `remote:` and `remote_host:` per
+  source, and the note lists each link once.
+- The web shows when the provider is asked again after an error ("↻ retrying
+  (503) in 3 s, 1/2") or a turn waits for a plugin's setup.
+
+### Changed
+
+- A model named with a host that isn't configured (`nosuch:org/model`, or a
+  provider's name like `openrouter:x`) is an error that names the host and
+  lists the configured ones, in the CLI, `chi send --new`, the web and
+  `/model`, instead of going to the default host.
+- The terminal no longer rewrites `#word` into a memory reference: "PR #1"
+  and "#ff0000" reach the model as typed (Tab still completes `#name`).
+- A question you dismiss reaches the model as dismissed, not as a tool
+  error, so it keeps asking when it should.
+- `/quit` works in the REPL like `/exit`, and the web answers it too;
+  `/stats` and `/recap` take trailing words in both terminals.
+- A delegated session gets reworded rules: the answer first, then evidence,
+  then what's unverified; follow-up messages arrive as new turns.
+
+### Fixed
+
+- A llama.cpp server started with `--api-key` works: the key in
+  `api_key_env` is sent on every request (it got 401). A 401/403 from any host
+  now says which variable to check or to set `api_key_env`.
+- A bundle upgrade that keeps your edited file no longer disables the
+  bundle's plugin, and the system bundle stops warning about the same edit on
+  every start.
+- One bundle with a broken manifest.json no longer stops the hooks of the
+  bundles after it from loading.
+- A long-running worker picks up edited guardrail rules.
+- `write` without content fails instead of emptying the file.
+- Per-model `vision:` follows a model alias, like `profile:` and `sampling:`.
+- A timeout of 0 in config means the default on llama.cpp hosts too (it was a
+  0-second timeout).
+- A reminder turn drops a pending continue offer, so a later "no" can't roll
+  the reminder back.
+- More than 8 options in `ask_user_question` is always an error (one path
+  silently used the first 8).
+- A memory read with a comma list counts each name in the REPL and the web.
+- `/archive` or `/quit` typed during a REPL turn no longer goes to the model
+  as text; `EXIT --DELETE` works in any case in an attached terminal.
+- `chi bundle status` finds index lines again (it said "no-index" for every
+  file).
+
+Update with `chi update` (new in this version: from 0.3.0, run
+`gem install samagotchi` once, then `chi update`). Bundle moved:
+source-links 0.3.0.
 
 ## [0.3.0] - 2026-09-29
 
@@ -161,6 +234,7 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/dm1try/samagotchi/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dm1try/samagotchi/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dm1try/samagotchi/releases/tag/v0.2.0
