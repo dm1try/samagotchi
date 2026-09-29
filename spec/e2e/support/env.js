@@ -110,7 +110,10 @@ export async function startEnv() {
   try {
     const fakePort = await freePort();
     fs.writeFileSync(path.join(dirs.config, "samagotchi", "config.yml"), config(fakePort));
-    const fake = spawn("python3", [path.join(HERE, "fake_openai.py"), String(fakePort), dirs.fake],
+    // No upstream: the error modes' /props and /models get a 404 here instead
+    // of going to the smoke runs' LAN llama.cpp (unreachable on CI: each
+    // probe stalled the turn's start).
+    const fake = spawn("python3", [path.join(HERE, "fake_openai.py"), String(fakePort), dirs.fake, "none"],
       { stdio: ["ignore", "ignore", fs.openSync(path.join(root, "fake.log"), "a")] });
     env.procs.push(fake);
     await waitFor(`http://127.0.0.1:${fakePort}/v1/models`, "fake_openai.py", fake);

@@ -15,7 +15,9 @@
 # the shape of a queued free model (checks the first-token limit).
 # stream_error: a 200 whose first SSE event is OpenRouter's upstream-failure shape
 # (comment + {"choices":[],"error":{code 503}}), then flips to forward; _always keeps failing. "forward" proxies to the
-# real llama.cpp. Every request line + body is appended to <dir>/requests.log.
+# real llama.cpp at the third argument (default below); "none" there means no upstream: what would be forwarded
+# answers 404, as a chat host without /props does (the e2e suite, which must not reach a LAN server: an
+# unreachable one stalls the worker's /props probes). Every request line + body is appended to <dir>/requests.log.
 import http.server, json, os, sys, urllib.request
 PORT = int(sys.argv[1]); DIR = sys.argv[2]; UPSTREAM = sys.argv[3] if len(sys.argv) > 3 else "http://192.168.1.29:8081"
 def mode():
@@ -106,6 +108,7 @@ class H(http.server.BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
     def _forward(self, body):
+        if UPSTREAM == "none": return self._send(404, json.dumps({"error": {"message": "no upstream (fake)"}}))
         req = urllib.request.Request(UPSTREAM + self.path, data=body if self.command == "POST" else None, method=self.command)
         for k in ("Content-Type", "Authorization"):
             if self.headers.get(k): req.add_header(k, self.headers[k])
