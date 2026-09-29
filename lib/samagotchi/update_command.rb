@@ -2,6 +2,7 @@
 
 require_relative "config"
 require_relative "desktop"
+require_relative "gem_update"
 require_relative "installed_gem"
 require_relative "live_versions"
 require_relative "memory_bundle/shipped_update"
@@ -18,19 +19,21 @@ module Samagotchi
   # table; a second run changes nothing and says so.
   class UpdateCommand
     USAGE = <<~TEXT
-      Usage: chi update [--dry-run] [--no-bundles] [--no-desktop]
-        Updates this chi's install: the system bundle, the bundles chi ships
-        that you installed (chi bundle list), and the desktop helper (macOS;
-        rebuilt only when its sources changed). Edited memory files are kept
-        and reported; nothing is installed that isn't already.
+      Usage: chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]
+        Updates this chi's install: the gem (from rubygems.org), then the
+        system bundle, the bundles chi ships that you installed (chi bundle
+        list), and the desktop helper (macOS; rebuilt only when its sources
+        changed). Edited memory files are kept and reported; nothing is
+        installed that isn't already, and old gem versions stay.
         --dry-run      show what would change; change nothing
+        --no-gem       don't install a newer gem (config update.gem: false)
         --no-bundles   leave the shipped bundles alone (config update.bundles: false)
         --no-desktop   leave the desktop helper alone (config update.desktop: false)
         Running sessions keep their chi until they idle out (30 min) or
         chi sessions stop ID; a running chi web needs a restart.
     TEXT
 
-    FLAGS = { "--dry-run" => :dry_run, "--no-bundles" => :no_bundles, "--no-desktop" => :no_desktop,
+    FLAGS = { "--dry-run" => :dry_run, "--no-gem" => :no_gem, "--no-bundles" => :no_bundles, "--no-desktop" => :no_desktop,
               # Hidden: no pbs/lsregister/open/pkill for a helper under HOME=<tmp>.
               "--no-register" => :no_register }.freeze
 
@@ -44,9 +47,15 @@ module Samagotchi
 
     # @param gem_spec [Gem::Specification, nil] the installed gem (nil: a checkout)
     # @param platform [#call] register: → a Desktop::MacOS-like object
+    # @param exec [#call] argv → replaces this process (the new chi's update)
+    # @param bundler [Boolean] running under Bundler (bundle exec)
     def initialize(argv, stdout: $stdout, stderr: $stderr, gem_spec: InstalledGem.spec,
                    shipped_dir: MemoryBundle::SourceNormalizer::SHIPPED_DIR, platform: nil,
-                   supported: Desktop.supported?, state_dir: Session.default_state_dir, web: nil)
+                   supported: Desktop.supported?, state_dir: Session.default_state_dir, web: nil,
+                   gem_update: GemUpdate.new, exec: nil, bundler: nil)
+      @gem_update = gem_update
+      @exec = exec || ->(argv) { Kernel.exec(*argv) }
+      @bundler = bundler.nil? ? (defined?(::Bundler) || !ENV["BUNDLE_GEMFILE"].to_s.empty?) : bundler
       @argv = argv.dup
       @stdout = stdout
       @stderr = stderr
@@ -72,7 +81,8 @@ module Samagotchi
       end
 
       @dry_run = options[:dry_run]
-      rows = [system_bundle_row, *bundle_rows(options), desktop_row(options), *live_rows].compact
+      gem = gem_row(options)
+      rows = [gem, system_bundle_row, *bundle_rows(options), desktop_row(options), *live_rows].compact
       print_table(rows)
       footers(options).each { |line| @stdout.puts(line) }
       @stdout.puts(summary(rows))
@@ -82,9 +92,14 @@ module Samagotchi
     private
 
     def parse
-      @argv.each_with_object({}) do |arg, options|
+      argv = @argv.dup
+      options = {}
+      while (arg = argv.shift)
         if %w[-h --help help].include?(arg)
           options[:help] = true
+        elsif arg == "--gem-from" && argv.first
+          # Hidden: the old version, passed by the chi that installed this one.
+          options[:gem_from] = argv.shift
         elsif FLAGS.key?(arg)
           options[FLAGS[arg]] = true
         else
@@ -93,6 +108,51 @@ module Samagotchi
           return nil
         end
       end
+      options
+    end
+
+    # Installs a newer gem and hands over to it (exec: the new code syncs
+    # and prints the table), or says why not. A failed install is a failed
+    # row; the sync then runs on this version.
+    def gem_row(options)
+      row = Row.new(component: "chi (gem)", from: VERSION)
+      if options[:gem_from]
+        row.from = options[:gem_from]
+        row.to = VERSION
+        return done(row, :update)
+      end
+      if (why = off(options, "gem"))
+        return skipped(row, why)
+      end
+      return skipped(row, "under Bundler: bundle update samagotchi") if @bundler
+
+      latest = begin
+        @gem_update.latest
+      rescue GemUpdate::Error => e
+        return row.tap { |r| r.status = "couldn't check (#{e.message})" }
+      end
+      return up_to_date(row) unless @gem_update.newer?(latest)
+
+      row.to = latest.version
+      return done(row, :update) if @dry_run
+
+      @stdout.puts("installing samagotchi #{latest.version}…")
+      output, ok = @gem_update.install(latest)
+      return failed(row, output.lines.map(&:strip).reject(&:empty?).last.to_s) unless ok
+
+      hand_over(options, row)
+    end
+
+    # exec the wrapper, which activates the newest installed samagotchi.
+    # Without one (installed with --bindir), this version syncs.
+    def hand_over(options, row)
+      wrapper = InstalledGem.wrapper(@gem_spec)
+      return done(row, :update, "run chi update again to sync with it") unless wrapper
+
+      passed = FLAGS.select { |_, key| options[key] && key != :dry_run }.keys
+      @stdout.flush
+      @exec.call([RbConfig.ruby, wrapper, "update", "--no-gem", "--gem-from", VERSION, *passed])
+      done(row, :update) # only when exec is a spec's stand-in
     end
 
     # Why a part is off for this run, or nil.
@@ -194,7 +254,7 @@ module Samagotchi
       return "(dry run: nothing was changed)" if @dry_run
       return "some parts failed (see above)" if rows.any?(&:failed)
 
-      rows.all? { |r| r.status.start_with?("up to date", "skipped", "not installed") } ? "everything is up to date" : "done"
+      rows.all? { |r| r.status.start_with?("up to date", "skipped", "not installed", "couldn't check") } ? "everything is up to date" : "done"
     end
 
     # "updated" (or "would update" in a dry run), with a note; the block

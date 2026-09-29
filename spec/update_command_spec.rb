@@ -42,11 +42,19 @@ RSpec.describe Samagotchi::UpdateCommand do
     FileUtils.remove_entry(tmp)
   end
 
+  # rubygems says this chi is the newest; never the network.
+  let(:fetcher) { -> { JSON.generate(version: Samagotchi::VERSION) } }
+  let(:gem_runner) { double("runner", run: ["Successfully installed samagotchi\n", true]) }
+  let(:gem_update) { Samagotchi::GemUpdate.new(env: {}, fetcher: fetcher, runner: gem_runner, gem_bin: "/rb/bin/gem") }
+  let(:execs) { [] }
+  let(:bundler) { false }
+
   def run(*argv, gem_spec: self.gem_spec)
     out.truncate(0)
     out.rewind
     described_class.new(argv, stdout: out, stderr: err, gem_spec: gem_spec, platform: ->(register:) { helper },
-                              supported: supported, state_dir: state_dir, web: web).run
+                              supported: supported, state_dir: state_dir, web: web, gem_update: gem_update,
+                              exec: ->(argv) { execs << argv }, bundler: bundler).run
   end
 
   # btw as an older gem shipped it, installed from there.
@@ -110,6 +118,108 @@ RSpec.describe Samagotchi::UpdateCommand do
     run
     expect(line("bundles")).to end_with("skipped (update.bundles: false)")
     expect(btw_version).to eq("0.0.1")
+  end
+
+  describe "the gem" do
+    let(:newer) { Gem::Version.new(Samagotchi::VERSION).bump.to_s + ".0" }
+    let(:fetcher) { -> { JSON.generate(version: newer) } }
+    let(:wrapper_dir) { File.join(tmp, "gemhome") }
+    let(:gem_spec) do
+      FileUtils.mkdir_p(File.join(wrapper_dir, "bin"))
+      File.write(File.join(wrapper_dir, "bin", "chi"), "")
+      Gem::Specification.new { |s| s.name = "samagotchi"; s.version = Samagotchi::VERSION }
+                        .tap { |s| s.loaded_from = File.join(wrapper_dir, "specifications", "samagotchi.gemspec") }
+    end
+
+    it "installs a newer one with this Ruby's gem and hands over to the wrapper, passing the flags on" do
+      expect(gem_runner).to receive(:run).with(["/rb/bin/gem", "install", "samagotchi", "--no-document", "-v", newer])
+                                         .and_return(["Successfully installed\n", true])
+      run("--no-desktop")
+      expect(out.string).to include("installing samagotchi #{newer}…")
+      expect(execs).to eq([[RbConfig.ruby, File.join(wrapper_dir, "bin", "chi"), "update", "--no-gem", "--gem-from",
+                            Samagotchi::VERSION, "--no-desktop"]])
+    end
+
+    it "shows the handed-over update as the gem row" do
+      run("--no-gem", "--gem-from", "0.2.0")
+      expect(line("chi (gem)")).to match(/\Achi \(gem\)\s+0\.2\.0\s+#{Regexp.escape(Samagotchi::VERSION)}\s+updated\z/)
+    end
+
+    it "says would update in a dry run, installing nothing" do
+      expect(gem_runner).not_to receive(:run)
+      run("--dry-run")
+      expect(line("chi (gem)")).to match(/#{Regexp.escape(newer)}\s+would update\z/)
+      expect(execs).to be_empty
+    end
+
+    it "installs nothing when this is the newest" do
+      allow(gem_update).to receive(:latest).and_return(Samagotchi::GemUpdate::Latest.new(version: Samagotchi::VERSION, source: "samagotchi"))
+      expect(gem_runner).not_to receive(:run)
+      run
+      expect(line("chi (gem)")).to end_with("up to date")
+    end
+
+    it "says couldn't check when offline, and still syncs" do
+      allow(gem_update).to receive(:latest).and_raise(Samagotchi::GemUpdate::Error, "SocketError: getaddrinfo failed")
+      expect(run).to eq(0)
+      expect(line("chi (gem)")).to end_with("couldn't check (SocketError: getaddrinfo failed)")
+      expect(line("system bundle")).to end_with("installed")
+    end
+
+    it "reports a failed install and syncs on this version" do
+      allow(gem_runner).to receive(:run).and_return(["ERROR:  While executing gem ... (Gem::FilePermissionError)\n", false])
+      expect(run).to eq(1)
+      expect(line("chi (gem)")).to end_with("failed (ERROR:  While executing gem ... (Gem::FilePermissionError))")
+      expect(line("system bundle")).to end_with("installed")
+      expect(execs).to be_empty
+    end
+
+    it "is skipped with --no-gem or update.gem: false" do
+      expect(gem_runner).not_to receive(:run)
+      run("--no-gem")
+      expect(line("chi (gem)")).to end_with("skipped (--no-gem)")
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("update.gem").and_return(false)
+      run
+      expect(line("chi (gem)")).to end_with("skipped (update.gem: false)")
+    end
+
+    context "under Bundler" do
+      let(:bundler) { true }
+
+      it "is skipped with the bundle hint" do
+        expect(gem_runner).not_to receive(:run)
+        run
+        expect(line("chi (gem)")).to end_with("skipped (under Bundler: bundle update samagotchi)")
+      end
+    end
+  end
+
+  describe Samagotchi::GemUpdate do
+    it "treats SAMAGOTCHI_UPDATE_GEM_FILE's file as the newest and installs that file" do
+      spec = Gem::Specification.new do |s|
+        s.name = "samagotchi"
+        s.version = "9.0.0.pre2"
+        s.summary = "t"
+        s.authors = ["t"]
+        s.files = []
+      end
+      gem_file = File.join(tmp, "samagotchi-9.0.0.pre2.gem")
+      Gem::Package.build(spec, false, false, gem_file)
+      update = described_class.new(env: { "SAMAGOTCHI_UPDATE_GEM_FILE" => gem_file }, fetcher: -> { raise "no network" }, gem_bin: "gem")
+      latest = update.latest
+      expect(latest.version).to eq("9.0.0.pre2")
+      expect(update.install_argv(latest)).to eq(["gem", "install", gem_file, "--no-document"])
+    end
+
+    it "reads its file from a variable that isn't a config key's env form" do
+      expect(Samagotchi::Config::ENTRIES.map(&:env_key)).not_to include(described_class::LOCAL_ENV)
+    end
+
+    it "wraps a bad answer in an Error" do
+      expect { described_class.new(env: {}, fetcher: -> { "<html>" }).latest }.to raise_error(described_class::Error, /JSON::ParserError/)
+      expect { described_class.new(env: {}, fetcher: -> { "{}" }).latest }.to raise_error(described_class::Error, /without a version/)
+    end
   end
 
   context "with the desktop helper (macOS)" do
