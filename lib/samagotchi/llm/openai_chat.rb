@@ -44,6 +44,8 @@ module Samagotchi
     # only; the chat loop owns the conversation and the tools.
     class OpenAIChat
       MAX_MODEL_PAGES = 20
+      # How much of a 200's non-stream body is read as a possible JSON error.
+      PLAIN_ERROR_LIMIT = 64 * 1024
       DEFAULT_MODELS_TTL = 60
 
       attr_reader :base_url, :host_name, :api_key_env, :models_ttl, :first_token_timeout
@@ -120,15 +122,18 @@ module Samagotchi
         assembly = Assembly.new
         events = 0
         other = +""
+        plain = +""
         # A retry streams the answer from the start again.
         restart = lambda do |**event|
           assembly = Assembly.new
+          plain = +""
           on_retry&.call(**event)
         end
         @http.stream_lines(URI(request.uri.to_s), request, cancel_controller: cancel_controller, on_retry: restart,
                                                            log_fields: log_fields) do |line, shown|
           events += 1 if line.start_with?("data:")
           other << line[0, 200] if !line.start_with?("data:") && other.length < 200
+          raise_plain_error(plain, line) if events.zero?
           payload = parse_line(line)
           next unless payload
 
@@ -256,6 +261,18 @@ module Samagotchi
 
       # The parsed payload of a `data:` line; nil for blank lines, comments
       # and [DONE]. Error events raise their ProviderError.
+      # A 200 whose body is a plain JSON error instead of a stream (OpenRouter
+      # sends an upstream 503 so): raised, from inside the stream so it is
+      # retried by its kind, once the lines so far parse as an error object.
+      def raise_plain_error(plain, line)
+        return if line.empty? || line.start_with?(":") || (plain.empty? && !line.start_with?("{"))
+        return if plain.bytesize > PLAIN_ERROR_LIMIT
+
+        plain << line << "\n"
+        error = ProviderErrors.from_error_body(plain, host: @host_name)
+        raise error if error
+      end
+
       def parse_line(line)
         error = HTTP.sse_error(line, host: @host_name)
         raise error if error

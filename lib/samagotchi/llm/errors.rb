@@ -283,9 +283,26 @@ module Samagotchi
           return nil
         end
 
+        from_error_json(raw, host: host)
+      end
+
+      # The error a 200's whole body carries when it is a plain JSON error
+      # object instead of a stream (OpenRouter's "503 inside a 200":
+      # {"error":{"code":503,"message":"…"}}), or nil for anything else.
+      def from_error_body(body, host:)
+        parsed = parse_json(body.to_s)
+        return nil unless parsed.is_a?(Hash) && parsed.key?("error")
+
+        from_error_json(body.to_s, host: host)
+      end
+
+      # The ProviderError for a JSON error object, by its error.code (an HTTP
+      # status); 500 when it has none.
+      def from_error_json(raw, host:)
         parsed = parse_json(raw)
         error = parsed.is_a?(Hash) && parsed["error"].is_a?(Hash) ? parsed["error"] : parsed
         code = error.is_a?(Hash) ? error["code"] : nil
+        code = code.to_i if code.is_a?(String) && code.match?(/\A\d{3}\z/)
         status = code.is_a?(Integer) && code.between?(400, 599) ? code : 500
         from_response(status: status, body: raw, host: host)
       end

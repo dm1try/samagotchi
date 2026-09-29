@@ -301,6 +301,39 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
         .to raise_error(Samagotchi::LLM::ProtocolError, /no stream events.*\{not json/)
     end
 
+    it "retries a 200 whose body is a plain JSON 503 error (OpenRouter), then answers" do
+      server.enqueue("/v1/chat/completions",
+                     json: { error: { code: 503, message: "The model is overloaded, try again" } })
+      replay("text_stream.sse")
+      retries = []
+
+      response = adapter.chat(messages: messages, tools: [], model: "m", on_retry: ->(**event) { retries << event })
+
+      expect(response.text).to eq("PONG")
+      expect(retries.map { |event| event[:error_class] }).to eq(["Samagotchi::LLM::ServerError"])
+      expect(retries.first[:error_message]).to include("overloaded")
+      expect(server.requests.size).to eq(2)
+    end
+
+    it "retries a 200 whose body is a pretty-printed JSON 429 error as a rate limit" do
+      server.enqueue("/v1/chat/completions",
+                     json: JSON.pretty_generate({ error: { code: 429, message: "Rate limit exceeded" } }))
+      replay("text_stream.sse")
+      retries = []
+
+      adapter.chat(messages: messages, tools: [], model: "m", on_retry: ->(**event) { retries << event })
+
+      expect(retries.map { |event| event[:error_class] }).to eq(["Samagotchi::LLM::RateLimited"])
+    end
+
+    it "fails a 200 whose body is a plain JSON 400-like error with its message, without a retry" do
+      server.default("/v1/chat/completions", json: { error: { code: 400, message: "Invalid model id foo" } })
+
+      expect { adapter.chat(messages: messages, tools: [], model: "m") }
+        .to raise_error(Samagotchi::LLM::BadRequest, /HTTP 400: Invalid model id foo/)
+      expect(server.requests.size).to eq(1)
+    end
+
     it "raises the server's mid-stream error once the retries run out" do
       server.default("/v1/chat/completions", sse: FakeProviderServer.fixture("stream_error.hand-written.sse"))
 
