@@ -4,18 +4,18 @@ require "samagotchi/engine"
 require "samagotchi/hooks"
 require "samagotchi/kernel_loop"
 require "samagotchi/session"
+require "support/thinking_off"
 
 # The read-only conversation copies the turn hooks get.
 RSpec.describe "Conversation state on the turn hooks" do
+  include_context "thinking off"
+
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    original_thinking = ENV["THINKING_MODE"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    ENV["THINKING_MODE"] = "false"
     example.run
   ensure
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
-    ENV["THINKING_MODE"] = original_thinking
   end
 
   let(:client) { instance_double(Samagotchi::Client) }

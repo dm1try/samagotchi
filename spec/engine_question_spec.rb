@@ -4,19 +4,19 @@ require "json"
 require "tmpdir"
 require "samagotchi/engine"
 require "samagotchi/session"
+require "support/thinking_off"
 
 # Covers the cross-thread ask_user_question path used by the Web UI / Bridge:
 # Engine#request_question blocks the turn thread until Engine#answer_question
 # is called from another thread (or the turn is cancelled).
 RSpec.describe "Engine ask_user_question (cross-thread path)" do
+  include_context "thinking off"
+
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    original_thinking = ENV["THINKING_MODE"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    ENV["THINKING_MODE"] = "false"
     example.run
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
-    ENV["THINKING_MODE"] = original_thinking
   end
 
   let(:client) { instance_double(Samagotchi::Client) }

@@ -50,4 +50,47 @@ RSpec.describe "Engine#system_prompt per loop" do
     expect(e.system_prompt).to include("(new index)")
     expect(e.system_prompt(registry.resolve("box:gemma-small"))).to include("(new index)")
   end
+
+  describe "with a thinking level" do
+    around do |example|
+      ENV["SAMAGOTCHI_THINKING_LEVEL"] = level
+      example.run
+    ensure
+      ENV.delete("SAMAGOTCHI_THINKING_LEVEL")
+    end
+
+    context "off" do
+      let(:level) { "off" }
+
+      it "leaves out Gemma's thinking token" do
+        e = engine("box:gemma-small", "gemma4")
+
+        expect(e.system_prompt).to start_with(e.assist_system_prompt)
+        expect(e.system_prompt).not_to include("<|think|>")
+      end
+
+      it "leaves out the Qwen turn preamble (there is no thinking to start with TURN:)" do
+        expect(engine("box:qwen-small", "qwen36").system_prompt).not_to include("Turn preamble")
+      end
+    end
+
+    context "low (no native knob)" do
+      let(:level) { "low" }
+
+      it "keeps the thinking token and the preamble" do
+        expect(engine("box:gemma-small", "gemma4").system_prompt).to start_with("<|think|>\n")
+        expect(engine("box:qwen-small", "qwen36").system_prompt).to include("Turn preamble")
+      end
+    end
+  end
+
+  it "builds the prompt again when the level changes" do
+    e = engine("box:gemma-small", "gemma4")
+    expect(e.system_prompt).to start_with("<|think|>")
+
+    ENV["SAMAGOTCHI_THINKING_LEVEL"] = "off"
+    expect(e.system_prompt).not_to include("<|think|>")
+  ensure
+    ENV.delete("SAMAGOTCHI_THINKING_LEVEL")
+  end
 end

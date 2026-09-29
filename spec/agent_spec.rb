@@ -31,7 +31,7 @@ RSpec.describe Samagotchi::TerminalUI do
   end
 
   around do |example|
-    original_thinking_mode = ENV["THINKING_MODE"]
+    original_thinking_mode = ENV["SAMAGOTCHI_THINKING_LEVEL"]
     original_skip_agent_md = ENV["SAMAGOTCHI_SKIP_AGENT_MD"]
     original_history_file = ENV["SAMAGOTCHI_HISTORY_FILE"]
     original_xdg_state_home = ENV["XDG_STATE_HOME"]
@@ -51,7 +51,7 @@ RSpec.describe Samagotchi::TerminalUI do
     ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"] = "fixed"
     ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"] = "200"
     example.run
-    ENV["THINKING_MODE"] = original_thinking_mode
+    ENV["SAMAGOTCHI_THINKING_LEVEL"] = original_thinking_mode
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
     ENV["SAMAGOTCHI_HISTORY_FILE"] = original_history_file
     ENV["XDG_STATE_HOME"] = original_xdg_state_home
@@ -659,7 +659,7 @@ file2.rb")
 
     before do
       # Clear ENV to ensure tests are isolated from the environment
-      ENV.delete("THINKING_MODE")
+      ENV.delete("SAMAGOTCHI_THINKING_LEVEL")
       ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     end
@@ -673,8 +673,8 @@ file2.rb")
       agent.run
     end
 
-    it "omits the <|think|> token when THINKING_MODE=false" do
-      ENV["THINKING_MODE"] = "false"
+    it "omits the <|think|> token with thinking off (SAMAGOTCHI_THINKING_LEVEL=off)" do
+      ENV["SAMAGOTCHI_THINKING_LEVEL"] = "off"
       agent = described_class.new(mode: "assist", prompt: "hi", client: client)
       allow(client).to receive(:complete) do |prompt|
         expect(prompt).not_to include("<|think|>")

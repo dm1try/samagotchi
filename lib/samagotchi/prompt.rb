@@ -39,8 +39,10 @@ module Samagotchi
     # what it was before images existed.
     #
     # @param vision [VisionContext, nil] the turn's images context
+    # @param prefill [String] text after the generation cue, the start of
+    #   the model's answer (Thinking.native: Qwen's empty thought)
     # @return [Array(String, Array<String>)]
-    def self.format_with_images(messages, profile: ModelProfile.default, vision: nil)
+    def self.format_with_images(messages, profile: ModelProfile.default, vision: nil, prefill: "")
       plan = ImagePlan.new(messages, vision, data: :base64)
       images = []
       suffixes = messages.each_with_index.map { |m, index| image_lines(plan.items(m, index), profile, images) }
@@ -49,7 +51,7 @@ module Samagotchi
              else
                format_with_turn_markers(messages, profile, suffixes)
              end
-      [text, images]
+      [text + prefill.to_s, images]
     end
 
     private

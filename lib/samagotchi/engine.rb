@@ -1708,10 +1708,15 @@ module Samagotchi
     # prompt prefix, and the server's KV cache for it, stay stable.
     # @param target [HostRegistry::ModelTarget, nil]
     # @return [String]
+    # The native prompt depends on the thinking level too (Gemma's token,
+    # Qwen's turn preamble): a level change builds it again.
     def system_prompt(target = nil)
-      chat = (target || @host_registry.resolve(@effective_model_name)).entry.chat?
+      target ||= @host_registry.resolve(@effective_model_name)
+      chat = target.entry.chat?
+      level = chat ? nil : thinking_level(target)
       @system_prompts ||= {}
-      @system_prompts[chat] ||= system_prompt_with_index(assist_system_prompt(chat: chat), chat: chat)
+      @system_prompts[[chat, level]] ||= system_prompt_with_index(assist_system_prompt(chat: chat, thinking: level),
+                                                                  chat: chat, thinking: level)
     end
 
     # @return [Session] current session (Engine owns create/resume)
@@ -2123,7 +2128,13 @@ module Samagotchi
 
     # The effective model's thinking level (Thinking.resolve), read each turn.
     def turn_thinking
-      target = @host_registry.resolve(@effective_model_name)
+      thinking_level(@host_registry.resolve(@effective_model_name))
+    rescue StandardError
+      Thinking::DEFAULT
+    end
+
+    # +target+'s thinking level (Thinking.resolve).
+    def thinking_level(target)
       Thinking.resolve(target, names: model_lookup_names(target)).first
     rescue StandardError
       Thinking::DEFAULT
@@ -2718,9 +2729,11 @@ module Samagotchi
 
     # Only Qwen has an explicit thinking-close marker, so only Qwen can
     # reliably have this preamble parsed back out of its thinking block.
-    def turn_preamble_instruction
+    # With thinking off there is no thinking to begin with it.
+    def turn_preamble_instruction(thinking = nil)
       return "" unless profile.name == "qwen36"
       return "" if Samagotchi::Config.get("thinking.turn_preamble") == false
+      return "" if (thinking || turn_thinking) == :off
 
       "\nTurn preamble: as the very first line of your thinking, write \"TURN: \" followed by a short present-tense action phrase (max 8 words) describing what you are about to do, e.g. \"TURN: reading project config\". Then continue reasoning normally.\n"
     end
@@ -2729,12 +2742,13 @@ module Samagotchi
 
     # @param chat [Boolean] for the chat loop: no tool declarations, call
     #   syntax or turn preamble (its tools go as schemas with each request)
-    def assist_system_prompt(chat: false)
+    # @param thinking [Symbol, nil] the level (Thinking); nil: the effective model's
+    def assist_system_prompt(chat: false, thinking: nil)
       return chat_system_prompt if chat
 
       declarations = tool_declarations
       hint = tool_call_hint
-      turn_preamble = turn_preamble_instruction
+      turn_preamble = turn_preamble_instruction(thinking)
 
       <<~SYS
         You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant harness. You have access to the following tools:
@@ -2814,15 +2828,12 @@ module Samagotchi
 
     # @param chat [Boolean] no Gemma thinking token (the chat API's template
     #   decides about thinking)
-    def system_prompt_with_index(base, chat: false)
+    # @param thinking [Symbol, nil] the level (Thinking); nil: the effective model's
+    def system_prompt_with_index(base, chat: false, thinking: nil)
       project_index = read_memory_index("project")
       system_index = read_memory_index("system")
       project_description = project_specific_description
-      thinking_token = if !chat && profile.name == "gemma4" && ENV["THINKING_MODE"] != "false"
-                         "<|think|>\n"
-                       else
-                         ""
-                       end
+      thinking_token = chat ? "" : Thinking.native(thinking || turn_thinking, profile).system_token
       memory_sections = [
         "Project memories:\n#{project_index}",
         "System memories:\n#{system_index}"

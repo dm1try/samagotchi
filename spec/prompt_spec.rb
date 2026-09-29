@@ -151,4 +151,21 @@ RSpec.describe Samagotchi::Prompt do
       expect(result).to eq("<|turn>model\n")
     end
   end
+
+  describe "prefill" do
+    let(:messages) { [{ role: "user", content: "hi" }] }
+
+    it "goes after the Qwen assistant cue" do
+      text, = described_class.format_with_images(messages, profile: Samagotchi::ModelProfile.qwen36,
+                                                             prefill: "<think>\n\n</think>\n\n")
+
+      expect(text).to end_with("<|im_start|>assistant\n<think>\n\n</think>\n\n")
+    end
+
+    it "leaves the prompt as it was without one" do
+      text, = described_class.format_with_images(messages, profile: Samagotchi::ModelProfile.qwen36)
+
+      expect(text).to end_with("<|im_end|>\n<|im_start|>assistant\n")
+    end
+  end
 end

@@ -5,19 +5,19 @@ require "samagotchi/engine"
 require "samagotchi/kernel_loop"
 require "samagotchi/session"
 require "samagotchi/plugin/context"
+require "support/thinking_off"
 
 # ctx.steer and ctx.stop_turn (docs/plugins.md, Context): a plugin's
 # command or thread acting on the running turn.
 RSpec.describe "ctx.steer and ctx.stop_turn" do
+  include_context "thinking off"
+
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    original_thinking = ENV["THINKING_MODE"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    ENV["THINKING_MODE"] = "false"
     example.run
   ensure
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
-    ENV["THINKING_MODE"] = original_thinking
   end
 
   let(:client) { instance_double(Samagotchi::Client) }

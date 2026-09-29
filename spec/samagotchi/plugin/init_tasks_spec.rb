@@ -7,20 +7,20 @@ require "samagotchi/session"
 require "samagotchi/bridge"
 require "samagotchi/cancellation_controller"
 require "samagotchi/plugin/context"
+require "support/thinking_off"
 
 # Plugin init tasks (chi.init, docs/plugins.md): Engine#add_init_task,
 # #start_init_tasks!, the turn's wait for tools (#await_init_tasks), their
 # events, and the load events announced before the first turn.
 RSpec.describe "Plugin init tasks" do
+  include_context "thinking off"
+
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    original_thinking = ENV["THINKING_MODE"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    ENV["THINKING_MODE"] = "false"
     example.run
   ensure
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
-    ENV["THINKING_MODE"] = original_thinking
   end
 
   let(:client) { instance_double(Samagotchi::Client) }

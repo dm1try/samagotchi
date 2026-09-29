@@ -9,6 +9,7 @@ require "samagotchi/session"
 require "samagotchi/prompt"
 require "samagotchi/llm/chat_loop"
 require "samagotchi/idle_recap"
+require "support/thinking_off"
 require_relative "support/fake_chat_adapter"
 
 RSpec.describe Samagotchi::AnswerDisplay do
@@ -61,15 +62,14 @@ RSpec.describe Samagotchi::AnswerDisplay do
 end
 
 RSpec.describe "Presenting the answer from after_turn" do
+  include_context "thinking off"
+
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    original_thinking = ENV["THINKING_MODE"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    ENV["THINKING_MODE"] = "false"
     example.run
   ensure
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
-    ENV["THINKING_MODE"] = original_thinking
   end
 
   let(:client) { instance_double(Samagotchi::Client) }

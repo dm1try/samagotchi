@@ -261,13 +261,13 @@ RSpec.describe "The check-in bundle, installed" do
   let(:settings) { { "after" => 2, "every" => 10 } }
 
   around do |example|
-    saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME", "THINKING_MODE")
+    saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME", "SAMAGOTCHI_THINKING_LEVEL")
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    ENV["THINKING_MODE"] = "false"
+    ENV["SAMAGOTCHI_THINKING_LEVEL"] = "off"
     ENV["XDG_STATE_HOME"] = File.join(tmpdir, "state")
     example.run
   ensure
-    %w[SAMAGOTCHI_DEFAULT_MODEL XDG_STATE_HOME THINKING_MODE].each { |key| saved.key?(key) ? ENV[key] = saved[key] : ENV.delete(key) }
+    %w[SAMAGOTCHI_DEFAULT_MODEL XDG_STATE_HOME SAMAGOTCHI_THINKING_LEVEL].each { |key| saved.key?(key) ? ENV[key] = saved[key] : ENV.delete(key) }
   end
 
   before do

@@ -11,6 +11,7 @@ require_relative "client"
 require_relative "llm/errors"
 require_relative "log"
 require_relative "empty_answer_retry"
+require_relative "thinking"
 require_relative "hooks"
 require_relative "pending_input_queue"
 require_relative "steer"
@@ -220,13 +221,17 @@ module Samagotchi
       @retry_generation = false
       context_status = nil
       stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
+      # Qwen with thinking off: an empty thought after the cue, so the model
+      # answers at once. Kept in the turn's model messages, so each tool-loop
+      # prompt starts with what the server already has cached.
+      prefill = Thinking.native(@thinking || Thinking::DEFAULT, @profile).prefill
       partial_assistant_buffer = +""
 
       effective_max_iterations = @no_interrupt ? 1000 : max_iterations
       effective_max_tool_output_chars = resolve_output_char_cap(max_tool_output_chars)
       effective_max_iterations.times do |iteration_index|
         inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller)
-        prompt, images = Prompt.format_with_images(conversation, profile: @profile, vision: @vision)
+        prompt, images = Prompt.format_with_images(conversation, profile: @profile, vision: @vision, prefill: prefill)
         image_tokens = images.empty? ? 0 : ImagePlan.estimated_tokens(conversation)
         context_window = ContextWindow.resolve(client: @client, model: resolved_model_name)
         context_status = emit_context_status_event(on_stream_event, prompt, iteration_index: iteration_index, state: context_state, window: context_window,
@@ -235,7 +240,7 @@ module Samagotchi
           # The model's own copy, on the tail (the prompt cache keeps its
           # prefix), then the prompt again with it.
           conversation << line
-          prompt, images = Prompt.format_with_images(conversation, profile: @profile, vision: @vision)
+          prompt, images = Prompt.format_with_images(conversation, profile: @profile, vision: @vision, prefill: prefill)
         end
         emit_stream_event(
           on_stream_event,
@@ -313,7 +318,7 @@ module Samagotchi
         after_gen_event = { type: :after_generation, iteration: iteration_index + 1, response: response,
                             messages: AnswerDisplay.strip_all(conversation).map(&:dup).freeze }
         fire_hook(:after_generation, after_gen_event) if @hooks
-        conversation << { role: "model", content: response }
+        conversation << { role: "model", content: prefill + response.to_s }
 
         # Profile-specific parse (incl. Qwen unterminated-block recovery); the
         # returned fragment (non-nil only for Qwen) is fed back on the next
