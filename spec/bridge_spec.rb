@@ -480,9 +480,11 @@ RSpec.describe Samagotchi::Bridge do
       expect(queued.map { |q| [q["prompt"], q["no_interrupt"]] }).to eq([["long", true], ["short", nil]])
     end
 
-    it "writes a discoverable port sidecar on start" do
+    it "writes a discoverable port sidecar on start, with the chi version it runs" do
       start_bridge
       expect(@bridge_port).to be > 0
+      sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
+      expect(JSON.parse(File.read(sidecar))).to include("version" => Samagotchi::VERSION)
     end
 
     describe "#stop" do

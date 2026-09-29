@@ -19,6 +19,7 @@ require_relative "engine"
 require_relative "session_commands"
 require_relative "image_store"
 require_relative "log"
+require_relative "version"
 
 module Samagotchi
   # Bridge is an optional HTTP transport that lets an external web / desktop
@@ -961,7 +962,9 @@ module Samagotchi
         "port" => @port,
         "bind" => @bind,
         "session_id" => @session_id,
-        "started_at" => Time.now.iso8601(3)
+        "started_at" => Time.now.iso8601(3),
+        # The chi this worker runs (chi update reports older ones).
+        "version" => Samagotchi::VERSION
       }
       record["input_format"] = @input_format if @input_format
       path = File.join(session_dir, SIDECAR_FILE)
