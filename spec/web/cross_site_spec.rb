@@ -167,4 +167,22 @@ RSpec.describe Samagotchi::Web::App, "cross-site gate" do
       expect(status).to eq(201)
     end
   end
+
+  describe "CORS" do
+    it "sends no Access-Control-Allow-Origin on any response" do
+      responses = [
+        call("/api/info"),
+        call("/api/sessions"),
+        call("/api/sessions", method: "POST", body: create_body),
+        call("/api/sessions/nope"),
+        call("/api/sessions/nope/output"),
+        call("/api/sessions/nope/stream"),
+        call("/nope"),
+        call("/"),
+        call("/api/info", host: "evil.example"),
+        call("/api/sessions", method: "POST", body: "{}", headers: { "HTTP_ORIGIN" => "null" })
+      ]
+      responses.each { |status, headers, _| expect(headers.keys.map(&:downcase)).not_to include("access-control-allow-origin"), status.to_s }
+    end
+  end
 end

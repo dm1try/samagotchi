@@ -278,7 +278,7 @@ module Samagotchi
           session_to_json(s, status: displayed_status(s, owner: owner), owner: owner, root_cache: roots)
         end
         # Expose total via header for pagination (total unordered count)
-        headers = { "Content-Type" => "application/json; charset=utf-8", "Cache-Control" => "no-store", "Access-Control-Allow-Origin" => "*" }
+        headers = { "Content-Type" => "application/json; charset=utf-8", "Cache-Control" => "no-store" }
         # Compute total without limit/offset for header
         if limit || offset.positive?
           total = if @state_dir
@@ -299,7 +299,7 @@ module Samagotchi
         all = @hub.snapshot(project_root: root, sort: sort, order: order)
         page = all.drop(offset)
         page = page.first(limit) if limit
-        headers = { "Content-Type" => "application/json; charset=utf-8", "Cache-Control" => "no-store", "Access-Control-Allow-Origin" => "*" }
+        headers = { "Content-Type" => "application/json; charset=utf-8", "Cache-Control" => "no-store" }
         headers["X-Total-Count"] = all.size.to_s if limit || offset.positive?
         body = JSON.generate(page)
         headers["Content-Length"] = body.bytesize.to_s
@@ -920,8 +920,7 @@ module Samagotchi
           "Content-Type" => "text/event-stream",
           "Cache-Control" => "no-cache",
           "Connection" => "keep-alive",
-          "X-Accel-Buffering" => "no",
-          "Access-Control-Allow-Origin" => "*"
+          "X-Accel-Buffering" => "no"
         }
 
         # Handlers that buffer enumerable bodies before responding (rackup's
@@ -955,8 +954,7 @@ module Samagotchi
           "Content-Type" => "text/event-stream",
           "Cache-Control" => "no-cache",
           "Connection" => "keep-alive",
-          "X-Accel-Buffering" => "no",
-          "Access-Control-Allow-Origin" => "*"
+          "X-Accel-Buffering" => "no"
         }
         body = EventsBody.new(hub: @hub, project_root: root, heartbeat: @events_heartbeat, capacity: @events_queue,
                               server_running: @server_running)
@@ -1344,7 +1342,7 @@ module Samagotchi
 
       def json_response(status, payload)
         body = JSON.generate(payload)
-        [status, { "Content-Type" => "application/json; charset=utf-8", "Content-Length" => body.bytesize.to_s, "Cache-Control" => "no-store", "Access-Control-Allow-Origin" => "*" }, [body]]
+        [status, { "Content-Type" => "application/json; charset=utf-8", "Content-Length" => body.bytesize.to_s, "Cache-Control" => "no-store" }, [body]]
       end
 
       # The request body, "" when there is none: WEBrick (through rackup)
