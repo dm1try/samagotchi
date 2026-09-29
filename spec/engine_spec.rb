@@ -45,18 +45,18 @@ RSpec.describe Samagotchi::Engine do
     it "exposes the same base prompt via the class helper" do
       helper = described_class.system_prompt_for("gemma4")
       engine = build_engine(profile: "gemma4")
-      expect(helper).to eq(engine.send(:assist_system_prompt))
+      expect(helper).to eq(engine.assist_system_prompt)
     end
 
     it "includes rg guidance in the system prompt when rg is available" do
       engine = build_engine(profile: "gemma4")
-      allow(engine).to receive(:rg_available?).and_return(true)
+      allow(engine.instance_variable_get(:@prompt_builder)).to receive(:rg_available?).and_return(true)
       expect(engine.system_prompt).to include("prefer `rg` (ripgrep) over `grep`")
     end
 
     it "omits rg guidance from the system prompt when rg is not available" do
       engine = build_engine(profile: "gemma4")
-      allow(engine).to receive(:rg_available?).and_return(false)
+      allow(engine.instance_variable_get(:@prompt_builder)).to receive(:rg_available?).and_return(false)
       expect(engine.system_prompt).not_to include("prefer `rg` (ripgrep) over `grep`")
     end
 
@@ -66,7 +66,7 @@ RSpec.describe Samagotchi::Engine do
 
       session = make_session
       engine.session = session
-      prompt = engine.send(:system_prompt_with_index, engine.send(:assist_system_prompt))
+      prompt = engine.instance_variable_get(:@prompt_builder).build
       expect(prompt).to include("Current session id: #{session.id} (resume later with `chi --resume #{session.id}`)")
       expect(prompt).to include("My debug log: #{Samagotchi::LogPath.resolve} (one record per line; this session's carry sid=#{session.id[0, 8]})")
     end
@@ -75,11 +75,11 @@ RSpec.describe Samagotchi::Engine do
       engine = build_engine(profile: "gemma4")
       session = make_session
       engine.session = session
-      plain = engine.send(:system_prompt_with_index, engine.send(:assist_system_prompt))
+      plain = engine.instance_variable_get(:@prompt_builder).build
       expect(plain).not_to include("Delegated by session")
 
       session.parent_id = "parent-1234"
-      prompt = engine.send(:system_prompt_with_index, engine.send(:assist_system_prompt))
+      prompt = engine.instance_variable_get(:@prompt_builder).build
       expect(prompt).to include("Current session id: #{session.id} (resume later with `chi --resume #{session.id}`)")
       expect(prompt).to match(/^Delegated by session parent-1234: it reads your final reply; reach it with send_note\.$/)
     end
@@ -107,7 +107,7 @@ RSpec.describe Samagotchi::Engine do
       Samagotchi::MemoryBundle::Installer.new(source: fixture, name: "sample-needs", scope: "system").run
       ENV["PATH"] = "/usr/bin:/bin"
 
-      prompt = build_engine(profile: "gemma4").send(:system_prompt_with_index, "base")
+      prompt = build_engine(profile: "gemma4").instance_variable_get(:@prompt_builder).send(:system_prompt_with_index, "base")
       expect(prompt).to match(/^- \*\*gh_helper\*\* · system · .* \[needs chi-surely-missing-cmd: not found on PATH\]$/)
     end
   end
@@ -198,7 +198,7 @@ RSpec.describe Samagotchi::Engine do
     it "returns no explicit memory section when no memories are requested" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       engine = build_engine(profile: "gemma4")
-      expect(engine.send(:explicit_memory_section)).to be_nil
+      expect(engine.instance_variable_get(:@prompt_builder).send(:explicit_memory_section)).to be_nil
     end
 
     it "merges the config.yml memories baseline with the --memory list (config first, deduped)" do
@@ -208,7 +208,7 @@ RSpec.describe Samagotchi::Engine do
       end
       engine = build_engine(profile: "gemma4", memories: ["baseline_b, cli_only"])
 
-      expect(engine.instance_variable_get(:@requested_memories)).to eq(%w[baseline_a baseline_b cli_only])
+      expect(engine.instance_variable_get(:@prompt_builder).requested_memories).to eq(%w[baseline_a baseline_b cli_only])
 
       prompt = engine.system_prompt
       expect(prompt).to include("memory name: baseline_a")
@@ -240,7 +240,7 @@ RSpec.describe Samagotchi::Engine do
       end
       engine = build_engine(profile: "gemma4")
 
-      expect(engine.instance_variable_get(:@requested_memories)).to eq(%w[only_from_config])
+      expect(engine.instance_variable_get(:@prompt_builder).requested_memories).to eq(%w[only_from_config])
       expect(engine.system_prompt).to include("memory name: only_from_config")
     end
   end

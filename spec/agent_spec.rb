@@ -1632,7 +1632,7 @@ file2.rb")
       gemma_profile = Samagotchi::ModelProfile.gemma4
       agent = described_class.new(mode: "assist", client: client, profile: gemma_profile)
 
-      hint = agent.instance_variable_get(:@engine).send(:tool_call_hint)
+      hint = agent.instance_variable_get(:@engine).instance_variable_get(:@prompt_builder).send(:tool_call_hint)
       expect(hint).to include("<|tool_call>call:")
     end
 
@@ -1640,7 +1640,7 @@ file2.rb")
       qwen_profile = Samagotchi::ModelProfile.qwen36
       agent = described_class.new(mode: "assist", client: client, profile: qwen_profile)
 
-      hint = agent.instance_variable_get(:@engine).send(:tool_call_hint)
+      hint = agent.instance_variable_get(:@engine).instance_variable_get(:@prompt_builder).send(:tool_call_hint)
       expect(hint).to include("<tool_call>")
       expect(hint).to include("<function=")
       expect(hint).to include("<parameter=")

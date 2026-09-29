@@ -62,7 +62,7 @@ RSpec.describe Samagotchi::Engine, "muted memories" do
     expect(Samagotchi::Log).to receive(:warn).with(:memory, "preload_muted", hash_including(memory: "system/cli_usage"))
     engine = build_engine(profile: "gemma4", memories: ["system/cli_usage,notes"],
                                             muted_memories: ["cli_usage", "user_preferences"])
-    expect(engine.instance_variable_get(:@requested_memories)).to eq(%w[notes])
+    expect(engine.instance_variable_get(:@prompt_builder).requested_memories).to eq(%w[notes])
     prompt = engine.system_prompt
     expect(prompt).to include("memory name: notes")
     expect(prompt).not_to include("memory name: cli_usage")
