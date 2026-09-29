@@ -139,7 +139,7 @@ module Samagotchi
         "~/.config/samagotchi/config.yml"
       end
       "no model configured: set default.model in #{path} to the model id your server serves " \
-        "(or #{MODEL_ENV}, or pass --model ID); see docs/configuration.md"
+        "(or #{MODEL_ENV}, or pass --model ID); see docs/configuration.md; or run: chi bootstrap HOST[:PORT]"
     end
 
     def self.from_model_name(model_name)

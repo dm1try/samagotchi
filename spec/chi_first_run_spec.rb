@@ -24,7 +24,7 @@ RSpec.describe "chi without a configured model" do
       expect(status.exitstatus).to eq(1)
       expect(err).to eq("Error: no model configured: set default.model in #{home}/config/samagotchi/config.yml " \
                         "to the model id your server serves (or SAMAGOTCHI_DEFAULT_MODEL, or pass --model ID); " \
-                        "see docs/configuration.md\n")
+                        "see docs/configuration.md; or run: chi bootstrap HOST[:PORT]\n")
     end
   end
 end
