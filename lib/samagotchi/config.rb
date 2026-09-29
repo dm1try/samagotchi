@@ -25,7 +25,7 @@ module Samagotchi
   # handled by ConfigFile (same file, below), which reads the *same* parsed YAML
   # through ConfigFile.read_yaml so the file is parsed once per change.
   module Config
-    Entry = Struct.new(:key, :yaml_path, :type, :default, :expose, :enum_values, :aliases, :yaml_aliases, keyword_init: true) do
+    Entry = Struct.new(:key, :yaml_path, :type, :default, :expose, :enum_values, :yaml_aliases, keyword_init: true) do
       def env_key
         "SAMAGOTCHI_" + yaml_path.map { |p| p.upcase }.join("_")
       end
@@ -184,11 +184,7 @@ module Samagotchi
 
     # Fast lookup maps
     BY_KEY = ENTRIES.each_with_object({}) { |e, h| h[e.key] = e }.freeze
-    BY_ENV = ENTRIES.each_with_object({}) do |e, h|
-      h[e.env_key] = e
-      Array(e.aliases).each { |a| h[a] = e }
-    end.freeze
-    BY_CLI = ENTRIES.each_with_object({}) { |e, h| h[e.cli_flag] = e if e.cli_exposed? }.freeze
+    BY_ENV = ENTRIES.each_with_object({}) { |e, h| h[e.env_key] = e }.freeze
 
     class << self
       # The +candidates+ within edit distance 2 of +probe+, closest first
@@ -203,10 +199,6 @@ module Samagotchi
 
       def find_by_env(env_key)
         BY_ENV[env_key.to_s]
-      end
-
-      def find_by_cli(flag)
-        BY_CLI[flag.to_s]
       end
 
       def all_entries
@@ -339,10 +331,10 @@ module Samagotchi
       def lookup_legacy(data, entry)
         return nil unless entry && data.is_a?(Hash)
 
-        [entry.env_key, *Array(entry.aliases)].each do |key|
-          return data[key] if data.key?(key)
-          return data[key.to_sym] if data.key?(key.to_sym)
-        end
+        key = entry.env_key
+        return data[key] if data.key?(key)
+        return data[key.to_sym] if data.key?(key.to_sym)
+
         nil
       end
 
@@ -685,7 +677,6 @@ module Samagotchi
         # check if file actually contained this key (including legacy flat)
         file_val = Samagotchi::Config.lookup_yaml(raw, entry.yaml_path)
         file_val ||= raw[entry.env_key] if raw.key?(entry.env_key)
-        Array(entry.aliases).each { |a| file_val ||= raw[a] if raw.key?(a) }
         next if file_val.nil?
         val = Samagotchi::Config.store[entry.key]
         next if val.nil?

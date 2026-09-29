@@ -119,10 +119,6 @@ module Samagotchi
       nil
     end
 
-    def entry_names
-      @entries.keys
-    end
-
     def default_entry
       @entries["default"] || @entries.values.first
     end
@@ -151,10 +147,8 @@ module Samagotchi
         rescue StandardError
           nil
         end
-        entry = find_entry(host_ref)
-        return [entry, bare] if entry
-        # Unknown prefix — treat as bare model on default host
-        return [default_entry, raw_model.to_s.strip]
+        # parse_qualified_model names a host only when it is one of ours
+        return [find_entry(host_ref), bare]
       end
       # Unqualified: also try alias resolution for discovery (small -> gemma-small or small -> small-box:gemma-small)
       begin
