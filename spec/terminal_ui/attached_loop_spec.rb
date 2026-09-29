@@ -1162,11 +1162,11 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input parity with the REPL
     expect(Reline::HISTORY.to_a).to eq(["hello", "!ls"])
   end
 
-  it "sends #memory shorthand rewritten, as the REPL does" do
-    run_loop(["check #notes and #project/todo"])
+  it "sends #name as typed, as the REPL does" do
+    run_loop(["PR #1: check #notes and #project/todo"])
 
     expect(client).to have_received(:post_turn)
-      .with(prompt: 'check memory "notes" and memory "todo" in project scope', client_id: "tui:1")
+      .with(prompt: "PR #1: check #notes and #project/todo", client_id: "tui:1")
   end
 
   it "offers the attached commands on Tab, /quit too" do

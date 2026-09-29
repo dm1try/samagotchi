@@ -11,10 +11,10 @@ require_relative "../session_commands"
 module Samagotchi
   class TerminalUI
     # Input the REPL and the attached TUI share: the persistent prompt
-    # history, Tab completion (/commands, @path in the cwd, #memory), the
-    # #memory shorthand rewrite, multiline reads at the main prompt, and a
-    # one-shot prefill of the next read (the default input, a prompt given
-    # back after a failed turn).
+    # history, Tab completion (/commands, @path in the cwd, #memory, which
+    # inserts #name and the model reads it as typed), multiline reads at the
+    # main prompt, and a one-shot prefill of the next read (the default
+    # input, a prompt given back after a failed turn).
     #
     # Included for private use; it keeps state in @next_input_prefill and
     # reads @no_default_input.
@@ -202,21 +202,6 @@ module Samagotchi
           "project" => File.expand_path(MemoryPaths.project_dir, Dir.pwd),
           "system" => File.expand_path(MemoryPaths.system_dir)
         }
-      end
-
-      def normalize_model_input(input)
-        input.to_s.gsub(/(^|[^\w\/])#((?:project|system)\/)?([a-zA-Z0-9][a-zA-Z0-9_-]*)/) do
-          prefix = Regexp.last_match(1)
-          scoped = Regexp.last_match(2).to_s
-          name = Regexp.last_match(3)
-          scope = scoped.delete_suffix("/")
-          normalized = if scope.empty?
-                         "memory \"#{name}\""
-                       else
-                         "memory \"#{name}\" in #{scope} scope"
-                       end
-          "#{prefix}#{normalized}"
-        end
       end
 
       def history_file_path

@@ -639,7 +639,7 @@ module Samagotchi
       begin
         # Engine#run_turn injects due reminders as a tail message, appends
         # the prompt, and renders through @renderer via on_event.
-        result = run_engine_turn(session, normalize_model_input(input), images: ImageInput.extract(input))
+        result = run_engine_turn(session, input, images: ImageInput.extract(input))
       rescue LLM::ProviderError, ImageStore::Error => e
         # Engine closed the turn (:turn_failed); show its duration.
         # Retries were already tallied via generation_retrying events.
@@ -1214,12 +1214,12 @@ module Samagotchi
       command_registry.command?(line) || stats_command?(line) || recap_command?(line) || exit_command?(line)
     end
 
-    # The kernel's drain at an iteration boundary: queued lines, #memory
-    # shorthand made words as for a prompt, and saved in the history.
+    # The kernel's drain at an iteration boundary: queued lines, sent as
+    # typed and saved in the history.
     def drain_steering
       @pending_input_queue.drain.map do |line|
         persist_recent_history(line)
-        normalize_model_input(line)
+        line
       end
     end
 

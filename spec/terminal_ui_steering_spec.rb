@@ -34,7 +34,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
 
     agent.send(:run_engine_turn, session, "go")
 
-    expect(drained).to eq([agent.send(:normalize_model_input, "also check #mem")])
+    expect(drained).to eq(["also check #mem"])
     expect(agent).to have_received(:persist_recent_history).with("also check #mem")
     expect(repl_input.pop(timeout: 0)).to be_nil
   end

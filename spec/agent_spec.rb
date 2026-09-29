@@ -1536,20 +1536,19 @@ file2.rb")
       expect(agent.send(:read_input, awaiting_continue: true)).to eq("yes")
     end
 
-    it "normalizes memory shorthand only for the model-facing prompt" do
+    it "sends #name and #scope/name to the model as typed" do
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|
         received_prompt = prompt
         "done"
       end
-      allow(Reline).to receive(:readmultiline).and_return("Please review #project/plan and #shared_notes", nil)
+      allow(Reline).to receive(:readmultiline).and_return("Please review #project/plan and #shared_notes for PR #1", nil)
 
       agent = described_class.new(mode: "assist", client: client)
 
       expect { agent.run }.to output(/done/).to_stdout
-      expect(received_prompt).to include('Please review memory "plan" in project scope and memory "shared_notes"')
-      expect(received_prompt).not_to include("#project/plan")
-      expect(received_prompt).not_to include("#shared_notes")
+      expect(received_prompt).to include("Please review #project/plan and #shared_notes for PR #1")
+      expect(received_prompt).not_to include("memory \"")
     end
   end
 

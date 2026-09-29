@@ -498,12 +498,10 @@ module Samagotchi
 
       def send_prompt(text)
         persist_recent_history(text)
-        # #memory shorthand becomes words the model reads, as in the REPL.
-        prompt = normalize_model_input(text)
         images = attach_images(text)
         return if images.nil?
 
-        options = { prompt: prompt, client_id: @client_id }
+        options = { prompt: text, client_id: @client_id }
         options[:no_interrupt] = true if @no_interrupt
         options[:images] = images unless images.empty?
         reply = @client.post_turn(**options)
