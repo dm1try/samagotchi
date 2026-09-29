@@ -875,7 +875,8 @@ RSpec.describe Samagotchi::Worker do
           Samagotchi::ArchiveStore.archive(session.id, state_dir: tmpdir)
           ran(JSON.parse(post_command("/continue no", client_id: "web:2").body)["command_id"])
 
-          expect(Samagotchi::ArchiveStore.archived?(session_dir)).to be(false)
+          # Un-archived after command_ran and the session's save: wait for it.
+          expect(wait_until { !Samagotchi::ArchiveStore.archived?(session_dir) }).to be(true)
         end
 
         it "tells the recap an offer is open, and records activity when no ends it, so a new recap follows" do
