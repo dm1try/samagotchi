@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   handOffDue, handOffOrder, inUseFrom, isPlain, liveSlots, placeFor, toolKind,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
-import { applyEvent, newTurn } from "../../../lib/samagotchi/web/public/turn_model.js";
+import { applyEvent, newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 
 function turnOf(...events) {
   const turn = newTurn();
@@ -79,6 +79,14 @@ test("liveSlots: writing while the step's narration streams, waiting for you wit
   assert.equal(liveSlots(plain, { ended: "failed" }).phase, "failed");
   assert.equal(liveSlots(plain, { ended: "gone" }).phase, "failed");
   assert.deepEqual(liveSlots(newTurn()).headline, { text: "…", thinking: false });
+});
+
+test("liveSlots: at the end an answer-only step is no step (as the block summary counts)", () => {
+  const turn = turnOf(started(1, 1, "read"), done(1, 1, "read"), { type: "generation_started", iteration: 2 }, { type: "generation_chunk", iteration: 2, text: "Done." });
+  assert.equal(liveSlots(turn).step, 2);
+  applyEvent(turn, { type: "turn_completed" });
+  takeAnswer(turn, turn.gens[1]);
+  assert.equal(liveSlots(turn, { ended: "completed" }).step, 1);
 });
 
 test("isPlain: one step, no thinking, no tool rows, not over", () => {

@@ -19,5 +19,11 @@ export default defineConfig({
     ...devices["Desktop Chrome"],
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium" }],
+  // The stage view (web.view: stage) runs the scenarios tagged @stage again
+  // on ?view=stage: the running turn in #turnStage, then handed off into
+  // #history.
+  projects: [
+    { name: "chromium" },
+    { name: "stage", grep: /@stage/, use: { view: "stage" } },
+  ],
 });

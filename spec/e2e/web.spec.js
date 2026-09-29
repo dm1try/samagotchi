@@ -3,17 +3,27 @@
 import { test, expect } from "./support/fixtures.js";
 import { APPROVAL_COMMAND, EDIT_ASK_FILE } from "./support/env.js";
 
+// The stage project (?view=stage): a running turn's rows are in #turnStage
+// until the hand-off moves them into #history. H() is where a live row can
+// be; HC() the containers a card sits directly in.
+const stage = () => test.info().project.use.view === "stage";
+const H = () => (stage() ? ":is(#history, #turnStage)" : "#history");
+const HC = () => (stage() ? ":is(#history, #turnStage .ts-extras, #turnStage .ts-tail)" : "#history");
+
 // Types into the composer and sends (Start on the start page, Send in a session).
 async function send(page, prompt) {
   await page.locator("#prompt").fill(prompt);
   await page.locator("#actionBtn").click();
   // Contains, not equals: a fast failure adds its "failed" badge to the
   // bubble's text before this check runs.
-  await expect(page.locator("#history .bubble.user").last()).toContainText(prompt);
+  await expect(page.locator(`${H()} .bubble.user`).last()).toContainText(prompt);
 }
 
 // The turn is over: its timing line is final, Cancel is gone, Send is enabled.
+// In the stage view: handed off into the history too (the pointer leaves
+// the stage first: a click in it holds the hand-off, as it would a reader).
 async function turnEnded(page, turns) {
+  if (stage()) await page.mouse.move(0, 0);
   await expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(turns);
   await expect(page.locator("#cancelBtn")).toBeHidden();
   await expect(page.locator("#actionBtn")).toHaveText("Send");
@@ -21,9 +31,9 @@ async function turnEnded(page, turns) {
   await expect(page.locator("#prompt")).toBeEditable();
 }
 
-const answer = (page) => page.locator("#history .bubble.output").last();
+const answer = (page) => page.locator(`${H()} .bubble.output`).last();
 
-test("a prompt from the start page streams an answer and the turn ends", async ({ page, script }) => {
+test("a prompt from the start page streams an answer and the turn ends", { tag: "@stage" }, async ({ page, script }) => {
   script("plain");
   await expect(page.locator("#actionBtn")).toHaveText("Start");
   // Records each text a live (.streaming) element shows the answer with,
@@ -31,10 +41,10 @@ test("a prompt from the start page streams an answer and the turn ends", async (
   await page.evaluate(() => {
     window.streamed = new Set();
     new MutationObserver(() => {
-      for (const el of document.querySelectorAll("#history .streaming")) {
+      for (const el of document.querySelectorAll(":is(#history, #turnStage) .streaming")) {
         if (el.textContent.includes("PONG")) window.streamed.add(el.textContent);
       }
-    }).observe(document.querySelector("#history"), { subtree: true, childList: true, characterData: true, attributes: true });
+    }).observe(document.querySelector("#center"), { subtree: true, childList: true, characterData: true, attributes: true });
   });
   await send(page, "Say pong");
   await expect(page).toHaveURL(/#\/s\/[0-9a-f-]+$/);
@@ -47,7 +57,7 @@ test("a prompt from the start page streams an answer and the turn ends", async (
   await expect(answer(page)).not.toHaveClass(/streaming/);
 });
 
-test("a multi-step turn shows its steps, tool rows and the markdown answer", async ({ page, script }) => {
+test("a multi-step turn shows its steps, tool rows and the markdown answer", { tag: "@stage" }, async ({ page, script }) => {
   script("turn");
   await send(page, "Check the shell and the README");
   await turnEnded(page, 1);
@@ -64,7 +74,7 @@ test("a multi-step turn shows its steps, tool rows and the markdown answer", asy
   await expect(answer(page)).toBeVisible();
 });
 
-test("a reload after the turn shows the same turn and answer", async ({ page, script }) => {
+test("a reload after the turn shows the same turn and answer", { tag: "@stage" }, async ({ page, script }) => {
   script("turn");
   await send(page, "Check the shell and the README");
   await turnEnded(page, 1);
@@ -84,7 +94,7 @@ test("a reload after the turn shows the same turn and answer", async ({ page, sc
 
 // The first generation has thinking only: the loop asks again in the same
 // turn, the empty step says so, and a reload shows one turn with the answer.
-test("an empty answer is asked again in the same turn, and a reload shows one turn", async ({ page, script }) => {
+test("an empty answer is asked again in the same turn, and a reload shows one turn", { tag: "@stage" }, async ({ page, script }) => {
   script("empty_retry");
   await send(page, "Say pong");
   await expect(answer(page)).toHaveText("PONG after the retry.");
@@ -110,12 +120,12 @@ test("a reload after the turn shows the context meter and the card's ctx", async
   await expect(page.locator("#topStrip .card .ctx").first()).toHaveText(/^\d+%$/);
 });
 
-test("cancel mid-turn shows the canceled turn, and the next send works", async ({ page, script }) => {
+test("cancel mid-turn shows the canceled turn, and the next send works", { tag: "@stage" }, async ({ page, script }) => {
   script("hold");
   await send(page, "Take your time");
   await expect(page.locator("#cancelBtn")).toBeVisible();
   await page.locator("#cancelBtn").click();
-  await expect(page.locator("#history .bubble.cancel")).toContainText("canceled");
+  await expect(page.locator(`${H()} .bubble.cancel`)).toContainText("canceled");
   await expect(page.locator("#cancelBtn")).toBeHidden();
 
   script("plain");
@@ -124,10 +134,10 @@ test("cancel mid-turn shows the canceled turn, and the next send works", async (
   await turnEnded(page, 2);
 });
 
-test("a question card: the answer lets the turn go on", async ({ page, script }) => {
+test("a question card: the answer lets the turn go on", { tag: "@stage" }, async ({ page, script }) => {
   script("question");
   await send(page, "Read a file of my choice");
-  const card = page.locator("#history .bubble.question");
+  const card = page.locator(`${H()} .bubble.question`);
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
@@ -137,10 +147,10 @@ test("a question card: the answer lets the turn go on", async ({ page, script })
   await expect(page.locator("#history .activity-tool")).toHaveText(["ask_user_question", "read"]);
 });
 
-test("an approval card: allowing it runs the tool", async ({ page, script }) => {
+test("an approval card: allowing it runs the tool", { tag: "@stage" }, async ({ page, script }) => {
   script("approval");
   await send(page, "Run the command that needs approval");
-  const card = page.locator("#history .bubble.question.approval");
+  const card = page.locator(`${H()} .bubble.question.approval`);
   await expect(card.locator(".approval-what")).toHaveText(APPROVAL_COMMAND);
   await expect(card.locator(".approval-why")).toContainText("e2e-ask");
   await card.locator(".question-option").first().click();
@@ -153,10 +163,10 @@ test("an approval card: allowing it runs the tool", async ({ page, script }) => 
   await expect(row.locator(".activity-output")).toContainText("E2E_APPROVED");
 });
 
-test("an edit's approval card shows its diff; the row keeps the change after a reload", async ({ page, script }) => {
+test("an edit's approval card shows its diff; the row keeps the change after a reload", { tag: "@stage" }, async ({ page, script }) => {
   script("edit");
   await send(page, "Make the font bigger");
-  const card = page.locator("#history .bubble.question.approval");
+  const card = page.locator(`${H()} .bubble.question.approval`);
   await expect(card.locator(".approval-what")).toContainText(EDIT_ASK_FILE);
   await expect(card.locator(".approval-diff .diff-del")).toHaveText("-font_size 12");
   await expect(card.locator(".approval-diff .diff-add")).toHaveText("+font_size 14");
@@ -172,7 +182,12 @@ test("an edit's approval card shows its diff; the row keeps the change after a r
     await diff.locator("summary").click({ force: true });
     await expect(diff.locator(".diff-add")).toHaveText("+font_size 14");
   };
-  // The steps block is open after a live turn; a reload collapses it.
+  // The steps block is open after a live turn; a reload collapses it (and
+  // so does the stage's hand-off).
+  if (stage()) {
+    await page.locator("#history .turn-work > summary").click();
+    await page.locator("#history details.gen").nth(1).locator("> summary").click();
+  }
   await check();
   await page.reload();
   await turnEnded(page, 1);
@@ -549,15 +564,17 @@ test("/archive and /exit typed in the composer get a local reply, not a worker e
 // check-in (after: 3 in the e2e config): the card comes up in the running
 // step after the 3rd call; Nudge puts its message into the turn as a nudge
 // row of that step, and the model's next step answers it.
-test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, live and after a reload", async ({ page, script }) => {
+test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, live and after a reload", { tag: "@stage" }, async ({ page, script }) => {
   script("check_in");
   await send(page, "Look through the README");
-  const card = page.locator("#history > .plugin-card").filter({ hasText: "3 tool calls, no answer yet" });
+  const card = page.locator(`${HC()} > .plugin-card`).filter({ hasText: "3 tool calls, no answer yet" });
   await expect(card).toBeVisible();
   await card.locator(".card-action", { hasText: "Nudge" }).click();
-  // The step that answers it shows it (open, live), before the answer.
-  const row = page.locator("#history .steer-row");
+  // The step that answers it shows it (open, live), before the answer (in
+  // the stage: in its cloud, which the chip opens).
+  const row = page.locator(`${H()} .steer-row`);
   await expect(row.locator("summary")).toHaveText("check-in nudged the model");
+  if (stage()) await page.locator("#turnStage .ts-chip-label").click();
   await expect(row).toBeVisible();
   await turnEnded(page, 1);
   await expect(answer(page)).toHaveText("Found so far: the README is an e2e project file. Nothing is left.");
