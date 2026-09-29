@@ -7,6 +7,7 @@ require_relative "context_window"
 require_relative "session"
 require_relative "log_path"
 require_relative "model_profile"
+require_relative "thinking"
 require_relative "served_model"
 require_relative "host_registry"
 require_relative "tools/memory"
@@ -50,6 +51,7 @@ module Samagotchi
         ["api key", model ? api_key_for(model, env) : "-"],
         ["loop", model ? loop_for(model, env) : "-"],
         ["profile", model ? profile_for(model, env) : "-"],
+        ["thinking", model ? thinking_for(model, env) : "-"],
         ["served model", model ? served_model_for(model, env) : "-"],
         ["context window", context_window(env)],
         ["bundles", bundles_summary],
@@ -148,6 +150,15 @@ module Samagotchi
         given = result.source == :name ? "name says #{name}" : "default #{name}"
         "from the server at runtime (#{given})"
       end
+    end
+
+    # The model's thinking level and where it came from (Thinking.resolve).
+    def thinking_for(model, env)
+      target = HostRegistry.new(env: env).resolve(model)
+      level, source = Thinking.resolve(target, models: ConfigFile.model_settings(env: env))
+      source ? "#{level} (#{source})" : level.to_s
+    rescue StandardError => e
+      "(unknown: #{e.message})"
     end
 
     def host_for(model, env)

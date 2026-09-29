@@ -1008,6 +1008,16 @@ module Samagotchi
       nil
     end
 
+    # "off (models: qwen)" for /model: the effective model's thinking level
+    # and where it came from, nil when none is set.
+    def thinking_summary
+      target = @host_registry.resolve(@effective_model_name)
+      level, source = Thinking.resolve(target, names: model_lookup_names(target))
+      source ? "#{level} (#{source})" : nil
+    rescue StandardError
+      nil
+    end
+
     # The model the server serves for the current model, and the name asked
     # for: what the last generation of that name reported, else llama.cpp's
     # model_alias (/props, one short cached probe; not with probe: false),

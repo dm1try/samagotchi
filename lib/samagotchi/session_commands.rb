@@ -286,9 +286,9 @@ module Samagotchi
     def model_command(input)
       suffix = input.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
-        return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}", false] if model_name == @default_model
+        return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}#{thinking_note}", false] if model_name == @default_model
 
-        return ["runtime model: #{model_name}#{model_note("default: #{@default_model}")}#{served_note}#{sampling_note}", false]
+        return ["runtime model: #{model_name}#{model_note("default: #{@default_model}")}#{served_note}#{sampling_note}#{thinking_note}", false]
       end
 
       # Parse flags: --default and --alias <name> / --alias=<name> (tolerant order)
@@ -419,6 +419,14 @@ module Samagotchi
     def sampling_note
       summary = @engine.respond_to?(:sampling_summary) ? @engine.sampling_summary : nil
       summary ? "; sampling: #{summary}" : ""
+    rescue StandardError
+      ""
+    end
+
+    # "; thinking: off (models: qwen)" when the model has a level set.
+    def thinking_note
+      summary = @engine.respond_to?(:thinking_summary) ? @engine.thinking_summary : nil
+      summary ? "; thinking: #{summary}" : ""
     rescue StandardError
       ""
     end

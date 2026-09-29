@@ -137,6 +137,13 @@ RSpec.describe Samagotchi::SessionCommands do
                "sampling: temperature=0.6 presence_penalty=1.5 (models: qwen3-14b)")
     end
 
+    it "names the model's thinking level and where it came from, nothing when none is set" do
+      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("qwen3-14b" => { profile: nil, thinking: :off })
+
+      expect(commands.run("/model").output)
+        .to eq("runtime model: beta:Qwen3-14B (default: alpha:gemma-small, profile=qwen36, name); thinking: off (models: qwen3-14b)")
+    end
+
     it "switches the Engine's model and saves it on the session" do
       result = commands.run("/model alpha:gemma-small")
 

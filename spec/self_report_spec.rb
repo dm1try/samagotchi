@@ -199,6 +199,21 @@ RSpec.describe Samagotchi::SelfReport do
     end
   end
 
+  describe "the thinking row" do
+    before { allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model") }
+
+    it "shows the model's level with where it came from, default without one" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    thinking: low\nmodels:\n  spec-model:\n    thinking: off\n")
+      expect(field("thinking")).to eq("off (models: spec-model)")
+
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n    thinking: low\n")
+      expect(field("thinking")).to eq("low (hosts.main)")
+
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\n")
+      expect(field("thinking")).to eq("default")
+    end
+  end
+
   describe "the profile row (offline: no server probe)" do
     before { allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("spec-model") }
 
