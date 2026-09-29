@@ -1013,12 +1013,12 @@ module Samagotchi
         options = alt unless alt.empty?
       end
       if options.empty?
-        return "Error: ask_user_question requires 2-8 options (got 0). Provide e.g. options=[\"Cats\",\"Dogs\"]"
+        return Samagotchi::Tools::AskUserQuestion.options_count_error(0)
       end
       if options.size == 1
         # Allow single-option salvage for dumb models (will still render, user can answer or provide freeform)
       elsif options.size < 2 || options.size > 8
-        return "Error: ask_user_question requires 2-8 options (got #{options.size}). Provide e.g. options=[\"Cats\",\"Dogs\"]"
+        return Samagotchi::Tools::AskUserQuestion.options_count_error(options.size)
       end
 
       # If an Engine-level blocking handler is registered (TUI/Web), delegate

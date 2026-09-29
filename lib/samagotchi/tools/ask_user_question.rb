@@ -19,6 +19,12 @@ module Samagotchi
 
       def self.name        = NAME
 
+      # The tool result for a wrong number of options (the kernel's, and the
+      # Engine's for more than 8).
+      def self.options_count_error(count)
+        "Error: ask_user_question requires 2-8 options (got #{count}). Provide e.g. options=[\"Cats\",\"Dogs\"]"
+      end
+
       # Direct invocation (used in specs / headless fallback).
       # When a blocking handler is not injected, return an instructional error so the
       # model falls back to plain text rather than hanging.

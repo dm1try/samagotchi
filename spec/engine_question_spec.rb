@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "timeout"
+
 require "json"
 require "tmpdir"
 require "samagotchi/engine"
@@ -229,6 +231,15 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       engine = build_engine
       result = engine.request_question(question: "Pick", options: [])
       expect(JSON.parse(result)["error"]).to eq("invalid question")
+      expect(engine.pending_question).to be_nil
+    end
+
+    it "refuses more than 8 options without blocking, with the kernel's error (not the first 8)" do
+      engine = build_engine
+      options = (1..9).map { |n| "Option #{n}" }
+      result = Timeout.timeout(2) { engine.request_question(question: "Pick", options: options) }
+      expect(result).to eq(Samagotchi::KernelLoop.new(client: nil).send(:handle_ask_user_question, { question: "Pick", options: options }))
+      expect(result).to start_with("Error: ask_user_question requires 2-8 options (got 9)")
       expect(engine.pending_question).to be_nil
     end
   end

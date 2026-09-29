@@ -1544,9 +1544,8 @@ module Samagotchi
       elsif options.size < 2
         return JSON.generate({ error: "invalid question", detail: "question and 2-8 options required (got #{options.size})" })
       end
-      if options.size > 8
-        options = options.first(8)
-      end
+      # More than 8: the kernel's error, not a silent first 8.
+      return Samagotchi::Tools::AskUserQuestion.options_count_error(options.size) if options.size > 8
 
       clean_header = strip_wire_tokens(payload[:header])
       result = open_question(
