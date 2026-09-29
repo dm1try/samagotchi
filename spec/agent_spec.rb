@@ -533,6 +533,25 @@ file2.rb")
       expect(seen.first).to include("refactor this")
     end
 
+    # An empty answer (retries used up) is a failure: a line on stderr, exit 1,
+    # nothing on stdout that could pass for an answer.
+    it "says so on stderr and exits 1 when the -p --non-interactive turn ends with an empty answer" do
+      allow(client).to receive(:complete).and_return("")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client, non_interactive: true)
+
+      status = nil
+      expect do
+        expect { agent.run }.to raise_error(SystemExit) { |e| status = e.status }
+      end.to output("chi: the model gave an empty answer\n").to_stderr
+      expect(status).to eq(1)
+    end
+
+    it "exits normally when the -p --non-interactive turn answers" do
+      allow(client).to receive(:complete).and_return("done")
+      agent = described_class.new(mode: "assist", prompt: "hi", client: client, non_interactive: true)
+      expect { agent.run }.not_to output.to_stderr
+    end
+
     # Scenario 7: --non-interactive with no -p is a harmless no-op exit.
     it "exits without building a session or entering the REPL for --non-interactive with no prompt" do
       expect(client).not_to receive(:complete)

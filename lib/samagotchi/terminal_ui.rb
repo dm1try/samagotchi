@@ -271,6 +271,13 @@ module Samagotchi
           cancel_controller: nil,
           images: ImageInput.extract(@prompt)
         )
+        if empty_answer?(result)
+          # Nothing to print: say so on stderr and fail, so a script that
+          # pipes the answer doesn't take the silence for one.
+          session.save
+          warn EMPTY_ANSWER_ERROR
+          exit 1
+        end
         @surface.commit(result.output)
         session.save
         return
@@ -298,6 +305,17 @@ module Samagotchi
       # SIGTERM or SIGHUP (Ruby raises those here). Only kill -9 leaves it
       # to the sweep.
       delete_scratch(session, quiet: @non_interactive || !$!.nil?) if @scratch && session
+    end
+
+    EMPTY_ANSWER_ERROR = "chi: the model gave an empty answer"
+
+    # A -p --non-interactive turn that ended with no answer (the empty-answer
+    # retries used up): no text, or the chat loop's placeholder.
+    def empty_answer?(result)
+      return false if result.respond_to?(:canceled?) && result.canceled?
+      return false if result.respond_to?(:resumable?) && result.resumable?
+
+      result.output.to_s.strip.empty? || (result.respond_to?(:empty_answer?) && result.empty_answer?)
     end
 
     # Delete the scratch session, the last thing the REPL does. Quiet after
