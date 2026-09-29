@@ -115,7 +115,7 @@ module Samagotchi
 
       def route(env)
         req = Rack::Request.new(env)
-        return forbidden unless localhost?(req)
+        return forbidden unless local_host_header?(env)
 
         case [req.request_method, req.path_info]
         when ["GET", "/"], ["GET", "/index.html"]
@@ -198,11 +198,19 @@ module Samagotchi
                                    ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
       end
 
-      def localhost?(req)
-        # Only 127.0.0.1 / ::1 / localhost are allowed. The socket is bound to
-        # 127.0.0.1, but an explicit Host check prevents DNS-rebind tricks.
-        host = req.host.to_s.downcase.split(":").first
-        %w[127.0.0.1 ::1 localhost].include?(host)
+      LOOPBACK_NAMES = %w[127.0.0.1 [::1] localhost].freeze
+      LOOPBACK_PEERS = %w[127.0.0.1 ::1 ::ffff:127.0.0.1].freeze
+
+      # Only 127.0.0.1 / [::1] / localhost (any port) are answered. The socket
+      # is bound to loopback, but a Host check stops DNS-rebinding pages. It
+      # reads the raw Host header: Rack's req.host trusts X-Forwarded-Host,
+      # which such a page could set. A request with no Host (HTTP/1.0) is
+      # answered only for a loopback peer.
+      def local_host_header?(env)
+        host = env["HTTP_HOST"].to_s
+        return LOOPBACK_PEERS.include?(env["REMOTE_ADDR"].to_s) if host.empty?
+
+        LOOPBACK_NAMES.include?(host.downcase.sub(/:\d*\z/, ""))
       end
 
       def forbidden
