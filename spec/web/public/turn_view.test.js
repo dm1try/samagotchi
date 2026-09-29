@@ -153,3 +153,13 @@ test("turnHistoryHtml: a steer in a turn with no block is a bubble after the pro
   const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }), { thumbs });
   assert.match(html, /<\/div><\/div><details class="bubble steer-row"><summary>check-in nudged the model<\/summary>/);
 });
+
+test("turnHistoryHtml: a saved task_wait record the user's Stop ended reloads as stopped, not done", () => {
+  const items = [{ role: "user", content: "p" }, { role: "assistant", content: "Waiting." }];
+  const stopped = normalizeTiming({
+    turn_records: [{ id: "T1", status: "canceled", duration_ms: 900 }],
+    tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "task_wait", status: "stopped", duration_ms: 800 }],
+  });
+  const html = turnHistoryHtml(items, stopped, { thumbs });
+  assert.match(html, /<span class="activity-status stopped">stopped<\/span><span class="activity-tool">task_wait<\/span>/);
+});

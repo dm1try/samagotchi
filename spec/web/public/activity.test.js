@@ -76,6 +76,19 @@ test("addCompleted marks error when activity.status is error", () => {
   assert.equal(row.status, "error");
 });
 
+test("addCompleted marks a task_wait the user's Stop ended as stopped, not ok", () => {
+  const m = newActivity();
+  addStarted(m, { iteration: 1, call_index: 1, tool: "task_wait", params: "task_id=\"t1\"" });
+  const row = addCompleted(m, {
+    iteration: 1,
+    call_index: 1,
+    tool: "task_wait",
+    output: "[task_wait]\nwait_result: canceled",
+    activity: { action: "waiting for task", status: "stopped", tool: "task_wait" },
+  });
+  assert.equal(row.status, "stopped");
+});
+
 test("addCompleted synthesizes a row when no start was seen (replay gap)", () => {
   const m = newActivity();
   const row = addCompleted(m, {
