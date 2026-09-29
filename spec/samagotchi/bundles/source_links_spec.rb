@@ -200,6 +200,107 @@ RSpec.describe "The source-links bundle" do
     end
   end
 
+  describe "placeholders in the url template" do
+    def texts = notices.map { |n| n[:text] }
+
+    def warned_events
+      events = []
+      allow(Samagotchi::Log).to receive(:warn).and_wrap_original do |original, *args, **kw|
+        events << [args[1], kw[:echo]]
+        original.call(*args, **kw)
+      end
+      events
+    end
+
+    it "fills numbered groups" do
+      settings.replace("sources" => [{ "name" => "GH", "pattern" => '\b([a-z]+)/([a-z]+)!(\d+)\b',
+                                       "url" => "https://gh.test/{1}/{2}/pull/{3}" }])
+      fire([model("see acme/web!7")])
+      expect(texts).to eq(["sources: GH acme/web!7 → https://gh.test/acme/web/pull/7"])
+    end
+
+    it "fills named groups" do
+      settings.replace("sources" => [{ "name" => "T", "pattern" => '\b(?<proj>[A-Z]+)~(?<num>\d+)\b',
+                                       "url" => "https://t.test/{proj}/{num}" }])
+      fire([model("see ABC~12")])
+      expect(texts).to eq(["sources: T ABC~12 → https://t.test/ABC/12"])
+    end
+
+    it "skips a ref whose numbered or named group did not take part" do
+      settings.replace("sources" => [
+                         { "name" => "N", "pattern" => '\bN(?:-(\d+))?!', "url" => "https://n.test/{1}" },
+                         { "name" => "M", "pattern" => '\bM(?:-(?<id>\d+))?!', "url" => "https://m.test/{id}" }
+                       ])
+      fire([model("N! and M! but N-3! and M-4!")])
+      expect(texts).to eq(["sources: N N-3! → https://n.test/3, M M-4! → https://m.test/4"])
+    end
+
+    it "leaves an unknown {word} and an out-of-range {7} as text and warns once at compile" do
+      events = warned_events
+      settings.replace("sources" => [{ "name" => "W", "pattern" => '\bW-(\d+)\b',
+                                       "url" => "https://w.test/{match}/{nope}/{7}" }])
+      fire([model("W-1")])
+      fire([model("W-2")])
+      expect(texts).to eq(["sources: W W-1 → https://w.test/1/{nope}/{7}", "sources: W W-2 → https://w.test/2/{nope}/{7}"])
+      placeholder_warnings = events.select { |event, _| event == "source_links_unknown_placeholder" }
+      expect(placeholder_warnings.size).to eq(1)
+      expect(placeholder_warnings.first[1]).to include("{nope}", "{7}", "W")
+    end
+
+    it "keeps the slashes of {repo} from a named group and escapes each segment" do
+      settings.replace("sources" => [{ "name" => "GL", "pattern" => '\b(?<repo>[\w/ ]+\w)!(?<num>\d+)\b',
+                                       "url" => "https://gl.test/{repo}/-/merge_requests/{num}" }])
+      fire([model("group/sub/my proj!5")])
+      expect(texts).to eq(["sources: GL group/sub/my proj!5 → https://gl.test/group/sub/my%20proj/-/merge_requests/5"])
+    end
+
+    it "escapes / in {match} and other names" do
+      settings.replace("sources" => [{ "name" => "W", "pattern" => '\bW:(?<page>[a-z/]+)', "url" => "https://w.test/{page}" }])
+      fire([model("W:a/b")])
+      expect(texts).to eq(["sources: W W:a/b → https://w.test/a%2Fb"])
+    end
+
+    it "skips a {repo} with an empty, . or .. segment" do
+      settings.replace("sources" => [{ "name" => "GH", "pattern" => '(?<repo>[\w./]+)#(?<num>\d+)',
+                                       "url" => "https://gh.test/{repo}/issues/{num}" }])
+      fire([model("../x#6 a//b#7 ./c#8 ok/repo#9")])
+      expect(texts).to eq(["sources: GH ok/repo#9 → https://gh.test/ok/repo/issues/9"])
+    end
+
+    it "{match} is the first named group when the pattern has named groups, else the whole ref" do
+      settings.replace("sources" => [{ "name" => "GH", "pattern" => '(?:(?<repo>[a-z]+/[a-z]+))?#(?<num>\d+)',
+                                       "url" => "https://gh.test/{match}" }])
+      fire([model("o/r#1 and #2")])
+      expect(texts).to eq(["sources: GH o/r#1 → https://gh.test/o%2Fr, GH #2 → https://gh.test/%232"])
+    end
+
+    it "lists one URL once: two refs to the same URL, the first wins" do
+      settings.replace("sources" => [{ "name" => "GH", "pattern" => '(?:(?<repo>[a-z]+/[a-z]+))?#(?<num>\d+)',
+                                       "url" => "https://gh.test/o/r/issues/{num}" }])
+      fire([model("#12 is o/r#12, and x/y#12 too")])
+      expect(texts).to eq(["sources: GH #12 → https://gh.test/o/r/issues/12"])
+    end
+
+    it "lets another source link a ref the first one left unlinked" do
+      settings.replace("sources" => [
+                         { "name" => "Opt", "pattern" => '\bX(?:-(\d+))?\b', "url" => "https://opt.test/{1}" },
+                         { "name" => "Any", "pattern" => '\bX\b', "url" => "https://any.test/{match}" }
+                       ])
+      fire([model("just X")])
+      expect(texts).to eq(["sources: Any X → https://any.test/X"])
+    end
+
+    it "does not link an unresolved ref in the answer either" do
+      settings.replace("sources" => [{ "name" => "N", "pattern" => '\bN(?:-(\d+))?!', "url" => "https://n.test/{1}" }])
+      messages = [user("q"), model("N! and N-3!")]
+      answer = Samagotchi::AnswerDisplay.new(messages)
+      event = { type: :after_turn, status: "completed", messages: messages }
+      event[:present] = answer.presenter(event)
+      registry.fire(:after_turn, event)
+      expect(answer.text).to eq("N! and [N-3!](https://n.test/3)")
+    end
+  end
+
   describe "URL escaping" do
     it "escapes a free-form capture group in the URL" do
       settings.replace("sources" => [{ "name" => "Wiki", "pattern" => "WIKI-([A-Za-z0-9 /]+)", "url" => "https://wiki/{match}" }])

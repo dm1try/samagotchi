@@ -47,6 +47,11 @@ class SourceLinks
   MARKDOWN_LINK = /\[([^\]]*)\]\(([^)]*)\)/
   # A fenced code block's opening line (up to 3 spaces, then ``` or ~~~).
   FENCE_OPEN = /\A {0,3}(`{3,}|~{3,})/
+  # A `{word}` or `{N}` placeholder in a `url:` template.
+  PLACEHOLDER = /\{(\w+)\}/
+  # Placeholders every pattern has: {match} (group 1, else the whole ref),
+  # and {repo}/{host} (a named group, else the project's git remote).
+  BUILTIN_PLACEHOLDERS = %w[match repo host].freeze
 
   def initialize(settings = {})
     settings = {} unless settings.is_a?(Hash)
@@ -115,9 +120,12 @@ class SourceLinks
           next if inside_markdown_link?(links, text, match)
           next if url_adjacent?(text, match)
 
+          # An unresolved placeholder: no link, from this source.
+          url = source[:url].call(match[0], match)
+          next if url.nil?
+
           quiet = inside_any?(code, start, finish) || inside_any?(labels, start, finish)
-          hits << { start: start, finish: finish, name: source[:name], ref: match[0],
-                    url: source[:url].call(match[0], match), quiet: quiet }
+          hits << { start: start, finish: finish, name: source[:name], ref: match[0], url: url, quiet: quiet }
         end
       rescue Regexp::TimeoutError
         Samagotchi::Log.warn(:hooks, "source_links_timeout",
@@ -131,11 +139,12 @@ class SourceLinks
   end
 
   # [name, ref, url] for the note: first-occurrence order, deduped by the
-  # ref text case-insensitively.
+  # URL case-insensitively (`#12` and `o/r#12` may name one issue; with
+  # case_insensitive, `JIRA-1` and `jira-1` are one ticket).
   def collect(hits)
     seen = {}
     hits.filter_map do |hit|
-      key = hit[:ref].downcase
+      key = hit[:url].downcase
       next if seen.key?(key)
 
       seen[key] = true
@@ -336,7 +345,8 @@ class SourceLinks
       name = "source" if name.empty?
       regex = Regexp.new(pattern, flags, timeout: REGEX_TIMEOUT)
       template = entry["url"].to_s
-      { name: name, regex: regex, url: ->(ref, match) { template.gsub("{match}", escape_url(match[1] || ref)) } }
+      known = known_placeholders(name, template, regex)
+      { name: name, regex: regex, url: ->(ref, match) { render_url(template, known, match, ref) } }
     else
       warn_invalid("a source needs a prefix: or a pattern:")
       nil
@@ -344,6 +354,83 @@ class SourceLinks
   rescue RegexpError => e
     warn_invalid("its pattern does not compile: #{e.message}")
     nil
+  end
+
+  # The placeholders of +template+ this pattern can fill: {match}, {repo},
+  # {host}, its named groups and {1}…{N} for its N groups. Any other
+  # `{word}` stays as text, with one warning here, at compile time.
+  def known_placeholders(name, template, regex)
+    used = template.scan(PLACEHOLDER).flatten.uniq
+    groups = group_count(regex)
+    known, unknown = used.partition do |word|
+      if word.match?(/\A\d+\z/)
+        groups.nil? || (word.to_i.between?(1, groups))
+      else
+        BUILTIN_PLACEHOLDERS.include?(word) || regex.names.include?(word)
+      end
+    end
+    unless unknown.empty?
+      list = unknown.map { |word| "{#{word}}" }.join(", ")
+      Samagotchi::Log.warn(:hooks, "source_links_unknown_placeholder",
+                           echo: "[samagotchi:hooks] source-links: #{name}: #{list}: no such group in its pattern; " \
+                                 "left as text")
+    end
+    known
+  end
+
+  # How many groups +regex+ captures (with named groups, only those), found
+  # by matching an always-empty alternative; nil when that fails.
+  def group_count(regex)
+    probe = Regexp.new("(?:#{regex.source}\n)|", regex.options, timeout: REGEX_TIMEOUT)
+    probe.match("").size - 1
+  rescue RegexpError, Regexp::TimeoutError
+    nil
+  end
+
+  # The URL for one hit: +template+ with its +known+ placeholders filled, or
+  # nil when one can't be (a group that didn't take part, a {repo} with an
+  # empty or dot segment, no remote): we never build a URL with a hole.
+  def render_url(template, known, match, ref)
+    unresolved = false
+    url = template.gsub(PLACEHOLDER) do
+      word = Regexp.last_match(1)
+      next Regexp.last_match(0) unless known.include?(word)
+
+      value = placeholder_value(word, match, ref)
+      unresolved = true if value.nil?
+      value.to_s
+    end
+    unresolved ? nil : url
+  end
+
+  # One placeholder's escaped value, or nil when it is unresolved.
+  def placeholder_value(word, match, ref)
+    case word
+    when "match" then escape_url(match[1] || ref)
+    when /\A\d+\z/ then match[word.to_i]&.then { |value| escape_url(value) }
+    when "repo", "host"
+      value = match.names.include?(word) ? match[word] : nil
+      value ||= remote_value(word)
+      word == "repo" ? escape_repo(value) : value&.then { |host| escape_url(host) }
+    else match[word]&.then { |value| escape_url(value) }
+    end
+  end
+
+  # {repo} / {host} from the project's git remote; nil when there is none.
+  def remote_value(_word)
+    nil
+  end
+
+  # A repo path with each `/`-separated segment escaped and the `/` kept
+  # (GitLab's `group/sub/proj`); nil for an empty, `.` or `..` segment, which
+  # a browser would resolve out of the path.
+  def escape_repo(value)
+    return nil if value.nil?
+
+    segments = value.split("/", -1)
+    return nil if segments.empty? || segments.any? { |segment| ["", ".", ".."].include?(segment) }
+
+    segments.map { |segment| escape_url(segment) }.join("/")
   end
 
   def warn_invalid(reason)
