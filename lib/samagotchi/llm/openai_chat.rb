@@ -184,18 +184,11 @@ module Samagotchi
       private
 
       def timeouts(timeout)
-        open_timeout = config_integer("server.open_timeout", 10)
-        read_timeout = config_integer("server.read_timeout", 600)
+        open_timeout = Samagotchi::Config.positive_seconds("server.open_timeout")
+        read_timeout = Samagotchi::Config.positive_seconds("server.read_timeout")
         return [open_timeout, read_timeout] unless timeout
 
         [[open_timeout, timeout].min, timeout]
-      end
-
-      def config_integer(key, default)
-        value = Samagotchi::Config.get(key).to_i
-        value.positive? ? value : default
-      rescue StandardError
-        default
       end
 
       def request_body(messages, tools, model, options)

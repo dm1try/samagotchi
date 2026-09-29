@@ -158,8 +158,6 @@ module Samagotchi
       begin
         cfg_host       = Samagotchi::Config.get("server.host")
         cfg_port       = Samagotchi::Config.get("server.port")
-        cfg_open_timeout = Samagotchi::Config.get("server.open_timeout")
-        cfg_read_timeout = Samagotchi::Config.get("server.read_timeout")
         cfg_transport_raw = Samagotchi::Config.get("server.transport")
       rescue StandardError
         nil
@@ -167,8 +165,8 @@ module Samagotchi
       @host          = host || cfg_host
       @port          = (port || cfg_port).to_i
       @scheme        = scheme || "http"
-      @open_timeout  = (open_timeout || cfg_open_timeout).to_i
-      @read_timeout  = (read_timeout || cfg_read_timeout).to_i
+      @open_timeout  = Samagotchi::Config.positive_seconds("server.open_timeout", open_timeout)
+      @read_timeout  = Samagotchi::Config.positive_seconds("server.read_timeout", read_timeout)
       transport_fallback = cfg_transport_raw || ENV.fetch(SERVER_TRANSPORT_ENV, DEFAULT_TRANSPORT.to_s)
       @transport = build_transport(resolve_transport(transport || transport_fallback))
       @props_cache = {}

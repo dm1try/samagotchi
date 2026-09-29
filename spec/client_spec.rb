@@ -3,6 +3,7 @@
 require "spec_helper"
 require "samagotchi/client"
 require "samagotchi/host_registry"
+require "samagotchi/llm/openai_chat"
 require_relative "support/fake_provider_server"
 
 RSpec.describe Samagotchi::Client do
@@ -231,6 +232,27 @@ RSpec.describe Samagotchi::Client do
       allow(response).to receive(:read_body)
 
       client.complete("prompt")
+    ensure
+      ENV.delete("SAMAGOTCHI_SERVER_OPEN_TIMEOUT")
+      ENV.delete("SAMAGOTCHI_SERVER_READ_TIMEOUT")
+    end
+
+    it "takes the default for a timeout of 0, as an OpenAI host does (one rule on every host)" do
+      ENV["SAMAGOTCHI_SERVER_OPEN_TIMEOUT"] = "0"
+      ENV["SAMAGOTCHI_SERVER_READ_TIMEOUT"] = "0"
+
+      client = described_class.new(host: "localhost", port: 8080)
+      http = instance_double(Net::HTTP)
+      response = double("response", code: "200")
+
+      expect(Net::HTTP).to receive(:start)
+        .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
+        .and_yield(http)
+      allow(http).to receive(:request) { |_request, &block| block.call(response) }
+      allow(response).to receive(:read_body)
+
+      client.complete("prompt")
+      expect(Samagotchi::LLM::OpenAIChat.new(base_url: "http://h/v1", host_name: "h").send(:timeouts, nil)).to eq([10, 600])
     ensure
       ENV.delete("SAMAGOTCHI_SERVER_OPEN_TIMEOUT")
       ENV.delete("SAMAGOTCHI_SERVER_READ_TIMEOUT")

@@ -410,6 +410,16 @@ module Samagotchi
         get_with_origin(key).first
       end
 
+      # A timeout setting (server.open_timeout, server.read_timeout) in
+      # seconds, +given+ (a caller's own value) first; one that isn't
+      # positive (0, a word) is the key's default, on every kind of host.
+      def positive_seconds(key, given = nil)
+        value = (given.nil? ? get(key) : given).to_i
+        value.positive? ? value : find_by_key(key).default
+      rescue StandardError
+        find_by_key(key)&.default
+      end
+
       # [value, origin] for the live value #get returns; origin is one of
       # :cli, :env, :file, :default.
       def get_with_origin(key)

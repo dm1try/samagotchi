@@ -441,6 +441,7 @@ Raise these to avoid premature request failures:
 
 - `server.open_timeout` (default: `10`, env `SAMAGOTCHI_SERVER_OPEN_TIMEOUT`) connection timeout in seconds.
 - `server.read_timeout` (default: `600`, env `SAMAGOTCHI_SERVER_READ_TIMEOUT`) response read timeout in seconds.
+  Either timeout at `0` (or anything not a positive number) is its default, on every host.
 
 ```yaml
 server:
