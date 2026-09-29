@@ -440,6 +440,23 @@ for that page load, whatever the config says; the parameter is dropped
 when you switch between the project and all-sessions views. The terminal
 UIs are not affected.
 
+**The stage view** pins the running turn above the composer, in its own
+card, so it stays on screen without scrolling: a status row (what it is
+doing, the step, the elapsed time), your prompt on one line, the newest
+narration sentence (else the newest thinking one, in italics; click it for
+the step's reasoning), the running tool with what it does, and the last
+three calls. A card that needs you (a question, an approval, check-in)
+sits in the stage too. The chip under it, `N steps · M tool calls` with one
+tick per call, opens the turn view's block in place (newest step first
+while it runs; a tick opens its step). `▾` folds the stage to its status
+row, remembered in this browser. When the turn ends the answer shows in
+the stage, and the whole turn moves up into the history once you are not
+using the stage (the pointer over it, a touch or scroll in the last 4 s,
+keyboard focus or a selection keep it) for 1.5 s; sending the next message
+moves it at once. The history is never scrolled while a turn runs, and only
+follows the hand-off if you were at its end. The `/` command list opens
+over the stage's lower edge.
+
 **The turn view** shows a turn as *one block* where the work
 happens. The running
 generation is the live part at the bottom (its thinking, its narration, its
