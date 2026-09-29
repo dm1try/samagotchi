@@ -1556,8 +1556,14 @@ module Samagotchi
         multi_select: !!payload[:multi_select],
         allow_freeform: !!payload[:allow_freeform]
       )
+      # Dismissed (the card's dismiss, Esc): an answer of its own, not a
+      # tool failure the model learns to avoid the tool from.
+      result = { dismissed: true, id: result[:id], note: QUESTION_DISMISSED_NOTE } if result.is_a?(Hash) && result[:error] == "no answer"
       result.is_a?(String) ? result : JSON.generate(result)
     end
+
+    QUESTION_DISMISSED_NOTE = "The user dismissed the question without answering. Go on with your best judgement, " \
+                              "or ask in your reply if you can't."
 
     # Open a question for the UIs and wait for its answer. Emits
     # :question_requested, persists it to the session, and BLOCKS until

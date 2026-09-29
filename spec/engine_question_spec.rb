@@ -249,11 +249,13 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       expect(events.map { |e| e[:type] }).to eq(%i[question_requested question_answered])
     end
 
-    it "returns a no-answer error when the handler records nothing" do
+    it "says the user dismissed it (not an error) when the handler records nothing" do
       engine = build_engine
       engine.set_question_sync_handler { |_pending| nil }
       answer = JSON.parse(engine.request_question(payload))
-      expect(answer["error"]).to eq("no answer")
+      expect(answer).not_to have_key("error")
+      expect(answer).to include("dismissed" => true)
+      expect(answer["note"]).to include("dismissed the question without answering", "best judgement")
       expect(engine.pending_question).to be_nil
     end
   end
@@ -409,7 +411,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
 
       expect(engine.cancel_question("dismissed", id: qid)).to be(true)
       turn_thread.join(2)
-      expect(JSON.parse(result_box[:result])["error"]).to eq("no answer")
+      expect(JSON.parse(result_box[:result])).to include("dismissed" => true).and(satisfy { |r| !r.key?("error") })
       expect(events.select { |e| e[:type] == :question_cancelled }.map { |e| e[:id] }).to eq([qid])
     end
 
