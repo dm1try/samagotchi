@@ -248,14 +248,19 @@ RSpec.describe Samagotchi::TurnFlow do
     expect(flow.rollback!).to be(false)
   end
 
-  it "keeps the checkpoint across a reminder turn only while a continue is offered" do
+  it "drops a pending continue offer when a reminder turn runs, and closes the rollback window after it" do
     run_prompt("go", [{ role: "tool_response", content: "r1" }])
     flow.after_turn(result(engine.messages, exhausted: true, pending: true))
+    expect(flow.before_reminder_turn).to be(true)
+    expect(flow.awaiting_continue?).to be(false)
+    engine.messages = engine.messages + [{ role: "model", content: "stretch!" }]
     flow.after_reminder_turn
-    expect(flow.rollback!).to be(true)
+    expect(flow.rollback!).to be(false)
+    expect(engine.messages.last[:content]).to eq("stretch!")
 
     run_prompt("go", [{ role: "model", content: "Partial" }])
     flow.after_turn(result(engine.messages, canceled: true))
+    expect(flow.before_reminder_turn).to be(false)
     flow.after_reminder_turn
     expect(flow.rollback!).to be(false)
   end

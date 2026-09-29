@@ -143,9 +143,19 @@ module Samagotchi
       @checkpoint = nil
     end
 
-    # A reminder turn ran. The checkpoint stays only for a pending offer.
+    # A reminder turn is about to run: a pending continue offer goes, as for
+    # a new prompt (the partial turn stays), so a later "no" can't roll the
+    # reminder's exchange back with it.
+    # @return [Boolean] whether an offer was pending
+    def before_reminder_turn
+      offered = awaiting_continue?
+      @offer = nil
+      offered
+    end
+
+    # A reminder turn ran: the rollback window closes.
     def after_reminder_turn
-      @checkpoint = nil unless awaiting_continue?
+      @checkpoint = nil
     end
 
     private

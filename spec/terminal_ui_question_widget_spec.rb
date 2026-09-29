@@ -184,6 +184,25 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
     expect(surface.events).not_to include([:clear_slot, :notes])
   end
 
+  # A reminder turn drops a pending continue offer (the worker's rule), so a
+  # later "no" can't roll the reminder's exchange back with the turn.
+  it "drops a pending continue offer when a reminder turn runs, with one line" do
+    surface = RecordingSurface.new
+    agent.instance_variable_set(:@surface, surface)
+    agent.instance_variable_set(:@continue_slot, true)
+    flow = agent.instance_variable_get(:@turn_flow)
+    flow.instance_variable_set(:@offer, { context: {}, no_interrupt: false })
+    allow(engine).to receive_messages(due_reminder_names: ["stretch"], reminders_due?: true)
+    allow(engine).to receive(:clear_due_reminder_names!)
+    allow(agent).to receive(:run_engine_turn).and_return(nil)
+
+    agent.send(:run_reminder_turn, nil)
+
+    expect(flow.awaiting_continue?).to be(false)
+    expect(surface.lines.first).to end_with("→ (dropped: a reminder ran)")
+    expect(surface.events).to include([:clear_slot, :notes])
+  end
+
   describe "an approval" do
     let(:approval) do
       { id: "a1", kind: "approval", header: "Approve tool call?",

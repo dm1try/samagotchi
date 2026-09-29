@@ -318,6 +318,7 @@ module Samagotchi
       @engine.clear_due_reminder_names!
       return false unless @engine.reminders_due?
 
+      drop_continue_offer({ client_id: SessionManager::REMINDER_CLIENT_ID })
       @session.status = Session::STATUS_RUNNING
       @session.save(state_dir: @state_dir)
       begin
@@ -331,8 +332,8 @@ module Samagotchi
       ensure
         refuse_queued_commands
       end
-      # A pending continue offer stays (the REPL rule); otherwise the
-      # rollback window closes.
+      # The offer went before the turn (drop_continue_offer); the rollback
+      # window closes.
       @turn_flow.after_reminder_turn
       @session.save(state_dir: @state_dir) unless stopped_on_disk?
       true
@@ -476,8 +477,8 @@ module Samagotchi
       @engine.announce(type: :continue_offered, context: offer[:context], no_interrupt: offer[:no_interrupt])
     end
 
-    # A prompt taken while a continue is offered replaces the answer (D2):
-    # the offer goes, the partial turn stays.
+    # A prompt (or a reminder turn) taken while a continue is offered
+    # replaces the answer (D2): the offer goes, the partial turn stays.
     def drop_continue_offer(origin)
       return unless @turn_flow.awaiting_continue?
 

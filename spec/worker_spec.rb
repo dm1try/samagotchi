@@ -606,6 +606,23 @@ RSpec.describe Samagotchi::Worker do
         expect(bridge_snapshot["continue_offer"]).to be_nil
         expect(wait_until { saved_messages == ["long task", "calling ls", "a b", "something else", "OK"] }).to be(true)
       end
+
+      it "drops the offer when a reminder turn runs, so a later no can't roll the reminder's exchange back" do
+        start_worker(poll_interval: 5)
+        post_turn("long task")
+        expect(wait_until { saw?(:continue_offered) }).to be(true)
+
+        allow(engine).to receive(:reminders_due?).and_return(true)
+        @reminder_callback.call(["stretch"])
+
+        expect(wait_until { seen.count { |e| e[:type] == :turn_completed } == 2 if saw?(:turn_completed) }).to be(true)
+        types = seen.map { |e| e[:type] }
+        expect(seen.find { |e| e[:type] == :continue_resolved }).to include(decision: "dropped", client_id: "system:reminder")
+        expect(types.index(:continue_resolved)).to be < types.rindex(:turn_started)
+        expect(bridge_snapshot["continue_offer"]).to be_nil
+        expect(@worker.instance_variable_get(:@turn_flow).awaiting_continue?).to be(false)
+        expect(@worker.instance_variable_get(:@turn_flow).rollback!).to be(false)
+      end
     end
 
     describe "commands (POST /session/:id/command)" do

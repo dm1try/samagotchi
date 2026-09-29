@@ -915,6 +915,11 @@ module Samagotchi
       # empty synthetic turn then (it duplicated output).
       return unless @engine.reminders_due?
 
+      # A pending continue offer goes, as for a new prompt (the worker's rule).
+      if @turn_flow.before_reminder_turn
+        sync_continue_slot(false)
+        @surface.commit(QuestionSlot.continue_summary("(dropped: a reminder ran)", paint: method(:paint)))
+      end
       hint = "reminder: #{names.join(", ")} · Ctrl-C cancels it"
       @surface.set_slot(:hints, [color_output? ? paint(hint, 90) : hint])
       result = nil
