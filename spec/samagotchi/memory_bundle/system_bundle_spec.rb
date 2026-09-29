@@ -86,6 +86,45 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
       expect(installed_identity).to eq("mine\n")
     end
 
+    describe ".sync" do
+      it "reports what it did: installed, up to date, updated with kept edits, newer installed" do
+        ship("0.1.6", "old\n")
+        expect(described_class.sync).to have_attributes(status: :installed, from: nil, to: "0.1.6")
+        expect(described_class.sync).to have_attributes(status: :up_to_date, from: "0.1.6", to: "0.1.6")
+
+        File.write(File.join(Samagotchi::MemoryBundle::Installer.system_dir, "identity.md"), "mine\n")
+        ship("0.1.10", "new\n")
+        result = nil
+        expect { result = described_class.sync }.not_to output.to_stderr
+        expect(result).to have_attributes(status: :updated, from: "0.1.6", to: "0.1.10", kept: ["identity.md"], warnings: [])
+
+        ship("0.1.8", "older\n")
+        expect(described_class.sync).to have_attributes(status: :newer_installed, from: "0.1.10", to: "0.1.8")
+      end
+
+      it "writes nothing with dry_run" do
+        ship("0.1.6", "old\n")
+        expect(described_class.sync(dry_run: true).status).to eq(:installed)
+        expect(Samagotchi::MemoryBundle::Provenance.new(name: described_class::BUNDLE_NAME).read).to be_nil
+
+        described_class.sync
+        ship("0.1.10", "new\n")
+        expect(described_class.sync(dry_run: true)).to have_attributes(status: :updated, from: "0.1.6", to: "0.1.10", kept: [])
+        File.write(File.join(Samagotchi::MemoryBundle::Installer.system_dir, "identity.md"), "mine\n")
+        expect(described_class.sync(dry_run: true).kept).to eq(["identity.md"])
+        expect(installed_identity).to eq("mine\n")
+        expect(installed_version).to eq("0.1.6")
+      end
+
+      it "reports a restored file" do
+        ship("0.1.6", "old\n")
+        described_class.sync
+        File.delete(File.join(Samagotchi::MemoryBundle::Installer.system_dir, "identity.md"))
+        expect(described_class.sync.status).to eq(:restored)
+        expect(installed_identity).to eq("old\n")
+      end
+    end
+
     it "leaves a newer installed bundle alone when the shipped one is older" do
       ship("0.1.7", "new\n")
       described_class.ensure!
