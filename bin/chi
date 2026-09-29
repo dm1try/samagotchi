@@ -1060,7 +1060,18 @@ when "web"
   end
 end
 
+# The first interactive start of a new installed chi says what `chi update` would update.
+chi_update_hint = lambda do
+  require "samagotchi/installed_gem"
+  require "samagotchi/update_hint"
+  if Samagotchi::UpdateHint.wanted?(prompt: options[:prompt], non_interactive: options[:non_interactive],
+                                    tty: $stdin.tty? && $stdout.tty?, installed: Samagotchi::InstalledGem.spec)
+    Samagotchi::UpdateHint.show
+  end
+end
+
 if options[:web]
+  chi_update_hint.call
   require "samagotchi/web/server"
   port = options[:web_port] || Samagotchi::Config.get("web.port") || 4567
   # legacy env fallback
@@ -1129,6 +1140,7 @@ if options[:memories] || options[:muted]
   end
 end
 
+chi_update_hint.call
 require "samagotchi/launch_mode"
 launch, launch_note = if scratch
                         [:repl, nil]
