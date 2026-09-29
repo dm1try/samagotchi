@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-29
+
 ### Added
 
 - `chi bootstrap [HOST[:PORT]|URL]`: the first setup in one command. It finds
@@ -41,6 +43,84 @@ and commands may change between minor versions. How releases are made:
 - Plugins can steer the running turn: `ctx.steer(text)` and a hook's
   `event[:steer]` put text into the turn as its own message at the loop's
   next step, shown as `<bundle>> nudged: …`; `ctx.stop_turn(reason)` stops it.
+- The `source-links` bundle (`chi bundle install source-links`): refs like
+  `JIRA-123` or `GH-45` in an answer become links in the web, and a one-line
+  `sources:` note follows the turn in the terminal. Sources are patterns in
+  `bundles: source-links:`.
+- Plugins can change how an answer is shown without changing what the model
+  sees: an after_turn hook's `event[:present]` sets a display version of the
+  answer, which the web renders (and keeps after a reload).
+- Annotate presets: selecting text in an answer offers quick replies next to
+  Annotate (default "Agreed" and "Could you please elaborate?"); a pill puts
+  the quote and the text in the composer without sending.
+  `web.annotate_presets` (`|`-separated or a YAML list; `""` turns them off).
+- `sampling:` on a `hosts:` or `models:` entry (temperature, top_p, top_k,
+  min_p, penalties, …) is sent with every request to that host or model;
+  `temperature: null` sends none, so the provider's default applies.
+- `retry.empty_answer` (default 1): when the model returns an empty answer
+  (or runs out of tokens while thinking), chi asks again once in the same
+  turn; the terminal and the web show "↻ empty answer, asking again".
+- The context fill is saved with the session: `chi sessions list` and the web
+  list show it (`ctx 12%`), and `/stats`, the status line and the web meter
+  show it right after a restart or a reload. Token totals now cover the whole
+  session across worker restarts.
+- `chi send --wait ID` with no message waits for the session's next reply
+  without sending anything (also on a running session), e.g. after `--wait`
+  exited 3 for a question.
+- The desktop panel has a "New session in <folder>" row (⏎ starts a session
+  with the selection there).
+- Web notifications also cover a check-in card waiting for you, and a chi tab
+  in front keeps the tabs behind it from notifying twice.
+
+### Changed
+
+- Stop ends a turn that is waiting in `task_wait` or running `execute` within
+  about a second, and a Stop right after a turn starts ends it at once. A
+  background task keeps running: the model is told it's still running and how
+  to continue or stop it, and the cancel note lists the session's tasks still
+  running. A stopped wait shows as "stopped".
+- config.yml: a nested key now wins over its legacy flat `SAMAGOTCHI_*` key
+  (one warning names both); an unknown key warns with a did-you-mean;
+  top-level keys like `max_tool_output_chars` no longer warn; `no_interrupt`
+  and `no_default_input` work from config and env.
+- A refused connection to a host fails at once with "can't reach host … — is
+  the server running?" instead of retrying for half a minute.
+- A host whose `/props` doesn't answer costs one probe per 30 s, not a wait
+  at every turn.
+- `chi -p … --non-interactive` with an empty answer says so on stderr and
+  exits 1.
+- docs/configuration.md uses nested keys throughout and lists every setting;
+  the README starts with `chi bootstrap`.
+
+### Removed
+
+- The unused config keys `bridge.enable` and `thinking.preview_lines` (they
+  now warn as unknown).
+
+### Fixed
+
+- The web keeps a failed turn's prompt and reason after a reload, and a failed
+  turn's prompt comes back to the composer, also for a first message from the
+  start page.
+- Web answer links appear with the answer instead of being swapped in after it.
+- The title badge clears when you switch to the tab in Safari, and drops a
+  question answered from another tab or client.
+- `/archive` and `/exit` typed in the web composer get a short reply instead
+  of an error.
+- An approval card for a tool without a command or path shows its arguments.
+- A hook notice from before the turn stays in its step after a reload.
+- Card actions (check-in's Nudge, …) no longer leave a command bubble or line.
+- A 404 from a native (llama.cpp) host hints at `api: openai`.
+- A config `memories:` entry that can't be loaded is no longer called `--memory`.
+- `chi --resume`/`--attach` refuse a leftover scratch session.
+- `chi sessions list --live/--cwd/--format` show `[scratch]` too.
+- The legacy-key warning names the right nested key.
+
+### Bundles
+
+- New: `check-in` 0.1.1 (`chi bundle install check-in`, needs chi 0.3.0) and
+  `source-links` 0.2.0 (`chi bundle install source-links`). No other bundle
+  changed since 0.2.0.
 
 ## [0.2.0] - 2026-09-27
 
@@ -73,5 +153,6 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/dm1try/samagotchi/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dm1try/samagotchi/releases/tag/v0.2.0

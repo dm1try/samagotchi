@@ -92,6 +92,10 @@ bundles:
     deny_after: 2              # same call + same result N times in a turn -> deny the next
     stop_after: 4              # stop the turn at this many denies
     mode: deny                 # deny | notify (warn only); ignore_tools: [task_wait, ...]
+  check-in:
+    after: 50                  # tool calls in one turn with no answer before the first check
+    every: 50                  # then again every N more
+    mode: ask                  # ask (a card) | nudge (nudge the model by itself) | notify; message:, ignore_tools: [...]
   mcp:                         # tools become mcp_<server>_<tool>; /mcp lists them
     timeout: 60                # per call, seconds; startup_timeout: 10
     servers:
