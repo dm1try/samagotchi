@@ -104,7 +104,8 @@ module Samagotchi
       # @param event [Hash] :hook_notice event or a snapshot part with
       #   hook:, text:, level:
       def self.hook_notice_line(event)
-        label = event[:hook].to_s[/\(bundle (.+)\)\z/, 1] || "hook"
+        # chi's own notices name themselves with a bare word (thinking).
+        label = event[:hook].to_s[/\(bundle (.+)\)\z/, 1] || event[:hook].to_s[/\A[a-z][a-z0-9-]*\z/] || "hook"
         text = event[:text].to_s
         text = "warning: #{text}" if event[:level].to_s == "warn"
         "#{label}> #{text}"

@@ -294,6 +294,11 @@ test("hookNoticeLabel names a bundle hook by its bundle, any other hook as hook"
   assert.equal(hookNoticeLabel(undefined), "hook");
 });
 
+test("hookNoticeLabel names chi's own notice (a bare word, e.g. thinking) by that word", () => {
+  assert.equal(hookNoticeLabel("thinking"), "thinking");
+  assert.equal(hookNoticeLabel("loop-guard"), "loop-guard");
+});
+
 test("snapshotEvents: a running turn's steer part replays as a steer-only merge", () => {
   const events = snapshotEvents({ current_turn: { prompt: "p", origin: {}, parts: [
     { kind: "text", iteration: 1, text: "hm" },

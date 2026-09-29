@@ -1886,7 +1886,10 @@ module Samagotchi
         vision = turn_vision(session)
         @kernel.vision = vision if @kernel.respond_to?(:vision=)
         @kernel.sampling = turn_sampling if @kernel.respond_to?(:sampling=)
-        @kernel.thinking = turn_thinking if @kernel.respond_to?(:thinking=)
+        thinking_target = @host_registry.resolve(@effective_model_name)
+        @turn_thinking = [thinking_level(thinking_target), thinking_target]
+        @kernel.thinking = @turn_thinking.first if @kernel.respond_to?(:thinking=)
+        announce_thinking_level(*@turn_thinking)
         refuse_images!(vision) unless image_refs.empty?
         announce_guardrail_failures(on_event)
         # Plugins' slow setup that brings tools (an MCP server's first
@@ -2131,6 +2134,41 @@ module Samagotchi
       thinking_level(@host_registry.resolve(@effective_model_name))
     rescue StandardError
       Thinking::DEFAULT
+    end
+
+    # An effort on a native host, which has no knob for it: said once per
+    # session and host.
+    def announce_thinking_level(level, target)
+      return if target.entry.chat? || Thinking.native(level, profile).honoured
+
+      thinking_notice_once(:unsupported, target, :info,
+                           "#{level} isn't supported by native #{profile.name} on #{target.entry.name}; " \
+                           "thinking stays as the model has it")
+    rescue StandardError
+      nil
+    end
+
+    # Thinking off, and the model thought anyway: logged each time, said
+    # once per session and host.
+    def check_thinking_honoured(event)
+      level, target = @turn_thinking
+      chars = event[:thinking_chars].to_i
+      return unless level == :off && chars.positive? && target
+
+      Log.warn(:model, "thinking_not_honoured", level: level, host: target.entry.name, model: target.bare_model, chars: chars)
+      thinking_notice_once(:not_honoured, target, :warn,
+                           "off wasn't honoured by #{target.bare_model} on #{target.entry.name} " \
+                           "(#{chars} chars of thinking); a sampling: override on the host or model may turn it off " \
+                           "(see Thinking in docs/configuration.md)")
+    rescue StandardError
+      nil
+    end
+
+    def thinking_notice_once(kind, target, level, text)
+      key = [@session&.id, target.entry.name, kind]
+      return unless (@thinking_notices ||= Set.new).add?(key)
+
+      hook_notify(text, level, "thinking")
     end
 
     # +target+'s thinking level (Thinking.resolve).
@@ -2610,6 +2648,7 @@ module Samagotchi
           end
         end
         emit_event(on_event, event)
+        check_thinking_honoured(event) if event[:type] == :generation_completed
       end
     end
 

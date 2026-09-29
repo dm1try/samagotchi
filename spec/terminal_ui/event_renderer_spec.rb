@@ -66,6 +66,11 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     expect(view.lines).to eq(['known-names> rejected execute: "x" looks like "y"', "hook> warning: stopped the turn: enough"])
   end
 
+  it "prints chi's own notice (a bare-word hook, e.g. thinking) under that word" do
+    renderer.call({ type: :hook_notice, hook: "thinking", text: "off wasn't honoured", level: :warn })
+    expect(view.lines).to eq(["thinking> warning: off wasn't honoured"])
+  end
+
   describe "cards" do
     let(:view) do
       Class.new do
