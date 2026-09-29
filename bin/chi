@@ -257,6 +257,12 @@ if ARGV[0] == "bootstrap"
   exit Samagotchi::BootstrapCommand.new(ARGV[1..] || []).run
 end
 
+# `chi update`: bring an installed chi up to date, before OptionParser (its own flags)
+if ARGV[0] == "update"
+  require "samagotchi/update_command"
+  exit Samagotchi::UpdateCommand.new(ARGV[1..] || []).run
+end
+
 # `chi desktop`: the native "Send to chi" helper, before OptionParser (its own flags)
 if ARGV[0] == "desktop"
   require "samagotchi/desktop_command"
@@ -928,6 +934,7 @@ parser = OptionParser.new do |opts|
            chi bundle <install|upgrade|uninstall|status|diff|list|build>
            chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
            chi self                         version, paths, model and bundles
+           chi update [--dry-run]           update this chi, its bundles and the desktop helper
     (each subcommand takes --help)
 
   BANNER
