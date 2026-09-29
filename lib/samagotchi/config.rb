@@ -886,15 +886,21 @@ module Samagotchi
       [nil, value]
     end
 
+    # Hosted providers' names, which no local model family uses: as a
+    # prefix they always mean a host ("openai:gpt-4o"). "mistral" and
+    # "deepseek" are left out: Ollama has mistral:7b and deepseek-* tags.
+    PROVIDER_HOST_NAMES = %w[openrouter openai anthropic google gemini groq xai together fireworks].freeze
+
     # The host a model ref names when that host isn't configured, or nil.
     # A ':' in a model id is often a tag (qwen3:8b, org/model:Q4_K_M), so
-    # the prefix counts as a host only when it could be a host name and the
-    # rest looks like a hosted provider's org/model id
-    # ("openrouter:anthropic/claude-sonnet-4"): Ollama-style tags never
-    # hold a '/'.
+    # the prefix counts as a host only when it could be a host name and
+    # either the rest looks like a hosted provider's org/model id
+    # ("nosuch:anthropic/claude-sonnet-4"; Ollama-style tags never hold a
+    # '/') or the prefix is a provider's name (PROVIDER_HOST_NAMES).
     def unknown_host_prefix(raw, hosts:)
       prefix, rest = raw.to_s.strip.split(":", 2)
-      return nil unless rest&.include?("/") && prefix.match?(HOST_NAME_RE)
+      return nil if rest.to_s.strip.empty? || !prefix.match?(HOST_NAME_RE)
+      return nil unless rest.include?("/") || PROVIDER_HOST_NAMES.include?(prefix.downcase)
 
       prefix = prefix.downcase
       hosts.keys.map { |k| k.to_s.downcase }.include?(prefix) ? nil : prefix

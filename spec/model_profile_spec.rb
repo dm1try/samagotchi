@@ -158,10 +158,21 @@ RSpec.describe Samagotchi::ModelProfile do
       end
 
       it "keeps model ids whose ':' is a tag, not a host" do
-        %w[qwen3:8b nosuch:x unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M openai/gpt-4o:free hf.co/org/repo:Q4_K_M
-           main:org/model openrouter:anthropic/claude-sonnet-4 openrouter/anthropic/claude].each do |id|
+        %w[qwen3:8b mistral:7b deepseek-r1:8b nosuch:x unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M openai/gpt-4o:free
+           hf.co/org/repo:Q4_K_M main:org/model openrouter:anthropic/claude-sonnet-4 openrouter:x
+           openrouter/anthropic/claude].each do |id|
           expect(described_class.check_host!(id)).to eq(id)
         end
+      end
+
+      it "refuses a well-known provider's name as a prefix even without an org/model id" do
+        expect { described_class.check_host!("openai:gpt-4o") }
+          .to raise_error(described_class::UnknownHost,
+                          "unknown host 'openai' in model 'openai:gpt-4o'; the configured hosts are main, openrouter")
+        expect { described_class.check_host!("Anthropic:claude-sonnet-4", hosts: { "main" => {} }) }
+          .to raise_error(described_class::UnknownHost, /unknown host 'anthropic'/)
+        expect { described_class.check_host!("openrouter:x", hosts: { "main" => {} }) }
+          .to raise_error(described_class::UnknownHost, /unknown host 'openrouter'.*the configured hosts are main\z/)
       end
 
       it "checks against the hosts it is given (a HostRegistry's entries)" do

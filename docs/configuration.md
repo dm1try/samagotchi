@@ -423,15 +423,20 @@ the running server (llama.cpp's `/props`), else the window the host's model list
 gives (`context_length`, `context_window`, `max_model_len` or llama.cpp's
 `meta.n_ctx`), else `context.window_tokens`.
 
-A `:` in a model name is often part of the id (`qwen3:8b`,
+A `:` in a model name is often part of the id (`qwen3:8b`, `mistral:7b`,
 `unsloth/Qwen3-8B-GGUF:Q4_K_M`), so the part before the first `:` picks a host
-only when it is a configured host's name. A name like
-`openrouter:anthropic/claude-sonnet-4` — a host-name-like prefix, then an
-`org/model` id — whose host isn't under `hosts:` is refused with an error
-naming it and the configured hosts (with a "did you mean" for a near miss),
-wherever the model comes in: `--model`, `default.model`, an alias, `/model`,
-`chi send --new --model`, the web's new-session model and a delegate's model.
-Any other unknown prefix (`nosuch:x`) is sent to the default host as the model id.
+only when it is a configured host's name. An unknown prefix is refused with an
+error naming it and the configured hosts (with a "did you mean" for a near
+miss) when either
+- the rest is an `org/model` id (`nosuch:anthropic/claude-sonnet-4`), or
+- the prefix is a hosted provider's name: `openrouter`, `openai`, `anthropic`,
+  `google`, `gemini`, `groq`, `xai`, `together` or `fireworks`
+  (`openai:gpt-4o` with no `openai` host).
+
+The check applies wherever the model comes in: `--model`, `default.model`, an
+alias, `/model`, `chi send --new --model`, the web's new-session model and a
+delegate's model. Any other unknown prefix (`nosuch:x`) is sent to the default
+host as the model id.
 
 ## Llama Network Retry Behavior
 
