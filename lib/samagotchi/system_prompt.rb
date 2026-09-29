@@ -393,7 +393,7 @@ module Samagotchi
     end
 
     def rg_available?
-      system("command -v rg", out: File::NULL, err: File::NULL)
+      BundleNeeds.found?("rg")
     end
 
     def rg_guidance
