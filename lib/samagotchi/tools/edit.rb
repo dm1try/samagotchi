@@ -22,9 +22,25 @@ module Samagotchi
 
       def self.call(content, path:, start_line: nil, end_line: nil)
         path = ToolPath.normalize(path)
+        result = apply(content, path: path, start_line: start_line, end_line: end_line)
+        return result if result.is_a?(String)
+
+        updated, message = result
+        File.write(path, updated)
+        message
+      rescue => e
+        "Error: #{e.message}"
+      end
+
+      # The edit without the write: [updated, message] or "Error: …", with
+      # exactly the strings call returns. +read+ reads the file, so a dry run
+      # (EditPreview) can reuse a copy it already has; each mode keeps its own
+      # check order (exact: tags first; range: file not found first).
+      def self.apply(content, path:, start_line: nil, end_line: nil, read: ->(p) { File.read(p) })
+        path = ToolPath.normalize(path)
 
         if range_requested?(start_line, end_line)
-          return call_range_mode(content, path: path, start_line: start_line, end_line: end_line)
+          return apply_range_mode(content, path: path, start_line: start_line, end_line: end_line, read: read)
         end
 
         old_text = extract_tag(content, "old")
@@ -35,7 +51,7 @@ module Samagotchi
         return "Error: <old> block is empty" if old_text.empty?
         return "Error: file not found: #{path}" unless File.exist?(path)
 
-        source = File.read(path)
+        source = read.(path)
         count  = count_occurrences(source, old_text)
 
         return "Error: old text not found in #{path}" if count == 0
@@ -43,13 +59,12 @@ module Samagotchi
 
         idx     = source.index(old_text)
         updated = source[0, idx] + new_text + source[idx + old_text.length..]
-        File.write(path, updated)
-        "Edited #{path}: replaced #{old_text.bytesize} bytes with #{new_text.bytesize} bytes"
+        [updated, "Edited #{path}: replaced #{old_text.bytesize} bytes with #{new_text.bytesize} bytes"]
       rescue => e
         "Error: #{e.message}"
       end
 
-      def self.call_range_mode(content, path:, start_line:, end_line:)
+      def self.apply_range_mode(content, path:, start_line:, end_line:, read:)
         return "Error: file not found: #{path}" unless File.exist?(path)
 
         new_text = extract_tag(content, "new")
@@ -59,7 +74,7 @@ module Samagotchi
         return start_num if start_num.is_a?(String)
         return "Error: start_line must be provided for range edits" if start_num.nil?
 
-        source = File.read(path)
+        source = read.(path)
         lines = source.lines
         total_lines = lines.length
 
@@ -102,15 +117,14 @@ module Samagotchi
         # first suffix line isn't concatenated onto the last replacement line.
         normalized = (!new_text.empty? && !suffix.empty? && !new_text.end_with?("\n")) ? new_text + "\n" : new_text
         updated = prefix + normalized + suffix
-        File.write(path, updated)
 
         replaced_lines = (end_value - start_num) + 1
         new_line_count = new_text.lines.length
-        "Edited #{path}: replaced lines #{start_num}-#{end_value} (#{replaced_lines} lines) with #{new_line_count} lines#{clamp_note}"
+        [updated, "Edited #{path}: replaced lines #{start_num}-#{end_value} (#{replaced_lines} lines) with #{new_line_count} lines#{clamp_note}"]
       rescue => e
         "Error: #{e.message}"
       end
-      private_class_method :call_range_mode
+      private_class_method :apply_range_mode
 
       # Count non-overlapping literal occurrences of +needle+ in +haystack+.
       def self.count_occurrences(haystack, needle)
