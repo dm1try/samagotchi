@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Security
+
+- `chi web` and the worker Bridge refuse requests from other websites: before,
+  a page open in your browser could start a session that runs commands, or
+  read your sessions and their output.
+
 ## [0.4.0] - 2026-09-30
 
 ### Added
