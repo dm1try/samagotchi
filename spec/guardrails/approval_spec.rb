@@ -19,6 +19,32 @@ RSpec.describe Samagotchi::Guardrails::Approval do
     v
   end
 
+  describe ".payload with an edit preview" do
+    let(:diff) { { text: "@@ -1 +1 @@\n-a\n+b", added: 3, removed: 1, truncated: false, new_file: false } }
+
+    it "puts the preview in approval[:preview] and one change line in the question" do
+      payload = described_class.payload(ask, preview: diff)
+      expect(payload[:approval][:preview]).to eq(diff)
+      expect(payload[:question].lines.last).to eq("  change: +3 \u22121")
+      expect(payload[:question]).not_to include("@@")
+    end
+
+    it "words each preview kind, with symbol or string keys" do
+      text = ->(preview) { described_class.payload(ask, preview: preview)[:question].lines.last }
+      expect(text.(diff.merge(new_file: true, added: 12))).to eq("  change: new file, 12 lines")
+      expect(text.(diff.merge(new_file: true, added: 1))).to eq("  change: new file, 1 line")
+      expect(text.({ error: "old text not found in /x" })).to eq("  change: would fail: old text not found in /x")
+      expect(text.({ skipped: "binary file" })).to eq("  change: not shown (binary file)")
+      expect(text.({ "added" => 2, "removed" => 0 })).to eq("  change: +2 \u22120")
+    end
+
+    it "leaves a call without a preview as it was" do
+      payload = described_class.payload(ask)
+      expect(payload[:approval]).not_to have_key(:preview)
+      expect(payload[:question]).not_to include("change:")
+    end
+  end
+
   describe ".payload" do
     it "says everything in plain text, outside a repo" do
       payload = described_class.payload(ask)

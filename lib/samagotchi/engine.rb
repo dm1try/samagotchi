@@ -48,6 +48,7 @@ require_relative "vision_support"
 require_relative "sampling_settings"
 require_relative "thinking"
 require_relative "answer_display"
+require_relative "edit_preview"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -1342,9 +1343,20 @@ module Samagotchi
 
       # A plugin tool is asked about by its label, as its row shows it.
       label = ToolActivity.plugin_label(verdict.call[:name].to_s, registry: @tools)
-      payload = Guardrails::Approval.payload(verdict, label: label)
+      # verdict.call is the call that will run (a hook may have replaced it).
+      payload = Guardrails::Approval.payload(verdict, label: label, preview: approval_preview(verdict.call))
       Guardrails::Approval.settle(verdict, open_question(payload), payload[:approval][:scopes])
     end
+
+    # The dry-run diff of an edit/write call for its approval; a preview
+    # that fails only leaves the diff out, it never denies the call.
+    def approval_preview(call)
+      EditPreview.for(call)
+    rescue StandardError => e
+      Log.warn(:guardrails, "edit_preview_failed", error: "#{e.class}: #{e.message}")
+      nil
+    end
+    private :approval_preview
 
     # The conversation as a hook may read it: a frozen array of copied
     # messages, so a hook cannot change what the turn sends or stores.

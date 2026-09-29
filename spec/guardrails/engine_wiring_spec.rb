@@ -88,5 +88,71 @@ RSpec.describe "Engine guardrail wiring" do
       thread.join(2)
       expect(result.deny_text).to include("The approval was cancelled.")
     end
+
+    context "for an edit or write call" do
+      around { |ex| Dir.mktmpdir { |dir| @dir = dir; ex.run } }
+
+      def ask_for(engine, call)
+        v = Samagotchi::Guardrails::Verdict.new(call: call)
+        v.ask!("outside the repo", rule: "write-outside-repo", source: "config", scopes: %w[once])
+        v.context = engine.guardrail_context
+        v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context)
+        v
+      end
+
+      def pending_for(engine, verdict)
+        thread = Thread.new { engine.request_approval(verdict) }
+        deadline = mono + 2
+        sleep(0.005) while engine.pending_question.nil? && mono < deadline
+        pending = engine.pending_question
+        yield pending if block_given?
+        engine.cancel_question("dismissed", id: pending[:id])
+        thread.join(2)
+        pending
+      end
+
+      it "shows the diff the call would make, and saves it with the pending question" do
+        engine.interface = :worker
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: @dir)
+        engine.session = session
+        state_dir = File.join(@dir, "state")
+        allow(engine).to receive(:session_state_dir).and_return(state_dir)
+        path = File.join(@dir, "kitty.conf")
+        File.write(path, "font_size 12\n")
+        call = { name: "edit", path: path, content: "<old>font_size 12</old><new>font_size 14</new>" }
+        pending = pending_for(engine, ask_for(engine, call)) do
+          reloaded = Samagotchi::Session.load(session.id, state_dir: state_dir).pending_question
+          expect(reloaded[:approval]["preview"]).to include("text" => "@@ -1 +1 @@\n-font_size 12\n+font_size 14")
+        end
+        expect(pending[:approval][:preview]).to include(added: 1, removed: 1, new_file: false)
+        expect(pending[:question]).to end_with("  change: +1 \u22121")
+        expect(File.read(path)).to eq("font_size 12\n")
+      end
+
+      it "previews the call a before_tool_call hook replaced it with" do
+        engine.interface = :worker
+        path = File.join(@dir, "new.txt")
+        engine.register_hook(:before_tool_call) do |e|
+          e[:call] = e[:call].merge(content: "replaced\n")
+          e[:guardrail].ask!("check", rule: "r", source: "config", scopes: %w[once])
+        end
+        gate = engine.instance_variable_get(:@kernel).guardrail_gate
+        verdict = gate.evaluate({ name: "write", path: path, content: "original\n" }, iteration: 1, params: "")
+        pending = pending_for(engine, verdict)
+        expect(pending[:approval][:preview]).to include(text: "@@ -0,0 +1 @@\n+replaced", new_file: true)
+      end
+
+      it "asks without a preview when building it fails" do
+        engine.interface = :worker
+        allow(Samagotchi::EditPreview).to receive(:for).and_raise(RuntimeError, "boom")
+        pending = pending_for(engine, ask_for(engine, { name: "write", path: File.join(@dir, "x"), content: "x" }))
+        expect(pending[:approval]).not_to have_key(:preview)
+      end
+
+      it "gives other tools no preview" do
+        engine.interface = :worker
+        expect(pending_for(engine, asking(engine))[:approval]).not_to have_key(:preview)
+      end
+    end
   end
 end

@@ -20,12 +20,14 @@ module Samagotchi
       # @param label [String, nil] a plugin tool's label ("chrome:
       #   screenshot"): the question names the tool by it, as its row does;
       #   approval[:tool] stays the raw name
+      # @param preview [Hash, nil] EditPreview.for(verdict.call) for edit and
+      #   write: the card shows its diff, the question text one change line
       # @return [Hash] open_question fields
-      def payload(verdict, label: nil)
+      def payload(verdict, label: nil, preview: nil)
         scopes = offered_scopes(verdict)
         targets = verdict.targets
         {
-          question: question_text(verdict, label: label),
+          question: question_text(verdict, label: label, preview: preview),
           options: scopes.map { |scope| label(scope, verdict) } + [DENY],
           header: HEADER,
           multi_select: false,
@@ -44,7 +46,8 @@ module Samagotchi
             rule: verdict.rule,
             source: verdict.source,
             reason: verdict.reason,
-            scopes: scopes
+            scopes: scopes,
+            preview: preview
           }.compact
         }
       end
@@ -112,7 +115,8 @@ module Samagotchi
       # execute: git push origin main
       #   in /path/to/repo (repo samagotchi, branch main)
       #   why: git push publishes commits (rule git-push, bundle guardrails)
-      def question_text(verdict, label: nil)
+      #   change: +3 −1                      (edit/write, from the preview)
+      def question_text(verdict, label: nil, preview: nil)
         targets = verdict.targets
         tool = label || targets&.tool || verdict.call[:name].to_s
         what = targets&.command || (targets && targets.paths.join(", "))
@@ -127,7 +131,25 @@ module Samagotchi
         who = verdict.rule ? ["rule #{verdict.rule}", verdict.source].compact.join(", ") : (verdict.source || "hook")
         reason = verdict.reason.to_s.strip
         lines << "  why: #{reason.empty? ? "(no reason given)" : reason} (#{who})"
+        change = change_text(preview)
+        lines << "  change: #{change}" if change
         lines.join("\n")
+      end
+
+      # One line for an EditPreview: "+3 −1", "new file, 12 lines",
+      # "would fail: …" or "not shown (binary file)". The diff itself stays
+      # out of the question text (size); the card and the TUI show it.
+      def change_text(preview)
+        return nil unless preview.is_a?(Hash)
+
+        get = ->(key) { preview[key] || preview[key.to_s] }
+        return "would fail: #{get.(:error)}" if get.(:error)
+        return "not shown (#{get.(:skipped)})" if get.(:skipped)
+
+        added = get.(:added).to_i
+        return "new file, #{added} #{added == 1 ? "line" : "lines"}" if get.(:new_file)
+
+        "+#{added} −#{get.(:removed).to_i}"
       end
     end
   end
