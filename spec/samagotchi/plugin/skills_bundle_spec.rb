@@ -193,6 +193,65 @@ RSpec.describe "The skills plugin" do
     end
   end
 
+  describe "/skill diff" do
+    let(:path) { File.join(project_dir, "skill_release.md") }
+
+    it "diffs the skill now against the version before the last change, or the N-th newest" do
+      p = plugin
+      expect(skill(p, "diff release")).to eq("no skill release (/skill list shows them)")
+      write_call(p, "memory_write", path, "# Skill: release\n1. check\n2. tag\n")
+      expect(skill(p, "diff release")).to eq("skill release has no older version yet")
+      write_call(p, "memory_write", path, "# Skill: release\n1. verify\n2. tag\n")
+      write_call(p, "memory_write", path, "# Skill: release\n1. verify\n2. tag\n3. push\n")
+
+      expect(skill(p, "diff release")).to match(<<~TEXT.strip)
+        --- skill_release \\(\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d UTC\\)
+        \\+\\+\\+ skill_release \\(now\\)
+        @@ -1,3 \\+1,4 @@
+         # Skill: release
+         1. verify
+         2. tag
+        \\+3. push
+      TEXT
+      expect(skill(p, "diff skill_release 2").lines.drop(2).join).to eq(<<~TEXT.strip)
+        @@ -1,3 +1,4 @@
+         # Skill: release
+        -1. check
+        +1. verify
+         2. tag
+        +3. push
+      TEXT
+      expect(skill(p, "diff release 3")).to eq("skill release has 2 older versions (/skill diff release 1..2)")
+      expect(skill(p, "diff release 0")).to start_with("usage:")
+      expect(skill(p, "diff")).to start_with("usage:")
+    end
+
+    it "prints hunks as diff -u does" do
+      p = plugin
+      rng = Random.new(7)
+      base = (1..40).map { |n| "line #{n}" }
+      8.times do
+        old = base.dup
+        new = base.each_with_object([]) do |line, out|
+          case rng.rand(10)
+          when 0 then nil
+          when 1 then out.push(line, "added #{rng.rand(1000)}")
+          when 2 then out << "changed #{rng.rand(1000)}"
+          else out << line
+          end
+        end
+        File.write(path, old.join("\n") + "\n")
+        write_call(p, "write", path, new.join("\n") + "\n")
+        Dir.mktmpdir do |dir|
+          File.write(File.join(dir, "a"), old.join("\n") + "\n")
+          File.write(File.join(dir, "b"), new.join("\n") + "\n")
+          expected = `diff -U3 #{dir}/a #{dir}/b`.lines.drop(2).join.chomp
+          expect(skill(p, "diff release").lines.drop(2).join).to eq(expected)
+        end
+      end
+    end
+  end
+
   describe "/skill save" do
     it "sends this session a request holding the skill's shape, the name and the project scope" do
       reply = skill(plugin, "save Release")

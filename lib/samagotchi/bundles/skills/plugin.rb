@@ -120,6 +120,7 @@ class Plugin
     when "save" then save(rest, ctx)
     when "list" then rest.empty? ? list : USAGE
     when "show" then show(rest)
+    when "diff" then diff(rest, ctx)
     else USAGE
     end
   end
@@ -196,6 +197,69 @@ class Plugin
 
     path = skill_path(name) or return "no skill #{name} (/skill list shows them)"
     "skill #{name} · #{scope_of(path)}\n\n#{File.read(path).strip}"
+  end
+
+  # /skill diff <name> [N]: the skill now against its N-th newest kept
+  # version (1, the one before the last change, by default), unified.
+  def diff(rest, ctx)
+    word, back = rest.split
+    name = skill_name(word)
+    n = back ? Integer(back, exception: false) : 1
+    return USAGE unless name && n&.positive? && rest.split.size <= 2
+
+    path = skill_path(name) or return "no skill #{name} (/skill list shows them)"
+    kept = versions(history_dir(ctx, scope_of(path), name))
+    return "skill #{name} has no older version yet" if kept.empty?
+    return "skill #{name} has #{kept.size} older version#{"s" if kept.size > 1} (/skill diff #{name} 1..#{kept.size})" if n > kept.size
+
+    old = kept[n - 1]
+    body = unified(File.read(old).lines(chomp: true), File.read(path).lines(chomp: true))
+    return "skill #{name} is the same as version #{n}" if body.empty?
+
+    "--- skill_#{name} (#{version_time(old)})\n+++ skill_#{name} (now)\n#{body}"
+  end
+
+  CONTEXT = 3
+
+  # Hunks with CONTEXT lines around each change, as diff -u prints them.
+  def unified(a, b)
+    ops = line_diff(a, b)
+    changed = ops.each_index.reject { |k| ops[k].first == :eq }
+    return "" if changed.empty?
+
+    # Group changes whose context would touch into one hunk.
+    groups = changed.slice_when { |x, y| y - x > 2 * CONTEXT + 1 }.to_a
+    old_at = new_at = 0
+    positions = ops.map do |op, _|
+      at = [old_at, new_at]
+      old_at += 1 unless op == :add
+      new_at += 1 unless op == :del
+      at
+    end
+    groups.map do |group|
+      from = [group.first - CONTEXT, 0].max
+      to = [group.last + CONTEXT, ops.size - 1].min
+      slice = ops[from..to]
+      old_count = slice.count { |op, _| op != :add }
+      new_count = slice.count { |op, _| op != :del }
+      old_start, new_start = positions[from]
+      header = "@@ -#{range(old_start, old_count)} +#{range(new_start, new_count)} @@"
+      lines = slice.map { |op, line| "#{{ eq: " ", del: "-", add: "+" }[op]}#{line}" }
+      [header, *lines].join("\n")
+    end.join("\n")
+  end
+
+  # diff -u's "start,count" (1-based; an empty side names the line before).
+  def range(start, count)
+    first = count.zero? ? start : start + 1
+    count == 1 ? first.to_s : "#{first},#{count}"
+  end
+
+  # "2026-09-30 10:22 UTC" from a version's file name.
+  def version_time(path)
+    stamp = File.basename(path, ".md")
+    match = stamp.match(/\A(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)/)
+    match ? "#{match[1]}-#{match[2]}-#{match[3]} #{match[4]}:#{match[5]} UTC" : stamp
   end
 
   # --- skills on disk --------------------------------------------------------
