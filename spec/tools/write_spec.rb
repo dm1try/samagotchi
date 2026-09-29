@@ -44,5 +44,14 @@ RSpec.describe Samagotchi::Tools::Write do
         expect(File.read(path)).to eq("new content")
       end
     end
+
+    it "rejects missing content without touching the file" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "file.txt")
+        File.write(path, "keep me")
+        expect(described_class.call(nil, path: path)).to eq("Error: missing content")
+        expect(File.read(path)).to eq("keep me")
+      end
+    end
   end
 end

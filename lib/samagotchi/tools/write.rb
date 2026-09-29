@@ -14,6 +14,10 @@ module Samagotchi
       def self.name        = NAME
 
       def self.call(content, path:)
+        # A native call without content/text arrives as nil; check before
+        # touching the file, or File.write(path, nil) would empty it.
+        return "Error: missing content" unless content.is_a?(String)
+
         path = ToolPath.normalize(path)
         FileUtils.mkdir_p(File.dirname(path))
         File.write(path, content)
