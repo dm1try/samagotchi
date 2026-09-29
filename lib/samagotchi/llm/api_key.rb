@@ -30,6 +30,12 @@ module Samagotchi
 
       # What to try after a 401/403 with the key sent.
       def hint = "check #{env_name} (the API key for host #{host})"
+
+      # Without the environment: it holds this key and every other secret.
+      def inspect = "#<#{self.class.name} #{env_name} host=#{host}>"
+      alias_method :to_s, :inspect
+
+      def pretty_print(printer) = printer.text(inspect)
     end
   end
 end
