@@ -2164,6 +2164,23 @@ module Samagotchi
       nil
     end
 
+    # The host refused the level's request fields (gpt-oss can't turn
+    # thinking off) and the chat loop sent the request without them: said
+    # once per session and host, standing in for the not-honoured notice.
+    def thinking_refused(event)
+      _level, target = @turn_thinking
+      return unless target
+
+      Log.warn(:model, "thinking_refused", level: event[:level], host: target.entry.name, model: event[:model],
+                                           detail: event[:detail])
+      (@thinking_notices ||= Set.new) << [@session&.id, target.entry.name, :not_honoured]
+      thinking_notice_once(:refused, target, :warn,
+                           "#{target.entry.name} refused thinking: #{event[:level]} for #{event[:model]} (#{event[:detail]}); " \
+                           "sent without it, so thinking stays as the model has it")
+    rescue StandardError
+      nil
+    end
+
     def thinking_notice_once(kind, target, level, text)
       key = [@session&.id, target.entry.name, kind]
       return unless (@thinking_notices ||= Set.new).add?(key)
@@ -2647,6 +2664,10 @@ module Samagotchi
             event = event.merge(text: delta[:text], thinking: delta[:thinking]) if enrich == :always
           end
         end
+        # The chat loop asked again without the thinking fields: a notice,
+        # not an event of its own.
+        next thinking_refused(event) if event[:type] == :thinking_refused
+
         emit_event(on_event, event)
         check_thinking_honoured(event) if event[:type] == :generation_completed
       end

@@ -67,6 +67,19 @@ RSpec.describe Samagotchi::LLM::ProviderError do
       expect(tools_error.call(404, "No endpoints found for foo/bar:free.").summary).not_to include("can't use tools")
     end
 
+    it "marks a 400 about reasoning or thinking as refused thinking fields, and nothing else" do
+      error = lambda do |status, message|
+        Samagotchi::LLM::ProviderErrors.from_response(status: status, body: JSON.generate(error: { message: message }),
+                                                      host: "h")
+      end
+
+      expect(error.call(400, "Reasoning is mandatory for this endpoint and cannot be disabled.")).to be_reasoning_refused
+      expect(error.call(400, "Unrecognized request argument: enable_thinking")).to be_reasoning_refused
+      expect(error.call(400, "invalid temperature")).not_to be_reasoning_refused
+      expect(error.call(400, "gemma:2b does not support tools")).not_to be_reasoning_refused
+      expect(error.call(500, "reasoning crashed")).not_to be_a(Samagotchi::LLM::BadRequest)
+    end
+
     it "reads a metadata.raw that is itself a JSON error body, and keeps a plain message as is" do
       body = JSON.generate(error: { message: "Provider returned error",
                                     metadata: { raw: JSON.generate(error: { message: "model overloaded" }) } })

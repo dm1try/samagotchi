@@ -3,6 +3,7 @@
 require "json"
 require_relative "llm/openai_chat"
 require_relative "thinking"
+require_relative "log"
 
 module Samagotchi
   # Standalone summarizer for the idle session-recap feature.
@@ -109,10 +110,17 @@ module Samagotchi
     # +max_tokens+, the text keeps its finished sentences (+whole_sentences+)
     # or all of it, with "…".
     def generate(messages, max_tokens: MAX_TOKENS, cancel_controller: nil, whole_sentences: true)
-      response = @chat.chat(
-        messages: messages, model: @model, tools: [], cancel_controller: cancel_controller,
-        options: { max_tokens: max_tokens, **thinking_fields }
-      )
+      response = begin
+        request(messages, max_tokens, cancel_controller)
+      rescue LLM::BadRequest => e
+        raise unless e.reasoning_refused? && !@thinking_refused
+
+        # The host won't turn thinking off (gpt-oss): ask again without the
+        # fields, and leave them out from now on.
+        @thinking_refused = true
+        Log.info(:recap, "thinking_refused", model: @model, detail: e.detail)
+        request(messages, max_tokens, cancel_controller)
+      end
       content = response.text
       reasoning = response.reasoning
       raise SummarizeError, "server returned no parseable assistant content" if content.empty? && reasoning.empty?
@@ -133,11 +141,16 @@ module Samagotchi
       raise SummarizeError, "server returned no parseable assistant content (#{e.message})"
     end
 
+    def request(messages, max_tokens, cancel_controller)
+      @chat.chat(messages: messages, model: @model, tools: [], cancel_controller: cancel_controller,
+                 options: { max_tokens: max_tokens, **thinking_fields })
+    end
+
     # A recap or side answer is short and tool-less: thinking off, whatever
     # the model's level (a reasoning model otherwise spends the budget
-    # thinking and the recap stops mid-sentence).
+    # thinking and the recap stops mid-sentence). None once the host refused them.
     def thinking_fields
-      Thinking.chat_fields(:off)
+      @thinking_refused ? {} : Thinking.chat_fields(:off)
     end
   end
 end

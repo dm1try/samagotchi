@@ -91,6 +91,56 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
   end
 
+  describe "a host that refuses the thinking fields" do
+    let(:refused) do
+      Samagotchi::LLM::ProviderErrors.from_response(
+        status: 400, host: "openrouter",
+        body: JSON.generate(error: { message: "Reasoning is mandatory for this endpoint and cannot be disabled." })
+      )
+    end
+
+    before do
+      allow(fake_kernel).to receive(:thinking).and_return(:off)
+      allow(fake_kernel).to receive(:sampling).and_return({ temperature: 0.6 })
+    end
+
+    it "asks again once without them, says so in a stream event, and leaves them out for that model after" do
+      backend.adapter = FakeChatAdapter.new(refused, text("hello"))
+
+      expect(run.text).to eq("hello")
+      run
+      backend.complete(messages: [{ role: "user", content: "go" }], model_name: "other", on_stream_event: ->(e) { events << e })
+
+      expect(backend.adapter.requests.map { |r| r[:options] }).to eq(
+        [{ chat_template_kwargs: { enable_thinking: false }, reasoning_effort: "none", temperature: 0.6 },
+         { temperature: 0.6 }, { temperature: 0.6 },
+         { chat_template_kwargs: { enable_thinking: false }, reasoning_effort: "none", temperature: 0.6 }]
+      )
+      expect(events.select { |e| e[:type] == :thinking_refused })
+        .to eq([{ type: :thinking_refused, iteration: 1, model: "m", level: :off,
+                  detail: "HTTP 400: Reasoning is mandatory for this endpoint and cannot be disabled." }])
+    end
+
+    it "fails the turn when the request without them is refused too" do
+      backend.adapter = FakeChatAdapter.new(refused)
+
+      expect { run }.to raise_error(Samagotchi::LLM::BadRequest)
+      expect(backend.adapter.requests.size).to eq(2)
+    end
+
+    it "doesn't ask again for a 400 about something else, or with no thinking fields sent" do
+      other = Samagotchi::LLM::ProviderErrors.from_response(status: 400, host: "h", body: JSON.generate(error: { message: "bad temperature" }))
+      backend.adapter = FakeChatAdapter.new(other)
+      expect { run }.to raise_error(Samagotchi::LLM::BadRequest)
+      expect(backend.adapter.requests.size).to eq(1)
+
+      allow(fake_kernel).to receive(:thinking).and_return(:default)
+      backend.adapter = FakeChatAdapter.new(refused)
+      expect { run }.to raise_error(Samagotchi::LLM::BadRequest)
+      expect(backend.adapter.requests.size).to eq(1)
+    end
+  end
+
   it "names the model the adapter reports in :generation_completed, next to the one asked for" do
     served = FakeChatAdapter.text("hi").with(model: "vendor/served-1")
     described_class.new(kernel: fake_kernel, adapter: FakeChatAdapter.new(served))

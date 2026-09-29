@@ -145,17 +145,25 @@ module Samagotchi
         (@kernel.respond_to?(:thinking) && @kernel.thinking) || Thinking::DEFAULT
       end
 
-      # The request fields the thinking level adds (Thinking.chat_fields).
-      def thinking_fields
+      # The request fields the thinking level adds (Thinking.chat_fields);
+      # none for a model whose host refused them (#thinking_refused!).
+      def thinking_fields(model = nil)
+        return {} if model && (@thinking_refused ||= Set.new).include?(model)
+
         Thinking.chat_fields(thinking)
+      end
+
+      # The host refused +model+'s thinking fields: leave them out from now on.
+      def thinking_refused!(model)
+        (@thinking_refused ||= Set.new) << model
       end
 
       # One generation's options: the thinking fields under the sampling
       # (a sampling key wins, chat_template_kwargs merges per sub-key), the
       # empty-answer retry's temperature on top, then every null dropped at
       # any depth (a sampling null means "don't send it").
-      def request_options(retry_generation: false)
-        options = deep_merge(thinking_fields, sampling)
+      def request_options(retry_generation: false, model: nil)
+        options = deep_merge(thinking_fields(model), sampling)
         options = EmptyAnswerRetry.sampling(options) if retry_generation
         deep_compact(options)
       end
@@ -397,22 +405,22 @@ module Samagotchi
         # text] when it was cancelled.
         def generate(iteration)
           window = @window = @loop.context_window(@model_name)
-          options = @loop.request_options(retry_generation: @retry_generation)
+          retry_generation = @retry_generation
           @retry_generation = false
           emit(type: :generation_started, iteration: iteration, context_window_tokens: window&.tokens,
                context_window_source: window&.source)
           @loop.fire_hook(:before_generation, { type: :before_generation, iteration: iteration })
           streamed = +""
-          response = @loop.adapter.chat(
-            messages: @loop.wire_messages(@conversation), tools: @loop.tool_definitions, model: @model_name,
-            cancel_controller: @cancel_controller, session_id: @loop.session_id, options: options,
-            on_delta: lambda { |content:, reasoning:, payload:|
-              streamed << content
-              emit(type: :generation_chunk, iteration: iteration, content: reasoning + content, text: content,
-                   thinking: reasoning, payload: payload)
-            },
-            on_retry: ->(**retry_event) { emit({ type: :generation_retrying, iteration: iteration }.merge(retry_event)) }
-          )
+          response = begin
+            request(iteration, retry_generation, streamed)
+          rescue BadRequest => e
+            raise unless thinking_refused?(e)
+
+            # Once per model: asked again without the thinking fields.
+            @loop.thinking_refused!(@model_name)
+            emit(type: :thinking_refused, iteration: iteration, model: @model_name, level: @loop.thinking, detail: e.detail)
+            request(iteration, retry_generation, streamed)
+          end
           record_context_status(response.usage, window)
           emit(type: :generation_completed, iteration: iteration, content_length: response.text.length,
                thinking_chars: response.reasoning.to_s.length, served_model: response.model,
@@ -423,6 +431,27 @@ module Samagotchi
           [response, nil]
         rescue RequestCancelled => e
           [e.reason, streamed]
+        end
+
+        def request(iteration, retry_generation, streamed)
+          @loop.adapter.chat(
+            messages: @loop.wire_messages(@conversation), tools: @loop.tool_definitions, model: @model_name,
+            cancel_controller: @cancel_controller, session_id: @loop.session_id,
+            options: @loop.request_options(retry_generation: retry_generation, model: @model_name),
+            on_delta: lambda { |content:, reasoning:, payload:|
+              streamed << content
+              emit(type: :generation_chunk, iteration: iteration, content: reasoning + content, text: content,
+                   thinking: reasoning, payload: payload)
+            },
+            on_retry: ->(**retry_event) { emit({ type: :generation_retrying, iteration: iteration }.merge(retry_event)) }
+          )
+        end
+
+        # A 400 about reasoning, for a request that carried thinking fields
+        # (not a missing-tools, image or context error).
+        def thinking_refused?(error)
+          error.reasoning_refused? && !error.is_a?(VisionUnsupported) && !error.tools_unsupported? &&
+            !error.context_overflow? && !@loop.thinking_fields(@model_name).empty?
         end
 
         # The status line's value from the server's counts for this request

@@ -52,14 +52,14 @@ module Samagotchi
       # One line for the UIs, e.g. "auth failed for host fw: set FW_KEY".
       def summary = "error from host #{host}: #{detail}"
 
-      private
-
-      def default_retryable? = false
-
       # The message without its leading "host: ".
       def detail
         host && message.start_with?("#{host}: ") ? message.delete_prefix("#{host}: ") : message
       end
+
+      private
+
+      def default_retryable? = false
     end
 
     class ConnectionError < ProviderError
@@ -103,9 +103,11 @@ module Samagotchi
       TOOLS_HINT = "this model can't use tools, and chi needs them: pick another model (/model) or host"
 
       # @param hint [String, nil] what to try, added to the summary
-      def initialize(message = nil, context_overflow: false, tools_unsupported: false, hint: nil, **options)
+      def initialize(message = nil, context_overflow: false, tools_unsupported: false, reasoning_refused: false, hint: nil,
+                     **options)
         @context_overflow = context_overflow
         @tools_unsupported = tools_unsupported
+        @reasoning_refused = reasoning_refused
         @hint = hint
         super(message, **options)
       end
@@ -118,6 +120,10 @@ module Samagotchi
       # The model (or every endpoint serving it) refuses requests with tools,
       # and chi always sends them.
       def tools_unsupported? = @tools_unsupported
+
+      # A 400 about reasoning or thinking: the request's thinking fields may
+      # be what the host refuses (gpt-oss: "Reasoning is mandatory").
+      def reasoning_refused? = @reasoning_refused
 
       def kind = :bad_request
 
@@ -230,6 +236,8 @@ module Samagotchi
       TOOLS_UNSUPPORTED_RE = /support tool use|(does not|doesn't) support tools|tool choice requires --enable-auto-tool-choice/i
       # A model or server that can't take images (see VisionUnsupported).
       VISION_UNSUPPORTED_RE = /support image input|image input is not supported|mmproj/i
+      # A 400 about the thinking fields chi sent (Thinking.chat_fields).
+      REASONING_REFUSED_RE = /reasoning|thinking/i
       RETRYABLE_SERVER_STATUSES = [500, 502, 503, 504, 529].freeze
 
       module_function
@@ -251,7 +259,10 @@ module Samagotchi
         when 401, 403 then AuthError.new(text, **options)
         when 429 then RateLimited.new(text, retry_after: parse_retry_after(retry_after), **options)
         when 408 then ServerError.new(text, retryable: true, **options)
-        when 400..499 then BadRequest.new(text, tools_unsupported: TOOLS_UNSUPPORTED_RE.match?(message), **options)
+        when 400..499
+          tools = TOOLS_UNSUPPORTED_RE.match?(message)
+          BadRequest.new(text, tools_unsupported: tools,
+                               reasoning_refused: status == 400 && !tools && REASONING_REFUSED_RE.match?(message), **options)
         when 500..599
           ServerError.new(text, retryable: RETRYABLE_SERVER_STATUSES.include?(status),
                                 retry_after: parse_retry_after(retry_after), **options)

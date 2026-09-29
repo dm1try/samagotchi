@@ -116,6 +116,29 @@ RSpec.describe Samagotchi::IdleClient do
       expect(request_body["reasoning_effort"]).to eq("none")
     end
 
+    # gpt-oss on OpenRouter: HTTP 400 "Reasoning is mandatory" for any off
+    # form. The recap asks again without the fields, and stops sending them.
+    it "asks again without the thinking fields when the host refuses them, and leaves them out after" do
+      server.enqueue("/v1/chat/completions", status: 400,
+                                             json: { error: { message: "Reasoning is mandatory for this endpoint and cannot be disabled." } })
+      reply(content: "the recap.")
+      reply(content: "again.")
+
+      expect(client.summarize("summarize this").text).to eq("the recap.")
+      expect(client.summarize("summarize that").text).to eq("again.")
+
+      bodies = server.requests.map(&:json)
+      expect(bodies.map { |b| b.key?("reasoning_effort") }).to eq([true, false, false])
+      expect(bodies.map { |b| b.key?("chat_template_kwargs") }).to eq([true, false, false])
+    end
+
+    it "doesn't ask again for a 400 about something else" do
+      server.enqueue("/v1/chat/completions", status: 400, json: { error: { message: "bad temperature" } })
+
+      expect { client.summarize("summarize this") }.to raise_error(described_class::SummarizeError)
+      expect(server.requests.size).to eq(1)
+    end
+
     it "sends the key of a host that needs one, and no header otherwise" do
       keyed = described_class.new(model: "m", base_url: server.base_url, api_key_env: "RECAP_KEY",
                                   env: { "RECAP_KEY" => "sk-recap" })

@@ -36,6 +36,7 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
+    allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil)
     allow(kernel).to receive(:vision=)
     allow(kernel).to receive(:sampling=)
     allow(kernel).to receive(:thinking=)
@@ -93,5 +94,27 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
     expect(second).to be_empty
     expect(Samagotchi::Log).to have_received(:warn).with(:model, "thinking_not_honoured", hash_including(chars: 120, host: "box"))
     expect(Samagotchi::Log).to have_received(:warn).with(:model, "thinking_not_honoured", hash_including(chars: 80))
+  end
+
+  it "says once that the host refused the thinking fields, and not also that off wasn't honoured" do
+    ENV["SAMAGOTCHI_THINKING_LEVEL"] = "off"
+    allow(kernel).to receive(:run) do |messages, on_stream_event: nil, **|
+      on_stream_event&.call(type: :thinking_refused, iteration: 1, model: "qwen-small", level: :off,
+                            detail: "HTTP 400: Reasoning is mandatory for this endpoint and cannot be disabled.")
+      on_stream_event&.call(type: :generation_completed, iteration: 1, content_length: 2, thinking_chars: 300)
+      Samagotchi::KernelLoop::Result.new(output: "ok", conversation: messages + [{ role: "model", content: "ok" }],
+                                         exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+    end
+
+    events = []
+    engine.run_turn(session, "hi", on_event: ->(e) { events << e })
+    shown = events.select { |e| e[:type] == :hook_notice }
+
+    expect(shown.size).to eq(1)
+    expect(shown.first).to include(hook: "thinking", level: :warn)
+    expect(shown.first[:text]).to eq("box refused thinking: off for qwen-small (HTTP 400: Reasoning is mandatory for this " \
+                                     "endpoint and cannot be disabled.); sent without it, so thinking stays as the model has it")
+    expect(events.map { |e| e[:type] }).not_to include(:thinking_refused)
+    expect(notices("again")).to be_empty
   end
 end
