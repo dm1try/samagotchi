@@ -91,13 +91,16 @@ RSpec.describe Samagotchi::ConfigFile do
     end
   end
 
-  describe ".load_global_env!" do
-    it "loads nested scalar values and leaves existing env untouched" do
+  describe ".load!" do
+    after { Samagotchi::Config.reload!(cli_overrides: {}) }
+
+    it "loads nested scalar values without copying them into ENV; the env still wins" do
       Dir.mktmpdir("samagotchi-config") do |dir|
         config_dir = File.join(dir, "samagotchi")
         Dir.mkdir(config_dir)
         File.write(File.join(config_dir, "config.yml"), <<~YAML)
-          SAMAGOTCHI_DEFAULT_MODEL: Qwen3-14B-Instruct
+          default:
+            model: Qwen3-14B-Instruct
           server:
             host: 192.0.2.10
             port: 8081
@@ -106,9 +109,12 @@ RSpec.describe Samagotchi::ConfigFile do
         ENV["XDG_CONFIG_HOME"] = dir
         ENV["SAMAGOTCHI_SERVER_PORT"] = "9090"
 
-        expect(described_class.load_global_env!).to be(true)
+        expect(described_class.load!).to be(true)
         expect(Samagotchi::ModelProfile.from_env.name).to eq("qwen36")
-        expect(ENV["SAMAGOTCHI_DEFAULT_MODEL"]).to eq("Qwen3-14B-Instruct")
+        expect(ENV).not_to have_key("SAMAGOTCHI_DEFAULT_MODEL")
+        expect(ENV).not_to have_key("SAMAGOTCHI_SERVER_HOST")
+        expect(Samagotchi::Config.get_with_origin("default.model")).to eq(["Qwen3-14B-Instruct", :file])
+        expect(Samagotchi::Config.get_with_origin("server.port")).to eq([9090, :env])
 
         client = Samagotchi::Client.new
         expect(client.instance_variable_get(:@host)).to eq("192.0.2.10")
@@ -116,11 +122,29 @@ RSpec.describe Samagotchi::ConfigFile do
       end
     end
 
+    it "sees an edit made to config.yml after the load, with origin :file" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        FileUtils.mkdir_p(File.join(dir, "samagotchi"))
+        path = File.join(dir, "samagotchi", "config.yml")
+        File.write(path, "recap:\n  sentences: \"2-3\"\nsession:\n  idle_exit_minutes: 5\n")
+        ENV["XDG_CONFIG_HOME"] = dir
+        described_class.load!
+        expect(Samagotchi::Config.get_with_origin("recap.sentences")).to eq(["2-3", :file])
+
+        File.write(path, "recap:\n  sentences: \"4-6\"\nsession:\n  idle_exit_minutes: 7\n")
+        File.utime(Time.now + 5, Time.now + 5, path) # a new mtime even on a coarse clock
+
+        expect(Samagotchi::Config.get_with_origin("recap.sentences")).to eq(["4-6", :file])
+        expect(Samagotchi::Config.get_with_origin("session.idle_exit_minutes")).to eq([7.0, :file])
+        expect(ENV).not_to have_key("SAMAGOTCHI_RECAP_SENTENCES")
+      end
+    end
+
     it "returns false when the config file does not exist" do
       Dir.mktmpdir("samagotchi-config") do |dir|
         ENV["XDG_CONFIG_HOME"] = dir
 
-        expect(described_class.load_global_env!).to be(false)
+        expect(described_class.load!).to be(false)
       end
     end
 
@@ -129,7 +153,8 @@ RSpec.describe Samagotchi::ConfigFile do
         config_dir = File.join(dir, "samagotchi")
         Dir.mkdir(config_dir)
         File.write(File.join(config_dir, "config.yml"), <<~YAML)
-          SAMAGOTCHI_DEFAULT_MODEL: Qwen3-14B-Instruct
+          default:
+            model: Qwen3-14B-Instruct
           hooks:
             hooks_dir: ~/.config/samagotchi/hooks/
             before_turn:
@@ -138,9 +163,8 @@ RSpec.describe Samagotchi::ConfigFile do
 
         ENV["XDG_CONFIG_HOME"] = dir
 
-        expect(described_class.load_global_env!).to be(true)
-        expect(ENV["SAMAGOTCHI_DEFAULT_MODEL"]).to eq("Qwen3-14B-Instruct")
-        # Non-scalar hooks section is skipped for env-loading
+        expect(described_class.load!).to be(true)
+        expect(Samagotchi::Config.get("default.model")).to eq("Qwen3-14B-Instruct")
         expect(ENV).not_to have_key("hooks")
       end
     end
@@ -155,11 +179,10 @@ RSpec.describe Samagotchi::ConfigFile do
         YAML
         ENV["XDG_CONFIG_HOME"] = dir
 
-        expect { described_class.load_global_env! }.to output(
+        expect { described_class.load! }.to output(
           "Warning: config: both 'SAMAGOTCHI_DEFAULT_MODEL' and 'default.model' are set; using 'default.model', remove the flat key\n"
         ).to_stderr
         expect(Samagotchi::Config.get("default.model")).to eq("nested-b")
-        expect(ENV["SAMAGOTCHI_DEFAULT_MODEL"]).to eq("nested-b")
       end
     end
 
@@ -172,12 +195,9 @@ RSpec.describe Samagotchi::ConfigFile do
         YAML
         ENV["XDG_CONFIG_HOME"] = dir
 
-        expect { described_class.load_global_env! }.not_to output.to_stderr
+        expect { described_class.load! }.not_to output.to_stderr
         expect(Samagotchi::Config.get("max_tool_output_chars")).to eq(5000)
         expect(Samagotchi::Config.get("skip_agent_md")).to be(true)
-      ensure
-        ENV.delete("SAMAGOTCHI_MAX_TOOL_OUTPUT_CHARS")
-        ENV.delete("SAMAGOTCHI_SKIP_AGENT_MD")
       end
     end
 
@@ -187,7 +207,7 @@ RSpec.describe Samagotchi::ConfigFile do
         File.write(File.join(dir, "samagotchi", "config.yml"), "default: {modle: m}\nbogus: 1\n")
         ENV["XDG_CONFIG_HOME"] = dir
 
-        expect { described_class.load_global_env! }.to output(
+        expect { described_class.load! }.to output(
           "Warning: config: unknown key 'default.modle' (did you mean 'default.model'?)\n" \
           "Warning: config: unknown key 'bogus'\n"
         ).to_stderr
@@ -200,26 +220,25 @@ RSpec.describe Samagotchi::ConfigFile do
         File.write(File.join(dir, "samagotchi", "config.yml"), "SAMAGOTCHI_SESSION_MAX_COUNT: 9\n")
         ENV["XDG_CONFIG_HOME"] = dir
 
-        expect { described_class.load_global_env! }.to output(
+        expect { described_class.load! }.to output(
           "Warning: config key 'SAMAGOTCHI_SESSION_MAX_COUNT' is legacy UPPER — use 'session.max_count'\n"
         ).to_stderr
-      ensure
-        ENV.delete("SAMAGOTCHI_SESSION_MAX_COUNT")
       end
     end
 
-    it "loads SAMAGOTCHI_DEFAULT_INPUT as a scalar string" do
+    it "keeps a trailing space in default.input" do
       Dir.mktmpdir("samagotchi-config") do |dir|
         config_dir = File.join(dir, "samagotchi")
         Dir.mkdir(config_dir)
         File.write(File.join(config_dir, "config.yml"), <<~YAML)
-          SAMAGOTCHI_DEFAULT_INPUT: "Please "
+          default:
+            input: "Please "
         YAML
 
         ENV["XDG_CONFIG_HOME"] = dir
 
-        expect(described_class.load_global_env!).to be(true)
-        expect(ENV["SAMAGOTCHI_DEFAULT_INPUT"]).to eq("Please ")
+        expect(described_class.load!).to be(true)
+        expect(Samagotchi::Config.get("default.input")).to eq("Please ")
       end
     end
   end

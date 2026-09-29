@@ -88,6 +88,11 @@ Behavior:
   `config: unknown key 'default.modle' (did you mean 'default.model'?)`.
   Names you choose under the maps below (host names, model ids) don't warn.
 - Environment variables and CLI flags win over config-file values.
+- An edit to the file needs no restart of `chi web`: a new session's worker
+  reads the file when it starts, and a running chi takes a changed value the
+  next time it reads that setting (a worker keeps `hosts:` and what it set up
+  at its start until it is stopped). A worker gets the CLI flags of the chi
+  that started it through its environment.
 - Workers inherit hosts via `SAMAGOTCHI_HOSTS_JSON` propagated through `SessionManager.spawn_options`.
 
 This lets you run `chi` without repeating common defaults such as model

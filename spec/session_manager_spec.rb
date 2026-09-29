@@ -621,10 +621,25 @@ RSpec.describe Samagotchi::SessionManager do
         expect(spawned_env).not_to have_key("SAMAGOTCHI_LOG_FILE")
       end
 
-      it "passes on the spawner's log.level (a --log-level flag included)" do
+      it "passes on a --log-level flag" do
         Samagotchi::Config.set_cli_overrides("log.level" => "debug")
 
         expect(spawned_env).to include("SAMAGOTCHI_LOG_LEVEL" => "debug")
+      end
+
+      # The worker reads config.yml itself when it starts: an edit made
+      # after this process loaded the file reaches it, with origin :file.
+      it "leaves config.yml's settings out of the worker's env" do
+        Dir.mktmpdir("chi-config") do |dir|
+          FileUtils.mkdir_p(File.join(dir, "samagotchi"))
+          File.write(File.join(dir, "samagotchi", "config.yml"),
+                     "default:\n  model: gemma4\nlog:\n  level: warn\nsession:\n  idle_exit_minutes: 3\nthinking:\n  level: low\n")
+          stub_const("ENV", ENV.to_h.merge("XDG_CONFIG_HOME" => dir))
+
+          env = spawned_env
+          expect(env.keys).not_to include("SAMAGOTCHI_LOG_LEVEL", "SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES",
+                                          "SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_THINKING_LEVEL")
+        end
       end
     end
 

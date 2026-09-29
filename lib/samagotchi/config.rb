@@ -374,21 +374,11 @@ module Samagotchi
         end
       end
 
-      # Convenience: load file_data from path + snapshot
-      def load_snapshot(path: nil, env: ENV, cli_overrides: {})
-        path ||= Samagotchi::ConfigFile.global_path(env: env) rescue nil
-        file_data = Samagotchi::ConfigFile.read_yaml(env: env, path: path) if path
-        snapshot(file_data: file_data, env: env, cli_overrides: cli_overrides)
-      end
-
-      # In-memory store for current process (populated after CLI parse)
-      def store
-        @store ||= load_snapshot
-      end
-
-      def reload!(path: nil, env: ENV, cli_overrides: {})
+      # Set this process's CLI settings (bin/chi, after it parsed the flags).
+      # Nothing is cached: #get resolves every call, reading config.yml
+      # again when it changed.
+      def reload!(cli_overrides: {})
         @cli_overrides = cli_overrides.dup
-        @store = load_snapshot(path: path, env: env, cli_overrides: cli_overrides)
       ensure
         # The log resolves its file and level from here.
         Samagotchi::Log.invalidate! if defined?(Samagotchi::Log)
@@ -396,6 +386,18 @@ module Samagotchi
 
       def cli_overrides
         @cli_overrides ||= {}
+      end
+
+      # This process's CLI settings as the env a spawned worker takes them
+      # from ({"SAMAGOTCHI_..." => "value"}): a worker gets no CLI args, and
+      # reads everything else from ENV and config.yml itself.
+      def cli_env
+        cli_overrides.each_with_object({}) do |(key, value), env|
+          entry = find_by_key(key) || ENTRIES.find { |e| e.cli_flag == key.to_s }
+          next unless entry&.env_exposed? && !value.nil?
+
+          env[entry.env_key] = value.to_s
+        end
       end
 
       def get(key)
@@ -641,12 +643,12 @@ module Samagotchi
       end
     end
 
-    # New unified loader: delegates to Samagotchi::Config registry.
-    # Breaking: YAML now expects lower snake dotted paths (default.model)
-    # instead of UPPER scalar keys. For compatibility, UPPER keys are warned
-    # and ignored — env wins over file as before, now via registry precedence
-    # (CLI > ENV > file > default). Returns true if file existed.
-    def load_global_env!(env: ENV, path: global_path(env: env))
+    # Check config.yml once at start (warnings for keys the code doesn't
+    # read) and clear the CLI settings. Nothing is copied into ENV: every
+    # Config.get reads the file again when it changed, so a long-lived
+    # process (chi web) and the workers it spawns see edits, and a file
+    # value reports origin :file. Returns true if the file existed.
+    def load!(env: ENV, path: global_path(env: env))
       existed = File.file?(path)
       raw = read_yaml(env: env, path: path) || {}
       if existed
@@ -665,23 +667,7 @@ module Samagotchi
           end
         end
       end
-      # For process-wide access, prime the Config store (so Config.get works)
-      Samagotchi::Config.reload!(path: path, env: env, cli_overrides: {})
-      # Keep ENV in sync for any code still reading ENV directly (transition).
-      # Only for keys that were actually present in file (not defaults) to
-      # avoid polluting ENV with defaults.
-      Samagotchi::Config.all_entries.each do |entry|
-        next unless entry.env_exposed?
-        # The env's thinking.level outranks models:/hosts: levels, the file's doesn't (Thinking.resolve).
-        next if entry.key == "thinking.level"
-        # check if file actually contained this key (including legacy flat)
-        file_val = Samagotchi::Config.lookup_yaml(raw, entry.yaml_path)
-        file_val ||= raw[entry.env_key] if raw.key?(entry.env_key)
-        next if file_val.nil?
-        val = Samagotchi::Config.store[entry.key]
-        next if val.nil?
-        env[entry.env_key] = val.to_s unless env.key?(entry.env_key)
-      end
+      Samagotchi::Config.reload!(cli_overrides: {})
       existed
     end
 
@@ -974,9 +960,7 @@ module Samagotchi
       File.write(tmp, YAML.dump(raw_data))
       File.rename(tmp, path)
       clear_yaml_cache!(path)
-      env[DEFAULT_MODEL_KEY] = resolved
-      # Also sync new Config store if loaded
-      Samagotchi::Config.reload!(path: path, env: env, cli_overrides: {})
+      Samagotchi::Config.reload!(cli_overrides: Samagotchi::Config.cli_overrides)
       true
     end
 

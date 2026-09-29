@@ -14,7 +14,7 @@ end
 require "optparse"
 require "samagotchi/config"
 
-Samagotchi::ConfigFile.load_global_env!
+Samagotchi::ConfigFile.load!
 require "samagotchi"
 
 # `chi self`: print version, source dir, config/memory/session paths, model and
@@ -1021,16 +1021,9 @@ if scratch
   end
 end
 
-# Apply CLI precedence: CLI > ENV > file
-unless cli_overrides.empty?
-  Samagotchi::Config.reload!(cli_overrides: cli_overrides)
-  # Keep ENV in sync for legacy readers still using ENV directly
-  cli_overrides.each do |k, v|
-    entry = Samagotchi::Config.find_by_key(k)
-    next unless entry&.env_exposed?
-    ENV[entry.env_key] = v.to_s
-  end
-end
+# Apply CLI precedence: CLI > ENV > file. Workers this chi spawns get
+# these through their env (Config.cli_env).
+Samagotchi::Config.reload!(cli_overrides: cli_overrides) unless cli_overrides.empty?
 
 # The debug log (Samagotchi::LogPath, level log.level) for every command.
 # -v (the plain REPL only): debug records, each mirrored to stderr.

@@ -119,11 +119,11 @@ A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cov
 3. Mutate the intended **nested** key in the raw hash. Preserve all other keys byte-for-byte where possible. Example for default model: `raw_data["default"] ||= {}; raw_data["default"]["model"] = "new-model"; raw_data.delete("SAMAGOTCHI_DEFAULT_MODEL")` to migrate legacy.
 4. **Validate** (see below) before writing. Also run `Samagotchi::Config.validate_yaml_sections` — it returns one `config: unknown key '…' (did you mean '…'?)` per key chi doesn't read (every config-exposed `Config::ENTRIES` key is known as written, including the section-less `max_tool_output_chars` and `skip_agent_md`; names under `hosts:`/`models:`/`model_aliases:`/`hooks:`/`bundles:`/`memories:` are free-form, host and model entries are checked against `Config::MAP_ENTRY_KEYS`). An empty list means no warning at start.
 5. **Write atomically**: `FileUtils.mkdir_p(File.dirname(path))`, `File.write("#{path}.tmp", YAML.dump(raw_data))`, `File.rename("#{path}.tmp", path)`.
-6. Update in-process state: `write_default_model!` sets `ENV["SAMAGOTCHI_DEFAULT_MODEL"]` and `Samagotchi::Config.reload!`; otherwise the harness picks it up on next `Config.get` (live resolve) or restart. CLI overrides (`--default-model`) win over file until process exit.
+6. Nothing else to update: config.yml values are never copied into `ENV`, and every `Config.get` reads the file again when it changed, so the next read (and every worker started after the write) sees the new value with origin `:file`. What a running worker set up at its start (`hosts:`, guardrail rules, bundle settings) waits for its restart. CLI overrides (`--model`, `--recap-model`, …) win over the file until the process exits; a worker gets its spawner's CLI settings through its env (`Config.cli_env`).
 
 ## Validations
 
-- **Model name** (`default.model` / `SAMAGOTCHI_DEFAULT_MODEL`): `ModelProfile.required_model_name` — non-empty string, otherwise harness fails fast at startup. Via `Config.get("default.model")` with ENV fallback.
+- **Model name** (`default.model` / `SAMAGOTCHI_DEFAULT_MODEL`): `ModelProfile.required_model_name` — non-empty string, otherwise harness fails fast at startup. Via `Config.get("default.model")`.
 - **Host api** (`hosts.<name>.api`): `llama_cpp|mlx|omlx` (raw-prompt loop; also the transport) or `openai` (chat loop at `http://HOST:PORT/v1`). Absent: raw-prompt loop. It replaces the removed `backend` setting.
 - **Transport** (`server.transport`): enum `llama_cpp|mlx|omlx`.
 - **Profile** (`models.<id>.profile`, `hosts.<name>.profile`, `SAMAGOTCHI_MODEL_PROFILE`): enum `qwen36|gemma4`; an unknown one warns and is ignored.
@@ -146,7 +146,7 @@ A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cov
 
 ## Hints
 
-- Precedence is `CLI > ENV > file > default` (`Config.resolve`). Real `ENV` still wins over file (`load_global_env!` `unless env.key?` for legacy sync), and CLI (`--recap-base-url`) wins over both via `Config.reload!(cli_overrides:)`.
+- Precedence is `CLI > ENV > file > default` (`Config.resolve`; `Config.get_with_origin` names the layer). `ENV` holds only what the user (or a spawning chi's CLI flags) set, and CLI (`--recap-base-url`) wins over both via `Config.reload!(cli_overrides:)`.
 - `--recap_base_url` (underscore) is rejected as unknown — use `--recap-base-url` (kebab). Same for all registry flags.
 - `model_aliases` require restart or `/model` reload to take effect; document the change.
 - Keep edits minimal: touch only the key you intend to change; preserve `hosts:`/`hooks:`/`guardrails:`/`bundles:` maps. Adding a `bundles: <name>:` entry does not install the bundle (`chi bundle install <name>`).

@@ -103,7 +103,6 @@ RSpec.configure do |config|
   end
 
   # Point :integration examples at the real config, then restore the fixture.
-  # Config.store memoizes a snapshot, so drop it on both sides of the switch.
   # Skip here, before the switch: this config-level around wraps the group's
   # own around hooks and lets, so a skipped example runs none of its setup
   # (e.g. Engine.new installing the bundle into the real memories).
@@ -116,14 +115,12 @@ RSpec.configure do |config|
     # The real config's log.file must never receive spec lines (workers
     # spawned here inherit it too).
     ENV["SAMAGOTCHI_LOG_DISABLE"] = "true"
-    Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
     example.run
   ensure
     ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
     SPEC_ENV_CLEAR.call
     ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
-    Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
   end
 
@@ -131,11 +128,9 @@ RSpec.configure do |config|
   # default), not the suite's SAMAGOTCHI_RECAP_ENABLED=false.
   config.around(:each, :recap) do |example|
     ENV.delete("SAMAGOTCHI_RECAP_ENABLED")
-    Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
     example.run
   ensure
     ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
-    Samagotchi::Config.instance_variable_set(:@store, nil) if defined?(Samagotchi::Config)
   end
 
 end

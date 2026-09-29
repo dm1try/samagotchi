@@ -173,10 +173,10 @@ module Samagotchi
     end
 
     # Build the opts hash passed to Process.spawn for a forked worker. The
-    # child inherits this process's ENV; opts[:env] adds to it (merged, not
-    # replaced) the values a worker can't read from its own config: the
-    # hosts, default model and log settings as this `chi` resolved them
-    # (CLI flags included).
+    # child inherits this process's ENV and reads config.yml itself (as it
+    # is when the worker starts); opts[:env] adds to it (merged, not
+    # replaced) what it can't read there: this `chi`'s CLI settings
+    # (Config.cli_env), the hosts and the absolute log file.
     private_class_method def self.spawn_options(session)
       # Own process group: workers outlive `chi web`, and a Ctrl-C in its
       # terminal must not reach them.
@@ -198,11 +198,9 @@ module Samagotchi
       rescue StandardError
         nil
       end
-      # Also propagate current default model (may be host-qualified)
-      child_env["SAMAGOTCHI_DEFAULT_MODEL"] = ENV["SAMAGOTCHI_DEFAULT_MODEL"] if ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-      # A worker gets no CLI args: pass on an idle exit set by any layer.
-      idle_exit = config_idle_exit_minutes
-      child_env["SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES"] = idle_exit.to_s unless idle_exit.nil?
+      # A worker gets no CLI args: --model, --thinking, --log-level and the
+      # other flags this chi was started with.
+      child_env.merge!(Config.cli_env)
       # And the spawner's debug log, absolute: a relative log.file would
       # otherwise land in the worker's (the session's) directory.
       log_path = begin LogPath.resolve rescue nil end
@@ -211,9 +209,6 @@ module Samagotchi
       else
         child_env["SAMAGOTCHI_LOG_DISABLE"] = "true"
       end
-      # And its level (a --log-level flag isn't in the worker's own config).
-      level = begin Config.get("log.level") rescue nil end
-      child_env["SAMAGOTCHI_LOG_LEVEL"] = level.to_s if level
       opts[:env] = child_env unless child_env.empty?
       opts
     end

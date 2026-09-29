@@ -88,7 +88,7 @@ RSpec.describe Samagotchi::Thinking do
     it "keeps config.yml's thinking.level out of the env (there it would outrank the models: and hosts: entries)" do
       with_config("thinking:\n  level: high\n") do |path|
         env = {}
-        Samagotchi::ConfigFile.load_global_env!(env: env, path: path)
+        Samagotchi::ConfigFile.load!(env: env, path: path)
 
         expect(env).not_to have_key("SAMAGOTCHI_THINKING_LEVEL")
       end
