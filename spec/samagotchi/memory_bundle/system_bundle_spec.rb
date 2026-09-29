@@ -22,7 +22,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
 
     it "ships the delegated-session rules, preloaded into every child of a delegate call" do
       expect(manifest.files.keys.map(&:to_s)).to include("delegated.md")
-      expect(File.read(File.join(dir, "delegated.md"))).to include("Don't delegate further")
+      expect(File.read(File.join(dir, "delegated.md"))).to include("can't delegate further")
     end
 
     it "has checksums matching the bundled files (edit a file → refresh its sha256 and bump the version)" do
