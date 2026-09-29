@@ -210,10 +210,11 @@ test("an annotate preset fills the composer with the quote and never sends", asy
 });
 
 test("the model picker lists the fake model", async ({ page }) => {
-  const select = page.locator("#modelSelect");
-  await expect(page.locator("#modelPick")).toBeVisible();
-  await expect(select.locator("option")).toHaveText(["fake-script"]);
-  await expect(select).toHaveValue("fake-script");
+  const button = page.locator("#modelPick");
+  await expect(button).toBeVisible();
+  await expect(button).toHaveText("fake-script");
+  await button.click();
+  await expect(page.locator("#modelList .model-option")).toHaveText(["fake-scriptdefault"]);
 });
 
 test("archive hides a session from the strip, include archived finds it, unarchive brings it back", async ({ page, script }) => {

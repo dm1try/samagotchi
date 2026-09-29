@@ -372,16 +372,40 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 #composer #actionBtn{min-width:64px;font-weight:600}
 /* The model picker (start page only): reads as a label, "host:model ▾", left of Start; a native select under a drawn caret. */
 /* A select is as wide as its widest option: a hidden copy of the chosen name (data-value) sizes the box to that name instead, and the select fills it. */
-.model-pick{order:0;position:relative;display:inline-block;max-width:min(50%,380px);height:28px;border-radius:8px;overflow:hidden;color:var(--text-muted);font-size:12px;transition:background .12s ease,color .12s ease}
-.model-pick[hidden],body.has-session .model-pick{display:none}
-.model-pick:hover,.model-pick:focus-within{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);color:var(--text-2)}
-.model-pick::before{content:attr(data-value);display:block;visibility:hidden;padding:0 22px 0 8px;white-space:pre;line-height:28px}
-.model-pick::after{content:"";position:absolute;right:9px;top:50%;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-70%) rotate(45deg);pointer-events:none}
-.model-pick select{position:absolute;inset:0;appearance:none;-webkit-appearance:none;width:100%;height:28px;padding:0 22px 0 8px;border:0;border-radius:8px;background:transparent;color:inherit;font-size:12px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;color-scheme:dark}
-.model-pick select:focus{outline:none}
-.model-pick select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.model-pick option{color:var(--text);background:var(--bg-panel)}
-@media(max-width:600px){.model-pick{max-width:60%}}
+#composer .actions-col .model-pick{order:0;position:relative;display:inline-block;max-width:min(50%,380px);height:28px;min-height:28px;padding:0 22px 0 8px;border-radius:8px;overflow:hidden;background:transparent;color:var(--text-muted);font-size:12px;line-height:28px;text-align:left;text-overflow:ellipsis;transition:background .12s ease,color .12s ease}
+#composer .actions-col .model-pick:hover,#composer .actions-col .model-pick[aria-expanded="true"]{filter:none;background:color-mix(in srgb,var(--bg-hover) 75%,transparent);color:var(--text-2)}
+#composer .actions-col .model-pick[hidden],body.has-session #composer .actions-col .model-pick{display:none}
+.model-pick-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.model-pick::after{content:"";position:absolute;right:9px;top:50%;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-70%) rotate(45deg);pointer-events:none;transition:transform .12s ease}
+.model-pick[aria-expanded="true"]::after{transform:translateY(-20%) rotate(225deg)}
+@media(max-width:600px){#composer .actions-col .model-pick{max-width:60%}}
+/* The model search: opaque like #commandList (a list over the conversation
+   must stay readable), above the composer, or below it (.down) when the
+   start page leaves no room above, or over the composer (.over) when
+   neither side has it. max-height is set at open. */
+#modelPanel{position:absolute;left:10px;width:min(560px,calc(100% - 20px));bottom:calc(100% + 8px);max-height:360px;border-radius:12px;z-index:21;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-panel);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
+#modelPanel.down{bottom:auto;top:calc(100% + 8px)}
+#modelPanel.over{bottom:0}
+#modelPanel[hidden],body.has-session #modelPanel{display:none}
+#modelPanel .model-search{flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--border)}
+#modelPanel .model-search svg{flex:none;width:14px;height:14px;color:var(--text-faint)}
+#modelSearch{flex:1;min-width:0;height:38px;background:transparent;border:0;color:var(--text);font-size:13px}
+#modelSearch::placeholder{color:var(--text-faint)}
+#modelSearch:focus,#modelSearch:focus-visible{outline:none}
+#modelList{flex:1 1 auto;min-height:0;overflow-y:auto;padding:4px;display:flex;flex-direction:column;gap:1px}
+#modelList .model-group{position:sticky;top:-4px;z-index:1;padding:8px 10px 4px;background:var(--bg-panel);font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint)}
+#modelList .model-group span{font-weight:400;letter-spacing:0;text-transform:none}
+#modelList .model-option{flex:none;scroll-margin:28px 0 4px;display:flex;align-items:baseline;gap:10px;padding:6px 10px 6px 24px;border-radius:8px;cursor:pointer;min-width:0;position:relative}
+#modelList .model-option.active{background:color-mix(in srgb,var(--accent-bg) 85%,transparent)}
+#modelList .model-option.chosen::before{content:"";position:absolute;left:10px;top:50%;width:4px;height:8px;border-right:1.5px solid var(--accent);border-bottom:1.5px solid var(--accent);transform:translateY(-65%) rotate(45deg)}
+#modelList .model-id{flex:1;min-width:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.4;color:var(--text-2);overflow-wrap:anywhere}
+#modelList .model-option.chosen .model-id{color:var(--accent)}
+#modelList .model-host,#modelList .model-dot{color:var(--text-faint)}
+#modelList mark{background:none;color:var(--accent);font-weight:600}
+#modelList .model-option.chosen mark{color:var(--text-bright)}
+#modelList .model-note{flex:none;font-size:11px;color:var(--text-faint)}
+#modelList .model-empty{padding:10px;font-size:13px;color:var(--text-faint)}
+@media(max-width:600px){#modelPanel{left:6px;width:calc(100% - 12px)}#modelSearch{font-size:16px}#modelList .model-option{padding-top:8px;padding-bottom:8px}}
 /* The / autocomplete: a list over the composer card's top edge. It wears the glass edge and shadow, but opaque:
    inside the dock's own backdrop-filter a second blur sees nothing, and the history would show through its text. */
 #commandList{position:absolute;left:10px;width:min(640px,calc(100% - 20px));bottom:calc(100% + 8px);max-height:min(260px,40vh);overflow-y:auto;border-radius:12px;padding:4px;z-index:20;display:flex;flex-direction:column;gap:1px;background:var(--bg-panel);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
@@ -586,13 +610,17 @@ a{color:var(--accent)}
       <div id="initRow" role="status" aria-live="polite" hidden></div>
       <div id="composer" style="position:relative">
         <div id="commandList" role="listbox" aria-label="Commands" hidden></div>
+        <div id="modelPanel" hidden>
+          <label class="model-search"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14" stroke-linecap="round"/></svg><input id="modelSearch" type="text" placeholder="Search models" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search models" aria-autocomplete="list" aria-controls="modelList" aria-expanded="false"></label>
+          <div id="modelList" role="listbox" aria-label="Models"></div>
+        </div>
         <div id="composeGrip" title="Drag to make the message box taller (double-click resets)"></div>
         <div class="compose-col">
           <div id="chips" hidden></div>
           <textarea id="prompt" placeholder="Ask chi anything…" aria-controls="commandList" aria-autocomplete="list" aria-expanded="false"></textarea>
         </div>
         <div class="actions-col">
-          <label id="modelPick" class="model-pick" title="The model the new chat starts on" hidden><select id="modelSelect" aria-label="Model for the new chat"></select></label>
+          <button type="button" id="modelPick" class="model-pick" title="The model the new chat starts on" aria-label="Model for the new chat" aria-haspopup="listbox" aria-expanded="false" hidden><span class="model-pick-name"></span></button>
           <div id="composeHint">Enter to start · Shift+Enter for a newline</div>
           <button id="cancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Cancel</button>
           <div class="split">
