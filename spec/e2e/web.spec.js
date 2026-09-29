@@ -390,6 +390,47 @@ test("a first turn that fails shows its prompt and why, once live and again afte
   await expect(page.locator("#history .hint")).toHaveCount(0);
 });
 
+// The /turn ack held back until the failed turn's prompt_restored has come
+// over the stream. `landed` waits until the page handled the ack: its send
+// handler focuses the composer last, so the composer is blurred first.
+async function delayTurnAck(page) {
+  let acked = false;
+  await page.route(/\/api\/sessions\/[^/]+\/turn$/, async (route) => {
+    const response = await route.fetch();
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    acked = true;
+    await route.fulfill({ response });
+  });
+  return {
+    landed: async () => {
+      expect(acked, "the ack came after prompt_restored").toBe(false);
+      await page.locator("#prompt").blur();
+      await expect(page.locator("#prompt")).toBeFocused();
+    },
+  };
+}
+
+test("a failed first turn whose prompt_restored comes before the /turn ack puts its prompt back", async ({ page, fakeMode }) => {
+  fakeMode("500");
+  const ack = await delayTurnAck(page);
+  await send(page, "Say pong");
+  await expect(page.locator("#history .bubble.user.failed .user-message")).toHaveText("Say pong");
+  await ack.landed();
+  await expect(page.locator("#prompt")).toHaveValue("Say pong");
+});
+
+test("a failed later turn whose prompt_restored comes before the /turn ack puts its prompt back", async ({ page, script, fakeMode }) => {
+  script("plain");
+  await send(page, "Say pong");
+  await turnEnded(page, 1);
+  fakeMode("500");
+  const ack = await delayTurnAck(page);
+  await send(page, "Say ping");
+  await expect(page.locator("#history .bubble.user.failed .user-message")).toHaveText("Say ping");
+  await ack.landed();
+  await expect(page.locator("#prompt")).toHaveValue("Say ping");
+});
+
 test("/archive and /exit typed in the composer get a local reply, not a worker error", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");

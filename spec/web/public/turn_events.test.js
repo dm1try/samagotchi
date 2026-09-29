@@ -172,6 +172,42 @@ test("restoreAction never refills a prompt this page didn't send (a replay after
   assert.deepEqual(restoreAction(initial, opts), { refill: null, own: false, label: null });
 });
 
+import { keepEarlyRestore, restoreOnAck } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+test("a prompt_restored before its /turn ack is kept, and the ack gets the prompt back", () => {
+  const event = { type: "prompt_restored", prompt: "boom", origin: { client_id: ME, enqueued_id: "e1" } };
+  const early = new Map();
+  const sentIds = new Set();
+
+  assert.equal(keepEarlyRestore(event, early, { myId: ME, sentIds }), true);
+  sentIds.add("e1"); // the ack
+  assert.deepEqual(restoreOnAck("e1", early, { myId: ME, sentIds }), { refill: "boom", own: true, label: null });
+  // Taken once.
+  assert.equal(early.size, 0);
+  assert.equal(restoreOnAck("e1", early, { myId: ME, sentIds }), null);
+});
+
+test("an early restore keeps its images for the ack", () => {
+  const ref = { file: "images/0123456789abcdef.png", name: "shot.png", width: 1280, height: 800 };
+  const event = { type: "prompt_restored", prompt: "look", images: [ref], origin: { client_id: ME, enqueued_id: "e1" } };
+  const early = new Map();
+  keepEarlyRestore(event, early, { myId: ME, sentIds: new Set() });
+  assert.deepEqual(restoreOnAck("e1", early, { myId: ME, sentIds: new Set(["e1"]) }).images, [ref]);
+});
+
+test("keepEarlyRestore skips an acked prompt (the usual order), another client's and one with no id", () => {
+  const early = new Map();
+  const opts = { myId: ME, sentIds: new Set(["e1"]) };
+  assert.equal(keepEarlyRestore({ prompt: "a", origin: { client_id: ME, enqueued_id: "e1" } }, early, opts), false);
+  assert.equal(keepEarlyRestore({ prompt: "b", origin: { client_id: "tui:42", enqueued_id: "e2" } }, early, opts), false);
+  assert.equal(keepEarlyRestore({ prompt: "c", origin: { client_id: ME } }, early, opts), false);
+  assert.equal(keepEarlyRestore({ prompt: "d", origin: null }, early, opts), false);
+  assert.equal(early.size, 0);
+  // An ack with nothing restored early changes nothing.
+  assert.equal(restoreOnAck("e3", early, opts), null);
+  assert.equal(restoreOnAck(undefined, early, opts), null);
+});
+
 import { commandView, continueLine, isCommandLine, webLocalReply } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("isCommandLine: a composer line starting with / or ! goes to the command route", () => {
