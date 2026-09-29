@@ -652,7 +652,9 @@ During assist-mode thinking (while the spinner is active), you can cancel an in-
 Behavior notes:
 
 - Cancellation returns control to the prompt immediately; what you typed there stays.
-- Partial model output from the canceled request is not committed as a completed model turn.
+- Visible text the canceled request had streamed stays in the conversation, marked `[interrupted]`, so the next
+  message (or a continue) picks up from the half-finished reply; the canceled request's thinking and any unfinished
+  tool call are dropped.
 
 ## Iteration Limit Behavior
 

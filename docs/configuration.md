@@ -510,9 +510,11 @@ Transient network failures are retried automatically with exponential backoff.
 
 - Default retries: `5` (up to `6` total attempts including the first call).
 - Default backoff: `0.5s`, `1s`, `2s`, `4s`, `8s`.
-- Retry scope: transient network errors (timeouts, refused/reset connections, EOF/socket reachability failures),
+- Retry scope: transient network errors (timeouts, reset connections, EOF/socket reachability failures),
   HTTP 429 and HTTP 500/502/503/504/529. A `Retry-After` header replaces the backoff delay; one longer than
   60s is not waited out and the error is reported instead.
+- A refused connection (nothing listening) is not retried: the turn fails at once with `can't reach host <name> at
+  <address> (connection refused) — is the server running?`.
 - A stream that has already produced output is never retried (the retry would repeat it); it fails the turn.
 - Cancellation (`Ctrl-C`) is never retried.
 
@@ -550,7 +552,7 @@ message (before, a failed llama.cpp `/completion` ended the turn as
 
 | Kind | When | Retried |
 |---|---|---|
-| connection | refused, reset, timed out, dropped mid-stream | yes (network retry), not mid-stream |
+| connection | reset, timed out, dropped mid-stream; refused | yes (network retry), not mid-stream; refused: no |
 | rate limited | HTTP 429 | yes, honouring `Retry-After` |
 | server | HTTP 5xx, llama.cpp's mid-stream `error:` event | 500/502/503/504/529 only |
 | auth | HTTP 401/403 | no |
