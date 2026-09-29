@@ -41,6 +41,15 @@ SPEC_XDG_STATE_HOME = Dir.mktmpdir("samagotchi-spec-state")
 ENV["XDG_STATE_HOME"] = SPEC_XDG_STATE_HOME
 at_exit { FileUtils.remove_entry(SPEC_XDG_STATE_HOME) if File.directory?(SPEC_XDG_STATE_HOME) }
 
+# The throwaway repos specs commit in: no detached auto-maintenance or gc
+# after a commit, still writing .git/objects/maintenance.lock while the
+# example's tmpdir is removed (Errno::ENOENT on the macOS runner).
+ENV["GIT_CONFIG_COUNT"] = "2"
+ENV["GIT_CONFIG_KEY_0"] = "maintenance.auto"
+ENV["GIT_CONFIG_VALUE_0"] = "false"
+ENV["GIT_CONFIG_KEY_1"] = "gc.auto"
+ENV["GIT_CONFIG_VALUE_1"] = "0"
+
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
     expectations.include_chain_clauses_in_custom_matcher_descriptions = true
