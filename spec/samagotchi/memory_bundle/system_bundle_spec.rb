@@ -74,6 +74,18 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
       expect(installed_identity).to eq("new\n")
     end
 
+    it "records the new version on a conflict, so the next start doesn't warn again" do
+      ship("0.1.6", "old\n")
+      described_class.ensure!
+      File.write(File.join(Samagotchi::MemoryBundle::Installer.system_dir, "identity.md"), "mine\n")
+      ship("0.1.10", "new\n")
+
+      expect { described_class.ensure! }.to output(/kept local edit in identity\.md/).to_stderr
+      expect { described_class.ensure! }.not_to output.to_stderr
+      expect(installed_version).to eq("0.1.10")
+      expect(installed_identity).to eq("mine\n")
+    end
+
     it "leaves a newer installed bundle alone when the shipped one is older" do
       ship("0.1.7", "new\n")
       described_class.ensure!

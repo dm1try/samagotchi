@@ -31,6 +31,7 @@ module Samagotchi
           missing = !File.exist?(target_path)
           index_present = index_has_entry?(scope, file_key_str)
           details[file_key_str] = {
+            conflict: meta.is_a?(Hash) && meta[:conflict] == true,
             stored_checksum: stored_checksum,
             current_checksum: current_checksum,
             base_checksum: base_checksum,

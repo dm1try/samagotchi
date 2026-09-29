@@ -24,6 +24,27 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
     path
   end
 
+  describe "#resolve_conflicts" do
+    it "rebases the resolved files on the bundle's version and drops their mark, keeping the rest" do
+      prov = described_class.new(name: "test-bundle")
+      src = File.join(tmpdir, "sources")
+      old = make_file(src, "identity.md", "old\n")
+      plugin = make_file(src, "plugin.rb", "class Plugin; end\n")
+      prov.write(files: { "identity.md" => old }, scope: "system", version: "2.0.0", source_path: "/s",
+                 plugin_file: plugin, conflicts: ["identity.md"])
+      expect(prov.read[:files][:"identity.md"]).to include(conflict: true)
+
+      incoming = make_file(File.join(tmpdir, "incoming"), "identity.md", "new\n")
+      prov.resolve_conflicts("identity.md" => { incoming: incoming, current: "/nope" })
+
+      data = prov.read
+      expect(data[:files][:"identity.md"]).to eq(checksum: Digest::SHA256.hexdigest("new\n"))
+      expect(File.read(prov.base_path("identity.md"))).to eq("new\n")
+      expect(data[:version]).to eq("2.0.0")
+      expect(data[:plugin][:file]).to eq("plugin.rb")
+    end
+  end
+
   describe "#write" do
     it "writes manifest.json and base snapshots" do
       prov = described_class.new(name: "test-bundle")

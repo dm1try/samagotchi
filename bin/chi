@@ -372,7 +372,7 @@ if ARGV[0] == "bundle"
     lines << ""
     lines << "Your task: resolve each conflict by editing the file in place using the memory_write tool."
     lines << "Use memory_read to inspect current content if needed. The correct scope for memory_write is the bundle's scope."
-    lines << "When all conflicts are resolved, type /exit to finish. If you abort, the upgrade will not be applied."
+    lines << "When all conflicts are resolved, type /exit to finish. If you stop early, the files stay as they are (the rest of the upgrade is already applied)."
     lines.join("\n")
   end
 
@@ -529,7 +529,7 @@ if ARGV[0] == "bundle"
           ans = begin; $stdin.gets; rescue => _e; nil; end
           launch = ans && ans.strip.downcase.start_with?("y")
         else
-          puts "Non-interactive terminal — aborting. Re-run with --force to overwrite or --agent in a TTY."
+          puts "Non-interactive terminal: kept your edits in the file(s) above; the rest is upgraded. Re-run with --force to take the bundle's version, or --agent in a TTY to merge."
           exit 2
         end
         if launch
@@ -537,37 +537,15 @@ if ARGV[0] == "bundle"
           puts "Launching interactive session for conflict resolution… (/exit when done)"
           require "samagotchi/terminal_ui"
           Samagotchi::TerminalUI.new(prompt: prompt).run
-          # After session, re-check if conflicts resolved by re-reading current files vs incoming
-          # Simple heuristic: if user edited files, current != base now but we assume resolved if file exists
-          # Re-run upgrade without conflicts? User already edited in place, so we need to write provenance now
-          # Update provenance to reflect resolved state
-          if manifest
-            # Re-collect provenance files from target dir for this bundle
-            prov_files = {}
-            target_scope = scope || provenance.read[:scope]&.to_s || "system"
-            target_dir = Samagotchi::MemoryBundle::Installer.new(source: expanded_source, name: bundle_name, scope: target_scope).send(:resolve_target_dir, target_scope)
-            # Actually reuse provenance write with current target files for bundle keys
-            bundle_files = installer.conflicts.keys + installer.results.select { |_, r| %w[installed updated].include?(r[:status]) }.keys
-            # Fallback: collect all md that exist and were in installer results
-            all_keys = installer.results.keys
-            all_keys.each do |k|
-              p = File.join(target_dir, k)
-              prov_files[k] = p if File.exist?(p)
-            end
-            if prov_files.any?
-              Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).write(
-                files: prov_files,
-                scope: target_scope,
-                version: manifest.version,
-                source_path: expanded_source
-              )
-              puts "Provenance updated after interactive resolution."
-            end
-          end
+          # The installer already recorded the upgrade (conflicted files
+          # kept their old base); the resolved files now start from the
+          # bundle's version.
+          Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).resolve_conflicts(installer.conflicts)
+          puts "Provenance updated after interactive resolution."
           puts "Upgrade resolved interactively."
           exit 0
         else
-          puts "Upgrade aborted due to conflicts. Resolve manually or re-run with --force."
+          puts "Kept your edits in the file(s) above; the rest is upgraded. chi bundle diff #{bundle_name} FILE shows the base; re-run with --force to take the bundle's version."
           exit 2
         end
       end
@@ -637,6 +615,7 @@ if ARGV[0] == "bundle"
       puts "Target: #{st[:target_dir]}"
       st[:files].each do |k, info|
         mods = []
+        mods << "conflict (kept your edits over v#{st[:provenance][:version]}: chi bundle diff #{name} #{k})" if info[:conflict]
         mods << "modified" if info[:modified]
         mods << "missing" if info[:missing]
         mods << "no-index" unless info[:index_present]

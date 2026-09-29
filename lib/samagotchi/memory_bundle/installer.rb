@@ -295,79 +295,81 @@ module Samagotchi
 
         warn_missing_needs(manifest) if manifest
 
-        # Write provenance (only if we had a manifest and not dry_run).
+        # Write provenance (only if we had a manifest and not dry_run). An
+        # upgrade with conflicts writes it too: the new version, the plugin's
+        # and hooks' new shas, and the old base for each conflicted file,
+        # marked conflict (chi bundle status shows it). Skipping it left the
+        # replaced plugin failing its sha check.
         if manifest && !@dry_run
-          skip_provenance = @upgrade && @conflicts.any? && !@force
-          unless skip_provenance
-            provenance_files = {}
-            if @upgrade && existing_provenance
-              all_files_in_bundle.each do |file_key|
-                target_path = File.join(target_dir, file_key)
-                next unless File.exist?(target_path)
-                status = @results[file_key] ? @results[file_key][:status].to_s : nil
-                if %w[kept noop conflict kept_pruned].include?(status)
-                  # Keep old base snapshot — do not overwrite with edited current
-                  # Use base snapshot as source if it exists to preserve old checksum
-                  base_path = provenance.base_path(file_key)
-                  if File.exist?(base_path)
-                    # Keep existing provenance entry by re-using base content
-                    # We still need to include it to prevent pruning, but with base content
-                    provenance_files[file_key] = base_path
-                  else
-                    provenance_files[file_key] = target_path
-                  end
+          provenance_files = {}
+          if @upgrade && existing_provenance
+            all_files_in_bundle.each do |file_key|
+              target_path = File.join(target_dir, file_key)
+              next unless File.exist?(target_path)
+              status = @results[file_key] ? @results[file_key][:status].to_s : nil
+              if %w[kept noop conflict kept_pruned].include?(status)
+                # Keep old base snapshot — do not overwrite with edited current
+                # Use base snapshot as source if it exists to preserve old checksum
+                base_path = provenance.base_path(file_key)
+                if File.exist?(base_path)
+                  # Keep existing provenance entry by re-using base content
+                  # We still need to include it to prevent pruning, but with base content
+                  provenance_files[file_key] = base_path
                 else
-                  # installed, updated, skipped — use current target (which is incoming for updated)
                   provenance_files[file_key] = target_path
                 end
+              else
+                # installed, updated, skipped — use current target (which is incoming for updated)
+                provenance_files[file_key] = target_path
               end
-              # Handle pruned but kept files (bundle removed file but local kept)
-              if existing_provenance[:files]
-                existing_provenance[:files].keys.each do |old_key|
-                  old_key_str = old_key.to_s
-                  next if all_files_in_bundle.include?(old_key_str)
-                  # If it was kept_pruned, include it with base content to prevent pruning
-                  if @results[old_key_str] && @results[old_key_str][:status].to_s == "kept_pruned"
-                    base_path = provenance.base_path(old_key_str)
-                    target_path = File.join(target_dir, old_key_str)
-                    # Use base if exists to keep old checksum, else target
-                    src = File.exist?(base_path) ? base_path : target_path
-                    provenance_files[old_key_str] = src if File.exist?(src)
-                  end
+            end
+            # Handle pruned but kept files (bundle removed file but local kept)
+            if existing_provenance[:files]
+              existing_provenance[:files].keys.each do |old_key|
+                old_key_str = old_key.to_s
+                next if all_files_in_bundle.include?(old_key_str)
+                # If it was kept_pruned, include it with base content to prevent pruning
+                if @results[old_key_str] && @results[old_key_str][:status].to_s == "kept_pruned"
+                  base_path = provenance.base_path(old_key_str)
+                  target_path = File.join(target_dir, old_key_str)
+                  # Use base if exists to keep old checksum, else target
+                  src = File.exist?(base_path) ? base_path : target_path
+                  provenance_files[old_key_str] = src if File.exist?(src)
                 end
               end
-            else
-              all_files_in_bundle.each do |file_key|
-                target_path = File.join(target_dir, file_key)
-                provenance_files[file_key] = target_path if File.exist?(target_path)
-              end
             end
-            # Build hooks metadata for provenance
-            hooks_for_provenance = {}
-            if manifest && manifest.hooks && !manifest.hooks.empty?
-              hooks_for_provenance = manifest.hooks
-            elsif hooks_files_for_provenance.any?
-              hooks_files_for_provenance.each do |basename, path|
-                next unless File.exist?(path)
-                sha = Digest::SHA256.hexdigest(File.read(path))
-                hooks_for_provenance[basename] = { "sha256" => "sha256:#{sha}", "event" => "", "on_error" => "skip", "priority" => 100 }
-              end
+          else
+            all_files_in_bundle.each do |file_key|
+              target_path = File.join(target_dir, file_key)
+              provenance_files[file_key] = target_path if File.exist?(target_path)
             end
-            Provenance.new(name: @name).write(
-              files: provenance_files,
-              scope: target_scope,
-              version: manifest.version,
-              source_path: @source,
-              hooks: hooks_for_provenance,
-              trust_level: manifest.respond_to?(:trust_level) ? manifest.trust_level : nil,
-              source_commit: source_commit,
-              hooks_files: hooks_files_for_provenance,
-              guardrails_files: guardrail_files_for_provenance,
-              plugin_file: plugin_file_for_provenance,
-              requires_chi: manifest.requires_chi,
-              needs: manifest.needs
-            )
           end
+          # Build hooks metadata for provenance
+          hooks_for_provenance = {}
+          if manifest && manifest.hooks && !manifest.hooks.empty?
+            hooks_for_provenance = manifest.hooks
+          elsif hooks_files_for_provenance.any?
+            hooks_files_for_provenance.each do |basename, path|
+              next unless File.exist?(path)
+              sha = Digest::SHA256.hexdigest(File.read(path))
+              hooks_for_provenance[basename] = { "sha256" => "sha256:#{sha}", "event" => "", "on_error" => "skip", "priority" => 100 }
+            end
+          end
+          Provenance.new(name: @name).write(
+            files: provenance_files,
+            scope: target_scope,
+            version: manifest.version,
+            source_path: @source,
+            hooks: hooks_for_provenance,
+            trust_level: manifest.respond_to?(:trust_level) ? manifest.trust_level : nil,
+            source_commit: source_commit,
+            hooks_files: hooks_files_for_provenance,
+            guardrails_files: guardrail_files_for_provenance,
+            plugin_file: plugin_file_for_provenance,
+            requires_chi: manifest.requires_chi,
+            needs: manifest.needs,
+            conflicts: @conflicts.keys
+          )
         end
 
         # Detect placeholders.

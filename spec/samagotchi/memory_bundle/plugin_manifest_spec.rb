@@ -10,6 +10,7 @@ require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/uninstaller"
 require "samagotchi/memory_bundle/builder"
 require "samagotchi/memory_bundle/status"
+require "samagotchi/plugin/loader"
 
 RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-plugin-manifest-") }
@@ -130,6 +131,30 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(Dir.exist?(provenance.plugin_dir)).to be false
       expect(provenance.read[:plugin]).to be_nil
       expect(provenance.plugin_path).to be_nil
+    end
+
+    it "keeps the new plugin loadable when an upgrade keeps an edited .md (conflict)" do
+      install(write_source)
+      target = File.join(system_dir, "identity.md")
+      File.write(target, "# Id\nmy note\n")
+      newer = "class Plugin\n  def register(chi) = :v2\nend\n"
+      src = write_source(content: newer)
+      File.write(File.join(src, "identity.md"), "# Id v2\n")
+      manifest = YAML.load_file(File.join(src, "manifest.yml"))
+      manifest["version"] = "2.0.0"
+      manifest["files"] = { "identity.md" => "sha256:#{Digest::SHA256.hexdigest("# Id v2\n")}" }
+      File.write(File.join(src, "manifest.yml"), YAML.dump(manifest))
+
+      installer = install(src, upgrade: true)
+
+      expect(installer.conflicts.keys).to eq(["identity.md"])
+      expect(File.read(target)).to eq("# Id\nmy note\n")
+      data = provenance.read
+      expect(data[:version]).to eq("2.0.0")
+      expect(Samagotchi::Plugin::Loader.unloadable_reason(provenance.plugin_path(data), data)).to be_nil
+      expect(data[:files][:"identity.md"]).to include(conflict: true)
+      expect(File.read(provenance.base_path("identity.md"))).to eq("# Id\n")
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug")[:files]["identity.md"]).to include(conflict: true)
     end
 
     it "lists it among the installed bundles with a plugin" do

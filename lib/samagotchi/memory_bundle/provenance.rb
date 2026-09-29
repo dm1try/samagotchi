@@ -116,8 +116,10 @@ module Samagotchi
       #   snapshot
       # @param requires_chi [String, nil] the manifest's requirement
       # @param needs [Array<Hash>] the manifest's needs ({command:, why:, hint:})
+      # @param conflicts [Array<String>] files an upgrade kept with local
+      #   edits that conflict with it; their entries get conflict: true
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
-                guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil)
+                guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, conflicts: [])
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -134,6 +136,7 @@ module Samagotchi
           # Save base snapshot — use file_key as-is (it already includes .md).
           File.write(File.join(bases_dir, file_key), content)
           merged_entries[file_key] = { checksum: checksum }
+          merged_entries[file_key][:conflict] = true if conflicts.include?(file_key.to_s)
         end
 
         # Prune stale base snapshots for files no longer in the bundle.
@@ -226,14 +229,29 @@ module Samagotchi
         manifest_data["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
         manifest_data["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } if needs.is_a?(Array) && !needs.empty?
 
-        # Write aside and rename, so a reader in another process (a parallel
-        # chi start) never parses a truncated manifest.json.
-        manifest_path = File.join(@bundle_dir, "manifest.json")
-        tmp_path = "#{manifest_path}.#{Process.pid}.tmp"
-        File.write(tmp_path, JSON.pretty_generate(manifest_data))
-        File.rename(tmp_path, manifest_path)
-      ensure
-        FileUtils.rm_f(tmp_path) if tmp_path
+        write_manifest(manifest_data)
+      end
+
+      # After a conflict was resolved by hand: each file's base becomes the
+      # bundle's version (the incoming file, else what's on disk now) and
+      # its conflict mark goes. The rest of the manifest stays as is.
+      # @param conflicts [Hash{String => Hash}] Installer#conflicts
+      def resolve_conflicts(conflicts)
+        return unless installed?
+
+        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        raw["files"] ||= {}
+        conflicts.each do |file_key, info|
+          key = file_key.to_s
+          next unless raw["files"].key?(key)
+          src = [info[:incoming], info[:current]].find { |p| p && File.exist?(p) }
+          next unless src
+
+          content = File.read(src)
+          File.write(base_path(key), content)
+          raw["files"][key] = { "checksum" => Digest::SHA256.hexdigest(content) }
+        end
+        write_manifest(raw)
       end
 
       # Reads provenance data (returns nil if not installed).
@@ -242,6 +260,18 @@ module Samagotchi
         return nil unless File.exist?(manifest_path)
         JSON.parse(File.read(manifest_path), symbolize_names: true)
       end
+
+      # Write aside and rename, so a reader in another process (a parallel
+      # chi start) never parses a truncated manifest.json.
+      def write_manifest(manifest_data)
+        manifest_path = File.join(@bundle_dir, "manifest.json")
+        tmp_path = "#{manifest_path}.#{Process.pid}.tmp"
+        File.write(tmp_path, JSON.pretty_generate(manifest_data))
+        File.rename(tmp_path, manifest_path)
+      ensure
+        FileUtils.rm_f(tmp_path) if tmp_path
+      end
+      private :write_manifest
 
       # Returns the path to a base snapshot for a given file key.
       def base_path(file_key)
