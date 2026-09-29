@@ -2,6 +2,7 @@
 
 require "samagotchi/tool_runner"
 require "samagotchi/hooks"
+require "samagotchi/tools/builtins"
 
 # ToolRunner's per-call contract around the before_tool_call veto. The loop
 # level (text the model gets, both loops) is in
