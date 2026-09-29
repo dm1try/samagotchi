@@ -270,7 +270,7 @@ RSpec.describe Samagotchi::Client do
 
       allow(Net::HTTP).to receive(:start).with("localhost", 8080, open_timeout: 10, read_timeout: 600) do |_host, _port, open_timeout:, read_timeout:, &block|
         call_count += 1
-        raise Errno::ECONNREFUSED if call_count == 1
+        raise Errno::ECONNRESET if call_count == 1
 
         block.call(http)
       end
@@ -284,7 +284,7 @@ RSpec.describe Samagotchi::Client do
       expect(retries.first[:attempt]).to eq(1)
       expect(retries.first[:max_retries]).to eq(5)
       expect(retries.first[:next_delay]).to eq(0.5)
-      expect(retries.first[:error_class]).to eq("Errno::ECONNREFUSED")
+      expect(retries.first[:error_class]).to eq("Errno::ECONNRESET")
     end
 
     it "raises RetryExhausted after retry budget is exhausted" do
@@ -302,7 +302,7 @@ RSpec.describe Samagotchi::Client do
 
     it "names the configured host, not the transport, when retries run out" do
       client = described_class.new(host: "localhost", port: 8080, name: "main", sleeper: ->(_seconds) {})
-      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNRESET)
 
       expect { client.complete("prompt") }
         .to raise_error(described_class::RetryExhausted) do |error|
@@ -313,7 +313,7 @@ RSpec.describe Samagotchi::Client do
 
     it "falls back to the transport's label when it has no host name" do
       client = described_class.new(host: "localhost", port: 8080, sleeper: ->(_seconds) {})
-      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNREFUSED)
+      allow(Net::HTTP).to receive(:start).and_raise(Errno::ECONNRESET)
 
       expect { client.complete("prompt") }
         .to raise_error(described_class::RetryExhausted) { |error| expect(error.host).to eq("llama.cpp") }
@@ -849,7 +849,7 @@ end
         .with("localhost", 8080, open_timeout: 10, read_timeout: 600)
         .and_raise(Errno::ECONNREFUSED)
 
-      expect { client.complete("prompt") }.to raise_error(described_class::RetryExhausted)
+      expect { client.complete("prompt") }.to raise_error(Samagotchi::LLM::ConnectionRefused)
       client.context_window(model: "m")
 
       expect(requests.size).to eq(2)

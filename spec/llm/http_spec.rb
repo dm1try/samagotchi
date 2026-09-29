@@ -59,15 +59,33 @@ RSpec.describe Samagotchi::LLM::HTTP do
     end
 
     it "raises RetryExhausted once the retries run out, after backing off" do
-      dead = URI("http://127.0.0.1:#{closed_port}/v1/chat/completions")
+      3.times { server.enqueue("/v1/chat/completions", sse: [], drop: true) }
 
-      expect { http.stream_lines(dead, post_request(dead)) { nil } }
+      expect { http.stream_lines(uri, post_request) { nil } }
         .to raise_error(Samagotchi::LLM::RetryExhausted) { |error|
           expect(error.attempts).to eq(3)
-          expect(error.last_error).to be_a(Errno::ECONNREFUSED)
+          expect(error.last_error).to be_a(EOFError)
           expect(error.message).to start_with("fake request failed after 3 attempts")
         }
       expect(sleeps.sum.round(2)).to eq(1.5)
+    end
+
+    it "fails a refused connection at once, naming the host and its address" do
+      port = closed_port
+      dead = URI("http://127.0.0.1:#{port}/v1/chat/completions")
+      real = described_class.new(label: "main", open_timeout: 2, read_timeout: 5, retry_policy: policy)
+      errors = []
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      expect { real.stream_lines(dead, post_request(dead), on_network_error: ->(error) { errors << error }) { nil } }
+        .to raise_error(Samagotchi::LLM::ConnectionRefused) { |error|
+          expect(error.attempts).to eq(1)
+          expect(error).not_to be_retryable
+          expect(error.summary)
+            .to eq("can't reach host main at 127.0.0.1:#{port} (connection refused) — is the server running?")
+        }
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+      expect(errors.map(&:class)).to eq([Errno::ECONNREFUSED])
     end
 
     it "yields a last line that has no newline" do
@@ -176,7 +194,8 @@ RSpec.describe Samagotchi::LLM::HTTP do
       end
 
       it "stops a backoff wait" do
-        dead = URI("http://127.0.0.1:#{closed_port}/v1/chat/completions")
+        server.default("/v1/chat/completions", sse: [], drop: true)
+        dead = uri
         cancelling_sleeper = lambda do |seconds|
           sleeps << seconds
           controller.cancel!(:manual) if sleeps.size == 3
@@ -388,9 +407,9 @@ RSpec.describe Samagotchi::LLM::HTTP do
     end
 
     it "writes a WARN for a network retry too, and an ERROR when they run out" do
-      dead = URI("http://127.0.0.1:#{closed_port}/v1/chat/completions")
+      3.times { server.enqueue("/v1/chat/completions", sse: [], drop: true) }
 
-      expect { http.stream_lines(dead, post_request(dead), log_fields: chat) { nil } }
+      expect { http.stream_lines(uri, post_request, log_fields: chat) { nil } }
         .to raise_error(Samagotchi::LLM::RetryExhausted)
 
       expect(http_records.map { |r| [r.level, r.event] }).to eq([%w[WARN retry], %w[WARN retry], %w[ERROR retry_exhausted]])

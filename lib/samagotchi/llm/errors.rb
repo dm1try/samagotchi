@@ -19,7 +19,8 @@ module Samagotchi
     # (#kind): the UIs print one line per kind, and #retryable? says whether
     # asking again could help.
     #
-    #   ConnectionError  no answer (refused, reset, timeout); RetryExhausted
+    #   ConnectionError  no answer (refused, reset, timeout); RetryExhausted,
+    #                    ConnectionRefused
     #   RateLimited      429, with retry_after when the server says
     #   ServerError      5xx or a server's error event mid-stream
     #   AuthError        401/403, or an API key variable that is not set
@@ -172,6 +173,19 @@ module Samagotchi
       end
 
       def summary = "network error after #{attempts} attempts (host #{host}: #{last_error.class})"
+    end
+
+    # A refused connection: nothing listens at the host's address. Not
+    # retried (a server that isn't running rarely starts within the backoff).
+    class ConnectionRefused < ConnectionError
+      attr_reader :address
+
+      def initialize(host:, address: nil, attempts: 1)
+        @address = address
+        super("#{host}: connection refused#{" at #{address}" if address}", host: host, retryable: false, attempts: attempts)
+      end
+
+      def summary = "can't reach host #{host}#{" at #{address}" if address} (connection refused) — is the server running?"
     end
 
     # A stream that showed nothing (no text, reasoning or tool call) within

@@ -243,6 +243,12 @@ module Samagotchi
             raise unless self.class.network_error?(e)
 
             on_network_error&.call(e)
+            # Nothing is listening: asking again rarely helps, so it fails
+            # at once and says what to check.
+            if e.is_a?(Errno::ECONNREFUSED)
+              raise ConnectionRefused.new(host: @label, address: current[:address], attempts: attempts)
+            end
+
             delay = current[:streamed] ? nil : @retry_policy.delay_for(attempts)
             raise RetryExhausted.new(attempts: attempts, last_error: e, label: @label) if delay.nil?
 
@@ -302,7 +308,7 @@ module Samagotchi
       # closes, status, timings) and what its log line says.
       def new_attempt_state(uri, request, log_fields, stream:)
         purpose = log_fields[:purpose]&.to_s
-        { mutex: Mutex.new, started_at: monotonic_now, stream: stream,
+        { mutex: Mutex.new, started_at: monotonic_now, stream: stream, address: "#{uri.host}:#{uri.port}",
           level: LOGGED_PURPOSES.include?(purpose) ? :info : :debug,
           log: { host: @label, method: request.method, url: log_url(uri),
                  **log_fields.compact } }
