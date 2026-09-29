@@ -786,7 +786,8 @@ what it has found. check-in counts the turn's tool calls, and when there are
 The count is per turn: a new turn (a prompt, a continue, a reminder) starts
 from zero; steering merged into the running turn doesn't reset it. The polling
 tools are not counted. A nudge that arrives after the model's final answer is
-dropped (logged), never restarting a turn that is done.
+dropped (logged), never restarting a turn that is done; the card's "Nudged the
+model at N tool calls" then becomes "The answer came first; nudge not sent."
 
 ```yaml
 # config.yml

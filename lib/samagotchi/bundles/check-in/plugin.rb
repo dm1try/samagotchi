@@ -6,7 +6,8 @@
 # A nudge is ctx.steer: the message joins the running turn at its next
 # boundary as its own user message, so the model reads it before its next
 # step. It never starts a turn, and one that arrives after the model's
-# final answer is dropped.
+# final answer is dropped: the card's Nudge then says so at the turn's end
+# (after_turn's messages have no steer with its text).
 #
 # The count is per turn: before_turn resets it (and closes a card left open
 # by a turn that failed or was interrupted, where after_turn doesn't fire);
@@ -46,7 +47,7 @@ class Plugin
   def register(chi)
     chi.on(:before_turn) { |_event, ctx| before_turn(ctx) }
     chi.on(:after_tool_call) { |event, ctx| after_tool_call(event, ctx) }
-    chi.on(:after_turn) { |_event, ctx| close_card(ctx, "The turn ended after #{calls} tool calls.") }
+    chi.on(:after_turn) { |event, ctx| after_turn(event, ctx) }
     chi.command "/checkin", "check on a long turn: status, on|off, <calls>, mode ask|nudge|notify, nudge, later, stop",
                 anytime: true do |args, ctx|
       command(args.to_s.strip.downcase, ctx)
@@ -64,6 +65,7 @@ class Plugin
     @tools = []
     @card_id = nil  # this turn's card, once shown
     @card_open = false
+    @nudge = nil    # the card's Nudge this turn: { text:, count: }
   end
 
   def before_turn(ctx)
@@ -95,6 +97,36 @@ class Plugin
     else
       show_card(ctx, count)
     end
+  end
+
+  def after_turn(event, ctx)
+    return if close_card(ctx, "The turn ended after #{calls} tool calls.")
+
+    nudge_not_sent(event, ctx)
+  end
+
+  # The card said "Nudged": if the turn ended before the nudge joined it
+  # (the model answered first, or the turn was stopped), the card says so.
+  def nudge_not_sent(event, ctx)
+    id, nudge = @mutex.synchronize { [@card_id, @nudge] }
+    return unless id && nudge
+    return if steered?(event[:messages], nudge[:text])
+
+    first = event[:status].to_s == "canceled" ? "The turn ended first" : "The answer came first"
+    ctx.card(id: id, title: "check-in", body: "#{first}; nudge not sent.")
+  end
+
+  # Whether this turn's messages (after its last prompt) have the steer.
+  def steered?(messages, text)
+    Array(messages).reverse_each do |message|
+      next unless message.is_a?(Hash)
+
+      role = (message[:role] || message["role"]).to_s
+      kind = (message[:kind] || message["kind"]).to_s
+      return true if kind == "steer" && (message[:content] || message["content"]).to_s.strip == text.strip
+      return false if role == "user" && kind != "steer"
+    end
+    false
   end
 
   # One card per turn: a later check-in updates it in place.
@@ -170,8 +202,10 @@ class Plugin
 
   def nudge(ctx)
     count = calls
-    return "check-in: no turn running" unless ctx.steer(message(count))
+    text = message(count)
+    return "check-in: no turn running" unless ctx.steer(text)
 
+    @mutex.synchronize { @nudge = { text: text, count: count } }
     close_card(ctx, "Nudged the model at #{count} tool calls.")
     nil
   end

@@ -144,6 +144,28 @@ RSpec.describe "The check-in plugin" do
       expect(ctx.cards.last).to include(title: "check-in", body: "Nudged the model at 2 tool calls.")
     end
 
+    it "Nudge says at the turn's end that the nudge wasn't sent when the answer came first" do
+      checkin(p, "nudge")
+      fire(p, :after_turn, status: "completed", messages: [{ role: "user", content: "go" }, { role: "model", content: "done" }])
+
+      expect(ctx.cards.last).to include(id: ctx.cards.first[:id], title: "check-in", body: "The answer came first; nudge not sent.")
+    end
+
+    it "Nudge keeps its card when the steer joined the turn" do
+      checkin(p, "nudge")
+      steer = { role: "user", kind: "steer", source: "check-in", content: ctx.steers.last }
+      fire(p, :after_turn, status: "completed", messages: [{ role: "user", content: "go" }, steer, { role: "model", content: "done" }])
+
+      expect(ctx.cards.last[:body]).to eq("Nudged the model at 2 tool calls.")
+    end
+
+    it "Nudge says the turn ended first when it was stopped before the nudge joined" do
+      checkin(p, "nudge")
+      fire(p, :after_turn, status: "canceled", messages: [{ role: "user", content: "go" }])
+
+      expect(ctx.cards.last[:body]).to eq("The turn ended first; nudge not sent.")
+    end
+
     it "Keep going closes the card and names the next check-in; the card comes back there" do
       expect(checkin(p, "later")).to be_nil
       expect(ctx.cards.last[:body]).to eq("Kept going; the next check-in is at 5 tool calls.")
@@ -311,6 +333,21 @@ RSpec.describe "The check-in bundle, installed" do
     expect(events.find { |e| e[:type] == :pending_input_merged && e[:steers] })
       .to include(count: 0, steers: [{ source: "check-in", text: a_string_starting_with("You've made 2") }])
     expect(cards.last).to include(id: cards.first[:id], title: "check-in", body: "Nudged the model at 2 tool calls.")
+  end
+
+  it "says the nudge wasn't sent when the model answered before the nudge could join" do
+    replies = [tool_call, tool_call, "found it"]
+    allow(client).to receive(:complete) do
+      # Nudge pressed while the model writes its final answer.
+      engine.running_anytime { commands.run("/checkin nudge") } if cards.any? && replies.size == 1
+      replies.shift || "found it"
+    end
+
+    engine.run_turn(session, "look around")
+
+    expect(session.messages.none? { |m| m[:kind] == "steer" }).to be(true)
+    expect(cards.map { |c| c[:body] }).to include("Nudged the model at 2 tool calls.")
+    expect(cards.last).to include(id: cards.first[:id], title: "check-in", body: "The answer came first; nudge not sent.")
   end
 
   context "in nudge mode" do
