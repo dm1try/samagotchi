@@ -460,6 +460,8 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .ts-prompt{cursor:pointer;min-width:0}
 .ts-prompt>.bubble.user{display:flex;gap:6px;align-items:baseline;max-width:none;margin:0;padding:0;background:transparent;border:0;border-radius:0;font-size:13px;line-height:1.45;color:var(--text-muted)}
 .ts-prompt>.bubble.user::before{content:"you";flex:none;color:var(--accent);font-weight:600}
+/* Another client's prompt says whose it is (its origin label) instead. */
+.ts-prompt>.bubble.user:has(>.origin-label)::before{content:none}
 .ts-prompt>.bubble.user>.copy-btn{display:none}
 .ts-prompt:not(.full) .user-message{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;line-clamp:1;overflow:hidden;white-space:normal}
 .ts-prompt:not(.full) .user-message .thumbs{display:none}
