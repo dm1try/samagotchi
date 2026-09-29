@@ -173,6 +173,16 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(commands.run("/model").output).to eq("runtime model: beta:Qwen3-14B (profile=qwen36, name)")
     end
 
+    it "refuses a model whose host isn't configured, keeping the current one" do
+      result = commands.run("/model nosuch:org/model")
+
+      expect(result.status).to eq(:error)
+      expect(result.output).to eq("unknown host 'nosuch' in model 'nosuch:org/model'; the configured hosts are alpha, beta, chat")
+      expect(result.changed).to eq([])
+      expect(engine.effective_model_name).to eq("beta:Qwen3-14B")
+      expect(saved).to eq([])
+    end
+
     it "refuses a bad alias before switching" do
       result = commands.run("/model alpha:gemma-small --alias bad/name")
 

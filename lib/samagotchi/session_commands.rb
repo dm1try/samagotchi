@@ -277,6 +277,9 @@ module Samagotchi
     def model(text)
       output, switched = model_command(text)
       reply(output, changed: switched ? [:model] : [])
+    rescue ModelProfile::MissingModel => e
+      # A model qualified with an unknown host: nothing switched.
+      reply(e.message, status: :error)
     end
 
     # @return [Array(String, Boolean)] the message, and whether the model changed
