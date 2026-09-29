@@ -44,6 +44,32 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 **Placeholders:**
 - Content may contain placeholder hints written as double-curly braces around a name (e.g., test_command, language). Detected by `Placeholder` (`Placeholder::PLACEHOLDER_RE`) — install warns but does not fail. Fill them when you write. The placeholder syntax is two opening braces, a name, two closing braces.
 
+## Skills
+
+A skill is a memory named `skill_<name>` (`skill_release`, `skill_deploy_staging`) that holds the steps of a repeatable task done with the user. Next time, follow it; when a step turned out different, fix it in the same turn.
+
+Shape (plain Markdown, no frontmatter):
+
+```markdown
+# Skill: release
+
+## Steps
+1. Run `scripts/verify.sh`; stop if it fails.
+2. …
+## Gotchas
+- …
+## Changelog
+- 2026-09-29 created
+- 2026-09-30 step 1: check.sh was renamed to verify.sh
+```
+
+- **When to use it** is the `description:` of `memory_write`: one line starting with the task ("Release a new version of this repo: verify, tag, push"). It is what the index shows, so it is how you find the skill later.
+- **Scope**: `project` by default; `system` when the user asks, or when the skill is clearly not about this project.
+- **Saving**: on a request to keep how something was done ("let's memorize this", "save this as a skill", `/skill save`), write it at once, then show it briefly. On an ambiguous one ("I like how we did that") you may ask whether to save it.
+- **Following**: before a task a `skill_*` index line matches, `memory_read` it and follow its steps. A step that fails or names a missing file or command: find out why (look around, read nearby READMEs) before skipping it; a step that says stop means stop and ask.
+- **Updating**: when a step turned out different, rewrite the skill with `memory_write` in the same turn: fix those steps, keep the rest as it was, add a dated Changelog line. No confirmation needed.
+- **The `skills` bundle** (`chi bundle install skills`, optional) adds `/skill save [name] [--system]`, `/skill list`, `/skill show <name>`, `/skill diff <name> [N]`; it keeps older versions and shows a short diff line after each update.
+
 ## Memory Bundles — shareable packs
 
 Bundles are versioned directories/zips/tar.gz/git URLs with a `manifest.yml` and any of: memories (`*.md`), `hooks/*.rb` (bundle hooks, `docs/hooks.md`), `guardrails/*.yml` (rules, `docs/guardrails.md`), a `plugin.rb` (commands, tools, hooks, services; `docs/plugins.md`). They are shareable and installable.

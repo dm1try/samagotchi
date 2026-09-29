@@ -25,6 +25,14 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
       expect(File.read(File.join(dir, "delegated.md"))).to include("can't delegate further")
     end
 
+    it "teaches skills in identity (every turn's prompt) in at most 6 lines, and in the memory guide" do
+      identity = File.read(File.join(dir, "identity.md"))
+      paragraph = identity[/^- \*\*Skills\*\*.*?(?=^- \*\*|\z)/m]
+      expect(paragraph).to include("skill_<name>", "memory_write", "Changelog", "stop means stop and ask")
+      expect(paragraph.lines.size).to be <= 6
+      expect(File.read(File.join(dir, "memory_guide.md"))).to include("## Skills", "# Skill: release", "/skill save")
+    end
+
     it "has checksums matching the bundled files (edit a file → refresh its sha256 and bump the version)" do
       manifest.files.each_key do |file_key|
         actual = Digest::SHA256.hexdigest(File.read(File.join(dir, file_key.to_s)))
