@@ -153,14 +153,22 @@ RSpec.describe Samagotchi::TerminalUI::AttachedView do
       expect(screen.statuses.size).to eq(before)
     end
 
+    # Poll for +condition+ instead of sleeping a fixed time: a slow runner
+    # gets as long as it needs, up to +timeout+ seconds.
+    def wait_until(timeout: 5)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+      sleep 0.01 until yield || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      yield
+    end
+
     it "runs a ticker thread while the slot is shown, which ends with it" do
       real = described_class.new(screen, tick_interval: 0.02)
       real.generation_feedback_started
-      sleep 0.15
-      expect(screen.statuses.size).to be > 3
+      ticker = real.instance_variable_get(:@ticker)
+      expect(wait_until { screen.statuses.size > 3 }).to be(true)
 
       real.finish_thinking_spinner
-      sleep 0.05
+      expect(wait_until { !ticker.alive? }).to be(true)
       after = screen.statuses.size
       sleep 0.08
       expect(screen.statuses.size).to eq(after)
