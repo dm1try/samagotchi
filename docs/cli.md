@@ -442,7 +442,10 @@ from the saved messages (each step's thinking, narration, tool parameters
 and output, the output capped at 2000 characters) and the timing records
 (status and duration per row). On an `api: openai` host the model's
 reasoning is saved with each step for this (never sent back to the model);
-steps saved before that have none, so they show no thinking.
+steps saved before that have none, so they show no thinking. An `edit` or
+`write` row has a closed `diff +3 −1` under it that opens to the change it
+made (up to 120 lines or 8 KB), live and after a reload (see
+[Guardrails](guardrails.md#ask) for the diff an approval shows first).
 
 ```sh
 chi web --no-web-turn-view   # the classic chat view; --web-turn-view is the default

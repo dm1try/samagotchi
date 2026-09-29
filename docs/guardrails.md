@@ -38,6 +38,17 @@ once it closes. On a short terminal the list shrinks (the hint row, then the `in
 lines, then the header go, then the options fold onto fewer rows). Once answered, one
 line stays in the scrollback: `! execute: git push origin main → Allow once`.
 
+An `edit` or `write` also shows the change it would make, computed without
+touching the file: a `change: +3 −1` line in the question (`new file, 12 lines`;
+`would fail: old text not found in …` when the edit can't apply), and the
+unified diff itself. The web card shows the diff under the path (20 lines,
+then "show all"); the terminals print it above the question, green and red,
+40 lines at most (the rest is on the web). Binary files and files over 1 MB
+say so instead of a diff. After the call runs, its row shows what really
+changed: `diff +3 −1` under the row on the web (closed, it survives a
+reload) and ` +3 −1` at the end of the terminal's tool line. The model never
+sees these diffs.
+
 Who answers:
 
 - REPL (`chi --no-shared`, `-p` without `--non-interactive`): at the `? ` prompt.
