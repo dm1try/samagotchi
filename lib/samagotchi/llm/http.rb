@@ -176,7 +176,8 @@ module Samagotchi
       private :stream_attempt
 
       # Send +request+ and return the response with its body read.
-      # @param retries [Boolean] false: one attempt, network errors raised as is
+      # @param retries [Boolean] false: one attempt, network errors raised as
+      #   is (Net::HTTP's own silent retry of an idempotent GET included)
       # @param check_status [Boolean] false: return an error response instead
       #   of raising its ProviderError
       def fetch(uri, request, retries: true, check_status: true, open_timeout: nil, read_timeout: nil,
@@ -184,7 +185,7 @@ module Samagotchi
         identify(request)
         current = new_attempt_state(uri, request, log_fields, stream: false)
         attempt = lambda do |state|
-          start(uri, open_timeout: open_timeout, read_timeout: read_timeout) do |http|
+          start(uri, open_timeout: open_timeout, read_timeout: read_timeout, max_retries: retries ? nil : 0) do |http|
             state[:http] = http
             http.request(request).tap do |response|
               state[:status] = response.code.to_i
@@ -205,8 +206,9 @@ module Samagotchi
         request["User-Agent"] = Samagotchi::USER_AGENT
       end
 
-      def start(uri, open_timeout: nil, read_timeout: nil, &block)
+      def start(uri, open_timeout: nil, read_timeout: nil, max_retries: nil, &block)
         options = { open_timeout: open_timeout || @open_timeout, read_timeout: read_timeout || @read_timeout }
+        options[:max_retries] = max_retries if max_retries
         options[:use_ssl] = true if uri.scheme == "https"
         Net::HTTP.start(uri.host, uri.port, **options, &block)
       end

@@ -814,7 +814,7 @@ end
     def stub_probe(body: props_body, code: "200")
       response = instance_double(Net::HTTPResponse, code: code, body: body)
       allow(Net::HTTP).to receive(:start)
-        .with("localhost", 8080, open_timeout: 1, read_timeout: 2)
+        .with("localhost", 8080, open_timeout: 1, read_timeout: 2, max_retries: 0)
         .and_yield(http)
       allow(http).to receive(:request) { |req| requests << req.path; response }
     end
@@ -935,6 +935,36 @@ end
         expect(described_class.new(host: "localhost", port: 8000, transport: transport).context_window(model: "m")).to be_nil
       end
       expect(Net::HTTP).not_to have_received(:start)
+    end
+  end
+
+  # A server that accepts and never answers: what a llama.cpp busy on a long
+  # prompt, or the e2e fake holding its script, looks like to a probe.
+  describe "a hung /props" do
+    around { |example| FakeProviderServer.without_webmock { example.run } }
+
+    let(:server) { TCPServer.new("127.0.0.1", 0) }
+    let(:accepted) { Queue.new }
+    let(:client) { described_class.new(host: "127.0.0.1", port: server.addr[1], sleeper: ->(_seconds) {}) }
+
+    before do
+      stub_const("#{described_class}::CONTEXT_WINDOW_PROBE_READ_TIMEOUT", 0.2)
+      @acceptor = Thread.new do
+        loop { accepted << server.accept }
+      rescue IOError, Errno::EBADF
+        nil
+      end
+    end
+
+    after do
+      @acceptor.kill
+      server.close
+      accepted.size.times { accepted.pop.close }
+    end
+
+    it "is asked once per probe: no silent second attempt after the read timeout" do
+      expect(client.server_props(model: "m").status).to eq(:network_error)
+      expect(accepted.size).to eq(1)
     end
   end
 end
