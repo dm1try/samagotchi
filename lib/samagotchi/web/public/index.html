@@ -5,18 +5,18 @@
 <title>Chi</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-:root{--bg:#0b0d11;--bg-panel:#151821;--bg-inset:#0f1115;--bg-raised:#22262f;--bg-hover:#1b1f27;--border:#1f232b;--border-strong:#2d333f;--text:#e6e8eb;--text-bright:#f0f3f6;--text-2:#c9d1d9;--text-3:#9aa4b2;--text-muted:#8b949e;--text-faint:#6e7681;--accent:#7aa5ff;--accent-strong:#1f6feb;--accent-bg:#1b2336;--accent-ring:rgba(122,165,255,.18);--primary:#2a68d1;--ok:#3fb950;--ok-text:#7ee787;--ok-bg:#1a2e1a;--warn:#d29922;--warn-text:#e3b341;--warn-bright:#f2cc60;--warn-bg:#2b2108;--warn-border:#6b5416;--danger:#f85149;--danger-bg:#da3633;--danger-text:#ff7b72;--danger-bg-dim:#3d1f1f;--think:#8957e5;--think-text:#d2a8ff;--accent-border:#223150;--accent-tint:color-mix(in srgb,var(--accent) 7%,transparent);
+:root{--bg:#0b0d11;--bg-panel:#151821;--bg-inset:#0f1115;--bg-raised:#22262f;--bg-hover:#1b1f27;--border:#1f232b;--border-strong:#2d333f;--text:#e6e8eb;--text-bright:#f0f3f6;--text-2:#c9d1d9;--text-3:#9aa4b2;--text-muted:#8b949e;--text-faint:#6e7681;--accent:#7aa5ff;--accent-strong:#1f6feb;--accent-bg:#1b2336;--accent-ring:rgba(122,165,255,.18);--primary:#2a68d1;--ok:#3fb950;--ok-text:#7ee787;--ok-bg:#1a2e1a;--warn:#d29922;--warn-text:#e3b341;--warn-bright:#f2cc60;--warn-bg:#2b2108;--warn-border:#6b5416;--danger:#f85149;--danger-bg:#da3633;--danger-text:#ff7b72;--danger-bg-dim:#3d1f1f;--think:#8957e5;--think-text:#d2a8ff;--accent-border:#223150;--accent-tint:color-mix(in srgb,var(--accent) 7%,transparent);--narr:color-mix(in srgb,var(--accent) 38%,var(--text-muted));
   --glass-bg:color-mix(in srgb,var(--bg-panel) 70%,transparent);--glass-border:rgba(255,255,255,.08);--glass-highlight:rgba(255,255,255,.05);--glass-shadow:0 8px 30px rgba(0,0,0,.35);
   --diff-add-bg:rgba(63,185,80,.14);--diff-add-text:#aff5b4;--diff-del-bg:rgba(248,81,73,.14);--diff-del-text:#ffc1bc}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),radial-gradient(900px 700px at 100% 100%,color-mix(in srgb,var(--think) 9%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;display:flex;flex-direction:column}
 /* Glass: the composer card, the strip cards, the all-sessions cards and the question cards (by selector, so app.js is untouched). */
-#dock,#topStrip .card,#allList .card,.bubble.question,.bubble.plugin-card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
+#dock,.turn-stage,.dock-card,#topStrip .card,#allList .card,.bubble.question,.bubble.plugin-card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
 #topStrip .card:hover,#allList .card:hover{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);border-color:rgba(255,255,255,.14)}
 #topStrip .card.active,#allList .card.active{background:color-mix(in srgb,var(--accent-bg) 75%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#dock,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel)}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel))}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel))}}
-@media (prefers-reduced-transparency:reduce){#dock,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}}
-body.no-glass #dock,body.no-glass #topStrip .card,body.no-glass #allList .card,body.no-glass #allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#dock,.turn-stage,.dock-card,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel)}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel))}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel))}}
+@media (prefers-reduced-transparency:reduce){#dock,.turn-stage,.dock-card,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}}
+body.no-glass #dock,body.no-glass .turn-stage,body.no-glass .dock-card,body.no-glass #topStrip .card,body.no-glass #allList .card,body.no-glass #allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
 body.no-glass .bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}
 body.no-glass .bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}
 button,input,textarea,select{font:inherit}
@@ -416,6 +416,120 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 #commandList .command-desc{flex:1;min-width:0;font-size:13px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #commandList .command-note{font-size:11px;color:var(--text-faint);white-space:nowrap}
 @media(max-width:600px){#commandList{left:6px;width:calc(100% - 12px)}#commandList .command-option{flex-wrap:wrap;row-gap:0;padding:8px 10px}#commandList .command-desc{flex-basis:100%;order:3}}
+/* The stage view (web.view: stage, stage_view.js): the running turn as the dock card's top section, pinned above the composer.
+   Fixed slots (status row, prompt line, a two-line headline, the tool row, a one-line trail) never change height while the
+   turn runs; cards and rows that arrive meanwhile go in their own capped scroller (extras); the cloud is the turn view's
+   block behind a chip of ticks. --stage-max (stage_view.js fitCap) keeps it inside the session panel. */
+/* D2: its own glass card above the composer card (as a section of one card the composer's focus ring wrapped the turn too):
+   in the stage view #dock is a clear column holding the stage and .dock-card (the composer and its footer, stage_view.js). */
+body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;border:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;gap:10px}
+.dock-card{display:flex;flex-direction:column;border-radius:16px;position:relative;transition:border-color .12s ease,box-shadow .12s ease}
+.dock-card:focus-within{border-color:color-mix(in srgb,var(--accent) 70%,transparent);box-shadow:0 0 0 3px var(--accent-ring),var(--glass-shadow)}
+.turn-stage{display:flex;flex-direction:column;min-height:0;max-height:var(--stage-max,60vh);border-left:3px solid var(--accent);border-radius:14px;overflow:hidden}
+.turn-stage[hidden]{display:none}
+.turn-stage.ended{border-left-color:var(--border-strong)}
+.turn-stage[data-phase="answered"]{border-left-color:var(--ok)}
+.turn-stage[data-phase="stopped"],.turn-stage[data-phase="waiting for you"]{border-left-color:var(--warn)}
+.turn-stage[data-phase="failed"]{border-left-color:var(--danger)}
+.turn-stage.enter{animation:ts-rise .35s cubic-bezier(.3,.7,.2,1)}
+@keyframes ts-rise{from{opacity:0;transform:translateY(14px)}}
+.turn-stage.leaving{transition:height .4s cubic-bezier(.3,.7,.2,1),opacity .3s ease;opacity:0}
+.ts-arrive{animation:ts-arrive .5s cubic-bezier(.3,.7,.2,1)}
+@keyframes ts-arrive{from{opacity:0;transform:translateY(60px)}}
+.ts-status{flex:none;display:flex;align-items:center;gap:8px;min-width:0;padding:8px 8px 0 14px;font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.turn-stage.collapsed .ts-status{padding-bottom:8px;cursor:pointer}
+.ts-mark{flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent);animation:step-pulse 1.6s ease-in-out infinite}
+.turn-stage.ended .ts-mark{width:auto;height:auto;background:none;animation:none;font-size:12px;line-height:1}
+.turn-stage[data-phase="answered"] .ts-mark,.turn-stage[data-phase="answered"] .ts-phase{color:var(--ok)}
+.turn-stage[data-phase="stopped"] .ts-mark,.turn-stage[data-phase="stopped"] .ts-phase,.turn-stage[data-phase="waiting for you"] .ts-phase{color:var(--warn-text)}
+.turn-stage[data-phase="failed"] .ts-mark,.turn-stage[data-phase="failed"] .ts-phase{color:var(--danger-text)}
+.turn-stage[data-phase="waiting for you"] .ts-mark{background:var(--warn)}
+.ts-phase{color:var(--accent);font-weight:600}
+.ts-timing{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ts-timing .turn-timing{margin:0;font-size:12px;color:var(--text-muted);display:inline}
+.ts-mini{min-width:0;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-2)}
+.ts-defer{color:var(--text-faint);font-style:italic;opacity:0;transition:opacity .2s}
+.turn-stage.ended.in-use .ts-defer{opacity:1}
+.ts-fold{margin-left:auto;flex:none;width:28px;height:24px;padding:0;border-radius:6px;background:transparent;color:var(--text-muted);font-size:14px}
+.ts-fold:hover:not(:disabled){filter:none;background:var(--bg-hover);color:var(--text)}
+.ts-scroll{position:relative;flex:1 1 auto;min-height:0;overflow:auto;overflow-anchor:none;display:flex;flex-direction:column;gap:8px;padding:8px 14px 10px;scrollbar-width:thin}
+.ts-scroll[hidden],.ts-scroll>[hidden]{display:none}
+/* Flex column children with overflow:hidden would shrink to nothing. */
+.ts-scroll>*{flex-shrink:0}
+/* The prompt line: the turn's own bubble, one line; a click shows it whole. */
+.ts-prompt{cursor:pointer;min-width:0}
+.ts-prompt>.bubble.user{display:flex;gap:6px;align-items:baseline;max-width:none;margin:0;padding:0;background:transparent;border:0;border-radius:0;font-size:13px;line-height:1.45;color:var(--text-muted)}
+.ts-prompt>.bubble.user::before{content:"you";flex:none;color:var(--accent);font-weight:600}
+.ts-prompt>.bubble.user>.copy-btn{display:none}
+.ts-prompt:not(.full) .user-message{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;line-clamp:1;overflow:hidden;white-space:normal}
+.ts-prompt:not(.full) .user-message .thumbs{display:none}
+.ts-prompt:not(.full) .user-message blockquote{display:inline;border:0;padding:0;margin:0}
+/* The live slots: fixed heights (two headline lines, one tool row, one trail line). */
+.ts-live{display:flex;flex-direction:column;gap:8px}
+.ts-headline{height:42px;font-size:14px;line-height:21px;color:var(--narr);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;cursor:pointer;border-radius:6px}
+.ts-headline:hover{background:var(--bg-hover)}
+.ts-headline:not(.thinking)::before{content:"\203A";color:var(--accent);font-weight:700;margin-right:7px}
+.ts-headline.thinking{font-size:13.5px;font-style:italic;color:var(--text-muted)}
+.ts-think-tag{font-style:normal;font-size:12.5px;color:var(--think-text);margin-right:6px}
+.ts-headline.fresh{animation:ts-fade .3s ease}
+@keyframes ts-fade{from{opacity:.35}}
+.ts-now{height:32px;display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}
+.ts-spin{flex:none;width:11px;height:11px;border:2px solid var(--warn);border-right-color:transparent;border-radius:50%;animation:init-spin .8s linear infinite}
+.ts-idle{flex:none;width:11px;height:11px;border:2px solid var(--border-strong);border-radius:50%}
+.ts-tool{flex:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:600;color:var(--accent)}
+.ts-tool.exec{color:var(--think-text)}
+.ts-tool.edit{color:var(--ok-text)}
+.ts-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--text-2)}
+.ts-title.quiet{font-family:inherit;font-style:italic;color:var(--text-faint)}
+.ts-trail{height:18px;display:flex;gap:10px;overflow:hidden;font-size:12px;line-height:18px;color:var(--text-faint);white-space:nowrap}
+.ts-trail-item{flex:none;max-width:36ch;overflow:hidden;text-overflow:ellipsis}
+.ts-trail-item.error{color:var(--danger-text)}
+.ts-trail-item.warn{color:var(--warn-text)}
+.ts-trail-item.none{font-style:italic}
+/* A card waits: the tool row and trail give it their room. */
+.turn-stage.waiting .ts-now,.turn-stage.waiting .ts-trail{display:none}
+/* Rows that arrive during the turn (cards, queued prompts, commands, notes) and after its end (the end line): capped, own scroll. */
+.ts-extras,.ts-tail{display:flex;flex-direction:column;gap:8px;max-height:calc(var(--stage-max,60vh) * .4);overflow:auto;scrollbar-width:thin}
+.turn-stage.waiting .ts-extras{max-height:calc(var(--stage-max,60vh) * .7)}
+.ts-extras>*,.ts-tail>*{flex-shrink:0}
+.ts-extras>.bubble.user{max-width:none;margin:0;padding:4px 10px;font-size:13px;line-height:1.45;background:transparent;color:var(--text-2)}
+.ts-extras>.bubble.user>.copy-btn{display:none}
+.ts-extras>.bubble.user .user-message{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;white-space:normal}
+/* Inside the dock's own blur a second backdrop-filter sees nothing: the cards are opaque here (as #commandList is). */
+.turn-stage .bubble.question,.turn-stage .bubble.plugin-card{-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none}
+.turn-stage .bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel))}
+.turn-stage .bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel))}
+.turn-stage .bubble.plugin-card.warn{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel))}
+.ts-answer{display:flex;flex-direction:column;gap:8px}
+.ts-answer>.bubble.output{border-left:0;background:transparent;border:0;padding:0}
+.ts-answer>.bubble.output>.copy-btn{top:0;right:0}
+/* The cloud: one chip (steps, calls, a tick per call), the turn view's block behind it. */
+.ts-cloud{display:flex;flex-direction:column;gap:6px}
+.ts-chip{display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text-muted);text-align:left}
+.ts-chip:hover:not(:disabled){filter:none;background:var(--bg-hover)}
+.ts-chip-label{font-size:12.5px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ts-chip-label::before{content:"\25B8  ";color:var(--accent)}
+.ts-cloud.open .ts-chip-label::before{content:"\25BE  "}
+.ts-ticks{display:flex;flex-wrap:wrap;gap:2px;flex:1 1 120px;min-width:0}
+.ts-tick{width:5px;height:12px;border-radius:1.5px;background:var(--text-faint);opacity:.55;cursor:pointer}
+.ts-tick.exec{background:var(--think);opacity:.85}
+.ts-tick.edit{background:var(--ok);opacity:.85}
+.ts-tick.other{background:var(--accent);opacity:.7}
+.ts-tick.error{background:var(--danger);opacity:1}
+.ts-tick.running{background:var(--warn);opacity:1;animation:ts-blink 1s ease-in-out infinite}
+@keyframes ts-blink{50%{opacity:.35}}
+.ts-cloud-body{max-height:calc(var(--stage-max,60vh) * .62);overflow:auto;scrollbar-width:thin;border-left:1px solid var(--border);margin-left:6px;padding-left:10px}
+.ts-cloud-body[hidden]{display:none}
+.turn-stage .turn-work{border:0;background:transparent;padding:0;border-radius:0}
+.turn-stage .turn-work>summary{display:none}
+.turn-stage .ts-cloud-body .gen:first-of-type{margin-top:0;border-top:0}
+@media(max-width:600px){
+  .ts-status{padding-left:10px}
+  .ts-scroll{padding:8px 10px 10px}
+  .ts-defer{display:none}
+  .ts-trail-item{max-width:24ch}
+}
+@media (prefers-reduced-motion:reduce){.turn-stage.enter,.ts-arrive,.ts-headline.fresh,.ts-tick.running,.ts-mark{animation:none}.turn-stage.leaving{transition:none}}
 #infoBar{display:flex;padding:8px 14px 10px;border-top:1px solid var(--glass-border);background:transparent;border-radius:0 0 16px 16px;color:var(--text-2);gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;transition:opacity 280ms ease}
 #infoBar.visible{display:flex}
 #infoBar .info{flex:1;min-width:0;font-size:13px;line-height:1.4;word-break:break-word;display:flex;flex-direction:column;gap:2px}
