@@ -25,10 +25,12 @@ module Samagotchi
     # @param profile [ModelProfile, nil] the model's prompt profile (native)
     # @param adapter [LLM::OpenAIChat, nil] the chat host's adapter
     # @param models [Hash, nil] ConfigFile.model_settings (specs)
+    # @param names [Array<String>, nil] the model's lookup names, the typed
+    #   alias first (Engine#model_lookup_names); default: the target's names
     # @return [Answer]
-    def self.for(target, profile: nil, adapter: nil, models: nil)
+    def self.for(target, profile: nil, adapter: nil, models: nil, names: nil)
       entry = target.entry
-      configured = configured(target, entry, models)
+      configured = configured(target, entry, models, names)
       return configured if configured&.no?
 
       if entry.chat?
@@ -44,13 +46,13 @@ module Samagotchi
       marker.is_a?(String) && !marker.empty? ? marker : nil
     end
 
-    def self.configured(target, entry, models)
+    def self.configured(target, entry, models, names = nil)
       models ||= begin
         ConfigFile.model_settings
       rescue StandardError
         {}
       end
-      key, value = ConfigFile.model_setting([target.model, target.bare_model], :vision, models: models)
+      key, value = ConfigFile.model_setting(names || [target.model, target.bare_model], :vision, models: models)
       return Answer.new(value: value, reason: value ? nil : "models: #{key} sets vision: false") if key
       return nil if entry.vision.nil?
 

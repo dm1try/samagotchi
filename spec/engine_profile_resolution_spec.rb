@@ -143,6 +143,17 @@ RSpec.describe "Engine prompt profile resolution" do
 
     expect(engine.profile_resolution.label).to eq("config (models: ista)")
   end
+
+  it "looks up models: vision under the alias as typed, like the profile" do
+    allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("ista" => { vision: false })
+    allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).and_call_original
+    allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).with("ista").and_return("house-blend-35b")
+    engine = engine_with(FakeResolvingClient.new(answered(ornith_props)))
+
+    engine.switch_model!("ista")
+
+    expect(engine.send(:turn_vision, session).capability).to have_attributes(value: false, reason: "models: ista sets vision: false")
+  end
 end
 
 RSpec.describe "Engine#stats_snapshot" do

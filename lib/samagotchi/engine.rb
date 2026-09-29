@@ -2139,7 +2139,9 @@ module Samagotchi
     def turn_vision(session)
       target = @host_registry.resolve(@effective_model_name)
       VisionContext.new(session_dir: Session.session_dir(session.id, state_dir: session_state_dir),
-                        capability: -> { VisionSupport.for(target, profile: profile, adapter: vision_adapter(target)) })
+                        capability: lambda {
+                          VisionSupport.for(target, profile: profile, adapter: vision_adapter(target), names: model_lookup_names(target))
+                        })
     end
 
     # The effective model's request parameters (hosts: and models:
