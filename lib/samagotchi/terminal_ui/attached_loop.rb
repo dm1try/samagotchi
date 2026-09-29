@@ -593,6 +593,13 @@ module Samagotchi
         # What was typed at the prompt waits for the question to close.
         @set_aside = @reader&.typed_text unless @question
         @question = QuestionPrompt.new(pending)
+        # An edit's diff goes above, into the scrollback, once per question
+        # (a join gets it from the snapshot and may get the event too).
+        unless @previewed_id == @question.id
+          @previewed_id = @question.id
+          preview = @question.preview_lines(paint: method(:paint))
+          @screen.commit(preview.join("\n")) unless preview.empty?
+        end
         # The prompt first, so the choices never show under the typed text.
         sync_prompt(keep_text: false)
         @screen.set_slot(:notes, @question.slot(paint: method(:paint)))
@@ -1061,7 +1068,7 @@ module Samagotchi
         params_suffix = params.empty? ? "" : " #{paint(params, 90)}"
         status = part[:status].to_s
         "#{paint('tool>', 36)} #{part[:tool]}#{params_suffix}: #{paint(status, status_color(status))}" \
-          "#{format_tool_image_suffix(part[:images])}"
+          "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}"
       end
     end
   end

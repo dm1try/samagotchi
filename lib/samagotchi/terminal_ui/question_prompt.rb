@@ -14,6 +14,8 @@ module Samagotchi
     # an optional "; reason"; a substring would pick the wrong one ("y" is
     # in "Deny").
     class QuestionPrompt
+      DIFF_CODES = { "+" => 32, "-" => 31, "@" => 2, "\\" => 2 }.freeze
+
       # A parsed answer. +error+ set: re-ask. +note+: print, then accept.
       Answer = Struct.new(:selected, :freeform, :error, :note, keyword_init: true) do
         def ok? = error.nil?
@@ -24,6 +26,8 @@ module Samagotchi
       # @param pending [Hash] Engine#pending_question (symbol or string keys)
       def initialize(pending)
         field = ->(key) { pending[key] || pending[key.to_s] }
+        approval = field.(:approval)
+        @preview = approval.is_a?(Hash) ? (approval[:preview] || approval["preview"]) : nil
         @id = field.(:id).to_s
         @question = field.(:question).to_s
         @options = Array(field.(:options)).map { |v| v.to_s.strip }.reject(&:empty?)
@@ -47,6 +51,34 @@ module Samagotchi
                          question: first.to_s, mark: mark, details: rest,
                          options: keys.zip(options).map { |key, label| QuestionSlot::Option.new(key, label) },
                          hint: slot_hint, question_code: approval? ? 33 : 94, paint: paint)
+      end
+
+      # The most diff lines #preview_lines prints; the web shows them all.
+      PREVIEW_LINES = 40
+
+      # An edit/write approval's dry-run diff (approval.preview, symbol or
+      # string keys: nested keys are strings after a reload or SSE), as
+      # lines to print above the slot: coloured +/-, dim @@, cut at
+      # PREVIEW_LINES. [] for none.
+      def preview_lines(paint: ->(text, _code) { text })
+        preview = @preview
+        return [] unless preview.is_a?(Hash)
+
+        get = ->(key) { preview[key] || preview[key.to_s] }
+        return [paint.("this edit would fail: #{get.(:error)}", 33)] if get.(:error)
+        return [paint.("diff not shown: #{get.(:skipped)}", 2)] if get.(:skipped)
+
+        lines = get.(:text).to_s.split("\n")
+        return [] if lines.empty?
+
+        # TextDiff's own cut note ("… N more lines") counts toward the rest.
+        cut = lines.last.to_s[/\A… (\d+) more lines\z/, 1]
+        lines.pop if cut
+        hidden = [lines.size - PREVIEW_LINES, 0].max + cut.to_i
+        shown = lines.first(PREVIEW_LINES).map { |line| paint.(line, diff_code(line)) }
+        shown.unshift(paint.("new file", 2)) if get.(:new_file)
+        shown << paint.("… #{hidden} more lines (full diff on the web)", 2) if hidden.positive?
+        shown
       end
 
       # The one line that stays in the scrollback once the question closes:
@@ -148,6 +180,9 @@ module Samagotchi
         found = options.find { |o| o.downcase == tok.downcase || o.downcase.include?(tok.downcase) }
         found ? [found, nil] : [nil, "Unknown option '#{tok}'. Use numbers 1-#{options.size} or exact labels."]
       end
+
+      # "+" green, "-" red, "@@" and "\ No newline" dim, context plain.
+      def diff_code(line) = DIFF_CODES.fetch(line[0], 0)
     end
   end
 end

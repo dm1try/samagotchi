@@ -210,6 +210,15 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       expect(out).to end_with("! execute: git push → Deny: too risky\n")
     end
 
+    it "prints an edit's diff above the choices" do
+      allow(engine).to receive(:answer_question)
+      edit = approval.merge(question: "edit: /k.conf\n  why: outside (rule r, config)\n  change: +1 \u22121",
+                            approval: { scopes: %w[once], preview: { "text" => "@@ -1 +1 @@\n-a\n+b", "added" => 1, "removed" => 1 } })
+      _, out = answer_with("y\n", edit)
+      expect(out).to start_with("@@ -1 +1 @@\n-a\n+b\nApprove tool call?\n! edit: /k.conf\n")
+      expect(out).to include("  change: +1 \u22121\n")
+    end
+
     it "denies on an empty line" do
       allow(engine).to receive(:cancel_question)
       result, out = answer_with("\n", approval)

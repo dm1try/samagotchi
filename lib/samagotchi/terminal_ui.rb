@@ -1967,6 +1967,9 @@ module Samagotchi
 
       # Ensure spinner cleared and terminal in known state (same as reminder mute handling)
       finish_thinking_spinner rescue nil
+      # An edit's diff goes above the slot, into the scrollback.
+      preview = prompt.preview_lines(paint: method(:paint))
+      @surface.commit(preview.join("\n")) unless preview.empty?
       choices = prompt.slot(paint: method(:paint))
 
       question_prompt = paint(QUESTION_PROMPT, 33)

@@ -50,6 +50,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(attached).to be_running
     end
 
+    it "adds an edit's +N −M to its tool line on a join" do
+      turn = { prompt: "go", origin: nil,
+               parts: [{ kind: "tool", tool: "edit", params: "path=k", status: "ok", diff: { text: "x", added: 3, removed: 1 } }] }
+      feed(snapshot(current_turn: turn))
+      expect(screen.lines).to include("tool> edit path=k: ok +3 \u22121")
+    end
+
     it "does not repeat the joined turn's earlier tools in its summary" do
       activity = { action: "reading file", tool: "read", params: "path=log", status: "ok" }
       turn = { prompt: "go", origin: nil, parts: [{ kind: "tool", tool: "read", params: "path=log", status: "ok" }] }
@@ -640,6 +647,21 @@ end
       finish
       expect(client).to have_received(:answer).with(id: "a1", selected: ["Allow once"], freeform: nil)
       expect(screen.lines).to include("! execute: git push → Allow once")
+    end
+
+    it "prints an edit's diff above the slot once, when the snapshot and the event both bring it" do
+      allow(client).to receive(:dismiss_question).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
+      edit = approval.merge("question" => "edit: /k.conf\n  change: +1 \u22121",
+                            "approval" => { "scopes" => %w[once], "preview" => { "text" => "@@ -1 +1 @@\n-a\n+b" } })
+      start(first: snapshot(pending_question: edit))
+      wait_for { prompts.last == "? " }
+      push("type" => "question_requested", "pending_question" => edit)
+      wait_for { screen.slots[:notes] }
+      expect(screen.slots[:notes]).to include("! edit: /k.conf", "  change: +1 \u22121")
+      typed << ""
+      wait_for { prompts.last == "> " }
+      finish
+      expect(screen.lines.count("@@ -1 +1 @@\n-a\n+b")).to eq(1)
     end
 
     it "sends n with a reason, and says denied on an empty answer" do

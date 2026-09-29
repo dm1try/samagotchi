@@ -50,6 +50,15 @@ module Samagotchi
         " #{paint(refs.map { |ref| "→ image #{ref[:width]}×#{ref[:height]}" }.join(", "), 90)}"
       end
 
+      # An edit/write row's change, after the row: " +3 −1" (green, red).
+      # +diff+ is EditPreview's hash, symbol or string keys (SSE, snapshot).
+      def format_tool_diff_suffix(diff)
+        return "" unless diff.is_a?(Hash)
+
+        get = ->(key) { diff[key] || diff[key.to_s] }
+        " #{paint("+#{get.(:added).to_i}", 32)} #{paint("\u2212#{get.(:removed).to_i}", 31)}"
+      end
+
       # A card (Engine#show_card) as a framed block: the title and its
       # source, the body as wrapped plain text (no terminal markdown), and
       # one `→ <command>` line per action, the label after it when it says

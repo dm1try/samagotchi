@@ -58,7 +58,8 @@ module Samagotchi
         when :tool_call_completed
           @view.clear_generation_retry
           @view.tool_call_feedback_completed(event)
-          render_streamed_tool_activity(event[:activity], duration_ms: tool_duration_ms(event), images: event[:images])
+          render_streamed_tool_activity(event[:activity], duration_ms: tool_duration_ms(event), images: event[:images],
+                                                          diff: event[:diff])
         when :generation_completed, :generation_cancelled, :tool_dispatch_started
           @view.generation_feedback_finished
         when :pending_input_merged
@@ -163,12 +164,13 @@ module Samagotchi
 
 private
 
-      def render_streamed_tool_activity(activity, duration_ms:, images: nil)
+      def render_streamed_tool_activity(activity, duration_ms:, images: nil, diff: nil)
         return if activity.nil?
 
         @streamed_tool_activity[tool_activity_key(activity)] += 1
         line = @view.format_tool_activity_line(activity, duration_ms: duration_ms)
         line += @view.format_tool_image_suffix(images) if images&.any?
+        line += @view.format_tool_diff_suffix(diff) if diff
         @view.print_line(line)
       end
 

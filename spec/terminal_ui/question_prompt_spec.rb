@@ -66,4 +66,33 @@ RSpec.describe Samagotchi::TerminalUI::QuestionPrompt, "approval" do
     expect(pick("n; not now").to_h).to include(selected: ["Deny"], freeform: "not now")
     expect(pick("; use a branch").to_h).to include(selected: [], freeform: "use a branch")
   end
+
+  describe "#preview_lines (an edit approval's diff, printed above the slot)" do
+    def prompt_with(preview) = described_class.new({ "id" => "a1", "kind" => "approval", "question" => "edit: /k.conf",
+                                                     "options" => %w[Allow Deny], "approval" => { "preview" => preview } })
+
+    let(:diff) { { "text" => "@@ -1,2 +1,2 @@\n a\n-b\n+c\n\\ No newline at end of file", "added" => 1, "removed" => 1 } }
+
+    it "reads string-keyed nested input (a reload, SSE) and colours + / - / @@" do
+      paint = ->(text, code) { code.zero? ? text : "<#{code}>#{text}" }
+      expect(prompt_with(diff).preview_lines(paint: paint))
+        .to eq(["<2>@@ -1,2 +1,2 @@", " a", "<31>-b", "<32>+c", "<2>\\ No newline at end of file"])
+      expect(described_class.new(id: "a", question: "q", options: %w[a], approval: { preview: diff.transform_keys(&:to_sym) })
+        .preview_lines).to eq(["@@ -1,2 +1,2 @@", " a", "-b", "+c", "\\ No newline at end of file"])
+    end
+
+    it "cuts at 40 lines and counts what TextDiff already cut" do
+      lines = ["@@ -0,0 +1,300 @@"] + Array.new(119) { |i| "+#{i}" } + ["… 181 more lines"]
+      out = prompt_with("text" => lines.join("\n"), "added" => 300, "new_file" => true).preview_lines
+      expect(out.first).to eq("new file")
+      expect(out.size).to eq(42)
+      expect(out.last).to eq("… 261 more lines (full diff on the web)")
+    end
+
+    it "says why there's no diff, and gives nothing without a preview" do
+      expect(prompt_with("error" => "old text not found in /k").preview_lines).to eq(["this edit would fail: old text not found in /k"])
+      expect(prompt_with("skipped" => "binary file").preview_lines).to eq(["diff not shown: binary file"])
+      expect(prompt.preview_lines).to eq([])
+    end
+  end
 end
