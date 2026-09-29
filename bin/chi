@@ -916,7 +916,7 @@ ARGV.each do |arg|
   base = arg.split("=", 2).first
   # If dashed version is a known flag (registry or hardcoded), reject underscore variant
   dashed = base.tr("_", "-")
-  known = %w[--prompt --resume --attach --shared --no-shared --model --memory --mute --no-interrupt --non-interactive --verbose --no-default-input --port --open] + Samagotchi::Config.cli_entries.map(&:cli_flag)
+  known = %w[--prompt --resume --attach --shared --no-shared --model --thinking --memory --mute --no-interrupt --non-interactive --verbose --no-default-input --port --open] + Samagotchi::Config.cli_entries.map(&:cli_flag)
   if known.include?(dashed) || known.include?(base)
     warn "Unknown option: #{arg} (did you mean #{dashed}?)"
     exit 1
@@ -946,6 +946,8 @@ parser = OptionParser.new do |opts|
   opts.on("--model NAME", "Model selector (runtime only, overrides --resume) [alias for --default-model]") { |m| options[:model] = m; cli_overrides["default.model"] = m }
   opts.on("--profile NAME", Samagotchi::ModelProfile::NAMES,
           "Prompt profile for every model in this run (#{Samagotchi::ModelProfile::NAMES.join('|')}) [alias for --model-profile]") { |p| cli_overrides["model.profile"] = p }
+  opts.on("--thinking LEVEL", Samagotchi::Thinking::LEVELS.map(&:to_s), "How much the model thinks this run: off|low|medium|high|default (outranks config.yml; " \
+                              "sessions already running keep theirs) [env SAMAGOTCHI_THINKING_LEVEL]") { |l| cli_overrides["thinking.level"] = l }
   opts.on("--memory NAME", "Preload a memory entry into the system prompt (repeatable; a comma list too)") { |m| (options[:memories] ||= []) << m }
   opts.on("--mute NAME", "Hide a memory from this session: not in the prompt, refused by memory_read (repeatable; a comma list too)") { |m| (options[:muted] ||= []) << m }
   opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true; cli_overrides["no_interrupt"] = true }

@@ -8,6 +8,9 @@ require "set"
 require_relative "log"
 
 module Samagotchi
+  # Parses the thinking: levels of host and model entries (it needs Config).
+  autoload :Thinking, File.expand_path("thinking", __dir__)
+
   # Unified configuration registry implementing the implicit convention:
   #   ENV    SAMAGOTCHI_ATTR            (UPPER + prefix + _ = nesting)
   #   YAML   attr: / nested: {param:}   (lower snake, dot = nesting, Option A leaf keeps _)
@@ -118,6 +121,11 @@ module Samagotchi
       Entry.new(key: "thinking.ui",              yaml_path: %w[thinking ui],              type: :string, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "thinking.render_interval", yaml_path: %w[thinking render_interval], type: :float,   default: 0.08,            expose: %i[env config cli]),
       Entry.new(key: "thinking.turn_preamble",   yaml_path: %w[thinking turn_preamble],   type: :bool,   default: true,             expose: %i[env config cli]),
+      # How much models think: off|low|medium|high|default, parsed by Thinking
+      # (a :string, since YAML reads an unquoted off as false). The CLI flag
+      # is bin/chi's own --thinking; models: and hosts: entries rank below
+      # the flag and the env, above config.yml's value.
+      Entry.new(key: "thinking.level",           yaml_path: %w[thinking level],           type: :string, default: "default",       expose: %i[env config]),
 
       Entry.new(key: "default.n_predict",        yaml_path: %w[default n_predict],        type: :integer, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "max_tool_output_chars",    yaml_path: %w[max_tool_output_chars],    type: :integer, default: 10_000,          expose: %i[env config cli]),
@@ -166,8 +174,8 @@ module Samagotchi
     # Maps of named entries and the keys an entry may hold
     # (ConfigFile.hosts_config, ConfigFile.model_settings).
     MAP_ENTRY_KEYS = {
-      "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision sampling enabled].freeze,
-      "models" => %w[profile vision sampling].freeze
+      "hosts" => %w[host port url transport api api_key_env profile first_token_timeout vision sampling thinking enabled].freeze,
+      "models" => %w[profile vision sampling thinking].freeze
     }.freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
     SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze }.freeze
@@ -662,6 +670,8 @@ module Samagotchi
       # avoid polluting ENV with defaults.
       Samagotchi::Config.all_entries.each do |entry|
         next unless entry.env_exposed?
+        # The env's thinking.level outranks models:/hosts: levels, the file's doesn't (Thinking.resolve).
+        next if entry.key == "thinking.level"
         # check if file actually contained this key (including legacy flat)
         file_val = Samagotchi::Config.lookup_yaml(raw, entry.yaml_path)
         file_val ||= raw[entry.env_key] if raw.key?(entry.env_key)
@@ -736,6 +746,7 @@ module Samagotchi
           first_token_timeout = raw_cfg.key?("first_token_timeout") ? raw_cfg["first_token_timeout"] : raw_cfg[:first_token_timeout]
           vision = ConfigFile.vision_flag(raw_cfg.key?("vision") ? raw_cfg["vision"] : raw_cfg[:vision], "hosts entry '#{name}'")
           sampling = ConfigFile.sampling_map(raw_cfg.key?("sampling") ? raw_cfg["sampling"] : raw_cfg[:sampling], "hosts entry '#{name}'")
+          thinking = Thinking.level(raw_cfg.key?("thinking") ? raw_cfg["thinking"] : raw_cfg[:thinking], "hosts entry '#{name}'")
           unless first_token_timeout.nil? || (first_token_timeout.is_a?(Numeric) && !first_token_timeout.negative?)
             warn_once "Warning: hosts entry '#{name}': first_token_timeout must be seconds (0 = off); using the default"
             first_token_timeout = nil
@@ -799,7 +810,7 @@ module Samagotchi
                                   api: api_val&.to_sym, original_name: name, scheme: scheme,
                                   url: url.empty? ? nil : url, api_key_env: api_key_env.empty? ? nil : api_key_env,
                                   profile: profile.empty? ? nil : profile, first_token_timeout: first_token_timeout,
-                                  vision: vision, sampling: sampling }
+                                  vision: vision, sampling: sampling, thinking: thinking }
         end
       end
 
@@ -922,7 +933,7 @@ module Samagotchi
         location = v[:url] ? { "url" => v[:url] } : { "host" => v[:host], "port" => v[:port] }
         location.merge("transport" => v[:transport]&.to_s, "api" => v[:api]&.to_s, "api_key_env" => v[:api_key_env],
                        "profile" => v[:profile], "first_token_timeout" => v[:first_token_timeout],
-                       "vision" => v[:vision], "sampling" => v[:sampling]).compact
+                       "vision" => v[:vision], "sampling" => v[:sampling], "thinking" => v[:thinking]&.to_s).compact
       end
       JSON.generate(simple)
     rescue StandardError
@@ -1006,6 +1017,8 @@ module Samagotchi
         result[key][:vision] = vision unless vision.nil?
         sampling = sampling_map(v.key?("sampling") ? v["sampling"] : v[:sampling], "models: #{key}")
         result[key][:sampling] = sampling if sampling
+        thinking = Thinking.level(v.key?("thinking") ? v["thinking"] : v[:thinking], "models: #{key}")
+        result[key][:thinking] = thinking if thinking
       end
     rescue StandardError
       {}
