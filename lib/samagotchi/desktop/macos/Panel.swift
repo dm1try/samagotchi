@@ -1,7 +1,8 @@
-// The Spotlight-like panel: a message line on top, the text (selection or
-// clipboard) below it as quoted context, then a "New session" row and the
-// sessions. ⏎ sends a message (`chi send`, or `chi send --new` on the new
-// row), ⌘⏎ a note (`chi note`), ⇧⏎ is a newline.
+// The Spotlight-like panel: a message line on top, the images (a screenshot,
+// Finder files, drops) as thumbnails, the text (selection or clipboard)
+// below as quoted context, then a "New session" row and the sessions. ⏎
+// sends a message (`chi send`, or `chi send --new` on the new row, with
+// `--image` per image), ⌘⏎ a note (`chi note`, text only), ⇧⏎ a newline.
 import AppKit
 import SwiftUI
 
@@ -15,6 +16,8 @@ final class PanelModel: ObservableObject {
   /// The selection or clipboard: the quoted context of a message, or a note.
   @Published var text = ""
   @Published var source = ""
+  /// Sent as `--image` with a message; notes are text only.
+  @Published var images: [PanelImage] = []
   @Published var sessions: [LiveSession] = []
   @Published var selected: Set<String> = []
   /// The "New session" row; never together with sessions (`--new` takes no ids).
@@ -34,6 +37,19 @@ final class PanelModel: ObservableObject {
     canSend && (newSelected || !selected.isEmpty) && (!trimmedPrompt.isEmpty || hasContext)
   }
   var live: [LiveSession] { sessions.filter { !$0.recent } }
+
+  /// Up to maxImages; the rest is dropped (and its temp files deleted).
+  func add(_ new: [PanelImage]) {
+    let room = max(0, maxImages - images.count)
+    images += new.prefix(room)
+    ImageIntake.delete(Array(new.dropFirst(room)))
+    if new.count > room { message = "At most \(maxImages) images" }
+  }
+
+  func remove(_ image: PanelImage) {
+    images.removeAll { $0 == image }
+    ImageIntake.delete([image])
+  }
   var recent: [LiveSession] { sessions.filter(\.recent) }
 
   /// The last choice, where still live; else the only live session; else,
@@ -87,12 +103,15 @@ struct PanelView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      TextField("Ask chi…", text: $model.prompt, axis: .vertical)
+      // The message is required with images, as in the web.
+      TextField(model.images.isEmpty ? "Ask chi…" : "Say something about the image…", text: $model.prompt, axis: .vertical)
         .textFieldStyle(.plain)
         .font(.system(size: 17))
         .lineLimit(1...4)
         .focused($promptFocused)
         .padding(.horizontal, 19).padding(.top, 14).padding(.bottom, 8)
+
+      imageStrip
 
       ZStack(alignment: .topLeading) {
         if model.text.isEmpty {
@@ -119,6 +138,21 @@ struct PanelView: View {
     }
     .frame(width: 600)
     .onAppear { promptFocused = true }
+  }
+
+  @ViewBuilder var imageStrip: some View {
+    if !model.images.isEmpty {
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 8) {
+          ForEach(model.images) { image in
+            Thumbnail(image: image, removable: model.phase != .sending) { model.remove(image) }
+          }
+        }
+        .padding(.horizontal, 19).padding(.vertical, 2)
+      }
+      .frame(height: 52)
+      .padding(.bottom, 8)
+    }
   }
 
   @ViewBuilder var sessionList: some View {
@@ -242,6 +276,43 @@ struct PanelView: View {
   }
 }
 
+/// One image in the strip: 48 px high, its name as a tooltip, ✕ on hover.
+struct Thumbnail: View {
+  let image: PanelImage
+  let removable: Bool
+  let remove: () -> Void
+  @State private var hover = false
+
+  var body: some View {
+    Group {
+      if let thumb = image.thumbnail {
+        Image(nsImage: thumb).resizable().aspectRatio(contentMode: .fit)
+      } else {
+        Image(systemName: "photo").font(.system(size: 20)).foregroundColor(.secondary).frame(width: 48)
+      }
+    }
+    .frame(height: 48)
+    .frame(maxWidth: 120)
+    .clipShape(RoundedRectangle(cornerRadius: 6))
+    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.15), lineWidth: 0.5))
+    .overlay(alignment: .topTrailing) {
+      if hover && removable {
+        Button(action: remove) {
+          Image(systemName: "xmark.circle.fill")
+            .font(.system(size: 14))
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(.white, Color.black.opacity(0.55))
+        }
+        .buttonStyle(.plain)
+        .padding(3)
+        .help("remove")
+      }
+    }
+    .onHover { hover = $0 }
+    .help(image.name)
+  }
+}
+
 final class KeyPanel: NSPanel {
   var onKey: ((NSEvent) -> Bool)?
   /// Return with these modifiers; true when handled.
@@ -273,6 +344,8 @@ final class PanelController: NSObject, NSWindowDelegate {
   let runner = ChiRunner()
   private var panel: KeyPanel!
   private var returnTo: NSRunningApplication?
+  /// Images a running `chi send` still reads: not deleted on close.
+  private var inFlight: Set<UUID> = []
 
   override init() {
     super.init()
@@ -290,7 +363,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     panel.backgroundColor = .clear
     panel.delegate = self
 
-    let effect = NSVisualEffectView()
+    let effect = DropEffectView()
     effect.material = .popover
     effect.blendingMode = .behindWindow
     effect.state = .active
@@ -303,6 +376,7 @@ final class PanelController: NSObject, NSWindowDelegate {
       hosting.topAnchor.constraint(equalTo: effect.topAnchor),
       hosting.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
     ])
+    effect.onDrop = { [weak self] images in self?.model.add(images) }
     panel.contentView = effect
     panel.onKey = { [weak self] event in self?.handleKey(event) ?? false }
     panel.onReturn = { [weak self] flags in self?.handleReturn(flags) ?? false }
@@ -330,9 +404,13 @@ final class PanelController: NSObject, NSWindowDelegate {
   }
 
   /// @param returnTo the app to give focus back to on close
-  func show(text: String, source: String, returnTo app: NSRunningApplication?) {
+  func show(text: String, images: [PanelImage] = [], source: String, returnTo app: NSRunningApplication?) {
     returnTo = app
+    // A show on an open panel resets it without a close.
+    dropImages()
     model.prompt = ""
+    model.images = []
+    model.add(images)
     model.text = text
     model.source = source
     model.message = ""
@@ -371,6 +449,11 @@ final class PanelController: NSObject, NSWindowDelegate {
   func send(_ kind: SendKind) {
     let ids = model.selectedIds
     let new = model.newSelected
+    if kind == .note, !model.images.isEmpty {
+      NSSound.beep()
+      model.message = "Notes are text only: ⏎ sends the image as a message"
+      return
+    }
     // A note into a session that doesn't exist yet makes no sense.
     guard model.sendEnabled, new ? kind == .message : !ids.isEmpty else { NSSound.beep(); return }
     model.phase = .sending
@@ -388,6 +471,7 @@ final class PanelController: NSObject, NSWindowDelegate {
       command = "chi send"
       args = new ? ["send", "--new", "--dir", model.newSessionDir] : ["send"]
       if !prompt.isEmpty { args += ["-m", prompt] }
+      args += model.images.flatMap { ["--image", $0.url.path] }
       stdin = model.hasContext ? Data(model.text.utf8) : nil
     case .note:
       command = "chi note"
@@ -398,8 +482,19 @@ final class PanelController: NSObject, NSWindowDelegate {
       stdin = Data(parts.joined(separator: "\n\n").utf8)
     }
     if !new { args += ids }
-    runner.run(args, stdin: stdin) { [weak self] result in
+    let images = kind == .message ? model.images : []
+    inFlight.formUnion(images.map(\.id))
+    // Reading, converting and a new worker's start take longer than text.
+    let timeout = images.isEmpty ? runner.timeout : 30
+    runner.run(args, stdin: stdin, timeout: timeout) { [weak self] result in
       guard let self else { return }
+      self.inFlight.subtract(images.map(\.id))
+      // Sent: the temp files go (and the thumbnails). Else they stay for
+      // another try, unless the panel was closed or reopened meanwhile.
+      var sent = false
+      if case .success(let r) = result { sent = r.status == 0 && !r.timedOut }
+      if sent { self.model.images.removeAll { images.contains($0) } }
+      ImageIntake.delete(images.filter { !self.model.images.contains($0) })
       switch result {
       case .failure(let error):
         self.model.phase = .failed
@@ -410,7 +505,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         if r.timedOut {
           self.model.phase = .failed
           let what = kind == .note ? "the note may be partly delivered" : "the message may not have been sent"
-          self.model.message = "\(command) took over \(Int(self.runner.timeout)) s and was stopped; \(what). \(out)"
+          self.model.message = "\(command) took over \(Int(timeout)) s and was stopped; \(what). \(out)"
         } else if r.status == 0 {
           self.model.phase = .sent
           // --new prints "<full id>  started".
@@ -429,7 +524,15 @@ final class PanelController: NSObject, NSWindowDelegate {
   }
 
   func windowWillClose(_ notification: Notification) {
+    dropImages()
     returnTo?.activate()
     returnTo = nil
+  }
+
+  /// The panel's images leave it; their temp files go unless a send still
+  /// reads them (its completion deletes them).
+  private func dropImages() {
+    ImageIntake.delete(model.images.filter { !inFlight.contains($0.id) })
+    model.images = []
   }
 }

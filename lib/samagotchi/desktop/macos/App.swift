@@ -1,5 +1,6 @@
-// Chi Helper: the "Send to chi" Service opens the panel with the selection,
-// the hotkey with the clipboard. No Dock icon (LSUIElement); it stays
+// Chi Helper: the "Send to chi" Service opens the panel with the selection
+// (text, or images: files in Finder, a picture in Preview), the hotkey with
+// the clipboard (a screenshot too). No Dock icon (LSUIElement); it stays
 // running after the first launch. `ChiHelper --login on|off|status` (run
 // directly by chi desktop) manages the login item and exits.
 import AppKit
@@ -10,11 +11,12 @@ final class ServiceProvider: NSObject {
 
   // Info.plist NSServices: NSMessage = sendToChi.
   @objc func sendToChi(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>) {
-    guard let text = pboard.string(forType: .string) else {
-      error.pointee = "No text in the selection" as NSString
+    let (text, images) = ImageIntake.read(pboard)
+    guard !text.isEmpty || !images.isEmpty else {
+      error.pointee = "No text or image in the selection" as NSString
       return
     }
-    app?.open(text: text)
+    app?.open(text: text, images: images)
   }
 }
 
@@ -28,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     provider.app = self
+    ImageIntake.sweep()
     NSApp.servicesProvider = provider
     NSUpdateDynamicServices()
     hotkey = Hotkey { [weak self] in self?.openFromClipboard() }
@@ -54,12 +57,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   /// The hotkey doesn't activate us, so the frontmost app is the source.
   func openFromClipboard() {
-    open(text: NSPasteboard.general.string(forType: .string) ?? "")
+    let (text, images) = ImageIntake.read(NSPasteboard.general)
+    open(text: text, images: images)
   }
 
-  func open(text: String) {
+  func open(text: String, images: [PanelImage] = []) {
     let from = sourceApp
-    panel.show(text: text, source: from?.localizedName?.lowercased() ?? "desktop", returnTo: from)
+    panel.show(text: text, images: images, source: from?.localizedName?.lowercased() ?? "desktop", returnTo: from)
   }
 }
 

@@ -16,7 +16,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
       expect(status).to be_success
       expect(File.executable?(File.join(app, "Contents", "MacOS", "ChiHelper"))).to be(true)
       plist, = Open3.capture2("plutil", "-convert", "json", "-o", "-", File.join(app, "Contents", "Info.plist"))
-      expect(plist).to include('"NSMessage":"sendToChi"', '"LSUIElement":true')
+      expect(plist).to include('"NSMessage":"sendToChi"', '"LSUIElement":true', '"NSSendFileTypes":["public.image"]')
     end
   end
 end

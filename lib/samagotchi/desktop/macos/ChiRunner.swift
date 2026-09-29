@@ -106,7 +106,9 @@ final class ChiRunner {
   /// Runs `chi <args>`, with stdin written from a background queue and
   /// stdout/stderr drained as they come (no pipe deadlock near the 16 KiB
   /// note cap). Calls back on the main queue.
-  func run(_ args: [String], stdin: Data? = nil, completion: @escaping (Result<ChiResult, ChiError>) -> Void) {
+  /// @param timeout this call's limit instead of the runner's
+  func run(_ args: [String], stdin: Data? = nil, timeout: TimeInterval? = nil,
+           completion: @escaping (Result<ChiResult, ChiError>) -> Void) {
     let config: LaunchConfig
     do { config = try loadLaunch() } catch let error as ChiError {
       completion(.failure(error)); return
@@ -161,7 +163,7 @@ final class ChiRunner {
         try? input.fileHandleForWriting.close()
       }
     }
-    DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+    DispatchQueue.global().asyncAfter(deadline: .now() + (timeout ?? self.timeout)) {
       if process.isRunning {
         lock.lock(); timedOut = true; lock.unlock()
         process.terminate()

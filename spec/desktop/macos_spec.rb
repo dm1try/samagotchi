@@ -119,6 +119,14 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       expect(plist).to match(%r{<key>LSUIElement</key>\s*<true/>})
       expect(plist).to match(%r{<key>NSRequiredContext</key>\s*<dict/>})
     end
+
+    it "offers the one Service for text, image data and image files (the user's shortcut is keyed by its name)" do
+      plist = macos.info_plist
+      expect(plist.scan("<key>NSMessage</key>").size).to eq(1)
+      expect(plist).to match(%r{<key>NSSendTypes</key>\s*<array>\s*<string>public.utf8-plain-text</string>\s*
+                                <string>public.png</string>\s*<string>public.tiff</string>\s*</array>}x)
+      expect(plist).to match(%r{<key>NSSendFileTypes</key>\s*<array>\s*<string>public.image</string>\s*</array>})
+    end
   end
 
   describe "#install" do
@@ -135,6 +143,9 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       expect(runner.calls).to include([described_class::PBS, "-update"], [described_class::LSREGISTER, "-f", app],
                                       ["open", "-g", app])
       expect(runner.programs.first).to eq("xcrun")
+      # The app registered first, so pbs reads the Service types it has now.
+      expect(runner.calls.index([described_class::LSREGISTER, "-f", app]))
+        .to be < runner.calls.index([described_class::PBS, "-update"])
 
       expect(File.read(File.join(app, "Contents", "MacOS", "ChiHelper"))).to eq("binary")
       expect(File.read(File.join(app, "Contents", "Info.plist"))).to include("9.9.9")

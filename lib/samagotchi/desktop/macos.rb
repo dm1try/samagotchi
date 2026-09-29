@@ -291,8 +291,10 @@ module Samagotchi
       def register_app
         return unless @register
 
-        @runner.run([PBS, "-update"])
+        # The app first, so pbs reads the Service types it has now (a new
+        # type may otherwise show only after a re-login).
         @runner.run([LSREGISTER, "-f", app_path])
+        @runner.run([PBS, "-update"])
         @runner.run(["open", "-g", app_path])
       end
 
