@@ -80,6 +80,44 @@ RSpec.describe "The skills plugin" do
     expect(skill(p)).to start_with("usage: /skill save")
     expect(skill(p, "frobnicate")).to start_with("usage: /skill save")
   end
+
+  describe "/skill save" do
+    it "sends this session a request holding the skill's shape, the name and the project scope" do
+      reply = skill(plugin, "save Release")
+
+      expect(reply).to eq("asked chi to save skill release (project scope); a running turn gets it at its next step")
+      id, text = ctx.sent.first
+      expect(id).to eq("sess-1")
+      expect(text).to start_with("Save what we just did as skill `skill_release` with memory_write, scope project.")
+      expect(text).to include("finish it first", "no frontmatter", "# Skill: release", "## Steps", "## Gotchas",
+                              "## Changelog", "- #{Date.today.iso8601} created", "description:", "show the skill briefly")
+      expect(text).not_to include("exists already")
+    end
+
+    it "lets the model pick the name, takes --system, and says so when the skill exists" do
+      skill(plugin, "save --system")
+      expect(ctx.sent.last.last).to start_with("Save what we just did as a skill named `skill_<name>`")
+      expect(ctx.sent.last.last).to include("scope system.")
+
+      File.write(File.join(project_dir, "skill_deploy.md"), "# Skill: deploy\n")
+      expect(skill(plugin, "save skill_deploy")).to include("skill deploy (project scope)")
+      expect(ctx.sent.last.last).to include("It exists already: read it, keep what still holds")
+    end
+
+    it "refuses a bad name or extra words, sending nothing" do
+      expect(skill(plugin, "save ../x")).to eq("/skill save: a name is letters, digits, _ and - (got ../x)")
+      expect(skill(plugin, "save a b")).to start_with("usage:")
+      expect(skill(plugin, "save --project")).to start_with("usage:")
+      expect(ctx.sent).to be_empty
+    end
+
+    it "shows the request for the user to send when the session takes no messages (a REPL)" do
+      ctx.send_error = "session sess-1 is open in a chi REPL, which takes no messages from others"
+      reply = skill(plugin, "save release")
+      expect(reply).to start_with("/skill save: session sess-1 is open in a chi REPL, which takes no messages from others. " \
+                                  "Send this yourself:\n\nSave what we just did as skill `skill_release`")
+    end
+  end
 end
 
 RSpec.describe "The skills bundle, installed" do
