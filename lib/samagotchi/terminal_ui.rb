@@ -1761,10 +1761,6 @@ module Samagotchi
       nil
     end
 
-    def pending_question_event?
-      !!@pending_question_event
-    end
-
     # Called from REPL thread (run_assist_loop top) — renders widget, blocks
     # until user selects, then answers via Engine#answer_question which wakes
     # the parked turn thread.
