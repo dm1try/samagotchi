@@ -480,7 +480,8 @@ module Samagotchi
         json_response(200, {
           session: session_json,
           history: read_history(id),
-          messages: messages_for_display(raw_messages, parts: req.params["parts"] == "1"),
+          messages: messages_for_display(raw_messages, parts: req.params["parts"] == "1",
+                                                       cwd: session.respond_to?(:working_directory) ? session.working_directory : nil),
           failed_turn: failed_turn_for(session, raw_messages),
           current_turn: current_turn,
           queued: turn_snapshot ? Array(turn_snapshot["queued"]) : [],
@@ -1159,7 +1160,9 @@ module Samagotchi
       #   assistant message also carries what it did (MessageParts: thinking,
       #   tool calls with params and output), and a message with nothing to
       #   show but that (a text-less step) is kept with empty content
-      def messages_for_display(msgs, parts: false)
+      # @param cwd [String, nil] the session's working directory (the parts'
+      #   tool titles are relative to it)
+      def messages_for_display(msgs, parts: false, cwd: nil)
         filtered = []
         list = Array(msgs)
         list.each_with_index do |m, index|
@@ -1179,7 +1182,7 @@ module Samagotchi
           next if role == "tool_response"
 
           stripped = Samagotchi::OutputFormatter.strip_markup(content)
-          did = parts && %w[model assistant].include?(role) ? message_parts(list, index) : nil
+          did = parts && %w[model assistant].include?(role) ? message_parts(list, index, cwd) : nil
           next if stripped.empty? && did.nil?
 
           norm_role = role == "model" ? "assistant" : role
@@ -1222,9 +1225,9 @@ module Samagotchi
 
       # The parts of the assistant message at +index+, with the tool_response
       # messages right after it.
-      def message_parts(list, index)
+      def message_parts(list, index, cwd = nil)
         responses = list.drop(index + 1).take_while { |r| (r[:role] || r["role"]).to_s == "tool_response" }
-        MessageParts.for_message(list[index], responses)
+        MessageParts.for_message(list[index], responses, cwd: cwd)
       end
 
       # The last message messages_for_display shows as an answer, as a list of

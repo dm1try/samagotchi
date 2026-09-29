@@ -55,15 +55,17 @@ module Samagotchi
       # @param message [Hash] a saved model message (symbol or string keys)
       # @param responses [Array<Hash>] the tool_response messages after it
       # @param registry [Tools::Registry] the session's tools
-      # @return [Hash, nil] { thinking:, tools: [{ tool:, params:, output:,
-      #   output_truncated:, images: }] } with only what it found; nil for nothing
-      def for_message(message, responses, registry: Tools::Builtins.default)
+      # @param cwd [String, nil] the session's working directory (a file
+      #   tool's title is relative to it)
+      # @return [Hash, nil] { thinking:, tools: [{ tool:, params:, title:,
+      #   output:, output_truncated:, images: }] } with only what it found; nil for nothing
+      def for_message(message, responses, registry: Tools::Builtins.default, cwd: nil)
         content = field(message, :content).to_s
         calls = field(message, :tool_calls)
         tools = if calls.is_a?(Array) && !calls.empty?
-                  native_tools(calls, responses, registry)
+                  native_tools(calls, responses, registry, cwd)
                 else
-                  markup_tools(content, responses, registry)
+                  markup_tools(content, responses, registry, cwd)
                 end
         parts = {}
         thinking = [field(message, :thinking).to_s.strip, thinking_of(content)].reject(&:empty?).join("\n\n")
@@ -83,7 +85,7 @@ module Samagotchi
         blocks.map(&:strip).reject(&:empty?).join("\n\n")
       end
 
-      def markup_tools(content, responses, registry)
+      def markup_tools(content, responses, registry, cwd = nil)
         calls = []
         calls.concat(ToolCallParser::Qwen.new(ModelProfile.qwen36).parse(content)) if content.include?("<tool_call>")
         calls.concat(ToolCallParser::Gemma.new(ModelProfile.gemma4).parse(content)) if content.include?("<|tool_call>")
@@ -96,7 +98,7 @@ module Samagotchi
         diffs = saved_list(responses, :tool_diffs, calls.length)
         images = split_images(responses, calls.length)
         calls.each_with_index.map do |call, i|
-          tool_part(call, outputs[i], registry, shown[i], images[i], label: labels[i], diff: diffs[i])
+          tool_part(call, outputs[i], registry, shown[i], images[i], label: labels[i], diff: diffs[i], cwd: cwd)
         end
       end
 
@@ -118,7 +120,7 @@ module Samagotchi
         counts.map { |n| images.shift(n) }
       end
 
-      def native_tools(calls, responses, registry)
+      def native_tools(calls, responses, registry, cwd = nil)
         by_id = responses.to_h { |r| [field(r, :tool_call_id), r] }
         calls.each_with_index.map do |raw, i|
           ref = CallRef.new(field(raw, :name).to_s, field(raw, :arguments))
@@ -126,7 +128,7 @@ module Samagotchi
           response = by_id[field(raw, :id)] || (field(responses[i], :tool_call_id).nil? ? responses[i] : nil)
           tool_part(call, response && field(response, :content).to_s, registry, field(response, :tool_params),
                     response && field(response, :images), label: field(response, :tool_labels),
-                                                          diff: field(response, :tool_diffs))
+                                                          diff: field(response, :tool_diffs), cwd: cwd)
         end
       end
 
@@ -148,11 +150,13 @@ module Samagotchi
 
       # +shown+ is the saved params line, when it is a String.
       # +diff+ is what an edit/write changed (EditPreview.change), saved as
-      # tool_diffs.
-      def tool_part(call, output, registry, shown = nil, images = nil, label: nil, diff: nil)
+      # tool_diffs. +cwd+: the session's working directory, for the title.
+      def tool_part(call, output, registry, shown = nil, images = nil, label: nil, diff: nil, cwd: nil)
         name = call[:name].to_s
         params = shown.is_a?(String) ? shown : ToolActivity.tool_activity_params(name, call, registry: registry)
         part = { tool: name, params: params.to_s }
+        title = ToolActivity.tool_title(name, call, cwd: cwd)
+        part[:title] = title if title
         part[:label] = label if label.is_a?(String) && !label.empty?
         unless output.nil?
           part[:output] = output.length > OUTPUT_MAX ? output[0, OUTPUT_MAX] : output

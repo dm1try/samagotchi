@@ -60,6 +60,12 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn[:parts].last).to include(tool: "mcp_chrome_screenshot", label: "chrome: screenshot")
   end
 
+  it "keeps a tool call's title on its part" do
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: 'command="cd /x && ls"', title: "ls" })
+    expect(acc.current_turn[:parts].last).to include(tool: "execute", title: "ls")
+  end
+
   it "keeps a hook's notice as a part, in order" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :generation_chunk, iteration: 1, content: "Hm" },

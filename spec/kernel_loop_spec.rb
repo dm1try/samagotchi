@@ -79,6 +79,7 @@ RSpec.describe Samagotchi::KernelLoop do
         action: "running command",
         tool: "execute",
         params: "command=\"ruby -e 'puts 7'\"",
+        title: "ruby -e 'puts 7'",
         status: "ok"
       )
     end

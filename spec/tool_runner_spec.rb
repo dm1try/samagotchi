@@ -171,6 +171,15 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(result).not_to have_key(:shown_label)
     end
 
+    it "carries the call's title (the process's cwd), the params unchanged" do
+      run({ name: "execute", content: "cd /tmp && rspec spec/a_spec.rb" })
+      expect(events.first).to include(type: :tool_call_started, title: "rspec spec/a_spec.rb",
+                                      params: 'command="cd /tmp && rspec spec/a_spec.rb"')
+      events.clear
+      run({ name: "task_list" })
+      expect(events.first).not_to have_key(:title)
+    end
+
     it "is emitted for a denied call too, before tool_call_completed" do
       hooks.register(:before_tool_call) { |e| e[:blocked] = true }
       run

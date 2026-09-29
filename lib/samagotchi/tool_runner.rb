@@ -48,6 +48,9 @@ module Samagotchi
       started = { type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
                   tool: call[:name], call: call.dup, params: params }
       started[:label] = label if label
+      # The worker runs in its session's working directory.
+      title = ToolActivity.tool_title(call[:name], call, cwd: Dir.pwd)
+      started[:title] = title if title
       emit(on_stream_event, started)
 
       # The ask comes after tool_call_started: the UI shows the tool line,

@@ -19,7 +19,7 @@ RSpec.describe Samagotchi::ToolActivity do
     call = { name: "read", content: "lib/a.rb" }
     [nil, registry].each do |tools|
       expect(described_class.tool_activity_event("read", call, "ok", registry: tools))
-        .to eq(action: "reading file", tool: "read", params: 'path="lib/a.rb"', status: "ok")
+        .to eq(action: "reading file", tool: "read", params: 'path="lib/a.rb"', status: "ok", title: "lib/a.rb")
       expect(described_class.tool_activity_event("register_reminder", { name: "register_reminder", content: "x" }, "ok",
                                                   registry: tools))
         .to include(action: "calling tool", params: nil)
@@ -90,6 +90,57 @@ RSpec.describe Samagotchi::ToolActivity do
     it "carries it into the activity event" do
       expect(described_class.tool_activity_event("execute", { name: "execute", content: "false" }, "exit: 1 (no output)")[:status])
         .to eq("error")
+    end
+  end
+
+  describe ".tool_title" do
+    def title(name, cwd: "/p/samagotchi", **call) = described_class.tool_title(name, { name: name }.merge(call), cwd: cwd)
+
+    it "gives a file tool's path relative to the cwd when it is under it" do
+      expect(title("read", content: "/p/samagotchi/lib/a.rb")).to eq("lib/a.rb")
+      expect(title("edit", path: "/p/samagotchi/lib/b.rb", start_line: 3)).to eq("lib/b.rb")
+      expect(title("write", path: "/p/samagotchi/./c.rb")).to eq("c.rb")
+      expect(title("read", content: "lib/rel.rb")).to eq("lib/rel.rb")
+    end
+
+    it "keeps a path outside the cwd absolute, a sibling with a shared prefix too" do
+      expect(title("read", content: "/p/samagotchi-stage/lib/a.rb")).to eq("/p/samagotchi-stage/lib/a.rb")
+      expect(title("read", content: "/etc/hosts")).to eq("/etc/hosts")
+      expect(title("read", content: "/p/samagotchi")).to eq("/p/samagotchi")
+      expect(title("read", content: "/p/samagotchi/a.rb", cwd: nil)).to eq("/p/samagotchi/a.rb")
+    end
+
+    it "cuts a long path from the front, so the file name stays" do
+      long = "/x/#{"d" * 90}/file.rb"
+      cut = title("read", content: long)
+      expect(cut.length).to eq(80)
+      expect(cut).to start_with("…").and end_with("/file.rb")
+    end
+
+    it "drops a leading cd from a command, takes its first line and cuts it at 80 after that" do
+      expect(title("execute", content: "cd /x && rspec a")).to eq("rspec a")
+      expect(title("execute", content: "cd /x; ls")).to eq("ls")
+      expect(title("execute", content: "cd '/my dir' && make")).to eq("make")
+      expect(title("execute", content: "\n  git status\ngit diff")).to eq("git status")
+      expect(title("task_create", content: "cd /x && npm test")).to eq("npm test")
+      expect(title("execute", content: "echo cd /x && ls")).to eq("echo cd /x && ls")
+      cut = title("execute", content: "cd /somewhere && #{"y" * 100}")
+      expect(cut).to eq("#{"y" * 79}…")
+    end
+
+    it "names the memory for the memory tools, nil for the rest" do
+      expect(title("memory_write", path: "notes/todo")).to eq("notes/todo")
+      expect(title("memory_read", content: "todo")).to eq("todo")
+      expect(title("memory_read", content: "")).to be_nil
+      expect(title("task_list")).to be_nil
+      expect(title("jira_search", query: "x")).to be_nil
+      expect(title("read", content: "  ")).to be_nil
+    end
+
+    it "rides on the completed activity when there is one (cwd: the process's)" do
+      event = described_class.tool_activity_event("execute", { name: "execute", content: "cd /x && ls" }, "ok")
+      expect(event[:title]).to eq("ls")
+      expect(described_class.tool_activity_event("task_list", { name: "task_list" }, "ok")).not_to have_key(:title)
     end
   end
 end

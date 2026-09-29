@@ -18,8 +18,8 @@ RSpec.describe Samagotchi::Web::MessageParts do
       expect(described_class.for_message({ role: "model", content: content }, [response])).to eq(
         thinking: "Look first.",
         tools: [
-          { tool: "execute", params: 'command="ls -la"', output: "[execute]\na\nb" },
-          { tool: "read", params: 'path="README.md" lines=1-3', output: "[read]\n1: # Title" }
+          { tool: "execute", params: 'command="ls -la"', title: "ls -la", output: "[execute]\na\nb" },
+          { tool: "read", params: 'path="README.md" lines=1-3', title: "README.md", output: "[read]\n1: # Title" }
         ]
       )
     end
@@ -40,7 +40,7 @@ RSpec.describe Samagotchi::Web::MessageParts do
       content = '<|channel>thought pondering<channel|>Sure.<|tool_call>call:execute{command:<|"|>pwd<|"|>}<tool_call|>'
       parts = described_class.for_message({ "role" => "model", "content" => content }, [{ "content" => "[execute]\n/tmp" }])
 
-      expect(parts).to eq(thinking: "pondering", tools: [{ tool: "execute", params: 'command="pwd"', output: "[execute]\n/tmp" }])
+      expect(parts).to eq(thinking: "pondering", tools: [{ tool: "execute", params: 'command="pwd"', title: "pwd", output: "[execute]\n/tmp" }])
     end
 
     it "gives no parts for a plain answer" do
@@ -56,7 +56,7 @@ RSpec.describe Samagotchi::Web::MessageParts do
 
     it "leaves the output out when there is no tool_response (a canceled turn)" do
       expect(described_class.for_message({ content: qwen_call("execute", command: "sleep 9") }, [])).to eq(
-        tools: [{ tool: "execute", params: 'command="sleep 9"' }]
+        tools: [{ tool: "execute", params: 'command="sleep 9"', title: "sleep 9" }]
       )
     end
   end
@@ -70,8 +70,8 @@ RSpec.describe Samagotchi::Web::MessageParts do
                    { role: "tool_response", content: "[execute]\n", tool_call_id: "c1" }]
 
       expect(described_class.for_message(message, responses)).to eq(
-        tools: [{ tool: "execute", params: 'command="true"', output: "[execute]\n" },
-                { tool: "read", params: 'path="README.md"', output: "[read]\nhello" }]
+        tools: [{ tool: "execute", params: 'command="true"', title: "true", output: "[execute]\n" },
+                { tool: "read", params: 'path="README.md"', title: "README.md", output: "[read]\nhello" }]
       )
     end
 
@@ -80,7 +80,7 @@ RSpec.describe Samagotchi::Web::MessageParts do
                   "tool_calls" => [{ "id" => "c1", "name" => "execute", "arguments" => { "command" => "echo hi" } }] }
 
       expect(described_class.for_message(message, [{ "content" => "[execute]\nhi", "tool_call_id" => "c1" }])).to eq(
-        tools: [{ tool: "execute", params: 'command="echo hi"', output: "[execute]\nhi" }]
+        tools: [{ tool: "execute", params: 'command="echo hi"', title: "echo hi", output: "[execute]\nhi" }]
       )
     end
 
@@ -89,7 +89,7 @@ RSpec.describe Samagotchi::Web::MessageParts do
                   tool_calls: [{ id: "c1", name: "execute", arguments: { "command" => "true" } }] }
 
       expect(described_class.for_message(message, [{ content: "[execute]\n", tool_call_id: "c1" }])).to eq(
-        thinking: "run it first", tools: [{ tool: "execute", params: 'command="true"', output: "[execute]\n" }]
+        thinking: "run it first", tools: [{ tool: "execute", params: 'command="true"', title: "true", output: "[execute]\n" }]
       )
     end
 
@@ -199,6 +199,20 @@ RSpec.describe Samagotchi::Web::MessageParts do
       responses = [{ content: "[execute]\n", tool_call_id: "c1" }, { content: "[shots]\ntwo", tool_call_id: "c2", images: [shot] }]
       tools = described_class.for_message(message, responses)[:tools]
       expect(tools.map { |t| t[:images] }).to eq([nil, [shown]])
+    end
+  end
+
+  describe "titles" do
+    it "gives each call its title, a path relative to the given cwd" do
+      content = "#{qwen_call('execute', command: 'cd /p/app && rspec')}#{qwen_call('edit', path: '/p/app/lib/a.rb', old_string: 'a', new_string: 'b')}"
+      tools = described_class.for_message({ content: content }, [], cwd: "/p/app")[:tools]
+      expect(tools.map { |t| t[:title] }).to eq(["rspec", "lib/a.rb"])
+      expect(tools.first[:params]).to eq('command="cd /p/app && rspec"')
+    end
+
+    it "leaves the title out where there is none (a plugin tool)" do
+      tools = described_class.for_message({ content: qwen_call("echo_args", text: "x") }, [], cwd: "/p")[:tools]
+      expect(tools.first).not_to have_key(:title)
     end
   end
 end

@@ -146,6 +146,7 @@ module Samagotchi
           part = { kind: "tool", iteration: event[:iteration], call_index: event[:call_index],
                    tool: event[:tool], params: event[:params], status: "running" }
           part[:label] = event[:label] if event[:label]
+          part[:title] = event[:title] if event[:title]
           parts << part
         when :tool_call_completed
           tool = parts.reverse_each.find do |part|

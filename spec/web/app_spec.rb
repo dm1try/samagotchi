@@ -947,13 +947,26 @@ RSpec.describe Samagotchi::Web::App do
         steps = payload["messages"].select { |m| m["role"] == "assistant" }
         expect(steps.map { |m| m["content"] }).to eq(["Let me look.", "", "It says **hello**."])
         expect(steps.map { |m| m["parts"] }).to eq([
-          { "thinking" => "look", "tools" => [{ "tool" => "execute", "params" => 'command="ls"', "output" => "[execute]\na.txt" }] },
-          { "tools" => [{ "tool" => "read", "params" => 'path="a.txt"', "output" => "[read]\nhello" }] },
+          { "thinking" => "look", "tools" => [{ "tool" => "execute", "params" => 'command="ls"', "title" => "ls", "output" => "[execute]\na.txt" }] },
+          { "tools" => [{ "tool" => "read", "params" => 'path="a.txt"', "title" => "a.txt", "output" => "[read]\nhello" }] },
           { "thinking" => "done" }
         ])
         # Nothing to render for the text-less step.
         expect(steps[1]).not_to have_key("html")
         expect(steps[2]["html"]).to include("<strong>hello</strong>")
+      end
+
+      it "titles a file call relative to the session's working directory" do
+        app = build_app(state_dir: Dir.mktmpdir)
+        messages = [{ "role" => "user", "content" => "check" },
+                    { "role" => "model", "content" => "", "tool_calls" => [{ "id" => "c1", "name" => "read",
+                                                                               "arguments" => { "path" => "#{Dir.pwd}/lib/x.rb" } }] },
+                    { "role" => "tool_response", "content" => "[read]\nx", "tool_call_id" => "c1" }]
+        allow(app).to receive(:bridge_get_json).with("s1", "snapshot")
+                                               .and_return(live.merge("snapshot" => { "messages" => messages }))
+        payload = JSON.parse(app.call(env_for("/api/sessions/s1?parts=1"))[2].first)
+        expect(payload["messages"].last["parts"]["tools"].first).to include("title" => "lib/x.rb",
+                                                                            "params" => %(path="#{Dir.pwd}/lib/x.rb"))
       end
 
       it "without it the messages are as before: no parts, no text-less step" do

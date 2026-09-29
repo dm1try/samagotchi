@@ -31,13 +31,63 @@ module Samagotchi
     module_function
 
     # @param registry [Tools::Registry, nil] the session's tools
-    def tool_activity_event(tool_name, call, result, registry: nil)
-      {
+    # @param cwd [String, nil] what a file tool's title is relative to (the
+    #   worker runs in its session's working directory)
+    def tool_activity_event(tool_name, call, result, registry: nil, cwd: Dir.pwd)
+      event = {
         action: tool_activity_action(tool_name, registry: registry),
         tool: tool_name,
         params: tool_activity_params(tool_name, call, registry: registry),
         status: tool_activity_status(result, tool_name)
       }
+      title = tool_title(tool_name, call, cwd: cwd)
+      event[:title] = title if title
+      event
+    end
+
+    # What the call did, for a web row's one line ("edit lib/a.rb", the
+    # command without its "cd … &&"): a file tool's path relative to +cwd+
+    # when it is under it, a command's first line, a memory's name; nil for
+    # the other tools (a plugin's row keeps its preview, the params).
+    # +params+ stays the full key=value line (the TUI, the guardrails).
+    def tool_title(tool_name, call, cwd: nil)
+      text = case tool_name
+             when Tools::Read::NAME, Tools::MemoryRead::NAME then call[:content]
+             when Tools::Write::NAME, Tools::Edit::NAME, Tools::MemoryWrite::NAME then call[:path]
+             when Tools::Execute::NAME, Tools::TaskCreate::NAME then command_title(call[:content])
+             end
+      text = text.to_s.strip
+      return nil if text.empty?
+
+      case tool_name
+      when Tools::Read::NAME, Tools::Write::NAME, Tools::Edit::NAME
+        path = relative_path(text, cwd)
+        path.length > TOOL_ACTIVITY_PREVIEW_LIMIT ? "…#{path[-(TOOL_ACTIVITY_PREVIEW_LIMIT - 1)..]}" : path
+      else
+        text = text.gsub(/\s+/, " ")
+        text.length > TOOL_ACTIVITY_PREVIEW_LIMIT ? "#{text[0, TOOL_ACTIVITY_PREVIEW_LIMIT - 1]}…" : text
+      end
+    end
+
+    # A leading "cd <dir> &&" / "cd <dir>;" goes: the model's habit, and it
+    # eats the line.
+    LEADING_CD = /\Acd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/
+
+    def command_title(command)
+      line = command.to_s.lines.map(&:strip).find { |l| !l.empty? }.to_s
+      line.sub(LEADING_CD, "")
+    end
+
+    # +path+ relative to +cwd+ when it is inside it, compared by path
+    # components ("/p/app-2" is not inside "/p/app"); else as given.
+    def relative_path(path, cwd)
+      return path if cwd.to_s.empty? || !path.start_with?("/")
+
+      parts = File.expand_path(path).split("/")
+      base = File.expand_path(cwd).split("/")
+      return path unless parts.length > base.length && parts[0, base.length] == base
+
+      parts.drop(base.length).join("/")
     end
 
     def tool_activity_action(tool_name, registry: nil)
