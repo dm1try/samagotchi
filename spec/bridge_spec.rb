@@ -1178,10 +1178,68 @@ RSpec.describe Samagotchi::Bridge do
       expect(resp["error"]).to eq("unknown_session")
     end
 
-    it "responds to CORS preflight OPTIONS" do
-      start_bridge
-      status, = options_request
-      expect(status).to eq(204)
+    describe "requests from a browser" do
+      # Only chi's Ruby clients talk to the Bridge: they send no Origin and
+      # no Sec-Fetch-Site. A page in the browser (another website, or a
+      # DNS-rebound one) always sends one of them.
+      def raw(method, path, headers = {}, body = nil)
+        uri = URI("http://127.0.0.1:#{@bridge_port}#{path}")
+        req = Net::HTTP.const_get(method.capitalize).new(uri)
+        headers.each { |k, v| req[k] = v }
+        req.body = body if body
+        res = Net::HTTP.start(uri.host, uri.port, open_timeout: 2, read_timeout: 2) { |h| h.request(req) }
+        [res.code.to_i, res.to_hash, res.body]
+      end
+
+      it "refuses a text/plain turn POST carrying an Origin, before the engine sees it" do
+        wakes = []
+        start_bridge(on_input: -> { wakes << true })
+        status, _, body = raw("post", "/session/#{@session.id}/turn",
+                              { "Content-Type" => "text/plain", "Origin" => "https://evil.example" }, JSON.generate(session_id: @session.id, prompt: "hi"))
+        expect(status).to eq(403)
+        expect(JSON.parse(body)["error"]).to eq("cross_origin")
+        expect(wakes).to be_empty
+        expect(Dir.glob(File.join(state_dir, "*", "input", "*"))).to be_empty
+      end
+
+      it "refuses any Origin, its own loopback one included" do
+        start_bridge
+        expect(raw("post", "/session/#{@session.id}/cancel", { "Origin" => "http://127.0.0.1:#{@bridge_port}" }, "{}").first).to eq(403)
+        expect(raw("get", "/session/#{@session.id}/state", { "Origin" => "null" }).first).to eq(403)
+      end
+
+      it "refuses a read or a stream with a browser's Sec-Fetch-Site, and a foreign Host (DNS rebinding)" do
+        start_bridge
+        expect(raw("get", "/session/#{@session.id}/state", { "Sec-Fetch-Site" => "cross-site" }).first).to eq(403)
+        expect(raw("get", "/session/#{@session.id}/stream", { "Sec-Fetch-Site" => "same-origin" }).first).to eq(403)
+        expect(raw("get", "/session/#{@session.id}/state", { "Host" => "evil.example:#{@bridge_port}" }).first).to eq(403)
+      end
+
+      it "answers chi's own clients (no Origin, no Sec-Fetch-Site), without any CORS header" do
+        start_bridge
+        status, headers, = raw("get", "/session/#{@session.id}/state")
+        expect(status).to eq(200)
+        expect(headers.keys.grep(/access-control/i)).to be_empty
+        expect(raw("get", "/session/#{@session.id}/state", { "Host" => "localhost:#{@bridge_port}" }).first).to eq(200)
+      end
+
+      it "no longer answers a CORS preflight" do
+        start_bridge
+        status, headers, = options_request
+        expect(status).to eq(404)
+        expect(headers.keys.grep(/access-control/i)).to be_empty
+      end
+
+      it "opens its event stream without any CORS header" do
+        start_bridge
+        sock = TCPSocket.new("127.0.0.1", @bridge_port)
+        sock.write("GET /session/#{@session.id}/stream HTTP/1.1\r\nHost: 127.0.0.1:#{@bridge_port}\r\n\r\n")
+        head = +""
+        head << sock.readpartial(4096) until head.include?("\r\n\r\n")
+        sock.close
+        expect(head).to start_with("HTTP/1.1 200")
+        expect(head).not_to match(/access-control/i)
+      end
     end
 
     it "answers 409 Conflict when the question is no longer pending (another client won)" do
@@ -1543,6 +1601,6 @@ RSpec.describe Samagotchi::Bridge do
       uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/turn")
       req = Net::HTTP::Options.new(uri)
       res = Net::HTTP.start(uri.host, uri.port, open_timeout: 2, read_timeout: 2) { |h| h.request(req) }
-      [res.code.to_i, res.body]
+      [res.code.to_i, res.to_hash, res.body]
     end
 end

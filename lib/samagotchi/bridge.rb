@@ -305,8 +305,8 @@ module Samagotchi
         if request[:too_large]
           write_json(io, 413, { "Connection" => "close" }, { error: "too_large", detail: "request body over #{MAX_BODY_BYTES} bytes" })
           break
-        elsif method == "OPTIONS"
-          write_json(io, 204, cors, {})
+        elsif browser_request?(headers)
+          write_json(io, 403, nil, { error: "cross_origin", detail: "the bridge answers chi's own clients only" })
         elsif (m = stream_match(request[:path])) && method == "GET"
           cursor = reconnect_cursor(headers, request[:query])
           Log.debug(:bridge, "stream", method: method, path: request[:path], client_id: stream_client_id(request[:query]))
@@ -344,7 +344,7 @@ module Samagotchi
           payload, status, body = handle_snapshot(m[1])
           write_json(io, status, payload, body)
         else
-          write_json(io, 404, { "Allow" => "GET, POST, OPTIONS" },
+          write_json(io, 404, { "Allow" => "GET, POST" },
                      { error: "not_found", path: request[:path] })
         end
 
@@ -414,12 +414,18 @@ module Samagotchi
       Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
-    def cors
-      {
-        "Access-Control-Allow-Origin" => "*",
-        "Access-Control-Allow-Methods" => "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers" => "Content-Type, Last-Event-ID"
-      }
+    LOOPBACK_NAMES = %w[127.0.0.1 [::1] localhost].freeze
+
+    # Only chi's Ruby clients talk to the Bridge, and they send no Origin and
+    # no Sec-Fetch-Site. A browser page always sends one of them (another
+    # website's text/plain POST needs no preflight), and a DNS-rebound page
+    # also has a foreign Host. Headers are the raw ones, lowercased.
+    def browser_request?(headers)
+      return true if headers.key?("origin")
+      return true if headers.key?("sec-fetch-site") && headers["sec-fetch-site"].downcase != "none"
+
+      host = headers["host"].to_s
+      !host.empty? && !LOOPBACK_NAMES.include?(host.downcase.sub(/:\d*\z/, ""))
     end
 
     def stream_match(path)
@@ -893,8 +899,7 @@ module Samagotchi
         "Content-Type" => "application/json",
         "Content-Length" => data.bytesize.to_s,
         "Connection" => "close",
-        "Cache-Control" => "no-store",
-        "Access-Control-Allow-Origin" => "*"
+        "Cache-Control" => "no-store"
       }.merge(extra_headers)
 
       io.write("HTTP/1.1 #{status} #{reason}\r\n")

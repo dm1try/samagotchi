@@ -187,9 +187,6 @@ module Samagotchi
           "Cache-Control: no-cache\r\n" \
           "Connection: keep-alive\r\n" \
           "X-Accel-Buffering: no\r\n" \
-          "Access-Control-Allow-Origin: *\r\n" \
-          "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n" \
-          "Access-Control-Allow-Headers: Content-Type, Last-Event-ID\r\n" \
           "\r\n"
         )
         io.flush
