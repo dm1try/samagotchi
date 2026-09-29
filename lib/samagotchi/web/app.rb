@@ -70,9 +70,8 @@ module Samagotchi
 
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
-      # @param turn_view [Boolean] the page's per-turn view (web.turn_view,
-      #   the default); false is the classic row of bubbles; ?view=turn|chat
-      #   overrides it for one page load
+      # @param view ["turn", "stage", "chat"] the page's view of a turn
+      #   (web.view); ?view=turn|stage|chat overrides it for one page load
       # @param annotate_presets [String, Array] the quick replies next to
       #   Annotate (web.annotate_presets, "|"-separated); "" shows none. The
       #   page parses them (annotate_presets.js).
@@ -83,7 +82,7 @@ module Samagotchi
       # @param models_wait_timeout [Float] bounded seconds GET /api/models
       #   waits for the hosts' lists
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
-                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, turn_view: true, hub: nil,
+                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, view: "turn", hub: nil,
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT)
@@ -97,7 +96,7 @@ module Samagotchi
         @public_dir = public_dir || File.expand_path("public", __dir__)
         @bridge_wait_timeout = bridge_wait_timeout
         @markdown_renderer = MarkdownRenderer.new(enabled: markdown)
-        @turn_view = turn_view
+        @view = view
         @annotate_presets = annotate_presets.is_a?(Array) ? annotate_presets.join("|") : annotate_presets.to_s
         @hub = hub
         @events_heartbeat = events_heartbeat
@@ -1283,7 +1282,7 @@ module Samagotchi
       # nothing here: the list call answers 400 and the page says so.
       def index_data_attributes(req)
         attrs = { "sessions-dir" => sessions_dir_label, "server-dir" => home_label(Dir.pwd) }
-        attrs["turn-view"] = "1" if turn_view?(req.params["view"])
+        attrs["view"] = view_name(req.params["view"])
         # Always there: an empty one means no presets, not the default.
         attrs["annotate-presets"] = @annotate_presets
         dir, = scope_dir(req.params["dir"])
@@ -1304,14 +1303,12 @@ module Samagotchi
         attrs.map { |key, value| %(data-#{key}="#{Rack::Utils.escape_html(value)}") }.join(" ")
       end
 
-      # The turn view for this page load: ?view=turn or ?view=chat wins,
-      # anything else leaves the config's choice.
-      def turn_view?(param)
-        case param
-        when "turn" then true
-        when "chat" then false
-        else @turn_view
-        end
+      VIEWS = Config::BY_KEY["web.view"].enum_values
+
+      # The view for this page load: ?view=turn|stage|chat wins, anything
+      # else leaves the config's choice (web.view).
+      def view_name(param)
+        VIEWS.include?(param) ? param : @view
       end
 
       def json_response(status, payload)

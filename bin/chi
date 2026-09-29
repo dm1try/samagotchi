@@ -899,7 +899,7 @@ scratch = ARGV[0] == "scratch"
 ARGV.shift if scratch
 
 # no_interrupt / no_default_input start from config.yml or the env; the flags below turn them on.
-options = { verbose: false, no_interrupt: Samagotchi::Config.get("no_interrupt"), non_interactive: false, no_default_input: Samagotchi::Config.get("no_default_input"), web: false, web_port: nil, web_open: false, web_markdown: nil, web_turn_view: nil }
+options = { verbose: false, no_interrupt: Samagotchi::Config.get("no_interrupt"), non_interactive: false, no_default_input: Samagotchi::Config.get("no_default_input"), web: false, web_port: nil, web_open: false, web_markdown: nil, web_view: nil }
 cli_overrides = {}
 
 # Strict kebab enforcement: --recap_base_url is unknown (OptionParser would otherwise accept _ as -)
@@ -963,7 +963,7 @@ parser = OptionParser.new do |opts|
     next if %w[no_interrupt no_default_input].include?(entry.key)
     next if entry.key == "web.port" # already handled as --port
     next if entry.key == "default.model" # alias --model above
-    next if %w[web.markdown web.turn_view].include?(entry.key) # handled below with explicit inverse flags
+    next if entry.key == "web.markdown" # handled below with explicit inverse flags
     case entry.type
     when :bool
       # --[no-]: a bool that defaults to on is only useful switched off.
@@ -983,8 +983,6 @@ parser = OptionParser.new do |opts|
   end
   opts.on("--web-markdown", "Render finalized LLM Markdown in `chi web` (requires optional commonmarker gem)") { options[:web_markdown] = true; cli_overrides["web.markdown"] = true }
   opts.on("--no-web-markdown", "Disable Markdown rendering in `chi web`") { options[:web_markdown] = false; cli_overrides["web.markdown"] = false }
-  opts.on("--web-turn-view", "Show each turn in `chi web` as one block of steps (the live one at the bottom; the default); ?view=turn|chat overrides per page") { options[:web_turn_view] = true; cli_overrides["web.turn_view"] = true }
-  opts.on("--no-web-turn-view", "Show turns in `chi web` as the classic row of bubbles instead of the turn view") { options[:web_turn_view] = false; cli_overrides["web.turn_view"] = false }
   # Strict underscore rejection: --recap_base_url etc. are not registered and will raise OptionParser::InvalidOption
   opts.on("--version", "Print chi's version") { puts "chi #{Samagotchi::VERSION}"; exit }
   opts.on("-h", "--help", "Show help") { puts opts; exit }
@@ -1040,10 +1038,10 @@ when "web"
       options[:web_markdown] = true
     elsif arg == "--no-web-markdown"
       options[:web_markdown] = false
-    elsif arg == "--web-turn-view"
-      options[:web_turn_view] = true
-    elsif arg == "--no-web-turn-view"
-      options[:web_turn_view] = false
+    elsif arg == "--web-view" && Samagotchi::Config::BY_KEY["web.view"].enum_values.include?(web_args[i + 1])
+      options[:web_view] = web_args[i + 1]
+    elsif arg.start_with?("--web-view=") && Samagotchi::Config::BY_KEY["web.view"].enum_values.include?(arg.split("=", 2).last)
+      options[:web_view] = arg.split("=", 2).last
     elsif arg.start_with?("--port=")
       options[:web_port] = arg.split("=", 2).last.to_i
     end
@@ -1066,10 +1064,9 @@ if options[:web]
   port = options[:web_port] || Samagotchi::Config.get("web.port")
   markdown = options[:web_markdown]
   markdown = Samagotchi::Config.get("web.markdown") if markdown.nil?
-  turn_view = options[:web_turn_view]
-  turn_view = Samagotchi::Config.get("web.turn_view") if turn_view.nil?
+  view = options[:web_view] || Samagotchi::Config.get("web.view")
   exit Samagotchi::Web::Server.launch(port: port, scope: options[:scope] || "project", open_browser: options[:web_open],
-                                      markdown: markdown, turn_view: turn_view,
+                                      markdown: markdown, view: view,
                                       annotate_presets: Samagotchi::Config.get("web.annotate_presets"))
 end
 

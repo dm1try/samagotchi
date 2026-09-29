@@ -767,7 +767,7 @@ described in their own sections.
 | `web.port` | `4567` | `--port` | `chi web`'s port. See [CLI](cli.md). |
 | `web.host` | `127.0.0.1` | yes | `127.0.0.1`, `::1` or `localhost`. |
 | `web.markdown` | `false` | yes | Render answers as Markdown in `chi web`. |
-| `web.turn_view` | `true` | yes | One block per turn; `false` = the row of bubbles. |
+| `web.view` | `turn` | yes | How `chi web` draws a turn: `turn` (one block per turn), `stage` (the running turn pinned above the composer) or `chat` (the row of bubbles). See [CLI](cli.md#web-views). |
 | `web.annotate_presets` | `Agreed\|Could you please elaborate?` | yes | Quick replies next to Annotate in `chi web`, `\|`-separated (a YAML list works too); `""` in the file or on the CLI leaves only Annotate (an empty env value means the default). See [CLI](cli.md#web-annotate-presets). |
 | `history.file` | state dir | | Prompt history path. |
 | `no_interrupt` | `false` | `--no-interrupt` | Raise the tool-call limit of a turn to 1000; a top-level key. |

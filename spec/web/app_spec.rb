@@ -85,8 +85,8 @@ RSpec.describe Samagotchi::Web::App do
 
   # bridge_wait_timeout: 0 — no real worker is spawned in these specs, so the
   # create handler must not wait for a bridge sidecar.
-  # turn_view: nil leaves the app's own default (the turn view).
-  def build_app(manager: nil, state_dir: nil, markdown: false, turn_view: nil, session_class: StubSessionLoader, **extra)
+  # view: nil leaves the app's own default (the turn view).
+  def build_app(manager: nil, state_dir: nil, markdown: false, view: nil, session_class: StubSessionLoader, **extra)
     manager ||= FakeResponsesManager.new
     described_class.new(
       manager: manager,
@@ -94,7 +94,7 @@ RSpec.describe Samagotchi::Web::App do
       session_class: session_class,
       bridge_wait_timeout: 0,
       markdown: markdown,
-      **(turn_view.nil? ? {} : { turn_view: turn_view }),
+      **(view.nil? ? {} : { view: view }),
       **extra
     )
   end
@@ -1241,20 +1241,21 @@ RSpec.describe Samagotchi::Web::App do
       expect(body.first).not_to include(".local/state")
     end
 
-    # The turn view is the default; web.turn_view: false picks the classic
-    # chat view; ?view=turn|chat overrides either for one page load, anything
-    # else is ignored.
-    it "tells the page to use the turn view by default, the chat view from the config or ?view=chat" do
+    # The turn view is the default; web.view picks stage or chat;
+    # ?view=turn|stage|chat overrides it for one page load, anything else is
+    # ignored.
+    it "tells the page its view: turn by default, the config's, or ?view= for one page load" do
       page = ->(path, **opts) { build_app(**opts).call(env_for(path))[2].first }
 
-      expect(page.call("/")).to include(' data-turn-view="1"')
-      expect(page.call("/", turn_view: true)).to include(' data-turn-view="1"')
-      expect(page.call("/", turn_view: false)).not_to include("data-turn-view")
-      expect(page.call("/?view=chat")).not_to include("data-turn-view")
-      expect(page.call("/?view=chat", turn_view: true)).not_to include("data-turn-view")
-      expect(page.call("/?view=turn", turn_view: false)).to include(' data-turn-view="1"')
-      expect(page.call("/?view=nope")).to include(' data-turn-view="1"')
-      expect(page.call("/?view=nope", turn_view: false)).not_to include("data-turn-view")
+      expect(page.call("/")).to include(' data-view="turn"')
+      %w[turn stage chat].each do |view|
+        expect(page.call("/", view: view)).to include(%( data-view="#{view}"))
+        expect(page.call("/?view=#{view}")).to include(%( data-view="#{view}"))
+        expect(page.call("/?view=#{view}", view: "chat")).to include(%( data-view="#{view}"))
+      end
+      expect(page.call("/?view=nope")).to include(' data-view="turn"')
+      expect(page.call("/?view=nope", view: "stage")).to include(' data-view="stage"')
+      expect(page.call("/")).not_to include("data-turn-view")
     end
 
     # The page parses them (annotate_presets.js); an empty one is kept so

@@ -13,7 +13,7 @@
 - A session id can be shortened to any unique prefix (like git): `chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop`, `sessions archive` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
 - `chi web [--port 4567] [--open] [--scope=all]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
 - `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
-- `chi web --no-web-turn-view` — show turns as the classic row of bubbles instead of the default turn view (each turn as one block of steps, the running one at the bottom); `?view=turn|chat` on the page URL overrides it (see [Web turn view](#web-turn-view))
+- `chi web --web-view stage|chat` — draw turns with the stage view (the running turn pinned above the composer) or as the classic row of bubbles instead of the default turn view (each turn as one block of steps, the running one at the bottom); `?view=turn|stage|chat` on the page URL overrides it (see [Web views](#web-views))
 - `chi sessions list|stop|archive|unarchive|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md))
 - `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
 - `chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context, and `--image` attaches images (see [Sessions: Sending a message](sessions.md#sending-a-message)); `--new` starts a session with it instead, and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending; see [Starting a session](sessions.md#starting-a-session))
@@ -417,16 +417,37 @@ touch screen), and so does each code block of a rendered answer. An answer
 copies its Markdown source, not the rendered text; a code block copies just
 its code; a prompt copies the text as you typed it.
 
-### Web turn view
+### Web views
 
-The turn view, the default, shows a turn as *one block* where the work
-happens (the classic chat view renders a turn with tool calls as a row of
-bubbles: one thinking block, one activity panel and one answer bubble per
-generation; `web.turn_view: false` brings it back). The running
+`web.view` picks how the page draws a turn: `turn` (the default, below),
+`stage` (the running turn pinned above the composer, below) or `chat` (the
+classic row of bubbles: one thinking block, one activity panel and one
+answer bubble per generation).
+
+```sh
+chi web --web-view stage     # or chat; turn is the default
+```
+
+The setting also supports `SAMAGOTCHI_WEB_VIEW=stage` or the global config:
+
+```yaml
+web:
+  view: stage
+```
+
+`?view=turn`, `?view=stage` or `?view=chat` on the page URL picks the view
+for that page load, whatever the config says; the parameter is dropped
+when you switch between the project and all-sessions views. The terminal
+UIs are not affected.
+
+**The turn view** shows a turn as *one block* where the work
+happens. The running
 generation is the live part at the bottom (its thinking, its narration, its
 tool rows), the earlier ones stack above it collapsed to one line each
-(their narration's first line, else `working with <tools>`, and a call
-count), expandable for inspection. The live thinking is one line: the
+(their narration's first line, else their first call's title such as
+`edit lib/a.rb`, and a call count), expandable for inspection. A tool row
+says what the call did: a file's path relative to the session's folder, a
+command without its leading `cd … &&` (the full parameters on hover). The live thinking is one line: the
 newest complete sentence, changing at most once per 1.5 s. Click it for the
 full text; a peek is per step (the next step's thinking starts closed
 again). When a step ends its thinking closes to a plain `thinking` line
@@ -446,22 +467,6 @@ steps saved before that have none, so they show no thinking. An `edit` or
 `write` row has a closed `diff +3 −1` under it that opens to the change it
 made (up to 120 lines or 8 KB), live and after a reload (see
 [Guardrails](guardrails.md#ask) for the diff an approval shows first).
-
-```sh
-chi web --no-web-turn-view   # the classic chat view; --web-turn-view is the default
-```
-
-The setting also supports `SAMAGOTCHI_WEB_TURN_VIEW=false` or the global config:
-
-```yaml
-web:
-  turn_view: false
-```
-
-`?view=chat` on the page URL forces the classic chat view for that page load
-and `?view=turn` the turn view, whatever the config says; the parameter is dropped
-when you switch between the project and all-sessions views. The terminal
-UIs are not affected.
 
 ### Web annotate presets
 

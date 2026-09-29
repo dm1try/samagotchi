@@ -44,12 +44,15 @@ RSpec.describe Samagotchi::ConfigFile do
         expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.markdown")).to be(false)
       end
 
-      it "defaults the web turn view to on, off from the file, env or cli" do
-        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.turn_view")).to be(true)
-        expect(described_class.resolve("web.turn_view", file_data: { "web" => { "turn_view" => false } }, env: {})).to be(false)
-        expect(described_class.resolve("web.turn_view", file_data: {}, env: { "SAMAGOTCHI_WEB_TURN_VIEW" => "0" })).to be(false)
-        expect(described_class.resolve("web.turn_view", file_data: {}, env: {}, cli_overrides: { "web.turn_view" => false })).to be(false)
-        expect(described_class.find_by_key("web.turn_view").cli_flag).to eq("--web-turn-view")
+      it "defaults the web view to turn; stage or chat from the file, env or cli" do
+        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.view")).to eq("turn")
+        expect(described_class.resolve("web.view", file_data: { "web" => { "view" => "stage" } }, env: {})).to eq("stage")
+        expect(described_class.resolve("web.view", file_data: {}, env: { "SAMAGOTCHI_WEB_VIEW" => "chat" })).to eq("chat")
+        expect(described_class.resolve("web.view", file_data: {}, env: {}, cli_overrides: { "web.view" => "stage" })).to eq("stage")
+        entry = described_class.find_by_key("web.view")
+        expect(entry.cli_flag).to eq("--web-view")
+        expect(entry.enum_values).to eq(%w[turn stage chat])
+        expect(described_class.find_by_key("web.turn_view")).to be_nil
       end
 
       it "defaults the annotate presets to two, set from the file, env or cli; \"\" is none but not from env" do
