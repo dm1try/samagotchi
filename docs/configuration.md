@@ -214,6 +214,20 @@ hosts:
 
 `chi self` shows the variable and whether it is set (`api key  FIREWORKS_API_KEY (set)`).
 
+Every host with `api_key_env:` sends `Authorization: Bearer <key>` on each request,
+chat or raw-prompt alike, so a llama.cpp started with `--api-key` works as a native
+host too (`chi bootstrap --key-env VAR` writes such an entry). An unset variable
+fails the turn before any request (`set VAR`); a 401/403 names the variable to
+check, or, on a host without `api_key_env:`, suggests adding it:
+
+```yaml
+hosts:
+  box:
+    host: 192.0.2.20
+    port: 8080
+    api_key_env: BOX_LLAMA_KEY
+```
+
 For models on that host, chi uses the chat loop (its own OpenAI chat adapter): it
 takes the OpenAI base (`url:`, else `http://HOST:PORT/v1`) and streams messages plus
 function schemas from `/v1/chat/completions`; the model's reasoning (`reasoning_content`)
