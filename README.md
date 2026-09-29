@@ -32,9 +32,28 @@ bin/chi self
 `bin/chi` runs the checkout; `bundle exec rake gem:install` installs it as a
 local gem, which puts `chi` on your PATH.
 
+## Set up
+
+Point chi at your model server; it works out the rest and writes
+`~/.config/samagotchi/config.yml`:
+
+```sh
+chi bootstrap 192.168.1.29:8081          # llama.cpp on another machine
+chi bootstrap localhost:11434            # Ollama (any OpenAI-compatible server)
+chi bootstrap https://openrouter.ai/api/v1 --key-env OPENROUTER_API_KEY
+chi bootstrap                            # look on this machine's usual ports
+```
+
+It finds out whether the server is llama.cpp or OpenAI-compatible, picks the
+model (or asks, when there are several), sends one test request and writes
+the config. With a config already there, it adds a `hosts:` entry and keeps
+the rest of the file. Edit the file later as in [Configure](#configure);
+`chi bootstrap --help` has the options.
+
 ## Configure
 
-Create `~/.config/samagotchi/config.yml` (or `$XDG_CONFIG_HOME/samagotchi/config.yml`):
+To write the config by hand instead, or to change it later: create
+`~/.config/samagotchi/config.yml` (or `$XDG_CONFIG_HOME/samagotchi/config.yml`):
 
 ```yaml
 default:

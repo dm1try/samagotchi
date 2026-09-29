@@ -10,6 +10,13 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- `chi bootstrap [HOST[:PORT]|URL]`: the first setup in one command. It finds
+  out whether the server is llama.cpp or OpenAI-compatible (with no target, it
+  looks on localhost's usual ports), picks the model, sends a test request and
+  writes config.yml; an existing config gets a `hosts:` entry added after a
+  backup, its other lines untouched. `--key-env VAR` for a server that wants a
+  key, `--model`, `--name`, `--no-test`, `--dry-run`. The first-run "no model
+  configured" line points at it.
 - Web notifications: a session that needs you (a question or approval, a
   failed turn, a turn done after 10 s or more) while the tab is in the
   background counts in the page title, `(N) Chi`, and with the new bell in the

@@ -10,6 +10,9 @@ Chi reads its settings from three places; the first that sets a value wins:
 
 then the built-in default. [All settings](#all-settings) lists them.
 
+`chi bootstrap HOST[:PORT]` writes a first config for a model server, or adds
+it to this file as a `hosts:` entry (see [First setup](cli.md#first-setup)).
+
 Default path:
 
 - `$XDG_CONFIG_HOME/samagotchi/config.yml`

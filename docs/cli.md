@@ -2,6 +2,7 @@
 
 ## Commands
 
+- `chi bootstrap [HOST[:PORT]|URL]` — first setup: find the model server (llama.cpp or OpenAI-compatible), pick the model, send a test request and write config.yml, or add a `hosts:` entry to an existing one (see [First setup](#first-setup))
 - `chi` — start a session in a background worker and attach the terminal to it, so the Web UI (or another terminal) can share it (see [Sharing a session](#sharing-a-session))
 - `chi -p "your prompt"` — run a prompt, then stay attached
 - `chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
@@ -19,6 +20,42 @@
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
 - `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles
 - `chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs (see [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle) and [the check-in bundle](plugins.md#the-check-in-bundle))
+
+### First setup
+
+`chi bootstrap TARGET` names the model server and writes the config for it:
+
+```sh
+chi bootstrap 192.168.1.29:8081          # host:port (port 8080 when none)
+chi bootstrap https://openrouter.ai/api/v1 --key-env OPENROUTER_API_KEY
+chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
+```
+
+- **What it is.** llama.cpp's `/props` answering means the native API (no
+  `api:`); otherwise `GET /v1/models` answering means an OpenAI-compatible
+  server (`api: openai`). A URL with a path is the API base as given
+  (`…/api/v1`); a domain without a scheme is tried over https, then http.
+  Each request is tried once, with 5 s timeouts, so a refused port answers
+  at once.
+- **The key.** A server that answers 401/403 wants an API key: `--key-env VAR`
+  names the environment variable holding it (on a terminal chi asks for the
+  name). Only the variable's name is written, never the key.
+- **The model.** One model is taken; with several, `--model ID` picks one
+  (a terminal gets a numbered list, a script the ids and exit 2). A llama.cpp
+  server also shows its context size and the prompt profile its chat template
+  matches.
+- **The test.** One short chat request ("test: answered in 1.1 s"); `--no-test`
+  skips it. A failed test still writes the config, says so and exits 1.
+- **The file.** With no config.yml it writes a small commented one:
+  `default.model` as `<host>:<model>` and one `hosts:` entry named `local`
+  (localhost), `lan` (an IP) or after the domain (`openrouter`); `--name`
+  sets it. An existing file is left as it is apart from the new entry, added
+  at the end of its `hosts:` block (it gets a `hosts:` block, with a
+  `default` entry for its `server:` first, when it has none), after a backup
+  to `config.yml.bak-<time>`. `default.model` is set only when the file has
+  none. A server already in the file writes nothing; a file in YAML flow style
+  or with anchors gets the lines printed to paste instead. `--dry-run` shows
+  what it would write.
 
 ## Flags
 
