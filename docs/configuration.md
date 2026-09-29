@@ -408,7 +408,9 @@ What each backend gets:
 | native, `gemma4` | no `<\|think\|>` token at the start of the system prompt | no knob, one notice |
 | chat host (`api: openai`) | `chat_template_kwargs: {enable_thinking: false}` and `reasoning_effort: "none"` | `reasoning_effort: <level>` |
 
-On chat hosts: llama.cpp honours both off switches but ignores the effort; Splash takes `reasoning_effort` (off only
+On chat hosts: llama.cpp honours both off switches but ignores the effort (when its `/props` says
+`chat_template_caps.supports_reasoning_effort: false`, chi says so once per session and host, from the `/props`
+answer the turn already fetched for the window); Splash takes `reasoning_effort` (off only
 through `none`) and scales with it; OpenRouter translates `reasoning_effort` per model (some can't turn thinking off:
 Qwen3-30B-A3B thinks anyway, gpt-oss refuses).
 

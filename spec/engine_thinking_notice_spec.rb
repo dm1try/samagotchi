@@ -37,6 +37,7 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
     allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil)
+    allow_any_instance_of(Samagotchi::Client).to receive(:cached_server_props).and_return(nil)
     allow(kernel).to receive(:vision=)
     allow(kernel).to receive(:sampling=)
     allow(kernel).to receive(:thinking=)
@@ -69,6 +70,56 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
 
     engine.switch_model!("other:qwen-small")
     expect(notices("elsewhere").size).to eq(1)
+  end
+
+  describe "an effort on a llama.cpp chat host whose /props says the template takes none" do
+    let(:registry) do
+      Samagotchi::HostRegistry.new(hosts_config: { "box" => { host: "box.test", port: 8080, api: "openai" },
+                                                   "other" => { host: "other.test", port: 8080, api: "openai" } })
+    end
+    let(:caps) { { "chat_template_caps" => { "supports_reasoning_effort" => false } } }
+
+    # The chat loop's one request per turn, answered here (no server).
+    before do
+      allow_any_instance_of(Samagotchi::LLM::OpenAIChat).to receive(:chat).and_return(
+        Samagotchi::LLM::ChatResponse.new(text: "ok", reasoning: "", tool_calls: [], usage: Samagotchi::LLM::Usage.none,
+                                                      finish_reason: "stop")
+      )
+      allow_any_instance_of(Samagotchi::LLM::OpenAIChat).to receive(:list_models).and_return([])
+    end
+
+    def props_seen(body)
+      allow_any_instance_of(Samagotchi::Client).to receive(:cached_server_props)
+        .and_return(body && Samagotchi::Client::ServerProps.new(body: body, status: :ok))
+    end
+
+    it "says once per session and host that the effort is ignored, from the probe the turn already made" do
+      ENV["SAMAGOTCHI_THINKING_LEVEL"] = "low"
+      props_seen(caps)
+
+      first = notices
+      expect(first.size).to eq(1)
+      expect(first.first).to include(hook: "thinking", level: :info)
+      expect(first.first[:text]).to eq("low isn't supported by qwen-small's chat template on box (/props: " \
+                                       "supports_reasoning_effort false); thinking stays as the model has it")
+      expect(notices("again")).to be_empty
+
+      engine.switch_model!("other:qwen-small")
+      expect(notices("elsewhere").size).to eq(1)
+    end
+
+    it "says nothing for off or default, for a template that takes an effort, or with no /props answer cached" do
+      ENV["SAMAGOTCHI_THINKING_LEVEL"] = "off"
+      props_seen(caps)
+      expect(notices).to be_empty
+      ENV["SAMAGOTCHI_THINKING_LEVEL"] = "high"
+      props_seen({ "chat_template_caps" => { "supports_reasoning_effort" => true } })
+      expect(notices).to be_empty
+      props_seen({ "chat_template" => "..." })
+      expect(notices).to be_empty
+      props_seen(nil)
+      expect(notices).to be_empty
+    end
   end
 
   it "says nothing for off or default on a native host that honours them" do

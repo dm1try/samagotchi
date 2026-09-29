@@ -314,6 +314,12 @@ module Samagotchi
       props
     end
 
+    # The /props answer #server_props already has for +model+, or nil;
+    # never asks the server.
+    def cached_server_props(model: nil)
+      @props_mutex.synchronize { @props_cache[model.to_s] }
+    end
+
     # The context window (tokens) the running server was started with, or nil
     # when the transport reports none or the probe fails (see #server_props).
     def context_window(model: nil)

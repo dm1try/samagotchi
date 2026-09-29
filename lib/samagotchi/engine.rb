@@ -2163,6 +2163,25 @@ module Samagotchi
       nil
     end
 
+    # An effort on a llama.cpp chat host whose chat template takes none
+    # (its /props says so): said once per session and host, as for a native
+    # host. Read from the /props answer the turn's window probe left in the
+    # cache, so it asks the server nothing.
+    def announce_effort_ignored
+      level, target = @turn_thinking
+      return unless target&.entry&.chat? && Thinking::EFFORTS.include?(level)
+
+      client = target.client
+      props = client.respond_to?(:cached_server_props) ? client.cached_server_props(model: target.bare_model) : nil
+      return unless Thinking.effort_ignored?(level, props)
+
+      thinking_notice_once(:unsupported, target, :info,
+                           "#{level} isn't supported by #{target.bare_model}'s chat template on #{target.entry.name} " \
+                           "(/props: supports_reasoning_effort false); thinking stays as the model has it")
+    rescue StandardError
+      nil
+    end
+
     # Thinking off, and the model thought anyway: logged each time, said
     # once per session and host.
     def check_thinking_honoured(event)
@@ -2667,7 +2686,10 @@ module Samagotchi
         next thinking_refused(event) if event[:type] == :thinking_refused
 
         emit_event(on_event, event)
-        check_thinking_honoured(event) if event[:type] == :generation_completed
+        if event[:type] == :generation_completed
+          check_thinking_honoured(event)
+          announce_effort_ignored
+        end
       end
     end
 

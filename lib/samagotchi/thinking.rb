@@ -99,6 +99,17 @@ module Samagotchi
       end
     end
 
+    # Whether a chat host's /props (+props+, Client::ServerProps) says its
+    # chat template takes no effort (llama.cpp's
+    # chat_template_caps.supports_reasoning_effort: false), so +level+'s
+    # reasoning_effort is ignored. false when it doesn't say.
+    def effort_ignored?(level, props)
+      return false unless EFFORTS.include?(level) && props&.answered? && props.body.is_a?(Hash)
+
+      caps = props.body["chat_template_caps"]
+      caps.is_a?(Hash) && caps["supports_reasoning_effort"] == false
+    end
+
     # The native prompt's switch for +level+ under +profile+.
     # @param profile [ModelProfile]
     # @return [Native]
