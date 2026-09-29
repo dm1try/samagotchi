@@ -103,14 +103,6 @@ module Samagotchi
       end
     end
 
-    # Get the name of the next due reminder (if any) whose interval has elapsed.
-    # Kept for backward compatibility with IdleReminders thread.
-    # @return [String, nil] the reminder name, or nil if none are due
-    def next_due_name
-      due = due_reminders
-      due.first&.fetch(:name)
-    end
-
     # Mark a reminder as fired — resets its next_fire_at to now + interval.
     # Called by Engine after a due reminder has been delivered.
     # @param name [String] the reminder name

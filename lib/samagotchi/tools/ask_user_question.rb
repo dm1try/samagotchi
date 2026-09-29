@@ -25,32 +25,6 @@ module Samagotchi
         "Error: ask_user_question requires 2-8 options (got #{count}). Provide e.g. options=[\"Cats\",\"Dogs\"]"
       end
 
-      # Direct invocation (used in specs / headless fallback).
-      # When a blocking handler is not injected, return an instructional error so the
-      # model falls back to plain text rather than hanging.
-      def self.call(question, options: nil, header: nil, multi_select: nil, allow_freeform: nil)
-        question = question.to_s.strip
-        return "Error: question is required" if question.empty?
-
-        opts = normalize_options(options)
-        return "Error: options must be an array of 2-8 non-empty strings" if opts.nil?
-
-        header = header.to_s.strip
-        header = nil if header.empty?
-        ms = to_bool(multi_select)
-        af = to_bool(allow_freeform)
-
-        payload = {
-          question: question,
-          options: opts,
-          header: header,
-          multi_select: ms,
-          allow_freeform: af
-        }.compact
-
-        JSON.pretty_generate(payload)
-      end
-
       # Normalize options param: accept Array or JSON string; strip, reject empty.
       # Dumb-model tolerant: handles JSON arrays, quoted CSV, bracket noise, single strings.
       def self.normalize_options(raw)
@@ -141,18 +115,6 @@ module Samagotchi
 
         arr.map { |v| sanitize_option(v) }.reject { |v| v.nil? || v.empty? }
       end
-
-      def self.to_bool(v)
-        return nil if v.nil?
-        return v if v == true || v == false
-
-        s = v.to_s.strip.downcase
-        return true if %w[1 true yes on].include?(s)
-        return false if %w[0 false no off].include?(s)
-
-        nil
-      end
-      private_class_method :to_bool
     end
   end
 end

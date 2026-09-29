@@ -697,21 +697,6 @@ module Samagotchi
       true
     end
 
-    # Wait for a session to reach a terminal state (completed, error, stopped).
-    # Returns true if the session finished, false if the timeout elapsed.
-    def self.wait_for_session(session_id, timeout: 30, state_dir: nil)
-      sd = state_dir || Session.default_state_dir
-      elapsed = 0
-      while elapsed < timeout
-        session = Session.load(session_id, state_dir: sd)
-        return true if %w[completed error stopped].include?(session.status)
-
-        sleep(0.5)
-        elapsed += 0.5
-      end
-      false
-    end
-
     # Run the session loop inside the forked process.
     # This is the entry point called by Process.spawn.
     #

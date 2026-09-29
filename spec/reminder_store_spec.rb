@@ -130,20 +130,6 @@ RSpec.describe Samagotchi::ReminderStore do
     end
   end
 
-  describe "#next_due_name" do
-    it "returns nil when no reminders are due" do
-      expect(store.next_due_name).to be_nil
-    end
-
-    it "returns the name of one due reminder" do
-      store.register({ name: "health", description: "test", interval_minutes: 1 })
-      allow(Process).to receive(:clock_gettime).and_return(
-        Process.clock_gettime(Process::CLOCK_MONOTONIC) + 70
-      )
-      expect(store.next_due_name).to eq("health")
-    end
-  end
-
   describe "#mark_fired" do
     it "resets next_fire_at" do
       store.register({ name: "health", description: "test", interval_minutes: 5 })

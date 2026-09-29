@@ -459,26 +459,6 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
-  describe ".wait_for_session" do
-    it "returns true when session is already completed" do
-      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      session.status = Samagotchi::Session::STATUS_COMPLETED
-      session.save(state_dir: tmpdir)
-
-      result = described_class.wait_for_session(session.id, timeout: 1, state_dir: tmpdir)
-      expect(result).to be true
-    end
-
-    it "returns false when session stays running beyond timeout" do
-      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
-      session.status = Samagotchi::Session::STATUS_RUNNING
-      session.save(state_dir: tmpdir)
-
-      result = described_class.wait_for_session(session.id, timeout: 1, state_dir: tmpdir)
-      expect(result).to be false
-    end
-  end
-
   describe ".resume_session" do
     it "wakes an idle session by spawning a worker" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
