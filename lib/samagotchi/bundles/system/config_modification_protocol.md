@@ -52,7 +52,7 @@ log:
   disable: false
 ```
 
-Legacy flat keys (`SAMAGOTCHI_DEFAULT_MODEL`, `SAMAGOTCHI_N_PREDICT` etc. at top-level) are still read via fallback in `Config.lookup_yaml` but warn `Warning: config key 'SAMAGOTCHI_DEFAULT_MODEL' is legacy UPPER — use 'default.model'` (`ConfigFile.load_global_env!`). When a file has both, the nested key wins and the warning names both. Migrate them to nested form and remove the flat entry. The old `LLAMA_HOST`/`LLAMA_PORT` aliases were removed; use `server.host`/`server.port` (nested) or `SAMAGOTCHI_SERVER_HOST`/`SAMAGOTCHI_SERVER_PORT`.
+Only the nested form is read. An env name used as a top-level key (`SAMAGOTCHI_DEFAULT_MODEL: m`, the old flat form) is ignored and warns as an unknown key (`did you mean 'default.model'?`): move it to its nested form and delete the flat line. The old `LLAMA_HOST`/`LLAMA_PORT` aliases were removed; use `server.host`/`server.port` (nested) or `SAMAGOTCHI_SERVER_HOST`/`SAMAGOTCHI_SERVER_PORT`.
 
 **Excluded maps** (YAML-only, not part of the flat registry; skipped by scalar loader):
 
@@ -116,7 +116,7 @@ A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cov
 
 1. **Read** the current file via `read` tool (or `ConfigFile.global_path`). If `File.file?` false, start from `{}`.
 2. `YAML.safe_load` (permitted_classes: [], aliases: false). If data nil or not Hash, treat as `{}` or raise with path.
-3. Mutate the intended **nested** key in the raw hash. Preserve all other keys byte-for-byte where possible. Example for default model: `raw_data["default"] ||= {}; raw_data["default"]["model"] = "new-model"; raw_data.delete("SAMAGOTCHI_DEFAULT_MODEL")` to migrate legacy.
+3. Mutate the intended **nested** key in the raw hash. Preserve all other keys byte-for-byte where possible. Example for default model: `raw_data["default"] ||= {}; raw_data["default"]["model"] = "new-model"`.
 4. **Validate** (see below) before writing. Also run `Samagotchi::Config.validate_yaml_sections` — it returns one `config: unknown key '…' (did you mean '…'?)` per key chi doesn't read (every config-exposed `Config::ENTRIES` key is known as written, including the section-less `max_tool_output_chars` and `skip_agent_md`; names under `hosts:`/`models:`/`model_aliases:`/`hooks:`/`bundles:`/`memories:` are free-form, host and model entries are checked against `Config::MAP_ENTRY_KEYS`). An empty list means no warning at start.
 5. **Write atomically**: `FileUtils.mkdir_p(File.dirname(path))`, `File.write("#{path}.tmp", YAML.dump(raw_data))`, `File.rename("#{path}.tmp", path)`.
 6. Nothing else to update: config.yml values are never copied into `ENV`, and every `Config.get` reads the file again when it changed, so the next read (and every worker started after the write) sees the new value with origin `:file`. What a running worker set up at its start (`hosts:`, guardrail rules, bundle settings) waits for its restart. CLI overrides (`--model`, `--recap-model`, …) win over the file until the process exits; a worker gets its spawner's CLI settings through its env (`Config.cli_env`).
@@ -150,4 +150,3 @@ A guardrail rule's `tool:` may be a glob (`tool: "mcp_*"`, verdict `ask`) to cov
 - `--recap_base_url` (underscore) is rejected as unknown — use `--recap-base-url` (kebab). Same for all registry flags.
 - `model_aliases` require restart or `/model` reload to take effect; document the change.
 - Keep edits minimal: touch only the key you intend to change; preserve `hosts:`/`hooks:`/`guardrails:`/`bundles:` maps. Adding a `bundles: <name>:` entry does not install the bundle (`chi bundle install <name>`).
-- To silence legacy warnings, migrate flat `SAMAGOTCHI_*` keys to nested form and delete the flat entry atomically.

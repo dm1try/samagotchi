@@ -13,15 +13,6 @@ RSpec.describe "Engine picks the loop from the host's api" do
     })
   end
 
-  around do |example|
-    previous = ENV.delete("SAMAGOTCHI_BACKEND")
-    Samagotchi::Engine.instance_variable_set(:@warned_removed_backend, nil)
-    example.run
-  ensure
-    previous ? ENV["SAMAGOTCHI_BACKEND"] = previous : ENV.delete("SAMAGOTCHI_BACKEND")
-    Samagotchi::Engine.instance_variable_set(:@warned_removed_backend, nil)
-  end
-
   def engine(model) = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: model)
 
   it "uses NativeBackend for a host without api" do
@@ -61,12 +52,6 @@ RSpec.describe "Engine picks the loop from the host's api" do
     e.switch_model!("beta:Qwen3-14B")
 
     expect(e.backend.adapter.base_url).to eq("http://beta.test:2222/v1")
-  end
-
-  it "warns once that SAMAGOTCHI_BACKEND is ignored, and still follows the host" do
-    ENV["SAMAGOTCHI_BACKEND"] = "ruby_llm"
-    expect { engine("box:gemma-small") }.to output(/backend setting .* was removed and is ignored/).to_stderr
-    expect { expect(engine("box:gemma-small").backend).to be_a(Samagotchi::LLM::NativeBackend) }.not_to output.to_stderr
   end
 
   it "runs a turn through the chosen backend with the bare model name" do

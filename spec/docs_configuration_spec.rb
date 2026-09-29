@@ -4,8 +4,8 @@ require "yaml"
 require "samagotchi/config"
 
 # docs/configuration.md is where people copy config.yml from, so every ```yaml
-# block in it must be a config the loader takes without a warning: nested
-# keys only (no legacy flat SAMAGOTCHI_* keys), and only keys the code reads.
+# block in it must be a config the loader takes without a warning: only keys
+# the code reads (a flat SAMAGOTCHI_* key isn't one).
 RSpec.describe "docs/configuration.md YAML examples" do
   doc_path = File.expand_path("../docs/configuration.md", __dir__)
 
@@ -17,12 +17,11 @@ RSpec.describe "docs/configuration.md YAML examples" do
     end
   end
 
-  # The loader's own check (unknown keys, map entry keys), plus no legacy flat keys.
+  # The loader's own check (unknown keys, map entry keys).
   problems_in = lambda do |data|
     next ["top level is not a mapping"] unless data.is_a?(Hash)
 
-    data.keys.map(&:to_s).grep(/\ASAMAGOTCHI_/).map { |k| "legacy flat key #{k}" } +
-      Samagotchi::Config.validate_yaml_sections(data)
+    Samagotchi::Config.validate_yaml_sections(data)
   end
 
   it "has YAML examples to check" do
@@ -39,7 +38,7 @@ RSpec.describe "docs/configuration.md YAML examples" do
     expect(problems).to eq([])
   end
 
-  it "flags a legacy flat key, an unknown key and an unknown host key" do
+  it "flags a flat env-named key, an unknown key and an unknown host key" do
     data = YAML.safe_load(<<~YAML)
       SAMAGOTCHI_DEFAULT_MODEL: m
       server: {port: 1, colour: red}
@@ -47,7 +46,8 @@ RSpec.describe "docs/configuration.md YAML examples" do
       recap: {host: a}
     YAML
     expect(problems_in.call(data)).to contain_exactly(
-      "legacy flat key SAMAGOTCHI_DEFAULT_MODEL", "config: unknown key 'server.colour'", "config: unknown key 'hosts.a.colour'"
+      "config: unknown key 'SAMAGOTCHI_DEFAULT_MODEL' (did you mean 'default.model'?)",
+      "config: unknown key 'server.colour'", "config: unknown key 'hosts.a.colour'"
     )
   end
 end

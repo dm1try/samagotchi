@@ -52,9 +52,11 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
     ])
   end
 
-  it "leaves a known legacy flat key to its own warning, and suggests the nested key for a misspelt one" do
-    expect(problems("SAMAGOTCHI_DEFAULT_MODEL: m\nSAMAGOTCHI_DEFALT_MODEL: m\n")).to eq([
-      "config: unknown key 'SAMAGOTCHI_DEFALT_MODEL' (did you mean 'default.model'?)"
+  it "doesn't read a flat env-named key, and suggests the nested key for it (misspelt too)" do
+    expect(problems("SAMAGOTCHI_DEFAULT_MODEL: m\nSAMAGOTCHI_DEFALT_MODEL: m\nbackend: openai\n")).to eq([
+      "config: unknown key 'SAMAGOTCHI_DEFAULT_MODEL' (did you mean 'default.model'?)",
+      "config: unknown key 'SAMAGOTCHI_DEFALT_MODEL' (did you mean 'default.model'?)",
+      "config: unknown key 'backend'"
     ])
   end
 

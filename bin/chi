@@ -902,12 +902,6 @@ ARGV.shift if scratch
 options = { verbose: false, no_interrupt: Samagotchi::Config.get("no_interrupt"), non_interactive: false, no_default_input: Samagotchi::Config.get("no_default_input"), web: false, web_port: nil, web_open: false, web_markdown: nil, web_turn_view: nil }
 cli_overrides = {}
 
-if ARGV.any? { |arg| arg == "--backend" || arg.start_with?("--backend=") }
-  warn "Error: --backend was removed. A host's api: in config.yml picks the loop " \
-       "(api: openai for the chat API; see docs/configuration.md)."
-  exit 1
-end
-
 # Strict kebab enforcement: --recap_base_url is unknown (OptionParser would otherwise accept _ as -)
 ARGV.each do |arg|
   next unless arg.start_with?("--") && arg.include?("_")

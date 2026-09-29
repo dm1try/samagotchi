@@ -148,8 +148,8 @@ flag also works as `--kebab-case VALUE`, e.g. `--server-host`, `--server-port`,
 `api: openai` in config.yml is driven through the OpenAI chat API (streamed; a remote
 provider via `url:` and `api_key_env:`); every other host gets chi's own raw-prompt loop. `/model` and `--model host:model` switch hosts, and
 the loop with them. See [Configuration](configuration.md) (`hosts:` and `api:`).
-`--backend`, `SAMAGOTCHI_BACKEND` and a `backend:` key were removed; chi says so if
-it sees one.
+`--backend`, `SAMAGOTCHI_BACKEND` and a `backend:` key were removed (`backend:` warns
+as an unknown key).
 
 ### Entrypoint scenarios
 

@@ -179,12 +179,9 @@ module Samagotchi
     }.freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
     SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze }.freeze
-    # Removed settings that warn on their own (Engine.warn_removed_backend_setting).
-    REMOVED_KEYS = %w[backend].freeze
 
     # Fast lookup maps
     BY_KEY = ENTRIES.each_with_object({}) { |e, h| h[e.key] = e }.freeze
-    BY_ENV = ENTRIES.each_with_object({}) { |e, h| h[e.env_key] = e }.freeze
 
     class << self
       # The +candidates+ within edit distance 2 of +probe+, closest first
@@ -195,10 +192,6 @@ module Samagotchi
 
       def find_by_key(key)
         BY_KEY[key.to_s]
-      end
-
-      def find_by_env(env_key)
-        BY_ENV[env_key.to_s]
       end
 
       def all_entries
@@ -316,26 +309,10 @@ module Samagotchi
       end
 
       # Lookup yaml_path in nested hash, accepting snake leaf, kebab alias and
-      # entry-specific yaml_aliases, then legacy flat UPPER keys (e.g.,
-      # SAMAGOTCHI_DEFAULT_MODEL) for transition: the nested key wins when a
-      # file has both (ConfigFile.load_global_env! warns about that).
+      # entry-specific yaml_aliases.
       def lookup_yaml(data, yaml_path)
         entry = ENTRIES.find { |e| e.yaml_path == yaml_path }
-        nested = lookup_nested(data, yaml_path, entry)
-        return nested unless nested.nil?
-
-        lookup_legacy(data, entry)
-      end
-
-      # The legacy flat key's value for +entry+, or nil.
-      def lookup_legacy(data, entry)
-        return nil unless entry && data.is_a?(Hash)
-
-        key = entry.env_key
-        return data[key] if data.key?(key)
-        return data[key.to_sym] if data.key?(key.to_sym)
-
-        nil
+        lookup_nested(data, yaml_path, entry)
       end
 
       # The nested key's value for +yaml_path+, or nil.
@@ -435,13 +412,13 @@ module Samagotchi
       # code doesn't read (with a "did you mean" when a known key is close).
       # Every config-exposed entry in ENTRIES is known as written; names under
       # the maps are the user's, and host/model entries may hold the keys
-      # their readers take. Legacy flat keys warn in ConfigFile.load_global_env!.
+      # their readers take.
       def validate_yaml_sections(data)
         return [] unless data.is_a?(Hash)
 
         data.flat_map do |key, value|
           key = key.to_s
-          if find_by_env(key)&.config_exposed? || FREE_FORM_MAPS.include?(key) || REMOVED_KEYS.include?(key)
+          if FREE_FORM_MAPS.include?(key)
             []
           elsif MAP_ENTRY_KEYS.key?(key)
             map_entry_problems(key, value)
@@ -476,7 +453,7 @@ module Samagotchi
       def key_problem(dotted)
         return nil if known_config_keys.include?(dotted)
 
-        entry = find_by_key(dotted) || find_by_env(dotted)
+        entry = find_by_key(dotted)
         if entry
           where = entry.cli_exposed? ? "#{entry.env_key} or #{entry.cli_flag}" : entry.env_key
           return "config: '#{dotted}' can't be set in config.yml; use #{where}"
@@ -484,7 +461,7 @@ module Samagotchi
 
         canonical = ENTRIES.select(&:config_exposed?).map(&:key) + known_sections.to_a +
                     SECTION_EXTRA_KEYS.flat_map { |s, leaves| leaves.map { |l| "#{s}.#{l}" } } + FREE_FORM_MAPS + MAP_ENTRY_KEYS.keys
-        # A legacy-looking flat key compares by its nested form.
+        # A flat SAMAGOTCHI_* key (the env name) compares by its nested form.
         probe = dotted.start_with?("SAMAGOTCHI_") ? dotted.delete_prefix("SAMAGOTCHI_").downcase : dotted
         unknown_key_message(dotted, probe, canonical)
       end
@@ -535,7 +512,6 @@ module Samagotchi
     XDG_CONFIG_HOME_ENV = "XDG_CONFIG_HOME"
     CONFIG_DIR = "samagotchi"
     CONFIG_FILE = "config.yml"
-    DEFAULT_MODEL_KEY = "SAMAGOTCHI_DEFAULT_MODEL"
     MODEL_ALIASES_KEY = "model_aliases"
     MODELS_KEY = "models"
 
@@ -653,19 +629,6 @@ module Samagotchi
       raw = read_yaml(env: env, path: path) || {}
       if existed
         Samagotchi::Config.validate_yaml_sections(raw).each { |w| Log.warn(:config, "config_key", echo: "Warning: #{w}") }
-        # Warn on legacy UPPER keys; the nested key wins when both are set.
-        # Any other flat key is unknown to validate_yaml_sections.
-        raw.each_key do |k|
-          entry = Samagotchi::Config.find_by_env(k)
-          next unless entry&.config_exposed?
-
-          if !Samagotchi::Config.lookup_nested(raw, entry.yaml_path, entry).nil?
-            nested = entry.yaml_path.join(".")
-            Log.warn(:config, "legacy_key", echo: "Warning: config: both '#{k}' and '#{nested}' are set; using '#{nested}', remove the flat key", key: k.to_s)
-          else
-            Log.warn(:config, "legacy_key", echo: "Warning: config key '#{k}' is legacy UPPER — use '#{entry.yaml_path.join('.')}'", key: k.to_s)
-          end
-        end
       end
       Samagotchi::Config.reload!(cli_overrides: {})
       existed
@@ -946,15 +909,12 @@ module Samagotchi
 
       raw_data = read_yaml(env: env, path: path) || {}
 
-      # Migrate to new dotted nested form: default.model (Option A)
       raw_data["default"] ||= {}
       if raw_data["default"].is_a?(Hash)
         raw_data["default"]["model"] = resolved
       else
         raw_data["default"] = { "model" => resolved }
       end
-      # Remove legacy UPPER key if present
-      raw_data.delete(DEFAULT_MODEL_KEY)
       FileUtils.mkdir_p(File.dirname(path))
       tmp = "#{path}.tmp"
       File.write(tmp, YAML.dump(raw_data))

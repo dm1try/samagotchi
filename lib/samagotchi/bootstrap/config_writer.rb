@@ -243,14 +243,13 @@ module Samagotchi
 
         section = data["default"]
         value = section.is_a?(Hash) ? section["model"] : nil
-        value ||= data[ConfigFile::DEFAULT_MODEL_KEY]
         value.to_s.strip.empty? ? nil : value.to_s.strip
       end
 
       # Whether bare model names go somewhere today: a default.model or a
       # server: section. Then a new hosts: block keeps that route as `default`.
       def routed?
-        configured_default_model || data.key?("server") || data.keys.any? { |key| key.to_s.start_with?("SAMAGOTCHI_SERVER_") }
+        configured_default_model || data.key?("server")
       end
 
       # The `default` hosts entry chi derives from server.* when the file has

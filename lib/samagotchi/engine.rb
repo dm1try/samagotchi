@@ -219,7 +219,6 @@ module Samagotchi
       # The loop follows the effective model's host (its api:): the raw-prompt
       # NativeBackend, or the chat backend for openai hosts.
       @native_backend = LLM::NativeBackend.new(kernel: @kernel)
-      self.class.warn_removed_backend_setting
       Log.debug(:model, "backend", provider: backend.provider) if Log.level?(:debug)
       @resume_session = session_id ? Session.load(session_id) : nil
       @requested_memories = effective_preload_list(preload_memory_list(memories))
@@ -278,21 +277,6 @@ module Samagotchi
     # The backend for the next turn: the loop the effective model's host speaks.
     def backend
       backend_for(@host_registry.resolve(@effective_model_name))
-    end
-
-    # The global backend switch (SAMAGOTCHI_BACKEND, config backend:) is gone;
-    # a host's api: decides. Say so once per process if it is still set.
-    def self.warn_removed_backend_setting
-      return if @warned_removed_backend
-
-      data = ConfigFile.read_yaml rescue nil
-      in_file = data.is_a?(Hash) && data.key?("backend")
-      return unless in_file || !ENV["SAMAGOTCHI_BACKEND"].to_s.strip.empty?
-
-      @warned_removed_backend = true
-      Log.warn(:config, "backend_setting_removed",
-               echo: "Warning: the backend setting (SAMAGOTCHI_BACKEND / backend: in config.yml) was removed and is ignored; " \
-                     "set api: openai on a host to use the chat API (see docs/configuration.md).")
     end
 
     # Record that activity happened (user input or a completed turn). Shared,

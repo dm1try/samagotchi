@@ -169,20 +169,16 @@ RSpec.describe Samagotchi::ConfigFile do
       end
     end
 
-    it "prefers the nested key over a legacy flat one and names both in one warning" do
+    it "ignores a flat env-named key, warning with the nested key to use" do
       Dir.mktmpdir("samagotchi-config") do |dir|
         FileUtils.mkdir_p(File.join(dir, "samagotchi"))
-        File.write(File.join(dir, "samagotchi", "config.yml"), <<~YAML)
-          SAMAGOTCHI_DEFAULT_MODEL: flat-a
-          default:
-            model: nested-b
-        YAML
+        File.write(File.join(dir, "samagotchi", "config.yml"), "SAMAGOTCHI_DEFAULT_MODEL: flat-a\n")
         ENV["XDG_CONFIG_HOME"] = dir
 
         expect { described_class.load! }.to output(
-          "Warning: config: both 'SAMAGOTCHI_DEFAULT_MODEL' and 'default.model' are set; using 'default.model', remove the flat key\n"
+          "Warning: config: unknown key 'SAMAGOTCHI_DEFAULT_MODEL' (did you mean 'default.model'?)\n"
         ).to_stderr
-        expect(Samagotchi::Config.get("default.model")).to eq("nested-b")
+        expect(Samagotchi::Config.get("default.model")).to be_nil
       end
     end
 
@@ -210,18 +206,6 @@ RSpec.describe Samagotchi::ConfigFile do
         expect { described_class.load! }.to output(
           "Warning: config: unknown key 'default.modle' (did you mean 'default.model'?)\n" \
           "Warning: config: unknown key 'bogus'\n"
-        ).to_stderr
-      end
-    end
-
-    it "names the nested key in a legacy flat key's warning" do
-      Dir.mktmpdir("samagotchi-config") do |dir|
-        FileUtils.mkdir_p(File.join(dir, "samagotchi"))
-        File.write(File.join(dir, "samagotchi", "config.yml"), "SAMAGOTCHI_SESSION_MAX_COUNT: 9\n")
-        ENV["XDG_CONFIG_HOME"] = dir
-
-        expect { described_class.load! }.to output(
-          "Warning: config key 'SAMAGOTCHI_SESSION_MAX_COUNT' is legacy UPPER — use 'session.max_count'\n"
         ).to_stderr
       end
     end
@@ -301,7 +285,7 @@ RSpec.describe Samagotchi::ConfigFile do
 
     it "returns [] when the section is absent" do
       Dir.mktmpdir("samagotchi-config") do |dir|
-        write_memories_yaml(dir, "SAMAGOTCHI_DEFAULT_MODEL: Gemma-4B-it\n")
+        write_memories_yaml(dir, "default:\n  model: Gemma-4B-it\n")
         expect(described_class.preloaded_memories).to eq([])
       end
     end
