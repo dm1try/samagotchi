@@ -85,14 +85,14 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       expect(result_box[:error]).to be_nil
     end
 
-    it "strips wire control tokens from question, options, and header" do
+    it "opens a validated call with wire control tokens stripped from question, options, and header" do
       engine = build_engine
       dirty = payload.merge(
         question: "<|channel|>Which option?<|",
         options: ["|>Cats<|", "|>Dogs<|"],
         header: "<|tool_call|>Pet preference|>"
       )
-      turn_thread, result_box, _events = request_in_background(engine, dirty)
+      turn_thread, result_box, _events = request_in_background(engine, Samagotchi::Tools::AskUserQuestion.validate(dirty))
 
       pending = engine.pending_question
       expect(pending[:question]).to eq("Which option?")
@@ -218,29 +218,6 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
 
       cancelled = events.select { |e| e[:type] == :question_cancelled }
       expect(cancelled.map { |e| e.slice(:id, :reason) }).to eq([{ id: id, reason: "user" }])
-    end
-
-    it "returns an error payload without blocking for an empty question" do
-      engine = build_engine
-      result = engine.request_question(question: "", options: %w[A B])
-      expect(JSON.parse(result)["error"]).to eq("invalid question")
-      expect(engine.pending_question).to be_nil
-    end
-
-    it "returns an error payload without blocking when options are missing" do
-      engine = build_engine
-      result = engine.request_question(question: "Pick", options: [])
-      expect(JSON.parse(result)["error"]).to eq("invalid question")
-      expect(engine.pending_question).to be_nil
-    end
-
-    it "refuses more than 8 options without blocking, with the kernel's error (not the first 8)" do
-      engine = build_engine
-      options = (1..9).map { |n| "Option #{n}" }
-      result = Timeout.timeout(2) { engine.request_question(question: "Pick", options: options) }
-      expect(result).to eq(Samagotchi::KernelLoop.new(client: nil).send(:handle_ask_user_question, { question: "Pick", options: options }))
-      expect(result).to start_with("Error: ask_user_question requires 2-8 options (got 9)")
-      expect(engine.pending_question).to be_nil
     end
   end
 
@@ -444,5 +421,27 @@ RSpec.describe "Engine ↔ KernelLoop question link" do
 
     expect(engine).to have_received(:request_question).with(include(question: "Pets?", options: %w[Cats Dogs]))
     expect(result[:output]).to eq(%([ask_user_question]\n{"selected":["Cats"]}))
+  end
+
+  # The kernel validates; a bad call never opens a question.
+  it "answers a bad call with the plain-text validation error, without asking" do
+    kernel = Samagotchi::KernelLoop.new(client: double("client"))
+    engine = Samagotchi::Engine.new(mode: :assist, client: double("client"), kernel: kernel)
+    allow(engine).to receive(:open_question)
+
+    nine = (1..9).map { |n| "Option #{n}" }
+    outputs = [
+      kernel.dispatch_tool_call(name: "ask_user_question", question: "<|tool_call|>", options: %w[A B]),
+      kernel.dispatch_tool_call(name: "ask_user_question", question: "Pick", options: []),
+      kernel.dispatch_tool_call(name: "ask_user_question", question: "Pick", options: nine)
+    ].map { |r| r[:output] }
+
+    expect(outputs).to eq([
+      "[ask_user_question]\nError: ask_user_question requires 'question'",
+      "[ask_user_question]\n#{Samagotchi::Tools::AskUserQuestion.options_count_error(0)}",
+      "[ask_user_question]\n#{Samagotchi::Tools::AskUserQuestion.options_count_error(9)}"
+    ])
+    expect(engine).not_to have_received(:open_question)
+    expect(engine.pending_question).to be_nil
   end
 end

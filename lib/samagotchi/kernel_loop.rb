@@ -979,76 +979,18 @@ module Samagotchi
       }
     end
 
+    # ask_user_question: validate the call, then hand the payload to the
+    # Engine's question flow (question_handler, which blocks until the user
+    # answers). Without one (headless), the payload as JSON so the model sees
+    # the options and can ask in plain text.
     def handle_ask_user_question(call)
-      question = (call[:question] || call[:content]).to_s.strip
-      raw_opts = call[:options]
-      # Dumb-model tolerant: raw may be String JSON, Array, or malformed with brackets/quotes
-      options = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(raw_opts)
-      # Fallback for case where raw was String like '["a","b"]' but lenient returned [] due to edge parse, try raw string of params
-      if options.empty? && raw_opts.is_a?(String)
-        options = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(raw_opts.to_s)
-      end
-      header = call[:header].to_s.strip
-      header = nil if header.empty?
-      multi = call[:multi_select]
-      free = call[:allow_freeform]
-      # Normalize booleans from string forms (Gemma passes "true"/"false" as strings)
-      multi = normalize_ask_bool(multi)
-      free = normalize_ask_bool(free)
+      payload = Samagotchi::Tools::AskUserQuestion.validate(call)
+      return payload if payload.is_a?(String)
+      return JSON.pretty_generate(payload) unless @question_handler
 
-      if question.empty?
-        return "Error: ask_user_question requires 'question'"
-      end
-      # Dumb-model tolerant: salvage single-option parse glitches, but still require at least 1
-      if options.size < 1
-        alt = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(call[:content].to_s) if call[:content]
-        options = alt unless alt.empty?
-      end
-      if options.empty?
-        return Samagotchi::Tools::AskUserQuestion.options_count_error(0)
-      end
-      if options.size == 1
-        # Allow single-option salvage for dumb models (will still render, user can answer or provide freeform)
-      elsif options.size < 2 || options.size > 8
-        return Samagotchi::Tools::AskUserQuestion.options_count_error(options.size)
-      end
-
-      # If an Engine-level blocking handler is registered (TUI/Web), delegate
-      # there (Engine sets question_handler). Otherwise fall back to a
-      # non-blocking JSON preview so the model can still see a structured response.
-      handler = @question_handler
-
-      payload = {
-        question: question,
-        options: options,
-        header: header,
-        multi_select: !!multi,
-        allow_freeform: !!free
-      }.compact
-
-      if handler
-        begin
-          result = handler.call(payload)
-          return result.to_s
-        rescue => e
-          return "Error: ask_user_question handler failed: #{e.message}"
-        end
-      end
-
-      # Headless fallback: return JSON so model sees structured options and can
-      # fallback to plain text qualification.
-      JSON.pretty_generate(payload)
-    end
-
-    def normalize_ask_bool(v)
-      return nil if v.nil?
-      return v if v == true || v == false
-
-      s = v.to_s.strip.downcase
-      return true if %w[1 true yes on].include?(s)
-      return false if %w[0 false no off].include?(s)
-
-      nil
+      @question_handler.call(payload).to_s
+    rescue => e
+      "Error: ask_user_question handler failed: #{e.message}"
     end
   end
 end

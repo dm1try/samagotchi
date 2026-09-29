@@ -1514,41 +1514,15 @@ module Samagotchi
       @question_mutex.synchronize { @pending_question&.dup }
     end
 
-    # Request a structured question from the user. Called from KernelLoop's
-    # turn thread (via dispatch): validates and cleans the model's payload,
-    # then #open_question. Returns a normalized JSON string for the
-    # tool_response.
+    # Ask the model's question (ask_user_question): the kernel's
+    # question_handler, called on the turn thread with the payload
+    # Tools::AskUserQuestion.validate made. Opens it (#open_question) and
+    # returns the answer as JSON for the tool result.
     # @param payload [Hash] {question:, options:, header:, multi_select:, allow_freeform:}
     # @return [String] normalized answer JSON
     def request_question(payload)
-      # Strip wire control tokens (<|...|> / stray <|,|>) that can bleed into the
-      # question text when the model wraps the tool call in markup.
-      question = strip_wire_tokens(payload[:question])
-      options = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(payload[:options])
-      # Fallback for string JSON that lenient missed
-      if options.empty? && payload[:options].is_a?(String)
-        options = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(payload[:options].to_s)
-      end
-      if question.empty? || options.empty?
-        return JSON.generate({ error: "invalid question", detail: "question and 2-8 options required (got #{options.size})" })
-      end
-      # Dumb-model salvage: allow single option (don't hard error, just render what we have)
-      if options.size == 1
-        # keep as is
-      elsif options.size < 2
-        return JSON.generate({ error: "invalid question", detail: "question and 2-8 options required (got #{options.size})" })
-      end
-      # More than 8: the kernel's error, not a silent first 8.
-      return Samagotchi::Tools::AskUserQuestion.options_count_error(options.size) if options.size > 8
-
-      clean_header = strip_wire_tokens(payload[:header])
-      result = open_question(
-        question: question,
-        options: options,
-        header: clean_header.empty? ? nil : clean_header,
-        multi_select: !!payload[:multi_select],
-        allow_freeform: !!payload[:allow_freeform]
-      )
+      result = open_question(**payload.slice(:question, :options, :header),
+                             multi_select: !!payload[:multi_select], allow_freeform: !!payload[:allow_freeform])
       # Dismissed (the card's dismiss, Esc): an answer of its own, not a
       # tool failure the model learns to avoid the tool from.
       result = { dismissed: true, id: result[:id], note: QUESTION_DISMISSED_NOTE } if result.is_a?(Hash) && result[:error] == "no answer"
@@ -1715,11 +1689,6 @@ module Samagotchi
         ArchiveStore.user_input(@session&.id, state_dir: session_state_dir)
       end
     end
-
-    def strip_wire_tokens(text)
-      text.to_s.gsub(/<\|[^|]*\|>/, "").gsub(/<\||\|>/, "").strip
-    end
-    private :strip_wire_tokens
 
     def set_question_sync_handler(&block)
       @question_sync_handler = block

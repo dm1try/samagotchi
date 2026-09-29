@@ -19,10 +19,50 @@ module Samagotchi
 
       def self.name        = NAME
 
-      # The tool result for a wrong number of options (the kernel's, and the
-      # Engine's for more than 8).
+      QUESTION_REQUIRED_ERROR = "Error: ask_user_question requires 'question'"
+
+      # The tool result for a wrong number of options.
       def self.options_count_error(count)
         "Error: ask_user_question requires 2-8 options (got #{count}). Provide e.g. options=[\"Cats\",\"Dogs\"]"
+      end
+
+      # The one check of a model's ask_user_question call (the kernel runs it
+      # before the question opens). Dumb-model tolerant: options may be a JSON
+      # string or bracket noise, a single option is salvaged, missing options
+      # are read from the call's content, booleans may be strings; wire control
+      # tokens are stripped from the question and header.
+      # @param call [Hash] the tool call (question:/content:, options:, header:,
+      #   multi_select:, allow_freeform:)
+      # @return [Hash, String] the payload {question:, options:, header:,
+      #   multi_select:, allow_freeform:} (no header key when empty), or the
+      #   plain-text error the model gets as the tool result
+      def self.validate(call)
+        question = strip_wire_tokens(call[:question] || call[:content])
+        return QUESTION_REQUIRED_ERROR if question.empty?
+
+        options = normalize_options_lenient(call[:options])
+        options = normalize_options_lenient(call[:content].to_s) if options.empty? && call[:content]
+        return options_count_error(options.size) if options.empty? || options.size > 8
+
+        header = strip_wire_tokens(call[:header])
+        {
+          question: question,
+          options: options,
+          header: (header unless header.empty?),
+          multi_select: to_bool(call[:multi_select]),
+          allow_freeform: to_bool(call[:allow_freeform])
+        }.compact
+      end
+
+      # Booleans the way models send them (Gemma passes "true"/"false").
+      def self.to_bool(value)
+        return value if value == true || value == false
+
+        %w[1 true yes on].include?(value.to_s.strip.downcase)
+      end
+
+      def self.strip_wire_tokens(text)
+        text.to_s.gsub(/<\|[^|]*\|>/, "").gsub(/<\||\|>/, "").strip
       end
 
       # Normalize options param: accept Array or JSON string; strip, reject empty.
