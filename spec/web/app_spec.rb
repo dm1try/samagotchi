@@ -1857,6 +1857,14 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)).to include("error" => "missing_fields")
     end
 
+    it "reads only id, selected and freeform (no question_id or nested answer alias)" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      ['{"question_id":"q-1","selected":["A"]}', '{"answer":{"id":"q-1","selected":["A"]}}'].each do |payload|
+        status, _headers, body = app.call(env_for("/api/sessions/s1/answer", method: "POST", body: payload))
+        expect([status, JSON.parse(body.first)["error"]]).to eq([400, "missing_fields"]), payload
+      end
+    end
+
     it "returns 503 not_live when there is no live bridge for the session" do
       app = build_app(state_dir: Dir.mktmpdir)
       allow(app).to receive(:bridge_sidecar_port).and_return(nil)
@@ -1901,29 +1909,6 @@ RSpec.describe Samagotchi::Web::App do
       expect(received).to include(%q{"id":"q-9"})
       expect(received).to include(%q{"selected":["Cats"]})
       expect(received).to include(%q{"freeform":"meow"})
-    end
-
-    it "accepts the answer nested under an answer key" do
-      server = TCPServer.new("127.0.0.1", 0)
-      port = server.local_address.ip_port
-      accept_thread = Thread.new do
-        conn = server.accept
-        conn.readpartial(16_384)
-        conn.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}")
-        conn.close
-      end
-      accept_thread.report_on_exception = false
-
-      app = build_app(state_dir: Dir.mktmpdir)
-      allow(app).to receive(:bridge_sidecar_port).and_return(port)
-      status, _headers, body = app.call(
-        env_for("/api/sessions/s1/answer", method: "POST", body: '{"answer":{"id":"q-7","selected":["Dogs"]}}')
-      )
-      server.close
-      accept_thread.join(1)
-
-      expect(status).to eq(200)
-      expect(JSON.parse(body.first)).to include("status" => "answered", "id" => "q-7")
     end
 
     it "passes the bridge's 409 through when another client answered first" do

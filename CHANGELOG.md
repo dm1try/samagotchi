@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Removed
+
+- `POST /api/sessions/:id/answer` no longer takes the unused aliases `question_id`, `selection`, `other` or
+  a nested `answer` object: only `id`, `selected` and `freeform`, as the web page sends them.
+
 ## [0.7.0] - 2026-09-30
 
 ### Added

@@ -643,16 +643,9 @@ module Samagotchi
         unless body.is_a?(Hash)
           return error_response(400, "invalid_json", "invalid JSON body")
         end
-        qid = body["id"] || body[:id] || body["question_id"] || body[:question_id]
-        selected = body["selected"] || body[:selected] || body["selection"] || body[:selection]
-        freeform = body["freeform"] || body[:freeform] || body["other"] || body[:other]
-        # Allow payload nested under answer
-        if body["answer"].is_a?(Hash)
-          ans = body["answer"]
-          qid ||= ans["id"] || ans[:id]
-          selected ||= ans["selected"] || ans[:selected]
-          freeform ||= ans["freeform"] || ans[:freeform]
-        end
+        qid = body["id"]
+        selected = body["selected"]
+        freeform = body["freeform"]
         if qid.to_s.strip.empty?
           return error_response(400, "missing_fields", "id is required")
         end
