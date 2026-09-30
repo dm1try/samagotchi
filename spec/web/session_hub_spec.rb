@@ -97,6 +97,9 @@ RSpec.describe Samagotchi::Web::SessionHub do
     end
 
     it "emits a session event when a question opens and when it closes" do
+      manager = double("manager", session_owner: { "kind" => "worker", "pid" => 1 }, retention_sweep_if_due: nil)
+      hub = described_class.new(state_dir: state_dir, manager: manager)
+      hub.subscribe(->(event) { events << event })
       a = save_session
       hub.scan
       events.clear
@@ -109,6 +112,17 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hub.scan
 
       expect(events.map { |e| e.data[:session][:pending_question] }).to eq([{ id: "q1", kind: "question" }, nil])
+    end
+
+    it "reports no question from a file whose worker is gone (it died waiting; nobody can answer it)" do
+      a = save_session(status: "running")
+      a.pending_question = { id: "q1", question: "Which?" }
+      a.save(state_dir: state_dir)
+
+      hub.scan
+
+      expect(events.first.data[:session]).to include(id: a.id, owner: nil, pending_question: nil)
+      expect(hub.snapshot.first[:pending_question]).to be_nil
     end
 
     it "emits session_gone for a deleted file and drops it from the projection" do

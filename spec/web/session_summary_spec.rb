@@ -31,12 +31,21 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       s.pending_question = { id: "q1", question: "Which?", header: "Pick" }
       s.last_turn = { "outcome" => "completed", "ended_at" => "t", "seconds" => 11.0, "origin" => "client" }
 
-      json = described_class.build(s, owner: nil, session_dir: session_dir(s))
+      owner = { "kind" => "worker", "pid" => 1 }
+
+      json = described_class.build(s, owner: owner, session_dir: session_dir(s))
 
       expect(json[:pending_question]).to eq(id: "q1", kind: "question")
       expect(json[:last_turn]).to eq(s.last_turn)
       s.pending_question = { id: "q2", kind: "approval" }
-      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))[:pending_question]).to eq(id: "q2", kind: "approval")
+      expect(described_class.build(s, owner: owner, session_dir: session_dir(s))[:pending_question]).to eq(id: "q2", kind: "approval")
+    end
+
+    it "has no question without a live owner: one a dead worker saved can't be answered" do
+      s = session(status: "running")
+      s.pending_question = { id: "q1", question: "Which?" }
+
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))[:pending_question]).to be_nil
     end
 
     it "is nil for a session with neither" do

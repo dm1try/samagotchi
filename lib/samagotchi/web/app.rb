@@ -556,12 +556,14 @@ module Samagotchi
         snapshot = live && live["session_state_snapshot"]
         last_event_seq = snapshot ? snapshot["event_seq"] : bridge_event_seq(id)
         current_turn = turn_snapshot && turn_snapshot["current_turn"]
+        owner = session_owner(id)
+        # The file's question only with a live owner: one a dead worker
+        # saved can't be answered (its turn is gone).
         pending = if turn_snapshot
                     current_turn && current_turn["pending_question"]
-                  elsif session.respond_to?(:pending_question)
+                  elsif owner && session.respond_to?(:pending_question)
                     session.pending_question
                   end
-        owner = session_owner(id)
         # A /model in the worker changes it before the file catches up.
         session.model_name = snapshot["model_name"] if snapshot && !snapshot["model_name"].to_s.empty?
         session_json = session_to_json(session, status: displayed_status(session, snapshot, owner: owner), owner: owner)
