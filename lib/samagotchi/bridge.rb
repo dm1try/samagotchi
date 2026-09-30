@@ -7,6 +7,7 @@ require "fileutils"
 require "securerandom"
 require "time"
 require_relative "atomic_file"
+require_relative "session_inbox"
 
 require_relative "bridge/bounded_queue"
 require_relative "bridge/card_store"
@@ -32,7 +33,7 @@ module Samagotchi
   # Design invariants (see multi_ui_architecture):
   # * Reuses `Engine#subscribe` for SSE fan-out — never a second Engine, never
   #   `run_turn` across the thread/process boundary. POST reuses the
-  #   `SessionManager` file-IPC input path.
+  #   `SessionInbox` file-IPC input path.
   # * One capture observer fills a shared ring buffer; each connection gets a
   #   per-connection live queue (see SSEWriter).
   # * Binds 127.0.0.1 only. There is NO auth: binding 0.0.0.0 exposes remote
@@ -64,7 +65,7 @@ module Samagotchi
     # @param heartbeat_interval [Float] idle `: ping` seconds
     # @param input_format [Integer, nil] the input-file format the owning
     #   worker reads, advertised in the sidecar for writers (see
-    #   SessionManager::INPUT_FORMAT); nil advertises none
+    #   SessionInbox::INPUT_FORMAT); nil advertises none
     # @param on_input [#call, nil] called once a turn for this session is
     #   queued, to wake the worker loop (Worker::Waker#wake)
     # @param on_command [#call, nil] takes a session command
@@ -720,7 +721,7 @@ module Samagotchi
     # stream and state surfaces must serve that session and nothing else —
     # serving a different id's data (or closing with no response) would be a
     # cross-session leak. POST/turn enqueue stays lenient (fire-and-forget to
-    # another worker's input dir) and validates via write_turn_input.
+    # another worker's input dir) through SessionInbox.write_input.
     def own_session?(session_id)
       session_id.to_s == @session_id.to_s
     end
@@ -749,14 +750,9 @@ module Samagotchi
     # Write a turn into the target session's input dir, reusing the file IPC
     # the worker polls. Never calls run_turn across the boundary.
     def enqueue_turn(session_id:, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [])
-      require_relative "session_manager"
-      Samagotchi::SessionManager.write_turn_input(
-        session_id, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id, no_interrupt: no_interrupt,
-                    state_dir: @state_dir, images: images
-      )
-    rescue LoadError
-      # SessionManager not available (e.g. bridge used standalone in a spec).
-      false
+      session_dir = Session.session_dir(session_id, state_dir: @state_dir || Session.default_state_dir)
+      SessionInbox.write_input(session_dir, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
+                                            no_interrupt: no_interrupt, images: images)
     end
 
     # A turn's images as [{file:, name:}], or a String saying what's wrong.

@@ -3,6 +3,7 @@
 require "fileutils"
 
 require_relative "session"
+require_relative "session_inbox"
 require_relative "turn_note"
 require_relative "context_note"
 require_relative "worker_idle_exit"
@@ -24,9 +25,9 @@ module Samagotchi
   # disk exits the process; an error outside a turn marks the session and
   # exits with 1.
   #
-  # The file IPC stays behind SessionManager's class methods
-  # (find_new_input_files, claim_input_file, start_bridge, ...), which specs
-  # stub as seams.
+  # The file IPC stays behind SessionInbox's functions (find_new_input_files,
+  # claim_input_file, ...) and the Bridge behind SessionManager.start_bridge,
+  # which specs stub as seams.
   #
   # The loop sleeps on a Waker, which the Bridge wakes when it queues a turn
   # or a command, and the reminder callback when it queues one. A fallback
@@ -143,7 +144,7 @@ module Samagotchi
       @idle_exit = WorkerIdleExit.new(
         engine: @engine, bridge: @bridge,
         timeout_minutes: @idle_exit_minutes || SessionManager.config_idle_exit_minutes,
-        input_pending: -> { !@command_queue.empty? || !SessionManager.find_new_input_files(@session_dir).empty? },
+        input_pending: -> { !@command_queue.empty? || !SessionInbox.find_new_input_files(@session_dir).empty? },
         awaiting_continue: -> { @turn_flow.awaiting_continue? }
       )
 
@@ -171,7 +172,7 @@ module Samagotchi
             next
           end
 
-          input_files = SessionManager.find_new_input_files(@session_dir)
+          input_files = SessionInbox.find_new_input_files(@session_dir)
           if input_files.empty?
             next if run_due_reminders
             return left(:idle_exit) if @idle_exit.due? && leave_idle
@@ -268,12 +269,12 @@ module Samagotchi
     # the saved conversation already holds. Not activity: a note alone
     # neither starts a turn nor keeps an idle worker up.
     def absorb_notes
-      files = SessionManager.find_new_note_files(@session_dir)
+      files = SessionInbox.find_new_note_files(@session_dir)
       return if files.empty? || stopped_on_disk?
 
-      claimed = files.filter_map { |file| SessionManager.claim_note_file(file) }
+      claimed = files.filter_map { |file| SessionInbox.claim_note_file(file) }
       claimed.each do |file|
-        note = SessionManager.read_note(file)
+        note = SessionInbox.read_note(file)
         @engine.add_context_note(@session, note) if note
       end
       @session.save(state_dir: @state_dir)
@@ -281,11 +282,11 @@ module Samagotchi
     end
 
     def run_input_file(input_file)
-      claimed_file = SessionManager.claim_input_file(input_file)
+      claimed_file = SessionInbox.claim_input_file(input_file)
       return unless claimed_file
 
       begin
-        message, origin, no_interrupt, images = SessionManager.read_input(claimed_file)
+        message, origin, no_interrupt, images = SessionInbox.read_input(claimed_file)
         run_prompt(message, origin, no_interrupt: !!no_interrupt, images: images || []) unless message.to_s.strip.empty?
       ensure
         FileUtils.rm_f(claimed_file)
@@ -316,7 +317,7 @@ module Samagotchi
       end
       after_turn(result, no_interrupt: no_interrupt)
       response = result.respond_to?(:output) ? result.output : nil
-      SessionManager.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
+      SessionInbox.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
       @session.save(state_dir: @state_dir) unless stopped_on_disk?
     end
 
@@ -339,7 +340,7 @@ module Samagotchi
                                                  origin: { client_id: SessionManager::REMINDER_CLIENT_ID },
                                                  max_iterations: DEFAULT_MAX_ITERATIONS)
         response = result.respond_to?(:output) ? result.output : nil
-        SessionManager.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
+        SessionInbox.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
       rescue StandardError
         nil # the Engine announced :turn_failed; there is no prompt to hand back
       ensure
@@ -475,7 +476,7 @@ module Samagotchi
       end
       after_turn(result, continue: true, no_interrupt: offer[:no_interrupt])
       response = result.respond_to?(:output) ? result.output : nil
-      SessionManager.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
+      SessionInbox.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
       @session.save(state_dir: @state_dir) unless stopped_on_disk?
     end
 
@@ -540,14 +541,14 @@ module Samagotchi
         refuse_queued_commands(mid_turn: true)
         # A line with images runs as its own next turn (steering merges text
         # only), and so does anything queued after it, to keep the order.
-        files = SessionManager.find_new_input_files(@session_dir).sort
-                              .take_while { |input_file| !SessionManager.input_has_images?(input_file) }
+        files = SessionInbox.find_new_input_files(@session_dir).sort
+                            .take_while { |input_file| !SessionInbox.input_has_images?(input_file) }
         merged = files.filter_map do |input_file|
-          claimed_file = SessionManager.claim_input_file(input_file)
+          claimed_file = SessionInbox.claim_input_file(input_file)
           next unless claimed_file
 
           begin
-            prompt, origin = SessionManager.read_input(claimed_file)
+            prompt, origin = SessionInbox.read_input(claimed_file)
             prompt = prompt.to_s.strip
             prompt.empty? ? nil : [prompt, origin]
           ensure

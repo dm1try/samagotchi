@@ -2,6 +2,7 @@
 
 require_relative "session"
 require_relative "turn_note"
+require_relative "session_inbox"
 
 module Samagotchi
   # Loaded on first use: session_manager requires terminal_ui, which
@@ -165,7 +166,7 @@ module Samagotchi
     end
 
     def reply_dir(id, state_dir:)
-      File.join(Session.session_dir(id, state_dir: state_dir), SessionManager::OUTPUT_DIR)
+      File.join(Session.session_dir(id, state_dir: state_dir), SessionInbox::OUTPUT_DIR)
     end
 
     def newer?(file, cursor)

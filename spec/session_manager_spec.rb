@@ -755,7 +755,7 @@ RSpec.describe Samagotchi::SessionManager do
         pid_seen = File.read(File.join(session_dir, described_class::PID_FILE))
         engine
       end
-      allow(described_class).to receive(:find_new_input_files) do
+      allow(Samagotchi::SessionInbox).to receive(:find_new_input_files) do
         Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
         []
       end
@@ -852,7 +852,7 @@ RSpec.describe Samagotchi::SessionManager do
         expect(given).not_to be_nil
         nil
       end
-      allow(described_class).to receive(:find_new_input_files) do
+      allow(Samagotchi::SessionInbox).to receive(:find_new_input_files) do
         Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
         []
       end
@@ -891,20 +891,20 @@ RSpec.describe Samagotchi::SessionManager do
 
       expect(engine).to receive(:note_due_reminders).with(["daily"])
       expect { reminder_callback.call(["daily"]) }.not_to raise_error
-      input_dir = File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), Samagotchi::SessionManager::INPUT_DIR)
+      input_dir = File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), Samagotchi::SessionInbox::INPUT_DIR)
       expect(Dir.glob(File.join(input_dir, "*"))).to be_empty
     end
 
     it "atomically claims an input file for single-consumer processing" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session_dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
-      input_dir = File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR)
+      input_dir = File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR)
       FileUtils.mkdir_p(input_dir)
 
       input_file = File.join(input_dir, "20260101000000000000000.txt")
       File.write(input_file, "ping")
 
-      claimed = described_class.send(:claim_input_file, input_file)
+      claimed = Samagotchi::SessionInbox.claim_input_file(input_file)
 
       expect(File.exist?(input_file)).to be false
       expect(claimed).to end_with(".processing")
@@ -958,7 +958,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:subscribe).and_return(sub_handle)
       expect(engine).not_to receive(:run_turn)
       # Stop on the first poll so the loop exits.
-      allow(described_class).to receive(:find_new_input_files) do
+      allow(Samagotchi::SessionInbox).to receive(:find_new_input_files) do
         Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
         []
       end
@@ -996,12 +996,12 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     def input_files
-      Dir.glob(File.join(session_dir, described_class::INPUT_DIR, "*.json"))
+      Dir.glob(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*.json"))
     end
 
     it "returns once nobody has used the worker for the timeout, freeing the session" do
       sidecar_seen = nil
-      allow(described_class).to receive(:find_new_input_files).and_wrap_original do |original, *args|
+      allow(Samagotchi::SessionInbox).to receive(:find_new_input_files).and_wrap_original do |original, *args|
         sidecar_seen ||= File.exist?(sidecar)
         original.call(*args)
       end
@@ -1017,7 +1017,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "stays up while a reminder is registered" do
       reminders.register(name: "stretch", description: "Remind me to stretch", interval_minutes: 60)
       polls = 0
-      allow(described_class).to receive(:find_new_input_files).and_wrap_original do |original, *args|
+      allow(Samagotchi::SessionInbox).to receive(:find_new_input_files).and_wrap_original do |original, *args|
         polls += 1
         Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir) if polls == 60
         original.call(*args)
@@ -1132,7 +1132,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       it "is kept when a note came in after the worker looked" do
         allow(engine).to receive(:stop_idle) do
-          described_class.write_note(session.id, text: "later", state_dir: tmpdir)
+          Samagotchi::SessionInbox.write_note(session.id, text: "later", state_dir: tmpdir)
         end
 
         expect(run_worker).to eq(:idle_exit)
@@ -1152,20 +1152,6 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
-  describe ".checked_text" do
-    it "names what it checks in its errors, a note by default" do
-      expect { described_class.checked_text(" \n") }.to raise_error(described_class::NoteRejected, "the note is empty")
-      expect { described_class.checked_text("", noun: "message") }.to raise_error(described_class::NoteRejected, "the message is empty")
-      big = "x" * (described_class::NOTE_MAX_BYTES + 1)
-      expect { described_class.checked_text(big, noun: "message") }
-        .to raise_error(described_class::NoteRejected, "the message is 16385 bytes; the limit is 16 KiB (16384 bytes)")
-    end
-
-    it "answers the text stripped" do
-      expect(described_class.checked_text("  hi\n", noun: "message")).to eq("hi")
-    end
-  end
-
   describe ".deliver_turn" do
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
@@ -1178,7 +1164,7 @@ RSpec.describe Samagotchi::SessionManager do
     after { locks.each(&:release) }
 
     def input_files
-      Dir.glob(File.join(session_dir, described_class::INPUT_DIR, "*"))
+      Dir.glob(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*"))
     end
 
     def own(kind)
@@ -1296,7 +1282,7 @@ RSpec.describe Samagotchi::SessionManager do
       end
     end
     let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
-    let(:input_dir) { File.join(session_dir, described_class::INPUT_DIR) }
+    let(:input_dir) { File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR) }
 
     def write_sidecar(record)
       FileUtils.mkdir_p(session_dir)
@@ -1318,13 +1304,6 @@ RSpec.describe Samagotchi::SessionManager do
 
         expect(JSON.parse(File.read(path))).to eq("prompt" => "hi", "client_id" => "web:1")
       end
-    end
-
-    it "does not read a plain-text input file" do
-      FileUtils.mkdir_p(input_dir)
-      File.write(File.join(input_dir, "1.txt"), "hi")
-
-      expect(described_class.find_new_input_files(session_dir)).to eq([])
     end
 
     def run_worker_with(engine)
@@ -1413,7 +1392,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "only returns outputs strictly newer than since_time" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session_dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
-      output_dir = File.join(session_dir, Samagotchi::SessionManager::OUTPUT_DIR)
+      output_dir = File.join(session_dir, Samagotchi::SessionInbox::OUTPUT_DIR)
       FileUtils.mkdir_p(output_dir)
 
       old_file = File.join(output_dir, "old.txt")
@@ -1425,103 +1404,6 @@ RSpec.describe Samagotchi::SessionManager do
 
       responses = described_class.read_responses(session.id, since_time: boundary, state_dir: tmpdir)
       expect(responses).to eq(["new"])
-    end
-  end
-
-  describe "context notes" do
-    let(:session) do
-      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
-        s.save(state_dir: tmpdir)
-      end
-    end
-    let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
-    let(:notes_dir) { File.join(session_dir, described_class::NOTES_DIR) }
-
-    it "writes a note to notes/, never to input/" do
-      path = described_class.write_note(session.id, text: "  deploy frozen  \n", source: "slack", state_dir: tmpdir)
-
-      expect(File.dirname(path)).to eq(notes_dir)
-      expect(path).to end_with(".json")
-      expect(described_class.find_new_input_files(session_dir)).to be_empty
-      record = JSON.parse(File.read(path))
-      expect(record).to include("text" => "deploy frozen", "source" => "slack")
-      expect(record["created_at"]).to match(/\A\d{4}-\d\d-\d\dT/)
-      expect(record).not_to have_key("from_session")
-    end
-
-    it "keeps the sending session and its folder" do
-      path = described_class.write_note(session.id, text: "api moved", source: "session",
-                                                    from_session: "3f2a1c00-1111", from_cwd: "/work/foo", state_dir: tmpdir)
-
-      expect(JSON.parse(File.read(path))).to include("from_session" => "3f2a1c00-1111", "from_cwd" => "/work/foo")
-    end
-
-    it "defaults the source to cli" do
-      path = described_class.write_note(session.id, text: "x", state_dir: tmpdir)
-      expect(JSON.parse(File.read(path))["source"]).to eq("cli")
-    end
-
-    it "rejects an empty note" do
-      expect { described_class.write_note(session.id, text: " \n\t", state_dir: tmpdir) }
-        .to raise_error(described_class::NoteRejected, /empty/)
-      expect(Dir.exist?(notes_dir) && Dir.children(notes_dir)).to be_falsey.or eq([])
-    end
-
-    it "rejects a note over 16 KiB instead of cutting it" do
-      big = "a" * (16 * 1024 + 1)
-      expect { described_class.write_note(session.id, text: big, state_dir: tmpdir) }
-        .to raise_error(described_class::NoteRejected, /16 KiB/)
-      expect(described_class.write_note(session.id, text: "a" * (16 * 1024), state_dir: tmpdir)).to be_a(String)
-    end
-
-    it "counts bytes, not characters" do
-      expect { described_class.write_note(session.id, text: "ж" * (8 * 1024 + 1), state_dir: tmpdir) }
-        .to raise_error(described_class::NoteRejected)
-    end
-
-    it "lists notes oldest first, and a claim moves one out of the way" do
-      first = described_class.write_note(session.id, text: "one", state_dir: tmpdir)
-      second = described_class.write_note(session.id, text: "two", state_dir: tmpdir)
-
-      expect(described_class.find_new_note_files(session_dir)).to eq([first, second])
-
-      claimed = described_class.claim_note_file(first)
-      expect(claimed).to eq("#{first}.processing")
-      expect(File.exist?(first)).to be false
-      expect(described_class.claim_note_file(first)).to be_nil
-    end
-
-    it "lists a claimed note left by a crashed worker, and claims it again as is" do
-      path = described_class.write_note(session.id, text: "left over", state_dir: tmpdir)
-      claimed = described_class.claim_note_file(path)
-
-      expect(described_class.find_new_note_files(session_dir)).to eq([claimed])
-      expect(described_class.claim_note_file(claimed)).to eq(claimed)
-    end
-
-    it "ignores a half-written .tmp file" do
-      FileUtils.mkdir_p(notes_dir)
-      File.write(File.join(notes_dir, "20260101000000000000000-abc.json.tmp"), "{")
-      expect(described_class.find_new_note_files(session_dir)).to be_empty
-    end
-
-    it "reads a claimed note with its id (the file name)" do
-      path = described_class.write_note(session.id, text: "hello", source: "slack", from_session: "abc",
-                                                    from_cwd: "/w", state_dir: tmpdir)
-      note = described_class.read_note(described_class.claim_note_file(path))
-
-      expect(note).to include(note_id: File.basename(path, ".json"), text: "hello", source: "slack",
-                              from_session: "abc", from_cwd: "/w")
-      expect(note[:created_at]).to be_a(String)
-    end
-
-    it "reads nil for a broken or empty note file" do
-      FileUtils.mkdir_p(notes_dir)
-      broken = File.join(notes_dir, "20260101000000000000000-abc.json")
-      File.write(broken, "{nope")
-      expect(described_class.read_note(broken)).to be_nil
-      File.write(broken, JSON.generate("text" => "  "))
-      expect(described_class.read_note(broken)).to be_nil
     end
   end
 

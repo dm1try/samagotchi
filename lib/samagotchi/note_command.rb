@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "session"
+require_relative "session_inbox"
 require_relative "session_manager"
 
 module Samagotchi
@@ -40,8 +41,8 @@ module Samagotchi
         return 2
       end
       begin
-        text = SessionManager.checked_text(text)
-      rescue SessionManager::NoteRejected => e
+        text = SessionInbox.checked_text(text)
+      rescue SessionInbox::NoteRejected => e
         @stderr.puts("chi note: #{e.message}")
         return 1
       end
@@ -131,11 +132,11 @@ module Samagotchi
         return false
       end
 
-      path = SessionManager.write_note(id, text: text, source: source, state_dir: @state_dir)
+      path = SessionInbox.write_note(id, text: text, source: source, state_dir: @state_dir)
       if owner
         @stdout.puts("#{short}  queued: its worker adds it within a few seconds")
       else
-        queued = SessionManager.find_new_note_files(File.dirname(File.dirname(path))).size
+        queued = SessionInbox.find_new_note_files(File.dirname(File.dirname(path))).size
         @stdout.puts("#{short}  waits for the session's next start (#{queued} #{queued == 1 ? "note" : "notes"} queued)")
       end
       true

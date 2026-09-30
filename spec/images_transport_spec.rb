@@ -62,16 +62,16 @@ RSpec.describe "Images in transport" do
     it "writes and reads a turn's image refs" do
       path = Samagotchi::SessionManager.write_turn_input(session.id, prompt: "look", images: [wire_ref], state_dir: tmpdir)
       expect(JSON.parse(File.read(path))["images"]).to eq([{ "file" => ref[:file], "name" => "shot.png" }])
-      expect(Samagotchi::SessionManager.input_has_images?(path)).to be(true)
+      expect(Samagotchi::SessionInbox.input_has_images?(path)).to be(true)
 
-      claimed = Samagotchi::SessionManager.claim_input_file(path)
-      expect(Samagotchi::SessionManager.read_input(claimed)).to eq(["look", nil, false, [wire_ref]])
+      claimed = Samagotchi::SessionInbox.claim_input_file(path)
+      expect(Samagotchi::SessionInbox.read_input(claimed)).to eq(["look", nil, false, [wire_ref]])
     end
 
     it "writes the refs whatever input format the sidecar advertises" do
       write_sidecar(2)
       path = Samagotchi::SessionManager.write_turn_input(session.id, prompt: "look", images: [wire_ref], state_dir: tmpdir)
-      expect(Samagotchi::SessionManager.input_has_images?(path)).to be(true)
+      expect(Samagotchi::SessionInbox.input_has_images?(path)).to be(true)
     end
   end
 
@@ -81,7 +81,7 @@ RSpec.describe "Images in transport" do
     before do
       engine.subscribe(observer: ->(event) { events << event })
       @bridge = Samagotchi::Bridge.new(engine: engine, state_dir: tmpdir, session_id: session.id,
-                                       input_format: Samagotchi::SessionManager::INPUT_FORMAT).start
+                                       input_format: Samagotchi::SessionInbox::INPUT_FORMAT).start
       @port = JSON.parse(File.read(File.join(session_dir, "bridge.json")))["port"]
     end
 

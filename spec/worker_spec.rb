@@ -82,7 +82,7 @@ RSpec.describe Samagotchi::Worker do
     let(:result) { instance_double(Samagotchi::KernelLoop::Result, output: "") }
 
     before do
-      FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR))
+      FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))
       allow(Samagotchi::Engine).to receive(:new) do |**kwargs|
         @reminder_callback = kwargs.dig(:reminders, :callback)
         engine
@@ -196,7 +196,7 @@ RSpec.describe Samagotchi::Worker do
       expect(prompt).to be_nil
       expect(kwargs).to include(continue: true, origin: { client_id: "system:reminder" })
       expect(started_at - called_at).to be < 0.3
-      expect(Dir.children(File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR))).to be_empty
+      expect(Dir.children(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))).to be_empty
       expect(engine.due_reminder_names).to be_empty
     end
 
@@ -321,7 +321,7 @@ RSpec.describe Samagotchi::Worker do
 
     it "shuts its Engine down when it crashes" do
       allow(engine).to receive(:shutdown).and_call_original
-      allow(Samagotchi::SessionManager).to receive(:find_new_input_files).and_raise(RuntimeError, "boom")
+      allow(Samagotchi::SessionInbox).to receive(:find_new_input_files).and_raise(RuntimeError, "boom")
       worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
                                    idle_exit_minutes: 0, poll_interval: 5)
       expect { worker.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(1) }

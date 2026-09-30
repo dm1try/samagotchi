@@ -1615,7 +1615,7 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     def input_files
-      Dir.glob(File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR, "*"))
+      Dir.glob(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*"))
     end
 
     it "answers POST /turn with 409 and queues nothing" do

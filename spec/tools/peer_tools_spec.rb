@@ -32,7 +32,7 @@ RSpec.describe "peer tools" do
   end
 
   def notes_of(session)
-    dir = File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), Samagotchi::SessionManager::NOTES_DIR)
+    dir = File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), Samagotchi::SessionInbox::NOTES_DIR)
     Dir.glob(File.join(dir, "*.json")).map { |path| JSON.parse(File.read(path)) }
   end
 

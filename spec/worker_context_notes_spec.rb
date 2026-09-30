@@ -37,7 +37,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
     end
   end
   let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
-  let(:notes_dir) { File.join(session_dir, Samagotchi::SessionManager::NOTES_DIR) }
+  let(:notes_dir) { File.join(session_dir, Samagotchi::SessionInbox::NOTES_DIR) }
   let!(:engine) do
     Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
                            kernel: instance_double(Samagotchi::KernelLoop))
@@ -47,7 +47,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
   let(:result) { instance_double(Samagotchi::KernelLoop::Result, output: "") }
 
   before do
-    FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionManager::INPUT_DIR))
+    FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))
     allow(Samagotchi::Engine).to receive(:new).and_return(engine)
     allow(engine).to receive(:start_idle)
     allow(engine).to receive(:stop_idle)
@@ -79,7 +79,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
   end
 
   def write_note(text, **opts)
-    Samagotchi::SessionManager.write_note(session.id, text: text, state_dir: tmpdir, **opts)
+    Samagotchi::SessionInbox.write_note(session.id, text: text, state_dir: tmpdir, **opts)
   end
 
   def saved_notes
@@ -154,7 +154,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
 
   it "doesn't add a note twice when a crash left it claimed after the save" do
     path = write_note("once")
-    claimed = Samagotchi::SessionManager.claim_note_file(path)
+    claimed = Samagotchi::SessionInbox.claim_note_file(path)
     note_id = File.basename(path, ".json")
     session.messages += [Samagotchi::ContextNote.message(note_id: note_id, text: "once", source: "cli")]
     session.save(state_dir: tmpdir)

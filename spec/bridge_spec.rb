@@ -1092,7 +1092,7 @@ RSpec.describe Samagotchi::Bridge do
       status, = post_turn(JSON.generate(session_id: other.id, prompt: "for someone else"))
       expect(status).to eq(202)
 
-      allow(Samagotchi::SessionManager).to receive(:write_turn_input).and_return(false)
+      allow(Samagotchi::SessionInbox).to receive(:write_input).and_return(false)
       status, = post_turn(JSON.generate(session_id: @session.id, prompt: "lost"))
       expect(status).to eq(500)
 
@@ -1108,7 +1108,7 @@ RSpec.describe Samagotchi::Bridge do
       expect(wakes).to eq([1])
 
       post_turn(JSON.generate(session_id: make_session.id, prompt: "for someone else"))
-      allow(Samagotchi::SessionManager).to receive(:write_turn_input).and_return(false)
+      allow(Samagotchi::SessionInbox).to receive(:write_input).and_return(false)
       status, = post_turn(JSON.generate(session_id: @session.id, prompt: "lost"))
 
       expect(status).to eq(500)

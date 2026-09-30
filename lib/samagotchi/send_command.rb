@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "session"
+require_relative "session_inbox"
 require_relative "session_manager"
 require_relative "context_quote"
 require_relative "reply_wait"
@@ -122,8 +123,8 @@ module Samagotchi
         return 2
       end
       begin
-        prompt = SessionManager.checked_text(prompt, noun: "message")
-      rescue SessionManager::NoteRejected => e
+        prompt = SessionInbox.checked_text(prompt, noun: "message")
+      rescue SessionInbox::NoteRejected => e
         @stderr.puts("chi send: #{e.message}")
         return 1
       end

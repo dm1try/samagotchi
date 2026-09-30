@@ -15,7 +15,7 @@ module Samagotchi
 
     module_function
 
-    # Takes SessionManager.read_note's keys.
+    # Takes SessionInbox.read_note's keys.
     # @return [Hash] the conversation message
     def message(note_id:, text:, source:, created_at: nil, from_session: nil, from_cwd: nil, **)
       { role: "system", kind: KIND, note_id: note_id, source: source, from_session: from_session,

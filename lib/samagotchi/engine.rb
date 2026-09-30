@@ -516,7 +516,7 @@ module Samagotchi
     # The array is replaced, not mutated, and the append and the event
     # happen under the event lock, so a joining UI sees both or neither.
     # The caller saves the session.
-    # @param note [Hash] SessionManager.read_note's shape
+    # @param note [Hash] SessionInbox.read_note's shape
     # @return [Hash, nil] the message, or nil when the conversation already
     #   holds this note (a note file re-read after a crash)
     def add_context_note(session, note)

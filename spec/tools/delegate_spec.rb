@@ -58,7 +58,7 @@ RSpec.describe "delegate tools" do
   end
 
   def write_reply(session, text)
-    Samagotchi::SessionManager.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
+    Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
     sleep(0.002)
   end
 

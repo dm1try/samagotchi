@@ -58,7 +58,7 @@ RSpec.describe Samagotchi::SendCommand do
     events = []
     engine.subscribe(observer: ->(e) { events << e })
     bridge = Samagotchi::Bridge.new(engine: engine, state_dir: tmpdir, session_id: session.id, heartbeat_interval: 5,
-                                    input_format: Samagotchi::SessionManager::INPUT_FORMAT)
+                                    input_format: Samagotchi::SessionInbox::INPUT_FORMAT)
     bridge.start
     bridges << bridge
     events
@@ -69,7 +69,7 @@ RSpec.describe Samagotchi::SendCommand do
   end
 
   def inputs_of(session)
-    Dir.glob(File.join(dir_of(session), Samagotchi::SessionManager::INPUT_DIR, "*.json")).map { |path| JSON.parse(File.read(path)) }
+    Dir.glob(File.join(dir_of(session), Samagotchi::SessionInbox::INPUT_DIR, "*.json")).map { |path| JSON.parse(File.read(path)) }
   end
 
   def short(session) = session.id[0, 8]

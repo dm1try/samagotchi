@@ -2,6 +2,7 @@
 
 require_relative "../session"
 require_relative "../context_note"
+require_relative "../session_inbox"
 require_relative "peers"
 
 module Samagotchi
@@ -33,13 +34,13 @@ module Samagotchi
           return "Error: session #{id[0, 8]} is open in a chi REPL, which can't take notes"
         end
 
-        SessionManager.write_note(id, text: content, source: "session", from_session: peers.session_id,
-                                      from_cwd: peers.cwd, state_dir: peers.state_dir)
+        SessionInbox.write_note(id, text: content, source: "session", from_session: peers.session_id,
+                                    from_cwd: peers.cwd, state_dir: peers.state_dir)
         where = owner ? "its worker adds it before its next turn" : "it has no worker now, so it waits for its next start"
         "Queued a note for session #{id[0, 8]}: #{where}. It does not start a turn there."
       rescue Session::AmbiguousId => e
         "Error: #{e.message}"
-      rescue SessionManager::NoteRejected => e
+      rescue SessionInbox::NoteRejected => e
         "Error: #{e.message}"
       rescue ArgumentError
         "Error: no session #{session.to_s.strip} (list_sessions shows them)"

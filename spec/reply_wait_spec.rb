@@ -33,7 +33,7 @@ RSpec.describe Samagotchi::ReplyWait do
   end
 
   def write_reply(text)
-    Samagotchi::SessionManager.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
+    Samagotchi::SessionInbox.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
     sleep(0.002)
   end
 

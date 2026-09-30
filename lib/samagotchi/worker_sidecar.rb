@@ -8,7 +8,7 @@ module Samagotchi
   # A worker's bridge.json in its session directory: how clients reach its
   # Bridge (port, bind), when it started (a new worker behind the same
   # "worker" owner), the chi it runs (chi update) and the input-file format
-  # it reads (SessionManager::INPUT_FORMAT). The Bridge writes it on start
+  # it reads (SessionInbox::INPUT_FORMAT). The Bridge writes it on start
   # and removes it on stop; one a dead worker left stays until a client's
   # probe finds its port closed (BridgeClient.sidecar_port).
   class WorkerSidecar < Data.define(:port, :bind, :session_id, :started_at, :version, :input_format)
