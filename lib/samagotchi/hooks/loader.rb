@@ -60,6 +60,7 @@ module Samagotchi
           definitions.each do |defn|
             begin
               plugin = load_plugin(hooks_dir, defn[:path], settings: defn[:settings])
+              log_failure = Hooks.failure_log_gate(defn[:event_type])
               # Persistent: config hooks must fire on every turn, not be wiped
               # by Engine#run_turn's per-turn clear_hooks after turn 1.
               registry.register_persistent(defn[:event_type].to_sym, label: "#{defn[:path]} (config)") do |event|
@@ -69,7 +70,7 @@ module Samagotchi
                   if defn[:required] && defn[:event_type] == "before_tool_call"
                     deny_for_raise(event, defn[:path], e)
                   else
-                    handle_error(defn[:on_error] || "skip", defn[:path], e)
+                    handle_error(defn[:on_error] || "skip", defn[:path], e) if log_failure.call
                   end
                 end
               end

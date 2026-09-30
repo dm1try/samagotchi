@@ -49,4 +49,18 @@ RSpec.describe Samagotchi::Hooks::Loader do
     registry.fire(:before_turn, event)
     expect(event).to include(settings: {}, bare: true)
   end
+
+  it "logs an on_error: log :generation_progress hook's raise once a minute, other events every time" do
+    write_hook("stream_boom.rb", "class StreamBoom; def call(e); raise 'boom'; end; end")
+    registry = described_class.load({ "hooks" => { "hooks_dir" => hooks_dir,
+                                                   "generation_progress" => [{ "path" => "stream_boom.rb", "on_error" => "log" }],
+                                                   "before_turn" => [{ "path" => "stream_boom.rb", "on_error" => "log" }] } })
+    failed = []
+    allow(Samagotchi::Log).to receive(:warn).with(:hooks, "hook_failed", any_args) { failed << :failed }
+
+    3.times { registry.fire(:generation_progress, { type: :generation_progress }) }
+    expect(failed.size).to eq(1)
+    2.times { registry.fire(:before_turn, { type: :before_turn }) }
+    expect(failed.size).to eq(3)
+  end
 end

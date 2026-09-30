@@ -15,6 +15,27 @@ module Samagotchi
       takes_settings ? klass.new(settings.is_a?(Hash) ? settings : {}) : klass.new
     end
 
+    # A stream hook (:generation_progress) fires ~once a second: a broken
+    # one logs its failure once a minute, not on every fire.
+    FAILED_STREAM_HOOK_LOG_SECONDS = 60
+
+    # One hook's failure-log gate: called on each failure, it says whether
+    # to log this one (a :generation_progress hook's at most once a
+    # minute, any other hook's every time).
+    # @param event [Symbol, String] the hook's event
+    # @return [Proc] -> Boolean
+    def self.failure_log_gate(event)
+      quiet_for = event.to_s == "generation_progress" ? FAILED_STREAM_HOOK_LOG_SECONDS : 0
+      logged_at = nil
+      lambda do
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        next false if logged_at && now - logged_at < quiet_for
+
+        logged_at = now
+        true
+      end
+    end
+
     # What a hook can do beyond reading its event: the Engine's
     # callables, each given the hook's label. +notify+ takes
     # (text:, level:, hook:) and shows one line to the user; +ask_user+

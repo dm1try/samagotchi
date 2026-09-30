@@ -129,6 +129,18 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       expect(e[:block_reason]).to include("guardrails.rb")
     end
 
+    it "logs an on_error: log :generation_progress hook's raise once a minute" do
+      hooks_dir = File.join(tmpdir, "hooks")
+      write_hook(hooks_dir, "stream_audit.rb", "class StreamAudit; def call(e); raise \"boom\"; end; end")
+      registry = Samagotchi::Hooks::Registry.new
+      meta = { "stream_audit.rb" => { "event" => "generation_progress", "on_error" => "log" } }
+      described_class.load(bundle_name: "stream-bundle", hooks_dir: hooks_dir, metadata: meta, registry: registry)
+      failed = []
+      allow(Samagotchi::Log).to receive(:warn).with(:hooks, "bundle_hook_failed", any_args) { failed << :failed }
+      3.times { registry.fire(:generation_progress, { type: :generation_progress }) }
+      expect(failed.size).to eq(1)
+    end
+
     it "log on_error warns to stderr and continues" do
       hooks_dir = File.join(tmpdir, "hooks")
       write_hook(hooks_dir, "audit.rb", "class Audit; def call(e); raise \"log me\"; end; end")

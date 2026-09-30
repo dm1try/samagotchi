@@ -80,12 +80,14 @@ module Samagotchi
 
             begin
               plugin = instantiate(bundle_name, basename, file, settings: settings)
+              log_failure = Hooks.failure_log_gate(event_sym)
 
               registry.register_bundle(bundle_name, event_sym, hook_name: basename, priority: priority) do |event|
                 begin
                   plugin.call(event)
                 rescue Exception => e
-                  handle_error(bundle_name, basename, on_error, fail_closed, event, e)
+                  # A veto always applies; only the log line is throttled.
+                  handle_error(bundle_name, basename, on_error, fail_closed, event, e) if fail_closed || log_failure.call
                 end
               end
               loaded += 1
