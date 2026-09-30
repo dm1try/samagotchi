@@ -431,6 +431,72 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
+  describe ".retention_sweep_if_due" do
+    let(:marker) { File.join(tmpdir, described_class::RETENTION_MARKER) }
+
+    def old_session
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.messages << { role: "user", content: "hi" }
+      session.save(state_dir: tmpdir)
+      path = File.join(tmpdir, "#{session.id}.json")
+      data = JSON.parse(File.read(path))
+      data["updated_at"] = (Time.now - 30 * 86_400).iso8601(3)
+      File.write(path, JSON.generate(data))
+      session
+    end
+
+    it "prunes with the settings and touches its marker, then waits out the interval" do
+      old = old_session
+
+      expect(described_class.retention_sweep_if_due(state_dir: tmpdir)[:deleted]).to eq([old.id])
+      expect(File).to exist(marker)
+
+      again = old_session
+      expect(described_class.retention_sweep_if_due(state_dir: tmpdir)).to be_nil
+      expect(Samagotchi::Session.exist?(again.id, state_dir: tmpdir)).to be(true)
+
+      File.utime(Time.now - 25 * 3600, Time.now - 25 * 3600, marker)
+      expect(described_class.retention_sweep_if_due(state_dir: tmpdir)[:deleted]).to eq([again.id])
+    end
+
+    it "sweeps again after session.sweep_interval_hours" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("session.sweep_interval_hours").and_return(1)
+      FileUtils.touch(marker)
+      File.utime(Time.now - 2 * 3600, Time.now - 2 * 3600, marker)
+      old = old_session
+
+      expect(described_class.retention_sweep_if_due(state_dir: tmpdir)[:deleted]).to eq([old.id])
+    end
+
+    it "is nil with no state dir, and when the sweep fails" do
+      expect(described_class.retention_sweep_if_due(state_dir: File.join(tmpdir, "none"))).to be_nil
+
+      allow(Samagotchi::Session).to receive(:list).and_raise(Errno::EACCES)
+      expect(described_class.retention_sweep_if_due(state_dir: tmpdir)).to be_nil
+    end
+  end
+
+  describe ".prune_sessions settings" do
+    it "reads session.retention_days, session.max_count and session.keep_status when not given" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("session.retention_days").and_return(3)
+      allow(Samagotchi::Config).to receive(:get).with("session.max_count").and_return(7)
+      allow(Samagotchi::Config).to receive(:get).with("session.keep_status").and_return("running, error")
+      expect(Samagotchi::Session).to receive(:prune)
+        .with(hash_including(days: 3, max_count: 7, keep_status: %w[running error])).and_return(deleted: [], kept: [], skipped: [])
+
+      described_class.prune_sessions(state_dir: tmpdir, keep_status: "")
+    end
+
+    it "takes the caller's values over the settings" do
+      expect(Samagotchi::Session).to receive(:prune)
+        .with(hash_including(days: 2, max_count: 4, keep_status: ["idle"])).and_return(deleted: [], kept: [], skipped: [])
+
+      described_class.prune_sessions(state_dir: tmpdir, days: "2", max_count: 4, keep_status: "idle")
+    end
+  end
+
   describe ".delete_session" do
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
