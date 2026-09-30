@@ -2,7 +2,8 @@
 // (text, or images: files in Finder, a picture in Preview), the hotkey with
 // the clipboard (a screenshot too). No Dock icon (LSUIElement); it stays
 // running after the first launch. `ChiHelper --login on|off|status` (run
-// directly by chi desktop) manages the login item and exits.
+// directly by chi desktop) manages the login item and exits;
+// `ChiHelper --kitty list|send` is the kitty targets' seam (Kitty.swift).
 import AppKit
 import ServiceManagement
 
@@ -96,6 +97,9 @@ struct ChiHelperMain {
     let args = CommandLine.arguments
     if args.count >= 2, args[1] == "--login" {
       exit(loginCommand(args.count >= 3 ? args[2] : ""))
+    }
+    if args.count >= 2, args[1] == "--kitty" {
+      exit(kittyCommand(Array(args.dropFirst(2))))
     }
     let app = NSApplication.shared
     let delegate = AppDelegate()

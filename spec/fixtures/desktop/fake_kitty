@@ -1,0 +1,26 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# A stand-in for `kitty @` in spec/desktop/macos_build_spec.rb. Appends
+# {argv, stdin} as a JSON line to $FAKE_KITTY_LOG and answers `ls` from
+# $FAKE_KITTY_LS/<socket basename>.json: no file = a dead socket (exit 1);
+# `ls --match id:N` exits 1 when that socket has no window N.
+require "json"
+
+args = ARGV.dup
+to = args[args.index("--to") + 1] if args.include?("--to")
+command = args.find { |arg| %w[ls send-text send-key].include?(arg) }
+stdin = args.include?("--stdin") ? $stdin.read : nil
+File.open(ENV.fetch("FAKE_KITTY_LOG"), "a") { |f| f.puts(JSON.generate("argv" => ARGV, "stdin" => stdin)) }
+
+canned = File.join(ENV.fetch("FAKE_KITTY_LS"), "#{File.basename(to.to_s.delete_prefix("unix:"))}.json")
+exit 1 unless File.file?(canned)
+
+if command == "ls"
+  if (match = args[args.index("--match") + 1] if args.include?("--match"))
+    id = match.delete_prefix("id:").to_i
+    ids = JSON.parse(File.read(canned)).flat_map { |os| os["tabs"].flat_map { |tab| tab["windows"].map { |w| w["id"] } } }
+    exit(ids.include?(id) ? 0 : 1)
+  end
+  print File.read(canned)
+end

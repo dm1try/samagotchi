@@ -27,7 +27,11 @@ struct PanelImage: Identifiable, Equatable {
 }
 
 enum ImageIntake {
-  static let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("chi-helper", isDirectory: true)
+  /// $TMPDIR when set (launchd sets it; a spec points it elsewhere), else
+  /// the user's temp folder.
+  static let tempRoot = URL(fileURLWithPath: ProcessInfo.processInfo.environment["TMPDIR"].flatMap { $0.isEmpty ? nil : $0 }
+    ?? NSTemporaryDirectory(), isDirectory: true)
+  static let tempDir = tempRoot.appendingPathComponent("chi-helper", isDirectory: true)
 
   /// A pasteboard's content for the panel, in this order: image files
   /// (Finder ⌘C, a Service on files) with no text; else its text, as before
@@ -78,9 +82,40 @@ enum ImageIntake {
     }
   }
 
-  /// At launch: what a helper that quit mid-send left.
-  static func sweep() {
+  /// Images pasted into kitty windows, kept for the agent to read after
+  /// the send: never deleted by it, swept at launch after a week.
+  static let sentDir = tempRoot.appendingPathComponent("chi-helper-sent", isDirectory: true)
+  static let sentMaxAge: TimeInterval = 7 * 86_400
+
+  /// The paths a kitty paste names: an image the helper wrote is copied to
+  /// sentDir first (the send deletes the original), with no spaces in its
+  /// name; a file of the user's is named as it is. Call before any send
+  /// job starts. An image that can't be copied is left out.
+  static func keepForPaste(_ images: [PanelImage]) -> [String] {
+    images.compactMap { image in
+      guard image.temp else { return image.url.path }
+      let ext = image.url.pathExtension.isEmpty ? "png" : image.url.pathExtension
+      let copy = sentDir.appendingPathComponent("\(UUID().uuidString).\(ext)")
+      do {
+        try FileManager.default.createDirectory(at: sentDir, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: image.url, to: copy)
+        return copy.path
+      } catch {
+        return nil
+      }
+    }
+  }
+
+  /// At launch: what a helper that quit mid-send left, and pasted images
+  /// older than a week.
+  static func sweep(now: Date = Date()) {
     try? FileManager.default.removeItem(at: tempDir)
+    let fm = FileManager.default
+    for name in (try? fm.contentsOfDirectory(atPath: sentDir.path)) ?? [] {
+      let url = sentDir.appendingPathComponent(name)
+      let modified = (try? fm.attributesOfItem(atPath: url.path)[.modificationDate] as? Date) ?? now
+      if now.timeIntervalSince(modified) > sentMaxAge { try? fm.removeItem(at: url) }
+    }
   }
 }
 

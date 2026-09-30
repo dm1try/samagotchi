@@ -7,6 +7,8 @@ struct LaunchConfig: Decodable {
   let version: String?
   let argv: [String]
   let env: [String: String]?
+  /// Agents in kitty windows (Kitty.swift); nil = none.
+  let kitty: KittySettings?
 }
 
 enum ChiError: Error, CustomStringConvertible {
