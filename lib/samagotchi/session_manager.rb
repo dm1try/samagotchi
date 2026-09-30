@@ -13,6 +13,7 @@ require_relative "session_metrics"
 require_relative "turn_note"
 require_relative "owner_lock"
 require_relative "bridge_client"
+require_relative "worker_sidecar"
 require_relative "log"
 require_relative "log_path"
 require_relative "installed_gem"
@@ -561,7 +562,7 @@ module Samagotchi
     # What a session's directory holds before anything happened in it. Any
     # other entry (or a file in one of the EMPTY_DIRS) is something the
     # session keeps.
-    EMPTY_SKELETON_FILES = %w[pid owner.lock bridge.json analytics.json].freeze
+    EMPTY_SKELETON_FILES = ["pid", "owner.lock", WorkerSidecar::FILE, "analytics.json"].freeze
     EMPTY_DIRS = [INPUT_DIR, NOTES_DIR, "images"].freeze
     EMPTY_SKELETON_DIRS = (EMPTY_DIRS + [OUTPUT_DIR]).freeze
 

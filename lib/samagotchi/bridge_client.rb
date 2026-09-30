@@ -3,19 +3,20 @@
 require "json"
 require "socket"
 
+require_relative "worker_sidecar"
 require_relative "bridge_client/sse_parser"
 require_relative "bridge_client/event_stream"
 
 module Samagotchi
   # Client side of a session worker's Bridge: the 127.0.0.1 HTTP + SSE server
   # each SessionManager worker runs for its Engine (see Bridge). Discovery goes
-  # through the worker's `bridge.json` sidecar in the session directory.
+  # through the worker's `bridge.json` sidecar (WorkerSidecar) in the session
+  # directory.
   #
   # Requests are raw one-shot HTTP/1.1 over a TCPSocket (`Connection: close`),
   # exactly what the Bridge's minimal server expects.
   class BridgeClient
     HOST = "127.0.0.1"
-    SIDECAR_FILE = "bridge.json"
     PROBE_TIMEOUT = 0.2
     STREAM_CONNECT_ATTEMPTS = 3
     # Seconds #stream waits for bytes before it asks `running` again.
@@ -58,13 +59,8 @@ module Samagotchi
     # @param session_dir [String]
     # @return [Integer, nil]
     def self.sidecar_port(session_dir, host: HOST)
-      sidecar = File.join(session_dir, SIDECAR_FILE)
-      return nil unless File.file?(sidecar)
-
-      data = JSON.parse(File.read(sidecar))
-      port = data["port"]
-      port = port.is_a?(Integer) ? port : port.to_i
-      return nil unless port.to_i > 0
+      port = WorkerSidecar.read(session_dir)&.port
+      return nil unless port&.positive?
 
       # Validate liveness: stale sidecar after worker death causes ECONNREFUSED
       # which surfaces as WEBrick ERROR. Probe quickly and clean up if dead.
@@ -72,7 +68,7 @@ module Samagotchi
         Socket.tcp(host, port, connect_timeout: PROBE_TIMEOUT).close
       rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ETIMEDOUT, SocketError, IOError, StandardError
         begin
-          File.unlink(sidecar)
+          File.unlink(WorkerSidecar.path(session_dir))
         rescue StandardError
           nil
         end

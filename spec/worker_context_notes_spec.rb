@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
                                  idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
     @thread = Thread.new { worker.run }
     @thread.report_on_exception = false
-    expect(wait_until { File.exist?(File.join(session_dir, Samagotchi::Bridge::SIDECAR_FILE)) }).to be(true)
+    expect(wait_until { File.exist?(File.join(session_dir, Samagotchi::WorkerSidecar::FILE)) }).to be(true)
   end
 
   def write_note(text, **opts)

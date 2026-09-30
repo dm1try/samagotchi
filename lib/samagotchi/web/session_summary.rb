@@ -5,6 +5,7 @@ require_relative "../recap_store"
 require_relative "../archive_store"
 require_relative "../session_metrics"
 require_relative "../bridge_client"
+require_relative "../worker_sidecar"
 require_relative "../bridge/pending_card"
 
 module Samagotchi
@@ -89,7 +90,7 @@ module Samagotchi
       # @return [Boolean] the sidecar file is there and the session has a
       #   live owner (the file alone says nothing: the worker may be gone)
       def bridge_up?(session_dir, owner)
-        !owner.nil? && File.file?(File.join(session_dir, BridgeClient::SIDECAR_FILE))
+        !owner.nil? && File.file?(WorkerSidecar.path(session_dir))
       rescue StandardError
         false
       end

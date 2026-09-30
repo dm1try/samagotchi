@@ -5,6 +5,7 @@ require "net/http"
 require "socket"
 require_relative "session"
 require_relative "version"
+require_relative "worker_sidecar"
 
 module Samagotchi
   # Which chi versions the running processes run, for `chi update`: session
@@ -22,13 +23,12 @@ module Samagotchi
 
     # @return [Array<Worker>] the workers whose Bridge answers, by session id
     def workers(state_dir: Session.default_state_dir)
-      Dir[File.join(state_dir, "*", "bridge.json")].sort.filter_map do |sidecar|
-        data = JSON.parse(File.read(sidecar))
-        next unless data.is_a?(Hash) && listening?(data["port"].to_i)
+      Dir[File.join(state_dir, "*", WorkerSidecar::FILE)].sort.filter_map do |path|
+        session_dir = File.dirname(path)
+        sidecar = WorkerSidecar.read(session_dir)
+        next unless sidecar && listening?(sidecar.port)
 
-        Worker.new(session_id: File.basename(File.dirname(sidecar)), version: data["version"])
-      rescue JSON::ParserError, SystemCallError
-        nil
+        Worker.new(session_id: File.basename(session_dir), version: sidecar.version)
       end
     end
 

@@ -118,7 +118,7 @@ RSpec.describe Samagotchi::Worker do
     end
 
     def sidecar
-      File.join(session_dir, Samagotchi::Bridge::SIDECAR_FILE)
+      File.join(session_dir, Samagotchi::WorkerSidecar::FILE)
     end
 
     def post_turn(prompt)

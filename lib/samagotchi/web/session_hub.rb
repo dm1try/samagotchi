@@ -7,6 +7,7 @@ require "time"
 require_relative "../session"
 require_relative "../session_manager"
 require_relative "../bridge_client"
+require_relative "../worker_sidecar"
 require_relative "../log"
 require_relative "session_summary"
 
@@ -305,9 +306,7 @@ module Samagotchi
       end
 
       def bridge_started_at(dir)
-        JSON.parse(File.read(File.join(dir, BridgeClient::SIDECAR_FILE)))["started_at"]
-      rescue StandardError
-        nil
+        WorkerSidecar.read(dir)&.started_at
       end
 
       def emit(type, data)

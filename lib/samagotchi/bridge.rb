@@ -21,6 +21,7 @@ require_relative "session_commands"
 require_relative "image_store"
 require_relative "log"
 require_relative "version"
+require_relative "worker_sidecar"
 
 module Samagotchi
   # Bridge is an optional HTTP transport that lets an external web / desktop
@@ -40,7 +41,6 @@ module Samagotchi
   #   engaged as a transport.
   class Bridge
     DEFAULT_BIND = "127.0.0.1"
-    SIDECAR_FILE = "bridge.json"
     DEFAULT_RING_CAPACITY = 256
     DEFAULT_HEARTBEAT_INTERVAL = 15.0
     # Cancel reasons a client may name (the web sends user, an attached TUI
@@ -915,29 +915,19 @@ module Samagotchi
     end
 
     def write_sidecar
-      record = {
-        "port" => @port,
-        "bind" => @bind,
-        "session_id" => @session_id,
-        "started_at" => Time.now.iso8601(3),
-        # The chi this worker runs (chi update reports older ones).
-        "version" => Samagotchi::VERSION
-      }
-      record["input_format"] = @input_format if @input_format
-      path = File.join(session_dir, SIDECAR_FILE)
-      FileUtils.mkdir_p(session_dir)
-      AtomicFile.write(path, JSON.pretty_generate(record) + "\n")
+      # version: the chi this worker runs (chi update reports older ones).
+      WorkerSidecar.new(port: @port, bind: @bind, session_id: @session_id, started_at: Time.now.iso8601(3),
+                        version: Samagotchi::VERSION, input_format: @input_format).write(session_dir)
     rescue StandardError => e
-      Log.warn(:bridge, "sidecar_write_failed", echo: "Bridge: failed to write #{SIDECAR_FILE}: #{e.class}: #{e.message}", error: e.class.name)
+      Log.warn(:bridge, "sidecar_write_failed", echo: "Bridge: failed to write #{WorkerSidecar::FILE}: #{e.class}: #{e.message}", error: e.class.name)
     end
 
     # Only while it still names this bridge: a racing worker for the same
     # session may have written its own since.
     def remove_sidecar
-      path = File.join(session_dir, SIDECAR_FILE)
-      return unless @server && File.file?(path)
+      return unless @server
 
-      File.unlink(path) if JSON.parse(File.read(path))["port"].to_i == @port
+      File.unlink(WorkerSidecar.path(session_dir)) if WorkerSidecar.read(session_dir)&.port == @port
     rescue StandardError
       nil
     end
