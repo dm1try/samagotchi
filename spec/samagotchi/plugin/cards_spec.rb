@@ -229,6 +229,29 @@ RSpec.describe "Cards" do
       ])
     end
 
+    it "keeps a turn's questions with how each was answered or cancelled, in their step" do
+      store = described_class.new
+      q1 = { id: "q1", question: "Which?", options: %w[A B], status: "pending" }
+      q2 = { id: "q2", question: "Allow?", kind: "approval", status: "pending" }
+      store.call({ type: :turn_started })
+      store.call({ type: :generation_started, iteration: 1 })
+      store.call({ type: :question_requested, pending_question: q1 })
+      expect(store.list.last).to include(type: :question, current: true)
+      expect(store.list.last).not_to include(:answer)
+      store.call({ type: :question_answered, id: "q1", answer: { selected: ["A"] } })
+      store.call({ type: :tool_call_started, iteration: 1, call_index: 1 })
+      store.call({ type: :question_requested, pending_question: q2 })
+      store.call({ type: :question_cancelled, id: "q2", reason: "turn ended" })
+      store.call({ type: :turn_completed })
+
+      expect(store.list).to eq([
+        { type: :question, pending_question: q1, answer: { selected: ["A"] }, in_turn: true, iteration: 1, calls: 0,
+          turns_since: 0, current: false },
+        { type: :question, pending_question: q2, cancelled: true, reason: "turn ended", in_turn: true, iteration: 1, calls: 1,
+          turns_since: 0, current: false }
+      ])
+    end
+
     it "keeps a notice that comes after its turn ended (an after_turn hook's) before the next turn" do
       turn(:turn_started, :turn_completed)
       store.call({ type: :hook_notice, hook: "h", text: "after", level: :info })

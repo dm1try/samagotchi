@@ -11,7 +11,9 @@ module Samagotchi
     # iteration started before it (a before_tool_call hook's notice comes
     # before its call's row, so the web puts it above row calls + 1). The
     # loop's "asking again" row (:empty_answer_retry, after an empty or cut
-    # answer) is kept the same way.
+    # answer) is kept the same way, and so is a question the turn asked
+    # (:question_requested), with how it was answered or cancelled, so a
+    # reload draws the resolved card where it was.
     #
     # A card with an earlier card's id replaces it where it was. Each entry
     # says where it belongs as the recap does: +turns_since+, the turns
@@ -84,6 +86,10 @@ module Samagotchi
         when :card then add_card(event)
         when :hook_notice then add_notice(event)
         when :empty_answer_retry then add_turn_row(event.slice(:type, :attempt, :of, :stopped_by)) if @running
+        when :question_requested
+          add_turn_row({ type: :question, pending_question: Marshal.load(Marshal.dump(event[:pending_question])) }) if @running
+        when :question_answered then resolve_question(event[:id], answer: event[:answer])
+        when :question_cancelled then resolve_question(event[:id], cancelled: true, reason: event[:reason])
         end
       end
 
@@ -123,6 +129,13 @@ module Samagotchi
       # A row of the running turn's current step.
       def add_turn_row(row)
         push(row.merge(in_turn: true, turns: @turns_done, iteration: @iteration, calls: @calls).compact)
+      end
+
+      def resolve_question(id, **outcome)
+        entry = @entries.reverse_each.find do |e|
+          e[:type] == :question && e.dig(:pending_question, :id).to_s == id.to_s
+        end
+        entry&.merge!(Marshal.load(Marshal.dump(outcome.compact)))
       end
 
       def push(entry)
