@@ -175,6 +175,10 @@ RSpec.describe "task tools" do
     it "returns a bounded output tail when task is still in progress" do
       create_result = Samagotchi::Tools::TaskCreate.call("ruby -e '$stdout.sync = true; puts " + '"first"; puts "second"; sleep 10' + "'")
       task_id = extract_field(create_result, "task_id")
+      # Both lines out first: under load the child may take over the 1 s wait to print.
+      output_path = extract_field(create_result, "output_path")
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
+      sleep 0.05 until File.read(output_path).include?("second") || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
       result = described_class.call(task_id, timeout: 1, tail_lines: 1)
       expect(result).to include("task_id: #{task_id}")
       expect(result).to include("status: running")
@@ -199,7 +203,8 @@ RSpec.describe "task tools" do
       )
       task_id = extract_field(create_result, "task_id")
 
-      result = described_class.call(task_id, timeout: 1, done_pattern: "Done!")
+      # The match returns at once; the timeout only leaves a loaded machine time to start ruby.
+      result = described_class.call(task_id, timeout: 10, done_pattern: "Done!")
 
       expect(result).to include("status: running")
       expect(result).to include("wait_result: pattern_matched")
@@ -232,7 +237,7 @@ RSpec.describe "task tools" do
 
       result = described_class.call(task_id, cancelled: cancelled)
 
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5 # not the task's 30 s
       expect(result).to include("status: running")
       expect(result).to include("wait_result: canceled")
       expect(result).to include("STILL RUNNING")
@@ -315,7 +320,7 @@ RSpec.describe "task tools" do
     expect(File.read(output_path)).to include("from-output")
   end
 
-  def wait_for_task(task_id, timeout: 4.0)
+  def wait_for_task(task_id, timeout: 10.0)
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
 
     loop do

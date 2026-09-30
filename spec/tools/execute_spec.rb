@@ -152,12 +152,14 @@ RSpec.describe Samagotchi::Tools::Execute do
       expect(result).to eq("Error: command timed out after 1s")
     end
 
+    # A shell's echo, not a ruby child, and a few seconds: under a parallel
+    # run's load a ruby took over a second to print "before".
     it "returns the output captured before the timeout along with the error" do
-      ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+      ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "3"
 
-      result = described_class.call(%q(ruby -e '$stdout.sync = true; puts "before"; warn "oops"; sleep 5; puts "never-printed"'))
+      result = described_class.call("echo before; echo oops >&2; sleep 10; echo never-printed")
 
-      expect(result).to start_with("Error: command timed out after 1s\n")
+      expect(result).to start_with("Error: command timed out after 3s\n")
       expect(result).to include("stdout:\nbefore")
       expect(result).to include("stderr:\noops")
       expect(result).not_to include("never-printed")
@@ -207,11 +209,11 @@ RSpec.describe Samagotchi::Tools::Execute do
     end
 
     it "keeps partial output from a compound command whose last part hangs" do
-      ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "1"
+      ENV["SAMAGOTCHI_EXECUTE_TIMEOUT_SEC"] = "3"
 
-      result = described_class.call("echo first-part; sleep 5")
+      result = described_class.call("echo first-part; sleep 10")
 
-      expect(result).to start_with("Error: command timed out after 1s")
+      expect(result).to start_with("Error: command timed out after 3s")
       expect(result).to include("first-part")
     end
   end
