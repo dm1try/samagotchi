@@ -49,4 +49,5 @@ Gem::Specification.new do |spec|
   spec.add_dependency "rack", ">= 2.0"
   spec.add_dependency "rackup"
   spec.add_dependency "webrick"
+  spec.add_dependency "rqrcode_core", "~> 2.0" # the QR code of chi web's LAN link
 end

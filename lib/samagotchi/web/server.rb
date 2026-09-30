@@ -9,6 +9,7 @@ require "webrick"
 
 require_relative "app"
 require_relative "lan"
+require_relative "qr"
 require_relative "session_hub"
 require_relative "token"
 require_relative "../config"
@@ -75,12 +76,18 @@ module Samagotchi
             return 1
           end
           puts "chi web already runs on port #{port} (pid #{found["pid"]}): #{url}"
+          puts running_lan_lines(found["lan"], port) if found["lan"]
+          puts lan_off_line(setting) if new_token && !found["lan"]
           open_url(url) if open_browser
           0
         when :other
           warn in_use_message(port)
           1
         else
+          if new_token && !lan
+            puts lan_off_line(setting)
+            return 0
+          end
           start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, view: view,
                 annotate_presets: annotate_presets, lan: lan) ? 0 : 1
         end
@@ -121,6 +128,7 @@ module Samagotchi
         # the in-use line instead.
         started = lambda do
           puts "Chi Web on #{url} (public: #{File.expand_path("public", __dir__)})"
+          puts lan_lines(ip: lan.ip, port: port, token: Token.read(token_path), others: lan.others, public: lan.public) if lan
           puts "Press Ctrl-C to stop."
           $stdout.flush # a log file isn't line-buffered
           if open_browser
@@ -210,6 +218,32 @@ module Samagotchi
         info.is_a?(Hash) && info["app"] == "chi-web" && Array(info["features"]).include?("dir") ? info : :other
       rescue JSON::ParserError
         :other
+      end
+
+      # What a phone needs: the LAN link with the token, the warnings, and
+      # the link's QR code (at a terminal only).
+      def self.lan_lines(ip:, port:, token:, others: [], public: false, qr: $stdout.tty?)
+        unless token
+          return ["LAN: http://#{ip}:#{port}/ (no access token: its file is gone; chi web --new-token makes one)"]
+        end
+
+        link = "http://#{ip}:#{port}/?token=#{token}"
+        lines = ["LAN: #{link}   ← anyone with this link can run commands as you",
+                 "Plain http: the link and your traffic can be read by anyone on this Wi-Fi."]
+        lines << "also: #{others.map(&:to_s).join(", ")}; set web.host to pick one" unless others.empty?
+        lines << "#{ip} isn't a private LAN address: anyone who can reach it can try to get in" if public
+        lines.concat(QR.lines(link)) if qr
+        lines
+      end
+
+      # A second chi web, when the running one has LAN access: the same
+      # lines, the token read from its file here.
+      def self.running_lan_lines(ip, port, token_path: Token.path)
+        lan_lines(ip: ip, port: port, token: Token.read(token_path))
+      end
+
+      def self.lan_off_line(setting)
+        "LAN access is off (web.host is #{setting.empty? ? DEFAULT_HOST : setting}): chi web --web-host lan uses the new token"
       end
 
       def self.rotate_token(path = Token.path)

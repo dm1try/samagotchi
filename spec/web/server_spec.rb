@@ -202,7 +202,67 @@ RSpec.describe Samagotchi::Web::Server do
     end
   end
 
+  describe "the LAN lines" do
+    let(:token) { "t" * 43 }
+    let(:others) { [Samagotchi::Web::Lan::Address.new(ip: "10.0.0.4", interface: "en5")] }
+
+    it "show the link with the token, the warnings, and the QR code at a terminal" do
+      lines = described_class.lan_lines(ip: "192.168.1.55", port: 4567, token: token, others: others, qr: true)
+
+      expect(lines[0]).to eq("LAN: http://192.168.1.55:4567/?token=#{token}   ← anyone with this link can run commands as you")
+      expect(lines[1]).to eq("Plain http: the link and your traffic can be read by anyone on this Wi-Fi.")
+      expect(lines[2]).to eq("also: 10.0.0.4 (en5); set web.host to pick one")
+      expect(lines[3..]).to eq(Samagotchi::Web::QR.lines("http://192.168.1.55:4567/?token=#{token}"))
+    end
+
+    it "leave the QR code out of a pipe or a log, and warn of a non-private address" do
+      lines = described_class.lan_lines(ip: "100.101.102.103", port: 4567, token: token, public: true, qr: false)
+
+      expect(lines.size).to eq(3)
+      expect(lines.last).to eq("100.101.102.103 isn't a private LAN address: anyone who can reach it can try to get in")
+    end
+
+    it "are printed once the port is bound, after the loopback line" do
+      Dir.mktmpdir do |dir|
+        token_path = File.join(dir, "web-token")
+        lan = Samagotchi::Web::Lan::Choice.new(ip: "192.168.1.55", interface: "en0", others: [], public: false)
+        allow(Samagotchi::Web::App).to receive(:new).and_return(double("app", "server_running=": nil))
+        callback = nil
+        allow(Rackup::Handler::WEBrick).to receive(:run) { |_app, opts| callback = opts[:StartCallback] }
+        described_class.start(port: 4999, hub: hub, lan: lan, token_path: token_path)
+        token = Samagotchi::Web::Token.read(token_path)
+
+        expect { callback.call }.to output(%r{\AChi Web on http://127.0.0.1:4999/ .*\nLAN: http://192.168.1.55:4999/\?token=#{token}   ← .*\nPlain http: .*\nPress Ctrl-C}).to_stdout
+      end
+    end
+
+    it "are printed again by a second chi web, with the token from the file" do
+      Dir.mktmpdir do |dir|
+        token = Samagotchi::Web::Token.load_or_create(File.join(dir, "web-token"))
+        allow(Samagotchi::Web::Token).to receive(:path).and_return(File.join(dir, "web-token"))
+        allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => 42, "lan" => "192.168.1.55" })
+
+        expect { described_class.launch(port: 4567, dir: "/", scope: "all") }
+          .to output("chi web already runs on port 4567 (pid 42): http://127.0.0.1:4567/\n" \
+                     "LAN: http://192.168.1.55:4567/?token=#{token}   ← anyone with this link can run commands as you\n" \
+                     "Plain http: the link and your traffic can be read by anyone on this Wi-Fi.\n").to_stdout
+      end
+    end
+  end
+
   describe ".launch with new_token" do
+    it "starts nothing when LAN access is off, and says the new token waits for it" do
+      Dir.mktmpdir do |state|
+        allow(Samagotchi::Web::Token).to receive(:path).and_return(File.join(state, "web-token"))
+        allow(described_class).to receive(:probe).and_return(:free)
+        allow(described_class).to receive(:start)
+
+        expect { expect(described_class.launch(host: "127.0.0.1", port: 4999, dir: state, new_token: true)).to eq(0) }
+          .to output(/LAN access is off \(web.host is 127.0.0.1\): chi web --web-host lan uses the new token/).to_stdout
+        expect(described_class).not_to have_received(:start)
+      end
+    end
+
     it "replaces the token file before anything else, and says the old links stop working" do
       Dir.mktmpdir do |state|
         path = File.join(state, "samagotchi", "web-token")
