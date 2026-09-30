@@ -77,6 +77,20 @@ class SSEClient
     @events.dup
   end
 
+  # Block until the events seen so far satisfy the block (or timeout
+  # elapses): a turn's events reach a client on the bridge's own threads,
+  # after run_turn has returned.
+  # @return [Array<Hash>] a snapshot of the events seen so far.
+  def wait_until(timeout: 3)
+    deadline = mono + timeout
+    @mutex.synchronize do
+      until yield(@events) || mono > deadline
+        @cv.wait(@mutex, [deadline - mono, 0].max)
+      end
+    end
+    @events.dup
+  end
+
   def last
     @mutex.synchronize { @events.last }
   end
@@ -660,9 +674,12 @@ RSpec.describe Samagotchi::Bridge do
     it "resumes via ?from_seq= by replaying buffered events then continuing live" do
       start_bridge
       c1 = SSEClient.new(@bridge_port, @session.id).start
-      sleep(0.3)
       stub_kernel_emit({ type: :generation_started, iteration: 1 })
       run_turn_sync(@engine, @session, "hi 1")
+      # The turn's events reach c1 on the bridge's threads, maybe after
+      # run_turn returned (live, or replayed if c1 subscribed late).
+      completed = ->(events, after: 0) { events.any? { |e| e[:data]["type"] == "turn_completed" && e[:id].to_i > after } }
+      expect(completed.call(c1.wait_until { |events| completed.call(events) })).to be(true)
       last_seen = c1.last[:id]
       c1.stop
 
@@ -673,8 +690,8 @@ RSpec.describe Samagotchi::Bridge do
       # Reconnect from last_seen: replay the buffered window then go live.
       c2 = SSEClient.new(@bridge_port, @session.id, last_event_id: last_seen).start
       @clients << c2
-      sleep(0.3)
-      events = c2.wait_for(2, timeout: 3)
+      events = c2.wait_until { |seen| completed.call(seen, after: last_seen.to_i) }
+      expect(completed.call(events, after: last_seen.to_i)).to be(true)
       ordered = events.map { |e| e[:id].to_i }
       expect(ordered).not_to be_empty
       expect(ordered).to eq(ordered.uniq.sort)
