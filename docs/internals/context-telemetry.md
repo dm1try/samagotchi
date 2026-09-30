@@ -25,7 +25,9 @@ Emission behavior:
   synthetic char-based estimate (`src=estimate`). The guidance text is dynamic
   and escalates with the bucket: healthy → proceed normally; moderate → prefer
   targeted/range reads; elevated → be concise, avoid large re-reads; critical →
-  summarize aggressively and delegate broad work to subagents.
+  summarize aggressively and delegate broad work to subagents. With custom
+  `context.status_thresholds` the top bucket reads critical, the one below it
+  elevated, the next moderate, and the first bucket (and the rest below) healthy.
 
 Configuration:
 

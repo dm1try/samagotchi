@@ -595,9 +595,11 @@ RSpec.describe Samagotchi::KernelLoop do
 
         expect(lines.size).to eq(1)
         expect(lines.first).to include("bucket=30plus", "thresholds=30,70", "context healthy")
+        lines = status_lines([{ role: "user", content: "x" * 8_000 }], ["ok"])
+        expect(lines.first).to include("bucket=70plus", "context critical")
       end
 
-      it "leaves the model a line from the second configured threshold up" do
+      it "leaves the model a line from the second configured threshold up, the top one's critical" do
         ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"] = "1"
         ENV["SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"] = "10,50"
         allow(client).to receive(:complete).and_return("ok")
@@ -605,7 +607,7 @@ RSpec.describe Samagotchi::KernelLoop do
         result = kernel.run([{ role: "user", content: "x" * 6_000 }])
 
         line = result.conversation.find { |m| m[:kind] == "context" }
-        expect(line[:content]).to include("bucket=50plus").and end_with("healthy — proceed normally]")
+        expect(line[:content]).to include("bucket=50plus", "context critical")
       end
 
       it "re-emits an unchanged bucket every context.status_cadence iterations" do
@@ -642,6 +644,15 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(Samagotchi::ContextStatus.guidance("40plus")).to include("prefer targeted")
       expect(Samagotchi::ContextStatus.guidance("60plus")).to include("concise")
       expect(Samagotchi::ContextStatus.guidance("80plus")).to include("summarize")
+      expect(Samagotchi::ContextStatus.guidance("under20")).to include("proceed normally")
+    end
+
+    it "fits the guidance to custom thresholds: the top bucket critical, the first healthy" do
+      six = [10, 20, 30, 50, 70, 90]
+      expect(%w[under10 10plus 20plus 30plus 50plus 70plus 90plus].map { |b| Samagotchi::ContextStatus.guidance(b, six)[/\Acontext (\w+)/, 1] })
+        .to eq(%w[healthy healthy healthy healthy moderate elevated critical])
+      expect(%w[30plus 60plus 90plus].map { |b| Samagotchi::ContextStatus.guidance(b, [30, 60, 90])[/\Acontext (\w+)/, 1] })
+        .to eq(%w[healthy elevated critical])
     end
 
     it "dispatches a canonical read call with the correct path" do

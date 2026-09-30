@@ -34,19 +34,29 @@ module Samagotchi
       Config.get("context.status") != false
     end
 
-    def self.guidance(bucket)
-      case bucket
-      when "under20", "20plus"
-        "context healthy — proceed normally"
-      when "40plus"
-        "context moderate — prefer targeted and range reads over full-file dumps"
-      when "60plus"
-        "context elevated — be concise, prefer range reads, avoid re-reading large files"
-      when "80plus"
-        "context critical — summarize aggressively, avoid large outputs, delegate broad work to subagents"
-      else
-        "context healthy — proceed normally"
-      end
+    # Healthy to critical; the top configured bucket gets the last, the
+    # ones below it the ones before, and the first bucket (and the one
+    # under it) is always healthy.
+    GUIDANCE = [
+      "context healthy — proceed normally",
+      "context moderate — prefer targeted and range reads over full-file dumps",
+      "context elevated — be concise, prefer range reads, avoid re-reading large files",
+      "context critical — summarize aggressively, avoid large outputs, delegate broad work to subagents"
+    ].freeze
+
+    # @param bucket [String] "under<N>" or "<N>plus"
+    # @param thresholds [Array<Integer>] the configured ones, sorted
+    def self.guidance(bucket, thresholds = DEFAULT_THRESHOLDS)
+      rank = bucket_rank(bucket, thresholds)
+      level = rank < GUIDANCE_FROM_RANK ? 0 : GUIDANCE.size - 1 - (thresholds.size - rank)
+      GUIDANCE[level.clamp(0, GUIDANCE.size - 1)]
+    end
+
+    # 0 for the bucket under the first threshold, then one per threshold.
+    def self.bucket_rank(bucket, thresholds)
+      return 0 if bucket.nil? || bucket.to_s.start_with?("under")
+
+      (thresholds.index(bucket.to_s.delete_suffix("plus").to_i) || -1) + 1
     end
 
     # The bucket of the last status line +conversation+ holds: the model's
@@ -199,12 +209,7 @@ module Samagotchi
       bucket
     end
 
-    # 0 for the bucket under the first threshold, then one per threshold.
-    def bucket_rank(bucket)
-      return 0 if bucket.nil? || bucket.to_s.start_with?("under")
-
-      (@thresholds.index(bucket.to_s.delete_suffix("plus").to_i) || -1) + 1
-    end
+    def bucket_rank(bucket) = self.class.bucket_rank(bucket, @thresholds)
 
     # A rise (never a fall or a cadence tick) into a bucket whose guidance
     # asks for a change. With no previous bucket (a first turn, a resumed
@@ -228,7 +233,7 @@ module Samagotchi
       how = usage[:source].to_s == "server" ? "as the server reports" : "estimated"
       { role: "system", kind: LINE_KIND,
         content: "#{LINE_PREFIX}about #{usage[:estimated_pct].to_f.round}% of the context window is in use " \
-                 "(#{how}; bucket=#{bucket}). #{self.class.guidance(bucket)}]" }
+                 "(#{how}; bucket=#{bucket}). #{self.class.guidance(bucket, @thresholds)}]" }
     end
 
     def status_message(usage:, bucket:)
@@ -243,7 +248,7 @@ module Samagotchi
         bucket: bucket,
         thresholds: @thresholds.join(","),
         src: usage[:source],
-        guidance: self.class.guidance(bucket)
+        guidance: self.class.guidance(bucket, @thresholds)
       )
     end
   end
