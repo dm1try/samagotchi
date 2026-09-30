@@ -51,6 +51,7 @@ require_relative "sampling_settings"
 require_relative "thinking"
 require_relative "answer_display"
 require_relative "edit_preview"
+require_relative "question_desk"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -62,7 +63,7 @@ module Samagotchi
     # Raised by #answer_question when the question it targets is no longer
     # open (never asked, superseded, already answered or cancelled). A subclass
     # of ArgumentError for existing callers; transports map it to 409 Conflict.
-    class QuestionNotPending < ArgumentError; end
+    QuestionNotPending = QuestionDesk::NotPending
 
     # Build a system prompt string for the given profile.
     # Used by specs and inspection.
@@ -124,6 +125,18 @@ module Samagotchi
       # Plugins that failed to load: announced apart, as plugins (not
       # guardrails: no tool call is denied for them).
       @plugin_failures = Guardrails::LoadFailures.new
+      # The question flow (ask_user_question, hooks' and plugins' ask_user,
+      # approvals). Built before the hooks and plugins load: a plugin can ask
+      # during its load (answered nil then: the interface is still
+      # :non_interactive).
+      @question_desk = QuestionDesk.new(
+        session: -> { @session },
+        state_dir: -> { session_state_dir },
+        emit: ->(event) { emit_event(nil, event) },
+        cancel_controller: -> { active_cancel_controller },
+        interface: -> { interface },
+        user_input: ->(sid) { ArchiveStore.user_input(sid, state_dir: session_state_dir) }
+      )
       @hooks = load_hooks_from_config
       load_hooks_from_bundles
       # The tools this session offers (the prompts' declarations and the
@@ -210,11 +223,6 @@ module Samagotchi
       # What a hook can do beyond reading its event (event[:notify],
       # event[:ask_user], event[:stop_turn]): the Engine's routes to the UIs.
       @hooks.runtime = hook_runtime
-      # If session was resumed and has a pending_question, hydrate engine state
-      if @resume_session && @resume_session.pending_question
-        @pending_question = @resume_session.pending_question.dup
-        @session = @resume_session
-      end
       # The loop follows the effective model's host (its api:): the raw-prompt
       # NativeBackend, or the chat backend for openai hosts.
       @native_backend = LLM::NativeBackend.new(kernel: @kernel)
@@ -249,10 +257,6 @@ module Samagotchi
       # Reminder names the interactive REPL's IdleReminders callback marked due;
       # the REPL polls them to decide when to run a synthetic reminder turn.
       @due_reminder_names = []
-      @question_mutex = Monitor.new
-      @question_cv = @question_mutex.new_cond
-      @pending_question = nil
-      @question_answer = nil
       @recap = RecapSetup.build(recap, engine: self, host_registry: @host_registry,
                                 session_target: -> { session_model_recap_target },
                                 session_id: -> { @session&.id }, state_dir: -> { session_state_dir })
@@ -1038,7 +1042,7 @@ module Samagotchi
         last_prompt: @session&.last_prompt,
         event_seq: @session_observer&.event_count,
         metrics: metrics,
-        pending_question: @question_mutex.synchronize { @pending_question&.dup },
+        pending_question: @question_desk.pending,
         used_memory_names: @used_memory_mutex.synchronize { @used_memory_names.dup },
         preloaded_memory_names: preloaded_memory_names,
         muted_memory_names: @muted_memory_names.dup,
@@ -1465,22 +1469,7 @@ module Samagotchi
     # answer, cancelled) is nil too.
     # @return [Hash, nil] {selected:, freeform:, selected_indices:}
     def hook_ask_user(question, options, header, allow_freeform, hook)
-      return nil if interface == :non_interactive
-
-      opts = Tools::AskUserQuestion.normalize_options(options)
-      unless opts
-        Log.warn(:hooks, "ask_user_invalid", echo: "[samagotchi:hooks] #{hook} asked with invalid options (2-8 strings)", hook: hook.to_s)
-        return nil
-      end
-
-      fields = { question: question.to_s, options: opts, header: header, multi_select: false,
-                 allow_freeform: !!allow_freeform, kind: "hook", hook: hook.to_s }.compact
-      answer = open_question(fields)
-      return nil unless answer.is_a?(Hash) && answer[:selected]
-
-      result = { selected: Array(answer[:selected]), freeform: answer[:freeform] }
-      result[:selected_indices] = answer[:selected_indices] if answer.key?(:selected_indices)
-      result
+      @question_desk.ask_for_hook(question, options, header, allow_freeform, hook)
     end
     private :hook_ask_user
 
@@ -1501,212 +1490,42 @@ module Samagotchi
 
     # @return [Hash, nil] current pending question (thread-safe copy)
     def pending_question
-      @question_mutex.synchronize { @pending_question&.dup }
+      @question_desk.pending
     end
 
     # Ask the model's question (ask_user_question): the kernel's
     # question_handler, called on the turn thread with the payload
-    # Tools::AskUserQuestion.validate made. Opens it (#open_question) and
-    # returns the answer as JSON for the tool result.
+    # Tools::AskUserQuestion.validate made (QuestionDesk#request).
     # @param payload [Hash] {question:, options:, header:, multi_select:, allow_freeform:}
     # @return [String] normalized answer JSON
     def request_question(payload)
-      result = open_question(**payload.slice(:question, :options, :header),
-                             multi_select: !!payload[:multi_select], allow_freeform: !!payload[:allow_freeform])
-      # Dismissed (the card's dismiss, Esc): an answer of its own, not a
-      # tool failure the model learns to avoid the tool from.
-      result = { dismissed: true, id: result[:id], note: QUESTION_DISMISSED_NOTE } if result.is_a?(Hash) && result[:error] == "no answer"
-      result.is_a?(String) ? result : JSON.generate(result)
+      @question_desk.request(payload)
     end
 
-    QUESTION_DISMISSED_NOTE = "The user dismissed the question without answering. Go on with your best judgement, " \
-                              "or ask in your reply if you can't."
+    QUESTION_DISMISSED_NOTE = QuestionDesk::DISMISSED_NOTE
 
-    # Open a question for the UIs and wait for its answer. Emits
-    # :question_requested, persists it to the session, and BLOCKS until
-    # answer_question / cancel_question wakes it (or the turn is cancelled).
-    # The fields go to pending_question as given (no cleaning), extra keys
-    # included, so a caller can add its own (kind:, approval:).
+    # Open a question for the UIs and wait for its answer
+    # (QuestionDesk#open_question: BLOCKS until answered or cancelled).
     # @param fields [Hash] question:, options:, header:, multi_select:, allow_freeform:, …
-    # @return [Hash, String] the answer {id:, selected:, freeform:, selected_indices:},
-    #   or {error:, …}; a String when a sync handler returned text itself
+    # @return [Hash, String] the answer, or {error:, …}
     def open_question(fields)
-      id = SecureRandom.uuid
-      pending = { id: id, **fields, status: "pending", created_at: Time.now.iso8601(3) }.compact
-
-      @question_mutex.synchronize do
-        @pending_question = pending
-        @question_answer = nil
-      end
-      # Persist to session file for WEB stub + resume (generic for all UIs)
-      if @session
-        @session.pending_question = pending.dup
-        begin; @session.save(state_dir: session_state_dir); rescue StandardError; nil; end
-      end
-      # Generic emit for all UIs (TUI, WEB, Bridge, future). Observers that
-      # stash this event (e.g. TerminalUI handle_question_event) will
-      # discard it as stale if the synchronous handler below already answers
-      # and clears pending — see drain_pending_question? staleness check.
-      emit_event(nil, { type: :question_requested, pending_question: pending })
-
-      # If a synchronous UI handler is registered (TUI), invoke it inline on the
-      # SAME thread that called request_question (TerminalUI's REPL thread is the
-      # turn thread — no second thread exists to answer). This avoids deadlock.
-      # This path is TUI-specific but the surrounding emit/clear is generic, so
-      # any future UI that registers a sync handler gets the same guarantee.
-      if instance_variable_defined?(:@question_sync_handler) && @question_sync_handler
-        begin
-          sync_res = @question_sync_handler.call(pending.dup)
-          # Handler may have called answer_question or returned a hash/string
-          @question_mutex.synchronize do
-            if @question_answer
-              ans = @question_answer
-              @pending_question = nil
-              if @session
-                @session.pending_question = nil
-                begin; @session.save(state_dir: session_state_dir); rescue StandardError; nil; end
-              end
-              emit_event(nil, { type: :question_answered, id: id, answer: ans })
-              return ans
-            end
-            if sync_res.is_a?(Hash) && sync_res[:selected]
-              # Treat returned hash as answer (handler rendered and parsed)
-              @question_answer = sync_res
-              @pending_question = nil
-              if @session
-                @session.pending_question = nil
-                begin; @session.save(state_dir: session_state_dir); rescue StandardError; nil; end
-              end
-              emit_event(nil, { type: :question_answered, id: id, answer: sync_res })
-              return sync_res
-            elsif sync_res.is_a?(String) && !sync_res.strip.empty?
-              return sync_res
-            end
-          end
-        rescue StandardError => e
-          Log.warn(:turn, "question_handler_failed", echo: "[ask_user_question] sync handler failed: #{e.message}", error: e.class.name)
-        end
-        # Sync handler existed but did not produce an answer — do not deadlock on
-        # CV (no cross-thread answerer exists for synchronous UIs). Clear pending
-        # and return an error so the model can fallback to plain text. Generic
-        # observers will discard the stale question_requested via staleness check.
-        @question_mutex.synchronize { @pending_question = nil }
-        if @session
-          @session.pending_question = nil
-          begin; @session.save(state_dir: session_state_dir); rescue StandardError; nil; end
-        end
-        return { error: "no answer", detail: "handler failed to capture selection", id: id }
-      end
-
-      # Block until answered/cancelled (cross-thread path: WEB/Bridge/background worker)
-      answer = nil
-      @question_mutex.synchronize do
-        loop do
-          break if @question_answer
-          break if active_cancel_controller&.cancelled?
-          break if @pending_question.nil? || @pending_question[:status] != "pending"
-
-          # Wait with timeout to check cancel; 0.2s matches reminder poll
-          @question_cv.wait(0.2)
-        end
-        answer = @question_answer
-        # If cancelled
-        if active_cancel_controller&.cancelled? && answer.nil?
-          @pending_question = nil
-          if @session
-            @session.pending_question = nil
-            begin; @session.save(state_dir: session_state_dir); rescue StandardError; nil; end
-          end
-          emit_event(nil, { type: :question_cancelled, id: id, reason: active_cancel_controller.reason.to_s })
-          return { error: "cancelled", reason: active_cancel_controller.reason.to_s, id: id }
-        end
-      end
-
-      # Clear persisted
-      @question_mutex.synchronize { @pending_question = nil }
-      if @session
-        @session.pending_question = nil
-        begin; @session.save(state_dir: session_state_dir); rescue StandardError; nil; end
-      end
-      if answer
-        emit_event(nil, { type: :question_answered, id: id, answer: answer })
-        answer
-      else
-        { error: "no answer", id: id }
-      end
+      @question_desk.open_question(fields)
     end
 
-    # Answer the pending question (called from UI thread).
-    # @param id [String] pending id
-    # @param selected [Array<String>] values/labels
-    # @param freeform [String, nil]
+    # Answer the pending question (called from UI thread; QuestionDesk#answer).
     # @return [Hash] normalized answer
     def answer_question(id:, selected:, freeform: nil)
-      sel = Array(selected).map { |v| v.to_s.strip }.reject(&:empty?)
-      fm = freeform.to_s.strip
-      fm = nil if fm.empty?
-      @question_mutex.synchronize do
-        pending = @pending_question
-        raise QuestionNotPending, "no pending question" unless pending
-        raise QuestionNotPending, "id mismatch" unless pending[:id].to_s == id.to_s
-        # First responder wins: after the first answer the turn thread clears
-        # @pending_question in a later lock block, so a second UI's answer can
-        # land in between and must not overwrite the first.
-        raise QuestionNotPending, "question already answered" if @question_answer
-        raise QuestionNotPending, "question #{pending[:status]}" unless pending[:status].to_s == "pending"
-
-        opts = Array(pending[:options])
-        # Validate selected subset of options (value == label in v1)
-        invalid = sel.reject { |v| opts.include?(v) }
-        unless invalid.empty?
-          raise ArgumentError, "invalid selection: #{invalid.join(', ')} (valid: #{opts.join(', ')})"
-        end
-        if !pending[:multi_select] && sel.size > 1
-          raise ArgumentError, "single-select question: got #{sel.size} selections"
-        end
-        if pending[:multi_select] == false && sel.empty? && fm.nil?
-          raise ArgumentError, "selection required"
-        end
-        # Persist pending cleared elsewhere; just set answer
-        answer = { id: id.to_s, selected: sel, freeform: fm }
-        # Derive indices for convenience
-        answer[:selected_indices] = sel.map { |v| opts.index(v) }.compact
-        @question_answer = answer
-        @question_cv.broadcast
-        answer
-      end.tap do
-        # A human answered: the session is back in the lists (ArchiveStore).
-        ArchiveStore.user_input(@session&.id, state_dir: session_state_dir)
-      end
+      @question_desk.answer(id: id, selected: selected, freeform: freeform)
     end
 
     def set_question_sync_handler(&block)
-      @question_sync_handler = block
+      @question_desk.sync_handler = block
     end
 
-    # Cancel the pending question (e.g. /cancel, a dismiss). Announces which
-    # one, so every UI closes it; with none pending there is nothing to
-    # announce. A question already answered (the turn thread hasn't taken the
-    # answer yet) or already closed stays as it is: the first responder wins.
-    # @param id [String, nil] cancel only this question (a UI's dismiss
-    #   names the one it showed)
-    # @return [Boolean] whether it was cancelled (true with none pending and
-    #   no id, as before)
+    # Cancel the pending question (QuestionDesk#cancel).
+    # @return [Boolean] whether it was cancelled
     def cancel_question(reason = "user", id: nil)
-      cancelled_id = @question_mutex.synchronize do
-        pending = @pending_question
-        next unless pending
-        next if id && pending[:id].to_s != id.to_s
-        next if @question_answer || pending[:status].to_s != "pending"
-
-        pending[:status] = "cancelled"
-        @question_cv.broadcast
-        pending[:id]
-      end
-      return id.nil? && pending_question.nil? unless cancelled_id
-
-      emit_event(nil, { type: :question_cancelled, id: cancelled_id, reason: reason.to_s }) rescue nil
-      true
+      @question_desk.cancel(reason, id: id)
     end
 
     # The system prompt for a target's loop (default: the effective model's):

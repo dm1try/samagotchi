@@ -1,0 +1,286 @@
+# frozen_string_literal: true
+
+require "json"
+require "monitor"
+require "securerandom"
+require "time"
+
+require_relative "log"
+require_relative "tools/ask_user_question"
+
+module Samagotchi
+  # An Engine's question flow: the one open question (ask_user_question, a
+  # hook's ask_user, a guardrail approval), its answer and its cancel, shared
+  # by every UI. The turn thread blocks in #open_question; the UIs answer or
+  # cancel from theirs (a REPL answers inline through the sync handler).
+  #
+  # What it needs from the Engine comes through lookups, read at call time.
+  class QuestionDesk
+    # Raised by #answer when the question it targets is no longer open
+    # (never asked, superseded, already answered or cancelled). A subclass
+    # of ArgumentError for existing callers; transports map it to 409 Conflict.
+    class NotPending < ArgumentError; end
+
+    DISMISSED_NOTE = "The user dismissed the question without answering. Go on with your best judgement, " \
+                     "or ask in your reply if you can't."
+
+    # @param session           [#call] → Session, nil
+    # @param state_dir         [#call] → String, the session's state dir
+    # @param emit              [#call] (event) → emits an event to the turn sink + observers
+    # @param cancel_controller [#call] → CancellationController, nil (the running turn's)
+    # @param interface         [#call] → Symbol, the Engine's interface
+    # @param user_input        [#call] (session_id) → a human answered (ArchiveStore)
+    def initialize(session:, state_dir:, emit:, cancel_controller:, interface:, user_input:)
+      @session_lookup = session
+      @state_dir_lookup = state_dir
+      @emit = emit
+      @cancel_controller_lookup = cancel_controller
+      @interface_lookup = interface
+      @user_input = user_input
+      # A Monitor: re-entered by the specs from the same thread.
+      @lock = Monitor.new
+      @cv = @lock.new_cond
+      @pending = nil
+      @answer = nil
+      @sync_handler = nil
+    end
+
+    # @return [Hash, nil] current pending question (thread-safe copy)
+    def pending
+      @lock.synchronize { @pending&.dup }
+    end
+
+    # Ask the model's question (ask_user_question): the kernel's
+    # question_handler, called on the turn thread with the payload
+    # Tools::AskUserQuestion.validate made. Opens it (#open_question) and
+    # returns the answer as JSON for the tool result.
+    # @param payload [Hash] {question:, options:, header:, multi_select:, allow_freeform:}
+    # @return [String] normalized answer JSON
+    def request(payload)
+      result = open_question(**payload.slice(:question, :options, :header),
+                             multi_select: !!payload[:multi_select], allow_freeform: !!payload[:allow_freeform])
+      # Dismissed (the card's dismiss, Esc): an answer of its own, not a
+      # tool failure the model learns to avoid the tool from.
+      result = { dismissed: true, id: result[:id], note: DISMISSED_NOTE } if result.is_a?(Hash) && result[:error] == "no answer"
+      result.is_a?(String) ? result : JSON.generate(result)
+    end
+
+    # Open a question for the UIs and wait for its answer. Emits
+    # :question_requested, persists it to the session, and BLOCKS until
+    # answer / cancel wakes it (or the turn is cancelled).
+    # The fields go to pending as given (no cleaning), extra keys
+    # included, so a caller can add its own (kind:, approval:).
+    # @param fields [Hash] question:, options:, header:, multi_select:, allow_freeform:, …
+    # @return [Hash, String] the answer {id:, selected:, freeform:, selected_indices:},
+    #   or {error:, …}; a String when a sync handler returned text itself
+    def open_question(fields)
+      id = SecureRandom.uuid
+      pending = { id: id, **fields, status: "pending", created_at: Time.now.iso8601(3) }.compact
+
+      @lock.synchronize do
+        @pending = pending
+        @answer = nil
+      end
+      # Persist to session file for WEB stub + resume (generic for all UIs)
+      if session
+        session.pending_question = pending.dup
+        begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
+      end
+      # Generic emit for all UIs (TUI, WEB, Bridge, future). Observers that
+      # stash this event (e.g. TerminalUI handle_question_event) will
+      # discard it as stale if the synchronous handler below already answers
+      # and clears pending — see drain_pending_question? staleness check.
+      emit({ type: :question_requested, pending_question: pending })
+
+      # If a synchronous UI handler is registered (TUI), invoke it inline on the
+      # SAME thread that called request_question (TerminalUI's REPL thread is the
+      # turn thread — no second thread exists to answer). This avoids deadlock.
+      # This path is TUI-specific but the surrounding emit/clear is generic, so
+      # any future UI that registers a sync handler gets the same guarantee.
+      if @sync_handler
+        begin
+          sync_res = @sync_handler.call(pending.dup)
+          # Handler may have called answer_question or returned a hash/string
+          @lock.synchronize do
+            if @answer
+              ans = @answer
+              @pending = nil
+              if session
+                session.pending_question = nil
+                begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
+              end
+              emit({ type: :question_answered, id: id, answer: ans })
+              return ans
+            end
+            if sync_res.is_a?(Hash) && sync_res[:selected]
+              # Treat returned hash as answer (handler rendered and parsed)
+              @answer = sync_res
+              @pending = nil
+              if session
+                session.pending_question = nil
+                begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
+              end
+              emit({ type: :question_answered, id: id, answer: sync_res })
+              return sync_res
+            elsif sync_res.is_a?(String) && !sync_res.strip.empty?
+              return sync_res
+            end
+          end
+        rescue StandardError => e
+          Log.warn(:turn, "question_handler_failed", echo: "[ask_user_question] sync handler failed: #{e.message}", error: e.class.name)
+        end
+        # Sync handler existed but did not produce an answer — do not deadlock on
+        # CV (no cross-thread answerer exists for synchronous UIs). Clear pending
+        # and return an error so the model can fallback to plain text. Generic
+        # observers will discard the stale question_requested via staleness check.
+        @lock.synchronize { @pending = nil }
+        if session
+          session.pending_question = nil
+          begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
+        end
+        return { error: "no answer", detail: "handler failed to capture selection", id: id }
+      end
+
+      # Block until answered/cancelled (cross-thread path: WEB/Bridge/background worker)
+      answer = nil
+      @lock.synchronize do
+        loop do
+          break if @answer
+          break if cancel_controller&.cancelled?
+          break if @pending.nil? || @pending[:status] != "pending"
+
+          # Wait with timeout to check cancel; 0.2s matches reminder poll
+          @cv.wait(0.2)
+        end
+        answer = @answer
+        # If cancelled
+        if cancel_controller&.cancelled? && answer.nil?
+          @pending = nil
+          if session
+            session.pending_question = nil
+            begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
+          end
+          emit({ type: :question_cancelled, id: id, reason: cancel_controller.reason.to_s })
+          return { error: "cancelled", reason: cancel_controller.reason.to_s, id: id }
+        end
+      end
+
+      # Clear persisted
+      @lock.synchronize { @pending = nil }
+      if session
+        session.pending_question = nil
+        begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
+      end
+      if answer
+        emit({ type: :question_answered, id: id, answer: answer })
+        answer
+      else
+        { error: "no answer", id: id }
+      end
+    end
+
+    # Answer the pending question (called from UI thread).
+    # @param id [String] pending id
+    # @param selected [Array<String>] values/labels
+    # @param freeform [String, nil]
+    # @return [Hash] normalized answer
+    def answer(id:, selected:, freeform: nil)
+      sel = Array(selected).map { |v| v.to_s.strip }.reject(&:empty?)
+      fm = freeform.to_s.strip
+      fm = nil if fm.empty?
+      @lock.synchronize do
+        pending = @pending
+        raise NotPending, "no pending question" unless pending
+        raise NotPending, "id mismatch" unless pending[:id].to_s == id.to_s
+        # First responder wins: after the first answer the turn thread clears
+        # @pending in a later lock block, so a second UI's answer can
+        # land in between and must not overwrite the first.
+        raise NotPending, "question already answered" if @answer
+        raise NotPending, "question #{pending[:status]}" unless pending[:status].to_s == "pending"
+
+        opts = Array(pending[:options])
+        # Validate selected subset of options (value == label in v1)
+        invalid = sel.reject { |v| opts.include?(v) }
+        unless invalid.empty?
+          raise ArgumentError, "invalid selection: #{invalid.join(', ')} (valid: #{opts.join(', ')})"
+        end
+        if !pending[:multi_select] && sel.size > 1
+          raise ArgumentError, "single-select question: got #{sel.size} selections"
+        end
+        if pending[:multi_select] == false && sel.empty? && fm.nil?
+          raise ArgumentError, "selection required"
+        end
+        # Persist pending cleared elsewhere; just set answer
+        answer = { id: id.to_s, selected: sel, freeform: fm }
+        # Derive indices for convenience
+        answer[:selected_indices] = sel.map { |v| opts.index(v) }.compact
+        @answer = answer
+        @cv.broadcast
+        answer
+      end.tap do
+        # A human answered: the session is back in the lists (ArchiveStore).
+        @user_input.call(session&.id)
+      end
+    end
+
+    def sync_handler=(block)
+      @sync_handler = block
+    end
+
+    # Cancel the pending question (e.g. /cancel, a dismiss). Announces which
+    # one, so every UI closes it; with none pending there is nothing to
+    # announce. A question already answered (the turn thread hasn't taken the
+    # answer yet) or already closed stays as it is: the first responder wins.
+    # @param id [String, nil] cancel only this question (a UI's dismiss
+    #   names the one it showed)
+    # @return [Boolean] whether it was cancelled (true with none pending and
+    #   no id, as before)
+    def cancel(reason = "user", id: nil)
+      cancelled_id = @lock.synchronize do
+        pending = @pending
+        next unless pending
+        next if id && pending[:id].to_s != id.to_s
+        next if @answer || pending[:status].to_s != "pending"
+
+        pending[:status] = "cancelled"
+        @cv.broadcast
+        pending[:id]
+      end
+      return id.nil? && self.pending.nil? unless cancelled_id
+
+      emit({ type: :question_cancelled, id: cancelled_id, reason: reason.to_s }) rescue nil
+      true
+    end
+
+    # A question through the question flow (REPL sync handler, attached TUI,
+    # web), single-select, kind "hook". A --non-interactive run has no one
+    # to ask: nil at once. Anything but an answer (a sync handler's text, no
+    # answer, cancelled) is nil too.
+    # @return [Hash, nil] {selected:, freeform:, selected_indices:}
+    def ask_for_hook(question, options, header, allow_freeform, hook)
+      return nil if @interface_lookup.call == :non_interactive
+
+      opts = Tools::AskUserQuestion.normalize_options(options)
+      unless opts
+        Log.warn(:hooks, "ask_user_invalid", echo: "[samagotchi:hooks] #{hook} asked with invalid options (2-8 strings)", hook: hook.to_s)
+        return nil
+      end
+
+      fields = { question: question.to_s, options: opts, header: header, multi_select: false,
+                 allow_freeform: !!allow_freeform, kind: "hook", hook: hook.to_s }.compact
+      answer = open_question(fields)
+      return nil unless answer.is_a?(Hash) && answer[:selected]
+
+      result = { selected: Array(answer[:selected]), freeform: answer[:freeform] }
+      result[:selected_indices] = answer[:selected_indices] if answer.key?(:selected_indices)
+      result
+    end
+
+    private
+
+    def session = @session_lookup.call
+    def state_dir = @state_dir_lookup.call
+    def cancel_controller = @cancel_controller_lookup.call
+    def emit(event) = @emit.call(event)
+  end
+end
