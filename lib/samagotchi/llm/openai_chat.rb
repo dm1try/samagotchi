@@ -218,7 +218,8 @@ module Samagotchi
         SamplingSettings.log_text(body.except(:model, :messages, :stream, :stream_options, :tools, :tool_choice))
       end
 
-      # A String stays a String; an Array of parts passes as given.
+      # A String stays a String; an Array of parts passes as given, its text
+      # parts scrubbed like a String.
       def wire_message(message)
         wire = message.to_h.transform_keys(&:to_sym)
         wire[:content] = format_content(wire[:content]) if wire.key?(:content)
@@ -226,9 +227,18 @@ module Samagotchi
       end
 
       def format_content(content)
-        return content if content.is_a?(Array) || content.nil?
+        return content if content.nil?
+        return content.map { |part| scrub_part(part) } if content.is_a?(Array)
 
         scrub(content.to_s)
+      end
+
+      def scrub_part(part)
+        return part unless part.is_a?(Hash)
+
+        part.to_h do |key, value|
+          [key, key.to_s == "text" && value.is_a?(String) ? scrub(value) : value]
+        end
       end
 
       # Invalid UTF-8 (a tool's garbled output) would make to_json raise.

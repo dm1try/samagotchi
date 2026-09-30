@@ -165,6 +165,18 @@ RSpec.describe Samagotchi::LLM::OpenAIChat do
       expect(server.requests.last.json["messages"].first["content"]).to eq(JSON.parse(JSON.generate(parts)))
     end
 
+    it "scrubs invalid UTF-8 in the text parts of multi-part content" do
+      replay("text_stream.sse")
+      parts = [{ type: "text", text: "bad \xE2\x80 byte".dup.force_encoding("UTF-8") },
+               { type: "image_url", image_url: { url: "data:image/png;base64,AA" } }]
+
+      adapter.chat(messages: [{ role: "user", content: parts }], tools: [], model: "m")
+
+      sent = server.requests.last.json["messages"].first["content"]
+      expect(sent.first).to eq("type" => "text", "text" => "bad ? byte")
+      expect(sent.last).to eq("type" => "image_url", "image_url" => { "url" => "data:image/png;base64,AA" })
+    end
+
     it "assembles a tool call from its deltas" do
       replay("tool_call_stream.sse")
 
