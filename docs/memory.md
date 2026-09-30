@@ -47,7 +47,9 @@ chi is told about skills by the system bundle (`identity.md`, every turn, and
   one ("I like how we did that") it may ask first.
 - **Following.** The skill's index line (the `description:` of its
   `memory_write`, "Release a new version of this repo: …") is in every
-  prompt, so next time chi reads the skill and follows it.
+  prompt, so next time chi reads the skill and follows it. When something
+  looks unexpected on the way (a failing check, a warning the skill doesn't
+  mention), chi stops, says what it saw and asks how to go on.
 - **Updating.** When a step turned out different (a renamed script, an extra
   step), chi fixes the skill in the same turn: those steps changed, the rest
   kept, a dated Changelog line added. No confirmation.

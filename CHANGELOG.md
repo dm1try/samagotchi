@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
 - Dismissing a question (Esc, an empty answer, or no one to answer in `-p`) now tells the model not to do what it
   asked about, or anything else that changes files or state, and to wait, instead of "go on with your best
   judgement".
+- The system bundle tells chi to stop and ask on anything unexpected while following a skill (a failing check,
+  output that differs from a step, a warning the skill doesn't mention) instead of improvising a fix.
 - `chi bundle list` and `chi update`'s footer list the shipped bundles that aren't installed under their
   profile (`core (…)`, `dev (…)`).
 - `chi bundle status` without a name lists a bundle whose `manifest.json` doesn't parse as unreadable instead of

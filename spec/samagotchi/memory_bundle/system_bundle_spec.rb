@@ -30,7 +30,10 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
       paragraph = identity[/^- \*\*Skills\*\*.*?(?=^- \*\*|\z)/m]
       expect(paragraph).to include("skill_<name>", "memory_write", "Changelog", "stop means stop and ask")
       expect(paragraph.lines.size).to be <= 6
-      expect(File.read(File.join(dir, "memory_guide.md"))).to include("## Skills", "# Skill: release", "/skill save")
+      expect(paragraph).to include("when anything looks unexpected", "don't improvise a fix", "including warnings")
+      guide = File.read(File.join(dir, "memory_guide.md"))
+      expect(guide).to include("## Skills", "# Skill: release", "/skill save")
+      expect(guide).to include("When anything looks unexpected", "don't improvise a fix", "including warnings")
     end
 
     it "has checksums matching the bundled files (edit a file → refresh its sha256 and bump the version)" do
