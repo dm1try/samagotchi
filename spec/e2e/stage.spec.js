@@ -129,3 +129,32 @@ test("the stage folds to its status row, and stays folded across a reload", asyn
   await handedOff(page, 1);
   await expect(page.locator("#history .bubble.cancel")).toContainText("canceled");
 });
+
+test("check-in's card waits for the user in the stage; after Nudge the turn stays in the stage until it ends, then hands off", async ({ page, script }) => {
+  script("check_in");
+  await send(page, "Look through the README");
+  const card = stageEl(page).locator(".ts-extras .plugin-card");
+  await expect(card.locator(".card-title")).toHaveText("3 tool calls, no answer yet");
+  await expect(stageEl(page)).toHaveAttribute("data-phase", "waiting for you");
+  await page.evaluate(() => {
+    window.held = [];
+    window.holdSampler = setInterval(() => {
+      const s = document.querySelector("#turnStage");
+      window.held.push({ phase: s.dataset.phase, inStage: !s.hidden && !!s.querySelector(".ts-prompt .bubble.user"),
+        inHistory: document.querySelectorAll("#history .bubble.user").length });
+    }, 50);
+  });
+  await card.locator(".card-action", { hasText: "Nudge" }).click();
+  await page.mouse.move(0, 0);
+  await expect(card).toContainText("Nudged the model at 3 tool calls.");
+  await expect(stageEl(page)).not.toHaveAttribute("data-phase", "waiting for you");
+  await handedOff(page, 1);
+  const samples = await page.evaluate(() => { clearInterval(window.holdSampler); return window.held; });
+  const running = samples.filter((s) => s.phase !== "answered");
+  expect(running.length).toBeGreaterThan(20);
+  expect(running.every((s) => s.inStage && s.inHistory === 0)).toBe(true);
+  expect(samples.some((s) => s.phase === "answered" && s.inStage)).toBe(true);
+  // The nudge is a row of the step that answered it, handed off with the block.
+  await expect(page.locator("#history .steer-row summary")).toHaveText("check-in nudged the model");
+  await expect(stageEl(page)).toBeHidden();
+});
