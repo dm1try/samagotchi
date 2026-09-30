@@ -41,6 +41,19 @@ SPEC_XDG_STATE_HOME = Dir.mktmpdir("samagotchi-spec-state")
 ENV["XDG_STATE_HOME"] = SPEC_XDG_STATE_HOME
 at_exit { FileUtils.remove_entry(SPEC_XDG_STATE_HOME) if File.directory?(SPEC_XDG_STATE_HOME) }
 
+# An exit between examples (a thread's `exit` raised again in the main thread
+# while the reporter runs, a before(:context) hook's) unwinds the whole run
+# with the exit's status, 0 for `exit` or `exit(0)`. RSpec itself exits only
+# with a failing status, so a successful SystemExit here is always a stray
+# one: fail the run (in rspec's own process, not in a spec's fork).
+spec_process = Process.pid
+at_exit do
+  if Process.pid == spec_process && $!.is_a?(SystemExit) && $!.success?
+    warn "\nA stray exit(0) ended the rspec run early (#{$!.backtrace&.first}): failing it."
+    exit 1
+  end
+end
+
 # The throwaway repos specs commit in: no detached auto-maintenance or gc
 # after a commit, still writing .git/objects/maintenance.lock while the
 # example's tmpdir is removed (Errno::ENOENT on the macOS runner).
@@ -92,6 +105,29 @@ RSpec.configure do |config|
     # The attached TUI's status ticker likewise (AttachedLoop builds its view
     # with the default interval).
     stub_const("Samagotchi::TerminalUI::AttachedView::TICK_INTERVAL", nil) if defined?(Samagotchi::TerminalUI::AttachedView::TICK_INTERVAL)
+  end
+
+  # An exit escaping an example fails it loudly. RSpec rescues everything but
+  # SystemExit (and signals), so an `exit` in the example, or one a thread's
+  # `exit` raises again in the main thread wherever it is, would otherwise end
+  # the whole run quietly: "N examples, 0 failures", exit status 0.
+  config.around(:each) do |example|
+    example.run
+  rescue SystemExit => e
+    raise "exit(#{e.status}) escaped the example (its own code, or a thread from it or an earlier example): " \
+          "#{e.backtrace&.first(8)&.join("\n  ")}"
+  end
+
+  # Every example that was to run ran. A run that stopped early on purpose
+  # (--fail-fast, Ctrl-C) or already failed is left alone; filters and focus
+  # are fine, the count is of the filtered examples.
+  config.after(:suite) do
+    world = RSpec.world
+    next if world.wants_to_quit || world.rspec_is_quitting || world.non_example_failure
+
+    expected = world.example_count(world.ordered_example_groups)
+    ran = config.reporter.examples.size
+    raise "only #{ran} of #{expected} examples ran: something ended the run early" if ran < expected
   end
 
   # Really compile the macOS desktop helper (swiftc, codesign): slow, and
