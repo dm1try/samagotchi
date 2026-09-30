@@ -112,6 +112,53 @@ test("an empty answer is asked again in the same turn, and a reload shows one tu
   await expect(page.locator("#history .hook-notice")).toHaveText(["↻ empty answer, asking again (1/1)"]);
 });
 
+// A turn's own rows come back where they were, on a mid-turn join and after
+// the turn: the empty answer's retry row, the answered question card, and
+// a line sent while the turn ran (the steered bubble, not a turn of its own).
+test("a reload mid-turn and after it keeps the retry row, the answered card and the steered line in the turn", { tag: "@turn" }, async ({ page, script }) => {
+  script("reload_rows");
+  await send(page, "Read a file of my choice");
+  const card = page.locator(`${H()} .bubble.question`);
+  await expect(card).toHaveCount(1);
+  await card.locator(".question-option input").first().check();
+  await card.locator(".question-submit").click();
+  await expect(page.locator(`${H()} .bubble.question.answered`)).toHaveCount(1);
+  // Sent while the read holds: merged into this turn after it.
+  await page.locator("#prompt").fill("mind the typos");
+  await page.locator("#actionBtn").click();
+  await expect(page.locator(`${H()} .bubble.user.steered`)).toHaveCount(1);
+  await expect(page.locator(`${H()} .activity-row`).filter({ hasText: "README.md" }).last().locator(".activity-status.ok")).toHaveCount(1);
+
+  const rows = async (where) => ({
+    retry: await page.locator(`${where} .hook-notice`).allTextContents(),
+    card: await page.locator(`${where} .bubble.question.answered summary`).allTextContents(),
+    steered: await page.locator(`${where} .bubble.user.steered .user-message`).allTextContents(),
+    prompts: await page.locator(`${where} .bubble.user:not(.steered)`).count(),
+  });
+  const expected = {
+    retry: ["↻ empty answer, asking again (1/1)"],
+    card: ["Which file should I read? → README.md"],
+    steered: ["mind the typos"],
+    prompts: 1,
+  };
+  // The last step holds: join the running turn.
+  await page.reload();
+  await expect(page.locator(`${H()} .bubble.question.answered`)).toHaveCount(1);
+  expect(await rows(H())).toEqual(expected);
+  await expect(page.locator("#cancelBtn")).toBeVisible();
+  await turnEnded(page, 1);
+  expect(await rows("#history")).toEqual(expected);
+  await page.reload();
+  await turnEnded(page, 1);
+  expect(await rows("#history")).toEqual(expected);
+  // In the turn's order: the steered line and the card after its steps,
+  // before its answer and its one timing line.
+  const order = await page.locator("#history > *").evaluateAll((els) => els.map((e) =>
+    e.matches(".bubble.user.steered") ? "steered" : e.matches(".bubble.user") ? "user" : e.matches(".turn-work") ? "block"
+      : e.matches(".bubble.question") ? "card" : e.matches(".bubble.output") ? "answer" : e.matches(".turn-timing") ? "timing" : e.className));
+  expect(order).toEqual(["user", "block", "card", "steered", "answer", "timing"]);
+});
+
 // Nothing streams after the turn: the meter and the card read the saved context.
 test("a reload after the turn shows the context meter and the card's ctx", async ({ page, script }) => {
   script("plain");

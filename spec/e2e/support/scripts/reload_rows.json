@@ -1,0 +1,12 @@
+{
+  "delay": 0.02,
+  "nudge_counts": true,
+  "steer_keeps_count": true,
+  "iterations": [
+    {"thinking": "Let me write the reply. Let me write the reply."},
+    {"thinking": "Ask which file first.",
+     "tools": [{"name": "ask_user_question", "arguments": {"question": "Which file should I read?", "options": ["README.md", "Gemfile"]}}]},
+    {"hold": 3, "tools": [{"name": "read", "arguments": {"path": "README.md", "start_line": 1, "end_line": 2}}]},
+    {"hold": 4, "text": "Read the README, typos minded."}
+  ]
+}
