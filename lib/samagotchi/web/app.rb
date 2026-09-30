@@ -71,8 +71,8 @@ module Samagotchi
 
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
-      # @param view ["turn", "stage", "chat"] the page's view of a turn
-      #   (web.view); ?view=turn|stage|chat overrides it for one page load
+      # @param view ["turn", "stage"] the page's view of a turn (web.view);
+      #   ?view=turn|stage overrides it for one page load
       # @param annotate_presets [String, Array] the quick replies next to
       #   Annotate (web.annotate_presets, "|"-separated); "" shows none. The
       #   page parses them (annotate_presets.js).
@@ -87,7 +87,7 @@ module Samagotchi
       #   String, or a Web::Token::Source that follows the file); nil:
       #   loopback only, no token
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
-                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, view: "turn", hub: nil,
+                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, view: Config::BY_KEY["web.view"].default, hub: nil,
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil)
@@ -1454,7 +1454,7 @@ module Samagotchi
 
       VIEWS = Config::BY_KEY["web.view"].enum_values
 
-      # The view for this page load: ?view=turn|stage|chat wins, anything
+      # The view for this page load: ?view=turn|stage wins, anything
       # else leaves the config's choice (web.view).
       def view_name(param)
         VIEWS.include?(param) ? param : @view

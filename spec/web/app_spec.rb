@@ -1262,20 +1262,21 @@ RSpec.describe Samagotchi::Web::App do
       expect(body.first).not_to include(".local/state")
     end
 
-    # The turn view is the default; web.view picks stage or chat;
-    # ?view=turn|stage|chat overrides it for one page load, anything else is
-    # ignored.
+    # The turn view is the default; web.view picks stage; ?view=turn|stage
+    # overrides it for one page load, anything else (the chat view's
+    # ?view=chat too) is ignored.
     it "tells the page its view: turn by default, the config's, or ?view= for one page load" do
       page = ->(path, **opts) { build_app(**opts).call(env_for(path))[2].first }
 
       expect(page.call("/")).to include(' data-view="turn"')
-      %w[turn stage chat].each do |view|
+      %w[turn stage].each do |view|
         expect(page.call("/", view: view)).to include(%( data-view="#{view}"))
         expect(page.call("/?view=#{view}")).to include(%( data-view="#{view}"))
-        expect(page.call("/?view=#{view}", view: "chat")).to include(%( data-view="#{view}"))
+        expect(page.call("/?view=#{view}", view: "stage")).to include(%( data-view="#{view}"))
       end
       expect(page.call("/?view=nope")).to include(' data-view="turn"')
-      expect(page.call("/?view=nope", view: "stage")).to include(' data-view="stage"')
+      expect(page.call("/?view=chat")).to include(' data-view="turn"')
+      expect(page.call("/?view=chat", view: "stage")).to include(' data-view="stage"')
       expect(page.call("/")).not_to include("data-turn-view")
     end
 

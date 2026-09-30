@@ -59,8 +59,9 @@ module Samagotchi
       # @param new_token [Boolean] replace the LAN access token first
       #   (--new-token): a running server takes the new one at once
       # @return [Integer] the exit status
-      def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false, view: "turn",
-                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default, new_token: false)
+      def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false,
+                      view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
+                      new_token: false)
         rotate_token if new_token
         setting = host_setting(host)
         lan = Lan.wanted?(setting) ? Lan.choose(setting) : nil
@@ -108,7 +109,7 @@ module Samagotchi
       # @param token_path [String] the LAN access token's file
       # @return [Boolean] false when the port was taken (said so on stderr)
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
-                     view: "turn", annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
+                     view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
                      token_path: Token.path)
         port = resolve_port(port)
         host = resolve_host(host)

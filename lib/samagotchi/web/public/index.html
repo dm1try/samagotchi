@@ -104,11 +104,6 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.recap summary{cursor:pointer;color:var(--think-text);font-size:12px}
 .bubble.recap .recap-body{white-space:pre-wrap;margin-top:6px}
 .bubble.recap.stale{opacity:.7;border-left-style:dashed}
-.bubble.activity{border-left:3px solid var(--accent);background:var(--bg-panel);padding:8px 12px}
-.bubble.activity>summary{cursor:pointer;color:var(--text-muted);font-size:13px;font-weight:600;user-select:none;list-style:none}
-.bubble.activity>summary::-webkit-details-marker{display:none}
-.bubble.activity>summary::before{content:"▸ ";color:var(--accent)}
-.bubble.activity[open]>summary::before{content:"▾ "}
 .activity-body{margin-top:6px}
 .activity-row{display:flex;gap:8px;align-items:baseline;font-size:13px;color:var(--text-2);padding:5px 2px;border-top:1px solid var(--border)}
 .activity-row:first-child{border-top:none}

@@ -148,8 +148,8 @@ module Samagotchi
       Entry.new(key: "web.port",                 yaml_path: %w[web port],                 type: :integer, default: 4567,            expose: %i[env config cli]),
       Entry.new(key: "web.host",                 yaml_path: %w[web host],                 type: :string, default: "127.0.0.1",     expose: %i[env config cli]),
       Entry.new(key: "web.markdown",             yaml_path: %w[web markdown],             type: :bool,    default: false,           expose: %i[env config cli]),
-      # The page's view of a turn: turn (one block of generations, the live one at the bottom), stage (the running turn pinned above the composer) or chat (a row of bubbles); ?view= overrides it per page load.
-      Entry.new(key: "web.view",                 yaml_path: %w[web view],                 type: :enum,    default: "turn",         expose: %i[env config cli], enum_values: %w[turn stage chat]),
+      # The page's view of a turn: turn (one block of generations, the live one at the bottom) or stage (the running turn pinned above the composer); ?view= overrides it per page load.
+      Entry.new(key: "web.view",                 yaml_path: %w[web view],                 type: :enum,    default: "turn",         expose: %i[env config cli], enum_values: %w[turn stage]),
       # Quick replies next to Annotate in the page's selection bubble, "|"-separated (a YAML list works too); "" leaves only Annotate.
       Entry.new(key: "web.annotate_presets",     yaml_path: %w[web annotate_presets],     type: :string, default: "Agreed|Could you please elaborate?", expose: %i[env config cli]),
 

@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Removed
+
+- The web chat view (`web.view: chat`, `--web-view chat`, `?view=chat`): the
+  stage and turn views draw every turn. A config that still says
+  `web.view: chat` warns about the invalid value and uses the default;
+  `?view=chat` in a page URL is ignored.
+
 ## [0.5.1] - 2026-09-30
 
 ### Fixed

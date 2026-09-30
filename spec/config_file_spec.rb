@@ -44,14 +44,17 @@ RSpec.describe Samagotchi::ConfigFile do
         expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.markdown")).to be(false)
       end
 
-      it "defaults the web view to turn; stage or chat from the file, env or cli" do
+      it "defaults the web view to turn; stage from the file, env or cli; chat is gone (a warning, then the default)" do
         expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.view")).to eq("turn")
         expect(described_class.resolve("web.view", file_data: { "web" => { "view" => "stage" } }, env: {})).to eq("stage")
-        expect(described_class.resolve("web.view", file_data: {}, env: { "SAMAGOTCHI_WEB_VIEW" => "chat" })).to eq("chat")
+        expect(described_class.resolve("web.view", file_data: {}, env: { "SAMAGOTCHI_WEB_VIEW" => "stage" })).to eq("stage")
         expect(described_class.resolve("web.view", file_data: {}, env: {}, cli_overrides: { "web.view" => "stage" })).to eq("stage")
+        expect do
+          expect(described_class.resolve("web.view", file_data: { "web" => { "view" => "chat" } }, env: {})).to eq("turn")
+        end.to output(/invalid value for web\.view: "chat" \(allowed: turn, stage\) — using default/).to_stderr
         entry = described_class.find_by_key("web.view")
         expect(entry.cli_flag).to eq("--web-view")
-        expect(entry.enum_values).to eq(%w[turn stage chat])
+        expect(entry.enum_values).to eq(%w[turn stage])
         expect(described_class.find_by_key("web.turn_view")).to be_nil
       end
 
