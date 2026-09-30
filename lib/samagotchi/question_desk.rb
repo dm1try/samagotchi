@@ -100,32 +100,27 @@ module Samagotchi
       if @sync_handler
         begin
           sync_res = @sync_handler.call(pending.dup)
-          # Handler may have called answer_question or returned a hash/string
-          @lock.synchronize do
+          # Handler may have called answer_question or returned a hash/string.
+          # Decided under the lock; saved and announced after it (never emit
+          # holding the question lock: a snapshot holds the event lock and
+          # then reads #pending).
+          ans = @lock.synchronize do
             if @answer
-              ans = @answer
               @pending = nil
-              if session
-                session.pending_question = nil
-                begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
-              end
-              emit({ type: :question_answered, id: id, answer: ans })
-              return ans
-            end
-            if sync_res.is_a?(Hash) && sync_res[:selected]
+              @answer
+            elsif sync_res.is_a?(Hash) && sync_res[:selected]
               # Treat returned hash as answer (handler rendered and parsed)
               @answer = sync_res
               @pending = nil
-              if session
-                session.pending_question = nil
-                begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
-              end
-              emit({ type: :question_answered, id: id, answer: sync_res })
-              return sync_res
-            elsif sync_res.is_a?(String) && !sync_res.strip.empty?
-              return sync_res
+              sync_res
             end
           end
+          if ans
+            clear_saved_question
+            emit({ type: :question_answered, id: id, answer: ans })
+            return ans
+          end
+          return sync_res if sync_res.is_a?(String) && !sync_res.strip.empty?
         rescue StandardError => e
           Log.warn(:turn, "question_handler_failed", echo: "[ask_user_question] sync handler failed: #{e.message}", error: e.class.name)
         end
@@ -134,15 +129,13 @@ module Samagotchi
         # and return an error so the model can fallback to plain text. Generic
         # observers will discard the stale question_requested via staleness check.
         @lock.synchronize { @pending = nil }
-        if session
-          session.pending_question = nil
-          begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
-        end
+        clear_saved_question
         return { error: "no answer", detail: "handler failed to capture selection", id: id }
       end
 
       # Block until answered/cancelled (cross-thread path: WEB/Bridge/background worker)
       answer = nil
+      cancelled_reason = nil
       @lock.synchronize do
         loop do
           break if @answer
@@ -153,24 +146,17 @@ module Samagotchi
           @cv.wait(0.2)
         end
         answer = @answer
-        # If cancelled
-        if cancel_controller&.cancelled? && answer.nil?
-          @pending = nil
-          if session
-            session.pending_question = nil
-            begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
-          end
-          emit({ type: :question_cancelled, id: id, reason: cancel_controller.reason.to_s })
-          return { error: "cancelled", reason: cancel_controller.reason.to_s, id: id }
-        end
+        controller = cancel_controller
+        cancelled_reason = controller.reason.to_s if answer.nil? && controller&.cancelled?
+        @pending = nil
+      end
+      # Saved and announced outside the question lock (see the sync path).
+      clear_saved_question
+      if cancelled_reason
+        emit({ type: :question_cancelled, id: id, reason: cancelled_reason })
+        return { error: "cancelled", reason: cancelled_reason, id: id }
       end
 
-      # Clear persisted
-      @lock.synchronize { @pending = nil }
-      if session
-        session.pending_question = nil
-        begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
-      end
       if answer
         emit({ type: :question_answered, id: id, answer: answer })
         answer
@@ -282,5 +268,13 @@ module Samagotchi
     def state_dir = @state_dir_lookup.call
     def cancel_controller = @cancel_controller_lookup.call
     def emit(event) = @emit.call(event)
+
+    # The session file no longer holds a pending question.
+    def clear_saved_question
+      return unless session
+
+      session.pending_question = nil
+      begin; session.save(state_dir: state_dir); rescue StandardError; nil; end
+    end
   end
 end

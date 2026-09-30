@@ -200,6 +200,52 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       expect(cancelled).not_to be_nil
     end
 
+    # Bridge#handle_snapshot holds the event lock and reads the pending
+    # question; the cancelled turn announces :question_cancelled, which needs
+    # the event lock. Neither may hold the question lock while waiting.
+    it "doesn't deadlock when a cancelled question races a snapshot taken with the event log held" do
+      engine = build_engine
+      ctrl = Samagotchi::Client::CancellationController.new
+      engine.instance_variable_set(:@active_cancel_controller, ctrl)
+      result_box = {}
+      turn_thread = Thread.new { result_box[:result] = engine.request_question(payload) }
+      turn_thread.report_on_exception = false
+      deadline = mono + 2.0
+      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+
+      held = Queue.new
+      go = Queue.new
+      state_box = {}
+      bridge_thread = Thread.new do
+        engine.synchronize_events do
+          held << true
+          go.pop
+          state_box[:state] = engine.session_state_snapshot
+        end
+      end
+      bridge_thread.report_on_exception = false
+      held.pop
+
+      ctrl.cancel!(:user)
+      # The turn thread wakes and parks on the event lock, announcing the cancel.
+      deadline = mono + 2.0
+      until Array(turn_thread.backtrace).any? { |l| l.include?("session_observer.rb") && l.include?("notify") }
+        raise "turn thread never reached SessionObserver#notify" if mono > deadline
+
+        sleep(0.005)
+      end
+      go << true
+
+      begin
+        expect(bridge_thread.join(2)).not_to be_nil, "the snapshot deadlocked on the question lock"
+        expect(turn_thread.join(2)).not_to be_nil
+      ensure
+        [bridge_thread, turn_thread].each { |t| t.kill if t.alive? }
+      end
+      expect(state_box[:state][:pending_question]).to be_nil
+      expect(JSON.parse(result_box[:result])["error"]).to eq("cancelled")
+    end
+
     it "cancel_question names the question it cancelled, and announces nothing with none pending" do
       engine = build_engine
       events = []
