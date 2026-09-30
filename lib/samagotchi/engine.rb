@@ -1957,7 +1957,7 @@ module Samagotchi
     def load_hooks_from_bundles
       require_relative "memory_bundle/provenance"
       settings = bundle_settings
-      MemoryBundle::Provenance.each_installed_holding_hooks do |bundle_name, data|
+      MemoryBundle::Provenance.each_installed(holding: :hooks) do |bundle_name, data|
         if data[:error]
           Log.warn(:hooks, "bundle_manifest_invalid", echo: "[samagotchi:hooks] bundle '#{bundle_name}': #{data[:error]}; its hooks are not loaded",
                                                       bundle: bundle_name)

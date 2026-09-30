@@ -36,18 +36,9 @@ module Samagotchi
 
       # @return [Array<Installed>] by name; upgrade is the Shipped when it is newer
       def installed(shipped: self.shipped)
-        dir = Provenance.bundles_dir
-        return [] unless File.directory?(dir)
-
         by_name = shipped.to_h { |s| [s.name, s] }
-        Dir.children(dir).reject { |e| e.start_with?(".") }.sort.filter_map do |name|
-          begin
-            data = Provenance.new(name: name).read
-          rescue JSON::ParserError, SystemCallError
-            data = :unreadable
-          end
-          next unless data
-          next Installed.new(name: name, error: "manifest.json unreadable") unless data.is_a?(Hash)
+        Provenance.each_installed.map do |name, data|
+          next Installed.new(name: name, error: "manifest.json unreadable") if data[:error]
 
           ship = by_name[name]
           Installed.new(name: name, version: data[:version], scope: data[:scope],

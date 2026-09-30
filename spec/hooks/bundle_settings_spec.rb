@@ -24,7 +24,8 @@ RSpec.describe Samagotchi::Engine, "bundle settings" do
   end
 
   def installed(bundle_name)
-    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed_holding_hooks)
+    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).and_call_original
+    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).with(holding: :hooks)
       .and_yield(bundle_name, { hooks: { "k.rb" => { event: "before_tool_call" } }, trust_level: "reviewed" })
   end
 

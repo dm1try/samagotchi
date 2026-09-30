@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "digest"
-require "json"
 require_relative "installer"
 require_relative "listing"
 require_relative "manifest"
@@ -40,15 +38,15 @@ module Samagotchi
       # @return [Array<Row>] by name
       def plan(shipped_dir: SourceNormalizer::SHIPPED_DIR, chi_version: Samagotchi::VERSION)
         shipped = Listing.shipped(dir: shipped_dir).to_h { |s| [s.name, s] }
-        installed_names.map do |name|
-          plan_row(name, shipped[name], shipped_dir, chi_version)
+        installed.map do |name, data|
+          plan_row(name, data, shipped[name], shipped_dir, chi_version)
         end
       end
 
       # The shipped bundles not installed (what the footer lists).
       # @return [Array<Listing::Shipped>]
       def not_installed(shipped_dir: SourceNormalizer::SHIPPED_DIR)
-        names = installed_names
+        names = installed.map(&:first)
         Listing.shipped(dir: shipped_dir).reject { |s| names.include?(s.name) }
       end
 
@@ -73,22 +71,14 @@ module Samagotchi
         end
       end
 
-      def installed_names
-        dir = Provenance.bundles_dir
-        return [] unless File.directory?(dir)
-
-        Dir.children(dir).reject { |e| e.start_with?(".") || e == SystemBundle::BUNDLE_NAME }
-           .select { |e| File.file?(File.join(dir, e, "manifest.json")) }.sort
+      # [name, data] for each installed bundle but the system one, by name.
+      def installed
+        Provenance.each_installed.reject { |name, _| name == SystemBundle::BUNDLE_NAME }
       end
 
-      def plan_row(name, ship, shipped_dir, chi_version)
+      def plan_row(name, data, ship, shipped_dir, chi_version)
         row = Row.new(name: name, kept: [], replaced: [])
-        data = begin
-          Provenance.new(name: name).read
-        rescue JSON::ParserError, SystemCallError
-          nil
-        end
-        return skip(row, "manifest.json unreadable") unless data.is_a?(Hash)
+        return skip(row, "manifest.json unreadable") if data[:error]
 
         row.from = data[:version].to_s
         row.scope = data[:scope].to_s.empty? ? "system" : data[:scope].to_s
@@ -147,10 +137,10 @@ module Samagotchi
       end
 
       def edited?(path, meta)
-        recorded = meta.is_a?(Hash) ? meta[:sha256].to_s.delete_prefix("sha256:") : ""
-        return false if recorded.empty? || !File.file?(path)
+        recorded = meta.is_a?(Hash) ? meta[:sha256] : nil
+        return false if Provenance.recorded_sha(recorded).empty? || !File.file?(path)
 
-        Digest::SHA256.hexdigest(File.binread(path)) != recorded
+        !Provenance.sha_matches?(path, recorded)
       end
     end
   end

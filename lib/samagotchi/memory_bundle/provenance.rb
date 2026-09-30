@@ -54,65 +54,54 @@ module Samagotchi
         File.join(@bundle_dir, "bases", "plugin", file.to_s)
       end
 
-      # Yields [name, data] for each installed bundle with a plugin, by
-      # name. A manifest that doesn't parse is yielded as {error:} when its
-      # bundle has a plugin/ dir.
-      def self.each_installed_with_plugin
-        return enum_for(:each_installed_with_plugin) unless block_given?
-        dir = bundles_dir
+      # Yields [name, data] for each installed bundle (a dir under
+      # bundles_dir holding a manifest.json, dot dirs aside), by name. data
+      # is the manifest with symbol keys, or {error:} when it doesn't parse
+      # or isn't an object; the rest still come.
+      #
+      # With holding: (:hooks, :guardrails or :plugin) only the bundles
+      # whose manifest has a non-empty mapping under that key come, and a
+      # manifest that doesn't parse comes as {error:} only when its bundle
+      # has that dir (hooks/, guardrails/, plugin/): what it would load
+      # can't be checked. One that isn't an object is skipped there.
+      # @param dir [String] the bundles dir (bundles_dir by default)
+      def self.each_installed(holding: nil, dir: bundles_dir)
+        return enum_for(:each_installed, holding: holding, dir: dir) unless block_given?
         return unless Dir.exist?(dir)
-        Dir[File.join(dir, "*", "manifest.json")].sort.each do |mjson|
-          name = File.basename(File.dirname(mjson))
+
+        Dir.children(dir).reject { |e| e.start_with?(".") }.sort.each do |name|
+          mjson = File.join(dir, name, "manifest.json")
+          next unless File.exist?(mjson)
+
           begin
             data = JSON.parse(File.read(mjson), symbolize_names: true)
           rescue JSON::ParserError, SystemCallError => e
-            yield name, { error: "manifest.json is unreadable: #{e.message}" } if Dir.exist?(File.join(File.dirname(mjson), "plugin"))
+            yield name, { error: "manifest.json is unreadable: #{e.message}" } if holding.nil? || Dir.exist?(File.join(dir, name, holding.to_s))
             next
           end
-          next unless data.is_a?(Hash) && data[:plugin].is_a?(Hash)
+          if holding
+            next unless data.is_a?(Hash) && data[holding].is_a?(Hash) && !data[holding].empty?
+          elsif !data.is_a?(Hash)
+            data = { error: "manifest.json is not an object" }
+          end
           yield name, data
         end
       end
 
-      # Yields [name, data] for each installed bundle with guardrail rule
-      # files, by name. A manifest that doesn't parse is yielded as
-      # {error:} when its bundle has a guardrails/ dir (its rules can't be
-      # checked), and skipped otherwise.
-      def self.each_installed_with_guardrails
-        return enum_for(:each_installed_with_guardrails) unless block_given?
-        dir = bundles_dir
-        return unless Dir.exist?(dir)
-        Dir[File.join(dir, "*", "manifest.json")].sort.each do |mjson|
-          name = File.basename(File.dirname(mjson))
-          begin
-            data = JSON.parse(File.read(mjson), symbolize_names: true)
-          rescue JSON::ParserError, SystemCallError => e
-            yield name, { error: "manifest.json is unreadable: #{e.message}" } if Dir.exist?(File.join(File.dirname(mjson), "guardrails"))
-            next
-          end
-          next unless data.is_a?(Hash) && data[:guardrails].is_a?(Hash) && !data[:guardrails].empty?
-          yield name, data
-        end
+      # The hex digest a manifest records, in either of its formats:
+      # "sha256:<hex>" (hooks, rules, the plugin) or bare <hex> (a memory
+      # file's checksum:). "" when none is recorded.
+      def self.recorded_sha(value)
+        value.to_s.delete_prefix("sha256:")
       end
 
-      # Yields [name, data] for each installed bundle with hooks, by name.
-      # A manifest that doesn't parse is yielded as {error:} when its
-      # bundle has a hooks/ dir, and skipped otherwise; the rest still load.
-      def self.each_installed_holding_hooks
-        return enum_for(:each_installed_holding_hooks) unless block_given?
-        dir = self.bundles_dir
-        return unless Dir.exist?(dir)
-        Dir[File.join(dir, "*", "manifest.json")].sort.each do |mjson|
-          name = File.basename(File.dirname(mjson))
-          begin
-            data = JSON.parse(File.read(mjson), symbolize_names: true)
-          rescue JSON::ParserError, SystemCallError => e
-            yield name, { error: "manifest.json is unreadable: #{e.message}" } if Dir.exist?(File.join(File.dirname(mjson), "hooks"))
-            next
-          end
-          next unless data.is_a?(Hash) && data[:hooks].is_a?(Hash) && !data[:hooks].empty?
-          yield name, data
-        end
+      def self.file_sha(path)
+        Digest::SHA256.hexdigest(File.binread(path))
+      end
+
+      # Whether the file's content is the one recorded (either format).
+      def self.sha_matches?(path, recorded)
+        file_sha(path) == recorded_sha(recorded)
       end
 
       # Writes provenance for an installation: merges into existing manifest.json

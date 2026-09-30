@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
-
 module Samagotchi
   autoload :MutedMemories, File.expand_path("muted_memories", __dir__)
   autoload :Log, File.expand_path("log", __dir__)
@@ -67,15 +65,8 @@ module Samagotchi
     # entry name → marker, for the installed bundles of +scope+ with a
     # missing need. A manifest.json or needs: that doesn't parse is skipped.
     def self.entry_markers(scope, path:, bundles_dir:)
-      return {} unless Dir.exist?(bundles_dir)
-
-      Dir[File.join(bundles_dir, "*", "manifest.json")].sort.each_with_object({}) do |mjson, acc|
-        data = begin
-          JSON.parse(File.read(mjson), symbolize_names: true)
-        rescue JSON::ParserError, SystemCallError
-          next
-        end
-        next unless data.is_a?(Hash) && data[:scope].to_s == scope.to_s
+      MemoryBundle::Provenance.each_installed(dir: bundles_dir).each_with_object({}) do |(_name, data), acc|
+        next if data[:error] || data[:scope].to_s != scope.to_s
         next unless data[:needs].is_a?(Array) && !data[:needs].empty?
 
         needs = begin

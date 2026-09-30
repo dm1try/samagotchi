@@ -44,7 +44,7 @@ module Samagotchi
       # @return [Array<String>] the bundles whose plugin loaded
       def load_installed(registries, failures: nil, settings: {})
         loaded = []
-        MemoryBundle::Provenance.each_installed_with_plugin do |bundle_name, data|
+        MemoryBundle::Provenance.each_installed(holding: :plugin) do |bundle_name, data|
           ok = load_bundle(bundle_name, data, registries, failures: failures, settings: settings[bundle_name.to_s] || {})
           loaded << bundle_name if ok
         end

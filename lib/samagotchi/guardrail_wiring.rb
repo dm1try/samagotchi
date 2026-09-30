@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "digest"
 require "yaml"
 
 require_relative "config"
@@ -117,7 +116,7 @@ module Samagotchi
     def bundle_rules
       require_relative "memory_bundle/provenance"
       rules = []
-      MemoryBundle::Provenance.each_installed_with_guardrails do |bundle_name, data|
+      MemoryBundle::Provenance.each_installed(holding: :guardrails) do |bundle_name, data|
         if data[:error]
           Log.warn(:guardrails, "bundle_rules_invalid", echo: "[samagotchi:guardrails] bundle #{bundle_name}: #{data[:error]}", bundle: bundle_name)
           @failures.add("rules (bundle #{bundle_name})", data[:error], required: true, group: :rules)
@@ -130,9 +129,7 @@ module Samagotchi
           begin
             raise Guardrails::Rules::ParseError, "the file is missing" unless File.file?(path)
 
-            expected = (meta.is_a?(Hash) ? meta[:sha256] : nil).to_s.sub(/\Asha256:/, "")
-            actual = Digest::SHA256.hexdigest(File.binread(path))
-            if expected != actual
+            unless MemoryBundle::Provenance.sha_matches?(path, meta.is_a?(Hash) ? meta[:sha256] : nil)
               raise Guardrails::Rules::ParseError, "its sha256 differs from the installed one (edited after install? reinstall the bundle)"
             end
 

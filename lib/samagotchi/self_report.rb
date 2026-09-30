@@ -215,9 +215,8 @@ module Samagotchi
     # "samagotchi-system 0.1.5 (shipped 0.1.5), other 1.0.0"
     def bundles_summary
       shipped = MemoryBundle::Manifest.read(dir: MemoryBundle::SystemBundle::GEM_BUNDLE_DIR).version rescue nil
-      installed = Dir[File.join(MemoryBundle::Provenance.bundles_dir, "*", "manifest.json")].sort.map do |path|
-        name = File.basename(File.dirname(path))
-        version = (JSON.parse(File.read(path))["version"] rescue nil) || "?"
+      installed = MemoryBundle::Provenance.each_installed.map do |name, data|
+        version = data[:version] || "?"
         label = "#{name} #{version}"
         label += " (shipped #{shipped})" if name == MemoryBundle::SystemBundle::BUNDLE_NAME
         label

@@ -219,19 +219,19 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       end
     end
 
-    it "each_installed_holding_hooks yields only hook-bearing bundles" do
+    it "each_installed(holding: :hooks) yields only hook-bearing bundles" do
       p1 = described_class.new(name: "with-hooks")
       p1.write(files: {}, scope: "system", version: "1.0", source_path: "/src",
                hooks: { "a.rb" => { "sha256" => "sha256:x", "event" => "e", "on_error" => "skip", "priority" => 100 } })
       p2 = described_class.new(name: "without-hooks")
       p2.write(files: {}, scope: "system", version: "1.0", source_path: "/src")
       names = []
-      described_class.each_installed_holding_hooks { |n, _d| names << n }
+      described_class.each_installed(holding: :hooks) { |n, _d| names << n }
       expect(names).to include("with-hooks")
       expect(names).not_to include("without-hooks")
     end
 
-    it "each_installed_holding_hooks yields a corrupt manifest as {error:} and keeps going" do
+    it "each_installed(holding: :hooks) yields a corrupt manifest as {error:} and keeps going" do
       FileUtils.mkdir_p(File.join(bundles_dir, "a-broken", "hooks"))
       File.write(File.join(bundles_dir, "a-broken", "manifest.json"), '{"hooks": {"x.rb": {}}, "hooks": ')
       FileUtils.mkdir_p(File.join(bundles_dir, "a-broken-nohooks"))
@@ -240,13 +240,13 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       File.write(File.join(bundles_dir, "a-list", "manifest.json"), "[]")
       described_class.new(name: "b-valid").write(files: {}, scope: "system", version: "1.0", source_path: "/src",
                                                  hooks: { "k.rb" => { "sha256" => "sha256:x", "event" => "e" } })
-      seen = described_class.each_installed_holding_hooks.to_a
+      seen = described_class.each_installed(holding: :hooks).to_a
       expect(seen.map(&:first)).to eq(%w[a-broken b-valid])
       expect(seen.first.last[:error]).to start_with("manifest.json is unreadable")
       expect(seen.last.last[:hooks]).to include(:"k.rb")
     end
 
-    it "each_installed_with_plugin and _with_guardrails yield a corrupt manifest as {error:} only when the bundle has that dir" do
+    it "each_installed with holding: :plugin or :guardrails yield a corrupt manifest as {error:} only when the bundle has that dir" do
       { "a-plug" => "plugin", "b-rules" => "guardrails", "c-plain" => nil }.each do |name, sub|
         FileUtils.mkdir_p(File.join(bundles_dir, name, *sub))
         File.write(File.join(bundles_dir, name, "manifest.json"), "{")
@@ -260,23 +260,45 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       File.write(File.join(bundles_dir, "g-both", "manifest.json").tap { |f| FileUtils.mkdir_p(File.dirname(f)) },
                  JSON.generate("plugin" => { "file" => "p.rb" }, "guardrails" => { "r.yml" => { "sha256" => "sha256:x" } }))
 
-      plugins = described_class.each_installed_with_plugin.to_a
+      plugins = described_class.each_installed(holding: :plugin).to_a
       expect(plugins.map(&:first)).to eq(%w[a-plug g-both])
       expect(plugins.first.last[:error]).to start_with("manifest.json is unreadable: ")
       expect(plugins.last.last[:plugin]).to eq(file: "p.rb")
-      rules = described_class.each_installed_with_guardrails.to_a
+      rules = described_class.each_installed(holding: :guardrails).to_a
       expect(rules.map(&:first)).to eq(%w[b-rules g-both])
       expect(rules.first.last.keys).to eq([:error])
     end
 
-    it "each_installed_holding_hooks is no-op for empty/absent dir" do
-      FileUtils.rm_rf(bundles_dir)
-      expect { |b| described_class.each_installed_holding_hooks(&b) }.not_to yield_control
-      expect(described_class.each_installed_holding_hooks.to_a).to be_empty
+    it "each_installed yields every bundle by name, a manifest that doesn't parse or isn't an object as {error:}" do
+      { "a" => "{}", "a-b" => JSON.generate("version" => "1"), "bad" => "{", "list" => "[]" }.each do |name, body|
+        make_file(bundles_dir, "#{name}/manifest.json", body)
+      end
+      FileUtils.mkdir_p(File.join(bundles_dir, "no-manifest"))
+      make_file(bundles_dir, ".hidden/manifest.json", "{}")
+      File.write(File.join(bundles_dir, "samagotchi-system.lock"), "")
+      seen = described_class.each_installed.to_a
+      expect(seen.map(&:first)).to eq(%w[a a-b bad list])
+      expect(seen[1].last).to eq(version: "1")
+      expect(seen[2].last[:error]).to start_with("manifest.json is unreadable: ")
+      expect(seen[3].last).to eq(error: "manifest.json is not an object")
     end
 
-    it "each_installed_holding_hooks returns enum when no block" do
-      enum = described_class.each_installed_holding_hooks
+    it "matches a file against a recorded sha in either format" do
+      path = make_file(tmpdir, "f.rb", "x\n")
+      hex = Digest::SHA256.hexdigest("x\n")
+      expect([described_class.sha_matches?(path, hex), described_class.sha_matches?(path, "sha256:#{hex}")]).to eq([true, true])
+      expect([described_class.sha_matches?(path, "sha256:0"), described_class.sha_matches?(path, nil)]).to eq([false, false])
+      expect(described_class.recorded_sha(nil)).to eq("")
+    end
+
+    it "each_installed(holding: :hooks) is no-op for empty/absent dir" do
+      FileUtils.rm_rf(bundles_dir)
+      expect { |b| described_class.each_installed(holding: :hooks, &b) }.not_to yield_control
+      expect(described_class.each_installed(holding: :hooks).to_a).to be_empty
+    end
+
+    it "each_installed(holding: :hooks) returns enum when no block" do
+      enum = described_class.each_installed(holding: :hooks)
       expect(enum).to be_a(Enumerator)
     end
   end

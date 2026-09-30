@@ -3,6 +3,7 @@
 require_relative "registry"
 require "digest"
 require_relative "../log"
+require_relative "../memory_bundle/provenance"
 
 module Samagotchi
   # Namespace that wraps hook plugin classes per-bundle. Each bundle's hooks are
@@ -99,10 +100,10 @@ module Samagotchi
         # Why the file doesn't match the sha256 recorded at install, or nil.
         # With none recorded, only a required hook counts as a mismatch.
         def sha_mismatch(file, recorded, required:)
-          expected = recorded.to_s.sub(/\Asha256:/, "")
+          expected = MemoryBundle::Provenance.recorded_sha(recorded)
           return (required ? "no sha256 recorded for it (reinstall the bundle)" : nil) if expected.empty?
 
-          actual = Digest::SHA256.hexdigest(File.binread(file))
+          actual = MemoryBundle::Provenance.file_sha(file)
           return nil if actual == expected
 
           "its sha256 #{actual[0, 12]}… differs from the installed #{expected[0, 12]}… (edited after install? reinstall the bundle)"

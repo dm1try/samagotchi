@@ -180,10 +180,9 @@ module Samagotchi
             if @upgrade && existing_provenance && File.exist?(dest) && !@force
               prev_meta = existing_provenance[:hooks] ? (existing_provenance[:hooks][basename.to_sym] || existing_provenance[:hooks][basename]) : nil
               if prev_meta
-                prev_sha = (prev_meta[:sha256] || prev_meta["sha256"] || "").to_s.sub(/\Asha256:/, "")
+                prev_sha = prev_meta[:sha256] || prev_meta["sha256"]
                 if File.exist?(dest)
-                  cur_sha = Digest::SHA256.hexdigest(File.read(dest))
-                  if cur_sha != prev_sha && !prev_sha.empty?
+                  if !Provenance.recorded_sha(prev_sha).empty? && !Provenance.sha_matches?(dest, prev_sha)
                     @warnings << "Hook #{basename} was locally modified; overwriting"
                   end
                 end
@@ -441,10 +440,9 @@ module Samagotchi
       # Whether the file on disk is what the previous install wrote: its
       # recorded checksum, else the base snapshot. Unknown counts as edited.
       def installed_unchanged?(target, meta, base_path)
-        current = Digest::SHA256.hexdigest(File.read(target))
-        recorded = meta.is_a?(Hash) ? (meta[:checksum] || meta["checksum"]).to_s.sub(/\Asha256:/, "") : ""
-        return current == recorded unless recorded.empty?
-        File.exist?(base_path) && current == Digest::SHA256.hexdigest(File.read(base_path))
+        recorded = meta.is_a?(Hash) ? meta[:checksum] || meta["checksum"] : nil
+        return Provenance.sha_matches?(target, recorded) unless Provenance.recorded_sha(recorded).empty?
+        File.exist?(base_path) && Provenance.file_sha(target) == Provenance.file_sha(base_path)
       end
 
       def remove_target_index(scope, file_key)

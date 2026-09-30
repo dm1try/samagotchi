@@ -126,7 +126,7 @@ RSpec.describe Samagotchi::BundleNeeds do
 
     it "returns the text unchanged on an unexpected error" do
       install("needs", scope: "system", files: %w[gh_helper.md], needs: [{ "command" => "chi-nope" }])
-      allow(Dir).to receive(:[]).and_raise(Errno::EACCES)
+      allow(Dir).to receive(:children).and_raise(Errno::EACCES)
       expect(annotate).to equal(index)
     end
   end

@@ -71,9 +71,8 @@ module Samagotchi
         path = provenance.plugin_path(data)
         return nil unless path
 
-        recorded = data[:plugin][:sha256].to_s.delete_prefix("sha256:")
         state = if !File.file?(path) then "missing"
-                elsif Digest::SHA256.hexdigest(File.binread(path)) == recorded then "ok"
+                elsif Provenance.sha_matches?(path, data[:plugin][:sha256]) then "ok"
                 else "modified"
                 end
         { file: File.basename(path), path: path, state: state, requires_chi: data[:requires_chi],
