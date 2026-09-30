@@ -623,10 +623,16 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
   await expect(card).toBeVisible();
   await card.locator(".card-action", { hasText: "Nudge" }).click();
   // The step that answers it shows it (open, live), before the answer (in
-  // the stage: in its cloud, which the chip opens).
+  // the stage: in its cloud, which the chip opens; the nudge flashes in the
+  // trail meanwhile, so it is seen with the cloud closed).
   const row = page.locator(`${H()} .steer-row`);
   await expect(row.locator("summary")).toHaveText("check-in nudged the model");
-  if (stage()) await page.locator("#turnStage .ts-chip-label").click();
+  if (stage()) {
+    const flashed = page.locator("#turnStage .ts-trail-item.steer");
+    await expect(flashed).toHaveText("↪ check-in nudged the model");
+    await expect(flashed).toBeVisible();
+    await page.locator("#turnStage .ts-chip-label").click();
+  }
   await expect(row).toBeVisible();
   await turnEnded(page, 1);
   await expect(answer(page)).toHaveText("Found so far: the README is an e2e project file. Nothing is left.");

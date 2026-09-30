@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind,
+  flashOf, handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { applyEvent, newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 
@@ -163,4 +163,14 @@ test("headlineOf: the newest sentence as plain text, syntax-only lines skipped",
   assert.equal(headlineOf("# Heading only", true), "Heading only");
   assert.equal(headlineOf("**Done**. Next: **more", false), "Done.");
   assert.equal(headlineOf("", false), "");
+});
+
+test("flashOf: a hook's notice (warn or info) and a plugin's nudge flash; chi's asking-again row does not", () => {
+  assert.deepEqual(flashOf("notice", { hook: "plugin.rb (bundle loop-guard)", text: "thinking repeats itself", level: "warn" }),
+    { kind: "warn", text: "loop-guard: thinking repeats itself" });
+  assert.deepEqual(flashOf("notice", { hook: "plugin.rb (bundle check-in)", text: "5 tool calls in this turn, no answer yet", level: "info" }),
+    { kind: "info", text: "check-in: 5 tool calls in this turn, no answer yet" });
+  assert.equal(flashOf("notice", { line: "↻ empty answer, asking again (1/1)" }), null);
+  assert.deepEqual(flashOf("steer", { source: "check-in", text: "You've made 3 tool calls" }), { kind: "steer", text: "check-in nudged the model" });
+  assert.deepEqual(flashOf("steer", {}), { kind: "steer", text: "nudged the model" });
 });

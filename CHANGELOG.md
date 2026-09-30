@@ -8,6 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- The web stage view flashes a plugin's nudge ("↪ check-in nudged the model") and a hook's info notice in its
+  trail for about 4 s, as it already did a warn notice, so they are seen while the turn runs with the block
+  closed. chi's own "asking again" row does not flash (the status line says it).
+
 ### Removed
 
 - `POST /api/sessions/:id/answer` no longer takes the unused aliases `question_id`, `selection`, `other` or

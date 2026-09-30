@@ -6,6 +6,6 @@
     {"tools": [{"name": "read", "arguments": {"path": "README.md", "start_line": 2, "end_line": 2}}]},
     {"tools": [{"name": "read", "arguments": {"path": "README.md", "start_line": 3, "end_line": 3}}]},
     {"hold": 4, "text": "One more look.", "tools": [{"name": "read", "arguments": {"path": "README.md", "start_line": 1, "end_line": 3}}]},
-    {"text": "Found so far: the README is an e2e project file. Nothing is left."}
+    {"hold": 2, "text": "Found so far: the README is an e2e project file. Nothing is left."}
   ]
 }

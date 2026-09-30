@@ -445,7 +445,9 @@ card, so it stays on screen without scrolling: a status row (what it is
 doing, the step, the elapsed time), your prompt on one line, the newest
 narration sentence (else the newest thinking one, in italics; click it for
 the step's reasoning), the running tool with what it does, and the last
-three calls. A card that needs you (a question, an approval, check-in)
+three calls. A plugin's or hook's notice and a plugin's nudge ("check-in
+nudged the model") show ahead of those calls for about 4 s, as their rows
+wait in the closed block. A card that needs you (a question, an approval, check-in)
 sits in the stage too. The chip under it, `N steps · M tool calls` with one
 tick per call, opens the turn view's block in place (newest step first
 while it runs; a tick opens its step). `▾` folds the stage to its status
