@@ -2,9 +2,9 @@
 
 module Samagotchi
   class Bridge
-    # The last cards (Engine#show_card) and hook notices (:hook_notice),
-    # for a UI that joins later: the Bridge's snapshot[:cards]. A
-    # persistent observer, like TurnAccumulator.
+    # The last cards (Engine#show_card), hook notices (:hook_notice) and
+    # load warnings (:guardrail_warning), for a UI that joins later: the
+    # Bridge's snapshot[:cards]. A persistent observer, like TurnAccumulator.
     #
     # A turn's own notice (no between_turns) is in_turn like a turn's card,
     # with the step it came in: +iteration+ and +calls+, the calls of that
@@ -85,6 +85,10 @@ module Samagotchi
           settle_during(after_turn: true)
         when :card then add_card(event)
         when :hook_notice then add_notice(event)
+        # What failed to load (guardrails, plugins): before the first turn
+        # this worker runs, where it showed live.
+        when :guardrail_warning then push({ type: :guardrail_warning, message: event[:message], label: event[:label] }
+                                            .compact.merge(in_turn: false, turns: @turns_done))
         when :empty_answer_retry then add_turn_row(event.slice(:type, :attempt, :of, :stopped_by)) if @running
         when :question_requested
           add_turn_row({ type: :question, pending_question: Marshal.load(Marshal.dump(event[:pending_question])) }) if @running

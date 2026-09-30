@@ -183,6 +183,18 @@ RSpec.describe "Cards" do
       expect(store.list.first).to include(title: "answer", in_turn: false, current: false, turns_since: 0)
     end
 
+    it "keeps the load warnings (guardrails, plugins) before the turns that came after them" do
+      store.call({ type: :guardrail_warning, message: "rules in config.yml failed to load (x)" })
+      store.call({ type: :guardrail_warning, message: "plugin p.rb (bundle c) failed to load (y)", label: "plugins" })
+      store.call({ type: :turn_started })
+      store.call({ type: :turn_completed })
+      expect(store.list).to eq([
+        { type: :guardrail_warning, message: "rules in config.yml failed to load (x)", in_turn: false, turns_since: 1, current: false },
+        { type: :guardrail_warning, message: "plugin p.rb (bundle c) failed to load (y)", label: "plugins", in_turn: false,
+          turns_since: 1, current: false }
+      ])
+    end
+
     it "keeps between-turns notices" do
       store.call({ type: :hook_notice, hook: "plugin.rb (bundle b)", text: "saved", level: :info, between_turns: true })
       expect(store.list).to eq([{ type: :hook_notice, hook: "plugin.rb (bundle b)", text: "saved", level: :info,
