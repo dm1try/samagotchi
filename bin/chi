@@ -30,46 +30,26 @@ if ARGV[0] == "self"
   exit 0
 end
 
-# Early handle `sessions` subcommand before OptionParser (has its own flags like --dry-run)
-if ARGV[0] == "sessions"
-  require "samagotchi/sessions_command"
-  exit Samagotchi::SessionsCommand.new(ARGV[1..] || []).run
-end
-
-# `chi note`: a context note for sessions, before OptionParser (-m, --source, --all are its own)
-if ARGV[0] == "note"
-  require "samagotchi/note_command"
-  exit Samagotchi::NoteCommand.new(ARGV[1..] || []).run
-end
-
-# `chi send`: a message into sessions as the user's, before OptionParser (-m is its own)
-if ARGV[0] == "send"
-  require "samagotchi/send_command"
-  exit Samagotchi::SendCommand.new(ARGV[1..] || []).run
-end
-
-# `chi bootstrap`: find a model server and write config.yml, before OptionParser (--model, --name are its own)
-if ARGV[0] == "bootstrap"
-  require "samagotchi/bootstrap_command"
-  exit Samagotchi::BootstrapCommand.new(ARGV[1..] || []).run
-end
-
-# `chi update`: bring an installed chi up to date, before OptionParser (its own flags)
-if ARGV[0] == "update"
-  require "samagotchi/update_command"
-  exit Samagotchi::UpdateCommand.new(ARGV[1..] || []).run
-end
-
-# `chi desktop`: the native "Send to chi" helper, before OptionParser (its own flags)
-if ARGV[0] == "desktop"
-  require "samagotchi/desktop_command"
-  exit Samagotchi::DesktopCommand.new(ARGV[1..] || []).run
-end
-
-# Handle `bundle` subcommand before OptionParser (has its own flags like --scope, --force)
-if ARGV[0] == "bundle"
-  require "samagotchi/bundle_command"
-  exit Samagotchi::BundleCommand.new(ARGV[1..] || []).run
+# Subcommands with their own flags, dispatched before OptionParser.
+SUBCOMMANDS = {
+  # list, stop, archive/unarchive, delete, prune, clean (--dry-run, --days, …)
+  "sessions" => ["samagotchi/sessions_command", "SessionsCommand"],
+  # a context note for sessions (-m, --source, --all)
+  "note" => ["samagotchi/note_command", "NoteCommand"],
+  # a message into sessions as the user's (-m)
+  "send" => ["samagotchi/send_command", "SendCommand"],
+  # find a model server and write config.yml (--model, --name)
+  "bootstrap" => ["samagotchi/bootstrap_command", "BootstrapCommand"],
+  # bring an installed chi up to date
+  "update" => ["samagotchi/update_command", "UpdateCommand"],
+  # the native "Send to chi" helper
+  "desktop" => ["samagotchi/desktop_command", "DesktopCommand"],
+  # install, upgrade, uninstall, status, diff, list, build (--scope, --force, …)
+  "bundle" => ["samagotchi/bundle_command", "BundleCommand"]
+}.freeze
+if (path, klass = SUBCOMMANDS[ARGV[0]])
+  require path
+  exit Samagotchi.const_get(klass).new(ARGV[1..] || []).run
 end
 
 # `chi scratch`: the run options below, for a session that leaves nothing
