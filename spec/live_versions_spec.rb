@@ -42,6 +42,16 @@ RSpec.describe Samagotchi::LiveVersions do
     expect(File).to exist(File.join(state_dir, "c", "bridge.json"))
   end
 
+  it "skips a broken sidecar and one that is not an object" do
+    sidecar("a", port: listener.addr[1], version: "0.3.1")
+    { "b" => "{", "c" => "[1]" }.each do |id, body|
+      FileUtils.mkdir_p(File.join(state_dir, id))
+      File.write(File.join(state_dir, id, "bridge.json"), body)
+    end
+
+    expect(described_class.workers(state_dir: state_dir).map(&:session_id)).to eq(["a"])
+  end
+
   describe ".web_version" do
     def serve(body, status: "200 OK")
       server = listener

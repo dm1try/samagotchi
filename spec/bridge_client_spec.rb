@@ -51,6 +51,19 @@ RSpec.describe Samagotchi::BridgeClient do
     it "returns nil without a sidecar" do
       expect(described_class.discover("s1", session_dir: dir)).to be_nil
     end
+
+    it "reads a port written as a string, and is nil for a broken sidecar, one that is not an object or has no port" do
+      server = TCPServer.new("127.0.0.1", 0)
+      File.write(File.join(dir, "bridge.json"), JSON.generate(port: server.local_address.ip_port.to_s))
+      expect(described_class.sidecar_port(dir)).to eq(server.local_address.ip_port)
+
+      ["{", "[1]", JSON.generate(port: 0), JSON.generate(session_id: "s1")].each do |body|
+        File.write(File.join(dir, "bridge.json"), body)
+        expect(described_class.sidecar_port(dir)).to be_nil, body
+      end
+    ensure
+      server&.close
+    end
   end
 
   describe ".wait_for" do
