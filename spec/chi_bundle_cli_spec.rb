@@ -126,14 +126,14 @@ RSpec.describe "chi bundle (CLI)" do
       expect(chi("install", "--scope")).to eq(["", "Unknown bundle install flag: --scope\n", 1])
     end
 
-    # quirk: an unknown source is an uncaught UnknownSourceError (a Ruby
-    # backtrace), not "Install failed: …"; and install's help is --help
-    # only, so -h is taken as the source. Backtrace frames are not pinned.
-    it "ends in a backtrace for a source that doesn't exist, -h included" do
-      [["install", "bogus"], ["install", "-h"], ["upgrade", "bogus"]].each do |args|
-        out, err, code = chi(*args)
-        expect([out, code]).to eq(["", 1]), args.inspect
-        expect(err.lines.first).to match(%r{source does not exist: .*/cwd/#{Regexp.escape(args.last)} \(Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError\)$})
+    # An unknown source fails like any other install ("Install failed: …",
+    # exit 1), no backtrace; install's help is --help only, so -h is taken
+    # as the source.
+    it "says the source doesn't exist, -h included" do
+      [["install", "bogus", "Install"], ["install", "-h", "Install"], ["upgrade", "bogus", "Upgrade"],
+       ["upgrade", "bogus", "Upgrade", "--dry-run"]].each do |sub, source, word, *flags|
+        expect(chi(sub, source, *flags))
+          .to eq(["", "#{word} failed: source does not exist: #{File.realpath(File.join(@root, "cwd"))}/#{source}\n", 1]), [sub, source].inspect
       end
     end
 

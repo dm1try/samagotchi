@@ -94,7 +94,12 @@ module Samagotchi
         return 1
       end
       expanded_source = expand_source(source)
-      bundle_name = bundle_name_for(expanded_source)
+      bundle_name = begin
+        bundle_name_for(expanded_source)
+      rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError => e
+        @stderr.puts "Install failed: #{e.message}"
+        return 1
+      end
       installer = Samagotchi::MemoryBundle::Installer.new(
         source: expanded_source,
         name: bundle_name,
@@ -134,7 +139,12 @@ module Samagotchi
         return 1
       end
       expanded_source = expand_source(source)
-      bundle_name = bundle_name_for(expanded_source)
+      bundle_name = begin
+        bundle_name_for(expanded_source)
+      rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError => e
+        @stderr.puts "Upgrade failed: #{e.message}"
+        return 1
+      end
       provenance = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name)
       unless provenance.installed?
         @stderr.puts "Bundle '#{bundle_name}' not installed — falling back to install"
