@@ -18,10 +18,10 @@ module Samagotchi
     # the answer text.
     # +messages_partial+ says whether +messages+ leaves out a running turn;
     # +model_name+ and +state_dir+ are what ctx.sessions forks with.
-    # +steer+ takes (text, source) and +stop_turn+ (reason, label), each
-    # true when it acted on a running turn.
+    # +steer+ takes (text, source), +stop_turn+ and +stop_generation+
+    # (reason, label), each true when it acted on a running turn.
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
-                      :ask_model, :model_name, :state_dir, :scratch, :steer, :stop_turn, keyword_init: true)
+                      :ask_model, :model_name, :state_dir, :scratch, :steer, :stop_turn, :stop_generation, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -197,6 +197,15 @@ module Samagotchi
       # @return [Boolean] whether a running turn was stopped now
       def stop_turn(reason)
         !!@host.stop_turn&.call(reason.to_s, @label)
+      end
+
+      # Cut the generation that is streaming, as a hook's
+      # event[:stop_generation] does: the turn goes on and the model is
+      # asked again (retry.empty_answer), or with no retry left the turn
+      # ends as cancelled (hook). Shows nothing: post your own notice.
+      # @return [Boolean] whether a streaming generation was cut now
+      def stop_generation(reason)
+        !!@host.stop_generation&.call(reason.to_s, @label)
       end
 
       private

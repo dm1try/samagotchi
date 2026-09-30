@@ -1218,7 +1218,8 @@ module Samagotchi
         notify: ->(text:, level:, hook:) { hook_notify(text, level, hook) },
         ask_user: ->(question:, options:, header:, allow_freeform:, hook:) { hook_ask_user(question, options, header, allow_freeform, hook) },
         stop_turn: ->(reason:, hook:) { hook_stop_turn(reason, hook) },
-        steer: ->(text:, hook:) { steer(text, source: hook_source(hook)) }
+        steer: ->(text:, hook:) { steer(text, source: hook_source(hook)) },
+        stop_generation: ->(reason:, hook:) { hook_stop_generation(reason, hook) }
       )
     end
     private :hook_runtime
@@ -1280,6 +1281,18 @@ module Samagotchi
       ctrl.cancel!(:hook)
     end
     private :hook_stop_turn
+
+    # Cut the streaming generation (reason :hook); the turn goes on and asks
+    # the model again (the loops' cut path). No notice: the plugin posts its
+    # own. The bundle and +reason+ go to the log and the retry's nudge.
+    # @return [Boolean] true when a streaming generation was cut now
+    def hook_stop_generation(reason, hook)
+      ctrl = active_cancel_controller
+      return false unless ctrl
+
+      ctrl.cancel_generation!(:hook, { by: hook_source(hook), reason: reason.to_s })
+    end
+    private :hook_stop_generation
 
     # ── Ask-user-question (structured qualification) ──────────────────────────
 
@@ -1578,7 +1591,7 @@ module Samagotchi
         result = backend.complete(
           messages: messages,
           max_iterations: max_iterations,
-          on_stream_event: build_stream_event_handler(on_event),
+          on_stream_event: build_stream_event_handler(on_event, cancel_controller: effective_controller),
           cancel_controller: effective_controller,
           model_name: bare_for_backend,
           max_tool_output_chars: max_tool_output_chars,
@@ -2042,6 +2055,7 @@ module Samagotchi
         card: ->(**card) { show_card(**card) },
         steer: ->(text, source) { steer(text, source: source) },
         stop_turn: ->(reason, label) { hook_stop_turn(reason, label) },
+        stop_generation: ->(reason, label) { hook_stop_generation(reason, label) },
         ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:|
           ask_side_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller)
         },
@@ -2157,18 +2171,27 @@ module Samagotchi
     #   * Non-splitting profiles (nil think close, e.g. Gemma) leave the event
     #     unchanged; the web client then falls back to raw `content`, preserving
     #     today's behavior (no regression).
-    def build_stream_event_handler(on_event)
+    #
+    # With a :generation_progress hook registered, a Hooks::StreamWatch gets
+    # each chunk's thinking and text after the UIs had it.
+    def build_stream_event_handler(on_event, cancel_controller: nil)
       splitter = ThoughtStreamSplitter.for_profile(profile)
       enrich = profile.thought_close ? :always : :never
+      watch = stream_watch(cancel_controller)
       proc do |event|
+        progress = nil
         case event[:type]
         when :generation_started
           splitter = ThoughtStreamSplitter.for_profile(profile)
+          watch&.started(event[:iteration])
         when :generation_chunk
           # The chat loop already splits its stream (reasoning arrives apart
           # from the answer); only raw native chunks are split here.
-          unless event.key?(:text)
+          if event.key?(:text)
+            progress = { thinking: event[:thinking], text: event[:text] }
+          else
             delta = splitter.feed(event[:content])
+            progress = { thinking: delta[:thinking], text: delta[:text] }
             event = event.merge(text: delta[:text], thinking: delta[:thinking]) if enrich == :always
           end
         end
@@ -2177,12 +2200,21 @@ module Samagotchi
         next thinking_refused(event) if event[:type] == :thinking_refused
 
         emit_event(on_event, event)
+        watch.feed(**progress) if watch && progress
         if event[:type] == :generation_completed
           check_thinking_honoured(event)
           announce_effort_ignored
         end
       end
     end
+
+    # The turn's StreamWatch, or nil when no hook listens.
+    def stream_watch(cancel_controller)
+      return nil unless cancel_controller && @hooks.any?(Hooks::StreamWatch::EVENT)
+
+      Hooks::StreamWatch.new(hooks: @hooks, cancel_controller: cancel_controller)
+    end
+    private :stream_watch
 
     def emit_event(on_event, event)
       # Capture used memories synchronously in the turn thread.

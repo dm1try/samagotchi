@@ -7,9 +7,9 @@ require "samagotchi/session"
 require "samagotchi/plugin/context"
 require "support/thinking_off"
 
-# ctx.steer and ctx.stop_turn (docs/plugins.md, Context): a plugin's
-# command or thread acting on the running turn.
-RSpec.describe "ctx.steer and ctx.stop_turn" do
+# ctx.steer, ctx.stop_turn and ctx.stop_generation (docs/plugins.md,
+# Context): a plugin's command or thread acting on the running turn.
+RSpec.describe "ctx.steer, ctx.stop_turn and ctx.stop_generation" do
   include_context "thinking off"
 
   around do |example|
@@ -63,5 +63,30 @@ RSpec.describe "ctx.steer and ctx.stop_turn" do
     expect(events.find { |e| e[:type] == :hook_notice })
       .to include(hook: "plugin.rb (bundle check-in)", text: "stopped the turn: stopped from check-in", level: :warn)
     expect(events.last).to include(type: :turn_canceled, cancellation_reason: :hook)
+  end
+
+  it "ctx.stop_generation cuts the streaming generation once, silently, and the turn asks again (by: the bundle)" do
+    expect(ctx.stop_generation("nothing streams")).to be(false)
+    results = []
+    calls = 0
+    allow(client).to receive(:complete) do |_prompt, **kwargs|
+      calls += 1
+      next "done" if calls > 1
+
+      2.times { results << ctx.stop_generation("its thinking kept repeating itself") }
+      ctrl = kwargs[:cancel_controller]
+      raise Samagotchi::Client::RequestCancelled.new(ctrl.reason) if ctrl&.cancelled?
+
+      "never"
+    end
+    events = []
+
+    result = engine.run_turn(session, "go", on_event: ->(e) { events << e })
+
+    expect(results).to eq([true, false])
+    expect(result.output).to eq("done")
+    expect(events.none? { |e| e[:type] == :hook_notice }).to be(true)
+    expect(events.find { |e| e[:type] == :empty_answer_retry }).to include(stopped_by: "check-in")
+    expect(session.messages).to include(Samagotchi::TurnNote.cut_retry("check-in", "its thinking kept repeating itself"))
   end
 end

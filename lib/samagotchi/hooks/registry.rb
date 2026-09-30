@@ -22,8 +22,10 @@ module Samagotchi
     # returns the answer hash or nil; +stop_turn+ takes (reason:, hook:) and
     # cancels the running turn (true when it did); +steer+ takes (text:,
     # hook:) and puts the text into the running turn (Engine#steer, true
-    # when queued). A registry without one gives hooks no-op helpers.
-    Runtime = Struct.new(:notify, :ask_user, :stop_turn, :steer, keyword_init: true)
+    # when queued); +stop_generation+ takes (reason:, hook:) and cuts the
+    # streaming generation while the turn goes on (true when it did). A
+    # registry without one gives hooks no-op helpers.
+    Runtime = Struct.new(:notify, :ask_user, :stop_turn, :steer, :stop_generation, keyword_init: true)
 
     # A thread-safe registry for named hook callbacks.
     #
@@ -35,7 +37,8 @@ module Samagotchi
     # Every fire puts the hook runtime on the event: +event[:hook]+ (the
     # label of the proc about to run: "<file> (bundle <name>)", a config
     # hook's label, or "turn hook"), and the helpers +event[:notify]+,
-    # +event[:ask_user]+ and +event[:stop_turn]+ (see #fire). Keys the fire
+    # +event[:ask_user]+, +event[:stop_turn]+, +event[:steer]+ and
+    # +event[:stop_generation]+ (see #fire). Keys the fire
     # site put on the event are never overwritten.
     #
     # Thread safety is achieved via Monitor.
@@ -273,6 +276,11 @@ module Samagotchi
           next false if TURN_OVER_EVENTS.include?(event[:type])
 
           @runtime&.steer&.call(text: text.to_s, hook: event[:hook]) ? true : false
+        }
+        event[:stop_generation] ||= lambda { |reason|
+          next false if TURN_OVER_EVENTS.include?(event[:type])
+
+          @runtime&.stop_generation&.call(reason: reason.to_s, hook: event[:hook]) ? true : false
         }
       end
     end

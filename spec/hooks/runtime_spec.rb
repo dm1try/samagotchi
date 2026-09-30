@@ -174,6 +174,26 @@ RSpec.describe "The hook runtime through the Engine" do
     end
   end
 
+  describe "stop_generation" do
+    let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client) }
+
+    before { allow(client).to receive(:complete).and_return("done") }
+
+    it "is false outside a streaming generation, and from after_turn" do
+      results = {}
+      %i[before_turn before_generation after_generation after_turn].each do |name|
+        engine.register_hook(name) { |e| results[name] = e[:stop_generation].call("loops") }
+      end
+      events = []
+
+      result = engine.run_turn(session, "go", on_event: ->(e) { events << e })
+
+      expect(results).to eq(before_turn: false, before_generation: false, after_generation: false, after_turn: false)
+      expect(result.output).to eq("done")
+      expect(events.none? { |e| e[:type] == :hook_notice }).to be(true)
+    end
+  end
+
   describe "steer" do
     let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client) }
 

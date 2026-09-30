@@ -184,6 +184,26 @@ RSpec.describe Samagotchi::Plugin::Loader do
     expect(fire_before_turn(engine)[:after]).to be true
   end
 
+  it "logs a raising :generation_progress block once a minute, other events every time" do
+    install_plugin("marker", <<~RUBY)
+      class Plugin
+        def register(chi)
+          chi.on(:generation_progress) { |_event| raise "stream boom" }
+          chi.on(:before_turn) { |_event| raise "turn boom" }
+        end
+      end
+    RUBY
+    failed = []
+    allow(Samagotchi::Log).to receive(:warn).and_call_original
+    allow(Samagotchi::Log).to receive(:warn).with(:plugins, "plugin_hook_failed", any_args) { |*_args, **fields| failed << fields[:event] }
+    hooks = engine.instance_variable_get(:@hooks)
+
+    3.times { hooks.fire(:generation_progress, { type: :generation_progress }) }
+    2.times { hooks.fire(:before_turn, { type: :before_turn }) }
+
+    expect(failed).to eq(%w[generation_progress before_turn before_turn])
+  end
+
   describe "chi.service" do
     before { $plugin_service_log = [] }
     after { $plugin_service_log = nil }

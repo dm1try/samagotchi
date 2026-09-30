@@ -14,6 +14,7 @@ module Samagotchi
       COMMAND_NAME = %r{\A/[a-z][a-z0-9_-]{0,31}\z}
       TOOL_NAME = /\A[a-z][a-z0-9_]{0,47}\z/
       PARAM_NAME = /\A[a-z_][a-z0-9_]*\z/i
+      FAILED_STREAM_HOOK_LOG_SECONDS = 60
 
       # @param bundle [String]
       # @param label [String] "<file> (bundle <name>)": what hooks and
@@ -222,10 +223,17 @@ module Samagotchi
           label = @label
           block = hook[:block]
           context = @context
+          # A stream hook fires ~once a second: a broken one logs once a minute.
+          quiet_for = hook[:event] == :generation_progress ? FAILED_STREAM_HOOK_LOG_SECONDS : 0
+          logged_at = nil
           @registries.hooks.register_bundle(bundle, hook[:event], hook_name: label.split(" ").first,
                                                                   priority: hook[:priority]) do |event|
             block.call(event, context)
           rescue StandardError => e
+            now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            next if logged_at && now - logged_at < quiet_for
+
+            logged_at = now
             # Logged only: a turn's live region is on screen.
             Log.warn(:plugins, "plugin_hook_failed", bundle: bundle, event: hook[:event].to_s, error: e.class.name,
                                                      msg: "#{label} #{hook[:event]} hook failed: #{e.message}")

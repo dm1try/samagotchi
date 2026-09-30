@@ -67,6 +67,12 @@ module Samagotchi
       remove_listener(listener_id)
     end
 
+    # The running generation was cancelled (cut, or with the turn).
+    def generation_cancelled?
+      child = @mutex.synchronize { @generation }
+      child ? child.cancelled? : false
+    end
+
     # Cancel the running generation only. False with none, or when it was
     # already cancelled (cut before, or the turn was cancelled).
     def cancel_generation!(reason = :hook, detail = nil)
