@@ -4,6 +4,7 @@ require_relative "installer"
 require_relative "listing"
 require_relative "manifest"
 require_relative "merger"
+require_relative "profile"
 require_relative "provenance"
 require_relative "source"
 require_relative "status"
@@ -24,11 +25,18 @@ module Samagotchi
     # user's file (kept). Hooks, rules and the plugin are replaced; an
     # edited one (which didn't load: its sha no longer matched) is listed
     # in replaced.
+    #
+    # A profile (a shipped meta bundle) is updated through Profile: its row
+    # is :would_update when the shipped version is newer or it has members
+    # to install (Profile.to_install, less the ones this chi can't load),
+    # even at the same version, so a member that failed is retried. adds
+    # names them.
     module ShippedUpdate
       # status: :would_update (plan), :updated, :up_to_date, :skipped,
       # :failed. note says why for skipped/failed. kept and replaced are
       # file names; under plan they are what apply would keep or replace.
-      Row = Struct.new(:name, :from, :to, :status, :note, :kept, :replaced, :source_dir, :scope, keyword_init: true)
+      # adds is nil but for a profile: the members it installs.
+      Row = Struct.new(:name, :from, :to, :status, :note, :kept, :replaced, :source_dir, :scope, :adds, keyword_init: true)
 
       module_function
 
@@ -54,6 +62,7 @@ module Samagotchi
       def apply(rows)
         rows.map do |row|
           next row unless row.status == :would_update
+          next apply_profile(row) if row.adds
 
           installer = Installer.new(source: row.source_dir, name: row.name, scope: row.scope, strict: true, upgrade: true)
           installer.run
@@ -66,6 +75,15 @@ module Samagotchi
             r.status = :failed
             r.note = e.message.lines.first.to_s.strip
           end
+        end
+      end
+
+      def apply_profile(row)
+        result = Profile.install(row.source_dir, shipped_dir: File.dirname(row.source_dir))
+        row.dup.tap do |r|
+          r.adds = result.installed
+          r.status = result.failed? ? :failed : :updated
+          r.note = result.failed.map { |member, why| "#{member}: #{why}" }.join("; ") if result.failed?
         end
       end
 
@@ -84,9 +102,11 @@ module Samagotchi
 
         row.to = ship.version.to_s
         return skip(row, "newer than shipped: left") if Listing.newer?(row.from, row.to)
-        return row.tap { |r| r.status = :up_to_date; r.to = nil } unless Listing.newer?(row.to, row.from)
 
         row.source_dir = File.join(shipped_dir, ship.source)
+        return profile_row(row, data, shipped_dir, chi_version) if Profile.shipped_meta?(row.source_dir, shipped_dir: shipped_dir)
+        return row.tap { |r| r.status = :up_to_date; r.to = nil } unless Listing.newer?(row.to, row.from)
+
         manifest = Manifest.read(dir: row.source_dir)
         if Manifest.requires_chi_failure(manifest.requires_chi, chi_version)
           return skip(row, "needs chi #{manifest.requires_chi}", keep_to: true)
@@ -96,6 +116,23 @@ module Samagotchi
         row.kept = conflicts(row, data)
         row.replaced = edited_executables(name, data)
         row.status = :would_update
+        row
+      end
+
+      def profile_row(row, data, shipped_dir, chi_version)
+        manifest = Manifest.read(dir: row.source_dir)
+        newer = Listing.newer?(row.to, row.from)
+        if newer && Manifest.requires_chi_failure(manifest.requires_chi, chi_version)
+          return skip(row, "needs chi #{manifest.requires_chi}", keep_to: true)
+        end
+
+        row.adds = Profile.to_install(manifest, data).reject do |member|
+          Manifest.requires_chi_failure(Manifest.read(dir: File.join(shipped_dir, member)).requires_chi, chi_version)
+        rescue Manifest::ValidationError, Psych::Exception
+          false # apply reports it failing
+        end
+        row.to = nil unless newer
+        row.status = newer || row.adds.any? ? :would_update : :up_to_date
         row
       end
 

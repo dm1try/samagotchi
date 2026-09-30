@@ -6,6 +6,7 @@ require "fileutils"
 require "yaml"
 require "digest"
 require "samagotchi/memory_bundle/shipped_update"
+require "samagotchi/memory_bundle/uninstaller"
 require "samagotchi/plugin/loader"
 
 RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
@@ -174,5 +175,71 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     applied = described_class.apply(rows)
     expect(applied.map(&:status)).to eq(%i[failed updated])
     expect(applied.first.note).to match(/does not exist/)
+  end
+  describe "a profile (meta bundle)" do
+    let(:root) { File.join(tmp, "new", "lib", "samagotchi", "bundles") }
+
+    # A shipped dir with copies of some real bundles and a core at +version+.
+    def ship_core(version, includes, members: %w[loop-guard check-in guardrails btw])
+      FileUtils.mkdir_p(root)
+      members.each { |m| FileUtils.cp_r(File.join(shipped, m), root) unless File.exist?(File.join(root, m)) }
+      FileUtils.mkdir_p(File.join(root, "core"))
+      File.write(File.join(root, "core", "manifest.yml"),
+                 YAML.dump("name" => "core", "version" => version, "scope" => "system", "includes" => includes))
+      File.join(root, "core")
+    end
+
+    def core_row = described_class.plan(shipped_dir: root).find { |r| r.name == "core" }
+    def installed = Samagotchi::MemoryBundle::Provenance.each_installed.map { |name, _| name }
+
+    it "installs only a bundle new to the profile, never one the user uninstalled" do
+      core = ship_core("0.1.0", %w[loop-guard check-in guardrails])
+      Samagotchi::MemoryBundle::Profile.install(core, shipped_dir: root)
+      Samagotchi::MemoryBundle::Uninstaller.new(name: "check-in").run
+      expect(core_row).to have_attributes(status: :up_to_date, to: nil)
+
+      ship_core("0.2.0", %w[loop-guard check-in guardrails btw])
+      expect(core_row).to have_attributes(from: "0.1.0", to: "0.2.0", status: :would_update, adds: %w[btw])
+
+      applied = described_class.apply(described_class.plan(shipped_dir: root))
+      expect(applied.find { |r| r.name == "core" }).to have_attributes(status: :updated, adds: %w[btw])
+      expect(installed).to eq(%w[btw core guardrails loop-guard])
+      expect(version_of("core")).to eq("0.2.0")
+      expect(core_row.status).to eq(:up_to_date)
+    end
+
+    it "retries a member that isn't recorded at the same version" do
+      core = ship_core("0.1.0", %w[loop-guard guardrails])
+      Samagotchi::MemoryBundle::Provenance.new(name: "core")
+        .write(files: {}, scope: "system", version: "0.1.0", source_path: core, includes: %w[loop-guard])
+
+      expect(core_row).to have_attributes(from: "0.1.0", to: nil, status: :would_update, adds: %w[guardrails])
+      expect(described_class.apply([core_row]).first).to have_attributes(status: :updated, adds: %w[guardrails])
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "core").read[:includes]).to eq(%w[loop-guard guardrails])
+    end
+
+    it "plans a member chi doesn't ship as one to install, and apply fails the row" do
+      core = ship_core("0.1.0", %w[loop-guard])
+      Samagotchi::MemoryBundle::Profile.install(core, shipped_dir: root)
+      ship_core("0.1.0", %w[loop-guard gone])
+
+      expect(core_row).to have_attributes(status: :would_update, adds: %w[gone])
+      expect(described_class.apply([core_row]).first).to have_attributes(status: :failed, adds: [])
+    end
+
+    it "doesn't count a member this chi can't load, and fails the row when a member fails" do
+      core = ship_core("0.1.0", %w[loop-guard btw])
+      Samagotchi::MemoryBundle::Provenance.new(name: "core")
+        .write(files: {}, scope: "system", version: "0.1.0", source_path: core, includes: [])
+      btw = File.join(root, "btw", "manifest.yml")
+      File.write(btw, YAML.dump(YAML.load_file(btw).merge("requires_chi" => ">= 99.0")))
+      expect(described_class.plan(shipped_dir: root, chi_version: "1.0.0").first).to have_attributes(adds: %w[loop-guard])
+
+      File.write(btw, YAML.dump(YAML.load_file(btw).merge("requires_chi" => nil, "plugin" => { "file" => "gone.rb" })))
+      row = described_class.apply([core_row]).first
+      expect(row).to have_attributes(status: :failed, adds: %w[loop-guard])
+      expect(row.note).to include("btw", "gone.rb")
+      expect(installed).to eq(%w[core loop-guard])
+    end
   end
 end

@@ -192,7 +192,7 @@ module Samagotchi
       row = Row.new(component: update.name, from: update.from, to: update.to)
       case update.status
       when :would_update, :updated
-        notes = [kept(update.kept, update.name), replaced(update.replaced)].compact
+        notes = [adds(update.adds), kept(update.kept, update.name), replaced(update.replaced)].compact
         done(row, :update, notes.empty? ? nil : notes.join("; "))
       when :up_to_date then up_to_date(row)
       when :skipped then skipped(row, update.note)
@@ -282,6 +282,11 @@ module Samagotchi
       row.status = "failed (#{why})"
       row.failed = true
       row
+    end
+
+    # A profile's new members: "+ btw".
+    def adds(members)
+      members.nil? || members.empty? ? nil : "+ #{members.join(", ")}"
     end
 
     def kept(files, bundle)

@@ -102,6 +102,33 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(out.string).to end_with("everything is up to date\n")
   end
 
+  it "installs a bundle new to an installed profile and says so on its row" do
+    root = File.join(tmp, "new", "lib", "samagotchi", "bundles")
+    FileUtils.mkdir_p(root)
+    %w[loop-guard btw].each { |m| FileUtils.cp_r(File.join(shipped, m), root) }
+    core = File.join(root, "core")
+    FileUtils.mkdir_p(core)
+    write_core = ->(version, includes) do
+      File.write(File.join(core, "manifest.yml"), YAML.dump("name" => "core", "version" => version, "includes" => includes))
+    end
+    write_core.call("0.1.0", %w[loop-guard])
+    Samagotchi::MemoryBundle::Profile.install(core, shipped_dir: root)
+    write_core.call("0.2.0", %w[loop-guard btw])
+
+    command = ->(*argv) do
+      out.truncate(0)
+      out.rewind
+      described_class.new(argv, stdout: out, stderr: err, gem_spec: gem_spec, platform: ->(register:) { helper },
+                                supported: supported, state_dir: state_dir, web: web, gem_update: gem_update,
+                                exec: ->(a) { execs << a }, bundler: bundler, shipped_dir: root).run
+    end
+    expect(command.call("--dry-run", "--no-gem")).to eq(0)
+    expect(line("core")).to match(/\Acore\s+0\.1\.0\s+0\.2\.0\s+would update \(\+ btw\)\z/)
+    expect(command.call("--no-gem")).to eq(0)
+    expect(line("core")).to match(/\s+updated \(\+ btw\)\z/)
+    expect(Samagotchi::MemoryBundle::Provenance.new(name: "btw").read[:source]).to eq(File.join(root, "btw"))
+  end
+
   it "installs a missing system bundle" do
     expect(run).to eq(0)
     expect(line("system bundle")).to match(/\s+#{Regexp.escape(Samagotchi::VERSION)}\s+installed\z/)
