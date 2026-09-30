@@ -120,6 +120,88 @@ RSpec.describe Samagotchi::Web::Server do
     expect(result).to be false
   end
 
+  describe "LAN mode" do
+    let(:lan) { Samagotchi::Web::Lan::Choice.new(ip: "192.168.1.55", interface: "en0", others: [], public: false) }
+
+    it "binds loopback, adds the LAN address as a second listener, and gives the app the address and the token file" do
+      Dir.mktmpdir do |dir|
+        token_path = File.join(dir, "web-token")
+        webrick = double("webrick", status: :Running)
+        allow(webrick).to receive(:listen)
+        app = nil
+        allow(Samagotchi::Web::App).to receive(:new) { |**kw| app = kw; double("app", "server_running=": nil) }
+        allow(Rackup::Handler::WEBrick).to receive(:run) { |_app, _opts, &block| block.call(webrick) }
+
+        expect(described_class.start(port: 4999, host: "lan", hub: hub, lan: lan, token_path: token_path)).to be true
+
+        expect(Rackup::Handler::WEBrick).to have_received(:run).with(anything, hash_including(Host: "127.0.0.1", Port: 4999))
+        expect(webrick).to have_received(:listen).with("192.168.1.55", 4999)
+        expect(app[:lan][:ip]).to eq("192.168.1.55")
+        expect(app[:lan][:token].current).to eq(Samagotchi::Web::Token.read(token_path)).and match(/\A.{43}\z/)
+      end
+    end
+
+    it "says so in a line and closes the loopback socket when the LAN address can't be bound" do
+      Dir.mktmpdir do |dir|
+        socket = double("socket", close: nil)
+        webrick = double("webrick", status: :Running, listeners: [socket])
+        allow(webrick).to receive(:listen).and_raise(Errno::EADDRNOTAVAIL)
+        allow(Samagotchi::Web::App).to receive(:new).and_return(double("app", "server_running=": nil))
+        allow(Rackup::Handler::WEBrick).to receive(:run) { |_app, _opts, &block| block.call(webrick) }
+
+        result = nil
+        expect { result = described_class.start(port: 4999, hub: hub, lan: lan, token_path: File.join(dir, "t")) }
+          .to output(/Error: can't listen on 192.168.1.55:4999 .*Run chi web again/).to_stderr
+        expect(result).to be false
+        expect(socket).to have_received(:close)
+        expect(hub).to have_received(:stop)
+      end
+    end
+
+    it "probes and starts on 127.0.0.1 for lan" do
+      allow(Samagotchi::Web::Lan).to receive(:choose).with("lan").and_return(lan)
+      allow(described_class).to receive(:probe).and_return(:free)
+      allow(described_class).to receive(:start).and_return(true)
+
+      expect(described_class.launch(host: "lan", port: 4999, dir: "/", scope: "all")).to eq(0)
+      expect(described_class).to have_received(:probe).with("127.0.0.1", 4999)
+      expect(described_class).to have_received(:start).with(hash_including(host: "127.0.0.1", lan: lan, url: "http://127.0.0.1:4999/"))
+    end
+
+    it "refuses an address that isn't this machine's, and lan without one, before binding anything" do
+      allow(described_class).to receive(:start)
+      allow(Samagotchi::Web::Lan).to receive(:choose).and_raise(Samagotchi::Web::Lan::Error, "web.host is 10.1.1.1, which isn't an address of this machine")
+
+      result = nil
+      expect { result = described_class.launch(host: "10.1.1.1", port: 4999) }
+        .to output("Error: web.host is 10.1.1.1, which isn't an address of this machine\n").to_stderr
+      expect(result).to eq(1)
+      expect(described_class).not_to have_received(:start)
+    end
+
+    it "won't take LAN access from a chi web already running without it" do
+      allow(Samagotchi::Web::Lan).to receive(:choose).and_return(lan)
+      allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => 42, "lan" => nil })
+      allow(described_class).to receive(:start)
+
+      result = nil
+      expect { result = described_class.launch(host: "lan", port: 4999, dir: "/") }
+        .to output("chi web already runs on port 4999 without LAN access; stop it (Ctrl-C in its terminal, or kill 42) and run this again\n").to_stderr
+      expect(result).to eq(1)
+      expect(described_class).not_to have_received(:start)
+    end
+
+    it "still forces 0.0.0.0 and names to 127.0.0.1, with no LAN listener" do
+      allow(described_class).to receive(:probe).and_return(:free)
+      allow(described_class).to receive(:start).and_return(true)
+
+      %w[0.0.0.0 mac.local].each do |host|
+        expect { described_class.launch(host: host, port: 4999, dir: "/") }.to output(/forcing 127.0.0.1/).to_stderr
+      end
+      expect(described_class).to have_received(:start).with(hash_including(host: "127.0.0.1", lan: nil)).twice
+    end
+  end
+
   describe ".launch with new_token" do
     it "replaces the token file before anything else, and says the old links stop working" do
       Dir.mktmpdir do |state|
@@ -233,7 +315,7 @@ RSpec.describe Samagotchi::Web::Server do
       expect(described_class.launch(port: 4567, markdown: true, view: "stage", annotate_presets: "Yes|No")).to eq(0)
       expect(described_class).to have_received(:start)
         .with(port: 4567, host: "127.0.0.1", url: "http://127.0.0.1:4567/?dir=%2Fr", open_browser: false, markdown: true, view: "stage",
-              annotate_presets: "Yes|No")
+              annotate_presets: "Yes|No", lan: nil)
     end
 
     it "stops on Ctrl-C with one line and status 130, no backtrace" do

@@ -284,6 +284,14 @@ RSpec.describe Samagotchi::UpdateCommand do
       expect(line("workers")).to include("2 live on 0.2.0, an older chi", "chi sessions stop aaaaaaaa bbbbbbbb")
     end
 
+    it "probes chi web on 127.0.0.1 when web.host is lan or a LAN address" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("web.host").and_return("lan")
+      command = described_class.new([], stdout: out, stderr: err, state_dir: state_dir)
+
+      expect(command.instance_variable_get(:@web).first).to eq("127.0.0.1")
+    end
+
     it "reports a chi web on another version" do
       server = listener
       Thread.new do

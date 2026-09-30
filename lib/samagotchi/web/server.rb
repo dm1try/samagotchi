@@ -8,6 +8,7 @@ require "uri"
 require "webrick"
 
 require_relative "app"
+require_relative "lan"
 require_relative "session_hub"
 require_relative "token"
 require_relative "../config"
@@ -19,7 +20,9 @@ module Samagotchi
   module Web
     # Launcher for the single-port Web UI.
     #
-    # Binds strictly to 127.0.0.1 (localhost-only). Use `bin/chi web` to start.
+    # Binds to loopback (127.0.0.1 by default); with web.host lan (or a LAN
+    # address) also to that address, where requests need the access token.
+    # Use `bin/chi web` to start.
     class Server
       # WEBrick logs every exception out of its request loop as an ERROR with
       # a backtrace, among them a browser dropping a kept-alive connection
@@ -58,12 +61,19 @@ module Samagotchi
       def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false, view: "turn",
                       annotate_presets: Config::BY_KEY["web.annotate_presets"].default, new_token: false)
         rotate_token if new_token
-        host = resolve_host(host)
+        setting = host_setting(host)
+        lan = Lan.wanted?(setting) ? Lan.choose(setting) : nil
+        host = resolve_host(setting)
         port = resolve_port(port)
         url = scope_url(host, port, dir: dir, scope: scope)
         found = probe(host, port)
         case found
         when Hash
+          if lan && !found["lan"]
+            warn "chi web already runs on port #{port} without LAN access; stop it (Ctrl-C in its terminal, " \
+                 "or kill #{found["pid"]}) and run this again"
+            return 1
+          end
           puts "chi web already runs on port #{port} (pid #{found["pid"]}): #{url}"
           open_url(url) if open_browser
           0
@@ -72,8 +82,11 @@ module Samagotchi
           1
         else
           start(port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, view: view,
-                annotate_presets: annotate_presets) ? 0 : 1
+                annotate_presets: annotate_presets, lan: lan) ? 0 : 1
         end
+      rescue Lan::Error => e
+        warn "Error: #{e.message}"
+        1
       rescue Interrupt
         # Ctrl-C: the server has stopped (start's ensure); one line, and the
         # status a shell gives a command it interrupted.
@@ -83,17 +96,26 @@ module Samagotchi
 
       # @param hub [SessionHub, nil] the session projection the page streams
       #   from; built over the app's state dir unless given
+      # @param lan [Lan::Choice, nil] also listen on this LAN address, where
+      #   every request but this machine's needs the access token
+      # @param token_path [String] the LAN access token's file
       # @return [Boolean] false when the port was taken (said so on stderr)
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
-                     view: "turn", annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil)
+                     view: "turn", annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
+                     token_path: Token.path)
         port = resolve_port(port)
         host = resolve_host(host)
         url ||= "http://#{url_host(host)}:#{port}/"
 
         hub ||= SessionHub.new(state_dir: state_dir || Session.default_state_dir, manager: manager || SessionManager)
+        if lan
+          Token.load_or_create(token_path)
+          lan_option = { ip: lan.ip, token: Token::Source.new(token_path) }
+        end
         app = App.new(manager: manager, state_dir: state_dir, markdown: markdown, view: view,
-                      annotate_presets: annotate_presets, hub: hub)
+                      annotate_presets: annotate_presets, hub: hub, lan: lan_option)
         Samagotchi::Log.info(:web, "start", url: "http://#{host}:#{port}", version: Samagotchi::VERSION)
+        Samagotchi::Log.info(:web, "lan", ip: lan.ip, interface: lan.interface) if lan
         hub.start
         # Said once the port is bound: a second chi web racing for it gets
         # the in-use line instead.
@@ -114,20 +136,44 @@ module Samagotchi
         Rackup::Handler::WEBrick.run(app, Host: host, Port: port, AccessLog: [], Logger: Log.new($stderr, WEBrick::Log::WARN),
                                           StartCallback: started) do |server|
           app.server_running = -> { server.status == :Running }
+          listen_lan(server, lan, port) if lan
         end
         true
       rescue Errno::EADDRINUSE
         warn in_use_message(port)
+        false
+      rescue LanListenError => e
+        warn "Error: can't listen on #{lan.ip}:#{port} (#{e.message}); did the address change? Run chi web again"
         false
       ensure
         hub&.stop
         Samagotchi::Log.info(:web, "stop") if app
       end
 
+      class LanListenError < StandardError; end
+
+      # The LAN address's listener, next to the loopback one WEBrick made.
+      # The loopback socket is bound by now: on a failure it is closed
+      # here, as WEBrick never starts.
+      def self.listen_lan(server, lan, port)
+        server.listen(lan.ip, port)
+      rescue Errno::EADDRNOTAVAIL, Errno::EADDRINUSE, SocketError => e
+        server.listeners.each(&:close)
+        raise LanListenError, e.message
+      end
+
+      def self.host_setting(host)
+        (host || Samagotchi::Config.get("web.host")).to_s.strip
+      end
+
+      # The address the server binds: loopback. For web.host lan or a LAN
+      # address it is 127.0.0.1, and the LAN address is a second listener
+      # (start's lan:).
       def self.resolve_host(host)
-        host = (host || Samagotchi::Config.get("web.host")).to_s.strip
+        host = host_setting(host)
         host = DEFAULT_HOST if host.empty?
         return host if %w[127.0.0.1 ::1 localhost].include?(host)
+        return DEFAULT_HOST if Lan.wanted?(host)
 
         Samagotchi::Log.warn(:web, "bind_forced", echo: "Web server only binds to 127.0.0.1 (got #{host}); forcing 127.0.0.1", host: host.to_s)
         DEFAULT_HOST

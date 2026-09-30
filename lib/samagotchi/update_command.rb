@@ -9,6 +9,7 @@ require_relative "memory_bundle/shipped_update"
 require_relative "memory_bundle/system_bundle"
 require_relative "session"
 require_relative "version"
+require_relative "web/lan"
 
 module Samagotchi
   # `chi update`: brings an installed chi up to date in one go: the system
@@ -64,7 +65,7 @@ module Samagotchi
       @platform = platform || ->(register:) { Desktop::MacOS.new(register: register) }
       @supported = supported
       @state_dir = state_dir
-      @web = web || [Config.get("web.host").to_s, Config.get("web.port").to_i]
+      @web = web || [Web::Lan.local_host(Config.get("web.host")), Config.get("web.port").to_i]
     end
 
     # @return [Integer] 0 nothing failed, 1 a part failed (or a checkout), 2 usage
