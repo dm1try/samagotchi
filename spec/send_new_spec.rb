@@ -118,9 +118,10 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     end
   end
 
-  def update(session, status: nil, pending_question: :keep, add_message: nil)
+  def update(session, status: nil, pending_question: :keep, add_message: nil, last_turn: nil)
     s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
     s.status = status if status
+    s.last_turn = last_turn if last_turn
     s.pending_question = pending_question unless pending_question == :keep
     s.messages << add_message if add_message
     s.save(state_dir: tmpdir)
@@ -209,6 +210,45 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     expect(run("--wait", "-m", "x", idle.id)).to eq(1)
     expect(err.string).to end_with("chi send: the turn ended without a reply (canceled, failed or empty); " \
                                    "chi --attach #{idle.id} shows it\n")
+  end
+
+  it "sees a turn that failed before the first look with nothing new in the messages (a failure after a failure)" do
+    idle = make(status: "idle")
+    update(idle, add_message: Samagotchi::TurnNote.failed("earlier", restored: true),
+                 last_turn: { "outcome" => "failed", "ended_at" => "2026-09-30T10:00:00.000+02:00" })
+    # The worker rolls the turn back and its note replaces the one at the tail.
+    @on_deliver = lambda do
+      s = Samagotchi::Session.load(idle.id, state_dir: tmpdir)
+      s.messages = Samagotchi::TurnNote.replace_trailing(s.messages, Samagotchi::TurnNote.failed("model refused the image", restored: true))
+      s.last_turn = { "outcome" => "failed", "ended_at" => "2026-09-30T10:00:05.000+02:00" }
+      s.save(state_dir: tmpdir)
+    end
+
+    expect(run("--wait", "--timeout", "2", "-m", "x", idle.id)).to eq(1)
+    expect(err.string).to end_with("chi send: the turn failed: model refused the image; " \
+                                   "chi --attach #{idle.id} shows it\n")
+  end
+
+  it "says a canceled or empty turn in its own words" do
+    idle = make(status: "idle")
+    @on_deliver = -> { update(idle, last_turn: { "outcome" => "canceled", "ended_at" => "t1" }) }
+    expect(run("--wait", "--timeout", "2", "-m", "x", idle.id)).to eq(1)
+    expect(err.string).to end_with("chi send: the turn was canceled; chi --attach #{idle.id} shows it\n")
+
+    @on_deliver = -> { update(idle, last_turn: { "outcome" => "completed", "ended_at" => "t2" }) }
+    expect(run("--wait", "--timeout", "2", "-m", "x", idle.id)).to eq(1)
+    expect(err.string).to end_with("chi send: the turn ended with no visible answer; chi --attach #{idle.id} shows it\n")
+  end
+
+  it "without a message, sees a turn that started and ended between two looks" do
+    idle = make(status: "idle")
+    later do
+      update(idle, last_turn: { "outcome" => "failed", "ended_at" => "t1" },
+                   add_message: Samagotchi::TurnNote.failed("boom", restored: true))
+    end
+
+    expect(run("--wait", "--timeout", "2", idle.id)).to eq(1)
+    expect(err.string).to end_with("chi send: the turn failed: boom; chi --attach #{idle.id} shows it\n")
   end
 
   it "reports a worker that died without saying so" do

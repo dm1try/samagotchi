@@ -264,7 +264,7 @@ module Samagotchi
       end
       return 0 unless options[:wait]
 
-      wait_for_reply(session.id, cursor: nil, baseline: { messages: session.messages.size, question_id: nil },
+      wait_for_reply(session.id, cursor: nil, baseline: baseline_of(session, question_id: nil),
                                  timeout: options[:timeout])
     end
 
@@ -283,7 +283,7 @@ module Samagotchi
       end
 
       cursor = ReplyWait.newest_reply(id, state_dir: @state_dir)
-      baseline = { messages: session.messages.size, question_id: session.pending_question&.dig(:id) }
+      baseline = baseline_of(session)
       return 1 unless deliver(id, prompt)
 
       wait_for_reply(id, cursor: cursor, baseline: baseline, timeout: options[:timeout])
@@ -302,8 +302,17 @@ module Samagotchi
       session = Session.load(id, state_dir: @state_dir)
       live = session.status == Session::STATUS_RUNNING || SessionManager.session_owner(id, state_dir: @state_dir)
       wait_for_reply(id, cursor: ReplyWait.newest_reply(id, state_dir: @state_dir),
-                         baseline: { messages: nil, question_id: session.pending_question&.dig(:id) },
+                         baseline: baseline_of(session).merge(messages: nil),
                          timeout: options[:timeout], owner_grace: live ? WORKER_GONE_AFTER : nil)
+    end
+
+    # The session as it was before the message went in (ReplyWait's
+    # baseline): its messages, the question pending then, and when its last
+    # turn ended, so a turn that ends before the first look still ends the
+    # wait.
+    def baseline_of(session, question_id: session.pending_question&.dig(:id))
+      last = session.last_turn.is_a?(Hash) ? session.last_turn["ended_at"] : nil
+      { messages: session.messages.size, question_id: question_id, last_turn: last }
     end
 
     # @return [Integer] the exit status
@@ -317,7 +326,7 @@ module Samagotchi
                      when :waiting_for_answer
                        question = result.question[:question].to_s.strip.lines.first.to_s.strip
                        ["waiting for an answer: #{question}; open it: #{attach} or the web", 3]
-                     when :no_reply then ["the turn ended without a reply (canceled, failed or empty); #{attach} shows it", 1]
+                     when :no_reply then ["#{no_reply_line(result)}; #{attach} shows it", 1]
                      when :error then ["the worker failed: #{result.text}; #{attach} shows what happened", 1]
                      when :worker_gone then ["the worker is gone; #{attach} shows what happened", 1]
                      when :stopped then ["the session was stopped (chi sessions stop)", 1]
@@ -331,6 +340,15 @@ module Samagotchi
     rescue ArgumentError
       error_line("chi send: the session is gone (deleted while waiting)")
       1
+    end
+
+    def no_reply_line(result)
+      case result.outcome
+      when "failed" then result.text.to_s.strip.empty? ? "the turn failed" : "the turn failed: #{result.text.strip}"
+      when "canceled" then "the turn was canceled"
+      when "completed" then "the turn ended with no visible answer"
+      else "the turn ended without a reply (canceled, failed or empty)"
+      end
     end
 
     def reply(text)

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "session"
+require_relative "turn_note"
 
 module Samagotchi
   # Loaded on first use: session_manager requires terminal_ui, which
@@ -23,7 +24,11 @@ module Samagotchi
     # @!attribute file [String, nil] the reply's filename, the next cursor
     # @!attribute question [Hash, nil] the pending question
     #   (:waiting_for_answer)
-    Result = Struct.new(:status, :text, :file, :question, keyword_init: true)
+    # @!attribute outcome [String, nil] how the turn ended when it left no
+    #   reply (:no_reply): "failed", "canceled" or "completed" (empty), from
+    #   the session's last_turn; nil when unknown. With "failed", text is
+    #   the failure's summary when the turn note has one.
+    Result = Struct.new(:status, :text, :file, :question, :outcome, keyword_init: true)
 
     module_function
 
@@ -38,7 +43,10 @@ module Samagotchi
     #   messages (a failed, canceled or empty one leaves its note) and went
     #   idle again ends the wait even if it was never seen running, and a
     #   question already pending then is not the answer's. A nil
-    #   messages: skips the count.
+    #   messages: skips the count. last_turn: (the session's
+    #   last_turn["ended_at"] then, maybe nil) ends the wait on any turn
+    #   that ended since, idle again, however fast it ran: a failure after
+    #   a failure replaces the note and leaves the count as it was.
     # @param owner_grace [Numeric, nil] seconds with no live worker before
     #   :worker_gone (one that died before its rescue leaves it running)
     # @return [Result]
@@ -72,13 +80,13 @@ module Samagotchi
 
         if session.status == Session::STATUS_RUNNING
           seen_running = true
-        elsif seen_running || (baseline&.dig(:messages) && session.messages.size > baseline[:messages])
+        elsif seen_running || turn_ended_since?(session, baseline)
           # It ran and is idle again with no new reply: canceled, failed or
           # empty. Before it was ever seen running, idle means a
           # file-delivered message its worker has not picked up yet.
           # The worker writes the reply before its idle save, so the read
           # above has it; one more look costs nothing should that change.
-          return reply_past(id, state_dir: state_dir, cursor: cursor) || Result.new(status: :no_reply)
+          return reply_past(id, state_dir: state_dir, cursor: cursor) || no_reply(session, baseline)
         end
 
         if owner_grace
@@ -93,6 +101,42 @@ module Samagotchi
 
         sleep(poll_interval)
       end
+    end
+
+    # An idle session whose turn ended after the baseline was taken: its
+    # last_turn moved on, or its messages grew (a turn's note).
+    def turn_ended_since?(session, baseline)
+      return false unless baseline
+
+      if baseline.key?(:last_turn)
+        ended = session.last_turn.is_a?(Hash) ? session.last_turn["ended_at"] : nil
+        return true if ended && ended != baseline[:last_turn]
+      end
+      !!(baseline[:messages] && session.messages.size > baseline[:messages])
+    end
+
+    # @return [Result] :no_reply with the outcome the session's last_turn
+    #   records, when it is the turn waited for
+    def no_reply(session, baseline)
+      last = session.last_turn.is_a?(Hash) ? session.last_turn : {}
+      fresh = baseline.nil? || !baseline.key?(:last_turn) || (last["ended_at"] && last["ended_at"] != baseline[:last_turn])
+      outcome = fresh ? last["outcome"] : nil
+      text = outcome == "failed" ? failure_summary(session.messages) : nil
+      Result.new(status: :no_reply, outcome: outcome, text: text)
+    end
+
+    # The summary in the failed-turn note at the conversation's tail, nil
+    # without one.
+    def failure_summary(messages)
+      list = Array(messages)
+      index = TurnNote.trailing_index(list)
+      return nil unless index
+
+      text = (list[index][:content] || list[index]["content"]).to_s
+      prefix = "#{TurnNote::OPEN}#{TurnNote::FAILED}"
+      return nil unless text.start_with?(prefix)
+
+      text[prefix.length..].sub(/\. [^.]*\.\]\z/, "")
     end
 
     # @return [Result, nil] :done with the newest reply past the cursor
