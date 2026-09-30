@@ -3,6 +3,7 @@
 require "json"
 require_relative "session"
 require_relative "session_manager"
+require_relative "session_retention"
 require_relative "project_scope"
 require_relative "session_metrics"
 require_relative "recap_store"
@@ -239,8 +240,8 @@ module Samagotchi
       # unless --days asks for the older ones only. Live workers and
       # keep_status still protect a session.
       any_age = sub == "clean" && test_only && days.nil?
-      result = Samagotchi::SessionManager.prune_sessions(days: days, max_count: keep, keep_status: keep_status, dry_run: dry_run,
-                                                         test_only: test_only, any_age: any_age)
+      result = Samagotchi::SessionRetention.prune(days: days, max_count: keep, keep_status: keep_status, dry_run: dry_run,
+                                                  test_only: test_only, any_age: any_age)
       mode = dry_run ? "Would delete" : "Deleted"
       @stdout.puts "#{mode} #{result[:deleted].size} sessions (kept #{result[:kept].size}, skipped #{result[:skipped].size})"
       if result[:deleted].any?

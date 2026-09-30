@@ -110,7 +110,7 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
   `dismiss_question`). The worker runs in the session's `working_directory`, so `!cmd` and
   the tools don't depend on where the terminal attached from.
 - `bin/chi web` → builds `Web::Server` (Rack+WEBrick on `127.0.0.1:4567`, `--port`/`SAMAGOTCHI_WEB_PORT`, `--open`).
-- `bin/chi sessions {list,stop,delete,prune,clean}` (`SessionsCommand`; not the REPL's `SessionCommands`) → retention & ordering (`Session.prune`, `updated_at desc`, dry-run, test-only); `stop` is `SessionManager.stop_session(wait:)`, which waits for the worker to release `owner.lock`; `delete` (`SessionDeleteCommand`) is `SessionManager.delete_session(stop:)`, which the TUI's `/exit --delete` and the web's `DELETE /api/sessions/:id` use too.
+- `bin/chi sessions {list,stop,delete,prune,clean}` (`SessionsCommand`; not the REPL's `SessionCommands`) → retention & ordering (`SessionRetention`, `updated_at desc`, dry-run, test-only); `stop` is `SessionManager.stop_session(wait:)`, which waits for the worker to release `owner.lock`; `delete` (`SessionDeleteCommand`) is `SessionManager.delete_session(stop:)`, which the TUI's `/exit --delete` and the web's `DELETE /api/sessions/:id` use too.
 - `--prompt`, `--non-interactive`, and `SessionManager` workers build `Engine` directly.
 
 ## Session retention & ordering

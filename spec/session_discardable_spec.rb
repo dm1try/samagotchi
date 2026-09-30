@@ -5,16 +5,17 @@ require "spec_helper"
 require "samagotchi/session_manager"
 require "samagotchi/worker"
 require "samagotchi/terminal_ui"
+require "samagotchi/session_retention"
 
 # "Is this session empty, so it goes?" as each place that deletes one asks
 # it: the worker as it leaves (Worker#empty_session?), the REPL at /exit
-# (TerminalUI#discard_on_exit?) and the retention sweep (prune_sessions,
+# (TerminalUI#discard_on_exit?) and the retention sweep (SessionRetention.prune,
 # sessions left empty an hour). One table of session states, one answer per
 # asker; nil where that asker never meets the state.
 RSpec.describe "discarding an empty session" do
   let(:tmpdir) { Dir.mktmpdir("session-discardable-spec") }
   let(:model) { Samagotchi::ModelProfile.required_model_name(nil) }
-  let(:hour_ago) { Time.now - Samagotchi::SessionManager::EMPTY_GRACE_SECONDS - 60 }
+  let(:hour_ago) { Time.now - Samagotchi::SessionRetention::EMPTY_GRACE_SECONDS - 60 }
 
   after { FileUtils.rm_rf(tmpdir) }
 
@@ -61,8 +62,7 @@ RSpec.describe "discarding an empty session" do
   end
 
   def sweep_says(session)
-    result = Samagotchi::SessionManager.prune_sessions(state_dir: tmpdir, days: 0, max_count: 0, keep_status: "none",
-                                                       dry_run: true)
+    result = Samagotchi::SessionRetention.prune(state_dir: tmpdir, days: 0, max_count: 0, keep_status: "none", dry_run: true)
     result[:deleted].include?(session.id)
   end
 

@@ -4,6 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "json"
 require "samagotchi/session_manager"
+require "samagotchi/session_retention"
 require "samagotchi/archive_store"
 require "samagotchi/owner_lock"
 
@@ -100,7 +101,7 @@ RSpec.describe "Session archive" do
       recent = make(days_old: 1)
       newest = make
 
-      result = Samagotchi::Session.prune(state_dir: tmpdir, days: 14, max_count: 2)
+      result = Samagotchi::SessionRetention.apply(state_dir: tmpdir, days: 14, max_count: 2)
 
       expect(result[:deleted]).to eq([])
       expect(File.exist?(File.join(tmpdir, "#{old.id}.json"))).to be(true)
@@ -111,7 +112,7 @@ RSpec.describe "Session archive" do
       archived = make(days_old: 30)
       archive!(archived)
 
-      expect(Samagotchi::Session.prune(state_dir: tmpdir, days: 0, max_count: 0, any_age: true)[:deleted]).to eq([])
+      expect(Samagotchi::SessionRetention.apply(state_dir: tmpdir, days: 0, max_count: 0, any_age: true)[:deleted]).to eq([])
       expect(Samagotchi::Session.exist?(archived.id, state_dir: tmpdir)).to be(true)
     end
 
@@ -121,7 +122,7 @@ RSpec.describe "Session archive" do
       Samagotchi::ArchiveStore.unarchive(old.id, state_dir: tmpdir)
       stale = make(days_old: 30)
 
-      result = Samagotchi::Session.prune(state_dir: tmpdir, days: 14, max_count: 500)
+      result = Samagotchi::SessionRetention.apply(state_dir: tmpdir, days: 14, max_count: 500)
 
       expect(result[:deleted]).to eq([stale.id])
       expect(result[:kept]).to eq([old.id])

@@ -48,6 +48,8 @@ module Samagotchi
   #       └── bridge.json         # Bridge sidecar (how clients reach the worker)
   # Needed only at call time (run_session_loop); worker.rb requires this file.
   autoload :Worker, File.expand_path("worker", __dir__)
+  # session_retention requires this file.
+  autoload :SessionRetention, File.expand_path("session_retention", __dir__)
 
   class SessionManager
     INPUT_DIR  = "input"
@@ -215,7 +217,6 @@ module Samagotchi
                    offset: offset, project_root: project_root, include_archived: include_archived)
     end
 
-    # Prune sessions per retention policy. Delegates to Session.prune with live-worker guard.
     SUMMARY_DESC_LIMIT = 60
 
     # Short summaries of sessions, newest first: the picker behind
@@ -378,107 +379,9 @@ module Samagotchi
       dir == root || dir.start_with?("#{root}/")
     end
 
-    def self.prune_sessions(state_dir: nil, days: nil, max_count: nil, keep_status: nil, dry_run: false, test_only: false,
-                            any_age: false)
-      sd = state_dir || Session.default_state_dir
-      days = resolve_retention_days(days)
-      max_count = resolve_retention_max_count(max_count)
-      keep_status = resolve_retention_keep_status(keep_status)
-      discard = discard_empty?
-      default_model = discard ? (begin ModelProfile.required_model_name(nil) rescue nil end) : nil
-      result = Session.prune(
-        state_dir: sd,
-        days: days,
-        max_count: max_count,
-        keep_status: keep_status,
-        dry_run: dry_run,
-        test_only: test_only,
-        any_age: any_age,
-        alive_check: ->(sid) { worker_alive_for_session?(sid, state_dir: sd) },
-        empty_check: discard ? ->(sid) { left_empty?(sid, state_dir: sd, default_model: default_model) } : nil
-      )
-      result[:deleted].concat(prune_orphan_dirs(sd, dry_run: dry_run)) if discard && !test_only
-      result
-    end
-
-    # How long a session may sit empty before the sweep takes it: its
-    # worker (or a REPL) deletes it as it leaves, so the sweep only catches
-    # those killed first (a reboot, kill -9).
-    EMPTY_GRACE_SECONDS = 3600
-
-    private_class_method def self.left_empty?(session_id, state_dir:, default_model:)
-      path = File.join(state_dir, "#{session_id}#{Session::FILE_EXT}")
-      Time.now - File.mtime(path) > EMPTY_GRACE_SECONDS &&
-        discardable?(session_id, state_dir: state_dir, default_model: default_model)
-    rescue SystemCallError
-      false
-    end
-
-    # Directories with no session file and nothing but the skeleton, nobody
-    # owning them: a REPL killed before its first save, or a worker woken
-    # just as its session was discarded.
-    # @return [Array<String>] their ids
-    private_class_method def self.prune_orphan_dirs(state_dir, dry_run:)
-      return [] unless Dir.exist?(state_dir)
-
-      Dir.children(state_dir).filter_map do |name|
-        dir = File.join(state_dir, name)
-        next unless name.match?(/\A[\w-]+\z/) && File.directory?(dir)
-        next if File.exist?(File.join(state_dir, "#{name}#{Session::FILE_EXT}"))
-        next unless Time.now - File.mtime(dir) > EMPTY_GRACE_SECONDS && empty_session_dir?(dir)
-        next if session_owner(name, state_dir: state_dir)
-
-        FileUtils.rm_rf(dir) unless dry_run
-        name
-      rescue SystemCallError
-        nil
-      end
-    end
-
-    # Lazy sweep guard: runs prune at most once per RETENTION_SWEEP_INTERVAL_HOURS.
-    RETENTION_MARKER = ".last_retention"
-    RETENTION_SWEEP_INTERVAL_HOURS = 24
-
-    def self.retention_sweep_if_due(state_dir: nil)
-      sd = state_dir || Session.default_state_dir
-      return unless Dir.exist?(sd)
-
-      hours = Samagotchi::Config.get("session.sweep_interval_hours").to_i
-      interval = (hours.positive? ? hours : RETENTION_SWEEP_INTERVAL_HOURS) * 3600
-      marker = File.join(sd, RETENTION_MARKER)
-      if File.exist?(marker)
-        age = Time.now - File.mtime(marker)
-        return if age < interval
-      end
-      result = prune_sessions(state_dir: sd)
-      FileUtils.touch(marker)
-      if result[:deleted].any?
-        Log.info(:worker, "retention_pruned", echo: "[retention] pruned #{result[:deleted].size} sessions (kept #{result[:kept].size})", deleted: result[:deleted].size, kept: result[:kept].size)
-      end
-      result
-    rescue StandardError => e
-      Log.warn(:worker, "retention_failed", echo: "[retention] sweep failed: #{e.class}: #{e.message}", error: e.class.name)
-      nil
-    end
-
-    # The caller's value (a sessions prune flag) or session.retention_days.
-    private_class_method def self.resolve_retention_days(val)
-      return val.to_i if !val.nil? && val.to_s.strip != ""
-
-      Samagotchi::Config.get("session.retention_days").to_i
-    end
-
-    private_class_method def self.resolve_retention_max_count(val)
-      return val.to_i if !val.nil? && val.to_s.strip != ""
-
-      Samagotchi::Config.get("session.max_count").to_i
-    end
-
-    # A comma list of statuses never pruned; "" keeps none.
-    private_class_method def self.resolve_retention_keep_status(val)
-      raw = !val.nil? && val.to_s.strip != "" ? val.to_s : Samagotchi::Config.get("session.keep_status").to_s
-      raw.split(",").map(&:strip).reject(&:empty?)
-    end
+    # The retention sweep (SessionRetention.sweep_if_due), here for the web
+    # app and hub, which take this class as their manager.
+    def self.retention_sweep_if_due(state_dir: nil) = SessionRetention.sweep_if_due(state_dir: state_dir)
 
     # Ensure an existing session has a live worker process.
     # Returns the loaded session after state reconciliation.
@@ -1063,10 +966,6 @@ module Samagotchi
 
       pid = legacy_worker_pid(session_dir)
       pid && { "pid" => pid, "kind" => "worker" }
-    end
-
-    private_class_method def self.worker_alive_for_session?(session_id, state_dir:)
-      !session_owner(session_id, state_dir: state_dir).nil?
     end
 
     private_class_method def self.legacy_worker_pid(session_dir)
