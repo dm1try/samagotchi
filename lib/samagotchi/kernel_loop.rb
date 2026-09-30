@@ -3,7 +3,7 @@
 require_relative "model_profile"
 require_relative "tool_call_parser"
 require_relative "config"
-require_relative "context_usage"
+require_relative "context_status"
 require_relative "context_window"
 require_relative "prompt"
 require_relative "prompt_literal_guard"
@@ -105,16 +105,6 @@ module Samagotchi
       def ask_user_question(call) = @kernel.__send__(:handle_ask_user_question, call)
     end
 
-    CONTEXT_STATUS_PREFIX = "CONTEXT_STATUS"
-    # The model's own line about its context (a tail system message, kind
-    # CONTEXT_LINE_KIND), left once per rise into a bucket whose guidance
-    # asks for a change: from the second threshold (40% by default) up.
-    CONTEXT_LINE_PREFIX = "[CONTEXT: "
-    CONTEXT_LINE_KIND = "context"
-    CONTEXT_GUIDANCE_FROM_RANK = 2
-
-    DEFAULT_CONTEXT_CHARS_PER_TOKEN = 4.0
-    DEFAULT_CONTEXT_THRESHOLDS = [20, 40, 60, 80].freeze
     DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
@@ -204,7 +194,7 @@ module Samagotchi
       @current_model_name = resolved_model_name
 
       conversation = prepare_conversation(messages)
-      context_state = initial_context_status_state(conversation)
+      context = ContextStatus.new(conversation: conversation)
       exhausted = false
       pending_tool_calls = false
       tool_activity = []
@@ -213,7 +203,6 @@ module Samagotchi
       empty_retries = 0
       empty_retry_limit = EmptyAnswerRetry.limit
       @retry_generation = false
-      context_status = nil
       stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
       # Qwen with thinking off: an empty thought after the cue, so the model
       # answers at once. Kept in the turn's model messages, so each tool-loop
@@ -228,9 +217,9 @@ module Samagotchi
         prompt, images = Prompt.format_with_images(conversation, profile: @profile, vision: @vision, prefill: prefill)
         image_tokens = images.empty? ? 0 : ImagePlan.estimated_tokens(conversation)
         context_window = ContextWindow.resolve(client: @client, model: resolved_model_name)
-        context_status = emit_context_status_event(on_stream_event, prompt, iteration_index: iteration_index, state: context_state, window: context_window,
-                                                                            image_tokens: image_tokens) || context_status
-        if (line = context_state.delete(:guidance))
+        emit_context_status_event(on_stream_event, context, prompt, iteration_index: iteration_index, window: context_window,
+                                                                    image_tokens: image_tokens)
+        if (line = context.take_guidance)
           # The model's own copy, on the tail (the prompt cache keeps its
           # prefix), then the prompt again with it.
           conversation << line
@@ -246,8 +235,8 @@ module Samagotchi
           profile_source: @profile_source
         )
         served_model = nil
-        # This generation's own server counts (the run-long
-        # context_state[:server_usage] can hold an earlier one's).
+        # This generation's own server counts (the run-long ones in
+        # `context` can be an earlier one's).
         generation_usage = nil
         # The thinking this generation streamed, for the log (a stuck
         # thinking generation shows as thinking_chars=N content_length=…).
@@ -266,7 +255,7 @@ module Samagotchi
             cancel_controller: cancel_controller,
             model_name: resolved_model_name,
             on_chunk: lambda { |chunk|
-              generation_usage = capture_server_usage(chunk[:payload], context_state) || generation_usage
+              generation_usage = context.capture(chunk[:payload]) || generation_usage
               # llama.cpp names the loaded model in the stream's last payload.
               named = chunk[:payload]["model"] if chunk[:payload].is_a?(Hash)
               served_model = named if named.is_a?(String) && !named.strip.empty?
@@ -337,10 +326,7 @@ module Samagotchi
           emit_stream_event(on_stream_event, type: :generation_cancelled, iteration: iteration_index + 1, reason: :hook)
           return cancelled_result(conversation, tool_activity: tool_activity, reason: :hook, partial_assistant_text: "")
         end
-        # What the server's prompt count covers, so the next estimate adds
-        # only what the turn appended since (answer, tool results).
-        context_state[:counted] = { chars: prompt.length, image_tokens: image_tokens } if generation_usage
-        refresh_context_display(context_state, generation_usage, context_window)
+        context.generation_done(generation_usage, prompt_chars: prompt.length, image_tokens: image_tokens, window: context_window)
         emit_stream_event(
           on_stream_event,
           type: :generation_completed,
@@ -465,7 +451,7 @@ module Samagotchi
         tool_activity: tool_activity,
         canceled: false,
         cancellation_reason: nil,
-        context_status: context_state[:display] || context_status
+        context_status: context.display
       )
     rescue StandardError => e
       LLM::FailedTurn.attach(e, conversation && duplicate_conversation(conversation))
@@ -667,227 +653,16 @@ module Samagotchi
       Log.debug(:model, event, payload: payload, model: @current_model_name, **fields)
     end
 
-    # Estimate context usage for this iteration's prompt and, when the emit
-    # gate fires, surface it to stream consumers as a :context_status event.
-    # A rise into a bucket that asks the model for a change also leaves a
-    # short line for it (state[:guidance], see context_guidance_message):
-    # not the telemetry, which the model no longer receives (it used to be injected as a
-    # synthetic system message); the returned {est_pct:, bucket:} hash feeds
-    # the Result's context_status for UI status lines (nil when not emitted).
-    def emit_context_status_event(on_stream_event, prompt, iteration_index:, state:, window: nil, image_tokens: 0)
-      return nil unless context_status_enabled?
+    # Estimate context usage for this iteration's prompt (ContextStatus#observe)
+    # and, when the emit gate fires, surface it to stream consumers as a
+    # :context_status event. The telemetry is not for the model (it used to
+    # be injected as a synthetic system message).
+    def emit_context_status_event(on_stream_event, context, prompt, iteration_index:, window:, image_tokens: 0)
+      event = context.observe(prompt, iteration_index: iteration_index, window: window, image_tokens: image_tokens)
+      return unless event
 
-      usage = estimate_context_usage(prompt, server_usage: state[:server_usage], window: window, image_tokens: image_tokens,
-                                             counted: state[:counted])
-      bucket = context_status_bucket(usage[:estimated_pct])
-      # The status line's value, every iteration; the gate below decides
-      # only the event and the model's guidance line.
-      state[:display] = { est_pct: usage[:estimated_pct], bucket: bucket }
-      emit_status = should_emit_context_status?(state: state, bucket: bucket, iteration_index: iteration_index)
-      previous_bucket = state[:last_bucket]
-      state[:last_bucket] = bucket
-      return nil unless emit_status
-
-      state[:guidance] = context_guidance_message(usage: usage, bucket: bucket) if guidance_due?(previous_bucket, bucket)
-
-      status_message = context_status_message(usage: usage, bucket: bucket, source: usage[:source])
-      emit_stream_event(
-        on_stream_event,
-        type: :context_status,
-        iteration: iteration_index + 1,
-        status: status_message,
-        usage: usage,
-        bucket: bucket,
-        source: usage[:source]
-      )
-      dump_log("context_status", status_message, iteration: iteration_index + 1, bucket: bucket)
-      { est_pct: usage[:estimated_pct], bucket: bucket }
-    end
-
-    # @return [Hash, nil] the payload's normalized counts, when it has any
-    def capture_server_usage(payload, state)
-      normalized = ContextUsage.normalize(payload)
-      state[:server_usage] = normalized if normalized
-      normalized
-    end
-
-    # After a generation: the status line's value from what the server
-    # reported for it (prompt + answer), so a turn's value counts its last
-    # answer. Without counts the pre-generation estimate stays.
-    def refresh_context_display(state, usage, window)
-      return unless usage
-
-      display = context_display(used_tokens: usage[:total_tokens],
-                                window_tokens: usage[:context_window_tokens] || window&.tokens)
-      state[:display] = display if display
-    end
-
-    def initial_context_status_state(conversation)
-      { last_bucket: extract_last_context_status_bucket(conversation) }
-    end
-
-    # The bucket of the last status line the conversation holds: the model's
-    # own line, or a legacy session's injected telemetry.
-    def extract_last_context_status_bucket(conversation)
-      message = conversation.reverse.find do |entry|
-        content = entry[:content].to_s
-        entry[:role] == "system" && (content.start_with?(CONTEXT_STATUS_PREFIX) || content.start_with?(CONTEXT_LINE_PREFIX))
-      end
-      return nil unless message
-
-      match = message[:content].match(/\bbucket=([a-z0-9_]+)/)
-      match && match[1]
-    end
-
-    def context_status_enabled?
-      Samagotchi::Config.get("context.status") != false
-    end
-
-    # `window` is this iteration's ContextWindow::Resolved (resolved here when
-    # not given). A window the stream payload reports itself still wins.
-    # +image_tokens+: the images' estimate (their base64 is not in +prompt+).
-    # +counted+: the prompt the server's prompt_tokens counted ({chars:,
-    # image_tokens:}); what +prompt+ has on top of it (the answer, tool
-    # results since) is added as an estimate, so the value doesn't read low
-    # during a long tool loop. A prompt shorter than that one (trimmed) or
-    # none known: the server's count alone.
-    def estimate_context_usage(prompt, server_usage: nil, window: nil, image_tokens: 0, counted: nil)
-      window ||= ContextWindow.resolve(client: @client, model: @current_model_name)
-      window_source = window.source
-      if server_usage && server_usage[:context_window_tokens]
-        window_source = :server
-      end
-
-      if server_usage && server_usage[:prompt_tokens]
-        window_tokens = server_usage[:context_window_tokens] || window.tokens
-        estimated_used_tokens = server_usage[:prompt_tokens] + appended_tokens(prompt, image_tokens, counted)
-        estimated_remaining_tokens = [window_tokens - estimated_used_tokens, 0].max
-        estimated_pct = (estimated_used_tokens.to_f / window_tokens) * 100.0
-
-        return {
-          window_tokens: window_tokens,
-          window_source: window_source,
-          estimated_used_tokens: estimated_used_tokens,
-          estimated_remaining_tokens: estimated_remaining_tokens,
-          estimated_pct: estimated_pct,
-          source: "server"
-        }
-      end
-
-      window_tokens = window.tokens
-      estimated_used_tokens = (prompt.length / context_chars_per_token).ceil + image_tokens
-      estimated_remaining_tokens = [window_tokens - estimated_used_tokens, 0].max
-      estimated_pct = (estimated_used_tokens.to_f / window_tokens) * 100.0
-
-      {
-        window_tokens: window_tokens,
-        window_source: window_source,
-        estimated_used_tokens: estimated_used_tokens,
-        estimated_remaining_tokens: estimated_remaining_tokens,
-        estimated_pct: estimated_pct,
-        source: "estimate"
-      }
-    end
-
-    # The estimate for what +prompt+ added since the +counted+ one.
-    def appended_tokens(prompt, image_tokens, counted)
-      return 0 unless counted
-
-      chars = prompt.length - counted[:chars]
-      return 0 unless chars.positive?
-
-      (chars / context_chars_per_token).ceil + [image_tokens - counted[:image_tokens].to_i, 0].max
-    end
-
-    def context_chars_per_token
-      value = Samagotchi::Config.get("context.chars_per_token").to_f
-      value.positive? ? value : DEFAULT_CONTEXT_CHARS_PER_TOKEN
-    end
-
-    def context_status_thresholds
-      raw = Samagotchi::Config.get("context.status_thresholds").to_s
-      parsed = raw.split(",").map { |value| value.strip.to_i }.select { |value| value.between?(1, 99) }.uniq.sort
-      parsed.empty? ? DEFAULT_CONTEXT_THRESHOLDS : parsed
-    end
-
-    def context_status_cadence
-      [Samagotchi::Config.get("context.status_cadence").to_i, 0].max
-    end
-
-    # 0 for the bucket under the first threshold, then one per threshold.
-    def bucket_rank(bucket)
-      return 0 if bucket.nil? || bucket.to_s.start_with?("under")
-
-      (context_status_thresholds.index(bucket.to_s.delete_suffix("plus").to_i) || -1) + 1
-    end
-
-    # A rise (never a fall or a cadence tick) into a bucket whose guidance
-    # asks for a change. With no previous bucket (a first turn, a resumed
-    # session with no line yet), the first bucket counts as a rise from 0.
-    def guidance_due?(previous, bucket)
-      rank = bucket_rank(bucket)
-      rank >= CONTEXT_GUIDANCE_FROM_RANK && rank > bucket_rank(previous)
-    end
-
-    def context_guidance_message(usage:, bucket:)
-      how = usage[:source].to_s == "server" ? "as the server reports" : "estimated"
-      { role: "system", kind: CONTEXT_LINE_KIND,
-        content: "#{CONTEXT_LINE_PREFIX}about #{usage[:estimated_pct].to_f.round}% of the context window is in use " \
-                 "(#{how}; bucket=#{bucket}). #{context_status_guidance(bucket)}]" }
-    end
-
-    def context_status_bucket(estimated_pct)
-      thresholds = context_status_thresholds
-      bucket = "under#{thresholds.first}"
-      thresholds.each do |threshold|
-        bucket = "#{threshold}plus" if estimated_pct >= threshold
-      end
-      bucket
-    end
-
-    def should_emit_context_status?(state:, bucket:, iteration_index:)
-      last_bucket = state[:last_bucket]
-      below_threshold_bucket = "under#{context_status_thresholds.first}"
-      bucket_changed = if last_bucket.nil?
-                         bucket != below_threshold_bucket
-                       else
-                         bucket != last_bucket
-                       end
-
-      cadence = context_status_cadence
-      cadence_due = cadence.positive? && ((iteration_index + 1) % cadence).zero?
-      bucket_changed || cadence_due
-    end
-
-    def context_status_message(usage:, bucket:, source:)
-      format(
-        "%<prefix>s window_tokens=%<window>d window_src=%<window_src>s est_used_tokens=%<used>d est_remaining_tokens=%<remaining>d est_pct=%<pct>.1f bucket=%<bucket>s thresholds=%<thresholds>s src=%<src>s guidance=%<guidance>s",
-        prefix: CONTEXT_STATUS_PREFIX,
-        window: usage[:window_tokens],
-        window_src: usage[:window_source] || "default",
-        used: usage[:estimated_used_tokens],
-        remaining: usage[:estimated_remaining_tokens],
-        pct: usage[:estimated_pct],
-        bucket: bucket,
-        thresholds: context_status_thresholds.join(","),
-        src: source,
-        guidance: context_status_guidance(bucket)
-      )
-    end
-
-    def context_status_guidance(bucket)
-      case bucket
-      when "under20", "20plus"
-        "context healthy — proceed normally"
-      when "40plus"
-        "context moderate — prefer targeted and range reads over full-file dumps"
-      when "60plus"
-        "context elevated — be concise, prefer range reads, avoid re-reading large files"
-      when "80plus"
-        "context critical — summarize aggressively, avoid large outputs, delegate broad work to subagents"
-      else
-        "context healthy — proceed normally"
-      end
+      emit_stream_event(on_stream_event, type: :context_status, iteration: iteration_index + 1, **event)
+      dump_log("context_status", event[:status], iteration: iteration_index + 1, bucket: event[:bucket])
     end
 
     public
@@ -904,11 +679,7 @@ module Samagotchi
     # of +window_tokens+; nil without both, or with context.status off. The
     # chat loop builds its value with it too.
     def context_display(used_tokens:, window_tokens:)
-      return nil unless context_status_enabled?
-      return nil unless ContextWindow.positive_integer?(used_tokens) && ContextWindow.positive_integer?(window_tokens)
-
-      pct = (used_tokens.to_f / window_tokens) * 100.0
-      { est_pct: pct, bucket: context_status_bucket(pct) }
+      ContextStatus.new.display_for(used_tokens: used_tokens, window_tokens: window_tokens)
     end
 
     # Per-profile parse strategy. Rebuilt when the active profile changes

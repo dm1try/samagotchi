@@ -30,6 +30,13 @@ RSpec.describe Samagotchi::KernelLoop do
     original_env.each { |key, value| ENV[key] = value }
   end
 
+  # Each run's ContextStatus estimates +values+ in turn (the last repeats).
+  def stub_context_estimate(*values)
+    allow(Samagotchi::ContextStatus).to receive(:new).and_wrap_original do |original, *args, **kwargs|
+      original.call(*args, **kwargs).tap { |tracker| allow(tracker).to receive(:estimate).and_return(*values) }
+    end
+  end
+
   describe "#run" do
     it "returns the model response when no tool calls are present" do
       allow(client).to receive(:complete).and_return("Hello!")
@@ -231,7 +238,7 @@ RSpec.describe Samagotchi::KernelLoop do
         prompts << prompt
         "ok"
       end
-      allow(kernel).to receive(:estimate_context_usage).and_return(
+      stub_context_estimate(
         window_tokens: 256_000,
         estimated_used_tokens: 90_000,
         estimated_remaining_tokens: 166_000,
@@ -264,7 +271,7 @@ RSpec.describe Samagotchi::KernelLoop do
         prompts << prompt
         responses.shift
       end
-      allow(kernel).to receive(:estimate_context_usage).and_return(
+      stub_context_estimate(
         {
           window_tokens: 256_000,
           estimated_used_tokens: 30_000,
@@ -301,7 +308,7 @@ RSpec.describe Samagotchi::KernelLoop do
           prompts << prompt
           "ok"
         end
-        allow(kernel).to receive(:estimate_context_usage).and_return(under_twenty)
+        stub_context_estimate(under_twenty)
 
         result = kernel.run([{ role: "user", content: "hello" }], on_stream_event: ->(e) { events << e })
 
@@ -312,7 +319,7 @@ RSpec.describe Samagotchi::KernelLoop do
 
       it "is there on a turn that stays in the bucket of the last one" do
         allow(client).to receive(:complete).and_return("ok")
-        allow(kernel).to receive(:estimate_context_usage).and_return(under_twenty.merge(estimated_pct: 35.0))
+        stub_context_estimate(under_twenty.merge(estimated_pct: 35.0))
         first = kernel.run([{ role: "user", content: "hello" }])
         conversation = first.conversation + [{ role: "user", content: "again" }]
 
@@ -328,7 +335,7 @@ RSpec.describe Samagotchi::KernelLoop do
           kwargs[:on_chunk].call(content: "", payload: { "stop" => true, "tokens_evaluated" => 1_000, "tokens_predicted" => 200 })
           "ok"
         end
-        allow(kernel).to receive(:estimate_context_usage).and_return(under_twenty)
+        stub_context_estimate(under_twenty)
 
         result = kernel.run([{ role: "user", content: "hello" }])
 
@@ -347,7 +354,7 @@ RSpec.describe Samagotchi::KernelLoop do
             "done"
           end
         end
-        allow(kernel).to receive(:estimate_context_usage).and_return(under_twenty, under_twenty.merge(estimated_pct: 7.5))
+        stub_context_estimate(under_twenty, under_twenty.merge(estimated_pct: 7.5))
 
         result = kernel.run([{ role: "user", content: "check" }])
 
@@ -361,7 +368,7 @@ RSpec.describe Samagotchi::KernelLoop do
           kwargs[:on_chunk].call(content: "ok", payload: { "content" => "ok" })
           "ok"
         end
-        allow(kernel).to receive(:estimate_context_usage).and_return(under_twenty)
+        stub_context_estimate(under_twenty)
 
         result = kernel.run([{ role: "user", content: "hello" }])
 
@@ -374,7 +381,7 @@ RSpec.describe Samagotchi::KernelLoop do
           kwargs[:on_chunk].call(content: "", payload: { "tokens_evaluated" => 1_000, "tokens_predicted" => 200 })
           "ok"
         end
-        allow(kernel).to receive(:estimate_context_usage).and_return(under_twenty)
+        stub_context_estimate(under_twenty)
 
         expect(kernel.run([{ role: "user", content: "hello" }]).context_status).to be_nil
       end
@@ -387,7 +394,7 @@ RSpec.describe Samagotchi::KernelLoop do
         prompts << prompt
         responses.shift
       end
-      allow(kernel).to receive(:estimate_context_usage).and_return(
+      stub_context_estimate(
         { window_tokens: 256_000, estimated_used_tokens: 30_000, estimated_remaining_tokens: 226_000, estimated_pct: 11.7 },
         { window_tokens: 256_000, estimated_used_tokens: 140_000, estimated_remaining_tokens: 116_000, estimated_pct: 54.6 }
       )
@@ -408,7 +415,7 @@ RSpec.describe Samagotchi::KernelLoop do
     it "leaves no line on a fall, nor again for the bucket a resumed session's line already names" do
       responses = [%(<|tool_call>call:execute{command: "echo hi"}<tool_call|>), "done"]
       allow(client).to receive(:complete) { responses.shift }
-      allow(kernel).to receive(:estimate_context_usage).and_return(
+      stub_context_estimate(
         { window_tokens: 256_000, estimated_used_tokens: 160_000, estimated_remaining_tokens: 96_000, estimated_pct: 62.0 },
         { window_tokens: 256_000, estimated_used_tokens: 120_000, estimated_remaining_tokens: 136_000, estimated_pct: 45.0 }
       )
@@ -418,7 +425,7 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(lines.map { |m| m[:content] }).to contain_exactly(a_string_including("bucket=60plus"))
 
       responses = ["done again"]
-      allow(kernel).to receive(:estimate_context_usage).and_return(
+      stub_context_estimate(
         { window_tokens: 256_000, estimated_used_tokens: 160_000, estimated_remaining_tokens: 96_000, estimated_pct: 62.0 }
       )
       again = kernel.run(result.conversation + [{ role: "user", content: "more" }])
@@ -428,7 +435,7 @@ RSpec.describe Samagotchi::KernelLoop do
     it "leaves no line with the context status off" do
       ENV["SAMAGOTCHI_CONTEXT_STATUS"] = "false"
       allow(client).to receive(:complete).and_return("done")
-      allow(kernel).to receive(:estimate_context_usage).and_return(
+      stub_context_estimate(
         { window_tokens: 256_000, estimated_used_tokens: 160_000, estimated_remaining_tokens: 96_000, estimated_pct: 62.0 }
       )
 
@@ -534,7 +541,7 @@ RSpec.describe Samagotchi::KernelLoop do
         kwargs[:on_chunk]&.call(content: "ok", payload: {})
         "ok"
       end
-      allow(kernel).to receive(:estimate_context_usage).and_return(
+      stub_context_estimate(
         window_tokens: 256_000,
         estimated_used_tokens: 90_000,
         estimated_remaining_tokens: 166_000,
@@ -636,10 +643,10 @@ RSpec.describe Samagotchi::KernelLoop do
     end
 
     it "emits bucket-aware actionable guidance" do
-      expect(kernel.send(:context_status_guidance, "20plus")).to include("proceed normally")
-      expect(kernel.send(:context_status_guidance, "40plus")).to include("prefer targeted")
-      expect(kernel.send(:context_status_guidance, "60plus")).to include("concise")
-      expect(kernel.send(:context_status_guidance, "80plus")).to include("summarize")
+      expect(Samagotchi::ContextStatus.guidance("20plus")).to include("proceed normally")
+      expect(Samagotchi::ContextStatus.guidance("40plus")).to include("prefer targeted")
+      expect(Samagotchi::ContextStatus.guidance("60plus")).to include("concise")
+      expect(Samagotchi::ContextStatus.guidance("80plus")).to include("summarize")
     end
 
     it "dispatches a canonical read call with the correct path" do
