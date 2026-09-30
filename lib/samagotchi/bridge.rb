@@ -298,54 +298,28 @@ module Samagotchi
 
         method = request[:method].to_s.upcase
         headers = request[:headers]
+        route = route_for(method, request[:path])
         # Every request but a stream gets its answer before #stop kills this
         # thread; a stream never ends on its own.
-        Thread.current[:bridge_answering] = !(stream_match(request[:path]) && method == "GET")
+        Thread.current[:bridge_answering] = route&.first != :stream
 
         if request[:too_large]
           write_json(io, 413, { "Connection" => "close" }, { error: "too_large", detail: "request body over #{MAX_BODY_BYTES} bytes" })
           break
         elsif browser_request?(headers)
           write_json(io, 403, nil, { error: "cross_origin", detail: "the bridge answers chi's own clients only" })
-        elsif (m = stream_match(request[:path])) && method == "GET"
-          cursor = reconnect_cursor(headers, request[:query])
-          Log.debug(:bridge, "stream", method: method, path: request[:path], client_id: stream_client_id(request[:query]))
-          serve_sse(io, m[1], last_event_id: cursor, snapshot: snapshot_requested?(request[:query]),
-                              client_id: stream_client_id(request[:query]))
-          break # SSE owns the connection until the client disconnects.
-        elsif (m = cancel_match(request[:path])) && method == "POST"
-          payload, status, body = handle_cancel(m[1], request[:body])
-          write_json(io, status, payload, body)
-        elsif (m = answer_match(request[:path])) && method == "POST"
-          payload, status, body = handle_answer(m[1], request[:body])
-          write_json(io, status, payload, body)
-        elsif (m = dismiss_match(request[:path])) && method == "POST"
-          payload, status, body = handle_dismiss_question(m[1], request[:body])
-          write_json(io, status, payload, body)
-        elsif (m = turn_match(request[:path])) && method == "POST"
-          payload, status, body = handle_post_turn(m[1], request[:body])
-          write_json(io, status, payload, body)
-        elsif (m = command_match(request[:path])) && method == "POST"
-          payload, status, body = handle_command(m[1], request[:body])
-          write_json(io, status, payload, body)
-        elsif (m = exit_match(request[:path])) && method == "POST"
-          payload, status, body = handle_exit_request(m[1], request[:body])
-          write_json(io, status, payload, body)
-        elsif (m = recap_match(request[:path])) && method == "POST"
-          payload, status, body = handle_recap(m[1])
-          write_json(io, status, payload, body)
-        elsif (m = state_match(request[:path])) && method == "GET"
-          payload, status, body = handle_state(m[1])
-          write_json(io, status, payload, body)
-        elsif (m = stats_match(request[:path])) && method == "GET"
-          payload, status, body = handle_stats(m[1])
-          write_json(io, status, payload, body)
-        elsif (m = snapshot_match(request[:path])) && method == "GET"
-          payload, status, body = handle_snapshot(m[1])
-          write_json(io, status, payload, body)
-        else
+        elsif route.nil?
           write_json(io, 404, { "Allow" => "GET, POST" },
                      { error: "not_found", path: request[:path] })
+        elsif route.first == :stream
+          cursor = reconnect_cursor(headers, request[:query])
+          Log.debug(:bridge, "stream", method: method, path: request[:path], client_id: stream_client_id(request[:query]))
+          serve_sse(io, route.last, last_event_id: cursor, snapshot: snapshot_requested?(request[:query]),
+                                    client_id: stream_client_id(request[:query]))
+          break # SSE owns the connection until the client disconnects.
+        else
+          payload, status, body = send(route.first, route.last, request[:body])
+          write_json(io, status, payload, body)
         end
 
         Thread.current[:bridge_answering] = false
@@ -428,54 +402,36 @@ module Samagotchi
       !host.empty? && !LOOPBACK_NAMES.include?(host.downcase.sub(/:\d*\z/, ""))
     end
 
-    def stream_match(path)
-      %r|\A/session/([^/]+)/stream\z|u.match(path.to_s)
-    end
+    # The routes, by method and what follows /session/:id/: a handler takes
+    # the session id and the request body and returns [headers, status, body].
+    # GET stream is served apart (#serve_sse owns the connection).
+    ROUTES = {
+      %w[GET stream] => :stream,
+      %w[POST cancel] => :handle_cancel,
+      %w[POST answer] => :handle_answer,
+      %w[POST question/dismiss] => :handle_dismiss_question,
+      %w[POST turn] => :handle_post_turn,
+      %w[POST command] => :handle_command,
+      %w[POST exit] => :handle_exit_request,
+      %w[POST recap] => :handle_recap,
+      %w[GET state] => :handle_state,
+      %w[GET stats] => :handle_stats,
+      %w[GET snapshot] => :handle_snapshot
+    }.freeze
+    ROUTE_PATH = %r|\A/session/([^/]+)/(.+)\z|u
 
-    def turn_match(path)
-      %r|\A/session/([^/]+)/turn\z|u.match(path.to_s)
-    end
-
-    def state_match(path)
-      %r|\A/session/([^/]+)/state\z|u.match(path.to_s)
-    end
-
-    def stats_match(path)
-      %r|\A/session/([^/]+)/stats\z|u.match(path.to_s)
-    end
-
-    def snapshot_match(path)
-      %r|\A/session/([^/]+)/snapshot\z|u.match(path.to_s)
-    end
-
-    def cancel_match(path)
-      %r|\A/session/([^/]+)/cancel\z|u.match(path.to_s)
-    end
-
-    def answer_match(path)
-      %r|\A/session/([^/]+)/answer\z|u.match(path.to_s)
-    end
-
-    def dismiss_match(path)
-      %r|\A/session/([^/]+)/question/dismiss\z|u.match(path.to_s)
-    end
-
-    def command_match(path)
-      %r|\A/session/([^/]+)/command\z|u.match(path.to_s)
-    end
-
-    def exit_match(path)
-      %r|\A/session/([^/]+)/exit\z|u.match(path.to_s)
-    end
-
-    def recap_match(path)
-      %r|\A/session/([^/]+)/recap\z|u.match(path.to_s)
+    # @return [Array(Symbol, String), nil] the handler and the session id, or
+    #   nil when no route takes this method and path
+    def route_for(method, path)
+      m = ROUTE_PATH.match(path.to_s) or return nil
+      handler = ROUTES[[method, m[2]]] or return nil
+      [handler, m[1]]
     end
 
     # /recap in an attached TUI: the saved recap, and a new one asked for at
     # once (it arrives as :recap_ready). Answers mid-turn too.
     # 200 {enabled:, saved:, request:, min_user_turns:}. Returns [headers, status, body].
-    def handle_recap(session_id)
+    def handle_recap(session_id, _body = nil)
       return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
 
       recap = @engine.recap
@@ -726,7 +682,7 @@ module Samagotchi
 
     # Read-only snapshot surface. AC #4: too-old reconnects re-derive state
     # from here.
-    def handle_state(session_id)
+    def handle_state(session_id, _body = nil)
       unless own_session?(session_id)
         return [{}, 404, { error: "unknown_session" }]
       end
@@ -738,7 +694,7 @@ module Samagotchi
     # /stats for an attached client: the metrics, with the window and prompt
     # profile asked from the server when no turn has reported them yet (so,
     # unlike /state, it may wait on one short /props GET).
-    def handle_stats(session_id)
+    def handle_stats(session_id, _body = nil)
       return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
 
       [{}, 200, { session_id: @session_id, metrics: @engine.stats_snapshot }]
@@ -748,7 +704,7 @@ module Samagotchi
     # the messages elsewhere (the web server strips and formats them): it then
     # streams from the snapshot's event_seq, and the ring replays what came
     # after (or the stream resets). Returns [headers, status, body].
-    def handle_snapshot(session_id)
+    def handle_snapshot(session_id, _body = nil)
       return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
 
       body = @engine.synchronize_events do
