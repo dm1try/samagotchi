@@ -9,13 +9,6 @@ struct LaunchConfig: Decodable {
   let env: [String: String]?
 }
 
-struct ChiResult {
-  let status: Int32
-  let stdout: String
-  let stderr: String
-  let timedOut: Bool
-}
-
 enum ChiError: Error, CustomStringConvertible {
   case noLaunchFile(String)
   case missing(String)
@@ -106,9 +99,8 @@ final class ChiRunner {
     return config
   }
 
-  /// Runs `chi <args>`, with stdin written from a background queue and
-  /// stdout/stderr drained as they come (no pipe deadlock near the 16 KiB
-  /// note cap). Calls back on the main queue.
+  /// Runs `chi <args>` through ProcessRunner (no pipe deadlock near the
+  /// 16 KiB note cap). Calls back on the main queue.
   /// @param timeout this call's limit instead of the runner's
   func run(_ args: [String], stdin: Data? = nil, timeout: TimeInterval? = nil,
            completion: @escaping (Result<ChiResult, ChiError>) -> Void) {
@@ -119,59 +111,9 @@ final class ChiRunner {
       completion(.failure(.failed("\(error)"))); return
     }
 
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: config.argv[0])
-    process.arguments = Array(config.argv.dropFirst()) + args
-    process.environment = ProcessInfo.processInfo.environment.merging(config.env ?? [:]) { _, baked in baked }
-    process.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
-    let out = Pipe(), err = Pipe(), input = Pipe()
-    process.standardOutput = out
-    process.standardError = err
-    process.standardInput = stdin == nil ? FileHandle.nullDevice : input
-
-    let lock = NSLock()
-    var outData = Data(), errData = Data()
-    out.fileHandleForReading.readabilityHandler = { handle in
-      let chunk = handle.availableData
-      lock.lock(); outData.append(chunk); lock.unlock()
-    }
-    err.fileHandleForReading.readabilityHandler = { handle in
-      let chunk = handle.availableData
-      lock.lock(); errData.append(chunk); lock.unlock()
-    }
-
-    var timedOut = false
-    process.terminationHandler = { proc in
-      out.fileHandleForReading.readabilityHandler = nil
-      err.fileHandleForReading.readabilityHandler = nil
-      let restOut = out.fileHandleForReading.readDataToEndOfFile()
-      let restErr = err.fileHandleForReading.readDataToEndOfFile()
-      lock.lock()
-      outData.append(restOut); errData.append(restErr)
-      let result = ChiResult(status: proc.terminationStatus,
-                             stdout: String(decoding: outData, as: UTF8.self),
-                             stderr: String(decoding: errData, as: UTF8.self),
-                             timedOut: timedOut)
-      lock.unlock()
-      DispatchQueue.main.async { completion(.success(result)) }
-    }
-
-    do { try process.run() } catch {
-      completion(.failure(.failed("Could not start \(config.argv[0]): \(error.localizedDescription)")))
-      return
-    }
-    if let stdin {
-      DispatchQueue.global().async {
-        try? input.fileHandleForWriting.write(contentsOf: stdin)
-        try? input.fileHandleForWriting.close()
-      }
-    }
-    DispatchQueue.global().asyncAfter(deadline: .now() + (timeout ?? self.timeout)) {
-      if process.isRunning {
-        lock.lock(); timedOut = true; lock.unlock()
-        process.terminate()
-      }
-    }
+    ProcessRunner.run(executable: config.argv[0], args: Array(config.argv.dropFirst()) + args,
+                      env: ProcessInfo.processInfo.environment.merging(config.env ?? [:]) { _, baked in baked },
+                      stdin: stdin, timeout: timeout ?? self.timeout, completion: completion)
   }
 
   /// The live sessions, then up to +recentCount+ stopped ones, newest
