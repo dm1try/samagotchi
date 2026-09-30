@@ -81,11 +81,15 @@ module Samagotchi
       #   (built from the config on first use)
       # @param models_wait_timeout [Float] bounded seconds GET /api/models
       #   waits for the hosts' lists
+      # @param lan [Hash, nil] LAN mode (web.host: lan): { ip:, token: },
+      #   the address the server also listens on and its access token (a
+      #   String, or a Web::Token::Source that follows the file); nil:
+      #   loopback only, no token
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
                      bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, view: "turn", hub: nil,
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
-                     registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT)
+                     registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil)
         @manager = manager || SessionManager
         @registry = registry
         @models_wait_timeout = models_wait_timeout
@@ -102,6 +106,9 @@ module Samagotchi
         @events_heartbeat = events_heartbeat
         @events_queue = events_queue
         @server_running = -> { true }
+        @lan = lan
+        @refused_mutex = Mutex.new
+        @refused_logged = {}
       end
 
       def call(env)
@@ -117,6 +124,10 @@ module Samagotchi
         req = Rack::Request.new(env)
         return forbidden unless local_host_header?(env)
         return cross_origin if cross_site?(env)
+        if @lan && !LOOPBACK_PEERS.include?(env["REMOTE_ADDR"].to_s)
+          denied = token_gate(req)
+          return denied if denied
+        end
 
         case [req.request_method, req.path_info]
         when ["GET", "/"], ["GET", "/index.html"]
@@ -202,17 +213,111 @@ module Samagotchi
       LOOPBACK_NAMES = %w[127.0.0.1 [::1] localhost].freeze
       LOOPBACK_PEERS = %w[127.0.0.1 ::1 ::ffff:127.0.0.1].freeze
 
-      # Only 127.0.0.1 / [::1] / localhost (any port) are answered. The socket
-      # is bound to loopback, but a Host check stops DNS-rebinding pages. It
-      # reads the raw Host header: Rack's req.host trusts X-Forwarded-Host,
-      # which such a page could set. A request with no Host (HTTP/1.0) is
-      # answered only for a loopback peer.
+      # Only 127.0.0.1 / [::1] / localhost (any port), and in LAN mode the
+      # LAN address, are answered. The socket is bound to those, but a Host
+      # check stops DNS-rebinding pages. It reads the raw Host header:
+      # Rack's req.host trusts X-Forwarded-Host, which such a page could
+      # set. A request with no Host (HTTP/1.0) is answered only for a
+      # loopback peer.
       def local_host_header?(env)
         host = env["HTTP_HOST"].to_s
         return LOOPBACK_PEERS.include?(env["REMOTE_ADDR"].to_s) if host.empty?
 
-        LOOPBACK_NAMES.include?(host.downcase.sub(/:\d*\z/, ""))
+        name = host.downcase.sub(/:\d*\z/, "")
+        LOOPBACK_NAMES.include?(name) || (!@lan.nil? && name == @lan[:ip])
       end
+
+      TOKEN_COOKIE = "chi_token"
+      # 400 days, the longest a browser keeps a cookie (Chrome's cap). No
+      # Secure: the LAN page is plain http. Lax, not Strict: a token link
+      # opened from another site (a web messenger) makes its 303 chain
+      # cross-site, and a Strict cookie wouldn't ride on the redirected GET;
+      # the cross-site check already refuses what Strict would add.
+      TOKEN_COOKIE_ATTRIBUTES = "HttpOnly; SameSite=Lax; Path=/; Max-Age=34560000"
+      REFUSED_LOG_INTERVAL = 60.0
+
+      # LAN mode, a peer that isn't this machine (the peer is the socket's
+      # address, REMOTE_ADDR: never X-Forwarded-For or req.ip, which trust
+      # headers a phone could send): every route needs the access token, as
+      # the chi_token cookie or an Authorization: Bearer header. The page
+      # with ?token= trades it for the cookie and a 303 to itself without
+      # it, so the token doesn't stay in the phone's history.
+      # @return [Array, nil] the response that refuses it, or nil to go on
+      def token_gate(req)
+        token = current_token
+        if req.get? && ["/", "/index.html"].include?(req.path_info) && req.params.key?("token")
+          return token_redirect(req, token) if token_match?(req.params["token"], token)
+        else
+          auth = req.get_header("HTTP_AUTHORIZATION").to_s[/\ABearer +(\S+)\z/, 1]
+          return nil if token_match?(auth, token) || token_match?(req.cookies[TOKEN_COOKIE], token)
+        end
+
+        unauthorized(req)
+      end
+
+      def current_token
+        token = @lan[:token]
+        token.respond_to?(:current) ? token.current : token
+      end
+
+      def token_match?(given, token)
+        return false if given.nil? || given.empty? || token.nil? || token.empty?
+
+        Rack::Utils.secure_compare(given, token)
+      end
+
+      # The same page (and its other parameters, as they were written), the
+      # token traded for the cookie.
+      def token_redirect(req, token)
+        query = req.query_string.split("&").reject { |pair| pair.split("=", 2).first == "token" }.join("&")
+        location = query.empty? ? req.path_info : "#{req.path_info}?#{query}"
+        [303, { "Location" => location, "Set-Cookie" => "#{TOKEN_COOKIE}=#{token}; #{TOKEN_COOKIE_ATTRIBUTES}",
+                "Cache-Control" => "no-store", "Content-Length" => "0" }, []]
+      end
+
+      def unauthorized(req)
+        log_refused(req.get_header("REMOTE_ADDR").to_s, req.path_info)
+        return error_response(401, "unauthorized", "chi web on the LAN needs its access token") if req.path_info.start_with?("/api/")
+
+        body = UNAUTHORIZED_PAGE
+        [401, { "Content-Type" => "text/html; charset=utf-8", "Content-Length" => body.bytesize.to_s, "Cache-Control" => "no-store" },
+         [body]]
+      end
+
+      # At most once a minute per peer: a phone with an old link retries.
+      def log_refused(peer, path)
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        due = @refused_mutex.synchronize do
+          @refused_logged.delete_if { |_, at| now - at >= REFUSED_LOG_INTERVAL } if @refused_logged.size > 64
+          last = @refused_logged[peer]
+          (last.nil? || now - last >= REFUSED_LOG_INTERVAL).tap { |fresh| @refused_logged[peer] = now if fresh }
+        end
+        Log.warn(:web, "unauthorized", peer: peer, path: path) if due
+      end
+
+      # What a phone sees without the token. The field is for a home-screen
+      # web app: it has its own cookies, and the QR code opens the browser.
+      UNAUTHORIZED_PAGE = <<~HTML
+        <!doctype html>
+        <html lang="en"><head><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>chi web: access token needed</title>
+        <style>
+          :root { color-scheme: light dark; }
+          body { font: 16px/1.5 -apple-system, system-ui, sans-serif; max-width: 30rem; margin: 3rem auto; padding: 0 1rem; }
+          input { font: inherit; width: 100%; box-sizing: border-box; padding: .5rem; margin: .5rem 0; }
+          button { font: inherit; padding: .4rem 1rem; }
+        </style></head>
+        <body>
+        <h1>chi web</h1>
+        <p>This page needs chi web's access token. Open the LAN link chi web printed in its terminal, or scan its QR code.</p>
+        <form method="get" action="/">
+          <label for="token">Or paste the token:</label>
+          <input id="token" name="token" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button type="submit">Open</button>
+        </form>
+        </body></html>
+      HTML
 
       # Another website's page in the desktop browser can send "simple"
       # requests here (a text/plain POST needs no preflight) and would start
@@ -237,7 +342,8 @@ module Samagotchi
       end
 
       def forbidden
-        error_response(403, "forbidden", "only the host names 127.0.0.1, [::1] and localhost are answered")
+        names = @lan ? "127.0.0.1, [::1], localhost and #{@lan[:ip]}" : "127.0.0.1, [::1] and localhost"
+        error_response(403, "forbidden", "only the host names #{names} are answered")
       end
 
       # The page's scope: ?dir=<folder> lists that folder's project (every
@@ -324,7 +430,7 @@ module Samagotchi
       # is chi web, and it knows ?dir (features).
       def handle_info
         json_response(200, { app: "chi-web", version: Samagotchi::VERSION, pid: Process.pid, cwd: Dir.pwd,
-                             features: ["dir"] })
+                             features: ["dir"], lan: @lan && @lan[:ip] })
       end
 
       # The models a new session can start on, spelled as chi spells them
