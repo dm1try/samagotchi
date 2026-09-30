@@ -69,7 +69,6 @@ module Samagotchi
     # chunk it says how long the first token has taken.
     THINKING_TICK_INTERVAL = 0.25
     THINKING_WAIT_NOTICE_AFTER = 2.0
-    STATUS_LINE_OFF = "off"
     STATUS_WIDTH_MODE_TERMINAL_CAP = "terminal_cap"
     STATUS_WIDTH_MODE_FIXED = "fixed"
     STATUS_MAX_WIDTH_DEFAULT = 160

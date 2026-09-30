@@ -4,6 +4,7 @@ require "set"
 require_relative "event_renderer"
 require_relative "formatting"
 require_relative "attached_view"
+require_relative "status_row"
 require_relative "input_support"
 require_relative "image_input"
 require_relative "line_reader"
@@ -56,7 +57,8 @@ module Samagotchi
 
       # @return [String, nil] the model the worker's turns run on, as the
       #   last command said
-      attr_reader :model_name
+      # @return [String, nil] the worker's model
+      def model_name = @status[:model]
 
       # @return [QuestionPrompt, nil] the question waiting for an answer
       attr_reader :question
@@ -107,17 +109,8 @@ module Samagotchi
         @sent_ids = Set.new
         # A continue offer is pending: the prompt asks for the answer.
         @continue_offer = nil
-        @model_name = nil
-        # The idle status line's data (the REPL's segments).
-        @memory_names = []
-        # The session's --memory list (shown with the used memories until the
-        # first turn records them) and its --mute list, from the join.
-        @preloaded_names = []
-        @muted_names = []
-        # The session that delegated this one, shown as ↳ <short id>.
-        @parent_id = nil
-        @context_estimate = nil
-        @status_rows = nil
+        # The status row: the worker's model, ctx, the session's memories.
+        @status = StatusRow.new(screen)
       end
 
       def running? = @running
@@ -181,11 +174,9 @@ module Samagotchi
           end_turn
         when :prompt_restored then restore_prompt(event)
         when :context_status
-          @context_estimate = { est_pct: event.dig(:usage, :estimated_pct), bucket: event[:bucket] }
-          refresh_status
+          @status.update(context: { est_pct: event.dig(:usage, :estimated_pct), bucket: event[:bucket] })
         when :used_memories_updated
-          @memory_names = Array(event[:used_memory_names])
-          refresh_status
+          @status.update(used_memories: Array(event[:used_memory_names]))
         # Another client's anytime command: its line now, before the cards
         # it shows (its command_ran comes when it's done).
         when :command_queued
@@ -428,9 +419,8 @@ module Samagotchi
         return unless event[:model_name]
 
         # After the output, so the status row changes with the line saying why.
-        @served_model = nil if @model_name != event[:model_name]
-        @model_name = event[:model_name]
-        refresh_status
+        served = @status[:model] == event[:model_name] ? @status[:served] : nil
+        @status.update(model: event[:model_name], default_model: default_model_name, served: served)
       end
 
       # Our command the worker couldn't run yet goes back into the prompt, for
@@ -955,8 +945,7 @@ module Samagotchi
         end
         @renderer.call(event)
         # The turn's summary carries its last context estimate.
-        @context_estimate = @view.context_status if @view.context_status
-        refresh_status
+        @status.update(context: @view.context_status) if @view.context_status
         @running = false
         @joined_mid_turn = false
         close_question("(the turn ended)") if @question
@@ -973,43 +962,22 @@ module Samagotchi
       # The joining snapshot's session state: the worker's model and the
       # memories the session used.
       def take_session_state(state)
-        @model_name = state[:model_name] if state[:model_name]
-        @served_model = nil
-        take_served_model(state[:served_model], state[:served_model_for], refresh: false)
-        @memory_names = Array(state[:used_memory_names]) if state.key?(:used_memory_names)
-        @preloaded_names = Array(state[:preloaded_memory_names]) if state.key?(:preloaded_memory_names)
-        @muted_names = Array(state[:muted_memory_names]) if state.key?(:muted_memory_names)
-        @parent_id = state[:parent_id] if state.key?(:parent_id)
+        fields = { served: nil }
+        fields.merge!(model: state[:model_name], default_model: default_model_name) if state[:model_name]
+        fields[:served] = [state[:served_model], state[:served_model_for]] if state[:served_model]
+        fields[:used_memories] = Array(state[:used_memory_names]) if state.key?(:used_memory_names)
+        fields[:preloaded] = Array(state[:preloaded_memory_names]) if state.key?(:preloaded_memory_names)
+        fields[:muted] = Array(state[:muted_memory_names]) if state.key?(:muted_memory_names)
+        fields[:parent_id] = state[:parent_id] if state.key?(:parent_id)
         # The last turn's ctx, so it shows before this client's first turn.
-        @context_estimate = state[:context_status] if state[:context_status].is_a?(Hash)
-        refresh_status
+        fields[:context] = state[:context_status] if state[:context_status].is_a?(Hash)
+        @status.update(**fields)
       end
 
-      # The REPL's idle status line (model · ctx · memories) in the status
-      # row, redrawn when its text changes.
-      def refresh_status
-        return unless status_line_enabled?
-
-        served, served_for = @served_model
-        segments = [@model_name ? status_model_text(@model_name, default_model_name, served: served, served_for: served_for) : "",
-                    @parent_id ? "↳ #{@parent_id.to_s[0, 8]}" : "",
-                    status_context_text(estimate: @context_estimate),
-                    status_memory_text(@memory_names | @preloaded_names, MEMORY_STICKY_PREVIEW_LIMIT),
-                    status_memory_text(@muted_names, MEMORY_STICKY_PREVIEW_LIMIT, label: "muted")].reject(&:empty?)
-        rows = status_rows(segments, @screen.columns - 1)
-        return if rows == @status_rows
-
-        @status_rows = rows
-        rows.empty? ? @screen.clear_slot(:status) : @screen.set_slot(:status, rows)
-      end
-
-      # What the worker's server said it served for a name (a generation, or
-      # the join's session state); dropped when /model switches.
-      def take_served_model(served, served_for, refresh: true)
-        return unless served
-
-        @served_model = [served, served_for]
-        refresh_status if refresh
+      # What the worker's server said it served for a name (a generation);
+      # dropped when /model switches.
+      def take_served_model(served, served_for)
+        @status.update(served: [served, served_for]) if served
       end
 
       # The config's default model, as the worker's /model names it.

@@ -202,6 +202,8 @@ module Samagotchi
       # ── The status line (the REPL's, and attached mode's idle one) ────────
 
       # status.line: off hides it.
+      STATUS_LINE_OFF = "off"
+
       def status_line_enabled?
         value = Samagotchi::Config.get("status.line").to_s.strip.downcase
         !(value.empty? || value == STATUS_LINE_OFF || value == "0" || value == "false")
