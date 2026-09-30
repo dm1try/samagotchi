@@ -13,7 +13,7 @@ RSpec.describe "Engine picks the loop from the host's api" do
     })
   end
 
-  def engine(model) = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: model)
+  def engine(model) = Samagotchi::Engine.new(host_registry: registry, model_name: model)
 
   it "uses NativeBackend for a host without api" do
     expect(engine("box:gemma-small").backend).to be_a(Samagotchi::LLM::NativeBackend)
@@ -46,7 +46,7 @@ RSpec.describe "Engine picks the loop from the host's api" do
       "alpha" => { host: "alpha.test", port: 1111, api: :openai },
       "beta" => { host: "beta.test", port: 2222, api: :openai }
     })
-    e = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "alpha:gemma-small")
+    e = Samagotchi::Engine.new(host_registry: registry, model_name: "alpha:gemma-small")
     expect(e.backend.adapter.base_url).to eq("http://alpha.test:1111/v1")
 
     e.switch_model!("beta:Qwen3-14B")

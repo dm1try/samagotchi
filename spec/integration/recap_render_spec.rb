@@ -25,7 +25,6 @@ RSpec.describe "idle session-recap integration", :integration do
 
     let(:engine) do
       Samagotchi::Engine.new(
-        mode: :assist,
         recap: {
           base_url: base_url,
           model: model,

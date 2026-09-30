@@ -37,7 +37,7 @@ RSpec.describe "SessionMetrics end-to-end (real KernelLoop flow)" do
   end
 
   it "captures server-reported tokens through a full run_turn" do
-    engine = Samagotchi::Engine.new(mode: :assist, client: AnalyticsChunkClient.new, model_name: "gemma4")
+    engine = Samagotchi::Engine.new(client: AnalyticsChunkClient.new, model_name: "gemma4")
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd)
 
     engine.run_turn(session, "hi")
@@ -51,7 +51,7 @@ RSpec.describe "SessionMetrics end-to-end (real KernelLoop flow)" do
   end
 
   it "persists the analytics summary next to the session file" do
-    engine = Samagotchi::Engine.new(mode: :assist, client: AnalyticsChunkClient.new, model_name: "gemma4")
+    engine = Samagotchi::Engine.new(client: AnalyticsChunkClient.new, model_name: "gemma4")
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd)
 
     engine.run_turn(session, "hi")
@@ -70,9 +70,9 @@ RSpec.describe "SessionMetrics end-to-end (real KernelLoop flow)" do
   # line's ctx comes from the saved context.
   it "gives a new engine's status line the saved context before its first turn" do
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd)
-    Samagotchi::Engine.new(mode: :assist, client: AnalyticsChunkClient.new, model_name: "gemma4").run_turn(session, "hi")
+    Samagotchi::Engine.new(client: AnalyticsChunkClient.new, model_name: "gemma4").run_turn(session, "hi")
 
-    woken = Samagotchi::Engine.new(mode: :assist, client: AnalyticsChunkClient.new, model_name: "gemma4")
+    woken = Samagotchi::Engine.new(client: AnalyticsChunkClient.new, model_name: "gemma4")
     expect(woken.session_state_snapshot[:context_status]).to be_nil
     woken.session = session
 
@@ -83,7 +83,7 @@ RSpec.describe "SessionMetrics end-to-end (real KernelLoop flow)" do
   end
 
   it "persists into the engine's session state dir, not the default one" do
-    engine = Samagotchi::Engine.new(mode: :assist, client: AnalyticsChunkClient.new, model_name: "gemma4")
+    engine = Samagotchi::Engine.new(client: AnalyticsChunkClient.new, model_name: "gemma4")
     engine.session_state_dir = state_dir = File.join(@xdg, "elsewhere")
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd)
 

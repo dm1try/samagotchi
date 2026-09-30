@@ -54,7 +54,7 @@ RSpec.describe "memory_read with muted memories" do
 
   it "Engine hands its kernel the muted list" do
     allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return([])
-    engine = Samagotchi::Engine.new(mode: :assist, client: client, profile: "gemma4", kernel: kernel,
+    engine = Samagotchi::Engine.new(client: client, profile: "gemma4", kernel: kernel,
                                     muted_memories: ["project/gh-helper.md"])
     expect(engine.muted_memory_names).to eq(["gh-helper"])
     expect(kernel.muted_memory_names).to eq(["gh-helper"])
@@ -62,7 +62,7 @@ RSpec.describe "memory_read with muted memories" do
 
   it "Engine does not count a refused read as a used memory" do
     allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return([])
-    engine = Samagotchi::Engine.new(mode: :assist, client: client, profile: "gemma4", kernel: kernel,
+    engine = Samagotchi::Engine.new(client: client, profile: "gemma4", kernel: kernel,
                                     muted_memories: ["gh-helper"])
     event = { type: :tool_call_started, call: { name: "memory_read", content: "gh-helper, cli_usage" } }
     engine.send(:capture_used_memory_from_event, event)
@@ -71,7 +71,7 @@ RSpec.describe "memory_read with muted memories" do
 
   it "Engine follows every memory read with used_memories_updated (the names read, not muted ones)" do
     allow(Samagotchi::ConfigFile).to receive(:preloaded_memories).and_return([])
-    engine = Samagotchi::Engine.new(mode: :assist, client: client, profile: "gemma4", kernel: kernel,
+    engine = Samagotchi::Engine.new(client: client, profile: "gemma4", kernel: kernel,
                                     muted_memories: ["gh-helper"])
     seen = []
     sink = ->(e) { seen << e }

@@ -8,7 +8,7 @@ require_relative "support/recording_surface"
 RSpec.describe Samagotchi::TerminalUI, "steering" do
   let(:client) { instance_double(Samagotchi::Client) }
   let(:surface) { RecordingSurface.new }
-  let(:agent) { described_class.new(mode: :assist, client: client, surface: surface) }
+  let(:agent) { described_class.new(client: client, surface: surface) }
   let(:engine) { agent.instance_variable_get(:@engine) }
   let(:session) { instance_double(Samagotchi::Session, id: "s1", messages: []) }
   # A session something happened in: the REPL keeps it at exit.

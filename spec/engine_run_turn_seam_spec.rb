@@ -16,7 +16,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
   let(:client) { instance_double(Samagotchi::Client) }
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }
-  let(:engine) { described_class.new(mode: :assist, client: client, kernel: kernel, profile: "gemma4") }
+  let(:engine) { described_class.new(client: client, kernel: kernel, profile: "gemma4") }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:activity) { { action: "running command", tool: "execute", params: 'command="ls"', status: "ok" } }
 
@@ -194,7 +194,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
   end
 
   it "invalidates an in-flight recap when a turn starts, for every UI", :recap do
-    engine = described_class.new(mode: :assist, client: client, kernel: kernel, profile: "gemma4",
+    engine = described_class.new(client: client, kernel: kernel, profile: "gemma4",
                                  recap: { base_url: "http://127.0.0.1:1", model: "m" })
     allow(engine.recap).to receive(:invalidate!).and_call_original
     allow(kernel).to receive(:run) do
@@ -429,7 +429,7 @@ end
     end
 
     it "requires a current session" do
-      expect { described_class.new(mode: :assist, client: client, kernel: kernel).append_messages([]) }
+      expect { described_class.new(client: client, kernel: kernel).append_messages([]) }
         .to raise_error(ArgumentError, /no current session/)
     end
   end

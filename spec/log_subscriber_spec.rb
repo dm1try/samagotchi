@@ -182,7 +182,7 @@ RSpec.describe Samagotchi::LogSubscriber do
         Samagotchi::KernelLoop::Result.new(output: "done", conversation: [{ role: "model", content: "done" }], exhausted: false,
                                            pending_tool_calls: false, tool_activity: [], canceled: false)
       )
-      engine = Samagotchi::Engine.new(mode: :assist, client: client, kernel: kernel, profile: "gemma4")
+      engine = Samagotchi::Engine.new(client: client, kernel: kernel, profile: "gemma4")
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd)
 
       engine.run_turn(session, "hi")

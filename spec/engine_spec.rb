@@ -22,7 +22,7 @@ RSpec.describe Samagotchi::Engine do
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }
 
   def build_engine(**overrides)
-    described_class.new(mode: :assist, client: client, kernel: kernel, **overrides)
+    described_class.new(client: client, kernel: kernel, **overrides)
   end
 
   def make_session

@@ -62,7 +62,7 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
   it "registers bundle hooks into @hooks (Provenance.bundles_dir_override isolation)" do
     src = write_bundle("test-hooks", { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); e[:hit]=true; end; end" }, trust_level: "reviewed")
     Samagotchi::MemoryBundle::Installer.new(source: src, name: "test-hooks", scope: "system", force: false, strict: true).run
-    engine = described_class.new(mode: :assist, client: client)
+    engine = described_class.new(client: client)
     hooks = engine.instance_variable_get(:@hooks)
     expect(hooks.size).to be >= 1
     e = {}
@@ -78,21 +78,21 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
     File.write(bad_path, "raise \"boom during load\"")
     engine = nil
     expect {
-      engine = described_class.new(mode: :assist, client: client)
+      engine = described_class.new(client: client)
     }.to output(/broken-hooks.*not loaded: its sha256/).to_stderr
     expect(engine.guardrail_failures.list.map(&:what)).to eq(["hook bad.rb (bundle broken-hooks)"])
   end
 
   it "empty bundles dir is a no-op" do
     FileUtils.rm_rf(bundles_dir)
-    expect { described_class.new(mode: :assist, client: client) }.not_to raise_error
+    expect { described_class.new(client: client) }.not_to raise_error
   end
 
   it "prints experimental warning for experimental bundle and stays quiet for reviewed" do
     src_exp = write_bundle("exp-bundle", { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }) # no trust_level => experimental
     Samagotchi::MemoryBundle::Installer.new(source: src_exp, name: "exp-bundle", scope: "system", force: false, strict: true).run
     expect {
-      described_class.new(mode: :assist, client: client)
+      described_class.new(client: client)
     }.to output(/exp-bundle.*experimental/).to_stderr
 
     # Clean and test reviewed is quiet
@@ -100,7 +100,7 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
     src_rev = write_bundle("rev-bundle", { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, trust_level: "reviewed")
     Samagotchi::MemoryBundle::Installer.new(source: src_rev, name: "rev-bundle", scope: "system", force: false, strict: true).run
     expect {
-      described_class.new(mode: :assist, client: client)
+      described_class.new(client: client)
     }.not_to output(/experimental/).to_stderr
   end
 
@@ -108,7 +108,7 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
     src = write_bundle("turn2-bundle", { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); raise \"x\" if e[:tool_name]==\"bad\"; end; end" }, trust_level: "reviewed")
     Samagotchi::MemoryBundle::Installer.new(source: src, name: "turn2-bundle", scope: "system", force: false, strict: true).run
 
-    engine = described_class.new(mode: :assist, client: client)
+    engine = described_class.new(client: client)
     # Stub the kernel that Engine created internally
     k = engine.instance_variable_get(:@kernel)
     allow(k).to receive(:run) do |_messages, **kwargs|
@@ -138,7 +138,7 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
     prov = Samagotchi::MemoryBundle::Provenance.new(name: "trust-e2e")
     expect(prov.read[:trust_level]).to eq("experimental")
     expect {
-      described_class.new(mode: :assist, client: client)
+      described_class.new(client: client)
     }.to output(/trust-e2e.*experimental/).to_stderr
   end
 end

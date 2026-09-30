@@ -35,7 +35,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
   end
 
   def build_engine(session: nil)
-    engine = Samagotchi::Engine.new(mode: :assist, client: client, kernel: kernel)
+    engine = Samagotchi::Engine.new(client: client, kernel: kernel)
     engine.session = session if session
     engine
   end
@@ -460,7 +460,7 @@ RSpec.describe "Engine ↔ KernelLoop question link" do
   # ask_user_question into the Engine's blocking request_question.
   it "the kernel's ask_user_question reaches Engine#request_question" do
     kernel = Samagotchi::KernelLoop.new(client: double("client"))
-    engine = Samagotchi::Engine.new(mode: :assist, client: double("client"), kernel: kernel)
+    engine = Samagotchi::Engine.new(client: double("client"), kernel: kernel)
     allow(engine).to receive(:request_question).and_return('{"selected":["Cats"]}')
 
     result = kernel.dispatch_tool_call(name: "ask_user_question", question: "Pets?", options: %w[Cats Dogs])
@@ -472,7 +472,7 @@ RSpec.describe "Engine ↔ KernelLoop question link" do
   # The kernel validates; a bad call never opens a question.
   it "answers a bad call with the plain-text validation error, without asking" do
     kernel = Samagotchi::KernelLoop.new(client: double("client"))
-    engine = Samagotchi::Engine.new(mode: :assist, client: double("client"), kernel: kernel)
+    engine = Samagotchi::Engine.new(client: double("client"), kernel: kernel)
     allow(engine.instance_variable_get(:@question_desk)).to receive(:open_question)
 
     nine = (1..9).map { |n| "Option #{n}" }

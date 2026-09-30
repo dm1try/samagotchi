@@ -23,7 +23,7 @@ RSpec.describe "Cards" do
 
   let(:client) { instance_double(Samagotchi::Client) }
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }
-  let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client, kernel: kernel) }
+  let(:engine) { Samagotchi::Engine.new(client: client, kernel: kernel) }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:seen) { [] }
 

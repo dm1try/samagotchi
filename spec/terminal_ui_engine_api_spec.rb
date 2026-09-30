@@ -30,10 +30,10 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
 
   describe "guardrail interface" do
     it "is :repl for the REPL and -p without --non-interactive, :non_interactive with it" do
-      expect(engine_of(Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry)).interface).to eq(:repl)
-      expect(engine_of(Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry, prompt: "hi")).interface)
+      expect(engine_of(Samagotchi::TerminalUI.new(host_registry: registry)).interface).to eq(:repl)
+      expect(engine_of(Samagotchi::TerminalUI.new(host_registry: registry, prompt: "hi")).interface)
         .to eq(:repl)
-      ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry, prompt: "hi", non_interactive: true)
+      ui = Samagotchi::TerminalUI.new(host_registry: registry, prompt: "hi", non_interactive: true)
       expect(engine_of(ui).interface).to eq(:non_interactive)
     end
   end
@@ -42,19 +42,19 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
     before { ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "nosuch:org/model" }
 
     it "starts on a valid --model without a word about the default" do
-      ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry, model_name: "beta:Qwen3-14B")
+      ui = Samagotchi::TerminalUI.new(host_registry: registry, model_name: "beta:Qwen3-14B")
 
       expect(engine_of(ui).effective_model_name).to eq("beta:Qwen3-14B")
       expect(kernel_of(ui).client).to be(beta_client)
     end
 
     it "refuses to start on it without --model" do
-      expect { Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry) }
+      expect { Samagotchi::TerminalUI.new(host_registry: registry) }
         .to raise_error(Samagotchi::ModelProfile::UnknownHost, /unknown host 'nosuch' in model 'nosuch:org\/model'/)
     end
 
     it "lets an Engine (a worker's) start on its session's model" do
-      engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "beta:Qwen3-14B")
+      engine = Samagotchi::Engine.new(host_registry: registry, model_name: "beta:Qwen3-14B")
 
       expect(engine.effective_model_name).to eq("beta:Qwen3-14B")
     end
@@ -62,7 +62,7 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
 
   describe "runtime /model across hosts" do
     it "moves the Engine, kernel client and profile to the new host's model" do
-      ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry)
+      ui = Samagotchi::TerminalUI.new(host_registry: registry)
       expect(kernel_of(ui).client).to be(alpha_client)
 
       expect { ui.send(:run_input_line, nil, "/model beta:Qwen3-14B") }
@@ -79,7 +79,7 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
     end
 
     it "persists the default exactly once with --default" do
-      ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry)
+      ui = Samagotchi::TerminalUI.new(host_registry: registry)
       expect(Samagotchi::ConfigFile).to receive(:write_default_model!).with("beta:Qwen3-14B").once
 
       expect { ui.send(:run_input_line, nil, "/model beta:Qwen3-14B --default") }.to output.to_stdout
@@ -89,7 +89,7 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
     end
 
     it "starts on the --model host without changing the default" do
-      ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry, model_name: "beta:Qwen3-14B")
+      ui = Samagotchi::TerminalUI.new(host_registry: registry, model_name: "beta:Qwen3-14B")
 
       expect(kernel_of(ui).client).to be(beta_client)
       expect(engine_of(ui).effective_model_name).to eq("beta:Qwen3-14B")
@@ -99,7 +99,7 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
 
   describe "due-reminder queue" do
     it "is filled by the IdleReminders callback and read through Engine" do
-      ui = Samagotchi::TerminalUI.new(mode: :assist, host_registry: registry)
+      ui = Samagotchi::TerminalUI.new(host_registry: registry)
       engine = engine_of(ui)
       engine.instance_variable_get(:@auto_turn_callback).call(%w[health])
 

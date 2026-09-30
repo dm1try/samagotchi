@@ -21,7 +21,7 @@ RSpec.describe "Engine saved recap", :recap do
   end
 
   def engine_for(session)
-    engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m",
+    engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m",
                                     recap: { host_ref: "box", model: "box:small" })
     engine.session_state_dir = state_dir
     engine.session = session
@@ -54,7 +54,7 @@ RSpec.describe "Engine saved recap", :recap do
   it "is nil with no saved recap, or with recap off" do
     session = session_with([msg("user", "hi")])
     expect(engine_for(session).saved_recap).to be_nil
-    off = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m")
+    off = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m")
     off.session = session
     expect(off.saved_recap).to be_nil
   end

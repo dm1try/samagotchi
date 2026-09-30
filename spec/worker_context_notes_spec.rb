@@ -39,7 +39,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
   let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
   let(:notes_dir) { File.join(session_dir, Samagotchi::SessionManager::NOTES_DIR) }
   let!(:engine) do
-    Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client),
+    Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
                            kernel: instance_double(Samagotchi::KernelLoop))
   end
   let(:turns) { Queue.new }

@@ -201,7 +201,7 @@ RSpec.describe Samagotchi::Bridge do
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }
 
   def make_engine
-    Samagotchi::Engine.new(mode: :assist, client: client, kernel: kernel)
+    Samagotchi::Engine.new(client: client, kernel: kernel)
   end
 
   def make_session

@@ -25,7 +25,7 @@ RSpec.describe "TUI hooks forwarding regression" do
       external_kernel = Samagotchi::KernelLoop.new(client: client)
       expect(external_kernel.hooks).to be_nil
 
-      engine = Samagotchi::Engine.new(mode: :assist, client: client, kernel: external_kernel)
+      engine = Samagotchi::Engine.new(client: client, kernel: external_kernel)
 
       engine_hooks = engine.instance_variable_get(:@hooks)
       expect(engine_hooks).to be_a(Samagotchi::Hooks::Registry)
@@ -35,7 +35,7 @@ RSpec.describe "TUI hooks forwarding regression" do
 
     it "shares the same registry instance so Engine#register_hook is visible to KernelLoop" do
       external_kernel = Samagotchi::KernelLoop.new(client: client)
-      engine = Samagotchi::Engine.new(mode: :assist, client: client, kernel: external_kernel)
+      engine = Samagotchi::Engine.new(client: client, kernel: external_kernel)
 
       fired = []
       engine.register_hook(:before_generation) { |ev| fired << ev[:type] }
@@ -49,14 +49,14 @@ RSpec.describe "TUI hooks forwarding regression" do
   describe "TerminalUI (TUI) integration path" do
     it "its Engine uses the chat backend when the model's host speaks api: openai" do
       registry = Samagotchi::HostRegistry.new(hosts_config: { "oai" => { host: "oai.test", port: 8000, api: :openai } })
-      tui = Samagotchi::TerminalUI.new(mode: :assist, client: client, host_registry: registry, model_name: "oai:m")
+      tui = Samagotchi::TerminalUI.new(client: client, host_registry: registry, model_name: "oai:m")
 
       expect(tui.instance_variable_get(:@engine).backend).to be_a(Samagotchi::LLM::ChatLoop)
     end
 
     it "TerminalUI's Engine and KernelLoop share the same hooks registry" do
       allow(client).to receive(:complete).and_return("hello")
-      tui = Samagotchi::TerminalUI.new(mode: :assist, client: client)
+      tui = Samagotchi::TerminalUI.new(client: client)
 
       engine = tui.instance_variable_get(:@engine)
       kernel = tui.instance_variable_get(:@kernel)
@@ -70,7 +70,7 @@ RSpec.describe "TUI hooks forwarding regression" do
       # Stub a single generation with no tool calls so KernelLoop.run completes in 1 iteration
       allow(client).to receive(:complete).and_return("hi from model")
 
-      tui = Samagotchi::TerminalUI.new(mode: :assist, client: client)
+      tui = Samagotchi::TerminalUI.new(client: client)
       engine = tui.instance_variable_get(:@engine)
       kernel = tui.instance_variable_get(:@kernel)
 

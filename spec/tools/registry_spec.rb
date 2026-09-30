@@ -87,7 +87,7 @@ RSpec.describe Samagotchi::Tools::Registry do
 
   it "an Engine gives a kernel built before it (the REPL's) its own registry" do
     kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
-    engine = Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client), kernel: kernel,
+    engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client), kernel: kernel,
                                     profile: :gemma4)
     expect(kernel.tools).not_to be(Samagotchi::Tools::Builtins.default)
     expect(kernel.tools.schemas).to eq(Samagotchi::ToolDeclarations::TOOL_SCHEMAS)

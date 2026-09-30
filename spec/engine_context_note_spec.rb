@@ -14,7 +14,7 @@ RSpec.describe Samagotchi::Engine, "context notes" do
 
   let(:client) { instance_double(Samagotchi::Client) }
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }
-  let(:engine) { described_class.new(mode: :assist, client: client, kernel: kernel, profile: "gemma4") }
+  let(:engine) { described_class.new(client: client, kernel: kernel, profile: "gemma4") }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:note) do
     { note_id: "20260924140200000000000-abc123", text: "deploy frozen", source: "slack",

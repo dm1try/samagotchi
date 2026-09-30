@@ -27,7 +27,7 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
   end
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }
   let(:engine) do
-    described_class.new(mode: :assist, host_registry: registry, kernel: kernel, profile: "qwen36",
+    described_class.new(host_registry: registry, kernel: kernel, profile: "qwen36",
                         model_name: "box:qwen-small").tap { |e| e.session_state_dir = @state_dir }
   end
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "box:qwen-small", working_directory: Dir.pwd) }

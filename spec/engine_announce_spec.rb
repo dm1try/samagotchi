@@ -15,7 +15,7 @@ RSpec.describe Samagotchi::Engine, "#announce" do
   end
 
   let(:engine) do
-    described_class.new(mode: :assist, client: instance_double(Samagotchi::Client),
+    described_class.new(client: instance_double(Samagotchi::Client),
                         kernel: instance_double(Samagotchi::KernelLoop), profile: "gemma4")
   end
 

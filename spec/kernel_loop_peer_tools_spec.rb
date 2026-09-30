@@ -51,7 +51,7 @@ RSpec.describe "list_sessions and send_note in the loops" do
   end
 
   it "Engine tells its kernel which session it runs and where sessions live" do
-    engine = Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client), profile: "gemma4")
+    engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client), profile: "gemma4")
     engine.guardrail_state_dir = tmpdir
     engine.session = me
 
@@ -61,7 +61,7 @@ RSpec.describe "list_sessions and send_note in the loops" do
   end
 
   it "the Engine's peers see the running turn's cancel, so a waiting tool can return" do
-    engine = Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client), profile: "gemma4")
+    engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client), profile: "gemma4")
     peers = engine.instance_variable_get(:@kernel).peers
     expect(peers.cancelled?).to be(false)
 

@@ -15,7 +15,7 @@ require "samagotchi/bridge"
 RSpec.describe Samagotchi::Bridge, "routing" do
   let(:state_dir) { Dir.mktmpdir("bridge-routing") }
   let(:engine) do
-    Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client),
+    Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
                            kernel: instance_double(Samagotchi::KernelLoop))
   end
   let(:handlers) do

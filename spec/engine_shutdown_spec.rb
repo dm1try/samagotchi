@@ -13,7 +13,7 @@ RSpec.describe "Engine#shutdown" do
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = previous
   end
 
-  let(:engine) { Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client), plugins: false) }
+  let(:engine) { Samagotchi::Engine.new(client: instance_double(Samagotchi::Client), plugins: false) }
   let(:log) { Queue.new }
 
   def add_service(name)

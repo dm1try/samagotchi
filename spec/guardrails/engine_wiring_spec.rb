@@ -6,7 +6,7 @@ require "tmpdir"
 require "fileutils"
 
 RSpec.describe "Engine guardrail wiring" do
-  let(:engine) { Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client)) }
+  let(:engine) { Samagotchi::Engine.new(client: instance_double(Samagotchi::Client)) }
 
   it "defaults the interface to non_interactive and validates it" do
     expect(engine.interface).to eq(:non_interactive)
@@ -191,7 +191,7 @@ RSpec.describe "Engine guardrail rules reload" do
 
   it "applies config.yml rules edited after the engine started, and drops a load failure once fixed" do
     write_config(deny_rule("a"))
-    engine = Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client))
+    engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client))
     expect(verdict(engine, "a")).to be_deny
 
     write_config(deny_rule("b"), bump: 5)

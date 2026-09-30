@@ -15,7 +15,7 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }
 
   def build_engine(**overrides)
-    Samagotchi::Engine.new(mode: :assist, client: client, kernel: kernel, **overrides)
+    Samagotchi::Engine.new(client: client, kernel: kernel, **overrides)
   end
 
   def make_session

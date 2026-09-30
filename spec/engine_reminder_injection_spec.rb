@@ -3,7 +3,7 @@ require "samagotchi/engine"
 require "samagotchi/session"
 RSpec.describe Samagotchi::Engine do
   describe "#collect_due_reminders" do
-    let(:engine) { described_class.new(mode: :assist, profile: :gemma4) }
+    let(:engine) { described_class.new(profile: :gemma4) }
     let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd) }
     before do
       engine.start_idle

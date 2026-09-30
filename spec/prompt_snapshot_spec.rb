@@ -25,7 +25,7 @@ RSpec.describe "Prompt snapshots" do
   end
 
   def engine(profile)
-    Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client),
+    Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
                            kernel: instance_double(Samagotchi::KernelLoop), profile: profile)
   end
 

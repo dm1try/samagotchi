@@ -33,11 +33,11 @@ RSpec.describe Samagotchi::Engine, "bundle settings" do
     installed("known-names")
     expect(Samagotchi::Hooks::BundleLoader).to receive(:load)
       .with(hash_including(bundle_name: "known-names", settings: { "names" => ["x"], "mode" => "ask" })).and_return(1)
-    described_class.new(mode: :assist, client: client)
+    described_class.new(client: client)
 
     installed("other")
     expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(bundle_name: "other", settings: {})).and_return(1)
-    described_class.new(mode: :assist, client: client)
+    described_class.new(client: client)
   end
 
   it "ignores a bundles: section that is not a mapping, with one warning" do
@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::Engine, "bundle settings" do
     expect(Samagotchi::Log).to receive(:warn).with(:hooks, "bundles_section_invalid", anything).once
     allow(Samagotchi::Log).to receive(:warn).and_call_original
     expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(settings: {})).and_return(1)
-    described_class.new(mode: :assist, client: client)
+    described_class.new(client: client)
   end
 
   it "loads the next bundle's hooks when one bundle's manifest.json doesn't parse, and reports the broken one" do
@@ -59,7 +59,7 @@ RSpec.describe Samagotchi::Engine, "bundle settings" do
                  JSON.generate(hooks: { "k.rb" => { event: "before_tool_call" } }, trust_level: "reviewed"))
       stub_config({})
       expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(bundle_name: "b-valid")).and_return(1)
-      engine = described_class.new(mode: :assist, client: client)
+      engine = described_class.new(client: client)
       expect(engine.guardrail_failures.message).to include("hooks (bundle a-broken) failed to load (manifest.json is unreadable")
       expect(engine.guardrail_failures.required).to be_empty
     ensure

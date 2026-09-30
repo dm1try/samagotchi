@@ -44,28 +44,28 @@ RSpec.describe "Engine: a scratch session" do
   end
 
   it "refuses memory_write with a short tool result and saves nothing" do
-    engine = Samagotchi::Engine.new(mode: :assist, client: client, scratch: true)
+    engine = Samagotchi::Engine.new(client: client, scratch: true)
     output = run_call(engine, name: "memory_write", path: "scratch-spec-entry", scope: "system", content: "remember me")
     expect(output).to eq("[memory_write]\nError: scratch session: nothing is saved")
     expect(File.exist?(entry)).to be(false)
   end
 
   it "refuses a write into the memories folder, not one elsewhere" do
-    engine = Samagotchi::Engine.new(mode: :assist, client: client, scratch: true)
+    engine = Samagotchi::Engine.new(client: client, scratch: true)
     expect(run_call(engine, name: "write", path: entry, content: "sneaky")).to include("scratch session: nothing is saved")
     expect(File.exist?(entry)).to be(false)
   end
 
   it "writes memories as usual when not scratch" do
-    engine = Samagotchi::Engine.new(mode: :assist, client: client)
+    engine = Samagotchi::Engine.new(client: client)
     run_call(engine, name: "memory_write", path: "scratch-spec-entry", scope: "system", content: "remember me")
     expect(File.read(entry)).to include("remember me")
   end
 
   it "offers no delegate tools (a child would outlive it); memory_write is still declared" do
-    names = Samagotchi::Engine.new(mode: :assist, client: client, scratch: true).instance_variable_get(:@tools).names
+    names = Samagotchi::Engine.new(client: client, scratch: true).instance_variable_get(:@tools).names
     expect(names).not_to include("delegate", "delegate_result")
     expect(names).to include("memory_write", "memory_read")
-    expect(Samagotchi::Engine.new(mode: :assist, client: client).instance_variable_get(:@tools).names).to include("delegate")
+    expect(Samagotchi::Engine.new(client: client).instance_variable_get(:@tools).names).to include("delegate")
   end
 end

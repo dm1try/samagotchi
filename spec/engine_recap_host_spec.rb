@@ -15,7 +15,7 @@ RSpec.describe "Engine recap on a configured host", :recap do
   end
 
   def recap_for(host)
-    Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m",
+    Samagotchi::Engine.new(host_registry: registry, model_name: "box:m",
                            recap: { host_ref: host, model: "#{host}:small" }).recap.target
   end
 
@@ -24,9 +24,9 @@ RSpec.describe "Engine recap on a configured host", :recap do
   end
 
   it "says in the session state whether recap is on, and when it would run (for an attached /recap)" do
-    engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m",
+    engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m",
                                     recap: { host_ref: "box", model: "box:small" })
-    off = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m", recap: false)
+    off = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m", recap: false)
 
     expect(engine.session_state_snapshot).to include(recap_enabled: true, recap_min_user_turns: engine.recap.min_user_turns,
                                                      recap_inactivity_seconds: engine.recap.inactivity.to_i)
@@ -34,7 +34,7 @@ RSpec.describe "Engine recap on a configured host", :recap do
   end
 
   it "uses an explicit recap host and model for every attempt" do
-    engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m",
+    engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m",
                                     recap: { host_ref: "fw", model: "fw:small" })
     expect(engine.recap.target).to eq(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY",
                                       model: "small", label: "fw:small")
@@ -42,14 +42,14 @@ RSpec.describe "Engine recap on a configured host", :recap do
 
   describe "with no recap config" do
     it "recaps with the session's own model on its host" do
-      engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "fw:big")
+      engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big")
       expect(engine.recap).not_to be_nil
       expect(engine.recap.target).to eq(base_url: "https://api.example.test/inference/v1", api_key_env: "FW_KEY",
                                         model: "big", label: "fw:big")
     end
 
     it "follows a /model switch at the next attempt" do
-      engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "fw:big")
+      engine = Samagotchi::Engine.new(host_registry: registry, model_name: "fw:big")
       engine.instance_variable_set(:@effective_model_name, "box:m")
       expect(engine.recap.target).to include(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "m")
     end
@@ -60,7 +60,7 @@ RSpec.describe "Engine recap on a configured host", :recap do
         File.write(File.join(dir, "samagotchi", "config.yml"), "default:\n  model: spec-model\nrecap: false\n")
         old = ENV["XDG_CONFIG_HOME"]
         ENV["XDG_CONFIG_HOME"] = dir
-        engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m")
+        engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m")
         expect(engine.recap).to be_nil
       ensure
         ENV["XDG_CONFIG_HOME"] = old
@@ -70,7 +70,7 @@ RSpec.describe "Engine recap on a configured host", :recap do
     it "takes recap.inactivity from the config without a host or model" do
       old = ENV["SAMAGOTCHI_RECAP_INACTIVITY"]
       ENV["SAMAGOTCHI_RECAP_INACTIVITY"] = "7"
-      engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m")
+      engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m")
       expect(engine.recap.inactivity).to eq(7.0)
     ensure
       old.nil? ? ENV.delete("SAMAGOTCHI_RECAP_INACTIVITY") : ENV["SAMAGOTCHI_RECAP_INACTIVITY"] = old
@@ -79,14 +79,14 @@ RSpec.describe "Engine recap on a configured host", :recap do
     it "takes recap.sentences from the environment without a host or model" do
       old = ENV["SAMAGOTCHI_RECAP_SENTENCES"]
       ENV["SAMAGOTCHI_RECAP_SENTENCES"] = "5-7"
-      engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m")
+      engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m")
       expect(engine.recap.sentences).to eq([5, 7])
     ensure
       old.nil? ? ENV.delete("SAMAGOTCHI_RECAP_SENTENCES") : ENV["SAMAGOTCHI_RECAP_SENTENCES"] = old
     end
 
     it "takes recap.sentences from the TUI's recap hash, a YAML integer too" do
-      engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m",
+      engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m",
                                       recap: { host_ref: "box", model: "box:small", sentences: 3 })
       expect(engine.recap.sentences).to eq([3, 3])
     end
@@ -94,7 +94,7 @@ RSpec.describe "Engine recap on a configured host", :recap do
     it "warns about an invalid recap.sentences and keeps the recap on with 2-4" do
       engine = nil
       expect {
-        engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m",
+        engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m",
                                         recap: { host_ref: "box", model: "box:small", sentences: "12" })
       }.to output(/invalid value for recap.sentences: "12" — using 2-4/).to_stderr
       expect(engine.recap.sentences).to eq([2, 4])
@@ -102,7 +102,7 @@ RSpec.describe "Engine recap on a configured host", :recap do
 
     it "still warns and stays off for an incomplete explicit config" do
       expect {
-        engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "box:m", recap: { model: "small" })
+        engine = Samagotchi::Engine.new(host_registry: registry, model_name: "box:m", recap: { model: "small" })
         expect(engine.recap).to be_nil
       }.to output(/base_url\/model are missing/).to_stderr
     end

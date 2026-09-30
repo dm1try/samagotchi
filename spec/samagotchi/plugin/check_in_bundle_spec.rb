@@ -290,7 +290,7 @@ RSpec.describe "The check-in bundle, installed" do
     FileUtils.rm_rf(tmpdir)
   end
 
-  let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client).tap { |e| e.session_state_dir = state_dir } }
+  let(:engine) { Samagotchi::Engine.new(client: client).tap { |e| e.session_state_dir = state_dir } }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir) }
   let(:commands) do
     Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine),

@@ -21,7 +21,7 @@ RSpec.describe "The hook runtime through the Engine" do
 
   let(:client) { instance_double(Samagotchi::Client) }
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }
-  let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client, kernel: kernel) }
+  let(:engine) { Samagotchi::Engine.new(client: client, kernel: kernel) }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
 
   before do
@@ -130,7 +130,7 @@ RSpec.describe "The hook runtime through the Engine" do
   end
 
   describe "stop_turn" do
-    let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client) }
+    let(:engine) { Samagotchi::Engine.new(client: client) }
     let(:batch) do
       %(<|tool_call>call:execute{command: "echo one"}<tool_call|>\n<|tool_call>call:execute{command: "echo two"}<tool_call|>)
     end
@@ -175,7 +175,7 @@ RSpec.describe "The hook runtime through the Engine" do
   end
 
   describe "stop_generation" do
-    let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client) }
+    let(:engine) { Samagotchi::Engine.new(client: client) }
 
     before { allow(client).to receive(:complete).and_return("done") }
 
@@ -195,7 +195,7 @@ RSpec.describe "The hook runtime through the Engine" do
   end
 
   describe "steer" do
-    let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client) }
+    let(:engine) { Samagotchi::Engine.new(client: client) }
 
     before do
       replies = [%(<|tool_call>call:execute{command: "true"}<tool_call|>), "done"]

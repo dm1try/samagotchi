@@ -18,7 +18,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
 
   let(:client) { instance_double(Samagotchi::Client) }
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }
-  let(:engine) { described_class.new(mode: :assist, client: client, kernel: kernel, profile: "gemma4") }
+  let(:engine) { described_class.new(client: client, kernel: kernel, profile: "gemma4") }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:nudge) { Samagotchi::TurnNote.empty_retry }
   let(:events) { [] }

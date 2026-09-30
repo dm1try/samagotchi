@@ -68,9 +68,8 @@ module Samagotchi
 
     # @param scratch [Boolean] `chi scratch`: a new session that is deleted
     #   however the REPL ends, saves no memories and writes no recap
-    def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], muted_memories: [], non_interactive: false, surface: nil,
+    def initialize(prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], muted_memories: [], non_interactive: false, surface: nil,
                    spinner_tick_interval: AttachedView::TICK_INTERVAL, spinner_clock: nil, scratch: false)
-      @mode           = mode.to_sym
       @scratch        = scratch
       @prompt         = prompt
       @default_model_name = ModelProfile.required_model_name(nil)
@@ -138,7 +137,6 @@ module Samagotchi
       @renderer = EventRenderer.new(@view)
       @render_event = ->(event) { handle_stream_event(event) }
       @engine         = Engine.new(
-        mode: :assist,
         client: client,
         host_registry: @host_registry,
         profile: profile,
@@ -206,16 +204,12 @@ module Samagotchi
     # @return [Symbol, nil] :turn_failed when lines came from a pipe and a
     #   turn failed (bin/chi exits 1)
     def run
-      unless @mode == :assist
-        raise ArgumentError, "Unknown mode '#{@mode}'. Use: assist"
-      end
-
       # --non-interactive with no --prompt is a harmless no-op exit: build
       # nothing and return (no transient session, no banner).
       return if @non_interactive && @prompt.nil?
 
       session = @resume_session || Session.new_session(
-        mode: @mode.to_s,
+        mode: "assist",
         model_name: @effective_model_name,
         working_directory: Dir.pwd,
         preloaded_memory_names: @requested_memories,

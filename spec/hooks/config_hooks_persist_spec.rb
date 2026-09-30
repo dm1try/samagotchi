@@ -44,7 +44,7 @@ RSpec.describe Samagotchi::Engine, "config.yml hooks" do
   end
 
   it "fires a configured before_turn hook on every turn, not only the first" do
-    engine = described_class.new(mode: :assist, client: client)
+    engine = described_class.new(client: client)
     allow(engine.instance_variable_get(:@kernel)).to receive(:run) do
       Samagotchi::KernelLoop::Result.new(output: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: [])
     end
@@ -57,7 +57,7 @@ RSpec.describe Samagotchi::Engine, "config.yml hooks" do
   end
 
   it "still clears hooks registered for a single turn via register_hook" do
-    engine = described_class.new(mode: :assist, client: client)
+    engine = described_class.new(client: client)
     allow(engine.instance_variable_get(:@kernel)).to receive(:run) do
       Samagotchi::KernelLoop::Result.new(output: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: [])
     end

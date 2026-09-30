@@ -155,7 +155,7 @@ RSpec.describe "The mcp bundle" do
   # An Engine whose init tasks (a server's first start) ran, as its first
   # turn sees it: the tasks done, their tools applied.
   def engine
-    @engine ||= Samagotchi::Engine.new(mode: :assist, client: client).tap do |built|
+    @engine ||= Samagotchi::Engine.new(client: client).tap do |built|
       @init_events = []
       built.subscribe(observer: ->(e) { @init_events << e })
       built.start_init_tasks!
@@ -310,7 +310,7 @@ RSpec.describe "The mcp bundle" do
 
     it "starts them in init tasks: chi's start doesn't wait; each broken one is a warn card; the rest works" do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      built = Samagotchi::Engine.new(mode: :assist, client: client)
+      built = Samagotchi::Engine.new(client: client)
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
       built.shutdown
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)

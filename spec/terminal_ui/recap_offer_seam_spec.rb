@@ -6,7 +6,7 @@ require "samagotchi/terminal_ui"
 # recap written at the offer says the last turn stopped unfinished.
 RSpec.describe Samagotchi::TerminalUI, "recap at a continue offer", :recap do
   it "hands the recap a seam that reads the REPL's TurnFlow" do
-    ui = described_class.new(mode: :assist, client: instance_double(Samagotchi::Client))
+    ui = described_class.new(client: instance_double(Samagotchi::Client))
     recap = ui.instance_variable_get(:@engine).recap
     expect(recap).not_to be_nil
     seam = recap.instance_variable_get(:@awaiting_continue)

@@ -58,7 +58,7 @@ RSpec.describe "Engine prompt profile resolution" do
   def engine_with(client)
     registry = Samagotchi::HostRegistry.new(hosts_config: { "main" => { host: "h.test", port: 8081 } })
     registry.client_override = client
-    Samagotchi::Engine.new(mode: :assist, host_registry: registry)
+    Samagotchi::Engine.new(host_registry: registry)
   end
 
   def session = Samagotchi::Session.new_session(mode: "assist", model_name: "house-blend-35b", working_directory: Dir.pwd)
@@ -172,7 +172,7 @@ RSpec.describe "Engine#stats_snapshot" do
   def engine_with(client, hosts: { "main" => { host: "h.test", port: 8081 } })
     registry = Samagotchi::HostRegistry.new(hosts_config: hosts)
     registry.client_override = client
-    Samagotchi::Engine.new(mode: :assist, host_registry: registry)
+    Samagotchi::Engine.new(host_registry: registry)
   end
 
   # /stats before the first turn: no generation has reported the window or

@@ -67,7 +67,7 @@ RSpec.describe Samagotchi::Plugin::Loader do
   end
 
   def engine(**opts)
-    Samagotchi::Engine.new(mode: :assist, client: client, **opts)
+    Samagotchi::Engine.new(client: client, **opts)
   end
 
   def fire_before_turn(engine)

@@ -16,7 +16,7 @@ RSpec.describe "Engine and the chat loop's stream" do
 
   %w[qwen36 gemma4].each do |profile|
     it "passes the chat loop's text and thinking through for a #{profile} model" do
-      engine = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "oai:m", profile: profile)
+      engine = Samagotchi::Engine.new(host_registry: registry, model_name: "oai:m", profile: profile)
       chat = engine.backend
       allow(chat).to receive(:complete) do |on_stream_event:, **|
         on_stream_event.call(type: :generation_started, iteration: 1)

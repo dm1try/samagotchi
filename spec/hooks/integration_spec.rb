@@ -9,7 +9,7 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
   # ── Engine-level hook registration ─────────────────────────────────────────
 
   describe "Engine#register_hook / #unregister_hook" do
-    let(:engine) { Samagotchi::Engine.new(mode: :assist) }
+    let(:engine) { Samagotchi::Engine.new }
 
     it "registers a hook and tracks it" do
       engine.register_hook(:before_turn) { }
@@ -33,7 +33,7 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
 
   describe "hooks are turn-scoped" do
     let(:engine) do
-      Samagotchi::Engine.new(mode: :assist)
+      Samagotchi::Engine.new
     end
 
     it "hooks registered before run_turn are cleared after" do
@@ -77,7 +77,7 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
     end
 
     let(:engine) do
-      engine = Samagotchi::Engine.new(mode: :assist)
+      engine = Samagotchi::Engine.new
       hook_events.each_key do |name|
         engine.register_hook(name) do |event|
           hook_events[name] << event.dup
@@ -132,7 +132,7 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
 
       it ":before_tool_call can mutate the call params" do
         # Register a hook that modifies the call hash
-        engine2 = Samagotchi::Engine.new(mode: :assist)
+        engine2 = Samagotchi::Engine.new
         modified_calls = []
         engine2.register_hook(:before_tool_call) do |event|
           # Mutate the call by adding a marker

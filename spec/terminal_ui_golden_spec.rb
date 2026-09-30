@@ -77,7 +77,7 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     # spinner's frames are the same every run.
     ticks = 0
     clock = -> { ticks += 1; ticks / 10.0 }
-    ui = Samagotchi::TerminalUI.new(mode: :assist, client: client, no_default_input: true, surface: surface,
+    ui = Samagotchi::TerminalUI.new(client: client, no_default_input: true, surface: surface,
                                     spinner_tick_interval: nil, spinner_clock: clock)
     allow(Reline).to receive(:readmultiline).and_return(*prompts, nil)
     allow(Reline).to receive(:readline).and_return(*answers, nil)

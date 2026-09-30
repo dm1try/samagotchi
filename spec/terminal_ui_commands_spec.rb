@@ -8,7 +8,7 @@ require_relative "support/recording_surface"
 
 RSpec.describe Samagotchi::TerminalUI do
   let(:client) { instance_double(Samagotchi::Client) }
-  let(:agent) { described_class.new(mode: :assist, client: client) }
+  let(:agent) { described_class.new(client: client) }
 
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
@@ -112,7 +112,7 @@ RSpec.describe Samagotchi::TerminalUI do
 
   describe "cards and notices between turns" do
     let(:surface) { RecordingSurface.new }
-    let(:agent) { described_class.new(mode: :assist, client: client, surface: surface) }
+    let(:agent) { described_class.new(client: client, surface: surface) }
     let(:engine) { agent.instance_variable_get(:@engine) }
     def lines = surface.lines.flat_map { |line| line.split("\n") }
 
@@ -237,7 +237,7 @@ RSpec.describe Samagotchi::TerminalUI do
 
     describe "on the screen" do
       let(:surface) { RecordingSurface.new }
-      let(:agent) { described_class.new(mode: :assist, client: client, surface: surface) }
+      let(:agent) { described_class.new(client: client, surface: surface) }
 
       it "prints a recap written while idle at the open prompt, on the main thread" do
         agent.send(:handle_recap_ready, { type: :recap_ready, recap: "Did Y.", generation: 3, covered: 6 })

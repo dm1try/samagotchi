@@ -22,7 +22,7 @@ RSpec.describe Samagotchi::Engine, "muted memories" do
   end
 
   def build_engine(**overrides)
-    described_class.new(mode: :assist, client: client, kernel: kernel, **overrides)
+    described_class.new(client: client, kernel: kernel, **overrides)
   end
 
   before do

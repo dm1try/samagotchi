@@ -19,7 +19,7 @@ RSpec.describe Samagotchi::SessionCommands do
   end
   # A worker's Engine starts on the session's model, which isn't the
   # config default the commands are given.
-  let(:engine) { Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "beta:Qwen3-14B") }
+  let(:engine) { Samagotchi::Engine.new(host_registry: registry, model_name: "beta:Qwen3-14B") }
   let(:turn_flow) { Samagotchi::TurnFlow.new(engine: engine) }
   let(:saved) { [] }
   let(:commands) do
@@ -92,7 +92,7 @@ RSpec.describe Samagotchi::SessionCommands do
 
   describe "the Engine's registry" do
     it "holds the built-ins, one registry per Engine" do
-      other = Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: "beta:Qwen3-14B")
+      other = Samagotchi::Engine.new(host_registry: registry, model_name: "beta:Qwen3-14B")
       expect(engine.command_registry.entries.map(&:name)).to eq(described_class.builtin_registry.entries.map(&:name))
       expect(engine.command_registry).not_to be(other.command_registry)
       expect(engine.command_registry).not_to be_frozen

@@ -79,7 +79,7 @@ RSpec.describe Samagotchi::Engine, "stream hooks" do
 
   describe "on the native path" do
     let(:kernel) { Samagotchi::KernelLoop.new(client: client, profile: Samagotchi::ModelProfile.qwen36) }
-    let(:engine) { described_class.new(mode: :assist, client: client, kernel: kernel, profile: "qwen36") }
+    let(:engine) { described_class.new(client: client, kernel: kernel, profile: "qwen36") }
 
     def event(content) = "data: #{JSON.generate(content: content)}\n\n"
 
@@ -109,7 +109,7 @@ RSpec.describe Samagotchi::Engine, "stream hooks" do
 
   describe "on the chat path" do
     let(:kernel) { instance_double(Samagotchi::KernelLoop, client: client) }
-    let(:engine) { described_class.new(mode: :assist, client: client, kernel: kernel, profile: "qwen36") }
+    let(:engine) { described_class.new(client: client, kernel: kernel, profile: "qwen36") }
     let(:adapter) { Samagotchi::LLM::OpenAIChat.new(base_url: server.base_url, host_name: "box", sleeper: ->(_s) {}) }
 
     before do
@@ -137,7 +137,7 @@ RSpec.describe Samagotchi::Engine, "stream hooks" do
 
   describe "the stream handler" do
     let(:kernel) { instance_double(Samagotchi::KernelLoop, client: client) }
-    let(:engine) { described_class.new(mode: :assist, client: client, kernel: kernel, profile: "qwen36") }
+    let(:engine) { described_class.new(client: client, kernel: kernel, profile: "qwen36") }
 
     it "builds no StreamWatch when no hook listens" do
       expect(Samagotchi::Hooks::StreamWatch).not_to receive(:new)

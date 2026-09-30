@@ -19,7 +19,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn sampling" do
   let(:client) { instance_double(Samagotchi::Client) }
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }
   let(:engine) do
-    described_class.new(mode: :assist, client: client, kernel: kernel, profile: "qwen36").tap do |e|
+    described_class.new(client: client, kernel: kernel, profile: "qwen36").tap do |e|
       e.session_state_dir = @state_dir
     end
   end

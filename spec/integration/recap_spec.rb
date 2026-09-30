@@ -48,7 +48,6 @@ RSpec.describe "idle session-recap end-to-end", :integration do
   # Build an Engine with a real IdleRecap that emits to our capture array.
   let(:engine) do
     Samagotchi::Engine.new(
-      mode: :assist,
       recap: {
         base_url: base_url,
         model: model,

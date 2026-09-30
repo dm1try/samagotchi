@@ -64,7 +64,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     install(src, name: name)
   end
 
-  let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client) }
+  let(:engine) { Samagotchi::Engine.new(client: client) }
   let(:session) do
     Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: tmpdir).tap do |s|
       s.messages = [{ role: "user", content: "hi" }, { role: "model", content: "hello" }]
@@ -423,13 +423,13 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
         end
       RUBY
       eng = nil
-      expect { eng = Samagotchi::Engine.new(mode: :assist, client: client) }
+      expect { eng = Samagotchi::Engine.new(client: client) }
         .to output(%r{command /model is already registered \(core\)}).to_stderr
       expect(eng.instance_variable_get(:@tools).key?("fine_tool")).to be false
       expect(eng.plugin_failures.list.map(&:what)).to eq(["plugin plugin.rb (bundle clash)"])
 
       install_source("clash", "class Plugin; def register(chi) = chi.tool(\"read\", \"mine\") { \"\" }; end\n")
-      expect { Samagotchi::Engine.new(mode: :assist, client: client) }.to output(/tool read is already registered \(core\)/).to_stderr
+      expect { Samagotchi::Engine.new(client: client) }.to output(/tool read is already registered \(core\)/).to_stderr
     end
 
     it "is a load error for the second bundle that takes a name" do

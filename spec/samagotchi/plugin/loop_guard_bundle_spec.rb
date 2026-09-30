@@ -45,7 +45,7 @@ RSpec.describe "The loop-guard bundle" do
     FileUtils.rm_rf(tmpdir)
   end
 
-  let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client) }
+  let(:engine) { Samagotchi::Engine.new(client: client) }
   let(:hooks) { engine.instance_variable_get(:@hooks) }
   let(:runner) do
     kernel = Struct.new(:hooks) do

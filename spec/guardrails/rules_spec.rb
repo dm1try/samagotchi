@@ -179,7 +179,7 @@ RSpec.describe "Engine: YAML guardrail rules from config.yml" do
   def engine_with(yaml)
     File.write(config_path, original + yaml)
     Samagotchi::ConfigFile.instance_variable_set(:@yaml_cache, nil)
-    Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client))
+    Samagotchi::Engine.new(client: instance_double(Samagotchi::Client))
   end
 
   def evaluate(engine, call)

@@ -8,7 +8,7 @@ require_relative "support/recording_surface"
 # The REPL's ask_user_question widget, on the non-TTY path (plain gets/puts).
 RSpec.describe Samagotchi::TerminalUI, "question widget" do
   let(:client) { instance_double(Samagotchi::Client) }
-  let(:agent) { described_class.new(mode: :assist, client: client) }
+  let(:agent) { described_class.new(client: client) }
   let(:engine) { agent.instance_variable_get(:@engine) }
   let(:pending) do
     { id: "q1", question: "Which one?", options: %w[Apple Banana Cherry], header: "Fruit",

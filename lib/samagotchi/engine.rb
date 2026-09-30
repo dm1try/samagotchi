@@ -71,10 +71,9 @@ module Samagotchi
     # Used by specs and inspection.
     def self.system_prompt_for(profile)
       profile = ModelProfile.normalize(profile) unless profile.is_a?(ModelProfile)
-      new(mode: :assist, profile: profile, plugins: false).assist_system_prompt
+      new(profile: profile, plugins: false).assist_system_prompt
     end
 
-    # @param mode               [Symbol] :assist (harness is single-mode; memory-reliant; kwarg kept for compat, ignored)
     # @param client             [Client, nil] defaults to Client.new
     # @param profile            [ModelProfile, Symbol, String, nil]
     # @param session_id         [String, nil] resume an existing session
@@ -89,9 +88,8 @@ module Samagotchi
     # @param plugins            [Boolean] false: load no bundle plugins (a throwaway Engine for a prompt)
     # @param scratch            [Boolean] a `chi scratch` session: memory writes are refused, and there is no
     #   delegate (a child would outlive it) nor plugin fork
-    def initialize(mode: :assist, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], muted_memories: [], kernel: nil, recap: nil, reminders: nil,
+    def initialize(client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], muted_memories: [], kernel: nil, recap: nil, reminders: nil,
                    plugins: true, scratch: false)
-      @mode = mode.to_sym
       @scratch = scratch
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new

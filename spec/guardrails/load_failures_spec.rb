@@ -44,7 +44,7 @@ RSpec.describe "Engine: guardrail load failures" do
     YAML
     Samagotchi::ConfigFile.instance_variable_set(:@yaml_cache, nil)
     engine = nil
-    expect { engine = Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client)) }
+    expect { engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client)) }
       .to output(/gone_guard_hook.rb failed to load/).to_stderr
     gate = engine.instance_variable_get(:@kernel).guardrail_gate
     verdict = gate.evaluate({ name: "read", content: "README.md" }, iteration: 1, params: "")

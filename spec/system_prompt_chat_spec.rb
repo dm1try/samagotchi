@@ -17,7 +17,7 @@ RSpec.describe "Engine#system_prompt per loop" do
   before { allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("(index)") }
 
   def engine(model, profile)
-    Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: model, profile: profile)
+    Samagotchi::Engine.new(host_registry: registry, model_name: model, profile: profile)
   end
 
   %w[gemma4 qwen36].each do |profile|

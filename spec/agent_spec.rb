@@ -75,7 +75,7 @@ RSpec.describe Samagotchi::TerminalUI do
       allow(client).to receive(:complete).and_return("file1.rb\
 file\
 file2.rb")
-      agent = described_class.new(mode: "assist", prompt: "list files", client: client)
+      agent = described_class.new(prompt: "list files", client: client)
       expect { agent.run }.to output(/file1.rb/).to_stdout
     end
 
@@ -92,7 +92,7 @@ file2.rb")
         .with(client: client, profile: nil, no_interrupt: false, reminder_store: instance_of(Samagotchi::ReminderStore))
         .and_return(kernel)
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       expect { agent.run }.to output(/ok/).to_stdout
     end
 
@@ -102,13 +102,13 @@ file2.rb")
         call_count += 1
         "done"
       end
-      agent = described_class.new(mode: "assist", prompt: "hello", client: client)
+      agent = described_class.new(prompt: "hello", client: client)
       agent.run
       expect(call_count).to eq(1)   # one prompt turn; REPL exits on first read
     end
 
     it "forwards no_interrupt to the kernel loop" do
-      agent = described_class.new(mode: "assist", prompt: "test", no_interrupt: true)
+      agent = described_class.new(prompt: "test", no_interrupt: true)
       kernel = agent.instance_variable_get(:@kernel)
       expect(kernel.instance_variable_get(:@no_interrupt)).to be true
     end
@@ -120,7 +120,7 @@ file2.rb")
       ]
       allow(client).to receive(:complete).and_return(*responses)
 
-      agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
+      agent = described_class.new(prompt: "read readme", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
       output = run_and_render(agent, prompt: "read readme")
       expect(output).to include('tool> reading file (read path="README.md"): ok')
@@ -133,7 +133,7 @@ file2.rb")
         "done"
       ]
       allow(client).to receive(:complete).and_return(*responses)
-      agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
+      agent = described_class.new(prompt: "read readme", client: client)
       allow_any_instance_of(Samagotchi::TerminalUI::AttachedView).to receive(:color_output?).and_return(true)
       output = run_and_render(agent, prompt: "read readme")
       expect(output).to match(/#{ansi_escape}tool>#{ansi_escape}/)
@@ -147,7 +147,7 @@ file2.rb")
         "done"
       ]
       allow(client).to receive(:complete).and_return(*responses)
-      agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
+      agent = described_class.new(prompt: "read readme", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
       output = run_and_render(agent, prompt: "read readme")
       expect(output).to include('tool> reading file (read path="README.md"): ok')
@@ -161,7 +161,7 @@ file2.rb")
         "done"
       ]
       allow(client).to receive(:complete).and_return(*responses)
-      agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
+      agent = described_class.new(prompt: "read readme", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
       output = run_and_render(agent, prompt: "read readme")
       tool_line = 'tool> reading file (read path="README.md"): ok'
@@ -175,7 +175,7 @@ file2.rb")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "project").and_return("- project index")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "system").and_return("- system index")
       allow(client).to receive(:complete).and_return("ok")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       output = run_and_render(agent, prompt: "hi")
       expect(output).to match(/\A(?!.*tool> reading memory).*ok/m)
     end
@@ -186,7 +186,7 @@ file2.rb")
         "done"
       ]
       allow(client).to receive(:complete).and_return(*responses)
-      agent = described_class.new(mode: "assist", prompt: "read memory", client: client)
+      agent = described_class.new(prompt: "read memory", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
       output = run_and_render(agent, prompt: "read memory")
       expect(output).to match(/mem: refactoring_backlog/)
@@ -199,7 +199,7 @@ file2.rb")
         received_prompt = prompt
         "ok"
       end
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       agent.run
       expect(received_prompt).to include("friendly name for the Samagotchi assistant harness")
     end
@@ -212,7 +212,7 @@ file2.rb")
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "project").and_return("- **project**: test notes")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "system").and_return("- **system**: shared notes")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       agent.run
       expect(received_prompt).to include("Project memories:")
       expect(received_prompt).to include("System memories:")
@@ -228,7 +228,7 @@ file2.rb")
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["foo"])
+      agent = described_class.new(prompt: "hi", client: client, memories: ["foo"])
       agent.run
       expect(received_prompt).to include("this memory is required by the user in the current context: memory name: foo")
       expect(received_prompt).to include("foo body")
@@ -238,7 +238,7 @@ file2.rb")
       allow(client).to receive(:complete).and_return("ok")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["foo"])
+      agent = described_class.new(prompt: "hi", client: client, memories: ["foo"])
       run_and_render(agent, prompt: "hi")
       expect(agent.instance_variable_get(:@status_row).rows(200).join("\n")).to include("mem: foo")
     end
@@ -253,7 +253,7 @@ file2.rb")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("", scope: "system").and_return(index)
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["foo"], muted_memories: ["system/bar.md"])
+      agent = described_class.new(prompt: "hi", client: client, memories: ["foo"], muted_memories: ["system/bar.md"])
       run_and_render(agent, prompt: "hi")
 
       expect(received_prompt).to include("**foo**")
@@ -266,7 +266,7 @@ file2.rb")
       allow(client).to receive(:complete).and_return("ok")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client, non_interactive: true,
+      agent = described_class.new(prompt: "hi", client: client, non_interactive: true,
                                   memories: ["foo"], muted_memories: ["system/bar.md"])
       agent.run
 
@@ -280,7 +280,7 @@ file2.rb")
                                                preloaded_memory_names: ["foo"], muted_memory_names: ["bar"])
       stored.save
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      agent = described_class.new(mode: "assist", client: client, session_id: stored.id, memories: ["baz"], muted_memories: ["bar", "qux"])
+      agent = described_class.new(client: client, session_id: stored.id, memories: ["baz"], muted_memories: ["bar", "qux"])
 
       expect(agent.instance_variable_get(:@requested_memories)).to eq(%w[foo baz])
       expect(agent.instance_variable_get(:@engine).muted_memory_names).to eq(%w[bar qux])
@@ -296,7 +296,7 @@ file2.rb")
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: "project").and_return("foo body")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["project/foo"])
+      agent = described_class.new(prompt: "hi", client: client, memories: ["project/foo"])
       agent.run
       expect(received_prompt).to include("memory name: foo")
     end
@@ -309,7 +309,7 @@ file2.rb")
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("missing", scope: nil).and_return("Error: memory not found: missing")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["missing"])
+      agent = described_class.new(prompt: "hi", client: client, memories: ["missing"])
       expect { agent.run }.not_to raise_error
       # A missing entry is skipped (see Engine#explicit_memory_section), so its
       # name/body must never leak into the prompt. Pinned to the actual marker
@@ -324,7 +324,7 @@ file2.rb")
         "ok"
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       agent.run
       expect(received_prompt).not_to include("memory is required by the user")
     end
@@ -336,7 +336,7 @@ file2.rb")
         "ok"
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       agent.run
       # All tool declaration string values must use <|"|> delimiters
       expect(received_prompt).to include('description:<|"|>Run any shell command')
@@ -352,7 +352,7 @@ file2.rb")
         "ok"
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       agent.run
       expect(received_prompt).to include('param:<|"|>value<|"|>')
     end
@@ -365,7 +365,7 @@ file2.rb")
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       agent.run
 
       expect(received_prompt).to include("Mode 1 (default): replace an exact old_text block")
@@ -380,7 +380,7 @@ file2.rb")
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       agent.run
 
       expect(received_prompt).to include("Editing workflow:")
@@ -397,7 +397,7 @@ file2.rb")
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       agent.run
 
       expect(received_prompt).to include("Small-context retrieval protocol:")
@@ -417,7 +417,7 @@ file2.rb")
       allow(File).to receive(:file?).with(File.join(Dir.pwd, "AGENT.md")).and_return(true)
       allow(File).to receive(:read).with(File.join(Dir.pwd, "AGENT.md")).and_return("Use project conventions")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       agent.run
 
       expect(received_prompt).to include("Project specific description:")
@@ -432,7 +432,7 @@ file2.rb")
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       agent.run
 
       expect(received_prompt).to include("Current working directory:")
@@ -448,7 +448,7 @@ file2.rb")
       end
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       out = StringIO.new
       original_stdout = $stdout
       begin
@@ -475,7 +475,7 @@ file2.rb")
       allow(File).to receive(:file?).with(File.join(Dir.pwd, "AGENT.md")).and_return(true)
       allow(File).to receive(:read).with(File.join(Dir.pwd, "AGENT.md")).and_return("Use project conventions")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       agent.run
 
       expect(received_prompt).not_to include("Project specific description:")
@@ -496,7 +496,7 @@ file2.rb")
       allow(client).to receive(:complete) { |p| seen << p; "done" }
       allow(Reline).to receive(:readmultiline).and_return(nil) # exit REPL immediately
 
-      agent = described_class.new(mode: "assist", prompt: "refactor this", client: client)
+      agent = described_class.new(prompt: "refactor this", client: client)
       agent.run
 
       expect(seen.length).to eq(1) # one prompt turn only
@@ -508,7 +508,7 @@ file2.rb")
     it "runs the -p prompt once and exits without entering the REPL when --non-interactive" do
       seen = []
       allow(client).to receive(:complete) { |p| seen << p; "done" }
-      agent = described_class.new(mode: "assist", prompt: "refactor this", client: client, non_interactive: true)
+      agent = described_class.new(prompt: "refactor this", client: client, non_interactive: true)
 
       expect(Reline).not_to receive(:readmultiline) # never enters the REPL
       agent.run
@@ -521,7 +521,7 @@ file2.rb")
     # nothing on stdout that could pass for an answer.
     it "says so on stderr and exits 1 when the -p --non-interactive turn ends with an empty answer" do
       allow(client).to receive(:complete).and_return("")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client, non_interactive: true)
+      agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
 
       status = nil
       expect do
@@ -532,7 +532,7 @@ file2.rb")
 
     it "exits normally when the -p --non-interactive turn answers" do
       allow(client).to receive(:complete).and_return("done")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client, non_interactive: true)
+      agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
       expect { agent.run }.not_to output.to_stderr
     end
 
@@ -540,7 +540,7 @@ file2.rb")
     it "exits without building a session or entering the REPL for --non-interactive with no prompt" do
       expect(client).not_to receive(:complete)
       expect(Reline).not_to receive(:readmultiline)
-      agent = described_class.new(mode: "assist", client: client, non_interactive: true)
+      agent = described_class.new(client: client, non_interactive: true)
       expect { agent.run }.not_to output(/Session:/).to_stdout
     end
 
@@ -560,7 +560,7 @@ file2.rb")
       allow(client).to receive(:complete) { |p| seen << p; "done" }
       allow(Reline).to receive(:readmultiline).and_return(nil)
 
-      agent = described_class.new(mode: "assist", prompt: "next step", client: client)
+      agent = described_class.new(prompt: "next step", client: client)
       agent.instance_variable_set(:@resume_session, resumed)
       agent.run
 
@@ -576,25 +576,25 @@ file2.rb")
       end
 
       it "shuts down after an early return (--non-interactive with no prompt)" do
-        agent = described_class.new(mode: "assist", client: client, non_interactive: true)
+        agent = described_class.new(client: client, non_interactive: true)
         agent.run
         expect(shut_down?(agent)).to be(true)
       end
 
       it "shuts down after a -p --non-interactive turn" do
         allow(client).to receive(:complete).and_return("done")
-        agent = described_class.new(mode: "assist", prompt: "hi", client: client, non_interactive: true)
+        agent = described_class.new(prompt: "hi", client: client, non_interactive: true)
         agent.run
         expect(shut_down?(agent)).to be(true)
       end
 
       it "shuts down when the REPL ends, and when it raises" do
         allow(Reline).to receive(:readmultiline).and_return(nil)
-        agent = described_class.new(mode: "assist", client: client)
+        agent = described_class.new(client: client)
         agent.run
         expect(shut_down?(agent)).to be(true)
 
-        crashing = described_class.new(mode: "assist", client: client)
+        crashing = described_class.new(client: client)
         allow(crashing).to receive(:assist_loop).and_raise(RuntimeError, "boom")
         expect { crashing.run }.to raise_error(RuntimeError, "boom")
         expect(shut_down?(crashing)).to be(true)
@@ -606,7 +606,7 @@ file2.rb")
       allow(Reline).to receive(:readmultiline).and_return("hello", nil)
       allow(client).to receive(:complete).and_return("hi there")
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       agent.run
 
       expect(Reline).to have_received(:readmultiline).at_least(:once)
@@ -621,7 +621,7 @@ file2.rb")
       end
       allow(Reline).to receive(:readmultiline).and_return("follow-up", nil)
 
-      agent = described_class.new(mode: "assist", prompt: "first turn", client: client)
+      agent = described_class.new(prompt: "first turn", client: client)
       agent.run
 
       expect(responses.length).to eq(2)
@@ -632,7 +632,7 @@ file2.rb")
     describe "no-op exit for --non-interactive with no prompt" do
       it "builds nothing and prints no banner" do
         expect {
-          described_class.new(mode: "assist", client: client, non_interactive: true).run
+          described_class.new(client: client, non_interactive: true).run
         }.not_to output(/Session:|Resumed session:/).to_stdout
       end
     end
@@ -649,7 +649,7 @@ file2.rb")
     end
 
     it "includes the <|think|> token by default" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       allow(client).to receive(:complete) do |prompt|
         expect(prompt).to include("<|think|>")
         "ok"
@@ -659,7 +659,7 @@ file2.rb")
 
     it "omits the <|think|> token with thinking off (SAMAGOTCHI_THINKING_LEVEL=off)" do
       ENV["SAMAGOTCHI_THINKING_LEVEL"] = "off"
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       allow(client).to receive(:complete) do |prompt|
         expect(prompt).not_to include("<|think|>")
         "ok"
@@ -669,7 +669,6 @@ file2.rb")
 
     it "does not include the Gemma think token for Qwen profiles" do
       agent = described_class.new(
-        mode: "assist",
         prompt: "hi",
         client: client,
         profile: Samagotchi::ModelProfile.qwen36
@@ -695,7 +694,7 @@ file2.rb")
     end
 
     let(:surface) { RecordingSurface.new }
-    let(:agent) { described_class.new(mode: "assist", prompt: "hi", client: client, surface: surface, spinner_tick_interval: nil) }
+    let(:agent) { described_class.new(prompt: "hi", client: client, surface: surface, spinner_tick_interval: nil) }
 
     # The REPL draws the row at each read and as a turn starts.
     before { agent.send(:refresh_status_row) }
@@ -730,7 +729,7 @@ file2.rb")
     end
 
     describe "Ctrl-C with a prompt open" do
-      let(:agent) { described_class.new(mode: "assist", prompt: "hi", client: client) }
+      let(:agent) { described_class.new(prompt: "hi", client: client) }
       let(:seam) { Samagotchi::TerminalUI::RelineSeam }
 
       after { seam.interrupt_handler = nil }
@@ -761,7 +760,7 @@ file2.rb")
       allow(client).to receive(:complete).and_return("done")
       allow(Reline).to receive(:readmultiline).and_return("hello", nil)
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       allow(agent).to receive(:color_output?).and_return(false)
 
       expect { agent.run }.to output(/status> model=.*done/m).to_stdout
@@ -772,7 +771,7 @@ file2.rb")
       allow(client).to receive(:complete).and_return("done")
       allow(Reline).to receive(:readmultiline).and_return("hello", nil)
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       allow(agent).to receive(:color_output?).and_return(false)
 
       expect { agent.run }.not_to output(/status> /).to_stdout
@@ -815,7 +814,7 @@ file2.rb")
       allow(Reline).to receive(:readmultiline).and_return("run", nil)
       allow(Reline).to receive(:readline).and_return("yes")
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
 
       expect { agent.run }
         .to output(/iteration limit reached.*finished/m).to_stdout
@@ -828,7 +827,7 @@ file2.rb")
       allow(Reline).to receive(:readmultiline).and_return("run", nil)
       allow(Reline).to receive(:readline).and_return("/continue")
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
 
       expect { agent.run }
         .to output(/iteration limit reached.*finished/m).to_stdout
@@ -842,7 +841,7 @@ file2.rb")
       end
       allow(Reline).to receive(:readmultiline).and_return("/model Qwen3-14B-Instruct", "run", nil)
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
 
       expect { agent.run }
         .to output(/runtime model set to Qwen3-14B-Instruct \(profile=qwen36, name\).*done/m).to_stdout
@@ -854,7 +853,7 @@ file2.rb")
       allow(Reline).to receive(:readmultiline).and_return("/model", nil)
       expect(client).not_to receive(:complete)
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
 
       expect { agent.run }
         .to output(/runtime model: env-model/).to_stdout
@@ -868,7 +867,7 @@ file2.rb")
       ])
       expect(client).not_to receive(:complete)
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
 
       expect { agent.run }
         .to output(/ggml-org\/gemma-4-26b-a4b-it-GGUF:Q4_K_M \(loaded\).*Qwen3-14B-Instruct \(unloaded\)/m).to_stdout
@@ -880,7 +879,7 @@ file2.rb")
       allow(Reline).to receive(:readmultiline).and_return("run", nil)
       allow(Reline).to receive(:readline).and_return("new request", "yes")
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
 
       expect { agent.run }
         .to output(/answer yes, no, or no, <reason>.*finished/m).to_stdout
@@ -897,7 +896,7 @@ file2.rb")
       allow(Reline).to receive(:readmultiline).and_return(old_request, next_request, nil)
       allow(Reline).to receive(:readline).and_return("no")
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
 
       expect { agent.run }
         .to output(/interrupted turn cancelled; enter your next prompt.*fresh answer/m).to_stdout
@@ -916,7 +915,7 @@ file2.rb")
       allow(Reline).to receive(:readmultiline).and_return(old_request, next_request, nil)
       allow(Reline).to receive(:readline).and_return("no, this is too risky")
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
 
       expect { agent.run }
         .to output(/noted your explanation.*fresh answer/m).to_stdout
@@ -940,7 +939,7 @@ file2.rb")
       allow(Reline).to receive(:readmultiline).and_return(anchor_request, interrupted_request, next_request, nil)
       allow(Reline).to receive(:readline).and_return("no, stay in plan mode")
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
 
       expect { agent.run }
         .to output(/anchor response.*iteration limit reached.*noted your explanation.*fresh answer/m).to_stdout
@@ -960,7 +959,7 @@ file2.rb")
       end
       allow(Reline).to receive(:readmultiline).and_return("line one\nline two", nil)
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
 
       expect { agent.run }.to output(/done/).to_stdout
       expect(received_prompt).to include("line one\nline two")
@@ -972,14 +971,14 @@ file2.rb")
       )
       allow(Reline).to receive(:readmultiline).and_return("retry me", nil)
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       allow(agent).to receive(:piped_input?).and_return(false) # typed at a terminal
       expect(agent).to receive(:queue_input_prefill).with("retry me").and_call_original
       expect { agent.run }.to output(/✕ turn failed: network error after 6 attempts \(host llama.cpp: Errno::ECONNREFUSED\) · .*\n  prompt restored for retry/).to_stdout
     end
 
     it "injects queued prefill text into the next multiline input" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       allow(agent).to receive(:color_output?).and_return(false)
       allow(Reline).to receive(:line_buffer).and_return("retry me")
 
@@ -1031,7 +1030,7 @@ file2.rb")
       FileUtils.mkdir_p("lib/samagotchi")
       File.write("lib/samagotchi/terminal_ui.rb", "# test")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       allow(Reline).to receive(:line_buffer).and_return("@lib/sama")
 
       candidates = agent.send(:assist_path_completion_candidates, "@lib/sama")
@@ -1043,7 +1042,7 @@ file2.rb")
       FileUtils.mkdir_p("lib/samagotchi")
       File.write("lib/samagotchi/terminal_ui.rb", "# test")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       allow(Reline).to receive(:line_buffer).and_return("please open @lib/sama")
 
       candidates = agent.send(:assist_path_completion_candidates, "@lib/sama")
@@ -1055,7 +1054,7 @@ file2.rb")
       FileUtils.mkdir_p("memories")
       File.write("memories/release_notes.md", "# notes")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       allow(Reline).to receive(:line_buffer).and_return("#rel")
 
       candidates = agent.send(:assist_path_completion_candidates, "#rel")
@@ -1066,7 +1065,7 @@ file2.rb")
     it "completes system memories with # shorthand" do
       File.write(File.join(system_memories_dir, "shared_notes.md"), "# notes")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       allow(Reline).to receive(:line_buffer).and_return("#sha")
 
       candidates = agent.send(:assist_path_completion_candidates, "#sha")
@@ -1079,7 +1078,7 @@ file2.rb")
       File.write("memories/notes.md", "# project")
       File.write(File.join(system_memories_dir, "notes.md"), "# system")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
 
       candidates = agent.send(:assist_path_completion_candidates, "#")
 
@@ -1093,7 +1092,7 @@ file2.rb")
       File.write("memories/zebra.md", "# project")
       File.write(File.join(system_memories_dir, "alpha.md"), "# system")
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
 
       candidates = agent.send(:assist_path_completion_candidates, "#")
 
@@ -1114,7 +1113,7 @@ file2.rb")
         "@README.md"
       end
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       value = agent.send(:read_input, awaiting_continue: false)
 
       expect(value).to eq("@README.md")
@@ -1136,7 +1135,7 @@ file2.rb")
         "#feature_flags"
       end
 
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       value = agent.send(:read_input, awaiting_continue: false)
 
       expect(value).to eq("#feature_flags")
@@ -1145,7 +1144,7 @@ file2.rb")
     end
 
     it "does not enable path completion for continuation input" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
+      agent = described_class.new(prompt: "hi", client: client)
       allow(Reline).to receive(:readline).and_return("yes")
 
       expect(agent).not_to receive(:with_scoped_at_path_completion)
@@ -1160,7 +1159,7 @@ file2.rb")
       end
       allow(Reline).to receive(:readmultiline).and_return("Please review #project/plan and #shared_notes for PR #1", nil)
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
 
       expect { agent.run }.to output(/done/).to_stdout
       expect(received_prompt).to include("Please review #project/plan and #shared_notes for PR #1")
@@ -1198,7 +1197,7 @@ file2.rb")
       File.write(history_file, JSON.pretty_generate(["older prompt", "latest prompt"]))
       allow(Reline).to receive(:readmultiline).and_return(nil)
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       agent.run
 
       expect(Reline::HISTORY.to_a).to include("older prompt", "latest prompt")
@@ -1210,7 +1209,7 @@ file2.rb")
       File.write(history_file, JSON.pretty_generate(seed_entries))
       allow(Reline).to receive(:readmultiline).and_return("new prompt", nil)
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       agent.run
 
       persisted = JSON.parse(File.read(history_file))
@@ -1227,7 +1226,7 @@ file2.rb")
       allow(Reline).to receive(:readmultiline).and_return("first request", "second request", nil)
       allow(Reline).to receive(:readline).and_return("no")
 
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       agent.run
 
       persisted = JSON.parse(File.read(history_file))
@@ -1241,7 +1240,7 @@ file2.rb")
   describe "Profile-aware tool declarations" do
     it "uses Gemma tool call hint for Gemma profile" do
       gemma_profile = Samagotchi::ModelProfile.gemma4
-      agent = described_class.new(mode: "assist", client: client, profile: gemma_profile)
+      agent = described_class.new(client: client, profile: gemma_profile)
 
       hint = agent.instance_variable_get(:@engine).instance_variable_get(:@prompt_builder).send(:tool_call_hint)
       expect(hint).to include("<|tool_call>call:")
@@ -1249,7 +1248,7 @@ file2.rb")
 
     it "uses Qwen tool call hint for Qwen profile" do
       qwen_profile = Samagotchi::ModelProfile.qwen36
-      agent = described_class.new(mode: "assist", client: client, profile: qwen_profile)
+      agent = described_class.new(client: client, profile: qwen_profile)
 
       hint = agent.instance_variable_get(:@engine).instance_variable_get(:@prompt_builder).send(:tool_call_hint)
       expect(hint).to include("<tool_call>")
@@ -1268,7 +1267,7 @@ file2.rb")
     end
 
     it "prints the session id on exit" do
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       agent.instance_variable_set(:@resume_session, nil)
       # Stub Reline to return nil (exit) immediately
       allow(Reline).to receive(:readmultiline).and_return(nil)
@@ -1306,7 +1305,7 @@ file2.rb")
 
     it "queues prefill when env is set, no resume, and no --no-default-input" do
       ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Please "
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       agent.instance_variable_set(:@resume_session, nil)
       expect(agent).to receive(:queue_input_prefill).with("Please ")
       agent.send(:queue_default_input)
@@ -1314,28 +1313,28 @@ file2.rb")
 
     it "keeps the default input as given, its trailing space too" do
       ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Please "
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       agent.instance_variable_set(:@resume_session, nil)
       agent.send(:queue_default_input)
       expect(agent.send(:consume_input_prefill)).to eq("Please ")
     end
 
     it "queues no blank prefill" do
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       agent.send(:queue_input_prefill, "  \n")
       expect(agent.send(:consume_input_prefill)).to be_nil
     end
 
     it "does not queue when --no-default-input is true" do
       ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Please "
-      agent = described_class.new(mode: "assist", client: client, no_default_input: true)
+      agent = described_class.new(client: client, no_default_input: true)
       expect(agent).not_to receive(:queue_input_prefill)
       agent.send(:queue_default_input)
     end
 
     it "does not queue when resuming a session" do
       ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Please "
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       agent.instance_variable_set(:@resume_session, double("session", id: "abc-123"))
       expect(agent).not_to receive(:queue_input_prefill)
       agent.send(:queue_default_input)
@@ -1343,14 +1342,14 @@ file2.rb")
 
     it "does not queue when env is not set" do
       ENV.delete("SAMAGOTCHI_DEFAULT_INPUT")
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       expect(agent).not_to receive(:queue_input_prefill)
       agent.send(:queue_default_input)
     end
 
     it "does not queue when env is blank" do
       ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "   "
-      agent = described_class.new(mode: "assist", client: client)
+      agent = described_class.new(client: client)
       expect(agent).not_to receive(:queue_input_prefill)
       agent.send(:queue_default_input)
     end

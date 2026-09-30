@@ -21,7 +21,7 @@ RSpec.describe "ctx.steer, ctx.stop_turn and ctx.stop_generation" do
   end
 
   let(:client) { instance_double(Samagotchi::Client) }
-  let(:engine) { Samagotchi::Engine.new(mode: :assist, client: client) }
+  let(:engine) { Samagotchi::Engine.new(client: client) }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:ctx) do
     Samagotchi::Plugin::Context.new(bundle: "check-in", label: "plugin.rb (bundle check-in)", settings: {},

@@ -60,7 +60,7 @@ end
 # The system bundle's config protocol edits config.yml with write/edit:
 # after the user approves, the write goes through.
 RSpec.describe "Engine: editing config.yml after an approval" do
-  let(:engine) { Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client)) }
+  let(:engine) { Samagotchi::Engine.new(client: instance_double(Samagotchi::Client)) }
   let(:config_path) { Samagotchi::ConfigFile.global_path }
   let(:kernel) { engine.instance_variable_get(:@kernel) }
   let(:original) { File.read(config_path) }

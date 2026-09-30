@@ -53,7 +53,7 @@ RSpec.describe Samagotchi::SendCommand do
   # A live worker's Bridge (no turn loop: it only writes input files and
   # announces), with the events its engine sent.
   def serve(session)
-    engine = Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client),
+    engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
                                     kernel: instance_double(Samagotchi::KernelLoop))
     events = []
     engine.subscribe(observer: ->(e) { events << e })
@@ -386,7 +386,7 @@ RSpec.describe Samagotchi::SendCommand do
 
     it "fails a session whose worker predates images, with the reason" do
       a = make(owner: "worker")
-      engine = Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client),
+      engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
                                       kernel: instance_double(Samagotchi::KernelLoop))
       bridge = Samagotchi::Bridge.new(engine: engine, state_dir: tmpdir, session_id: a.id, heartbeat_interval: 5,
                                       input_format: 2)

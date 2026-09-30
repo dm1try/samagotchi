@@ -209,7 +209,6 @@ module Samagotchi
       waker = @waker
       engine = nil
       engine = Samagotchi::Engine.new(
-        mode: @session.mode.to_sym,
         model_name: @session.model_name,
         # The session's --memory and --mute lists: the same prompt on every
         # (re)spawn.

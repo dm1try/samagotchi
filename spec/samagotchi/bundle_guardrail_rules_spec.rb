@@ -63,7 +63,7 @@ RSpec.describe "Bundle guardrail rule files" do
   def rules_dir(name) = File.join(bundles_dir, name, "guardrails")
   def manifest(name) = JSON.parse(File.read(File.join(bundles_dir, name, "manifest.json")))
 
-  def engine = Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client))
+  def engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client))
 
   def evaluate(eng, content)
     eng.instance_variable_get(:@kernel).guardrail_gate.evaluate({ name: "execute", content: content }, iteration: 1, params: "")

@@ -76,7 +76,7 @@ RSpec.describe "Full system prompt snapshots" do
   end
 
   def engine(model, profile, **opts)
-    Samagotchi::Engine.new(mode: :assist, host_registry: registry, model_name: model, profile: profile, **opts)
+    Samagotchi::Engine.new(host_registry: registry, model_name: model, profile: profile, **opts)
   end
 
   def session(parent_id: nil)

@@ -34,7 +34,7 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
   end
 
   def build_ui(surface: screen, spinner_tick_interval: nil, **options)
-    described_class.new(mode: :assist, client: client, no_default_input: true, surface: surface,
+    described_class.new(client: client, no_default_input: true, surface: surface,
                         spinner_tick_interval: spinner_tick_interval, **options)
   end
 

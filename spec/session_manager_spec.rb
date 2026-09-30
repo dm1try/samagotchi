@@ -959,7 +959,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
       expect(Samagotchi::Engine).to receive(:new)
-        .with(hash_including(mode: :assist, model_name: "gemma4"))
+        .with(hash_including(model_name: "gemma4"))
         .and_return(engine)
 
       allow(engine).to receive(:start_idle)

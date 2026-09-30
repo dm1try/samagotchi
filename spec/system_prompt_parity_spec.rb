@@ -12,11 +12,11 @@ RSpec.describe "Engine/TerminalUI system-prompt parity" do
   end
 
   def ui
-    Samagotchi::TerminalUI.new(mode: "assist", client: instance_double(Samagotchi::Client), profile: "gemma4")
+    Samagotchi::TerminalUI.new(client: instance_double(Samagotchi::Client), profile: "gemma4")
   end
 
   def engine
-    Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client),
+    Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
                            kernel: instance_double(Samagotchi::KernelLoop), profile: "gemma4")
   end
 

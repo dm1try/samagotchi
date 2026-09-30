@@ -33,7 +33,7 @@ RSpec.describe "Images in transport" do
   end
   let(:wire_ref) { { file: ref[:file], name: "shot.png" } }
   let!(:engine) do
-    Samagotchi::Engine.new(mode: :assist, client: instance_double(Samagotchi::Client),
+    Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
                            kernel: instance_double(Samagotchi::KernelLoop))
   end
 

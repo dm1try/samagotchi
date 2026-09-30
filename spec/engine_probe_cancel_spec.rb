@@ -23,7 +23,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with a hung /props" do
   let(:accepted) { Queue.new }
   let(:client) { Samagotchi::Client.new(host: "127.0.0.1", port: hung.addr[1], sleeper: ->(_seconds) {}) }
   let(:kernel) { instance_double(Samagotchi::KernelLoop, client: client) }
-  let(:engine) { described_class.new(mode: :assist, client: client, kernel: kernel, profile: "gemma4") }
+  let(:engine) { described_class.new(client: client, kernel: kernel, profile: "gemma4") }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:events) { [] }
   let(:adapter) do
