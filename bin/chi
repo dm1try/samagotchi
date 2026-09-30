@@ -21,11 +21,18 @@ require "samagotchi"
 # bundles (read-only, offline) — lets the agent find its own code and state.
 if ARGV[0] == "self"
   if %w[-h --help help].include?(ARGV[1])
-    puts "Usage: chi self"
+    puts "Usage: chi self [--model]"
     puts "  Print version, source dir, config/memory/session paths, model/host and bundles."
+    puts "  --model  print only the model a new session starts on (exit 1 when none is configured)"
     exit 0
   end
   require "samagotchi/self_report"
+  # The desktop helper's hint for its "New session" row: offline and quick.
+  if ARGV[1] == "--model"
+    model = Samagotchi::SelfReport.model_name
+    puts model if model
+    exit(model ? 0 : 1)
+  end
   puts Samagotchi::SelfReport.text
   exit 0
 end

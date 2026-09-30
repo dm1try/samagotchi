@@ -26,6 +26,9 @@ final class PanelModel: ObservableObject {
   @Published var selected: Set<String> = []
   /// The "New session" row; never together with sessions (`--new` takes no ids).
   @Published var newSelected = false
+  /// The model a new session starts on (`chi self --model`), for the new
+  /// row's hint; nil while unknown.
+  @Published var newModel: String?
   @Published var phase: Phase = .loading
   @Published var message = ""
 
@@ -205,6 +208,12 @@ struct PanelView: View {
           Text(LiveSession.shorten(model.newSessionDir)).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
         }
         Spacer()
+        if let name = model.newModel {
+          Text(name).font(.system(size: 11)).foregroundColor(.secondary)
+            .lineLimit(1).truncationMode(.middle)
+            .frame(maxWidth: 240, alignment: .trailing)
+            .help("the model a new session starts on: default.model in config.yml")
+        }
         Text("⌘0").font(.system(size: 11, design: .rounded)).foregroundColor(.secondary)
       }
       .padding(.horizontal, 8).padding(.vertical, 6)
@@ -432,6 +441,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     placeOnActiveScreen()
     panel.makeKeyAndOrderFront(nil)
     loadSessions()
+    loadModel()
   }
 
   private func placeOnActiveScreen() {
@@ -457,6 +467,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         self.model.message = error.description
       }
     }
+  }
+
+  /// Kept from the last look while it runs; config rarely changes.
+  private func loadModel() {
+    runner.defaultModel { [weak self] model in self?.model.newModel = model }
   }
 
   func send(_ kind: SendKind) {

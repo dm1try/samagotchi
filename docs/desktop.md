@@ -32,7 +32,9 @@ The first row, **New session in <folder>** (⌘0), starts a session with the mes
 <folder>`, so it shows in `chi web` at once (see [Starting a session](sessions.md#starting-a-session)). The folder is
 that of the most recently updated live session, else of the newest recent one, else your home folder. It is ticked
 alone (ticking it clears the sessions and the reverse) and is preselected when no session is live. ⌘⏎ on it beeps: a
-note needs a session. After the send the panel shows `started <id>…` for 3 s.
+note needs a session. After the send the panel shows `started <id>…` for 3 s. On its right, in grey, the row names
+the model the new session starts on (`chi self --model`: `default.model` from config.yml, or its env override); it
+is left out when none is configured.
 
 A session open in a `chi --no-shared` REPL isn't listed: it takes no notes or messages.
 

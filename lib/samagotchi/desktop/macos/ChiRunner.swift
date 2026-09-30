@@ -83,20 +83,23 @@ final class ChiRunner {
   static let launchPath = supportDir + "/launch.json"
 
   let timeout: TimeInterval
+  let launchPath: String
 
-  init(timeout: TimeInterval = 10) {
+  /// @param launchPath another launch file (a test harness's), not the app's
+  init(timeout: TimeInterval = 10, launchPath: String = ChiRunner.launchPath) {
     self.timeout = timeout
+    self.launchPath = launchPath
   }
 
   func loadLaunch() throws -> LaunchConfig {
-    guard let data = FileManager.default.contents(atPath: Self.launchPath) else {
-      throw ChiError.noLaunchFile(Self.launchPath)
+    guard let data = FileManager.default.contents(atPath: launchPath) else {
+      throw ChiError.noLaunchFile(launchPath)
     }
     let config: LaunchConfig
     do { config = try JSONDecoder().decode(LaunchConfig.self, from: data) } catch {
-      throw ChiError.failed("Unreadable launch file \(Self.launchPath): \(error.localizedDescription)")
+      throw ChiError.failed("Unreadable launch file \(launchPath): \(error.localizedDescription)")
     }
-    guard !config.argv.isEmpty else { throw ChiError.failed("Empty argv in \(Self.launchPath)") }
+    guard !config.argv.isEmpty else { throw ChiError.failed("Empty argv in \(launchPath)") }
     for path in config.argv where path.hasPrefix("/") && !FileManager.default.fileExists(atPath: path) {
       throw ChiError.missing(path)
     }
@@ -185,6 +188,18 @@ final class ChiRunner {
           .map { session -> LiveSession in var session = session; session.recent = true; return session }
         completion(.success(live + stopped))
       }
+    }
+  }
+
+  /// The model a new session starts on (`chi self --model`: the config's
+  /// default, as chi resolves it), or nil when none is configured or chi
+  /// can't say. Only a single line counts: nothing that looks like a whole
+  /// `chi self` report ends up as the hint.
+  func defaultModel(completion: @escaping (String?) -> Void) {
+    run(["self", "--model"]) { result in
+      guard case .success(let r) = result, r.status == 0, !r.timedOut else { completion(nil); return }
+      let model = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+      completion(model.isEmpty || model.contains("\n") ? nil : model)
     }
   }
 
