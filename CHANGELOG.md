@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- The desktop helper also sends to agent CLIs (claude, codex, …) in kitty windows: with `kitty.listen_on` copied
+  from kitty.conf (and `chi desktop upgrade`), the panel lists them in a "kitty" group next to the sessions; ⏎
+  pastes the quote, message and image paths and presses Enter, the new ⌥⏎ only pastes (so several screenshots
+  can pile up), and one send can go to chi sessions and kitty windows together. ⌥⏎ no longer inserts a newline
+  in the panel (⇧⏎ does). See docs/desktop.md "Agents in kitty".
+
 ## [0.6.0] - 2026-09-30
 
 ### Added

@@ -20,6 +20,8 @@ sessions. Keys:
 - **⏎** sends a message: `chi send -m <the line>` with the text as quoted context above it. With the line empty,
   the text is the message.
 - **⌘⏎** sends a note: `chi note`, the line (if any) then the text.
+- **⌥⏎** pastes into an agent in a kitty window without pressing Enter (see [Agents in kitty](#agents-in-kitty));
+  it is not a newline.
 - **⇧⏎** is a newline, in either field. Esc closes.
 
 The list shows the sessions a worker runs now, then, under a "recent" divider, up to 3 stopped ones (dimmed, with
@@ -63,6 +65,53 @@ thumbnails sit under the message line, 48 px high, the file name as a tooltip; h
 - Clipboard and dropped image data goes to temp files under `$TMPDIR/chi-helper`, deleted after the send or when
   the panel closes; files from Finder are sent as they are, never touched. A send with images may take up to 30 s
   (converting, a worker starting) before the panel gives up.
+
+## Agents in kitty
+
+The panel can also send to agent CLIs (claude, codex, gemini, aider, …) running in
+[kitty](https://sw.kovidgoyal.net/kitty/) windows, next to chi sessions. kitty only, through its remote control;
+off until you set it up:
+
+1. In `kitty.conf`, remote control on and a socket: `allow_remote_control yes` and a `listen_on unix:…` line.
+2. Copy that `listen_on` value as it is into chi's config.yml:
+
+   ```yaml
+   kitty:
+     listen_on: unix:/tmp/kitty.${KITTY_PID}
+   ```
+
+   `kitty.agents` picks the programs listed (default `claude|codex|gemini|aider|opencode|cursor-agent|amp|goose`, a
+   YAML list works too; `"*"` lists every window, shells too), `kitty.binary` the kitty to run (default
+   `/Applications/kitty.app/Contents/MacOS/kitty`). See [Configuration](configuration.md#desktop-helper-agents-in-kitty).
+3. Run `chi desktop upgrade` (or `chi update`): the helper reads these from its launch file, so **after every edit of
+   `kitty:`** run it again. No rebuild when only the settings changed.
+
+The helper finds the sockets itself: kitty adds `-<pid>` to a `listen_on` path from kitty.conf (and fills in
+`{kitty_pid}`), `~` and variables the helper knows are expanded, others (`${KITTY_PID}`) stay as written, as kitty
+keeps them. Several kitty instances all count. Only `unix:` sockets work.
+
+The panel lists the windows whose foreground program is one of the agents under a **kitty** divider, between live
+and recent sessions: "claude · <its title>", the folder below, a terminal icon, and a ⌘ number like the sessions.
+With the settings on but no agent running, one dim line says "no agents in kitty". A window counts when a foreground
+process's program is an agent, also as the script of `node …/codex` (that match is untested for codex and gemini).
+
+- **⏎** pastes into every chosen window and presses Enter: the text as a `> ` quote, a blank line, your message, then
+  one image path per line. Chosen together with chi sessions, each gets the message and the panel shows one line
+  ("Sent. · sent to claude · samagotchi").
+- **⌥⏎** only pastes (no Enter), and only when every chosen target is a kitty window: build up several screenshots,
+  each with its own line, then press Enter in kitty. The footer shows **Paste ⌥⏎** instead of Note then.
+- **⌘⏎** with a kitty window chosen beeps: "Notes are for chi sessions". ⌥⏎ with a chi session: "Paste only is
+  for kitty windows".
+- **Images:** a screenshot or other image data is copied to `$TMPDIR/chi-helper-sent/<uuid>.png` (or `.tiff`) and
+  its path pasted; the agent reads it from there (claude attaches it as `[Image #1]`). These files are deleted a week
+  later, at the helper's next start. Finder files are pasted with their own path, `'…'`-quoted when they hold spaces.
+- The paste arrives as one bracketed paste, so the agent takes newlines as text (claude shows long ones as
+  `[Pasted text]`). With `agents: "*"` beware of a program that doesn't turn bracketed paste on: the newlines would
+  act as Enter.
+- No delivery confirmation: before pasting, the helper checks the window is still there ("window closed" if not);
+  it can't know whether the agent read it. The 16 KB cap is chi's; a kitty window takes more.
+- Focus goes back to the app you came from, as for sessions. The last choice (kitty windows too) is preselected
+  while listed; ⌘ numbers shift as windows come and go.
 
 ## Install
 
