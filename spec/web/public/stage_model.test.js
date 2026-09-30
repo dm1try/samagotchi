@@ -165,6 +165,14 @@ test("headlineOf: the newest sentence as plain text, syntax-only lines skipped",
   assert.equal(headlineOf("", false), "");
 });
 
+test("headlineOf: a line of code inside a fence is no headline, open or closed", () => {
+  assert.equal(headlineOf("Here is the fix.\n```ruby\nputs value.inspect\n", false), "Here is the fix.");
+  assert.equal(headlineOf("Here is the fix.\n```ruby\nputs value.inspect\nexit 1", true), "Here is the fix.");
+  assert.equal(headlineOf("Here is the fix.\n```\nfoo. bar.\n```\n", false), "Here is the fix.");
+  assert.equal(headlineOf("Before.\n~~~\ncode\n~~~\nAfter the block.\n", false), "After the block.");
+  assert.equal(headlineOf("Before.\n```\ncode\n```\nand after", true), "and after");
+});
+
 test("flashOf: a hook's notice (warn or info) and a plugin's nudge flash; chi's asking-again row does not", () => {
   assert.deepEqual(flashOf("notice", { hook: "plugin.rb (bundle loop-guard)", text: "thinking repeats itself", level: "warn" }),
     { kind: "warn", text: "loop-guard: thinking repeats itself" });
