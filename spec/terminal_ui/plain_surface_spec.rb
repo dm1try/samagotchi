@@ -37,9 +37,23 @@ RSpec.describe Samagotchi::TerminalUI::PlainSurface do
     expect(surface.clear_slot(:activity)).to be(false)
   end
 
-  it "has nothing to erase and leaves the prompt to Reline" do
+  it "has nothing to erase, and prints a plain read's prompt with no newline" do
     expect(surface.clear_slot(:editor)).to be(false)
-    expect { surface.set_slot(:editor, ["> "]) }.to raise_error(ArgumentError, /Reline draws/)
+    surface.set_slot(:editor, ["? "])
+
+    expect(out.string).to eq("? ")
     expect { surface.set_slot(:banner, ["x"]) }.to raise_error(ArgumentError, /unknown slot/)
+  end
+
+  it "writes to $stdout as it is at each write when given no output" do
+    surface = described_class.new
+    swapped = StringIO.new
+    original = $stdout
+    $stdout = swapped
+    surface.commit("hello")
+
+    expect(swapped.string).to eq("hello\n")
+  ensure
+    $stdout = original
   end
 end

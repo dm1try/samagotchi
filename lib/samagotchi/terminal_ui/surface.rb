@@ -15,7 +15,7 @@ module Samagotchi
     #
     # The slots, top down around the prompt: +activity+ (spinner, thinking
     # preview), +editor+ (the prompt), +status+, +notes+ (question choices),
-    # +hints+. An implementation without a live region (LegacySurface) may
+    # +hints+. An implementation without a live region (PlainSurface) may
     # print a slot's rows as plain output instead, so the rows stay on screen.
     #
     # Instead of rows, a slot may hold content that lays itself out: anything

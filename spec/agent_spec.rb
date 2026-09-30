@@ -737,8 +737,8 @@ file2.rb")
     end
   end
 
-  # These capture $stdout (not a terminal), so the spinner draws on
-  # LegacySurface, the REPL's fallback. The live region's layout is pinned by
+  # The spinner draws only on a live region (plain output drops it): these
+  # draw on a RecordingSurface. The live region's layout is pinned by
   # terminal_ui_live_region_spec and the goldens.
   describe "thinking spinner" do
     before do
@@ -750,47 +750,6 @@ file2.rb")
     # then the used_memories_updated it follows it with.
     def memory_read_event(agent, event)
       agent.instance_variable_get(:@engine).send(:emit_event, agent.method(:handle_stream_event), event)
-    end
-
-    it "renders spinner progress in TTY mode while streaming" do
-      allow(client).to receive(:complete) do |_prompt, **kwargs|
-        on_chunk = kwargs[:on_chunk]
-        on_chunk&.call(content: "a", payload: { "content" => "a" })
-        on_chunk&.call(content: "b", payload: { "content" => "b" })
-        "done"
-      end
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
-      output = run_and_render(agent, prompt: "hi")
-      expect(output).to match(/thinking\.\.\..*done/m)
-    end
-
-    it "shows the newest sentence on the spinner row while streaming" do
-      allow(client).to receive(:complete) do |_prompt, **kwargs|
-        on_chunk = kwargs[:on_chunk]
-        on_chunk&.call(content: "Hello there. ", payload: { "content" => "Hello there. " })
-        on_chunk&.call(content: " world", payload: { "content" => " world" })
-        "done"
-      end
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
-      allow(agent).to receive(:color_output?).and_return(false)
-      output = run_and_render(agent, prompt: "hi")
-      expect(output).to match(/model> thinking · Hello there\. .*done/m)
-      expect(output).not_to include("world")
-    end
-
-    it "renders the sentence row in color when color output is enabled" do
-      allow(client).to receive(:complete) do |_prompt, **kwargs|
-        on_chunk = kwargs[:on_chunk]
-        on_chunk&.call(content: "Hello. ", payload: { "content" => "Hello. " })
-        "done"
-      end
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
-      allow(agent).to receive(:color_output?).and_return(true)
-      output = run_and_render(agent, prompt: "hi")
-      expect(output).to match(/#{ansi_escape}model> thinking · Hello\. [|\/\\-]#{ansi_escape}.*done/m)
     end
 
     def sentence_row(content, width: 60)

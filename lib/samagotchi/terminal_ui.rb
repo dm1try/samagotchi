@@ -28,7 +28,7 @@ require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
 require_relative "terminal_ui/input_support"
 require_relative "terminal_ui/image_input"
-require_relative "terminal_ui/legacy_surface"
+require_relative "terminal_ui/plain_surface"
 require_relative "terminal_ui/live_region"
 require_relative "terminal_ui/question_prompt"
 require_relative "terminal_ui/repl_input"
@@ -154,7 +154,7 @@ module Samagotchi
       # Every terminal write goes through the surface. The REPL swaps in a
       # live region when the terminal can show one (#assist_loop), unless it
       # was given a surface to draw on.
-      @surface = surface || LegacySurface.new
+      @surface = surface || PlainSurface.new
       @surface_given = !surface.nil?
       @renderer = EventRenderer.new(self)
       @render_event = ->(event) { handle_stream_event(event) }
@@ -1568,8 +1568,10 @@ module Samagotchi
       paint(text, code)
     end
 
+    # Only a live region redraws the spinner in place (on plain output the
+    # status rows would print at every frame).
     def thinking_spinner_enabled?
-      return false unless $stdout.tty?
+      return false unless $stdout.tty? && @surface.is_a?(Screen)
 
       mode = Samagotchi::Config.get("thinking.ui").to_s.strip.downcase
       return false if mode.empty? || mode == THINKING_UI_OFF || mode == "false" || mode == "0"
