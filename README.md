@@ -1,7 +1,11 @@
 # samagotchi
 
-An agent harness that relies heavily on memory. Samagotchi is the engine; chi
-(pronounced "chee") is its short name and CLI command.
+chi is a local-first, human-in-the-loop agent harness. It remembers what you
+teach it, as memories and skills, and corrects them when a step turns out
+different. You stay in the loop from the terminal or the browser.
+
+Samagotchi is the engine; chi (pronounced "chee") is its short name and CLI
+command.
 
 > **Pre-1.0:** config and commands may change between minor versions (0.2 →
 > 0.3); the [CHANGELOG](CHANGELOG.md) says what changed. chi is used daily and

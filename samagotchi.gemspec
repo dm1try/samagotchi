@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.version       = Samagotchi::VERSION
   spec.authors       = ["Dmitry Dedov"]
   spec.email         = ["me@dmitry.it"]
-  spec.summary       = "chi: a local-first coding agent with memory, sessions and a web UI"
+  spec.summary       = "chi: a local-first, human-in-the-loop agent harness that learns memories and skills as you work"
   spec.description   = <<~DESC.tr("\n", " ").strip
     chi is an agent harness for local and OpenAI-compatible models (llama.cpp,
     mlx, oMLX, hosted APIs). It runs sessions in a terminal REPL or in background
