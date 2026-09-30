@@ -297,6 +297,9 @@ module Samagotchi
     # A scratch session nobody owns (its REPL was killed) goes whatever its
     # age, its status and the count; +test_only+ takes it too.
     #
+    # +max_count+ counts the sessions that stay: one deleted whatever its
+    # place (scratch, left empty, expired, +any_age+) takes no slot.
+    #
     # Archived sessions are not in .list, so they are neither deleted nor
     # counted. One unarchived is aged from when it was unarchived, if later.
     #
@@ -319,6 +322,7 @@ module Samagotchi
       deleted = []
       kept = []
       skipped = []
+      passed_over = 0
 
       all.each_with_index do |session, idx|
         path = File.join(state_dir, "#{session.id}#{FILE_EXT}")
@@ -365,7 +369,11 @@ module Samagotchi
           expired = updated < cutoff
         end
 
-        overflow = max.positive? && idx >= max
+        # A session deleted whatever its place (scratch, left empty,
+        # expired, any_age) takes no max_count slot: the count is of the
+        # sessions ahead that stay.
+        overflow = max.positive? && idx - passed_over >= max
+        passed_over += 1 if expired || left_empty || any_age || session.scratch
 
         # retain forever when both disabled
         if max.zero? && cutoff.nil? && !left_empty && !any_age && !session.scratch

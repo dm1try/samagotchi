@@ -413,6 +413,22 @@ RSpec.describe Samagotchi::SessionManager do
     ensure
       lock&.release
     end
+
+    # A session deleted whatever its place (scratch here) takes no --keep
+    # slot: --keep 1 keeps the newest session that would otherwise stay.
+    it "keeps the newest real session with --keep 1 when the newest one is a scratch session" do
+      older = [4, 3, 2].map { |days| aged(status: Samagotchi::Session::STATUS_IDLE, days_old: days) }
+      newest_real = aged(status: Samagotchi::Session::STATUS_IDLE, days_old: 1)
+      scratch = aged(status: Samagotchi::Session::STATUS_IDLE, days_old: 0)
+      path = File.join(tmpdir, "#{scratch.id}.json")
+      File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("scratch" => true)))
+
+      result = described_class.prune_sessions(state_dir: tmpdir, days: 0, max_count: 1)
+
+      expect(result[:kept]).to eq([newest_real.id])
+      expect(result[:deleted]).to contain_exactly(scratch.id, *older.map(&:id))
+      expect(File.exist?(File.join(tmpdir, "#{newest_real.id}.json"))).to be(true)
+    end
   end
 
   describe ".delete_session" do

@@ -50,7 +50,7 @@ chi sessions clean --dry-run                     # every test session, whatever 
 chi sessions clean --dry-run --days 7            # test sessions older than 7 days
 ```
 
-`--dry-run` is the safe preview. Web has no prune endpoint; use the CLI.
+`--dry-run` is the safe preview. `--keep N` keeps the N newest sessions that stay: one that goes anyway (a leftover scratch session, one left empty, one older than `--days`) takes no place in the count. Web has no prune endpoint; use the CLI.
 
 `chi sessions list` shows each session's saved recap, its first sentence without the "The user was…" opening (as on the web cards), in place of its last prompt, cut to 60 characters; a session with no recap shows its last prompt. A delegated session's row ends with `↳ <parent's short id>` (plain and `--live`; `--format json` has `parent_id`); rows keep their `updated_at` order, so a parent may be on another page than its children. After the status, `ctx 12%` says how full the context was after the session's last counted turn (from its `analytics.json`; blank when no turn had a server count or the window is unknown; `ctx_pct` in `--format json`). The web's session cards show it quietly too (`12%`), and a session's ctx meter shows it on load, before its next turn streams.
 
