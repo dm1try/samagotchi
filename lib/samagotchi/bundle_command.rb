@@ -138,10 +138,15 @@ module Samagotchi
       provenance = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name)
       unless provenance.installed?
         @stderr.puts "Bundle '#{bundle_name}' not installed — falling back to install"
-        installer = Samagotchi::MemoryBundle::Installer.new(source: expanded_source, name: bundle_name, scope: scope, force: force, strict: true)
+        installer = Samagotchi::MemoryBundle::Installer.new(source: expanded_source, name: bundle_name, scope: scope, force: force,
+                                                            strict: true, dry_run: dry_run)
         begin
           _nd, manifest = installer.run
           @stdout.puts installer.summary
+          if dry_run
+            @stdout.puts "(dry-run: no changes written)"
+            return 0
+          end
           @stdout.puts "Provenance written to: #{Samagotchi::MemoryBundle::Provenance.bundles_dir}/#{bundle_name}/" if manifest
           return 0
         rescue Samagotchi::MemoryBundle::Installer::InstallError => e

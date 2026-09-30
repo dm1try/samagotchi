@@ -155,6 +155,14 @@ RSpec.describe "chi bundle (CLI)" do
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
     end
 
+    it "writes nothing on a dry-run upgrade of a bundle that isn't installed" do
+      v1 = self.class.make_bundle(File.join(@root, "b1"), name: "demo", version: "1.0.0", content: "one\n")
+
+      expect(chi("upgrade", v1, "--dry-run"))
+        .to eq(["Would install: a.md\n(dry-run: no changes written)\n", "Bundle 'demo' not installed — falling back to install\n", 0])
+      expect(Dir.glob(File.join(memories, "**", "*"), File::FNM_DOTMATCH).select { |f| File.file?(f) }).to eq([])
+    end
+
     it "refuses upgrade and uninstall without a source or name, and an unknown bundle" do
       expect(chi("upgrade")).to eq(["", "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run]\n", 1])
       expect(chi("upgrade", "--bogus")).to eq(["", "Unknown bundle upgrade flag: --bogus\n", 1])
