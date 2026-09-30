@@ -226,6 +226,13 @@ test("webLocalReply: /archive, /exit and /quit are answered by the page, other c
   assert.equal(webLocalReply("!exit"), null);
 });
 
+test("webLocalReply: /stats, /recap and /detach, terminal commands the worker doesn't take, get a page reply", () => {
+  assert.match(webLocalReply("/stats"), /^\/stats: not in the web yet; .*chi --attach/);
+  assert.match(webLocalReply("/recap"), /^\/recap: not in the web yet; .*chi --attach/);
+  assert.match(webLocalReply("/detach"), /^\/detach: a terminal's command; close the tab to leave/);
+  assert.equal(webLocalReply("/statsx"), null);
+});
+
 test("continueLine: the card's answers as /continue commands", () => {
   assert.equal(continueLine("yes"), "/continue yes");
   assert.equal(continueLine("no"), "/continue no");
