@@ -90,7 +90,7 @@ module Samagotchi
       Entry.new(key: "session.idle_exit_minutes",     yaml_path: %w[session idle_exit_minutes],     type: :float,   default: 30.0, expose: %i[env config cli]),
       # Plain `chi` runs like `chi --shared` (bin/chi, LaunchMode); false, or --no-shared per run, keeps the plain REPL. No CLI flag: that would duplicate --shared.
       Entry.new(key: "session.shared",                yaml_path: %w[session shared],                type: :bool,    default: true,  expose: %i[env config]),
-      # false: a session nothing happened in is deleted when it is left (SessionManager.empty_session?).
+      # false: a session nothing happened in is deleted when it is left (SessionManager.discardable?).
       Entry.new(key: "session.keep_empty",            yaml_path: %w[session keep_empty],            type: :bool,    default: false, expose: %i[env config]),
       # The most sessions one session may have delegated and still running (the delegate tool); a guard against a runaway model.
       Entry.new(key: "session.max_children",          yaml_path: %w[session max_children],          type: :integer, default: 4,     expose: %i[env config]),

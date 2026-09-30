@@ -417,7 +417,7 @@ module Samagotchi
     private_class_method def self.left_empty?(session_id, state_dir:, default_model:)
       path = File.join(state_dir, "#{session_id}#{Session::FILE_EXT}")
       Time.now - File.mtime(path) > EMPTY_GRACE_SECONDS &&
-        empty_session?(session_id, state_dir: state_dir, default_model: default_model)
+        discardable?(session_id, state_dir: state_dir, default_model: default_model)
     rescue SystemCallError
       false
     end
@@ -582,6 +582,29 @@ module Samagotchi
       false
     end
 
+    # Whether a session being left (or found left) is deleted: session.keep_empty
+    # is off and nothing happened in it (#empty_session?). The worker as it
+    # leaves, the REPL at /exit and the retention sweep all ask this.
+    # @param default_model [String, nil] what a new session starts on
+    # @param model_name [String, nil] the model its owner runs now (the REPL
+    #   keeps /model in its Engine); the saved one is checked either way
+    # @param used_memory_names [Array<String>] memory its owner's Engine used
+    #   before any save
+    # @param unsaved [Session, nil] the REPL's working copy, judged instead
+    #   when the session was never saved
+    def self.discardable?(session_id, default_model:, state_dir: nil, model_name: default_model, used_memory_names: [],
+                          unsaved: nil)
+      return false unless discard_empty? && model_name == default_model && Array(used_memory_names).empty?
+
+      sd = state_dir || Session.default_state_dir
+      if unsaved && !File.exist?(File.join(sd, "#{session_id}#{Session::FILE_EXT}"))
+        return no_conversation?(unsaved.messages) && unsaved.last_prompt.to_s.strip.empty? &&
+               empty_session_dir?(Session.session_dir(session_id, state_dir: sd))
+      end
+
+      empty_session?(session_id, state_dir: sd, default_model: default_model)
+    end
+
     # A session nothing happened in: no conversation, no turn tried (a failed
     # one leaves no messages but a last_prompt and analytics turns), nothing
     # queued or attached, and the model and mode a new session gets. A
@@ -741,7 +764,7 @@ module Samagotchi
     # landing between this check and the delete fails with "no session"
     # (a window of an empty session's last moments, left as is).
     private_class_method def self.discard_left_session(session_id, state_dir:, default_model:)
-      return unless empty_session?(session_id, state_dir: state_dir, default_model: default_model)
+      return unless discardable?(session_id, state_dir: state_dir, default_model: default_model)
 
       delete_session(session_id, state_dir: state_dir)
       Log.info(:worker, "discarded_empty", sid: session_id)

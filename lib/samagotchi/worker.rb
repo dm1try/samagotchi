@@ -639,8 +639,8 @@ module Samagotchi
 
     # Memory used before any turn saved it lives only in the Engine.
     def empty_session?
-      SessionManager.discard_empty? && Array(@engine.used_memory_names).empty? &&
-        SessionManager.empty_session?(@session_id, state_dir: @state_dir, default_model: @default_model)
+      SessionManager.discardable?(@session_id, state_dir: @state_dir, default_model: @default_model,
+                                               used_memory_names: @engine.used_memory_names)
     end
 
     def log_idle_exit
