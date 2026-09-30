@@ -7,6 +7,7 @@ require_relative "../sampling_settings"
 require_relative "errors"
 require_relative "http"
 require_relative "usage"
+require_relative "utf8_scrub"
 
 module Samagotchi
   module LLM
@@ -220,8 +221,8 @@ module Samagotchi
         SamplingSettings.log_text(body.except(:model, :messages, :stream, :stream_options, :tools, :tool_choice))
       end
 
-      # A String stays a String; an Array of parts passes as given, its text
-      # parts scrubbed like a String.
+      # A String stays a String, an Array of parts an Array; both scrubbed
+      # of invalid UTF-8 (Utf8Scrub).
       def wire_message(message)
         wire = message.to_h.transform_keys(&:to_sym)
         wire[:content] = format_content(wire[:content]) if wire.key?(:content)
@@ -230,22 +231,8 @@ module Samagotchi
 
       def format_content(content)
         return content if content.nil?
-        return content.map { |part| scrub_part(part) } if content.is_a?(Array)
 
-        scrub(content.to_s)
-      end
-
-      def scrub_part(part)
-        return part unless part.is_a?(Hash)
-
-        part.to_h do |key, value|
-          [key, key.to_s == "text" && value.is_a?(String) ? scrub(value) : value]
-        end
-      end
-
-      # Invalid UTF-8 (a tool's garbled output) would make to_json raise.
-      def scrub(text)
-        text.encoding == Encoding::UTF_8 && !text.valid_encoding? ? text.scrub("?") : text
+        Utf8Scrub.call(content.is_a?(Array) ? content : content.to_s)
       end
 
       def chat_once(request, cancel_controller, log_fields)

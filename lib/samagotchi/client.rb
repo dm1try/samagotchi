@@ -6,6 +6,7 @@ require "uri"
 require_relative "config"
 require_relative "cancellation_controller"
 require_relative "llm/http"
+require_relative "llm/utf8_scrub"
 require_relative "vision_context"
 require_relative "vision_support"
 require_relative "sampling_settings"
@@ -203,7 +204,7 @@ module Samagotchi
                  images: [], sampling: {})
       images = Array(images)
       request = { stop: stop, n_predict: n_predict, model: model, sampling: sampling }
-      return stream_completion(scrub_utf8(prompt), request, on_chunk, cancel_controller, on_retry) if images.empty?
+      return stream_completion(LLM::Utf8Scrub.call(prompt), request, on_chunk, cancel_controller, on_retry) if images.empty?
 
       # The media marker is random per server process: a restart between the
       # /props read and the request makes the prompt fail to tokenize, so
@@ -211,7 +212,7 @@ module Samagotchi
       attempts = 0
       begin
         attempts += 1
-        payload_prompt = { prompt_string: scrub_utf8(prompt.gsub(ImagePlan::NATIVE_PLACEHOLDER, media_marker!(model))),
+        payload_prompt = { prompt_string: LLM::Utf8Scrub.call(prompt.gsub(ImagePlan::NATIVE_PLACEHOLDER, media_marker!(model))),
                            multimodal_data: images }
         stream_completion(payload_prompt, request, on_chunk, cancel_controller, on_retry)
       rescue LLM::BadRequest => e
@@ -401,27 +402,6 @@ module Samagotchi
     # server's defaults apply) and none of the reserved request fields.
     def sendable_sampling(sampling)
       (sampling || {}).reject { |key, value| value.nil? || ConfigFile::SAMPLING_RESERVED_KEYS.include?(key.to_s) }
-    end
-
-    # Conversation content (system prompt + tool responses + model output) can
-    # contain invalid UTF-8 — e.g. a shell/file op writes a garbled multibyte
-    # sequence (a truncated em-dash, a stray replacement byte). `JSON#to_json`
-    # raises `JSON::GeneratorError` on such input, which would abort the whole
-    # turn. Scrub the payload first: only offending bytes are replaced with "?",
-    # every valid UTF-8 string passes through untouched. Non-UTF-8 encodings are
-    # left alone because `#to_json` already handles them without raising.
-    def scrub_utf8(obj)
-      case obj
-      when String
-        str = obj.to_s
-        str.encoding == Encoding::UTF_8 && !str.valid_encoding? ? str.scrub("?") : str
-      when Array
-        obj.map { |element| scrub_utf8(element) }
-      when Hash
-        obj.each_with_object({}) { |(key, value), memo| memo[scrub_utf8(key)] = scrub_utf8(value) }
-      else
-        obj
-      end
     end
 
     # Resolve a user-facing SAMAGOTCHI_DEFAULT_MODEL selector to the exact id oMLX
