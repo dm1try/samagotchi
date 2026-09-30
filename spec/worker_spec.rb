@@ -621,7 +621,15 @@ RSpec.describe Samagotchi::Worker do
         expect(types.index(:continue_resolved)).to be < types.rindex(:turn_started)
         expect(bridge_snapshot["continue_offer"]).to be_nil
         expect(@worker.instance_variable_get(:@turn_flow).awaiting_continue?).to be(false)
-        expect(@worker.instance_variable_get(:@turn_flow).rollback!).to be(false)
+        # A !rollback sent the moment the reminder's turn_completed arrives,
+        # as a UI would: the worker runs it on its loop, after the reminder
+        # turn closed the rollback window (calling TurnFlow#rollback! from
+        # here raced that close).
+        port = JSON.parse(File.read(sidecar))["port"]
+        Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/command"),
+                       JSON.generate(line: "!rollback", client_id: "web:1"), "Content-Type" => "application/json")
+        expect(wait_until { saw?(:command_ran) }).to be(true)
+        expect(seen.find { |e| e[:type] == :command_ran }).to include(line: "!rollback", output: "nothing to rollback")
       end
     end
 
