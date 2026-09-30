@@ -1,0 +1,11 @@
+---
+name: core
+version: 0.1.0
+scope: system
+description: "Recommended safety set: loop-guard, check-in, guardrails"
+trust_level: reviewed
+requires_chi: ">= 0.8.0"
+includes:
+- loop-guard
+- check-in
+- guardrails

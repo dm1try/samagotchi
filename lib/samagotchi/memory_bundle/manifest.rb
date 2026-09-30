@@ -25,6 +25,9 @@ module Samagotchi
     #       why: reads PRs     #   optional
     #       hint: brew install gh   # optional
     #     - jq                 #   short form: just the command
+    #   includes: [a, b]       # optional — a profile (meta bundle): the
+    #                          #   shipped bundles it installs; its dir holds
+    #                          #   only manifest.yml (MemoryBundle::Profile)
     class Manifest
       class ValidationError < StandardError; end
 
@@ -32,8 +35,10 @@ module Samagotchi
       PLUGIN_FILE = /\A[A-Za-z0-9_][A-Za-z0-9_.-]*\.rb\z/
       # A need is a plain executable name: no path, no spaces.
       NEED_COMMAND = /\A[A-Za-z0-9][A-Za-z0-9._+-]*\z/
+      # A bundle name, as `chi bundle install <name>` takes a shipped one.
+      BUNDLE_NAME = /\A[A-Za-z0-9][A-Za-z0-9_-]*\z/
 
-      attr_reader :name, :version, :scope, :description, :files, :hooks, :trust_level, :plugin, :requires_chi, :needs
+      attr_reader :name, :version, :scope, :description, :files, :hooks, :trust_level, :plugin, :requires_chi, :needs, :includes
 
       def initialize(path:)
         @path = path
@@ -48,6 +53,12 @@ module Samagotchi
         @plugin = parse_plugin(raw["plugin"])
         @requires_chi = parse_requires_chi(raw["requires_chi"])
         @needs = self.class.parse_needs(raw["needs"])
+        @includes = parse_includes(raw["includes"])
+      end
+
+      # A profile: it installs the bundles in includes instead of files.
+      def meta?
+        !@includes.empty?
       end
 
       def self.read(dir:)
@@ -192,6 +203,26 @@ module Samagotchi
         sha = (raw["sha256"] || raw[:sha256]).to_s.strip
         sha = "sha256:#{sha}" unless sha.empty? || sha.start_with?("sha256:")
         { file: file, sha256: sha }
+      end
+
+      # includes: → the names in order, duplicates dropped; [] when absent.
+      # A meta ships nothing of its own, so files, hooks or a plugin next
+      # to it is a ValidationError.
+      def parse_includes(raw)
+        return [] if raw.nil?
+        raise ValidationError, "includes: must be a list of bundle names" unless raw.is_a?(Array)
+
+        names = raw.map do |item|
+          name = item.to_s.strip
+          raise ValidationError, "includes: #{item.inspect} is not a bundle name" unless name.match?(BUNDLE_NAME)
+
+          name
+        end.uniq
+        if !names.empty? && (!@files.empty? || !@hooks.empty? || @plugin)
+          raise ValidationError, "a bundle with includes: holds only its includes (no files, hooks or plugin)"
+        end
+
+        names
       end
 
       def parse_requires_chi(raw)

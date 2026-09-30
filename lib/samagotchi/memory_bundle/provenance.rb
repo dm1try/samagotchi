@@ -117,8 +117,10 @@ module Samagotchi
       # @param needs [Array<Hash>] the manifest's needs ({command:, why:, hint:})
       # @param conflicts [Array<String>] files an upgrade kept with local
       #   edits that conflict with it; their entries get conflict: true
+      # @param includes [Array<String>, nil] a profile's recorded members
+      #   (MemoryBundle::Profile); nil for a plain bundle
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
-                guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, conflicts: [])
+                guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, conflicts: [], includes: nil)
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -227,6 +229,7 @@ module Samagotchi
         end
         manifest_data["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
         manifest_data["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } if needs.is_a?(Array) && !needs.empty?
+        manifest_data["includes"] = includes.map(&:to_s) if includes.is_a?(Array)
 
         write_manifest(manifest_data)
       end

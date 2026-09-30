@@ -46,6 +46,17 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
   end
 
   describe "#write" do
+    it "records a meta's includes, and none for a plain bundle" do
+      meta = described_class.new(name: "core")
+      meta.write(files: {}, scope: "system", version: "0.1.0", source_path: "/x/core", includes: %w[loop-guard check-in])
+      expect(meta.read[:includes]).to eq(%w[loop-guard check-in])
+      expect(meta.read[:files]).to eq({})
+
+      plain = described_class.new(name: "plain")
+      plain.write(files: {}, scope: "system", version: "0.1.0", source_path: "/x/plain")
+      expect(plain.read).not_to have_key(:includes)
+    end
+
     it "writes manifest.json and base snapshots" do
       prov = described_class.new(name: "test-bundle")
       base_dir = File.join(tmpdir, "sources")

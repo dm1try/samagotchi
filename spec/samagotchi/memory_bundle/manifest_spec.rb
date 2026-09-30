@@ -237,4 +237,31 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
       expect(YAML.load_file(File.join(dest, "manifest.yml"))).not_to have_key("needs")
     end
   end
+  describe "includes" do
+    it "is empty when absent" do
+      expect(described_class.new(path: write_manifest({})).includes).to eq([])
+    end
+
+    it "reads a list of bundle names; the manifest is then a meta" do
+      m = described_class.new(path: write_manifest({ "files" => nil, "includes" => ["loop-guard", "check-in", "loop-guard"] }))
+      expect(m.includes).to eq(%w[loop-guard check-in])
+      expect(m.meta?).to be(true)
+    end
+
+    it "refuses includes that isn't a list of plain names" do
+      expect { described_class.new(path: write_manifest({ "includes" => "loop-guard" })) }
+        .to raise_error(described_class::ValidationError, /includes: must be a list/)
+      expect { described_class.new(path: write_manifest({ "includes" => ["../x"] })) }
+        .to raise_error(described_class::ValidationError, /not a bundle name/)
+    end
+
+    it "refuses a meta with files, hooks or a plugin" do
+      expect { described_class.new(path: write_manifest({ "includes" => ["a"], "files" => { "a.md" => "sha256:0" } })) }
+        .to raise_error(described_class::ValidationError, /holds only its includes/)
+      expect { described_class.new(path: write_manifest({ "includes" => ["a"], "hooks" => { "h.rb" => { "event" => "after_turn" } } })) }
+        .to raise_error(described_class::ValidationError, /holds only its includes/)
+      expect { described_class.new(path: write_manifest({ "includes" => ["a"], "plugin" => { "file" => "p.rb" } })) }
+        .to raise_error(described_class::ValidationError, /holds only its includes/)
+    end
+  end
 end
