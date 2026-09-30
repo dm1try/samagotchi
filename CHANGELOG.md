@@ -8,18 +8,6 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
-### Fixed
-
-- A reload of the web page, or joining a running turn, shows the turn's own
-  rows where they were live: the "↻ empty answer / cut by <bundle>, asking
-  again" row (also when `chi --attach` joins), an answered or dismissed
-  question card, and a line sent while the turn ran (a "steered" bubble in
-  that turn; it no longer splits the turn in two, which shifted the timing
-  lines of later turns). A guardrail or plugin load warning comes back above
-  the turns after it instead of at the end, and a canceled turn's timing
-  line says "· canceled" live too. Rows and cards of finished turns last as
-  long as the session's worker.
-
 ## [0.6.0] - 2026-09-30
 
 ### Added
@@ -35,6 +23,9 @@ and commands may change between minor versions. How releases are made:
   again; if the retry loops too, the turn stops with a card. On by default
   (`bundles: loop-guard: thinking: watch: false` turns it off); upgrade the
   bundle with `chi bundle upgrade loop-guard`.
+- The desktop helper shows the model a new session will use, next to "New
+  session" (from the new `chi self --model`, which prints the resolved default
+  model).
 
 ### Changed
 
@@ -42,6 +33,12 @@ and commands may change between minor versions. How releases are made:
   the running turn pinned above the composer). `web.view: turn`
   (`--web-view turn`, `?view=turn`) brings back one block per turn in the
   history.
+- In the stage view, a plugin card with buttons (check-in's Nudge / Keep going
+  / Stop) sets the status to "waiting for you" while it's unanswered, and the
+  headline shows plain text while the answer streams (no `|`, `**` or `#`).
+- On a phone, the session footer hides the "copy chi --attach" chip.
+- `delegate` and `delegate_result` with `timeout: 0` look once and return at
+  once (a negative timeout counts as 0) instead of waiting 600 s.
 
 ### Removed
 
@@ -49,6 +46,29 @@ and commands may change between minor versions. How releases are made:
   stage and turn views draw every turn. A config that still says
   `web.view: chat` warns about the invalid value and uses the default;
   `?view=chat` in a page URL is ignored.
+
+### Fixed
+
+- A reload of the web page, or joining a running turn, shows the turn's own
+  rows where they were live: the "↻ empty answer / cut by <bundle>, asking
+  again" row (also when `chi --attach` joins), an answered or dismissed
+  question card, and a line sent while the turn ran (a "steered" bubble in
+  that turn; it no longer splits the turn in two, which shifted the timing
+  lines of later turns). A guardrail or plugin load warning comes back above
+  the turns after it instead of at the end, and a canceled turn's timing
+  line says "· canceled" live too. Rows and cards of finished turns last as
+  long as the session's worker.
+- A cancel racing a web page's refresh while a question was open could
+  freeze the session's worker (a lock-order deadlock).
+- `chi bundle upgrade --dry-run` on a bundle that isn't installed wrote the
+  files anyway; it now writes nothing.
+- `chi bundle install` / `upgrade` with a source that doesn't exist says
+  "Install failed: source does not exist: …" instead of a Ruby backtrace.
+- `chi sessions prune --keep N` counts only the sessions that stay: a
+  leftover scratch session as the newest one no longer makes `--keep 1`
+  delete every session.
+
+Update with `chi update` (loop-guard 0.2.0: the thinking watch).
 
 ## [0.5.1] - 2026-09-30
 
