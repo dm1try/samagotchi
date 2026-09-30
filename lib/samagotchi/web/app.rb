@@ -121,6 +121,31 @@ module Samagotchi
 
       private
 
+      # The routes, first match wins: a handler takes the request and the
+      # path's captures (the session id, an image's name).
+      ROUTES = [
+        ["GET", %r{\A/(?:index\.html)?\z}, :serve_index],
+        ["GET", %r{\A/api/sessions\z}, :handle_list],
+        ["POST", %r{\A/api/sessions\z}, :handle_create],
+        ["GET", %r{\A/api/info\z}, :handle_info],
+        ["GET", %r{\A/api/models\z}, :handle_models],
+        ["GET", %r{\A/api/events\z}, :handle_events],
+        ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream],
+        ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output],
+        ["POST", %r{\A/api/sessions/([^/]+)/cancel\z}, :handle_cancel],
+        ["POST", %r{\A/api/sessions/([^/]+)/stop\z}, :handle_stop],
+        ["POST", %r{\A/api/sessions/([^/]+)/archive\z}, :handle_archive],
+        ["POST", %r{\A/api/sessions/([^/]+)/unarchive\z}, :handle_unarchive],
+        ["POST", %r{\A/api/sessions/([^/]+)/turn\z}, :handle_turn],
+        ["POST", %r{\A/api/sessions/([^/]+)/answer\z}, :handle_question_answer],
+        ["POST", %r{\A/api/sessions/([^/]+)/question/dismiss\z}, :handle_question_dismiss],
+        ["POST", %r{\A/api/sessions/([^/]+)/command\z}, :handle_command],
+        ["POST", %r{\A/api/sessions/([^/]+)/images\z}, :handle_image_upload],
+        ["GET", %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}, :handle_image],
+        ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show],
+        ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete]
+      ].freeze
+
       def route(env)
         req = Rack::Request.new(env)
         return forbidden unless local_host_header?(env)
@@ -130,69 +155,14 @@ module Samagotchi
           return denied if denied
         end
 
-        case [req.request_method, req.path_info]
-        when ["GET", "/"], ["GET", "/index.html"]
-          serve_index(req)
-        when ["GET", "/api/sessions"]
-          handle_list(req)
-        when ["POST", "/api/sessions"]
-          handle_create(req)
-        when ["GET", "/api/info"]
-          handle_info
-        when ["GET", "/api/models"]
-          handle_models
-        when ["GET", "/api/events"]
-          handle_events(req)
-        else
-          # Dynamic routes
-          if (m = %r{\A/api/sessions/([^/]+)/stream\z}.match(req.path_info)) && req.get?
-            return handle_stream(req, m[1])
-          end
-          if (m = %r{\A/api/sessions/([^/]+)/output\z}.match(req.path_info)) && req.get?
-            return handle_output(req, m[1])
-          end
-          if (m = %r{\A/api/sessions/([^/]+)/cancel\z}.match(req.path_info)) && req.post?
-            return handle_cancel(req, m[1])
-          end
-          if (m = %r{\A/api/sessions/([^/]+)/stop\z}.match(req.path_info)) && req.post?
-            return handle_stop(req, m[1])
-          end
-          if (m = %r{\A/api/sessions/([^/]+)/(archive|unarchive)\z}.match(req.path_info)) && req.post?
-            return m[2] == "archive" ? handle_archive(req, m[1]) : handle_unarchive(req, m[1])
-          end
-          if (m = %r{\A/api/sessions/([^/]+)/turn\z}.match(req.path_info)) && req.post?
-            return handle_turn(req, m[1])
-          end
-          if (m = %r{\A/api/sessions/([^/]+)/answer\z}.match(req.path_info)) && req.post?
-            return handle_question_answer(req, m[1])
-          end
-          if (m = %r{\A/api/sessions/([^/]+)/question/dismiss\z}.match(req.path_info)) && req.post?
-            return handle_question_dismiss(req, m[1])
-          end
-          if (m = %r{\A/api/sessions/([^/]+)/command\z}.match(req.path_info)) && req.post?
-            return handle_command(req, m[1])
-          end
-          if (m = %r{\A/api/sessions/([^/]+)/images\z}.match(req.path_info)) && req.post?
-            return handle_image_upload(req, m[1])
-          end
-          if (m = %r{\A/api/sessions/([^/]+)/images/([^/]+)\z}.match(req.path_info)) && req.get?
-            return handle_image(req, m[1], m[2])
-          end
-          if (m = %r{\A/api/sessions/([^/]+)\z}.match(req.path_info)) && req.get?
-            return handle_show(req, m[1])
-          end
-          if (m = %r{\A/api/sessions/([^/]+)\z}.match(req.path_info)) && req.delete?
-            return handle_delete(req, m[1])
-          end
-          if req.path_info.start_with?("/assets/") || req.path_info.start_with?("/public/")
-            return serve_static(req)
-          end
-          # Fallback static file serve from public_dir (e.g. /style.css)
-          maybe_static = serve_static(req)
-          return maybe_static if maybe_static[0] != 404
+        ROUTES.each do |verb, pattern, handler|
+          next unless req.request_method == verb && (m = pattern.match(req.path_info))
 
-          not_found(path: req.path_info)
+          return send(handler, req, *m.captures)
         end
+        # Anything else is a file under public_dir (/assets/*, /public/* or
+        # a bare path such as /style.css), or 404.
+        serve_static(req)
       rescue StandardError => e
         Log.exception(:web, "request_failed", e, method: env["REQUEST_METHOD"], path: env["PATH_INFO"])
         error_response(500, "internal_error", e.message)
@@ -429,7 +399,7 @@ module Samagotchi
 
       # What a second `chi web` probes before starting its own server: this
       # is chi web, and it knows ?dir (features).
-      def handle_info
+      def handle_info(_req)
         json_response(200, { app: "chi-web", version: Samagotchi::VERSION, pid: Process.pid, cwd: Dir.pwd,
                              features: ["dir"], lan: @lan && @lan[:ip] })
       end
@@ -442,7 +412,7 @@ module Samagotchi
       # a bounded time for a fresh listing and answers with what it has, a
       # host that failed or the wait running out noted in +warning+, never a
       # failure: the default alone is enough for the page.
-      def handle_models
+      def handle_models(_req)
         default = begin
           ModelProfile.required_model_name
         rescue StandardError
