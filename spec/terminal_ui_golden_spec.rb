@@ -18,12 +18,14 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
   let(:history_dir) { Dir.mktmpdir("golden-history") }
 
   around do |example|
-    saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_HISTORY_FILE", "XDG_STATE_HOME")
+    saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "SAMAGOTCHI_HISTORY_FILE", "XDG_STATE_HOME", "NO_COLOR", "TERM")
     ENV["SAMAGOTCHI_HISTORY_FILE"] = File.join(history_dir, "history.json")
     ENV["XDG_STATE_HOME"] = history_dir
+    ENV.delete("NO_COLOR")
+    ENV["TERM"] = "xterm-256color"
     example.run
   ensure
-    %w[SAMAGOTCHI_DEFAULT_MODEL SAMAGOTCHI_HISTORY_FILE XDG_STATE_HOME].each { |k| ENV.delete(k) }
+    %w[SAMAGOTCHI_DEFAULT_MODEL SAMAGOTCHI_HISTORY_FILE XDG_STATE_HOME NO_COLOR TERM].each { |k| ENV.delete(k) }
     saved.each { |k, v| ENV[k] = v }
     FileUtils.remove_entry(history_dir)
   end
@@ -69,12 +71,14 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = model
     out = StringIO.new
     surface = Samagotchi::TerminalUI::Screen.new(out: out, size: -> { [24, 100] }) if tty
-    ui = Samagotchi::TerminalUI.new(mode: :assist, client: client, no_default_input: true, surface: surface)
-    allow(ui).to receive(:thinking_spinner_enabled?).and_return(tty)
-    allow(ui).to receive(:color_output?).and_return(tty)
-    allow(ui).to receive(:thinking_render_min_interval).and_return(0.0)
-    allow(ui).to receive(:status_effective_width).and_return(100)
-    allow(ui).to receive(:status_server_segment).and_return("")
+    # Colour follows $stdout (swapped to +out+ below): a terminal's.
+    out.define_singleton_method(:tty?) { tty }
+    # No ticker; a clock that moves a tenth of a second per read, so the
+    # spinner's frames are the same every run.
+    ticks = 0
+    clock = -> { ticks += 1; ticks / 10.0 }
+    ui = Samagotchi::TerminalUI.new(mode: :assist, client: client, no_default_input: true, surface: surface,
+                                    spinner_tick_interval: nil, spinner_clock: clock)
     allow(Reline).to receive(:readmultiline).and_return(*prompts, nil)
     allow(Reline).to receive(:readline).and_return(*answers, nil)
     @kernel_inputs = []
@@ -149,9 +153,11 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     ]
   end
 
-  it "renders a Qwen answer with the turn preamble and server context" do
+  it "renders a Qwen answer with the turn preamble and the kernel's context estimate" do
     payload = { "content" => "x", "timings" => { "prompt_n" => 1200, "predicted_n" => 40 }, "n_ctx" => 32_000 }
-    events = generation("qwen36", "<think>TURN: checking the greeting\n", "some reasoning</think>", "Hello there", payload: payload)
+    context = { type: :context_status, iteration: 1, usage: { estimated_pct: 3.9, source: "server" }, bucket: "under20" }
+    events = [context] +
+             generation("qwen36", "<think>TURN: checking the greeting\n", "some reasoning</think>", "Hello there", payload: payload)
 
     output = run_turn(model: "Qwen3-14B", events: events) { |messages| result_for(messages, output: "Hello there") }
 

@@ -77,7 +77,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
   it "shows the choices in the notes slot and commits one line once answered" do
     allow(engine).to receive(:answer_question)
     surface = RecordingSurface.new
-    agent.instance_variable_set(:@surface, surface)
+    agent.send(:use_surface, surface)
 
     answer_with("2\n")
 
@@ -171,7 +171,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
   # A continue offer's ? read has no echo either.
   it "shows an invalid continue answer above its error, the offer's choices staying" do
     surface = RecordingSurface.new
-    agent.instance_variable_set(:@surface, surface)
+    agent.send(:use_surface, surface)
     agent.instance_variable_set(:@continue_slot, true)
     invalid = Samagotchi::SessionCommands::Result.new(status: :error, output: "answer yes, no, or no, <reason>", changed: [],
                                                      model_name: "m", resume: false, shell: false)
@@ -188,7 +188,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
   # later "no" can't roll the reminder's exchange back with the turn.
   it "drops a pending continue offer when a reminder turn runs, with one line" do
     surface = RecordingSurface.new
-    agent.instance_variable_set(:@surface, surface)
+    agent.send(:use_surface, surface)
     agent.instance_variable_set(:@continue_slot, true)
     flow = agent.instance_variable_get(:@turn_flow)
     flow.instance_variable_set(:@offer, { context: {}, no_interrupt: false })

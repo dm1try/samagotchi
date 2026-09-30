@@ -233,10 +233,8 @@ module Samagotchi
         "model=#{model} (default: #{default_model})"
       end
 
-      # @param server [Hash, nil] the server's own numbers ({ctx_pct:, prompt_tokens:, ...})
       # @param estimate [Hash, nil] the kernel's estimate ({est_pct:, bucket:})
-      def status_context_text(server: nil, estimate: nil)
-        return format_server_context_segment(server) if server.is_a?(Hash)
+      def status_context_text(estimate: nil)
         return "" unless estimate.is_a?(Hash)
 
         pct = format("%.1f", estimate[:est_pct].to_f)
@@ -244,23 +242,6 @@ module Samagotchi
         return "ctx=#{pct}%" if bucket.empty?
 
         "ctx=#{pct}% (#{bucket})"
-      end
-
-      def format_server_context_segment(status)
-        pct = status[:ctx_pct]
-        base = pct ? "ctx=#{format('%.1f', pct)}%" : "ctx=srv"
-
-        tokens = []
-        prompt_tokens = status[:prompt_tokens]
-        completion_tokens = status[:completion_tokens]
-        total_tokens = status[:total_tokens]
-        tokens << "p=#{prompt_tokens}" if prompt_tokens
-        tokens << "c=#{completion_tokens}" if completion_tokens
-        tokens << "t=#{total_tokens}" if total_tokens
-
-        return base if tokens.empty?
-
-        "#{base} (#{tokens.join(' ')})"
       end
 
       # @param label [String] "mem" for the used memories, "muted" for the

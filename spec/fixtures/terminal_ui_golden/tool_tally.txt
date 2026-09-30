@@ -1,27 +1,34 @@
 \e[?2026h\e[?25l\r\e[JSession: <session-id>
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[J\e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mmodel> thinking... |\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J/ thinking…
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mmodel> thinking... /\e[0m
-\e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mmodel> thinking... -\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J- thinking…
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[36mtool>\e[0m running command (execute \e[90mcommand="ls"\e[0m): \e[32mok\e[0m (<elapsed>)
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J/ running execute…
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[36mtool>\e[0m running command (execute \e[90mcommand="pwd"\e[0m): \e[32mok\e[0m (<elapsed>)
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[36mtool>\e[0m running command (execute \e[90mcommand="ls"\e[0m): \e[32mok\e[0m (<elapsed>)
+/ running execute…
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[36mtool>\e[0m running command (execute \e[90mcommand="date"\e[0m): \e[32mok\e[0m (<elapsed>)
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J- running execute…
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mmodel> thinking... -\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[36mtool>\e[0m running command (execute \e[90mcommand="pwd"\e[0m): \e[32mok\e[0m (<elapsed>)
+- running execute…
+\e[90mstatus> model=Qwen3-14B\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J- running execute…
 \e[90m3 tool calls · execute ×3 · last: execute command="date"\e[0m
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J\e[90mmodel> writing · Looked. -\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J\e[36mtool>\e[0m running command (execute \e[90mcommand="date"\e[0m): \e[32mok\e[0m (<elapsed>)
+- running execute…
+\e[90m3 tool calls · execute ×3 · last: execute command="date"\e[0m
+\e[90mstatus> model=Qwen3-14B\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J| thinking…
+\e[90m3 tool calls · execute ×3 · last: execute command="date"\e[0m
+\e[90mstatus> model=Qwen3-14B\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J/ writing · \e[90mLooked.\e[0m
 \e[90m3 tool calls · execute ×3 · last: execute command="date"\e[0m
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[3A\e[J\e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mstatus> model=Qwen3-14B\e[0m
-\e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[JLooked.
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J

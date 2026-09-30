@@ -34,13 +34,15 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
   end
 
   def build_ui(surface: screen, spinner_tick_interval: nil, **options)
-    ui = described_class.new(mode: :assist, client: client, no_default_input: true, surface: surface,
-                             spinner_tick_interval: spinner_tick_interval, **options)
-    allow(ui).to receive(:thinking_spinner_enabled?).and_return(true)
-    allow(ui).to receive(:color_output?).and_return(false)
-    allow(ui).to receive(:thinking_render_min_interval).and_return(0.0)
-    allow(ui).to receive(:status_server_segment).and_return("")
-    ui
+    described_class.new(mode: :assist, client: client, no_default_input: true, surface: surface,
+                        spinner_tick_interval: spinner_tick_interval, **options)
+  end
+
+  # A clock that moves a tenth of a second per read: each chunk redraws the
+  # row (no throttle) and a sentence shows as it would over time.
+  def stepping_clock
+    ticks = 0
+    -> { ticks += 1; ticks / 10.0 }
   end
 
   # Everything the terminal has shown that is still there: scrollback, then
@@ -78,7 +80,8 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
   describe "the spinner while no chunks come" do
     let(:clock) { [100.0] }
 
-    def spinner_rows = term.lines.grep(/model> /)
+    # The activity row: the spinner frame first.
+    def spinner_rows = term.lines.grep(%r{\A[|/\\-] })
 
     # The first spinner row once +condition+ holds for it: the ticker thread
     # redraws when it next wakes, however slow the runner (up to +within+ s).
@@ -93,8 +96,7 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
     end
 
     it "turns with time, then says how long it has waited for the first token" do
-      ui = build_ui(spinner_tick_interval: 0.02)
-      allow(ui).to receive(:monotonic_time) { clock.first }
+      ui = build_ui(spinner_tick_interval: 0.02, spinner_clock: -> { clock.first })
       seen = []
       waiting = nil
 
@@ -112,8 +114,8 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
                      waiting = spinner_row_when { |row| row.to_s.include?("waiting for the first token") }
                    })
 
-      expect(seen.map { |row| row.strip[-1] }.uniq.size).to be >= 3
-      expect(waiting).to match(/model> waiting for the first token\.\.\. 3s [|\/\\-]/)
+      expect(seen.map { |row| row[0] }.uniq.size).to be >= 3
+      expect(waiting).to match(%r{\A[|/\\-] waiting for the first token… 3s\z})
       expect(spinner_rows).to be_empty
     end
 
@@ -129,13 +131,13 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
   end
 
   it "shows the spinner row above the status rows while a turn runs, and drops it after" do
-    ui = build_ui
+    ui = build_ui(spinner_clock: stepping_clock)
     regions = []
     run_repl(ui, prompts: ["hi"], events: generation("<think>TURN: Checking\n", "a", "</think>PONG"),
                  on_event: ->(event) { regions << term.lines.last(2) if event[:type] == :generation_chunk })
 
-    expect(regions.last).to match([a_string_starting_with("model> thinking · Checking"), a_string_starting_with("status> model=Qwen3-14B")])
-    expect(shown.grep(/^model> thinking · Checking/)).to be_empty
+    expect(regions.last).to match([a_string_matching(/\A. thinking · Checking/), a_string_starting_with("status> model=Qwen3-14B")])
+    expect(shown.grep(/thinking · Checking/)).to be_empty
     expect(shown).to include("PONG")
   end
 
@@ -143,12 +145,11 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
   # (a long sentence at 50 columns) wrapped, each redraw landed a row
   # lower and left a copy behind.
   it "keeps one spinner row and one status row when they are wider than the terminal" do
-    ui = build_ui
-    allow(ui).to receive(:status_effective_width).and_return(100)
+    ui = build_ui(spinner_clock: stepping_clock)
     phrase = "TURN: Comparing the two decimal numbers carefully before answering\n"
     counts = []
     run_repl(ui, prompts: ["hi"], events: generation("<think>#{phrase}", *(["more "] * 8), "</think>PONG"),
-                 on_event: ->(_event) { counts << [shown.grep(/^model> thinking · Comparing/).size, shown.grep(/^status> /).size] })
+                 on_event: ->(_event) { counts << [shown.grep(/\A. thinking · Comparing/).size, shown.grep(/^status> /).size] })
 
     expect(counts).to all(satisfy { |spinner, status| spinner <= 1 && status <= 1 })
     expect(counts).to include([1, 1])
@@ -271,6 +272,20 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
       expect { run_repl(ui, prompts: []) }.to output(/Continue session: chi --resume \S+\n\z/).to_stdout
 
       expect(Samagotchi::TerminalUI::LiveRegion).to have_received(:close).with(screen)
+    end
+
+    # A ticker drawing on a closed Screen would garble the terminal on exit.
+    it "stops the view's ticker before it closes the live region, with a plugin's init task still running" do
+      allow(Samagotchi::TerminalUI::LiveRegion).to receive(:open).and_return(screen)
+      ui = build_ui(surface: nil, spinner_tick_interval: 0.02)
+      view = ui.instance_variable_get(:@view)
+      ui.instance_variable_get(:@engine).announce({ type: :plugin_init_started, bundle: "mcp", id: "mcp-1", label: "starting" })
+      expect(view).to receive(:stop).ordered.and_call_original
+      expect(Samagotchi::TerminalUI::LiveRegion).to receive(:close).with(screen).ordered
+
+      expect { run_repl(ui, prompts: []) }.to output.to_stdout
+
+      expect(view.instance_variable_get(:@ticker)).to be_nil
     end
 
     it "prints plainly when the terminal can't show a live region" do

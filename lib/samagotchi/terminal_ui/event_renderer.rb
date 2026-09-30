@@ -8,10 +8,12 @@ module Samagotchi
     # Renders one UI's view of Engine turn events: the thinking spinner while
     # the model generates, a `tool>` line per completed tool call, and the
     # answer (with any tool activity not already shown) from :turn_completed's
-    # turn_summary. It is the `on_event:` sink the REPL hands Engine#run_turn.
+    # turn_summary, and how a turn ended. It is the `on_event:` sink the REPL
+    # hands Engine#run_turn, and renders what attached mode gets over the
+    # Bridge.
     #
-    # Drawing is delegated to a +view+ (the TerminalUI), so the same dispatch
-    # can later render events that arrive over the Bridge. The renderer keeps
+    # Drawing is delegated to a +view+ (an AttachedView in both TUIs). The
+    # renderer keeps
     # only per-turn bookkeeping that must come from the events themselves:
     # which tool lines were already streamed, and when each tool call started.
     # Events that came over the Bridge as JSON (string keys) are symbolized first.
@@ -63,8 +65,6 @@ module Samagotchi
         when :tool_call_started
           @tool_started_at[tool_call_key(event)] = @clock.call
           @view.tool_call_feedback_started(event)
-        when :used_memories_updated
-          @view.used_memories_updated(event) if @view.respond_to?(:used_memories_updated)
         when :tool_call_completed
           @view.clear_generation_retry
           @view.tool_call_feedback_completed(event)
@@ -155,7 +155,7 @@ module Samagotchi
       end
 
       # Render a finished turn: tool activity the stream did not already show,
-      # the status lines, the answer, and the iteration-limit notice.
+      # the answer, and the iteration-limit notice.
       # @param summary [Hash] Engine#turn_summary
       def render_turn_summary(summary)
         @view.finish_thinking_spinner
@@ -165,7 +165,6 @@ module Samagotchi
 
           @view.print_line(@view.format_tool_activity_line(activity))
         end
-        @view.emit_active_memories_line
         @view.print_line(summary[:output])
         @view.print_line("iteration limit reached") if summary[:resumable]
       end

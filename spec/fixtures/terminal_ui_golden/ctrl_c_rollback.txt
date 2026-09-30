@@ -1,8 +1,8 @@
 \e[?2026h\e[?25l\r\e[JSession: <session-id>
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[J\e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mmodel> thinking... |\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J/ thinking…
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mmodel> thinking... /\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J- thinking…
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[33m✕\e[0m turn canceled (Ctrl-C) · <elapsed>
@@ -12,13 +12,11 @@
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J
 model> salvaged turn discarded; restored pre-turn state
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mmodel> thinking... /\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\ thinking…
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mmodel> writing · Finished. /\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J| writing · \e[90mFinished.\e[0m
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mstatus> model=Qwen3-14B\e[0m
-\e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[JFinished.
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J

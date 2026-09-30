@@ -8,13 +8,12 @@ require_relative "thinking_line"
 
 module Samagotchi
   class TerminalUI
-    # EventRenderer's view in attached mode, drawn on a Screen: the
-    # thinking feedback is the activity slot, one row right above the prompt
-    # (spinner frame, then the running tool or the newest sentence of the
-    # model's thinking or text, ThinkingLine),
-    # and every finished line is committed output. The local REPL's
-    # multi-line spinner redraws in place, which can't share the terminal
-    # with an open prompt.
+    # EventRenderer's view in both TUIs (attached mode and the REPL), drawn
+    # on a Screen: the thinking feedback is the activity slot, one row right
+    # above the prompt (spinner frame, then the running tool or the newest
+    # sentence of the model's thinking or text, ThinkingLine), and every
+    # finished line is committed output. On a PlainSurface the activity
+    # slot is dropped.
     #
     # The spinner turns with time, not per chunk: while the slot is shown a
     # ticker thread redraws it every TICK_INTERVAL, so a turn that gets no
@@ -57,6 +56,16 @@ module Samagotchi
 
       def print_line(text)
         @screen.commit(text)
+      end
+
+      # Draw on +surface+ from now on (the REPL swaps in its live region
+      # after the view is built, and back when it ends): what the slot shows
+      # moves there.
+      def surface=(surface)
+        @lock.synchronize do
+          @screen = surface
+          redraw_status if status_text
+        end
       end
 
       # A new turn: its tally starts over too.
@@ -193,9 +202,6 @@ module Samagotchi
       def capture_context_status(status)
         @context_status = status if status
       end
-
-      # The REPL's sticky memories line has no source in attached mode.
-      def emit_active_memories_line; end
 
       private
 

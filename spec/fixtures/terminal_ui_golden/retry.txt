@@ -1,14 +1,12 @@
 \e[?2026h\e[?25l\r\e[JSession: <session-id>
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[J\e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mmodel> thinking... |\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J/ thinking…
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[31mmodel> network error: retrying (1/4 in 0.5s) | Errno::ECONNREFUSED\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J- retrying (attempt 1)
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mmodel> thinking... /\e[0m
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\ thinking…
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mstatus> model=Qwen3-14B\e[0m
-\e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[Jok
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J

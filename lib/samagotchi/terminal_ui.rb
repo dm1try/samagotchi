@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "monitor"
 require "json"
 require "fileutils"
 require "io/console"
@@ -13,8 +12,6 @@ require_relative "context_note"
 require_relative "cancellation_controller"
 require_relative "llm/errors"
 require_relative "host_registry"
-require_relative "context_usage"
-require_relative "context_window"
 require_relative "kernel_loop"
 require_relative "session"
 require_relative "owner_lock"
@@ -22,8 +19,8 @@ require_relative "engine"
 require_relative "tools/memory"
 require_relative "output_formatter"
 require_relative "turn_flow"
-require_relative "turn_tally"
 require_relative "session_commands"
+require_relative "terminal_ui/attached_view"
 require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
 require_relative "terminal_ui/input_support"
@@ -32,7 +29,7 @@ require_relative "terminal_ui/plain_surface"
 require_relative "terminal_ui/live_region"
 require_relative "terminal_ui/question_prompt"
 require_relative "terminal_ui/repl_input"
-require_relative "terminal_ui/thinking_line"
+require_relative "terminal_ui/status_row"
 require_relative "log"
 
 module Samagotchi
@@ -51,27 +48,6 @@ module Samagotchi
     # The prompt while a question waits for its answer (its choices are in
     # the notes slot).
     QUESTION_PROMPT = "? "
-    THINKING_UI_SPINNER = "spinner"
-    THINKING_UI_OFF = "off"
-    THINKING_SPINNER_FRAMES = ["|", "/", "-", "\\"].freeze
-    MEMORY_SPINNER_COLOR = "38;5;208"
-    TOOL_SPINNER_COLOR = 32
-    NETWORK_RETRY_SPINNER_COLOR = 31
-    MEMORY_SPINNER_PREVIEW_LIMIT = 3
-    MEMORY_STICKY_PREVIEW_LIMIT = 8
-    THINKING_PREVIEW_WIDTH = 120
-    # Columns a sentence needs on the spinner row; with less, it reads "thinking...".
-    MIN_SENTENCE_ROOM = 12
-    THINKING_TOOL_PREVIEW_LIMIT = 56
-    THINKING_RENDER_MIN_INTERVAL = 0.08
-    # The spinner also turns with time: a ticker redraws it when no chunk
-    # did for this long, and after THINKING_WAIT_NOTICE_AFTER seconds with no
-    # chunk it says how long the first token has taken.
-    THINKING_TICK_INTERVAL = 0.25
-    THINKING_WAIT_NOTICE_AFTER = 2.0
-    STATUS_WIDTH_MODE_TERMINAL_CAP = "terminal_cap"
-    STATUS_WIDTH_MODE_FIXED = "fixed"
-    STATUS_MAX_WIDTH_DEFAULT = 160
     REMINDER_PENDING_POLL_INTERVAL = 0.5
     # What a command sent during a turn gets, as from a worker (Worker::BUSY_OUTPUT).
     COMMAND_BUSY = "busy: wait for the turn to end"
@@ -93,14 +69,9 @@ module Samagotchi
     # @param scratch [Boolean] `chi scratch`: a new session that is deleted
     #   however the REPL ends, saves no memories and writes no recap
     def initialize(mode: :assist, prompt: nil, client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, no_default_input: false, model_name: nil, memories: [], muted_memories: [], non_interactive: false, surface: nil,
-                   spinner_tick_interval: THINKING_TICK_INTERVAL, scratch: false)
+                   spinner_tick_interval: AttachedView::TICK_INTERVAL, spinner_clock: nil, scratch: false)
       @mode           = mode.to_sym
       @scratch        = scratch
-      # nil: no ticker thread (specs that compare exact frames).
-      @spinner_tick_interval = spinner_tick_interval
-      @spinner_lock = Monitor.new
-      @turn_tally = TurnTally.new
-      @thinking_line = ThinkingLine.new(clock: -> { monotonic_time })
       @prompt         = prompt
       @default_model_name = ModelProfile.required_model_name(nil)
       aliased_model_name = model_name.to_s.strip.empty? ? nil : ConfigFile.resolve_model_alias(model_name)
@@ -156,7 +127,15 @@ module Samagotchi
       # was given a surface to draw on.
       @surface = surface || PlainSurface.new
       @surface_given = !surface.nil?
-      @renderer = EventRenderer.new(self)
+      # The turn view is the attached TUI's, and so is the status row; both
+      # move to the live region with the surface (#use_surface). A
+      # spinner_tick_interval of nil: no ticker thread, and a spinner_clock
+      # fixes the frames (specs that compare exact frames).
+      view_options = { tick_interval: spinner_tick_interval }
+      view_options[:clock] = spinner_clock if spinner_clock
+      @view = AttachedView.new(@surface, **view_options)
+      @status_row = StatusRow.new(@surface)
+      @renderer = EventRenderer.new(@view)
       @render_event = ->(event) { handle_stream_event(event) }
       @engine         = Engine.new(
         mode: :assist,
@@ -479,13 +458,22 @@ module Samagotchi
       return yield unless screen
 
       plain = @surface
-      @surface = screen
+      use_surface(screen)
       begin
         yield
       ensure
-        @surface = plain
+        # Nothing may draw on the screen once it is closed: the view moves
+        # off it, then its ticker ends.
+        use_surface(plain)
+        @view.stop
         LiveRegion.close(screen)
       end
+    end
+
+    def use_surface(surface)
+      @surface = surface
+      @view.surface = surface
+      @status_row.surface = surface
     end
 
     # Interactive REPL loop. Session seed + messages are built by #run and
@@ -671,166 +659,11 @@ module Samagotchi
       @default_model_name = @commands.default_model
     end
 
-    def status_server_segment
-      # Show per-host info when multi-host is configured
-      if @host_registry && @host_registry.entries.size > 1
-        active = @host_registry.resolve(@effective_model_name).entry rescue nil
-        if active
-          host = active.host
-          port = active.port
-          total = @host_registry.entries.size
-          return "" if ["localhost", "127.0.0.1"].include?(host) && total == 1
-          # When multiple hosts, always show active + count
-          return "server=#{host}:#{port} (#{total} hosts)"
-        end
-      end
-      host = Samagotchi::Config.get("server.host")
-      return "" if ["localhost", "127.0.0.1"].include?(host)
-
-      port = Samagotchi::Config.get("server.port")
-      "server=#{host}:#{port}"
-    end
-
-    # Engine's built-once system prompt (the one run_turn sends), plus the
-    # --memory activations it recorded for the sticky status line.
-    def seed_system_prompt
-      prompt = @engine.system_prompt
-      sync_engine_activated_memories
-      prompt
-    end
-
-    # Engine owns the system prompt (including --memory activation), but the
-    # sticky status line is a UI concern. Mirror the activated names so they
-    # appear in the status line.
-    def sync_engine_activated_memories
-      @engine.activated_memory_names.each do |name|
-        add_unique_memory_name(:@session_memory_names, name)
-      end
-    end
-
-    # ── Turn view: the drawing surface EventRenderer calls ──────────────────
-    public
-
-    def emit_active_memories_line
-      lines = sticky_status_lines(width: status_effective_width)
-      return if lines.empty?
-
-      lines.each { |line| @surface.commit(line) }
-    end
-
-    def print_line(text)
-      @surface.commit(text)
-    end
-
-    def reset_turn_feedback
-      @spinner_lock.synchronize { @turn_tally.reset }
-      clear_retry_spinner_status
-      reset_thinking_memory_notification
-      reset_thinking_memory_names
-      reset_thinking_tool_notification
-    end
-
-    # A turn waits for plugins' slow setup (chi.init) before its first
-    # request: the spinner says what for, until the model starts.
-    def init_wait_feedback(event)
-      labels = Array(event[:tasks]).map { |task| "#{task[:bundle]}: #{task[:label]}" }
-      @spinner_lock.synchronize do
-        @init_wait_status = "chi> waiting for #{labels.join(" · ")}..."
-        start_thinking_spinner
-        refresh_thinking_spinner_status
-      end
-    end
-
-    def generation_feedback_started(event = {})
-      @init_wait_status = nil
-      @context_window_tokens = event[:context_window_tokens] if event[:context_window_tokens]
-      clear_retry_spinner_status
-      @latest_server_context_status = nil
-      @spinner_lock.synchronize do
-        @thinking_line.reset
-        start_thinking_spinner
-      end
-    end
-
-    def generation_feedback_retrying(event)
-      @spinner_lock.synchronize do
-        # The retry streams from the start: wait for its first token again.
-        @thinking_waiting_since = monotonic_time if @thinking_spinner_active
-        set_retry_spinner_status(event)
-        refresh_thinking_spinner_status
-      end
-    end
-
-    def generation_feedback_chunk(event)
-      @spinner_lock.synchronize do
-        @thinking_waiting_since = nil
-        clear_retry_spinner_status if retry_spinner_status_active?
-        capture_server_context_status_from_payload(event[:payload])
-        # A new sentence shows at once (the line changes at most once a dwell).
-        next refresh_thinking_spinner_status if @thinking_line.chunk(event)
-
-        tick_thinking_spinner
-      end
-    end
-
-    def tool_call_feedback_started(event)
-      @spinner_lock.synchronize do
-        @thinking_waiting_since = nil
-        clear_retry_spinner_status
-        @turn_tally.started(key: tally_key(event), tool: event[:tool], params: event[:params])
-        @last_tool_call_event = event
-        refresh_thinking_spinner_status
-      end
-    end
-
-    # The Engine's memory list: after a memory read (read_names, right after
-    # its tool_call_started) and at the end of a turn (preloads).
-    def used_memories_updated(event)
-      @spinner_lock.synchronize do
-        Array(event[:used_memory_names]).each { |name| add_unique_memory_name(:@session_memory_names, name) }
-        added = Array(event[:read_names]).select { |name| add_unique_memory_name(:@thinking_memory_names, name) }
-        next if added.empty?
-
-        @thinking_recent_memory_loaded = added.last
-        capture_thinking_tool_call(@last_tool_call_event) if @last_tool_call_event
-        refresh_thinking_spinner_status
-      end
-    end
-
-    def tool_call_feedback_completed(event)
-      @spinner_lock.synchronize do
-        @turn_tally.completed(key: tally_key(event), tool: event[:tool],
-                              status: event.dig(:activity, :status), params: event.dig(:activity, :params))
-      end
-    end
-
-    def clear_generation_retry
-      @spinner_lock.synchronize { clear_retry_spinner_status }
-    end
-
-    def generation_feedback_finished
-      @spinner_lock.synchronize do
-        clear_retry_spinner_status
-        @thinking_line.reset
-        finish_thinking_spinner
-      end
-    end
-
-    # The kernel reports the last emitted context status on the result; keep
-    # the previous one when a turn reports none.
-    def capture_context_status(status)
-      return unless status
-
-      @latest_context_status = {
-        est_pct: status[:est_pct],
-        bucket: status[:bucket]
-      }
-    end
-
-    private
+    # Engine's built-once system prompt (the one run_turn sends).
+    def seed_system_prompt = @engine.system_prompt
 
     def read_input(awaiting_continue:)
-      emit_idle_status_line
+      refresh_status_row
 
       if awaiting_continue
         sync_continue_slot(true)
@@ -897,7 +730,7 @@ module Samagotchi
 
       if @idle_status_due
         @idle_status_due = false
-        emit_idle_status_line
+        refresh_status_row
       end
       sync_continue_slot(awaiting_continue)
       @repl_input.sync_prompt
@@ -920,7 +753,7 @@ module Samagotchi
       return unless STDIN.tty? && $stdin.tty?
 
       @idle_status_due = false
-      emit_idle_status_line
+      refresh_status_row
       @repl_input = ReplInput.new(prompt: method(:repl_prompt_text), read: method(:read_repl_line), surface: @surface).start
     end
 
@@ -1012,9 +845,8 @@ module Samagotchi
       cancellation_controller = CancellationController.new
       @active_cancel_controller = cancellation_controller
       @renderer.begin_turn
-      # Build the (memoized) prompt now so --memory activations show in this
-      # turn's status lines, including after /model rebuilt it.
-      seed_system_prompt
+      # The row shows the turn's model (a -p turn runs before any read).
+      refresh_status_row
       # A prompt the user typed brings an archived session back to the lists.
       ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir) if prompt && !continue
       with_steering do
@@ -1036,7 +868,7 @@ module Samagotchi
       cancelled_result_from(session.messages, reason: :ctrl_c)
     ensure
       @active_cancel_controller = nil
-      finish_thinking_spinner
+      @view.finish_thinking_spinner
     end
 
     # While a turn runs, a line submitted at the open prompt steers it: it
@@ -1128,9 +960,18 @@ module Samagotchi
       end
     end
 
-    # The REPL's on_event sink for Engine#run_turn: render one event. Engine
-    # swallows on_event errors to protect the turn, so log ours instead.
+    # The REPL's on_event sink for Engine#run_turn: render one event, after
+    # taking what the status row shows from it (as AttachedLoop does from the
+    # Bridge's). Engine swallows on_event errors to protect the turn, so log
+    # ours instead.
     def handle_stream_event(event)
+      case event[:type]
+      when :context_status
+        @status_row.update(context: { est_pct: event.dig(:usage, :estimated_pct), bucket: event[:bucket] })
+      when :used_memories_updated then @status_row.update(used_memories: Array(event[:used_memory_names]))
+      when :generation_completed
+        @status_row.update(served: [event[:served_model], event[:requested_model]]) if event[:served_model]
+      end
       @renderer.call(event)
     rescue StandardError => e
       Log.error(:repl, "render_failed", echo: "[render] #{event[:type]}: #{e.class}: #{e.message}", event_type: event[:type].to_s, error: e.class.name)
@@ -1148,208 +989,16 @@ module Samagotchi
       )
     end
 
-    def start_thinking_spinner
-      return unless thinking_spinner_enabled?
-
-      @thinking_spinner_active = true
-      @thinking_spinner_index = 0 if @thinking_spinner_index.nil?
-      @thinking_spinner_last_render_at = nil
-      @thinking_waiting_since = monotonic_time
-      render_thinking_spinner
-      start_thinking_ticker
-    end
-
-    # One thread per spinner; it ends when the spinner does.
-    def start_thinking_ticker
-      return unless @spinner_tick_interval
-      return if @thinking_ticker&.alive?
-
-      @thinking_ticker = Thread.new do
-        loop do
-          sleep(@spinner_tick_interval)
-          break unless tick_thinking_spinner_on_timer
-        end
-      rescue StandardError
-        nil
-      end
-      @thinking_ticker.report_on_exception = false
-    end
-
-    # Turn the spinner when no chunk did for a tick.
-    # @return [Boolean] whether the spinner is still shown
-    def tick_thinking_spinner_on_timer
-      @spinner_lock.synchronize do
-        return false unless @thinking_spinner_active
-
-        last = @thinking_spinner_last_render_at
-        if last.nil? || (monotonic_time - last) >= @spinner_tick_interval
-          @thinking_spinner_index = (@thinking_spinner_index + 1) % THINKING_SPINNER_FRAMES.length
-          render_thinking_spinner
-        end
-        true
-      end
-    end
-
-    def tick_thinking_spinner
-      return unless @thinking_spinner_active
-
-      @thinking_spinner_index = (@thinking_spinner_index + 1) % THINKING_SPINNER_FRAMES.length
-      render_thinking_spinner_if_due
-    end
-
-    def refresh_thinking_spinner_status
-      return unless @thinking_spinner_active
-
-      render_thinking_spinner
-    end
-
-    def render_thinking_spinner_if_due
-      last = @thinking_spinner_last_render_at
-      return render_thinking_spinner if last.nil?
-      return if (monotonic_time - last) < thinking_render_min_interval
-
-      render_thinking_spinner
-    end
-
-    public
-
-    # Erase the spinner rows; nothing to do when none are shown.
-    def finish_thinking_spinner
-      @spinner_lock.synchronize do
-        # Off even when the rows are gone already, so the ticker ends.
-        @thinking_spinner_active = false
-        @init_wait_status = nil
-        @thinking_waiting_since = nil
-        next unless @surface.clear_slot(:activity)
-
-        @thinking_spinner_last_render_at = nil
-      end
-    end
-
-    private
-
-    def retry_spinner_status_line(frame, width)
-      data = @retry_spinner_status || {}
-      attempt = data[:attempt].to_i
-      max_retries = data[:max_retries].to_i
-      total_attempts = max_retries + 1
-      delay = format("%.1f", data[:next_delay].to_f)
-      error_class = data[:error_class].to_s
-      message = "model> network error: retrying (#{attempt}/#{total_attempts} in #{delay}s) #{frame}"
-      message += " #{error_class}" unless error_class.empty?
-      capped = cap_preview_line(message, width)
-      color_output? ? paint(capped, NETWORK_RETRY_SPINNER_COLOR) : capped
-    end
-
-    def cap_preview_line(text, width)
-      cap_preview_text(text, thinking_preview_width(width))
-    end
-
-    def thinking_preview_width(width)
-      return THINKING_PREVIEW_WIDTH if width <= 0
-
-      [width, THINKING_PREVIEW_WIDTH].min
-    end
-
-
-    def thinking_render_min_interval
-      value = Samagotchi::Config.get("thinking.render_interval").to_f
-      return THINKING_RENDER_MIN_INTERVAL unless value.positive?
-
-      value
-    end
-
-    def monotonic_time
-      Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    end
-
-    def capture_thinking_tool_call(event)
-      call = event[:call].is_a?(Hash) ? event[:call] : {}
-      name = call[:name].to_s.strip
-      return if name.empty?
-
-      params = thinking_tool_params_preview(call, event[:params])
-      text = params.empty? ? name : "#{name}(#{params})"
-      @thinking_recent_tool_call = cap_preview_text(text, THINKING_TOOL_PREVIEW_LIMIT)
-    end
-
-    def thinking_tool_params_preview(call, raw_params)
-      compact = raw_params.to_s.gsub(/\s+/, " ").strip
-      return compact unless compact.empty?
-
-      tool_name = call[:name].to_s
-      case tool_name
-      when Tools::Execute::NAME
-        "command=#{preview_value_for_spinner(call[:content])}"
-      when Tools::Read::NAME
-        "path=#{preview_value_for_spinner(call[:content])}"
-      when Tools::Write::NAME, Tools::Edit::NAME
-        "path=#{preview_value_for_spinner(call[:path])}"
-      when Tools::MemoryRead::NAME
-        parts = []
-        name = call[:content].to_s.strip
-        parts << "name=#{preview_value_for_spinner(name)}" unless name.empty?
-        scope = call[:scope].to_s.strip
-        parts << "scope=#{preview_value_for_spinner(scope)}" unless scope.empty?
-        parts.join(" ")
-      when Tools::MemoryWrite::NAME
-        parts = []
-        path = call[:path].to_s.strip
-        parts << "name=#{preview_value_for_spinner(path)}" unless path.empty?
-        scope = call[:scope].to_s.strip
-        parts << "scope=#{preview_value_for_spinner(scope)}" unless scope.empty?
-        parts.join(" ")
-      else
-        ""
-      end
-    end
-
-    def preview_value_for_spinner(value)
-      text = value.to_s.gsub(/\s+/, " ").strip
-      return '""' if text.empty?
-
-      text.inspect
-    end
-
-    def add_unique_memory_name(ivar_name, value)
-      names = instance_variable_get(ivar_name) || []
-      return false if names.include?(value)
-
-      names << value
-      instance_variable_set(ivar_name, names)
-      true
-    end
-
-    def reset_thinking_memory_names
-      @thinking_memory_names = []
-    end
-
-    def reset_thinking_memory_notification
-      @thinking_recent_memory_loaded = nil
-    end
-
-    def reset_thinking_tool_notification
-      @thinking_recent_tool_call = nil
-    end
-
-    def capture_server_context_status_from_payload(payload)
-      # The window the kernel resolved for this generation (see
-      # :generation_started); the configured one before the first generation.
-      window_tokens = @context_window_tokens || ContextWindow.configured.tokens
-      normalized = ContextUsage.normalize(payload, window_tokens: window_tokens)
-      return unless normalized
-
-      @latest_server_context_status = normalized
-    end
-
-
-    def emit_idle_status_line
-      return unless status_line_enabled?
-
-      lines = idle_status_lines(width: status_effective_width)
-      return if lines.empty?
-
-      @surface.set_slot(:status, lines)
+    # The status row under the prompt, from the Engine's state (what a
+    # worker hands an attached TUI when it joins): drawn when it changed.
+    def refresh_status_row
+      state = @engine.session_state_snapshot
+      served = state[:served_model] ? [state[:served_model], state[:served_model_for]] : nil
+      fields = { model: @effective_model_name, default_model: @default_model_name, served: served,
+                 parent_id: state[:parent_id], used_memories: Array(state[:used_memory_names]),
+                 preloaded: Array(state[:preloaded_memory_names]), muted: Array(state[:muted_memory_names]) }
+      fields[:context] = state[:context_status] if state[:context_status].is_a?(Hash)
+      @status_row.update(**fields)
     end
 
     # ── Idle session recap ───────────────────────────────────────────────────
@@ -1386,13 +1035,17 @@ module Samagotchi
     # main thread (the command runs at the prompt) or beside a running turn
     # (above the live region), else at the next flush.
     #
-    # A plugin's init task (chi.init) prints a line as it starts and one
-    # when it is done; a load warning announced before the first turn, one.
-    # Beside a running turn they print at once; a --non-interactive run
-    # prints only its answer.
+    # A plugin's init task (chi.init) turns the activity row while it runs
+    # (between turns too, as in attached mode) and prints a line when it is
+    # done; a load warning announced before the first turn, one. Beside a
+    # running turn they print at once; a --non-interactive run prints only
+    # its answer.
     def handle_card_event(event)
       if INIT_EVENTS.include?(event[:type])
         return if @non_interactive
+        return @view.init_started(event) if event[:type] == :plugin_init_started
+
+        @view.init_finished(event) if event[:type] == :plugin_init_finished
         return show_pending_item(event) if @engine.turn_running?
 
         return @pending_cards << event
@@ -1420,13 +1073,13 @@ module Samagotchi
     INIT_EVENTS = %i[plugin_init_started plugin_init_finished guardrail_warning].freeze
 
     # A card, a notice, an anytime command's output (:command_output), a
-    # plugin init task's line or a load warning.
+    # plugin init task's done line or a load warning.
     def show_pending_item(item)
       case item[:type]
       when :card then @renderer.render_card(item)
       when :command_output then @surface.commit(item[:text])
       when :guardrail_warning then @surface.commit(EventRenderer.load_warning_line(item))
-      when :plugin_init_started, :plugin_init_finished
+      when :plugin_init_finished
         line = EventRenderer.init_line(item)
         @surface.commit(line) if line
       else @surface.commit(EventRenderer.hook_notice_line(item))
@@ -1441,160 +1094,6 @@ module Samagotchi
       ConfigFile.recap_config
     end
 
-    def spinner_status_lines(width: status_effective_width)
-      return [] unless status_line_enabled?
-
-      build_status_lines(scope: :spinner, width: width)
-    end
-
-    def sticky_status_lines(width: status_effective_width)
-      return [] unless status_line_enabled?
-
-      build_status_lines(scope: :sticky, width: width)
-    end
-
-    def idle_status_lines(width: status_effective_width)
-      return [] unless status_line_enabled?
-
-      build_status_lines(scope: :idle, width: width)
-    end
-
-    # The status rows for +scope+ (:spinner, :sticky or :idle), cut to +width+.
-    def build_status_lines(scope:, width: status_effective_width)
-      status_rows(status_segments(scope), width)
-    end
-
-
-    def status_width_mode
-      mode = Samagotchi::Config.get("status.width_mode").to_s.strip.downcase
-      return STATUS_WIDTH_MODE_FIXED if mode == STATUS_WIDTH_MODE_FIXED
-
-      STATUS_WIDTH_MODE_TERMINAL_CAP
-    end
-
-    def status_effective_width
-      mode = status_width_mode
-      width = if mode == STATUS_WIDTH_MODE_FIXED
-                status_fixed_width
-              else
-                [terminal_columns, status_max_width].min
-              end
-      width = status_fixed_width unless width.positive?
-      width
-    end
-
-    def status_fixed_width
-      positive_int(Samagotchi::Config.get("status.fixed_width"), THINKING_PREVIEW_WIDTH)
-    end
-
-    def status_max_width
-      positive_int(Samagotchi::Config.get("status.max_width"), STATUS_MAX_WIDTH_DEFAULT)
-    end
-
-    def terminal_columns
-      columns = begin
-        io = IO.console
-        io&.winsize&.[](1).to_i
-      rescue StandardError
-        0
-      end
-      return columns if columns.positive?
-
-      positive_int(ENV.fetch("COLUMNS", nil), status_max_width)
-    end
-
-    def positive_int(raw, default)
-      value = raw.to_i
-      value.positive? ? value : default
-    end
-
-    def status_segments(scope)
-      segments = [status_model_segment, status_server_segment].reject(&:empty?)
-      context_segment = status_context_segment
-      memory_segment = status_memory_segment(scope)
-      segments << context_segment unless context_segment.empty?
-      segments << memory_segment unless memory_segment.empty?
-      # The session's --mute list, on the sticky and idle rows (not the spinner).
-      muted_segment = scope == :spinner ? "" : status_memory_text(@engine.muted_memory_names, MEMORY_STICKY_PREVIEW_LIMIT, label: "muted")
-      segments << muted_segment unless muted_segment.empty?
-      segments
-    end
-
-    def status_model_segment
-      served, served_for = @engine.respond_to?(:served_model) ? @engine.served_model(probe: false) : nil
-      status_model_text(@effective_model_name, @default_model_name, served: served, served_for: served_for)
-    end
-
-    def status_context_segment
-      status_context_text(server: @latest_server_context_status, estimate: @latest_context_status)
-    end
-
-    def status_memory_segment(scope)
-      names, limit = case scope
-                     when :spinner
-                       [Array(@thinking_memory_names), MEMORY_SPINNER_PREVIEW_LIMIT]
-                     else
-                       [Array(@session_memory_names), MEMORY_STICKY_PREVIEW_LIMIT]
-                     end
-      status_memory_text(names, limit)
-    end
-
-    def thinking_memory_notification_suffix
-      memory_name = @thinking_recent_memory_loaded.to_s.strip
-      return "" if memory_name.empty?
-
-      " memory_loaded: #{memory_name}"
-    end
-
-    def thinking_tool_notification_suffix
-      tool_call = @thinking_recent_tool_call.to_s.strip
-      return "" if tool_call.empty?
-
-      " last_tool: #{tool_call}"
-    end
-
-    def thinking_notification_segments(width)
-      return ["", ""] if width <= 0
-
-      memory_suffix = cap_preview_text(thinking_memory_notification_suffix, width)
-      remaining = [width - memory_suffix.length, 0].max
-      tool_suffix = cap_preview_text(thinking_tool_notification_suffix, remaining)
-      [memory_suffix, tool_suffix]
-    end
-
-    def paint_if_present(text, code)
-      return "" if text.to_s.empty?
-
-      paint(text, code)
-    end
-
-    # Only a live region redraws the spinner in place (on plain output the
-    # status rows would print at every frame).
-    def thinking_spinner_enabled?
-      return false unless $stdout.tty? && @surface.is_a?(Screen)
-
-      mode = Samagotchi::Config.get("thinking.ui").to_s.strip.downcase
-      return false if mode.empty? || mode == THINKING_UI_OFF || mode == "false" || mode == "0"
-
-      mode == THINKING_UI_SPINNER && ENV.fetch("TERM", "") != "dumb"
-    end
-
-    def set_retry_spinner_status(event)
-      @retry_spinner_status = {
-        attempt: event[:attempt],
-        max_retries: event[:max_retries],
-        next_delay: event[:next_delay],
-        error_class: event[:error_class]
-      }
-    end
-
-    def clear_retry_spinner_status
-      @retry_spinner_status = nil
-    end
-
-    def retry_spinner_status_active?
-      @retry_spinner_status.is_a?(Hash)
-    end
 
     # Reset the Engine's shared inactivity clock when a prompt opens (a
     # Reline.pre_input_hook) and on each key typed (RelineSeam.key_handler). This is the
@@ -1614,74 +1113,6 @@ module Samagotchi
     ensure
       Reline.pre_input_hook = previous_hook
       RelineSeam.key_handler = previous_key_handler
-    end
-
-    def render_thinking_spinner
-      frame = THINKING_SPINNER_FRAMES[@thinking_spinner_index % THINKING_SPINNER_FRAMES.length]
-      width = status_effective_width
-      @thinking_line.tick
-      # The spinner goes above the prompt, the status rows below it.
-      @surface.set_slots(activity: thinking_spinner_status_lines(frame, width: width), status: spinner_status_lines(width: width))
-      @thinking_spinner_last_render_at = monotonic_time
-    end
-
-    # "model> waiting for the first token... 5s |" once a generation has
-    # shown nothing for THINKING_WAIT_NOTICE_AFTER seconds, else nil.
-    def first_token_wait_status(frame)
-      return nil unless @thinking_waiting_since
-
-      waited = monotonic_time - @thinking_waiting_since
-      return nil if waited < THINKING_WAIT_NOTICE_AFTER
-
-      "model> waiting for the first token... #{waited.floor}s #{frame}"
-    end
-
-    # The spinner row, then (from a turn's 3rd tool call) its tool tally.
-    # The spinner stops while tools run, so the tally shows while the model
-    # generates between tool rounds.
-    def thinking_spinner_status_lines(frame, width: status_effective_width)
-      spinner_row_lines(frame, width: width) + tally_status_lines(width)
-    end
-
-    def tally_status_lines(width)
-      tally = @turn_tally.text(width: width)
-      return [] unless tally
-
-      [color_output? ? paint(tally, 90) : tally]
-    end
-
-    def tally_key(event)
-      [event[:iteration].to_i, event[:call_index].to_i]
-    end
-
-    def spinner_row_lines(frame, width:)
-      if retry_spinner_status_active?
-        return [retry_spinner_status_line(frame, width)]
-      end
-
-      return ["#{@init_wait_status} #{frame}"[0, width]] if @init_wait_status
-
-      base = first_token_wait_status(frame) || "model> thinking... #{frame}"
-      available_for_notification = [width - base.length, 0].max
-      memory_notification, tool_notification = thinking_notification_segments(available_for_notification)
-      notification = "#{memory_notification}#{tool_notification}"
-      base = thinking_sentence_base(frame, width - notification.length) || base
-
-      return ["#{base}#{notification}"] unless color_output?
-
-      ["#{paint(base, 90)}#{paint_if_present(memory_notification, MEMORY_SPINNER_COLOR)}#{paint_if_present(tool_notification, TOOL_SPINNER_COLOR)}"]
-    end
-
-    # "model> thinking · <the newest sentence> |" within +room+ columns (the
-    # web's thinking ticker, ThinkingLine), or nil before the first sentence.
-    def thinking_sentence_base(frame, room)
-      return nil if @thinking_waiting_since || @thinking_line.empty?
-
-      prefix = "model> #{@thinking_line.label} · "
-      room -= prefix.length + frame.length + 1
-      return nil if room < MIN_SENTENCE_ROOM
-
-      "#{prefix}#{@thinking_line.fit(room)} #{frame}"
     end
 
     # ── Ask-user-question adapter (generic TUI renderer) ─────────────────────
@@ -1742,8 +1173,8 @@ module Samagotchi
     def render_question_widget(pending)
       prompt = QuestionPrompt.new(pending)
 
-      # Ensure spinner cleared and terminal in known state (same as reminder mute handling)
-      finish_thinking_spinner rescue nil
+      # The activity row goes while the question waits.
+      @view.finish_thinking_spinner
       # An edit's diff goes above the slot, into the scrollback.
       preview = prompt.preview_lines(paint: method(:paint))
       @surface.commit(preview.join("\n")) unless preview.empty?

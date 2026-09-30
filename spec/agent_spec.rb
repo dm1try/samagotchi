@@ -148,7 +148,7 @@ file2.rb")
       ]
       allow(client).to receive(:complete).and_return(*responses)
       agent = described_class.new(mode: "assist", prompt: "read readme", client: client)
-      allow(agent).to receive(:color_output?).and_return(true)
+      allow_any_instance_of(Samagotchi::TerminalUI::AttachedView).to receive(:color_output?).and_return(true)
       output = run_and_render(agent, prompt: "read readme")
       expect(output).to match(/#{ansi_escape}tool>#{ansi_escape}/)
       expect(output).to match(/#{ansi_escape}ok#{ansi_escape}/)
@@ -248,16 +248,16 @@ file2.rb")
       expect(received_prompt).to include("foo body")
     end
 
-    it "marks a preloaded --memory entry as active in the sticky status line" do
+    it "names a preloaded --memory entry in the status row" do
       allow(client).to receive(:complete).and_return("ok")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).with("foo", scope: nil).and_return("foo body")
       agent = described_class.new(mode: "assist", prompt: "hi", client: client, memories: ["foo"])
       run_and_render(agent, prompt: "hi")
-      expect(agent.send(:sticky_status_lines).join("\n")).to include("mem: foo")
+      expect(agent.instance_variable_get(:@status_row).rows(200).join("\n")).to include("mem: foo")
     end
 
-    it "keeps a --mute memory out of the prompt and names it in the sticky status line" do
+    it "keeps a --mute memory out of the prompt and names it in the status row" do
       received_prompt = nil
       allow(client).to receive(:complete) do |prompt|
         received_prompt = prompt
@@ -272,8 +272,7 @@ file2.rb")
 
       expect(received_prompt).to include("**foo**")
       expect(received_prompt).not_to include("**bar**")
-      expect(agent.send(:sticky_status_lines).join("\n")).to include("mem: foo | muted: bar")
-      expect(agent.send(:build_status_lines, scope: :spinner).join).not_to include("muted")
+      expect(agent.instance_variable_get(:@status_row).rows(200).join("\n")).to include("mem: foo | muted: bar")
       expect(agent.instance_variable_get(:@engine).muted_memory_names).to eq(["bar"])
     end
 
@@ -697,54 +696,11 @@ file2.rb")
     end
   end
 
-  describe "#status_server_segment" do
-    around do |example|
-      original_env = {
-        "XDG_CONFIG_HOME" => ENV["XDG_CONFIG_HOME"],
-        "SAMAGOTCHI_SERVER_HOST" => ENV["SAMAGOTCHI_SERVER_HOST"],
-        "SAMAGOTCHI_SERVER_PORT" => ENV["SAMAGOTCHI_SERVER_PORT"]
-      }
-      Dir.mktmpdir("samagotchi-empty") do |dir|
-        ENV["XDG_CONFIG_HOME"] = dir
-        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
-        example.run
-      ensure
-        original_env.each do |key, value|
-          ENV.delete(key) if value.nil?
-          ENV[key] = value
-        end
-        Samagotchi::Config.reload!(cli_overrides: {}) rescue nil
-      end
-    end
-    let(:agent) { described_class.new(mode: "assist", client: client) }
-
-    it "returns an empty string when host is localhost" do
-      ENV["SAMAGOTCHI_SERVER_HOST"] = "localhost"
-      ENV["SAMAGOTCHI_SERVER_PORT"] = "8080"
-      expect(agent.send(:status_server_segment)).to eq("")
-    end
-
-    it "returns an empty string when host is 127.0.0.1" do
-      ENV["SAMAGOTCHI_SERVER_HOST"] = "127.0.0.1"
-      ENV["SAMAGOTCHI_SERVER_PORT"] = "8080"
-      expect(agent.send(:status_server_segment)).to eq("")
-    end
-
-    it "returns the server segment when host is not localhost" do
-      ENV["SAMAGOTCHI_SERVER_HOST"] = "192.0.2.10"
-      ENV["SAMAGOTCHI_SERVER_PORT"] = "8080"
-      expect(agent.send(:status_server_segment)).to eq("server=192.0.2.10:8080")
-    end
-  end
-
-  # The spinner draws only on a live region (plain output drops it): these
-  # draw on a RecordingSurface. The live region's layout is pinned by
-  # terminal_ui_live_region_spec and the goldens.
-  describe "thinking spinner" do
-    before do
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      ENV["SAMAGOTCHI_THINKING_UI"] = "spinner"
-    end
+  # The REPL's turn view is the attached TUI's: AttachedView draws the
+  # activity row and StatusRow the status row (their specs pin the rows);
+  # these check the REPL feeds them.
+  describe "turn view" do
+    before { allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("") }
 
     # A memory read as the Engine hands it to the REPL: its tool_call_started,
     # then the used_memories_updated it follows it with.
@@ -752,267 +708,39 @@ file2.rb")
       agent.instance_variable_get(:@engine).send(:emit_event, agent.method(:handle_stream_event), event)
     end
 
-    def sentence_row(content, width: 60)
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client, surface: RecordingSurface.new)
-      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
-      allow(agent).to receive(:status_effective_width).and_return(width)
-      allow(agent).to receive(:color_output?).and_return(false)
+    let(:surface) { RecordingSurface.new }
+    let(:agent) { described_class.new(mode: "assist", prompt: "hi", client: client, surface: surface, spinner_tick_interval: nil) }
+
+    # The REPL draws the row at each read and as a turn starts.
+    before { agent.send(:refresh_status_row) }
+
+    it "shows the running tool in the activity row and a memory it read in the status row" do
       agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(:handle_stream_event, type: :generation_chunk, content: content)
-      agent.instance_variable_get(:@surface).slots[:activity].first
+      memory_read_event(agent, type: :tool_call_started, tool: "memory_read", call: { name: "memory_read", content: "notes" })
+
+      expect(surface.slots[:activity].first).to include("running memory_read…")
+      expect(surface.slots[:status]).to eq(["status> model=#{agent.instance_variable_get(:@effective_model_name)} | mem: notes"])
     end
 
-    it "cuts the sentence to the row's width, keeping the spinner frame" do
-      row = sentence_row("#{"x" * 500}. ", width: 60)
-      expect(row).to match(/\Amodel> thinking · x+… [|\/\\-]\z/)
-      expect(row.length).to eq(60)
-    end
-
-    it "leaves control tokens and a Qwen TURN: prefix out" do
-      row = sentence_row("TURN: reading the config\nstart <|tool_call> call:read{path: \"x\"}<tool_call|> ")
-      expect(row).to start_with("model> thinking · reading the config ")
-
-      row = sentence_row("start <|tool_call> call:read{path: \"x\"}<tool_call|> then done. ")
-      expect(row).not_to include("tool_call")
-      expect(row).to include("start")
-    end
-
-    it "hands the surface the spinner rows for above the prompt and the status rows for below it" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client, surface: RecordingSurface.new)
-      allow(agent).to receive(:thinking_spinner_enabled?).and_return(true)
-      allow(agent).to receive(:color_output?).and_return(false)
-      allow(agent).to receive(:status_server_segment).and_return("")
-
+    it "keeps the session's memories in the status row after the generation and the turn end" do
       agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(:handle_stream_event, type: :generation_chunk, content: "Hello. ")
-
-      slots = agent.instance_variable_get(:@surface).slots
-      expect(slots[:activity]).to match([a_string_starting_with("model> thinking · Hello. ")])
-      expect(slots[:status]).to match([a_string_starting_with("status> model=")])
-    end
-
-    it "does not render spinner in non-TTY mode" do
-      allow(client).to receive(:complete) do |_prompt, **kwargs|
-        on_chunk = kwargs[:on_chunk]
-        on_chunk&.call(content: "a", payload: { "content" => "a" })
-        "done"
-      end
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:thinking_spinner_enabled?).and_return(false)
-
-      expect { agent.run }.to output(/done/).to_stdout
-      expect { agent.run }.not_to output(/thinking\.\.\./).to_stdout
-    end
-
-    it "uses configured render interval for spinner throttling" do
-      ENV["SAMAGOTCHI_THINKING_RENDER_INTERVAL"] = "0.2"
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-
-      expect(agent.send(:thinking_render_min_interval)).to eq(0.2)
-    end
-
-    it "falls back to default render interval for invalid values" do
-      ENV["SAMAGOTCHI_THINKING_RENDER_INTERVAL"] = "invalid"
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-
-      expect(agent.send(:thinking_render_min_interval)).to eq(0.08)
-    end
-
-    it "tracks active memory names for direct reads under memories/" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      memory_read_event(agent, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
-
-      expect(agent.send(:spinner_status_lines).join).to include("mem: refactoring_backlog")
-      expect(agent.send(:sticky_status_lines).join).to include("mem: refactoring_backlog")
-    end
-
-    it "builds a generalized status line with mode, context, and memory segments" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      agent.capture_context_status({ est_pct: 35.2, bucket: "20plus" })
-      memory_read_event(agent, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
-
-      status = agent.send(:spinner_status_lines).first
-      expect(status).to include("model=")
-      expect(status).to include("ctx=35.2% (20plus)")
-      expect(status).to include("| mem:")
-    end
-
-    it "prefers server usage telemetry over estimated CONTEXT_STATUS in status output" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      agent.capture_context_status({ est_pct: 35.2, bucket: "20plus" })
-
-      agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(
-        :handle_stream_event,
-        type: :generation_chunk,
-        content: "chunk",
-        payload: {
-          "timings" => { "prompt_n" => 120, "predicted_n" => 30 },
-          "n_ctx" => 1000
-        }
-      )
-
-      status = agent.send(:spinner_status_lines).first
-      expect(status).to include("ctx=15.0%")
-      expect(status).to include("p=120")
-      expect(status).to include("c=30")
-      expect(status).to include("t=150")
-      expect(status).not_to include("20plus")
-    end
-
-    it "computes ctx% against the window :generation_started resolved when the payload has no n_ctx" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      agent.send(:handle_stream_event, type: :generation_started, context_window_tokens: 1000, context_window_source: :server)
-      agent.send(
-        :handle_stream_event,
-        type: :generation_chunk,
-        content: "chunk",
-        payload: { "stop" => true, "tokens_evaluated" => 120, "tokens_predicted" => 30 }
-      )
-
-      expect(agent.send(:spinner_status_lines).first).to include("ctx=15.0%")
-    end
-
-    it "falls back to estimated CONTEXT_STATUS when server usage is unavailable" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      agent.capture_context_status({ est_pct: 35.2, bucket: "20plus" })
-
-      agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(:handle_stream_event, type: :generation_chunk, content: "chunk", payload: { "content" => "chunk" })
-
-      status = agent.send(:spinner_status_lines).first
-      expect(status).to include("ctx=35.2% (20plus)")
-      expect(status).not_to include("p=")
-      expect(status).not_to include("c=")
-      expect(status).not_to include("t=")
-    end
-
-    it "defaults status width mode to terminal_cap" do
-      ENV.delete("SAMAGOTCHI_STATUS_WIDTH_MODE")
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-
-      expect(agent.send(:status_width_mode)).to eq("terminal_cap")
-    end
-
-    it "supports fixed status width mode" do
-      ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"] = "fixed"
-      ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"] = "73"
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-
-      expect(agent.send(:status_effective_width)).to eq(73)
-    end
-
-    it "caps terminal-aware status width to SAMAGOTCHI_STATUS_MAX_WIDTH" do
-      ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"] = "terminal_cap"
-      ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"] = "50"
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:terminal_columns).and_return(120)
-
-      expect(agent.send(:status_effective_width)).to eq(50)
-    end
-
-    it "uses COLUMNS when IO.console width is unavailable" do
-      ENV["COLUMNS"] = "77"
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(IO).to receive(:console).and_return(nil)
-
-      expect(agent.send(:terminal_columns)).to eq(77)
-    end
-
-    it "keeps spinner memory notification across generation completion within the same turn" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      memory_read_event(agent, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
-      expect(agent.send(:thinking_spinner_status_lines, "/").first).to include("memory_loaded: refactoring_backlog")
-
+      memory_read_event(agent, type: :tool_call_started, tool: "read", call: { name: "read", content: "memories/refactoring_backlog.md" })
       agent.send(:handle_stream_event, type: :generation_completed)
+      agent.send(:refresh_status_row)
 
-      expect(agent.send(:thinking_spinner_status_lines, "/").first).to include("memory_loaded: refactoring_backlog")
+      expect(surface.slots[:status].first).to include("mem: refactoring_backlog")
     end
 
-    it "keeps memory notification inline with spinner status during thinking" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(false)
+    it "shows the kernel's context estimate in the status row" do
+      agent.send(:handle_stream_event, type: :context_status, usage: { estimated_pct: 12.34 }, bucket: "under20")
 
-      agent.send(:handle_stream_event, type: :generation_started)
-      memory_read_event(agent, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
-
-      line = agent.send(:thinking_spinner_status_lines, "\\").first
-      expect(line).to include("thinking... \\")
-      expect(line).to include("memory_loaded: crawler_exploration_ideas")
-      expect(line).to include("last_tool:")
-      expect(line).to include("memory_")
+      expect(surface.slots[:status].first).to include("ctx=12.3% (under20)")
     end
 
-    it "does not show inline last-tool info for non-memory tool calls" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(false)
+    it "shows the model the server said it served" do
+      agent.send(:handle_stream_event, type: :generation_completed, served_model: "ornith-1.5", requested_model: "m1")
 
-      agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(:handle_stream_event, type: :tool_call_started, call: { name: "execute", content: "echo hi" })
-
-      line = agent.send(:thinking_spinner_status_lines, "|").first
-      expect(line).not_to include("loaded:")
-      expect(line).not_to include("tool:")
-    end
-
-    it "refreshes spinner immediately when memory tool calls start" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      expect(agent).to receive(:render_thinking_spinner).at_least(:once)
-      agent.instance_variable_set(:@thinking_spinner_active, true)
-
-      memory_read_event(agent, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
-    end
-
-    it "renders retry status in the same spinner line" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(
-        :handle_stream_event,
-        type: :generation_retrying,
-        attempt: 1,
-        max_retries: 5,
-        next_delay: 0.5,
-        error_class: "Errno::ECONNREFUSED"
-      )
-
-      line = agent.send(:thinking_spinner_status_lines, "/").first
-      expect(line).to include("network error: retrying")
-      expect(line).to include("(1/6 in 0.5s)")
-    end
-
-    it "renders retry status in red when color output is enabled" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(true)
-
-      agent.send(:handle_stream_event, type: :generation_started)
-      agent.send(
-        :handle_stream_event,
-        type: :generation_retrying,
-        attempt: 2,
-        max_retries: 5,
-        next_delay: 1.0,
-        error_class: "Net::OpenTimeout"
-      )
-
-      line = agent.send(:thinking_spinner_status_lines, "-").first
-      expect(line).to include("\e[31m")
-      expect(line).to include("network error: retrying")
+      expect(surface.slots[:status].first).to include("model=ornith-1.5 (served; asked ")
     end
 
     describe "Ctrl-C with a prompt open" do
@@ -1043,30 +771,6 @@ file2.rb")
       end
     end
 
-    it "resets spinner memory notification on a new run" do
-      result = Samagotchi::KernelLoop::Result.new(
-        output: "done",
-        conversation: [],
-        exhausted: false,
-        pending_tool_calls: false,
-        tool_activity: []
-      )
-      kernel = instance_double(Samagotchi::KernelLoop, run: result)
-      allow(Samagotchi::KernelLoop).to receive(:new).and_return(kernel)
-
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      memory_read_event(agent, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
-      expect(agent.send(:thinking_spinner_status_lines, "/").first).to include("memory_loaded: crawler_exploration_ideas")
-
-      allow(agent).to receive(:handle_stream_event)
-      agent.send(:run_engine_turn, repl_session, "hi")
-
-      expect(agent.send(:thinking_spinner_status_lines, "/").first).not_to include("memory_loaded: crawler_exploration_ideas")
-      expect(agent.send(:thinking_spinner_status_lines, "/").first).not_to include("last_tool: memory_read")
-    end
-
     it "prints idle status before the next assist prompt when enabled" do
       allow(client).to receive(:complete).and_return("done")
       allow(Reline).to receive(:readmultiline).and_return("hello", nil)
@@ -1088,45 +792,6 @@ file2.rb")
       expect { agent.run }.not_to output(/status> /).to_stdout
     end
 
-    it "tracks active memory names for memory_read tool calls" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      memory_read_event(agent, type: :tool_call_started, call: { name: "memory_read", content: "crawler_exploration_ideas" })
-
-      expect(agent.send(:spinner_status_lines).join).to include("mem: crawler_exploration_ideas")
-      expect(agent.send(:sticky_status_lines).join).to include("mem: crawler_exploration_ideas")
-    end
-
-    it "keeps spinner memory names across generation completion within a turn" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:thinking_spinner_enabled?).and_return(false)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      agent.send(:handle_stream_event, type: :generation_started)
-      memory_read_event(agent, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
-      expect(agent.send(:spinner_status_lines).join).to include("refactoring_backlog")
-      expect(agent.send(:sticky_status_lines).join).to include("refactoring_backlog")
-
-      agent.send(:handle_stream_event, type: :generation_completed)
-
-      expect(agent.send(:spinner_status_lines).join).to include("refactoring_backlog")
-      expect(agent.send(:sticky_status_lines).join).to include("refactoring_backlog")
-    end
-
-    it "keeps session memories across generation completion" do
-      agent = described_class.new(mode: "assist", prompt: "hi", client: client)
-      allow(agent).to receive(:thinking_spinner_enabled?).and_return(false)
-      allow(agent).to receive(:color_output?).and_return(false)
-
-      agent.send(:handle_stream_event, type: :generation_started)
-      memory_read_event(agent, type: :tool_call_started, call: { name: "read", content: "memories/refactoring_backlog.md" })
-      expect(agent.send(:sticky_status_lines).join).to include("refactoring_backlog")
-
-      agent.send(:handle_stream_event, type: :generation_completed)
-
-      expect(agent.send(:sticky_status_lines).join).to include("refactoring_backlog")
-    end
   end
 
   describe "assist-mode continuation" do

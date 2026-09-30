@@ -59,12 +59,13 @@ RSpec.describe Samagotchi::TerminalUI do
 
     it "shows the served model in the status line once a turn reported another one" do
       engine = agent.instance_variable_get(:@engine)
-      expect(agent.send(:status_model_segment)).to start_with("model=#{engine.effective_model_name}")
+      row = -> { agent.send(:refresh_status_row) && agent.instance_variable_get(:@status_row).rows(200).first.to_s }
+      expect(row.call).to start_with("status> model=#{engine.effective_model_name}")
 
       engine.metrics.call(type: :generation_completed, served_model: "ornith-x",
                           requested_model: engine.send(:bare_model_name, engine.effective_model_name))
 
-      expect(agent.send(:status_model_segment)).to start_with("model=ornith-x (served; asked ")
+      expect(row.call).to start_with("status> model=ornith-x (served; asked ")
     end
 
     it "shows the prompt profile and where it came from in /stats" do
@@ -134,7 +135,7 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(lines).to eq(["sample-plugin> saved", "┌ One · b", "└", "┌ Two (updated) · b", "└"])
     end
 
-    it "prints a plugin's init task as a line when it starts and one when it is done; a failure is its card" do
+    it "prints a plugin's init task's line when it is done; a failure is its card" do
       gate = Queue.new
       engine.add_init_task(bundle: "mcp", label: "Starting MCP server x", plugin_label: "x", provides_tools: true,
                            quiet: false, timeout: 5) { gate.pop }
@@ -146,8 +147,7 @@ RSpec.describe Samagotchi::TerminalUI do
       engine.instance_variable_get(:@init_tasks).each { |task| task.thread.join(2) }
       expect(lines).to be_empty
       agent.send(:flush_pending_cards)
-      expect(lines).to contain_exactly("mcp> Starting MCP server x…", "mcp> Starting MCP server y…",
-                                       "┌ y didn't start · mcp", "│ gone", "└", "mcp> ✓ x ready, 3 tools")
+      expect(lines).to contain_exactly("┌ y didn't start · mcp", "│ gone", "└", "mcp> ✓ x ready, 3 tools")
       expect(lines.last).to eq("mcp> ✓ x ready, 3 tools")
     end
 
@@ -161,11 +161,17 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(lines).to eq(["plugins> plugin plugin.rb (bundle b) failed to load (boom)"])
     end
 
-    it "says what a turn waits for while plugins' init tasks bring tools, until the model starts" do
-      agent.init_wait_feedback({ tasks: [{ bundle: "mcp", id: "mcp-1", label: "Starting x" }] })
-      expect(agent.send(:spinner_row_lines, "|", width: 80)).to eq(["chi> waiting for mcp: Starting x... |"])
-      agent.generation_feedback_started({})
-      expect(agent.send(:spinner_row_lines, "|", width: 80).first).to include("model> thinking... |")
+    # As in attached mode: the activity row while it runs (a turn waiting
+    # for it shows it there too), a line once it is done.
+    it "turns the activity row while a plugin's init task runs, between turns too" do
+      task = { bundle: "mcp", id: "mcp-1", label: "Starting x" }
+      engine.announce({ type: :plugin_init_started, **task })
+      expect(surface.slots[:activity]).to match([a_string_matching(/\A. mcp: Starting x…\z/)])
+
+      engine.announce({ type: :plugin_init_finished, **task, ok: true, summary: "x ready" })
+      expect(surface.slots).not_to have_key(:activity)
+      agent.send(:flush_pending_cards)
+      expect(lines).to eq(["mcp> ✓ x ready"])
     end
 
     it "prints a card replaced within one flush once, as its last" do
