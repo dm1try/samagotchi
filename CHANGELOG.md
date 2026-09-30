@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-30
+
 ### Added
 
 - The desktop helper also sends to agent CLIs (claude, codex, …) in kitty windows: with `kitty.listen_on` copied
@@ -15,6 +17,8 @@ and commands may change between minor versions. How releases are made:
   pastes the quote, message and image paths and presses Enter, the new ⌥⏎ only pastes (so several screenshots
   can pile up), and one send can go to chi sessions and kitty windows together. ⌥⏎ no longer inserts a newline
   in the panel (⇧⏎ does). See docs/desktop.md "Agents in kitty".
+
+Update with `chi update`. No bundle versions changed.
 
 ## [0.6.0] - 2026-09-30
 
@@ -401,7 +405,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/dm1try/samagotchi/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dm1try/samagotchi/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/dm1try/samagotchi/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/dm1try/samagotchi/compare/v0.4.0...v0.5.0
