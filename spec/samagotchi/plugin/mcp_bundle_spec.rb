@@ -159,7 +159,7 @@ RSpec.describe "The mcp bundle" do
       @init_events = []
       built.subscribe(observer: ->(e) { @init_events << e })
       built.start_init_tasks!
-      built.instance_variable_get(:@init_tasks).each { |task| task.thread&.join(10) }
+      built.instance_variable_get(:@plugin_tasks).tasks.each { |task| task.thread&.join(10) }
       built.apply_staged_tools!
     end
   end

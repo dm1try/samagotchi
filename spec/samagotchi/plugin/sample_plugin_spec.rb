@@ -390,7 +390,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       RUBY
       finished = []
       engine.subscribe(observer: ->(e) { finished << e if e[:type] == :plugin_init_finished })
-      task = engine.instance_variable_get(:@init_tasks).first
+      task = engine.instance_variable_get(:@plugin_tasks).tasks.first
       expect(task.to_h.slice(:bundle, :label, :provides_tools, :quiet, :timeout, :state))
         .to eq(bundle: "slow-setup", label: "Indexing the repo", provides_tools: true, quiet: false, timeout: 7.0, state: :pending)
       expect(engine.plugin_failures.message).to include("init needs a label")

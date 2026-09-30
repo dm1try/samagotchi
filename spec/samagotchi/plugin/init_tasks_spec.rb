@@ -55,7 +55,7 @@ RSpec.describe "Plugin init tasks" do
   end
 
   def events(type) = seen.select { |e| e[:type] == type }
-  def tasks = engine.instance_variable_get(:@init_tasks)
+  def tasks = engine.instance_variable_get(:@plugin_tasks).tasks
   def join_tasks = tasks.each { |task| task.thread&.join(5) }
 
   # A task that brings the tool slow_tool once +gate+ opens.

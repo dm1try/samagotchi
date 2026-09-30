@@ -53,6 +53,7 @@ require_relative "answer_display"
 require_relative "edit_preview"
 require_relative "question_desk"
 require_relative "guardrail_wiring"
+require_relative "plugin_tasks"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -166,11 +167,19 @@ module Samagotchi
       # commands running now (#spawn_anytime), which it waits for.
       @services = Plugin::Services.new
       @anytime_threads = []
-      # Plugins' tool sets from chi.replace_tools, by bundle, until the
-      # turn thread applies them (#apply_staged_tools!).
-      @staged_tools = {}
-      # chi.init tasks (#add_init_task), started by #start_init_tasks!.
-      @init_tasks = []
+      # chi.init tasks (#add_init_task), started by #start_init_tasks!, and
+      # plugins' tool sets from chi.replace_tools until the turn thread
+      # applies them (#apply_staged_tools!). Built before the plugins load.
+      @plugin_tasks = PluginTasks.new(
+        clock: -> { monotonic_now },
+        synchronize_events: ->(&block) { synchronize_events(&block) },
+        announce: ->(event) { announce(event) },
+        emit: ->(sink, event) { emit_event(sink, event) },
+        show_card: ->(**card) { show_card(**card) },
+        tools: -> { @tools },
+        notify: ->(text, level, source) { hook_notify(text, level, source) },
+        tools_changed: -> { tools_changed! }
+      )
       @lifecycle_mutex = Mutex.new
       @shut_down = false
       load_plugins if plugins
@@ -591,134 +600,40 @@ module Samagotchi
 
     # ── Plugin init tasks (chi.init) ──────────────────────────────────────
 
-    # A plugin's slow setup (docs/plugins.md, Init tasks): run on its own
-    # thread once the owner can show it (#start_init_tasks!), announced as
-    # plugin_init_started / plugin_init_finished unless quiet. A turn waits
-    # for the running ones that provide tools before its first model request
-    # (#await_init_tasks), up to each one's timeout. +cancel+ is its own
-    # controller, cancelled only by #shutdown: a Ctrl-C ends a turn's wait,
-    # not the task.
-    InitTask = Struct.new(:id, :bundle, :label, :plugin_label, :provides_tools, :quiet, :timeout, :failed, :block,
-                          :cancel, :thread, :state, :started_at, keyword_init: true) do
-      # What the task's block reads: whether chi is shutting down.
-      def cancelled? = cancel.cancelled?
-    end
-
-    # How long a task may hold a turn when it gives no timeout.
-    INIT_TASK_TIMEOUT = 60.0
+    # A plugin's slow setup (docs/plugins.md, Init tasks): PluginTasks.
+    InitTask = PluginTasks::InitTask
+    INIT_TASK_TIMEOUT = PluginTasks::INIT_TASK_TIMEOUT
+    INIT_WAIT_POLL = PluginTasks::INIT_WAIT_POLL
 
     # Add a plugin's init task (Plugin::Api#init at commit); it starts with
     # #start_init_tasks!.
     def add_init_task(bundle:, label:, plugin_label:, provides_tools:, quiet:, timeout:, failed: nil, &block)
-      @lifecycle_mutex.synchronize do
-        @init_tasks << InitTask.new(id: "#{bundle}-#{@init_tasks.size + 1}", bundle: bundle.to_s, label: label.to_s,
-                                    plugin_label: plugin_label, provides_tools: provides_tools ? true : false,
-                                    quiet: quiet ? true : false, timeout: timeout || INIT_TASK_TIMEOUT, failed: failed,
-                                    block: block, cancel: CancellationController.new, state: :pending)
-      end
-      nil
+      @plugin_tasks.add(bundle: bundle, label: label, plugin_label: plugin_label, provides_tools: provides_tools,
+                        quiet: quiet, timeout: timeout, failed: failed, &block)
     end
 
-    # Start the init tasks not started yet, each on its own thread. The
-    # worker calls it once its Bridge is up, the REPL once it renders
-    # events, and every turn (a -p run has only that); later calls start
-    # nothing new.
+    # Start the init tasks not started yet, each on its own thread
+    # (PluginTasks#start!).
     def start_init_tasks!
-      @lifecycle_mutex.synchronize do
-        return if @shut_down
-
-        @init_tasks.each do |task|
-          next unless task.state == :pending
-
-          task.state = :starting
-          task.started_at = monotonic_now
-          task.thread = Thread.new { run_init_task(task) }
-          task.thread.report_on_exception = false
-        end
-      end
-      nil
+      @plugin_tasks.start!
     end
 
     # The running init tasks a UI shows (not the quiet ones), for a UI that
     # joins while they run (Bridge#snapshot, with the event log held).
     # @return [Array<Hash>] {bundle:, id:, label:}
     def init_tasks
-      @lifecycle_mutex.synchronize do
-        @init_tasks.select { |task| task.state == :running && !task.quiet }
-                   .map { |task| { bundle: task.bundle, id: task.id, label: task.label } }
-      end
+      @plugin_tasks.running
     end
 
-    # Wait for the running init tasks that provide tools, each up to its
-    # timeout from its start, while +controller+ isn't cancelled; tell the
-    # turn's sink what it waits for (:plugin_init_wait). A task that ends
-    # late or fails leaves the turn without its tools.
+    # Wait for the running init tasks that provide tools (PluginTasks#await).
     # @return [Boolean] whether it waited
     def await_init_tasks(controller = nil, on_event = nil)
-      waiting = @lifecycle_mutex.synchronize do
-        @init_tasks.select { |task| task.provides_tools && %i[starting running].include?(task.state) }
-      end
-      return false if waiting.empty?
-
-      emit_event(on_event, { type: :plugin_init_wait,
-                             tasks: waiting.map { |task| { bundle: task.bundle, id: task.id, label: task.label } } })
-      started = monotonic_now
-      loop do
-        now = monotonic_now
-        left = waiting.select { |task| %i[starting running].include?(task.state) && now < task.started_at + task.timeout }
-        break if left.empty? || controller&.cancelled?
-
-        sleep(INIT_WAIT_POLL)
-      end
-      Log.info(:plugins, "init_wait", ms: ((monotonic_now - started) * 1000).round,
-                                      cancelled: controller&.cancelled? ? true : nil)
-      true
+      @plugin_tasks.await(controller, on_event)
     end
-
-    INIT_WAIT_POLL = 0.05
 
     # The init task this thread runs, or nil.
-    def current_init_task = Thread.current[:"samagotchi_init_#{object_id}"]
+    def current_init_task = @plugin_tasks.current
     private :current_init_task
-
-    def run_init_task(task)
-      Thread.current[:"samagotchi_init_#{object_id}"] = task
-      synchronize_events do
-        task.state = :running
-        announce({ type: :plugin_init_started, bundle: task.bundle, id: task.id, label: task.label }) unless task.quiet
-      end
-      Log.info(:plugins, "init_started", bundle: task.bundle, id: task.id, label: task.label)
-      summary = task.block.call(task)
-      finish_init_task(task, ok: true, summary: summary.is_a?(String) ? summary : nil)
-    rescue StandardError => e
-      finish_init_task(task, ok: false, error: e.message)
-    end
-    private :run_init_task
-
-    def finish_init_task(task, ok:, summary: nil, error: nil)
-      Log.public_send(ok ? :info : :warn, :plugins, "init_finished", bundle: task.bundle, id: task.id, ok: ok,
-                                                                      ms: ((monotonic_now - task.started_at) * 1000).round,
-                                                                      msg: error)
-      shut_down = @lifecycle_mutex.synchronize { @shut_down }
-      synchronize_events do
-        task.state = ok ? :done : :failed
-        next if shut_down || (task.quiet && ok)
-
-        unless task.quiet
-          announce({ type: :plugin_init_finished, bundle: task.bundle, id: task.id, label: task.label, ok: ok,
-                     summary: summary, error: error }.compact)
-        end
-        # A failure stays on screen (and for a UI that joins later) as a
-        # card: a short title (the card shows the bundle beside it), the
-        # detail in the body.
-        unless ok
-          title = task.failed || "setup failed"
-          body = task.failed ? error.to_s : "#{task.label}: #{error}"
-          show_card(source: task.bundle, title: title, body: body, level: :warn, id: "init-#{task.id}")
-        end
-      end
-    end
-    private :finish_init_task
 
     # ── Load events ───────────────────────────────────────────────────────
 
@@ -759,8 +674,7 @@ module Samagotchi
 
         @shut_down = true
         # An init task's requests end (a server's boot), so it finishes.
-        @init_tasks.each { |task| task.cancel.cancel!(:shutdown) }
-        @anytime_threads.dup + @init_tasks.filter_map(&:thread)
+        @anytime_threads.dup + @plugin_tasks.shut_down!
       end
       # #stop_idle's work (the scheduler's stop is idempotent), where the
       # callers haven't stopped it already.
@@ -773,7 +687,7 @@ module Samagotchi
       end
       left = threads.count(&:alive?)
       Log.warn(:plugins, "anytime_commands_left", count: left) if left.positive?
-      @init_tasks.each { |task| task.thread&.kill if task.thread&.alive? }
+      @plugin_tasks.kill_leftovers
       @services.stop_all
       self
     end
@@ -2087,41 +2001,17 @@ module Samagotchi
     end
 
     # Keep a plugin's new tool set (chi.replace_tools, from any thread)
-    # for the turn thread, which applies it (#apply_staged_tools!): the
-    # registry is read only there. A later set of the same bundle wins.
+    # for the turn thread (PluginTasks#stage_tools).
     def stage_tools(bundle, specs, context)
-      @lifecycle_mutex.synchronize do
-        return if @shut_down
-
-        @staged_tools[bundle] = [specs, context]
-      end
-      nil
+      @plugin_tasks.stage_tools(bundle, specs, context)
     end
     private :stage_tools
 
-    # Apply the staged tool sets (#stage_tools), on the turn thread, before
-    # the turn's system prompt is built; the prompts are built again when
-    # a set changed anything. A name another source has is left out with a
-    # notice.
+    # Apply the staged tool sets, on the turn thread, before the turn's
+    # system prompt is built (PluginTasks#apply_staged_tools!).
     # @return [Boolean] whether the tools changed
     def apply_staged_tools!
-      staged = @lifecycle_mutex.synchronize do
-        taken = @staged_tools
-        @staged_tools = {}
-        taken
-      end
-      changed = false
-      staged.each do |bundle, (specs, context)|
-        result = Plugin::Api.apply_tools(@tools, bundle, specs, context)
-        changed ||= result[:changed]
-        result[:skipped].each do |why|
-          Log.warn(:plugins, "plugin_tool_skipped", bundle: bundle, msg: why)
-          hook_notify("#{why}; left out", :warn, bundle)
-        end
-        Log.info(:plugins, "plugin_tools_replaced", bundle: bundle, tools: specs.size) if result[:changed]
-      end
-      tools_changed! if changed
-      changed
+      @plugin_tasks.apply_staged_tools!
     end
     public :apply_staged_tools!
 

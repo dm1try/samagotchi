@@ -142,9 +142,9 @@ RSpec.describe Samagotchi::TerminalUI do
       engine.add_init_task(bundle: "mcp", label: "Starting MCP server y", plugin_label: "x", provides_tools: true,
                            quiet: false, timeout: 5, failed: "y didn't start") { raise "gone" }
       engine.start_init_tasks!
-      Timeout.timeout(2) { sleep(0.01) until engine.instance_variable_get(:@init_tasks).last.state == :failed }
+      Timeout.timeout(2) { sleep(0.01) until engine.instance_variable_get(:@plugin_tasks).tasks.last.state == :failed }
       gate << "x ready, 3 tools"
-      engine.instance_variable_get(:@init_tasks).each { |task| task.thread.join(2) }
+      engine.instance_variable_get(:@plugin_tasks).tasks.each { |task| task.thread.join(2) }
       expect(lines).to be_empty
       agent.send(:flush_pending_cards)
       expect(lines).to contain_exactly("┌ y didn't start · mcp", "│ gone", "└", "mcp> ✓ x ready, 3 tools")
