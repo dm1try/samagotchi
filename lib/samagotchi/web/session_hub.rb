@@ -128,8 +128,10 @@ module Samagotchi
       # Rescan one session now (its file, its folder, its owner), for the
       # page's own actions: no waiting for the next tick.
       def touch(id)
+        return nil unless Session.valid_id?(id)
+
         @monitor.synchronize do
-          path = File.join(@state_dir, "#{id}#{Session::FILE_EXT}")
+          path = Session.session_file(id, state_dir: @state_dir)
           if File.file?(path)
             @sessions[id] ||= Entry.new
             refresh(id, probe: true)
@@ -221,7 +223,7 @@ module Samagotchi
         @dir_mtime = dir_stat.mtime
         on_disk = Dir.glob(File.join(@state_dir, "*#{Session::FILE_EXT}")).to_h do |path|
           [File.basename(path, Session::FILE_EXT), path]
-        end
+        end.select { |id, _| Session.valid_id?(id) }
         (@sessions.keys - on_disk.keys).each { |id| drop(id) }
         on_disk.each_key { |id| @sessions[id] ||= Entry.new }
       end
@@ -232,7 +234,7 @@ module Samagotchi
       # and when its folder changed (a new owner.lock, a bridge.json).
       def refresh(id, probe: false)
         entry = @sessions[id]
-        path = File.join(@state_dir, "#{id}#{Session::FILE_EXT}")
+        path = Session.session_file(id, state_dir: @state_dir)
         stat = begin
           File.stat(path)
         rescue SystemCallError

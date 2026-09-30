@@ -638,6 +638,10 @@ module Samagotchi
         return [{ "Allow" => "POST" }, 400,
                 { error: "missing_fields", detail: "session_id and prompt are required" }]
       end
+      # Checked before the id names a folder: "../x" would write outside the
+      # sessions dir (turn_images and enqueue_turn build paths from it).
+      return [{}, 400, { error: "invalid_session_id" }] unless Session.valid_id?(sid)
+
       images = turn_images(sid, fetched(parsed, "images"))
       return [{}, 400, { error: "bad_images", detail: images }] if images.is_a?(String)
 

@@ -303,7 +303,7 @@ module Samagotchi
 
     private_class_method def self.archive_target(id_or_prefix, state_dir)
       given = id_or_prefix.to_s
-      raise ArgumentError, "no session #{given}" unless given.match?(/\A[\w-]+\z/)
+      raise ArgumentError, "no session #{given}" unless Session.valid_id?(given)
 
       id = Session.resolve_id(given, state_dir: state_dir)
       raise ArgumentError, "no session #{given}" unless Session.exist?(id, state_dir: state_dir)
@@ -470,7 +470,7 @@ module Samagotchi
       return false unless discard_empty? && model_name == default_model && Array(used_memory_names).empty?
 
       sd = state_dir || Session.default_state_dir
-      if unsaved && !File.exist?(File.join(sd, "#{session_id}#{Session::FILE_EXT}"))
+      if unsaved && !File.exist?(Session.session_file(session_id, state_dir: sd))
         return no_conversation?(unsaved.messages) && unsaved.last_prompt.to_s.strip.empty? &&
                empty_session_dir?(Session.session_dir(session_id, state_dir: sd))
       end
@@ -538,10 +538,10 @@ module Samagotchi
       sd = state_dir || Session.default_state_dir
       given = id_or_prefix.to_s
       # Only a plain id: anything else could name a path outside the state dir.
-      raise ArgumentError, "no session #{given}" unless given.match?(/\A[\w-]+\z/)
+      raise ArgumentError, "no session #{given}" unless Session.valid_id?(given)
 
       id = Session.resolve_id(given, state_dir: sd)
-      path = File.join(sd, "#{id}#{Session::FILE_EXT}")
+      path = Session.session_file(id, state_dir: sd)
       dir = Session.session_dir(id, state_dir: sd)
       raise ArgumentError, "no session #{given}" unless File.exist?(path) || Dir.exist?(dir)
 

@@ -58,7 +58,7 @@ module Samagotchi
     end
 
     private_class_method def self.left_empty?(session_id, state_dir:, default_model:)
-      path = File.join(state_dir, "#{session_id}#{Session::FILE_EXT}")
+      path = Session.session_file(session_id, state_dir: state_dir)
       Time.now - File.mtime(path) > EMPTY_GRACE_SECONDS &&
         SessionManager.discardable?(session_id, state_dir: state_dir, default_model: default_model)
     rescue SystemCallError
@@ -74,7 +74,7 @@ module Samagotchi
 
       Dir.children(state_dir).filter_map do |name|
         dir = File.join(state_dir, name)
-        next unless name.match?(/\A[\w-]+\z/) && File.directory?(dir)
+        next unless Session.valid_id?(name) && File.directory?(dir)
         next if File.exist?(File.join(state_dir, "#{name}#{Session::FILE_EXT}"))
         next unless Time.now - File.mtime(dir) > EMPTY_GRACE_SECONDS && SessionManager.empty_session_dir?(dir)
         next if SessionManager.session_owner(name, state_dir: state_dir)

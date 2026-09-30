@@ -157,6 +157,11 @@ module Samagotchi
 
         ROUTES.each do |verb, pattern, handler|
           next unless req.request_method == verb && (m = pattern.match(req.path_info))
+          # Every /api/sessions/:id route: an id that isn't one (Session.valid_id?,
+          # "..", a %2F) is an unknown session before any handler makes a path.
+          if req.path_info.start_with?("/api/sessions/") && !Session.valid_id?(m.captures.first)
+            return error_response(404, "not_found", "Session not found: #{m.captures.first.to_s[0, 80]}")
+          end
 
           return send(handler, req, *m.captures)
         end

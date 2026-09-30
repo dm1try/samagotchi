@@ -77,7 +77,7 @@ module Samagotchi
     end
 
     def self.write(session_id, record, state_dir:)
-      return false unless File.exist?(File.join(state_dir, "#{session_id}#{Session::FILE_EXT}"))
+      return false unless File.exist?(Session.session_file(session_id, state_dir: state_dir))
 
       dir = Session.session_dir(session_id, state_dir: state_dir)
       FileUtils.mkdir_p(dir)

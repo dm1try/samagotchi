@@ -60,6 +60,21 @@ RSpec.describe Samagotchi::Web::App, "routing" do
     [parsed["handler"], *parsed["captures"]]
   end
 
+  it "answers 404 for a session id that isn't one on every /api/sessions/:id route, before any handler" do
+    routes = [["GET", "stream"], ["GET", "output"], ["POST", "cancel"], ["POST", "stop"], ["POST", "archive"],
+              ["POST", "unarchive"], ["POST", "turn"], ["POST", "answer"], ["POST", "question/dismiss"],
+              ["POST", "command"], ["POST", "images"], ["GET", "images/abc.png"], ["GET", nil], ["DELETE", nil]]
+    ["..", "..%2Fx", "%2Ftmp", "a%00b", "a%2Fb", "x.json"].each do |id|
+      routes.each do |method, tail|
+        path = ["/api/sessions/#{id}", tail].compact.join("/")
+        status, body = routed(path, method: method)
+        expect(status).to eq(404), "#{method} #{path}"
+        expect(JSON.parse(body)["error"]).to eq("not_found")
+      end
+    end
+    expect(routed("/api/sessions/#{"a" * 8}-1234", method: "DELETE")).to eq(["handle_delete", "#{"a" * 8}-1234"])
+  end
+
   it "sends every route to its handler with the path's captures" do
     table = {
       ["GET", "/"] => ["serve_index"],
