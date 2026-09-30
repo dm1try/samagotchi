@@ -65,12 +65,6 @@ module Samagotchi
       nil
     end
 
-    # @return [Boolean] whether this session has ever had a lock-taking owner
-    #   (workers from before the lock only left a pid file)
-    def self.lock_file?(session_dir)
-      File.exist?(path(session_dir))
-    end
-
     def self.path(session_dir)
       File.join(session_dir, FILE)
     end

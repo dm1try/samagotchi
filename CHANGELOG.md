@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
   format) or refuse images to one that predates them (`images_unsupported`), and a worker no longer reads
   `input/*.txt`: every chi since then writes and reads JSON input. A worker that old never exits by itself;
   restart it (`chi sessions stop ID`, then send to it) before upgrading.
+- A worker from before the owner lock (2026-09-22) no longer counts as a session's owner through its pid file:
+  only the lock holder does, so a stale pid file whose pid was reused no longer makes a session look busy.
 
 ## [0.7.0] - 2026-09-30
 

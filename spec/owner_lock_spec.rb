@@ -42,7 +42,6 @@ RSpec.describe Samagotchi::OwnerLock do
 
   it "reports no owner when there is no lock file" do
     expect(described_class.owner(dir)).to be_nil
-    expect(described_class.lock_file?(dir)).to be false
   end
 
   it "refuses a second owner after waiting, and the probe leaves the holder's lock intact" do

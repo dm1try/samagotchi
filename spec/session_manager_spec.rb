@@ -693,14 +693,15 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Process).to have_received(:spawn)
     end
 
-    it "treats a live pid-only worker (from before the owner lock) as the owner" do
+    it "counts a session with only a pid file (no lock) as not owned, even when that pid is alive" do
       FileUtils.mkdir_p(session_dir)
       File.write(File.join(session_dir, described_class::PID_FILE), Process.pid.to_s)
-      allow(Process).to receive(:spawn)
+      allow(Process).to receive(:spawn).and_return(20_004)
 
+      expect(described_class.session_owner(session.id, state_dir: tmpdir)).to be_nil
       described_class.resume_session(session.id, state_dir: tmpdir)
 
-      expect(Process).not_to have_received(:spawn)
+      expect(Process).to have_received(:spawn)
     end
 
     it "refuses to resume, write input for, or stop a session the interactive TUI owns" do

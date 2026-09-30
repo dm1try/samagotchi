@@ -957,30 +957,12 @@ module Samagotchi
       false
     end
 
-    # The session's live owner: the OwnerLock holder, or a live pid-only
-    # worker started before the lock existed (such workers never exit).
+    # The session's live owner: the OwnerLock holder. The pid file a worker
+    # writes is never read here: a stale one whose pid the OS reused would
+    # make a session look owned.
     # @return [Hash, nil] {"pid", "kind" ("worker"/"tui"), ...} or nil
     def self.session_owner(session_id, state_dir: nil)
-      session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
-      return OwnerLock.owner(session_dir) if OwnerLock.lock_file?(session_dir)
-
-      pid = legacy_worker_pid(session_dir)
-      pid && { "pid" => pid, "kind" => "worker" }
-    end
-
-    private_class_method def self.legacy_worker_pid(session_dir)
-      pid_file = File.join(session_dir, PID_FILE)
-      return nil unless File.exist?(pid_file)
-
-      pid = File.read(pid_file).strip.to_i
-      return nil if pid <= 0
-
-      Process.kill(0, pid)
-      pid
-    rescue Errno::EPERM
-      pid
-    rescue Errno::ESRCH
-      nil
+      OwnerLock.owner(Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir))
     end
   end
 end
