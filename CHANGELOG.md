@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-01
+
 ### Added
 
 - Bundle profiles: `core` (loop-guard, check-in, guardrails) and `dev` (known-names, mcp, btw, skills,
@@ -460,7 +462,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/dm1try/samagotchi/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/dm1try/samagotchi/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dm1try/samagotchi/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/dm1try/samagotchi/compare/v0.5.0...v0.5.1
