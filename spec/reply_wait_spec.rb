@@ -132,9 +132,16 @@ RSpec.describe Samagotchi::ReplyWait do
     allow(Samagotchi::SessionManager).to receive(:session_owner) { owner[0] }
     expect(wait(owner_grace: 0.1).status).to eq(:worker_gone)
 
-    later(0.05) { owner[0] = { "pid" => 1 } }
-    later(0.3) { write_reply("came back") }
-    expect(wait(owner_grace: 0.15).text).to eq("came back")
+    # Gone for the first two looks only, far inside the grace however slow
+    # the runner: no race between a thread's sleep and the wait's clock.
+    looks = 0
+    allow(Samagotchi::SessionManager).to receive(:session_owner) do
+      looks += 1
+      write_reply("came back") if looks == 5
+      looks > 2 ? { "pid" => 1 } : nil
+    end
+    expect(wait(owner_grace: 1).text).to eq("came back")
+    expect(looks).to be >= 5
   end
 
   it "raises for a missing session" do
