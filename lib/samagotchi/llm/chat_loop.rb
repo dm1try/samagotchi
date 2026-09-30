@@ -221,6 +221,7 @@ module Samagotchi
           message[:tool_params] = entry[:tool_params] if entry[:tool_params]
           message[:tool_labels] = entry[:tool_labels] if entry[:tool_labels]
           message[:tool_diffs] = entry[:tool_diffs] if entry[:tool_diffs]
+          message[TurnNote::RETRY_NUDGE] = true if TurnNote.retry_nudge?(entry)
           message[AnswerDisplay::KEY] = entry[AnswerDisplay::KEY] if entry[AnswerDisplay::KEY]
           ContextNote::KEYS.each { |key| message[key] = entry[key] if entry.key?(key) }
           message
@@ -336,6 +337,13 @@ module Samagotchi
             response, partial = generate(iteration)
             return canceled(iteration, response, partial) if partial
 
+            if response.cut
+              outcome = after_cut(iteration, response)
+              next if outcome == :retry
+
+              return outcome
+            end
+
             last_text = @loop.strip_model_thought(response.text)
             if response.tool_calls.empty?
               # Kept before a merge too: the model answers the merged line
@@ -393,6 +401,32 @@ module Samagotchi
           true
         end
 
+        # A generation a plugin cut (stop_generation) is an empty answer made
+        # early: asked again with its own nudge while the retry budget lasts
+        # (queued input goes in place of the nudge), else the turn ends as
+        # cancelled (hook), with nothing salvaged and without a spent nudge.
+        # A Stop that came right after the cut is a plain cancel. Returns
+        # :retry, or the turn's result.
+        def after_cut(iteration, response)
+          return canceled(iteration, @cancel_controller.reason) if @cancel_controller.cancelled?
+
+          if @empty_retries < @empty_retry_limit
+            return :retry if inject_pending_input(iteration)
+
+            @empty_retries += 1
+            @retry_generation = true
+            emit(type: :empty_answer_retry, iteration: iteration, attempt: @empty_retries, of: @empty_retry_limit,
+                 finish_reason: response.finish_reason, thinking_chars: response.reasoning.to_s.length,
+                 stopped_by: response.cut[:by])
+            @conversation << TurnNote.cut_retry(response.cut[:by], response.cut[:reason])
+            return :retry
+          end
+          index = @conversation.rindex { |entry| TurnNote.retry_nudge?(entry) }
+          @conversation.delete_at(index) if index
+          @cancel_controller.cancel!(:hook)
+          canceled(iteration, :hook)
+        end
+
         # The host's reasoning, kept on the model message as +thinking+ for
         # the web turn view's reload (the whole of it, as the live view
         # shows). Only saved: #assistant_message builds the wire message from
@@ -412,15 +446,22 @@ module Samagotchi
                context_window_source: window&.source)
           @loop.fire_hook(:before_generation, { type: :before_generation, iteration: iteration })
           streamed = +""
-          response = begin
-            request(iteration, retry_generation, streamed)
-          rescue BadRequest => e
-            raise unless thinking_refused?(e)
+          thought = +""
+          response = with_generation do |generation_controller|
+            begin
+              request(iteration, retry_generation, streamed, thought, generation_controller)
+            rescue BadRequest => e
+              raise unless thinking_refused?(e)
 
-            # Once per model: asked again without the thinking fields.
-            @loop.thinking_refused!(@model_name)
-            emit(type: :thinking_refused, iteration: iteration, model: @model_name, level: @loop.thinking, detail: e.detail)
-            request(iteration, retry_generation, streamed)
+              # Once per model: asked again without the thinking fields.
+              @loop.thinking_refused!(@model_name)
+              emit(type: :thinking_refused, iteration: iteration, model: @model_name, level: @loop.thinking, detail: e.detail)
+              request(iteration, retry_generation, streamed, thought, generation_controller)
+            end
+          rescue RequestCancelled
+            raise unless generation_controller&.cancelled? && !@cancel_controller.cancelled?
+
+            return cut_response(iteration, thought, generation_controller.detail || {})
           end
           record_context_status(response.usage, window)
           emit(type: :generation_completed, iteration: iteration, content_length: response.text.length,
@@ -434,13 +475,34 @@ module Samagotchi
           [e.reason, streamed]
         end
 
-        def request(iteration, retry_generation, streamed)
+        # The request runs under the generation's own controller (the turn
+        # controller's child), so a plugin's stop_generation cuts it alone.
+        def with_generation(&block)
+          return yield(nil) unless @cancel_controller
+
+          @cancel_controller.generation(&block)
+        end
+
+        # The empty response of a cut generation: its spinners close as any
+        # generation's (finish_reason stopped, stopped_by the bundle); no
+        # after_generation (there is no answer to see), and no usage (the
+        # stream never sent its last chunk).
+        def cut_response(iteration, thought, cut)
+          emit(type: :generation_completed, iteration: iteration, content_length: 0, thinking_chars: thought.length,
+               requested_model: @model_name, finish_reason: "stopped", stopped_by: cut[:by], stop_reason: cut[:reason])
+          response = ChatResponse.new(text: "", reasoning: thought, tool_calls: [], usage: nil, finish_reason: "stopped",
+                                      cut: cut)
+          [response, nil]
+        end
+
+        def request(iteration, retry_generation, streamed, thought, generation_controller)
           @loop.adapter.chat(
             messages: @loop.wire_messages(@conversation), tools: @loop.tool_definitions, model: @model_name,
-            cancel_controller: @cancel_controller, session_id: @loop.session_id,
+            cancel_controller: generation_controller || @cancel_controller, session_id: @loop.session_id,
             options: @loop.request_options(retry_generation: retry_generation, model: @model_name),
             on_delta: lambda { |content:, reasoning:, payload:|
               streamed << content
+              thought << reasoning
               emit(type: :generation_chunk, iteration: iteration, content: reasoning + content, text: content,
                    thinking: reasoning, payload: payload)
             },

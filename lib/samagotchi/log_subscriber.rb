@@ -28,7 +28,7 @@ module Samagotchi
       question_answered: %i[id],
       question_cancelled: %i[id reason],
       generation_cancelled: %i[iteration],
-      empty_answer_retry: %i[iteration attempt of finish_reason thinking_chars]
+      empty_answer_retry: %i[iteration attempt of finish_reason thinking_chars stopped_by]
     }.freeze
 
     # @param session_id [#call] the session the events are about (the
@@ -97,11 +97,17 @@ module Samagotchi
     end
 
     def on_generation_completed(event)
-      log(:info, :generation_completed, iteration: event[:iteration],
-                                        ms: since(@generation_started_at.delete(event[:iteration])),
+      ms = since(@generation_started_at.delete(event[:iteration]))
+      log(:info, :generation_completed, iteration: event[:iteration], ms: ms,
                                         served_model: event[:served_model], requested_model: event[:requested_model],
                                         content_length: event[:content_length],
-                                        thinking_chars: event[:thinking_chars], finish_reason: event[:finish_reason])
+                                        thinking_chars: event[:thinking_chars], finish_reason: event[:finish_reason],
+                                        stopped_by: event[:stopped_by])
+      return unless event[:stopped_by]
+
+      # A plugin cut this generation (stop_generation); the turn goes on.
+      log(:info, :generation_stopped, iteration: event[:iteration], bundle: event[:stopped_by],
+                                      reason: event[:stop_reason].to_s[0, 200], thinking_chars: event[:thinking_chars], ms: ms)
     end
 
     def on_generation_retrying(event)

@@ -17,6 +17,7 @@ module Samagotchi
     RESTORED = "The message went back to the user, who may send it again."
     TASKS_LISTED = 5
     TASK_COMMAND_CHARS = 60
+    RETRY_NUDGE = :retry_nudge
 
     module_function
 
@@ -64,7 +65,25 @@ module Samagotchi
     # The hidden nudge before a retry of an empty answer (EmptyAnswerRetry):
     # the model never sees its empty generation, so it is told what happened.
     def empty_retry
-      message("your last reply had no visible answer. Answer the user's last message now, briefly.")
+      retry_nudge(message("your last reply had no visible answer. Answer the user's last message now, briefly."))
+    end
+
+    # The hidden nudge before a retry of a generation a plugin cut
+    # (stop_generation): +by+ is the bundle, +reason+ what it said.
+    def cut_retry(by, reason)
+      why = reason.to_s.strip.empty? ? "" : ": #{one_line(reason)}"
+      retry_nudge(message("your last reply was cut off by #{by || "a plugin"}#{why}. Don't start the same reasoning " \
+                          "again; answer the user's last message now, briefly."))
+    end
+
+    # A retry nudge is marked, so the spent one is found by the mark
+    # whatever its words (KernelLoop drops it when the retry fails too).
+    def retry_nudge(note)
+      note.merge(RETRY_NUDGE => true)
+    end
+
+    def retry_nudge?(entry)
+      entry.respond_to?(:[]) && (entry[RETRY_NUDGE] || entry[RETRY_NUDGE.to_s]) == true
     end
 
     def note?(entry)

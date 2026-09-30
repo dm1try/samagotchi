@@ -34,8 +34,10 @@ module Samagotchi
     # ([] when none), usage (never nil) and the finish reason.
     # +model+ is the model the server says answered (the body's `model`),
     # which can differ from the one asked for; nil when it says nothing.
-    ChatResponse = Data.define(:text, :reasoning, :tool_calls, :usage, :finish_reason, :model) do
-      def initialize(model: nil, **fields) = super
+    # +cut+ is set on the empty response the chat loop makes for a
+    # generation a plugin cut (stop_generation): {by:, reason:}.
+    ChatResponse = Data.define(:text, :reasoning, :tool_calls, :usage, :finish_reason, :model, :cut) do
+      def initialize(model: nil, cut: nil, **fields) = super
     end
 
     # The OpenAI Chat Completions API (llama.cpp's /v1, and any compatible

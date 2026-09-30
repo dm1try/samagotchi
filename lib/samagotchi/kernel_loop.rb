@@ -255,9 +255,14 @@ module Samagotchi
         # Fire :before_generation hook
         gen_event = { type: :before_generation, iteration: iteration_index + 1 }
         fire_hook(:before_generation, gen_event) if @hooks
-        response = @client.complete(
-          prompt,
-          **complete_kwargs(
+        # The request runs under the generation's own controller: a plugin's
+        # stop_generation cuts it alone, and the turn goes on (a cut).
+        buffer_mark = partial_assistant_buffer.length
+        cut = nil
+        response = with_generation(cancel_controller) do |generation_controller|
+          request_generation(
+            prompt,
+            generation_controller: generation_controller,
             cancel_controller: cancel_controller,
             model_name: resolved_model_name,
             on_chunk: lambda { |chunk|
@@ -295,7 +300,43 @@ module Samagotchi
             },
             images: images
           )
-        )
+        rescue Client::RequestCancelled
+          raise unless cut?(generation_controller, cancel_controller)
+
+          cut = generation_controller.detail || {}
+          ""
+        end
+        if cut
+          # The cut stream may have stopped mid-block, and its visible text
+          # goes with it: a fresh splitter, the buffer as it was before.
+          stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
+          partial_assistant_buffer.slice!(buffer_mark..)
+          emit_stream_event(on_stream_event, type: :generation_completed, iteration: iteration_index + 1,
+                                             content_length: 0, thinking_chars: streamed_thinking,
+                                             served_model: served_model, requested_model: resolved_model_name,
+                                             finish_reason: "stopped", stopped_by: cut[:by], stop_reason: cut[:reason])
+          # A Stop that came right after the cut is a plain cancel.
+          raise Client::RequestCancelled.new(cancel_controller.reason) if cancel_controller.cancelled?
+
+          if empty_retries < empty_retry_limit
+            # Queued input (the user's line, a plugin's steer) goes in place of the nudge.
+            next if inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller)
+
+            empty_retries += 1
+            @retry_generation = true
+            emit_stream_event(on_stream_event, type: :empty_answer_retry, iteration: iteration_index + 1,
+                                               attempt: empty_retries, of: empty_retry_limit,
+                                               thinking_chars: streamed_thinking, stopped_by: cut[:by])
+            conversation << TurnNote.cut_retry(cut[:by], cut[:reason])
+            next
+          end
+          # No retry left: the turn ends as cancelled (hook), with nothing
+          # salvaged and without the spent nudge.
+          drop_last_empty_retry!(conversation)
+          cancel_controller.cancel!(:hook)
+          emit_stream_event(on_stream_event, type: :generation_cancelled, iteration: iteration_index + 1, reason: :hook)
+          return cancelled_result(conversation, tool_activity: tool_activity, reason: :hook, partial_assistant_text: "")
+        end
         # What the server's prompt count covers, so the next estimate adds
         # only what the turn appended since (answer, tool results).
         context_state[:counted] = { chars: prompt.length, image_tokens: image_tokens } if generation_usage
@@ -536,6 +577,25 @@ module Samagotchi
 
     def resolve_output_char_cap(override)
       self.class.resolve_output_char_cap(override)
+    end
+
+    # One request, cancelled by +generation_controller+ (the turn's child)
+    # when there is one.
+    def request_generation(prompt, generation_controller:, cancel_controller:, **options)
+      @client.complete(prompt, **complete_kwargs(cancel_controller: generation_controller || cancel_controller, **options))
+    end
+
+    # Yields the turn controller's child for one generation (nil without a
+    # controller).
+    def with_generation(cancel_controller, &block)
+      return yield(nil) unless cancel_controller
+
+      cancel_controller.generation(&block)
+    end
+
+    # The generation was cut (stop_generation) and the turn goes on.
+    def cut?(generation_controller, cancel_controller)
+      generation_controller&.cancelled? && !cancel_controller.cancelled?
     end
 
     def complete_kwargs(cancel_controller:, model_name: nil, on_chunk: nil, on_retry: nil, images: [])
@@ -903,8 +963,7 @@ module Samagotchi
     end
 
     def drop_last_empty_retry!(conversation)
-      nudge = TurnNote.empty_retry
-      index = conversation.rindex { |entry| entry[:kind] == nudge[:kind] && entry[:content] == nudge[:content] }
+      index = conversation.rindex { |entry| TurnNote.retry_nudge?(entry) }
       conversation.delete_at(index) if index
     end
 

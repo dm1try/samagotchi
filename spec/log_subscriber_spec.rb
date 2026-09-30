@@ -72,6 +72,20 @@ RSpec.describe Samagotchi::LogSubscriber do
     ])
   end
 
+  it "writes a generation a plugin cut, with its bundle and reason" do
+    feed({ type: :generation_started, iteration: 1 })
+    now[0] = 138.4
+    feed({ type: :generation_completed, iteration: 1, content_length: 0, thinking_chars: 14_000, finish_reason: "stopped",
+           stopped_by: "loop-guard", stop_reason: "its thinking kept repeating itself" },
+         { type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1, thinking_chars: 14_000, stopped_by: "loop-guard" })
+
+    expect(records.map { |r| [r.event, r.fields.slice("finish_reason", "stopped_by", "bundle", "reason", "ms")] }).to eq([
+      ["generation_completed", { "finish_reason" => "stopped", "stopped_by" => "loop-guard", "ms" => "38400" }],
+      ["generation_stopped", { "bundle" => "loop-guard", "reason" => "its thinking kept repeating itself", "ms" => "38400" }],
+      ["empty_answer_retry", { "stopped_by" => "loop-guard" }]
+    ])
+  end
+
   it "logs generation_started at debug only" do
     Samagotchi::Log.configure(path: path, level: :debug)
     feed({ type: :generation_started, iteration: 2, profile: "gemma4", context_window_tokens: 8192 })

@@ -44,6 +44,16 @@ RSpec.describe Samagotchi::TurnNote do
     expect(capped).not_to include("t6")
   end
 
+  it "marks both retry nudges, and says who cut a generation and why" do
+    cut = described_class.cut_retry("loop-guard", "its thinking kept\nrepeating itself")
+
+    expect(cut[:content]).to eq("[SYSTEM: your last reply was cut off by loop-guard: its thinking kept repeating itself. " \
+                                "Don't start the same reasoning again; answer the user's last message now, briefly.]")
+    expect([cut, described_class.empty_retry]).to all(satisfy { |note| described_class.retry_nudge?(note) && described_class.note?(note) })
+    expect(described_class.retry_nudge?({ "retry_nudge" => true })).to be(true)
+    expect(described_class.retry_nudge?(described_class.empty)).to be(false)
+  end
+
   it "says an empty turn left the message unanswered" do
     expect(described_class.empty[:content]).to include("no visible answer").and include("still unanswered")
   end
