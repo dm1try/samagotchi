@@ -1,11 +1,10 @@
 # frozen_string_literal: true
 
-require "json"
-require "net/http"
 require "socket"
 require_relative "session"
 require_relative "version"
 require_relative "worker_sidecar"
+require_relative "web/info_probe"
 
 module Samagotchi
   # Which chi versions the running processes run, for `chi update`: session
@@ -46,11 +45,8 @@ module Samagotchi
     # The /api/info of a chi web on host:port, or nil when nothing (or not
     # chi web) answers.
     def web_info(host, port, timeout: WEB_TIMEOUT)
-      response = Net::HTTP.start(host, port, open_timeout: timeout, read_timeout: timeout) { |http| http.get("/api/info") }
-      info = response.code.to_i == 200 ? JSON.parse(response.body.to_s) : nil
-      info.is_a?(Hash) && info["app"] == "chi-web" ? info : nil
-    rescue StandardError
-      nil
+      info = Web::InfoProbe.call(host, port, timeout: timeout)
+      info.is_a?(Hash) ? info : nil
     end
 
     def listening?(port, host: "127.0.0.1")

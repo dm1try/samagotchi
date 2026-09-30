@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 require "json"
-require "net/http"
 require "rack"
 require "rackup/handler/webrick"
 require "uri"
 require "webrick"
 
 require_relative "app"
+require_relative "info_probe"
 require_relative "lan"
 require_relative "qr"
 require_relative "session_hub"
@@ -206,20 +206,17 @@ module Samagotchi
       # ?dir, :free when nothing listens, :other for anything else (an older
       # chi web, another program).
       def self.probe(host, port, timeout: PROBE_TIMEOUT)
-        response = Net::HTTP.start(host, port, open_timeout: timeout, read_timeout: timeout) { |http| http.get("/api/info") }
-        probe_verdict(response.code.to_i, response.body)
-      rescue Errno::ECONNREFUSED, Errno::EADDRNOTAVAIL
-        :free
-      rescue StandardError
-        :other
+        knows_dir(InfoProbe.call(host, port, timeout: timeout))
       end
 
       def self.probe_verdict(status, body)
-        info = status == 200 ? JSON.parse(body.to_s) : nil
-        info.is_a?(Hash) && info["app"] == "chi-web" && Array(info["features"]).include?("dir") ? info : :other
-      rescue JSON::ParserError
-        :other
+        knows_dir(InfoProbe.verdict(status, body))
       end
+
+      def self.knows_dir(info)
+        info.is_a?(Hash) && !Array(info["features"]).include?("dir") ? :other : info
+      end
+      private_class_method :knows_dir
 
       # What a phone needs: the LAN link with the token, the warnings, and
       # the link's QR code (at a terminal only).
