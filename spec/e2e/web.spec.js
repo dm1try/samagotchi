@@ -603,12 +603,19 @@ test("a warn card stays in sight when its step closes mid-turn", { tag: "@turn" 
   const card = page.locator(`${H()} .plugin-card.warn`).filter({ hasText: "e2e warn card" });
   await expect(card).toHaveCount(1);
   // The next step started: the card's step is closed, the turn still runs
-  // (the last step holds 4 s before it answers).
-  const steps = page.locator(`${H()} .turn-work .gen`);
-  await expect(steps.nth(1).locator(".activity-row")).toHaveCount(1);
-  await expect(steps.first()).not.toHaveAttribute("open", "");
+  // (the last step holds 4 s before it answers). In the stage the card sits
+  // in the extras, not in its step inside the closed cloud.
+  if (stage()) {
+    await expect(page.locator("#turnStage .ts-trail")).toContainText("read README.md");
+    await expect(page.locator("#turnStage .ts-extras > .plugin-card.warn")).toHaveCount(1);
+  } else {
+    const steps = page.locator(`${H()} .turn-work .gen`);
+    await expect(steps.nth(1).locator(".activity-row")).toHaveCount(1);
+    await expect(steps.first()).not.toHaveAttribute("open", "");
+  }
   await expect(card).toBeVisible({ timeout: 1000 });
-  // Still running: no final timing line yet.
+  // Still running: Cancel is up, no final timing line yet.
+  await expect(page.locator("#cancelBtn")).toBeVisible({ timeout: 1000 });
   await expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(0);
   await turnEnded(page, 1);
   await expect(card).toBeVisible();
