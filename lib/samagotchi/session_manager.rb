@@ -46,7 +46,6 @@ module Samagotchi
   #       │                        # ({text, source, from_session?, from_cwd?, created_at})
   #       ├── output/             # agent writes responses here
   #       │   └── <timestamp>.txt # one file per agent response
-  #       ├── pid                 # PID of the owner, written by the owner itself
   #       └── bridge.json         # Bridge sidecar (how clients reach the worker)
   # Needed only at call time (run_session_loop); worker.rb requires this file.
   autoload :Worker, File.expand_path("worker", __dir__)
@@ -54,7 +53,6 @@ module Samagotchi
   autoload :SessionRetention, File.expand_path("session_retention", __dir__)
 
   class SessionManager
-    PID_FILE   = "pid"
     # Origin of the synthetic turn queued when reminders are due.
     REMINDER_CLIENT_ID = "system:reminder"
 
@@ -442,7 +440,9 @@ module Samagotchi
 
     # What a session's directory holds before anything happened in it. Any
     # other entry (or a file in one of the EMPTY_DIRS) is something the
-    # session keeps.
+    # session keeps. "pid" is the pid file workers wrote until 2026-10-01:
+    # nothing writes or reads it now, but a folder from before still has one
+    # and is still empty.
     EMPTY_SKELETON_FILES = ["pid", "owner.lock", WorkerSidecar::FILE, "analytics.json"].freeze
     EMPTY_DIRS = [SessionInbox::INPUT_DIR, SessionInbox::NOTES_DIR, "images"].freeze
     EMPTY_SKELETON_DIRS = (EMPTY_DIRS + [SessionInbox::OUTPUT_DIR]).freeze
@@ -610,7 +610,6 @@ module Samagotchi
       worker = Worker.new(session_id: session_id, state_dir: sd, session_dir: session_dir,
                           idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
       result = begin
-        File.write(File.join(session_dir, PID_FILE), Process.pid.to_s)
         worker.run
       rescue StandardError, ScriptError => e
         # The worker's stderr is /dev/null: the log is the only trace.
@@ -679,7 +678,6 @@ module Samagotchi
       opts = spawn_options(session)
       env = opts.delete(:env)
       command = worker_command(session.id, state_dir: state_dir)
-      # The worker writes the pid file itself once it owns the session.
       pid = env ? Process.spawn(env, *command, **opts) : Process.spawn(*command, **opts)
       Log.info(:worker, "spawn", sid: session.id, child_pid: pid)
       pid
@@ -809,8 +807,8 @@ module Samagotchi
       false
     end
 
-    # The session's live owner: the OwnerLock holder. The pid file a worker
-    # writes is never read here: a stale one whose pid the OS reused would
+    # The session's live owner: the OwnerLock holder. The pid file workers
+    # once wrote is never read: a stale one whose pid the OS reused would
     # make a session look owned.
     # @return [Hash, nil] {"pid", "kind" ("worker"/"tui"), ...} or nil
     def self.session_owner(session_id, state_dir: nil)

@@ -580,11 +580,6 @@ RSpec.describe Samagotchi::SessionManager do
       lib_path_index = spawned_args.index("-I") + 1
       expect(spawned_args[lib_path_index]).to end_with("/lib")
       expect(File.directory?(spawned_args[lib_path_index])).to be true
-
-      # The worker writes its own pid once it owns the session; a parent
-      # writing it raced a second spawn and could record the loser.
-      pid_file = File.join(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), Samagotchi::SessionManager::PID_FILE)
-      expect(File.exist?(pid_file)).to be false
     end
 
     describe "the worker command" do
@@ -685,7 +680,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "spawns a worker when the last owner is gone, even if its pid was reused" do
       Samagotchi::OwnerLock.acquire(session_dir, kind: "worker").release
-      File.write(File.join(session_dir, described_class::PID_FILE), Process.pid.to_s)
+      File.write(File.join(session_dir, "pid"), Process.pid.to_s)
       allow(Process).to receive(:spawn).and_return(20_003)
 
       described_class.resume_session(session.id, state_dir: tmpdir)
@@ -695,7 +690,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "counts a session with only a pid file (no lock) as not owned, even when that pid is alive" do
       FileUtils.mkdir_p(session_dir)
-      File.write(File.join(session_dir, described_class::PID_FILE), Process.pid.to_s)
+      File.write(File.join(session_dir, "pid"), Process.pid.to_s)
       allow(Process).to receive(:spawn).and_return(20_004)
 
       expect(described_class.session_owner(session.id, state_dir: tmpdir)).to be_nil
@@ -744,7 +739,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(engine).not_to have_received(:start_init_tasks!)
     end
 
-    it "records the worker as owner, with its own pid, while it runs" do
+    it "records the worker as owner, with its own pid, while it runs, and writes no pid file" do
       engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, start_idle: nil, stop_idle: nil, reminder_store: nil,
                                               turn_running?: false, last_activity_at: 0.0)
       allow(engine).to receive(:subscribe).and_return(double("subscribe_handle", unsubscribe: nil))
@@ -752,7 +747,7 @@ RSpec.describe Samagotchi::SessionManager do
       pid_seen = nil
       allow(Samagotchi::Engine).to receive(:new) do
         owner_seen = Samagotchi::OwnerLock.owner(session_dir)
-        pid_seen = File.read(File.join(session_dir, described_class::PID_FILE))
+        pid_seen = File.exist?(File.join(session_dir, "pid"))
         engine
       end
       allow(Samagotchi::SessionInbox).to receive(:find_new_input_files) do
@@ -765,7 +760,7 @@ RSpec.describe Samagotchi::SessionManager do
       }.to raise_error(SystemExit)
 
       expect(owner_seen).to include("kind" => "worker", "pid" => Process.pid)
-      expect(pid_seen).to eq(Process.pid.to_s)
+      expect(pid_seen).to be(false)
       # Released on the way out.
       expect(Samagotchi::OwnerLock.owner(session_dir)).to be_nil
     end

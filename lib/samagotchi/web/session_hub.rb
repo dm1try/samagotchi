@@ -21,7 +21,7 @@ module Samagotchi
     # unlink bump the parent dir's mtime, so one stat of the state dir says
     # "some session file changed" and one stat of `<id>/` says "recap.json
     # or bridge.json appeared, changed or went". Nothing in-place is
-    # watched: the pid file and owner.lock are read by the owner probes.
+    # watched: owner.lock is read by the owner probes.
     #
     # #scan does one pass and is driven by the tick thread (#start) or by a
     # spec. Scan, #touch, the projection and the deliveries all run under

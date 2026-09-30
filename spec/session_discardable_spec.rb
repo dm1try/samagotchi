@@ -30,6 +30,7 @@ RSpec.describe "discarding an empty session" do
     session.messages << { role: "system", content: "You are chi." }
     dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
     %w[input output notes images].each { |sub| FileUtils.mkdir_p(File.join(dir, sub)) }
+    # pid: a leftover of workers before 2026-10-01, still skeleton.
     %w[pid owner.lock bridge.json].each { |name| File.write(File.join(dir, name), "") }
     File.write(File.join(dir, "analytics.json"), JSON.generate("turns" => 0, "turn_records" => []))
     row[:change]&.call(session, dir)

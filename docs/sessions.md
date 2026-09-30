@@ -1,6 +1,6 @@
 # Sessions
 
-Sessions are plain files — no DB. Each session is `~/.local/state/samagotchi/sessions/<uuid>.json` (XDG-aware via `XDG_STATE_HOME`) plus a sidecar dir `<uuid>/` with `input/`/`notes/`/`output/`/`pid`/`bridge.json` (`Session.session_dir`). Besides the messages and turn state, the JSON keeps `used_memory_names` (what the session read), `preloaded_memory_names` (`--memory`) and `muted_memory_names` (`--mute`), the last two written before the worker starts so a respawn builds the same prompt, and `parent_id`, the session that delegated this one (see *Delegating*; `null` otherwise); files from before those keys read as empty lists and no parent.
+Sessions are plain files — no DB. Each session is `~/.local/state/samagotchi/sessions/<uuid>.json` (XDG-aware via `XDG_STATE_HOME`) plus a sidecar dir `<uuid>/` with `input/`/`notes/`/`output/`/`owner.lock`/`bridge.json` (`Session.session_dir`). Besides the messages and turn state, the JSON keeps `used_memory_names` (what the session read), `preloaded_memory_names` (`--memory`) and `muted_memory_names` (`--mute`), the last two written before the worker starts so a respawn builds the same prompt, and `parent_id`, the session that delegated this one (see *Delegating*; `null` otherwise); files from before those keys read as empty lists and no parent.
 
 **Retention (file-based, opt-out via env):**
 
