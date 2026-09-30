@@ -102,7 +102,8 @@ module Samagotchi
 
     # --all: every live session. @return [Integer] exit status
     def deliver_to_live(text, source)
-      ids = SessionManager.session_summaries(live: true, include_tests: false, state_dir: @state_dir).map { |s| s[:id] }
+      ids = SessionManager.session_summaries(live: true, include_tests: Session.test_session_env?,
+                                             state_dir: @state_dir).map { |s| s[:id] }
       if ids.empty?
         error_line("chi note: no live sessions (chi sessions list --live --scope=all)")
         return 1

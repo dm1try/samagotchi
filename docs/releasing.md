@@ -130,9 +130,12 @@ next patch version.
 The suite runs the same on Linux CI as on macOS, with no CI-only skips. A few
 things differ there, and a new spec that trips on them fails only on CI:
 
-- `CI` set marks every new session a test run, and `--all`, `list_sessions`
-  and friends leave test runs out. A spec that lists sessions makes them with
-  `test_run: false`.
+- `CI` set marks every new session a test run, and `list_sessions` and
+  friends leave test runs out. A spec that lists sessions makes them with
+  `test_run: false`. `chi sessions list --live`/`--cwd`/`--format` and
+  `chi note --all` show test runs when they run as one (`CI` set counts): a
+  spec checking that they are hidden unsets `CI` or stubs
+  `Session.test_session_env?`.
 - The gems live under `vendor/bundle`: a child `ruby` started with a bare env
   (`unsetenv_others: true`) needs `GEM_HOME`/`GEM_PATH` to find nokogiri.
 - Ruby 3.3's zlib raises `Zlib::BufError` when a thread interrupt lands in a

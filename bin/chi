@@ -110,10 +110,12 @@ if ARGV[0] == "sessions"
     project = scope == "all" || cwd ? nil : Samagotchi::ProjectScope.root_for(Dir.pwd)
     scope_note = ->(count) { "#{count} session(s) in #{File.basename(project)} (--scope=all: every project)" }
     # The picker (chi note from a script): filters apply before the limit,
-    # and test runs stay out.
+    # and test runs stay out, unless this is one (SAMAGOTCHI_ENV=test, CI):
+    # then its own sessions are what it looks for.
     if live || cwd || (format && format != "text")
       summaries = Samagotchi::SessionManager.session_summaries(
-        live: live, cwd: cwd, limit: limit || (live ? 10 : nil), include_tests: false, project_root: project,
+        live: live, cwd: cwd, limit: limit || (live ? 10 : nil), include_tests: Samagotchi::Session.test_session_env?,
+        project_root: project,
         include_archived: include_archived
       )
       case format
@@ -142,7 +144,7 @@ if ARGV[0] == "sessions"
           end
           # A delegated session points at its parent.
           child = summary[:parent_short_id] ? "  ↳ #{summary[:parent_short_id]}" : ""
-          flag = summary[:scratch] ? " [scratch]" : ""
+          flag = summary[:scratch] ? " [scratch]" : (summary[:test_run] ? " [test]" : "")
           flag += " [archived]" if summary[:archived]
           ctx = Samagotchi::SessionMetrics.context_label(summary[:ctx_pct])
           puts "#{summary[:id]}  #{state.ljust(8)}  #{ctx.ljust(8)}  #{summary[:updated_at]}  #{desc}#{flag}#{child}"

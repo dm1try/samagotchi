@@ -102,6 +102,21 @@ RSpec.describe Samagotchi::NoteCommand do
     expect([idle, repl].map { |s| notes_of(s).size }).to eq([0, 0])
   end
 
+  it "--all leaves test runs' sessions out, unless it is one itself" do
+    test = make(owner: "worker")
+    s = Samagotchi::Session.load(test.id, state_dir: tmpdir)
+    s.test_run = true
+    s.save(state_dir: tmpdir)
+
+    allow(Samagotchi::Session).to receive(:test_session_env?).and_return(false)
+    expect(run("--all", "-m", "x")).to eq(1)
+    expect(notes_of(test)).to be_empty
+
+    allow(Samagotchi::Session).to receive(:test_session_env?).and_return(true)
+    expect(run("--all", "-m", "x")).to eq(0)
+    expect(notes_of(test).size).to eq(1)
+  end
+
   it "--all with no live session says so and exits 1" do
     make
 

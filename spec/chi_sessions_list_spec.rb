@@ -17,7 +17,9 @@ RSpec.describe "chi sessions list" do
   let(:chi) { File.expand_path("../bin/chi", __dir__) }
   let(:xdg_state) { Dir.mktmpdir("chi-sessions-list") }
   let(:state_dir) { Samagotchi::Session.default_state_dir(env: { "XDG_STATE_HOME" => xdg_state }) }
-  let(:env) { { "XDG_STATE_HOME" => xdg_state } }
+  # Not a test run itself (a CI runner sets CI): test sessions are hidden
+  # from the pickers then.
+  let(:env) { { "XDG_STATE_HOME" => xdg_state, "CI" => nil, "RACK_ENV" => nil, "SAMAGOTCHI_ENV" => nil } }
   let(:locks) { [] }
 
   let(:outside) { Dir.mktmpdir("chi-sessions-list-cwd") }
@@ -178,6 +180,21 @@ RSpec.describe "chi sessions list" do
 
     expect(status.exitstatus).to eq(0), err
     expect(out).to eq("#{live.id}\tapp · fix the login page\n")
+  end
+
+  it "--live in a test run (SAMAGOTCHI_ENV=test) lists its test sessions, marked [test]" do
+    live = make("a live test", live: true, test_run: true)
+
+    out, err, status = run_chi("--live")
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to eq("No sessions.\n")
+
+    env["SAMAGOTCHI_ENV"] = "test"
+    out, err, status = run_chi("--live")
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to start_with("#{live.id}  live      ")
+    expect(out).to include("a live test [test]\n")
+    expect(out).to end_with("\n1 session(s)\n")
   end
 
   it "--format json: one object per session" do
