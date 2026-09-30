@@ -18,6 +18,10 @@ final class PanelModel: ObservableObject {
   @Published var source = ""
   /// Sent as `--image` with a message; notes are text only.
   @Published var images: [PanelImage] = []
+  /// The thumbnail under the pointer (shows its ✕). Kept here, not in a
+  /// @State: some Command Line Tools SDKs want the SwiftUIMacros plugin for
+  /// @State and don't ship it ("plugin for module 'SwiftUIMacros' not found").
+  @Published var hoveredImage: UUID?
   @Published var sessions: [LiveSession] = []
   @Published var selected: Set<String> = []
   /// The "New session" row; never together with sessions (`--new` takes no ids).
@@ -48,7 +52,12 @@ final class PanelModel: ObservableObject {
 
   func remove(_ image: PanelImage) {
     images.removeAll { $0 == image }
+    if hoveredImage == image.id { hoveredImage = nil }
     ImageIntake.delete([image])
+  }
+  /// Leaving one thumbnail may come after entering the next.
+  func hover(_ image: PanelImage, _ inside: Bool) {
+    if inside { hoveredImage = image.id } else if hoveredImage == image.id { hoveredImage = nil }
   }
   var recent: [LiveSession] { sessions.filter(\.recent) }
 
@@ -145,7 +154,10 @@ struct PanelView: View {
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: 8) {
           ForEach(model.images) { image in
-            Thumbnail(image: image, removable: model.phase != .sending) { model.remove(image) }
+            Thumbnail(image: image, removable: model.phase != .sending, hover: model.hoveredImage == image.id,
+                      onHover: { model.hover(image, $0) }) {
+              model.remove(image)
+            }
           }
         }
         .padding(.horizontal, 19).padding(.vertical, 2)
@@ -280,8 +292,9 @@ struct PanelView: View {
 struct Thumbnail: View {
   let image: PanelImage
   let removable: Bool
+  let hover: Bool
+  let onHover: (Bool) -> Void
   let remove: () -> Void
-  @State private var hover = false
 
   var body: some View {
     Group {
@@ -308,7 +321,7 @@ struct Thumbnail: View {
         .help("remove")
       }
     }
-    .onHover { hover = $0 }
+    .onHover(perform: onHover)
     .help(image.name)
   }
 }
