@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  handOffDue, handOffOrder, inUseFrom, isPlain, liveSlots, placeFor, toolKind,
+  handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
 import { applyEvent, newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
 
@@ -130,4 +130,37 @@ test("placeFor: the stage's extras while a turn is live, else the history; the r
   assert.equal(placeFor({ live: true, handingOff: true, kind: "card" }), "history");
   assert.equal(placeFor({ live: false, handingOff: false, kind: "command" }), "history");
   assert.equal(placeFor({ live: true, handingOff: false, kind: "recap" }), "history");
+});
+
+test("plainHeadline: markdown syntax out of a headline, the words kept", () => {
+  assert.equal(plainHeadline("## Plan"), "Plan");
+  assert.equal(plainHeadline("###### Deep"), "Deep");
+  assert.equal(plainHeadline("| file | change |"), "file · change");
+  assert.equal(plainHeadline("| settings.conf | **beta** to 3 |"), "settings.conf · beta to 3");
+  assert.equal(plainHeadline("|---|---|"), "");
+  assert.equal(plainHeadline("| :--- | ---: |"), "");
+  assert.equal(plainHeadline("```ruby"), "");
+  assert.equal(plainHeadline("~~~"), "");
+  assert.equal(plainHeadline("---"), "");
+  assert.equal(plainHeadline("I check **two files** and the `config` key, per [the docs](https://example.com/docs)."),
+    "I check two files and the config key, per the docs.");
+  assert.equal(plainHeadline("> - [x] done _now_, *really*"), "done now, really");
+  assert.equal(plainHeadline("![a chart](chart.png) and <https://example.com/x>"), "a chart and https://example.com/x");
+});
+
+test("plainHeadline: mid-stream leftovers go, code-ish text stays", () => {
+  assert.equal(plainHeadline("**Bold start"), "Bold start");
+  assert.equal(plainHeadline("see [the docs](https://exa"), "see the docs");
+  assert.equal(plainHeadline("snake_case_name and `__init__.py`, `**kwargs`"), "snake_case_name and __init__.py, **kwargs");
+  assert.equal(plainHeadline("2 * 3 * 4 is 24"), "2 * 3 * 4 is 24");
+  assert.equal(plainHeadline("use a || b here"), "use a || b here");
+});
+
+test("headlineOf: the newest sentence as plain text, syntax-only lines skipped", () => {
+  const table = "## Plan\n\n| file | change |\n|---|---|\n";
+  assert.equal(headlineOf(table, false), "file · change");
+  assert.equal(headlineOf("Fixed it.\n```js\n", false), "Fixed it.");
+  assert.equal(headlineOf("# Heading only", true), "Heading only");
+  assert.equal(headlineOf("**Done**. Next: **more", false), "Done.");
+  assert.equal(headlineOf("", false), "");
 });
