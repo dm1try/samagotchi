@@ -8,13 +8,19 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Security
+
+- `chi web` and the worker Bridge refuse requests from other websites. Before,
+  a page open in your browser could start a session that runs commands, or
+  read your sessions and their output. Please update if you run `chi web`.
+
 ### Added
 
 - Skills: a memory named `skill_<name>` holds the steps of a task you did with
   chi. Say "let's memorize this" and chi saves it; next time it reads and
   follows it, and fixes a step that turned out different in the same turn
   (docs/memory.md, Skills). The system bundle's identity and memory guide
-  teach it; users get the new text with this release's system bundle.
+  teach it.
 - The `skills` bundle (`chi bundle install skills`): `/skill save [name]
   [--system]`, `/skill list`, `/skill show`, `/skill diff`; older versions of
   each skill kept (`history_keep`) with a one-line diff after every update;
@@ -27,12 +33,56 @@ and commands may change between minor versions. How releases are made:
   cookie. `chi web --new-token` replaces it; `chi self` says when chi web runs
   on the LAN. Plain http: for a home network only. New runtime dependency:
   `rqrcode_core`.
+- A third web view, `web.view: stage` (`--web-view stage`): the running turn
+  sits above the composer, its tool calls in an expandable cloud, and hands
+  off smoothly into the history when it ends. `web.view: turn | stage | chat`
+  replaces `web.turn_view` (turn stays the default).
+- The start page's model picker is searchable: models grouped by host, your
+  last 5 picks first, every typed word matched ("deepseek4.1 fla" finds
+  `openrouter · deepseek/deepseek-v4.1-flash`), arrow keys, Enter and Esc.
 
-### Security
+### Changed
 
-- `chi web` and the worker Bridge refuse requests from other websites: before,
-  a page open in your browser could start a session that runs commands, or
-  read your sessions and their output.
+- config.yml edits apply without restarting `chi web`: new sessions read the
+  file, and running ones pick up settings they read each time (retries,
+  limits, log level). Old flat `UPPER_CASE` keys and `backend:` are no longer
+  read; they warn as unknown keys.
+- The terminal REPL (`chi --no-shared`, `chi scratch`) shows turns the way
+  the attached terminal does, and all three UIs end a turn with the same
+  words ("✕ turn canceled (Ctrl-C) · 3.1s", "✕ turn failed: …"); a provider
+  retry shows as a dim line. The REPL-only settings `thinking.ui`,
+  `thinking.render_interval` and `status.width_mode` / `max_width` /
+  `fixed_width` are gone.
+- `session.keep_status` defaults to none: a session left "running" by a
+  crashed worker is cleaned up like any other; a session with a live worker
+  is never removed.
+- `chi send --image` to a model that can't take images is refused before
+  anything is sent, with the reason, instead of failing in the session.
+- A low/medium/high thinking level on a llama.cpp chat host whose template
+  ignores it says so once.
+- The web answers `/stats`, `/recap` and `/detach` itself (they're terminal
+  commands) instead of showing a worker error.
+- Piped input to an attached chi (`echo "do X" | chi`, `chi -p X` with no
+  terminal) waits for its turns to end and exits 1 if one failed, instead of
+  detaching at once.
+
+### Fixed
+
+- OpenRouter's "overloaded" error sent inside an HTTP 200 is retried like a
+  503 instead of failing the turn.
+- The context line the model sees during a long tool loop counts the tool
+  output added since the last request, so the model knows when to wrap up.
+- `chi send --wait` no longer hangs when the turn fails very fast (for
+  example right after an earlier failure); it says the turn failed and why.
+- On Linux the system prompt now gets the "prefer rg" hint when rg is
+  installed (the check only worked on macOS).
+- `chi sessions list --live` shows the test sessions of a test run.
+- `chi -p` with no terminal (stdin from a pipe or /dev/null) sends its prompt
+  once: a failed turn re-sent it in a loop (hundreds of requests a second),
+  and an attached `chi -p` didn't send it at all.
+
+Update with `chi update`. Bundle added: skills 0.1.0 (`chi bundle install
+skills`).
 
 ## [0.4.0] - 2026-09-30
 
