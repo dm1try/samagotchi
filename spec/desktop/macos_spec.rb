@@ -353,6 +353,98 @@ RSpec.describe Samagotchi::Desktop::MacOS do
     end
   end
 
+  describe "kitty settings" do
+    let(:kitty) { { "listen_on" => "unix:/tmp/kitty.${KITTY_PID}", "binary" => "/k/kitty", "agents" => %w[claude codex] } }
+
+    before do
+      File.write(File.join(tmp, "ruby"), "")
+      FileUtils.mkdir_p(File.join(source_dir, "bin"))
+      File.write(File.join(source_dir, "bin", "chi"), "")
+    end
+
+    def helper(kitty: nil)
+      described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner, source_dir: source_dir,
+                          ruby: File.join(tmp, "ruby"), version: "9.9.9", arch: "arm64", sources_dir: sources_dir, kitty: kitty)
+    end
+
+    it "leaves the launch file as it was without them, and writes a kitty section with them" do
+      plain = described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner, source_dir: source_dir,
+                                  ruby: File.join(tmp, "ruby"), version: "9.9.9", arch: "arm64", sources_dir: sources_dir)
+      plain.install
+      before = File.binread(launch_file)
+      helper.install(force: true)
+      expect(File.binread(launch_file)).to eq(before)
+      expect(JSON.parse(before)).not_to have_key("kitty")
+
+      helper(kitty: kitty).install(force: true)
+      expect(JSON.parse(File.read(launch_file))["kitty"]).to eq(kitty)
+    end
+
+    it "makes the launch file outdated when they change, and the refresh writes them without a rebuild" do
+      helper.install
+      expect(helper.launch_outdated?).to be(false)
+      expect(helper(kitty: kitty).launch_outdated?).to be(true)
+
+      helper(kitty: kitty).refresh_launch_file
+      expect(helper(kitty: kitty).launch_outdated?).to be(false)
+      changed = helper(kitty: kitty.merge("agents" => %w[claude]))
+      expect(changed.launch_outdated?).to be(true)
+
+      runner.calls.clear
+      changed.refresh_launch_file
+      expect(runner.calls).to be_empty
+      expect(JSON.parse(File.read(launch_file))["kitty"]["agents"]).to eq(%w[claude])
+      expect(helper.launch_outdated?).to be(true)
+      helper.refresh_launch_file
+      expect(JSON.parse(File.read(launch_file))).not_to have_key("kitty")
+    end
+
+    describe ".kitty_settings" do
+      def settings(values)
+        described_class.kitty_settings(->(key) { values.fetch(key) { Samagotchi::Config.find_by_key(key).default } })
+      end
+
+      it "is nil while kitty.listen_on is unset or blank" do
+        expect(settings({})).to be_nil
+        expect(settings("kitty.listen_on" => "  ")).to be_nil
+      end
+
+      it "takes listen_on, the binary and the agents, split on |" do
+        expect(settings("kitty.listen_on" => "unix:/tmp/kitty.${KITTY_PID}")).to eq(
+          "listen_on" => "unix:/tmp/kitty.${KITTY_PID}", "binary" => "/Applications/kitty.app/Contents/MacOS/kitty",
+          "agents" => %w[claude codex gemini aider opencode cursor-agent amp goose]
+        )
+        expect(settings("kitty.listen_on" => "unix:/k", "kitty.agents" => "claude| codex |")["agents"]).to eq(%w[claude codex])
+        expect(settings("kitty.listen_on" => "unix:/k", "kitty.agents" => "*")["agents"]).to eq(%w[*])
+      end
+
+      it "reach the helper from chi desktop and chi update (their default platforms)" do
+        require "samagotchi/desktop_command"
+        require "samagotchi/update_command"
+        original = ENV["SAMAGOTCHI_KITTY_LISTEN_ON"]
+        ENV["SAMAGOTCHI_KITTY_LISTEN_ON"] = "unix:/tmp/kitty.${KITTY_PID}"
+        [Samagotchi::DesktopCommand.new([]), Samagotchi::UpdateCommand.new([], web: ["127.0.0.1", 1])].each do |command|
+          made = command.instance_variable_get(:@platform).call(register: false)
+          expect(made.launch_config["kitty"]).to include("listen_on" => "unix:/tmp/kitty.${KITTY_PID}")
+        end
+      ensure
+        ENV["SAMAGOTCHI_KITTY_LISTEN_ON"] = original
+      end
+
+      it "reads a YAML list for agents from config.yml" do
+        Dir.mktmpdir do |dir|
+          FileUtils.mkdir_p(File.join(dir, "samagotchi"))
+          File.write(File.join(dir, "samagotchi", "config.yml"), "kitty:\n  listen_on: unix:/tmp/k\n  agents: [claude, codex]\n")
+          original = ENV["XDG_CONFIG_HOME"]
+          ENV["XDG_CONFIG_HOME"] = dir
+          expect(described_class.kitty_settings).to include("listen_on" => "unix:/tmp/k", "agents" => %w[claude codex])
+        ensure
+          ENV["XDG_CONFIG_HOME"] = original
+        end
+      end
+    end
+  end
+
   describe "#status" do
     it "reports not installed" do
       expect(macos.status).to include(installed: false, chi_version: "9.9.9")

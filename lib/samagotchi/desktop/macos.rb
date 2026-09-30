@@ -9,6 +9,7 @@ require "rbconfig"
 require_relative "../version"
 require_relative "../self_report"
 require_relative "../installed_gem"
+require_relative "../config"
 
 module Samagotchi
   module Desktop
@@ -49,11 +50,21 @@ module Samagotchi
         end
       end
 
+      # The kitty: settings the helper lists agent windows with (baked into
+      # the launch file), or nil when kitty.listen_on is unset.
+      def self.kitty_settings(get = Config.method(:get))
+        listen_on = get.call("kitty.listen_on").to_s.strip
+        return nil if listen_on.empty?
+
+        agents = get.call("kitty.agents").to_s.split("|").map(&:strip).reject(&:empty?)
+        { "listen_on" => listen_on, "binary" => get.call("kitty.binary").to_s, "agents" => agents }
+      end
+
       attr_reader :app_dir, :support_dir
 
       def initialize(app_dir: nil, support_dir: nil, env: ENV, runner: Runner.new,
                      source_dir: SelfReport::SOURCE_DIR, ruby: RbConfig.ruby, version: VERSION,
-                     arch: nil, sources_dir: SOURCES_DIR, register: true, chi_path: nil)
+                     arch: nil, sources_dir: SOURCES_DIR, register: true, chi_path: nil, kitty: nil)
         home = env["HOME"] || Dir.home
         @app_dir = app_dir || File.join(home, "Applications")
         @support_dir = support_dir || File.join(home, "Library", "Application Support", APP_NAME)
@@ -66,6 +77,7 @@ module Samagotchi
         @arch = arch
         @sources_dir = sources_dir
         @register = register
+        @kitty = kitty
       end
 
       def app_path = File.join(@app_dir, "#{APP_NAME}.app")
@@ -78,11 +90,14 @@ module Samagotchi
       # What the helper runs: absolute ruby + chi (no shims, which need the
       # shell's PATH), and the allowlisted env. chi is an installed gem's
       # RubyGems wrapper (it activates the gem and outlives upgrades and
-      # `gem cleanup`), else this checkout's bin/chi.
+      # `gem cleanup`), else this checkout's bin/chi. The kitty section only
+      # when kitty.listen_on is set.
       def launch_config
         env = { "LANG" => LANG }
         ENV_ALLOWLIST.each { |name| env[name] = @env[name] unless @env[name].to_s.empty? }
-        { "version" => @version, "argv" => [@ruby, @chi_path], "env" => env, "sources_sha" => sources_sha }
+        config = { "version" => @version, "argv" => [@ruby, @chi_path], "env" => env, "sources_sha" => sources_sha }
+        config["kitty"] = @kitty if @kitty
+        config
       end
 
       # A digest of what a build compiles: the Swift sources and the
@@ -104,15 +119,15 @@ module Samagotchi
         launch["sources_sha"] != sources_sha || !launch_ok?(launch)
       end
 
-      # The launch file names another chi version or path than this one:
-      # refresh_launch_file fixes that without a rebuild.
+      # The launch file names another chi version or path than this one, or
+      # other kitty settings: refresh_launch_file fixes that without a rebuild.
       def launch_outdated?
         launch = read_launch
-        launch["version"] != @version || Array(launch["argv"]) != launch_config["argv"]
+        launch["version"] != @version || Array(launch["argv"]) != launch_config["argv"] || launch["kitty"] != @kitty
       end
 
-      # Rewrite the launch file for this chi, keeping the env it was
-      # installed with. The app reads it at each send: no restart.
+      # Rewrite the launch file for this chi and the kitty settings, keeping
+      # the env it was installed with. The app reads it at each send: no restart.
       def refresh_launch_file
         config = launch_config
         env = read_launch["env"]

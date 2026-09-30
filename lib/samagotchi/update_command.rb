@@ -62,7 +62,7 @@ module Samagotchi
       @stderr = stderr
       @gem_spec = gem_spec
       @shipped_dir = shipped_dir
-      @platform = platform || ->(register:) { Desktop::MacOS.new(register: register) }
+      @platform = platform || ->(register:) { Desktop::MacOS.new(register: register, kitty: Desktop::MacOS.kitty_settings) }
       @supported = supported
       @state_dir = state_dir
       @web = web || [Web::Lan.local_host(Config.get("web.host")), Config.get("web.port").to_i]

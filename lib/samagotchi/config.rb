@@ -135,6 +135,11 @@ module Samagotchi
       Entry.new(key: "update.gem",               yaml_path: %w[update gem],               type: :bool,    default: true,            expose: %i[env config]),
       Entry.new(key: "update.bundles",           yaml_path: %w[update bundles],           type: :bool,    default: true,            expose: %i[env config]),
       Entry.new(key: "update.desktop",           yaml_path: %w[update desktop],           type: :bool,    default: true,            expose: %i[env config]),
+      # The desktop helper's kitty targets (Desktop::MacOS.kitty_settings): listen_on copied from kitty.conf (unset = none),
+      # the kitty binary, and the foreground programs listed, "|"-separated (a YAML list works too; "*" = every window).
+      Entry.new(key: "kitty.listen_on",          yaml_path: %w[kitty listen_on],          type: :string, default: nil,              expose: %i[env config]),
+      Entry.new(key: "kitty.binary",             yaml_path: %w[kitty binary],             type: :string, default: "/Applications/kitty.app/Contents/MacOS/kitty", expose: %i[env config]),
+      Entry.new(key: "kitty.agents",             yaml_path: %w[kitty agents],             type: :string, default: "claude|codex|gemini|aider|opencode|cursor-agent|amp|goose", expose: %i[env config]),
 
       Entry.new(key: "read.truncate_at_bytes",        yaml_path: %w[read truncate_at_bytes],        type: :integer, default: 65_536,   expose: %i[env config cli]),
       Entry.new(key: "read.preview_bytes",            yaml_path: %w[read preview_bytes],            type: :integer, default: 12_288,   expose: %i[env config cli]),

@@ -687,6 +687,23 @@ hosts:
 `models:` wins over `hosts:`. On a native host, `vision: true` skips only the
 modalities check: without a media marker the prompt can't carry an image.
 
+## Desktop helper: agents in kitty
+
+The desktop helper (`chi desktop`) can also paste into agent CLIs (claude,
+codex, …) running in [kitty](https://sw.kovidgoyal.net/kitty/) windows. It
+lists them only with `kitty.listen_on` set: copy the value of `listen_on` from
+your `kitty.conf` as it is (kitty must also have `allow_remote_control` on).
+
+```yaml
+kitty:
+  listen_on: unix:/tmp/kitty.${KITTY_PID}   # as in kitty.conf; unset = no kitty targets
+  binary: /Applications/kitty.app/Contents/MacOS/kitty   # the default
+  agents: [claude, codex]   # the programs listed; "*" = every window
+```
+
+The helper reads these from its launch file: after editing them run
+`chi desktop upgrade` (or `chi update`). See [Desktop helper](desktop.md#agents-in-kitty).
+
 ## Project specific description
 
 If an AGENT.md file is present in the project root, samagotchi injects its
@@ -756,6 +773,9 @@ described in their own sections.
 | `update.gem` | `true` | | `false`: `chi update` never installs a newer gem (`--no-gem` for one run). See [CLI: Updating](cli.md#updating). |
 | `update.bundles` | `true` | | `false`: `chi update` leaves the shipped bundles to `chi bundle upgrade` (`--no-bundles`). |
 | `update.desktop` | `true` | | `false`: `chi update` leaves the desktop helper alone (`--no-desktop`). |
+| `kitty.listen_on` | none | | The desktop helper's kitty socket, copied from `kitty.conf`; unset = no kitty targets. See "Desktop helper: agents in kitty". |
+| `kitty.binary` | `/Applications/kitty.app/Contents/MacOS/kitty` | | The kitty the helper runs `kitty @` with. |
+| `kitty.agents` | `claude\|codex\|gemini\|aider\|opencode\|cursor-agent\|amp\|goose` | | Foreground programs whose kitty windows the helper lists, `\|`-separated (a YAML list works too); `*` lists every window. |
 | `read.truncate_at_bytes` | `65536` | yes | A `read` result larger than this is cut to a preview. |
 | `read.preview_bytes` | `12288` | yes | Size of that preview. |
 | `read.hard_max_bytes` | `2097152` | yes | Largest file `read` opens. |
