@@ -6,6 +6,7 @@ require "reline"
 
 require_relative "../config"
 require_relative "../memory_paths"
+require_relative "../paths"
 require_relative "../tools/memory"
 require_relative "../session_commands"
 
@@ -20,7 +21,6 @@ module Samagotchi
     # Included for private use; it keeps state in @next_input_prefill and
     # reads @no_default_input.
     module InputSupport
-      XDG_STATE_HOME_ENV = "XDG_STATE_HOME"
       PROMPT_HISTORY_FILE = "history.json"
       PROMPT_HISTORY_STATE_DIR = "samagotchi"
       PROMPT_HISTORY_LIMIT = 20
@@ -207,14 +207,7 @@ module Samagotchi
         explicit = Samagotchi::Config.get("history.file").to_s.strip
         return explicit unless explicit.empty?
 
-        File.join(xdg_state_home, PROMPT_HISTORY_STATE_DIR, PROMPT_HISTORY_FILE)
-      end
-
-      def xdg_state_home
-        configured = ENV[XDG_STATE_HOME_ENV].to_s.strip
-        return configured unless configured.empty?
-
-        File.join(Dir.home, ".local", "state")
+        File.join(Paths.state_home, PROMPT_HISTORY_STATE_DIR, PROMPT_HISTORY_FILE)
       end
 
       def load_persistent_history

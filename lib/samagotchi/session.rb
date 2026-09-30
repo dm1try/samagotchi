@@ -5,6 +5,7 @@ require "json"
 require "securerandom"
 require "time"
 
+require_relative "paths"
 require_relative "project_scope"
 
 module Samagotchi
@@ -487,9 +488,7 @@ module Samagotchi
 
     # XDG-aware sessions directory.
     def self.default_state_dir(env: ENV)
-      xdg = env.fetch("XDG_STATE_HOME", "").to_s.strip
-      base = xdg.empty? ? File.join(Dir.home, ".local", "state") : xdg
-      File.join(base, STATE_SUBDIR)
+      File.join(Paths.state_home(env: env), STATE_SUBDIR)
     end
 
     # Derive and cache the first user-message preview in the session record.

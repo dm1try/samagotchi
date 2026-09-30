@@ -6,6 +6,7 @@ require "fileutils"
 require "uri"
 require "set"
 require_relative "log"
+require_relative "paths"
 
 module Samagotchi
   # Parses the thinking: levels of host and model entries (it needs Config).
@@ -509,7 +510,6 @@ module Samagotchi
   # (hosts, model_aliases) and the recap section resolution. All of it
   # shares Config's precedence (CLI > ENV > file > default) for scalars.
   module ConfigFile
-    XDG_CONFIG_HOME_ENV = "XDG_CONFIG_HOME"
     CONFIG_DIR = "samagotchi"
     CONFIG_FILE = "config.yml"
     MODEL_ALIASES_KEY = "model_aliases"
@@ -635,9 +635,7 @@ module Samagotchi
     end
 
     def config_dir(env: ENV)
-      config_home = env.fetch(XDG_CONFIG_HOME_ENV, "").to_s.strip
-      base_dir = config_home.empty? ? File.expand_path("~/.config") : config_home
-      File.join(base_dir, CONFIG_DIR)
+      File.join(Paths.config_home(env: env), CONFIG_DIR)
     end
 
     def global_path(env: ENV)

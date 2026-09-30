@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "config"
+require_relative "paths"
 
 module Samagotchi
   # Where the debug log (DebugLog) goes, for the REPL, the attached terminal
@@ -23,9 +24,7 @@ module Samagotchi
     end
 
     def default_path(env: ENV)
-      xdg = env.fetch("XDG_STATE_HOME", "").to_s.strip
-      base = xdg.empty? ? File.join(Dir.home, ".local", "state") : xdg
-      File.join(base, "samagotchi", FILENAME)
+      File.join(Paths.state_dir(env: env), FILENAME)
     end
   end
 end

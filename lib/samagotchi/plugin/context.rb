@@ -2,6 +2,7 @@
 
 require "fileutils"
 require_relative "../log"
+require_relative "../paths"
 require_relative "../guardrails/context"
 require_relative "../idle_client"
 require_relative "side_question"
@@ -85,9 +86,7 @@ module Samagotchi
       # @return [String]
       def data_dir
         @data_dir ||= begin
-          xdg = @env.fetch("XDG_STATE_HOME", "").to_s.strip
-          base = xdg.empty? ? File.join(Dir.home, ".local", "state") : xdg
-          File.join(base, "samagotchi", "plugins", @bundle).tap { |dir| FileUtils.mkdir_p(dir) }
+          File.join(Paths.state_dir(env: @env), "plugins", @bundle).tap { |dir| FileUtils.mkdir_p(dir) }
         end
       end
 
