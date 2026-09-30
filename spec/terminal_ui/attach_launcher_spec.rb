@@ -135,6 +135,7 @@ end
 
 RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
   it "hands -p to the attached loop as its first prompt" do
+    allow($stdin).to receive(:tty?).and_return(true)
     client = instance_double(Samagotchi::BridgeClient)
     surface = instance_double(Samagotchi::TerminalUI::PlainSurface)
     attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
@@ -148,8 +149,20 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
 
     expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new)
       .with(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: "hi",
-            first_command: nil, no_interrupt: false, default_input: false)
+            first_command: nil, no_interrupt: false, default_input: false, wait_at_eof: false)
     expect(described_class).to have_received(:close_surface).with(surface)
+  end
+
+  it "has the loop wait for the -p turn when the input is a pipe" do
+    allow($stdin).to receive(:tty?).and_return(false)
+    attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :turn_failed)
+    allow(described_class).to receive_messages(connect: instance_double(Samagotchi::BridgeClient),
+                                               open_surface: instance_double(Samagotchi::TerminalUI::PlainSurface),
+                                               close_surface: nil)
+    allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_return(attached)
+
+    expect(described_class.run(shared: true, prompt: "hi")).to eq(:turn_failed)
+    expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new).with(hash_including(wait_at_eof: true))
   end
 
   it "switches a resumed or attached session's worker to --model before the first prompt, and passes --no-interrupt" do

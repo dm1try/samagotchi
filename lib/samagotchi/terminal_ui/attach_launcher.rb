@@ -34,8 +34,9 @@ module Samagotchi
       # @param memories [Array<String>] --memory: a new session's worker
       #   preloads them (an existing session keeps its own list)
       # @param muted_memories [Array<String>] --mute: hidden from a new session
-      # @return [Symbol] :detached, :closed when the worker went away, or
-      #   :failed when the --model switch didn't go through
+      # @return [Symbol] :detached, :closed when the worker went away,
+      #   :failed when the --model switch didn't go through, or (input from a
+      #   pipe) :turn_failed / :unanswered (AttachedLoop#run)
       def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
               memories: [], muted_memories: [])
         client = connect(attach: attach, shared: shared, resume: resume, model: model,
@@ -45,7 +46,8 @@ module Samagotchi
         begin
           AttachedLoop.new(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: prompt,
                            first_command: first_command, no_interrupt: no_interrupt,
-                           default_input: default_input && !prompt && !attach && !resume).run
+                           default_input: default_input && !prompt && !attach && !resume,
+                           wait_at_eof: !$stdin.tty?).run
         ensure
           close_surface(surface)
         end

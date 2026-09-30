@@ -78,8 +78,12 @@ module Samagotchi
       # @param delete_session [#call] session id -> deletes it (/exit --delete)
       # @param archive_session [#call] session id -> archives it (/archive);
       #   SessionManager.archive_session's result
+      # @param wait_at_eof [Boolean] lines come from a pipe or a file (`chi -p
+      #   X </dev/null`): at their end, detach only once this run's prompts
+      #   (the -p one too) have had their turns; if one failed, #run says so
       def initialize(client:, screen:, client_id:, first_prompt: nil, first_command: nil, no_interrupt: false,
-                     default_input: false, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
+                     default_input: false, wait_at_eof: false,
+                     clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
                      delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: DELETE_WAIT) },
                      archive_session: ->(id) { SessionManager.archive_session(id, wait: DELETE_WAIT) })
         @client = client
@@ -107,6 +111,14 @@ module Samagotchi
         # Prompts this run sent, by enqueued_id: only those come back into
         # the input when their turn fails (a replayed event must not).
         @sent_ids = Set.new
+        @wait_at_eof = wait_at_eof
+        # Sent and not ended yet (by enqueued_id), the ones merged into the
+        # running turn, whether the input has ended, and whether one of this
+        # run's prompts failed (wait_at_eof only).
+        @open_ids = Set.new
+        @merged_ids = Set.new
+        @input_ended = false
+        @own_failed = false
         # A continue offer is pending: the prompt asks for the answer.
         @continue_offer = nil
         # The status row: the worker's model, ctx, the session's memories.
@@ -118,8 +130,10 @@ module Samagotchi
       # Follow the session and read input until Ctrl-D, /detach, /exit or
       # the worker goes away. The worker keeps running after a detach; /exit
       # asks it to exit too, and it does unless something still needs it.
-      # @return [Symbol] :detached, :closed when the worker went away, or
-      #   :failed when the first command (--model) didn't go through
+      # @return [Symbol] :detached, :closed when the worker went away,
+      #   :failed when the first command (--model) didn't go through, or
+      #   (wait_at_eof) :turn_failed when one of this run's prompts failed and
+      #   :unanswered when a question came after the input ended
       # @param input [#call, nil] prompt -> line (nil = Ctrl-D, raising
       #   Interrupt = Ctrl-C); defaults to Reline
       def run(input: nil)
@@ -139,8 +153,17 @@ module Samagotchi
           case kind
           when :event
             ended = safely_handle(payload)
-            return ended if ended == :closed || ended == :failed
-          when :line then return :detached if submit(payload) == :detach
+            return ended if %i[closed failed unanswered].include?(ended)
+            return end_of_input if @input_ended && !own_turns_pending?
+          when :line
+            if payload.nil? && @wait_at_eof && own_turns_pending?
+              # The pipe's end: this run's turns first. An open question
+              # has nothing left to answer it.
+              return unanswered_question if @question
+
+              next @input_ended = true
+            end
+            return end_of_input if submit(payload) == :detach
           when :interrupt then return :detached if interrupt(payload) == :detach
           end
         end
@@ -167,11 +190,14 @@ module Samagotchi
           return render_snapshot(event[:snapshot] || {}, reset: event[:type] == :reset)
         when :turn_enqueued then show_enqueued(event)
         when :turn_started then start_turn(event)
-        when :turn_completed then complete_turn(event)
+        when :turn_completed
+          complete_turn(event)
+          own_turn_ended(event)
         # The renderer says how it ended (the REPL's words too).
         when :turn_canceled, :turn_failed
           @renderer.call(event)
           end_turn
+          own_turn_ended(event)
         when :prompt_restored then restore_prompt(event)
         when :context_status
           @status.update(context: { est_pct: event.dig(:usage, :estimated_pct), bucket: event[:bucket] })
@@ -192,8 +218,12 @@ module Samagotchi
         when :continue_resolved then continue_resolved(event)
         # The note comes with the kernel's :pending_input_merged (EventRenderer),
         # after the answer the merge follows.
-        when :input_merged then nil
-        when :question_requested then ask(event[:pending_question])
+        when :input_merged then merged_own_prompts(event)
+        when :question_requested
+          # Nothing is left to answer it with.
+          return unanswered_question if @input_ended
+
+          ask(event[:pending_question])
         when :question_answered then question_answered(event)
         when :question_cancelled
           close_question("(question cancelled)") if @question
@@ -474,7 +504,7 @@ module Samagotchi
       def send_prompt(text)
         persist_recent_history(text)
         images = attach_images(text)
-        return if images.nil?
+        return own_prompt_failed if images.nil?
 
         options = { prompt: text, client_id: @client_id }
         options[:no_interrupt] = true if @no_interrupt
@@ -483,8 +513,11 @@ module Samagotchi
         if reply.status == 202
           enqueued_id = reply.json&.fetch("enqueued_id", nil)
           @sent_ids << enqueued_id if enqueued_id
+          @open_ids << enqueued_id if enqueued_id && @wait_at_eof
           return
         end
+
+        own_prompt_failed
 
         detail = reply.json&.fetch("error", nil)
         # Read after its deadline and dropped (BridgeClient::DEADLINE_SHARE).
@@ -493,7 +526,49 @@ module Samagotchi
         explained = reply.json&.fetch("detail", nil) if detail == "images_unsupported"
         @screen.commit("could not send the prompt (#{[reply.status, detail].compact.join(" ")})#{": #{explained}" if explained}")
       rescue SystemCallError, IOError => e
+        own_prompt_failed
         @screen.commit("could not send the prompt (#{worker_down(e)})")
+      end
+
+      # Whether the input's end must wait: the -p prompt isn't sent yet, or
+      # a prompt this run sent hasn't had its turn.
+      def own_turns_pending? = !@first_prompt.to_s.strip.empty? || !@open_ids.empty?
+
+      # A turn ended: this run's prompt (and ours merged into it) had its turn.
+      def own_turn_ended(event)
+        return unless @wait_at_eof
+
+        id = (event[:origin] || {})[:enqueued_id]
+        ours = @open_ids.include?(id) || !@merged_ids.empty?
+        @own_failed = true if ours && event[:type] == :turn_failed
+        @open_ids.delete(id)
+        @open_ids.subtract(@merged_ids)
+        @merged_ids.clear
+      end
+
+      # Ours merged into the running turn: they end with it.
+      def merged_own_prompts(event)
+        Array(event[:origins]).each do |origin|
+          id = origin[:enqueued_id]
+          @merged_ids << id if own?(origin[:client_id]) && @open_ids.include?(id)
+        end
+        nil
+      end
+
+      def own_prompt_failed
+        @own_failed = true if @wait_at_eof
+        nil
+      end
+
+      # The input ended and nothing of ours is left to wait for.
+      def end_of_input
+        detach("Detached; the session keeps running. Re-attach with: chi --attach #{@client.session_id}") if @input_ended
+        @own_failed ? :turn_failed : :detached
+      end
+
+      def unanswered_question
+        detach("A question waits for an answer: chi --attach #{@client.session_id}")
+        :unanswered
       end
 
       # The prompt's `@path` images, stored in the session's images/ here
@@ -641,6 +716,8 @@ module Samagotchi
       def restore_prompt(event)
         origin = event[:origin] || {}
         return unless own?(origin[:client_id]) && @sent_ids.include?(origin[:enqueued_id])
+        # Lines from a pipe: nobody to retry it (the REPL's rule).
+        return if @wait_at_eof
 
         if @reader&.prefill(event[:prompt].to_s)
           @screen.commit(turn_end_hint("prompt restored for retry"))

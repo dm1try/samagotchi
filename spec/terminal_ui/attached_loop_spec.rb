@@ -1693,3 +1693,77 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     expect(attached.send(:assist_path_completion_candidates, "/q")).to eq(["/quit"])
   end
 end
+
+# `chi -p X </dev/null`: the input ends at once, before the joining snapshot.
+# The -p prompt still goes, once; the loop ends when its turn does, and says
+# how it went (bin/chi's exit status). A failed prompt is not restored.
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input from a pipe" do
+  let(:screen) { RecordingSurface.new(columns: 80) }
+  let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
+  let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "hello", wait_at_eof: true) }
+  let(:events) { Queue.new }
+  let(:posts) { [] }
+  let(:origin) { { "client_id" => "tui:1", "enqueued_id" => "e1" } }
+
+  before do
+    allow(client).to receive(:follow) do |&block|
+      events << block
+      double("stream", close: nil)
+    end
+  end
+
+  # The input has ended (nil) before the snapshot comes, as on a real run.
+  def start(status: 202, body: nil)
+    allow(client).to receive(:post_turn) do |**options|
+      posts << options[:prompt]
+      Samagotchi::BridgeClient::Response.new(status: status, body: body || %({"enqueued_id":"e#{posts.size}"}))
+    end
+    ended = Queue.new
+    @thread = Thread.new { attached.run(input: ->(_prompt, _prefill) { ended << true && nil }) }
+    @push = events.pop(timeout: 2)
+    ended.pop(timeout: 2)
+    @push.call("type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => nil, "queued" => [], "event_seq" => 1 })
+  end
+
+  def result = @thread.join(2)&.value
+
+  it "sends the -p prompt once and ends with :turn_failed when its turn fails" do
+    start
+    expect(@thread.join(0.3)).to be_nil # waiting for the turn
+    @push.call("type" => "turn_started", "prompt" => "hello", "origin" => origin)
+    @push.call("type" => "turn_failed", "summary" => "host main rejected the request: HTTP 400", "origin" => origin)
+    @push.call("type" => "prompt_restored", "prompt" => "hello", "origin" => origin)
+
+    expect(result).to eq(:turn_failed)
+    expect(posts).to eq(["hello"])
+    expect(screen.lines).not_to include("  prompt restored for retry")
+  end
+
+  it "ends with :detached once the turn completes" do
+    start
+    @push.call("type" => "turn_started", "prompt" => "hello", "origin" => origin)
+    expect(@thread.join(0.3)).to be_nil
+    @push.call("type" => "turn_completed", "turn_summary" => { "output" => "hi there", "tool_activity" => [] }, "origin" => origin)
+
+    expect(result).to eq(:detached)
+    expect(posts).to eq(["hello"])
+    expect(screen.lines.last).to start_with("Detached; the session keeps running.")
+  end
+
+  it "ends with :unanswered when the turn asks a question nobody can answer" do
+    start
+    @push.call("type" => "turn_started", "prompt" => "hello", "origin" => origin)
+    @push.call("type" => "question_requested", "pending_question" => { "id" => "q1", "question" => "Which?", "options" => [] })
+
+    expect(result).to eq(:unanswered)
+    expect(screen.lines.last).to eq("A question waits for an answer: chi --attach s-1234")
+  end
+
+  it "ends with :turn_failed when the worker refuses the prompt" do
+    start(status: 409, body: '{"error":"busy"}')
+
+    expect(result).to eq(:turn_failed)
+    expect(posts).to eq(["hello"])
+    expect(screen.lines).to include("could not send the prompt (409 busy)")
+  end
+end
