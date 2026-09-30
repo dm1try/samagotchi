@@ -5,13 +5,15 @@ require_relative "config"
 require_relative "model_profile"
 require_relative "bootstrap/probe"
 require_relative "bootstrap/config_writer"
+require_relative "bootstrap/bundles"
 
 module Samagotchi
   # `chi bootstrap [TARGET]`: the first setup. It names a model server, works
   # out what it is (llama.cpp's native API or an OpenAI-compatible one),
   # picks the model, sends one test request and writes config.yml: a fresh
-  # file, or a hosts: entry added to an existing one. Prompts only on a
-  # terminal; a script gets the list and exit 2 instead.
+  # file, or a hosts: entry added to an existing one. Then it installs the
+  # system bundle and the core profile, and on a terminal asks about dev.
+  # Prompts only on a terminal; a script gets the list and exit 2 instead.
   class BootstrapCommand
     USAGE = <<~TEXT
       Usage: chi bootstrap [TARGET] [--name NAME] [--model ID] [--key-env VAR] [--no-test] [--dry-run]
@@ -31,16 +33,25 @@ module Samagotchi
         --dry-run     show what would be written; write nothing
         With no config.yml it writes one; an existing one gets a hosts:
         entry added (after a backup), and its other lines stay as they are.
+        Then it installs the system bundle and the core bundles (loop-guard,
+        check-in, guardrails), and on a terminal offers the dev bundles.
     TEXT
 
     PICK_SHOWN = 20
     # A test request slower than this says it is waiting (a model loading).
     LOADING_AFTER = 3
+    # The profile bootstrap installs, and the one it offers on a terminal.
+    CORE = "core"
+    DEV = "dev"
+    # The config outcomes after which the bundles are installed.
+    INSTALLS_BUNDLES = %i[new appended exists snippet].freeze
 
     # @param argv [Array<String>] the arguments after "bootstrap"
     # @param probe [Bootstrap::Probe, nil] (specs)
+    # @param bundles [Bootstrap::Bundles, nil] (specs: the bundles go where
+    #   the process ENV points, not +env+)
     def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, env: ENV, probe: nil, config_path: nil,
-                   platform: RbConfig::CONFIG["host_os"])
+                   platform: RbConfig::CONFIG["host_os"], bundles: nil)
       @argv = argv.dup
       @stdin = stdin
       @stdout = stdout
@@ -49,6 +60,7 @@ module Samagotchi
       @probe = probe || Bootstrap::Probe.new(env: env)
       @config_path = config_path || ConfigFile.global_path(env: env)
       @platform = platform
+      @bundles = bundles || Bootstrap::Bundles.new
     end
 
     # @return [Integer] 0 written (or already there), 1 failed (a failed
@@ -244,7 +256,64 @@ module Samagotchi
         return nil
       end
       outcome = writer.write(name: name, fields: fields, model: model, dry_run: options[:dry_run])
-      report(outcome, model)
+      code = report(outcome, model)
+      return code unless INSTALLS_BUNDLES.include?(outcome.kind)
+
+      code = [code, install_bundles].max
+      next_steps if outcome.kind == :new
+      code
+    end
+
+    # The system bundle, core, and dev when a terminal says yes: one line
+    # each. 1 when something failed.
+    def install_bundles(dry_run: false)
+      ok = system_bundle_line(@bundles.sync_system(dry_run: dry_run), dry_run)
+      ok = install_profile(CORE, dry_run) && ok
+      unless dry_run || !tty? || (members = dev_to_install).empty?
+        @stdout.print("Also install #{DEV} (#{members.join(", ")})? [y/N] ")
+        ok = install_profile(DEV, false) && ok if @stdin.gets.to_s.strip.downcase.start_with?("y")
+      end
+      ok ? 0 : 1
+    end
+
+    # One line for the profile; false when it (or a member) failed.
+    def install_profile(name, dry_run)
+      profile_line(@bundles.install(name, dry_run: dry_run), dry_run)
+    rescue StandardError => e
+      @stdout.puts("#{name} bundles: failed (#{e.message.lines.first.to_s.strip})")
+      false
+    end
+
+    def dev_to_install
+      @bundles.to_install(DEV)
+    rescue StandardError
+      []
+    end
+
+    def system_bundle_line(result, dry_run)
+      version = "v#{result.to || result.from}"
+      text = case result.status
+             when :installed then dry_run ? "would install #{version}" : "#{version} installed"
+             when :updated then "#{result.from} → #{result.to} #{dry_run ? "would update" : "updated"}"
+             when :restored then "#{version} #{dry_run ? "would restore" : "restored"} missing files"
+             when :up_to_date then "#{version} up to date"
+             when :newer_installed then "v#{result.from} left as is (newer than this chi's v#{result.to})"
+             when :skipped then "skipped (#{result.error})"
+             else "failed (#{result.error})"
+             end
+      @stdout.puts("system bundle: #{text}")
+      result.status != :failed
+    end
+
+    def profile_line(result, dry_run = false)
+      parts = []
+      parts << "#{dry_run ? "would install" : "installed"} #{result.installed.join(", ")}" unless result.installed.empty?
+      parts << "already installed #{result.already.join(", ")}" unless result.already.empty?
+      result.skipped.each { |member, why| parts << "skipped #{member} (#{why})" }
+      result.failed.each { |member, why| parts << "#{member} failed (#{why})" }
+      parts << "nothing new to install" if parts.empty?
+      @stdout.puts("#{result.name} bundles: #{parts.join("; ")}")
+      !result.failed?
     end
 
     # The hosts entry: host/port for a plain http server (api: openai when it
@@ -267,10 +336,9 @@ module Samagotchi
         @stdout.puts("dry run: would write #{outcome.where} (#{path}):")
         @stdout.puts(outcome.text.gsub(/^/, "  "))
         @stdout.puts("and print: #{outcome.model_hint}") if outcome.model_hint
-        0
+        install_bundles(dry_run: true)
       when :new
         @stdout.puts("config: #{path} (new)")
-        next_steps
         0
       when :appended
         @stdout.puts("config: #{path} (hosts entry '#{outcome.name}' added; backup #{File.basename(outcome.backup)})")
@@ -296,10 +364,12 @@ module Samagotchi
     end
 
     def next_steps
-      lines = [["chi", "a session"], ["chi web --open", "the web UI"], ["chi bundle list", "optional bundles (guardrails, …)"]]
+      dev = dev_to_install
+      bundles = dev.empty? ? ["chi bundle list", "the installed bundles"] : ["chi bundle install #{DEV}", "more bundles (#{dev.join(", ")})"]
+      lines = [["chi", "a session"], ["chi web --open", "the web UI"], bundles]
       lines << ["chi desktop install", "macOS \"Send to chi\" helper"] if @platform.to_s.include?("darwin")
       lines.each_with_index do |(command, what), i|
-        @stdout.puts("#{i.zero? ? "next:" : "     "}  #{command.ljust(20)} # #{what}")
+        @stdout.puts("#{i.zero? ? "next:" : "     "}  #{command.ljust(22)} # #{what}")
       end
     end
 

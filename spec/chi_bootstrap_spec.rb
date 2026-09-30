@@ -33,6 +33,7 @@ RSpec.describe "chi bootstrap" do
   end
 
   def models(*ids) = { object: "list", data: ids.map { |id| { id: id } } }
+  def bundles_dir = File.join(home, "config", "samagotchi", "memories", ".bundles")
   def written = YAML.safe_load(File.read(config))
 
   it "writes a native llama.cpp host with its model, n_ctx and profile" do
@@ -50,6 +51,39 @@ RSpec.describe "chi bootstrap" do
     expect(written).to eq("default" => { "model" => "local:qwen-a" },
                           "hosts" => { "local" => { "host" => "127.0.0.1", "port" => server.port } })
     expect(server.requests.map(&:path)).to include("/props", "/v1/chat/completions")
+    expect(out).to include("system bundle: v#{Samagotchi::VERSION} installed\n",
+                           "core bundles: installed loop-guard, check-in, guardrails\n")
+    expect(out).to match(/^ +chi bundle install dev +# more bundles \(known-names, mcp, btw, skills, source-links\)$/)
+    expect(out).not_to include("optional bundles", "Also install dev")
+    expect(Dir.children(bundles_dir).reject { |e| e.end_with?(".lock") }.sort)
+      .to eq(%w[check-in core guardrails loop-guard samagotchi-system])
+  end
+
+  it "installs nothing again on a second run, with the config already there" do
+    server.default("/v1/models", json: models("m"))
+
+    bootstrap(target, "--no-test")
+    installed_at = File.mtime(File.join(bundles_dir, "loop-guard", "manifest.json"))
+    FileUtils.rm_rf(File.join(bundles_dir, "check-in"))
+    out, err, status = bootstrap(target, "--no-test")
+
+    expect([err, status.exitstatus]).to eq(["", 0])
+    expect(out).to include("already has this server", "system bundle: v#{Samagotchi::VERSION} up to date\n",
+                           "core bundles: nothing new to install\n")
+    expect(File.mtime(File.join(bundles_dir, "loop-guard", "manifest.json"))).to eq(installed_at)
+    expect(Dir.exist?(File.join(bundles_dir, "check-in"))).to be(false)
+  end
+
+  it "only says what it would install on a dry run" do
+    server.default("/v1/models", json: models("m"))
+
+    out, err, status = bootstrap(target, "--no-test", "--dry-run")
+
+    expect([err, status.exitstatus]).to eq(["", 0])
+    expect(out).to include("dry run: would write", "system bundle: would install v#{Samagotchi::VERSION}\n",
+                           "core bundles: would install loop-guard, check-in, guardrails\n")
+    expect(File.exist?(config)).to be(false)
+    expect(Dir.glob(File.join(bundles_dir, "*", "manifest.json"))).to eq([])
   end
 
   it "writes an OpenAI-compatible host as api: openai" do
@@ -180,13 +214,90 @@ RSpec.describe "chi bootstrap" do
     let(:tty) do
       Class.new(StringIO) { def tty? = true }
     end
+    # In process, the bundles go where the process ENV points: a tmp dir
+    # here, never the suite's shared config dir.
+    let(:memories) { File.join(home, "memories") }
 
-    def run_command(input, *args, extra_env: {})
+    before do
+      Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(memories, ".bundles")
+      Samagotchi::MemoryBundle::Installer.system_dir_override = memories
+    end
+
+    after do
+      Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
+      Samagotchi::MemoryBundle::Installer.system_dir_override = nil
+      Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
+    end
+
+    def run_command(input, *args, extra_env: {}, bundles: nil)
       out = StringIO.new
       err = StringIO.new
       command = Samagotchi::BootstrapCommand.new(args, stdin: tty.new(input), stdout: out, stderr: err,
-                                                       env: extra_env, config_path: config)
+                                                       env: extra_env, config_path: config, bundles: bundles)
       [command.run, out.string, err.string]
+    end
+
+    def installed = Samagotchi::MemoryBundle::Provenance.each_installed.map { |name, _| name }
+
+    it "asks about dev and installs it on yes, and doesn't ask again once it is in" do
+      server.default("/v1/models", json: models("m"))
+
+      code, out, err = run_command("y\n", target, "--no-test")
+
+      expect([code, err]).to eq([0, ""])
+      expect(out).to include("core bundles: installed loop-guard, check-in, guardrails\n",
+                             "Also install dev (known-names, mcp, btw, skills, source-links)? [y/N] ",
+                             "dev bundles: installed known-names, mcp, btw, skills, source-links\n")
+      expect(out).to match(/^ +chi bundle list +# the installed bundles$/)
+      expect(installed).to eq(%w[btw check-in core dev guardrails known-names loop-guard mcp samagotchi-system skills source-links])
+
+      _, again, = run_command("", target, "--no-test")
+      expect(again).not_to include("Also install dev")
+    end
+
+    it "leaves dev out on no" do
+      server.default("/v1/models", json: models("m"))
+
+      code, out, = run_command("\n", target, "--no-test")
+
+      expect(code).to eq(0)
+      expect(out).to include("Also install dev", "chi bundle install dev")
+      expect(installed).to eq(%w[check-in core guardrails loop-guard samagotchi-system])
+    end
+
+    it "exits 1 when a member fails, and still writes the config" do
+      server.default("/v1/models", json: models("m"))
+      failing = Class.new do
+        def sync_system(dry_run: false) = Samagotchi::MemoryBundle::SystemBundle::Result.new(status: :up_to_date, to: "0.8.0", kept: [], warnings: [])
+        def to_install(_) = []
+
+        def install(name, dry_run: false)
+          Samagotchi::MemoryBundle::Profile::InstallResult.new(name: name, version: "0.1.0", installed: %w[loop-guard], already: [],
+                                                                skipped: { "guardrails" => "it requires chi >= 9" },
+                                                                failed: { "check-in" => "boom" })
+        end
+      end
+
+      code, out, = run_command("", target, "--no-test", bundles: failing.new)
+
+      expect(code).to eq(1)
+      expect(out).to include("core bundles: installed loop-guard; skipped guardrails (it requires chi >= 9); check-in failed (boom)\n")
+      expect(written.dig("default", "model")).to eq("local:m")
+    end
+
+    it "exits 1 with one line when installing the profile raises" do
+      server.default("/v1/models", json: models("m"))
+      raising = Class.new do
+        def sync_system(dry_run: false) = Samagotchi::MemoryBundle::SystemBundle::Result.new(status: :up_to_date, to: "0.8.0", kept: [], warnings: [])
+        def to_install(_) = raise(Errno::EACCES, "memories")
+        def install(_name, dry_run: false) = raise(Samagotchi::MemoryBundle::Manifest::ValidationError, "manifest missing required field: name")
+      end
+
+      code, out, err = run_command("", target, "--no-test", bundles: raising.new)
+
+      expect([code, err]).to eq([1, ""])
+      expect(out).to include("core bundles: failed (manifest missing required field: name)\n")
+      expect(out).not_to include("Also install dev")
     end
 
     it "offers a numbered pick, narrowed by typed text" do
