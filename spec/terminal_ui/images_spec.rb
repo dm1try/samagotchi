@@ -185,15 +185,6 @@ RSpec.describe "TerminalUI images" do
       expect(screen.lines).to include("could not attach the image: tiny.png is too large")
     end
 
-    it "explains a worker that predates images" do
-      body = '{"error":"images_unsupported","detail":"this session\'s worker predates images: restart it (/exit, then resume)"}'
-      allow(client).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 409, body: body))
-
-      run_with(["look @#{png}"])
-
-      expect(screen.lines).to include("could not send the prompt (409 images_unsupported): this session's worker predates images: restart it (/exit, then resume)")
-    end
-
     it "shows the image lines of the last prompt when it joins, and of a turn in progress" do
       allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_call_original
       messages = [{ "role" => "user", "content" => "look", "images" => [ref.transform_keys(&:to_s)] }, { "role" => "model", "content" => "red" }]

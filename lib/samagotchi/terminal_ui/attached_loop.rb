@@ -523,8 +523,7 @@ module Samagotchi
         # Read after its deadline and dropped (BridgeClient::DEADLINE_SHARE).
         return @screen.commit("could not send the prompt (#{LATE})") if detail == "deadline_passed"
 
-        explained = reply.json&.fetch("detail", nil) if detail == "images_unsupported"
-        @screen.commit("could not send the prompt (#{[reply.status, detail].compact.join(" ")})#{": #{explained}" if explained}")
+        @screen.commit("could not send the prompt (#{[reply.status, detail].compact.join(" ")})")
       rescue SystemCallError, IOError => e
         own_prompt_failed
         @screen.commit("could not send the prompt (#{worker_down(e)})")
