@@ -761,7 +761,7 @@ described in their own sections.
 | `execute.preview_bytes` | `12288` | yes | |
 | `execute.telemetry_threshold_pct` | `80` | yes | |
 | `web.port` | `4567` | `--port` | `chi web`'s port. See [CLI](cli.md). |
-| `web.host` | `127.0.0.1` | yes | `127.0.0.1`, `::1` or `localhost`. |
+| `web.host` | `127.0.0.1` | yes | `127.0.0.1`, `::1` or `localhost`; `lan` (this machine's private IPv4 address) or one of its IPv4 addresses also opens `chi web` to the network, with an access token (`chi web --new-token` replaces it). Anything else binds `127.0.0.1` with a warning. See [CLI: chi web on your phone](cli.md#chi-web-on-your-phone). |
 | `web.markdown` | `false` | yes | Render answers as Markdown in `chi web`. |
 | `web.view` | `turn` | yes | How `chi web` draws a turn: `turn` (one block per turn), `stage` (the running turn pinned above the composer) or `chat` (the row of bubbles). See [CLI](cli.md#web-views). |
 | `web.annotate_presets` | `Agreed\|Could you please elaborate?` | yes | Quick replies next to Annotate in `chi web`, `\|`-separated (a YAML list works too); `""` in the file or on the CLI leaves only Annotate (an empty env value means the default). See [CLI](cli.md#web-annotate-presets). |

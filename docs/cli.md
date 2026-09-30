@@ -12,6 +12,7 @@
 - `chi --attach <session-id>` — attach the terminal to a session's worker (e.g. one started from the Web UI), waking one if it has exited
 - A session id can be shortened to any unique prefix (like git): `chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop`, `sessions archive` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
 - `chi web [--port 4567] [--open] [--scope=all]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
+- `chi web --web-host lan` — the Web UI on your home network too, for your phone: a link with an access token and its QR code (see [chi web on your phone](#chi-web-on-your-phone)); `chi web --new-token` replaces the token
 - `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
 - `chi web --web-view stage|chat` — draw turns with the stage view (the running turn pinned above the composer) or as the classic row of bubbles instead of the default turn view (each turn as one block of steps, the running one at the bottom); `?view=turn|stage|chat` on the page URL overrides it (see [Web views](#web-views))
 - `chi sessions list|stop|archive|unarchive|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md))
@@ -510,6 +511,51 @@ web:
 `SAMAGOTCHI_WEB_ANNOTATE_PRESETS` overrides the file, but an empty value
 there means the default, not "none": use `""` in the file or on the command
 line. A `chi web` that already runs keeps its list; restart it.
+
+### chi web on your phone
+
+`chi web` listens on 127.0.0.1 only. `--web-host lan` (or `web.host: lan`
+in config.yml) also opens it on this machine's private IPv4 address, for a
+phone on the same Wi-Fi:
+
+```sh
+chi web --web-host lan
+```
+
+```
+Chi Web on http://127.0.0.1:4567/?dir=/Users/me/projects/app (public: …)
+LAN: http://192.168.1.55:4567/?token=…   ← anyone with this link can run commands as you
+Plain http: the link and your traffic can be read by anyone on this Wi-Fi.
+<the link's QR code>
+```
+
+Scan the QR code with the phone's camera. The page trades the token in the
+link for a cookie (kept 400 days) and drops it from the address, so a
+bookmark or a home-screen icon keeps working across restarts. A home-screen
+web app on iOS has cookies of its own: if it opens on "needs chi web's
+access token", paste the token there (the part of the link after
+`token=`), or open the link once in it.
+
+- Every request from another machine needs the token (the cookie, or
+  `Authorization: Bearer <token>` for curl); this Mac (127.0.0.1) needs none.
+  Without it the page says how to get in and the API answers 401.
+- The token lives in `$XDG_STATE_HOME/samagotchi/web-token` (0600).
+  `chi web --new-token` replaces it: a running chi web takes the new one at
+  once, and every phone has to scan the new QR code.
+- A second `chi web` prints the LAN link and QR code again. A plain
+  `chi web --web-host lan` while a chi web without LAN access runs asks you
+  to stop that one first. `chi self` says whether chi web runs on the LAN.
+- `lan` picks the first private address (10.x, 172.16–31.x, 192.168.x) on an
+  interface that is up, not a VPN tunnel, bridge, VM or container, and names
+  the others; `web.host: 10.0.0.3` picks one yourself. An address outside
+  those ranges (a Tailscale 100.x one, a public one) works, with a warning.
+  After the address changes (a new Wi-Fi), restart chi web. IPv6 isn't
+  offered.
+- It is plain http: the token and everything you do travel unencrypted on
+  the Wi-Fi. Use it on your home network, never on a shared one (a café, an
+  office guest network), and run `chi web --new-token` if a link leaks.
+- On http the browser has no notifications: the bell is hidden on the phone,
+  and the tab title still counts what needs you.
 
 ## Runtime Model Switch (Assist Mode)
 

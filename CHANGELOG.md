@@ -20,6 +20,13 @@ and commands may change between minor versions. How releases are made:
   each skill kept (`history_keep`) with a one-line diff after every update;
   a nudge when a followed skill's step fails and the model goes on without
   fixing it (docs/plugins.md, The skills bundle).
+- `chi web --web-host lan` (`web.host: lan`, or one of this machine's IPv4
+  addresses): the web UI on your phone. chi web also listens on the LAN
+  address and prints a link with an access token and its QR code; every
+  request from another machine needs the token, which the page keeps in a
+  cookie. `chi web --new-token` replaces it; `chi self` says when chi web runs
+  on the LAN. Plain http: for a home network only. New runtime dependency:
+  `rqrcode_core`.
 
 ### Security
 

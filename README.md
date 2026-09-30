@@ -107,6 +107,7 @@ chi --no-shared                           # the plain in-process REPL
 chi -p "explain lib/" --non-interactive   # one turn, print the answer, exit
 chi --resume <session-id>                 # continue a saved session
 chi web --open                            # web UI: this project's sessions (--scope=all: every one)
+chi web --web-host lan                    # the web UI on your phone too: scan the QR code it prints
 chi sessions list                         # this project's saved sessions (--scope=all: every one)
 pbpaste | chi note --source slack <id>    # background context for a session (no turn)
 pbpaste | chi send -m "same bug?" <id>    # a message to a session, the clipboard quoted above it
@@ -116,6 +117,12 @@ chi send --new --wait -m "review feat/x"  # a new session you can watch in the w
 `@shot.png` in a prompt (or a pasted/dropped image in the web UI) shows the model an image, when it can see them; see [Images](docs/cli.md#images).
 
 `/model` switches models, Ctrl-C cancels a turn, and Ctrl-D or `/detach` detaches (the session keeps running; `chi --attach ID` comes back). `/exit` detaches and stops the session's worker too, unless something still needs it (a running turn, another UI); `chi --resume ID` picks the conversation up again. `/exit --delete` also deletes the session once the worker has gone; `chi sessions delete ID` deletes one from the shell. `/archive` (or `chi sessions archive ID`) hides a session from every list and keeps it for good; `chi sessions list --archived` finds it again.
+
+`chi web --web-host lan` opens the web UI to your home network with an
+access token: anyone with the printed link (or its QR code) can run commands
+as you, and it is plain http, readable by anyone on the same Wi-Fi. Use it at
+home, never on a shared network, and `chi web --new-token` if a link leaks.
+See [chi web on your phone](docs/cli.md#chi-web-on-your-phone).
 
 ### Context notes
 
