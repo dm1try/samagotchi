@@ -32,17 +32,17 @@ module Samagotchi
           pending_input: pending_input
         )
         ModelResult.new(
-          text: kernel_result.respond_to?(:output) ? kernel_result.output.to_s : kernel_result.to_s,
+          text: kernel_result.output.to_s,
           tool_calls: nil,
           provider: :native,
           usage: usage.usage(prompt_text: Array(messages).sum("") { |message| message[:content].to_s }),
-          conversation: kernel_result.respond_to?(:conversation) ? kernel_result.conversation : nil,
-          canceled: kernel_result.respond_to?(:canceled?) && kernel_result.canceled?,
-          cancellation_reason: kernel_result.respond_to?(:cancellation_reason) ? kernel_result.cancellation_reason : nil,
-          exhausted: kernel_result.respond_to?(:exhausted) && kernel_result.exhausted,
-          tool_activity: kernel_result.respond_to?(:tool_activity) ? kernel_result.tool_activity : [],
-          context_status: kernel_result.respond_to?(:context_status) ? kernel_result.context_status : nil,
-          pending_tool_calls: kernel_result.respond_to?(:pending_tool_calls) && kernel_result.pending_tool_calls
+          conversation: kernel_result.conversation,
+          canceled: kernel_result.canceled?,
+          cancellation_reason: kernel_result.cancellation_reason,
+          exhausted: kernel_result.exhausted,
+          tool_activity: kernel_result.tool_activity,
+          context_status: kernel_result.context_status,
+          pending_tool_calls: kernel_result.pending_tool_calls
         )
       end
     end

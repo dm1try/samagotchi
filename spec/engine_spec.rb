@@ -344,6 +344,7 @@ RSpec.describe Samagotchi::Engine do
           output_truncated: false,
           activity: { action: "reading file", tool: "read", params: 'path="x"', status: "ok" }
         )
+        result
       end
 
       engine.run_turn(make_session, "hi", on_event: proc { |event| events << event })
