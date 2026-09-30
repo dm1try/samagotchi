@@ -44,17 +44,17 @@ RSpec.describe Samagotchi::ConfigFile do
         expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.markdown")).to be(false)
       end
 
-      it "defaults the web view to turn; stage from the file, env or cli; chat is gone (a warning, then the default)" do
-        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.view")).to eq("turn")
-        expect(described_class.resolve("web.view", file_data: { "web" => { "view" => "stage" } }, env: {})).to eq("stage")
-        expect(described_class.resolve("web.view", file_data: {}, env: { "SAMAGOTCHI_WEB_VIEW" => "stage" })).to eq("stage")
-        expect(described_class.resolve("web.view", file_data: {}, env: {}, cli_overrides: { "web.view" => "stage" })).to eq("stage")
+      it "defaults the web view to stage; turn from the file, env or cli; chat is gone (a warning, then the default)" do
+        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.view")).to eq("stage")
+        expect(described_class.resolve("web.view", file_data: { "web" => { "view" => "turn" } }, env: {})).to eq("turn")
+        expect(described_class.resolve("web.view", file_data: {}, env: { "SAMAGOTCHI_WEB_VIEW" => "turn" })).to eq("turn")
+        expect(described_class.resolve("web.view", file_data: {}, env: {}, cli_overrides: { "web.view" => "turn" })).to eq("turn")
         expect do
-          expect(described_class.resolve("web.view", file_data: { "web" => { "view" => "chat" } }, env: {})).to eq("turn")
-        end.to output(/invalid value for web\.view: "chat" \(allowed: turn, stage\) — using default/).to_stderr
+          expect(described_class.resolve("web.view", file_data: { "web" => { "view" => "chat" } }, env: {})).to eq("stage")
+        end.to output(/invalid value for web\.view: "chat" \(allowed: stage, turn\) — using default/).to_stderr
         entry = described_class.find_by_key("web.view")
         expect(entry.cli_flag).to eq("--web-view")
-        expect(entry.enum_values).to eq(%w[turn stage])
+        expect(entry.enum_values).to eq(%w[stage turn])
         expect(described_class.find_by_key("web.turn_view")).to be_nil
       end
 

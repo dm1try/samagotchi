@@ -3,10 +3,11 @@
 import { test, expect } from "./support/fixtures.js";
 import { APPROVAL_COMMAND, EDIT_ASK_FILE } from "./support/env.js";
 
-// The stage project (?view=stage): a running turn's rows are in #turnStage
-// until the hand-off moves them into #history. H() is where a live row can
-// be; HC() the containers a card sits directly in.
-const stage = () => test.info().project.use.view === "stage";
+// The stage view (the default; the turn project runs @turn scenarios again
+// on ?view=turn): a running turn's rows are in #turnStage until the hand-off
+// moves them into #history. H() is where a live row can be; HC() the
+// containers a card sits directly in.
+const stage = () => test.info().project.use.view !== "turn";
 const H = () => (stage() ? ":is(#history, #turnStage)" : "#history");
 const HC = () => (stage() ? ":is(#history, #turnStage .ts-extras, #turnStage .ts-tail)" : "#history");
 
@@ -33,7 +34,7 @@ async function turnEnded(page, turns) {
 
 const answer = (page) => page.locator(`${H()} .bubble.output`).last();
 
-test("a prompt from the start page streams an answer and the turn ends", { tag: "@stage" }, async ({ page, script }) => {
+test("a prompt from the start page streams an answer and the turn ends", { tag: "@turn" }, async ({ page, script }) => {
   script("plain");
   await expect(page.locator("#actionBtn")).toHaveText("Start");
   // Records each text a live (.streaming) element shows the answer with,
@@ -57,7 +58,7 @@ test("a prompt from the start page streams an answer and the turn ends", { tag: 
   await expect(answer(page)).not.toHaveClass(/streaming/);
 });
 
-test("a multi-step turn shows its steps, tool rows and the markdown answer", { tag: "@stage" }, async ({ page, script }) => {
+test("a multi-step turn shows its steps, tool rows and the markdown answer", { tag: "@turn" }, async ({ page, script }) => {
   script("turn");
   await send(page, "Check the shell and the README");
   await turnEnded(page, 1);
@@ -74,7 +75,7 @@ test("a multi-step turn shows its steps, tool rows and the markdown answer", { t
   await expect(answer(page)).toBeVisible();
 });
 
-test("a reload after the turn shows the same turn and answer", { tag: "@stage" }, async ({ page, script }) => {
+test("a reload after the turn shows the same turn and answer", { tag: "@turn" }, async ({ page, script }) => {
   script("turn");
   await send(page, "Check the shell and the README");
   await turnEnded(page, 1);
@@ -94,7 +95,7 @@ test("a reload after the turn shows the same turn and answer", { tag: "@stage" }
 
 // The first generation has thinking only: the loop asks again in the same
 // turn, the empty step says so, and a reload shows one turn with the answer.
-test("an empty answer is asked again in the same turn, and a reload shows one turn", { tag: "@stage" }, async ({ page, script }) => {
+test("an empty answer is asked again in the same turn, and a reload shows one turn", { tag: "@turn" }, async ({ page, script }) => {
   script("empty_retry");
   await send(page, "Say pong");
   await expect(answer(page)).toHaveText("PONG after the retry.");
@@ -120,7 +121,7 @@ test("a reload after the turn shows the context meter and the card's ctx", async
   await expect(page.locator("#topStrip .card .ctx").first()).toHaveText(/^\d+%$/);
 });
 
-test("cancel mid-turn shows the canceled turn, and the next send works", { tag: "@stage" }, async ({ page, script }) => {
+test("cancel mid-turn shows the canceled turn, and the next send works", { tag: "@turn" }, async ({ page, script }) => {
   script("hold");
   await send(page, "Take your time");
   await expect(page.locator("#cancelBtn")).toBeVisible();
@@ -134,7 +135,7 @@ test("cancel mid-turn shows the canceled turn, and the next send works", { tag: 
   await turnEnded(page, 2);
 });
 
-test("a question card: the answer lets the turn go on", { tag: "@stage" }, async ({ page, script }) => {
+test("a question card: the answer lets the turn go on", { tag: "@turn" }, async ({ page, script }) => {
   script("question");
   await send(page, "Read a file of my choice");
   const card = page.locator(`${H()} .bubble.question`);
@@ -147,7 +148,7 @@ test("a question card: the answer lets the turn go on", { tag: "@stage" }, async
   await expect(page.locator("#history .activity-tool")).toHaveText(["ask_user_question", "read"]);
 });
 
-test("an approval card: allowing it runs the tool", { tag: "@stage" }, async ({ page, script }) => {
+test("an approval card: allowing it runs the tool", { tag: "@turn" }, async ({ page, script }) => {
   script("approval");
   await send(page, "Run the command that needs approval");
   const card = page.locator(`${H()} .bubble.question.approval`);
@@ -163,7 +164,7 @@ test("an approval card: allowing it runs the tool", { tag: "@stage" }, async ({ 
   await expect(row.locator(".activity-output")).toContainText("E2E_APPROVED");
 });
 
-test("an edit's approval card shows its diff; the row keeps the change after a reload", { tag: "@stage" }, async ({ page, script }) => {
+test("an edit's approval card shows its diff; the row keeps the change after a reload", { tag: "@turn" }, async ({ page, script }) => {
   script("edit");
   await send(page, "Make the font bigger");
   const card = page.locator(`${H()} .bubble.question.approval`);
@@ -224,7 +225,7 @@ test("an annotate preset fills the composer with the quote and never sends", asy
   expect(turnPosts).toEqual([]);
 });
 
-test("the model picker lists the fake model", { tag: "@stage" }, async ({ page }) => {
+test("the model picker lists the fake model", { tag: "@turn" }, async ({ page }) => {
   const button = page.locator("#modelPick");
   await expect(button).toBeVisible();
   await expect(button).toHaveText("fake-script");
@@ -249,7 +250,7 @@ const MANY_MODELS = {
   ],
 };
 
-test("the model picker searches: 'deepseek4.1 fla' picks the flash with ⏎, Recent keeps two picks, Esc changes nothing", { tag: "@stage" }, async ({ page, script }) => {
+test("the model picker searches: 'deepseek4.1 fla' picks the flash with ⏎, Recent keeps two picks, Esc changes nothing", { tag: "@turn" }, async ({ page, script }) => {
   await page.route("**/api/models", (route) => route.fulfill({ json: MANY_MODELS }));
   await page.reload();
   const button = page.locator("#modelPick");
@@ -389,7 +390,7 @@ test("a question in a background tab: one notification and a title badge; in fro
 
   script("question");
   await send(page, "Read a file of my choice");
-  const card = page.locator("#history .bubble.question");
+  const card = page.locator(`${H()} .bubble.question`);
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
   await expect.poll(() => notes(page)).toEqual([
     expect.objectContaining({ title: "Read a file of my choice", body: "needs an answer", tag: expect.stringMatching(/:/) }),
@@ -416,7 +417,7 @@ test("the title badge counts while behind and clears when the tab comes to the f
   await withNotificationStub(page);
   script("question");
   await send(page, "Read a file of my choice");
-  const card = page.locator("#history .bubble.question");
+  const card = page.locator(`${H()} .bubble.question`);
   await expect(page).toHaveTitle(/^\(1\) Chi/);
   // No bell: the badge still counts, and no notification is shown.
   expect(await notes(page)).toEqual([]);
@@ -431,7 +432,7 @@ test("the title badge clears when the tab turns visible before it has focus (Saf
   await withNotificationStub(page);
   script("question");
   await send(page, "Read a file of my choice");
-  const card = page.locator("#history .bubble.question");
+  const card = page.locator(`${H()} .bubble.question`);
   await expect(page).toHaveTitle(/^\(1\) Chi/);
   await page.evaluate(() => window.__showTab());
   await expect(page).not.toHaveTitle(/^\(/);
@@ -458,7 +459,7 @@ test("two tabs: one in front, the one behind shows no notification and no badge"
 
   script("question");
   await send(page, "Read a file of my choice");
-  const card = page.locator("#history .bubble.question");
+  const card = page.locator(`${H()} .bubble.question`);
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
   // The front tab's word reaches the tab behind (a listener of the test's
   // own on the channel); past its hold, it has neither notified nor badged.
@@ -477,7 +478,7 @@ test("the title badge drops a question answered from another client", async ({ p
   await withNotificationStub(page);
   script("question");
   await send(page, "Read a file of my choice");
-  const card = page.locator("#history .bubble.question");
+  const card = page.locator(`${H()} .bubble.question`);
   await expect(page).toHaveTitle(/^\(1\) Chi/);
   // Another client answers; this tab stays behind.
   const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
@@ -564,7 +565,7 @@ test("/archive and /exit typed in the composer get a local reply, not a worker e
 // check-in (after: 3 in the e2e config): the card comes up in the running
 // step after the 3rd call; Nudge puts its message into the turn as a nudge
 // row of that step, and the model's next step answers it.
-test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, live and after a reload", { tag: "@stage" }, async ({ page, script }) => {
+test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, live and after a reload", { tag: "@turn" }, async ({ page, script }) => {
   script("check_in");
   await send(page, "Look through the README");
   const card = page.locator(`${HC()} > .plugin-card`).filter({ hasText: "3 tool calls, no answer yet" });
@@ -596,7 +597,7 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
 // step's read) stays in sight when that step closes mid-turn: it leaves the
 // collapsing step for the block, and after the turn ends it is under the
 // block, where a reload puts it.
-test("a warn card stays in sight when its step closes mid-turn", { tag: "@stage" }, async ({ page, script }) => {
+test("a warn card stays in sight when its step closes mid-turn", { tag: "@turn" }, async ({ page, script }) => {
   script("warn_card");
   await send(page, "Read the flagged file");
   const card = page.locator(`${H()} .plugin-card.warn`).filter({ hasText: "e2e warn card" });
@@ -624,7 +625,7 @@ test("check-in in a background tab: one 'needs you' notification; the card resol
 
   script("check_in");
   await send(page, "Look through the README");
-  const card = page.locator("#history > .plugin-card").filter({ hasText: "3 tool calls, no answer yet" });
+  const card = page.locator(`${HC()} > .plugin-card`).filter({ hasText: "3 tool calls, no answer yet" });
   await expect(card).toBeVisible();
   await expect.poll(() => notes(page)).toEqual([
     expect.objectContaining({ title: "Look through the README", body: "needs you", tag: expect.stringMatching(/:card:check-in-/) }),
@@ -634,7 +635,7 @@ test("check-in in a background tab: one 'needs you' notification; the card resol
   const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
   const res = await page.request.post(new URL(`/api/sessions/${id}/command`, page.url()).href, { data: { line: "/checkin later" } });
   expect(res.ok()).toBe(true);
-  await expect(page.locator("#history .plugin-card .card-action")).toHaveCount(0);
+  await expect(page.locator(`${H()} .plugin-card .card-action`)).toHaveCount(0);
   await expect(page).not.toHaveTitle(/^\(/);
   await expect(page.locator("#cancelBtn")).toBeVisible();
   await turnEnded(page, 1);

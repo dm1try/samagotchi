@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- `chi web` draws turns with the stage view by default (`web.view: stage`:
+  the running turn pinned above the composer). `web.view: turn`
+  (`--web-view turn`, `?view=turn`) brings back one block per turn in the
+  history.
+
 ### Removed
 
 - The web chat view (`web.view: chat`, `--web-view chat`, `?view=chat`): the

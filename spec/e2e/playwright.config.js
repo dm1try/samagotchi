@@ -19,13 +19,12 @@ export default defineConfig({
     ...devices["Desktop Chrome"],
     trace: "retain-on-failure",
   },
-  // The stage view (web.view: stage) runs the scenarios tagged @stage again
-  // on ?view=stage: the running turn in #turnStage, then handed off into
-  // #history.
+  // chromium runs every scenario on the default view (web.view: stage: the
+  // running turn in #turnStage, then handed off into #history); the turn
+  // project runs the ones tagged @turn again on ?view=turn.
   projects: [
-    // @stage-only: the stage view's own scenarios (stage.spec.js).
-    { name: "chromium", grepInvert: /@stage-only/, testIgnore: "lan.spec.js" },
-    { name: "stage", grep: /@stage/, use: { view: "stage" }, testIgnore: "lan.spec.js" },
+    { name: "chromium", testIgnore: "lan.spec.js" },
+    { name: "turn", grep: /@turn/, use: { view: "turn" }, testIgnore: ["lan.spec.js", "stage.spec.js"] },
     // chi web --web-host lan, reached at the LAN address: the access token.
     { name: "lan", testMatch: "lan.spec.js", use: { lan: true } },
   ],

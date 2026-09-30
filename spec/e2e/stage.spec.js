@@ -1,9 +1,9 @@
 // The stage view (web.view: stage) on its own: the running turn pinned above
 // the composer with fixed live slots, cards in it, and the hand-off into the
-// history. Runs in the "stage" project only (@stage-only, ?view=stage).
+// history. The default view: the chromium project runs it, the turn project
+// doesn't.
 import { test, expect } from "./support/fixtures.js";
 
-const TAG = { tag: "@stage-only" };
 const stageEl = (page) => page.locator("#turnStage");
 const handedOff = (page, turns) => expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(turns);
 
@@ -32,7 +32,7 @@ async function startSampling(page) {
 }
 const stopSampling = (page) => page.evaluate(() => { clearInterval(window.sampler); return window.samples; });
 
-test("the stage keeps one height while a multi-step turn runs; nothing moves the history; a scrolled-up reader stays at the hand-off", TAG, async ({ page, script }) => {
+test("the stage keeps one height while a multi-step turn runs; nothing moves the history; a scrolled-up reader stays at the hand-off", async ({ page, script }) => {
   script("stage");
   await send(page, "First round");
   await page.mouse.move(0, 0);
@@ -55,7 +55,7 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   expect([...new Set(samples.map((s) => s.top))]).toEqual([120]);
 });
 
-test("the hand-off waits while the pointer is over the stage, runs about 1.5 s after it leaves; an own send hands off at once", TAG, async ({ page, script }) => {
+test("the hand-off waits while the pointer is over the stage, runs about 1.5 s after it leaves; an own send hands off at once", async ({ page, script }) => {
   script("turn");
   await send(page, "Check the shell and the README");
   await stageEl(page).hover();
@@ -88,7 +88,7 @@ test("the hand-off waits while the pointer is over the stage, runs about 1.5 s a
   await handedOff(page, 3);
 });
 
-test("a question card sits in the stage (also after a reload mid-turn), and the answer comes after it", TAG, async ({ page, script }) => {
+test("a question card sits in the stage (also after a reload mid-turn), and the answer comes after it", async ({ page, script }) => {
   script("question");
   await send(page, "Read a file of my choice");
   const card = stageEl(page).locator(".ts-extras .bubble.question");
@@ -111,7 +111,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   expect(kinds).toEqual(["bubble user", "turn-work done", "bubble question", "bubble output", "turn-timing"]);
 });
 
-test("the stage folds to its status row, and stays folded across a reload", TAG, async ({ page, script }) => {
+test("the stage folds to its status row, and stays folded across a reload", async ({ page, script }) => {
   script("hold");
   await send(page, "Take your time");
   await expect(stageEl(page)).toBeVisible();

@@ -71,8 +71,8 @@ module Samagotchi
 
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
-      # @param view ["turn", "stage"] the page's view of a turn (web.view);
-      #   ?view=turn|stage overrides it for one page load
+      # @param view ["stage", "turn"] the page's view of a turn (web.view);
+      #   ?view=stage|turn overrides it for one page load
       # @param annotate_presets [String, Array] the quick replies next to
       #   Annotate (web.annotate_presets, "|"-separated); "" shows none. The
       #   page parses them (annotate_presets.js).
@@ -1454,7 +1454,7 @@ module Samagotchi
 
       VIEWS = Config::BY_KEY["web.view"].enum_values
 
-      # The view for this page load: ?view=turn|stage wins, anything
+      # The view for this page load: ?view=stage|turn wins, anything
       # else leaves the config's choice (web.view).
       def view_name(param)
         VIEWS.include?(param) ? param : @view

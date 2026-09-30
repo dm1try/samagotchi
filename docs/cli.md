@@ -14,7 +14,7 @@
 - `chi web [--port 4567] [--open] [--scope=all]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
 - `chi web --web-host lan` — the Web UI on your home network too, for your phone: a link with an access token and its QR code (see [chi web on your phone](#chi-web-on-your-phone)); `chi web --new-token` replaces the token
 - `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages
-- `chi web --web-view stage` — draw turns with the stage view (the running turn pinned above the composer) instead of the default turn view (each turn as one block of steps, the running one at the bottom); `?view=turn|stage` on the page URL overrides it (see [Web views](#web-views))
+- `chi web --web-view turn` — draw turns with the turn view (each turn as one block of steps, the running one at the bottom of the history) instead of the default stage view (the running turn pinned above the composer); `?view=stage|turn` on the page URL overrides it (see [Web views](#web-views))
 - `chi sessions list|stop|archive|unarchive|delete|prune|clean` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md))
 - `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
 - `chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context, and `--image` attaches images (see [Sessions: Sending a message](sessions.md#sending-a-message)); `--new` starts a session with it instead, and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending; see [Starting a session](sessions.md#starting-a-session))
@@ -420,21 +420,22 @@ its code; a prompt copies the text as you typed it.
 
 ### Web views
 
-`web.view` picks how the page draws a turn: `turn` (the default, below) or
-`stage` (the running turn pinned above the composer, below).
+`web.view` picks how the page draws a turn: `stage` (the default: the
+running turn pinned above the composer, below) or `turn` (each turn as one
+block of steps in the history, the running one at the bottom, below).
 
 ```sh
-chi web --web-view stage     # turn is the default
+chi web --web-view turn      # stage is the default
 ```
 
-The setting also supports `SAMAGOTCHI_WEB_VIEW=stage` or the global config:
+The setting also supports `SAMAGOTCHI_WEB_VIEW=turn` or the global config:
 
 ```yaml
 web:
-  view: stage
+  view: turn
 ```
 
-`?view=turn` or `?view=stage` on the page URL picks the view for that page
+`?view=stage` or `?view=turn` on the page URL picks the view for that page
 load, whatever the config says; the parameter is dropped when you switch
 between the project and all-sessions views. The terminal UIs are not
 affected.

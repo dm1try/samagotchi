@@ -29,6 +29,9 @@ test("the LAN page asks for the token, the token link gets in, a turn streams an
   await page.locator("#prompt").fill("Say pong");
   await page.locator("#actionBtn").click();
   await expect(page).toHaveURL(/#\/s\/[0-9a-f-]+$/);
+  // The stage view hands the turn off into the history once the pointer
+  // is away from it.
+  await page.mouse.move(0, 0);
   const answer = page.locator("#history .bubble.output").last();
   await expect(answer).toHaveText("PONG from the fake model. It streams word by word. Then the turn ends.");
   await expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(1);
