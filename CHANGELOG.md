@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-30
+
 ### Added
 
 - Plugins can watch a response while it streams: the `:generation_progress`
@@ -16,6 +18,11 @@ and commands may change between minor versions. How releases are made:
   while the turn goes on: the model is asked again (`↻ cut by <bundle>,
   asking again (1/1)`), using the `retry.empty_answer` budget. See
   docs/hooks.md, "Watching the stream".
+- loop-guard 0.2.0 watches the model's thinking while it streams: thinking
+  that goes round in the same few sentences is cut and the model asked
+  again; if the retry loops too, the turn stops with a card. On by default
+  (`bundles: loop-guard: thinking: watch: false` turns it off); upgrade the
+  bundle with `chi bundle upgrade loop-guard`.
 
 ### Changed
 
@@ -354,7 +361,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/dm1try/samagotchi/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/dm1try/samagotchi/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/dm1try/samagotchi/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dm1try/samagotchi/compare/v0.3.0...v0.4.0

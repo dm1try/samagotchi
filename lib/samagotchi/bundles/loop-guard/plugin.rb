@@ -11,18 +11,185 @@
 # before_turn resets them (a new user message can make an old call right
 # again); steering merged mid-turn does not.
 #
+# It also watches the model's thinking while it streams (the
+# :generation_progress hook): thinking that goes round in the same few
+# sentences is cut (stop_generation) and the model asked again; if the
+# retry loops too, the turn is stopped with a card. See ThinkingWatch.
+#
 # Settings (config.yml, bundles: loop-guard:):
 #   deny_after: 2      same call + same result this many times -> deny the next
 #   stop_after: 4      stop the turn at this many loop-guard denies
 #   ignore_tools: [task_wait, task_get, delegate_result, list_sessions, list_reminders]
 #   mode: deny         deny | notify (warn once per call, never deny or stop)
+#   thinking:          the thinking watch (ThinkingWatch::DEFAULTS)
+#     watch: true      false: the tool-call guard only
+#     action: retry    retry (cut, ask again; then stop) | stop | notify
 require "digest"
+
+# Sees thinking repeat itself, from the deltas of one generation.
+#
+# The thinking is cut into sentences (at . ! ? and newlines; a run-on over
+# MAX_CARRY chars at its last space). Each sentence of min_words or more is
+# normalized (lower case, letters and digits). Two sentences are alike when
+# the mean of their word-set and word-bigram-set overlaps (Jaccard) is at
+# least `similarity`: a reworded one ("Hmm, …", a synonym, a swapped
+# clause) scores 0.4-0.9, two different ones rarely over 0.15. Two ways to
+# see a loop:
+# - a cycle: for each period p up to max_period, run[p] counts sentences in
+#   a row alike the one p before. A cycle seen `repeats` times (run[p] >=
+#   p * (repeats - 1)) is a loop once the looping stretch (run[p] + p
+#   sentences) spans min_span_sentences and min_span_chars. Templated
+#   sentences ("Now I need to open the file <path> and …") are alike too,
+#   and an enumeration of them makes every period's run grow, so: a period
+#   of 2 or more needs a cycle of distinct sentences (not all alike), and a
+#   period of 1 (one sentence over and over) needs `similarity` +
+#   SAME_MARGIN (0.9 by default: near-identical);
+# - the same sentence max_same times in the generation, in any order.
+# Nothing triggers before min_chars of thinking. O(new chars) per feed.
+class ThinkingWatch
+  DEFAULTS = { "watch" => true, "action" => "retry", "min_chars" => 2000, "repeats" => 3, "max_period" => 6,
+               "similarity" => 0.5, "min_span_sentences" => 6, "min_span_chars" => 600, "max_same" => 8,
+               "min_words" => 5 }.freeze
+  ACTIONS = %w[retry stop notify].freeze
+  MAX_CARRY = 400
+  # One sentence again and again needs this much more alike than a cycle.
+  SAME_MARGIN = 0.4
+  MAX_DISTINCT = 5000
+  SPLIT = /(?<=[.!?])\s+|\n+/
+
+  Loop = Struct.new(:period, :times, :sentences, :chars, keyword_init: true)
+  Sentence = Struct.new(:text, :words, :bigrams, :key, :length, keyword_init: true)
+
+  attr_reader :thinking_chars
+
+  # @param settings [Hash] the thinking: settings (string keys), over DEFAULTS
+  def self.settings(raw)
+    raw = {} unless raw.is_a?(Hash)
+    out = DEFAULTS.dup
+    out["watch"] = !%w[false no off 0].include?(raw["watch"].to_s.downcase) if raw.key?("watch")
+    out["action"] = raw["action"].to_s if ACTIONS.include?(raw["action"].to_s)
+    %w[min_chars repeats max_period min_span_sentences min_span_chars max_same min_words].each do |key|
+      number = Integer(raw[key].to_s, exception: false)
+      out[key] = number if number&.positive?
+    end
+    similarity = Float(raw["similarity"].to_s, exception: false)
+    out["similarity"] = similarity if similarity && similarity.positive? && similarity <= 1
+    out["repeats"] = 2 if out["repeats"] < 2
+    out
+  end
+
+  def initialize(settings = DEFAULTS)
+    @min_chars = settings["min_chars"]
+    @repeats = settings["repeats"]
+    @max_period = settings["max_period"]
+    @similarity = settings["similarity"]
+    @min_span_sentences = settings["min_span_sentences"]
+    @min_span_chars = settings["min_span_chars"]
+    @max_same = settings["max_same"]
+    @min_words = settings["min_words"]
+    @same_similarity = [@similarity + SAME_MARGIN, 0.95].min
+    @carry = +""
+    @window = [] # the last max_period + 1 sentences
+    @run = Array.new(@max_period + 1, 0)
+    @run_chars = Array.new(@max_period + 1, 0) # chars of the run's sentences plus the first cycle's
+    @counts = Hash.new(0)
+    @thinking_chars = 0
+  end
+
+  # @param delta [String] new thinking
+  # @return [Loop, nil] the loop, once it is seen
+  def feed(delta)
+    delta = delta.to_s
+    @thinking_chars += delta.length
+    @carry << delta
+    found = nil
+    sentences.each do |text|
+      loop_seen = add(text)
+      found ||= loop_seen
+    end
+    found
+  end
+
+  private
+
+  # The complete sentences in the carry; the unfinished tail stays.
+  def sentences
+    parts = @carry.split(SPLIT, -1)
+    @carry = parts.pop.to_s
+    if @carry.length > MAX_CARRY
+      cut = @carry.rindex(" ", MAX_CARRY) || MAX_CARRY
+      parts << @carry[0, cut]
+      @carry = @carry[cut..].to_s.lstrip
+    end
+    parts
+  end
+
+  def add(text)
+    words = text.downcase.gsub(/[^[:alnum:]]+/, " ").split
+    return nil if words.length < @min_words
+
+    key = words.join(" ")
+    sentence = Sentence.new(text: text.strip, words: words.map(&:hash).uniq,
+                            bigrams: words.each_cons(2).map { |pair| pair.join(" ").hash }.uniq, key: key, length: text.length)
+    same = count(key)
+    cycle = cycle_loop(sentence)
+    @window << sentence
+    @window.shift if @window.length > @max_period + 1
+    return nil if @thinking_chars < @min_chars
+
+    cycle || (same >= @max_same ? Loop.new(period: 1, times: same, sentences: [sentence.text], chars: nil) : nil)
+  end
+
+  def count(key)
+    return @counts[key] += 1 if @counts.key?(key) || @counts.size < MAX_DISTINCT
+
+    0
+  end
+
+  def cycle_loop(sentence)
+    found = nil
+    (1..@max_period).each do |p|
+      before = @window[-p]
+      if before && similarity(sentence, before) >= (p == 1 ? @same_similarity : @similarity)
+        # The run starts after one whole cycle: its chars count too.
+        @run_chars[p] = @window.last(p).sum(&:length) if @run[p].zero?
+        @run[p] += 1
+        @run_chars[p] += sentence.length
+      else
+        @run[p] = 0
+        @run_chars[p] = 0
+        next
+      end
+      next if found || @run[p] < p * (@repeats - 1)
+      next if @run[p] + p < @min_span_sentences || @run_chars[p] < @min_span_chars
+
+      cycle = @window.last(p - 1) + [sentence]
+      next if p > 1 && cycle.each_cons(2).all? { |a, b| similarity(a, b) >= @similarity }
+
+      found = Loop.new(period: p, times: (@run[p] + p) / p, sentences: cycle.map(&:text), chars: @run_chars[p])
+    end
+    found
+  end
+
+  def similarity(a, b)
+    return 1.0 if a.key == b.key
+
+    (jaccard(a.words, b.words) + jaccard(a.bigrams, b.bigrams)) / 2
+  end
+
+  def jaccard(a, b)
+    shared = (a & b).size
+    all = a.size + b.size - shared
+    all.zero? ? 0.0 : shared.to_f / all
+  end
+end
 
 class Plugin
   DEFAULT_IGNORE = %w[task_wait task_get delegate_result list_sessions list_reminders].freeze
   # Built-in tools carry flat fields; plugin and unknown tools carry args:.
   KEY_FIELDS = %i[content path start_line end_line cwd env scope].freeze
   SHORT_CHARS = 60
+  THOUGHT_CHARS = 80
   SOURCE = "bundle loop-guard"
 
   def initialize(settings = {})
@@ -31,6 +198,7 @@ class Plugin
     @stop_after = positive(settings["stop_after"]) || 4
     @ignore = settings.key?("ignore_tools") ? Array(settings["ignore_tools"]).map(&:to_s) : DEFAULT_IGNORE
     @mode = settings["mode"].to_s == "notify" ? :notify : :deny
+    @thinking = ThinkingWatch.settings(settings["thinking"])
     reset
   end
 
@@ -38,9 +206,51 @@ class Plugin
     chi.on(:before_turn) { |_event| reset }
     chi.on(:before_tool_call) { |event, ctx| before(event, ctx) }
     chi.on(:after_tool_call) { |event| after(event) }
+    return unless @thinking["watch"]
+
+    chi.on(:before_generation) do |_event|
+      @watch = ThinkingWatch.new(@thinking)
+      @watch_done = false
+    end
+    chi.on(:generation_progress) { |event, ctx| progress(event, ctx) }
   end
 
   private
+
+  # A stretch of streamed thinking. The first loop in a turn is cut and the
+  # model asked again (action retry); a second one, or action stop, stops
+  # the turn with a card; action notify only warns, once per generation.
+  def progress(event, ctx)
+    return if @watch.nil? || @watch_done
+
+    found = @watch.feed(event[:thinking])
+    return unless found
+
+    @watch_done = true
+    what = "#{found.period == 1 ? "one sentence" : "#{found.period} sentences"} ×#{found.times}, " \
+           "#{(@watch.thinking_chars / 1000.0).round}k chars, #{(event[:elapsed_ms].to_i / 1000.0).round} s"
+    case @thinking["action"]
+    when "notify"
+      ctx.notify("thinking repeats itself (#{what})", level: :warn)
+    when "retry"
+      @thinking_loops += 1
+      return stop_thinking(event, ctx, found, what) if @thinking_loops > 1
+
+      ctx.notify("thinking repeats itself (#{what}): cut", level: :warn) if event[:stop_generation]&.call("its thinking kept repeating itself")
+    else
+      stop_thinking(event, ctx, found, what)
+    end
+  end
+
+  def stop_thinking(event, ctx, found, what)
+    return unless event[:stop_turn]&.call("the model's thinking kept repeating itself (#{what})")
+
+    lines = found.sentences.first(3).map { |sentence| "- \"#{cut(sentence, THOUGHT_CHARS)}\"" }
+    ctx.card(title: "loop-guard stopped the turn",
+             body: "The model's thinking kept repeating itself:\n\n#{lines.join("\n")}\n\n" \
+                   "Try: ask for a smaller step, or change the model's sampling (`sampling:` in config.yml).",
+             level: :warn)
+  end
 
   def reset
     @last_result = {}  # key => result hash
@@ -50,6 +260,8 @@ class Plugin
     @warned = {}       # key => true once notified this turn
     @denials = 0
     @pending = nil
+    @thinking_loops = 0
+    @watch = nil
   end
 
   def before(event, ctx)
@@ -147,8 +359,8 @@ class Plugin
     text.empty? ? "no output" : cut(text)
   end
 
-  def cut(text)
-    text.length > SHORT_CHARS ? "#{text[0, SHORT_CHARS - 1]}…" : text
+  def cut(text, max = SHORT_CHARS)
+    text.length > max ? "#{text[0, max - 1]}…" : text
   end
 
   def positive(value)

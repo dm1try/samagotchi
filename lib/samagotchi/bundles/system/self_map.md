@@ -32,7 +32,8 @@
   child sessions and services (e.g. MCP server processes). Shipped: `btw` (`/btw` side question),
   `mcp` (MCP server tools; a screenshot comes as a picture), `guardrails` (rules), `known-names` (typo guard), `source-links`
   (turns source refs like JIRA-123 in an answer into links in the web, and a one-line note), `loop-guard`
-  (denies a repeated tool call with the same result, stops the turn after a few), `check-in` (after N tool
+  (denies a repeated tool call with the same result, stops the turn after a few, and cuts thinking that
+  repeats itself, asking me again), `check-in` (after N tool
   calls with no answer, a card asks the user to nudge me, let me go on or stop; `/checkin`), `skills` (`/skill save|list|show|diff`,
   keeps older versions of `skill_*` memories). `chi bundle list`
   shows installed + available; `chi bundle install <name>`. Settings: config.yml `bundles: <name>:`

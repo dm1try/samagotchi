@@ -735,7 +735,9 @@ bundles:
 
 `chi bundle install loop-guard` installs the bundle shipped with chi. It is
 written only against this API (`lib/samagotchi/bundles/loop-guard/plugin.rb`),
-with `chi.on` hooks, and has no memory file.
+with `chi.on` hooks, and has no memory file. It guards two kinds of loop:
+repeated tool calls (below) and [thinking that repeats
+itself](#thinking-that-repeats-itself).
 
 A local model can run the same tool call again and again in one turn: each
 step's thinking starts over, so it never notices it already tried. (A real
@@ -778,12 +780,76 @@ bundles:
 Its hooks run at the default priority (100), after known-names (50), so in
 known-names' `correct` mode loop-guard keys the corrected call.
 
+### Thinking that repeats itself
+
+A model can also go in circles inside one generation: its thinking says the
+same few sentences again and again ("Wait, let me check once more…") for
+minutes, until the provider's output cap ends it with no answer. loop-guard
+watches the thinking while it streams ([Watching the
+stream](hooks.md#watching-the-stream)) and cuts it:
+
+- The thinking is cut into sentences; short ones (under `min_words`) are
+  skipped. Two sentences count as the same when their words and word pairs
+  mostly match (`similarity`), so a reworded round ("Hmm, …", a synonym, a
+  swapped clause) still counts.
+- A loop is a cycle of 1 to `max_period` sentences seen `repeats` times in a
+  row, over at least `min_span_sentences` sentences and `min_span_chars`
+  chars; or one sentence `max_same` times anywhere in the generation. One
+  sentence over and over must be near-identical (`similarity` + 0.4), and a
+  longer cycle must hold different sentences: a list of templated sentences
+  ("Now I need to open the file <path> and …" for 14 paths) is no loop.
+- Nothing triggers before `min_chars` of thinking. The watch sees a loop
+  within one batch (2000 chars, or a second) of its third cycle.
+
+What happens (`action: retry`, the default):
+
+1. The first loop in a turn: the generation is cut and the model asked
+   again, with a hidden note that it was cut off. The user sees
+   `loop-guard> thinking repeats itself (3 sentences ×3, 4k chars, 8 s): cut`
+   and `↻ cut by loop-guard, asking again (1/1)`.
+2. If the retry loops too, the turn is stopped ("stopped the turn: …", "✕
+   turn canceled (hook)") with a card that quotes the repeated sentences.
+
+The cut uses the `retry.empty_answer` budget: with `retry.empty_answer: 0`
+the first loop ends the turn as cancelled (hook), with the notice and no
+card. `action: stop` stops the turn at the first loop; `action: notify` only
+warns, once per generation.
+
+```yaml
+bundles:
+  loop-guard:
+    thinking:
+      watch: true             # false: the tool-call guard only
+      action: retry           # retry (cut, ask again; then stop) | stop | notify
+      min_chars: 2000         # thinking this long before anything triggers
+      repeats: 3              # a cycle seen this many times is a loop
+      max_period: 6           # cycles of up to this many sentences
+      similarity: 0.5         # 0..1, how alike two sentences must be to count as the same
+      min_span_sentences: 6   # a loop spans at least this many sentences…
+      min_span_chars: 600     # …and this many chars
+      max_same: 8             # one sentence this many times in one generation is a loop
+      min_words: 5            # shorter sentences are ignored
+```
+
+Not watched:
+
+- thinking that arrives as answer text: Gemma 4 on the raw-prompt path (no
+  close marker), a chat provider that puts `<think>` in the content;
+- a chat host with streaming off (no chunks);
+- loops in the visible answer;
+- a runaway without sentences, such as an endless comma list of numbers: it
+  ends at the output cap as an empty answer, which `retry.empty_answer`
+  retries after the fact.
+
+A real small model's circular re-checking that repeats one sentence 8 times
+is cut even if it would have found an answer later; `max_same` sets how
+patient that is.
+
 Not caught (yet):
 
 - near-duplicates, such as `find . -name 'config*'` after `'config.yml'`;
 - loops across turns;
-- alternating calls (A, B, A, B) that each return something new;
-- thinking that goes in circles inside one long generation.
+- alternating calls (A, B, A, B) that each return something new.
 
 ## The check-in bundle
 
