@@ -52,14 +52,15 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 | `:before_turn` | Before each turn starts | `{ type: :before_turn, session_id: "...", prompt: "..." (nil on a continue), messages: [...] (the history before this turn) }` |
 | `:after_turn` | After a turn completed or was cancelled (not after one that failed) | `{ type: :after_turn, status: "completed" \| "canceled", present: (see [Presenting the answer](#presenting-the-answer-display-only)), messages: [...] (the conversation the turn stored; a cancelled or empty turn ends it with a `kind: turn_note` system message, and a context line is `kind: context`, see [sessions.md](sessions.md#notes-a-turn-leaves-for-the-model)) }` |
 | `:before_generation` | Before each LLM API call (both loops) | `{ type: :before_generation, iteration: N }` |
-| `:after_generation` | After LLM returns (both loops) | `{ type: :after_generation, iteration: N, response: "...", messages: [...] (the conversation as sent) }` |
+| `:after_generation` | After LLM returns (both loops); not after a generation a hook cut (`stop_generation`) | `{ type: :after_generation, iteration: N, response: "...", messages: [...] (the conversation as sent) }` |
+| `:generation_progress` | While the response streams, in batches (see [Watching the stream](#watching-the-stream)) | `{ type: :generation_progress, iteration: N, thinking: "..." (new since the last fire), text: "..." (new visible text), thinking_chars: N, text_chars: N (this generation so far), elapsed_ms: N }` |
 | `:before_tool_call` | Before tool dispatch (and before `tool_call_started`) | `{ type: :before_tool_call, iteration: N, call: {...}, params: "...", guardrail: Verdict, context: {...}, targets: {...}, blocked: false, block_reason: nil }` |
 | `:after_tool_call` | After tool execution | `{ type: :after_tool_call, iteration: N, tool: "read", output: "..." }` |
 | `:session_end` | After every turn (turn-level lifecycle) | `{ type: :session_end, session_id: "..." }` |
 
 Every event also carries the hook runtime (next section): `hook:` (the label
 of the hook about to run) and the callables `notify:`, `ask_user:`,
-`stop_turn:`, `steer:`.
+`stop_turn:`, `steer:`, `stop_generation:`.
 
 `messages:` is a **read-only copy**: a frozen array of copied message hashes
 (`{role:, content:, …}`). A hook that mutates it, or its strings, gets
@@ -69,8 +70,9 @@ cheap).
 ## What a hook can do: the runtime
 
 Besides reading (and, on `:before_tool_call`, voting on) its event, a hook
-can talk to the user, and to the running turn, through four callables the
-registry puts on every event:
+can talk to the user, and to the running turn, through the callables the
+registry puts on every event (`stop_generation`, the fifth, is in
+[Watching the stream](#watching-the-stream)):
 
 ```ruby
 class Watchful
@@ -119,6 +121,67 @@ Timing: a notice from `:after_turn` or `:session_end` shows after the turn's
 end line. A question from `:before_tool_call` shows **before** the tool
 line (the gate runs first), so its text should name the call. The notices
 are also logged (`turn` tag, `hook_notice`).
+
+## Watching the stream
+
+`:generation_progress` sees a model response **while it streams**: the
+thinking and the visible text, on both the raw-prompt path (llama.cpp
+`/completion`, `/v1/completions`) and the chat path (`api: openai`). It fires
+for the turn's own generations only (not a plugin's `ctx.ask_model`, not a
+recap).
+
+When it fires: once 2000 new chars (thinking + text) are pending, or once a
+second has passed since the last fire with anything pending. It is checked
+as each chunk arrives (there is no timer), so a silent stream fires nothing.
+There is no fire at the end of a generation (`:after_generation` sees the
+whole response), and none after the turn or the generation was cancelled.
+A 240k-char thinking gives about 120 fires.
+
+`thinking` holds what the model streamed as thinking: `reasoning_content`
+on the chat path, a Qwen `<think>` block on the raw-prompt path. Some
+thinking arrives as `text` instead: Gemma 4's on the raw-prompt path (it has
+no close marker), and a chat provider's that puts `<think>` inside the
+answer's content. Tool-call bodies are left out of `text`. With streaming off
+(`stream: false` on a chat host) there are no chunks, so no fires.
+
+**Keep it fast.** The hook runs on the turn's thread, inside the HTTP read:
+while it runs, tokens wait in the socket (nothing is lost). A hook over
+100 ms logs `stream_hook_slow` (warn, with its label and the ms) once per
+turn. Don't ask questions or call the model from it: `event[:ask_user]`
+returns nil at once here, and `ctx.ask_model` would hold the stream for its
+whole answer. A hook that never returns hangs the turn, as any hook does. A
+plugin's block that raises is logged (`plugin_hook_failed`) at most once a
+minute.
+
+Two ways to act:
+
+- `event[:stop_turn].call(reason)`: as anywhere, a warn notice and the turn
+  ends cancelled (hook). The socket closes at once.
+- `event[:stop_generation].call(reason)`: cut **this generation** only. The
+  turn goes on: the model is asked again with a hidden note ("your last
+  reply was cut off by <bundle>: <reason>. Don't start the same reasoning
+  again; …") at the retry temperature, and the UIs print `↻ cut by
+  <bundle>, asking again (1/1)`. True when a streaming generation was cut
+  now; false with none streaming, once it was cut, after a cancel, and from
+  `:after_turn` / `:session_end`.
+
+What a cut is, in detail:
+
+- It is an empty answer made early: it uses the `retry.empty_answer` budget
+  ([configuration.md](configuration.md#llama-network-retry-behavior)). With
+  no retry left (`retry.empty_answer: 0`, or already used), the turn ends
+  cancelled (hook): "✕ turn canceled (hook)".
+- It shows nothing by itself: post your own notice (`event[:notify]`) to say
+  why. The bundle and the reason go into the note the model reads and the
+  log (`generation_stopped`).
+- Queued input (the user's line, or a hook's `steer`) goes in place of the
+  hidden note, as for an empty answer; then there is no `↻` line.
+- The cut generation is not kept: its thinking and any visible text it had
+  streamed go with it (the retry answers anew). `:after_generation` doesn't
+  fire for it, and its token usage is lost (the stream never sent its last
+  chunk). A client that joins the running turn still sees its thinking in
+  the turn so far until the turn ends.
+- A Stop from the user right after a cut is a plain cancel.
 
 ## Presenting the answer (display only)
 

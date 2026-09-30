@@ -8,6 +8,15 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Plugins can watch a response while it streams: the `:generation_progress`
+  hook gets the new thinking and text in batches (2000 chars or a second),
+  and `event[:stop_generation]` / `ctx.stop_generation` cut the generation
+  while the turn goes on: the model is asked again (`↻ cut by <bundle>,
+  asking again (1/1)`), using the `retry.empty_answer` budget. See
+  docs/hooks.md, "Watching the stream".
+
 ### Changed
 
 - `chi web` draws turns with the stage view by default (`web.view: stage`:

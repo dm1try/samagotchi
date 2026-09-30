@@ -311,6 +311,34 @@ This is a bundle hook, the same as a `hooks/*.rb` file. See
 `plugin.rb (bundle my-bundle)`. The block may take only the event. If it
 raises, the error is logged and the hook is skipped.
 
+#### Watching the stream
+
+`chi.on(:generation_progress)` sees a response while it streams, in batches
+(2000 chars or a second), and `event[:stop_generation]` (or
+`ctx.stop_generation`) cuts it while the turn goes on: the model is asked
+again. The rules (the thread it runs on, keeping it fast, what a cut does)
+are in [hooks.md](hooks.md#watching-the-stream).
+
+```ruby
+class Plugin
+  LIMIT = 50_000
+
+  def register(chi)
+    chi.on(:generation_progress) do |event, ctx|
+      next if event[:thinking_chars] < LIMIT
+
+      # Once per generation: a cut generation fires no more.
+      if event[:stop_generation].call("it thought for over #{LIMIT / 1000}k chars")
+        ctx.notify("thinking too long (#{event[:elapsed_ms] / 1000} s): cut", level: :warn)
+      end
+    end
+  end
+end
+```
+
+loop-guard's thinking watch is built on this ([The loop-guard
+bundle](#the-loop-guard-bundle)).
+
 ### `chi.service(name, eager: false) { |svc| … }`
 
 A long-lived thing the plugin keeps for the session: a server process, a
@@ -439,6 +467,7 @@ session's life, and each read gives the session as it is now.
 | `ctx.cancelled?` | whether the running turn was cancelled (a long tool should stop) |
 | `ctx.steer(text)` | put text into the running turn, like a hook's `event[:steer]`: its own user message at the loop's next boundary, shown as `my-bundle> nudged: …`. Returns true when queued, false with no turn running (it never starts one; that is `ctx.sessions`' send). Dropped (logged) if the model answers or the turn ends first. Safe from any thread: an anytime command, a hook, your own |
 | `ctx.stop_turn(reason)` | stop the running turn after a warn notice with the reason, like a hook's `event[:stop_turn]`; true when it stopped one now |
+| `ctx.stop_generation(reason)` | cut the generation that is streaming, like a hook's `event[:stop_generation]`: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
 | `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
 | `ctx.sessions` | fork, send to and read other sessions: see [Other sessions](#other-sessions-ctxsessions) |
 

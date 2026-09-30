@@ -275,6 +275,13 @@ its model turns keep their `tool_calls` and tool results their `tool_call_id`,
 so later requests and resumed sessions pair them. It has its own system prompt
 (no raw-prompt tool declarations; the tools go as JSON schemas).
 
+`Engine#build_stream_event_handler` is the one seam both loops' streams pass
+through: with a `:generation_progress` hook registered it feeds a
+`Hooks::StreamWatch` each chunk's thinking and text after the UIs had it. A
+hook's `stop_generation` cancels the generation's own controller (a child of
+the turn's, `CancellationController#generation`), and each loop takes the cut
+as an empty answer and asks again.
+
 **Adapters.** `Client` (raw-prompt servers) and `LLM::OpenAIChat` (one per host,
 `HostRegistry#adapter_for`) share `LLM::HTTP`: timeouts, TLS for https, a line
 reader for streamed bodies, the retry loop (`retry.*`; network errors, 429 and
