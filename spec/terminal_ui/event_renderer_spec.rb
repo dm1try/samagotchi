@@ -296,5 +296,7 @@ RSpec.describe Samagotchi::TerminalUI::Formatting, "#format_empty_retry_line" do
     end.new
 
     expect(view.format_empty_retry_line({ attempt: 1, of: 2 })).to eq("↻ empty answer, asking again (1/2)")
+    expect(view.format_empty_retry_line({ attempt: 1, of: 1, stopped_by: "loop-guard" }))
+      .to eq("↻ cut by loop-guard, asking again (1/1)")
   end
 end

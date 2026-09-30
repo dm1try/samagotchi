@@ -327,6 +327,7 @@ import { emptyRetryLine } from "../../../lib/samagotchi/web/public/turn_events.j
 
 test("emptyRetryLine says the loop asks again, with the attempt", () => {
   assert.equal(emptyRetryLine({ attempt: 1, of: 1 }), "↻ empty answer, asking again (1/1)");
+  assert.equal(emptyRetryLine({ attempt: 1, of: 1, stopped_by: "loop-guard" }), "↻ cut by loop-guard, asking again (1/1)");
 });
 
 test("snapshotEvents passes an edit's diff on, so a mid-turn join shows it", () => {

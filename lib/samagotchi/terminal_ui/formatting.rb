@@ -37,9 +37,11 @@ module Samagotchi
         paint("#{source.to_s.empty? ? "plugin" : source}> nudged: #{first}", 90)
       end
 
-      # "↻ empty answer, asking again (1/1)": the loop retries an empty answer.
+      # "↻ empty answer, asking again (1/1)": the loop retries an empty answer;
+      # "↻ cut by loop-guard, asking again (1/1)" after a plugin cut it.
       def format_empty_retry_line(event)
-        paint("↻ empty answer, asking again (#{event[:attempt]}/#{event[:of]})", 90)
+        what = event[:stopped_by] ? "cut by #{event[:stopped_by]}" : "empty answer"
+        paint("↻ #{what}, asking again (#{event[:attempt]}/#{event[:of]})", 90)
       end
 
       # " → image 1280×800" after a tool line whose tool read an image.
