@@ -8,6 +8,18 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- A reload of the web page, or joining a running turn, shows the turn's own
+  rows where they were live: the "↻ empty answer / cut by <bundle>, asking
+  again" row (also when `chi --attach` joins), an answered or dismissed
+  question card, and a line sent while the turn ran (a "steered" bubble in
+  that turn; it no longer splits the turn in two, which shifted the timing
+  lines of later turns). A guardrail or plugin load warning comes back above
+  the turns after it instead of at the end, and a canceled turn's timing
+  line says "· canceled" live too. Rows and cards of finished turns last as
+  long as the session's worker.
+
 ## [0.6.0] - 2026-09-30
 
 ### Added
