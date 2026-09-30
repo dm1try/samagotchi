@@ -21,8 +21,9 @@ module Samagotchi
     # of ArgumentError for existing callers; transports map it to 409 Conflict.
     class NotPending < ArgumentError; end
 
-    DISMISSED_NOTE = "The user dismissed the question without answering. Go on with your best judgement, " \
-                     "or ask in your reply if you can't."
+    DISMISSED_NOTE = "The user dismissed the question without answering. Don't do what you asked about, " \
+                     "or anything else that changes files or state. Finish your reply with what you found " \
+                     "and what you would do, and wait."
 
     # @param session           [#call] → Session, nil
     # @param state_dir         [#call] → String, the session's state dir

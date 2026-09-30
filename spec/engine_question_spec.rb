@@ -289,7 +289,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       answer = JSON.parse(engine.request_question(payload))
       expect(answer).not_to have_key("error")
       expect(answer).to include("dismissed" => true)
-      expect(answer["note"]).to include("dismissed the question without answering", "best judgement")
+      expect(answer["note"]).to include("dismissed the question without answering", "Don't do what you asked about")
       expect(engine.pending_question).to be_nil
     end
   end

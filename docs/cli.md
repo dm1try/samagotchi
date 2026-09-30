@@ -218,7 +218,8 @@ of UIs at once: the Web UI and attached terminals (`chi`, `--resume`,
 `--attach`). They all see the same turns as they happen, and any of them can send
 a prompt, also while a turn runs (it merges into that turn as steering). The
 first answer to an `ask_user_question` wins; the other UIs close their widget.
-An empty answer dismisses the question in every UI.
+An empty answer dismisses the question in every UI. The model is then told
+not to go ahead with what it asked about, or change anything else, and to wait.
 
 In an attached terminal:
 
