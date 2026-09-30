@@ -123,13 +123,15 @@ test("a reload after the turn shows the context meter and the card's ctx", async
   await expect(page.locator("#topStrip .card .ctx").first()).toHaveText(/^\d+%$/);
 });
 
-test("cancel mid-turn shows the canceled turn, and the next send works", { tag: "@turn" }, async ({ page, script }) => {
+test("cancel mid-turn shows the canceled turn (its timing line too), and the next send works", { tag: "@turn" }, async ({ page, script }) => {
   script("hold");
   await send(page, "Take your time");
   await expect(page.locator("#cancelBtn")).toBeVisible();
   await page.locator("#cancelBtn").click();
   await expect(page.locator(`${H()} .bubble.cancel`)).toContainText("canceled");
   await expect(page.locator("#cancelBtn")).toBeHidden();
+  // The timing line says so live, as a reload has it.
+  await expect(page.locator(`${H()} .turn-timing`).first()).toHaveText(/^turn 1 · .+ · canceled$/);
 
   script("plain");
   await send(page, "Say pong");
