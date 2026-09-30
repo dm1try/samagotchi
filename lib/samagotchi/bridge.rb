@@ -64,7 +64,7 @@ module Samagotchi
     # @param heartbeat_interval [Float] idle `: ping` seconds
     # @param input_format [Integer, nil] the input-file format the owning
     #   worker reads, advertised in the sidecar for writers (see
-    #   SessionManager.write_turn_input); nil advertises none (plain text)
+    #   SessionManager::INPUT_FORMAT); nil advertises none
     # @param on_input [#call, nil] called once a turn for this session is
     #   queued, to wake the worker loop (Worker::Waker#wake)
     # @param on_command [#call, nil] takes a session command
@@ -673,11 +673,6 @@ module Samagotchi
 
       [{}, 202, { status: "accepted", enqueued_id: enqueued_id, session_id: sid }]
     rescue StandardError => e
-      # SessionManager loads lazily (enqueue_turn).
-      if defined?(SessionManager::ImagesUnsupported) && e.is_a?(SessionManager::ImagesUnsupported)
-        return [{}, 409, { error: "images_unsupported", detail: e.message }]
-      end
-
       [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 

@@ -104,13 +104,6 @@ RSpec.describe Samagotchi::Web::App, "images" do
       end
       expect(manager.inputs).to be_empty
     end
-
-    it "refuses images for a worker that predates them (format 2)" do
-      ref = JSON.parse(upload.last)
-      File.write(File.join(session_dir, "bridge.json"), JSON.generate("port" => 1, "session_id" => session.id, "input_format" => 2))
-      status, _, body = turn([ref])
-      expect([status, JSON.parse(body)["error"]]).to eq([409, "images_unsupported"])
-    end
   end
 
   it "creates an idle session for a first message with images" do

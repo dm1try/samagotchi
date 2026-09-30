@@ -384,20 +384,6 @@ RSpec.describe Samagotchi::SendCommand do
       expect(inputs_of(a)).to be_empty
     end
 
-    it "fails a session whose worker predates images, with the reason" do
-      a = make(owner: "worker")
-      engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
-                                      kernel: instance_double(Samagotchi::KernelLoop))
-      bridge = Samagotchi::Bridge.new(engine: engine, state_dir: tmpdir, session_id: a.id, heartbeat_interval: 5,
-                                      input_format: 2)
-      bridge.start
-      bridges << bridge
-
-      expect(run("--image", png, "-m", "x", a.id)).to eq(1)
-      expect(out.string).to eq("#{short(a)}  failed: this session's worker predates images: restart it (/exit, then resume)\n")
-      expect(inputs_of(a)).to be_empty
-    end
-
     it "with --new starts the session idle, waits for its worker, then sends the turn with the image (one worker)" do
       started = nil
       worker = nil

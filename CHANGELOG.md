@@ -18,6 +18,10 @@ and commands may change between minor versions. How releases are made:
 
 - `POST /api/sessions/:id/answer` no longer takes the unused aliases `question_id`, `selection`, `other` or
   a nested `answer` object: only `id`, `selected` and `freeform`, as the web page sends them.
+- Sessions no longer write plain-text input for a worker from before 2026-09-23 (one that advertises no input
+  format) or refuse images to one that predates them (`images_unsupported`), and a worker no longer reads
+  `input/*.txt`: every chi since then writes and reads JSON input. A worker that old never exits by itself;
+  restart it (`chi sessions stop ID`, then send to it) before upgrading.
 
 ## [0.7.0] - 2026-09-30
 

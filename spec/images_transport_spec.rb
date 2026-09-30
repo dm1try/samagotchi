@@ -68,13 +68,10 @@ RSpec.describe "Images in transport" do
       expect(Samagotchi::SessionManager.read_input(claimed)).to eq(["look", nil, false, [wire_ref]])
     end
 
-    it "refuses images for a worker that reads format 2, and still writes it JSON" do
+    it "writes the refs whatever input format the sidecar advertises" do
       write_sidecar(2)
-      expect { Samagotchi::SessionManager.write_turn_input(session.id, prompt: "look", images: [wire_ref], state_dir: tmpdir) }
-        .to raise_error(Samagotchi::SessionManager::ImagesUnsupported, /restart it/)
-      path = Samagotchi::SessionManager.write_turn_input(session.id, prompt: "text", state_dir: tmpdir)
-      expect(path).to end_with(".json")
-      expect(Samagotchi::SessionManager.input_has_images?(path)).to be(false)
+      path = Samagotchi::SessionManager.write_turn_input(session.id, prompt: "look", images: [wire_ref], state_dir: tmpdir)
+      expect(Samagotchi::SessionManager.input_has_images?(path)).to be(true)
     end
   end
 
@@ -117,16 +114,6 @@ RSpec.describe "Images in transport" do
       expect([status, body["error"]]).to eq([413, "too_large"])
     end
 
-    it "answers 409 when another session's worker predates images" do
-      other = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir).tap { |s| s.save(state_dir: tmpdir) }
-      other_dir = Samagotchi::Session.session_dir(other.id, state_dir: tmpdir)
-      other_ref = Samagotchi::ImageStore.ingest(other_dir, path: File.expand_path("fixtures/images/tiny.png", __dir__),
-                                                           resizer: Samagotchi::ImageResizer.new(nil))
-      File.write(File.join(other_dir, "bridge.json"), JSON.generate("port" => 1, "session_id" => other.id, "input_format" => 2))
-
-      status, body = post(session_id: other.id, prompt: "look", images: [other_ref])
-      expect([status, body["error"]]).to eq([409, "images_unsupported"])
-    end
   end
 
   describe "the worker" do

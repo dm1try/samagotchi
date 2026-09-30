@@ -149,7 +149,7 @@ module Samagotchi
     # @return [Response]
     # @param no_interrupt [Boolean] run the turn with the raised iteration limit
     # @param images [Array<Hash>] refs ({file:, name:}) to images already in
-    #   the session's images/ (409 images_unsupported from an older worker)
+    #   the session's images/
     def post_turn(prompt:, client_id: nil, no_interrupt: false, images: nil)
       body = { session_id: @session_id, prompt: prompt, client_id: client_id }
       body[:no_interrupt] = true if no_interrupt

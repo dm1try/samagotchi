@@ -1469,19 +1469,21 @@ RSpec.describe Samagotchi::SessionManager do
       expect(JSON.parse(File.read(path))).to eq("prompt" => "hi", "client_id" => "web:1", "enqueued_id" => "e1")
     end
 
-    it "writes plain text for a live worker that predates structured input" do
-      write_sidecar("port" => 1, "session_id" => session.id)
+    it "writes JSON whatever input format the sidecar advertises (no worker from before format 2 or 3 is left)" do
+      [{}, { "input_format" => 2 }].each do |advertised|
+        write_sidecar({ "port" => 1, "session_id" => session.id }.merge(advertised))
 
-      path = described_class.write_turn_input(session.id, prompt: "hi", client_id: "web:1", state_dir: tmpdir)
+        path = described_class.write_turn_input(session.id, prompt: "hi", client_id: "web:1", state_dir: tmpdir)
 
-      expect(path).to end_with(".txt")
-      expect(File.read(path)).to eq("hi")
+        expect(JSON.parse(File.read(path))).to eq("prompt" => "hi", "client_id" => "web:1")
+      end
     end
 
-    it "writes JSON for a worker that advertises input_format 2" do
-      write_sidecar("port" => 1, "session_id" => session.id, "input_format" => 2)
+    it "does not read a plain-text input file" do
+      FileUtils.mkdir_p(input_dir)
+      File.write(File.join(input_dir, "1.txt"), "hi")
 
-      expect(described_class.write_turn_input(session.id, prompt: "hi", state_dir: tmpdir)).to end_with(".json")
+      expect(described_class.find_new_input_files(session_dir)).to eq([])
     end
 
     def run_worker_with(engine)
@@ -1495,9 +1497,8 @@ RSpec.describe Samagotchi::SessionManager do
       }.to raise_error(SystemExit)
     end
 
-    it "runs queued turns with their origin, text or JSON" do
+    it "runs queued turns with their origin, or none" do
       described_class.write_turn_input(session.id, prompt: "from web", client_id: "web:1", enqueued_id: "e1", state_dir: tmpdir)
-      write_sidecar("port" => 1, "session_id" => session.id) # an old worker's sidecar: next write is .txt
       described_class.write_turn_input(session.id, prompt: "plain", state_dir: tmpdir)
       engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil)
       runs = []

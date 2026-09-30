@@ -782,8 +782,6 @@ module Samagotchi
         end
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)
-      rescue SessionManager::ImagesUnsupported => e
-        error_response(409, "images_unsupported", e.message)
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
       end

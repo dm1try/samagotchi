@@ -37,7 +37,7 @@ module Samagotchi
   #       ├── owner.lock          # flock held by the session's one owner (OwnerLock)
   #       ├── input/              # clients (web/terminal UI) write messages here
   #       │   └── <timestamp>.json # one file per user message: {prompt, client_id,
-  #       │                        # enqueued_id} (plain <timestamp>.txt for old workers)
+  #       │                        # enqueued_id, no_interrupt?, images?}
   #       ├── notes/              # context notes: background text the worker adds to
   #       │   └── <ts>-<rand>.json # the conversation between turns, never a turn
   #       │                        # ({text, source, from_session?, from_cwd?, created_at})
@@ -56,20 +56,11 @@ module Samagotchi
     NOTE_MAX_BYTES = 16 * 1024
     OUTPUT_DIR = "output"
     PID_FILE   = "pid"
-    # Input-file format this worker reads, advertised in the Bridge sidecar:
-    #   2  JSON with the sender's ids (and plain text)
-    #   3  images: refs too
-    # A worker that doesn't advertise one reads only .txt, and such workers
-    # never exit.
+    # Input-file format this worker reads (JSON with the sender's ids and
+    # images: refs), advertised in the Bridge sidecar so a chi from before
+    # it (one that wrote plain .txt to a worker not advertising 2, or held
+    # images back below 3) writes what this one reads.
     INPUT_FORMAT = 3
-    STRUCTURED_INPUT_FORMAT = 2
-    IMAGES_INPUT_FORMAT = 3
-
-    # A turn with images for a worker older than IMAGES_INPUT_FORMAT, which
-    # would drop them.
-    class ImagesUnsupported < StandardError
-      def initialize(msg = "this session's worker predates images: restart it (/exit, then resume)") = super
-    end
     # Origin of the synthetic turn queued when reminders are due.
     REMINDER_CLIENT_ID = "system:reminder"
 
@@ -839,21 +830,17 @@ module Samagotchi
     # Write a user turn into a session's input directory via the same file IPC
     # the worker polls. Reused by the bridge's POST surface so a turn is
     # fire-and-forget and never calls run_turn across the thread/process
-    # boundary. The file is JSON carrying the sender's ids, unless the
-    # session's live worker predates structured input (plain text then).
+    # boundary. The file is JSON carrying the sender's ids.
     # @param client_id [String, nil] the sending UI
     # @param enqueued_id [String, nil] the id its ACK / :turn_enqueued carry
     # @param images [Array<Hash>] image refs ({file:, name:}) in the
-    #   session's images/ (raises ImagesUnsupported for an older worker)
+    #   session's images/
     # @return [String, false] the input file's path, or false.
     def self.write_turn_input(session_id, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, state_dir: nil,
                               images: [])
       sd = state_dir || Session.default_state_dir
-      session_dir = Session.session_dir(session_id, state_dir: sd)
-      images = Array(images)
-      raise ImagesUnsupported if !images.empty? && !images_input?(session_dir)
-
-      write_input_file(session_dir, prompt, client_id, enqueued_id, no_interrupt, images)
+      write_input_file(Session.session_dir(session_id, state_dir: sd), prompt, client_id, enqueued_id, no_interrupt,
+                       Array(images))
     end
 
     # How long a turn waits for the Bridge of a worker a resume just spawned.
@@ -876,16 +863,11 @@ module Samagotchi
     #   ack:} when it took the request but never answered (no file then), or
     #   {status: :failed} when the input file couldn't be written
     # @raise [OwnedByTUI] a chi REPL owns the session
-    # @raise [ImagesUnsupported] images for a worker that predates them
     # @raise [ArgumentError] no such session
     def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], state_dir: nil, manager: self, bridge: nil)
       session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
       bridge ||= -> { BridgeClient.wait_for(session_id, session_dir: session_dir, timeout: TURN_BRIDGE_WAIT) }
       manager.resume_session(session_id, state_dir: state_dir) if manager.respond_to?(:resume_session)
-      # A worker that predates images would drop them (its Bridge ignores
-      # them): refuse, so the sender keeps the chips and the text.
-      raise ImagesUnsupported if images.any? && !images_input?(session_dir)
-
       if (client = bridge.call)
         begin
           options = { prompt: prompt, client_id: client_id }
@@ -893,7 +875,7 @@ module Samagotchi
           reply = client.post_turn(**options)
           ack = reply.json
           return { status: :accepted, ack: ack } if reply.status == 202 && ack.is_a?(Hash)
-          if ack.is_a?(Hash) && %w[bad_images images_unsupported].include?(ack["error"])
+          if ack.is_a?(Hash) && ack["error"] == "bad_images"
             return { status: :refused, code: reply.status, ack: ack }
           end
           # Read after its deadline and dropped: a file would run it after all.
@@ -945,17 +927,11 @@ module Samagotchi
       input_dir = File.join(session_dir, INPUT_DIR)
       FileUtils.mkdir_p(input_dir)
 
-      timestamp = Time.now.strftime("%Y%m%d%H%M%S%9N")
-      if structured_input?(session_dir)
-        path = File.join(input_dir, "#{timestamp}.json")
-        record = { "prompt" => prompt.to_s, "client_id" => client_id, "enqueued_id" => enqueued_id,
-                   "no_interrupt" => (no_interrupt ? true : nil),
-                   "images" => (images.empty? ? nil : images.map { |image| image.transform_keys(&:to_s) }) }.compact
-        AtomicFile.write(path, JSON.generate(record))
-      else
-        path = File.join(input_dir, "#{timestamp}.txt")
-        AtomicFile.write(path, prompt.to_s)
-      end
+      path = File.join(input_dir, "#{Time.now.strftime("%Y%m%d%H%M%S%9N")}.json")
+      record = { "prompt" => prompt.to_s, "client_id" => client_id, "enqueued_id" => enqueued_id,
+                 "no_interrupt" => (no_interrupt ? true : nil),
+                 "images" => (images.empty? ? nil : images.map { |image| image.transform_keys(&:to_s) }) }.compact
+      AtomicFile.write(path, JSON.generate(record))
       path
     rescue StandardError
       false
@@ -1038,40 +1014,15 @@ module Samagotchi
       input_dir = File.join(session_dir, INPUT_DIR)
       return [] unless Dir.exist?(input_dir)
 
-      Dir.glob(File.join(input_dir, "*.{txt,json}"))
-    end
-
-    # A worker's sidecar advertises the input format it reads; no sidecar
-    # means no worker yet, and the next one (this code) reads JSON.
-    private_class_method def self.structured_input?(session_dir)
-      worker_input_format(session_dir) >= STRUCTURED_INPUT_FORMAT
-    end
-
-    # Whether the session's worker (or the next one) reads images: refs.
-    def self.images_input?(session_dir)
-      worker_input_format(session_dir) >= IMAGES_INPUT_FORMAT
-    end
-
-    # The input format the session's worker advertises; no sidecar means no
-    # worker yet, and the next one (this code) reads INPUT_FORMAT.
-    private_class_method def self.worker_input_format(session_dir)
-      sidecar = File.join(session_dir, "bridge.json")
-      return INPUT_FORMAT unless File.file?(sidecar)
-
-      JSON.parse(File.read(sidecar))["input_format"].to_i
-    rescue JSON::ParserError, SystemCallError
-      INPUT_FORMAT
+      Dir.glob(File.join(input_dir, "*.json"))
     end
 
     # @return [Array(String, Hash|nil, Boolean, Array<Hash>)] a claimed input
-    #   file's prompt, origin ({client_id:, enqueued_id:}, nil for plain
-    #   text), whether its turn runs with the raised iteration limit
+    #   file's prompt, origin ({client_id:, enqueued_id:}, nil when it names
+    #   no sender), whether its turn runs with the raised iteration limit
     #   (--no-interrupt), and its image refs ({file:, name:})
     def self.read_input(claimed_file)
-      raw = File.read(claimed_file).to_s
-      return [raw, nil, false, []] unless claimed_file.end_with?(".json.processing")
-
-      data = JSON.parse(raw)
+      data = JSON.parse(File.read(claimed_file).to_s)
       origin = { client_id: data["client_id"], enqueued_id: data["enqueued_id"] }.compact
       images = Array(data["images"]).select { |image| image.is_a?(Hash) }.map { |image| image.transform_keys(&:to_sym) }
       [data["prompt"].to_s, origin.empty? ? nil : origin, data["no_interrupt"] == true, images]
@@ -1082,8 +1033,6 @@ module Samagotchi
     # Whether an unclaimed input file carries images (a mid-turn drain
     # leaves it for its own turn).
     def self.input_has_images?(input_file)
-      return false unless input_file.end_with?(".json")
-
       data = JSON.parse(File.read(input_file))
       data.is_a?(Hash) && Array(data["images"]).any?
     rescue JSON::ParserError, SystemCallError
