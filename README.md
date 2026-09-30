@@ -67,8 +67,11 @@ chi bootstrap                            # look on this machine's usual ports
 It finds out whether the server is llama.cpp or OpenAI-compatible, picks the
 model (or asks, when there are several), sends one test request and writes
 the config. With a config already there, it adds a `hosts:` entry and keeps
-the rest of the file. Edit the file later as in [Configure](#configure);
-`chi bootstrap --help` has the options.
+the rest of the file. Then it installs the `core` bundles (loop-guard,
+check-in, guardrails: the safety set for a small local model) and, on a
+terminal, offers `dev` (known-names, mcp, btw, skills, source-links). Edit the
+file later as in [Configure](#configure); `chi bootstrap --help` has the
+options.
 
 ## Configure
 
@@ -154,7 +157,8 @@ Command Line Tools. See [Desktop helper](docs/desktop.md).
 
 Every tool call the model makes can be allowed, denied, or put to you first.
 Rules come from `config.yml` (`guardrails:`), installed bundles and hooks;
-`chi bundle install guardrails` adds a default set (asks before `git push`,
+the `guardrails` bundle (in `core`, which `chi bootstrap` installs; else
+`chi bundle install guardrails`) adds a default set (asks before `git push`,
 history rewrites, wide `rm -rf`, `curl | sh`, writes outside the repo; denies
 writes to `.git/hooks`). You answer in the REPL, the attached TUI or the web:
 once, for the session, for the repo, or for the whole rule in the repo.

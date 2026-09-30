@@ -8,7 +8,21 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- Bundle profiles: `core` (loop-guard, check-in, guardrails) and `dev` (known-names, mcp, btw, skills,
+  source-links) install a set of the shipped bundles, `chi bundle install core`. A bundle you uninstall stays
+  out when the profile is installed or upgraded again, and `chi update` installs a bundle a new chi adds to a
+  profile you have. `chi bundle uninstall core` removes its bundles, `chi bundle list` and `status` show them.
+- `chi bootstrap` installs the system bundle and the `core` bundles, and on a terminal offers `dev`. Existing
+  installs get neither by themselves.
+
 ### Changed
+
+- `chi bundle list` and `chi update`'s footer list the shipped bundles that aren't installed under their
+  profile (`core (…)`, `dev (…)`).
+- `chi bundle status` without a name lists a bundle whose `manifest.json` doesn't parse as unreadable instead of
+  failing.
 
 - The web stage view flashes a plugin's nudge ("↪ check-in nudged the model") and a hook's info notice in its
   trail for about 4 s, as it already did a warn notice, so they are seen while the turn runs with the block

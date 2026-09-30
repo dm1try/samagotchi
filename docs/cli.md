@@ -21,7 +21,7 @@
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
 - `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles; `chi self --model` prints only the model a new session starts on (the desktop helper's hint)
 - `chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, in one table (see [Updating](#updating))
-- `chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs (see [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle), [the check-in bundle](plugins.md#the-check-in-bundle) and [the skills bundle](plugins.md#the-skills-bundle))
+- `chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle), [the check-in bundle](plugins.md#the-check-in-bundle) and [the skills bundle](plugins.md#the-skills-bundle))
 
 ### First setup
 
@@ -58,6 +58,13 @@ chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
   none. A server already in the file writes nothing; a file in YAML flow style
   or with anchors gets the lines printed to paste instead. `--dry-run` shows
   what it would write.
+- **The bundles.** Unless writing the config failed, it installs the system
+  bundle and the `core` profile (loop-guard, check-in, guardrails), one line
+  each; on a terminal it then asks `Also install dev (known-names, mcp, btw,
+  skills, source-links)? [y/N]`. Run again, it installs nothing new: a bundle
+  you uninstalled stays out ([Bundle profiles](memory.md#bundle-profiles-core-and-dev)).
+  A bundle that fails to install makes the exit 1. `--dry-run` says what it
+  would install.
 
 ### Updating
 
@@ -69,10 +76,11 @@ chi (gem)      0.2.0  0.3.0  updated
 system bundle  0.2.0  0.3.0  updated (kept your edits in identity.md: chi bundle diff samagotchi-system identity.md)
 btw            0.1.1         up to date
 known-names    0.1.0  0.1.1  updated
+core           0.1.0  0.2.0  updated (+ new-bundle)
 infra_tools    1.0.0         skipped (not from chi)
 Chi Helper     0.2.0         up to date (launch file refreshed)
 workers                      2 live on 0.2.0: they move to 0.3.0 at idle exit (30 min) or chi sessions stop 2ea8c1f0 91b0d2aa
-Also shipped, not installed: check-in, skills, source-links (chi bundle install NAME)
+Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install NAME)
 done
 ```
 
@@ -97,6 +105,10 @@ done
   A bundle of the same name from elsewhere (a zip, git) is skipped ("not from
   chi"), a newer installed one is left, one whose new version needs a newer
   chi is skipped, and bundles you didn't install stay uninstalled.
+- **Profiles** (`core`, `dev`): an installed one installs the bundles a new
+  chi added to it (`updated (+ name)`), even at the same version, and retries
+  one that failed before; one you uninstalled stays out. See [Bundle
+  profiles](memory.md#bundle-profiles-core-and-dev).
 - **The desktop helper** (macOS) is rebuilt and restarted only when its Swift
   sources changed (or the Ruby it runs moved); otherwise only its launch file
   is refreshed. See [Desktop helper](desktop.md).

@@ -596,7 +596,7 @@ ctx.sessions.read(id)  # => {id:, title:, status:, parent_id:, running:, message
 
 ## The btw bundle
 
-`chi bundle install btw` installs the bundle shipped with chi. It is written
+`chi bundle install btw` (or the `dev` profile) installs the bundle shipped with chi. It is written
 only against this API (`lib/samagotchi/bundles/btw/plugin.rb`).
 
 - `/btw <question>` asks the session's model a side question about the
@@ -621,7 +621,7 @@ only against this API (`lib/samagotchi/bundles/btw/plugin.rb`).
 
 ## The mcp bundle
 
-`chi bundle install mcp` installs the bundle shipped with chi. It is written
+`chi bundle install mcp` (or the `dev` profile) installs the bundle shipped with chi. It is written
 only against this API (`lib/samagotchi/bundles/mcp/plugin.rb`), and adds
 tools from [MCP](https://modelcontextprotocol.io) servers. It has no memory
 file, so it costs the prompt nothing but its tools. Stdio servers only, for
@@ -733,7 +733,8 @@ bundles:
 
 ## The loop-guard bundle
 
-`chi bundle install loop-guard` installs the bundle shipped with chi. It is
+`chi bundle install loop-guard` installs the bundle shipped with chi (`chi
+bootstrap` installs it with the `core` profile). It is
 written only against this API (`lib/samagotchi/bundles/loop-guard/plugin.rb`),
 with `chi.on` hooks, and has no memory file. It guards two kinds of loop:
 repeated tool calls (below) and [thinking that repeats
@@ -853,7 +854,8 @@ Not caught (yet):
 
 ## The check-in bundle
 
-`chi bundle install check-in` installs the bundle shipped with chi. It is
+`chi bundle install check-in` installs the bundle shipped with chi (`chi
+bootstrap` installs it with the `core` profile). It is
 written only against this API (`lib/samagotchi/bundles/check-in/plugin.rb`):
 `chi.on` hooks, `ctx.card`, `ctx.steer`, `ctx.stop_turn` and one anytime
 command. It has no memory file.
@@ -911,7 +913,7 @@ with a line and carry on unchanged.
 
 ## The skills bundle
 
-`chi bundle install skills` installs the bundle shipped with chi
+`chi bundle install skills` (or the `dev` profile) installs the bundle shipped with chi
 (`lib/samagotchi/bundles/skills/plugin.rb`): one anytime command, `chi.on`
 hooks, `ctx.sessions.send`, `ctx.notify` and `event[:steer]`. It has no memory
 file; skills themselves work without it ([docs/memory.md](memory.md#skills)).

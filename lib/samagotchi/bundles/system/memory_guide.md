@@ -78,6 +78,7 @@ Bundles are versioned directories/zips/tar.gz/git URLs with a `manifest.yml` and
 - Integrity: each file's sha256 is recorded at install; a hook/plugin/rule file changed afterwards is not loaded (rules: every call denied) until reinstalled. It is an integrity check, not proof of authorship.
 - Installing = trusting its Ruby code (hooks, plugin), like a gem. Install only copies; the code runs at the next session start (`Engine.new`), so a running worker needs a restart to pick it up.
 - A bundle without `*.md` (btw, mcp, loop-guard) adds no line to the prompt's memory index.
+- Profiles are shipped bundles with only `includes:` (bundle names): `core` (loop-guard, check-in, guardrails; `chi bootstrap` installs it) and `dev` (known-names, mcp, btw, skills, source-links). `chi bundle install core` installs the ones not installed and records them; a bundle the user uninstalled stays out on a later install, upgrade or `chi update`, which install only bundles new to the profile. `chi bundle uninstall core` removes its recorded bundles, then core (`docs/memory.md` "Bundle profiles").
 
 ### CLI — `chi bundle`
 
@@ -88,7 +89,7 @@ Bundles are versioned directories/zips/tar.gz/git URLs with a `manifest.yml` and
 | `uninstall <bundle> [--force]` | Removes bundle files (skips locally edited files unless `--force`) and `index.md` lines, deletes provenance dir. |
 | `status [<bundle>]` | Provenance + per-file `ok|modified|missing|no-index` vs stored checksum and base snapshot. |
 | `diff <bundle> [file]` | Prints `base` (provenance snapshot) vs `current` (on-disk) for each file. |
-| `list` | Lists installed bundles (`name v<version> scope files installed_at`, plus the shipped version when newer) and the bundles shipped with chi that are not installed (`install <name>` installs one). |
+| `list` | Lists installed bundles (`name v<version> scope files installed_at`, plus the shipped version when newer) and the bundles shipped with chi that are not installed (`install <name>` installs one), grouped under their profile; an installed profile shows `includes=` and `left out=`. |
 | `build [--scope system\|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]` | **Inverse of install** — builds a shareable bundle from local memories and installed hooks. Infers `zip` vs `dir`/`tar.gz` from `--out` extension; default `chi_system_memories.zip` (system) or `chi_<repo>_memories.zip` (project, named after the project root) v`1.0.0` in `Dir.pwd`. `FILES...` is an optional allowlist of memory basenames (`identity` or `identity.md`); if omitted, all `*.md` except `index.md`/hidden/non-md are included. Installed hooks are copied to `hooks/` with their manifest metadata. Computes `sha256:` checksums and writes `manifest.yml` via `Manifest.write`. No provenance write. |
 
 **Scope resolution for install/build:**

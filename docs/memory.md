@@ -74,6 +74,51 @@ skills`, [docs/plugins.md](plugins.md#the-skills-bundle)) adds `/skill save`,
 one-line diff after each update, and nudges a model that skips a failing
 step instead of fixing the skill.
 
+## Bundle profiles: core and dev
+
+Every bundle chi ships (the system bundle aside) belongs to one of two
+profiles, meta bundles that install a set of them:
+
+| profile | bundles |
+|---|---|
+| `core` | loop-guard, check-in, guardrails: the recommended safety set |
+| `dev` | known-names, mcp, btw, skills, source-links |
+
+`chi bootstrap` installs `core` and, on a terminal, offers `dev`. An existing
+install gets neither by itself: `chi bundle install core` (or `dev`).
+
+A profile's `manifest.yml` has `includes:` (bundle names) and nothing else to
+install; its dir holds only that file. What installing it does follows one
+rule:
+
+    installed now = the profile's bundles − the ones it recorded − the ones installed
+
+- **First install:** each bundle that isn't installed is installed (from the
+  bundles chi ships, never a same-named dir in the cwd); one you installed by
+  hand is recorded without reinstalling it.
+- **Again, or `chi bundle upgrade core`:** only a bundle new to the profile
+  is installed. One you uninstalled (`chi bundle uninstall check-in`) was
+  recorded, so it stays out; re-running `chi bootstrap` changes nothing.
+- **A new chi adds a bundle to a profile:** `chi update` installs just that
+  one ("core … updated (+ name)"). A bundle dropped from a profile stays
+  installed.
+- **A bundle this chi is too old for** (its `requires_chi`) is skipped with a
+  note, and one that fails is reported (exit 1); neither is recorded, so the
+  next `chi update` or install tries again.
+- The profile never pins its bundles' versions: each one upgrades on its own,
+  as before (`chi update`, `chi bundle upgrade NAME`).
+- Only the profiles chi ships expand: `includes:` in a bundle from anywhere
+  else is ignored.
+
+`chi bundle uninstall core` uninstalls each bundle it recorded that is still
+installed (one you installed by hand before core too), then core. A bundle
+with an edited memory file is kept and named (`--force` removes it), the
+rest go, and core stays until it is gone (exit 1). `--scope project` is
+refused for a profile. `chi bundle list` shows an installed profile's
+bundles (`includes=`) and the ones you left out (`left out=`), a profile not
+installed with its bundles on its line, and `chi bundle status core` lists
+each one.
+
 ## Bundles that need outside commands
 
 A bundle's memory can rely on a command chi doesn't ship, such as a GitHub

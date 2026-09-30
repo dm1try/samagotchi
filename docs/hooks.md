@@ -416,7 +416,7 @@ Notes:
 - Ordering: bundle hooks fire by `(priority, bundle_name, hook_name)` (lower priority first), then plain `config.yml` hooks in registration order.
 - Settings: a hook class with `initialize(settings = {})` gets the bundle's section of `config.yml` `bundles:` (see [Settings](#settings)).
 - A bundle can also ship a `plugin.rb` whose `chi.on(event)` blocks are bundle hooks too, next to commands and tools; see [Plugins](plugins.md).
-- Shipped bundles: `chi bundle install guardrails` (rules, see [Guardrails](guardrails.md#the-guardrails-bundle)) and `chi bundle install known-names` (a hook, see [Guardrails](guardrails.md#the-known-names-bundle)), `chi bundle install source-links` (a hook: announces source refs, see [The source-links bundle](#the-source-links-bundle)), `chi bundle install btw` (a plugin: `/btw`, see [Plugins](plugins.md#the-btw-bundle)), `chi bundle install mcp` (a plugin: tools from MCP servers, see [Plugins](plugins.md#the-mcp-bundle)) `chi bundle install loop-guard` (a plugin: breaks tool-call loops, see [Plugins](plugins.md#the-loop-guard-bundle)), `chi bundle install check-in` (a plugin: checks on a long turn, see [Plugins](plugins.md#the-check-in-bundle)) and `chi bundle install skills` (a plugin: `/skill`, versions of skills, see [Plugins](plugins.md#the-skills-bundle)).
+- Shipped bundles (each in a profile: `core` or `dev`, see [Bundle profiles](memory.md#bundle-profiles-core-and-dev)): `chi bundle install guardrails` (rules, see [Guardrails](guardrails.md#the-guardrails-bundle)) and `chi bundle install known-names` (a hook, see [Guardrails](guardrails.md#the-known-names-bundle)), `chi bundle install source-links` (a hook: announces source refs, see [The source-links bundle](#the-source-links-bundle)), `chi bundle install btw` (a plugin: `/btw`, see [Plugins](plugins.md#the-btw-bundle)), `chi bundle install mcp` (a plugin: tools from MCP servers, see [Plugins](plugins.md#the-mcp-bundle)) `chi bundle install loop-guard` (a plugin: breaks tool-call loops, see [Plugins](plugins.md#the-loop-guard-bundle)), `chi bundle install check-in` (a plugin: checks on a long turn, see [Plugins](plugins.md#the-check-in-bundle)) and `chi bundle install skills` (a plugin: `/skill`, versions of skills, see [Plugins](plugins.md#the-skills-bundle)).
 - Installing a bundle executes its hook code at `Engine` startup. Only install bundles you trust, as you would a gem. Hooks are **not** executed at install time (copy-only); they are `module_eval`'d at `Engine.new` inside per-bundle `Samagotchi::Bundles::<name>` namespaces (no top-level `require` collisions). Keep hook files side-effect-free at load time; do work in `#call` — top-level side effects (require, IO, `at_exit`, global assignment) run once per `Engine.new` (class redefinition is idempotent).
 
 Lifecycle:
@@ -428,7 +428,7 @@ Lifecycle:
 ## The source-links bundle
 
 ```sh
-chi bundle install source-links
+chi bundle install source-links    # or chi bundle install dev
 ```
 
 installs one `after_turn` hook and a short memory. When the model's answer

@@ -146,7 +146,7 @@ without it.
 ## The guardrails bundle
 
 ```sh
-chi bundle install guardrails
+chi bundle install guardrails    # chi bootstrap installs it, with the core profile
 ```
 
 installs a default rule set plus a short memory telling the model not to
@@ -164,7 +164,7 @@ denies every call until the bundle is reinstalled.
 ## The known-names bundle
 
 ```sh
-chi bundle install known-names
+chi bundle install known-names    # or chi bundle install dev
 ```
 
 installs one `before_tool_call` hook and a short memory. A local model that
