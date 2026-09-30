@@ -20,8 +20,12 @@ RSpec.describe Samagotchi::SelfReport do
   # chi self's one server call (the served model's /props GET) answers
   # nothing unless a spec says otherwise.
   let(:props_answer) { nil }
+  # ...and no chi web answers, unless a spec says otherwise.
+  let(:web_info) { nil }
 
   before do
+    info = -> { web_info }
+    allow(Samagotchi::LiveVersions).to receive(:web_info) { info.call }
     Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(tmp, "bundles")
     probed = []
     @probed = probed
@@ -59,6 +63,31 @@ RSpec.describe Samagotchi::SelfReport do
     memories = File.join(config_home, "samagotchi", "memories")
     expect(field("memories")).to eq(memories)
     expect(field("project memories")).to eq(File.join(memories, "projects", Samagotchi::MemoryPaths.project_key))
+  end
+
+  describe "chi web" do
+    it "says it isn't running" do
+      expect(field("chi web")).to eq("not running on port 4567")
+    end
+
+    context "when one runs on this machine only" do
+      let(:web_info) { { "app" => "chi-web", "lan" => nil } }
+
+      it { expect(field("chi web")).to eq("on 127.0.0.1:4567 (this machine only)") }
+    end
+
+    context "when one runs on the LAN" do
+      let(:web_info) { { "app" => "chi-web", "lan" => "192.168.1.55" } }
+
+      it "names the address, probing 127.0.0.1 even with web.host lan" do
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("web.host").and_return("lan")
+        allow(Samagotchi::Config).to receive(:get).with("web.port").and_return(4999)
+
+        expect(field("chi web")).to eq("LAN on 192.168.1.55:4999 (and 127.0.0.1)")
+        expect(Samagotchi::LiveVersions).to have_received(:web_info).with("127.0.0.1", 4999, timeout: 0.3)
+      end
+    end
   end
 
   describe "desktop" do

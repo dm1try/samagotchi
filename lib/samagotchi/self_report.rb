@@ -16,12 +16,15 @@ require_relative "memory_bundle/provenance"
 require_relative "memory_bundle/manifest"
 require_relative "memory_bundle/system_bundle"
 require_relative "desktop"
+require_relative "live_versions"
+require_relative "web/lan"
 
 module Samagotchi
   # `chi self`: where this chi lives and what it is configured to use.
   #
   # Read-only and nearly offline (one short /props GET for the served model,
-  # nothing else asks a model server), so the agent can run it via `execute`
+  # nothing else asks a model server; one /api/info GET on this machine's
+  # chi web port), so the agent can run it via `execute`
   # to orient itself — source dir to rg, config path, memory dirs, sessions,
   # model/host, bundle versions — without guessing from $PATH.
   module SelfReport
@@ -55,8 +58,23 @@ module Samagotchi
         ["served model", model ? served_model_for(model, env) : "-"],
         ["context window", context_window(env)],
         ["bundles", bundles_summary],
-        ["desktop", desktop_summary(env)]
+        ["desktop", desktop_summary(env)],
+        ["chi web", web_summary]
       ]
+    end
+
+    WEB_TIMEOUT = 0.3
+
+    # Whether a chi web answers on this machine's web port, and whether a
+    # phone can reach it (LAN mode: /api/info's lan).
+    def web_summary
+      port = Config.get("web.port").to_i
+      port = 4567 unless port.positive?
+      info = LiveVersions.web_info(Web::Lan.local_host(Config.get("web.host")), port, timeout: WEB_TIMEOUT)
+      return "not running on port #{port}" unless info
+      return "LAN on #{info["lan"]}:#{port} (and 127.0.0.1)" if info["lan"]
+
+      "on 127.0.0.1:#{port} (this machine only)"
     end
 
     # "git checkout" when running from a repo (bin/chi), "installed gem" when
