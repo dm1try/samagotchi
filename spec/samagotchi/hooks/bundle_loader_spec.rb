@@ -221,6 +221,9 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
         .to output(/hook 'guard.rb' not loaded: its sha256 .* differs/).to_stderr
       expect(registry.size).to eq(0)
       expect(failures.required.map(&:what)).to eq(["hook guard.rb (bundle g)"])
+      edited = Digest::SHA256.hexdigest("#{code}\n# edited")
+      expect(failures.required.first.reason)
+        .to eq("its sha256 #{edited[0, 12]}… differs from the installed #{sha[0, 12]}… (edited after install? reinstall the bundle)")
     end
 
     it "reports a changed non-required hook without failing closed" do

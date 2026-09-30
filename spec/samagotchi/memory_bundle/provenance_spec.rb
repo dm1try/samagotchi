@@ -246,6 +246,29 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       expect(seen.last.last[:hooks]).to include(:"k.rb")
     end
 
+    it "each_installed_with_plugin and _with_guardrails yield a corrupt manifest as {error:} only when the bundle has that dir" do
+      { "a-plug" => "plugin", "b-rules" => "guardrails", "c-plain" => nil }.each do |name, sub|
+        FileUtils.mkdir_p(File.join(bundles_dir, name, *sub))
+        File.write(File.join(bundles_dir, name, "manifest.json"), "{")
+      end
+      FileUtils.mkdir_p(File.join(bundles_dir, "d-list", "plugin"))
+      FileUtils.mkdir_p(File.join(bundles_dir, "d-list", "guardrails"))
+      File.write(File.join(bundles_dir, "d-list", "manifest.json"), "[]")
+      FileUtils.mkdir_p(File.join(bundles_dir, "e-none"))
+      File.write(File.join(bundles_dir, "e-none", "manifest.json"), JSON.generate("plugin" => "x", "guardrails" => {}))
+      FileUtils.mkdir_p(File.join(bundles_dir, "f-nomanifest", "plugin"))
+      File.write(File.join(bundles_dir, "g-both", "manifest.json").tap { |f| FileUtils.mkdir_p(File.dirname(f)) },
+                 JSON.generate("plugin" => { "file" => "p.rb" }, "guardrails" => { "r.yml" => { "sha256" => "sha256:x" } }))
+
+      plugins = described_class.each_installed_with_plugin.to_a
+      expect(plugins.map(&:first)).to eq(%w[a-plug g-both])
+      expect(plugins.first.last[:error]).to start_with("manifest.json is unreadable: ")
+      expect(plugins.last.last[:plugin]).to eq(file: "p.rb")
+      rules = described_class.each_installed_with_guardrails.to_a
+      expect(rules.map(&:first)).to eq(%w[b-rules g-both])
+      expect(rules.first.last.keys).to eq([:error])
+    end
+
     it "each_installed_holding_hooks is no-op for empty/absent dir" do
       FileUtils.rm_rf(bundles_dir)
       expect { |b| described_class.each_installed_holding_hooks(&b) }.not_to yield_control

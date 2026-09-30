@@ -308,6 +308,17 @@ RSpec.describe Samagotchi::SelfReport do
     expect(field("bundles")).to eq("samagotchi-system 0.0.9 (shipped #{shipped})")
   end
 
+  it "lists every bundle with a manifest.json by name, '?' for a version it can't read" do
+    { "zeta" => JSON.generate("version" => "2.0"), "broken" => "{", "list" => "[]", "nover" => "{}" }.each do |name, body|
+      FileUtils.mkdir_p(File.join(tmp, "bundles", name))
+      File.write(File.join(tmp, "bundles", name, "manifest.json"), body)
+    end
+    FileUtils.mkdir_p(File.join(tmp, "bundles", "empty"))
+    FileUtils.mkdir_p(File.join(tmp, "bundles", ".hidden"))
+    File.write(File.join(tmp, "bundles", ".hidden", "manifest.json"), "{}")
+    expect(field("bundles")).to eq("broken ?, list ?, nover ?, zeta 2.0")
+  end
+
   describe ".install_kind" do
     it "is 'installed gem' under a gem path" do
       dir = File.join(Gem.path.first, "gems", "samagotchi-9.9.9")

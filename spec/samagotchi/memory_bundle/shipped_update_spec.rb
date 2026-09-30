@@ -150,7 +150,11 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     dir = File.join(system_dir, ".bundles", "broken")
     FileUtils.mkdir_p(dir)
     File.write(File.join(dir, "manifest.json"), "{bad")
-    expect(described_class.plan.map { |r| [r.name, r.status, r.note] }).to eq([["broken", :skipped, "manifest.json unreadable"]])
+    FileUtils.mkdir_p(File.join(system_dir, ".bundles", "list"))
+    File.write(File.join(system_dir, ".bundles", "list", "manifest.json"), "[]")
+    FileUtils.mkdir_p(File.join(system_dir, ".bundles", "no-manifest"))
+    expect(described_class.plan.map { |r| [r.name, r.status, r.note] })
+      .to eq([["broken", :skipped, "manifest.json unreadable"], ["list", :skipped, "manifest.json unreadable"]])
   end
 
   it "leaves the system bundle to SystemBundle and lists shipped bundles that aren't installed" do
