@@ -23,6 +23,7 @@ RSpec.describe "delegate tools" do
   before do
     stub_const("Samagotchi::Tools::DelegateWait::POLL_INTERVAL", 0.05)
     Samagotchi::Tools::DelegateWait.seen.clear
+    Samagotchi::Tools::DelegateWait.baselines.clear
     allow(Process).to receive(:spawn).and_return(12_345)
     allow(Process).to receive(:detach)
     allow(Samagotchi::Config).to receive(:get).and_call_original
@@ -58,6 +59,14 @@ RSpec.describe "delegate tools" do
   def write_reply(session, text)
     Samagotchi::SessionManager.write_output(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), text)
     sleep(0.002)
+  end
+
+  # A turn that failed as its worker records it: idle, no reply, last_turn moved on.
+  def fail_turn(session, at:)
+    s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+    s.status = "idle"
+    s.last_turn = { "outcome" => "failed", "ended_at" => at }
+    s.save(state_dir: tmpdir)
   end
 
   def session_files = Dir.glob(File.join(tmpdir, "*.json")).map { |p| File.basename(p, ".json") }
@@ -173,6 +182,17 @@ RSpec.describe "delegate tools" do
       expect(out).to end_with("status: no_reply\nthe child's turn ended without a reply (canceled, failed or empty); its session shows what happened")
     end
 
+    it "reports a first turn that failed before the wait's first look, not a timeout" do
+      parent
+      allow(Samagotchi::SessionManager).to receive(:spawn_session).and_wrap_original do |original, **kwargs|
+        original.call(**kwargs).tap { |child| fail_turn(child, at: "2026-09-30T10:00:01.000+02:00") }
+      end
+
+      out = described_class.call("count the specs", timeout: 2, peers: peers)
+
+      expect(out).to end_with("status: no_reply\nthe child's turn ended without a reply (canceled, failed or empty); its session shows what happened")
+    end
+
     describe "a follow-up (session:)" do
       let(:child) { make(parent_id: parent.id, prompt: "first task", status: "idle") }
 
@@ -200,6 +220,20 @@ RSpec.describe "delegate tools" do
         out = described_class.call("and the second?", session: child.id[0, 8], peers: peers)
 
         expect(out).to eq("session: #{child.id}\nstatus: done\n---\nthe second answer")
+      end
+
+      it "reports a follow-up that failed fast after an earlier failure, not a timeout" do
+        fail_turn(child, at: "2026-09-30T10:00:01.000+02:00")
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn) do
+          fail_turn(child, at: "2026-09-30T10:00:05.000+02:00")
+          { status: :accepted, ack: {} }
+        end
+
+        out = described_class.call("try again", session: child.id, timeout: 2, peers: peers)
+
+        expect(out).to end_with("status: no_reply\nthe child's turn ended without a reply (canceled, failed or empty); its session shows what happened")
+        # Handed over once: the next wait looks for a later turn.
+        expect(Samagotchi::Tools::DelegateResult.call(session: child.id, timeout: 1, peers: peers)).to include("status: running")
       end
 
       it "names a delivery that did not go through" do

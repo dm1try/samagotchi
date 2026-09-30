@@ -307,12 +307,9 @@ module Samagotchi
     end
 
     # The session as it was before the message went in (ReplyWait's
-    # baseline): its messages, the question pending then, and when its last
-    # turn ended, so a turn that ends before the first look still ends the
-    # wait.
-    def baseline_of(session, question_id: session.pending_question&.dig(:id))
-      last = session.last_turn.is_a?(Hash) ? session.last_turn["ended_at"] : nil
-      { messages: session.messages.size, question_id: question_id, last_turn: last }
+    # baseline).
+    def baseline_of(session, **options)
+      ReplyWait.baseline_of(session, **options)
     end
 
     # @return [Integer] the exit status

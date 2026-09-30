@@ -83,6 +83,7 @@ module Samagotchi
         child = SessionManager.spawn_session(prompt: task, working_directory: parent.working_directory,
                                              model_name: child_model(model, parent), memories: CHILD_MEMORIES,
                                              parent_id: parent.id, state_dir: state_dir)
+        DelegateWait.mark_started(parent.id, child)
         child.id
       end
       private_class_method :start_child
@@ -100,7 +101,7 @@ module Samagotchi
         end
 
         # Only a reply after this delivery counts as the follow-up's.
-        DelegateWait.mark_seen(parent.id, id, state_dir: state_dir)
+        DelegateWait.mark_seen(parent.id, child, state_dir: state_dir)
         delivered = SessionManager.deliver_turn(id, prompt: task, client_id: "#{CLIENT_PREFIX}:#{parent.id[0, 8]}",
                                                     state_dir: state_dir)
         case delivered[:status]

@@ -9,10 +9,12 @@ module Samagotchi
   module Tools
     # Waiting for a delegated session's next reply, shared by delegate and
     # delegate_result: ReplyWait in the tools' words, with a cursor per
-    # child (the newest reply this parent was already given). The cursors
-    # live in this process (a worker runs one session), keyed by parent and
-    # child; a worker respawn loses them, which only repeats the newest reply
-    # once.
+    # child (the newest reply this parent was already given) and the child
+    # as it was before the message went in (ReplyWait's baseline), so a turn
+    # that ends before the wait's first look (a fast failure) still ends it.
+    # Both live in this process (a worker runs one session), keyed by parent
+    # and child; a worker respawn loses them, which only repeats the newest
+    # reply once or waits for a later turn.
     module DelegateWait
       TIMEOUT_DEFAULT = 600
       POLL_INTERVAL = 0.5
@@ -28,6 +30,11 @@ module Samagotchi
         @seen ||= {}
       end
 
+      # @return [Hash{Array(String, String) => Hash}] [parent id, child id] → ReplyWait baseline taken before sending
+      def baselines
+        @baselines ||= {}
+      end
+
       # @param child_id [String] the child's full id
       # @param peers [Peers] the parent (session_id, state_dir, cancelled?)
       # @param timeout [Integer] seconds
@@ -38,7 +45,9 @@ module Samagotchi
         key = [peers.session_id, child_id]
         cancelled = -> { peers.respond_to?(:cancelled?) && peers.cancelled? }
         wait = ReplyWait.call(child_id, state_dir: sd, cursor: seen[key], timeout: timeout.to_i,
-                                        poll_interval: poll_interval, cancelled: cancelled)
+                                        poll_interval: poll_interval, cancelled: cancelled, baseline: baselines[key])
+        # The turn sent to is handed over: a later wait looks for a later one.
+        baselines.delete(key) if %i[done no_reply].include?(wait.status)
         case wait.status
         when :done
           seen[key] = wait.file
@@ -61,9 +70,18 @@ module Samagotchi
       end
 
       # Point the cursor at the newest reply now, so only a later one counts
-      # (a follow-up sent to a child that already answered).
-      def mark_seen(parent_id, child_id, state_dir:)
-        seen[[parent_id, child_id]] = ReplyWait.newest_reply(child_id, state_dir: state_dir)
+      # (a follow-up sent to a child that already answered), and take the
+      # child's baseline before the follow-up goes in.
+      # @param child [Session] the child as loaded before sending
+      def mark_seen(parent_id, child, state_dir:)
+        seen[[parent_id, child.id]] = ReplyWait.newest_reply(child.id, state_dir: state_dir)
+        baselines[[parent_id, child.id]] = ReplyWait.baseline_of(child)
+      end
+
+      # A new child's baseline: as spawned, before its first turn ran.
+      # @param child [Session] the session spawn_session returned
+      def mark_started(parent_id, child)
+        baselines[[parent_id, child.id]] = ReplyWait.baseline_of(child, question_id: nil)
       end
 
       def reply_result(child_id, text)

@@ -103,6 +103,15 @@ module Samagotchi
       end
     end
 
+    # The session as it was before a message went in (call's baseline:):
+    # its messages, the question pending then, and when its last turn
+    # ended, so a turn that ends before the first look still ends the wait.
+    # @return [Hash]
+    def baseline_of(session, question_id: session.pending_question&.dig(:id))
+      last = session.last_turn.is_a?(Hash) ? session.last_turn["ended_at"] : nil
+      { messages: session.messages.size, question_id: question_id, last_turn: last }
+    end
+
     # An idle session whose turn ended after the baseline was taken: its
     # last_turn moved on, or its messages grew (a turn's note).
     def turn_ended_since?(session, baseline)
