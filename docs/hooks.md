@@ -116,6 +116,8 @@ known-names)` for a bundle hook, `audit.rb (config)` for a config hook,
 A steer is saved in the session as `{role: "user", kind: "steer", source:
 "<bundle>", content: "…"}`; the model reads only its text, as a user turn.
 Its `source` is the hook's bundle (a config or turn hook's label otherwise).
+The user's own lines typed into a running turn are saved as `{role: "user",
+kind: "input", content: "…"}`: part of that turn, not a turn of their own.
 
 Timing: a notice from `:after_turn` or `:session_end` shows after the turn's
 end line. A question from `:before_tool_call` shows **before** the tool

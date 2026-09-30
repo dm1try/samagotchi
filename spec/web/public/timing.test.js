@@ -253,3 +253,13 @@ test("turnGroups: a steer answered by the answer (no such step) stays on the gro
   const group = turnGroups(plain, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }))[0];
   assert.deepEqual([group.steps, group.steers], [[], [1]]);
 });
+
+test("turnGroups: a line merged into the running turn stays in that turn (merged), the next prompt is the next turn", () => {
+  const items = [
+    { role: "user", content: "p" }, { role: "assistant", content: "a" },
+    { role: "user", content: "also", merged: true }, { role: "assistant", content: "b" },
+    { role: "user", content: "q" }, { role: "assistant", content: "c" },
+  ];
+  const groups = turnGroups(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 1 }, { id: "T2", duration_ms: 2 }] }));
+  assert.deepEqual(groups.map((g) => [g.turnIndex, g.user, g.merged, g.answer, g.record?.id]), [[0, 0, [2], 3, "T1"], [1, 4, undefined, 5, "T2"]]);
+});

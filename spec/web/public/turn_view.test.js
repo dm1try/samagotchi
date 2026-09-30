@@ -148,6 +148,22 @@ test("turnHistoryHtml: a steer the answer answered is a bubble after the block, 
   assert.match(html, /<\/details><details class="bubble steer-row"><summary>check-in nudged the model<\/summary><div class="steer-text">wrap up<\/div><\/details><div class="bubble output/);
 });
 
+test("turnHistoryHtml: the user's lines merged into a turn stay in it: a steered bubble after its steps, before its answer and timing", () => {
+  const items = [
+    { role: "user", content: "p" },
+    { role: "assistant", content: "Let me check." },
+    { role: "user", content: "also <typos>", merged: true, step: 2 },
+    { role: "assistant", content: "Both fine." },
+    { role: "user", content: "next" },
+    { role: "assistant", content: "ok" },
+  ];
+  const twoTurns = normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5000 }, { id: "T2", duration_ms: 2000 }] });
+  const html = turnHistoryHtml(items, twoTurns, { thumbs });
+  assert.equal((html.match(/class="bubble user"/g) || []).length, 2);
+  assert.match(html, /<\/details><div class="bubble user steered" data-user-state="steered" data-step="2"[^>]*><div class="user-message">also &lt;typos&gt;<\/div><span class="state-badge">steered<\/span><\/div><div class="bubble output[^"]*"[^>]*>.*Both fine.*<\/div><div class="turn-timing">turn 1 · 5\.0s<\/div>/);
+  assert.match(html, /ok.*<div class="turn-timing">turn 2 · 2\.0s<\/div>/);
+});
+
 test("turnHistoryHtml: a steer in a turn with no block is a bubble after the prompt", () => {
   const items = [{ role: "user", content: "p" }, { role: "steer", content: "s", source: "check-in", step: 1 }, { role: "assistant", content: "a" }];
   const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }] }), { thumbs });

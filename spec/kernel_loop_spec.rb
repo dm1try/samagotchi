@@ -1348,7 +1348,7 @@ it "leaves input queued after a cancel instead of merging it into the dying turn
                                                               on_stream_event: ->(event) { events << event })
 
         tail = result.conversation.last(3)
-        expect(tail[0]).to eq(role: "user", content: "user line")
+        expect(tail[0]).to eq(role: "user", kind: "input", content: "user line")
         expect(tail[1]).to eq(role: "user", kind: "steer", source: "check-in", content: "how's it going?")
         expect(tail[2][:role]).to eq("model")
         merged = events.find { |event| event[:type] == :pending_input_merged }

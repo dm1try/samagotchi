@@ -7,17 +7,23 @@ module Samagotchi
   # lines merge into one user message as before; each steer follows it as its
   # own user message marked kind: "steer" and source: (the ContextNote keys,
   # which every message copy keeps). The model reads it as user text.
+  #
+  # The user's own lines merged into a running turn are marked kind:
+  # "input": they are part of that turn, not a turn of their own, so a
+  # reloaded history keeps the turn in one piece.
   module Steer
     KIND = "steer"
+    INPUT_KIND = "input"
 
     # What one drain brought: the merged user text (nil when none) and how
     # many lines made it, and the steers in order.
     Merge = Struct.new(:content, :count, :steers, keyword_init: true) do
       def empty? = content.nil? && steers.empty?
 
-      # The messages it appends: the user's first, then each steer.
+      # The messages it appends: the user's first (marked merged input),
+      # then each steer.
       def messages
-        list = content ? [{ role: "user", content: content }] : []
+        list = content ? [{ role: "user", kind: INPUT_KIND, content: content }] : []
         list + steers.map { |steer| Steer.message(**steer) }
       end
 
@@ -44,6 +50,17 @@ module Samagotchi
     # what "the last prompt" and "user turns" count.
     def prompt?(message)
       message.is_a?(Hash) && (message[:role] || message["role"]).to_s == "user" && !steer?(message)
+    end
+
+    # The user's lines merged into a running turn (Merge#messages).
+    def input?(message)
+      message.is_a?(Hash) && (message[:kind] || message["kind"]).to_s == INPUT_KIND
+    end
+
+    # A prompt that started a turn: not a steer, not input merged into a
+    # running turn. What the turns a page shows count.
+    def turn_prompt?(message)
+      prompt?(message) && !input?(message)
     end
 
     # Call a loop's drain: +at_answer+ goes only to a drain that takes it

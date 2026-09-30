@@ -8,7 +8,7 @@ RSpec.describe Samagotchi::Steer do
     it "joins the user lines into one message and follows it with each steer, in order" do
       merge = described_class.merge(["a", { text: " nudge ", source: "check-in" }, " b ", { "text" => "two", "source" => "x" }])
 
-      expect(merge.messages).to eq([{ role: "user", content: "a\n\nb" },
+      expect(merge.messages).to eq([{ role: "user", kind: "input", content: "a\n\nb" },
                                     { role: "user", kind: "steer", source: "check-in", content: "nudge" },
                                     { role: "user", kind: "steer", source: "x", content: "two" }])
       expect(merge.event_fields).to eq(count: 2, content: "a\n\nb",
@@ -36,6 +36,16 @@ RSpec.describe Samagotchi::Steer do
       expect(seen).to be(true)
       expect(described_class.drain(-> { raise "boom" }, at_answer: false)).to be_nil
     end
+  end
+
+  it ".turn_prompt? is a prompt that started a turn: not a steer, not input merged into a running turn" do
+    merged = described_class.merge(["also this"]).messages.first
+    expect(described_class.input?(merged)).to be(true)
+    expect(described_class.prompt?(merged)).to be(true)
+    expect(described_class.turn_prompt?(merged)).to be(false)
+    expect(described_class.turn_prompt?({ "role" => "user", "kind" => "input" })).to be(false)
+    expect(described_class.turn_prompt?({ role: "user", content: "x" })).to be(true)
+    expect(described_class.turn_prompt?(described_class.message(text: "x", source: "s"))).to be(false)
   end
 
   it ".prompt? is a user message that is not a steer, with either key kind" do

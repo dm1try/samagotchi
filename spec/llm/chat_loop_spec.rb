@@ -665,7 +665,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       result = run(pending_input: ->(at_answer: false) { items.shift || [] })
 
       expect(result.conversation.map { |m| m.slice(:role, :kind, :source, :content) }.last(3))
-        .to eq([{ role: "user", content: "user line" },
+        .to eq([{ role: "user", kind: "input", content: "user line" },
                 { role: "user", kind: "steer", source: "check-in", content: "nudge" },
                 { role: "model", content: "done" }])
       expect(adapter.requests.last[:messages].last(2))

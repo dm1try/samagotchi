@@ -1282,16 +1282,17 @@ module Samagotchi
         return nil unless saved
 
         messages = Array(session.messages)
-        since = messages.drop(saved[:covered].to_i).count { |m| Samagotchi::Steer.prompt?(m) }
+        since = messages.drop(saved[:covered].to_i).count { |m| Samagotchi::Steer.turn_prompt?(m) }
         { text: saved[:text], turns_since: since }
       rescue StandardError
         nil
       end
 
-      # The step (iteration) that answered the steer at +index+: one past
-      # the model messages between it and the prompt before it.
+      # The step (iteration) that answered the steer or merged input at
+      # +index+: one past the model messages between it and the turn's
+      # prompt.
       def steer_step(list, index)
-        list[0...index].reverse_each.take_while { |m| !Samagotchi::Steer.prompt?(m) }
+        list[0...index].reverse_each.take_while { |m| !Samagotchi::Steer.turn_prompt?(m) }
                        .count { |m| %w[model assistant].include?((m[:role] || m["role"]).to_s) } + 1
       end
 
@@ -1340,6 +1341,9 @@ module Samagotchi
           next unless %w[user assistant].include?(norm_role)
 
           message = { role: norm_role, content: stripped }
+          # Merged into the running turn (Steer::INPUT_KIND): part of it,
+          # read by step +step+.
+          message.merge!(merged: true, step: steer_step(list, index)) if norm_role == "user" && Samagotchi::Steer.input?(m)
           images = m[:images] || m["images"]
           message[:images] = Array(images).map { |ref| ImageStore.symbolize(ref).slice(:file, :name, :width, :height) } if norm_role == "user" && images.is_a?(Array) && !images.empty?
           if norm_role == "assistant"

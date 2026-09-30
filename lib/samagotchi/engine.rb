@@ -1419,7 +1419,7 @@ module Samagotchi
 
       messages = @activity_mutex.synchronize { @session&.messages } || []
       covered = state[:covered].to_i
-      turns_since = Array(messages).drop(covered).count { |m| Steer.prompt?(m) }
+      turns_since = Array(messages).drop(covered).count { |m| Steer.turn_prompt?(m) }
       { text: state[:text], covered: covered, turns_since: turns_since, created_at: state[:created_at] }
     end
 
