@@ -53,6 +53,7 @@ RSpec.describe Samagotchi::Engine, "stream hooks" do
       expect(progress.size).to eq(1)
       expect(completions.size).to eq(1)
       expect(of_type(:hook_notice).map { |e| e[:text] }).to eq(["stopped the turn: enough"])
+      expect(session.messages.last[:content]).to include("the previous turn was cancelled (hook turn hook: enough)")
     end
 
     it "cuts the generation from the hook: the turn asks again and answers, and core posts no notice" do

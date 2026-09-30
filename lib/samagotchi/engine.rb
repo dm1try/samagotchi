@@ -1276,7 +1276,7 @@ module Samagotchi
       return false unless ctrl && !ctrl.cancelled?
 
       hook_notify("stopped the turn: #{reason}", :warn, hook)
-      ctrl.cancel!(:hook)
+      ctrl.cancel!(:hook, { by: hook_source(hook), reason: reason.to_s })
     end
     private :hook_stop_turn
 
@@ -1643,6 +1643,7 @@ module Samagotchi
             conversation << note if conversation
           elsif canceled && conversation
             conversation << TurnNote.cancelled(result.cancellation_reason, seconds: turn_seconds.call,
+                                                                          stopped_by: effective_controller.detail,
                                                                           shown: TurnNote.interrupted_tail?(conversation),
                                                                           running_tasks: Tools::TaskRuntime.running_created_in(conversation))
             replace_session_messages(session, conversation)

@@ -289,7 +289,7 @@ module Samagotchi
           # No retry left: the turn ends as cancelled (hook), with nothing
           # salvaged and without the spent nudge.
           drop_last_empty_retry!(conversation)
-          cancel_controller.cancel!(:hook)
+          cancel_controller.cancel!(:hook, cut)
           emit_stream_event(on_stream_event, type: :generation_cancelled, iteration: iteration_index + 1, reason: :hook)
           return cancelled_result(conversation, tool_activity: tool_activity, reason: :hook, partial_assistant_text: "")
         end

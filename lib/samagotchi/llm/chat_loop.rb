@@ -423,7 +423,7 @@ module Samagotchi
           end
           index = @conversation.rindex { |entry| TurnNote.retry_nudge?(entry) }
           @conversation.delete_at(index) if index
-          @cancel_controller.cancel!(:hook)
+          @cancel_controller.cancel!(:hook, response.cut)
           canceled(iteration, :hook)
         end
 

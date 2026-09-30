@@ -39,11 +39,22 @@ module Samagotchi
     #   model message precedes this note)
     # @param running_tasks [Array<Hash>] {id:, command:} of this session's
     #   background tasks still running: a Stop doesn't end them
-    def cancelled(reason, seconds: nil, shown: false, running_tasks: [])
-      why = reason.to_s.empty? ? "" : " (#{reason.to_s.tr("_", "-")})"
+    # @param stopped_by [Hash, nil] {by:, reason:} of a hook that stopped
+    #   it (stop_turn, or a cut with no retry left)
+    def cancelled(reason, seconds: nil, shown: false, running_tasks: [], stopped_by: nil)
+      why = reason.to_s.empty? ? "" : " (#{reason.to_s.tr("_", "-")}#{stopper(stopped_by)})"
       after = seconds ? " after #{seconds.round}s" : ""
       what = shown ? "the answer above ends where it was cut off." : "no answer had been shown."
       message("the previous turn was cancelled#{why}#{after}; #{what}#{still_running(running_tasks)}")
+    end
+
+    # " <by>: <reason>" of a hook that stopped the turn, as far as known.
+    def stopper(stopped_by)
+      return "" unless stopped_by.is_a?(Hash)
+
+      by = one_line(stopped_by[:by])
+      reason = one_line(stopped_by[:reason])
+      [by.empty? ? nil : " #{by}", reason.empty? ? nil : ": #{reason}"].compact.join
     end
 
     def still_running(tasks)

@@ -87,6 +87,7 @@ RSpec.describe "A cut generation" do
       expect(result.conversation).to eq([{ role: "user", content: "hi" }])
       expect(completions.size).to eq(1)
       expect(controller.reason).to eq(:hook)
+      expect(controller.detail).to include(by: "loop-guard")
     end
 
     it "drops the spent nudge when a second cut finds the retry used up" do

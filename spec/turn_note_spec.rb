@@ -31,6 +31,14 @@ RSpec.describe Samagotchi::TurnNote do
     expect(described_class.cancelled(nil)[:content]).to eq("[SYSTEM: the previous turn was cancelled; no answer had been shown.]")
   end
 
+  it "names the hook that stopped the turn and why, as far as known" do
+    expect(described_class.cancelled(:hook, seconds: 30, stopped_by: { by: "loop-guard", reason: "repeating  itself" })[:content])
+      .to eq("[SYSTEM: the previous turn was cancelled (hook loop-guard: repeating itself) after 30s; no answer had been shown.]")
+    expect(described_class.cancelled(:hook, stopped_by: { by: "check-in", reason: "" })[:content])
+      .to start_with("[SYSTEM: the previous turn was cancelled (hook check-in);")
+    expect(described_class.cancelled(:hook, stopped_by: nil)[:content]).to start_with("[SYSTEM: the previous turn was cancelled (hook);")
+  end
+
   it "lists the background tasks a cancel left running, on one line and capped" do
     tasks = [{ id: "t1", command: "make   test\n  --verbose" }, { id: "t2", command: "x" * 80 }]
     expect(described_class.cancelled(:user, seconds: 212, running_tasks: tasks)[:content])
