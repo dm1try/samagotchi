@@ -575,8 +575,9 @@ module Samagotchi
       @turn_flow.before_continue_turn
       begin
         result = run_engine_turn(session, nil, continue: true)
-      rescue LLM::ProviderError => e
-        @surface.commit("\nmodel> #{e.summary}; continue prompt preserved")
+      rescue LLM::ProviderError
+        # The renderer showed the failure (:turn_failed).
+        @surface.commit(turn_end_hint("continue prompt preserved"))
         return
       end
       finish_turn(session, result, continue: true)
@@ -608,10 +609,8 @@ module Samagotchi
         # the prompt, and renders through @renderer via on_event.
         result = run_engine_turn(session, input, images: ImageInput.extract(input))
       rescue LLM::ProviderError, ImageStore::Error => e
-        # Engine closed the turn (:turn_failed); show its duration.
-        # Retries were already tallied via generation_retrying events.
+        # Engine closed the turn (:turn_failed), which the renderer showed.
         # An @path image that can't be used fails the turn the same way.
-        emit_interactive_turn_duration(canceled: false)
         summary = e.respond_to?(:summary) ? e.summary : e.message
         # The model reads why on its next turn. An image that couldn't be
         # used, or that the host refused, never reached it: no note for that
@@ -620,7 +619,7 @@ module Samagotchi
         @turn_flow.prompt_turn_failed(note: note)
         # The Engine saved the failed turn; the file follows the rollback.
         save_session(session) if note
-        @surface.commit("\nmodel> #{summary}; #{restore_prompt_for_retry(input)}")
+        @surface.commit(turn_end_hint(restore_prompt_for_retry(input)))
         return
       end
       finish_turn(session, result, continue: false)
@@ -638,10 +637,9 @@ module Samagotchi
         # and the partial assistant reply (marked [interrupted]) into
         # result.conversation, so progress is preserved by default — the
         # user's next message continues from it. !rollback restores the
-        # pre-turn checkpoint for an explicit full discard.
-        emit_interactive_turn_duration(canceled: true)
+        # pre-turn checkpoint for an explicit full discard (the renderer's
+        # hint under :turn_canceled says so).
         save_session(session) if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
-        @surface.commit("\nmodel> turn cancelled; partial progress kept in context; use !rollback immediately after cancellation to restore the pre-turn checkpoint")
         return
       end
 
@@ -832,16 +830,6 @@ module Samagotchi
 
     private
 
-    # The last turn's line: completed, canceled or failed, as the Engine
-    # closed it (a provider error closes it with :turn_failed).
-    def emit_interactive_turn_duration(canceled:)
-      record = Array(@engine.metrics.snapshot[:turn_records]).last
-      return unless record && record[:duration_ms]
-
-      state = record[:status] == "failed" ? "failed" : (canceled ? "canceled" : "completed")
-      @surface.commit("#{paint('chi>', 36)} turn #{state} (#{format_elapsed_duration(record[:duration_ms])})")
-    end
-
     def read_input(awaiting_continue:)
       emit_idle_status_line
 
@@ -872,20 +860,19 @@ module Samagotchi
         sync_continue_slot(false)
         @surface.commit(QuestionSlot.continue_summary("(dropped: a reminder ran)", paint: method(:paint)))
       end
+      @surface.commit("reminder: #{names.join(", ")}")
       hint = "reminder: #{names.join(", ")} · Ctrl-C cancels it"
       @surface.set_slot(:hints, [color_output? ? paint(hint, 90) : hint])
       result = nil
       begin
         result = run_engine_turn(session, nil, continue: true)
         @prompt = nil
-      rescue LLM::ProviderError => e
-        # like other failed turns: back to the prompt
-        @surface.commit("\nmodel> #{e.summary}")
+      rescue LLM::ProviderError
+        nil # the renderer showed the failure; back to the prompt
       ensure
         @surface.clear_slot(:hints)
       end
       canceled = result.respond_to?(:canceled?) && result.canceled?
-      emit_interactive_turn_duration(canceled: canceled)
       if result && !canceled
         session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
         session.model_name = @effective_model_name
@@ -1031,7 +1018,7 @@ module Samagotchi
       seed_system_prompt
       # A prompt the user typed brings an archived session back to the lists.
       ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir) if prompt && !continue
-      result = with_steering do
+      with_steering do
         @engine.run_turn(
           session,
           prompt,
@@ -1043,14 +1030,11 @@ module Samagotchi
           images: images
         )
       end
-      emit_cancellation_notice(result)
-      result
     rescue Interrupt
-      # Engine kept the prompt in the session and emitted :turn_canceled.
+      # Engine kept the prompt in the session and emitted :turn_canceled
+      # (the renderer's line).
       cancellation_controller&.cancel!(:ctrl_c)
-      result = cancelled_result_from(session.messages, reason: :ctrl_c)
-      emit_cancellation_notice(result)
-      result
+      cancelled_result_from(session.messages, reason: :ctrl_c)
     ensure
       @active_cancel_controller = nil
       finish_thinking_spinner
@@ -1153,14 +1137,6 @@ module Samagotchi
       Log.error(:repl, "render_failed", echo: "[render] #{event[:type]}: #{e.class}: #{e.message}", event_type: event[:type].to_s, error: e.class.name)
     end
 
-    def emit_cancellation_notice(result)
-      return unless result.respond_to?(:canceled?) && result.canceled?
-
-      reason = result.respond_to?(:cancellation_reason) ? result.cancellation_reason : nil
-      label = cancellation_reason_label(reason)
-      @surface.commit("\nmodel> request cancelled#{label.empty? ? "" : " (#{label})"}")
-    end
-
     def cancelled_result_from(messages, reason:)
       KernelLoop::Result.new(
         output: "",
@@ -1171,17 +1147,6 @@ module Samagotchi
         canceled: true,
         cancellation_reason: reason
       )
-    end
-
-    def cancellation_reason_label(reason)
-      return "" if reason.nil?
-
-      case reason.to_sym
-      when :ctrl_c
-        "ctrl-c"
-      else
-        reason.to_s
-      end
     end
 
     def start_thinking_spinner

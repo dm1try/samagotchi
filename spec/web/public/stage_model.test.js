@@ -75,7 +75,7 @@ test("liveSlots: writing while the step's narration streams, waiting for you wit
   assert.equal(liveSlots(plain).phase, "writing the answer");
   assert.equal(liveSlots(plain, { pending: true }).phase, "waiting for you");
   assert.equal(liveSlots(plain, { ended: "completed" }).phase, "answered");
-  assert.equal(liveSlots(plain, { ended: "canceled" }).phase, "stopped");
+  assert.equal(liveSlots(plain, { ended: "canceled" }).phase, "canceled");
   assert.equal(liveSlots(plain, { ended: "failed" }).phase, "failed");
   assert.equal(liveSlots(plain, { ended: "gone" }).phase, "failed");
   assert.deepEqual(liveSlots(newTurn()).headline, { text: "…", thinking: false });

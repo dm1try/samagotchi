@@ -2027,7 +2027,8 @@ module Samagotchi
           if canceled
             emit_event(on_event, with_origin.call({
               type: :turn_canceled,
-              cancellation_reason: result.cancellation_reason
+              cancellation_reason: result.cancellation_reason,
+              duration_ms: (turn_seconds.call * 1000).round
             }))
           else
             # For a client that attaches later (session_state_snapshot).
@@ -2068,7 +2069,8 @@ module Samagotchi
           end
           session.status = Session::STATUS_IDLE
           record_last_turn(session, "canceled", turn_seconds.call, origin)
-          emit_event(on_event, with_origin.call({ type: :turn_canceled, cancellation_reason: :ctrl_c }))
+          emit_event(on_event, with_origin.call({ type: :turn_canceled, cancellation_reason: :ctrl_c,
+                                                   duration_ms: (turn_seconds.call * 1000).round }))
         end
         @metrics.persist(state_dir: session_state_dir)
         raise
@@ -2088,7 +2090,8 @@ module Samagotchi
         session.status = Session::STATUS_IDLE
         record_last_turn(session, "failed", turn_seconds.call, origin)
         begin; session.save(state_dir: session_state_dir); rescue StandardError; nil; end
-        failed = { type: :turn_failed, error_class: e.class.name, message: e.message }
+        failed = { type: :turn_failed, error_class: e.class.name, message: e.message,
+                   duration_ms: (turn_seconds.call * 1000).round }
         # A provider error says what kind it is, for one line per kind in the UIs.
         if e.is_a?(LLM::ProviderError)
           failed.merge!(error_kind: e.kind, retryable: e.retryable?, host: e.host, summary: e.summary)

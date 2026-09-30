@@ -4,15 +4,10 @@
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mmodel> thinking... /\e[0m
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J
-model> request cancelled (ctrl-c)
-\e[90mmodel> thinking... /\e[0m
-\e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[36mchi>\e[0m turn canceled (<elapsed>)
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[33m✕\e[0m turn canceled (Ctrl-C) · <elapsed>
 \e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J
-model> turn cancelled; partial progress kept in context; use !rollback immediately after cancellation to restore the pre-turn checkpoint
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J  \e[90mpartial progress kept; !rollback restores the pre-turn state\e[0m
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[Jhi
 

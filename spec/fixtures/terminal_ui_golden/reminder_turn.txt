@@ -1,4 +1,5 @@
 \e[?2026h\e[?25l\r\e[JSession: <session-id>
+\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[Jreminder: tick
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[J\e[90mreminder: tick · Ctrl-C cancels it\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[90mmodel> thinking... |\e[0m
 \e[90mstatus> model=Qwen3-14B\e[0m
@@ -15,8 +16,6 @@
 \e[90mstatus> model=Qwen3-14B\e[0m
 \e[90mreminder: tick · Ctrl-C cancels it\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[2A\e[J\e[90mstatus> model=Qwen3-14B\e[0m
-\e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J\e[36mchi>\e[0m turn completed (<elapsed>)
-\e[90mstatus> model=Qwen3-14B\e[0m
 \e[?25h\e[?2026l\e[?2026h\e[?25l\r\e[1A\e[J
 Continue session: chi --resume <session-id>
 \e[90mstatus> model=Qwen3-14B\e[0m

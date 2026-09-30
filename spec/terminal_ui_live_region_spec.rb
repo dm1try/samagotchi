@@ -234,7 +234,8 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
       expect(during_reminder[:lines]).to include("reminder: stretch · Ctrl-C cancels it")
       expect(kernel_calls.last).to include(hash_including(role: "user", content: "hi"))
       expect(shown).to include("PONG 1", "PONG 2")
-      expect(shown.grep(/reminder: stretch/)).to be_empty
+      # Its line stays (as attached mode shows it); the hints row went.
+      expect(shown.grep(/reminder: stretch/)).to eq(["reminder: stretch"])
     end
 
     it "cancels only the reminder turn on Ctrl-C and keeps the prompt" do
@@ -250,7 +251,9 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
       ui.run
 
       expect(@reads.call).to eq(2) # the open prompt, then the one after "hi"
-      expect(shown).to include("model> request cancelled (ctrl-c)")
+      # A reminder turn continues the chat: no rollback hint.
+      expect(shown.grep(/turn canceled/)).to contain_exactly(match(/\A✕ turn canceled \(Ctrl-C\) · /))
+      expect(shown.grep(/rollback/)).to be_empty
       expect(kernel_calls.last).to include(hash_including(role: "user", content: "hi"))
     end
   end

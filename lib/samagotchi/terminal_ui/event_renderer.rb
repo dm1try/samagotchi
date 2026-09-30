@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "set"
+require_relative "formatting"
 
 module Samagotchi
   class TerminalUI
@@ -22,7 +23,13 @@ module Samagotchi
         @tool_started_at = {}
         # Card ids shown so far (across turns): one shown again is updated.
         @card_ids = Set.new
+        @turn_continues = false
       end
+
+      # Whether the running turn continues an earlier one (a continue or a
+      # reminder turn): set from :turn_started, or by a UI that joined the
+      # turn mid-way. A canceled one gets no rollback hint.
+      attr_writer :turn_continues
 
       # Deep-convert a string-keyed event (JSON from the Bridge) to the local
       # shape: symbol keys and a symbol :type. Other values stay as they are.
@@ -45,6 +52,7 @@ module Samagotchi
         case event[:type]
         when :turn_started
           begin_turn
+          @turn_continues = event[:continue] ? true : event[:prompt].nil?
           Array(event[:images]).each { |ref| @view.print_line(@view.format_image_line(ref)) }
         when :generation_started
           @view.generation_feedback_started(event)
@@ -71,6 +79,15 @@ module Samagotchi
           @view.print_line(@view.format_empty_retry_line(event))
         when :turn_completed
           render_turn_summary(event[:turn_summary]) if event[:turn_summary]
+        when :turn_canceled
+          @view.finish_thinking_spinner
+          @view.print_line(@view.turn_canceled_line(event[:cancellation_reason], event[:duration_ms]))
+          @view.print_line(@view.turn_end_hint(Formatting::ROLLBACK_HINT)) unless @turn_continues
+        when :turn_failed
+          # A provider error's one-line summary, else the message (an image
+          # that couldn't be used).
+          @view.finish_thinking_spinner
+          @view.print_line(@view.turn_failed_line(event[:summary] || event[:message], event[:duration_ms]))
         when :guardrail_warning
           @view.print_line(self.class.load_warning_line(event))
         when :hook_notice

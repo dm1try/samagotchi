@@ -284,22 +284,6 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(output).to end_with("<33>stopped (17s)")
     end
 
-    it "prints the completed interactive turn elapsed time" do
-      session = double(id: "timed-turn")
-      original_stdout = $stdout
-      output = StringIO.new
-      $stdout = output
-
-      metrics = agent.instance_variable_get(:@engine).metrics
-      metrics.call(type: :turn_started, session_id: session.id, prompt: nil)
-      metrics.call(type: :turn_completed, result: nil)
-      agent.send(:emit_interactive_turn_duration, canceled: false)
-
-      expect(output.string).to match(/chi> turn completed \(\d+ms\)/)
-    ensure
-      $stdout = original_stdout
-    end
-
     # Shared contract: spec/shared/timing_matrix.json. One source of truth for
     # the web (JS) and TUI (Ruby) suites — edit it to change either side's output.
     let(:timing_matrix) do

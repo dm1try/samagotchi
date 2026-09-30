@@ -41,7 +41,6 @@ RSpec.describe "TerminalUI and archived sessions" do
   def stub_turns(ui)
     engine = ui.instance_variable_get(:@engine)
     allow(engine).to receive(:run_turn).and_return(result)
-    allow(ui).to receive(:emit_cancellation_notice)
   end
 
   it "a prompt typed in the REPL brings it back; a continue turn doesn't" do

@@ -140,9 +140,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     before { feed(snapshot, { type: :turn_started, prompt: "p", origin: { client_id: "tui:1" } }, { type: :generation_started, iteration: 1 }) }
 
     it "says a turn was cancelled and clears the status line" do
-      feed({ type: :turn_canceled, cancellation_reason: :ctrl_c })
+      feed({ type: :turn_canceled, cancellation_reason: :ctrl_c, duration_ms: 3100 })
 
-      expect(screen.lines.last(2)).to eq(["turn cancelled (ctrl_c)", described_class::ROLLBACK_HINT])
+      expect(screen.lines.last(2)).to eq(["✕ turn canceled (Ctrl-C) · 3.1s", "  #{Samagotchi::TerminalUI::Formatting::ROLLBACK_HINT}"])
       expect(screen.statuses.last).to be_nil
       expect(attached).not_to be_running
     end
@@ -150,7 +150,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     it "shows a failed turn's error" do
       feed({ type: :turn_failed, error_class: "Samagotchi::Client::RetryExhausted", message: "server down" })
 
-      expect(screen.lines.last).to eq("turn failed: server down (Samagotchi::Client::RetryExhausted)")
+      expect(screen.lines.last).to eq("✕ turn failed: server down")
       expect(attached).not_to be_running
     end
 
@@ -158,7 +158,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       feed({ type: :turn_failed, error_class: "Samagotchi::LLM::AuthError", message: "fw: set FW_KEY",
              error_kind: :auth, retryable: false, host: "fw", summary: "auth failed for host fw: set FW_KEY" })
 
-      expect(screen.lines.last).to eq("turn failed: auth failed for host fw: set FW_KEY")
+      expect(screen.lines.last).to eq("✕ turn failed: auth failed for host fw: set FW_KEY")
     end
   end
 
@@ -852,7 +852,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a failed turn's prompt" do
     fail_turn("e1")
 
     expect(reads.pop(timeout: 2)).to eq("boom")
-    expect(screen.lines).to include("turn failed: server error from host main: HTTP 500", "(prompt restored for retry)")
+    expect(screen.lines).to include("✕ turn failed: server error from host main: HTTP 500", "  prompt restored for retry")
   end
 
   it "leaves the input alone for a prompt it didn't send in this run (a replayed event, another UI)" do
@@ -860,7 +860,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a failed turn's prompt" do
     @push.call("type" => "prompt_restored", "prompt" => "theirs", "origin" => { "client_id" => "web:1", "enqueued_id" => "e2" })
 
     expect(reads.pop(timeout: 0.3)).to be_nil
-    expect(screen.lines).not_to include("(prompt restored for retry)")
+    expect(screen.lines).not_to include("  prompt restored for retry")
   end
 end
 
@@ -1017,10 +1017,10 @@ end
 
   it "points at !rollback after a cancelled prompt turn, not after a cancelled continue" do
     feed({ type: :turn_started, prompt: "go", origin: { client_id: "tui:1" } }, { type: :turn_canceled, cancellation_reason: "ctrl_c" })
-    expect(screen.lines.last(2)).to eq(["turn cancelled (ctrl_c)", "partial progress kept in context; !rollback restores the pre-turn state"])
+    expect(screen.lines.last(2)).to eq(["✕ turn canceled (Ctrl-C)", "  partial progress kept; !rollback restores the pre-turn state"])
 
     feed({ type: :turn_started, prompt: nil, continue: true, origin: { client_id: "tui:1" } }, { type: :turn_canceled, cancellation_reason: "ctrl_c" })
-    expect(screen.lines.last).to eq("turn cancelled (ctrl_c)")
+    expect(screen.lines.last).to eq("✕ turn canceled (Ctrl-C)")
   end
 end
 

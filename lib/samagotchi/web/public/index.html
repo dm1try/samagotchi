@@ -429,7 +429,7 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .turn-stage[hidden]{display:none}
 .turn-stage.ended{border-left-color:var(--border-strong)}
 .turn-stage[data-phase="answered"]{border-left-color:var(--ok)}
-.turn-stage[data-phase="stopped"],.turn-stage[data-phase="waiting for you"]{border-left-color:var(--warn)}
+.turn-stage[data-phase="canceled"],.turn-stage[data-phase="waiting for you"]{border-left-color:var(--warn)}
 .turn-stage[data-phase="failed"]{border-left-color:var(--danger)}
 .turn-stage.enter{animation:ts-rise .35s cubic-bezier(.3,.7,.2,1)}
 @keyframes ts-rise{from{opacity:0;transform:translateY(14px)}}
@@ -441,7 +441,7 @@ body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;
 .ts-mark{flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent);animation:step-pulse 1.6s ease-in-out infinite}
 .turn-stage.ended .ts-mark{width:auto;height:auto;background:none;animation:none;font-size:12px;line-height:1}
 .turn-stage[data-phase="answered"] .ts-mark,.turn-stage[data-phase="answered"] .ts-phase{color:var(--ok)}
-.turn-stage[data-phase="stopped"] .ts-mark,.turn-stage[data-phase="stopped"] .ts-phase,.turn-stage[data-phase="waiting for you"] .ts-phase{color:var(--warn-text)}
+.turn-stage[data-phase="canceled"] .ts-mark,.turn-stage[data-phase="canceled"] .ts-phase,.turn-stage[data-phase="waiting for you"] .ts-phase{color:var(--warn-text)}
 .turn-stage[data-phase="failed"] .ts-mark,.turn-stage[data-phase="failed"] .ts-phase{color:var(--danger-text)}
 .turn-stage[data-phase="waiting for you"] .ts-mark{background:var(--warn)}
 .ts-phase{color:var(--accent);font-weight:600}

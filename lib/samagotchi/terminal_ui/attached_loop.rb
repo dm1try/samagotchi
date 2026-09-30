@@ -45,7 +45,6 @@ module Samagotchi
         "continue_offered" => "a continue offer is pending", "client_connected" => "another UI is attached",
         "reminders" => "reminders are set", "starting" => "the worker is still starting"
       }.freeze
-      ROLLBACK_HINT = "partial progress kept in context; !rollback restores the pre-turn state"
       # How much of the last answer a join shows.
       JOIN_ANSWER_LINES = 12
       JOIN_ANSWER_CHARS = 1200
@@ -109,7 +108,6 @@ module Samagotchi
         # A continue offer is pending: the prompt asks for the answer.
         @continue_offer = nil
         @model_name = nil
-        @turn_continues = false
         # The idle status line's data (the REPL's segments).
         @memory_names = []
         # The session's --memory list (shown with the used memories until the
@@ -177,14 +175,10 @@ module Samagotchi
         when :turn_enqueued then show_enqueued(event)
         when :turn_started then start_turn(event)
         when :turn_completed then complete_turn(event)
-        when :turn_canceled
-          continued = @turn_continues
-          end_turn("turn cancelled (#{event[:cancellation_reason]})")
-          # A cancelled continue is back where it started; a prompt turn's
-          # partial progress stays, as in the REPL.
-          @screen.commit(ROLLBACK_HINT) unless continued
-        when :turn_failed
-          end_turn("turn failed: #{event[:summary] || "#{event[:message]} (#{event[:error_class]})"}")
+        # The renderer says how it ended (the REPL's words too).
+        when :turn_canceled, :turn_failed
+          @renderer.call(event)
+          end_turn
         when :prompt_restored then restore_prompt(event)
         when :context_status
           @context_estimate = { est_pct: event.dig(:usage, :estimated_pct), bucket: event[:bucket] }
@@ -659,9 +653,9 @@ module Samagotchi
         return unless own?(origin[:client_id]) && @sent_ids.include?(origin[:enqueued_id])
 
         if @reader&.prefill(event[:prompt].to_s)
-          @screen.commit("(prompt restored for retry)")
+          @screen.commit(turn_end_hint("prompt restored for retry"))
         else
-          @screen.commit("(the failed prompt is in the input history: ↑)")
+          @screen.commit(turn_end_hint("the failed prompt is in the input history (↑)"))
         end
       end
 
@@ -903,8 +897,9 @@ module Samagotchi
         @joined_mid_turn = @running
         return unless turn
 
-        @turn_continues = turn[:prompt].nil?
-        unless @turn_continues && reminder_origin?(turn[:origin] || {})
+        continues = turn[:prompt].nil?
+        @renderer.turn_continues = continues
+        unless continues && reminder_origin?(turn[:origin] || {})
           @screen.commit(prompt_line(turn.dig(:origin, :client_id), turn[:prompt] || "(continuing)"))
         end
         Array(turn[:images]).each { |ref| @screen.commit(format_image_line(ref)) }
@@ -941,9 +936,8 @@ module Samagotchi
       def start_turn(event)
         @running = true
         @joined_mid_turn = false
-        @turn_continues = event[:prompt].nil?
         origin = event[:origin] || {}
-        if @turn_continues
+        if event[:prompt].nil?
           # A continue turn (after the offer's yes) has no prompt to show; a
           # reminder turn shows its reminders (:reminder_injected).
           @screen.commit(prompt_line(origin[:client_id], "(continuing)")) unless reminder_origin?(origin)
@@ -968,9 +962,7 @@ module Samagotchi
         close_question("(the turn ended)") if @question
       end
 
-      def end_turn(message)
-        @view.finish_thinking_spinner
-        @screen.commit(message)
+      def end_turn
         @running = false
         @joined_mid_turn = false
         close_question("(the turn ended)") if @question

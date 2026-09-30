@@ -123,6 +123,7 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
       .gsub(/\((\d+(\.\d+)?(ms|s)|\d+m \d+s)\)/, "(<elapsed>)")
       .gsub("\e", "\\e")
       .gsub("\r\n", "\n").gsub("\r", "\\r")
+      .gsub(/ · (\d+(\.\d+)?(ms|s)|\d+m \d+s)$/, " · <elapsed>")
   end
 
   def expect_golden(name, actual)
@@ -374,7 +375,8 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
 
     output = run_turn(model: "Qwen3-14B", events: events) { |_messages| raise error }
 
-    expect(output).to include("model> auth failed for host fw: set FW_KEY (the API key for host fw); prompt restored for retry")
+    expect(output).to include("turn failed: auth failed for host fw: set FW_KEY (the API key for host fw) · <elapsed>")
+    expect(output).to include("prompt restored for retry")
     expect_golden("provider_error", output)
   end
 end

@@ -111,7 +111,8 @@ RSpec.describe "TerminalUI images" do
       agent.send(:run_input_line, session, "what is @#{png}?")
 
       expect(agent).to have_received(:restore_prompt_for_retry).with("what is @#{png}?")
-      expect(surface.lines.join("\n")).to include("host main can't take images: the server has no vision", "prompt restored for retry")
+      # The failure's own line is the renderer's (:turn_failed).
+      expect(surface.lines.join("\n")).to include("prompt restored for retry")
     end
 
     it "puts the typed text back when an @path image can't be used" do
@@ -120,7 +121,7 @@ RSpec.describe "TerminalUI images" do
 
       agent.send(:run_input_line, session, "look @#{png}")
 
-      expect(surface.lines.join("\n")).to include("install ImageMagick or downscale it; prompt restored for retry")
+      expect(surface.lines.join("\n")).to include("prompt restored for retry")
     end
 
     it "leaves a steering line with images for the next turn" do

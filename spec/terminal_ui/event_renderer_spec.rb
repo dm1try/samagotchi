@@ -216,6 +216,40 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     end
   end
 
+  describe "turn ends (the words both TUIs share)" do
+    let(:view) do
+      Class.new do
+        include Samagotchi::TerminalUI::Formatting
+
+        attr_reader :lines
+
+        def initialize = @lines = []
+        def print_line(text) = @lines << text
+        def finish_thinking_spinner; end
+        def reset_turn_feedback; end
+        def color_output? = false
+      end.new
+    end
+
+    it "says a canceled prompt turn kept its partial progress; a canceled continue gets no hint" do
+      renderer.call({ type: :turn_started, prompt: "go" })
+      renderer.call({ type: :turn_canceled, cancellation_reason: :ctrl_c, duration_ms: 3100 })
+      renderer.call({ type: :turn_started, prompt: nil, continue: true })
+      renderer.call({ type: :turn_canceled, cancellation_reason: "user", duration_ms: 400 })
+
+      expect(view.lines).to eq(["✕ turn canceled (Ctrl-C) · 3.1s", "  partial progress kept; !rollback restores the pre-turn state",
+                                "✕ turn canceled (stopped) · 400ms"])
+    end
+
+    it "shows a failed turn's summary, else its message (an image that couldn't be used)" do
+      renderer.call({ type: :turn_failed, error_class: "Samagotchi::LLM::AuthError", message: "fw: set FW_KEY",
+                      summary: "auth failed for host fw: set FW_KEY", duration_ms: 2000 })
+      renderer.call({ type: :turn_failed, error_class: "Samagotchi::ImageStore::Error", message: "shot.png is too large" })
+
+      expect(view.lines).to eq(["✕ turn failed: auth failed for host fw: set FW_KEY · 2.0s", "✕ turn failed: shot.png is too large"])
+    end
+  end
+
   it "ignores events it does not render" do
     renderer.call(type: :reminder_injected, reminders: [])
     renderer.call(type: :turn_completed, result: "no summary")

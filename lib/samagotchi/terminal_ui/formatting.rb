@@ -135,6 +135,33 @@ module Samagotchi
         text.strip.empty? ? [] : lines
       end
 
+      # ── Turn ends: one set of words for the REPL, attached mode and the
+      # web (timing.js cancelLineText, format.js failedTurnText) ──────────
+
+      # A cancel's reason as the UIs name it (anything else as it is).
+      CANCEL_REASONS = { "ctrl_c" => "Ctrl-C", "user" => "stopped", "hook" => "by a hook" }.freeze
+      # Under a canceled prompt turn (a canceled continue is back where it
+      # started): its partial progress stays in the conversation.
+      ROLLBACK_HINT = "partial progress kept; !rollback restores the pre-turn state"
+
+      # "✕ turn canceled (Ctrl-C) · 3.1s"
+      def turn_canceled_line(reason, duration_ms)
+        label = reason.to_s.empty? ? nil : CANCEL_REASONS.fetch(reason.to_s, reason.to_s)
+        "#{paint("✕", 33)} turn canceled#{" (#{label})" if label}#{turn_duration_suffix(duration_ms)}"
+      end
+
+      # "✕ turn failed: <summary> · 2.0s"
+      def turn_failed_line(detail, duration_ms)
+        "#{paint("✕", 31)} turn failed: #{detail}#{turn_duration_suffix(duration_ms)}"
+      end
+
+      # A dim, indented line under a turn's end: what became of its prompt.
+      def turn_end_hint(text) = "  #{paint(text, 90)}"
+
+      def turn_duration_suffix(duration_ms)
+        duration_ms.nil? ? "" : " · #{format_elapsed_duration(duration_ms)}"
+      end
+
       private
 
       # The recap shown on return: dim, one "recap>" block, noting how many
