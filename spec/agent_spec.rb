@@ -973,6 +973,7 @@ file2.rb")
       allow(Reline).to receive(:readmultiline).and_return("retry me", nil)
 
       agent = described_class.new(mode: "assist", client: client)
+      allow(agent).to receive(:piped_input?).and_return(false) # typed at a terminal
       expect(agent).to receive(:queue_input_prefill).with("retry me").and_call_original
       expect { agent.run }.to output(/✕ turn failed: network error after 6 attempts \(host llama.cpp: Errno::ECONNREFUSED\) · .*\n  prompt restored for retry/).to_stdout
     end

@@ -106,7 +106,7 @@ RSpec.describe "TerminalUI images" do
 
     it "puts the typed text back when the model can't see images" do
       allow(engine).to receive(:run_turn).and_raise(Samagotchi::LLM::VisionUnsupported.new("main: the server has no vision", host: "main"))
-      allow(agent).to receive(:restore_prompt_for_retry).and_return("prompt restored for retry")
+      allow(agent).to receive_messages(restore_prompt_for_retry: "prompt restored for retry", piped_input?: false)
 
       agent.send(:run_input_line, session, "what is @#{png}?")
 
@@ -117,7 +117,7 @@ RSpec.describe "TerminalUI images" do
 
     it "puts the typed text back when an @path image can't be used" do
       allow(engine).to receive(:run_turn).and_raise(Samagotchi::ImageStore::Error, "shot.png is too large; install ImageMagick or downscale it")
-      allow(agent).to receive(:restore_prompt_for_retry).and_return("prompt restored for retry")
+      allow(agent).to receive_messages(restore_prompt_for_retry: "prompt restored for retry", piped_input?: false)
 
       agent.send(:run_input_line, session, "look @#{png}")
 

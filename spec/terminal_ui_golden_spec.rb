@@ -89,6 +89,8 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
       events.each { |event| kwargs[:on_stream_event]&.call(event) }
       finish.call(messages)
     end
+    # Lines typed at a terminal, or piped in (no prompt restored then).
+    allow(ui).to receive(:piped_input?).and_return(!tty)
     setup&.call(ui)
 
     original = $stdout

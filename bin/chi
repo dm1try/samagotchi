@@ -1171,7 +1171,7 @@ if launch == :attached
 end
 
 begin
-  Samagotchi::TerminalUI.new(
+  ended = Samagotchi::TerminalUI.new(
     prompt: options[:prompt],
     session_id: options[:resume],
     no_interrupt: options[:no_interrupt] || options[:non_interactive],
@@ -1182,6 +1182,8 @@ begin
     model_name: options[:model],
     scratch: scratch
   ).run
+  # `chi -p X </dev/null`: the turn failed (nothing was sent again).
+  exit 1 if ended == :turn_failed
 rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::TerminalUI::SessionNotFound, Samagotchi::ModelProfile::MissingModel => e
   warn "Error: #{e.message}"
   exit 1

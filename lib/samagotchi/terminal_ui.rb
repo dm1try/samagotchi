@@ -203,6 +203,8 @@ module Samagotchi
     # (auto-executing it, then saving), then either exits when there is no
     # follow-up REPL (--non-interactive) or drops into the REPL carrying the
     # post-turn conversation.
+    # @return [Symbol, nil] :turn_failed when lines came from a pipe and a
+    #   turn failed (bin/chi exits 1)
     def run
       unless @mode == :assist
         raise ArgumentError, "Unknown mode '#{@mode}'. Use: assist"
@@ -264,6 +266,8 @@ module Samagotchi
       else
         keep_after_exit(session)
       end
+      # Lines from a pipe (`chi -p X </dev/null`): a failed turn fails the run.
+      :turn_failed if @piped_turn_failed
     ensure
       # However it ends (the early returns too; the Engine was built in
       # #initialize): the anytime commands finish, the plugins' services
@@ -606,7 +610,14 @@ module Samagotchi
         @turn_flow.prompt_turn_failed(note: note)
         # The Engine saved the failed turn; the file follows the rollback.
         save_session(session) if note
-        @surface.commit(turn_end_hint(restore_prompt_for_retry(input)))
+        if piped_input?
+          # Nobody can edit a restored prompt, and Reline would hand it back
+          # as the next line: the turn would run again and again. It failed;
+          # the exit status says so.
+          @piped_turn_failed = true
+        else
+          @surface.commit(turn_end_hint(restore_prompt_for_retry(input)))
+        end
         return
       end
       finish_turn(session, result, continue: false)
@@ -793,6 +804,10 @@ module Samagotchi
       # A question's answer leaves only its summary line.
       prompt == paint(QUESTION_PROMPT, 33) ? RelineSeam.without_echo(&read) : read.call
     end
+
+    # Lines come from a pipe or a file (`chi -p X </dev/null`, `echo … | chi`),
+    # not a terminal: no prompt is restored for a retry.
+    def piped_input? = !$stdin.tty?
 
     # A failed prompt goes back into the input for a retry.
     # @return [String] what the failed-turn line says about it
