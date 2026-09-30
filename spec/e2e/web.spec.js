@@ -593,6 +593,37 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
   await expect(reloaded.locator(".steer-text")).toContainText("You've made 3 tool calls in this turn");
 });
 
+// loop-guard's thinking watch: the first generation's thinking goes round in
+// a 3-sentence cycle (it would stream for ~11 s); loop-guard cuts it with a
+// warn notice, the loop asks again (held 3 s), and the retry answers. The
+// stage flashes the warn notice while the turn runs, both rows are in the
+// DOM (inside the closed cloud); the turn view has them in the cut
+// generation's step, closed once the retry's step opens.
+test("thinking loop: loop-guard cuts it, asks again, answers", { tag: "@turn" }, async ({ page, script }) => {
+  script("thinking_loop");
+  const started = Date.now();
+  await send(page, "How many r letters are in strawberry?");
+  const rows = page.locator(`${H()} .hook-notice`);
+  const cut = rows.filter({ hasText: "thinking repeats itself" });
+  const again = rows.filter({ hasText: "↻ cut by loop-guard, asking again (1/1)" });
+  if (stage()) {
+    await expect(page.locator("#turnStage .ts-trail")).toContainText("thinking repeats itself");
+  } else {
+    // Both rows are the cut generation's: its step closes as the retry's opens.
+    const steps = page.locator(`${H()} .turn-work .gen`);
+    await expect(steps).toHaveCount(2);
+    await expect(steps.first().locator(".hook-notice")).toHaveCount(2);
+  }
+  await expect(cut).toHaveCount(1);
+  await expect(again).toHaveCount(1);
+  await expect(cut).toContainText("(3 sentences ×3");
+  await expect(page.locator("#cancelBtn")).toBeVisible();
+  await expect(answer(page)).toHaveText("PONG after the cut.");
+  await turnEnded(page, 1);
+  // Well before the loop's own end (~11 s of streaming, then the 3 s hold).
+  expect(Date.now() - started).toBeLessThan(9000);
+});
+
 // A warn card in a step (here the e2e-warn-card test bundle's, at the first
 // step's read) stays in sight when that step closes mid-turn: it leaves the
 // collapsing step for the block, and after the turn ends it is under the

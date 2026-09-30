@@ -3,6 +3,6 @@
   "nudge_counts": true,
   "iterations": [
     {"thinking_file": "../../../fixtures/loop_guard/thinking/cycle3.txt", "repeat": 3, "chunk_chars": 80},
-    {"thinking": "Answer now.", "text": "PONG after the cut."}
+    {"hold": 3, "thinking": "Answer now.", "text": "PONG after the cut."}
   ]
 }

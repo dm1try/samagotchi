@@ -155,6 +155,10 @@ export async function startEnv({ lan = false } = {}) {
     // after: 3 leaves the other scripts' turns alone.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", "check-in"],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });
+    // loop-guard (shipped), for the thinking-loop scenario; its thinking watch
+    // must leave every other script's turn alone.
+    execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", "loop-guard"],
+      { cwd: dirs.project, env: childEnv, stdio: "ignore" });
     // A test bundle whose plugin shows a warn card mid-turn (a read of
     // e2e-warn-card.txt only), for the warn_card scenario.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "e2e", "support", "bundles", "e2e-warn-card")],
