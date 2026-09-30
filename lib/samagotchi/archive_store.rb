@@ -3,6 +3,7 @@
 require "json"
 require "fileutils"
 require "time"
+require_relative "atomic_file"
 
 require_relative "session"
 
@@ -81,8 +82,7 @@ module Samagotchi
       dir = Session.session_dir(session_id, state_dir: state_dir)
       FileUtils.mkdir_p(dir)
       path = File.join(dir, FILE)
-      File.write("#{path}.tmp", JSON.generate(record))
-      File.rename("#{path}.tmp", path)
+      AtomicFile.write(path, JSON.generate(record))
       true
     end
     private_class_method :write

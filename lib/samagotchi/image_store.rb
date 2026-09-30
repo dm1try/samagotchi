@@ -5,6 +5,7 @@ require "fileutils"
 require "open3"
 require "securerandom"
 require "tmpdir"
+require_relative "atomic_file"
 require_relative "config"
 
 module Samagotchi
@@ -384,9 +385,7 @@ module Samagotchi
       path = File.join(session_dir.to_s, file)
       unless File.file?(path)
         FileUtils.mkdir_p(File.dirname(path))
-        tmp = "#{path}.#{SecureRandom.hex(4)}.tmp"
-        File.binwrite(tmp, bytes)
-        File.rename(tmp, path)
+        AtomicFile.write(path, bytes)
       end
       { file: file, mime: MIME.fetch(info.format), width: info.width, height: info.height,
         bytes: bytes.bytesize, name: name, source: source.to_s }

@@ -3,6 +3,7 @@
 require "json"
 require "fileutils"
 require "time"
+require_relative "../atomic_file"
 require_relative "../log"
 require_relative "approval"
 
@@ -163,13 +164,7 @@ module Samagotchi
         with_lock do
           list = read(locked: true)
           yield list
-          tmp = "#{@path}.#{Process.pid}.#{Thread.current.object_id}.tmp"
-          begin
-            File.write(tmp, JSON.pretty_generate(list))
-            File.rename(tmp, @path)
-          ensure
-            FileUtils.rm_f(tmp)
-          end
+          AtomicFile.write(@path, JSON.pretty_generate(list))
         end
       end
     end

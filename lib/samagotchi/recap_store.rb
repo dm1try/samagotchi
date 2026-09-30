@@ -2,6 +2,7 @@
 
 require "json"
 require "fileutils"
+require_relative "atomic_file"
 
 require_relative "session"
 
@@ -54,8 +55,7 @@ module Samagotchi
       dir = Session.session_dir(id, state_dir: state_dir)
       FileUtils.mkdir_p(dir)
       path = File.join(dir, FILE)
-      File.write("#{path}.tmp", JSON.generate(state))
-      File.rename("#{path}.tmp", path)
+      AtomicFile.write(path, JSON.generate(state))
     end
 
     # Remove the saved recap (it no longer describes the session).

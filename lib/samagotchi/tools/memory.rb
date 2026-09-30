@@ -4,6 +4,7 @@
 require "fileutils"
 require "digest"
 require "date"
+require_relative "../atomic_file"
 require_relative "../memory_paths"
 
 module Samagotchi
@@ -186,7 +187,7 @@ module Samagotchi
           end
 
           file_path = File.join(dir, "#{entry_name}.#{model_key}.md")
-          Samagotchi::MemoryBundle::IndexUpdater.atomic_write(file_path, body)
+          Samagotchi::AtomicFile.write(file_path, body)
           bytes = body.bytesize
           return "Model overlay '#{entry_name}' for #{model_key} saved to #{resolved_scope} scope (#{bytes} bytes). File written: #{file_path}"
         end
@@ -195,7 +196,7 @@ module Samagotchi
         if entry_name == MEMORY_INDEX
           Samagotchi::MemoryBundle::IndexUpdater.locked_write(dir) { body }
         else
-          Samagotchi::MemoryBundle::IndexUpdater.atomic_write(file_path, body)
+          Samagotchi::AtomicFile.write(file_path, body)
         end
         bytes = body.bytesize
         message = "Memory '#{entry_name}' saved to #{resolved_scope} scope (#{bytes} bytes). File written: #{file_path}"

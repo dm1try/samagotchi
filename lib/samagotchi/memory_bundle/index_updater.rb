@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 require "fileutils"
 require "digest"
+require_relative "../atomic_file"
 require_relative "../memory_paths"
 module Samagotchi
   module MemoryBundle
@@ -66,18 +67,8 @@ module Samagotchi
           lock.flock(File::LOCK_EX)
           content = File.exist?(index_path) ? File.read(index_path) : nil
           updated = yield content
-          atomic_write(index_path, updated) unless updated.nil?
+          Samagotchi::AtomicFile.write(index_path, updated) unless updated.nil?
         end
-      end
-      # Write aside and rename, so a reader never sees a half-written file. The
-      # temp name must not end in .md, or it would be listed as a memory. A
-      # symlinked target is replaced by a regular file (accepted).
-      def self.atomic_write(path, body)
-        tmp_path = "#{path}.#{Process.pid}.#{Thread.current.object_id}.tmp"
-        File.write(tmp_path, body)
-        File.rename(tmp_path, path)
-      ensure
-        FileUtils.rm_f(tmp_path) if tmp_path
       end
       def self.managed_line(name, scope, byte_count, description)
         line = "- **#{name}** · #{scope} · #{date_str} · #{byte_count}"

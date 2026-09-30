@@ -6,6 +6,7 @@ require "json"
 require "time"
 require "securerandom"
 require "rbconfig"
+require_relative "atomic_file"
 
 require_relative "session"
 require_relative "session_metrics"
@@ -927,10 +928,10 @@ module Samagotchi
         record = { "prompt" => prompt.to_s, "client_id" => client_id, "enqueued_id" => enqueued_id,
                    "no_interrupt" => (no_interrupt ? true : nil),
                    "images" => (images.empty? ? nil : images.map { |image| image.transform_keys(&:to_s) }) }.compact
-        write_atomic(path, JSON.generate(record))
+        AtomicFile.write(path, JSON.generate(record))
       else
         path = File.join(input_dir, "#{timestamp}.txt")
-        write_atomic(path, prompt.to_s)
+        AtomicFile.write(path, prompt.to_s)
       end
       path
     rescue StandardError
@@ -955,7 +956,7 @@ module Samagotchi
       path = File.join(notes_dir, name)
       record = { "text" => body, "source" => source.to_s, "from_session" => from_session,
                  "from_cwd" => from_cwd, "created_at" => Time.now.iso8601 }.compact
-      write_atomic(path, JSON.generate(record))
+      AtomicFile.write(path, JSON.generate(record))
       path
     end
 
@@ -1007,7 +1008,7 @@ module Samagotchi
       output_dir = File.join(session_dir, OUTPUT_DIR)
       FileUtils.mkdir_p(output_dir)
       timestamp = Time.now.strftime("%Y%m%d%H%M%S%9N")
-      write_atomic(File.join(output_dir, "#{timestamp}.txt"), response.to_s)
+      AtomicFile.write(File.join(output_dir, "#{timestamp}.txt"), response.to_s)
     end
 
     def self.find_new_input_files(session_dir)
@@ -1078,12 +1079,6 @@ module Samagotchi
       Session.load(session_id, state_dir: state_dir).status == Session::STATUS_STOPPED
     rescue ArgumentError
       false
-    end
-
-    private_class_method def self.write_atomic(path, content)
-      temp_path = "#{path}.tmp"
-      File.write(temp_path, content)
-      File.rename(temp_path, path)
     end
 
     # The session's live owner: the OwnerLock holder, or a live pid-only

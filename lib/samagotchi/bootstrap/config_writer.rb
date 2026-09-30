@@ -4,6 +4,7 @@ require "json"
 require "yaml"
 require "fileutils"
 require "ipaddr"
+require_relative "../atomic_file"
 require_relative "../config"
 
 module Samagotchi
@@ -328,13 +329,10 @@ module Samagotchi
         candidate
       end
 
+      # The target's mode is kept (a fresh file's when it is new).
       def atomic_write(target, text)
-        tmp = "#{target}.tmp-#{Process.pid}"
-        File.binwrite(tmp, text)
-        File.chmod(File.stat(target).mode & 0o7777, tmp) if File.exist?(target)
-        File.rename(tmp, target)
-      ensure
-        FileUtils.rm_f(tmp) if tmp && File.exist?(tmp)
+        perm = File.stat(target).mode & 0o7777 if File.exist?(target)
+        AtomicFile.write(target, text, perm: perm)
       end
     end
   end

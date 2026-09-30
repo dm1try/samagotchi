@@ -6,6 +6,7 @@ require "fileutils"
 require "json"
 require "open3"
 require "rbconfig"
+require_relative "../atomic_file"
 require_relative "../version"
 require_relative "../self_report"
 require_relative "../installed_gem"
@@ -298,9 +299,7 @@ module Samagotchi
 
       def write_launch_file(config = launch_config)
         FileUtils.mkdir_p(@support_dir)
-        tmp = "#{launch_path}.tmp"
-        File.write(tmp, JSON.pretty_generate(config) + "\n")
-        File.rename(tmp, launch_path)
+        AtomicFile.write(launch_path, JSON.pretty_generate(config) + "\n")
       end
 
       def register_app

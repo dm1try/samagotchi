@@ -5,6 +5,7 @@ require "monitor"
 require "time"
 require "fileutils"
 require "securerandom"
+require_relative "atomic_file"
 require_relative "session"
 
 module Samagotchi
@@ -247,9 +248,7 @@ module Samagotchi
       # File.join.
       FileUtils.mkdir_p(dir = session_dir(sid, state_dir || @state_dir))
       path = File.join(dir, "analytics.json")
-      temp_path = "#{path}.tmp"
-      File.write(temp_path, JSON.pretty_generate(snapshot.merge(active_turn: nil, active_tools: [])) + "\n")
-      File.rename(temp_path, path)
+      AtomicFile.write(path, JSON.pretty_generate(snapshot.merge(active_turn: nil, active_tools: [])) + "\n")
       true
     rescue StandardError
       false

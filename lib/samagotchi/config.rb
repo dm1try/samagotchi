@@ -5,6 +5,7 @@ require "json"
 require "fileutils"
 require "uri"
 require "set"
+require_relative "atomic_file"
 require_relative "log"
 require_relative "paths"
 
@@ -914,9 +915,7 @@ module Samagotchi
         raw_data["default"] = { "model" => resolved }
       end
       FileUtils.mkdir_p(File.dirname(path))
-      tmp = "#{path}.tmp"
-      File.write(tmp, YAML.dump(raw_data))
-      File.rename(tmp, path)
+      AtomicFile.write(path, YAML.dump(raw_data))
       clear_yaml_cache!(path)
       Samagotchi::Config.reload!(cli_overrides: Samagotchi::Config.cli_overrides)
       true
@@ -1041,9 +1040,7 @@ module Samagotchi
       normalized[lowered_key] = resolved_model
 
       FileUtils.mkdir_p(File.dirname(path))
-      tmp = "#{path}.tmp"
-      File.write(tmp, YAML.dump(raw_data))
-      File.rename(tmp, path)
+      AtomicFile.write(path, YAML.dump(raw_data))
       clear_yaml_cache!(path)
       previous
     end

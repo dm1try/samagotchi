@@ -4,6 +4,7 @@ require "json"
 require "digest"
 require "date"
 require "fileutils"
+require_relative "../atomic_file"
 require_relative "../memory_paths"
 
 module Samagotchi
@@ -274,11 +275,7 @@ module Samagotchi
       # chi start) never parses a truncated manifest.json.
       def write_manifest(manifest_data)
         manifest_path = File.join(@bundle_dir, "manifest.json")
-        tmp_path = "#{manifest_path}.#{Process.pid}.tmp"
-        File.write(tmp_path, JSON.pretty_generate(manifest_data))
-        File.rename(tmp_path, manifest_path)
-      ensure
-        FileUtils.rm_f(tmp_path) if tmp_path
+        AtomicFile.write(manifest_path, JSON.pretty_generate(manifest_data))
       end
       private :write_manifest
 

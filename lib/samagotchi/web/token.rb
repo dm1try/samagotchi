@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "securerandom"
+require_relative "../atomic_file"
 
 require_relative "../session"
 
@@ -53,12 +54,8 @@ module Samagotchi
       def write(path, token)
         dir = File.dirname(path)
         FileUtils.mkdir_p(dir, mode: 0o700)
-        tmp = File.join(dir, ".#{File.basename(path)}.#{Process.pid}.#{SecureRandom.hex(4)}")
-        File.open(tmp, File::WRONLY | File::CREAT | File::EXCL, 0o600) { |io| io.write("#{token}\n") }
-        File.rename(tmp, path)
+        AtomicFile.write(path, "#{token}\n", perm: 0o600)
         token
-      ensure
-        FileUtils.rm_f(tmp) if tmp && File.exist?(tmp)
       end
 
       # The token a running server checks against: the file is re-read when

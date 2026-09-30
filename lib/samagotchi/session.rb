@@ -4,6 +4,7 @@ require "fileutils"
 require "json"
 require "securerandom"
 require "time"
+require_relative "atomic_file"
 
 require_relative "paths"
 require_relative "project_scope"
@@ -414,7 +415,6 @@ module Samagotchi
       FileUtils.mkdir_p(state_dir)
 
       path = File.join(state_dir, "#{@id}#{FILE_EXT}")
-      temp_path = "#{path}.tmp"
 
       # Auto-compute first_preview if not yet cached and messages contain a user entry.
       compute_first_preview!
@@ -442,8 +442,7 @@ module Samagotchi
         "last_turn" => @last_turn
       }
 
-      File.write(temp_path, JSON.pretty_generate(record) + "\n")
-      File.rename(temp_path, path)
+      AtomicFile.write(path, JSON.pretty_generate(record) + "\n")
       self
     end
 

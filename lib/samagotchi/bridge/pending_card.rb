@@ -2,6 +2,7 @@
 
 require "json"
 require "fileutils"
+require_relative "../atomic_file"
 
 module Samagotchi
   class Bridge
@@ -72,9 +73,7 @@ module Samagotchi
 
       def write(id, bundle)
         FileUtils.mkdir_p(File.dirname(@path))
-        temp = "#{@path}.tmp"
-        File.write(temp, JSON.generate({ "id" => id, "bundle" => bundle }))
-        File.rename(temp, @path)
+        AtomicFile.write(@path, JSON.generate({ "id" => id, "bundle" => bundle }))
         @id = id
       end
 

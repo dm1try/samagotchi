@@ -6,6 +6,7 @@ require "uri"
 require "fileutils"
 require "securerandom"
 require "time"
+require_relative "atomic_file"
 
 require_relative "bridge/bounded_queue"
 require_relative "bridge/card_store"
@@ -930,9 +931,7 @@ module Samagotchi
       record["input_format"] = @input_format if @input_format
       path = File.join(session_dir, SIDECAR_FILE)
       FileUtils.mkdir_p(session_dir)
-      temp = "#{path}.tmp"
-      File.write(temp, JSON.pretty_generate(record) + "\n")
-      File.rename(temp, path)
+      AtomicFile.write(path, JSON.pretty_generate(record) + "\n")
     rescue StandardError => e
       Log.warn(:bridge, "sidecar_write_failed", echo: "Bridge: failed to write #{SIDECAR_FILE}: #{e.class}: #{e.message}", error: e.class.name)
     end

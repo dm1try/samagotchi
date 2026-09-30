@@ -5,6 +5,7 @@ require "json"
 require "securerandom"
 require "shellwords"
 require "time"
+require_relative "../atomic_file"
 
 module Samagotchi
   module Tools
@@ -198,9 +199,7 @@ module Samagotchi
         FileUtils.mkdir_p(dir)
 
         path = File.join(dir, METADATA_FILENAME)
-        temp_path = "#{path}.tmp"
-        File.write(temp_path, JSON.pretty_generate(record) + "\n")
-        File.rename(temp_path, path)
+        AtomicFile.write(path, JSON.pretty_generate(record) + "\n")
       end
 
       def metadata_path(task_id)
