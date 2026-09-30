@@ -28,10 +28,12 @@ and commands may change between minor versions. How releases are made:
   profile (`core (…)`, `dev (…)`).
 - `chi bundle status` without a name lists a bundle whose `manifest.json` doesn't parse as unreadable instead of
   failing.
-
 - The web stage view flashes a plugin's nudge ("↪ check-in nudged the model") and a hook's info notice in its
   trail for about 4 s, as it already did a warn notice, so they are seen while the turn runs with the block
   closed. chi's own "asking again" row does not flash (the status line says it).
+- A turn a hook stops (loop-guard, check-in's Stop) tells the model which hook stopped it and why.
+- With custom `context.status_thresholds`, the context guidance follows them (the top bucket reads critical)
+  instead of calling every bucket healthy.
 
 ### Removed
 
@@ -43,6 +45,23 @@ and commands may change between minor versions. How releases are made:
   restart it (`chi sessions stop ID`, then send to it) before upgrading.
 - A worker from before the owner lock (2026-09-22) no longer counts as a session's owner through its pid file:
   only the lock holder does, so a stale pid file whose pid was reused no longer makes a session look busy.
+
+### Fixed
+
+- A hook or plugin that fails while watching the stream is logged once a minute instead of on every batch
+  (it printed to stderr on every fire).
+- The web stage view's headline skips lines inside a code fence.
+- A question left open when a session's worker died no longer stays pending: the web and the hub stop showing
+  it (and the "needs you" badge) at once, and the next worker drops it.
+
+### Security
+
+- Session ids from outside (the worker's Bridge, the web routes, `chi send` / `note` / `sessions`,
+  `--resume` / `--attach`, the delegate and send_note tools) are checked in one place, so an id such as
+  `../x` can no longer reach a path outside the sessions folder. The Bridge answers 400, the web 404.
+
+Update with `chi update`. New bundles: `core` 0.1.0 and `dev` 0.1.0 (install with `chi bundle install core`,
+`chi bundle install dev`); existing installs don't get them by themselves.
 
 ## [0.7.0] - 2026-09-30
 
