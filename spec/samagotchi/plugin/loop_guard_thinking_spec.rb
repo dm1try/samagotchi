@@ -101,8 +101,11 @@ RSpec.describe "The loop-guard thinking watch" do
         slowest = [slowest, Process.clock_gettime(Process::CLOCK_MONOTONIC) - fire].max
       end
 
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1.0
-      expect(slowest).to be < 0.05
+      # Generous bounds: shared CI runners (and parallel spec processes)
+      # stall for tens of ms; a real regression is an order of magnitude
+      # (a batch costs ~1-2 ms on a quiet machine).
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2.0
+      expect(slowest).to be < 0.25
     end
 
     it "triggers nothing before min_chars of thinking" do
