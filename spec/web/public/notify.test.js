@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { attentionFor, attentionText, createNotifyGate, initialAttentionState, trackAttention } from "../../../lib/samagotchi/web/public/notify.js";
+import { attentionFor, attentionText, createNotifyGate, initialAttentionState, notifyState, trackAttention } from "../../../lib/samagotchi/web/public/notify.js";
 
 // What in a session's summary change needs the user: an open question,
 // a failed turn, a long turn done. The first snapshot only seeds.
@@ -212,4 +212,21 @@ test("a word about other keys or a stray message changes nothing", () => {
   front.postMessage({ type: "other" });
   c.run();
   assert.deepEqual(delivered, ["s1:q1"]);
+});
+
+// The bell: "on" | "off" | "denied" | "unsupported" (hidden). An insecure
+// origin (chi web on a LAN address over http) has no working
+// notifications: the bell is hidden there, the title badge stays.
+test("the bell is unsupported without Notification or on an insecure origin", () => {
+  assert.equal(notifyState({ hasNotification: false, secureContext: true, permission: "granted", wanted: true }), "unsupported");
+  assert.equal(notifyState({ hasNotification: true, secureContext: false, permission: "granted", wanted: true }), "unsupported");
+  assert.equal(notifyState({ hasNotification: true, secureContext: false, permission: "default", wanted: false }), "unsupported");
+});
+
+test("the bell is denied, on or off on a secure origin", () => {
+  const secure = { hasNotification: true, secureContext: true };
+  assert.equal(notifyState({ ...secure, permission: "denied", wanted: true }), "denied");
+  assert.equal(notifyState({ ...secure, permission: "granted", wanted: true }), "on");
+  assert.equal(notifyState({ ...secure, permission: "granted", wanted: false }), "off");
+  assert.equal(notifyState({ ...secure, permission: "default", wanted: true }), "off");
 });
