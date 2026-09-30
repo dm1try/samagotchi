@@ -49,6 +49,6 @@ RSpec.describe "memory_read tool - reading existing memory integration", :integr
 
     result = run_with_prompt("Please read the 'test' memory entry and tell me what it says.")
 
-    expect(result).to include("test data")
+    expect(result.output).to include("test data")
   end
 end

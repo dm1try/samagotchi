@@ -40,7 +40,7 @@ RSpec.describe Samagotchi::KernelLoop do
   describe "#run" do
     it "returns the model response when no tool calls are present" do
       allow(client).to receive(:complete).and_return("Hello!")
-      expect(kernel.run([{ role: "user", content: "hi" }])).to eq("Hello!")
+      expect(kernel.run([{ role: "user", content: "hi" }]).output).to eq("Hello!")
     end
 
     it "gives after_generation a frozen copy of the conversation as sent" do
@@ -53,11 +53,6 @@ RSpec.describe Samagotchi::KernelLoop do
 
       expect(seen).to eq([[{ role: "user", content: "hi" }]])
       expect(seen.first).to be_frozen
-    end
-
-    it "supports String-style include? checks on the returned result" do
-      allow(client).to receive(:complete).and_return("Hello world")
-      expect(kernel.run([{ role: "user", content: "hi" }])).to include("world")
     end
 
     it "keeps image refs on the conversation it returns" do
@@ -81,7 +76,7 @@ RSpec.describe Samagotchi::KernelLoop do
       ]
       allow(client).to receive(:complete).and_return(*responses)
       result = kernel.run([{ role: "user", content: "run ruby" }])
-      expect(result).to eq("done")
+      expect(result.output).to eq("done")
       expect(result.tool_activity).to include(
         action: "running command",
         tool: "execute",
@@ -100,7 +95,7 @@ RSpec.describe Samagotchi::KernelLoop do
       events = []
       result = kernel.run([{ role: "user", content: "print bytes" }], on_stream_event: ->(e) { events << e })
 
-      expect(result).to eq("done")
+      expect(result.output).to eq("done")
       completed = events.find { |e| e[:type] == :tool_call_completed }
       expect(completed[:output]).to include("ok??")
       expect(JSON.generate(completed)).to include("ok??")
@@ -123,7 +118,7 @@ RSpec.describe Samagotchi::KernelLoop do
       allow(client).to receive(:complete).and_return(*responses)
       result = kernel.run([{ role: "user", content: "read missing" }])
 
-      expect(result).to eq("done")
+      expect(result.output).to eq("done")
       expect(result.tool_activity).to include(hash_including(action: "reading file", tool: "read", status: "error"))
     end
 
@@ -669,7 +664,7 @@ RSpec.describe Samagotchi::KernelLoop do
       result = kernel.run([{ role: "user", content: "read first line" }])
       event = result.tool_activity.find { |entry| entry[:tool] == "read" }
 
-      expect(result).to eq("ok")
+      expect(result.output).to eq("ok")
       expect(event[:params]).to include("lines=1-1")
     end
 
@@ -684,7 +679,7 @@ RSpec.describe Samagotchi::KernelLoop do
         end
       end
       result = kernel.run([{ role: "user", content: "write" }])
-      expect(result).to eq("written")
+      expect(result.output).to eq("written")
       expect(prompts[1]).to include("[write]")
     ensure
       FileUtils.rm_f("/tmp/native_write_test.txt")
@@ -698,14 +693,14 @@ RSpec.describe Samagotchi::KernelLoop do
         prompts.length == 1 ? model_output : "finished"
       end
       result = kernel.run([{ role: "user", content: "list files" }])
-      expect(result).to eq("finished")
+      expect(result.output).to eq("finished")
       expect(prompts[1]).to include("<|think|>plan first")
     end
 
     it "returns empty text when the final response is only a thought block" do
       model_output = %(<|think|>internal reasoning\nstill thought)
       allow(client).to receive(:complete).and_return(model_output)
-      expect(kernel.run([{ role: "user", content: "answer" }])).to eq("")
+      expect(kernel.run([{ role: "user", content: "answer" }]).output).to eq("")
     end
 
     it "strips emitted thought-channel output from the final response" do
@@ -713,7 +708,7 @@ RSpec.describe Samagotchi::KernelLoop do
 The user said "hello". I should respond briefly.
 <channel|>Hello!)
       allow(client).to receive(:complete).and_return(model_output)
-      expect(kernel.run([{ role: "user", content: "hello" }])).to eq("Hello!")
+      expect(kernel.run([{ role: "user", content: "hello" }]).output).to eq("Hello!")
     end
 
     it "preserves tool dispatch when a thought-channel block precedes a tool call" do
@@ -726,7 +721,7 @@ Need to inspect the filesystem first.
         prompts.length == 1 ? model_output : "finished"
       end
       result = kernel.run([{ role: "user", content: "run" }])
-      expect(result).to eq("finished")
+      expect(result.output).to eq("finished")
       expect(prompts[1]).to include("stdout:\nafter-channel")
     end
 
@@ -838,7 +833,7 @@ Need to inspect the filesystem first.
     it "restores escaped literal control tokens in final user-visible output" do
       allow(client).to receive(:complete).and_return("literal [[SAMAGOTCHI_LITERAL_TURN_END]] token")
 
-      expect(kernel.run([{ role: "user", content: "answer" }])).to eq("literal <end_of_turn> token")
+      expect(kernel.run([{ role: "user", content: "answer" }]).output).to eq("literal <end_of_turn> token")
     end
 
     it "restores escaped literal control tokens in tool call params before dispatch" do
@@ -852,7 +847,7 @@ Need to inspect the filesystem first.
 
         result = kernel.run([{ role: "user", content: "write literal token" }])
 
-        expect(result).to eq("done")
+        expect(result.output).to eq("done")
         expect(File.read(path)).to eq("before <end_of_turn> after")
       end
     end
@@ -872,7 +867,7 @@ Need to inspect the filesystem first.
         on_stream_event: ->(event) { events << event }
       )
 
-      expect(result).to eq("Hello")
+      expect(result.output).to eq("Hello")
       expect(events.map { |event| event[:type] }).to include(:generation_started, :generation_chunk, :generation_completed)
       expect(events.count { |event| event[:type] == :generation_chunk }).to eq(2)
       expect(events.select { |event| event[:type] == :generation_chunk }.map { |event| event[:content] }).to eq(["Hel", "lo"])
@@ -1242,7 +1237,7 @@ Need to inspect the filesystem first.
         result = kernel.run([{ role: "user", content: "range edit" }])
         event = result.tool_activity.find { |entry| entry[:tool] == "edit" }
 
-        expect(result).to eq("done")
+        expect(result.output).to eq("done")
         expect(event[:params]).to include("lines=2-2")
         expect(File.read(path)).to eq("line 1\nline 2 updated\nline 3\n")
       end
@@ -1260,7 +1255,7 @@ Need to inspect the filesystem first.
           result = kernel.run([{ role: "user", content: "run in background" }])
           event = result.tool_activity.find { |entry| entry[:tool] == "task_create" }
 
-          expect(result).to eq("done")
+          expect(result.output).to eq("done")
           expect(event[:action]).to eq("starting background task")
           expect(event[:params]).to include("command=")
         end
@@ -1314,7 +1309,7 @@ Need to inspect the filesystem first.
         pending_input: queue.method(:drain)
       )
 
-      expect(result).to eq("done")
+      expect(result.output).to eq("done")
       injected = result.conversation.select { |m| m[:role] == "user" && m[:content].include?("also check the specs") }
       expect(injected.length).to eq(1)
     end
@@ -1373,7 +1368,7 @@ Need to inspect the filesystem first.
         on_stream_event: ->(event) { events << event }
       )
 
-      expect(result).to eq("second answer")
+      expect(result.output).to eq("second answer")
       expect(events.count { |event| event[:type] == :generation_started }).to eq(2)
       conversation = result.conversation
       follow_up = conversation.find_index { |m| m[:role] == "user" && m[:content] == "follow-up question" }
@@ -1491,7 +1486,7 @@ it "leaves input queued after a cancel instead of merging it into the dying turn
         [{ role: "user", content: "hi" }],
         pending_input: bad_drain
       )
-      expect(result).to eq("done")
+      expect(result.output).to eq("done")
     end
 
     it "orders injected input after tool_response and before the next model reply" do
@@ -1664,7 +1659,7 @@ end
       Samagotchi::Log.configure(path: log_dir, level: :debug)
       allow(client).to receive(:complete).and_return("Hello!")
 
-      expect(kernel.run([{ role: "user", content: "hi" }]).to_s).to eq("Hello!")
+      expect(kernel.run([{ role: "user", content: "hi" }]).output).to eq("Hello!")
     end
   end
 
@@ -1681,7 +1676,7 @@ end
         prompts.length == 1 ? "<tool_call><function=execute><parameter=command>echo hello</parameter></function></tool_call>" : "done"
       end
       result = qwen_kernel.run([{ role: "user", content: "run" }])
-      expect(result).to eq("done")
+      expect(result.output).to eq("done")
       expect(prompts[1]).to include("stdout:")
       expect(prompts[1]).to include("hello")
     end
@@ -1703,7 +1698,7 @@ end
         prompts.length == 1 ? "<tool_call><function=read><parameter=path>Gemfile</parameter></function></tool_call>" : "ok"
       end
       result = qwen_kernel.run([{ role: "user", content: "read" }])
-      expect(result).to eq("ok")
+      expect(result.output).to eq("ok")
       expect(prompts[1]).to include("[read]")
     end
 
@@ -1716,7 +1711,7 @@ end
 
       result = qwen_kernel.run([{ role: "user", content: "list tasks" }])
 
-      expect(result).to eq("ok")
+      expect(result.output).to eq("ok")
       expect(prompts[1]).to include("[task_list]")
     end
 
@@ -1754,7 +1749,7 @@ end
       end
 
       result = qwen_kernel.run([{ role: "user", content: "write" }])
-      expect(result).to eq("ok")
+      expect(result.output).to eq("ok")
       expect(File.read(file_path)).to eq("hello world")
     ensure
       FileUtils.remove_entry(dir) if dir && File.directory?(dir)
@@ -1771,7 +1766,7 @@ end
       end
 
       result = qwen_kernel.run([{ role: "user", content: "write" }])
-      expect(result).to eq("ok")
+      expect(result.output).to eq("ok")
       expect(File.read(file_path)).to eq("abc\ndef")
     ensure
       FileUtils.remove_entry(dir) if dir && File.directory?(dir)
@@ -1787,7 +1782,7 @@ end
       )
 
       result = qwen_kernel.run([{ role: "user", content: "write" }])
-      expect(result).to eq("ok")
+      expect(result.output).to eq("ok")
       expect(File.read(file_path)).to eq("\nabc\n")
     end
 
@@ -1802,7 +1797,7 @@ end
       )
 
       result = qwen_kernel.run([{ role: "user", content: "edit" }])
-      expect(result).to eq("ok")
+      expect(result.output).to eq("ok")
       expect(File.read(file_path)).to eq("goodbye world\nsecond line\n")
     ensure
       FileUtils.remove_entry(dir) if dir && File.directory?(dir)
@@ -1817,7 +1812,7 @@ end
 
       result = qwen_kernel.run([{ role: "user", content: "run" }])
 
-      expect(result).to eq("done")
+      expect(result.output).to eq("done")
       expect(prompts[1]).to include("stdout:")
       expect(prompts[1]).to include("5")
     end
@@ -1834,7 +1829,7 @@ end
 
       result = qwen_kernel.run([{ role: "user", content: "edit" }])
 
-      expect(result).to eq("ok")
+      expect(result.output).to eq("ok")
       expect(File.read(file_path)).to eq("line 1\nline 2 updated\nline 3\n")
     ensure
       FileUtils.remove_entry(dir) if dir && File.directory?(dir)
@@ -1852,7 +1847,7 @@ end
 
       result = qwen_kernel.run([{ role: "user", content: "edit" }])
 
-      expect(result).to eq("ok")
+      expect(result.output).to eq("ok")
       expect(File.read(file_path)).to eq("line 1\nline 2 updated\nline 3\n")
     ensure
       FileUtils.remove_entry(dir) if dir && File.directory?(dir)
@@ -1873,7 +1868,7 @@ end
 
       result = qwen_kernel.run([{ role: "user", content: "run" }], max_iterations: 5)
 
-      expect(result).to eq("done")
+      expect(result.output).to eq("done")
       expect(prompts[1]).to include("Continue the previous assistant message by finishing the open <tool_call> XML block")
       expect(prompts[2]).to include("stdout:")
       expect(prompts[2]).to include("4")
@@ -1910,7 +1905,7 @@ end
 
       result = qwen_kernel.run([{ role: "user", content: "save memory" }])
 
-      expect(result).to eq("ok")
+      expect(result.output).to eq("ok")
       expect(File.read(File.join(dir, "secret_plan.md"))).to eq("# The Secret Plan\nPhase 1: Evolution.")
     ensure
       FileUtils.remove_entry(dir) if dir && File.directory?(dir)
@@ -1929,14 +1924,14 @@ end
     it "strips Qwen think blocks from the final output" do
       allow(client).to receive(:complete).and_return("<think>This is my reasoning</think>Here is the answer")
       result = qwen_kernel.run([{ role: "user", content: "hi" }])
-      expect(result).to eq("Here is the answer")
+      expect(result.output).to eq("Here is the answer")
     end
 
     it "strips multiple Qwen think blocks" do
       allow(client).to receive(:complete)
         .and_return("<think>Step 1</think>Thinking about it...<think>Step 2</think>Final answer")
       result = qwen_kernel.run([{ role: "user", content: "hi" }])
-      expect(result).to eq("Thinking about it...Final answer")
+      expect(result.output).to eq("Thinking about it...Final answer")
     end
 
     it "formats prompts with Qwen role prefixes" do
@@ -2078,8 +2073,8 @@ end
         "<think>This is unfinished\nHello! Here's the actual response."
       )
       result = qwen_kernel.run([{ role: "user", content: "hi" }])
-      expect(result).not_to include("<think>")
-      expect(result).to include("Hello! Here's the actual response.")
+      expect(result.output).not_to include("<think>")
+      expect(result.output).to include("Hello! Here's the actual response.")
     end
 
     it "removes multiple consecutive think blocks cleanly" do
@@ -2088,10 +2083,10 @@ end
         "<think>First thought</think>\nSome output\n<think>Second thought</think>\nMore output"
       )
       result = qwen_kernel.run([{ role: "user", content: "hi" }])
-      expect(result).not_to include("<think>")
-      expect(result).not_to include("</think>")
-      expect(result).to include("Some output")
-      expect(result).to include("More output")
+      expect(result.output).not_to include("<think>")
+      expect(result.output).not_to include("</think>")
+      expect(result.output).to include("Some output")
+      expect(result.output).to include("More output")
     end
   end
 

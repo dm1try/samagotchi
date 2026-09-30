@@ -37,20 +37,6 @@ module Samagotchi
   #   - Qwen 3.6: <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>
   class KernelLoop
     Result = Struct.new(:output, :conversation, :exhausted, :pending_tool_calls, :tool_activity, :canceled, :cancellation_reason, :context_status, keyword_init: true) do
-      def to_s
-        output.to_s
-      end
-
-      alias to_str to_s
-
-      def ==(other)
-        if other.is_a?(self.class)
-          super
-        else
-          to_s == other
-        end
-      end
-
       def exhausted?
         exhausted
       end
@@ -65,25 +51,6 @@ module Samagotchi
 
       def canceled?
         canceled
-      end
-
-      # Struct/Enumerable defines include? with collection semantics, but the
-      # historical KernelLoop#run contract returned a String. Keep include?
-      # aligned with String#include? for backward compatibility.
-      def include?(needle)
-        to_s.include?(needle)
-      end
-
-      # Keep compatibility with existing callers/specs that treat run() as a
-      # plain string (e.g., include?, match, start_with?).
-      def method_missing(name, *args, &block)
-        return to_s.public_send(name, *args, &block) if to_s.respond_to?(name)
-
-        super
-      end
-
-      def respond_to_missing?(name, include_private = false)
-        to_s.respond_to?(name, include_private) || super
       end
     end
 
