@@ -348,7 +348,7 @@ module Samagotchi
             },
             timeout: {
               type: "integer",
-              description: "Maximum seconds to wait (default: 600); a timed-out child keeps running"
+              description: "Maximum seconds to wait (default: 600; 0 checks once without waiting); a timed-out child keeps running"
             }
           },
           required: ["task"]
@@ -366,7 +366,7 @@ module Samagotchi
             },
             timeout: {
               type: "integer",
-              description: "Maximum seconds to wait (default: 600)"
+              description: "Maximum seconds to wait (default: 600; 0 checks once without waiting)"
             }
           }
         }

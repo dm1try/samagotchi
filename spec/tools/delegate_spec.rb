@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "timeout"
 require "tmpdir"
 require "json"
 require "spec_helper"
@@ -357,6 +358,28 @@ RSpec.describe "delegate tools" do
       expect(described_class.call(session: stranger.id, peers: peers))
         .to eq("Error: #{stranger.id[0, 8]} is not a delegate of this session (list_sessions marks them child)")
       expect(described_class.call(session: "zzz", peers: peers)).to eq("Error: no session zzz (list_sessions shows them)")
+    end
+
+    it "checks once and returns at once with timeout 0 or less, not after the 600 s default" do
+      child = make(parent_id: parent.id, prompt: "task", status: "running", owner: "worker")
+
+      [0, "0", -5].each do |timeout|
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        out = Timeout.timeout(3) { described_class.call(session: child.id, peers: peers, timeout: timeout) }
+        expect(out).to include("status: running\nno reply yet after 0 s")
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+      end
+      write_reply(child, "its reply")
+      expect(described_class.call(session: child.id, peers: peers, timeout: 0)).to eq("session: #{child.id}\nstatus: done\n---\nits reply")
+    end
+  end
+
+  describe ".parse_timeout" do
+    it "keeps 0 (check now) and makes a negative 0; only a missing or unreadable value takes the default" do
+      parse = ->(v) { Samagotchi::Tools::Delegate.parse_timeout(v) }
+      expect([parse.(0), parse.("0"), parse.(-3), parse.(" 12 ")]).to eq([0, 0, 0, 12])
+      default = Samagotchi::Tools::DelegateWait::TIMEOUT_DEFAULT
+      expect([parse.(nil), parse.(""), parse.("soon")]).to eq([default, default, default])
     end
   end
 end

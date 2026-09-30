@@ -159,9 +159,12 @@ module Samagotchi
         !%w[false 0 no off].include?(value.to_s.strip.downcase)
       end
 
+      # Seconds to wait: 0 (or less) looks once and returns at once; a
+      # missing or unreadable value is the default.
+      # @return [Integer]
       def self.parse_timeout(value)
         parsed = Integer(value.to_s.strip, exception: false)
-        parsed&.positive? ? parsed : DelegateWait::TIMEOUT_DEFAULT
+        parsed ? [parsed, 0].max : DelegateWait::TIMEOUT_DEFAULT
       end
     end
   end

@@ -127,14 +127,14 @@ You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant 
     model:{type:<|"|>string<|"|>, description:<|"|>The child's model (a name or alias; default: this session's)<|"|>, required:false},
     session:{type:<|"|>string<|"|>, description:<|"|>A child's id or prefix: send the task there as a follow-up instead of starting a new child<|"|>, required:false},
     wait:{type:<|"|>boolean<|"|>, description:<|"|>Wait for the reply (default true); false returns at once so several children can run side by side<|"|>, required:false},
-    timeout:{type:<|"|>integer<|"|>, description:<|"|>Maximum seconds to wait (default: 600); a timed-out child keeps running<|"|>, required:false}
+    timeout:{type:<|"|>integer<|"|>, description:<|"|>Maximum seconds to wait (default: 600; 0 checks once without waiting); a timed-out child keeps running<|"|>, required:false}
   }
 }<tool|>
 <|tool>declaration:delegate_result{
   description:<|"|>Wait for a delegated child session's next reply: the child named, or this session's newest running child. Returns early if the child waits for an approval or a question the user must answer.<|"|>,
   parameters:{
     session:{type:<|"|>string<|"|>, description:<|"|>The child's id or prefix (default: the newest running child)<|"|>, required:false},
-    timeout:{type:<|"|>integer<|"|>, description:<|"|>Maximum seconds to wait (default: 600)<|"|>, required:false}
+    timeout:{type:<|"|>integer<|"|>, description:<|"|>Maximum seconds to wait (default: 600; 0 checks once without waiting)<|"|>, required:false}
   }
 }<tool|>
 <|tool>declaration:ask_user_question{
