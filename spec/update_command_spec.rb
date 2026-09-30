@@ -89,7 +89,8 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(out.string.lines.first).to match(/\Acomponent\s+from\s+to\s+status/)
     expect(line("btw")).to match(/\Abtw\s+0\.0\.1\s+#{Regexp.escape(YAML.load_file(File.join(shipped, "btw", "manifest.yml"))["version"])}\s+would update\z/)
     expect(line("system bundle")).to match(/up to date\z/)
-    expect(out.string).to include("Also shipped, not installed:", "known-names", "(dry run: nothing was changed)")
+    expect(out.string).to include("Also shipped, not installed: core (loop-guard, check-in, guardrails), dev (known-names, mcp, skills, source-links)",
+                                  "(dry run: nothing was changed)")
     expect(btw_version).to eq("0.0.1")
 
     expect(run).to eq(0)

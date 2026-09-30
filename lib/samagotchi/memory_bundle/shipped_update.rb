@@ -49,11 +49,11 @@ module Samagotchi
         end
       end
 
-      # The shipped bundles not installed (what the footer lists).
+      # The shipped bundles not installed (what the footer lists), a
+      # profile's members folded into it (Listing.grouped).
       # @return [Array<Listing::Shipped>]
       def not_installed(shipped_dir: SourceNormalizer::SHIPPED_DIR)
-        names = installed.map(&:first)
-        Listing.shipped(dir: shipped_dir).reject { |s| names.include?(s.name) }
+        Listing.grouped(Listing.shipped(dir: shipped_dir), installed.map(&:first))
       end
 
       # Runs the Installer for each :would_update row; the others pass

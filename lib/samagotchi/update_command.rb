@@ -247,7 +247,9 @@ module Samagotchi
     def footers(options)
       return [] if off(options, "bundles")
 
-      names = MemoryBundle::ShippedUpdate.not_installed(shipped_dir: @shipped_dir).map(&:source)
+      names = MemoryBundle::ShippedUpdate.not_installed(shipped_dir: @shipped_dir).map do |s|
+        s.includes.empty? ? s.source : "#{s.source} (#{s.includes.join(", ")})"
+      end
       names.empty? ? [] : ["Also shipped, not installed: #{names.join(", ")} (chi bundle install NAME)"]
     end
 

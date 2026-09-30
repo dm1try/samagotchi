@@ -8,17 +8,20 @@ RSpec.describe Samagotchi::MemoryBundle::Listing do
   let(:tmp) { Dir.mktmpdir("bundle-listing") }
   let(:shipped_dir) { File.join(tmp, "shipped") }
 
-  def ship(source, name:, version:, description: "")
+  def ship(source, name:, version:, description: "", includes: nil)
     dir = File.join(shipped_dir, source)
     FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "manifest.yml"), { "name" => name, "version" => version, "description" => description }.to_yaml)
+    data = { "name" => name, "version" => version, "description" => description }
+    data["includes"] = includes if includes
+    File.write(File.join(dir, "manifest.yml"), data.to_yaml)
   end
 
-  def install(name, version:)
+  def install(name, version:, includes: nil)
     dir = File.join(tmp, "bundles", name)
     FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, "manifest.json"),
-               JSON.generate("version" => version, "scope" => "system", "files" => { "a.md" => {} }, "installed_at" => "2026-09-26"))
+    data = { "version" => version, "scope" => "system", "files" => { "a.md" => {} }, "installed_at" => "2026-09-26" }
+    data["includes"] = includes if includes
+    File.write(File.join(dir, "manifest.json"), JSON.generate(data))
   end
 
   before { Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(tmp, "bundles") }
@@ -76,5 +79,19 @@ RSpec.describe Samagotchi::MemoryBundle::Listing do
 
   it "has nothing installed when the bundles dir is missing" do
     expect(described_class.installed(shipped: [])).to eq([])
+  end
+  it "lists a profile that isn't installed with its members, which aren't listed again" do
+    ship("core", name: "core", version: "0.1.0", includes: %w[a b])
+    ship("dev", name: "dev", version: "0.1.0", includes: %w[c])
+    %w[a b c d].each { |n| ship(n, name: n, version: "1.0") }
+    install("dev", version: "0.1.0", includes: [])
+    install("a", version: "1.0")
+
+    shipped = described_class.shipped(dir: shipped_dir)
+    expect(shipped.find { |s| s.name == "core" }.includes).to eq(%w[a b])
+    expect(shipped.find { |s| s.name == "d" }.includes).to eq([])
+    installed = described_class.installed(shipped: shipped)
+    expect(installed.map { |b| [b.name, b.includes] }).to eq([["a", nil], ["dev", []]])
+    expect(described_class.available(shipped: shipped, installed: installed).map(&:source)).to eq(%w[c core d])
   end
 end

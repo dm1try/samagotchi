@@ -2,7 +2,7 @@
 name: dev
 version: 0.1.0
 scope: system
-description: "Developer tools: known-names, mcp, btw, skills, source-links"
+description: "Developer tools"
 trust_level: reviewed
 requires_chi: ">= 0.8.0"
 includes:

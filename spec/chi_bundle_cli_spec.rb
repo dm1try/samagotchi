@@ -183,7 +183,10 @@ RSpec.describe "chi bundle (CLI)" do
       expect([err, code]).to eq(["", 0])
       expect(out).to start_with("No installed bundles.\n\nAvailable (shipped with chi, install with: chi bundle install <name>):\n")
       expect(out.lines.drop(3)).to all(match(/\A  [a-z-]+ +v\S+  \S/))
-      expect(out).to match(/^  btw +v/)
+      # every shipped bundle is in a profile: the profiles list them
+      expect(out.lines.drop(3).map { |l| l.split.first }).to eq(%w[core dev])
+      expect(out).to match(/^  core +v\S+  .*\(loop-guard, check-in, guardrails\)$/)
+      expect(out).to match(/^  dev +v\S+  .*\(known-names, mcp, btw, skills, source-links\)$/)
 
       out, err, code = chi("install", "btw")
       expect([err, code]).to eq(["", 0])
@@ -208,6 +211,30 @@ RSpec.describe "chi bundle (CLI)" do
 
       expect(chi("uninstall", "core")).to eq(["Uninstalled bundle 'core'\nRemoved: loop-guard, guardrails\n", "", 0])
       expect(Dir.children(File.join(memories, ".bundles"))).to eq([])
+    end
+
+    it "lists an installed profile's members and those left out, and status shows each" do
+      chi("install", "core")
+      chi("uninstall", "check-in")
+
+      out, = chi("list")
+      expect(out).to match(/^  core +v0\.1\.0 +scope=system  includes=loop-guard,guardrails  left out=check-in  installed=\S+$/)
+      expect(out).to match(/^Available.*\n(.*\n)*  check-in +v\S+  /)
+      expect(out).to match(/^  dev +v/)
+
+      out, err, code = chi("status", "core")
+      expect([err, code]).to eq(["", 0])
+      expect(out.lines.grep(/includes /)).to eq(["  includes loop-guard [installed]\n", "  includes check-in [not installed: chi bundle install check-in]\n",
+                                                "  includes guardrails [installed]\n"])
+      expect(chi("status")[0].lines.grep(/core/)).to eq(["  core v0.1.0 scope=system files=0 includes=loop-guard,check-in,guardrails issues=0\n"])
+    end
+
+    it "status goes on past a bundle whose manifest.json doesn't parse" do
+      chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
+      FileUtils.mkdir_p(File.join(memories, ".bundles", "broken"))
+      File.write(File.join(memories, ".bundles", "broken", "manifest.json"), "{bad")
+
+      expect(chi("status")).to eq(["  broken (manifest.json unreadable)\n  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=0\n", "", 0])
     end
 
     it "records a profile member installed by hand, refuses a profile in a project, and keeps a profile whose member is edited" do

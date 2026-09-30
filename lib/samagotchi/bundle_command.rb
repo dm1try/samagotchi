@@ -347,26 +347,26 @@ module Samagotchi
           @stdout.puts "    not loaded: #{plugin[:requires_failure]}" if plugin[:requires_failure]
         end
         st[:needs].each { |need| @stdout.puts "  #{Samagotchi::MemoryBundle::Status.need_line(need)}" }
-      else
-        bundles_dir = Samagotchi::MemoryBundle::Provenance.bundles_dir
-        unless File.directory?(bundles_dir)
-          @stdout.puts "No installed bundles."; return 0
+        (st[:provenance][:includes] || []).each do |member|
+          state = Samagotchi::MemoryBundle::Provenance.new(name: member.to_s).installed? ? "installed" : "not installed: chi bundle install #{member}"
+          @stdout.puts "  includes #{member} [#{state}]"
         end
-        entries = Dir.entries(bundles_dir).reject { |e| e.start_with?(".") }
-        if entries.empty?
-          @stdout.puts "No installed bundles."
-        else
-          entries.sort.each do |bname|
-            st = Samagotchi::MemoryBundle::Status.bundle_status(bname)
-            next unless st
-            mods = st[:files].values.count { |v| v[:modified] || v[:missing] }
-            hooks_count = (st[:provenance][:hooks] || {}).size
-            hook_info = hooks_count > 0 ? " hooks=#{hooks_count}" : ""
-            plugin = st[:plugin]
-            mods += 1 if plugin && (plugin[:state] != "ok" || plugin[:requires_failure])
-            plugin_info = plugin ? " plugin=#{plugin[:file]}" : ""
-            @stdout.puts "  #{bname} v#{st[:provenance][:version]} scope=#{st[:scope]} files=#{st[:files].size}#{hook_info}#{plugin_info} issues=#{mods}"
-          end
+      else
+        bundles = Samagotchi::MemoryBundle::Provenance.each_installed.to_a
+        @stdout.puts "No installed bundles." if bundles.empty?
+        bundles.each do |bname, data|
+          next @stdout.puts("  #{bname} (manifest.json unreadable)") if data[:error]
+
+          st = Samagotchi::MemoryBundle::Status.bundle_status(bname)
+          mods = st[:files].values.count { |v| v[:modified] || v[:missing] }
+          hooks_count = (st[:provenance][:hooks] || {}).size
+          hook_info = hooks_count > 0 ? " hooks=#{hooks_count}" : ""
+          plugin = st[:plugin]
+          mods += 1 if plugin && (plugin[:state] != "ok" || plugin[:requires_failure])
+          plugin_info = plugin ? " plugin=#{plugin[:file]}" : ""
+          includes = st[:provenance][:includes]
+          includes_info = includes ? " includes=#{includes.join(",")}" : ""
+          @stdout.puts "  #{bname} v#{st[:provenance][:version]} scope=#{st[:scope]} files=#{st[:files].size}#{hook_info}#{plugin_info}#{includes_info} issues=#{mods}"
         end
       end
       return 0
@@ -482,7 +482,8 @@ module Samagotchi
         @stdout.puts "Installed:"
         installed.each do |b|
           next @stdout.puts("  #{b.name.ljust(name_w)}  (#{b.error})") if b.error
-          line = "  #{b.name.ljust(name_w)}  #{"v#{b.version || "?"}".ljust(ver_w)}  scope=#{b.scope || "?"}  files=#{b.files}  installed=#{b.installed_at || "?"}"
+          line = "  #{b.name.ljust(name_w)}  #{"v#{b.version || "?"}".ljust(ver_w)}  scope=#{b.scope || "?"}  " \
+                 "#{b.includes ? profile_members(b.includes, installed) : "files=#{b.files}"}  installed=#{b.installed_at || "?"}"
           line += "  (shipped v#{b.upgrade.version}: chi bundle upgrade #{b.upgrade.source})" if b.upgrade
           @stdout.puts line
         end
@@ -492,10 +493,19 @@ module Samagotchi
         @stdout.puts ""
         @stdout.puts "Available (shipped with chi, install with: chi bundle install <name>):"
         available.each do |s|
-          @stdout.puts "  #{s.source.ljust(name_w)}  #{"v#{s.version}".ljust(ver_w)}  #{s.description}".rstrip
+          members = s.includes.empty? ? "" : " (#{s.includes.join(", ")})"
+          @stdout.puts "  #{s.source.ljust(name_w)}  #{"v#{s.version}".ljust(ver_w)}  #{s.description}#{members}".rstrip
         end
       end
       return 0
+    end
+
+    # An installed profile's list cell: its recorded members still
+    # installed, and the ones left out (uninstalled by the user).
+    def profile_members(members, installed)
+      names = installed.map(&:name)
+      here, gone = members.partition { |m| names.include?(m) }
+      "includes=#{here.join(",")}#{gone.empty? ? "" : "  left out=#{gone.join(",")}"}"
     end
 
     def build(rest)
