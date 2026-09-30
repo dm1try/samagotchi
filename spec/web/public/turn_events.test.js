@@ -358,3 +358,11 @@ test("initWaitLine names the plugin setup a turn waits for", () => {
     "waiting for mcp: Starting MCP server chrome · x: y…");
   assert.equal(initWaitLine({}), "waiting for plugins…");
 });
+
+import { noticeLine } from "../../../lib/samagotchi/web/public/turn_events.js";
+
+test("noticeLine: a snapshot's turn row as the live row's text", () => {
+  assert.equal(noticeLine({ type: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected" }), "known-names: rejected");
+  assert.equal(noticeLine({ type: "empty_answer_retry", attempt: 1, of: 2 }), "↻ empty answer, asking again (1/2)");
+  assert.equal(noticeLine({ type: "empty_answer_retry", attempt: 1, of: 1, stopped_by: "loop-guard" }), "↻ cut by loop-guard, asking again (1/1)");
+});

@@ -262,6 +262,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
         { type: "hook_notice", hook: "plugin.rb (bundle sample-plugin)", text: "last turn's", level: "info", in_turn: true, iteration: 1, calls: 0,
           turns_since: 0, current: false },
         { type: "hook_notice", hook: "plugin.rb (bundle sample-plugin)", text: "running turn's", level: "info", in_turn: true, turns_since: 0, current: true },
+        { type: "empty_answer_retry", attempt: 1, of: 1, in_turn: true, iteration: 1, calls: 0, turns_since: 0, current: false },
         card("new", "New", turns_since: 0, current: false, updated: true),
         card("mid", "Mid", in_turn: true, turns_since: 0, current: true)
       ]

@@ -212,6 +212,23 @@ RSpec.describe "Cards" do
       expect(store.list.map { |e| e[:turns_since] }.uniq).to eq([1])
     end
 
+    it "keeps the loop's asking-again rows (an empty or cut answer) in their step, as a turn's notices" do
+      store = described_class.new
+      store.call({ type: :turn_started })
+      store.call({ type: :generation_started, iteration: 1 })
+      store.call({ type: :empty_answer_retry, iteration: 1, attempt: 1, of: 2, finish_reason: "stop", thinking_chars: 9 })
+      store.call({ type: :tool_call_started, iteration: 1, call_index: 1 })
+      store.call({ type: :empty_answer_retry, iteration: 1, attempt: 2, of: 2, stopped_by: "loop-guard" })
+      store.call({ type: :turn_completed })
+      store.call({ type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1 }) # no turn runs: nothing to place it in
+
+      expect(store.list).to eq([
+        { type: :empty_answer_retry, attempt: 1, of: 2, in_turn: true, iteration: 1, calls: 0, turns_since: 0, current: false },
+        { type: :empty_answer_retry, attempt: 2, of: 2, stopped_by: "loop-guard", in_turn: true, iteration: 1, calls: 1,
+          turns_since: 0, current: false }
+      ])
+    end
+
     it "keeps a notice that comes after its turn ended (an after_turn hook's) before the next turn" do
       turn(:turn_started, :turn_completed)
       store.call({ type: :hook_notice, hook: "h", text: "after", level: :info })

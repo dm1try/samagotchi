@@ -945,15 +945,19 @@ module Samagotchi
       # The snapshot's cards and between-turns notices (Bridge CardStore):
       # on join the ones since the last turn (and the running turn's), as
       # the join header shows the last exchange; on a resync only cards not
-      # shown here yet. A turn's own notices are left out: the running
-      # turn's come with its parts, and the join shows no older turn's steps.
+      # shown here yet. A turn's own rows (notices, retries) are left out:
+      # the running turn's come with its parts, and the join shows no older
+      # turn's steps.
       def render_snapshot_cards(entries, joining:)
         entries.each do |entry|
-          if entry[:type].to_s == "hook_notice"
+          case entry[:type].to_s
+          when "hook_notice"
             next if entry[:in_turn]
 
             @screen.commit(EventRenderer.hook_notice_line(entry)) if joining && entry[:turns_since].to_i.zero?
-          elsif joining ? entry[:turns_since].to_i.zero? : !@renderer.card_shown?(entry[:id])
+          when "card"
+            next unless joining ? entry[:turns_since].to_i.zero? : !@renderer.card_shown?(entry[:id])
+
             @renderer.render_card(entry, updated: entry[:updated] == true)
           end
         end

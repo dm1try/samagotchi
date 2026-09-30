@@ -9,7 +9,9 @@ module Samagotchi
     # A turn's own notice (no between_turns) is in_turn like a turn's card,
     # with the step it came in: +iteration+ and +calls+, the calls of that
     # iteration started before it (a before_tool_call hook's notice comes
-    # before its call's row, so the web puts it above row calls + 1).
+    # before its call's row, so the web puts it above row calls + 1). The
+    # loop's "asking again" row (:empty_answer_retry, after an empty or cut
+    # answer) is kept the same way.
     #
     # A card with an earlier card's id replaces it where it was. Each entry
     # says where it belongs as the recap does: +turns_since+, the turns
@@ -81,6 +83,7 @@ module Samagotchi
           settle_during(after_turn: true)
         when :card then add_card(event)
         when :hook_notice then add_notice(event)
+        when :empty_answer_retry then add_turn_row(event.slice(:type, :attempt, :of, :stopped_by)) if @running
         end
       end
 
@@ -113,8 +116,13 @@ module Samagotchi
         if event[:between_turns] || !@running
           push(notice.merge(in_turn: false, turns: @turns_done))
         else
-          push(notice.merge(in_turn: true, turns: @turns_done, iteration: @iteration, calls: @calls).compact)
+          add_turn_row(notice)
         end
+      end
+
+      # A row of the running turn's current step.
+      def add_turn_row(row)
+        push(row.merge(in_turn: true, turns: @turns_done, iteration: @iteration, calls: @calls).compact)
       end
 
       def push(entry)

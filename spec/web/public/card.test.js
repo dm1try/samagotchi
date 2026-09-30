@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cardBodyHtml, cardClass, cardInnerHtml, cardPlace, leavesBlock, splitSnapshotCards, turnNoticePlace } from "../../../lib/samagotchi/web/public/card.js";
+import { cardBodyHtml, cardClass, cardInnerHtml, cardPlace, isCard, leavesBlock, splitSnapshotCards, turnNoticePlace } from "../../../lib/samagotchi/web/public/card.js";
 
 const card = {
   type: "card", id: "c1", source: "sample-plugin", title: "Hello <you>", body: "hi *there*", level: "info",
@@ -43,11 +43,20 @@ test("cardPlace: above the first turn after the card (turns_since from the end),
   assert.equal(cardPlace(users, { turns_since: 9 }), null);
 });
 
-test("splitSnapshotCards: the history's cards and notices, the running turn's, and the ones during it", () => {
-  const cards = [{ id: "a", current: false }, { type: "hook_notice", current: false }, { id: "b", current: true },
-    { id: "btw", current: false, during: true }];
+test("splitSnapshotCards: the history's cards and notices, the running turn's cards, and the ones during it", () => {
+  const cards = [{ id: "a", current: false }, { type: "hook_notice", current: false }, { type: "card", id: "b", current: true },
+    { id: "btw", current: false, during: true },
+    // The running turn's own rows come with its parts, never as cards.
+    { type: "hook_notice", in_turn: true, current: true }, { type: "empty_answer_retry", in_turn: true, current: true }];
   assert.deepEqual(splitSnapshotCards(cards), { placed: [cards[0], cards[1]], current: [cards[2]], during: [cards[3]] });
   assert.deepEqual(splitSnapshotCards(undefined), { placed: [], current: [], during: [] });
+});
+
+test("isCard: a card entry (typed or not), not a notice or a row", () => {
+  assert.equal(isCard({ type: "card" }), true);
+  assert.equal(isCard({ id: "x" }), true);
+  assert.equal(isCard({ type: "hook_notice" }), false);
+  assert.equal(isCard({ type: "empty_answer_retry" }), false);
 });
 
 test("leavesBlock: a warn card always leaves the collapsed block, any card of a turn that did not complete does", () => {
