@@ -115,6 +115,30 @@ RSpec.describe Samagotchi::Bootstrap::Probe do
       expect(probe.model_props(candidate, "qwen-a").dig("default_generation_settings", "n_ctx")).to eq(4096)
     end
 
+    it "sends User-Agent chi/<version> on every request, and no Authorization for a key variable that is not set" do
+      server.enqueue("/props", json: { build_info: "b1" })
+      server.default("/v1/models", json: models)
+
+      probe.classify(candidate, key_env: "FAKE_KEY")
+      expect(server.requests.map { |r| [r.path, r.header("User-Agent"), r.header("Authorization")] })
+        .to eq([["/props", Samagotchi::USER_AGENT, "Bearer sk-test"], ["/v1/models", Samagotchi::USER_AGENT, "Bearer sk-test"]])
+
+      result = probe.classify(candidate, key_env: "UNSET_KEY")
+      expect(server.requests.last.path).to eq("/props")
+      expect(server.requests.last.header("Authorization")).to be_nil
+      expect(result).to have_attributes(kind: :unknown, status: nil,
+                                        reason: "#{candidate.host}: set UNSET_KEY (the API key for host #{candidate.host})")
+    end
+
+    it "says a server that doesn't answer in time timed out" do
+      listener = TCPServer.new("127.0.0.1", 0)
+      silent = described_class.candidates("127.0.0.1:#{listener.addr[1]}").first
+
+      expect(described_class.new(timeout: 0.3).classify(silent)).to have_attributes(kind: :unreachable, reason: "timed out")
+    ensure
+      listener&.close
+    end
+
     describe "#test_turn" do
       it "counts any 200 with a choice as answered" do
         server.default("/v1/chat/completions", json: { choices: [{ message: { content: "" } }] })
@@ -128,6 +152,22 @@ RSpec.describe Samagotchi::Bootstrap::Probe do
         server.default("/v1/chat/completions", status: 400, json: { error: { message: "model not found" } })
 
         expect { probe.test_turn(candidate, "nope") }.to raise_error(RuntimeError, "HTTP 400: model not found")
+      end
+
+      it "raises with the start of a body that isn't JSON, and sends the key and User-Agent" do
+        server.default("/v1/chat/completions", status: 502, body: "  #{"bad gateway " * 30}")
+
+        expect { probe.test_turn(candidate, "m", key_env: "FAKE_KEY") }
+          .to raise_error(RuntimeError, "HTTP 502: #{"  #{"bad gateway " * 30}"[0, 200].strip}")
+        expect(server.requests.last.headers).to include("user-agent" => Samagotchi::USER_AGENT, "authorization" => "Bearer sk-test",
+                                                        "content-type" => "application/json")
+      end
+
+      it "names the server when it can't be reached" do
+        port = TCPServer.open("127.0.0.1", 0) { |s| s.addr[1] }
+        closed = described_class.candidates("127.0.0.1:#{port}").first
+
+        expect { probe.test_turn(closed, "m") }.to raise_error(RuntimeError, "connection refused (127.0.0.1:#{port})")
       end
     end
   end
