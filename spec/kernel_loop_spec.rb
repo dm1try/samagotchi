@@ -553,6 +553,88 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(result.context_status).to include(est_pct: 35.2, bucket: "20plus")
     end
 
+    describe "context status settings" do
+      before do
+        ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"] = "10000"
+        allow(client).to receive(:context_window).and_return(nil)
+      end
+
+      def status_lines(conversation, responses)
+        events = []
+        allow(client).to receive(:complete) { responses.shift }
+        kernel.run(conversation, on_stream_event: ->(e) { events << e })
+        events.select { |e| e[:type] == :context_status }.map { |e| e[:status] }
+      end
+
+      it "estimates from context.chars_per_token when the server reports no counts" do
+        ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"] = "1"
+        prompts = []
+        events = []
+        allow(client).to receive(:complete) do |prompt|
+          prompts << prompt
+          "ok"
+        end
+
+        result = kernel.run([{ role: "user", content: "x" * 2_500 }], on_stream_event: ->(e) { events << e })
+
+        status = events.find { |e| e[:type] == :context_status }
+        expect(status[:usage]).to include(window_tokens: 10_000, window_source: :env, source: "estimate",
+                                          estimated_used_tokens: prompts.first.length,
+                                          estimated_remaining_tokens: 10_000 - prompts.first.length)
+        expect(status[:status]).to include("bucket=20plus", "thresholds=20,40,60,80", "src=estimate", "window_src=env")
+        expect(result.context_status[:bucket]).to eq("20plus")
+      end
+
+      it "names buckets after context.status_thresholds (bad values dropped, sorted)" do
+        ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"] = "1"
+        ENV["SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"] = "70, 0, 30, abc, 30"
+
+        lines = status_lines([{ role: "user", content: "x" * 4_000 }], ["ok"])
+
+        expect(lines.size).to eq(1)
+        expect(lines.first).to include("bucket=30plus", "thresholds=30,70", "context healthy")
+      end
+
+      it "leaves the model a line from the second configured threshold up" do
+        ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"] = "1"
+        ENV["SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"] = "10,50"
+        allow(client).to receive(:complete).and_return("ok")
+
+        result = kernel.run([{ role: "user", content: "x" * 6_000 }])
+
+        line = result.conversation.find { |m| m[:kind] == "context" }
+        expect(line[:content]).to include("bucket=50plus").and end_with("healthy — proceed normally]")
+      end
+
+      it "re-emits an unchanged bucket every context.status_cadence iterations" do
+        ENV["SAMAGOTCHI_CONTEXT_STATUS_CADENCE"] = "2"
+        ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"] = "1"
+        responses = Array.new(3) { %(<|tool_call>call:execute{command: "echo hi"}<tool_call|>) } + ["done"]
+
+        lines = status_lines([{ role: "user", content: "x" * 2_500 }], responses)
+
+        # Iteration 1: the rise into 20plus; 2 and 4: the cadence.
+        expect(lines.size).to eq(3)
+        expect(lines).to all(include("bucket=20plus"))
+      end
+
+      it "resumes from a legacy session's CONTEXT_STATUS line: no event for the bucket it already names" do
+        ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"] = "1"
+        legacy = { role: "system", content: "CONTEXT_STATUS window_tokens=10000 est_pct=25.0 bucket=20plus" }
+
+        lines = status_lines([{ role: "user", content: "x" * 2_500 }, legacy, { role: "user", content: "more" }], ["ok"])
+
+        expect(lines).to be_empty
+      end
+
+      it "gives the status line's value for used/window tokens, nil with context.status off or without counts" do
+        expect(kernel.context_display(used_tokens: 4_500, window_tokens: 10_000)).to eq(est_pct: 45.0, bucket: "40plus")
+        expect(kernel.context_display(used_tokens: nil, window_tokens: 10_000)).to be_nil
+        ENV["SAMAGOTCHI_CONTEXT_STATUS"] = "false"
+        expect(kernel.context_display(used_tokens: 4_500, window_tokens: 10_000)).to be_nil
+      end
+    end
+
     it "emits bucket-aware actionable guidance" do
       expect(kernel.send(:context_status_guidance, "20plus")).to include("proceed normally")
       expect(kernel.send(:context_status_guidance, "40plus")).to include("prefer targeted")
