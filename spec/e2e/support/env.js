@@ -155,6 +155,10 @@ export async function startEnv({ lan = false } = {}) {
     // after: 3 leaves the other scripts' turns alone.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", "check-in"],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });
+    // A test bundle whose plugin shows a warn card mid-turn (a read of
+    // e2e-warn-card.txt only), for the warn_card scenario.
+    execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "e2e", "support", "bundles", "e2e-warn-card")],
+      { cwd: dirs.project, env: childEnv, stdio: "ignore" });
     const webPort = await freePort();
     const webLog = fs.openSync(path.join(root, "web.log"), "a");
     const webArgs = ["web", "--port", String(webPort), ...(lan ? ["--web-host", "lan"] : [])];

@@ -1,0 +1,8 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"text": "Reading the flagged file.", "tools": [{"name": "read", "arguments": {"path": "e2e-warn-card.txt", "start_line": 1, "end_line": 1}}]},
+    {"text": "Now the README.", "tools": [{"name": "read", "arguments": {"path": "README.md", "start_line": 1, "end_line": 1}}]},
+    {"hold": 4, "text": "Done: both files read."}
+  ]
+}

@@ -592,6 +592,28 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
   await expect(reloaded.locator(".steer-text")).toContainText("You've made 3 tool calls in this turn");
 });
 
+// A warn card in a step (here the e2e-warn-card test bundle's, at the first
+// step's read) stays in sight when that step closes mid-turn: it leaves the
+// collapsing step for the block, and after the turn ends it is under the
+// block, where a reload puts it.
+test("a warn card stays in sight when its step closes mid-turn", { tag: "@stage" }, async ({ page, script }) => {
+  script("warn_card");
+  await send(page, "Read the flagged file");
+  const card = page.locator(`${H()} .plugin-card.warn`).filter({ hasText: "e2e warn card" });
+  await expect(card).toHaveCount(1);
+  // The next step started: the card's step is closed, the turn still runs
+  // (the last step holds 4 s before it answers).
+  const steps = page.locator(`${H()} .turn-work .gen`);
+  await expect(steps.nth(1).locator(".activity-row")).toHaveCount(1);
+  await expect(steps.first()).not.toHaveAttribute("open", "");
+  await expect(card).toBeVisible({ timeout: 1000 });
+  // Still running: no final timing line yet.
+  await expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(0);
+  await turnEnded(page, 1);
+  await expect(card).toBeVisible();
+  await expect(page.locator("#history > .plugin-card.warn")).toHaveCount(1);
+});
+
 // A check-in card asks the user as a question does: a tab behind shows one
 // "needs you" notification and a badge; resolving the card (here from
 // another client, the tab untouched) drops the badge while the turn runs.

@@ -1,0 +1,8 @@
+---
+name: e2e-warn-card
+version: 0.1.0
+scope: system
+description: "The e2e suite's mid-turn warn card"
+plugin:
+  file: plugin.rb
+  sha256: sha256:a29bf5244bff9ca4b13c858887af0e553e7d62d00977d31e54e1c6869023a814
