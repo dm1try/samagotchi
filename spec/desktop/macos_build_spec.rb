@@ -12,13 +12,17 @@ require "samagotchi/context_quote"
 RSpec.describe "the desktop helper's Swift sources", :macos_build do
   # One build for the file: swiftc takes ~15 s.
   before(:all) do
+    # The around hook skips each example without SAMAGOTCHI_MACOS_BUILD, but
+    # before(:all) runs first: don't build (no swiftc on Linux CI) then.
+    next unless ENV["SAMAGOTCHI_MACOS_BUILD"] == "1"
+
     @build_dir = Dir.mktmpdir("desktop-build")
     @macos = Samagotchi::Desktop::MacOS.new(app_dir: File.join(@build_dir, "Apps"),
                                             support_dir: File.join(@build_dir, "Support"), register: false)
     @macos.install
   end
 
-  after(:all) { FileUtils.remove_entry(@build_dir) }
+  after(:all) { FileUtils.remove_entry(@build_dir) if @build_dir }
 
   let(:app) { @macos.app_path }
   let(:executable) { File.join(app, "Contents", "MacOS", "ChiHelper") }
