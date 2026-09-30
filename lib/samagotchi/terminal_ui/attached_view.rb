@@ -90,7 +90,7 @@ module Samagotchi
 
       def generation_feedback_retrying(event)
         @lock.synchronize do
-          @retry = "retrying (attempt #{event[:attempt]})"
+          @retry = retry_text(event)
           # The retry streams from the start: wait for its first token again.
           @waiting_since = @clock.call if @thinking
           redraw_status
@@ -213,6 +213,15 @@ module Samagotchi
         @waiting_since = nil
       end
 
+      # "retrying (1/4 in 0.5s): Errno::ECONNREFUSED": the attempt of all
+      # there will be, the wait before it, and what failed.
+      def retry_text(event)
+        return "retrying (attempt #{event[:attempt]})" unless event[:max_retries]
+
+        text = "retrying (#{event[:attempt]}/#{event[:max_retries].to_i + 1} in #{format("%.1f", event[:next_delay].to_f)}s)"
+        event[:error_class].to_s.empty? ? text : "#{text}: #{event[:error_class]}"
+      end
+
       def tally_key(event)
         [event[:iteration].to_i, event[:call_index].to_i]
       end
@@ -252,7 +261,7 @@ module Samagotchi
       def status_text
         now = @clock.call
         frame = FRAMES[((now - @origin) / FRAME_INTERVAL).floor % FRAMES.length]
-        return "#{frame} #{@retry}" if @retry
+        return "#{frame} #{paint(@retry, 90)}" if @retry
         return "#{frame} #{@tool}…" if @tool
         return "#{frame} #{@init_tasks.values.join(" · ")}…" if !@thinking && @init_tasks.any?
         return nil unless @thinking
