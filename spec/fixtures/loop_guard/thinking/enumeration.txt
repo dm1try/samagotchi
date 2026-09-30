@@ -1,0 +1,134 @@
+# N2: legit structured repetition: 14 templated long sentences in a row (one per path), 7 options, a numbered checklist, code whose methods repeat one guard line; must never trigger
+The user wants the export command to write a CSV of every session in the project, with the date, the model and the number of turns. Let me think about where that belongs. There is already a sessions command with list, show and prune subcommands, so export fits next to them rather than as a new top-level command.
+
+First I need to know what a session file holds. From what I remember, each session is a JSON file named by its id, with messages, a model name, a working directory and some timing fields. The turn count is not stored directly; it would have to be derived from the messages, probably by counting user messages that are not steering or notes.
+
+Hmm, counting user messages is not quite right either. A continue turn has no user message at all, and a steer merged mid-turn is a user message that belongs to a turn already running. If there is a last_turn record or a turns array, that would be more reliable. I should check the session model before deciding.
+
+Let me also consider the output format. CSV is simple, but session titles can contain commas, quotes and newlines. Ruby's CSV library handles quoting correctly, so I should use it instead of joining strings by hand. The header row would be id, created, model, turns, title.
+
+What about the date? The files have created_at as an ISO timestamp, I believe. For a spreadsheet the user probably wants a plain date, but a full timestamp sorts correctly and loses nothing. I will keep the ISO form and mention it in the help text.
+
+Another question is scope. The user said every session in the project, and sessions are now scoped by project identity, which is keyed by the common git directory. So the export should use the same filter the list command uses, not scan the whole sessions directory. Reusing the list command's query also means archived sessions are excluded by default, which seems right; an --archived flag could include them.
+
+Where does the output go? Writing to stdout lets the user redirect it anywhere, and it composes with other tools. A --output flag is a nice extra but not needed at first. I will print to stdout and keep any warnings on stderr so they do not end up inside the CSV.
+
+The user wants to know where a turn is started, and every entry point may do it differently. I will go through the files one at a time, then compare.
+
+Now I need to open the file lib/samagotchi/engine.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/kernel_loop.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/llm/chat_loop.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/bridge/turn_accumulator.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/web/app.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/session.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/hooks/registry.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/plugin/api.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/terminal_ui/repl.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/attached_loop.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/worker.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/session_manager.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/cli.rb and look at how the turn is started there.
+Now I need to open the file lib/samagotchi/turn_note.rb and look at how the turn is started there.
+
+What I found, file by file:
+
+In engine.rb the code hands the prompt to the session manager. In kernel_loop.rb the code hands the prompt to the session manager. In chat_loop.rb the code forwards the prompt over the socket. In turn_accumulator.rb the code hands the prompt to the session manager. In app.rb the code calls run_turn directly with the prompt. In session.rb the code enqueues the prompt for the worker thread. In registry.rb the code starts nothing and only renders events. In api.rb the code builds the event handler first and then starts the turn. In repl.rb the code hands the prompt to the session manager. In attached_loop.rb the code has no turn start, only a helper. In worker.rb the code has no turn start, only a helper. In session_manager.rb the code calls run_turn directly with the prompt. In cli.rb the code hands the prompt to the session manager. In turn_note.rb the code enqueues the prompt for the worker thread. 
+
+There are several ways to fix the double start.
+
+Option 1 would be to add a guard flag on the engine that refuses a second start, which changes the behaviour users see.
+Option 2 would be to move the start into the session manager only, which needs a migration of the tests.
+Option 3 would be to make the web handler call the manager instead of the engine, which changes the behaviour users see.
+Option 4 would be to queue every prompt and let one thread drain it, which changes the behaviour users see.
+Option 5 would be to keep both paths but share one lock around run_turn, which needs a migration of the tests.
+Option 6 would be to remove the old REPL path entirely, which touches three files.
+Option 7 would be to detect the second start and turn it into a steer, which changes the behaviour users see.
+
+Before choosing, the checklist:
+
+1. Then I need to run the engine specs and see that nothing changed.
+2. Then I need to run the web specs and see that nothing changed.
+3. Then I need to run the bridge specs and see that nothing changed.
+4. Then I need to run the REPL specs and see that nothing changed.
+5. Then I need to run the e2e suite and see that nothing changed.
+6. Then I need to check the log for double turn_started lines and see that nothing changed.
+7. Then I need to check the attached TUI and see that nothing changed.
+8. Then I need to check the desktop helper and see that nothing changed.
+9. Then I need to update the docs and see that nothing changed.
+10. Then I need to update the changelog and see that nothing changed.
+11. Then I need to bump nothing and see that nothing changed.
+12. Then I need to ask the coordinator to merge and see that nothing changed.
+
+The code would look like this, each entry point with the same guard:
+
+```ruby
+def start_turn(prompt)
+  raise ArgumentError, "prompt is empty" if prompt.to_s.strip.empty?
+  @lock.synchronize do
+    return false if running?
+    @turn.start(prompt)
+  end
+end
+
+def steer_turn(prompt)
+  raise ArgumentError, "prompt is empty" if prompt.to_s.strip.empty?
+  @lock.synchronize do
+    return false if running?
+    @turn.steer(prompt)
+  end
+end
+
+def cancel_turn(prompt)
+  raise ArgumentError, "prompt is empty" if prompt.to_s.strip.empty?
+  @lock.synchronize do
+    return false if running?
+    @turn.cancel(prompt)
+  end
+end
+
+def resume_turn(prompt)
+  raise ArgumentError, "prompt is empty" if prompt.to_s.strip.empty?
+  @lock.synchronize do
+    return false if running?
+    @turn.resume(prompt)
+  end
+end
+
+def finish_turn(prompt)
+  raise ArgumentError, "prompt is empty" if prompt.to_s.strip.empty?
+  @lock.synchronize do
+    return false if running?
+    @turn.finish(prompt)
+  end
+end
+
+```
+
+```js
+function startTurn(prompt) {
+  if (running) {
+    return false;
+  }
+  return post('/api/start', { prompt });
+}
+function steerTurn(prompt) {
+  if (running) {
+    return false;
+  }
+  return post('/api/steer', { prompt });
+}
+function cancelTurn(prompt) {
+  if (running) {
+    return false;
+  }
+  return post('/api/cancel', { prompt });
+}
+function resumeTurn(prompt) {
+  if (running) {
+    return false;
+  }
+  return post('/api/resume', { prompt });
+}
+```
+
+Option 3 looks best: it touches the web handler only, and the manager already serialises starts.

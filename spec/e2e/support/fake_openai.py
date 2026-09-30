@@ -8,7 +8,10 @@
 # tool result (steering merged mid-turn, a plugin's nudge) doesn't restart the count.
 # With "nudge_counts": true a system message after the
 # last user message (an empty-answer retry's nudge) counts as a step too, so an empty iteration can be followed by
-# an answer. /v1/models lists "fake-script" (or serves <dir>/models.json when there is one, e.g. with
+# an answer. An iteration's "thinking_file" (a path relative to scripts/, its leading "#" header lines dropped)
+# streams in place of "thinking", "repeat" times over (default 1), and "chunk_chars" streams N chars per chunk
+# instead of word by word (the script's "delay" still applies): a long looping thinking (loop-guard's watch).
+# /v1/models lists "fake-script" (or serves <dir>/models.json when there is one, e.g. with
 # "architecture": {"input_modalities": ["text"]} for a text-only model);
 # no upstream needed.
 # 503_then_script: one 503 with Retry-After: 3 (a provider retry the UIs show), then flips to script.
@@ -23,6 +26,7 @@
 # answers 404, as a chat host without /props does (the e2e suite, which must not reach a LAN server: an
 # unreachable one stalls the worker's /props probes). Every request line + body is appended to <dir>/requests.log.
 import http.server, json, os, sys, urllib.request
+SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
 PORT = int(sys.argv[1]); DIR = sys.argv[2]; UPSTREAM = sys.argv[3] if len(sys.argv) > 3 else "http://192.168.1.29:8081"
 def mode():
     try: return open(os.path.join(DIR, "mode")).read().strip()
@@ -110,9 +114,17 @@ class H(http.server.BaseHTTPRequestHandler):
             c = ("data: " + json.dumps(obj) + "\n\n").encode()
             self.wfile.write(b"%x\r\n%s\r\n" % (len(c), c)); self.wfile.flush()
         ch = lambda d, f=None: {"id": "x", "object": "chat.completion.chunk", "model": "fake-script", "choices": [{"index": 0, "delta": d, "finish_reason": f}]}
+        thinking = it.get("thinking") or ""
+        if it.get("thinking_file"):
+            lines = open(os.path.join(SCRIPTS, it["thinking_file"])).read().split("\n")
+            while lines and lines[0].startswith("#"): lines.pop(0)
+            thinking = "\n".join(lines)
+        thinking = thinking * int(it.get("repeat", 1))
+        size = int(it.get("chunk_chars") or 0)
         try:
-            for key, field in (("thinking", "reasoning_content"), ("text", "content")):
-                for piece in re.findall(r"\S+\s*|\s+", it.get(key) or ""):
+            for text, field in ((thinking, "reasoning_content"), (it.get("text") or "", "content")):
+                pieces = [text[i:i + size] for i in range(0, len(text), size)] if size else re.findall(r"\S+\s*|\s+", text)
+                for piece in pieces:
                     w(ch({field: piece})); time.sleep(delay)
             tools = it.get("tools") or []
             for i, tool in enumerate(tools):

@@ -1,0 +1,105 @@
+# N1: long non-looping thinking (four authored episodes, written for this fixture); must never trigger
+The user wants the export command to write a CSV of every session in the project, with the date, the model and the number of turns. Let me think about where that belongs. There is already a sessions command with list, show and prune subcommands, so export fits next to them rather than as a new top-level command.
+
+First I need to know what a session file holds. From what I remember, each session is a JSON file named by its id, with messages, a model name, a working directory and some timing fields. The turn count is not stored directly; it would have to be derived from the messages, probably by counting user messages that are not steering or notes.
+
+Hmm, counting user messages is not quite right either. A continue turn has no user message at all, and a steer merged mid-turn is a user message that belongs to a turn already running. If there is a last_turn record or a turns array, that would be more reliable. I should check the session model before deciding.
+
+Let me also consider the output format. CSV is simple, but session titles can contain commas, quotes and newlines. Ruby's CSV library handles quoting correctly, so I should use it instead of joining strings by hand. The header row would be id, created, model, turns, title.
+
+What about the date? The files have created_at as an ISO timestamp, I believe. For a spreadsheet the user probably wants a plain date, but a full timestamp sorts correctly and loses nothing. I will keep the ISO form and mention it in the help text.
+
+Another question is scope. The user said every session in the project, and sessions are now scoped by project identity, which is keyed by the common git directory. So the export should use the same filter the list command uses, not scan the whole sessions directory. Reusing the list command's query also means archived sessions are excluded by default, which seems right; an --archived flag could include them.
+
+Where does the output go? Writing to stdout lets the user redirect it anywhere, and it composes with other tools. A --output flag is a nice extra but not needed at first. I will print to stdout and keep any warnings on stderr so they do not end up inside the CSV.
+
+Now the tests. The existing sessions specs build temporary state directories with a few session files in them. I can do the same: three sessions, one archived, one from another project, and assert that the CSV has exactly the two expected rows in order. A title with a comma and a quote checks the escaping.
+
+One more detail: large projects can have hundreds of sessions, each file possibly several megabytes because of tool outputs. Parsing every file fully just to count turns could be slow. The list command already reads a preview field; maybe there is an index or a light summary I can reuse. If not, parsing is acceptable for a first version, since export is not something anyone runs in a tight loop.
+
+I think the plan is clear enough to start. I will read the sessions command first, then the session model, then write the spec before the implementation.
+
+Looking at the command file now. The subcommands are dispatched with a case statement on the first argument, and each one has its own small method. Adding export means one more branch and one more method, plus a line in the usage text. The list method builds rows through a helper that already filters by project, which is exactly what I wanted to reuse.
+
+The helper returns hashes with id, preview, updated and model. It does not return created or a turn count, so I need to extend it or read the files again. Extending the helper changes what list gets too, but only by adding keys, which list ignores. That seems like the smaller change.
+
+For the turn count, the session model has a method that returns the recorded turn summaries, added with the analytics work. Each completed, cancelled or failed turn leaves one record. That is the reliable number, so I will count those records instead of guessing from messages.
+
+Now I am slightly worried about old sessions written before those records existed. For them the count would be zero, which is misleading. A fallback to counting plain user messages when there are no records would give a reasonable estimate. I will mark estimated counts somehow, maybe not; an extra column would complicate the format for a rare case. I will just use the fallback and note it in the docs.
+
+Let me write the spec now. The fixture helper takes a hash of fields and writes a session file; I will give it created_at values on three different days so the order is obvious. For the escaping case the title will be: Fix "parser", then test. The expected CSV line quotes the whole field and doubles the inner quotes.
+
+Running the spec before the implementation fails with an unknown subcommand error, as expected. Good, that means the dispatch is exercised.
+
+The implementation is short: fetch the rows, map each to the five fields, and generate the CSV with a header. I will pass write_headers true and the header list to CSV.generate so the header matches the columns exactly.
+
+After implementing, the spec passes, but I notice the order is by updated time, not creation time, because the helper sorts that way. The user asked for a list, not a particular order, but by creation date reads more naturally in a spreadsheet. I will sort explicitly in export rather than changing the helper.
+
+The docs need a line in the sessions section and the changelog needs an entry under Added. I will also run the whole sessions spec file to make sure list did not change.
+
+The failing test is the one about the reminder that fires while a turn runs. It passes locally and fails on CI about one time in five. Flaky tests like this are usually timing: a thread that has not started yet, a sleep that is too short on a loaded machine, or an assertion made before an asynchronous event arrived.
+
+Let me read the test first. It starts a turn with a fake client that holds its response, schedules a reminder two hundred milliseconds ahead, then waits for the reminder event and releases the client. The assertion checks that the reminder text was injected before the final answer.
+
+The wait is a loop with a deadline of one second that checks an array of events. On a slow runner the reminder thread might wake late, but one second is a lot of slack for a two hundred millisecond timer. So the deadline is probably not the problem.
+
+What else could differ on CI? The runner uses a different Ruby patch version and runs the suite in random order with a fixed seed per job. Random order suggests state leaking between examples: a reminder store left with an entry, a global clock stub, or an environment variable that another spec sets and does not restore.
+
+I can try to reproduce with the seed from a failed job. The CI log prints it at the end of the run. Running the full suite with that seed locally is the most direct check, even though it takes a few minutes.
+
+With the seed, the failure reproduces locally. That is good news, because it is deterministic under that order. Now I can bisect: rspec has a bisect option that finds the minimal set of examples that reproduces an order-dependent failure.
+
+The bisect points at a spec in the scheduler file that stubs the monotonic clock and never removes the stub. Since the stub is on a module method with allow, RSpec should reset it after the example. Unless it was set in a before all block, which RSpec does not reset per example.
+
+Checking the scheduler spec, the stub is indeed in a before all hook. That explains the leak: every example after it in the same process sees a frozen clock until the group ends, and in some orders the reminder spec runs inside that window. With a frozen clock the reminder never becomes due, and the wait times out.
+
+The fix is to move the stub into a before each hook, or better, to inject a clock into the scheduler instead of stubbing a global method. The scheduler already takes a clock keyword in its constructor, so the spec can pass a lambda over a local variable. That removes the global stub entirely.
+
+I will change the scheduler spec to construct the scheduler with its own clock and drop the before all block. Then I will run the reminder spec with the failing seed again, and the scheduler file on its own to make sure its examples still pass with the injected clock.
+
+Both pass now. It is worth grepping the spec directory for other before all hooks that stub things, because the same mistake could be hiding elsewhere. There are two more: one sets an environment variable and restores it in an after all hook, which is fine as long as no example depends on the variable being unset, and one creates a temporary directory, which is harmless.
+
+I should also mention in the commit message why it was flaky, so the next person who sees a similar failure knows to look at before all hooks. The message will name the leaked stub and the order that exposed it.
+
+Separately, the reminder spec's own wait could print the events it saw when it times out. That would have made this faster to diagnose, because the event list would have shown that no reminder was ever due. It is a small change to the helper that waits, and it helps every spec using it.
+
+We need to schedule five talks into three rooms over two time slots, with some constraints. Talks A and B share a speaker, so they cannot be in the same slot. Talk C needs the large room. Talks D and E are on the same topic, and the organizers want them in the same slot so people can choose between them. Room two is only available in the morning.
+
+Let me list what we have. Slots: morning and afternoon. Rooms: large, room one and room two, where room two exists only in the morning. So the morning has three rooms and the afternoon has two, which gives five places in total for five talks. Every place will be used.
+
+Since the afternoon has only two rooms and D and E must share a slot, putting D and E in the afternoon would fill it completely. Then the morning takes A, B and C. But A and B share a speaker and cannot be in the same slot. So D and E cannot both go in the afternoon with A and B in the morning.
+
+Therefore D and E go in the morning. The morning has three places, so one more talk joins them there. The afternoon then holds the remaining two talks. A and B must be split, so one of them is in the morning with D and E and the other is in the afternoon together with C.
+
+Now C needs the large room. C is in the afternoon, where the rooms are large and room one, so C takes the large room and the other talk takes room one. In the morning, D, E and one of A or B fill the large room, room one and room two in some order.
+
+That gives two families of solutions: A in the morning and B in the afternoon, or the other way round. Within the morning the room assignment is free, three factorial ways, so six arrangements per family and twelve in total, if the organizers do not care which room D or E gets.
+
+Maybe the organizers would prefer the topic pair in the two larger rooms, since they may draw bigger audiences. That is not a stated constraint, so I should present it as a suggestion rather than a requirement. With that preference, the talk from A or B that is in the morning goes to room two.
+
+Let me double-check each constraint against one concrete schedule. Morning: D in the large room, E in room one, A in room two. Afternoon: C in the large room, B in room one. A and B are in different slots, which is fine. C is in the large room. D and E share the morning slot. Room two is used only in the morning. All five talks are placed once.
+
+I should also check that no other arrangement was missed by the first deduction. Could D and E be in the afternoon with only one other constraint violated? No, any violation rules it out. Could the morning hold only two talks? No, because the afternoon has just two places and five talks need five places. The argument holds.
+
+The answer should give the reasoning briefly, one concrete schedule, and the count of possible schedules, with the room preference as an optional note. It does not need a table, but a short list per slot reads well.
+
+The request is to cache the model list for each host so the web picker opens faster. Right now every time the picker opens, the server asks the host for its models, and a remote gateway can take over a second to answer with a few hundred entries.
+
+A cache needs a key, a lifetime and a way to be refreshed. The key is obviously the host name, and perhaps the API key's variable name, since two keys on the same gateway can see different models. The lifetime could be a minute; model lists rarely change, but when a user loads a new model on a local server they expect to see it soon.
+
+Where should the cache live? The adapter already has a models time-to-live attribute, which suggests someone started on this. Let me look at what it does before designing anything new.
+
+The adapter stores the last list and the time it was fetched, and returns the stored list while it is younger than the time-to-live. So the cache exists, but the web server creates a new adapter for every request, which throws the stored list away each time. The fix may be as simple as keeping the adapters around.
+
+The host registry has an adapter_for method. If it memoizes adapters per host entry, the web server would reuse them automatically. Memoizing has a cost: an adapter holds an HTTP object with settings from the config, so a config change must drop the memoized adapters. The registry is rebuilt when the config reloads, so memoizing inside the registry instance gives that for free.
+
+Thread safety matters here, because the web server handles requests on several threads. Two requests arriving together could both miss the memo and create two adapters. That is harmless if the second simply replaces the first, but it is cleaner to guard the memo with a mutex, which is cheap.
+
+What about errors? If fetching the list fails, the adapter raises and nothing is stored, so the next open tries again. That is the right behaviour: a failed fetch should not be cached for a minute. I should check that a partial page failure does not leave a half list in the cache; the adapter builds the full list before storing it, so it cannot.
+
+There is also the refresh button in the picker. It should bypass the cache. The endpoint could take a refresh parameter that calls a method to clear the stored list first. That is a small addition to the adapter, and the web side just appends the parameter when the button is pressed.
+
+For tests, the registry spec can check that adapter_for returns the same object twice for the same host and a different one for another host, and that a reloaded registry returns a new one. The web spec can count requests to the fake server across two picker opens and see one, and three after a refresh.
+
+I want to measure the effect too, not just assume it. Timing the endpoint against a slow fake server before and after gives a clear number for the commit message.
+
