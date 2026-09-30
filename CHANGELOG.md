@@ -8,6 +8,25 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-30
+
+### Fixed
+
+- `chi desktop install` / `upgrade` builds the helper again on Macs whose
+  Command Line Tools lack SwiftUI's macro plugin ("plugin for module
+  'SwiftUIMacros' not found", since 0.5.0's image thumbnails).
+- After updating chi and restarting `chi web`, the browser loads the new page
+  code on the next reload instead of running the old one for up to an hour.
+- A plugin's warning card stays in sight when its step closes while the turn
+  goes on.
+- Sessions on OpenAI-compatible hosts no longer fail to send a request when a
+  message with an image also carries text with broken UTF-8 bytes.
+- `delegate` and `delegate_result` return as soon as a delegated session's
+  turn fails, instead of waiting out the 10-minute timeout when it failed
+  quickly.
+
+Update with `chi update`. No bundle versions changed.
+
 ## [0.5.0] - 2026-09-30
 
 ### Security
@@ -312,7 +331,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/dm1try/samagotchi/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/dm1try/samagotchi/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dm1try/samagotchi/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dm1try/samagotchi/compare/v0.2.0...v0.3.0
