@@ -28,7 +28,6 @@ server:                 # the model server when there is no hosts: map below
   host: 192.0.2.10
   port: 8081
 thinking:
-  ui: spinner
   level: default        # off | low | medium | high | default; see "Thinking"
 
 # Multi-host (optional): aggregated /models and per-model routing.
@@ -737,17 +736,12 @@ described in their own sections.
 | `log.file` | state dir | yes | See "Debug Log File". |
 | `log.disable` | `false` | yes | No file logging. |
 | `log.level` | `info` | yes | `debug`, `info`, `warn`, `error`. |
-| `status.line` | `on` | yes | The REPL status line, `on` or `off`. |
-| `status.width_mode` | `terminal_cap` | yes | `terminal_cap` (terminal width up to `max_width`) or `fixed`. |
-| `status.max_width` | `160` | yes | Cap for `terminal_cap`. |
-| `status.fixed_width` | `120` | yes | Width for `fixed`. |
+| `status.line` | `on` | yes | The status row under the prompt (the REPL's and attached mode's), `on` or `off`. |
 | `context.status` | `true` | yes | Context-usage telemetry for the model. See [context telemetry](internals/context-telemetry.md). |
 | `context.window_tokens` | server's, else 256000 | yes | Context window when the server doesn't report one. |
 | `context.chars_per_token` | `4.0` | yes | Estimate ratio when the server reports no usage. |
 | `context.status_thresholds` | `20,40,60,80` | yes | Percentages that trigger a status. |
 | `context.status_cadence` | `0` | yes | Also every N rounds; `0` = thresholds only. |
-| `thinking.ui` | `spinner` | yes | `spinner` or `off`. |
-| `thinking.render_interval` | `0.08` | yes | Seconds between thinking redraws. |
 | `thinking.turn_preamble` | `true` | yes | Ask a `qwen36` model to open its thinking with a short `TURN:` line (the step label). |
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't. See "Thinking". |
 | `models.<key>.thinking`, `hosts.<name>.thinking` | none | | A model's or host's level. See "Thinking". |

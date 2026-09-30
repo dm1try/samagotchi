@@ -108,9 +108,6 @@ module Samagotchi
       Entry.new(key: "log.level",                yaml_path: %w[log level],                type: :enum,   default: "info",           expose: %i[env config cli], enum_values: %w[debug info warn error]),
 
       Entry.new(key: "status.line",              yaml_path: %w[status line],              type: :string, default: "on",             expose: %i[env config cli]),
-      Entry.new(key: "status.width_mode",        yaml_path: %w[status width_mode],        type: :string, default: "terminal_cap",   expose: %i[env config cli]),
-      Entry.new(key: "status.max_width",         yaml_path: %w[status max_width],         type: :integer, default: 160,             expose: %i[env config cli]),
-      Entry.new(key: "status.fixed_width",       yaml_path: %w[status fixed_width],       type: :integer, default: 120,             expose: %i[env config cli]),
 
       Entry.new(key: "context.status",           yaml_path: %w[context status],           type: :bool,   default: true,             expose: %i[env config cli]),
       Entry.new(key: "context.window_tokens",    yaml_path: %w[context window_tokens],    type: :integer, default: nil,             expose: %i[env config cli]),
@@ -118,8 +115,6 @@ module Samagotchi
       Entry.new(key: "context.status_thresholds", yaml_path: %w[context status_thresholds],type: :string, default: "20,40,60,80",    expose: %i[env config cli]),
       Entry.new(key: "context.status_cadence",   yaml_path: %w[context status_cadence],   type: :integer, default: 0,               expose: %i[env config cli]),
 
-      Entry.new(key: "thinking.ui",              yaml_path: %w[thinking ui],              type: :string, default: "spinner",        expose: %i[env config cli]),
-      Entry.new(key: "thinking.render_interval", yaml_path: %w[thinking render_interval], type: :float,   default: 0.08,            expose: %i[env config cli]),
       Entry.new(key: "thinking.turn_preamble",   yaml_path: %w[thinking turn_preamble],   type: :bool,   default: true,             expose: %i[env config cli]),
       # How much models think: off|low|medium|high|default, parsed by Thinking
       # (a :string, since YAML reads an unquoted off as false). The CLI flag

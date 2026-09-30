@@ -598,38 +598,23 @@ Behavior details:
 
 ## Status Line
 
-Assist mode can render a compact generalized status line that can include mode,
-context estimate, and active memory hints.
+The REPL and attached mode show one status row under the prompt, drawn when what it says
+changes:
 
-Behavior:
+```
+status> model=Qwen3.6-35B | ↳ 3f2a1c9e | ctx=12.3% (under20) | mem: notes, cli_usage | muted: gh-helper
+```
 
-- A static status line is printed before the next `>` prompt in assist mode.
-- During spinner rendering, status details are rendered in the spinner block.
-- When llama.cpp streaming payload includes usage fields, status prefers server-derived token telemetry (`p`, `c`, `t`) and context percent.
-- If server usage fields are absent, status falls back to the `:context_status` estimate telemetry.
-- When a memory is loaded between tool rounds, the spinner line includes a `loaded: <memory>` notification immediately after the spinner frame.
-- After responses, memory details are shown via the same unified `status>` line.
-- The legacy standalone `memories>` summary line is no longer emitted.
-- With `--mute`, the sticky and idle rows add `muted: <names>` after `mem:` (the
-  spinner row doesn't). Attached, `mem:` shows the used memories and the
-  session's `--memory` list before the first turn records them.
-
-Configuration:
-
-- `SAMAGOTCHI_STATUS_LINE` (default `on`): set to `off`, `false`, or `0` to disable status-line rendering.
-- `SAMAGOTCHI_STATUS_WIDTH_MODE` (default `terminal_cap`): one of `terminal_cap`, `fixed`.
-- `SAMAGOTCHI_STATUS_MAX_WIDTH` (default `160`): maximum width used by `terminal_cap`.
-- `SAMAGOTCHI_STATUS_FIXED_WIDTH` (default `120`): fixed width used by `fixed` mode.
-
-Width mode behavior:
-
-- `terminal_cap`: use `min(terminal_columns, SAMAGOTCHI_STATUS_MAX_WIDTH)`, single-line with `+N` overflow indicator.
-- `fixed`: use `SAMAGOTCHI_STATUS_FIXED_WIDTH`, single-line with `+N` overflow indicator.
-
-Notes:
-
-- Spinner rendering remains app-managed to keep cursor cleanup deterministic.
-- Raw terminal auto-wrap is intentionally avoided in the spinner region.
+- `model=`: the model in use, `(default: …)` beside it when it isn't the config's default, and
+  `model=<served> (served; asked <name>)` when the server said it served another model.
+- `↳ <id>`: the session that delegated this one.
+- `ctx=`: the kernel's context estimate and its bucket, updated during a turn (on hosts that
+  report none, `api: openai`, at the turn's end).
+- `mem:`: the memories the session read, with its `--memory` list; `muted:` its `--mute` list.
+  Up to 8 names each, then `+N`.
+- The row is cut to the terminal's width. Without a live region (output or input not a terminal,
+  `TERM=dumb`) it prints as a line when it changes.
+- `SAMAGOTCHI_STATUS_LINE` / `status.line` (default `on`): `off`, `false` or `0` hides it.
 
 ## Tool Tally
 
@@ -644,30 +629,34 @@ It lists the top 3 tools by count (ties go to the tool used first), the failed c
 (a call a guardrail or an approval blocked counts as a call, not as failed) and the last
 call with its parameters, cut to the terminal width. It starts over with each turn.
 
-- Attached mode: the second row of the activity slot, shown while the slot is (the
+- The REPL and attached mode: the second row of the activity slot, shown while the slot is (the
   model generating or a tool running). Joining a turn mid-way seeds it from the turn so far.
-- The REPL (`--no-shared`): a row under the spinner row. The spinner stops while tools
-  run (the `tool>` lines show them), so the tally shows while the model generates
-  between tool rounds; the spinner block is one row taller from then on.
 - The web: the activity panel's summary reads `activity · 12 tool calls (2 failed) · execute ×7 · …`
   (without `last:`: the rows show it).
 
-## Thinking Spinner Sentence
+## Activity Row
 
-While the model generates, the spinner row shows the newest complete sentence of its thinking
-(`model> thinking · <sentence> |` in the REPL, `| thinking · <sentence>` in attached mode), or of its
-answer (`writing ·`), like the web's thinking ticker: the same sentence rules (a list number such as
-`118.` is no sentence end; a newline is one), and the row changes at most once every 1.5 s so it
-doesn't flicker. A long sentence is cut with `…`; a Qwen `TURN:` prefix and inline markdown are left
-out. Before the first sentence the row reads `thinking...`. With `TERM=dumb` there is no spinner row.
+While a turn runs, one row above the prompt says what it is doing, the spinner frame first
+(the REPL and attached mode alike):
 
-- When a memory entry is loaded during thinking, the spinner line also shows a compact inline preview
-  of that tool call (for example `tool: memory_read(name=...)`) for live visibility before end-of-turn
-  tool logs; the sentence gets the room left.
+- `| thinking…` while the model starts, then `| thinking · <sentence>`: the newest complete
+  sentence of its thinking, or of its answer (`writing ·`), like the web's thinking ticker: the
+  same sentence rules (a list number such as `118.` is no sentence end; a newline is one), and the
+  row changes at most once every 1.5 s so it doesn't flicker. A long sentence is cut with `…`; a
+  Qwen `TURN:` prefix and inline markdown are left out.
+- `| waiting for the first token… 5s` after 2 s with nothing streamed.
+- `| running execute…` while a tool runs (its `tool>` line prints when it ends).
+- `| retrying (1/4 in 0.5s): Errno::ECONNREFUSED` while a network error is retried.
+- `| mcp: starting servers…` while a plugin's slow setup (an init task) runs, between turns too;
+  `mcp> ✓ …` prints when it is done.
+
+The spinner turns with time, so a turn that gets no chunks still looks alive. Without a live
+region (output or input not a terminal, `TERM=dumb`) there is no activity row; the turn's lines
+still print as they end.
 
 ## Thinking-Phase Cancellation
 
-During assist-mode thinking (while the spinner is active), you can cancel an in-flight model request without exiting the process:
+While a turn runs, you can cancel it without exiting the process:
 
 - Press `Ctrl-C` to cancel the active request.
 

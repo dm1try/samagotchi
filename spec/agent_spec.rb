@@ -35,32 +35,18 @@ RSpec.describe Samagotchi::TerminalUI do
     original_skip_agent_md = ENV["SAMAGOTCHI_SKIP_AGENT_MD"]
     original_history_file = ENV["SAMAGOTCHI_HISTORY_FILE"]
     original_xdg_state_home = ENV["XDG_STATE_HOME"]
-    original_thinking_ui = ENV["SAMAGOTCHI_THINKING_UI"]
-    original_thinking_render_interval = ENV["SAMAGOTCHI_THINKING_RENDER_INTERVAL"]
     original_status_line = ENV["SAMAGOTCHI_STATUS_LINE"]
-    original_status_width_mode = ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"]
-    original_status_fixed_width = ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"]
-    original_status_max_width = ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"]
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
     original_columns = ENV["COLUMNS"]
     original_default_input = ENV["SAMAGOTCHI_DEFAULT_INPUT"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
     ENV.delete("SAMAGOTCHI_DEFAULT_INPUT")
-    # Pin a deterministic status width so content assertions never depend on
-    # the host terminal width (narrow ptys truncate status segments).
-    ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"] = "fixed"
-    ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"] = "200"
     example.run
     ENV["SAMAGOTCHI_THINKING_LEVEL"] = original_thinking_mode
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip_agent_md
     ENV["SAMAGOTCHI_HISTORY_FILE"] = original_history_file
     ENV["XDG_STATE_HOME"] = original_xdg_state_home
-    ENV["SAMAGOTCHI_THINKING_UI"] = original_thinking_ui
-    ENV["SAMAGOTCHI_THINKING_RENDER_INTERVAL"] = original_thinking_render_interval
     ENV["SAMAGOTCHI_STATUS_LINE"] = original_status_line
-    ENV["SAMAGOTCHI_STATUS_WIDTH_MODE"] = original_status_width_mode
-    ENV["SAMAGOTCHI_STATUS_FIXED_WIDTH"] = original_status_fixed_width
-    ENV["SAMAGOTCHI_STATUS_MAX_WIDTH"] = original_status_max_width
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
     ENV["COLUMNS"] = original_columns
     if original_default_input.nil?
