@@ -9,6 +9,7 @@ require "webrick"
 
 require_relative "app"
 require_relative "session_hub"
+require_relative "token"
 require_relative "../config"
 require_relative "../project_scope"
 require_relative "../log"
@@ -51,9 +52,12 @@ module Samagotchi
       # URL. If a chi web already runs on the port, print (and with --open,
       # open) its page for +dir+ and leave it be; else start one.
       # @param scope ["project", "all"] "all": the plain page, every session
+      # @param new_token [Boolean] replace the LAN access token first
+      #   (--new-token): a running server takes the new one at once
       # @return [Integer] the exit status
       def self.launch(port: nil, host: nil, scope: "project", dir: Dir.pwd, open_browser: false, markdown: false, view: "turn",
-                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default)
+                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default, new_token: false)
+        rotate_token if new_token
         host = resolve_host(host)
         port = resolve_port(port)
         url = scope_url(host, port, dir: dir, scope: scope)
@@ -160,6 +164,12 @@ module Samagotchi
         info.is_a?(Hash) && info["app"] == "chi-web" && Array(info["features"]).include?("dir") ? info : :other
       rescue JSON::ParserError
         :other
+      end
+
+      def self.rotate_token(path = Token.path)
+        Token.rotate(path)
+        Samagotchi::Log.info(:web, "token_rotated")
+        puts "New LAN access token: links and QR codes made with the old one stop working."
       end
 
       def self.in_use_message(port)

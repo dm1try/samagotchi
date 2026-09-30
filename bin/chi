@@ -912,7 +912,7 @@ ARGV.each do |arg|
   base = arg.split("=", 2).first
   # If dashed version is a known flag (registry or hardcoded), reject underscore variant
   dashed = base.tr("_", "-")
-  known = %w[--prompt --resume --attach --shared --no-shared --model --thinking --memory --mute --no-interrupt --non-interactive --verbose --no-default-input --port --open] + Samagotchi::Config.cli_entries.map(&:cli_flag)
+  known = %w[--prompt --resume --attach --shared --no-shared --model --thinking --memory --mute --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token] + Samagotchi::Config.cli_entries.map(&:cli_flag)
   if known.include?(dashed) || known.include?(base)
     warn "Unknown option: #{arg} (did you mean #{dashed}?)"
     exit 1
@@ -952,6 +952,7 @@ parser = OptionParser.new do |opts|
   opts.on("--no-default-input", "Skip default REPL input prefill") { options[:no_default_input] = true; cli_overrides["no_default_input"] = true }
   opts.on("--port PORT", "Port for `chi web` (default: 4567, env SAMAGOTCHI_WEB_PORT)") { |p| options[:web_port] = p.to_i; cli_overrides["web.port"] = p.to_s }
   opts.on("--open", "Open browser for `chi web`") { options[:web_open] = true }
+  opts.on("--new-token", "`chi web`: replace the LAN access token (web.host: lan); links and QR codes made with the old one stop working") { options[:new_token] = true }
   opts.on("--scope VALUE", %w[project all],
           "Which sessions `chi web` and `chi sessions list` show: project (the default: this folder's git project; " \
           "every session outside a repo) or all") { |v| options[:scope] = v }
@@ -1002,6 +1003,10 @@ web = ARGV.first == "web" && !scratch
 stray = web ? ARGV[1] : ARGV.first
 if stray
   warn "Error: #{web || scratch ? "unexpected argument" : "unknown command"} #{stray} (see chi --help)"
+  exit 1
+end
+if options[:new_token] && !web
+  warn "Error: --new-token goes with chi web (chi web --new-token)"
   exit 1
 end
 
@@ -1067,7 +1072,7 @@ if options[:web]
   markdown = Samagotchi::Config.get("web.markdown") if markdown.nil?
   view = options[:web_view] || Samagotchi::Config.get("web.view")
   exit Samagotchi::Web::Server.launch(port: port, scope: options[:scope] || "project", open_browser: options[:web_open],
-                                      markdown: markdown, view: view,
+                                      markdown: markdown, view: view, new_token: options[:new_token],
                                       annotate_presets: Samagotchi::Config.get("web.annotate_presets"))
 end
 

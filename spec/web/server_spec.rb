@@ -120,6 +120,22 @@ RSpec.describe Samagotchi::Web::Server do
     expect(result).to be false
   end
 
+  describe ".launch with new_token" do
+    it "replaces the token file before anything else, and says the old links stop working" do
+      Dir.mktmpdir do |state|
+        path = File.join(state, "samagotchi", "web-token")
+        old = Samagotchi::Web::Token.load_or_create(path)
+        allow(Samagotchi::Web::Token).to receive(:path).and_return(path)
+        allow(described_class).to receive(:probe).and_return(:free)
+        allow(described_class).to receive(:start).and_return(true)
+
+        expect { described_class.launch(port: 4999, dir: state, new_token: true) }
+          .to output(/New LAN access token: links and QR codes made with the old one stop working/).to_stdout
+        expect(Samagotchi::Web::Token.read(path)).not_to eq(old)
+      end
+    end
+  end
+
   describe ".scope_url" do
     it "is the project view in a repo, the plain page outside one or for scope all" do
       Dir.mktmpdir do |tmp|
