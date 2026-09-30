@@ -1,8 +1,11 @@
 // The Spotlight-like panel: a message line on top, the images (a screenshot,
 // Finder files, drops) as thumbnails, the text (selection or clipboard)
-// below as quoted context, then a "New session" row and the sessions. ⏎
+// below as quoted context, then a "New session" row and the targets: live
+// sessions, agents in kitty windows (Kitty.swift), recent sessions. ⏎
 // sends a message (`chi send`, or `chi send --new` on the new row, with
-// `--image` per image), ⌘⏎ a note (`chi note`, text only), ⇧⏎ a newline.
+// `--image` per image; pasted with Enter into a kitty window), ⌘⏎ a note
+// (`chi note`, text only), ⌥⏎ a paste without Enter (kitty windows only),
+// ⇧⏎ a newline.
 import AppKit
 import SwiftUI
 
@@ -23,7 +26,15 @@ final class PanelModel: ObservableObject {
   /// @State and don't ship it ("plugin for module 'SwiftUIMacros' not found").
   @Published var hoveredImage: UUID?
   @Published var sessions: [LiveSession] = []
+  /// Agent windows in kitty; kittyOn when launch.json has a kitty section.
+  @Published var kittyWindows: [KittyWindow] = []
+  @Published var kittyOn = false
+  /// Set once the kitty listing answered: "no agents in kitty" or an error.
+  @Published var kittyNote: String?
+  /// Chi session ids and kitty window keys (never alike: UUIDs vs paths).
   @Published var selected: Set<String> = []
+  /// The user changed the selection: a late kitty listing keeps it.
+  var touched = false
   /// The "New session" row; never together with sessions (`--new` takes no ids).
   @Published var newSelected = false
   /// The model a new session starts on (`chi self --model`), for the new
@@ -41,9 +52,13 @@ final class PanelModel: ObservableObject {
   var trimmedPrompt: String { prompt.trimmingCharacters(in: .whitespacesAndNewlines) }
   var hasContext: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
   var sendEnabled: Bool {
-    canSend && (newSelected || !selected.isEmpty) && (!trimmedPrompt.isEmpty || hasContext)
+    canSend && (newSelected || !selectedIds.isEmpty || !selectedKitty.isEmpty) && (!trimmedPrompt.isEmpty || hasContext)
   }
   var live: [LiveSession] { sessions.filter { !$0.recent } }
+
+  /// One list for rows, ⌘ numbers and selection: live sessions, then kitty
+  /// windows, then recent sessions.
+  var targets: [Target] { live.map(Target.chi) + kittyWindows.map(Target.kitty) + recent.map(Target.chi) }
 
   /// Up to maxImages; the rest is dropped (and its temp files deleted).
   func add(_ new: [PanelImage]) {
@@ -64,21 +79,23 @@ final class PanelModel: ObservableObject {
   }
   var recent: [LiveSession] { sessions.filter(\.recent) }
 
-  /// The last choice, where still live; else the only live session; else,
-  /// with none live, the new row. A recent (stopped) one is never
-  /// preselected: a message would wake it.
+  /// The last choice, where still live or listed; else the only live
+  /// session; else, with none live and no kitty window chosen, the new row.
+  /// A recent (stopped) one is never preselected: a message would wake it.
   func preselect() {
     let last = Set(UserDefaults.standard.stringArray(forKey: Self.lastChoiceKey) ?? [])
-    selected = last.intersection(Set(live.map(\.id)))
+    selected = last.intersection(Set(live.map(\.id) + kittyWindows.map(\.key)))
     if selected.isEmpty, live.count == 1 { selected = [live[0].id] }
-    newSelected = live.isEmpty
+    newSelected = live.isEmpty && selected.isEmpty
   }
 
   func toggle(_ id: String) {
+    touched = true
     if selected.contains(id) { selected.remove(id) } else { selected.insert(id); newSelected = false }
   }
 
   func toggleNew() {
+    touched = true
     newSelected.toggle()
     if newSelected { selected = [] }
   }
@@ -104,9 +121,32 @@ final class PanelModel: ObservableObject {
   var selectedIds: [String] {
     sessions.filter { selected.contains($0.id) && $0.valid }.map(\.id)
   }
+
+  var selectedKitty: [KittyWindow] { kittyWindows.filter { selected.contains($0.key) } }
+
+  /// Who the message goes to, for the placeholder: chi, or the one agent
+  /// when only kitty windows running it are chosen.
+  var addressee: String {
+    let agents = Set(selectedKitty.map(\.agent))
+    return agents.count == 1 && selectedIds.isEmpty && !newSelected ? agents.first! : "chi"
+  }
 }
 
-enum SendKind { case message, note }
+/// A row of the panel: a chi session or an agent in a kitty window.
+enum Target: Identifiable {
+  case chi(LiveSession)
+  case kitty(KittyWindow)
+
+  var id: String {
+    switch self {
+    case .chi(let session): return session.id
+    case .kitty(let window): return window.key
+    }
+  }
+}
+
+/// ⏎ message, ⌘⏎ note, ⌥⏎ paste (kitty windows only: no Enter).
+enum SendKind { case message, note, paste }
 
 struct PanelView: View {
   @ObservedObject var model: PanelModel
@@ -116,7 +156,7 @@ struct PanelView: View {
   var body: some View {
     VStack(spacing: 0) {
       // The message is required with images, as in the web.
-      TextField(model.images.isEmpty ? "Ask chi…" : "Say something about the image…", text: $model.prompt, axis: .vertical)
+      TextField(model.images.isEmpty ? "Ask \(model.addressee)…" : "Say something about the image…", text: $model.prompt, axis: .vertical)
         .textFieldStyle(.plain)
         .font(.system(size: 17))
         .lineLimit(1...4)
@@ -180,20 +220,68 @@ struct PanelView: View {
         }.padding(10)
       default:
         newRow
-        ForEach(Array(model.sessions.prefix(9).enumerated()), id: \.element.id) { index, session in
-          if session.recent && index == model.live.count {
-            HStack(spacing: 6) {
-              Text("recent").font(.system(size: 11)).foregroundColor(.secondary)
-              Rectangle().fill(Color.secondary.opacity(0.25)).frame(height: 1)
-            }
-            .padding(.horizontal, 8).padding(.top, index == 0 ? 2 : 6)
+        let live = model.live.count, kitty = model.kittyWindows.count
+        ForEach(Array(model.targets.prefix(9).enumerated()), id: \.element.id) { index, target in
+          if index == live && kitty > 0 { groupHeader("kitty", first: index == 0) }
+          if index == live + kitty && !model.recent.isEmpty {
+            if kitty == 0 { kittyNoteLine }
+            groupHeader("recent", first: index == 0)
           }
-          row(session, index: index)
+          switch target {
+          case .chi(let session): row(session, index: index)
+          case .kitty(let window): kittyRow(window, index: index)
+          }
         }
+        if model.recent.isEmpty && kitty == 0 { kittyNoteLine }
       }
     }
     .padding(6)
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  func groupHeader(_ name: String, first: Bool) -> some View {
+    HStack(spacing: 6) {
+      Text(name).font(.system(size: 11)).foregroundColor(.secondary)
+      Rectangle().fill(Color.secondary.opacity(0.25)).frame(height: 1)
+    }
+    .padding(.horizontal, 8).padding(.top, first ? 2 : 6)
+  }
+
+  /// "no agents in kitty" (or why kitty can't be asked) where the kitty
+  /// rows would be; nothing without a kitty section.
+  @ViewBuilder var kittyNoteLine: some View {
+    if model.kittyOn, let note = model.kittyNote {
+      HStack(spacing: 6) {
+        Image(systemName: "terminal").font(.system(size: 11))
+        Text(note).font(.system(size: 11)).lineLimit(1)
+      }
+      .foregroundColor(.secondary.opacity(0.7))
+      .padding(.horizontal, 8).padding(.vertical, 4)
+    }
+  }
+
+  func kittyRow(_ window: KittyWindow, index: Int) -> some View {
+    let on = model.selected.contains(window.key)
+    return Button(action: { model.toggle(window.key) }) {
+      HStack(spacing: 10) {
+        Image(systemName: on ? "checkmark.circle.fill" : "circle")
+          .font(.system(size: 16))
+          .foregroundColor(on ? .accentColor : .secondary)
+        VStack(alignment: .leading, spacing: 1) {
+          Text(window.title.isEmpty ? window.label : "\(window.agent) · \(window.title)")
+            .font(.system(size: 13, weight: .medium)).lineLimit(1)
+          Text(window.shortCwd).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
+        }
+        Spacer()
+        Image(systemName: "terminal").font(.system(size: 12)).foregroundColor(.secondary)
+          .help("\(window.agent) in a kitty window: ⏎ pastes and presses Enter, ⌥⏎ only pastes")
+        Text("⌘\(index + 1)").font(.system(size: 11, design: .rounded)).foregroundColor(.secondary)
+      }
+      .padding(.horizontal, 8).padding(.vertical, 6)
+      .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
   }
 
   var newRow: some View {
@@ -277,11 +365,18 @@ struct PanelView: View {
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
 
-      // ⏎ and ⌘⏎ are handled by the panel (KeyPanel.sendEvent), whatever
-      // has the focus; the buttons are for the mouse.
-      Button("Note ⌘⏎") { send(.note) }
-        .disabled(!model.sendEnabled)
-        .help("add it as background the model sees on its next turn; starts no turn")
+      // ⏎, ⌘⏎ and ⌥⏎ are handled by the panel (KeyPanel.sendEvent),
+      // whatever has the focus; the buttons are for the mouse. Only kitty
+      // windows chosen: Paste instead of Note.
+      if !model.selectedKitty.isEmpty && model.selectedIds.isEmpty && !model.newSelected {
+        Button("Paste ⌥⏎") { send(.paste) }
+          .disabled(!model.sendEnabled)
+          .help("paste it into the agent's input without Enter: add more, then press Enter there")
+      } else {
+        Button("Note ⌘⏎") { send(.note) }
+          .disabled(!model.sendEnabled || !model.selectedKitty.isEmpty)
+          .help("add it as background the model sees on its next turn; starts no turn")
+      }
       Button(action: { send(.message) }) {
         if model.phase == .sending { ProgressView().controlSize(.small) } else { Text("Send ⏎") }
       }
@@ -364,6 +459,8 @@ final class KeyPanel: NSPanel {
 final class PanelController: NSObject, NSWindowDelegate {
   let model = PanelModel()
   let runner = ChiRunner()
+  /// This open's kitty runner (launch.json read at each open).
+  private var kitty: KittyRunner?
   private var panel: KeyPanel!
   private var returnTo: NSRunningApplication?
   /// Images a running `chi send` still reads: not deleted on close.
@@ -404,11 +501,12 @@ final class PanelController: NSObject, NSWindowDelegate {
     panel.onReturn = { [weak self] flags in self?.handleReturn(flags) ?? false }
   }
 
-  /// ⏎ message, ⌘⏎ note, ⇧⏎ a newline in the focused field.
+  /// ⏎ message, ⌘⏎ note, ⌥⏎ paste, ⇧⏎ a newline in the focused field.
   private func handleReturn(_ flags: NSEvent.ModifierFlags) -> Bool {
     switch flags {
     case []: send(.message)
     case .command: send(.note)
+    case .option: send(.paste)
     case .shift:
       (panel.firstResponder as? NSTextView)?.insertNewlineIgnoringFieldEditor(nil)
     default: return false
@@ -416,12 +514,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     return true
   }
 
-  /// ⌘1…⌘9 toggle a session, ⌘0 the new row.
+  /// ⌘1…⌘9 toggle a target, ⌘0 the new row.
   private func handleKey(_ event: NSEvent) -> Bool {
+    let targets = model.targets
     guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
           let chars = event.charactersIgnoringModifiers, let n = Int(chars),
-          n <= model.sessions.count else { return false }
-    if n == 0 { model.toggleNew() } else { model.toggle(model.sessions[n - 1].id) }
+          n <= min(targets.count, 9) else { return false }
+    if n == 0 { model.toggleNew() } else { model.toggle(targets[n - 1].id) }
     return true
   }
 
@@ -437,10 +536,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     model.source = source
     model.message = ""
     model.newSelected = false
+    model.selected = []
+    model.touched = false
     model.phase = .loading
     placeOnActiveScreen()
     panel.makeKeyAndOrderFront(nil)
     loadSessions()
+    loadKitty()
     loadModel()
   }
 
@@ -469,37 +571,130 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
   }
 
+  /// Beside the chi listing, never blocking or failing it: a listing that
+  /// answers after the sessions preselects again unless the user chose.
+  private func loadKitty() {
+    let runner = KittyRunner(launchPath: self.runner.launchPath)
+    kitty = runner
+    model.kittyOn = runner.settings != nil
+    model.kittyWindows = []
+    model.kittyNote = nil
+    guard model.kittyOn else { return }
+    runner.windows { [weak self] result in
+      guard let self, self.kitty === runner else { return }
+      switch result {
+      case .success(let windows):
+        self.model.kittyWindows = windows
+        self.model.kittyNote = windows.isEmpty ? "no agents in kitty" : nil
+      case .failure(let error):
+        self.model.kittyNote = error.description
+      }
+      if self.model.phase != .loading && !self.model.touched { self.model.preselect() }
+    }
+  }
+
   /// Kept from the last look while it runs; config rarely changes.
   private func loadModel() {
     runner.defaultModel { [weak self] model in self?.model.newModel = model }
   }
 
+  /// Fans out: one `chi send` / `chi note` for the chi sessions (or the new
+  /// row) and one paste per kitty window, with one combined line when all
+  /// finished. Images the helper wrote are copied for kitty first (chi's
+  /// send deletes them) and deleted only after every job.
   func send(_ kind: SendKind) {
     let ids = model.selectedIds
+    let windows = model.selectedKitty
     let new = model.newSelected
+    if kind == .note, !windows.isEmpty {
+      NSSound.beep()
+      model.message = "Notes are for chi sessions"
+      return
+    }
+    if kind == .paste, windows.isEmpty || !ids.isEmpty || new {
+      NSSound.beep()
+      model.message = "Paste only is for kitty windows"
+      return
+    }
     if kind == .note, !model.images.isEmpty {
       NSSound.beep()
       model.message = "Notes are text only: ⏎ sends the image as a message"
       return
     }
     // A note into a session that doesn't exist yet makes no sense.
-    guard model.sendEnabled, new ? kind == .message : !ids.isEmpty else { NSSound.beep(); return }
+    guard model.sendEnabled, new ? kind == .message : !(ids.isEmpty && windows.isEmpty) else { NSSound.beep(); return }
     model.phase = .sending
     model.message = ""
     if !new {
-      UserDefaults.standard.set(ids.filter { id in model.live.contains { $0.id == id } }, forKey: PanelModel.lastChoiceKey)
+      let liveIds = ids.filter { id in model.live.contains { $0.id == id } }
+      UserDefaults.standard.set(liveIds + windows.map(\.key), forKey: PanelModel.lastChoiceKey)
     }
+    let images = kind == .note ? [] : model.images
+    inFlight.formUnion(images.map(\.id))
+    let kittyText = windows.isEmpty ? "" : Kitty.text(context: model.hasContext ? model.text : "", message: model.trimmedPrompt,
+                                                     imagePaths: ImageIntake.keepForPaste(images), pasteOnly: kind == .paste)
+
+    let group = DispatchGroup()
+    var chiOutcome: SendOutcome?
+    var kittyOutcomes: [(KittyWindow, KittyError?)] = []
+    if new || !ids.isEmpty {
+      group.enter()
+      sendToChi(kind, ids: ids, new: new, images: images) { outcome in chiOutcome = outcome; group.leave() }
+    }
+    for window in windows {
+      group.enter()
+      (kitty ?? KittyRunner(launchPath: runner.launchPath)).send(key: window.key, text: kittyText, pasteOnly: kind == .paste) { result in
+        if case .failure(let error) = result { kittyOutcomes.append((window, error)) } else { kittyOutcomes.append((window, nil)) }
+        group.leave()
+      }
+    }
+    group.notify(queue: .main) { [weak self] in
+      guard let self else { return }
+      self.inFlight.subtract(images.map(\.id))
+      let pasted = windows.filter { w in kittyOutcomes.contains { $0.0 == w && $0.1 == nil } }
+      let failed = kittyOutcomes.compactMap { outcome in outcome.1.map { "\(outcome.0.label): \($0.description)" } }
+      let ok = (chiOutcome?.ok ?? true) && failed.isEmpty
+      // Sent: the temp files go (and the thumbnails). Else they stay for
+      // another try, unless the panel was closed or reopened meanwhile.
+      if ok { self.model.images.removeAll { images.contains($0) } }
+      ImageIntake.delete(images.filter { !self.model.images.contains($0) })
+      var parts: [String] = []
+      if let chiOutcome { parts.append(chiOutcome.message) }
+      if !pasted.isEmpty {
+        parts.append("\(kind == .paste ? "pasted into" : "sent to") \(pasted.map(\.label).joined(separator: ", "))")
+      }
+      parts += failed
+      self.model.message = parts.filter { !$0.isEmpty }.joined(separator: " · ")
+      if ok {
+        self.model.phase = .sent
+        DispatchQueue.main.asyncAfter(deadline: .now() + (chiOutcome?.linger ?? 1.0)) { [weak self] in
+          if self?.model.phase == .sent { self?.panel.close() }
+        }
+      } else {
+        self.model.phase = .failed
+      }
+    }
+  }
+
+  struct SendOutcome {
+    let ok: Bool
+    let message: String
+    var linger = 1.0
+  }
+
+  private func sendToChi(_ kind: SendKind, ids: [String], new: Bool, images: [PanelImage],
+                         completion: @escaping (SendOutcome) -> Void) {
     let prompt = model.trimmedPrompt
     let command: String
     var args: [String]
     let stdin: Data?
     switch kind {
-    case .message:
+    case .message, .paste:
       // stdin is the quoted context; without -m, chi takes it as the message.
       command = "chi send"
       args = new ? ["send", "--new", "--dir", model.newSessionDir] : ["send"]
       if !prompt.isEmpty { args += ["-m", prompt] }
-      args += model.images.flatMap { ["--image", $0.url.path] }
+      args += images.flatMap { ["--image", $0.url.path] }
       stdin = model.hasContext ? Data(model.text.utf8) : nil
     case .note:
       command = "chi note"
@@ -510,42 +705,25 @@ final class PanelController: NSObject, NSWindowDelegate {
       stdin = Data(parts.joined(separator: "\n\n").utf8)
     }
     if !new { args += ids }
-    let images = kind == .message ? model.images : []
-    inFlight.formUnion(images.map(\.id))
     // Reading, converting and a new worker's start take longer than text.
     let timeout = images.isEmpty ? runner.timeout : 30
-    runner.run(args, stdin: stdin, timeout: timeout) { [weak self] result in
-      guard let self else { return }
-      self.inFlight.subtract(images.map(\.id))
-      // Sent: the temp files go (and the thumbnails). Else they stay for
-      // another try, unless the panel was closed or reopened meanwhile.
-      var sent = false
-      if case .success(let r) = result { sent = r.status == 0 && !r.timedOut }
-      if sent { self.model.images.removeAll { images.contains($0) } }
-      ImageIntake.delete(images.filter { !self.model.images.contains($0) })
+    runner.run(args, stdin: stdin, timeout: timeout) { result in
       switch result {
       case .failure(let error):
-        self.model.phase = .failed
-        self.model.message = error.description
+        completion(SendOutcome(ok: false, message: error.description))
       case .success(let r):
         let out = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         let err = r.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
         if r.timedOut {
-          self.model.phase = .failed
           let what = kind == .note ? "the note may be partly delivered" : "the message may not have been sent"
-          self.model.message = "\(command) took over \(Int(timeout)) s and was stopped; \(what). \(out)"
+          completion(SendOutcome(ok: false, message: "\(command) took over \(Int(timeout)) s and was stopped; \(what). \(out)"))
         } else if r.status == 0 {
-          self.model.phase = .sent
-          // --new prints "<full id>  started".
-          self.model.message = out.isEmpty ? "Sent." : new ? "started \(out.prefix(8))…" : out
-          // Long enough to read a "waits for the session's next start" line.
+          // --new prints "<full id>  started". Long enough to read a
+          // "waits for the session's next start" line.
           let linger = out.contains("waits for") || out.contains("started") ? 3.0 : 1.0
-          DispatchQueue.main.asyncAfter(deadline: .now() + linger) { [weak self] in
-            if self?.model.phase == .sent { self?.panel.close() }
-          }
+          completion(SendOutcome(ok: true, message: out.isEmpty ? "Sent." : new ? "started \(out.prefix(8))…" : out, linger: linger))
         } else {
-          self.model.phase = .failed
-          self.model.message = [out, err].filter { !$0.isEmpty }.joined(separator: "\n")
+          completion(SendOutcome(ok: false, message: [out, err].filter { !$0.isEmpty }.joined(separator: "\n")))
         }
       }
     }
