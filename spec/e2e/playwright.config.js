@@ -24,7 +24,9 @@ export default defineConfig({
   // #history.
   projects: [
     // @stage-only: the stage view's own scenarios (stage.spec.js).
-    { name: "chromium", grepInvert: /@stage-only/ },
-    { name: "stage", grep: /@stage/, use: { view: "stage" } },
+    { name: "chromium", grepInvert: /@stage-only/, testIgnore: "lan.spec.js" },
+    { name: "stage", grep: /@stage/, use: { view: "stage" }, testIgnore: "lan.spec.js" },
+    // chi web --web-host lan, reached at the LAN address: the access token.
+    { name: "lan", testMatch: "lan.spec.js", use: { lan: true } },
   ],
 });

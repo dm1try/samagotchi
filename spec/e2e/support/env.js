@@ -99,7 +99,25 @@ async function settle(check, timeoutMs) {
   return check();
 }
 
-export async function startEnv() {
+// This machine's private IPv4 address (RFC 1918) on an interface that is
+// up, as chi web's `lan` looks for one; null when there is none (a CI
+// runner may have only a public one): the LAN scenario is skipped then.
+export function privateIPv4() {
+  const skipped = /^(utun|bridge|docker|vboxnet|vmnet|llw)/;
+  for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
+    if (skipped.test(name)) continue;
+    for (const a of addrs || []) {
+      if (a.family !== "IPv4" || a.internal) continue;
+      if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a.address)) return a.address;
+    }
+  }
+  return null;
+}
+
+// @param lan chi web with --web-host lan: env.lanURL is its LAN address
+//   (where the token is asked for; the loopback baseURL isn't) and
+//   env.tokenPath its access token's file
+export async function startEnv({ lan = false } = {}) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "chi-e2e-")));
   const dirs = {
     root,
@@ -139,11 +157,18 @@ export async function startEnv() {
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });
     const webPort = await freePort();
     const webLog = fs.openSync(path.join(root, "web.log"), "a");
-    const web = spawn(path.join(CHECKOUT, "bin", "chi"), ["web", "--port", String(webPort)],
+    const webArgs = ["web", "--port", String(webPort), ...(lan ? ["--web-host", "lan"] : [])];
+    const web = spawn(path.join(CHECKOUT, "bin", "chi"), webArgs,
       { cwd: dirs.project, env: childEnv, stdio: ["ignore", webLog, webLog] });
     env.procs.push(web);
     env.baseURL = `http://127.0.0.1:${webPort}`;
     await waitFor(`${env.baseURL}/api/models`, "chi web", web);
+    if (lan) {
+      const info = await (await fetch(`${env.baseURL}/api/info`)).json();
+      if (!info.lan) throw new Error("chi web --web-host lan answers without a LAN address");
+      env.lanURL = `http://${info.lan}:${webPort}`;
+      env.tokenPath = path.join(dirs.state, "samagotchi", "web-token");
+    }
     return env;
   } catch (e) {
     await stopEnv(env).catch(() => {});

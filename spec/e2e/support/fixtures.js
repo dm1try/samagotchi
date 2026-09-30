@@ -2,15 +2,18 @@
 // once, torn down after the last test or a failure), `script(name)` picks the
 // fake model's script, `fakeMode(mode)` makes it answer otherwise (an error;
 // back to the script after the test), and `page` opens chi web's start page
-// (?view=stage in the stage project: the `view` option).
+// (?view=stage in the stage project: the `view` option). The lan project's
+// chi web also listens on the LAN address (the `lan` option).
 import { test as base, expect } from "@playwright/test";
 import { startEnv, stopEnv, useMode, useScript } from "./env.js";
 
 export const test = base.extend({
   view: ["turn", { option: true }],
+  // The lan project: chi web --web-host lan (lan.spec.js).
+  lan: [false, { option: true, scope: "worker" }],
 
-  chi: [async ({}, use) => {
-    const env = await startEnv();
+  chi: [async ({ lan }, use) => {
+    const env = await startEnv({ lan });
     try {
       await use(env);
     } finally {
