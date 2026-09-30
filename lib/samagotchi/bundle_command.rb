@@ -94,6 +94,9 @@ module Samagotchi
         return 1
       end
       expanded_source = expand_source(source)
+      if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
+        return install_profile(expanded_source, scope: scope, force: force, dry_run: false, word: "Install")
+      end
       bundle_name = begin
         bundle_name_for(expanded_source)
       rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError => e
@@ -139,6 +142,9 @@ module Samagotchi
         return 1
       end
       expanded_source = expand_source(source)
+      if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
+        return install_profile(expanded_source, scope: scope, force: force, dry_run: dry_run, word: "Upgrade")
+      end
       bundle_name = begin
         bundle_name_for(expanded_source)
       rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError => e
@@ -238,6 +244,9 @@ module Samagotchi
       # Propagate overrides
       Samagotchi::MemoryBundle::Uninstaller.system_dir_override = Samagotchi::MemoryBundle::Installer.system_dir_override
       Samagotchi::MemoryBundle::Uninstaller.project_dir_base_override = Samagotchi::MemoryBundle::Installer.project_dir_base_override
+      data = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).read
+      return uninstall_profile(bundle_name, force: force) if Samagotchi::MemoryBundle::Profile.installed_meta?(bundle_name, data)
+
       uninstaller = Samagotchi::MemoryBundle::Uninstaller.new(name: bundle_name, scope: scope, force: force)
       begin
         uninstaller.run
@@ -250,6 +259,47 @@ module Samagotchi
       rescue Samagotchi::MemoryBundle::Uninstaller::UninstallError => e
         @stderr.puts "Uninstall failed: #{e.message}"; return 1
       end
+    end
+
+    # install/upgrade of a shipped profile: its new members (Profile).
+    def install_profile(dir, scope:, force:, dry_run:, word:)
+      name = File.basename(dir)
+      if scope.to_s.strip.downcase == "project"
+        @stderr.puts "#{word} failed: #{name} is a profile: its bundles install system-wide (drop --scope project)"
+        return 1
+      end
+      result = Samagotchi::MemoryBundle::Profile.install(dir, dry_run: dry_run, force: force)
+      @stdout.puts "#{result.name} v#{result.version} (profile)"
+      lines = []
+      lines << "#{dry_run ? "would install" : "installed"}: #{result.installed.join(", ")}" unless result.installed.empty?
+      lines << "already installed: #{result.already.join(", ")}" unless result.already.empty?
+      result.skipped.each { |member, why| lines << "skipped #{member}: #{why}" }
+      result.failed.each { |member, why| lines << "failed #{member}: #{why}" }
+      lines << "nothing new to install" if lines.empty?
+      lines.each { |line| @stdout.puts "  #{line}" }
+      @stdout.puts "(dry-run: no changes written)" if dry_run
+      result.failed? ? 1 : 0
+    rescue Samagotchi::MemoryBundle::Manifest::ValidationError => e
+      @stderr.puts "#{word} failed: #{e.message}"
+      1
+    end
+
+    # uninstall of a profile: its recorded members, then itself (Profile).
+    def uninstall_profile(name, force:)
+      result = Samagotchi::MemoryBundle::Profile.uninstall(name, force: force)
+      if result.gone
+        @stdout.puts "Uninstalled bundle '#{name}'"
+        @stdout.puts "Removed: #{result.removed.join(", ")}" unless result.removed.empty?
+        return 0
+      end
+      @stdout.puts "Removed from #{name}: #{result.removed.join(", ")}" unless result.removed.empty?
+      result.blocked.each { |member, why| @stdout.puts "Kept #{member}: #{why}" }
+      @stderr.puts "Uninstall failed: #{name} stays installed until #{result.blocked.keys.join(", ")} goes " \
+                   "(chi bundle uninstall #{name} --force)"
+      1
+    rescue Samagotchi::MemoryBundle::Uninstaller::UninstallError => e
+      @stderr.puts "Uninstall failed: #{e.message}"
+      1
     end
 
     def status(rest)

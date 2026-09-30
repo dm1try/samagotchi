@@ -195,6 +195,37 @@ RSpec.describe "chi bundle (CLI)" do
       expect(out).not_to match(/^  btw +v\S+  \//)
     end
 
+    it "installs the core profile's bundles, records them, and keeps one the user uninstalled out" do
+      expect(chi("upgrade", "core", "--dry-run"))
+        .to eq(["core v0.1.0 (profile)\n  would install: loop-guard, check-in, guardrails\n(dry-run: no changes written)\n", "", 0])
+      expect(chi("install", "core")).to eq(["core v0.1.0 (profile)\n  installed: loop-guard, check-in, guardrails\n", "", 0])
+      expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[check-in core guardrails loop-guard])
+
+      expect(chi("install", "core")).to eq(["core v0.1.0 (profile)\n  nothing new to install\n", "", 0])
+      expect(chi("uninstall", "check-in")[2]).to eq(0)
+      expect(chi("upgrade", "core")).to eq(["core v0.1.0 (profile)\n  nothing new to install\n", "", 0])
+      expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[core guardrails loop-guard])
+
+      expect(chi("uninstall", "core")).to eq(["Uninstalled bundle 'core'\nRemoved: loop-guard, guardrails\n", "", 0])
+      expect(Dir.children(File.join(memories, ".bundles"))).to eq([])
+    end
+
+    it "records a profile member installed by hand, refuses a profile in a project, and keeps a profile whose member is edited" do
+      chi("install", "guardrails")
+      expect(chi("install", "core"))
+        .to eq(["core v0.1.0 (profile)\n  installed: loop-guard, check-in\n  already installed: guardrails\n", "", 0])
+      expect(chi("install", "core", "--scope", "project"))
+        .to eq(["", "Install failed: core is a profile: its bundles install system-wide (drop --scope project)\n", 1])
+
+      File.write(File.join(memories, "guardrails.md"), "mine\n")
+      expect(chi("uninstall", "core"))
+        .to eq(["Removed from core: loop-guard, check-in\nKept guardrails: Uninstall blocked: guardrails.md has local edits (use --force)\n",
+                "Uninstall failed: core stays installed until guardrails goes (chi bundle uninstall core --force)\n", 1])
+      expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[core guardrails])
+      expect(chi("uninstall", "core", "--force"))
+        .to eq(["Uninstalled bundle 'core'\nRemoved: guardrails\n", "", 0])
+    end
+
     it "refuses a bad build scope and a value flag followed by a flag" do
       expect(chi("build", "--scope", "bogus")).to eq(["", "Invalid scope 'bogus', expected system or project\n", 1])
       expect(chi("build", "--name", "--out", "x")).to eq(["", "Unknown bundle build flag: --name\n", 1])

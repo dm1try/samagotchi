@@ -30,8 +30,6 @@ module Samagotchi
       # file names; under plan they are what apply would keep or replace.
       Row = Struct.new(:name, :from, :to, :status, :note, :kept, :replaced, :source_dir, :scope, keyword_init: true)
 
-      SHIPPED_SOURCE = %r{/lib/samagotchi/bundles/[^/]+/?\z}
-
       module_function
 
       # Read-only.
@@ -82,7 +80,7 @@ module Samagotchi
 
         row.from = data[:version].to_s
         row.scope = data[:scope].to_s.empty? ? "system" : data[:scope].to_s
-        return skip(row, "not from chi") unless ship && data[:source].to_s.match?(SHIPPED_SOURCE)
+        return skip(row, "not from chi") unless ship && data[:source].to_s.match?(SourceNormalizer::SHIPPED_SOURCE)
 
         row.to = ship.version.to_s
         return skip(row, "newer than shipped: left") if Listing.newer?(row.from, row.to)

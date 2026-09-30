@@ -38,6 +38,8 @@ module Samagotchi
 
       # The bundles shipped with chi (lib/samagotchi/bundles/<name>).
       SHIPPED_DIR = File.expand_path("../bundles", __dir__)
+      # A provenance source that is a shipped dir (in a gem or a checkout).
+      SHIPPED_SOURCE = %r{/lib/samagotchi/bundles/[^/]+/?\z}
 
       # A bare name (no path separator) that isn't a path here names a
       # shipped bundle: `chi bundle install guardrails`. A directory or file
