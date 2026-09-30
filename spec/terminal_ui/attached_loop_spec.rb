@@ -214,9 +214,29 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     feed({ type: :hook_notice, hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" })
     expect(screen.lines.last).to eq("known-names> rejected execute")
 
-    turn = { prompt: "go", parts: [{ kind: "hook_notice", hook: "turn hook", text: "careful", level: "warn" }] }
+    turn = { prompt: "go", parts: [{ kind: "notice", event: { type: "hook_notice", hook: "turn hook", text: "careful", level: "warn" } }] }
     feed(snapshot(current_turn: turn, type: :reset))
     expect(screen.lines).to include("hook> warning: careful")
+  end
+
+  it "shows a joined turn's retry rows where they came, and asks no answered question again" do
+    question = { id: "q1", question: "Which?", options: %w[A B], status: "pending" }
+    turn = { prompt: "go", parts: [
+      { kind: "notice", event: { type: "empty_answer_retry", iteration: 1, attempt: 1, of: 1 } },
+      { kind: "tool", iteration: 1, call_index: 1, tool: "read", params: "path=x", status: "ok", output: "x" },
+      { kind: "notice", event: { type: "question_requested", pending_question: question } },
+      { kind: "notice", event: { type: "question_answered", id: "q1", answer: { selected: ["A"] } } },
+      { kind: "notice", event: { type: "empty_answer_retry", iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" } }
+    ] }
+    feed(snapshot(current_turn: turn))
+
+    plain = screen.lines.map { |line| line.gsub(/\e\[[\d;]*m/, "") }
+    first = plain.index("↻ empty answer, asking again (1/1)")
+    cut = plain.index("↻ cut by loop-guard, asking again (1/1)")
+    expect(first).not_to be_nil
+    expect(cut).to be > first
+    expect(plain[first + 1...cut].join("\n")).to include("read")
+    expect(plain.join("\n")).not_to include("Which?")
   end
 
   describe "cards" do

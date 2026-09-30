@@ -2,6 +2,7 @@
 
 require_relative "../kernel_loop"
 require_relative "../steer"
+require_relative "turn_notice"
 
 module Samagotchi
   class Bridge
@@ -33,8 +34,11 @@ module Samagotchi
       end
 
       # @return [Hash, nil] a copy of the turn in progress: prompt, origin,
-      #   continue, ordered parts (thinking / text / tool / input / steer / reminder / hook_notice),
-      #   pending_question and the last event_seq folded in
+      #   continue, ordered parts (thinking / text / tool / input / steer /
+      #   reminder / notice), pending_question and the last event_seq folded
+      #   in. A notice part holds the event of one of the turn's rows
+      #   (TurnNotice: a hook's notice, an empty-answer retry, a question and
+      #   its answer), which a UI replays through its live handler.
       def current_turn
         @mutex.synchronize { @turn && Marshal.load(Marshal.dump(@turn)) }
       end
@@ -173,13 +177,12 @@ module Samagotchi
           end
         when :reminder_injected
           parts << { kind: "reminder", reminders: Array(event[:reminders]).map(&:dup) }
-        when :hook_notice
-          parts << { kind: "hook_notice", hook: event[:hook].to_s, text: event[:text].to_s, level: event[:level].to_s }
         when :question_requested
           @turn[:pending_question] = event[:pending_question]&.dup
         when :question_answered, :question_cancelled
           @turn[:pending_question] = nil
         end
+        parts << { kind: "notice", event: TurnNotice.slice(event) } if TurnNotice.notice?(event)
       end
 
       def append_text(iteration, kind, text)

@@ -105,7 +105,7 @@ test("input_merged steers every known origin; pending_input_merged adds the rest
 
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 
-test("snapshotEvents replays the turn in progress as live events, then the queued prompts", () => {
+test("snapshotEvents replays the turn in progress as live events (a notice part as its own event), then the queued prompts", () => {
   const turn = {
     prompt: "do it",
     origin: { client_id: "tui:1", enqueued_id: "e1" },
@@ -115,7 +115,10 @@ test("snapshotEvents replays the turn in progress as live events, then the queue
       { kind: "tool", iteration: 1, call_index: 0, tool: "execute", params: "ls", status: "ok", output: "a b", output_truncated: false },
       { kind: "input", iteration: 2, text: "also this", origins: [{ client_id: "web:x", enqueued_id: "e2" }] },
       { kind: "reminder", reminders: ["r"] },
-      { kind: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" },
+      { kind: "notice", event: { type: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" } },
+      { kind: "notice", event: { type: "empty_answer_retry", iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" } },
+      { kind: "notice", event: { type: "question_requested", pending_question: { id: "q1", question: "Which?" } } },
+      { kind: "notice", event: { type: "question_answered", id: "q1", answer: { selected: ["A"] } } },
       { kind: "tool", iteration: 2, call_index: 0, tool: "read", params: "f", status: "running" },
     ],
   };
@@ -130,6 +133,9 @@ test("snapshotEvents replays the turn in progress as live events, then the queue
     { type: "merged_input", content: "also this", origins: [{ client_id: "web:x", enqueued_id: "e2" }] },
     { type: "reminder_injected", reminders: ["r"] },
     { type: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" },
+    { type: "empty_answer_retry", iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" },
+    { type: "question_requested", pending_question: { id: "q1", question: "Which?" } },
+    { type: "question_answered", id: "q1", answer: { selected: ["A"] } },
     { type: "tool_call_started", iteration: 2, call_index: 0, tool: "read", params: "f" },
     { type: "turn_enqueued", enqueued_id: "e3", client_id: "web:y", prompt: "later" },
   ]);

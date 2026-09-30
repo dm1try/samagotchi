@@ -986,11 +986,20 @@ module Samagotchi
           when "input" then @screen.commit("input> #{part[:text]}")
           when "steer" then @screen.commit(format_steer_line(source: part[:source], text: part[:text]))
           when "reminder" then @screen.commit(reminder_line(part[:reminders]))
-          when "hook_notice" then @screen.commit(EventRenderer.hook_notice_line(part))
+          when "notice" then replay_notice(part[:event])
           end
         end
         @view.resume(tail: tail, lane: lane, tool: running_tool, parts: turn[:parts])
         ask(turn[:pending_question]) if turn[:pending_question]
+      end
+
+      # One of the running turn's rows (Bridge::TurnNotice), drawn as it was
+      # live: a hook's notice and a retry's line. Questions are left out:
+      # the pending one is asked after the replay, answered ones showed no
+      # line.
+      def replay_notice(event)
+        event = EventRenderer.symbolize(event || {})
+        @renderer.call(event) if %i[hook_notice empty_answer_retry].include?(event[:type])
       end
 
       def show_enqueued(event)

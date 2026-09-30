@@ -66,15 +66,35 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn[:parts].last).to include(tool: "execute", title: "ls")
   end
 
-  it "keeps a hook's notice as a part, in order" do
+  it "keeps each of the turn's rows as a notice part holding its event, in stream order" do
+    question = { id: "q1", question: "Which?", options: %w[A B], status: "pending" }
     feed({ type: :turn_started, prompt: "hi" },
          { type: :generation_chunk, iteration: 1, content: "Hm" },
-         { type: :hook_notice, hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: :info })
+         { type: :hook_notice, hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: :info },
+         { type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1, finish_reason: "stop", thinking_chars: 40 },
+         { type: :empty_answer_retry, iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" },
+         { type: :question_requested, pending_question: question },
+         { type: :question_answered, id: "q1", answer: { selected: ["A"] } },
+         { type: :question_cancelled, id: "q2", reason: "turn ended" })
 
     expect(acc.current_turn[:parts]).to eq([
       { kind: "text", iteration: 1, text: "Hm" },
-      { kind: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" }
+      { kind: "notice", event: { type: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: :info } },
+      { kind: "notice", event: { type: "empty_answer_retry", iteration: 1, attempt: 1, of: 1 } },
+      { kind: "notice", event: { type: "empty_answer_retry", iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" } },
+      { kind: "notice", event: { type: "question_requested", pending_question: question } },
+      { kind: "notice", event: { type: "question_answered", id: "q1", answer: { selected: ["A"] } } },
+      { kind: "notice", event: { type: "question_cancelled", id: "q2", reason: "turn ended" } }
     ])
+    expect(JSON.parse(JSON.generate(acc.current_turn))["parts"][1]["event"]).to include("type" => "hook_notice", "level" => "info")
+  end
+
+  it "keeps no notice part outside a turn, and no provider retry (a status, not a row)" do
+    feed({ type: :hook_notice, hook: "h", text: "between", level: :info, between_turns: true },
+         { type: :turn_started, prompt: "hi" },
+         { type: :generation_retrying, iteration: 1, attempt: 1, max_retries: 3, status: 503 })
+
+    expect(acc.current_turn[:parts]).to eq([])
   end
 
   it "caps a tool's output at the event cap" do
