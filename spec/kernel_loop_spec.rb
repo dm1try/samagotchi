@@ -669,11 +669,14 @@ RSpec.describe Samagotchi::KernelLoop do
     end
 
     it "dispatches a canonical write call with path and content params" do
+      # Its own folder: other suites (worktrees, parallel runs) write too.
+      dir = Dir.mktmpdir("native-write")
+      path = File.join(dir, "native_write_test.txt")
       prompts = []
       allow(client).to receive(:complete) do |prompt|
         prompts << prompt
         if prompts.length == 1
-          %(<|tool_call>call:write{path: "/tmp/native_write_test.txt", content: "hello native"}<tool_call|>)
+          %(<|tool_call>call:write{path: "#{path}", content: "hello native"}<tool_call|>)
         else
           "written"
         end
@@ -681,8 +684,9 @@ RSpec.describe Samagotchi::KernelLoop do
       result = kernel.run([{ role: "user", content: "write" }])
       expect(result.output).to eq("written")
       expect(prompts[1]).to include("[write]")
+      expect(File.read(path)).to eq("hello native")
     ensure
-      FileUtils.rm_f("/tmp/native_write_test.txt")
+      FileUtils.rm_rf(dir) if dir
     end
 
     it "preserves raw thoughts between same-turn tool calls" do
@@ -1709,7 +1713,8 @@ end
         prompts.length == 1 ? "<tool_call><function=task_list></function></tool_call>" : "ok"
       end
 
-      result = qwen_kernel.run([{ role: "user", content: "list tasks" }])
+      # task_list reads (and creates) tmp/tasks under the cwd: not the repo.
+      result = Dir.mktmpdir("qwen-task-list") { |dir| Dir.chdir(dir) { qwen_kernel.run([{ role: "user", content: "list tasks" }]) } }
 
       expect(result.output).to eq("ok")
       expect(prompts[1]).to include("[task_list]")
