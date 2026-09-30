@@ -37,9 +37,11 @@ module Samagotchi
   # process loads the whole UI stack through it), a require cycle otherwise.
   autoload :SessionManager, File.expand_path("session_manager", __dir__)
 
-  # TerminalUI encapsulates the single operating mode of the harness.
-  #
-  # assist mode  — interactive REPL: user types, model responds, tools execute inline.
+  # The in-process terminal front end (`chi --no-shared`, `chi scratch`,
+  # --verbose, --non-interactive): it owns one session and its Engine, runs
+  # an optional -p prompt (--non-interactive: that one turn and out), then the REPL,
+  # where the user types, the model answers and tools run inline. The
+  # attached terminal (a worker's session) is TerminalUI::AttachedLoop.
   class TerminalUI
     include Formatting
     include InputSupport
