@@ -145,6 +145,18 @@ RSpec.describe Samagotchi::Worker do
       expect(kwargs).to include(memories: ["cli_usage"], muted_memories: ["gh-helper"])
     end
 
+    it "drops a question a dead worker saved (its turn is gone) and saves, before its Engine sees the session" do
+      session.pending_question = { id: "q1", question: "Which?", options: %w[a b] }
+      session.status = Samagotchi::Session::STATUS_RUNNING
+      session.save(state_dir: tmpdir)
+
+      start_worker
+
+      expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).pending_question).to be_nil
+      expect(engine.session.pending_question).to be_nil
+      expect(engine.pending_question).to be_nil
+    end
+
     it "tells its Engine it is a worker, so approvals wait for an attached UI" do
       start_worker
       expect(engine.interface).to eq(:worker)

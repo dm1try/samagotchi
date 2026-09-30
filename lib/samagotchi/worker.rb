@@ -98,6 +98,7 @@ module Samagotchi
     #   to exit (Bridge POST /exit)
     def run
       @session = Session.load(@session_id, state_dir: @state_dir)
+      drop_dead_question
       @engine = build_engine
       # Before the Bridge serves anything: a UI joining a resumed worker's
       # stream gets the session's history and status in its snapshot, not
@@ -229,6 +230,19 @@ module Samagotchi
       engine.guardrail_state_dir = @state_dir if @state_dir
       engine.session_state_dir = @state_dir if @state_dir
       engine
+    end
+
+    # A question saved by a worker that died while it waited (an
+    # ask_user_question, an approval, a hook's question): the turn that
+    # asked is gone, so nobody can answer it, and left in the file it
+    # would keep the hub's "needs you" badge on for good. Dropped and saved
+    # before the Engine and the Bridge exist (no question lock, no events).
+    def drop_dead_question
+      return unless @session.pending_question
+
+      Log.info(:worker, "dead_question_dropped", id: @session.pending_question[:id])
+      @session.pending_question = nil
+      @session.save(state_dir: @state_dir)
     end
 
     # spawn_session hands the first prompt over in last_prompt, but
