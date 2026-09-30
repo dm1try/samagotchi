@@ -52,6 +52,7 @@ require_relative "thinking"
 require_relative "answer_display"
 require_relative "edit_preview"
 require_relative "question_desk"
+require_relative "guardrail_wiring"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -120,8 +121,16 @@ module Samagotchi
       # Load hooks from config (plugins) and create the registry; what fails
       # to load is announced, and a required guardrail's failure denies
       # every tool call. Rules load now too, so their errors are announced.
-      @guardrail_failures = Guardrails::LoadFailures.new
-      @guardrail_rules_mutex = Mutex.new
+      @guardrail_wiring = GuardrailWiring.new(
+        scratch: @scratch,
+        hooks: -> { @hooks },
+        tools: -> { @tools },
+        session: -> { @session },
+        model_key: -> { @model_key },
+        cancelled: -> { !!active_cancel_controller&.cancelled? },
+        ask: ->(fields) { open_question(fields) }
+      )
+      @guardrail_failures = @guardrail_wiring.failures
       # Plugins that failed to load: announced apart, as plugins (not
       # guardrails: no tool call is denied for them).
       @plugin_failures = Guardrails::LoadFailures.new
@@ -204,22 +213,10 @@ module Samagotchi
       @kernel.question_handler = proc { |payload| request_question(payload) } if @kernel.respond_to?(:question_handler=)
       # Every tool call asks this gate first. The kernel is never rebuilt, so
       # it holds across model switches.
-      @guardrail_git = Guardrails::GitInfo.new
       self.guardrail_state_dir = Session.default_state_dir
       # list_sessions and send_note speak for whichever session runs now.
       @kernel.peers = PeerView.new(self) if @kernel.respond_to?(:peers=)
-      if @kernel.respond_to?(:guardrail_gate=)
-        @kernel.guardrail_gate = Guardrails::Gate.new(
-          -> { @hooks },
-          context_lookup: -> { guardrail_context },
-          model_key_lookup: -> { @model_key },
-          approver: ->(verdict) { request_approval(verdict) },
-          approvals_lookup: -> { @guardrail_approvals },
-          checks_lookup: -> { guardrail_checks },
-          cancelled_lookup: -> { !!active_cancel_controller&.cancelled? },
-          tools_lookup: -> { @tools }
-        )
-      end
+      @kernel.guardrail_gate = @guardrail_wiring.gate if @kernel.respond_to?(:guardrail_gate=)
       # What a hook can do beyond reading its event (event[:notify],
       # event[:ask_user], event[:stop_turn]): the Engine's routes to the UIs.
       @hooks.runtime = hook_runtime
@@ -1151,14 +1148,11 @@ module Samagotchi
     # default, so a bare Engine denies instead of waiting for nobody). Set
     # by the host (TerminalUI, Worker).
     def interface
-      @interface || :non_interactive
+      @guardrail_wiring.interface
     end
 
     def interface=(value)
-      value = value.to_sym
-      raise ArgumentError, "unknown interface #{value}" unless Guardrails::Context::INTERFACES.include?(value)
-
-      @interface = value
+      @guardrail_wiring.interface = value
     end
 
     # Where the approval store lives: beside Session's state dir
@@ -1185,128 +1179,36 @@ module Samagotchi
     def guardrail_state_dir=(state_dir)
       # Also where list_sessions and send_note look for other sessions.
       @state_dir = state_dir
-      @guardrail_approvals = Guardrails::Approvals.new(dir: Guardrails::Approvals.dir_for(state_dir))
-      @guardrail_protected = nil
+      @guardrail_wiring.state_dir = state_dir
     end
 
-    # The gate's core checks, in order.
+    # The gate's core checks, in order (GuardrailWiring#checks).
     def guardrail_checks
-      rules = guardrail_rules
-      [@guardrail_failures, rules.hook_asks, guardrail_protected_paths, (@scratch_writes ||= Guardrails::ScratchWrites.new if @scratch),
-       rules].compact
+      @guardrail_wiring.checks
     end
 
-    # The YAML rules: config.yml's `guardrails:` section (rules, disable) and
-    # installed bundles'. One that doesn't parse is a required load failure
-    # (every call is denied). Read again when one of those files changed
-    # (a stat of each per tool call), so a long-lived worker follows edits.
+    # The YAML rules, read again when a file changed (GuardrailWiring#rules).
     # @return [Guardrails::Rules]
     def guardrail_rules
-      @guardrail_rules_mutex.synchronize do
-        stamp = guardrail_rules_stamp
-        if @guardrail_rules.nil? || stamp != @guardrail_rules_stamp
-          @guardrail_failures.drop(:rules)
-          @guardrail_rules = load_guardrail_rules
-          @guardrail_rules_stamp = stamp
-        end
-        @guardrail_rules
-      end
+      @guardrail_wiring.rules
     end
 
-    # [path, mtime, size] of config.yml and every installed bundle's
-    # manifest.json and guardrails/ file.
-    def guardrail_rules_stamp
-      require_relative "memory_bundle/provenance"
-      paths = [Samagotchi::ConfigFile.global_path] +
-              Dir[File.join(MemoryBundle::Provenance.bundles_dir, "*", "{manifest.json,guardrails/*}")]
-      paths.compact.sort.map do |path|
-        stat = File.stat(path)
-        [path, stat.mtime.to_r, stat.size]
-      rescue SystemCallError
-        [path]
-      end
-    end
-
-    def load_guardrail_rules
-      section = Samagotchi::ConfigFile.read_yaml(path: Samagotchi::ConfigFile.global_path)
-      section = section["guardrails"] if section.is_a?(Hash)
-      rules = []
-      disable = []
-      begin
-        raise Guardrails::Rules::ParseError, "guardrails must be a mapping" unless section.nil? || section.is_a?(Hash)
-
-        rules = Guardrails::Rules.parse(section && section["rules"], source: "config")
-        disable = Guardrails::Rules.parse_disable(section && section["disable"])
-      rescue Guardrails::Rules::ParseError => e
-        Log.warn(:guardrails, "config_rules_invalid", echo: "[samagotchi:guardrails] config.yml guardrails rules: #{e.message}")
-        @guardrail_failures.add("rules in config.yml", e.message, required: true, group: :rules)
-      end
-      Guardrails::Rules.new(rules + bundle_guardrail_rules, disable: disable,
-                            enabled: Samagotchi::Config.get("guardrails.enabled") != false)
-    end
-    private :guardrail_rules_stamp, :load_guardrail_rules
-
-    # Installed bundles' guardrails/*.yml, by bundle name then file name.
-    # A file that is missing, changed since install (sha256) or doesn't
-    # parse is a required load failure.
+    # Installed bundles' guardrails/*.yml (GuardrailWiring#bundle_rules).
     def bundle_guardrail_rules
-      require_relative "memory_bundle/provenance"
-      rules = []
-      MemoryBundle::Provenance.each_installed_with_guardrails do |bundle_name, data|
-        if data[:error]
-          Log.warn(:guardrails, "bundle_rules_invalid", echo: "[samagotchi:guardrails] bundle #{bundle_name}: #{data[:error]}", bundle: bundle_name)
-          @guardrail_failures.add("rules (bundle #{bundle_name})", data[:error], required: true, group: :rules)
-          next
-        end
-        dir = MemoryBundle::Provenance.new(name: bundle_name).guardrails_dir
-        data[:guardrails].sort_by { |k, _| k.to_s }.each do |basename, meta|
-          what = "rules #{basename} (bundle #{bundle_name})"
-          path = File.join(dir, basename.to_s)
-          begin
-            raise Guardrails::Rules::ParseError, "the file is missing" unless File.file?(path)
-
-            expected = (meta.is_a?(Hash) ? meta[:sha256] : nil).to_s.sub(/\Asha256:/, "")
-            actual = Digest::SHA256.hexdigest(File.binread(path))
-            if expected != actual
-              raise Guardrails::Rules::ParseError, "its sha256 differs from the installed one (edited after install? reinstall the bundle)"
-            end
-
-            doc = YAML.safe_load(File.read(path))
-            raise Guardrails::Rules::ParseError, "expected a mapping with rules:" unless doc.is_a?(Hash)
-
-            rules.concat(Guardrails::Rules.parse(doc["rules"], source: "bundle #{bundle_name}"))
-          rescue Guardrails::Rules::ParseError, Psych::Exception => e
-            Log.warn(:guardrails, "rules_file_invalid", echo: "[samagotchi:guardrails] #{what}: #{e.message}", bundle: bundle_name, file: basename.to_s)
-            @guardrail_failures.add(what, e.message, required: true, group: :rules)
-          end
-        end
-      end
-      rules
-    rescue StandardError => e
-      Log.error(:guardrails, "bundle_rules_failed", echo: "[samagotchi:guardrails] failed to read installed bundles' rules: #{e.class}: #{e.message}", error: e.class.name)
-      @guardrail_failures.add("bundle rules", "#{e.class}: #{e.message}", required: true, group: :rules)
-      rules || []
+      @guardrail_wiring.bundle_rules
     end
 
     # @return [Guardrails::LoadFailures]
     attr_reader :guardrail_failures
 
     def guardrail_protected_paths
-      @guardrail_protected ||= begin
-        require_relative "memory_bundle/provenance"
-        config = Samagotchi::ConfigFile.read_yaml(path: Samagotchi::ConfigFile.global_path)
-        hooks_dir = config.is_a?(Hash) && config["hooks"].is_a?(Hash) ? config["hooks"]["hooks_dir"] : nil
-        Guardrails::ProtectedPaths.new(
-          store_dir: File.dirname(@guardrail_approvals.path),
-          bundles_dir: MemoryBundle::Provenance.bundles_dir,
-          config_path: Samagotchi::ConfigFile.global_path,
-          hooks_dir: Hooks::Loader.expand_path(hooks_dir || Hooks::Loader.default_hooks_dir)
-        )
-      end
+      @guardrail_wiring.protected_paths
     end
 
     # @return [Guardrails::Approvals]
-    attr_reader :guardrail_approvals
+    def guardrail_approvals
+      @guardrail_wiring.approvals
+    end
 
     # @return [Guardrails::LoadFailures] the plugins that failed to load
     attr_reader :plugin_failures
@@ -1341,37 +1243,16 @@ module Samagotchi
     # The context the gate sees for a tool call now.
     # @return [Guardrails::Context]
     def guardrail_context
-      Guardrails::Context.new(cwd: Dir.pwd, session_id: @session&.id, interface: interface,
-                              origin: @turn_origin, git: @guardrail_git)
+      @guardrail_wiring.context
     end
 
-    # Ask the user to approve a call the gate voted `ask` on, through the
-    # question flow (REPL sync handler, attached TUI, web). Settles the
-    # verdict: allow with the picked scope, or deny with a note for the
-    # model. A --non-interactive run has no one to ask and denies at once.
+    # Ask the user to approve a call the gate voted `ask` on
+    # (GuardrailWiring#request_approval).
     # @param verdict [Guardrails::Verdict]
     # @return [Guardrails::Verdict]
     def request_approval(verdict)
-      if interface == :non_interactive
-        return verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it (non-interactive run).")
-      end
-
-      # A plugin tool is asked about by its label, as its row shows it.
-      label = ToolActivity.plugin_label(verdict.call[:name].to_s, registry: @tools)
-      # verdict.call is the call that will run (a hook may have replaced it).
-      payload = Guardrails::Approval.payload(verdict, label: label, preview: approval_preview(verdict.call))
-      Guardrails::Approval.settle(verdict, open_question(payload), payload[:approval][:scopes])
+      @guardrail_wiring.request_approval(verdict)
     end
-
-    # The dry-run diff of an edit/write call for its approval; a preview
-    # that fails only leaves the diff out, it never denies the call.
-    def approval_preview(call)
-      EditPreview.for(call)
-    rescue StandardError => e
-      Log.warn(:guardrails, "edit_preview_failed", error: "#{e.class}: #{e.message}")
-      nil
-    end
-    private :approval_preview
 
     # The conversation as a hook may read it: a frozen array of copied
     # messages, so a hook cannot change what the turn sends or stores.
@@ -1693,8 +1574,7 @@ module Samagotchi
         @turn_event_sink = on_event
       end
       # The gate's context: who queued this turn, and git asked afresh.
-      @turn_origin = origin
-      @guardrail_git = Guardrails::GitInfo.new
+      @guardrail_wiring.begin_turn(origin)
 
       prompt = nil if continue
       # For the cancel note: how long the turn ran.

@@ -383,7 +383,7 @@ RSpec.describe Samagotchi::SessionCommands do
         [{ "id" => "git-push", "tool" => "shell", "command" => "git push", "verdict" => "ask", "reason" => "publishes" }],
         source: "bundle guardrails"
       )
-      engine.instance_variable_set(:@guardrail_rules, Samagotchi::Guardrails::Rules.new(rules))
+      allow(engine).to receive(:guardrail_rules).and_return(Samagotchi::Guardrails::Rules.new(rules))
       out = commands.run("/guardrails").output
       expect(out).to include("guardrails: on", "rules (1):",
                              "  1. git-push: ask (tool execute,task_create, command /git push/) — publishes [bundle guardrails]",
@@ -394,7 +394,7 @@ RSpec.describe Samagotchi::SessionCommands do
       rules = Samagotchi::Guardrails::Rules.parse(
         [{ "id" => "mcp-ask", "tool" => "mcp_*", "verdict" => "ask", "reason" => "an MCP tool" }], source: "config"
       )
-      engine.instance_variable_set(:@guardrail_rules, Samagotchi::Guardrails::Rules.new(rules))
+      allow(engine).to receive(:guardrail_rules).and_return(Samagotchi::Guardrails::Rules.new(rules))
       expect(commands.run("/guardrails").output).to include("  1. mcp-ask: ask (tool mcp_*) — an MCP tool [config]")
     end
 
@@ -403,8 +403,8 @@ RSpec.describe Samagotchi::SessionCommands do
         [{ "id" => "git-push", "tool" => "shell", "command" => "git push", "verdict" => "ask", "reason" => "publishes" }],
         source: "bundle guardrails"
       )
-      engine.instance_variable_set(:@guardrail_rules,
-                                   Samagotchi::Guardrails::Rules.new(rules, disable: %w[guardrails:git-push typo]))
+      allow(engine).to receive(:guardrail_rules)
+        .and_return(Samagotchi::Guardrails::Rules.new(rules, disable: %w[guardrails:git-push typo]))
       out = commands.run("/guardrails").output
       expect(out).to include("rules (1, 1 disabled):",
                              "  1. git-push: disabled (guardrails.disable) — ask (tool execute,task_create, command /git push/) " \
@@ -419,7 +419,7 @@ RSpec.describe Samagotchi::SessionCommands do
          { "id" => "short", "tool" => "shell", "command" => "x" * 80, "verdict" => "ask", "reason" => "short" }],
         source: "config"
       )
-      engine.instance_variable_set(:@guardrail_rules, Samagotchi::Guardrails::Rules.new(rules))
+      allow(engine).to receive(:guardrail_rules).and_return(Samagotchi::Guardrails::Rules.new(rules))
       out = commands.run("/guardrails").output
       expect(long.length).to be > 80
       expect(out).to include("command /#{long[0, 79]}…/)", "command /#{"x" * 80}/)")

@@ -174,7 +174,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     it "tells guardrail path rules the file save_note writes" do
       rule = Samagotchi::Guardrails::Rules.parse([{ "id" => "no-secrets", "path" => "**/secret*", "verdict" => "deny",
                                                    "reason" => "secrets stay put" }], source: "config")
-      allow(engine).to receive(:guardrail_rules).and_return(Samagotchi::Guardrails::Rules.new(rule))
+      allow(engine.instance_variable_get(:@guardrail_wiring)).to receive(:rules).and_return(Samagotchi::Guardrails::Rules.new(rule))
       run = lambda do |call|
         Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,
                                                      on_stream_event: nil, max_tool_output_chars: nil)
