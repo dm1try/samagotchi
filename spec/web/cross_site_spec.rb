@@ -69,6 +69,11 @@ RSpec.describe Samagotchi::Web::App, "cross-site gate" do
       end
     end
 
+    it "says which names it answers in the refusal" do
+      _, _, body = call("/api/info", host: "evil.example")
+      expect(JSON.parse(body)).to eq("error" => "forbidden", "detail" => "only the host names 127.0.0.1, [::1] and localhost are answered")
+    end
+
     it "reads the raw Host, so X-Forwarded-Host can't pass a foreign name" do
       status, = call("/api/info", host: "evil.example", headers: { "HTTP_X_FORWARDED_HOST" => "127.0.0.1" })
       expect(status).to eq(403)

@@ -237,7 +237,7 @@ module Samagotchi
       end
 
       def forbidden
-        error_response(403, "forbidden", "only 127.0.0.1 is allowed")
+        error_response(403, "forbidden", "only the host names 127.0.0.1, [::1] and localhost are answered")
       end
 
       # The page's scope: ?dir=<folder> lists that folder's project (every
