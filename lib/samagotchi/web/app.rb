@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "cgi/escape" # CGI.escapeHTML; Ruby 4.0 ships only cgi/escape
+require "digest"
 require "fileutils"
 require "json"
 require "time"
@@ -1161,11 +1162,24 @@ module Samagotchi
         full = File.join(@public_dir, rel)
         if File.file?(full) && full.start_with?(@public_dir)
           body = File.binread(full)
-          ctype = mime_type(full)
-          [200, { "Content-Type" => ctype, "Content-Length" => body.bytesize.to_s, "Cache-Control" => "public, max-age=3600" }, [body]]
+          # no-cache + a content ETag: the browser revalidates every asset
+          # (the ES-module imports too) and gets a cheap 304 while it is
+          # unchanged, so a gem upgrade + chi web restart takes effect on the
+          # next load instead of after max-age runs out.
+          etag = %("#{Digest::SHA256.hexdigest(body)[0, 32]}")
+          headers = { "Cache-Control" => "no-cache", "ETag" => etag }
+          return [304, headers, []] if etag_match?(req.get_header("HTTP_IF_NONE_MATCH"), etag)
+
+          [200, headers.merge("Content-Type" => mime_type(full), "Content-Length" => body.bytesize.to_s), [body]]
         else
           not_found(path: req.path_info)
         end
+      end
+
+      def etag_match?(if_none_match, etag)
+        return false if if_none_match.nil?
+
+        if_none_match.split(",").map { |t| t.strip.delete_prefix("W/") }.any? { |t| t == "*" || t == etag }
       end
 
       def mime_type(path)
