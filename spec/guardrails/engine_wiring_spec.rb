@@ -121,7 +121,13 @@ RSpec.describe "Engine guardrail wiring" do
         File.write(path, "font_size 12\n")
         call = { name: "edit", path: path, old_text: "font_size 12", new_text: "font_size 14" }
         pending = pending_for(engine, ask_for(engine, call)) do
-          reloaded = Samagotchi::Session.load(session.id, state_dir: state_dir).pending_question
+          # The question is saved right after it is set: wait for the file, not just the engine.
+          reloaded = nil
+          wait_until(timeout: 2) do
+            reloaded = Samagotchi::Session.load(session.id, state_dir: state_dir).pending_question
+          rescue ArgumentError
+            nil
+          end
           expect(reloaded[:approval]["preview"]).to include("text" => "@@ -1 +1 @@\n-font_size 12\n+font_size 14")
         end
         expect(pending[:approval][:preview]).to include(added: 1, removed: 1, new_file: false)
