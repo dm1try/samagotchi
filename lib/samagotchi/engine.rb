@@ -38,6 +38,7 @@ require_relative "idle_scheduler"
 require_relative "hooks"
 require_relative "guardrails"
 require_relative "reminder_store"
+require_relative "reminder_queue"
 require_relative "tools/memory"
 require_relative "muted_memories"
 require_relative "used_memories"
@@ -204,6 +205,9 @@ module Samagotchi
       else
         @reminder_store = ReminderStore.new
       end
+      # The due reminders on their way into a turn, and the names the idle
+      # tick queued for a reminder turn.
+      @reminder_queue = ReminderQueue.new(store: @reminder_store)
       # Build the idle reminders detector (wired to reminder_store)
       callback = reminders.is_a?(Hash) && reminders[:callback] ? reminders[:callback] : nil
       @reminders = build_reminders(auto_turn_callback: callback)
@@ -262,10 +266,6 @@ module Samagotchi
       # and after a reminder turn), so the idle layer's clock is identical
       # across UIs.
       @turn_state.restart_clock!
-      # Reminder names the interactive REPL's IdleReminders callback marked due;
-      # the REPL polls them to decide when to run a synthetic reminder turn.
-      @due_reminder_mutex = Mutex.new
-      @due_reminder_names = []
       @recap = RecapSetup.build(recap, engine: self, host_registry: @host_registry,
                                 session_target: -> { session_model_recap_target },
                                 session_id: -> { @session&.id }, state_dir: -> { session_state_dir })
@@ -362,16 +362,16 @@ module Samagotchi
 
     # @return [Array<String>] reminder names queued for a synthetic REPL turn
     def due_reminder_names
-      @due_reminder_mutex.synchronize { @due_reminder_names.dup }
+      @reminder_queue.pending_names
     end
 
     # Queue reminder names for a synthetic REPL turn (IdleReminders callback).
     def note_due_reminders(names)
-      @due_reminder_mutex.synchronize { @due_reminder_names = Array(names).dup }
+      @reminder_queue.note_pending(names)
     end
 
     def clear_due_reminder_names!
-      @due_reminder_mutex.synchronize { @due_reminder_names = [] }
+      @reminder_queue.clear_pending!
     end
 
     # @return [CancellationController, nil] active turn's cancellation controller
@@ -829,53 +829,17 @@ module Samagotchi
     end
 
     # ── Reminders API ────────────────────────────────────────────────────────────
-
-    # Get and inject all due reminders into the conversation. Called at the top
-    # of run_turn (before set_turn_running(true)) so injection happens on the
-    # main thread, serially with the turn — no TOCTOU race.
     #
-    # Returns the array of due reminder hashes (may be empty). Injects a
-    # [SYSTEM: REMINDERS DUE] message into the conversation when there are
-    # Get due reminders, inject them into the provided messages array as
-    # [SYSTEM: REMINDERS DUE], and atomically mark all as fired under one
-    # ReminderStore lock.
-    #
-    # This is the canonical method for reminder injection, called from
-    # Engine#run_turn after system prompt construction so the reminder text
-    # is never overwritten.
-    #
-    # @param messages [Array<Hash>] the conversation messages (mutated in place)
-    # @return [Array<Hash>] [{name:, description:, interval_minutes:}, ...]
-    def collect_due_reminders(messages)
-      due = @reminders&.due_reminders
-      return [] if due.nil? || due.empty?
-
-      reminder_lines = due.map do |r|
-        "  #{r[:name]}: #{r[:description]} (interval: #{r[:interval_minutes]}m)"
-      end.join("\n")
-      reminder_text = "[SYSTEM: REMINDERS DUE]\n#{reminder_lines}\n[END REMINDERS]"
-      # Append as a tail message to preserve prefix KV cache. Mutating the
-      # head system prompt invalidates the cache for the entire conversation
-      # (prompt re-evaluated every interval). A tail append keeps the prefix
-      # intact — only the new reminder suffix is evaluated. Mirrors the
-      # context guidance line KernelLoop#run appends (ContextStatus#take_guidance).
-      messages << { role: "system", content: reminder_text }
-      # Atomically mark all due as fired under one lock and clear the
-      # IdleReminders latch so the next interval can be detected.
-      @reminder_store&.mark_fired_batch(due.map { |r| r[:name] })
-      @reminders&.clear_due
-      # Also clear the REPL's due-reminder queue (#note_due_reminders).
-      # Without this, a normal-turn injection leaves a stale entry, causing
-      # the next top-of-loop synthetic turn to fire empty and duplicate output.
-      clear_due_reminder_names!
-      due
-    end
+    # Each turn injects the reminders due then (#turn_messages,
+    # ReminderQueue#inject!). Between turns the idle tick (IdleReminders)
+    # finds them due and its callback queues their names
+    # (#note_due_reminders); the worker and the REPL run a reminder turn
+    # (a continue turn) for them.
 
     # @return [Boolean] whether any reminder is due now (the store's view,
-    #   which #collect_due_reminders would inject), regardless of the REPL queue
+    #   which a turn would inject), regardless of the queued names
     def reminders_due?
-      due = @reminders&.due_reminders
-      !(due.nil? || due.empty?)
+      @reminder_queue.due?
     end
 
     # @return [ReminderStore] the reminder store for inspection
@@ -1601,8 +1565,10 @@ module Samagotchi
       # Inject due reminders as a tail system message (after history, before
       # the new user prompt) to preserve prefix KV cache. Mutating the head
       # system prompt invalidates cache for the entire prefix.
-      due_reminders = collect_due_reminders(turn.messages)
+      due_reminders = @reminder_queue.inject!(turn.messages)
       if due_reminders.any?
+        # The idle tick's latch, so it can find the next interval.
+        @reminders&.clear_due
         emit_event(turn.on_event, {
           type: :reminder_injected,
           reminders: due_reminders
@@ -1966,6 +1932,8 @@ module Samagotchi
     # the old array or the new one, and both are whole.
     # The turn as other threads see it (TurnState).
     attr_reader :turn_state
+    # The due reminders on their way into a turn (ReminderQueue).
+    attr_reader :reminder_queue
 
     def replace_session_messages(session, messages)
       session.messages = messages
@@ -2160,7 +2128,7 @@ module Samagotchi
       @auto_turn_callback = auto_turn_callback
       IdleReminders.new(
         engine: self,
-        reminder_store: @reminder_store,
+        queue: @reminder_queue,
         callback: @auto_turn_callback
       )
     end

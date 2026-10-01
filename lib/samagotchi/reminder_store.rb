@@ -15,8 +15,8 @@ module Samagotchi
   #
   # Reminder lifecycle:
   #   1. Agent calls register_reminder → store adds entry
-  #   2. IdleReminders detects due → sets @due_reminder_name on Engine
-  #   3. Engine#run_turn reads @due_reminder_name, injects [SYSTEM:] message
+  #   2. IdleReminders detects due while idle → the UI queues a reminder turn
+  #   3. Engine#run_turn injects what is due as a [SYSTEM:] message (ReminderQueue#inject!)
   #   4. Agent acts on reminder → calls cancel_reminder → store removes entry
   class ReminderStore
     # @return [Hash{String => Hash}] id => {id:, name:, description:, interval_minutes:, next_fire_at:}
@@ -90,7 +90,7 @@ module Samagotchi
 
     # Get all due reminders whose interval has elapsed.
     # Returns an Array of {name:, description:, interval_minutes:} hashes.
-    # Called by Engine#collect_due_reminders (synchronously, at run_turn start).
+    # Read by ReminderQueue (a turn's injection, the idle tick).
     # Thread-safe. Returns a frozen copy so the caller can't mutate internal state.
     # @return [Array<Hash>] array of due reminder hashes (may be empty)
     def due_reminders

@@ -21,7 +21,6 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
   let(:engine) { described_class.new(client: client, kernel: kernel, profile: "gemma4") }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:nudge) { Samagotchi::TurnNote.empty_retry }
-  let(:reminders) { double("reminders", due_reminders: [{ name: "tea", description: "brew", interval_minutes: 5 }], clear_due: nil) }
   let(:timeline) { [] }
   let(:at_end) { {} }
   let(:probe_before) { Object.new }
@@ -30,7 +29,10 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     allow(kernel).to receive(:sampling=)
     allow(Samagotchi::Log).to receive(:info).and_call_original
-    engine.instance_variable_set(:@reminders, reminders)
+    # A reminder due when the turn starts.
+    store = engine.reminder_store
+    store.register({ name: "tea", description: "brew", interval_minutes: 5 })
+    store.instance_variable_get(:@mutex).synchronize { store.reminders["tea"][:next_fire_at] = 0.0 }
     session.used_memory_names = ["notes"]
     allow(engine.metrics).to receive(:persist) { timeline << mark("persist") }
     allow(session).to receive(:save) { timeline << mark("save") }

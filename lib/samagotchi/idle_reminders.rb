@@ -2,33 +2,32 @@
 
 require "monitor"
 
-require_relative "reminder_store"
+require_relative "reminder_queue"
 
 module Samagotchi
   # Idle job for periodic reminders — polled by the shared IdleScheduler
   # (one background thread for the whole idle layer).
   #
   # Two delivery paths cooperate:
-  #   1. Pull-based: Engine#collect_due_reminders
-  #      reads ReminderStore#due_reminders at turn start → injects
-  #      [SYSTEM: REMINDERS DUE] → marks all as fired atomically.
+  #   1. Every turn injects what is due (ReminderQueue#inject!, from
+  #      Engine#run_turn) as [SYSTEM: REMINDERS DUE] and marks it fired.
   #   2. Synthetic turns: when this job's tick finds due reminders while
   #      idle, it latches @due_reminder_name and fires @auto_turn_callback
-  #      (the TUI/SessionManager queue a synthetic turn from the latch).
+  #      (the worker and the REPL queue a reminder turn).
   class IdleReminders
     DEFAULT_MIN_INACTIVITY_SECONDS = 60.0 # Minimum idle time before checking for reminders
 
     attr_reader :inactivity
 
     def initialize(engine:, inactivity: DEFAULT_MIN_INACTIVITY_SECONDS,
-                   reminder_store: nil,
+                   queue: nil,
                    clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
                    callback: nil)
       raise ArgumentError, "IdleReminders requires an engine" unless engine
 
       @engine = engine
       @inactivity = inactivity
-      @reminder_store = reminder_store || engine.instance_variable_get(:@reminder_store)
+      @queue = queue
       @clock = clock
       @auto_turn_callback = callback
 
@@ -36,21 +35,8 @@ module Samagotchi
       @due_reminder_name = nil
     end
 
-    # Get all due reminders (from ReminderStore). Called by Engine#collect_due_reminders.
-    # Thread-safe. Returns all due reminders, not just one.
-    # @return [Array<Hash>] [{name:, description:, interval_minutes:}, ...]
-    def due_reminders
-      @reminder_store&.due_reminders || []
-    end
-    # Get the names of all due reminders. Called by the background thread to
-    # determine which reminders need a synthetic turn.
-    # @return [Array<String>] reminder names that are due
-    def due_reminder_names
-      due_reminders.map { |r| r[:name] }
-    end
-
     # Clear the pending due reminder (after it has been delivered).
-    # Called by Engine after injecting the reminder into the system prompt.
+    # Called by Engine after a turn injected the due reminders.
     def clear_due
       @mutex.synchronize { @due_reminder_name = nil }
     end
@@ -78,8 +64,8 @@ module Samagotchi
     end
 
     def check_due_reminders
-      return unless @reminder_store
-      due_names = @reminder_store.due_reminders.map { |r| r[:name] }
+      return unless @queue
+      due_names = @queue.due.map { |r| r[:name] }
       return if due_names.empty?
       # Signal the engine to create a synthetic turn via callback.
       # The callback is responsible for triggering a turn (e.g. SessionManager

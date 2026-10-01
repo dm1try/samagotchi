@@ -1,12 +1,13 @@
 # frozen_string_literal: true
 
 require "samagotchi/idle_reminders"
+require "samagotchi/reminder_store"
 
 RSpec.describe Samagotchi::IdleReminders do
   subject(:idle_reminders) do
     described_class.new(
       engine: engine,
-      reminder_store: reminder_store,
+      queue: Samagotchi::ReminderQueue.new(store: reminder_store),
       inactivity: 60.0,
       clock: clock,
       callback: ->(names) { fired << names }
@@ -23,30 +24,6 @@ RSpec.describe Samagotchi::IdleReminders do
   before do
     allow(engine).to receive(:turn_running?).and_return(false)
     allow(engine).to receive(:last_activity_at).and_return(Process.clock_gettime(Process::CLOCK_MONOTONIC) - 70)
-  end
-
-  describe "#due_reminders" do
-    it "returns due reminders from the reminder store" do
-      reminder_store.register({ name: "health", description: "Check API", interval_minutes: 1 })
-      allow(Process).to receive(:clock_gettime).and_return(
-        Process.clock_gettime(Process::CLOCK_MONOTONIC) + 70
-      )
-      due = idle_reminders.due_reminders
-      expect(due.map { |r| r[:name] }).to include("health")
-    end
-
-    it "returns empty array when no reminders are due" do
-      expect(idle_reminders.due_reminders).to eq([])
-    end
-
-    it "returns empty array when reminder_store is nil" do
-      idle_reminders = described_class.new(
-        engine: engine,
-        reminder_store: nil,
-        clock: clock
-      )
-      expect(idle_reminders.due_reminders).to eq([])
-    end
   end
 
   describe "#tick" do
@@ -95,7 +72,7 @@ RSpec.describe Samagotchi::IdleReminders do
       )
       idle_reminders = described_class.new(
         engine: engine_mock,
-        reminder_store: reminder_store,
+        queue: Samagotchi::ReminderQueue.new(store: reminder_store),
         inactivity: 60.0,
         clock: clock,
         callback: ->(names) { fired << names }

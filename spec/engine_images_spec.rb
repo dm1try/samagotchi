@@ -75,7 +75,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with images" do
   it "refuses before anything is kept when the model can't see images" do
     allow(Samagotchi::VisionSupport).to receive(:for).and_return(answer(false, "the server has no vision model loaded"))
     expect(kernel).not_to receive(:run)
-    expect(engine).not_to receive(:collect_due_reminders)
+    expect(engine.send(:reminder_queue)).not_to receive(:inject!)
     before = session.messages.map(&:dup)
 
     expect { turn(images: [{ path: shot }]) }.to raise_error(Samagotchi::LLM::VisionUnsupported)
