@@ -421,10 +421,8 @@ class Plugin
 
   # Written aside and renamed: workers share the dir.
   def save_cache(server, ctx)
-    path = cache_path(server, ctx)
-    tmp = "#{path}.#{Process.pid}.#{Thread.current.object_id}.tmp"
-    File.write(tmp, JSON.generate({ digest: server.digest, saved_at: Time.now.utc.iso8601, tools: server.listed }))
-    File.rename(tmp, path)
+    Samagotchi::AtomicFile.write(cache_path(server, ctx),
+                                 JSON.generate({ digest: server.digest, saved_at: Time.now.utc.iso8601, tools: server.listed }))
   rescue SystemCallError => e
     ctx.log.warn("mcp_cache_not_written", server: server.name, msg: e.message)
   end

@@ -19,6 +19,10 @@ and commands may change between minor versions. How releases are made:
   `event[:stop_generation]`; they behave as before (`chi update` picks them up).
 - Attaching to a session mid-turn (`chi --attach`) shows the turn's finished tool calls as they looked live, with
   what each did and how long it took (`tool> Running command (execute …): ok (1.3s)`), when the worker runs this chi.
+- Bundles mcp 0.3.2 (now requires chi >= 0.8.0) and skills 0.1.3 write the MCP tool cache and a skill's history
+  versions through a unique temporary file: two workers saving the same file at once no longer collide (skills used a
+  fixed `<file>.tmp`). Bundles known-names 0.1.2, source-links 0.3.1, loop-guard 0.2.2 and check-in 0.1.3 only drop
+  dead code; `chi update` picks them all up.
 - A config hook with `on_error: log` warns as `[samagotchi:hooks] <file> (config) failed: <error>`, the same shape as a
   bundle hook's warning; a fail-closed bundle guardrail's deny reason reads `... (bundle <name>) raised <error>`.
 

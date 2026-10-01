@@ -43,7 +43,6 @@ class Plugin
   USAGE = "usage: /skill save [name] [--system] | list | show <name> | diff <name> [N]"
 
   def initialize(settings = {})
-    settings = {} unless settings.is_a?(Hash)
     @history_keep = positive(settings["history_keep"]) || 20
     @nudge = settings.key?("nudge") ? settings["nudge"] != false : true
     @stash = nil
@@ -216,8 +215,7 @@ class Plugin
 
     stamp = Time.now.utc.strftime("%Y%m%dT%H%M%S.%6NZ")
     path = File.join(dir, "#{stamp}.md")
-    File.write("#{path}.tmp", content)
-    File.rename("#{path}.tmp", path)
+    Samagotchi::AtomicFile.write(path, content)
     versions(dir).drop(@history_keep).each { |old| File.delete(old) }
   rescue SystemCallError => e
     ctx.log.warn(:history_failed, skill: name, error: e.class.name, msg: e.message)
