@@ -8,9 +8,13 @@ RSpec.describe Samagotchi::IdleReminders do
       engine: engine,
       reminder_store: reminder_store,
       inactivity: 60.0,
-      clock: clock
+      clock: clock,
+      callback: ->(names) { fired << names }
     )
   end
+
+  # The due names each synthetic-turn callback got.
+  let(:fired) { [] }
 
   let(:engine) { double("Engine") }
   let(:reminder_store) { Samagotchi::ReminderStore.new }
@@ -46,18 +50,18 @@ RSpec.describe Samagotchi::IdleReminders do
   end
 
   describe "#tick" do
-    it "sets @due_reminder_name when a reminder is due" do
+    it "fires the callback with the due names when a reminder is due" do
       reminder_store.register({ name: "health", description: "test", interval_minutes: 1 })
       allow(Process).to receive(:clock_gettime).and_return(
         Process.clock_gettime(Process::CLOCK_MONOTONIC) + 70
       )
       idle_reminders.tick
-      expect(idle_reminders.due_reminder_name).to eq("health")
+      expect(fired).to eq([["health"]])
     end
 
-    it "does not set @due_reminder_name when no reminder is due" do
+    it "does not fire when no reminder is due" do
       idle_reminders.tick
-      expect(idle_reminders.due_reminder_name).to be_nil
+      expect(fired).to be_empty
     end
 
     it "does not fire if already has a pending due reminder" do
@@ -67,8 +71,8 @@ RSpec.describe Samagotchi::IdleReminders do
       )
       idle_reminders.tick
       idle_reminders.tick
-      # Should still be "health", not nil or something else
-      expect(idle_reminders.due_reminder_name).to eq("health")
+      # Latched until the engine delivers it (#clear_due).
+      expect(fired).to eq([["health"]])
     end
 
     it "does not fire if turn is running" do
@@ -78,7 +82,7 @@ RSpec.describe Samagotchi::IdleReminders do
         Process.clock_gettime(Process::CLOCK_MONOTONIC) + 70
       )
       idle_reminders.tick
-      expect(idle_reminders.due_reminder_name).to be_nil
+      expect(fired).to be_empty
     end
 
     it "does not fire if not idle long enough" do
@@ -93,24 +97,27 @@ RSpec.describe Samagotchi::IdleReminders do
         engine: engine_mock,
         reminder_store: reminder_store,
         inactivity: 60.0,
-        clock: clock
+        clock: clock,
+        callback: ->(names) { fired << names }
       )
       reminder_store.register({ name: "health", description: "test", interval_minutes: 1 })
       idle_reminders.tick
-      expect(idle_reminders.due_reminder_name).to be_nil
+      expect(fired).to be_empty
     end
   end
 
   describe "#clear_due" do
-    it "clears the pending due reminder" do
+    it "clears the latch, so the next tick fires again" do
       reminder_store.register({ name: "health", description: "test", interval_minutes: 1 })
       allow(Process).to receive(:clock_gettime).and_return(
         Process.clock_gettime(Process::CLOCK_MONOTONIC) + 70
       )
       idle_reminders.tick
-      expect(idle_reminders.due_reminder_name).to eq("health")
+      idle_reminders.tick
+      expect(fired).to eq([["health"]])
       idle_reminders.clear_due
-      expect(idle_reminders.due_reminder_name).to be_nil
+      idle_reminders.tick
+      expect(fired).to eq([["health"], ["health"]])
     end
   end
 

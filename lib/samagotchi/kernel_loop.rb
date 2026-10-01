@@ -141,8 +141,8 @@ module Samagotchi
     # Run the conversation loop and return the final model response plus
     # resumable conversation state when execution stops at max_iterations.
     #
-    # @param messages       [Array<Hash>, Result] conversation so far ({role:, content:})
-    #                                           or a previous Result to resume
+    # @param messages       [Array<Hash>]        conversation so far ({role:, content:});
+    #   a stopped run resumes from its Result#conversation
     # @param max_iterations [Integer]            safety cap on tool-call rounds
     # @param on_stream_event [Proc, nil]         optional callback for generation events
     # @param cancel_controller [CancellationController, nil] optional cancellation source
@@ -687,14 +687,8 @@ module Samagotchi
       end
     end
 
-    def prepare_conversation(messages)
-      if messages.is_a?(Result)
-        duplicate_conversation(messages.conversation)
-      else
-        # Standard multi-turn compliance: never pass prior raw thought blocks.
-        sanitize_history(messages)
-      end
-    end
+    # Standard multi-turn compliance: never pass prior raw thought blocks.
+    def prepare_conversation(messages) = sanitize_history(messages)
 
     def duplicate_conversation(messages)
       messages.map(&:dup)

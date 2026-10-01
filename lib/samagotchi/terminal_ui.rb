@@ -1131,7 +1131,7 @@ module Samagotchi
       type = event[:type] || event["type"]
       return unless type.to_s == "question_requested"
 
-      pq = event[:pending_question] || event["pending_question"] || event[:pendingQuestion]
+      pq = event[:pending_question] || event["pending_question"]
       return unless pq
 
       @pending_question_event = pq

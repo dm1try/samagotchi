@@ -36,13 +36,6 @@ module Samagotchi
       @due_reminder_name = nil
     end
 
-    # Get the currently pending due reminder name (for Engine to read).
-    # Kept for backward compatibility.
-    # Called by Engine#collect_due_reminders. Thread-safe.
-    def due_reminder_name
-      @mutex.synchronize { @due_reminder_name }
-    end
-
     # Get all due reminders (from ReminderStore). Called by Engine#collect_due_reminders.
     # Thread-safe. Returns all due reminders, not just one.
     # @return [Array<Hash>] [{name:, description:, interval_minutes:}, ...]

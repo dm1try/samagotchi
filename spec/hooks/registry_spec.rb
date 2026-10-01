@@ -211,12 +211,3 @@ RSpec.describe Samagotchi::Hooks::Registry, "the hook runtime on the event" do
     end
   end
 end
-
-RSpec.describe Samagotchi::Hooks do
-  describe "module" do
-    it "exposes REGISTRY_CLASS" do
-      expect(Samagotchi::Hooks.const_defined?(:REGISTRY_CLASS)).to be true
-      expect(Samagotchi::Hooks::REGISTRY_CLASS).to eq(Samagotchi::Hooks::Registry)
-    end
-  end
-end

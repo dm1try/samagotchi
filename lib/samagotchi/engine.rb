@@ -844,7 +844,7 @@ module Samagotchi
       # head system prompt invalidates the cache for the entire conversation
       # (prompt re-evaluated every interval). A tail append keeps the prefix
       # intact — only the new reminder suffix is evaluated. Mirrors the
-      # context-status injection at lib/samagotchi/kernel_loop.rb:447.
+      # context guidance line KernelLoop#run appends (ContextStatus#take_guidance).
       messages << { role: "system", content: reminder_text }
       # Atomically mark all due as fired under one lock and clear the
       # IdleReminders latch so the next interval can be detected.
@@ -1107,28 +1107,14 @@ module Samagotchi
       @guardrail_wiring.state_dir = state_dir
     end
 
-    # The gate's core checks, in order (GuardrailWiring#checks).
-    def guardrail_checks
-      @guardrail_wiring.checks
-    end
-
     # The YAML rules, read again when a file changed (GuardrailWiring#rules).
     # @return [Guardrails::Rules]
     def guardrail_rules
       @guardrail_wiring.rules
     end
 
-    # Installed bundles' guardrails/*.yml (GuardrailWiring#bundle_rules).
-    def bundle_guardrail_rules
-      @guardrail_wiring.bundle_rules
-    end
-
     # @return [Guardrails::LoadFailures]
     attr_reader :guardrail_failures
-
-    def guardrail_protected_paths
-      @guardrail_wiring.protected_paths
-    end
 
     # @return [Guardrails::Approvals]
     def guardrail_approvals
@@ -1163,12 +1149,6 @@ module Samagotchi
     # The plugins' load warning the first turn announced, likewise.
     def plugin_warning
       @plugin_failures.message if @guardrail_failures_announced
-    end
-
-    # The context the gate sees for a tool call now.
-    # @return [Guardrails::Context]
-    def guardrail_context
-      @guardrail_wiring.context
     end
 
     # Ask the user to approve a call the gate voted `ask` on

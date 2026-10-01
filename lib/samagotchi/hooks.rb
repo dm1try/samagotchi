@@ -26,8 +26,5 @@ module Samagotchi
   #                         event also has context: and targets: (docs/guardrails.md)
   #   :after_tool_call    — after tool execution, before result injection
   module Hooks
-    REGISTRY_CLASS = Registry
-    LOADER_CLASS = Loader
-    BUNDLE_LOADER_CLASS = BundleLoader
   end
 end

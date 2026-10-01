@@ -8,6 +8,9 @@ require "fileutils"
 RSpec.describe "Engine guardrail wiring" do
   let(:engine) { Samagotchi::Engine.new(client: instance_double(Samagotchi::Client)) }
 
+  # The context the Engine's gate sees now (GuardrailWiring#context).
+  def guardrail_context(engine) = engine.instance_variable_get(:@guardrail_wiring).context
+
   it "defaults the interface to non_interactive and validates it" do
     expect(engine.interface).to eq(:non_interactive)
     engine.interface = :worker
@@ -21,7 +24,7 @@ RSpec.describe "Engine guardrail wiring" do
     engine.session = session
     gate = engine.instance_variable_get(:@kernel).guardrail_gate
     expect(gate).to be_a(Samagotchi::Guardrails::Gate)
-    ctx = engine.guardrail_context
+    ctx = guardrail_context(engine)
     expect([ctx.session_id, ctx.interface, ctx.cwd]).to eq([session.id, :repl, Dir.pwd])
   end
 
@@ -35,7 +38,7 @@ RSpec.describe "Engine guardrail wiring" do
     def asking(engine)
       v = Samagotchi::Guardrails::Verdict.new(call: { name: "execute", content: "git push" })
       v.ask!("pushes", rule: "git-push", source: "config", scopes: %w[once repo])
-      v.context = engine.guardrail_context
+      v.context = guardrail_context(engine)
       v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context)
       v
     end
@@ -69,7 +72,7 @@ RSpec.describe "Engine guardrail wiring" do
                                                                    label: "x: echo", source: "mcp")
       v = Samagotchi::Guardrails::Verdict.new(call: { name: "mcp_x_echo", args: { "message" => "hi" } })
       v.ask!("an MCP tool", rule: "mcp-ask", source: "config", scopes: %w[once])
-      v.context = engine.guardrail_context
+      v.context = guardrail_context(engine)
       v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context)
       thread = Thread.new { engine.request_approval(v) }
       deadline = mono + 2
@@ -98,7 +101,7 @@ RSpec.describe "Engine guardrail wiring" do
       def ask_for(engine, call)
         v = Samagotchi::Guardrails::Verdict.new(call: call)
         v.ask!("outside the repo", rule: "write-outside-repo", source: "config", scopes: %w[once])
-        v.context = engine.guardrail_context
+        v.context = guardrail_context(engine)
         v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context)
         v
       end

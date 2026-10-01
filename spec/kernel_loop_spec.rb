@@ -813,7 +813,7 @@ Need to inspect the filesystem first.
       expect(result.conversation.find { |m| m[:role] == "model" }[:content]).to include("<|tool_call>")
     end
 
-    it "can resume from a previous exhausted result" do
+    it "can resume from a previous exhausted result's conversation" do
       prompts = []
       responses = [
         %(<|tool_call>call:execute{command: "echo resumed"}<tool_call|>),
@@ -826,7 +826,7 @@ Need to inspect the filesystem first.
       end
 
       partial = kernel.run([{ role: "user", content: "resume" }], max_iterations: 1)
-      result = kernel.run(partial, max_iterations: 2)
+      result = kernel.run(partial.conversation, max_iterations: 2)
 
       expect(partial).to be_resumable
       expect(result.output).to eq("finished")
