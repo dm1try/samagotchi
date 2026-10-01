@@ -229,7 +229,14 @@ module Samagotchi
     # Returns { host_name => { host:, port:, transport:, models: [LLM::ModelInfo], error: nil|String } }
     # Also populates the model index. Unless forced, a host's list is reused
     # for its TTL (60s; 10 minutes for a remote host).
-    def list_all_models(force: true)
+    #
+    # With +wait+ (seconds), answers by one shared deadline: a host still
+    # listing then gets the error "no answer in S s" and its thread is left
+    # running (only for a short-lived process: `chi models`). Such a partial
+    # listing is not stored as the cache or the model index, so a later
+    # resolve doesn't miss the slow host's ids; finished hosts' lists are
+    # kept for their TTL as usual.
+    def list_all_models(force: true, wait: nil)
       results = {}
       results_mutex = Mutex.new
       threads = @entries.map do |name, entry|
@@ -247,7 +254,24 @@ module Samagotchi
           results_mutex.synchronize { results[name] = data }
         end
       end
-      threads.each { |thread| thread.join if thread.is_a?(Thread) }
+      if wait
+        deadline = @clock.call + wait
+        threads.each { |thread| thread.join([deadline - @clock.call, 0].max) if thread.is_a?(Thread) }
+        partial = false
+        # a new hash: the threads keep writing into +results+ (their closure's)
+        snapshot = results_mutex.synchronize do
+          @entries.each_with_object({}) do |(name, entry), acc|
+            acc[name] = results.fetch(name) do
+              partial = true
+              { host: entry.host, port: entry.port, transport: entry.transport, models: [],
+                error: "no answer in #{wait == wait.to_i ? wait.to_i : wait} s" }
+            end
+          end
+        end
+        return snapshot if partial
+      else
+        threads.each { |thread| thread.join if thread.is_a?(Thread) }
+      end
 
       # Model index: model_id downcased -> the hosts listing it, in hosts:
       # order (not the order the threads answered in).

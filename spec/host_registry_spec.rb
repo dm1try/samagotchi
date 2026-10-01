@@ -146,4 +146,55 @@ RSpec.describe Samagotchi::HostRegistry do
       expect(registry.entries["box"].client).to have_received(:list_models).twice
     end
   end
+
+  describe "#list_all_models(wait:)" do
+    let(:registry) do
+      described_class.new(hosts_config: {
+        "default" => { host: "localhost", port: 8080 },
+        "slow" => { host: "slow.test", port: 8081 }
+      })
+    end
+    let(:release) { Queue.new }
+
+    before do
+      allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({})
+      allow(registry.entries["default"].client).to receive(:list_models).and_return([{ "id" => "fast-model" }])
+      allow(registry.entries["slow"].client).to receive(:list_models) do
+        release.pop
+        [{ "id" => "late-model" }]
+      end
+    end
+
+    after { release << :go }
+
+    def mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    it "answers within the wait: a stalled host reports no answer, the others list" do
+      started = mono
+      results = registry.list_all_models(wait: 0.1)
+
+      expect(mono - started).to be < 0.5
+      expect(results["default"][:models].map(&:id)).to eq(["fast-model"])
+      expect(results["slow"]).to include(models: [], error: "no answer in 0.1 s")
+    end
+
+    it "returns a snapshot a late thread doesn't change, and stores no partial listing" do
+      results = registry.list_all_models(wait: 0.05)
+      release << :go
+      sleep 0.1
+
+      expect(results["slow"][:error]).to eq("no answer in 0.05 s")
+      expect(registry.cached_results).to be_nil
+      expect(registry.resolve("late-model").entry.name).to eq("default")
+    end
+
+    it "waits for every host and stores the listing when all answer in time" do
+      release << :go
+      results = registry.list_all_models(wait: 2)
+
+      expect(results["slow"][:models].map(&:id)).to eq(["late-model"])
+      expect(registry.cached_results).to eq(results)
+      expect(registry.resolve("late-model").entry.name).to eq("slow")
+    end
+  end
 end
