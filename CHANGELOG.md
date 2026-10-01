@@ -19,6 +19,7 @@ and commands may change between minor versions. How releases are made:
 - A memory file you edited, then `chi bundle install` of its bundle again (skipped for the edit), no longer gets
   overwritten by the next `chi bundle upgrade`: the re-install kept your edit as the bundle's base, so the upgrade
   took it as unedited.
+- `chi sessions list --sort/--order` is no longer ignored with `--live`, `--cwd` or `--format`.
 - A tool's time in the web's turn timing and the debug log's `tool_call_completed ms:` no longer counts the wait for
   a guardrail approval; the log line shows the wait as `waited_ms:`.
 

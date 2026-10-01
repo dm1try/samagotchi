@@ -224,11 +224,11 @@ module Samagotchi
     #   a turn running, recap = the saved recap's first sentence, project =
     #   Session#project_root
     def self.session_summaries(live: false, cwd: nil, limit: nil, include_tests: true, exclude: nil, state_dir: nil,
-                               project_root: nil, include_archived: false)
+                               project_root: nil, include_archived: false, sort: nil, order: nil)
       sd = state_dir || Session.default_state_dir
       root = cwd && folder_path(cwd)
       roots = {}
-      summaries = Session.list(state_dir: sd, sort: "updated_at", order: "desc", project_root: project_root,
+      summaries = Session.list(state_dir: sd, sort: sort || "updated_at", order: order || "desc", project_root: project_root,
                                            include_archived: include_archived).lazy
                          .reject { |s| (!include_tests && s.test_run) || s.id == exclude }
                          .select { |s| root.nil? || in_folder?(s.working_directory, root) }

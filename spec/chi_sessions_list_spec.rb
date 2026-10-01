@@ -57,6 +57,18 @@ RSpec.describe "chi sessions list" do
     expect(out).to end_with("\n2 session(s) (sort=updated_at order=desc)\n")
   end
 
+  it "keeps --sort and --order with --format json and --cwd" do
+    first = make("first")
+    second = make("second")
+
+    newest_first = JSON.parse(run_chi("--format", "json").first).map { |row| row["id"] }
+    expect(newest_first).to eq([second.id, first.id])
+    oldest_first = JSON.parse(run_chi("--format", "json", "--order", "asc").first).map { |row| row["id"] }
+    expect(oldest_first).to eq([first.id, second.id])
+    out, = run_chi("--cwd", "/work", "--format", "tsv", "--sort", "created_at", "--order", "asc")
+    expect(out.lines.map { |line| line.split("\t").first }).to eq([first.id, second.id])
+  end
+
   it "marks a chi scratch session [scratch]" do
     make("throwaway", scratch: true)
 

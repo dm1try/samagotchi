@@ -120,11 +120,12 @@ module Samagotchi
     end
 
     def list_summaries(project, scope_note)
-      live, cwd, limit, include_archived, format = @opts.values_at(:live, :cwd, :limit, :include_archived, :format)
+      live, cwd, limit, include_archived, format, sort, order =
+        @opts.values_at(:live, :cwd, :limit, :include_archived, :format, :sort, :order)
       summaries = Samagotchi::SessionManager.session_summaries(
         live: live, cwd: cwd, limit: limit || (live ? 10 : nil), include_tests: Samagotchi::Session.test_session_env?,
         project_root: project,
-        include_archived: include_archived
+        include_archived: include_archived, sort: sort, order: order
       )
       case format
       when "json"
