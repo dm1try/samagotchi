@@ -19,22 +19,19 @@ module Samagotchi
   # alias_name: the alias applied (as typed), else nil.
   # alias_host: the host the alias's target names, else nil.
   ModelRef = Data.define(:typed, :host_name, :id, :alias_name, :alias_host) do
-    # Splits "host:model" or "host/model" when the prefix is a configured
-    # host and something follows it.
+    # Splits "host:model" when the prefix is a configured host and something
+    # follows it. Only ':' names a host: "openai/gpt-4o" is an id (OpenRouter's).
     # @param hosts [Hash] configured hosts by name (any value)
     # @return [Array(String, String)] [host_name or nil, the rest]
     def self.split(raw, hosts:)
       value = raw.to_s.strip
       return [nil, value] if value.empty?
 
-      lowered_keys = (hosts || {}).keys.map(&:downcase)
-      [":", "/"].each do |separator|
-        next unless value.include?(separator)
+      prefix, rest = value.split(":", 2)
+      return [nil, value] if rest.nil? || rest.strip.empty?
+      return [nil, value] unless (hosts || {}).keys.map { |k| k.to_s.downcase }.include?(prefix.strip.downcase)
 
-        prefix, rest = value.split(separator, 2)
-        return [prefix.strip.downcase, rest.strip] if lowered_keys.include?(prefix.strip.downcase) && !rest.strip.empty?
-      end
-      [nil, value]
+      [prefix.strip.downcase, rest.strip]
     end
 
     # @param aliases [Hash{String => String}] alias (downcased) => target

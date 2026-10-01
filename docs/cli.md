@@ -576,13 +576,13 @@ access token", paste the token there (the part of the link after
 In interactive assist mode, you can switch the request model without restarting:
 
 - `/model <name>`: set a session-scoped model override.
-- `/model host:model` or `/model host/alias`: qualified host routing. `host:alias` applies the alias; an alias whose target names another host is refused (`alias 'tiny' names host 'box', not 'openrouter'`). Aliases apply once: an alias pointing to another alias sends that name as written.
+- `/model host:model` or `/model host:alias`: qualified host routing (only `:` names a host; `openai/gpt-4o` is a model id). `host:alias` applies the alias; an alias whose target names another host is refused (`alias 'tiny' names host 'box', not 'openrouter'`). Aliases apply once: an alias pointing to another alias sends that name as written.
 - `/model --default <name>`: set session model and persist as new default in `config.yml` (also updates `SAMAGOTCHI_DEFAULT_MODEL` for future sessions; supports `host:model` full ref).
 - `/model <name> --alias <alias>`: create alias for current effective model (alias value may be bare or `host:model`).
 - `/model`: show the effective model (and default when diverged: `runtime model: <effective> (default: <default>, profile=<name>, <source>)`, e.g. `profile=qwen36, server (chat_template)`).
 - `/model clear` (or `default`/`none`/`off`): clear the session override, reverting to the configured default.
 - `/guardrails`: the guardrail rules (by source), what failed to load, and your stored approvals, numbered; `/guardrails revoke N` removes approval N (see [Guardrails](guardrails.md)).
-- `/models`: list model ids aggregated across all `hosts:` (grouped `host (host:port):` with per-host `unreachable` warnings, e.g. an unset `api_key_env`; lists cached 60s, 10 minutes for a remote host; lazy — no startup prefill). At most 20 ids per host, then `… and N more`; `/models <text>` lists every id containing `<text>` (any case), e.g. `/models qwen` on OpenRouter.
+- `/models`: list model ids aggregated across all `hosts:` (an alias shows next to its id: a bare alias on every host listing the id, a `host:model` one only under its host; grouped `host (host:port):` with per-host `unreachable` warnings, e.g. an unset `api_key_env`; lists cached 60s, 10 minutes for a remote host; lazy — no startup prefill). At most 20 ids per host, then `… and N more`; `/models <text>` lists every id containing `<text>` (any case), e.g. `/models qwen` on OpenRouter.
 
 Notes:
 

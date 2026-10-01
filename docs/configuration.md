@@ -489,7 +489,11 @@ the running server (llama.cpp's `/props`), else the window the host's model list
 gives (`context_length`, `context_window`, `max_model_len` or llama.cpp's
 `meta.n_ctx`), else `context.window_tokens`.
 
-A `:` in a model name is often part of the id (`qwen3:8b`, `mistral:7b`,
+Only `:` names a host: `/` is part of a model id (`openai/gpt-4o` is an
+OpenRouter id and goes to the default host as written, even with a host named
+`openai`). A `default.model`, an alias or a saved session that still says
+`host/model` gets a warning at start; fix it with `host:model`. A `:` in a model
+name is often part of the id (`qwen3:8b`, `mistral:7b`,
 `unsloth/Qwen3-8B-GGUF:Q4_K_M`), so the part before the first `:` picks a host
 only when it is a configured host's name. An unknown prefix is refused with an
 error naming it and the configured hosts (with a "did you mean" for a near

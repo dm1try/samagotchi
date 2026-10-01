@@ -31,9 +31,14 @@ and commands may change between minor versions. How releases are made:
   session stores the resolved model (`box:gemma-small` for `tiny`) plus the name it was typed as (`model_typed`), so a
   resumed session keeps its model when an alias is retargeted. With a `default.model` alias, memory overlays and the
   guardrails' `models:` rules now go by the alias's target (an overlay saved under the alias is still read).
+- Breaking: only `:` names a host in a model ref. `/` is part of the id, so `openai/gpt-4o` (an OpenRouter id) goes to
+  the default host as written even when a host is named `openai`. chi always wrote `host:`; a hand-written
+  `host/model` in `default.model`, an alias or a saved session warns at start (fix it with `host:model`).
+- `/models` shows a `host:model` alias only under its own host.
 
 ### Fixed
 
+- `recap: {host_ref: openrouter, model: openai/gpt-4o}` sent `gpt-4o`.
 - An alias in `default.model`, the web's new-session model, `chi send --new --model` or a plugin fork was sent to the
   server as the alias, not its target; `chi self` named a different model than the worker sent.
 - `/model box:tiny` (an alias for `box:gemma-small`) sent `box:gemma-small` to box; `/model openrouter:tiny` is now

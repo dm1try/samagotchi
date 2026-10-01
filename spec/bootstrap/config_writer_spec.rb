@@ -215,7 +215,9 @@ RSpec.describe Samagotchi::Bootstrap::ConfigWriter do
       existing("hosts:\n  lan:\n    host: a\n  openai:\n    host: b\n")
 
       expect(writer.host_name("lan")).to eq("lan-2")
-      expect(writer.host_name("openrouter", model_ids: ["openrouter/auto", "openai/gpt-x"])).to eq("openrouter-2")
+      expect(writer.host_name("qwen3", model_ids: ["qwen3:8b", "openai/gpt-x"])).to eq("qwen3-2")
+      # Only ':' names a host: an org/model id leaves the name free.
+      expect(writer.host_name("openrouter", model_ids: ["openrouter/auto"])).to eq("openrouter")
       expect(writer.host_name("fresh")).to eq("fresh")
     end
 

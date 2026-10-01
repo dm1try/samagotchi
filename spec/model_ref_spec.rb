@@ -17,6 +17,10 @@ RSpec.describe Samagotchi::ModelRef do
       expect(described_class.split(" Box:gemma-small ", hosts: hosts)).to eq(%w[box gemma-small])
     end
 
+    it "splits on ':' only: '/' is part of an id (openai/gpt-4o)" do
+      expect(described_class.split("openai/gpt-4o", hosts: hosts)).to eq([nil, "openai/gpt-4o"])
+    end
+
     it "keeps a ref whose prefix is no configured host, or with nothing after it" do
       expect(described_class.split("qwen3:8b", hosts: hosts)).to eq([nil, "qwen3:8b"])
       expect(described_class.split("box:", hosts: hosts)).to eq([nil, "box:"])
@@ -179,13 +183,13 @@ RSpec.describe Samagotchi::ModelRef do
       expect(host).to eq("box box.test:8081 as gemma-small")
     end
 
-    it "#3 openai/gpt-4o goes to the openai host as gpt-4o", step: :F2 do
-      expect(sent(switched("openai/gpt-4o"))).to eq(%w[openai gpt-4o])
+    it "#3 openai/gpt-4o (an OpenRouter id) goes to the default host as written", step: :F2 do
+      expect(sent(switched("openai/gpt-4o"))).to eq(%w[openrouter openai/gpt-4o])
     end
 
-    it "#3 recap on openrouter with openai/gpt-4o sends gpt-4o", :recap, step: :F2 do
+    it "#3 recap on openrouter with openai/gpt-4o sends openai/gpt-4o", :recap, step: :F2 do
       e = engine(model_name: "box:m", recap: { host_ref: "openrouter", model: "openai/gpt-4o" })
-      expect(e.recap.target).to include(base_url: "https://openrouter.test/api/v1", model: "gpt-4o")
+      expect(e.recap.target).to include(base_url: "https://openrouter.test/api/v1", model: "openai/gpt-4o")
     end
 
     it "#4 qwen3:8b goes to the qwen3 host as 8b" do
@@ -271,19 +275,40 @@ RSpec.describe Samagotchi::ModelRef do
       expect(Process).not_to have_received(:spawn)
     end
 
+    context "with a host/ prefix in default.model or an alias" do
+      let(:default_model) { "box/gemma-small" }
+      let(:config) { super().sub("  chain: small\n", "  chain: small\n  old: openai/gpt-4o\n") }
+
+      it "warns once when a session's model starts with a host and '/'" do
+        expect(Samagotchi::ConfigFile).to receive(:warn_once).with(
+          "Warning: model 'box/gemma-small' starts with the host 'box' and '/': only ':' names a host now, " \
+          "so it goes to the default host as written; use box:gemma-small (/model box:gemma-small)"
+        )
+        expect(sent(engine(model_name: "box/gemma-small"))).to eq(%w[openrouter box/gemma-small])
+      end
+
+      it "warns at start that '/' no longer names a host" do
+        problems = Samagotchi::Config.validate_yaml_sections(YAML.safe_load(config))
+        expect(problems).to include(
+          "config: default.model 'box/gemma-small' starts with the host 'box' and '/': only ':' names a host now (box:gemma-small)",
+          "config: model_aliases.old 'openai/gpt-4o' starts with the host 'openai' and '/': only ':' names a host now (openai:gpt-4o)"
+        )
+      end
+    end
+
     it "warns at start that aliases don't chain" do
       problems = Samagotchi::Config.validate_yaml_sections(YAML.safe_load(config))
       expect(problems).to eq(["config: model_aliases.chain points to the alias 'small'; aliases don't chain, so 'small' is sent as written"])
     end
 
-    it "#9 /models shows an alias for box:gemma-small under every host listing gemma-small", step: :F2 do
+    it "#9 /models shows an alias for box:gemma-small only under box", step: :F2 do
       list_models({ "box" => ["gemma-small"], "qwen3" => ["gemma-small"] })
       e = engine(model_name: "box:m")
       commands = Samagotchi::SessionCommands.new(engine: e, turn_flow: Samagotchi::TurnFlow.new(engine: e), default_model: "box:m")
       allow(registry).to receive(:list_all_models).and_return(registry.cached_results)
       lines = commands.run("/models").output.lines(chomp: true)
       expect(lines).to include("box (box.test:8081):", "qwen3 (qwen.test:8082):")
-      expect(lines.grep(/gemma-small/)).to eq(["  gemma-small (alias: small, tiny)", "  gemma-small (alias: small, tiny)"])
+      expect(lines.grep(/gemma-small/)).to eq(["  gemma-small (alias: small, tiny)", "  gemma-small (alias: small)"])
     end
   end
 end

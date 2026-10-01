@@ -441,19 +441,29 @@ module Samagotchi
       end
 
       # What a model ref in config.yml won't do as written: an alias whose
-      # target is another alias (aliases apply once, ModelRef).
+      # target is another alias (aliases apply once, ModelRef), a ref that
+      # starts with "<host>/" (only ':' names a host).
       def model_ref_problems(data)
-        aliases = data["model_aliases"]
-        return [] unless aliases.is_a?(Hash)
-
         hosts = data["hosts"].is_a?(Hash) ? data["hosts"] : {}
+        aliases = data["model_aliases"].is_a?(Hash) ? data["model_aliases"] : {}
+        default = data["default"]["model"] if data["default"].is_a?(Hash)
+        refs = [["default.model", default], *aliases.map { |name, target| ["model_aliases.#{name}", target] }]
+        slash = refs.filter_map { |where, ref| host_slash_problem(where, ref, hosts) }
         names = aliases.keys.map { |k| k.to_s.strip.downcase }
-        aliases.filter_map do |name, target|
+        chains = aliases.filter_map do |name, target|
           _, inner = ModelRef.split(target, hosts: hosts)
           next unless names.include?(inner.downcase)
 
           "config: model_aliases.#{name} points to the alias '#{inner}'; aliases don't chain, so '#{inner}' is sent as written"
         end
+        slash + chains
+      end
+
+      def host_slash_problem(where, ref, hosts)
+        prefix, rest = ref.to_s.strip.split("/", 2)
+        return nil if rest.to_s.empty? || !hosts.keys.map { |k| k.to_s.downcase }.include?(prefix.downcase)
+
+        "config: #{where} '#{ref}' starts with the host '#{prefix}' and '/': only ':' names a host now (#{prefix}:#{rest})"
       end
 
       # Dotted keys config.yml may set: config-exposed entries (snake and kebab

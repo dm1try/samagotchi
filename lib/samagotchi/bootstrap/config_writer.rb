@@ -93,7 +93,7 @@ module Samagotchi
 
       # The entry's name: +requested+ as given (it must be free), else
       # +base+, with -2, -3… when the name is taken or is the prefix of a
-      # model id (chi would read "openai/gpt-x" as host openai, model gpt-x).
+      # model id (chi would read "qwen3:8b" as host qwen3, model 8b).
       def host_name(base, requested: nil, model_ids: [])
         taken = current_hosts.keys
         if requested
@@ -104,7 +104,7 @@ module Samagotchi
           return name
         end
 
-        prefixes = [*model_ids, configured_default_model].compact.map { |id| id.to_s.split(%r{[:/]}, 2).first.downcase }
+        prefixes = [*model_ids, configured_default_model].compact.map { |id| id.to_s.split(":", 2).first.downcase }
         name = base
         n = 1
         name = "#{base}-#{n += 1}" while taken.include?(name) || prefixes.include?(name)

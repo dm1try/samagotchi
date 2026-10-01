@@ -145,6 +145,7 @@ module Samagotchi
                            "use #{parsed.alias_name} or #{other}:#{parsed.alias_name}"
       end
       ref = parsed.ref
+      warn_host_slash(ref, hosts) unless parsed.host_name
       host = Samagotchi::ConfigFile.unknown_host_prefix(ref, hosts: hosts)
       return model_name unless host
 
@@ -153,6 +154,17 @@ module Samagotchi
       hint = near.empty? ? "" : " (did you mean #{near.map { |n| "'#{n}'" }.join(' or ')}?)"
       raise UnknownHost, "unknown host '#{host}' in model '#{ref}'#{hint}; the configured hosts are #{names.join(', ')}"
     end
+
+    # "box/x" named host box until '/' stopped naming a host: a saved
+    # session or a hand-written ref says so once, then goes to the default host.
+    def self.warn_host_slash(ref, hosts)
+      prefix, rest = ref.to_s.split("/", 2)
+      return if rest.to_s.empty? || !hosts.keys.map { |k| k.to_s.downcase }.include?(prefix.downcase)
+
+      Samagotchi::ConfigFile.warn_once("Warning: model '#{ref}' starts with the host '#{prefix}' and '/': only ':' names a host now, " \
+                                       "so it goes to the default host as written; use #{prefix}:#{rest} (/model #{prefix}:#{rest})")
+    end
+    private_class_method :warn_host_slash
 
     # One line for the user: where to set the model.
     def self.missing_model_message

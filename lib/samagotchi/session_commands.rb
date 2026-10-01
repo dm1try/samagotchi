@@ -469,13 +469,11 @@ module Samagotchi
 
       aliases = ConfigFile.model_aliases
       by_model = Hash.new { |h, k| h[k] = [] }
+      # A bare alias shows next to its id on every host, a host:model one
+      # only under its host.
       aliases.each do |alias_name, model_id|
-        # normalize bare comparison for orphan detection (strip host prefix if present)
-        _, bare = registry.parse_qualified_model(model_id)
-        key = (bare.empty? ? model_id : bare).to_s.downcase
-        by_model[key] << alias_name
-        # also index full ref for exact alias display
-        by_model[model_id.downcase] << alias_name unless key == model_id.downcase
+        host, bare = registry.parse_qualified_model(model_id)
+        by_model[host ? "#{host}:#{bare}".downcase : model_id.downcase] << alias_name
       end
       by_model.each_value { |v| v.uniq!; v.sort! }
 
@@ -501,7 +499,6 @@ module Samagotchi
           seen << identifier.to_s.downcase
           # also track host-qualified seen for orphan logic
           seen << "#{hname}:#{identifier}".downcase
-          seen << "#{hname}/#{identifier}".downcase
           next if batch_variants.include?(identifier)
 
           shown << [entry, identifier] if needle.empty? || identifier.to_s.downcase.include?(needle)
