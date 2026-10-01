@@ -2,14 +2,15 @@
 
 require "samagotchi/engine"
 require "samagotchi/session"
+require "support/test_kernel"
 
 # Due reminders end to end: the idle tick queues them (as the worker's
 # callback does), a turn injects them, and the tick is armed again.
 RSpec.describe Samagotchi::Engine, "reminders" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
   let(:fired) { [] }
   let(:engine) do
     fired_names = fired

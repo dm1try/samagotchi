@@ -3,6 +3,7 @@
 require "samagotchi/engine"
 require "samagotchi/session"
 require_relative "support/fake_chat_adapter"
+require "support/test_kernel"
 
 # The Engine's side of an empty-answer retry: a turn the retry answered is an
 # ordinary completed turn (the nudge kept, hidden); one whose retries ran out
@@ -10,8 +11,8 @@ require_relative "support/fake_chat_adapter"
 RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
   let(:engine) { described_class.new(client: client, kernel: kernel, profile: "gemma4") }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:nudge) { Samagotchi::TurnNote.empty_retry }

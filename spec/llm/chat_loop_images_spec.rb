@@ -6,6 +6,7 @@ require "samagotchi/llm/chat_loop"
 require "samagotchi/vision_support"
 require_relative "../support/fake_chat_adapter"
 require_relative "../support/fake_provider_server"
+require_relative "../support/test_kernel"
 
 RSpec.describe "ChatLoop images" do
   let(:dir) { Dir.mktmpdir("chi-session") }
@@ -18,7 +19,8 @@ RSpec.describe "ChatLoop images" do
   let(:capability) { nil }
   let(:vision) { Samagotchi::VisionContext.new(capability: capability, session_dir: dir, limits: limits) }
   let(:kernel) do
-    double("kernel", hooks: nil, vision: vision).tap do |k|
+    test_kernel.tap do |k|
+      k.vision = vision
       allow(k).to receive(:strip_model_thought) { |text| text }
       allow(k).to receive(:dispatch_tool_call) { |call| { output: "[#{call[:name]}] ok", activity: nil } }
     end

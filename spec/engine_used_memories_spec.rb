@@ -2,14 +2,15 @@
 
 require "samagotchi/engine"
 require "samagotchi/session"
+require "support/test_kernel"
 
 # The session's used memories: what the turns read or preloaded, kept on
 # the session and shown in the UIs' memory line.
 RSpec.describe Samagotchi::Engine, "used memories" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:events) { [] }
   let(:reads) { [] }

@@ -3,14 +3,15 @@
 require "samagotchi/engine"
 require "samagotchi/session"
 require_relative "support/fake_chat_adapter"
+require "support/test_kernel"
 
 # --no-interrupt raises a turn's iteration limit to 1000 for whichever loop
 # runs it: the Engine hands the backend the limit (as the worker does).
 RSpec.describe Samagotchi::Engine, "with no_interrupt" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
 
   before do

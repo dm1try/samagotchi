@@ -3,6 +3,7 @@
 require "tmpdir"
 require "samagotchi/engine"
 require "samagotchi/session"
+require "support/test_kernel"
 
 # What the user is told about the thinking level, once per session and host
 # (a :hook_notice labelled "thinking", which both UIs render): an effort the
@@ -25,7 +26,7 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
     Samagotchi::HostRegistry.new(hosts_config: { "box" => { host: "box.test", port: 8080 },
                                                  "other" => { host: "other.test", port: 8080 } })
   end
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:kernel) { test_kernel(client: registry.entries["box"].client) }
   let(:engine) do
     described_class.new(host_registry: registry, kernel: kernel, profile: "qwen36",
                         model_name: "box:qwen-small").tap { |e| e.session_state_dir = @state_dir }
@@ -41,8 +42,6 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
     allow(kernel).to receive(:vision=)
     allow(kernel).to receive(:sampling=)
     allow(kernel).to receive(:thinking=)
-    allow(kernel).to receive(:client=)
-    allow(kernel).to receive(:client).and_return(nil)
     allow(kernel).to receive(:current_model_name=)
     allow(kernel).to receive(:run) do |messages, on_stream_event: nil, **|
       thinking_chars.each_with_index do |chars, index|

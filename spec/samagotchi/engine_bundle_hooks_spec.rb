@@ -10,6 +10,7 @@ require "samagotchi/engine"
 require "samagotchi/session"
 require "samagotchi/memory_bundle/provenance"
 require "samagotchi/memory_bundle/installer"
+require "support/test_kernel"
 
 RSpec.describe Samagotchi::Engine, "bundle hooks" do
   let(:tmpdir) { Dir.mktmpdir("engine-bundle-") }
@@ -17,7 +18,7 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
   around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:client) do
-    dbl = instance_double(Samagotchi::Client)
+    dbl = test_client
     allow(dbl).to receive(:complete).and_return(nil)
     dbl
   end

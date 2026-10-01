@@ -6,6 +6,7 @@ require "samagotchi/kernel_loop"
 require "samagotchi/session"
 require "samagotchi/plugin/context"
 require "support/thinking_off"
+require "support/test_kernel"
 
 # ctx.steer, ctx.stop_turn and ctx.stop_generation (docs/plugins.md,
 # Context): a plugin's command or thread acting on the running turn.
@@ -14,7 +15,7 @@ RSpec.describe "ctx.steer, ctx.stop_turn and ctx.stop_generation" do
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
+  let(:client) { test_client }
   let(:engine) { Samagotchi::Engine.new(client: client) }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:ctx) do

@@ -2,14 +2,15 @@
 
 require "samagotchi/engine"
 require "samagotchi/session"
+require "support/test_kernel"
 
 # What Engine#run_turn has to offer before the interactive TUI can drive its
 # turns through it (Phase R2 of the shared-session plan).
 RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
   let(:engine) { described_class.new(client: client, kernel: kernel, profile: "gemma4") }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:activity) { { action: "running command", tool: "execute", params: 'command="ls"', status: "ok" } }
@@ -385,8 +386,6 @@ end
     end
 
     it "rebuilds it after a model switch" do
-      allow(kernel).to receive(:use_profile!)
-      allow(kernel).to receive(:sync_model_key!)
       sent = []
       allow(kernel).to receive(:run) { |messages, **| sent << messages.first[:content]; kernel_result(conversation: messages) }
 

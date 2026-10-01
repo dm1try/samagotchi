@@ -7,6 +7,7 @@ require "samagotchi/kernel_loop"
 require "samagotchi/llm/chat_loop"
 require "samagotchi/llm/openai_chat"
 require_relative "support/fake_provider_server"
+require "support/test_kernel"
 
 # The :generation_progress hook through the Engine, over real HTTP on both
 # paths: a hook sees the stream in batches, and can stop the turn or cut
@@ -109,14 +110,13 @@ RSpec.describe Samagotchi::Engine, "stream hooks" do
   end
 
   describe "on the chat path" do
-    let(:kernel) { instance_double(Samagotchi::KernelLoop, client: client) }
+    let(:kernel) { test_kernel(client: client) }
     let(:engine) { described_class.new(client: client, kernel: kernel, profile: "qwen36") }
     let(:adapter) { Samagotchi::LLM::OpenAIChat.new(base_url: server.base_url, host_name: "box", sleeper: ->(_s) {}) }
 
     before do
       allow(kernel).to receive(:sampling=)
       allow(kernel).to receive(:strip_model_thought) { |text| text.to_s.strip }
-      allow(kernel).to receive(:hooks).and_return(engine.instance_variable_get(:@hooks))
       allow(engine).to receive(:backend_for).and_return(Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter))
     end
 
@@ -137,7 +137,7 @@ RSpec.describe Samagotchi::Engine, "stream hooks" do
   end
 
   describe "the stream handler" do
-    let(:kernel) { instance_double(Samagotchi::KernelLoop, client: client) }
+    let(:kernel) { test_kernel(client: client) }
     let(:engine) { described_class.new(client: client, kernel: kernel, profile: "qwen36") }
 
     it "builds no StreamWatch when no hook listens" do

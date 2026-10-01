@@ -4,6 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "json"
 require "stringio"
+require "support/test_kernel"
 
 require "samagotchi/session"
 require "samagotchi/session_manager"
@@ -74,7 +75,7 @@ RSpec.describe "session id check" do
 
   describe Samagotchi::Bridge, "POST /turn" do
     let(:engine) do
-      Samagotchi::Engine.new(client: instance_double(Samagotchi::Client), kernel: instance_double(Samagotchi::KernelLoop))
+      Samagotchi::Engine.new(client: test_client, kernel: test_kernel)
     end
     let(:bridge) { described_class.new(engine: engine, state_dir: state_dir, session_id: "s1") }
 

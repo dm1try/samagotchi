@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/engine"
+require "support/test_kernel"
 
 # Engine#announce: transport-level facts (a turn was queued, queued input was
 # merged into a running turn) that every live UI must see in the one ordered
@@ -9,8 +10,8 @@ RSpec.describe Samagotchi::Engine, "#announce" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:engine) do
-    described_class.new(client: instance_double(Samagotchi::Client),
-                        kernel: instance_double(Samagotchi::KernelLoop), profile: "gemma4")
+    described_class.new(client: test_client,
+                        kernel: test_kernel, profile: "gemma4")
   end
 
   it "numbers the event and fans it out to persistent observers" do

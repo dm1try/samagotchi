@@ -5,6 +5,7 @@ require "samagotchi/engine"
 require "samagotchi/session"
 require "fileutils"
 require "tmpdir"
+require "support/test_kernel"
 
 RSpec.describe Samagotchi::LogSubscriber do
   let(:dir) { Dir.mktmpdir("samagotchi-log") }
@@ -180,8 +181,8 @@ RSpec.describe Samagotchi::LogSubscriber do
     around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
     it "is subscribed, so every run_turn leaves a trail with the session's sid" do
-      client = instance_double(Samagotchi::Client)
-      kernel = instance_double(Samagotchi::KernelLoop)
+      client = test_client
+      kernel = test_kernel
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(kernel).to receive(:run).and_return(
         Samagotchi::LLM::ModelResult.new(text: "done", conversation: [{ role: "model", content: "done" }], exhausted: false,

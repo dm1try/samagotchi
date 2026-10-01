@@ -3,6 +3,7 @@
 require "json"
 require "samagotchi/engine"
 require "samagotchi/llm/chat_loop"
+require "support/test_kernel"
 
 # Byte-for-byte snapshots of what each model is told about its tools: the
 # native base system prompt per profile (tool declarations + call hint + the
@@ -25,8 +26,8 @@ RSpec.describe "Prompt snapshots" do
   end
 
   def engine(profile)
-    Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
-                           kernel: instance_double(Samagotchi::KernelLoop), profile: profile)
+    Samagotchi::Engine.new(client: test_client,
+                           kernel: test_kernel, profile: profile)
   end
 
   %w[gemma4 qwen36].each do |profile|
@@ -36,7 +37,7 @@ RSpec.describe "Prompt snapshots" do
   end
 
   it "keeps the chat path's tool definitions" do
-    backend = Samagotchi::LLM::ChatLoop.new(kernel: instance_double(Samagotchi::KernelLoop))
+    backend = Samagotchi::LLM::ChatLoop.new(kernel: test_kernel)
     expect_snapshot("chat_tools.json", JSON.pretty_generate(backend.tool_definitions) + "\n")
   end
 end

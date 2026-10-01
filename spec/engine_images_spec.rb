@@ -3,6 +3,7 @@
 require "tmpdir"
 require "samagotchi/engine"
 require "samagotchi/session"
+require "support/test_kernel"
 
 RSpec.describe Samagotchi::Engine, "#run_turn with images" do
   around do |example|
@@ -16,8 +17,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn with images" do
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
   end
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
   let(:engine) do
     described_class.new(client: client, kernel: kernel, profile: "qwen36").tap do |e|
       e.session_state_dir = @state_dir

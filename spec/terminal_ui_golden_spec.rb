@@ -3,6 +3,7 @@
 require "stringio"
 require "tmpdir"
 require "samagotchi/terminal_ui"
+require "support/test_kernel"
 
 # Golden output for one interactive REPL turn, driven end to end: the real
 # assist loop reads a prompt, the kernel replays a fixture of stream events and
@@ -14,7 +15,7 @@ require "samagotchi/terminal_ui"
 RSpec.describe "TerminalUI interactive turn output (golden)" do
   def golden_dir = File.expand_path("fixtures/terminal_ui_golden", __dir__)
 
-  let(:client) { instance_double(Samagotchi::Client) }
+  let(:client) { test_client }
   let(:history_dir) { Dir.mktmpdir("golden-history") }
 
   around do |example|

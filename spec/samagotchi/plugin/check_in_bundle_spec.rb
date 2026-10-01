@@ -9,6 +9,7 @@ require "samagotchi/session_commands"
 require "samagotchi/turn_flow"
 require "samagotchi/memory_bundle/installer"
 require "support/plugin_handler_ctx"
+require "support/test_kernel"
 
 # The shipped check-in bundle (lib/samagotchi/bundles/check-in): the plugin
 # on its own with a recording chi and ctx, then installed as a user would
@@ -264,7 +265,7 @@ RSpec.describe "The check-in bundle, installed" do
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
   around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:state_dir) { File.join(tmpdir, "sessions") }
-  let(:client) { instance_double(Samagotchi::Client) }
+  let(:client) { test_client }
   let(:settings) { { "after" => 2, "every" => 10 } }
 
   around do |example|

@@ -11,6 +11,7 @@ require "samagotchi/llm/chat_loop"
 require "samagotchi/idle_recap"
 require "support/thinking_off"
 require_relative "support/fake_chat_adapter"
+require "support/test_kernel"
 
 RSpec.describe Samagotchi::AnswerDisplay do
   let(:answer) { { role: "model", content: "see JIRA-1" } }
@@ -66,8 +67,8 @@ RSpec.describe "Presenting the answer from after_turn" do
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
   let(:engine) { Samagotchi::Engine.new(client: client, kernel: kernel) }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:stored) { [{ role: "user", content: "hi" }, { role: "model", content: "see JIRA-1" }] }
@@ -204,7 +205,7 @@ RSpec.describe "The display field and the model payloads" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   it "the native prompt leaves it out, and the stored conversation keeps it" do
-    client = instance_double(Samagotchi::Client)
+    client = test_client
     prompts = []
     allow(client).to receive(:complete) { |prompt, **| prompts << prompt; "fine" }
     registry = Samagotchi::Hooks::Registry.new
@@ -227,7 +228,7 @@ RSpec.describe "The display field and the model payloads" do
   end
 
   it "the chat request leaves it out, and the stored conversation keeps it" do
-    kernel = double("kernel", hooks: nil)
+    kernel = test_kernel
     allow(kernel).to receive(:strip_model_thought) { |text| text.to_s }
     adapter = FakeChatAdapter.new(FakeChatAdapter.text("fine"))
     sent = []

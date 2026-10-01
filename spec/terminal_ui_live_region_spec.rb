@@ -4,12 +4,13 @@ require "stringio"
 require "tmpdir"
 require "samagotchi/terminal_ui"
 require_relative "support/virtual_terminal"
+require "support/test_kernel"
 
 # The REPL on a live region: a Screen on a virtual terminal, with the REPL's
 # reads and the kernel stubbed as in the goldens. These check what stays on
 # the terminal, not the bytes.
 RSpec.describe Samagotchi::TerminalUI, "on a live region" do
-  let(:client) { instance_double(Samagotchi::Client) }
+  let(:client) { test_client }
   let(:history_dir) { Dir.mktmpdir("live-region-history") }
   let(:term) { VirtualTerminal.new(rows: 12, columns: 50) }
   let(:screen) { Samagotchi::TerminalUI::Screen.new(out: term, size: -> { [term.rows, term.columns] }) }

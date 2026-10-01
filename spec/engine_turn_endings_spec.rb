@@ -3,6 +3,7 @@
 require "samagotchi/engine"
 require "samagotchi/session"
 require_relative "support/fake_chat_adapter"
+require "support/test_kernel"
 
 # How Engine#run_turn ends a turn, as data: one row per way a turn ends
 # (native answer, empty answers, a resumable turn, a Stop, a Ctrl-C, a
@@ -16,8 +17,8 @@ require_relative "support/fake_chat_adapter"
 RSpec.describe Samagotchi::Engine, "#run_turn endings" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
   let(:engine) { described_class.new(client: client, kernel: kernel, profile: "gemma4") }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:nudge) { Samagotchi::TurnNote.empty_retry }

@@ -6,6 +6,7 @@ require "tmpdir"
 require "samagotchi/session_manager"
 require "samagotchi/worker"
 require "samagotchi/bridge"
+require "support/test_kernel"
 
 # Images between a UI and the worker: refs only (never paths or bytes),
 # through the Bridge, the input files, the worker and the snapshot.
@@ -33,8 +34,8 @@ RSpec.describe "Images in transport" do
   end
   let(:wire_ref) { { file: ref[:file], name: "shot.png" } }
   let!(:engine) do
-    Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
-                           kernel: instance_double(Samagotchi::KernelLoop))
+    Samagotchi::Engine.new(client: test_client,
+                           kernel: test_kernel)
   end
 
   after { FileUtils.rm_rf(tmpdir) }

@@ -2,12 +2,13 @@
 
 require "samagotchi/engine"
 require "samagotchi/session"
+require "support/test_kernel"
 
 RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
 
   def build_engine(**overrides)
     Samagotchi::Engine.new(client: client, kernel: kernel, **overrides)

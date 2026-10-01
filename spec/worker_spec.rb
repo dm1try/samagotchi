@@ -4,6 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "net/http"
 require "json"
+require "support/test_kernel"
 
 require "samagotchi/engine"
 require "samagotchi/bridge"
@@ -65,8 +66,8 @@ RSpec.describe Samagotchi::Worker do
     end
     let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
     let!(:engine) do
-      Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
-                             kernel: instance_double(Samagotchi::KernelLoop))
+      Samagotchi::Engine.new(client: test_client,
+                             kernel: test_kernel)
     end
     let(:turns) { Queue.new }
     let(:result) { instance_double(Samagotchi::LLM::ModelResult, output: "") }

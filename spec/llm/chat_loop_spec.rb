@@ -11,12 +11,13 @@ require "fileutils"
 require "tmpdir"
 require_relative "../support/fake_chat_adapter"
 require_relative "../support/fake_provider_server"
+require_relative "../support/test_kernel"
 
 RSpec.describe Samagotchi::LLM::ChatLoop do
-  # A KernelLoop stand-in for dispatch and thought stripping (Gemma-style
+  # A real KernelLoop with dispatch and thought stripping stubbed (Gemma-style
   # <|think|> blocks); profile-specific stripping is tested on KernelLoop.
   let(:fake_kernel) do
-    kernel = double("kernel", hooks: nil)
+    kernel = test_kernel
     allow(kernel).to receive(:strip_model_thought) { |text| text.to_s.gsub(/<\|think\|>.*?<\|think\|>/m, "").strip }
     known_tools = Samagotchi::KernelLoop::TOOLS.map(&:name)
     allow(kernel).to receive(:dispatch_tool_call) do |call|

@@ -7,6 +7,7 @@ require "samagotchi/cancellation_controller"
 require "samagotchi/llm/chat_loop"
 require "samagotchi/llm/openai_chat"
 require_relative "support/fake_provider_server"
+require_relative "support/test_kernel"
 
 # A generation a plugin cuts (CancellationController#cancel_generation!, what
 # stop_generation calls) is an empty answer made early: both loops ask again
@@ -205,7 +206,7 @@ RSpec.describe "A cut generation" do
   describe "on the chat path (api: openai)" do
     let(:adapter) { Samagotchi::LLM::OpenAIChat.new(base_url: server.base_url, host_name: "box", sleeper: ->(_s) {}) }
     let(:kernel) do
-      double("kernel", hooks: nil).tap do |kernel|
+      test_kernel.tap do |kernel|
         allow(kernel).to receive(:strip_model_thought) { |text| text.to_s.strip }
       end
     end

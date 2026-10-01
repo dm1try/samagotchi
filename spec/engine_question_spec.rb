@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "timeout"
+require "support/test_kernel"
 
 require "json"
 require "tmpdir"
@@ -16,8 +17,8 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
 
   let(:payload) do
     {

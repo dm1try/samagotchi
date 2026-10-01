@@ -3,14 +3,15 @@
 require "samagotchi/engine"
 require "samagotchi/session"
 require "support/thinking_off"
+require "support/test_kernel"
 
 RSpec.describe Samagotchi::Engine, "muted memories" do
   include_context "thinking off"
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
   let(:index) do
     "# Memory Index\n\n- **gh-helper** · system · 2026-09-01 · 120 — GitHub helper\n" \
       "- **cli_usage** · system · 2026-09-01 · 80 — CLI\n"

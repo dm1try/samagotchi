@@ -28,6 +28,10 @@ class FakeChatAdapter
 
   def base_url = "http://fake.test/v1"
 
+  # A local server: the window comes from the kernel's client, as for a
+  # llama.cpp chat host (OpenAIChat#remote?).
+  def remote? = false
+
   def chat(messages:, model:, tools: [], cancel_controller: nil, on_delta: nil, on_retry: nil, options: {},
            session_id: nil)
     @requests << { messages: messages, model: model, tools: tools, options: options, session_id: session_id }

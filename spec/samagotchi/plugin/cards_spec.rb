@@ -7,6 +7,7 @@ require "samagotchi/session"
 require "samagotchi/bridge"
 require "samagotchi/plugin/context"
 require "support/thinking_off"
+require "support/test_kernel"
 
 # Cards (docs/plugins.md, Cards): Engine#show_card, ctx.card and the
 # Bridge's CardStore (snapshot[:cards]).
@@ -15,8 +16,8 @@ RSpec.describe "Cards" do
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
   let(:engine) { Samagotchi::Engine.new(client: client, kernel: kernel) }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:seen) { [] }

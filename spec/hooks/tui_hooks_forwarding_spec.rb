@@ -4,6 +4,7 @@ require "samagotchi/engine"
 require "samagotchi/kernel_loop"
 require "samagotchi/terminal_ui"
 require "samagotchi/hooks"
+require "support/test_kernel"
 
 RSpec.describe "TUI hooks forwarding regression" do
   # Minimal repro for the bug where TerminalUI creates a KernelLoop without
@@ -13,7 +14,7 @@ RSpec.describe "TUI hooks forwarding regression" do
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
+  let(:client) { test_client }
 
   describe "Engine owns hooks, KernelLoop reuses them" do
     it "propagates Engine registry to an externally-supplied KernelLoop" do

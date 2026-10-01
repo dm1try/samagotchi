@@ -4,6 +4,7 @@ require "samagotchi/engine"
 require "samagotchi/session"
 require "tmpdir"
 require "support/thinking_off"
+require "support/test_kernel"
 
 RSpec.describe Samagotchi::Engine do
   include_context "thinking off"
@@ -18,8 +19,8 @@ RSpec.describe Samagotchi::Engine do
     ENV["SAMAGOTCHI_SKIP_AGENT_MD"] = original_skip
   end
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
 
   def build_engine(**overrides)
     described_class.new(client: client, kernel: kernel, **overrides)
@@ -376,8 +377,6 @@ RSpec.describe Samagotchi::Engine do
 
   describe "#switch_model!" do
     it "drops the client's cached context window (the new model may run with another -c)" do
-      allow(kernel).to receive(:use_profile!)
-      allow(kernel).to receive(:sync_model_key!)
       allow(client).to receive(:invalidate_context_window!)
 
       build_engine.switch_model!("Qwen3-14B")

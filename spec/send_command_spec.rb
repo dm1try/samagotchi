@@ -13,6 +13,7 @@ require "samagotchi/owner_lock"
 require "samagotchi/engine"
 require "samagotchi/bridge"
 require_relative "support/fake_provider_server"
+require "support/test_kernel"
 
 RSpec.describe Samagotchi::SendCommand do
   let(:tmpdir) { Dir.mktmpdir("send-command") }
@@ -53,8 +54,8 @@ RSpec.describe Samagotchi::SendCommand do
   # A live worker's Bridge (no turn loop: it only writes input files and
   # announces), with the events its engine sent.
   def serve(session)
-    engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
-                                    kernel: instance_double(Samagotchi::KernelLoop))
+    engine = Samagotchi::Engine.new(client: test_client,
+                                    kernel: test_kernel)
     events = []
     engine.subscribe(observer: ->(e) { events << e })
     bridge = Samagotchi::Bridge.new(engine: engine, state_dir: tmpdir, session_id: session.id, heartbeat_interval: 5,

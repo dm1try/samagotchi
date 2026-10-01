@@ -5,6 +5,7 @@ require "tmpdir"
 require "fileutils"
 require "samagotchi/engine"
 require "samagotchi/session"
+require "support/test_kernel"
 
 # Hooks configured in config.yml are process-scoped: Engine#run_turn clears
 # turn-scoped hooks in its ensure block, and that must not wipe configured
@@ -12,7 +13,7 @@ require "samagotchi/session"
 RSpec.describe Samagotchi::Engine, "config.yml hooks" do
   let(:hooks_dir) { Dir.mktmpdir("config-hooks-") }
   let(:client) do
-    dbl = instance_double(Samagotchi::Client)
+    dbl = test_client
     allow(dbl).to receive(:complete).and_return(nil)
     dbl
   end

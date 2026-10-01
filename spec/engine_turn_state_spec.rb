@@ -2,6 +2,7 @@
 
 require "samagotchi/engine"
 require "samagotchi/session"
+require "support/test_kernel"
 
 # The turn's cross-thread state as other threads see it: the turn flag,
 # the cancel controller, the turn's sink, the steers and the activity
@@ -10,8 +11,8 @@ require "samagotchi/session"
 RSpec.describe Samagotchi::Engine, "turn state" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
   let(:engine) { described_class.new(client: client, kernel: kernel, profile: "gemma4") }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
 

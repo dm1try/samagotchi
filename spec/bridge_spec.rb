@@ -6,6 +6,7 @@ require "stringio"
 require "socket"
 require "net/http"
 require "json"
+require "support/test_kernel"
 
 require "samagotchi/engine"
 require "samagotchi/session"
@@ -181,8 +182,8 @@ end
 RSpec.describe Samagotchi::Bridge do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  let(:client) { instance_double(Samagotchi::Client) }
-  let(:kernel) { instance_double(Samagotchi::KernelLoop) }
+  let(:client) { test_client }
+  let(:kernel) { test_kernel(client: client) }
 
   def make_engine
     Samagotchi::Engine.new(client: client, kernel: kernel)

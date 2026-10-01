@@ -5,11 +5,12 @@ require "fileutils"
 require "json"
 require "stringio"
 require "tmpdir"
+require "support/test_kernel"
 
 require_relative "support/recording_surface"
 
 RSpec.describe Samagotchi::TerminalUI do
-  let(:client) { instance_double(Samagotchi::Client) }
+  let(:client) { test_client }
   let(:ansi_escape) { /\e\[[0-9;]+m/ }
 
   def repl_session
@@ -87,7 +88,8 @@ file2.rb")
         pending_tool_calls: false,
         tool_activity: []
       )
-      kernel = instance_double(Samagotchi::KernelLoop, run: result)
+      kernel = test_kernel(client: client)
+      allow(kernel).to receive(:run).and_return(result)
       expect(Samagotchi::KernelLoop).to receive(:new)
         .with(client: client, profile: nil, reminder_store: instance_of(Samagotchi::ReminderStore))
         .and_return(kernel)

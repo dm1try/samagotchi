@@ -4,6 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "socket"
 require "json"
+require "support/test_kernel"
 
 require "samagotchi/engine"
 require "samagotchi/session"
@@ -15,8 +16,8 @@ require "samagotchi/bridge"
 RSpec.describe Samagotchi::Bridge, "routing" do
   let(:state_dir) { Dir.mktmpdir("bridge-routing") }
   let(:engine) do
-    Samagotchi::Engine.new(client: instance_double(Samagotchi::Client),
-                           kernel: instance_double(Samagotchi::KernelLoop))
+    Samagotchi::Engine.new(client: test_client,
+                           kernel: test_kernel)
   end
   let(:handlers) do
     %i[handle_cancel handle_answer handle_dismiss_question handle_post_turn handle_command handle_exit_request

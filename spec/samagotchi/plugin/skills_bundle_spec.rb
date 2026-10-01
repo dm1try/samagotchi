@@ -10,6 +10,7 @@ require "samagotchi/turn_flow"
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/guardrails"
 require "support/plugin_handler_ctx"
+require "support/test_kernel"
 
 # The shipped skills bundle (lib/samagotchi/bundles/skills): the plugin on its
 # own with a recording chi and ctx, then installed as a user would and loaded
@@ -476,7 +477,7 @@ RSpec.describe "The skills bundle, installed" do
   let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
   around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:state_dir) { File.join(tmpdir, "sessions") }
-  let(:client) { instance_double(Samagotchi::Client) }
+  let(:client) { test_client }
 
   around do |example|
     saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME", "SAMAGOTCHI_THINKING_LEVEL")
