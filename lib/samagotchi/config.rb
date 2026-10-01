@@ -103,6 +103,9 @@ module Samagotchi
       Entry.new(key: "image.max_per_request",    yaml_path: %w[image max_per_request],    type: :integer, default: 20,              expose: %i[env config]),
 
       Entry.new(key: "guardrails.enabled",       yaml_path: %w[guardrails enabled],       type: :bool,   default: true,             expose: %i[env config]),
+      # Which models get the rules with `models: small` (Guardrails::ModelSize): auto (32B or less by the name's size, an MoE's
+      # active size counting), globs on the bare model name or its key, "|"-separated (a YAML list works too), or "" ([]) for none.
+      Entry.new(key: "guardrails.small_models",  yaml_path: %w[guardrails small_models],  type: :string, default: "auto",           expose: %i[env config]),
 
       Entry.new(key: "log.file",                 yaml_path: %w[log file],                 type: :string, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "log.disable",              yaml_path: %w[log disable],              type: :bool,   default: false,            expose: %i[env config cli]),
