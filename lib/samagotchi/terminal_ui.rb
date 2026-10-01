@@ -68,6 +68,9 @@ module Samagotchi
     # announced on other threads, printed at the open prompt.
     # @return [BetweenTurns]
     attr_reader :between_turns
+    # The session's Engine: the REPL drives it inline (#run_engine_turn).
+    # @return [Engine]
+    attr_reader :engine
 
     # ── System prompts (delegated to Engine) ─────────────────────────────────
     def self.system_prompt_for(profile)
@@ -255,16 +258,12 @@ module Samagotchi
 
       assist_loop(session: session, messages: messages)
       # After the idle layer has stopped: nothing writes the session now.
-      if @scratch
-        nil # deleted below, however the REPL ended
-      elsif @delete_on_exit
-        delete_after_exit(session)
-      elsif @discard_on_exit
-        discard_after_exit(session)
-      elsif @archive_on_exit
-        archive_after_exit(session)
-      else
-        keep_after_exit(session)
+      case exit_action
+      when :scratch then nil # deleted below, however the REPL ended
+      when :delete then delete_after_exit(session)
+      when :discard then discard_after_exit(session)
+      when :archive then archive_after_exit(session)
+      else keep_after_exit(session)
       end
       # Lines from a pipe (`chi -p X </dev/null`): a failed turn fails the run.
       :turn_failed if @piped_turn_failed
@@ -392,6 +391,124 @@ module Samagotchi
       messages
     end
 
+    # Interactive REPL loop. Session seed + messages are built by #run and
+    # threaded in here (so --prompt / --resume share one code path). The
+    # session's conversation is the single working copy: turns go through
+    # Engine#run_turn and out-of-turn edits through Engine's messages API.
+    # The checkpoint and continue state live in @turn_flow (shared with
+    # session workers). The session is persisted at the end of every turn.
+    def run_assist_loop(session:, messages:)
+      session.messages = messages
+      @engine.session = session
+      # Steering: lines submitted at the open prompt during a turn
+      # (#steer_line), merged by the kernel (#drain_steering).
+      @pending_input_queue = PendingInputQueue.new
+      open_repl_input
+
+      loop do
+        if @exit_after_turn
+          # Ctrl-D or exit came during a turn: the lines sent before it still
+          # run (all queued: the prompt closed at Ctrl-D), then the REPL ends.
+          input = queued_line
+          break if input.nil?
+        else
+          # Drain any pending ask_user_question first — it has priority over reminders and
+          # must be rendered on the REPL thread (turn thread is parked on Engine Monitor).
+          drain_pending_question?
+
+          # A due reminder runs its turn now, with the prompt open (on a
+          # terminal): the turn's output commits above it and whatever is typed
+          # there stays.
+          unless @engine.due_reminder_names.empty?
+            run_reminder_turn(session)
+            @turn_flow.after_reminder_turn
+            next
+          end
+          input = @prompt
+          @prompt = nil if input
+          if input.nil?
+            input = poll_input_with_reminder_check(awaiting_continue: @turn_flow.awaiting_continue?)
+            # A reminder fell due: run it at the top, with the prompt still open.
+            next if input == :due
+          end
+        end
+        break if input.nil?
+        local = local_command(input)
+        if local == :exit
+          @delete_on_exit ||= SessionCommands.delete_on_exit?(input)
+          break
+        end
+        if local == :archive
+          next @surface.commit(SCRATCH_ARCHIVE_REFUSED) if @scratch
+
+          @archive_on_exit = true
+          break
+        end
+        # Not an answer to a continue offer either.
+        next detach_note if local == :detach
+
+        # /stats and /recap run; the offer stays open.
+        if @turn_flow.awaiting_continue? && !%i[stats recap].include?(local)
+          answer_continue_offer(session, input)
+        else
+          # The ? read left no echo: show what ran.
+          @surface.commit("#{paint(QUESTION_PROMPT, 33)}#{input}") if @turn_flow.awaiting_continue?
+          run_input_line(session, input)
+        end
+      end
+
+      close_repl_input
+      @discard_on_exit = !@delete_on_exit && discard_on_exit?(session)
+    end
+
+    # Run one REPL turn (a prompt, or a continue/reminder turn with nil) through
+    # Engine#run_turn, rendering via @renderer.
+    # @param images [Array<Hash>] the prompt's `@path` images ({path:})
+    def run_engine_turn(session, prompt, continue: false, max_iterations: 100, images: [])
+      cancellation_controller = CancellationController.new
+      @active_cancel_controller = cancellation_controller
+      @renderer.begin_turn
+      # The row shows the turn's model (a -p turn runs before any read).
+      refresh_status_row
+      # A prompt the user typed brings an archived session back to the lists.
+      ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir) if prompt && !continue
+      with_steering do
+        @engine.run_turn(
+          session,
+          prompt,
+          on_event: @render_event,
+          max_iterations: max_iterations,
+          cancel_controller: cancellation_controller,
+          pending_input: method(:drain_steering),
+          continue: continue,
+          images: images
+        )
+      end
+    rescue Interrupt
+      # Engine kept the prompt in the session and emitted :turn_canceled
+      # (the renderer's line).
+      cancellation_controller&.cancel!(:ctrl_c)
+      cancelled_result_from(session.messages, reason: :ctrl_c)
+    ensure
+      @active_cancel_controller = nil
+      @view.finish_thinking_spinner
+    end
+
+    # How the REPL leaves its session once the loop ended (#run): :scratch
+    # (deleted however it ends), :delete (/exit --delete), :discard (left
+    # empty), :archive (/archive) or :keep.
+    def exit_action
+      if @scratch then :scratch
+      elsif @delete_on_exit then :delete
+      elsif @discard_on_exit then :discard
+      elsif @archive_on_exit then :archive
+      else :keep
+      end
+    end
+
+    # Ctrl-D or /exit came during a turn: the REPL ends after it.
+    def exit_after_turn? = @exit_after_turn == true
+
     private
 
     # Interactive REPL loop. Session seed + messages are built by #run and
@@ -473,76 +590,6 @@ module Samagotchi
       @view.surface = surface
       @status_row.surface = surface
       @between_turns.surface = surface
-    end
-
-    # Interactive REPL loop. Session seed + messages are built by #run and
-    # threaded in here (so --prompt / --resume share one code path). The
-    # session's conversation is the single working copy: turns go through
-    # Engine#run_turn and out-of-turn edits through Engine's messages API.
-    # The checkpoint and continue state live in @turn_flow (shared with
-    # session workers). The session is persisted at the end of every turn.
-    def run_assist_loop(session:, messages:)
-      session.messages = messages
-      @engine.session = session
-      # Steering: lines submitted at the open prompt during a turn
-      # (#steer_line), merged by the kernel (#drain_steering).
-      @pending_input_queue = PendingInputQueue.new
-      open_repl_input
-
-      loop do
-        if @exit_after_turn
-          # Ctrl-D or exit came during a turn: the lines sent before it still
-          # run (all queued: the prompt closed at Ctrl-D), then the REPL ends.
-          input = queued_line
-          break if input.nil?
-        else
-          # Drain any pending ask_user_question first — it has priority over reminders and
-          # must be rendered on the REPL thread (turn thread is parked on Engine Monitor).
-          drain_pending_question?
-
-          # A due reminder runs its turn now, with the prompt open (on a
-          # terminal): the turn's output commits above it and whatever is typed
-          # there stays.
-          unless @engine.due_reminder_names.empty?
-            run_reminder_turn(session)
-            @turn_flow.after_reminder_turn
-            next
-          end
-          input = @prompt
-          @prompt = nil if input
-          if input.nil?
-            input = poll_input_with_reminder_check(awaiting_continue: @turn_flow.awaiting_continue?)
-            # A reminder fell due: run it at the top, with the prompt still open.
-            next if input == :due
-          end
-        end
-        break if input.nil?
-        local = local_command(input)
-        if local == :exit
-          @delete_on_exit ||= SessionCommands.delete_on_exit?(input)
-          break
-        end
-        if local == :archive
-          next @surface.commit(SCRATCH_ARCHIVE_REFUSED) if @scratch
-
-          @archive_on_exit = true
-          break
-        end
-        # Not an answer to a continue offer either.
-        next detach_note if local == :detach
-
-        # /stats and /recap run; the offer stays open.
-        if @turn_flow.awaiting_continue? && !%i[stats recap].include?(local)
-          answer_continue_offer(session, input)
-        else
-          # The ? read left no echo: show what ran.
-          @surface.commit("#{paint(QUESTION_PROMPT, 33)}#{input}") if @turn_flow.awaiting_continue?
-          run_input_line(session, input)
-        end
-      end
-
-      close_repl_input
-      @discard_on_exit = !@delete_on_exit && discard_on_exit?(session)
     end
 
     # An answer at the ? prompt of a continue offer. A valid one closes the
@@ -846,39 +893,6 @@ module Samagotchi
 
     def clone_messages(messages)
       Array(messages).map(&:dup)
-    end
-
-    # Run one REPL turn (a prompt, or a continue/reminder turn with nil) through
-    # Engine#run_turn, rendering via @renderer.
-    # @param images [Array<Hash>] the prompt's `@path` images ({path:})
-    def run_engine_turn(session, prompt, continue: false, max_iterations: 100, images: [])
-      cancellation_controller = CancellationController.new
-      @active_cancel_controller = cancellation_controller
-      @renderer.begin_turn
-      # The row shows the turn's model (a -p turn runs before any read).
-      refresh_status_row
-      # A prompt the user typed brings an archived session back to the lists.
-      ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir) if prompt && !continue
-      with_steering do
-        @engine.run_turn(
-          session,
-          prompt,
-          on_event: @render_event,
-          max_iterations: max_iterations,
-          cancel_controller: cancellation_controller,
-          pending_input: method(:drain_steering),
-          continue: continue,
-          images: images
-        )
-      end
-    rescue Interrupt
-      # Engine kept the prompt in the session and emitted :turn_canceled
-      # (the renderer's line).
-      cancellation_controller&.cancel!(:ctrl_c)
-      cancelled_result_from(session.messages, reason: :ctrl_c)
-    ensure
-      @active_cancel_controller = nil
-      @view.finish_thinking_spinner
     end
 
     # While a turn runs, a line submitted at the open prompt steers it: it

@@ -59,7 +59,7 @@ RSpec.describe "discarding an empty session" do
     repl.instance_variable_set(:@engine, engine_double(row))
     repl.instance_variable_set(:@default_model_name, model)
     repl.instance_variable_set(:@effective_model_name, row.fetch(:repl_model, model))
-    repl.send(:discard_on_exit?, session)
+    repl.discard_on_exit?(session)
   end
 
   def sweep_says(session)

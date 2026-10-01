@@ -7,7 +7,7 @@ require "samagotchi/terminal_ui"
 RSpec.describe Samagotchi::TerminalUI, "recap at a continue offer", :recap do
   it "hands the recap a seam that reads the REPL's TurnFlow" do
     ui = described_class.new(client: instance_double(Samagotchi::Client))
-    recap = ui.instance_variable_get(:@engine).recap
+    recap = ui.engine.recap
     expect(recap).not_to be_nil
     seam = recap.instance_variable_get(:@awaiting_continue)
     turn_flow = ui.instance_variable_get(:@turn_flow)

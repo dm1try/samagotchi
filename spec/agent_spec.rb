@@ -23,7 +23,7 @@ RSpec.describe Samagotchi::TerminalUI do
     buffer = StringIO.new
     $stdout = buffer
     begin
-      agent.send(:run_engine_turn, repl_session, prompt)
+      agent.run_engine_turn(repl_session, prompt)
     ensure
       $stdout = original
     end
@@ -259,7 +259,7 @@ file2.rb")
       expect(received_prompt).to include("**foo**")
       expect(received_prompt).not_to include("**bar**")
       expect(agent.instance_variable_get(:@status_row).rows(200).join("\n")).to include("mem: foo | muted: bar")
-      expect(agent.instance_variable_get(:@engine).muted_memory_names).to eq(["bar"])
+      expect(agent.engine.muted_memory_names).to eq(["bar"])
     end
 
     it "records the --memory and --mute lists on a new REPL session" do
@@ -270,7 +270,7 @@ file2.rb")
                                   memories: ["foo"], muted_memories: ["system/bar.md"])
       agent.run
 
-      session = agent.instance_variable_get(:@engine).session
+      session = agent.engine.session
       expect(session.preloaded_memory_names).to eq(["foo"])
       expect(session.muted_memory_names).to eq(["system/bar.md"])
     end
@@ -283,7 +283,7 @@ file2.rb")
       agent = described_class.new(client: client, session_id: stored.id, memories: ["baz"], muted_memories: ["bar", "qux"])
 
       expect(agent.instance_variable_get(:@requested_memories)).to eq(%w[foo baz])
-      expect(agent.instance_variable_get(:@engine).muted_memory_names).to eq(%w[bar qux])
+      expect(agent.engine.muted_memory_names).to eq(%w[bar qux])
     ensure
       agent&.instance_variable_get(:@owner_lock)&.release
     end
@@ -571,7 +571,7 @@ file2.rb")
 
     describe "Engine#shutdown as it leaves (the plugins' services stop)" do
       def shut_down?(agent)
-        engine = agent.instance_variable_get(:@engine)
+        engine = agent.engine
         engine.instance_variable_get(:@shut_down)
       end
 
@@ -690,7 +690,7 @@ file2.rb")
     # A memory read as the Engine hands it to the REPL: its tool_call_started,
     # then the used_memories_updated it follows it with.
     def memory_read_event(agent, event)
-      agent.instance_variable_get(:@engine).send(:emit_event, agent.method(:handle_stream_event), event)
+      agent.engine.send(:emit_event, agent.method(:handle_stream_event), event)
     end
 
     let(:surface) { RecordingSurface.new }
@@ -1242,7 +1242,7 @@ file2.rb")
       gemma_profile = Samagotchi::ModelProfile.gemma4
       agent = described_class.new(client: client, profile: gemma_profile)
 
-      hint = agent.instance_variable_get(:@engine).instance_variable_get(:@prompt_builder).send(:tool_call_hint)
+      hint = agent.engine.instance_variable_get(:@prompt_builder).send(:tool_call_hint)
       expect(hint).to include("<|tool_call>call:")
     end
 
@@ -1250,7 +1250,7 @@ file2.rb")
       qwen_profile = Samagotchi::ModelProfile.qwen36
       agent = described_class.new(client: client, profile: qwen_profile)
 
-      hint = agent.instance_variable_get(:@engine).instance_variable_get(:@prompt_builder).send(:tool_call_hint)
+      hint = agent.engine.instance_variable_get(:@prompt_builder).send(:tool_call_hint)
       expect(hint).to include("<tool_call>")
       expect(hint).to include("<function=")
       expect(hint).to include("<parameter=")
@@ -1274,10 +1274,10 @@ file2.rb")
       session = Samagotchi::Session.new_session(
         mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd
       )
-      messages = [{ role: "system", content: agent.instance_variable_get(:@engine).assist_system_prompt }]
+      messages = [{ role: "system", content: agent.engine.assist_system_prompt }]
       expect do
         agent.send(:assist_loop, session: session, messages: messages)
-        agent.send(:keep_after_exit, session)
+        agent.keep_after_exit(session)
       end.to output(/Continue session: chi --resume [0-9a-f-]+\n\z/).to_stdout
     end
   end

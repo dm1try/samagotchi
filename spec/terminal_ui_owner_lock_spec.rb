@@ -58,7 +58,7 @@ RSpec.describe "TerminalUI session ownership" do
       FileUtils.mkdir_p(File.join(session_dir, "notes"))
       ui = Samagotchi::TerminalUI.new(client: client, session_id: session.id, surface: surface)
 
-      ui.send(:delete_after_exit, session)
+      ui.delete_after_exit(session)
 
       expect(File.exist?(File.join(Samagotchi::Session.default_state_dir, "#{session.id}.json"))).to be false
       expect(Dir.exist?(session_dir)).to be false
@@ -69,7 +69,7 @@ RSpec.describe "TerminalUI session ownership" do
       ui = Samagotchi::TerminalUI.new(client: client, session_id: session.id, surface: surface)
       allow(Samagotchi::SessionManager).to receive(:delete_session).and_raise(Errno::EACCES, session_dir)
 
-      ui.send(:delete_after_exit, session)
+      ui.delete_after_exit(session)
 
       expect(surface.lines.last).to start_with("Session #{session.id} was not deleted (Permission denied")
       expect(surface.lines.last).to end_with("chi sessions delete #{session.id}")

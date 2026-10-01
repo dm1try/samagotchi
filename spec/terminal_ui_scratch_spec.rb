@@ -43,7 +43,7 @@ RSpec.describe "TerminalUI scratch session" do
 
   it "is saved as scratch from the start, says so, and is deleted at /exit with no recap" do
     ui = scratch_ui
-    engine = ui.instance_variable_get(:@engine)
+    engine = ui.engine
     expect(engine).not_to receive(:write_recap_now)
     on_disk = nil
     allow(ui).to receive(:poll_input_with_reminder_check) do
@@ -98,7 +98,7 @@ RSpec.describe "TerminalUI scratch session" do
 
   it "is deleted after a -p --non-interactive turn, which prints its answer last" do
     ui = scratch_ui(prompt: "Reply with exactly: PONG", non_interactive: true)
-    engine = ui.instance_variable_get(:@engine)
+    engine = ui.engine
     allow(engine).to receive(:run_turn) do |session, prompt, **|
       session.messages << { role: "user", content: prompt } << { role: "model", content: "PONG" }
       double(output: "PONG")

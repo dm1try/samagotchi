@@ -21,7 +21,7 @@ RSpec.describe Samagotchi::TerminalUI do
     end
 
     it "renders the session metrics summary via format_session_metrics" do
-      metrics = agent.instance_variable_get(:@engine).metrics
+      metrics = agent.engine.metrics
       metrics.call(type: :turn_started, session_id: "s", prompt: "x")
       metrics.call(type: :generation_started)
       metrics.call(type: :generation_chunk, payload: { "timings" => { "prompt_n" => 10, "predicted_n" => 5 } })
@@ -35,14 +35,14 @@ RSpec.describe Samagotchi::TerminalUI do
     end
 
     it "shows the context window and where it came from in /stats" do
-      metrics = agent.instance_variable_get(:@engine).metrics
+      metrics = agent.engine.metrics
       metrics.call(type: :generation_started, context_window_tokens: 128_000, context_window_source: :server)
 
       expect(agent.send(:format_session_metrics, metrics.snapshot)).to include("context window:   128000 tokens (server)")
     end
 
     it "shows the served model in /stats, with the name asked for when they differ" do
-      metrics = agent.instance_variable_get(:@engine).metrics
+      metrics = agent.engine.metrics
       output = ->(snapshot) { agent.send(:format_session_metrics, metrics.snapshot.merge(snapshot)) }
 
       expect(output.call(served_model: "ornith-1.5", served_model_for: "unsloth/Qwen3.6"))
@@ -53,7 +53,7 @@ RSpec.describe Samagotchi::TerminalUI do
     end
 
     it "shows the served model in the status line once a turn reported another one" do
-      engine = agent.instance_variable_get(:@engine)
+      engine = agent.engine
       row = -> { agent.send(:refresh_status_row) && agent.instance_variable_get(:@status_row).rows(200).first.to_s }
       expect(row.call).to start_with("status> model=#{engine.effective_model_name}")
 
@@ -64,7 +64,7 @@ RSpec.describe Samagotchi::TerminalUI do
     end
 
     it "shows the prompt profile and where it came from in /stats" do
-      metrics = agent.instance_variable_get(:@engine).metrics
+      metrics = agent.engine.metrics
       metrics.call(type: :generation_started, profile: "qwen36", profile_source: "config (models: ista)")
 
       expect(agent.send(:format_session_metrics, metrics.snapshot)).to include("prompt profile:   qwen36 (config (models: ista))")
@@ -87,7 +87,7 @@ RSpec.describe Samagotchi::TerminalUI do
     end
 
     it "counts each key typed as activity while the REPL runs" do
-      engine = agent.instance_variable_get(:@engine)
+      engine = agent.engine
       allow(engine).to receive(:record_activity)
 
       agent.send(:with_activity_hook) { Samagotchi::TerminalUI::RelineSeam.key_handler.call }
@@ -108,7 +108,7 @@ RSpec.describe Samagotchi::TerminalUI do
   describe "cards and notices between turns" do
     let(:surface) { RecordingSurface.new }
     let(:agent) { described_class.new(client: client, surface: surface) }
-    let(:engine) { agent.instance_variable_get(:@engine) }
+    let(:engine) { agent.engine }
     def lines = surface.lines.flat_map { |line| line.split("\n") }
 
     it "prints a card announced between turns at the open prompt, on the main thread, once" do
@@ -197,7 +197,7 @@ RSpec.describe Samagotchi::TerminalUI do
   end
 
   describe "/recap command" do
-    let(:engine) { agent.instance_variable_get(:@engine) }
+    let(:engine) { agent.engine }
     let(:recap_job) { double("recap", min_user_turns: 2) }
 
     before do
@@ -255,7 +255,7 @@ RSpec.describe Samagotchi::TerminalUI do
         session = instance_double(Samagotchi::Session, id: "s-9", messages: [{ role: "user", content: "hi" }])
         agent.instance_variable_set(:@resume_session, session)
         allow(engine).to receive(:saved_recap).and_return({ text: "Did X.", covered: 1, turns_since: 0 })
-        agent.send(:messages_for, session)
+        agent.messages_for(session)
         expect(surface.lines).to eq(["Resumed session: s-9", "recap> Did X."])
       end
     end

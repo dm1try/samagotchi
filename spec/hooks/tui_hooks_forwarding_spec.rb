@@ -46,14 +46,14 @@ RSpec.describe "TUI hooks forwarding regression" do
       registry = Samagotchi::HostRegistry.new(hosts_config: { "oai" => { host: "oai.test", port: 8000, api: :openai } })
       tui = Samagotchi::TerminalUI.new(client: client, host_registry: registry, model_name: "oai:m")
 
-      expect(tui.instance_variable_get(:@engine).backend).to be_a(Samagotchi::LLM::ChatLoop)
+      expect(tui.engine.backend).to be_a(Samagotchi::LLM::ChatLoop)
     end
 
     it "TerminalUI's Engine and KernelLoop share the same hooks registry" do
       allow(client).to receive(:complete).and_return("hello")
       tui = Samagotchi::TerminalUI.new(client: client)
 
-      engine = tui.instance_variable_get(:@engine)
+      engine = tui.engine
       kernel = tui.instance_variable_get(:@kernel)
 
       engine_hooks = engine.instance_variable_get(:@hooks)
@@ -66,7 +66,7 @@ RSpec.describe "TUI hooks forwarding regression" do
       allow(client).to receive(:complete).and_return("hi from model")
 
       tui = Samagotchi::TerminalUI.new(client: client)
-      engine = tui.instance_variable_get(:@engine)
+      engine = tui.engine
       kernel = tui.instance_variable_get(:@kernel)
 
       gen_fired = []

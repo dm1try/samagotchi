@@ -85,7 +85,7 @@ RSpec.describe "TerminalUI images" do
     let(:client) { instance_double(Samagotchi::Client) }
     let(:surface) { RecordingSurface.new }
     let(:agent) { Samagotchi::TerminalUI.new(client: client, surface: surface) }
-    let(:engine) { agent.instance_variable_get(:@engine) }
+    let(:engine) { agent.engine }
     let(:session) { instance_double(Samagotchi::Session, id: "s1", messages: []) }
     let(:result) { Samagotchi::KernelLoop::Result.new(output: "a red square", conversation: [], tool_activity: []) }
 
@@ -135,7 +135,7 @@ RSpec.describe "TerminalUI images" do
         result
       end
 
-      agent.send(:run_engine_turn, session, "go")
+      agent.run_engine_turn(session, "go")
 
       expect(drained).to eq(["and be brief"])
       expect(repl_input.pop(timeout: 0)).to eq([:line, "now look at @#{png}"])

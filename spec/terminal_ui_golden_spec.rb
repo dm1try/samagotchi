@@ -307,7 +307,7 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
 
     it "runs a due reminder as a synthetic turn" do
       setup = lambda do |ui|
-        engine = ui.instance_variable_get(:@engine)
+        engine = ui.engine
         engine.reminder_store.register({ name: "tick", description: "Say TICK", interval_minutes: 1 })
         engine.reminder_store.instance_variable_get(:@mutex).synchronize do
           engine.reminder_store.reminders["tick"][:next_fire_at] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - 1
@@ -354,7 +354,7 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     task = { bundle: "mcp", id: "mcp-1", label: "starting servers" }
     engine = nil
     setup = lambda do |ui|
-      engine = ui.instance_variable_get(:@engine)
+      engine = ui.engine
       engine.announce({ type: :plugin_init_started, **task })
     end
     events = [{ type: :plugin_init_wait, tasks: [task] }] + generation("qwen36", "Ready.")

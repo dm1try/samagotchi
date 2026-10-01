@@ -186,7 +186,7 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
 
   describe "a reminder due while the prompt is open" do
     let(:ui) { build_ui }
-    let(:engine) { ui.instance_variable_get(:@engine) }
+    let(:engine) { ui.engine }
     let(:typed) { Queue.new }
     let(:kernel_calls) { [] }
 
@@ -279,7 +279,7 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
       allow(Samagotchi::TerminalUI::LiveRegion).to receive(:open).and_return(screen)
       ui = build_ui(surface: nil, spinner_tick_interval: 0.02)
       view = ui.instance_variable_get(:@view)
-      ui.instance_variable_get(:@engine).announce({ type: :plugin_init_started, bundle: "mcp", id: "mcp-1", label: "starting" })
+      ui.engine.announce({ type: :plugin_init_started, bundle: "mcp", id: "mcp-1", label: "starting" })
       expect(view).to receive(:stop).ordered.and_call_original
       expect(Samagotchi::TerminalUI::LiveRegion).to receive(:close).with(screen).ordered
 

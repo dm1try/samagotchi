@@ -39,7 +39,7 @@ RSpec.describe "TerminalUI and archived sessions" do
   def archived? = Samagotchi::ArchiveStore.archived?(Samagotchi::Session.session_dir(session.id))
 
   def stub_turns(ui)
-    engine = ui.instance_variable_get(:@engine)
+    engine = ui.engine
     allow(engine).to receive(:run_turn).and_return(result)
   end
 
@@ -47,10 +47,10 @@ RSpec.describe "TerminalUI and archived sessions" do
     ui = Samagotchi::TerminalUI.new(client: client, surface: surface, session_id: session.id)
     stub_turns(ui)
 
-    ui.send(:run_engine_turn, session, nil, continue: true)
+    ui.run_engine_turn(session, nil, continue: true)
     expect(archived?).to be(true)
 
-    ui.send(:run_engine_turn, session, "next step")
+    ui.run_engine_turn(session, "next step")
     expect(archived?).to be(false)
   ensure
     ui&.instance_variable_get(:@owner_lock)&.release
