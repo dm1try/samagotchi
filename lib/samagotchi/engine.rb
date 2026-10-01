@@ -1554,6 +1554,39 @@ module Samagotchi
     # one-line summary:.
     def run_turn(session, prompt, on_event: nil, max_iterations: 100, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false, origin: nil,
                  images: [])
+      turn = begin_turn(session, prompt, on_event: on_event, cancel_controller: cancel_controller, origin: origin,
+                                         continue: continue)
+      begin
+        # A Stop cuts the /props probes this thread makes for the turn
+        # (window, served model, vision) instead of waiting their timeout.
+        probe_cancel_before = Client.swap_probe_cancel(turn.controller)
+        prepare_turn(turn, continue ? [] : images)
+        result = generate(turn, max_iterations: max_iterations, max_tool_output_chars: max_tool_output_chars,
+                                pending_input: pending_input)
+        publish_used_memories(session, on_event)
+        complete_turn(turn, result)
+        result
+      rescue Interrupt
+        turn.controller.cancel!(:ctrl_c)
+        end_turn(turn, "canceled") do |seconds|
+          [ctrl_c_messages(turn, seconds), { type: :turn_canceled, cancellation_reason: :ctrl_c, duration_ms: (seconds * 1000).round }]
+        end
+        raise
+      rescue StandardError => e
+        # Keep what the turn got to (the prompt plus the loop's completed
+        # tool iterations) like a cancel does, and save it: a worker exits
+        # after a failed turn. The REPL still rolls back to its checkpoint.
+        end_turn(turn, "failed", save: true) { |seconds| [failed_messages(turn, e), failed_event(e, seconds)] }
+        raise
+      ensure
+        release_turn(probe_cancel_before)
+      end
+    end
+
+    # The turn's state before anything can fail it: the session running,
+    # the turn flag, its cancel controller and sink. The cross-thread state
+    # is set here and cleared in #release_turn only.
+    def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:)
       # Track the active session for recap and status snapshot.
       @session = session
       # status is turn state: running now, idle again before the turn's end
@@ -1581,226 +1614,266 @@ module Samagotchi
       # The gate's context: who queued this turn, and git asked afresh.
       @guardrail_wiring.begin_turn(origin)
 
-      prompt = nil if continue
-      turn = Turn.new(session: session, prompt: prompt, continue: continue, on_event: on_event,
-                      controller: effective_controller, origin: origin,
-                      started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC))
+      Turn.new(session: session, prompt: continue ? nil : prompt, continue: continue, on_event: on_event,
+               controller: effective_controller, origin: origin, started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC))
+    end
+    private :begin_turn
+
+    # Everything before the model is asked: :turn_started, the kernel's
+    # per-turn settings, the plugins' setup, the session_start/before_turn
+    # hooks, then the messages to send (#turn_messages).
+    def prepare_turn(turn, images)
+      session = turn.session
+      image_refs, image_error = turn_image_refs(session, images)
+      # Emit turn_started event
+      bind_metrics(session)
+      turn_started = { type: :turn_started, session_id: session.id, prompt: turn.prompt }
+      turn_started[:continue] = true if turn.continue
+      turn_started[:images] = image_refs unless image_refs.empty?
+      emit_event(turn.on_event, turn.tag(turn_started))
+      raise image_error if image_error
+
+      # Before anything of the turn is kept or a reminder is used up.
+      vision = configure_kernel(session)
+      refuse_images!(vision) unless image_refs.empty?
+      announce_guardrail_failures(turn.on_event)
+      # Plugins' slow setup that brings tools (an MCP server's first
+      # start): the turn waits for it here, before the system prompt
+      # declares the tools; a Ctrl-C ends the wait (the turn is cancelled
+      # at its first request).
+      start_init_tasks!
+      await_init_tasks(turn.controller, turn.on_event)
+      # Plugins' tool sets that changed since the last turn.
+      apply_staged_tools!
+
+      # Fire :session_start on the very first turn
+      if @first_turn
+        @hooks.fire(:session_start, { type: :session_start, session_id: session.id })
+        @first_turn = false
+      end
+
+      # Fire :before_turn hook, with a read-only copy of the history so far
+      # and the prompt (nil on a continue).
+      @hooks.fire(:before_turn, { type: :before_turn, session_id: session.id, prompt: turn.prompt,
+                                  messages: hook_messages(session.messages) })
+
+      turn_messages(turn, image_refs)
+    end
+    private :prepare_turn
+
+    # The kernel's per-turn settings (vision, sampling, thinking); returns
+    # the turn's VisionContext. The model name is set in #generate, after
+    # the hooks that may switch the model.
+    def configure_kernel(session)
+      vision = turn_vision(session)
+      @kernel.vision = vision if @kernel.respond_to?(:vision=)
+      @kernel.sampling = turn_sampling if @kernel.respond_to?(:sampling=)
+      thinking_target = @host_registry.resolve(@effective_model_name)
+      @turn_thinking = [thinking_level(thinking_target), thinking_target]
+      @kernel.thinking = @turn_thinking.first if @kernel.respond_to?(:thinking=)
+      announce_thinking_level(*@turn_thinking)
+      vision
+    end
+    private :configure_kernel
+
+    # The messages the turn sends: the history under the system head, due
+    # reminders, the prompt. turn.messages is set first and grown in place,
+    # so a Ctrl-C or a failure meanwhile keeps what is there.
+    def turn_messages(turn, image_refs)
+      session = turn.session
+      turn.messages = session.messages.dup
+      # Built once per Engine (and again after a model switch) so the prompt
+      # prefix, and the model server's KV cache for it, stay stable.
+      turn.messages = ContextNote.with_system_head(turn.messages, { role: "system", content: system_prompt })
+      # Explicit --memory preloads are now known after system prompt build.
+      add_used_memory_names(activated_memory_names)
+      sync_used_memories_from_session(session)
+
+      # Inject due reminders as a tail system message (after history, before
+      # the new user prompt) to preserve prefix KV cache. Mutating the head
+      # system prompt invalidates cache for the entire prefix.
+      due_reminders = collect_due_reminders(turn.messages)
+      if due_reminders.any?
+        emit_event(turn.on_event, {
+          type: :reminder_injected,
+          reminders: due_reminders
+        })
+      end
+
+      return if turn.continue
+
+      user_message = { role: "user", content: turn.prompt }
+      user_message[:images] = image_refs unless image_refs.empty?
+      turn.messages << user_message
+      session.last_prompt = turn.prompt
+    end
+    private :turn_messages
+
+    # Ask the effective model's backend.
+    def generate(turn, max_iterations:, max_tool_output_chars:, pending_input:)
+      sync_kernel_client!
+      # Route model name as bare (without host prefix) to the transport;
+      # host selection already done via active client.
+      bare_for_backend = bare_model_name(@effective_model_name)
+      # The chat loop dispatches tools through the kernel without its #run:
+      # tag those dumps with this turn's model, not the last native one.
+      @kernel.current_model_name = bare_for_backend if @kernel.respond_to?(:current_model_name=)
+
+      backend.complete(
+        messages: turn.messages,
+        max_iterations: @no_interrupt ? NO_INTERRUPT_MAX_ITERATIONS : max_iterations,
+        on_stream_event: build_stream_event_handler(turn.on_event, cancel_controller: turn.controller),
+        cancel_controller: turn.controller,
+        model_name: bare_for_backend,
+        max_tool_output_chars: max_tool_output_chars,
+        pending_input: turn_drain(pending_input)
+      )
+    end
+    private :generate
+
+    def publish_used_memories(session, on_event)
+      # Persist deduped used memories onto the session for Web + reload.
       begin
-        # A Stop cuts the /props probes this thread makes for the turn
-        # (window, served model, vision) instead of waiting their timeout.
-        probe_cancel_before = Client.swap_probe_cancel(effective_controller)
-        image_refs, image_error = turn_image_refs(session, continue ? [] : images)
-        # Emit turn_started event
-        bind_metrics(session)
-        turn_started = { type: :turn_started, session_id: session.id, prompt: prompt }
-        turn_started[:continue] = true if continue
-        turn_started[:images] = image_refs unless image_refs.empty?
-        emit_event(on_event, turn.tag(turn_started))
-        raise image_error if image_error
+        session.used_memory_names = used_memory_names
+      rescue StandardError
+        nil
+      end
+      # Notify live observers of the updated memory list (so yellow bar refreshes
+      # even without a tool_call event if the preload was the only addition).
+      # Only emit when there is something to report to avoid noisy event_count drift.
+      return unless used_memory_names.any?
 
-        # Before anything of the turn is kept or a reminder is used up.
-        vision = turn_vision(session)
-        @kernel.vision = vision if @kernel.respond_to?(:vision=)
-        @kernel.sampling = turn_sampling if @kernel.respond_to?(:sampling=)
-        thinking_target = @host_registry.resolve(@effective_model_name)
-        @turn_thinking = [thinking_level(thinking_target), thinking_target]
-        @kernel.thinking = @turn_thinking.first if @kernel.respond_to?(:thinking=)
-        announce_thinking_level(*@turn_thinking)
-        refuse_images!(vision) unless image_refs.empty?
-        announce_guardrail_failures(on_event)
-        # Plugins' slow setup that brings tools (an MCP server's first
-        # start): the turn waits for it here, before the system prompt
-        # declares the tools; a Ctrl-C ends the wait (the turn is cancelled
-        # at its first request).
-        start_init_tasks!
-        await_init_tasks(effective_controller, on_event)
-        # Plugins' tool sets that changed since the last turn.
-        apply_staged_tools!
-
-        # Fire :session_start on the very first turn
-        if @first_turn
-          @hooks.fire(:session_start, { type: :session_start, session_id: session.id })
-          @first_turn = false
-        end
-
-        # Fire :before_turn hook, with a read-only copy of the history so far
-        # and the prompt (nil on a continue).
-        @hooks.fire(:before_turn, { type: :before_turn, session_id: session.id, prompt: prompt,
-                                    messages: hook_messages(session.messages) })
-
-        turn.messages = session.messages.dup
-        # Built once per Engine (and again after a model switch) so the prompt
-        # prefix, and the model server's KV cache for it, stay stable.
-        turn.messages = messages = ContextNote.with_system_head(turn.messages, { role: "system", content: system_prompt })
-        # Explicit --memory preloads are now known after system prompt build.
-        add_used_memory_names(activated_memory_names)
-        sync_used_memories_from_session(session)
-
-        # Inject due reminders as a tail system message (after history, before
-        # the new user prompt) to preserve prefix KV cache. Mutating the head
-        # system prompt invalidates cache for the entire prefix.
-        due_reminders = collect_due_reminders(messages)
-        if due_reminders.any?
-          emit_event(on_event, {
-            type: :reminder_injected,
-            reminders: due_reminders
-          })
-        end
-
-        unless continue
-          user_message = { role: "user", content: prompt }
-          user_message[:images] = image_refs unless image_refs.empty?
-          messages << user_message
-          session.last_prompt = prompt
-        end
-
-        sync_kernel_client!
-        # Route model name as bare (without host prefix) to the transport;
-        # host selection already done via active client.
-        bare_for_backend = bare_model_name(@effective_model_name)
-        # The chat loop dispatches tools through the kernel without its #run:
-        # tag those dumps with this turn's model, not the last native one.
-        @kernel.current_model_name = bare_for_backend if @kernel.respond_to?(:current_model_name=)
-
-        result = backend.complete(
-          messages: messages,
-          max_iterations: @no_interrupt ? NO_INTERRUPT_MAX_ITERATIONS : max_iterations,
-          on_stream_event: build_stream_event_handler(on_event, cancel_controller: effective_controller),
-          cancel_controller: effective_controller,
-          model_name: bare_for_backend,
-          max_tool_output_chars: max_tool_output_chars,
-          pending_input: turn_drain(pending_input)
-        )
-
-        # Persist deduped used memories onto the session for Web + reload.
-        begin
-          session.used_memory_names = used_memory_names
-        rescue StandardError
-          nil
-        end
-        # Notify live observers of the updated memory list (so yellow bar refreshes
-        # even without a tool_call event if the preload was the only addition).
-        # Only emit when there is something to report to avoid noisy event_count drift.
-        if used_memory_names.any?
-          begin
-            emit_event(on_event, { type: :used_memories_updated, used_memory_names: used_memory_names })
-          rescue StandardError
-            nil
-          end
-        end
-
-        response = result.output.to_s
-        canceled = result.canceled?
-        conversation = result.conversation if result.conversation.is_a?(Array)
-        # Bring the turn into the session and announce its end as one step of
-        # the event log: a snapshot taken meanwhile (the Bridge's) shows the
-        # turn either in progress or in the messages, never both or neither.
-        # A turn that ran out of iterations ends at its tool results, so a
-        # continue resumes from them rather than after a made-up reply.
-        # Nothing visible (the native loop: no text; the chat loop: its
-        # placeholder text) is a turn the model should know ended that way.
-        empty = result.empty_answer?
-        # after_turn hooks run below and may present the answer (the web
-        # holds its pop until it knows).
-        display_pending = !canceled && @hooks.any?(:after_turn)
-        end_turn(turn, canceled ? "canceled" : "completed") do |seconds|
-          kept = if empty
-                   # The placeholder is for the UIs (a new array: it must not leak
-                   # into the result); the note is for the model, so it goes on the
-                   # result's conversation too, which the REPL keeps as-is.
-                   # A retry's nudge at the tail goes: this note says it all.
-                   note = TurnNote.empty
-                   conversation&.replace(TurnNote.without_trailing(conversation))
-                   saved = TurnNote.without_trailing(conversation || session.messages)
-                   saved << { role: "model", content: "[No response]" } if response.strip.empty?
-                   conversation << note if conversation
-                   saved + [note]
-                 elsif canceled && conversation
-                   conversation << TurnNote.cancelled(result.cancellation_reason, seconds: seconds,
-                                                                                 stopped_by: effective_controller.detail,
-                                                                                 shown: TurnNote.interrupted_tail?(conversation),
-                                                                                 running_tasks: Tools::TaskRuntime.running_created_in(conversation))
-                 else
-                   conversation
-                 end
-          if canceled
-            [kept, { type: :turn_canceled, cancellation_reason: result.cancellation_reason,
-                     duration_ms: (seconds * 1000).round }]
-          else
-            # For a client that attaches later (session_state_snapshot).
-            @last_context_status = result.context_status.dup if result.context_status
-            [kept, { type: :turn_completed, result: result, turn_summary: turn_summary(result),
-                     display_pending: display_pending }]
-          end
-        end
-
-        # Fire :after_turn hook (runs even on cancel/success), with a read-only
-        # copy of the conversation the turn stored, and event[:present] for
-        # a display version of the answer (AnswerDisplay).
-        display = AnswerDisplay.new(session.messages)
-        after_turn = { type: :after_turn, status: canceled ? "canceled" : "completed",
-                       messages: hook_messages(session.messages) }
-        after_turn[:present] = display.presenter(after_turn)
-        @hooks.fire(:after_turn, after_turn)
-        store_answer_display(session, display, pending: display_pending)
-
-        # Fire :session_end after every turn (turn-level lifecycle)
-        @hooks.fire(:session_end, { type: :session_end, session_id: session.id })
-
-        result
-      rescue Interrupt
-        effective_controller.cancel!(:ctrl_c)
-        end_turn(turn, "canceled") do |seconds|
-          # Only the pre-turn messages survive here, so tasks this turn
-          # started are missed (plan wait-stop §6).
-          kept = if turn.messages
-                   note = TurnNote.cancelled(:ctrl_c, seconds: seconds,
-                                                      running_tasks: Tools::TaskRuntime.running_created_in(turn.messages))
-                   TurnNote.replace_trailing(turn.messages, note)
-                 end
-          [kept, { type: :turn_canceled, cancellation_reason: :ctrl_c, duration_ms: (seconds * 1000).round }]
-        end
-        raise
-      rescue StandardError => e
-        # Keep what the turn got to (the prompt plus the loop's completed
-        # tool iterations) like a cancel does, and save it: a worker exits
-        # after a failed turn. The REPL still rolls back to its checkpoint.
-        end_turn(turn, "failed", save: true) do |seconds|
-          kept = e.respond_to?(:partial_conversation) && e.partial_conversation.is_a?(Array) ? e.partial_conversation : turn.messages
-          # The model reads why on its next turn (a UI that rolls the turn back
-          # leaves its own note, TurnFlow#prompt_turn_failed). Nothing when the
-          # turn never reached the model (kept is nil).
-          if kept
-            summary = e.respond_to?(:summary) ? e.summary : e.message
-            kept = TurnNote.replace_trailing(kept, TurnNote.failed(summary, continued: continue))
-          end
-          failed = { type: :turn_failed, error_class: e.class.name, message: e.message,
-                     duration_ms: (seconds * 1000).round }
-          # A provider error says what kind it is, for one line per kind in the UIs.
-          if e.is_a?(LLM::ProviderError)
-            failed.merge!(error_kind: e.kind, retryable: e.retryable?, host: e.host, summary: e.summary)
-          end
-          [kept, failed]
-        end
-        raise
-      ensure
-        # A completed turn is activity: release the turn flag and advance the
-        # shared inactivity clock so the idle recap detector (shared with the REPL)
-        # treats the just-finished turn as activity and re-arms its window.
-        # Always runs, even if an exception occurred.
-        set_turn_running(false)
-        Client.swap_probe_cancel(probe_cancel_before)
-        left = @activity_mutex.synchronize do
-          @active_cancel_controller = nil
-          @turn_event_sink = nil
-          @steers.tap { @steers = [] }
-        end
-        log_dropped_steers(left, "turn_ended")
-        record_activity
-        # Clear hooks so they remain turn-scoped and never leak into the next turn.
-        clear_hooks
+      begin
+        emit_event(on_event, { type: :used_memories_updated, used_memory_names: used_memory_names })
+      rescue StandardError
+        nil
       end
     end
+    private :publish_used_memories
+
+    # The normal ending (an answer, an empty answer, a Stop, the iteration
+    # limit), then the after-turn hooks.
+    def complete_turn(turn, result)
+      canceled = result.canceled?
+      # after_turn hooks run below and may present the answer (the web
+      # holds its pop until it knows).
+      display_pending = !canceled && @hooks.any?(:after_turn)
+      end_turn(turn, canceled ? "canceled" : "completed") do |seconds|
+        kept = kept_messages(turn, result, seconds)
+        if canceled
+          [kept, { type: :turn_canceled, cancellation_reason: result.cancellation_reason,
+                   duration_ms: (seconds * 1000).round }]
+        else
+          # For a client that attaches later (session_state_snapshot).
+          @last_context_status = result.context_status.dup if result.context_status
+          [kept, { type: :turn_completed, result: result, turn_summary: turn_summary(result),
+                   display_pending: display_pending }]
+        end
+      end
+
+      # Fire :after_turn hook (runs even on cancel/success), with a read-only
+      # copy of the conversation the turn stored, and event[:present] for
+      # a display version of the answer (AnswerDisplay).
+      session = turn.session
+      display = AnswerDisplay.new(session.messages)
+      after_turn = { type: :after_turn, status: canceled ? "canceled" : "completed",
+                     messages: hook_messages(session.messages) }
+      after_turn[:present] = display.presenter(after_turn)
+      @hooks.fire(:after_turn, after_turn)
+      store_answer_display(session, display, pending: display_pending)
+
+      # Fire :session_end after every turn (turn-level lifecycle)
+      @hooks.fire(:session_end, { type: :session_end, session_id: session.id })
+    end
+    private :complete_turn
+
+    # What the session keeps of a turn that ended normally (nil: nothing to
+    # replace). Runs under the event lock: it also adds the turn's note to
+    # result.conversation, which the REPL keeps as-is.
+    # A turn that ran out of iterations ends at its tool results, so a
+    # continue resumes from them rather than after a made-up reply.
+    def kept_messages(turn, result, seconds)
+      conversation = result.conversation if result.conversation.is_a?(Array)
+      # Nothing visible (the native loop: no text; the chat loop: its
+      # placeholder text) is a turn the model should know ended that way.
+      if result.empty_answer?
+        # The placeholder is for the UIs (a new array: it must not leak
+        # into the result); the note is for the model, so it goes on the
+        # result's conversation too.
+        # A retry's nudge at the tail goes: this note says it all.
+        note = TurnNote.empty
+        conversation&.replace(TurnNote.without_trailing(conversation))
+        saved = TurnNote.without_trailing(conversation || turn.session.messages)
+        saved << { role: "model", content: "[No response]" } if result.output.to_s.strip.empty?
+        conversation << note if conversation
+        saved + [note]
+      elsif result.canceled? && conversation
+        conversation << TurnNote.cancelled(result.cancellation_reason, seconds: seconds,
+                                                                      stopped_by: turn.controller.detail,
+                                                                      shown: TurnNote.interrupted_tail?(conversation),
+                                                                      running_tasks: Tools::TaskRuntime.running_created_in(conversation))
+      else
+        conversation
+      end
+    end
+    private :kept_messages
+
+    # A Ctrl-C keeps the turn's messages so far with a cancel note (nil
+    # before there are any). Only the pre-turn messages survive here, so
+    # tasks this turn started are missed (plan wait-stop §6).
+    def ctrl_c_messages(turn, seconds)
+      return nil unless turn.messages
+
+      note = TurnNote.cancelled(:ctrl_c, seconds: seconds, running_tasks: Tools::TaskRuntime.running_created_in(turn.messages))
+      TurnNote.replace_trailing(turn.messages, note)
+    end
+    private :ctrl_c_messages
+
+    # A failure keeps the loop's partial conversation (else the turn's
+    # messages so far) with a failed note; nil when the turn never reached
+    # the model. The model reads why on its next turn (a UI that rolls the
+    # turn back leaves its own note, TurnFlow#prompt_turn_failed).
+    def failed_messages(turn, error)
+      kept = error.respond_to?(:partial_conversation) && error.partial_conversation.is_a?(Array) ? error.partial_conversation : turn.messages
+      return nil unless kept
+
+      summary = error.respond_to?(:summary) ? error.summary : error.message
+      TurnNote.replace_trailing(kept, TurnNote.failed(summary, continued: turn.continue))
+    end
+    private :failed_messages
+
+    def failed_event(error, seconds)
+      failed = { type: :turn_failed, error_class: error.class.name, message: error.message,
+                 duration_ms: (seconds * 1000).round }
+      # A provider error says what kind it is, for one line per kind in the UIs.
+      if error.is_a?(LLM::ProviderError)
+        failed.merge!(error_kind: error.kind, retryable: error.retryable?, host: error.host, summary: error.summary)
+      end
+      failed
+    end
+    private :failed_event
+
+    # However the turn ended (#run_turn's ensure): the turn flag off, the
+    # probe cancel restored, the cancel controller, sink and steers cleared
+    # (a steer left is logged as dropped), activity recorded, the
+    # turn-scoped hooks cleared.
+    def release_turn(probe_cancel_before)
+      # A completed turn is activity: release the turn flag and advance the
+      # shared inactivity clock so the idle recap detector (shared with the REPL)
+      # treats the just-finished turn as activity and re-arms its window.
+      set_turn_running(false)
+      Client.swap_probe_cancel(probe_cancel_before)
+      left = @activity_mutex.synchronize do
+        @active_cancel_controller = nil
+        @turn_event_sink = nil
+        @steers.tap { @steers = [] }
+      end
+      log_dropped_steers(left, "turn_ended")
+      record_activity
+      # Clear hooks so they remain turn-scoped and never leak into the next turn.
+      clear_hooks
+    end
+    private :release_turn
 
     # [refs, nil] for a turn's images, or [[], error] when one can't be used
     # (the turn then fails right after :turn_started).
