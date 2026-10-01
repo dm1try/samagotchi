@@ -17,6 +17,8 @@ module Samagotchi
   # exactly what the Bridge's minimal server expects.
   class BridgeClient
     HOST = "127.0.0.1"
+    # A reply's status line; its code is group 1.
+    STATUS_LINE = %r{\AHTTP/1\.[01] (\d{3})}
     STREAM_CONNECT_ATTEMPTS = 3
     # Seconds #stream waits for bytes before it asks `running` again.
     STREAM_POLL = 0.5
@@ -180,10 +182,8 @@ module Samagotchi
       sock.write("GET /session/#{@session_id}/#{path} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nConnection: close\r\n\r\n")
       response = read_reply(sock, path)
       sock.close rescue nil
-      return nil unless response
-
-      status_line = response.lines.first.to_s
-      return nil unless status_line.include?("200")
+      # A 500 whose text has "200" in it is not a 200.
+      return nil unless response && response[STATUS_LINE, 1] == "200"
 
       body = response.split("\r\n\r\n", 2)[1] || ""
       JSON.parse(body)
@@ -261,7 +261,7 @@ module Samagotchi
       sock.write("GET /session/#{@session_id}/stream#{query} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nAccept: text/event-stream\r\n#{last_event_line}Connection: keep-alive\r\n\r\n")
       raise Errno::ETIMEDOUT if timeout && !sock.wait_readable(timeout)
 
-      status = sock.gets.to_s[/\AHTTP\/1\.[01] (\d{3})/, 1].to_i
+      status = sock.gets.to_s[STATUS_LINE, 1].to_i
       while (line = sock.gets)
         break if line.strip.empty?
       end
@@ -284,7 +284,7 @@ module Samagotchi
       sock.write("POST /session/#{@session_id}/#{path} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\nContent-Type: application/json\r\nContent-Length: #{json_body.bytesize}\r\nConnection: close\r\n\r\n#{json_body}")
       reply = read_reply(sock, path, whole: read_body)
       body = read_body ? reply.split("\r\n\r\n", 2)[1] : nil
-      Response.new(status: reply[/\AHTTP\/1\.[01] (\d{3})/, 1].to_i, body: body)
+      Response.new(status: reply[STATUS_LINE, 1].to_i, body: body)
     ensure
       sock&.close rescue nil
     end
