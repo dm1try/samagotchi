@@ -32,8 +32,7 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
 
       expect(returned).to be_a(Samagotchi::LLM::ModelResult)
       expect(returned.output).to eq("hello back")
-      expect(returned.tool_calls).to be_nil
-      expect(returned.provider).to eq(:native)
+      expect(kernel).to have_received(:run)
     end
 
     it "emits turn_canceled (not turn_completed) for a canceled kernel result" do
@@ -89,7 +88,7 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
     it "delegates to @backend.complete and returns the ModelResult" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       model_result = Samagotchi::LLM::ModelResult.new(
-        text: "cloud response", tool_calls: nil, provider: :chat,
+        text: "cloud response",
         conversation: [{ role: "user", content: "hi" }, { role: "model", content: "cloud response" }]
       )
       allow(backend).to receive(:complete).and_return(model_result)
@@ -97,13 +96,13 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
       returned = build_engine_with_backend(profile: "gemma4").run_turn(make_session, "hi")
 
       expect(returned).to eq(model_result)
-      expect(returned.provider).to eq(:chat)
+      expect(backend).to have_received(:complete)
     end
 
     it "emits turn_canceled for a canceled backend result" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       model_result = Samagotchi::LLM::ModelResult.new(
-        text: "", tool_calls: nil, provider: :chat,
+        text: "",
         canceled: true, cancellation_reason: :user_interrupt,
         conversation: []
       )

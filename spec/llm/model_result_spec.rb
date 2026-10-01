@@ -6,10 +6,6 @@ RSpec.describe Samagotchi::LLM::ModelResult do
   it "is keyword_init with nil defaults for every field" do
     r = described_class.new(text: "hi")
     expect(r.text).to eq("hi")
-    expect(r.tool_calls).to be_nil
-    expect(r.provider).to be_nil
-    expect(r.usage).to be_nil
-    expect(r.metadata).to be_nil
     expect(r.conversation).to be_nil
     expect(r.canceled).to be_falsey
     expect(r.cancellation_reason).to be_nil

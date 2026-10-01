@@ -297,7 +297,7 @@ module Samagotchi
         text.encoding == Encoding::UTF_8 && !text.valid_encoding? ? text.scrub("?") : text
       end
 
-      # One turn's state: the conversation, the stream sink, usage and tool
+      # One turn's state: the conversation, the stream sink and tool
       # activity.
       class Run
         def initialize(loop, conversation, on_stream_event, cancel_controller, model_name, pending_input)
@@ -307,12 +307,7 @@ module Samagotchi
           @cancel_controller = cancel_controller
           @model_name = model_name
           @pending_input = pending_input
-          @usage = UsageCollector.new
           @tool_activity = []
-          # What an estimate counts as the prompt when the server reports no
-          # usage: the text, and each image's estimate (not its base64).
-          @prompt_text = conversation.sum("") { |entry| entry[:content].to_s }
-          @image_tokens = ImagePlan.estimated_tokens(conversation)
           @empty_retry = EmptyAnswerRetry.new
           @context = ContextStatus.new(conversation: conversation)
         end
@@ -578,23 +573,18 @@ module Samagotchi
           @conversation << { role: "model", content: "#{visible}\n[interrupted]", interrupted: true } unless visible.empty?
           conversation = @loop.plain(@conversation)
           conversation.last[:interrupted] = true unless visible.empty?
-          ModelResult.new(text: "", provider: :chat, conversation: conversation, canceled: true,
-                          cancellation_reason: reason, tool_activity: @tool_activity, usage: usage,
+          ModelResult.new(text: "", conversation: conversation, canceled: true,
+                          cancellation_reason: reason, tool_activity: @tool_activity,
                           context_status: @context.display)
         end
 
         def result(text, exhausted:)
-          ModelResult.new(text: text, provider: :chat, conversation: @loop.plain(@conversation), exhausted: exhausted,
-                          tool_activity: @tool_activity, usage: usage, empty_answer: text == EMPTY_ANSWER,
+          ModelResult.new(text: text, conversation: @loop.plain(@conversation), exhausted: exhausted,
+                          tool_activity: @tool_activity, empty_answer: text == EMPTY_ANSWER,
                           context_status: @context.display)
         end
 
-        def usage
-          @usage.usage(prompt_text: @prompt_text, extra_prompt_tokens: @image_tokens)
-        end
-
         def emit(event)
-          @usage.observe(event)
           @on_stream_event&.call(event)
         rescue StandardError
           nil

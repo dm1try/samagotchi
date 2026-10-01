@@ -3,29 +3,20 @@
 module Samagotchi
   module LLM
     # Normalized result returned by every ModelBackend downstream of the agentic
-    # loop. The loop lives INSIDE the backend (Option A), so raw provider tool
-    # calls are never surfaced — `tool_calls` is always `nil` downstream.
-    #
-    # It deliberately mirrors the read surface Engine#run_turn and the renderers
-    # (TerminalUI / Bridge) currently consume off KernelLoop::Result, so wiring
-    # the seam in does not require changes to those consumers:
-    #   .conversation, .canceled?, .cancellation_reason, .output, .exhausted?
-    # plus the native loop's .tool_activity, .context_status and
-    # .pending_tool_calls, which the interactive renderer needs.
+    # loop (the loop lives inside the backend). What Engine#run_turn and the
+    # renderers (TerminalUI / Bridge) read: .output (= .text, and .to_s, which
+    # is how the :turn_completed `result:` reaches JSON), .conversation,
+    # .canceled?, .cancellation_reason, .exhausted?, .resumable?,
+    # .empty_answer?, plus the native loop's .tool_activity, .context_status
+    # and .pending_tool_calls, which the interactive renderer needs.
     class ModelResult
-      attr_reader :text, :tool_calls, :provider, :usage, :metadata,
-                  :conversation, :canceled, :cancellation_reason, :exhausted,
+      attr_reader :text, :conversation, :canceled, :cancellation_reason, :exhausted,
                   :tool_activity, :context_status, :pending_tool_calls
 
-      def initialize(text:, tool_calls: nil, provider: nil, usage: nil, metadata: nil,
-                     conversation: nil, canceled: false, cancellation_reason: nil, exhausted: false,
+      def initialize(text:, conversation: nil, canceled: false, cancellation_reason: nil, exhausted: false,
                      tool_activity: [], context_status: nil, pending_tool_calls: false, empty_answer: false)
         @empty_answer = empty_answer
         @text = text
-        @tool_calls = tool_calls
-        @provider = provider
-        @usage = usage
-        @metadata = metadata
         @conversation = conversation
         @canceled = canceled
         @cancellation_reason = cancellation_reason

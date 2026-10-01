@@ -99,11 +99,6 @@ RSpec.describe "ChatLoop images" do
     expect(wire.first[:content]).to eq([{ type: "text", text: "a" }, image(png_uri)])
   end
 
-  it "counts an image's estimate, not its base64, when the server reports no usage" do
-    result = loop.complete(messages: [{ role: "user", content: "x", images: [png] }], model_name: "m")
-    expect(result.usage.prompt_tokens).to eq(Samagotchi::TokenUsage.estimate("x") + 1)
-  end
-
   it "sends the image parts over HTTP in the OpenAI shape" do
     FakeProviderServer.without_webmock do
       server = FakeProviderServer.start

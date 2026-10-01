@@ -330,8 +330,8 @@ conversation (the prompt plus completed tool iterations) and emits
 `:turn_failed` with `error_kind:`, `retryable:`, `host:` and a one-line
 `summary:`, which the REPL, the attached TUI and the web show.
 
-**Usage and models.** `ModelResult#usage` is an `LLM::Usage` (server counts, else
-a chars/4 estimate, else zeros; never nil). Model lists are `LLM::ModelInfo`
+**Usage and models.** A turn's token counts are `SessionMetrics`', read from the
+stream events (server counts, else a chars/4 estimate). Model lists are `LLM::ModelInfo`
 (`HostRegistry#list_all_models`); the context window comes from the running
 server (`/props`), then the host's model list, then config.
 

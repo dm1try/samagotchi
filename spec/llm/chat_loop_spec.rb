@@ -246,8 +246,6 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       expect(result).to be_a(Samagotchi::LLM::ModelResult)
       expect(result.text).to eq("hello back")
-      expect(result.provider).to eq(:chat)
-      expect(result.tool_calls).to be_nil
       expect(result).not_to be_canceled
       expect(result).not_to be_exhausted
       expect(result.conversation).to eq([{ role: "user", content: "hi" }, { role: "model", content: "hello back" }])
@@ -353,18 +351,6 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       expect(seen).to eq([[{ role: "user", content: "go" }]])
       expect(seen.first).to be_frozen
-    end
-
-    it "sets the turn's usage from the server's counts" do
-      usage = Samagotchi::LLM::Usage.new(prompt_tokens: 300, completion_tokens: 12, source: :server)
-      backend.adapter = FakeChatAdapter.new(text("ok", usage: usage))
-
-      expect(run.usage).to eq(usage)
-    end
-
-    it "estimates the usage when the server reports none" do
-      expect(run([{ role: "user", content: "a" * 40 }]).usage)
-        .to eq(Samagotchi::LLM::Usage.new(prompt_tokens: 10, completion_tokens: 3, source: :estimate))
     end
 
     describe "the status line's context value" do
