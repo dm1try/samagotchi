@@ -8,13 +8,16 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-01
+
 ### Fixed
 
-- The `known-names` bundle (0.1.3) no longer rejects a shell glob of a known name, such as `ls -d myrepo*` in a repo
-  named `myrepo`: a token with `*?[]{}` is not checked. Run `chi bundle upgrade known-names` (or `chi update`).
-- The `skills` bundle (0.1.4) no longer counts a call that a guardrail or the user denied as a failed skill step, so
-  it doesn't steer the model to fix the skill or say "a step failed" at the turn's end. Run
-  `chi bundle upgrade skills` (or `chi update`).
+- The `known-names` bundle no longer rejects a shell glob of a known name, such as `ls -d myrepo*` in a repo named
+  `myrepo`: a token with `*?[]{}` is not checked.
+- The `skills` bundle no longer counts a call that a guardrail or the user denied as a failed skill step, so it
+  doesn't steer the model to fix the skill or say "a step failed" at the turn's end.
+
+Update with `chi update` (bundles: known-names 0.1.3, skills 0.1.4).
 
 ## [0.10.0] - 2026-10-01
 
@@ -575,7 +578,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/dm1try/samagotchi/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/dm1try/samagotchi/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/dm1try/samagotchi/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/dm1try/samagotchi/compare/v0.8.0...v0.8.1
