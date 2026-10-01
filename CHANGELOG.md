@@ -8,6 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- The `known-names` bundle checks the name in `~name` (that user's home folder): `ls ~myname` is no longer rejected
+  as a near miss of `myname`, and `ls ~mynmae` is caught.
+- `chi sessions` usage errors exit 2, as every other command's: an unknown subcommand, `stop` with no ids, a bad
+  `list --format` or `--scope`, and now also an unknown flag or a flag missing its value for `list`, `prune` and
+  `clean` (they were ignored). Each prints what was wrong and the usage on stderr. A session that is unknown or
+  refused still exits 1.
+
+Update with `chi update` (bundles: known-names 0.1.4).
+
 ## [0.10.1] - 2026-10-01
 
 ### Fixed

@@ -223,7 +223,8 @@ call's command, `cwd` or paths (never a write's content) that is within one
 edit of a known name shorter than 10 characters, or two edits of a longer
 one, is a near miss. Tokens and names shorter than `min_length` (6) are
 skipped, as is a token that equals another known name. A token with a shell
-glob (`*?[]{}`, as in `ls -d samagotchi*`) is not checked.
+glob (`*?[]{}`, as in `ls -d samagotchi*`) is not checked. In `~name` (that
+user's home folder) the name after `~` is what is checked.
 
 By default (`mode: reject`) the call is denied with advice in place of the
 usual tail, so the model retries it corrected:
