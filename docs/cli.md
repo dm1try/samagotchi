@@ -706,7 +706,7 @@ While a turn runs, one row above the prompt says what it is doing, the spinner f
   Qwen `TURN:` prefix and inline markdown are left out.
 - `| waiting for the first token… 5s` after 2 s with nothing streamed.
 - `| running execute…` while a tool runs (its `tool>` line prints when it ends).
-- `| retrying (1/4 in 0.5s): Errno::ECONNREFUSED` while a network error is retried.
+- `| retrying (1/3 in 0.5s): Errno::ECONNREFUSED` while a network error is retried.
 - `| mcp: starting servers…` while a plugin's slow setup (an init task) runs, between turns too;
   `mcp> ✓ …` prints when it is done.
 
