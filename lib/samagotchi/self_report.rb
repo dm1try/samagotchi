@@ -139,7 +139,7 @@ module Samagotchi
       return "reported per turn (remote host)" if entry.remote?
 
       client = registry.client_for(entry)
-      props = client.server_props(model: bare) if client.respond_to?(:server_props)
+      props = client.server_props(model: bare)
       return "reported per turn (the server has no /props)" if props.nil?
       return "unknown (the server didn't answer; is it running?)" if props.status == :network_error
 

@@ -365,7 +365,7 @@ module Samagotchi
             version: manifest.version,
             source_path: @source,
             hooks: hooks_for_provenance,
-            trust_level: manifest.respond_to?(:trust_level) ? manifest.trust_level : nil,
+            trust_level: manifest.trust_level,
             source_commit: source_commit,
             hooks_files: hooks_files_for_provenance,
             guardrails_files: guardrail_files_for_provenance,

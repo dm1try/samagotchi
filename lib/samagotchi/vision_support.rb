@@ -60,10 +60,10 @@ module Samagotchi
 
     def self.native(target, entry, profile, trust_config:)
       client = target.client
-      transport = client.respond_to?(:transport) ? client.transport.name : :llama_cpp
+      transport = client.transport.name
       return no("#{transport} hosts take no images (only llama.cpp does)") unless transport == :llama_cpp
 
-      props = client.respond_to?(:server_props) ? client.server_props(model: target.bare_model) : nil
+      props = client.server_props(model: target.bare_model)
       return no("can't reach /props for the media marker") unless props&.answered?
 
       body = props.body.is_a?(Hash) ? props.body : {}
@@ -83,14 +83,14 @@ module Samagotchi
 
     def self.chat(target, entry, adapter)
       unless entry.remote?
-        props = entry.client.respond_to?(:server_props) ? entry.client.server_props(model: target.bare_model) : nil
+        props = entry.client.server_props(model: target.bare_model)
         if props&.answered? && props.body.is_a?(Hash) && props.body.key?("modalities")
           vision = props.body.dig("modalities", "vision") == true
           return vision ? Answer.new(value: true, reason: nil) : no("the server has no vision model loaded (start llama.cpp with --mmproj)")
         end
       end
 
-      listed = adapter.respond_to?(:image_input) ? adapter.image_input(model: target.bare_model) : nil
+      listed = adapter&.image_input(model: target.bare_model)
       return Answer.new(value: true, reason: nil) if listed == true
       return no("host #{entry.name} lists #{target.bare_model} as text-only") if listed == false
 

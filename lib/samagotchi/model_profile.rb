@@ -324,7 +324,7 @@ module Samagotchi
       return false if client.nil? || !client.respond_to?(:server_props)
       return false if entry&.chat?
 
-      !client.respond_to?(:transport) || client.transport.name == :llama_cpp
+      client.transport.name == :llama_cpp
     end
     private_class_method :probe?
 

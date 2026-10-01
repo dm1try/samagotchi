@@ -336,12 +336,10 @@ module Samagotchi
 
         root = dir && ProjectScope.root_for(dir)
         # Lazy retention sweep (once per 24h)
-        if @manager.respond_to?(:retention_sweep_if_due)
-          begin
-            @manager.retention_sweep_if_due(state_dir: @state_dir)
-          rescue StandardError
-            nil
-          end
+        begin
+          @manager.retention_sweep_if_due(state_dir: @state_dir)
+        rescue StandardError
+          nil
         end
         limit = sanitize_limit(req.params["limit"])
         offset = sanitize_offset(req.params["offset"])
@@ -545,7 +543,7 @@ module Samagotchi
         # saved can't be answered (its turn is gone).
         pending = if turn_snapshot
                     current_turn && current_turn["pending_question"]
-                  elsif owner && session.respond_to?(:pending_question)
+                  elsif owner
                     session.pending_question
                   end
         # A /model in the worker changes it before the file catches up.
@@ -574,7 +572,7 @@ module Samagotchi
           session: session_json,
           history: read_history(id),
           messages: messages_for_display(raw_messages, parts: req.params["parts"] == "1",
-                                                       cwd: session.respond_to?(:working_directory) ? session.working_directory : nil),
+                                                       cwd: session.working_directory),
           failed_turn: failed_turn_for(session, raw_messages),
           current_turn: current_turn,
           queued: turn_snapshot ? Array(turn_snapshot["queued"]) : [],
@@ -670,7 +668,7 @@ module Samagotchi
         line = body["line"].to_s.strip
         return error_response(400, "missing_fields", "line is required") if line.empty?
 
-        @manager.resume_session(id, state_dir: @state_dir) if @manager.respond_to?(:resume_session)
+        @manager.resume_session(id, state_dir: @state_dir)
         # card: a card's action; its command events say so (no echo).
         request = ->(client) { client.post_command(line: line, client_id: body["client_id"], card: body["card"] == true) }
         relay(id, live_bridge_client(id), request, what: "the command was not run", cant: "run commands") do |reply|
@@ -845,8 +843,6 @@ module Samagotchi
 
       # The process holding the session (an OwnerLock::Owner), or nil. A worker always runs a Bridge; a TUI (plain `chi`) doesn't share.
       def session_owner(id)
-        return nil unless @manager.respond_to?(:session_owner)
-
         @manager.session_owner(id, state_dir: @state_dir)
       rescue StandardError
         nil
@@ -1118,16 +1114,8 @@ module Samagotchi
         end
       end
 
-      # status is turn state (idle/running): SessionSummary.displayed_status,
-      # unless the manager can't tell who owns a session (then the file's
-      # word stands).
+      # status is turn state (idle/running): SessionSummary.displayed_status.
       def displayed_status(session, snapshot = nil, owner: session_owner(session.id))
-        unless @manager.respond_to?(:session_owner)
-          return snapshot["status"] if snapshot.is_a?(Hash) && snapshot["status"]
-
-          return session.status
-        end
-
         SessionSummary.displayed_status(session, snapshot, owner: owner)
       end
 

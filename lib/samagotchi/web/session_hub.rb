@@ -197,8 +197,6 @@ module Samagotchi
       end
 
       def sweep
-        return unless @manager.respond_to?(:retention_sweep_if_due)
-
         @manager.retention_sweep_if_due(state_dir: @state_dir)
       rescue StandardError
         nil
@@ -288,8 +286,6 @@ module Samagotchi
       end
 
       def owner_of(id)
-        return nil unless @manager.respond_to?(:session_owner)
-
         @manager.session_owner(id, state_dir: @state_dir)
       rescue StandardError
         nil

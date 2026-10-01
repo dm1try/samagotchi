@@ -765,7 +765,7 @@ module Samagotchi
     def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], state_dir: nil, manager: self, bridge: nil)
       session_dir = Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir)
       bridge ||= -> { BridgeClient.wait_for(session_id, session_dir: session_dir, timeout: TURN_BRIDGE_WAIT) }
-      manager.resume_session(session_id, state_dir: state_dir) if manager.respond_to?(:resume_session)
+      manager.resume_session(session_id, state_dir: state_dir)
       if (client = bridge.call)
         begin
           options = { prompt: prompt, client_id: client_id }
@@ -802,9 +802,7 @@ module Samagotchi
       end
       # A worker that idle-exited since the resume never reads it either:
       # wake a new one. (The exiting worker also looks for input it left.)
-      if owner.nil? && manager.respond_to?(:session_owner) && manager.respond_to?(:resume_session)
-        manager.resume_session(session_id, state_dir: state_dir)
-      end
+      manager.resume_session(session_id, state_dir: state_dir) if owner.nil?
       { status: :accepted, ack: { status: "accepted", enqueued_id: enqueued_id, session_id: session_id } }
     end
 
@@ -814,8 +812,6 @@ module Samagotchi
     end
 
     private_class_method def self.delivery_owner(manager, session_id, state_dir)
-      return nil unless manager.respond_to?(:session_owner)
-
       manager.session_owner(session_id, state_dir: state_dir)
     rescue StandardError
       nil

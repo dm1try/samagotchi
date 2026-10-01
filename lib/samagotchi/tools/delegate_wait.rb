@@ -43,7 +43,7 @@ module Samagotchi
       def call(child_id, peers:, timeout: TIMEOUT_DEFAULT, poll_interval: POLL_INTERVAL)
         sd = peers.state_dir || Session.default_state_dir
         key = [peers.session_id, child_id]
-        cancelled = -> { peers.respond_to?(:cancelled?) && peers.cancelled? }
+        cancelled = -> { peers.cancelled? }
         wait = ReplyWait.call(child_id, state_dir: sd, cursor: seen[key], timeout: timeout.to_i,
                                         poll_interval: poll_interval, cancelled: cancelled, baseline: baselines[key])
         # The turn sent to is handed over: a later wait looks for a later one.

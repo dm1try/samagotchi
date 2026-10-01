@@ -65,7 +65,7 @@ module Samagotchi
       key, value = ConfigFile.model_setting(names, :thinking, models: models)
       return [value, "models: #{key}"] if key
 
-      host = target.entry.respond_to?(:thinking) ? target.entry.thinking : nil
+      host = target.entry.thinking
       return [host, "hosts.#{target.entry.name}"] if host
       return [global, "thinking.level"] if global
 

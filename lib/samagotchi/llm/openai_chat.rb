@@ -56,7 +56,7 @@ module Samagotchi
       # @param entry [HostRegistry::HostEntry]
       def self.for(entry, **options)
         new(base_url: entry.openai_base_url, host_name: entry.name, api_key_env: entry.api_key_env,
-            remote: entry.respond_to?(:remote?) && entry.remote?, **options)
+            remote: entry.remote?, **options)
       end
 
       # Tool arguments as a Hash; "" is {}, invalid JSON stays a String.

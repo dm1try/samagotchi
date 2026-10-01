@@ -28,7 +28,7 @@ module Samagotchi
       #   looks its project up)
       # @return [Hash] symbol keys
       def build(session, owner:, session_dir:, status: displayed_status(session, owner: owner), root_cache: nil)
-        used = session.respond_to?(:used_memory_names) ? Array(session.used_memory_names) : []
+        used = Array(session.used_memory_names)
         up = bridge_up?(session_dir, owner)
         {
           id: session.id,
@@ -43,10 +43,10 @@ module Samagotchi
           test_run: !!session.test_run,
           used_memory_names: used,
           # The session's --memory and --mute lists (info-bar tooltip).
-          preloaded_memory_names: session.respond_to?(:preloaded_memory_names) ? Array(session.preloaded_memory_names) : [],
-          muted_memory_names: session.respond_to?(:muted_memory_names) ? Array(session.muted_memory_names) : [],
+          preloaded_memory_names: Array(session.preloaded_memory_names),
+          muted_memory_names: Array(session.muted_memory_names),
           # The session that delegated this one (the `delegate` tool), else nil.
-          parent_id: session.respond_to?(:parent_id) ? session.parent_id : nil,
+          parent_id: session.parent_id,
           first_preview: first_preview_for(session),
           owner: owner&.kind,
           # The saved recap's first sentence, for the session card.
@@ -64,14 +64,14 @@ module Samagotchi
           # ended. A question saved by a worker that died is not open.
           pending_question: owner ? pending_question_for(session) : nil,
           pending_card: up ? Bridge::PendingCard.read(session_dir) : nil,
-          last_turn: session.respond_to?(:last_turn) ? session.last_turn : nil
+          last_turn: session.last_turn
         }
       end
 
       # The open question as {id:, kind:} ("approval" for a guardrail's,
       # else "question"); nil when there is none. The text stays out.
       def pending_question_for(session)
-        pending = session.respond_to?(:pending_question) ? session.pending_question : nil
+        pending = session.pending_question
         return nil unless pending.is_a?(Hash) && pending[:id]
 
         { id: pending[:id], kind: pending[:kind].to_s == "approval" ? "approval" : "question" }

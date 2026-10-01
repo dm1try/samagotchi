@@ -103,7 +103,7 @@ module Samagotchi
       # (as DelegateWait does); a bare kernel has no peers: never cancelled.
       def cancelled_proc(kctx)
         peers = kctx.peers
-        -> { peers.respond_to?(:cancelled?) && peers.cancelled? }
+        -> { !!peers&.cancelled? }
       end
 
       # @return [Registry] a new registry with the built-ins, in

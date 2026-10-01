@@ -95,7 +95,7 @@ module Samagotchi
 
       profile = ModelProfile.resolve(names: names, entry: entry, client: target.client, bare_model: target.bare_model).profile
       answer = VisionSupport.for(target, profile: profile, names: names)
-      props = target.client.respond_to?(:server_props) ? target.client.server_props(model: target.bare_model) : nil
+      props = target.client.server_props(model: target.bare_model)
       return UNKNOWN_VISION if answer.no? && !props&.answered? && !configured_no?(answer)
 
       answer
