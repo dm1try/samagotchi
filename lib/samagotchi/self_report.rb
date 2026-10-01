@@ -111,6 +111,13 @@ module Samagotchi
       nil
     end
 
+    # `chi self --model`, the desktop helper's hint: the default as the ref
+    # it resolves to (an alias applied, ModelRef), as `chi models` names it.
+    def model_ref_name(env: ENV)
+      name = model_name
+      name && ConfigFile.model_ref(name, env: env).ref
+    end
+
     # Routed without model discovery, so an unqualified name may land on
     # another host at runtime after /models.
     def loop_for(model, env)
