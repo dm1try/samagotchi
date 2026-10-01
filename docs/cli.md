@@ -21,7 +21,7 @@
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
 - `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles; `chi self --model` prints only the model a new session starts on (the desktop helper's hint)
 - `chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, in one table (see [Updating](#updating))
-- `chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle), [the check-in bundle](plugins.md#the-check-in-bundle) and [the skills bundle](plugins.md#the-skills-bundle))
+- `chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle), [the check-in bundle](plugins.md#the-check-in-bundle) and [the skills bundle](plugins.md#the-skills-bundle)). A usage error (an unknown subcommand or flag, a missing argument, a bad `build --scope`) exits 2, as for every other command
 
 ### First setup
 
@@ -586,9 +586,10 @@ In interactive assist mode, you can switch the request model without restarting:
 
 Notes:
 
-- The switch updates the request `model` field, routes to the matching host (`HostRegistry`, `lib/samagotchi/host_registry.rb:72`), and resolves the prompt profile again (config, the server's chat template, the name; see "Prompt profile" in configuration.md).
+- The switch updates the request `model` field, routes to the matching host (`HostRegistry#resolve`), and resolves the prompt profile again (config, the server's chat template, the name; see "Prompt profile" in configuration.md).
 - Without `--default` the command is session-scoped and does not rewrite config files.
 - With `--default` the new default is written to `~/.config/samagotchi/config.yml` (honoring `XDG_CONFIG_HOME`) and takes effect for all new sessions; the current session's effective model is also updated immediately. Bare aliases and `host:model` are both valid.
+- `--default` and `--alias` change only their one key's line in `config.yml` (`default.model`, or the alias under `model_aliases:`): comments and the rest of the file stay as written, a symlinked file is written through and keeps its mode. When the edited text wouldn't read back as the expected settings (a flow-style section, anchors), chi writes the whole file out from the parsed data instead, which drops its comments.
 - Worker sessions inherit `hosts:` via `SAMAGOTCHI_HOSTS_JSON`.
 - The idle recap uses the session's current model (a switch counts from the next recap), unless `recap: {host_ref, model}` pins one.
 
