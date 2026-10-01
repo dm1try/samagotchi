@@ -28,7 +28,7 @@ RSpec.describe Samagotchi::VisionSupport do
   end
 
   def answer(target, profile: qwen, adapter: nil, models: {})
-    described_class.for(target, profile: profile, adapter: adapter, models: models)
+    described_class.for(target, names: [target.model, target.bare_model], profile: profile, adapter: adapter, models: models)
   end
 
   describe "a native host" do

@@ -241,6 +241,14 @@ RSpec.describe Samagotchi::SelfReport do
       write_config("hosts:\n  main:\n    host: 10.0.0.5\n")
       expect(field("thinking")).to eq("default")
     end
+
+    it "finds models: under the model an alias points at, as a turn does" do
+      write_config("hosts:\n  main:\n    host: 10.0.0.5\nmodel_aliases:\n  fast: org/Fast-1\n" \
+                   "models:\n  org/fast-1:\n    thinking: off\n")
+      allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("fast")
+
+      expect(field("thinking")).to eq("off (models: org/fast-1)")
+    end
   end
 
   describe "the profile row (offline: no server probe)" do

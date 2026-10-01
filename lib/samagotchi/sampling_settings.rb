@@ -12,17 +12,16 @@ module Samagotchi
     EMPTY = {}.freeze
 
     # @param target [HostRegistry::ModelTarget]
-    # @param names [Array<String>, nil] the model as typed, alias-resolved,
-    #   bare (the Engine's lookup names); default: the target's model and bare model
+    # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
     # @param models [Hash, nil] ConfigFile.model_settings (specs)
     # @return [Hash] frozen, symbol keys; may be empty
-    def self.for(target, names: nil, models: nil)
+    def self.for(target, names:, models: nil)
       resolve(target, names, models).first
     end
 
     # "temperature=0.6 presence_penalty=1.5 (hosts.work, models: qwen)" for
     # /model, or nil when nothing is configured.
-    def self.summary(target, names: nil, models: nil)
+    def self.summary(target, names:, models: nil)
       params, sources = resolve(target, names, models)
       return nil if params.empty?
 
@@ -44,7 +43,6 @@ module Samagotchi
       rescue StandardError
         {}
       end
-      names ||= [target.model, target.bare_model]
       host = target.entry.sampling || EMPTY
       key, model = ConfigFile.model_setting(names, :sampling, models: models)
       sources = []

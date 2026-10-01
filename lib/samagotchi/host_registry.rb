@@ -77,6 +77,7 @@ module Samagotchi
     # @param clock [#call, nil] monotonic seconds (specs)
     def initialize(hosts_config: nil, env: ENV, client_override: nil, clock: nil)
       @client_override = client_override
+      @env = env
       @clock = clock || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
       @adapters = {}
       @host_lists = {}
@@ -131,6 +132,20 @@ module Samagotchi
     # Returns [host_name_or_nil, bare_model]
     def parse_qualified_model(raw)
       ConfigFile.parse_host_qualified_model(raw, hosts: @entries)
+    end
+
+    # The names a models: entry may be under, in the order they are looked
+    # up: +typed+ as given (maybe an alias), its alias's target, +resolved+
+    # (what the model became, e.g. the default for a blank one), the part
+    # after a host prefix, and the bare model the host is asked for.
+    # Thinking, SamplingSettings, VisionSupport and ModelProfile all take these.
+    # @param target [ModelTarget, nil] the resolved model's target (resolved when not given)
+    # @return [Array<String>]
+    def lookup_names(typed, resolved: nil, target: nil)
+      aliased = ConfigFile.resolve_model_alias(typed, env: @env)
+      target ||= resolve(resolved || aliased)
+      [typed, aliased, resolved, parse_qualified_model(typed).last, target.bare_model]
+        .map { |name| name.to_s.strip }.reject(&:empty?).uniq
     end
 
     # Resolve model string (already alias-resolved, may be qualified) to a HostEntry.

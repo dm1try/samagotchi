@@ -130,7 +130,8 @@ RSpec.describe Samagotchi::Thinking do
       with_env({ "XDG_CONFIG_HOME" => dir, "SAMAGOTCHI_THINKING_LEVEL" => nil }.merge(env)) do
         Samagotchi::Config.reload!(cli_overrides: cli)
         models = Samagotchi::ConfigFile.model_settings(env: {}, path: path)
-        described_class.resolve(target_for(path, model), models: models)
+        target = target_for(path, model)
+        described_class.resolve(target, names: [target.model, target.bare_model], models: models)
       end
     end
 

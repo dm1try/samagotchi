@@ -72,7 +72,7 @@ module Samagotchi
       name = ModelProfile.required_model_name(model_name)
       aliased = ConfigFile.resolve_model_alias(name)
       target = registry.resolve(aliased)
-      names = [name, aliased, registry.parse_qualified_model(name).last, target.bare_model].compact.uniq
+      names = registry.lookup_names(name, target: target)
       entry = target.entry
       return VisionSupport.for(target, adapter: registry.adapter_for(entry), names: names) if entry.chat?
 

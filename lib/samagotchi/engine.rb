@@ -107,7 +107,7 @@ module Samagotchi
       # #profile_resolution decides on first need (see there), so building an
       # Engine makes no network call.
       @given_profile = profile ? ModelProfile.normalize(profile) : nil
-      @model_lookup_names = [@default_model_name]
+      @typed_model_name = @default_model_name
       @profile_resolution = nil
       # Ensure the built-in system bundle is installed (lazy, warn-only).
       # This is the single seam for both TUI and non-TUI (web/worker) paths.
@@ -769,7 +769,7 @@ module Samagotchi
       resolved = ModelProfile.check_host!(ModelProfile.required_model_name(aliased), hosts: @host_registry.entries)
       @effective_model_name = resolved
       bare = bare_model_name(resolved)
-      @model_lookup_names = [model_name, aliased, resolved]
+      @typed_model_name = model_name
       # A profile given to .new was for the starting model.
       @given_profile = nil
       @profile_resolution = nil
@@ -2282,11 +2282,10 @@ module Samagotchi
       ModelProfile.resolve(names: model_lookup_names(target), entry: target.entry, client: target.client, bare_model: target.bare_model)
     end
 
-    # The names a models: entry may be under: as typed (maybe an alias), the
-    # part after a host prefix, alias-resolved, bare.
+    # The names a models: entry may be under (HostRegistry#lookup_names):
+    # the model as typed at start or at the last /model, and what it became.
     def model_lookup_names(target)
-      typed = @model_lookup_names.first
-      (@model_lookup_names + [@host_registry.parse_qualified_model(typed).last, target.bare_model]).compact
+      @host_registry.lookup_names(@typed_model_name, resolved: @effective_model_name, target: target)
     end
 
     # Everything that holds a profile follows the resolution: the kernel's

@@ -50,10 +50,10 @@ module Samagotchi
     # The level for +target+ and where it came from ("--thinking",
     # "models: qwen", "hosts.work", "thinking.level"; nil for the default).
     # @param target [HostRegistry::ModelTarget]
-    # @param names [Array<String>, nil] the model's lookup names (Engine#model_lookup_names)
+    # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
     # @param models [Hash, nil] ConfigFile.model_settings (specs)
     # @return [Array(Symbol, String|nil)]
-    def resolve(target, names: nil, models: nil)
+    def resolve(target, names:, models: nil)
       global, origin = global_level
       return [global, origin == :cli ? "--thinking" : "SAMAGOTCHI_THINKING_LEVEL"] if global && %i[cli env].include?(origin)
 
@@ -62,7 +62,6 @@ module Samagotchi
       rescue StandardError
         {}
       end
-      names ||= [target.model, target.bare_model]
       key, value = ConfigFile.model_setting(names, :thinking, models: models)
       return [value, "models: #{key}"] if key
 

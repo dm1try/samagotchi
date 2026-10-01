@@ -17,6 +17,7 @@ and commands may change between minor versions. How releases are made:
 - The web's answer, dismiss, command and cancel calls fail the same way: a worker that doesn't answer in time is
   504 ("did not answer, so ... was not ..."; cancel said "not running"), a worker running an older chi is 501 with
   how to restart it (an answer said "not running").
+- `chi self`'s thinking line finds a `models:` entry under the model an alias points at, as a turn does.
 - `/model … --default` and `/model … --alias` keep the comments and layout of `config.yml`: they change one line
   (or add one) instead of rewriting the whole file.
 - The terminal's "retrying (1/3 …)" line counts retries as the web does (it said "1/4", counting the first try).

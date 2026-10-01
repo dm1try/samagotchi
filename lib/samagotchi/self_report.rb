@@ -149,8 +149,7 @@ module Samagotchi
       entry, bare = registry.host_for_model(model)
       return "name-based (chat API: only strips thoughts)" if entry&.chat?
 
-      # As typed, the part after a host prefix (maybe an alias), alias-resolved, bare.
-      names = [model, registry.parse_qualified_model(model).last, ConfigFile.resolve_model_alias(model, env: env), bare]
+      names = registry.lookup_names(model)
       override = Config.resolve_with_origin("model.profile", env: env, cli_overrides: Config.cli_overrides)
       result = ModelProfile.resolve(names: names, entry: entry, client: nil, bare_model: bare, override: override,
                                     models: ConfigFile.model_settings(env: env))
@@ -168,8 +167,10 @@ module Samagotchi
 
     # The model's thinking level and where it came from (Thinking.resolve).
     def thinking_for(model, env)
-      target = HostRegistry.new(env: env).resolve(model)
-      level, source = Thinking.resolve(target, models: ConfigFile.model_settings(env: env))
+      registry = HostRegistry.new(env: env)
+      target = registry.resolve(model)
+      level, source = Thinking.resolve(target, names: registry.lookup_names(model, target: target),
+                                               models: ConfigFile.model_settings(env: env))
       source ? "#{level} (#{source})" : level.to_s
     rescue StandardError => e
       "(unknown: #{e.message})"
