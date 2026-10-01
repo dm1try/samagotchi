@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- Web: switching sessions no longer briefly shows the previous session's "delegated by" link in the info bar.
+
 ## [0.9.0] - 2026-10-01
 
 ### Changed
