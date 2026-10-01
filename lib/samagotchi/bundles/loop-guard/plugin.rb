@@ -187,7 +187,8 @@ end
 class Plugin
   DEFAULT_IGNORE = %w[task_wait task_get delegate_result list_sessions list_reminders].freeze
   # Built-in tools carry flat fields; plugin and unknown tools carry args:.
-  KEY_FIELDS = %i[content path start_line end_line cwd env scope].freeze
+  # An edit's text is its old_text/new_text.
+  KEY_FIELDS = %i[content path start_line end_line cwd env scope old_text new_text].freeze
   SHORT_CHARS = 60
   THOUGHT_CHARS = 80
   SOURCE = "bundle loop-guard"

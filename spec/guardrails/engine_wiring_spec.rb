@@ -119,7 +119,7 @@ RSpec.describe "Engine guardrail wiring" do
         allow(engine).to receive(:session_state_dir).and_return(state_dir)
         path = File.join(@dir, "kitty.conf")
         File.write(path, "font_size 12\n")
-        call = { name: "edit", path: path, content: "<old>font_size 12</old><new>font_size 14</new>" }
+        call = { name: "edit", path: path, old_text: "font_size 12", new_text: "font_size 14" }
         pending = pending_for(engine, ask_for(engine, call)) do
           reloaded = Samagotchi::Session.load(session.id, state_dir: state_dir).pending_question
           expect(reloaded[:approval]["preview"]).to include("text" => "@@ -1 +1 @@\n-font_size 12\n+font_size 14")

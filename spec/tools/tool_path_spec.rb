@@ -71,7 +71,7 @@ RSpec.describe Samagotchi::Tools::ToolPath do
       path = File.join(@home, "e.txt")
       File.write(path, "old value")
 
-      result = Samagotchi::Tools::Edit.call("<old>old</old><new>new</new>", path: "~/e.txt")
+      result = Samagotchi::Tools::Edit.call(path: "~/e.txt", old_text: "old", new_text: "new")
 
       expect(result).to start_with("Edited")
       expect(File.read(path)).to eq("new value")

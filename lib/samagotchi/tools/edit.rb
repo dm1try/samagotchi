@@ -5,24 +5,23 @@ require_relative "tool_path"
 
 module Samagotchi
   module Tools
-    # Replaces an exact block of text in an existing file.
+    # Replaces an exact block of text in an existing file (old_text →
+    # new_text), or a range of lines (start_line..end_line → new_text).
     #
-    # XML syntax (used by the model):
-    #   <tool name="edit" path="path/to/file">
-    #     <old>exact text to replace</old>
-    #     <new>replacement text</new>
-    #   </tool>
-    #
-    # The <old> block must match exactly once in the file.  The tool returns an
-    # error if the text is not found or appears more than once.
+    # old_text must match exactly once in the file. The tool returns an error
+    # if the text is not found or appears more than once. new_text is
+    # required in both modes; "" deletes.
     class Edit
       NAME        = "edit"
 
       def self.name        = NAME
 
-      def self.call(content, path:, start_line: nil, end_line: nil)
+      OLD_TEXT_REQUIRED = "Error: old_text is required (the exact text to replace), or give start_line for a range edit"
+      NEW_TEXT_REQUIRED = 'Error: new_text is required (use "" to delete)'
+
+      def self.call(path:, old_text: nil, new_text: nil, start_line: nil, end_line: nil)
         path = ToolPath.normalize(path)
-        result = apply(content, path: path, start_line: start_line, end_line: end_line)
+        result = apply(path: path, old_text: old_text, new_text: new_text, start_line: start_line, end_line: end_line)
         return result if result.is_a?(String)
 
         updated, message = result
@@ -35,21 +34,20 @@ module Samagotchi
       # The edit without the write: [updated, message] or "Error: …", with
       # exactly the strings call returns. +read+ reads the file, so a dry run
       # (EditPreview) can reuse a copy it already has; each mode keeps its own
-      # check order (exact: tags first; range: file not found first).
-      def self.apply(content, path:, start_line: nil, end_line: nil, read: ->(p) { File.read(p) })
+      # check order (exact: the texts first; range: file not found first).
+      def self.apply(path:, old_text: nil, new_text: nil, start_line: nil, end_line: nil, read: ->(p) { File.read(p) })
         path = ToolPath.normalize(path)
 
         if range_requested?(start_line, end_line)
-          return apply_range_mode(content, path: path, start_line: start_line, end_line: end_line, read: read)
+          return apply_range_mode(new_text, path: path, start_line: start_line, end_line: end_line, read: read)
         end
 
-        old_text = extract_tag(content, "old")
-        new_text = extract_tag(content, "new")
-
-        return "Error: missing <old>...</old> block" if old_text.nil?
-        return "Error: missing <new>...</new> block" if new_text.nil?
-        return "Error: <old> block is empty" if old_text.empty?
+        return OLD_TEXT_REQUIRED if old_text.nil? || old_text.to_s.empty?
+        return NEW_TEXT_REQUIRED if new_text.nil?
         return "Error: file not found: #{path}" unless File.exist?(path)
+
+        old_text = old_text.to_s
+        new_text = new_text.to_s
 
         source = read.(path)
         count  = count_occurrences(source, old_text)
@@ -64,11 +62,11 @@ module Samagotchi
         "Error: #{e.message}"
       end
 
-      def self.apply_range_mode(content, path:, start_line:, end_line:, read:)
+      def self.apply_range_mode(new_text, path:, start_line:, end_line:, read:)
         return "Error: file not found: #{path}" unless File.exist?(path)
+        return NEW_TEXT_REQUIRED if new_text.nil?
 
-        new_text = extract_tag(content, "new")
-        return "Error: missing <new>...</new> block" if new_text.nil?
+        new_text = new_text.to_s
 
         start_num = parse_positive_line_number(start_line, "start_line")
         return start_num if start_num.is_a?(String)
@@ -138,12 +136,6 @@ module Samagotchi
         count
       end
       private_class_method :count_occurrences
-
-      def self.extract_tag(content, tag)
-        m = content.match(/<#{tag}>(.*?)<\/#{tag}>/m)
-        m ? m[1] : nil
-      end
-      private_class_method :extract_tag
 
       def self.range_requested?(start_line, end_line)
         !blank?(start_line) || !blank?(end_line)

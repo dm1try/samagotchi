@@ -290,7 +290,7 @@ RSpec.describe Samagotchi::ToolRunner do
         def dispatch_tool_call(call)
           dispatched << call
           out = case call[:name]
-                when "edit" then Samagotchi::Tools::Edit.call(call[:content], path: call[:path])
+                when "edit" then Samagotchi::Tools::Edit.call(path: call[:path], old_text: call[:old_text], new_text: call[:new_text])
                 when "write" then Samagotchi::Tools::Write.call(call[:content], path: call[:path])
                 when "sneaky" then File.write(call[:path], "changed\n") && "Error: failed after writing"
                 else "ran"
@@ -305,7 +305,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "is on tool_call_completed and the run, and the model-facing output is unchanged" do
       File.write(path, "a\nb\n")
-      result = run({ name: "edit", path: path, content: "<old>b</old><new>B</new>" })
+      result = run({ name: "edit", path: path, old_text: "b", new_text: "B" })
       diff = { text: "@@ -1,2 +1,2 @@\n a\n-b\n+B", added: 1, removed: 1, truncated: false, new_file: false }
       expect(result[:diff]).to eq(diff)
       expect(events.last).to include(type: :tool_call_completed, diff: diff)
@@ -319,7 +319,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "is absent when the file didn't change (an edit that errors before writing)" do
       File.write(path, "a\n")
-      result = run({ name: "edit", path: path, content: "<old>zzz</old><new>B</new>" })
+      result = run({ name: "edit", path: path, old_text: "zzz", new_text: "B" })
       expect(result).not_to have_key(:diff)
       expect(events.last).not_to have_key(:diff)
     end
@@ -333,9 +333,9 @@ RSpec.describe Samagotchi::ToolRunner do
     it "refreshes a memory's index line after a write/edit that changed its file, not after one that didn't" do
       File.write(path, "a\n")
       allow(Samagotchi::MemoryBundle::IndexSync).to receive(:refresh)
-      run({ name: "edit", path: path, content: "<old>zzz</old><new>B</new>" })
+      run({ name: "edit", path: path, old_text: "zzz", new_text: "B" })
       expect(Samagotchi::MemoryBundle::IndexSync).not_to have_received(:refresh)
-      run({ name: "edit", path: path, content: "<old>a</old><new>b</new>" })
+      run({ name: "edit", path: path, old_text: "a", new_text: "b" })
       run({ name: "write", path: path("new.md"), content: "x\n" })
       expect(Samagotchi::MemoryBundle::IndexSync).to have_received(:refresh).with(path)
       expect(Samagotchi::MemoryBundle::IndexSync).to have_received(:refresh).with(path("new.md"))
@@ -344,7 +344,7 @@ RSpec.describe Samagotchi::ToolRunner do
     it "is absent for a denied edit and for other tools" do
       File.write(path, "a\n")
       hooks.register(:before_tool_call) { |e| e[:blocked] = true if e[:call][:name] == "edit" }
-      expect(run({ name: "edit", path: path, content: "<old>a</old><new>b</new>" })).not_to have_key(:diff)
+      expect(run({ name: "edit", path: path, old_text: "a", new_text: "b" })).not_to have_key(:diff)
       expect(run).not_to have_key(:diff)
     end
   end

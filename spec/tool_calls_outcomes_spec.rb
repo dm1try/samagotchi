@@ -50,15 +50,15 @@ RSpec.describe "Tool call outcomes per model format" do
     ],
     "edit without new_text" => [
       ["edit", ->(f) { { "path" => f, "old_text" => "keep" } }],
-      { gemma: ["[edit]\nEdited DIR/a.txt: replaced 4 bytes with 0 bytes", " x</old>y me\n"],
-        qwen: ["[edit]\nEdited DIR/a.txt: replaced 4 bytes with 0 bytes", " x</old>y me\n"],
-        chat: ["[edit]\nEdited DIR/a.txt: replaced 4 bytes with 0 bytes", " x</old>y me\n"] }
+      { gemma: ["[edit]\nError: new_text is required (use \"\" to delete)", "keep x</old>y me\n"],
+        qwen: ["[edit]\nError: new_text is required (use \"\" to delete)", "keep x</old>y me\n"],
+        chat: ["[edit]\nError: new_text is required (use \"\" to delete)", "keep x</old>y me\n"] }
     ],
     "edit whose old text holds </old>" => [
       ["edit", ->(f) { { "path" => f, "old_text" => "x</old>y", "new_text" => "z" } }],
-      { gemma: ["[edit]\nEdited DIR/a.txt: replaced 1 bytes with 1 bytes", "keep z</old>y me\n"],
-        qwen: ["[edit]\nEdited DIR/a.txt: replaced 1 bytes with 1 bytes", "keep z</old>y me\n"],
-        chat: ["[edit]\nEdited DIR/a.txt: replaced 1 bytes with 1 bytes", "keep z</old>y me\n"] }
+      { gemma: ["[edit]\nEdited DIR/a.txt: replaced 8 bytes with 1 bytes", "keep z me\n"],
+        qwen: ["[edit]\nEdited DIR/a.txt: replaced 8 bytes with 1 bytes", "keep z me\n"],
+        chat: ["[edit]\nEdited DIR/a.txt: replaced 8 bytes with 1 bytes", "keep z me\n"] }
     ]
   }.each do |label, ((tool, args), outcomes)|
     outcomes.each do |format, (output, after)|

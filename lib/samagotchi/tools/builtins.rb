@@ -66,7 +66,8 @@ module Samagotchi
           Read.call(call[:content], start_line: call[:start_line], end_line: call[:end_line])
         end,
         Edit::NAME => lambda do |call, _kctx|
-          Edit.call(call[:content], path: call[:path], start_line: call[:start_line], end_line: call[:end_line])
+          Edit.call(path: call[:path], old_text: call[:old_text], new_text: call[:new_text],
+                    start_line: call[:start_line], end_line: call[:end_line])
         end,
         TaskCreate::NAME => lambda do |call, kctx|
           next Execute::NOT_RUN_ON_STOP if cancelled_proc(kctx).call

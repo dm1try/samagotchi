@@ -13,7 +13,7 @@ RSpec.describe Samagotchi::EditPreview do
   describe ".for" do
     it "previews an exact edit without writing" do
       path = file("a.txt", "one\ntwo\nthree\n")
-      preview = described_class.for(name: "edit", path: path, content: "<old>two</old><new>2</new>")
+      preview = described_class.for(name: "edit", path: path, old_text: "two", new_text: "2")
       expect(preview).to eq(text: "@@ -1,3 +1,3 @@\n one\n-two\n+2\n three", added: 1, removed: 1,
                             truncated: false, new_file: false)
       expect(File.read(path)).to eq("one\ntwo\nthree\n")
@@ -21,7 +21,7 @@ RSpec.describe Samagotchi::EditPreview do
 
     it "previews a range edit (string line numbers, as the markup loop sends them)" do
       path = file("a.txt", "a\nb\nc\n")
-      preview = described_class.for(name: "edit", path: path, content: "<new>B\n</new>", start_line: "2", end_line: "2")
+      preview = described_class.for(name: "edit", path: path, new_text: "B\n", start_line: "2", end_line: "2")
       expect(preview[:text]).to eq("@@ -1,3 +1,3 @@\n a\n-b\n+B\n c")
     end
 
@@ -41,9 +41,9 @@ RSpec.describe Samagotchi::EditPreview do
 
     it "passes the tool's error through, without the Error: prefix" do
       path = file("a.txt", "one\n")
-      expect(described_class.for(name: "edit", path: path, content: "<old>nope</old><new>x</new>"))
+      expect(described_class.for(name: "edit", path: path, old_text: "nope", new_text: "x"))
         .to eq(error: "old text not found in #{path}")
-      expect(described_class.for(name: "edit", path: File.join(@dir, "missing"), content: "<old>a</old><new>b</new>"))
+      expect(described_class.for(name: "edit", path: File.join(@dir, "missing"), old_text: "a", new_text: "b"))
         .to eq(error: "file not found: #{File.join(@dir, 'missing')}")
       expect(described_class.for(name: "write", path: path, content: nil)).to eq(error: "missing content")
     end
@@ -51,8 +51,8 @@ RSpec.describe Samagotchi::EditPreview do
     it "skips binary files and files over 1 MB" do
       bin = file("b.bin", "abc\0def")
       big = file("big.txt", "x" * (described_class::MAX_FILE_BYTES + 1))
-      expect(described_class.for(name: "edit", path: bin, content: "<old>abc</old><new>x</new>")).to eq(skipped: "binary file")
-      expect(described_class.for(name: "edit", path: big, content: "<old>x</old><new>y</new>")).to eq(skipped: "file over 1 MB")
+      expect(described_class.for(name: "edit", path: bin, old_text: "abc", new_text: "x")).to eq(skipped: "binary file")
+      expect(described_class.for(name: "edit", path: big, old_text: "x", new_text: "y")).to eq(skipped: "file over 1 MB")
       expect(described_class.for(name: "write", path: File.join(@dir, "n.bin"), content: "a\0b")).to eq(skipped: "binary file")
     end
 

@@ -33,8 +33,8 @@ module Samagotchi
       return before if before.is_a?(Hash)
 
       if call[:name].to_s == "edit"
-        result = Tools::Edit.apply(call[:content], path: path, start_line: call[:start_line],
-                                                   end_line: call[:end_line], read: ->(_) { before })
+        result = Tools::Edit.apply(path: path, old_text: call[:old_text], new_text: call[:new_text],
+                                   start_line: call[:start_line], end_line: call[:end_line], read: ->(_) { before })
         return { error: result.delete_prefix("Error: ") } if result.is_a?(String)
 
         after = result.first

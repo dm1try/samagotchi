@@ -158,7 +158,9 @@ RSpec.describe "The known-names bundle" do
       d = '<|"|>'
       edit = gemma.parse("<|tool_call>call:edit{path:#{d}/home/johndeo/a.txt#{d},old_text:#{d}johndeo#{d}," \
                          "new_text:#{d}johndeo!#{d}}<tool_call|>").first
-      expect(verdict_for(edit).call).to include(path: "/home/johndoe/a.txt", content: "<old>johndoe</old><new>johndoe!</new>")
+      expect(verdict_for(edit).call).to include(path: "/home/johndoe/a.txt", old_text: "johndeo", new_text: "johndeo!")
+      write = { name: "write", path: "/home/johndeo/a.txt", content: "johndeo" }
+      expect(verdict_for(write).call).to include(path: "/home/johndoe/a.txt", content: "johndeo")
     end
   end
 

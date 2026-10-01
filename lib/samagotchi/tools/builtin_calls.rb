@@ -38,8 +38,7 @@ module Samagotchi
         "write" => { verbatim: %w[content], aliases: { "content" => %w[text] } },
         "memory_read" => { content: "name", fallback: :prefix_or_raw },
         "memory_write" => { path: "name", verbatim: %w[content], aliases: { "content" => %w[text body value] } },
-        "edit" => { verbatim: %w[old_text new_text], aliases: { "old_text" => %w[old], "new_text" => %w[new] },
-                    blob: true },
+        "edit" => { verbatim: %w[old_text new_text], aliases: { "old_text" => %w[old], "new_text" => %w[new] } },
         "task_create" => { content: "command", verbatim: %w[env], fallback: :prefix_or_raw },
         "task_get" => { content: %w[id task_id], fallback: :prefix_or_raw },
         "task_stop" => { content: %w[id task_id], fallback: :prefix_or_raw },
@@ -56,7 +55,7 @@ module Samagotchi
 
       # One built-in's mapping, resolved from its schema and OVERRIDES.
       Row = Data.define(:name, :content_keys, :path_key, :fields, :aliases, :verbatim, :fallback, :fallback_key,
-                        :options, :blob) do
+                        :options) do
         # The keys to try for +key+, in order.
         def keys_for(key) = [key, *aliases.fetch(key, [])]
 
@@ -82,7 +81,7 @@ module Samagotchi
         content_keys = Array(o[:content])
         path_key = o[:path] || ("path" if properties.include?("path") && !content_keys.include?("path"))
         taken = content_keys + [path_key].compact - Array(o[:also])
-        fields = properties - taken - (o[:blob] ? %w[old_text new_text] : [])
+        fields = properties - taken
         # content: may list a model's other spelling (task_wait's "id"), so
         # one of its keys must be a property; the rest must all be.
         unknown = ([path_key].compact + Array(o[:verbatim]) + Array(o[:also]) + o.fetch(:aliases, {}).keys) - properties
@@ -92,7 +91,7 @@ module Samagotchi
 
         Row.new(name: name, content_keys: content_keys, path_key: path_key, fields: fields,
                 aliases: o.fetch(:aliases, {}), verbatim: Array(o[:verbatim]), fallback: o[:fallback],
-                fallback_key: o[:fallback_key], options: o.fetch(:options, false), blob: o.fetch(:blob, false))
+                fallback_key: o[:fallback_key], options: o.fetch(:options, false))
       end
 
       # @return [Row, nil]
@@ -116,7 +115,6 @@ module Samagotchi
         call[:content] = content_value(row, args)
         call[:path] = value(row, args, row.path_key) if row.path_key
         row.fields.each { |key| call[key.to_sym] = value(row, args, key) }
-        call[:content] = blob(row, args) if row.blob
         call[:options] = options(call[:options]) if row.options
         call
       end
@@ -131,10 +129,6 @@ module Samagotchi
       def value(row, args, key)
         found = row.keys_for(key).lazy.map { |k| args[k] }.find { |v| !v.nil? }
         found.is_a?(String) && !row.verbatim.include?(key) ? found.strip : found
-      end
-
-      def blob(row, args)
-        "<old>#{value(row, args, 'old_text')}</old><new>#{value(row, args, 'new_text')}</new>"
       end
 
       # Normalized when they read as options, else as given (the question

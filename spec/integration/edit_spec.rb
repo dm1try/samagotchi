@@ -43,8 +43,8 @@ RSpec.describe "edit tool - file editing integration", :integration do
 
     run_with_prompt(
       "Use the edit tool to replace the text 'How are you?' with 'How do you do?' " \
-      "in the file #{path}. The <old> block should be exactly 'How are you?' and " \
-      "the <new> block should be 'How do you do?'."
+      "in the file #{path}. old_text should be exactly 'How are you?' and " \
+      "new_text should be 'How do you do?'."
     )
 
     expect(File.read(path)).to include("How do you do?")
@@ -78,8 +78,8 @@ RSpec.describe "edit tool - file editing integration", :integration do
       "with\n" \
       "Line 2 (updated)\n" \
       "Line 3 (updated)\n" \
-      "in the file #{path}. The <old> block must be exactly\n" \
-      "'Line 2\nLine 3' and the <new> block must be\n" \
+      "in the file #{path}. old_text must be exactly\n" \
+      "'Line 2\nLine 3' and new_text must be\n" \
       "'Line 2 (updated)\nLine 3 (updated)'."
     )
 

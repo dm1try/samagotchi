@@ -174,13 +174,18 @@ class KnownNames
     event[:notify]&.call("rejected #{tool}: \"#{hit[:miss]}\" looks like \"#{hit[:name]}\"")
   end
 
+  # Tools whose content is file text: it is left as written.
+  FILE_TEXT_TOOLS = %w[write memory_write].freeze
+
   # The same call with the near miss replaced (whole tokens, everywhere it
-  # appears in the content, path and cwd).
+  # appears in the command or read path (content), the path and the cwd).
+  # Not in file text: a write's content, an edit's old and new text.
   def correct(event, hit)
     call = event[:call]
     pattern = /(?<![A-Za-z0-9])#{Regexp.escape(hit[:miss])}(?![A-Za-z0-9])/
     fixed = call.dup
-    %i[content path cwd].each do |key|
+    keys = FILE_TEXT_TOOLS.include?(call[:name].to_s) ? %i[path cwd] : %i[content path cwd]
+    keys.each do |key|
       next unless fixed[key].is_a?(String)
 
       fixed[key] = fixed[key].gsub(pattern, hit[:name])

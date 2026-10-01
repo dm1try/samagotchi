@@ -33,7 +33,7 @@ RSpec.describe Samagotchi::LLM::NativeToolNormalizer do
       expect(mapped[:end_line]).to eq("20")
     end
 
-    it "reconstructs the Edit content blob (<old>..</old><new>..</new>) from structured args" do
+    it "maps an Edit call: old and new text as their own fields" do
       call = tool_call(name: "edit", arguments: {
         "path" => "lib/foo.rb",
         "old_text" => "a",
@@ -42,7 +42,7 @@ RSpec.describe Samagotchi::LLM::NativeToolNormalizer do
       mapped = described_class.normalize(call)
 
       expect(mapped[:name]).to eq("edit")
-      expect(mapped[:content]).to eq("<old>a</old><new>b</new>")
+      expect(mapped).to include(content: "", old_text: "a", new_text: "b")
       expect(mapped[:path]).to eq("lib/foo.rb")
     end
 
