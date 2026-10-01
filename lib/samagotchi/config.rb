@@ -894,6 +894,29 @@ module Samagotchi
       nil
     end
 
+    # A top-level section of config.yml as written (nil when absent or the
+    # file doesn't parse); a reader checks its shape.
+    def section(name, env: ENV, path: global_path(env: env))
+      data = read_yaml(path: path)
+      data.is_a?(Hash) ? data[name] : nil
+    end
+
+    # config.yml `bundles:`: each bundle's settings by name, for its hooks.
+    # @return [Hash{String => Hash}] {} when absent; a section that isn't a
+    #   mapping warns and counts as absent
+    def bundle_settings(env: ENV, path: global_path(env: env))
+      raw = section("bundles", env: env, path: path)
+      return {} if raw.nil?
+      unless raw.is_a?(Hash)
+        Log.warn(:hooks, "bundles_section_invalid", echo: "[samagotchi:hooks] config.yml bundles: must be a mapping of bundle name to settings; ignored")
+        return {}
+      end
+
+      raw.each_with_object({}) { |(name, value), acc| acc[name.to_s] = value.is_a?(Hash) ? value : {} }
+    rescue StandardError
+      {}
+    end
+
     # Sets default.model in config.yml; the rest of the file, comments
     # included, stays as written (ConfigTextEdit).
     def write_default_model!(model_name, env: ENV, path: global_path(env: env))

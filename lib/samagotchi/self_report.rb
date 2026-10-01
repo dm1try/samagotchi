@@ -97,11 +97,7 @@ module Samagotchi
       File.exist?(path) ? path : "#{path} (missing)"
     end
 
-    def hooks_dir(env)
-      data = ConfigFile.read_yaml(path: ConfigFile.global_path(env: env))
-      configured = data.is_a?(Hash) && data["hooks"].is_a?(Hash) ? data["hooks"]["hooks_dir"] : nil
-      Hooks::Loader.expand_path(configured || Hooks::Loader.default_hooks_dir(env), env)
-    end
+    def hooks_dir(env) = Hooks::Loader.hooks_dir(env)
 
     # Offline, so only the fallback: the running server's n_ctx wins at runtime.
     def context_window(env)

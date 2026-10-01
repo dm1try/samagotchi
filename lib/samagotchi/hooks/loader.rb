@@ -41,6 +41,15 @@ module Samagotchi
           File.join(ConfigFile.config_dir(env: env), "hooks", "")
         end
 
+        # The hooks folder: config.yml's hooks.hooks_dir, or the default,
+        # "~" expanded.
+        # @param data [Hash, nil] the parsed config.yml (read when not given)
+        def hooks_dir(env = ENV, data: ConfigFile.read_yaml(path: ConfigFile.global_path(env: env)))
+          section = data.is_a?(Hash) ? data["hooks"] : nil
+          configured = section.is_a?(Hash) ? section["hooks_dir"] : nil
+          expand_path(configured || default_hooks_dir(env), env)
+        end
+
         # Load hooks from a config hash and return a Registry with registered plugins.
         #
         # @param config_hash [Hash, nil] the hooks section from config.yml
@@ -52,7 +61,7 @@ module Samagotchi
           return Hooks::Registry.new unless config_hash&.key?("hooks")
 
           hooks_config = config_hash["hooks"]
-          hooks_dir = expand_path(hooks_config["hooks_dir"] || default_hooks_dir(env), env)
+          hooks_dir = hooks_dir(env, data: config_hash)
 
           registry = Hooks::Registry.new
           definitions = parse_definitions(hooks_config)

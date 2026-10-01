@@ -2108,31 +2108,13 @@ module Samagotchi
     end
     private :ask_side_model
 
-    # config.yml `bundles:`: each bundle's settings by name, for its hooks.
-    # @return [Hash{String => Hash}] {} when absent; a section that isn't a
-    #   mapping warns once and counts as absent
+    # config.yml `bundles:` (ConfigFile.bundle_settings), read once: the
+    # bundle hooks and the plugins both want it.
     def bundle_settings
-      # Read once: the bundle hooks and the plugins both want it.
-      @bundle_settings ||= read_bundle_settings
+      @bundle_settings ||= Samagotchi::ConfigFile.bundle_settings
     end
     private :bundle_settings
 
-    def read_bundle_settings
-      data = Samagotchi::ConfigFile.read_yaml(path: Samagotchi::ConfigFile.global_path)
-      section = data.is_a?(Hash) ? data["bundles"] : nil
-      return {} if section.nil?
-      unless section.is_a?(Hash)
-        Log.warn(:hooks, "bundles_section_invalid", echo: "[samagotchi:hooks] config.yml bundles: must be a mapping of bundle name to settings; ignored")
-        return {}
-      end
-
-      section.each_with_object({}) do |(name, value), acc|
-        acc[name.to_s] = value.is_a?(Hash) ? value : {}
-      end
-    rescue StandardError
-      {}
-    end
-    private :read_bundle_settings
 
     # The session's current model as a recap target: its host's OpenAI API
     # (native llama.cpp hosts serve /v1/chat/completions too), key variable

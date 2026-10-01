@@ -156,13 +156,11 @@ module Samagotchi
     def protected_paths
       @protected ||= begin
         require_relative "memory_bundle/provenance"
-        config = Samagotchi::ConfigFile.read_yaml(path: Samagotchi::ConfigFile.global_path)
-        hooks_dir = config.is_a?(Hash) && config["hooks"].is_a?(Hash) ? config["hooks"]["hooks_dir"] : nil
         Guardrails::ProtectedPaths.new(
           store_dir: File.dirname(@approvals.path),
           bundles_dir: MemoryBundle::Provenance.bundles_dir,
           config_path: Samagotchi::ConfigFile.global_path,
-          hooks_dir: Hooks::Loader.expand_path(hooks_dir || Hooks::Loader.default_hooks_dir)
+          hooks_dir: Hooks::Loader.hooks_dir
         )
       end
     end
@@ -209,8 +207,7 @@ module Samagotchi
     end
 
     def load_rules
-      section = Samagotchi::ConfigFile.read_yaml(path: Samagotchi::ConfigFile.global_path)
-      section = section["guardrails"] if section.is_a?(Hash)
+      section = Samagotchi::ConfigFile.section("guardrails")
       rules = []
       disable = []
       begin
