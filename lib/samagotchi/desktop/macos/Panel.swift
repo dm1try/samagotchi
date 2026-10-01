@@ -5,7 +5,8 @@
 // sends a message (`chi send`, or `chi send --new` on the new row, with
 // `--image` per image; pasted with Enter into a kitty window), ⌘⏎ a note
 // (`chi note`, text only), ⌥⏎ a paste without Enter (kitty windows only),
-// ⇧⏎ a newline.
+// ⇧⏎ a newline. ⌘M (or a click on the new row's model) opens the model
+// chooser for a new session in place of the targets (Models.swift).
 import AppKit
 import SwiftUI
 
@@ -40,6 +41,23 @@ final class PanelModel: ObservableObject {
   /// The model a new session starts on (`chi self --model`), for the new
   /// row's hint; nil while unknown.
   @Published var newModel: String?
+  /// `chi models`' last answer, kept across opens and refreshed on each.
+  @Published var modelList: ModelList?
+  @Published var modelsLoading = false
+  /// Why the last refresh failed (the older list, if any, stays).
+  @Published var modelsError: String?
+  /// The new session's model; nil: the default (no `--model`).
+  @Published var pickedModel: String?
+  /// The user picked during this open: a late list doesn't undo it.
+  var pickTouched = false
+  @Published var recentModels: [String] = UserDefaults.standard.stringArray(forKey: ModelPick.recentKey) ?? []
+  /// The chooser replaces the targets while open.
+  @Published var pickerOpen = false
+  @Published var modelQuery = "" {
+    didSet { pickerIndex = modelQuery.trimmingCharacters(in: .whitespaces).isEmpty || chooserRows.count < 2 ? 0 : 1 }
+  }
+  /// The highlighted chooser row (↑/↓, ⏎ picks it).
+  @Published var pickerIndex = 0
   @Published var phase: Phase = .loading
   @Published var message = ""
 
@@ -78,6 +96,85 @@ final class PanelModel: ObservableObject {
     if inside { hoveredImage = image.id } else if hoveredImage == image.id { hoveredImage = nil }
   }
   var recent: [LiveSession] { sessions.filter(\.recent) }
+
+  /// The model a new session starts on without `--model`.
+  var defaultModelName: String? { modelList?.default ?? newModel }
+
+  /// What the new row shows: the pick, else the default as resolved (as
+  /// `chi self --model` names it before the list is in: no flip).
+  var shownModel: String? { pickedModel ?? defaultModelName }
+
+  /// `--model` for `chi send --new`, verbatim; nil for the default.
+  var modelForSend: String? {
+    guard let picked = pickedModel else { return nil }
+    if let standard = defaultModelName, ModelPick.same(picked, standard) { return nil }
+    return picked
+  }
+
+  var chooserRows: [ModelRow] {
+    ModelPick.chooserRows(list: modelList, fallbackDefault: newModel, recents: recentModels, query: modelQuery)
+  }
+
+  /// A failed refresh, or the hosts that failed in the last list.
+  var modelsNote: String? {
+    if let modelsError { return modelsError }
+    let warnings = modelList?.warnings ?? []
+    return warnings.isEmpty ? nil : warnings.joined(separator: "; ")
+  }
+
+  func isCurrent(_ row: ModelRow) -> Bool {
+    row.kind == .standard ? modelForSend == nil : pickedModel.map { ModelPick.same($0, row.name) } ?? false
+  }
+
+  /// Opens the chooser on the new row, the current pick highlighted.
+  func openPicker() {
+    touched = true
+    newSelected = true
+    selected = []
+    modelQuery = ""
+    pickerIndex = chooserRows.firstIndex(where: isCurrent) ?? 0
+    pickerOpen = true
+  }
+
+  func closePicker() {
+    pickerOpen = false
+    modelQuery = ""
+  }
+
+  func movePicker(_ delta: Int) {
+    let count = chooserRows.count
+    guard count > 0 else { return }
+    pickerIndex = min(max(pickerIndex + delta, 0), count - 1)
+  }
+
+  /// The pick is remembered (global, D2): the last one and five recent.
+  func choose(_ row: ModelRow) {
+    pickTouched = true
+    newSelected = true
+    selected = []
+    if row.kind == .standard {
+      pickedModel = nil
+      UserDefaults.standard.removeObject(forKey: ModelPick.pickKey)
+    } else {
+      pickedModel = row.name
+      UserDefaults.standard.set(row.name, forKey: ModelPick.pickKey)
+      recentModels = ModelPick.pushRecent(recentModels, row.name)
+      UserDefaults.standard.set(recentModels, forKey: ModelPick.recentKey)
+    }
+    closePicker()
+  }
+
+  /// The remembered pick against the list as it is now (ModelPick.keep);
+  /// one that isn't offered any more is forgotten, with a note.
+  func applyStoredPick() {
+    guard !pickTouched else { return }
+    let kept = ModelPick.keep(UserDefaults.standard.string(forKey: ModelPick.pickKey), in: modelList)
+    pickedModel = kept.pick
+    if let note = kept.note {
+      UserDefaults.standard.removeObject(forKey: ModelPick.pickKey)
+      if message.isEmpty { message = note }
+    }
+  }
 
   /// The last choice, where still live or listed; else the only live
   /// session; else, with none live and no kitty window chosen, the new row.
@@ -152,6 +249,7 @@ struct PanelView: View {
   @ObservedObject var model: PanelModel
   let send: (SendKind) -> Void
   @FocusState private var promptFocused: Bool
+  @FocusState private var filterFocused: Bool
 
   var body: some View {
     VStack(spacing: 0) {
@@ -212,27 +310,32 @@ struct PanelView: View {
 
   @ViewBuilder var sessionList: some View {
     VStack(alignment: .leading, spacing: 2) {
-      switch model.phase {
-      case .loading:
-        HStack(spacing: 8) {
-          ProgressView().controlSize(.small)
-          Text("Looking for live sessions…").foregroundColor(.secondary)
-        }.padding(10)
-      default:
+      if model.pickerOpen {
         newRow
-        let live = model.live.count, kitty = model.kittyWindows.count
-        ForEach(Array(model.targets.prefix(9).enumerated()), id: \.element.id) { index, target in
-          if index == live && kitty > 0 { groupHeader("kitty", first: index == 0) }
-          if index == live + kitty && !model.recent.isEmpty {
-            if kitty == 0 { kittyNoteLine }
-            groupHeader("recent", first: index == 0)
+        modelChooser
+      } else {
+        switch model.phase {
+        case .loading:
+          HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Looking for live sessions…").foregroundColor(.secondary)
+          }.padding(10)
+        default:
+          newRow
+          let live = model.live.count, kitty = model.kittyWindows.count
+          ForEach(Array(model.targets.prefix(9).enumerated()), id: \.element.id) { index, target in
+            if index == live && kitty > 0 { groupHeader("kitty", first: index == 0) }
+            if index == live + kitty && !model.recent.isEmpty {
+              if kitty == 0 { kittyNoteLine }
+              groupHeader("recent", first: index == 0)
+            }
+            switch target {
+            case .chi(let session): row(session, index: index)
+            case .kitty(let window): kittyRow(window, index: index)
+            }
           }
-          switch target {
-          case .chi(let session): row(session, index: index)
-          case .kitty(let window): kittyRow(window, index: index)
-          }
+          if model.recent.isEmpty && kitty == 0 { kittyNoteLine }
         }
-        if model.recent.isEmpty && kitty == 0 { kittyNoteLine }
       }
     }
     .padding(6)
@@ -286,30 +389,107 @@ struct PanelView: View {
 
   var newRow: some View {
     let on = model.newSelected
-    return Button(action: { model.toggleNew() }) {
-      HStack(spacing: 10) {
-        Image(systemName: on ? "plus.circle.fill" : "plus.circle")
-          .font(.system(size: 16))
-          .foregroundColor(on ? .accentColor : .secondary)
-        VStack(alignment: .leading, spacing: 1) {
-          Text("New session in \(model.newSessionFolder)").font(.system(size: 13, weight: .medium)).lineLimit(1)
-          Text(LiveSession.shorten(model.newSessionDir)).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
+    return HStack(spacing: 10) {
+      Button(action: { model.toggleNew() }) {
+        HStack(spacing: 10) {
+          Image(systemName: on ? "plus.circle.fill" : "plus.circle")
+            .font(.system(size: 16))
+            .foregroundColor(on ? .accentColor : .secondary)
+          VStack(alignment: .leading, spacing: 1) {
+            Text("New session in \(model.newSessionFolder)").font(.system(size: 13, weight: .medium)).lineLimit(1)
+            Text(LiveSession.shorten(model.newSessionDir)).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
+          }
+          Spacer(minLength: 0)
         }
-        Spacer()
-        if let name = model.newModel {
-          Text(name).font(.system(size: 11)).foregroundColor(.secondary)
-            .lineLimit(1).truncationMode(.middle)
-            .frame(maxWidth: 240, alignment: .trailing)
-            .help("the model a new session starts on: default.model in config.yml")
-        }
-        Text("⌘0").font(.system(size: 11, design: .rounded)).foregroundColor(.secondary)
+        .contentShape(Rectangle())
       }
-      .padding(.horizontal, 8).padding(.vertical, 6)
-      .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
+      .buttonStyle(.plain)
+      .help("start a session with the message, as the web does (chi send --new); a note needs a session")
+      modelLabel
+      Text("⌘0").font(.system(size: 11, design: .rounded)).foregroundColor(.secondary)
+    }
+    .padding(.horizontal, 8).padding(.vertical, 6)
+    .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
+  }
+
+  /// The new session's model: grey for the default, accent for a pick; a
+  /// click (or ⌘M) opens the chooser.
+  var modelLabel: some View {
+    let picked = model.modelForSend != nil
+    return Button(action: { model.pickerOpen ? model.closePicker() : model.openPicker() }) {
+      HStack(spacing: 3) {
+        Text(model.shownModel ?? "model").font(.system(size: 11))
+          .foregroundColor(picked ? .accentColor : .secondary)
+          .lineLimit(1).truncationMode(.middle)
+        Image(systemName: "chevron.up.chevron.down").font(.system(size: 8)).foregroundColor(.secondary)
+      }
+      .frame(maxWidth: 240, alignment: .trailing)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .help("start a session with the message, as the web does (chi send --new); a note needs a session")
+    .help(picked ? "the new session's model (chi send --new --model); ⌘M to change"
+                 : "the model a new session starts on: default.model in config.yml; ⌘M to choose another")
+  }
+
+  /// A filter and up to nine rows: ↑/↓ and ⏎, or ⌘1…⌘9, pick; Esc closes.
+  @ViewBuilder var modelChooser: some View {
+    let rows = model.chooserRows
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 6) {
+        Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundColor(.secondary)
+        TextField("Search the models, or type a name…", text: $model.modelQuery)
+          .textFieldStyle(.plain)
+          .font(.system(size: 13))
+          .focused($filterFocused)
+        if model.modelsLoading { ProgressView().controlSize(.small) }
+      }
+      .padding(.horizontal, 8).padding(.vertical, 5)
+      .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
+      .padding(.horizontal, 4).padding(.vertical, 3)
+
+      ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+        modelRow(row, index: index)
+      }
+      if model.modelList == nil && model.modelsLoading {
+        Text("Loading models…").font(.system(size: 11)).foregroundColor(.secondary)
+          .padding(.horizontal, 8).padding(.vertical, 4)
+      }
+      if let note = model.modelsNote {
+        HStack(spacing: 6) {
+          Image(systemName: "exclamationmark.triangle").font(.system(size: 10))
+          Text(note).font(.system(size: 11)).lineLimit(2)
+        }
+        .foregroundColor(.secondary)
+        .help(note)
+        .padding(.horizontal, 8).padding(.vertical, 4)
+      }
+    }
+    .onAppear { DispatchQueue.main.async { filterFocused = true } }
+    .onDisappear { DispatchQueue.main.async { promptFocused = true } }
+  }
+
+  func modelRow(_ row: ModelRow, index: Int) -> some View {
+    let current = model.isCurrent(row)
+    let highlighted = index == model.pickerIndex
+    return Button(action: { model.choose(row) }) {
+      HStack(spacing: 10) {
+        Image(systemName: current ? "checkmark" : "cpu")
+          .font(.system(size: 11))
+          .foregroundColor(current ? .accentColor : .secondary.opacity(0.6))
+          .frame(width: 16)
+        Text(row.label)
+          .font(.system(size: 13, weight: row.kind == .standard ? .medium : .regular))
+          .foregroundColor(row.kind == .typed ? .secondary : .primary)
+          .lineLimit(1).truncationMode(.middle)
+        Spacer(minLength: 8)
+        Text("⌘\(index + 1)").font(.system(size: 11, design: .rounded)).foregroundColor(.secondary)
+      }
+      .padding(.horizontal, 8).padding(.vertical, 5)
+      .background(RoundedRectangle(cornerRadius: 7).fill(highlighted ? Color.accentColor.opacity(0.14) : Color.clear))
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .help(row.kind == .typed ? "not in any host's list: sent as typed" : row.name)
   }
 
   func row(_ session: LiveSession, index: Int) -> some View {
@@ -434,6 +614,10 @@ final class KeyPanel: NSPanel {
   var onKey: ((NSEvent) -> Bool)?
   /// Return with these modifiers; true when handled.
   var onReturn: ((NSEvent.ModifierFlags) -> Bool)?
+  /// ↑ (-1) or ↓ (+1) without modifiers; true when handled.
+  var onArrow: ((Int) -> Bool)?
+  /// Esc; true when handled (the panel stays open).
+  var onCancel: (() -> Bool)?
 
   /// Return is taken here, before the text views see it, so ⏎ sends from
   /// either field. An input method composing text keeps its Return.
@@ -443,12 +627,28 @@ final class KeyPanel: NSPanel {
        onReturn?(event.modifierFlags.intersection([.shift, .command, .option, .control])) == true {
       return
     }
+    // An input method's candidate list keeps its arrows too.
+    if event.type == .keyDown, event.keyCode == 125 || event.keyCode == 126,
+       event.modifierFlags.intersection([.shift, .command, .option, .control]).isEmpty,
+       (firstResponder as? NSTextView)?.hasMarkedText() != true,
+       onArrow?(event.keyCode == 125 ? 1 : -1) == true {
+      return
+    }
+    // Esc closes an open chooser before a text view sees it (it could take
+    // it as completion); otherwise cancelOperation closes the panel.
+    if event.type == .keyDown, event.keyCode == 53,
+       (firstResponder as? NSTextView)?.hasMarkedText() != true, onCancel?() == true {
+      return
+    }
     super.sendEvent(event)
   }
 
   override var canBecomeKey: Bool { true }
   override var canBecomeMain: Bool { false }
-  override func cancelOperation(_ sender: Any?) { close() }
+  override func cancelOperation(_ sender: Any?) {
+    if onCancel?() == true { return }
+    close()
+  }
 
   override func performKeyEquivalent(with event: NSEvent) -> Bool {
     if onKey?(event) == true { return true }
@@ -499,10 +699,27 @@ final class PanelController: NSObject, NSWindowDelegate {
     panel.contentView = effect
     panel.onKey = { [weak self] event in self?.handleKey(event) ?? false }
     panel.onReturn = { [weak self] flags in self?.handleReturn(flags) ?? false }
+    panel.onArrow = { [weak self] delta in
+      guard let self, self.model.pickerOpen else { return false }
+      self.model.movePicker(delta)
+      return true
+    }
+    panel.onCancel = { [weak self] in
+      guard let self, self.model.pickerOpen else { return false }
+      self.model.closePicker()
+      return true
+    }
   }
 
   /// ⏎ message, ⌘⏎ note, ⌥⏎ paste, ⇧⏎ a newline in the focused field.
+  /// With the chooser open, ⏎ picks the highlighted row (other Returns do
+  /// nothing: no send from inside the chooser).
   private func handleReturn(_ flags: NSEvent.ModifierFlags) -> Bool {
+    if model.pickerOpen {
+      let rows = model.chooserRows
+      if flags.isEmpty, rows.indices.contains(model.pickerIndex) { model.choose(rows[model.pickerIndex]) }
+      return true
+    }
     switch flags {
     case []: send(.message)
     case .command: send(.note)
@@ -514,11 +731,23 @@ final class PanelController: NSObject, NSWindowDelegate {
     return true
   }
 
-  /// ⌘1…⌘9 toggle a target, ⌘0 the new row.
+  /// ⌘1…⌘9 toggle a target, ⌘0 the new row; ⌘M opens or closes the model
+  /// chooser, where ⌘1…⌘9 pick a row.
   private func handleKey(_ event: NSEvent) -> Bool {
+    let command = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
+    // By key code: ⌘M in any keyboard layout (a Cyrillic one types "ь").
+    if command, event.keyCode == 46 {
+      if model.pickerOpen { model.closePicker() } else { model.openPicker() }
+      return true
+    }
+    if model.pickerOpen {
+      let rows = model.chooserRows
+      guard command, let chars = event.charactersIgnoringModifiers, let n = Int(chars), n >= 1, n <= rows.count else { return false }
+      model.choose(rows[n - 1])
+      return true
+    }
     let targets = model.targets
-    guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-          let chars = event.charactersIgnoringModifiers, let n = Int(chars),
+    guard command, let chars = event.charactersIgnoringModifiers, let n = Int(chars),
           n <= min(targets.count, 9) else { return false }
     if n == 0 { model.toggleNew() } else { model.toggle(targets[n - 1].id) }
     return true
@@ -538,12 +767,17 @@ final class PanelController: NSObject, NSWindowDelegate {
     model.newSelected = false
     model.selected = []
     model.touched = false
+    model.pickerOpen = false
+    model.modelQuery = ""
+    model.pickTouched = false
+    model.applyStoredPick()
     model.phase = .loading
     placeOnActiveScreen()
     panel.makeKeyAndOrderFront(nil)
     loadSessions()
     loadKitty()
     loadModel()
+    loadModels()
   }
 
   private func placeOnActiveScreen() {
@@ -561,7 +795,8 @@ final class PanelController: NSObject, NSWindowDelegate {
       switch result {
       case .success(let sessions):
         self.model.sessions = sessions
-        self.model.preselect()
+        // A choice made while it listed (⌘0, ⌘M) stays.
+        if !self.model.touched { self.model.preselect() }
         self.model.phase = .ready
       case .failure(let error):
         self.model.sessions = []
@@ -596,6 +831,28 @@ final class PanelController: NSObject, NSWindowDelegate {
   /// Kept from the last look while it runs; config rarely changes.
   private func loadModel() {
     runner.defaultModel { [weak self] model in self?.model.newModel = model }
+  }
+
+  private var modelsGeneration = 0
+
+  /// The chooser's list, refreshed on each open; the last one serves
+  /// meanwhile, and a failed refresh keeps it.
+  private func loadModels() {
+    modelsGeneration += 1
+    let generation = modelsGeneration
+    model.modelsLoading = true
+    runner.models { [weak self] result in
+      guard let self, generation == self.modelsGeneration else { return }
+      self.model.modelsLoading = false
+      switch result {
+      case .success(let list):
+        self.model.modelList = list
+        self.model.modelsError = nil
+      case .failure(let error):
+        self.model.modelsError = error.description
+      }
+      self.model.applyStoredPick()
+    }
   }
 
   /// Fans out: one `chi send` / `chi note` for the chi sessions (or the new
@@ -693,6 +950,8 @@ final class PanelController: NSObject, NSWindowDelegate {
       // stdin is the quoted context; without -m, chi takes it as the message.
       command = "chi send"
       args = new ? ["send", "--new", "--dir", model.newSessionDir] : ["send"]
+      // The row's name verbatim; none for the default.
+      if new, let name = model.modelForSend { args += ["--model", name] }
       if !prompt.isEmpty { args += ["-m", prompt] }
       args += images.flatMap { ["--image", $0.url.path] }
       stdin = model.hasContext ? Data(model.text.utf8) : nil
