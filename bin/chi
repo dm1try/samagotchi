@@ -23,13 +23,13 @@ if ARGV[0] == "self"
   if %w[-h --help help].include?(ARGV[1])
     puts "Usage: chi self [--model]"
     puts "  Print version, source dir, config/memory/session paths, model/host and bundles."
-    puts "  --model  print only the model a new session starts on (exit 1 when none is configured)"
+    puts "  --model  print only the model a new session starts on, an alias resolved (exit 1 when none is configured)"
     exit 0
   end
   require "samagotchi/self_report"
   # The desktop helper's hint for its "New session" row: offline and quick.
   if ARGV[1] == "--model"
-    model = Samagotchi::SelfReport.model_name
+    model = Samagotchi::SelfReport.model_ref_name
     puts model if model
     exit(model ? 0 : 1)
   end
@@ -49,6 +49,8 @@ SUBCOMMANDS = {
   "bootstrap" => ["samagotchi/bootstrap_command", "BootstrapCommand"],
   # bring an installed chi up to date
   "update" => ["samagotchi/update_command", "UpdateCommand"],
+  # the models --model takes, from every host (--format, --timeout)
+  "models" => ["samagotchi/models_command", "ModelsCommand"],
   # the native "Send to chi" helper
   "desktop" => ["samagotchi/desktop_command", "DesktopCommand"],
   # install, upgrade, uninstall, status, diff, list, build (--scope, --force, …)
@@ -94,6 +96,7 @@ parser = OptionParser.new do |opts|
            chi send [-m TEXT] ID...|--new   a message into sessions, as if typed there
            chi bundle <install|upgrade|uninstall|status|diff|list|build>
            chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
+           chi models [--format json] [TEXT]   the models --model takes, from every host
            chi self                         version, paths, model and bundles
            chi update [--dry-run]           update this chi, its bundles and the desktop helper
     (each subcommand takes --help)
