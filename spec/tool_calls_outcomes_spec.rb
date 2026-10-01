@@ -44,8 +44,8 @@ RSpec.describe "Tool call outcomes per model format" do
   {
     "write without content" => [
       ["write", ->(f) { { "path" => f } }],
-      { gemma: ["[write]\nWritten 0 bytes to DIR/a.txt", ""],
-        qwen: ["[write]\nWritten 0 bytes to DIR/a.txt", ""],
+      { gemma: ["[write]\nError: missing content", "keep x</old>y me\n"],
+        qwen: ["[write]\nError: missing content", "keep x</old>y me\n"],
         chat: ["[write]\nError: missing content", "keep x</old>y me\n"] }
     ],
     "edit without new_text" => [
@@ -72,7 +72,7 @@ RSpec.describe "Tool call outcomes per model format" do
   # [output, intervals registered]
   {
     gemma: ["[register_reminder]\nReminder 'r' registered (interval: 1m, id: ID).", [1]],
-    qwen: ["[register_reminder]\nError: interval_minutes must be >= 1", []],
+    qwen: ["[register_reminder]\nReminder 'r' registered (interval: 1m, id: ID).", [1]],
     chat: ["[register_reminder]\nReminder 'r' registered (interval: 1m, id: ID).", [1]]
   }.each do |format, (output, intervals)|
     it "#{format}: register_reminder without an interval" do

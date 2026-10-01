@@ -1336,11 +1336,9 @@ Need to inspect the filesystem first.
     end
 
     it "parses native task_wait options" do
-      call = kernel.parser.send(
-        :native_call,
-        "task_wait",
-        'task_id: "task-1", timeout: 90, tail_lines: 5, done_pattern: "Done!"'
-      )
+      call = kernel.parser.parse(
+        '<|tool_call>call:task_wait{task_id: "task-1", timeout: 90, tail_lines: 5, done_pattern: "Done!"}<tool_call|>'
+      ).first
 
       expect(call).to include(
         content: "task-1",
@@ -1351,13 +1349,13 @@ Need to inspect the filesystem first.
     end
 
     it "resolves memory_write name only (the `path` alias no longer satisfies the name slot)" do
-      name_call = kernel.parser.send(:native_call, "memory_write", 'name: "secret_plan", scope: "project"')
+      name_call = kernel.parser.parse('<|tool_call>call:memory_write{name: "secret_plan", scope: "project"}<tool_call|>').first
       expect(name_call[:path]).to eq("secret_plan")
 
       # A stray `path:` (the file-tool alias the model tends to emit) must NOT
-      # satisfy the name slot; it resolves to "" so the guard can reject it.
-      path_call = kernel.parser.send(:native_call, "memory_write", 'path: "secret_plan", scope: "project"')
-      expect(path_call[:path]).to eq("")
+      # satisfy the name slot; it resolves to nil so the guard can reject it.
+      path_call = kernel.parser.parse('<|tool_call>call:memory_write{path: "secret_plan", scope: "project"}<tool_call|>').first
+      expect(path_call[:path]).to be_nil
     end
   end
 
@@ -1742,6 +1740,11 @@ end
     let(:qwen_profile) { Samagotchi::ModelProfile.qwen36 }
     subject(:qwen_kernel) { described_class.new(client: client, profile: qwen_profile) }
 
+    def qwen_wire(name, params)
+      body = params.map { |key, value| "<parameter=#{key}>\n#{value}\n</parameter>\n" }.join
+      "<tool_call>\n<function=#{name}>\n#{body}</function>\n</tool_call>"
+    end
+
     it "parses a canonical Qwen 3.6 execute tool call" do
       prompts = []
       allow(client).to receive(:complete) do |prompt, **_kwargs|
@@ -1790,11 +1793,9 @@ end
     end
 
     it "parses Qwen task_wait options" do
-      call = qwen_kernel.parser.send(
-        :qwen_call_to_internal,
-        "task_wait",
-        "task_id" => "task-1", "timeout" => "90", "tail_lines" => "5", "done_pattern" => "Done!"
-      )
+      call = qwen_kernel.parser.parse(
+        qwen_wire("task_wait", "task_id" => "task-1", "timeout" => "90", "tail_lines" => "5", "done_pattern" => "Done!")
+      ).first
 
       expect(call).to include(
         content: "task-1",
@@ -1804,12 +1805,12 @@ end
       )
     end
 
-    it "uses task defaults for omitted Qwen optional parameters" do
-      wait_call = qwen_kernel.parser.send(:qwen_call_to_internal, "task_wait", "task_id" => "task-1")
-      create_call = qwen_kernel.parser.send(:qwen_call_to_internal, "task_create", "command" => "echo hi")
+    it "leaves omitted Qwen optional parameters nil (the tasks' defaults apply)" do
+      wait_call = qwen_kernel.parser.parse(qwen_wire("task_wait", "task_id" => "task-1")).first
+      create_call = qwen_kernel.parser.parse(qwen_wire("task_create", "command" => "echo hi")).first
 
-      expect(wait_call).to include(timeout: "", tail_lines: "", done_pattern: "")
-      expect(create_call).to include(env: "")
+      expect(wait_call).to include(timeout: nil, tail_lines: nil, done_pattern: nil)
+      expect(create_call).to include(env: nil)
     end
 
     it "parses a Qwen 3.6 write tool call" do
@@ -1986,13 +1987,13 @@ end
     end
 
     it "resolves memory_write name only (the `path` alias no longer satisfies the name slot)" do
-      name_call = qwen_kernel.parser.send(:qwen_call_to_internal, "memory_write", "name" => "secret_plan")
+      name_call = qwen_kernel.parser.parse(qwen_wire("memory_write", "name" => "secret_plan")).first
       expect(name_call[:path]).to eq("secret_plan")
 
       # A stray `path:` (the file-tool alias the model tends to emit) must NOT
-      # satisfy the name slot; it resolves to "" so the guard can reject it.
-      path_call = qwen_kernel.parser.send(:qwen_call_to_internal, "memory_write", "path" => "secret_plan")
-      expect(path_call[:path]).to eq("")
+      # satisfy the name slot; it resolves to nil so the guard can reject it.
+      path_call = qwen_kernel.parser.parse(qwen_wire("memory_write", "path" => "secret_plan")).first
+      expect(path_call[:path]).to be_nil
     end
 
     it "strips Qwen think blocks from the final output" do

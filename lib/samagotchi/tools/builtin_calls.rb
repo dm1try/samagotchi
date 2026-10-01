@@ -62,6 +62,10 @@ module Samagotchi
 
         # The keys Gemma's fallback may find as a "key:" prefix.
         def fallback_keys = fallback_key ? [fallback_key] : content_keys.flat_map { |key| keys_for(key) }
+
+        # Whether a given +key+ (a property or one of its aliases) is
+        # passed as given.
+        def verbatim_key?(key) = verbatim.any? { |property| keys_for(property).include?(key) }
       end
 
       module_function

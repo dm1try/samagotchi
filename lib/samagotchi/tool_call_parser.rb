@@ -21,6 +21,7 @@ require_relative "tools/delegate"
 require_relative "tools/delegate_result"
 require_relative "tools/ask_user_question"
 require_relative "tools/args"
+require_relative "tools/builtin_calls"
 
 module Samagotchi
   # Per-profile strategy for parsing raw model output into internal tool
@@ -67,8 +68,13 @@ module Samagotchi
 
       # Parse canonical Gemma 4 tool calls:
       #   <|tool_call>call:NAME{params}<tool_call|>
-      # Uses String#index for outer delimiters (no backtracking risk).
       def parse(text)
+        read(text).map { |call| Tools::BuiltinCalls.build(call[:name], call[:args], raw: call[:raw]) }
+      end
+
+      # Each tool call as {name:, args:, raw:}, unbuilt.
+      # Uses String#index for outer delimiters (no backtracking risk).
+      def read(text)
         results = []
 
         pos = 0
@@ -82,7 +88,7 @@ module Samagotchi
             name       = m[1]
             params_raw = body[m.end(0)..]
             params_raw = params_raw[0..-2] if params_raw.end_with?("}")
-            results << native_call(name, params_raw.strip)
+            results << read_call(name, params_raw.strip)
           end
           pos = close_pos + @tool_call_close.length
         end
@@ -154,155 +160,47 @@ module Samagotchi
         str.gsub(@string_delim, "")
       end
 
-      # Map native {key: "value"} params to the internal call hash.
-      # Uses well-known named params for each tool; falls back to params_raw if
-      # no recognised param is present.
+      # One call's {key: "value"} params as args (string keys).
+      #
+      # A built-in's params come from the flat scan (extract_native_params):
+      # strings, quotes unescaped its own way. A tool that isn't built in
+      # gets its body read as values (Tools::Args.parse_gemma: numbers,
+      # booleans, lists, objects), the flat scan when that fails, and the
+      # raw text as content for the unknown-tool error.
       #
       # The model sometimes omits quotes and/or the space after the colon, e.g.
       #   {command:ruby -e 'puts 1'}  instead of  {command: "ruby -e 'puts 1'"}
-      # In that case extract_native_params finds nothing and params_raw still
-      # contains the "key:" prefix. strip_param_prefix removes it so the actual
-      # command/path value is passed to the tool rather than the raw fragment.
+      # In that case extract_native_params finds nothing; the main argument
+      # (BuiltinCalls row's fallback) is then the body after a "key:" prefix,
+      # or the whole body.
       #
       # Gemma 4 may also use its <|"|> string delimiter token instead of plain
-      # quotes. strip_gemma_delimiters is applied to all fallback values so that
-      # <|"|>value<|"|> is cleaned to just "value" before being dispatched.
-      def native_call(name, params_raw)
-        params = extract_native_params(params_raw)
-
-        case name
-        when Tools::Execute::NAME
-          content = params["command"] ||
-                    strip_param_prefix(params_raw, "command") ||
-                    params_raw
-          { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil, cwd: params["cwd"] }
-        when Tools::Read::NAME
-          content = params["path"] ||
-                    strip_param_prefix(params_raw, "path") ||
-                    params_raw
-          {
-            name: name,
-            content: strip_gemma_delimiters(content),
-            path: nil,
-            scope: nil,
-            start_line: params["start_line"],
-            end_line: params["end_line"]
-          }
-        when Tools::Write::NAME
-          { name: name, content: params["content"] || "", path: params["path"], scope: nil }
-        when Tools::MemoryRead::NAME
-          content = params["name"] ||
-                    strip_param_prefix(params_raw, "name") ||
-                    params_raw
-          { name: name, content: strip_gemma_delimiters(content), path: nil, scope: params["scope"] }
-        when Tools::MemoryWrite::NAME
-          # The declaration uses "name" (required) and "scope" (required).
-          entry_name = params["name"] || ""
-          { name: name, content: params["content"] || "", path: entry_name, scope: params["scope"], description: params["description"] ? strip_gemma_delimiters(params["description"]) : nil,
-            current_model_only: params["current_model_only"] }
-        when Tools::Edit::NAME
-          old_text = params["old_text"] || params["old"] || ""
-          new_text = params["new_text"] || params["new"] || ""
-          content  = "<old>#{old_text}</old><new>#{new_text}</new>"
-          {
-            name: name,
-            content: content,
-            path: params["path"],
-            scope: nil,
-            start_line: params["start_line"],
-            end_line: params["end_line"]
-          }
-        when Tools::TaskCreate::NAME
-          command = params["command"] ||
-                    strip_param_prefix(params_raw, "command") ||
-                    params_raw
-          {
-            name: name,
-            content: strip_gemma_delimiters(command),
-            path: nil,
-            scope: nil,
-            cwd: params["cwd"],
-            env: params["env"]
-          }
-        when Tools::TaskGet::NAME, Tools::TaskStop::NAME
-          task_id = params["id"] ||
-                    params["task_id"] ||
-                    strip_param_prefix(params_raw, "id") ||
-                    strip_param_prefix(params_raw, "task_id") ||
-                    params_raw
-          {
-            name: name,
-            content: strip_gemma_delimiters(task_id),
-            path: nil,
-            scope: nil
-          }
-        when Tools::TaskWait::NAME
-          task_id = params["id"] ||
-                    params["task_id"] ||
-                    strip_param_prefix(params_raw, "id") ||
-                    strip_param_prefix(params_raw, "task_id") ||
-                    params_raw
-          {
-            name: name,
-            content: strip_gemma_delimiters(task_id),
-            path: nil,
-            scope: nil,
-            timeout: params["timeout"],
-            tail_lines: params["tail_lines"],
-            done_pattern: params["done_pattern"]
-          }
-        when Tools::TaskList::NAME
-          { name: name, content: "", path: nil, scope: nil }
-        when Tools::WebFetch::NAME
-          content = params["url"] ||
-                    strip_param_prefix(params_raw, "url") ||
-                    params_raw
-          { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil }
-        when Tools::RegisterReminder::NAME
-          content = params["name"] || strip_param_prefix(params_raw, "name") || params_raw
-          {
-            name: name,
-            content: strip_gemma_delimiters(content),
-            path: nil,
-            scope: nil,
-            description: params["description"] || "",
-            interval_minutes: params["interval_minutes"] || "1"
-          }
-        when Tools::CancelReminder::NAME
-          content = params["name"] || strip_param_prefix(params_raw, "name") || params_raw
-          { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil }
-        when Tools::ListReminders::NAME
-          { name: name, content: "", path: nil, scope: nil }
-        when Tools::ListSessions::NAME
-          cwd = params["cwd"] || strip_param_prefix(params_raw, "cwd")
-          { name: name, content: "", path: nil, scope: nil, cwd: cwd && strip_gemma_delimiters(cwd) }
-        when Tools::SendNote::NAME
-          { name: name, content: strip_gemma_delimiters(params["text"].to_s), path: nil, scope: nil,
-            session: strip_gemma_delimiters(params["session"].to_s) }
-        when Tools::Delegate::NAME
-          task = params["task"] || strip_param_prefix(params_raw, "task") || params_raw
-          { name: name, content: strip_gemma_delimiters(task.to_s), path: nil, scope: nil,
-            model: params["model"] && strip_gemma_delimiters(params["model"]),
-            session: params["session"] && strip_gemma_delimiters(params["session"]),
-            wait: params["wait"], timeout: params["timeout"] }
-        when Tools::DelegateResult::NAME
-          { name: name, content: "", path: nil, scope: nil,
-            session: params["session"] && strip_gemma_delimiters(params["session"]), timeout: params["timeout"] }
-        when Tools::AskUserQuestion::NAME
-          { name: name, content: params["question"] ? strip_gemma_delimiters(params["question"]) : strip_gemma_delimiters(params_raw),
-            path: nil, scope: nil,
-            question: params["question"] ? strip_gemma_delimiters(params["question"]) : strip_gemma_delimiters(params_raw),
-            options: parse_ask_options(params, params_raw),
-            header: params["header"] ? strip_gemma_delimiters(params["header"]) : nil,
-            multi_select: params["multi_select"],
-            allow_freeform: params["allow_freeform"] }
-        else
-          # A registry (plugin) tool, or an unknown one: its arguments as a
-          # Hash on args: (typed by the schema at dispatch), and the raw text
-          # as content for the unknown-tool error.
-          args = Tools::Args.parse_gemma(params_raw, @string_delim) || params
-          { name: name, content: strip_gemma_delimiters(params_raw), path: nil, scope: nil, args: args }
+      # quotes; it is stripped from every value but file text, old/new, env
+      # and options.
+      def read_call(name, params_raw)
+        row = Tools::BuiltinCalls.row(name)
+        unless row
+          args = Tools::Args.parse_gemma(params_raw, @string_delim) || extract_native_params(params_raw)
+          return { name: name, args: args, raw: strip_gemma_delimiters(params_raw) }
         end
+
+        params = extract_native_params(params_raw)
+        args = params.to_h do |key, value|
+          [key, value.is_a?(String) && !row.verbatim_key?(key) ? strip_gemma_delimiters(value) : value]
+        end
+        fill_main_argument(row, args, params_raw)
+        args["options"] = parse_ask_options(params, params_raw) if row.options
+        { name: name, args: args, raw: params_raw }
+      end
+
+      # The row's main argument from a body the scan didn't find it in.
+      def fill_main_argument(row, args, params_raw)
+        return unless row.fallback
+        return if row.fallback_keys.any? { |key| args.key?(key) }
+
+        value = row.fallback_keys.lazy.map { |key| strip_param_prefix(params_raw, key) }.find(&:itself) unless row.fallback == :raw
+        value ||= params_raw unless row.fallback == :prefix
+        args[row.fallback_key || row.content_keys.first] = strip_gemma_delimiters(value) if value
       end
 
       def parse_ask_options(params, params_raw)
@@ -424,6 +322,12 @@ module Samagotchi
       end
 
       def parse(text)
+        read(text).map { |call| Tools::BuiltinCalls.build(call[:name], call[:args], raw: call[:raw]) }
+      end
+
+      # Each <tool_call> block as {name:, args:, raw:}: its <parameter=…>
+      # (or <arg_key>/<arg_value>) text by lowercased key, unbuilt.
+      def read(text)
         results = []
 
         pos = 0
@@ -438,7 +342,7 @@ module Samagotchi
           body = text[body_start...close_pos]
           if (name = qwen_function_name(body))
             params = qwen_params(body)
-            results << qwen_call_to_internal(name, params)
+            results << { name: name, args: params, raw: params.to_s }
           end
           pos = close_pos + tool_close.length
         end
@@ -508,129 +412,6 @@ module Samagotchi
         end
 
         nil
-      end
-
-      def qwen_call_to_internal(name, params)
-        case name
-        when Tools::Execute::NAME
-          { name: name, content: qwen_param_value(params, "command"), path: nil, scope: nil, cwd: qwen_param_value(params, "cwd") }
-        when Tools::Read::NAME
-          {
-            name: name,
-            content: qwen_param_value(params, "path"),
-            path: nil,
-            scope: nil,
-            start_line: qwen_param_value(params, "start_line"),
-            end_line: qwen_param_value(params, "end_line")
-          }
-        when Tools::Write::NAME
-          content = qwen_param_value(params, "content", "text", strip: false)
-          { name: name, content: content, path: qwen_param_value(params, "path"), scope: nil }
-        when Tools::MemoryRead::NAME
-          memory_name = qwen_param_value(params, "name")
-          { name: name, content: memory_name, path: nil, scope: qwen_param_value(params, "scope") }
-        when Tools::MemoryWrite::NAME
-          entry_name = qwen_param_value(params, "name")
-          content = qwen_param_value(params, "content", "text", "body", "value", strip: false)
-          { name: name, content: content, path: entry_name, scope: qwen_param_value(params, "scope"), description: qwen_param_value(params, "description"),
-            current_model_only: qwen_param_value(params, "current_model_only") }
-        when Tools::Edit::NAME
-          old_text = qwen_param_value(params, "old_text", "old", strip: false)
-          new_text = qwen_param_value(params, "new_text", "new", strip: false)
-          content  = "<old>#{old_text}</old><new>#{new_text}</new>"
-          {
-            name: name,
-            content: content,
-            path: qwen_param_value(params, "path"),
-            scope: nil,
-            start_line: qwen_param_value(params, "start_line"),
-            end_line: qwen_param_value(params, "end_line")
-          }
-        when Tools::TaskCreate::NAME
-          {
-            name: name,
-            content: qwen_param_value(params, "command"),
-            path: nil,
-            scope: nil,
-            cwd: qwen_param_value(params, "cwd"),
-            env: qwen_param_value(params, "env", strip: false)
-          }
-        when Tools::TaskGet::NAME, Tools::TaskStop::NAME
-          {
-            name: name,
-            content: qwen_param_value(params, "id", "task_id"),
-            path: nil,
-            scope: nil
-          }
-        when Tools::TaskWait::NAME
-          {
-            name: name,
-            content: qwen_param_value(params, "id", "task_id"),
-            path: nil,
-            scope: nil,
-            timeout: qwen_param_value(params, "timeout"),
-            tail_lines: qwen_param_value(params, "tail_lines"),
-            done_pattern: qwen_param_value(params, "done_pattern")
-          }
-        when Tools::TaskList::NAME
-          { name: name, content: "", path: nil, scope: nil }
-        when Tools::WebFetch::NAME
-          { name: name, content: qwen_param_value(params, "url"), path: nil, scope: nil }
-        when Tools::RegisterReminder::NAME
-          {
-            name: name,
-            content: qwen_param_value(params, "name"),
-            path: nil,
-            scope: nil,
-            description: qwen_param_value(params, "description"),
-            interval_minutes: qwen_param_value(params, "interval_minutes")
-          }
-        when Tools::CancelReminder::NAME
-          { name: name, content: qwen_param_value(params, "name"), path: nil, scope: nil }
-        when Tools::ListReminders::NAME
-           { name: name, content: "", path: nil, scope: nil }
-        when Tools::ListSessions::NAME
-          { name: name, content: "", path: nil, scope: nil, cwd: qwen_param_value(params, "cwd") }
-        when Tools::SendNote::NAME
-          { name: name, content: qwen_param_value(params, "text"), path: nil, scope: nil,
-            session: qwen_param_value(params, "session") }
-        when Tools::Delegate::NAME
-          { name: name, content: qwen_param_value(params, "task"), path: nil, scope: nil,
-            model: qwen_param_value(params, "model"), session: qwen_param_value(params, "session"),
-            wait: qwen_param_value(params, "wait"), timeout: qwen_param_value(params, "timeout") }
-        when Tools::DelegateResult::NAME
-          { name: name, content: "", path: nil, scope: nil,
-            session: qwen_param_value(params, "session"), timeout: qwen_param_value(params, "timeout") }
-        when Tools::AskUserQuestion::NAME
-           opts_raw = qwen_param_value(params, "options", strip: false)
-           opts = qwen_ask_options(opts_raw)
-           {
-             name: name,
-             content: qwen_param_value(params, "question"),
-             path: nil, scope: nil,
-             question: qwen_param_value(params, "question"),
-             options: opts,
-             header: qwen_param_value(params, "header"),
-             multi_select: qwen_param_value(params, "multi_select"),
-             allow_freeform: qwen_param_value(params, "allow_freeform")
-           }
-        else
-           # A registry (plugin) tool, or an unknown one: the parameters as
-           # given (text; typed by the schema at dispatch).
-           { name: name, content: params.to_s, path: nil, scope: nil, args: params }
-        end
-      end
-
-      def qwen_param_value(params, *keys, strip: true)
-        value = keys.lazy.map { |key| params[key] }.find { |candidate| !candidate.nil? }
-        return "" if value.nil?
-
-        strip ? value.to_s.strip : value.to_s
-      end
-
-      def qwen_ask_options(raw)
-        norm = Samagotchi::Tools::AskUserQuestion.normalize_options_lenient(raw)
-        norm.empty? ? nil : norm
       end
     end
   end
