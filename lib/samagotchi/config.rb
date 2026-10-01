@@ -6,6 +6,7 @@ require "fileutils"
 require "uri"
 require "set"
 require_relative "atomic_file"
+require_relative "config_text_edit"
 require_relative "log"
 require_relative "paths"
 
@@ -893,33 +894,16 @@ module Samagotchi
       nil
     end
 
+    # Sets default.model in config.yml; the rest of the file, comments
+    # included, stays as written (ConfigTextEdit).
     def write_default_model!(model_name, env: ENV, path: global_path(env: env))
       resolved = model_name.to_s.strip
       raise ArgumentError, "model name is required" if resolved.empty?
 
-      if resolved.include?(":") || resolved.include?("/")
-        sep = resolved.include?(":") ? ":" : "/"
-        prefix = resolved.split(sep, 2).first.to_s.strip.downcase
-        begin
-          hosts = hosts_config(env: env, path: path)
-          if hosts && !hosts.empty? && !hosts.key?(prefix) && prefix.match?(HOST_NAME_RE)
-          end
-        rescue StandardError
-          nil
-        end
-      end
-
-      raw_data = read_yaml(env: env, path: path) || {}
-
-      raw_data["default"] ||= {}
-      if raw_data["default"].is_a?(Hash)
-        raw_data["default"]["model"] = resolved
-      else
-        raw_data["default"] = { "model" => resolved }
-      end
-      FileUtils.mkdir_p(File.dirname(path))
-      AtomicFile.write(path, YAML.dump(raw_data))
-      clear_yaml_cache!(path)
+      expected = deep_copy(read_yaml(env: env, path: path) || {})
+      expected["default"] = {} unless expected["default"].is_a?(Hash)
+      expected["default"]["model"] = resolved
+      write_config_key(path, "default", "model", resolved, expected)
       Samagotchi::Config.reload!(cli_overrides: Samagotchi::Config.cli_overrides)
       true
     end
@@ -1022,31 +1006,30 @@ module Samagotchi
       resolved_model = model_name.to_s.strip
       raise ArgumentError, "alias must not point to itself" if lowered_key == resolved_model.downcase
 
-      raw_data = read_yaml(env: env, path: path) || {}
-
-      aliases_hash = raw_data[MODEL_ALIASES_KEY]
-      unless aliases_hash.is_a?(Hash)
-        aliases_hash = {}
-        raw_data[MODEL_ALIASES_KEY] = aliases_hash
-      end
-
-      # Normalize existing alias keys to downcase to avoid duplicates like Qwen/qwen
-      normalized = {}
-      aliases_hash.each do |k, v|
-        nk = k.to_s.strip.downcase
-        next if nk.empty?
-        normalized[nk] = v.to_s.strip unless v.to_s.strip.empty?
-      end
-      raw_data[MODEL_ALIASES_KEY] = normalized
-
-      previous = normalized[lowered_key]
-      normalized[lowered_key] = resolved_model
-
-      FileUtils.mkdir_p(File.dirname(path))
-      AtomicFile.write(path, YAML.dump(raw_data))
-      clear_yaml_cache!(path)
+      previous = model_aliases(env: env, path: path)[lowered_key]
+      expected = deep_copy(read_yaml(env: env, path: path) || {})
+      aliases = expected[MODEL_ALIASES_KEY].is_a?(Hash) ? expected[MODEL_ALIASES_KEY] : {}
+      aliases.delete_if { |k, _| k.to_s.strip.downcase == lowered_key }
+      aliases[lowered_key] = resolved_model
+      expected[MODEL_ALIASES_KEY] = aliases
+      write_config_key(path, MODEL_ALIASES_KEY, lowered_key, resolved_model, expected)
       previous
     end
+
+    # Write +section+.+key+ = +value+ into config.yml (+expected+: the whole
+    # file's data after it), through a symlink, keeping the file's mode.
+    def write_config_key(path, section, key, value, expected)
+      target = File.exist?(path) ? File.realpath(path) : path
+      text = File.file?(target) ? File.read(target, encoding: "UTF-8") : nil
+      FileUtils.mkdir_p(File.dirname(target))
+      perm = File.stat(target).mode & 0o7777 if text
+      AtomicFile.write(target, ConfigTextEdit.set(text, section: section, key: key, value: value, expected: expected), perm: perm)
+      clear_yaml_cache!(path)
+    end
+    private_class_method :write_config_key
+
+    def deep_copy(data) = Marshal.load(Marshal.dump(data))
+    private_class_method :deep_copy
 
     def nonempty_str(value)
       str = value.to_s.strip
