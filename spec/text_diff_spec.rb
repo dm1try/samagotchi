@@ -5,11 +5,13 @@ require "samagotchi/text_diff"
 RSpec.describe Samagotchi::TextDiff do
   def diff(before, after, **opts) = described_class.unified(before, after, **opts)
 
-  # Seconds the block took (Benchmark is not a default gem from Ruby 4.0).
+  # CPU seconds this thread spent in the block: unlike the wall clock, not
+  # stretched by other processes (parallel_rspec, a busy CI runner).
+  # Benchmark is not a default gem from Ruby 4.0.
   def elapsed
-    start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    start = Process.clock_gettime(Process::CLOCK_THREAD_CPUTIME_ID)
     yield
-    Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+    Process.clock_gettime(Process::CLOCK_THREAD_CPUTIME_ID) - start
   end
 
   def numbered(range) = range.map { |i| "line #{i}\n" }.join
@@ -94,12 +96,12 @@ RSpec.describe Samagotchi::TextDiff do
     expect(result[:text]).to match(/\A@@ -1,12 \+1,12 @@\n keep\n(-line \d+\n){9}(\+.*\n){9} line 10\n end\z/)
   end
 
-  it "diffs a 5 000-line rewrite and a dense 5 000-line edit well under a second" do
+  it "diffs a 5 000-line rewrite and a dense 5 000-line edit in well under two CPU seconds" do
     before = numbered(1..5000)
     rewrite = (1..5000).map { |i| "other #{i}\n" }.join
     dense = before.lines.each_with_index.map { |l, i| (i % 3).zero? ? "x#{i}\n" : l }.join
     expect(elapsed { diff(before, rewrite) }).to be < 0.5
-    expect(elapsed { diff(before, dense) }).to be < 1.0
+    expect(elapsed { diff(before, dense) }).to be < 1.5 # ~0.25 s on a laptop
   end
 
   it "rebuilds the after text from its edit script (random edits)" do

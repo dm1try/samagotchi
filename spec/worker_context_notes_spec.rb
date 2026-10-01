@@ -89,7 +89,8 @@ RSpec.describe Samagotchi::Worker, "context notes" do
     expect(note[:content]).to include("[CONTEXT NOTE from slack", "deploy frozen")
     expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).messages.map { |m| m[:content] }.first(3)).to eq(%w[sys a b])
     expect(events.map { |e| e[:type] }).to include(:context_added)
-    expect(Dir.children(notes_dir)).to be_empty
+    # The worker deletes the note files after it saved the session.
+    expect(wait_until { Dir.children(notes_dir).empty? }).to be(true)
     expect(turns.pop(timeout: 0.3)).to be_nil
   end
 
