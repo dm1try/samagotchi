@@ -79,11 +79,9 @@ module Samagotchi
 
     # @param tools [Tools::Registry, nil] the tools calls dispatch to (the
     #   Engine's; nil: the built-ins alone)
-    def initialize(client: nil, profile: nil, model_name: nil, no_interrupt: false, hooks: nil, reminder_store: nil, model_key: nil,
-                   tools: nil)
+    def initialize(client: nil, profile: nil, model_name: nil, hooks: nil, reminder_store: nil, model_key: nil, tools: nil)
       @client = client || Client.new
       @tools = tools || Tools::Builtins.default
-      @no_interrupt = no_interrupt
       resolved_model_name = ModelProfile.required_model_name(model_name)
       # The resolved model id actually used for this run (per-run override wins
       # over the config alias); on every debug dump so we can see exactly
@@ -162,7 +160,7 @@ module Samagotchi
       turn = start_turn(messages, on_stream_event: on_stream_event, cancel_controller: cancel_controller,
                                   pending_input: pending_input, cap: resolve_output_char_cap(max_tool_output_chars))
 
-      (@no_interrupt ? 1000 : max_iterations).times do |iteration_index|
+      max_iterations.times do |iteration_index|
         turn.iteration = iteration_index + 1
         outcome = iterate(turn)
         return outcome if outcome.is_a?(Result)

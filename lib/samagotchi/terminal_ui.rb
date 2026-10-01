@@ -115,7 +115,7 @@ module Samagotchi
       ModelProfile.check_host!(@effective_model_name, hosts: @host_registry.entries)
       # Only a caller's profile goes in; otherwise the Engine resolves one
       # for the effective model and hands it to the kernel.
-      @kernel         = KernelLoop.new(client: @client, profile: profile, no_interrupt: no_interrupt, reminder_store: Samagotchi::ReminderStore.new)
+      @kernel         = KernelLoop.new(client: @client, profile: profile, reminder_store: Samagotchi::ReminderStore.new)
       @no_default_input = no_default_input
       @non_interactive = non_interactive
       # --memory and --mute, with a resumed session's own lists first: a

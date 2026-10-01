@@ -45,7 +45,7 @@ module Samagotchi
     COMMAND_OUTPUT_LIMIT = 4096
     BUSY_OUTPUT = "busy: wait for the turn to end"
     DEFAULT_MAX_ITERATIONS = 100
-    NO_INTERRUPT_MAX_ITERATIONS = 1000
+    NO_INTERRUPT_MAX_ITERATIONS = 1000 # as Engine::NO_INTERRUPT_MAX_ITERATIONS
 
     # Wakes the worker loop. Whoever queues work writes it first and wakes
     # after, and #wait drains every wake before the loop looks for work: a

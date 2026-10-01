@@ -89,7 +89,7 @@ file2.rb")
       )
       kernel = instance_double(Samagotchi::KernelLoop, run: result)
       expect(Samagotchi::KernelLoop).to receive(:new)
-        .with(client: client, profile: nil, no_interrupt: false, reminder_store: instance_of(Samagotchi::ReminderStore))
+        .with(client: client, profile: nil, reminder_store: instance_of(Samagotchi::ReminderStore))
         .and_return(kernel)
 
       agent = described_class.new(prompt: "hi", client: client)
@@ -107,10 +107,10 @@ file2.rb")
       expect(call_count).to eq(1)   # one prompt turn; REPL exits on first read
     end
 
-    it "forwards no_interrupt to the kernel loop" do
+    it "forwards no_interrupt to the engine, which runs every turn with 1000 iterations" do
       agent = described_class.new(prompt: "test", no_interrupt: true)
-      kernel = agent.instance_variable_get(:@kernel)
-      expect(kernel.instance_variable_get(:@no_interrupt)).to be true
+      engine = agent.instance_variable_get(:@engine)
+      expect(engine.instance_variable_get(:@no_interrupt)).to be true
     end
 
     it "prints concise tool activity lines in normal output" do

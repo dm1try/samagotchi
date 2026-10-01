@@ -76,13 +76,17 @@ module Samagotchi
     # @param client             [Client, nil] defaults to Client.new
     # @param profile            [ModelProfile, Symbol, String, nil]
     # @param session_id         [String, nil] resume an existing session
-    # @param no_interrupt       [Boolean]
+    # @param no_interrupt       [Boolean] --no-interrupt: every turn runs with
+    #   NO_INTERRUPT_MAX_ITERATIONS, whichever loop runs it
     # @param model_name         [String, nil] defaults from SAMAGOTCHI_DEFAULT_MODEL
     # @param memories           [Array<String>] explicit --memory preload list (merged with the config.yml `memories:` baseline)
     # @param muted_memories     [Array<String>] --mute list: memories hidden from this session (not in the
     #   prompt's index, dropped from the preloads, refused by memory_read); a mute wins over a preload
     # What memory_write answers in a scratch session.
     SCRATCH_MEMORY_WRITE = "Error: scratch session: nothing is saved"
+    # A turn's iteration limit with no_interrupt (the worker's own
+    # --no-interrupt turns pass the same).
+    NO_INTERRUPT_MAX_ITERATIONS = 1000
 
     # @param plugins            [Boolean] false: load no bundle plugins (a throwaway Engine for a prompt)
     # @param scratch            [Boolean] a `chi scratch` session: memory writes are refused, and there is no
@@ -90,6 +94,7 @@ module Samagotchi
     def initialize(client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], muted_memories: [], kernel: nil, recap: nil, reminders: nil,
                    plugins: true, scratch: false)
       @scratch = scratch
+      @no_interrupt = no_interrupt
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
       @host_registry = host_registry || HostRegistry.new
@@ -196,7 +201,7 @@ module Samagotchi
       @reminders = build_reminders(auto_turn_callback: callback)
       # Track whether this is the first turn in the session (for session_start event)
       @first_turn = true
-      @kernel = kernel || KernelLoop.new(client: @client, profile: @given_profile, no_interrupt: no_interrupt, hooks: @hooks, reminder_store: @reminder_store,
+      @kernel = kernel || KernelLoop.new(client: @client, profile: @given_profile, hooks: @hooks, reminder_store: @reminder_store,
                                          tools: @tools)
       sync_kernel_client!
       @model_key = ModelOverlay.key_for(bare_model_name(@effective_model_name))
@@ -1580,7 +1585,7 @@ module Samagotchi
 
         result = backend.complete(
           messages: messages,
-          max_iterations: max_iterations,
+          max_iterations: @no_interrupt ? NO_INTERRUPT_MAX_ITERATIONS : max_iterations,
           on_stream_event: build_stream_event_handler(on_event, cancel_controller: effective_controller),
           cancel_controller: effective_controller,
           model_name: bare_for_backend,

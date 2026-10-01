@@ -39,6 +39,8 @@ and commands may change between minor versions. How releases are made:
   carry the `finish_reason` too.
 - With an OpenAI-compatible chat host, an answer of only whitespace is an empty answer, as with llama.cpp: asked again
   (`retry.empty_answer`) instead of saved, and with no retry left the turn says the model returned an empty answer.
+- `--no-interrupt` (and `no_interrupt: true`) now raises the tool-call limit to 1000 in the in-process REPL with an
+  OpenAI-compatible chat host too; it only applied to llama.cpp, mlx and oMLX hosts there.
 
 Update with `chi update` (bundles: known-names 0.1.4).
 
