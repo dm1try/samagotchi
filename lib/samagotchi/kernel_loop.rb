@@ -158,241 +158,23 @@ module Samagotchi
     #   :pending_input_merged stream event is emitted.
     # @return [Result] final visible response with continuation metadata
     def run(messages, max_iterations: 100, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil)
-      resolved_model_name = completion_model_name(model_name)
-      @current_model_name = resolved_model_name
+      @current_model_name = completion_model_name(model_name)
+      turn = start_turn(messages, on_stream_event: on_stream_event, cancel_controller: cancel_controller,
+                                  pending_input: pending_input, cap: resolve_output_char_cap(max_tool_output_chars))
 
-      conversation = prepare_conversation(messages)
-      context = ContextStatus.new(conversation: conversation)
-      exhausted = false
-      pending_tool_calls = false
-      tool_activity = []
-      qwen_recovery_attempts = 0
-      qwen_partial_tool_call = nil
-      empty_retry = EmptyAnswerRetry.new
-      emit = ->(event) { emit_stream_event(on_stream_event, event) }
-      # Qwen with thinking off: an empty thought after the cue, so the model
-      # answers at once. Kept in the turn's model messages, so each tool-loop
-      # prompt starts with what the server already has cached.
-      prefill = Thinking.native(@thinking || Thinking::DEFAULT, @profile).prefill
-      partial_assistant_buffer = +""
-
-      effective_max_iterations = @no_interrupt ? 1000 : max_iterations
-      effective_max_tool_output_chars = resolve_output_char_cap(max_tool_output_chars)
-      effective_max_iterations.times do |iteration_index|
-        inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller)
-        prompt, images = Prompt.format_with_images(conversation, profile: @profile, vision: @vision, prefill: prefill)
-        image_tokens = images.empty? ? 0 : ImagePlan.estimated_tokens(conversation)
-        context_window = ContextWindow.resolve(client: @client, model: resolved_model_name)
-        emit_context_status_event(on_stream_event, context, prompt, iteration_index: iteration_index, window: context_window,
-                                                                    image_tokens: image_tokens)
-        if (line = context.take_guidance)
-          # The model's own copy, on the tail (the prompt cache keeps its
-          # prefix), then the prompt again with it.
-          conversation << line
-          prompt, images = Prompt.format_with_images(conversation, profile: @profile, vision: @vision, prefill: prefill)
-        end
-        # Each generation splits its own stream: one that ended inside a
-        # thought or a tool call doesn't leave the next one "inside" it.
-        stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
-        emit_stream_event(
-          on_stream_event,
-          type: :generation_started,
-          iteration: iteration_index + 1,
-          context_window_tokens: context_window.tokens,
-          context_window_source: context_window.source,
-          profile: @profile.name,
-          profile_source: @profile_source
-        )
-        served_model = nil
-        # This generation's own server counts (the run-long ones in
-        # `context` can be an earlier one's).
-        generation_usage = nil
-        # The thinking this generation streamed, for the log (a stuck
-        # thinking generation shows as thinking_chars=N content_length=…).
-        streamed_thinking = 0
-        # Fire :before_generation hook
-        gen_event = { type: :before_generation, iteration: iteration_index + 1 }
-        fire_hook(:before_generation, gen_event) if @hooks
-        # The request runs under the generation's own controller: a plugin's
-        # stop_generation cuts it alone, and the turn goes on (a cut).
-        buffer_mark = partial_assistant_buffer.length
-        cut = nil
-        response = with_generation(cancel_controller) do |generation_controller|
-          request_generation(
-            prompt,
-            generation_controller: generation_controller,
-            cancel_controller: cancel_controller,
-            model_name: resolved_model_name,
-            sampling: empty_retry.request_sampling(@sampling),
-            on_chunk: lambda { |chunk|
-              generation_usage = context.capture(chunk[:payload]) || generation_usage
-              # llama.cpp names the loaded model in the stream's last payload.
-              named = chunk[:payload]["model"] if chunk[:payload].is_a?(Hash)
-              served_model = named if named.is_a?(String) && !named.strip.empty?
-              split = stream_splitter.feed(chunk[:content])
-              partial_assistant_buffer << split[:text]
-              streamed_thinking += split[:thinking].to_s.length
-              if on_stream_event
-                emit_stream_event(
-                  on_stream_event,
-                  type: :generation_chunk,
-                  iteration: iteration_index + 1,
-                  content: chunk[:content],
-                  text: split[:text],
-                  thinking: split[:thinking],
-                  payload: chunk[:payload]
-                )
-              end
-            },
-            on_retry: lambda { |retry_event|
-              # The retry streams from the start: its counts replace these.
-              generation_usage = nil
-              streamed_thinking = 0
-              next unless on_stream_event
-
-              emit_stream_event(
-                on_stream_event,
-                {
-                  type: :generation_retrying,
-                  iteration: iteration_index + 1
-                }.merge(retry_event)
-              )
-            },
-            images: images
-          )
-        rescue Client::RequestCancelled
-          raise unless cut?(generation_controller, cancel_controller)
-
-          cut = generation_controller.detail || {}
-          ""
-        end
-        if cut
-          # The cut stream's visible text goes with it: the buffer as it was
-          # before (the next generation gets a fresh splitter).
-          partial_assistant_buffer.slice!(buffer_mark..)
-          emit_stream_event(on_stream_event, type: :generation_completed, iteration: iteration_index + 1,
-                                             content_length: 0, thinking_chars: streamed_thinking,
-                                             served_model: served_model, requested_model: resolved_model_name,
-                                             finish_reason: "stopped", stopped_by: cut[:by], stop_reason: cut[:reason])
-          # A Stop that came right after the cut is a plain cancel.
-          raise Client::RequestCancelled.new(cancel_controller.reason) if cancel_controller.cancelled?
-
-          if empty_retry.left?
-            # Queued input (the user's line, a plugin's steer) goes in place of the nudge.
-            next if inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller)
-
-            empty_retry.nudge!(conversation, TurnNote.cut_retry(cut[:by], cut[:reason]),
-                               emit: emit, iteration: iteration_index + 1,
-                               thinking_chars: streamed_thinking, stopped_by: cut[:by])
-            next
-          end
-          # No retry left: the turn ends as cancelled (hook), with nothing
-          # salvaged and without the spent nudge.
-          empty_retry.drop_nudge!(conversation)
-          cancel_controller.cancel!(:hook, cut)
-          emit_stream_event(on_stream_event, type: :generation_cancelled, iteration: iteration_index + 1, reason: :hook)
-          return cancelled_result(conversation, tool_activity: tool_activity, reason: :hook, partial_assistant_text: "")
-        end
-        context.generation_done(generation_usage, prompt_chars: prompt.length, image_tokens: image_tokens, window: context_window)
-        emit_stream_event(
-          on_stream_event,
-          type: :generation_completed,
-          iteration: iteration_index + 1,
-          content_length: response.to_s.length,
-          thinking_chars: thinking_chars(response.to_s, streamed_thinking),
-          served_model: served_model,
-          requested_model: resolved_model_name
-        )
-        dump_log("response", response, iteration: iteration_index + 1)
-        # Fire :after_generation hook (after LLM returns, before tool parse),
-        # with a read-only copy of the conversation as sent.
-        after_gen_event = { type: :after_generation, iteration: iteration_index + 1, response: response,
-                            messages: AnswerDisplay.strip_all(conversation).map(&:dup).freeze }
-        fire_hook(:after_generation, after_gen_event) if @hooks
-        conversation << { role: "model", content: prefill + response.to_s }
-
-        # Profile-specific parse (incl. Qwen unterminated-block recovery); the
-        # returned fragment (non-nil only for Qwen) is fed back on the next
-        # iteration if the model opened a tool-call block it did not close.
-        calls, qwen_partial_tool_call = parser.parse_with_recovery(response, qwen_partial_tool_call)
-        calls = calls.map do |call|
-          PromptLiteralGuard.restore_call(call, profile: @profile)
-        end
-        qwen_incomplete_tool_call = !qwen_partial_tool_call.nil?
-
-        if calls.empty?
-          if qwen_incomplete_tool_call && qwen_recovery_attempts < QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT
-            qwen_recovery_attempts += 1
-            conversation << { role: "user", content: QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT, preserve_literals: true }
-            pending_tool_calls = false
-            next
-          end
-
-          pending_tool_calls = false
-          answer = -> { PromptLiteralGuard.restore(strip_thought_blocks(response), profile: @profile) }
-          empty = strip_thought_blocks(response.to_s).strip.empty?
-          retry_empty = empty && empty_retry.retry_empty?(iteration: iteration_index + 1,
-                                                          cancelled: cancel_controller&.cancelled?)
-          # The empty generation goes (its thinking would be sent again and
-          # prime the same loop); an empty answer that will be retried is no
-          # answer site, so a plugin's steer joins the retry.
-          conversation.pop if retry_empty
-          unless inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller,
-                                       answer: retry_empty ? nil : answer)
-            if retry_empty
-              empty_retry.nudge!(conversation, TurnNote.empty_retry,
-                                 emit: emit, iteration: iteration_index + 1,
-                                 thinking_chars: thinking_chars(response.to_s, streamed_thinking))
-              next
-            end
-            # The Engine's TurnNote.empty says it all: the spent nudge goes.
-            empty_retry.drop_nudge!(conversation) if empty && empty_retry.used?
-            break
-          end
-          # Queued steering keeps the turn going: loop again so the model
-          # answers the injected message instead of stopping here.
-          next
-        end
-
-        qwen_recovery_attempts = 0
-        qwen_partial_tool_call = nil
-
-        runs = ToolResponse.run_batch(tool_runner, calls, iteration: iteration_index + 1, emit: emit,
-                                                          on_stream_event: on_stream_event,
-                                                          cap: effective_max_tool_output_chars)
-        tool_activity.concat(ToolResponse.activities(runs))
-        # One entry for the batch: the full outputs joined (ToolResponse.joined).
-        conversation << ToolResponse.joined(runs)
-        pending_tool_calls = true
+      (@no_interrupt ? 1000 : max_iterations).times do |iteration_index|
+        turn.iteration = iteration_index + 1
+        outcome = iterate(turn)
+        return outcome if outcome.is_a?(Result)
+        break if outcome == :answer
       rescue Client::RequestCancelled => e
-        emit_stream_event(
-          on_stream_event,
-          type: :generation_cancelled,
-          iteration: iteration_index + 1,
-          reason: e.reason
-        )
-        return cancelled_result(conversation, tool_activity: tool_activity, reason: e.reason, partial_assistant_text: partial_assistant_buffer)
+        emit(turn, type: :generation_cancelled, iteration: turn.iteration, reason: e.reason)
+        return cancelled_result(turn.conversation, tool_activity: turn.tool_activity, reason: e.reason,
+                                                   partial_assistant_text: turn.buffer)
       end
-
-      if pending_tool_calls && tool_response_turn?(conversation.last)
-        exhausted = true
-      end
-
-      output = strip_thought_blocks(last_model_content(conversation))
-      # A turn stopped at the limit ends on a call it never ran: show only its text.
-      output = parser.strip_tool_calls(output) if exhausted
-      Result.new(
-        output: PromptLiteralGuard.restore(output, profile: @profile),
-        conversation: duplicate_conversation(conversation),
-        exhausted: exhausted,
-        pending_tool_calls: pending_tool_calls,
-        tool_activity: tool_activity,
-        canceled: false,
-        cancellation_reason: nil,
-        context_status: context.display
-      )
+      finish(turn)
     rescue StandardError => e
-      LLM::FailedTurn.attach(e, conversation && duplicate_conversation(conversation))
+      LLM::FailedTurn.attach(e, turn && duplicate_conversation(turn.conversation))
       raise
     end
 
@@ -408,6 +190,263 @@ module Samagotchi
     end
 
     private
+
+    # ── One turn (#run) ────────────────────────────────────────────────────────
+
+    # One run's state, threaded through its steps: the conversation, the
+    # context tracker and the retry budget, the tool activity, the visible
+    # text streamed so far (salvaged on a cancel), the Qwen recovery state,
+    # the prefill, and what the caller gave.
+    Turn = Struct.new(:conversation, :context, :empty_retry, :tool_activity, :buffer, :qwen_attempts, :qwen_partial,
+                      :prefill, :pending_tool_calls, :model_name, :pending_input, :on_stream_event,
+                      :cancel_controller, :cap, :emit, :iteration, keyword_init: true)
+    # One request: the prompt and its images as sent, the images' token
+    # estimate, and the window it was measured against.
+    Request = Struct.new(:prompt, :images, :image_tokens, :window, keyword_init: true)
+    # One generation: the response (nil when cut), the cut's detail, this
+    # generation's own server counts, the model the server named, and the
+    # thinking it streamed.
+    Generation = Struct.new(:response, :cut, :usage, :served_model, :streamed_thinking, keyword_init: true)
+    private_constant :Turn, :Request, :Generation
+
+    def start_turn(messages, on_stream_event:, cancel_controller:, pending_input:, cap:)
+      conversation = prepare_conversation(messages)
+      Turn.new(
+        conversation: conversation, context: ContextStatus.new(conversation: conversation),
+        empty_retry: EmptyAnswerRetry.new, tool_activity: [], buffer: +"", qwen_attempts: 0, qwen_partial: nil,
+        # Qwen with thinking off: an empty thought after the cue, so the model
+        # answers at once. Kept in the turn's model messages, so each tool-loop
+        # prompt starts with what the server already has cached.
+        prefill: Thinking.native(@thinking || Thinking::DEFAULT, @profile).prefill,
+        pending_tool_calls: false, model_name: @current_model_name, pending_input: pending_input,
+        on_stream_event: on_stream_event, cancel_controller: cancel_controller, cap: cap,
+        emit: ->(event) { emit_stream_event(on_stream_event, event) }
+      )
+    end
+
+    # One iteration. Returns :next, :answer (the turn ends), or the turn's
+    # Result (it ended cancelled).
+    def iterate(turn)
+      inject_pending_input!(turn)
+      request = prepare_request(turn)
+      generation = generate(turn, request)
+      return after_cut(turn, generation) if generation.cut
+
+      turn.conversation << { role: "model", content: turn.prefill + generation.response.to_s }
+      # Profile-specific parse (incl. Qwen unterminated-block recovery); the
+      # returned fragment (non-nil only for Qwen) is fed back on the next
+      # iteration if the model opened a tool-call block it did not close.
+      calls, turn.qwen_partial = parser.parse_with_recovery(generation.response, turn.qwen_partial)
+      calls = calls.map { |call| PromptLiteralGuard.restore_call(call, profile: @profile) }
+      return after_text(turn, generation) if calls.empty?
+
+      dispatch_calls(turn, calls)
+    end
+
+    # The prompt for this iteration, after the context check: a rise into a
+    # bucket that asks the model for a change puts its line on the tail
+    # (the prompt cache keeps its prefix), and the prompt is formatted again
+    # with it.
+    def prepare_request(turn)
+      prompt, images = format_prompt(turn)
+      image_tokens = images.empty? ? 0 : ImagePlan.estimated_tokens(turn.conversation)
+      window = ContextWindow.resolve(client: @client, model: turn.model_name)
+      emit_context_status_event(turn.on_stream_event, turn.context, prompt, iteration_index: turn.iteration - 1,
+                                                                             window: window, image_tokens: image_tokens)
+      if (line = turn.context.take_guidance)
+        turn.conversation << line
+        prompt, images = format_prompt(turn)
+      end
+      Request.new(prompt: prompt, images: images, image_tokens: image_tokens, window: window)
+    end
+
+    def format_prompt(turn)
+      Prompt.format_with_images(turn.conversation, profile: @profile, vision: @vision, prefill: turn.prefill)
+    end
+
+    # One streamed request, under the generation's own controller: a
+    # plugin's stop_generation cuts it alone, and the turn goes on (a cut).
+    # Ends with its :generation_completed (and, unless cut, the
+    # after_generation hook).
+    def generate(turn, request)
+      # Each generation splits its own stream: one that ended inside a
+      # thought or a tool call doesn't leave the next one "inside" it.
+      stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
+      emit(turn, type: :generation_started, iteration: turn.iteration, context_window_tokens: request.window.tokens,
+                 context_window_source: request.window.source, profile: @profile.name, profile_source: @profile_source)
+      # This generation's own server counts (the run-long ones in the
+      # context tracker can be an earlier one's), and the thinking it
+      # streamed, for the log (a stuck thinking generation shows as
+      # thinking_chars=N content_length=…).
+      generation = Generation.new(usage: nil, served_model: nil, streamed_thinking: 0)
+      fire_hook(:before_generation, { type: :before_generation, iteration: turn.iteration }) if @hooks
+      buffer_mark = turn.buffer.length
+      generation.response = with_generation(turn.cancel_controller) do |generation_controller|
+        request_generation(
+          request.prompt,
+          generation_controller: generation_controller,
+          cancel_controller: turn.cancel_controller,
+          model_name: turn.model_name,
+          sampling: turn.empty_retry.request_sampling(@sampling),
+          on_chunk: ->(chunk) { stream_chunk(turn, generation, stream_splitter, chunk) },
+          on_retry: lambda { |retry_event|
+            # The retry streams from the start: its counts replace these.
+            generation.usage = nil
+            generation.streamed_thinking = 0
+            turn.emit.call({ type: :generation_retrying, iteration: turn.iteration }.merge(retry_event)) if turn.on_stream_event
+          },
+          images: request.images
+        )
+      rescue Client::RequestCancelled
+        raise unless cut?(generation_controller, turn.cancel_controller)
+
+        generation.cut = generation_controller.detail || {}
+        nil
+      end
+      generation.cut ? cut_generation(turn, generation, buffer_mark) : completed_generation(turn, request, generation)
+      generation
+    end
+
+    def stream_chunk(turn, generation, stream_splitter, chunk)
+      generation.usage = turn.context.capture(chunk[:payload]) || generation.usage
+      # llama.cpp names the loaded model in the stream's last payload.
+      named = chunk[:payload]["model"] if chunk[:payload].is_a?(Hash)
+      generation.served_model = named if named.is_a?(String) && !named.strip.empty?
+      split = stream_splitter.feed(chunk[:content])
+      turn.buffer << split[:text]
+      generation.streamed_thinking += split[:thinking].to_s.length
+      return unless turn.on_stream_event
+
+      emit(turn, type: :generation_chunk, iteration: turn.iteration, content: chunk[:content], text: split[:text],
+                 thinking: split[:thinking], payload: chunk[:payload])
+    end
+
+    # The cut stream's visible text goes with it: the buffer as it was
+    # before (the next generation gets a fresh splitter).
+    def cut_generation(turn, generation, buffer_mark)
+      turn.buffer.slice!(buffer_mark..)
+      emit(turn, type: :generation_completed, iteration: turn.iteration, content_length: 0,
+                 thinking_chars: generation.streamed_thinking, served_model: generation.served_model,
+                 requested_model: turn.model_name, finish_reason: "stopped", stopped_by: generation.cut[:by],
+                 stop_reason: generation.cut[:reason])
+    end
+
+    def completed_generation(turn, request, generation)
+      response = generation.response.to_s
+      turn.context.generation_done(generation.usage, prompt_chars: request.prompt.length, image_tokens: request.image_tokens,
+                                                     window: request.window)
+      emit(turn, type: :generation_completed, iteration: turn.iteration, content_length: response.length,
+                 thinking_chars: thinking_chars(response, generation.streamed_thinking),
+                 served_model: generation.served_model, requested_model: turn.model_name)
+      dump_log("response", generation.response, iteration: turn.iteration)
+      # The after_generation hook (after the model returns, before the tool
+      # parse), with a read-only copy of the conversation as sent.
+      return unless @hooks
+
+      fire_hook(:after_generation, { type: :after_generation, iteration: turn.iteration, response: generation.response,
+                                     messages: AnswerDisplay.strip_all(turn.conversation).map(&:dup).freeze })
+    end
+
+    # A generation a plugin cut is an empty answer made early: asked again
+    # with its own nudge while the retry budget lasts (queued input goes in
+    # place of the nudge), else the turn ends as cancelled (hook), with
+    # nothing salvaged and without the spent nudge. A Stop that came right
+    # after the cut is a plain cancel. Returns :next or the turn's Result.
+    def after_cut(turn, generation)
+      cut = generation.cut
+      raise Client::RequestCancelled.new(turn.cancel_controller.reason) if turn.cancel_controller.cancelled?
+
+      if turn.empty_retry.left?
+        return :next if inject_pending_input!(turn)
+
+        turn.empty_retry.nudge!(turn.conversation, TurnNote.cut_retry(cut[:by], cut[:reason]),
+                                emit: turn.emit, iteration: turn.iteration,
+                                thinking_chars: generation.streamed_thinking, stopped_by: cut[:by])
+        return :next
+      end
+      turn.empty_retry.drop_nudge!(turn.conversation)
+      turn.cancel_controller.cancel!(:hook, cut)
+      emit(turn, type: :generation_cancelled, iteration: turn.iteration, reason: :hook)
+      cancelled_result(turn.conversation, tool_activity: turn.tool_activity, reason: :hook, partial_assistant_text: "")
+    end
+
+    # A generation with no tool calls: a Qwen call left open is asked to be
+    # finished; an empty answer is asked again (EmptyAnswerRetry); queued
+    # input keeps the turn going (the model answers it); else it is the
+    # answer. Returns :next or :answer.
+    def after_text(turn, generation)
+      turn.pending_tool_calls = false
+      if turn.qwen_partial && turn.qwen_attempts < QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT
+        turn.qwen_attempts += 1
+        turn.conversation << { role: "user", content: QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT, preserve_literals: true }
+        return :next
+      end
+
+      response = generation.response
+      answer = -> { PromptLiteralGuard.restore(strip_thought_blocks(response), profile: @profile) }
+      empty = strip_thought_blocks(response.to_s).strip.empty?
+      retry_empty = empty && turn.empty_retry.retry_empty?(iteration: turn.iteration,
+                                                           cancelled: turn.cancel_controller&.cancelled?)
+      # The empty generation goes (its thinking would be sent again and
+      # prime the same loop); an empty answer that will be retried is no
+      # answer site, so a plugin's steer joins the retry.
+      turn.conversation.pop if retry_empty
+      # Queued steering keeps the turn going: the model answers the
+      # injected message instead of stopping here.
+      return :next if inject_pending_input!(turn, answer: retry_empty ? nil : answer)
+
+      if retry_empty
+        turn.empty_retry.nudge!(turn.conversation, TurnNote.empty_retry,
+                                emit: turn.emit, iteration: turn.iteration,
+                                thinking_chars: thinking_chars(response.to_s, generation.streamed_thinking))
+        return :next
+      end
+      # The Engine's TurnNote.empty says it all: the spent nudge goes.
+      turn.empty_retry.drop_nudge!(turn.conversation) if empty && turn.empty_retry.used?
+      :answer
+    end
+
+    # The batch runs (ToolResponse) and its results go back as one entry.
+    def dispatch_calls(turn, calls)
+      turn.qwen_attempts = 0
+      turn.qwen_partial = nil
+      runs = ToolResponse.run_batch(tool_runner, calls, iteration: turn.iteration, emit: turn.emit,
+                                                        on_stream_event: turn.on_stream_event, cap: turn.cap)
+      turn.tool_activity.concat(ToolResponse.activities(runs))
+      # One entry for the batch: the full outputs joined (ToolResponse.joined).
+      turn.conversation << ToolResponse.joined(runs)
+      turn.pending_tool_calls = true
+      :next
+    end
+
+    # The turn's Result. It is exhausted only when it stopped on tool
+    # results it never answered; then the answer shows only its text.
+    def finish(turn)
+      exhausted = turn.pending_tool_calls && tool_response_turn?(turn.conversation.last)
+      output = strip_thought_blocks(last_model_content(turn.conversation))
+      output = parser.strip_tool_calls(output) if exhausted
+      Result.new(
+        output: PromptLiteralGuard.restore(output, profile: @profile),
+        conversation: duplicate_conversation(turn.conversation),
+        exhausted: exhausted,
+        pending_tool_calls: turn.pending_tool_calls,
+        tool_activity: turn.tool_activity,
+        canceled: false,
+        cancellation_reason: nil,
+        context_status: turn.context.display
+      )
+    end
+
+    def emit(turn, **event)
+      emit_stream_event(turn.on_stream_event, event)
+    end
+
+    # Queued input at an iteration boundary (Steer.inject!); +answer+ is a
+    # proc, built only on a merge. Returns true when anything was injected.
+    def inject_pending_input!(turn, answer: nil)
+      Steer.inject!(turn.conversation, turn.pending_input, iteration: turn.iteration, emit: turn.emit,
+                                                           cancel_controller: turn.cancel_controller, answer: answer)
+    end
 
     # memory_read with the session's mutes applied: a blank name (the index)
     # loses the muted memories' lines; a muted name in a comma list is
@@ -435,12 +474,6 @@ module Samagotchi
       nil
     end
 
-    # Queued input at an iteration boundary (Steer.inject!); +answer+ is a
-    # proc, built only on a merge. Returns true when anything was injected.
-    def inject_pending_input!(conversation, pending_input, on_stream_event, iteration, cancel_controller = nil, answer: nil)
-      Steer.inject!(conversation, pending_input, iteration: iteration, cancel_controller: cancel_controller, answer: answer,
-                                                 emit: ->(event) { emit_stream_event(on_stream_event, event) })
-    end
 
     # ── Hook dispatch helper ───────────────────────────────────────────────────
 
