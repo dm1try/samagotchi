@@ -614,7 +614,10 @@ module Samagotchi
       [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 
-    # Create a turn via file IPC (fire-and-forget). Returns [headers, status, body].
+    # Queue a turn for this session through its file IPC (the worker polls
+    # its input dir). Returns [headers, status, body]. Only this bridge's own
+    # session: another id, in the path or the body, is refused as on every
+    # other route.
     #
     # A +deadline+ (wall-clock epoch seconds; the client shares this machine's
     # clock) is when the client stops waiting (BridgeClient#post_turn): a turn
@@ -624,6 +627,8 @@ module Samagotchi
     # right before the write, so nothing that holds the log (an exit check)
     # can delay an accepted turn past it. No deadline (an older client): taken.
     def handle_post_turn(session_id, body)
+      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
+
       parsed = parse_json(body)
       unless parsed.is_a?(Hash)
         return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }]
@@ -638,45 +643,35 @@ module Samagotchi
         return [{ "Allow" => "POST" }, 400,
                 { error: "missing_fields", detail: "session_id and prompt are required" }]
       end
-      # Checked before the id names a folder: "../x" would write outside the
-      # sessions dir (turn_images and enqueue_turn build paths from it).
-      return [{}, 400, { error: "invalid_session_id" }] unless Session.valid_id?(sid)
+      return [{}, 404, { error: "unknown_session" }] unless own_session?(sid)
 
-      images = turn_images(sid, fetched(parsed, "images"))
+      images = turn_images(fetched(parsed, "images"))
       return [{}, 400, { error: "bad_images", detail: images }] if images.is_a?(String)
 
       deadline = fetched(parsed, "deadline")
       return BAD_DEADLINE unless deadline_valid?(deadline)
 
       enqueued_id = SecureRandom.uuid
-      enqueued =
-        if own_session?(sid)
-          # Write and announce with the event log held: the worker can't
-          # emit this turn's :turn_started (or merge it mid-turn) before
-          # :turn_enqueued, and a failed write announces nothing.
-          @engine.synchronize_events do
-            next :expired if expired?("turn_expired", deadline, sid: sid, client_id: client_id)
+      # Write and announce with the event log held: the worker can't emit
+      # this turn's :turn_started (or merge it mid-turn) before
+      # :turn_enqueued, and a failed write announces nothing.
+      enqueued = @engine.synchronize_events do
+        next :expired if expired?("turn_expired", deadline, sid: sid, client_id: client_id)
 
-            enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                         no_interrupt: no_interrupt, images: images).tap do |ok|
-              next unless ok
+        enqueue_turn(prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
+                     no_interrupt: no_interrupt, images: images).tap do |ok|
+          next unless ok
 
-              enqueued_event = { type: :turn_enqueued, enqueued_id: enqueued_id, client_id: client_id, prompt: prompt.to_s }
-              enqueued_event[:images] = images unless images.empty?
-              @engine.announce(enqueued_event)
-              @on_input&.call
-            end
-          end
-        elsif expired?("turn_expired", deadline, sid: sid, client_id: client_id)
-          :expired
-        else
-          enqueue_turn(session_id: sid, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                       no_interrupt: no_interrupt, images: images)
+          enqueued_event = { type: :turn_enqueued, enqueued_id: enqueued_id, client_id: client_id, prompt: prompt.to_s }
+          enqueued_event[:images] = images unless images.empty?
+          @engine.announce(enqueued_event)
+          @on_input&.call
         end
+      end
       return deadline_passed("turn") if enqueued == :expired
       return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] unless enqueued
 
-      [{}, 202, { status: "accepted", enqueued_id: enqueued_id, session_id: sid }]
+      [{}, 202, { status: "accepted", enqueued_id: enqueued_id, session_id: @session_id }]
     rescue StandardError => e
       [{}, 500, { error: "bridge_error", detail: e.message }]
     end
@@ -722,10 +717,9 @@ module Samagotchi
     end
 
     # A per-session bridge only ever owns one Engine (for @session_id). The
-    # stream and state surfaces must serve that session and nothing else —
-    # serving a different id's data (or closing with no response) would be a
-    # cross-session leak. POST/turn enqueue stays lenient (fire-and-forget to
-    # another worker's input dir) through SessionInbox.write_input.
+    # stream, state and turn surfaces must serve that session and nothing
+    # else — serving a different id's data (or writing into another
+    # session's input dir) would be a cross-session leak.
     def own_session?(session_id)
       session_id.to_s == @session_id.to_s
     end
@@ -751,10 +745,9 @@ module Samagotchi
       [{}, 408, { error: "deadline_passed", detail: "the #{what} arrived after its client stopped waiting; not run" }]
     end
 
-    # Write a turn into the target session's input dir, reusing the file IPC
-    # the worker polls. Never calls run_turn across the boundary.
-    def enqueue_turn(session_id:, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [])
-      session_dir = Session.session_dir(session_id, state_dir: @state_dir || Session.default_state_dir)
+    # Write a turn into this session's input dir, reusing the file IPC the
+    # worker polls. Never calls run_turn across the boundary.
+    def enqueue_turn(prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [])
       SessionInbox.write_input(session_dir, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
                                             no_interrupt: no_interrupt, images: images)
     end
@@ -762,12 +755,11 @@ module Samagotchi
     # A turn's images as [{file:, name:}], or a String saying what's wrong.
     # Only refs to files already in that session's images/ pass (a web
     # upload): never a path, so no client can make the worker read a file.
-    def turn_images(session_id, raw)
+    def turn_images(raw)
       return [] if raw.nil?
       return "images must be a list" unless raw.is_a?(Array)
       return "at most #{MAX_TURN_IMAGES} images" if raw.size > MAX_TURN_IMAGES
 
-      session_dir = Session.session_dir(session_id, state_dir: @state_dir || Session.default_state_dir)
       raw.map do |image|
         return "each image must be {file:, name:}" unless image.is_a?(Hash)
 

@@ -78,20 +78,22 @@ RSpec.describe "session id check" do
     end
     let(:bridge) { described_class.new(engine: engine, state_dir: state_dir, session_id: "s1") }
 
-    it "answers 400 invalid_session_id for a bad session_id and writes nothing" do
+    it "answers 404 unknown_session for a bad session_id and writes nothing" do
       bad_ids.reject { |id| id.strip.empty? }.each do |id|
         _headers, status, body = bridge.send(:handle_post_turn, "s1", JSON.generate(session_id: id, prompt: "hi"))
-        expect([status, body[:error]]).to eq([400, "invalid_session_id"]), id.inspect
+        expect([status, body[:error]]).to eq([404, "unknown_session"]), id.inspect
+        _headers, status, body = bridge.send(:handle_post_turn, id, JSON.generate(session_id: "s1", prompt: "hi"))
+        expect([status, body[:error]]).to eq([404, "unknown_session"]), id.inspect
       end
       expect_nothing_outside
     end
 
-    it "still queues a turn for another session by its id" do
+    it "queues no turn for another session" do
       other = make
       _headers, status, = bridge.send(:handle_post_turn, "s1", JSON.generate(session_id: other.id, prompt: "hi"))
-      expect(status).to eq(202)
+      expect(status).to eq(404)
       inbox = File.join(Samagotchi::Session.session_dir(other.id, state_dir: state_dir), Samagotchi::SessionInbox::INPUT_DIR)
-      expect(Dir.children(inbox).size).to eq(1)
+      expect(Dir.exist?(inbox) ? Dir.children(inbox) : []).to be_empty
     end
   end
 

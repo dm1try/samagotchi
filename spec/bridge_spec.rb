@@ -1003,16 +1003,6 @@ RSpec.describe Samagotchi::Bridge do
           .with(:bridge, "turn_expired", hash_including(sid: @session.id, client_id: "cli:send", late: be > 4))
       end
 
-      it "drops a stale turn for another session too" do
-        start_bridge
-        other = make_session
-
-        status, = post_turn(JSON.generate(session_id: other.id, prompt: "stale", deadline: Time.now.to_f - 1))
-
-        expect(status).to eq(408)
-        expect(Dir.glob(File.join(state_dir, "*", "input", "*"))).to be_empty
-      end
-
       it "accepts a turn before its deadline" do
         start_bridge
 
@@ -1083,14 +1073,25 @@ RSpec.describe Samagotchi::Bridge do
       expect(Dir.children(input_dir).size).to eq(1)
     end
 
-    it "announces nothing for a turn it forwards to another session, or fails to write" do
+    it "refuses a turn for another session, by path or body, and writes nothing" do
+      start_bridge
+      other = make_session
+
+      status, resp = post_turn(JSON.generate(session_id: other.id, prompt: "for someone else"))
+      expect([status, resp["error"]]).to eq([404, "unknown_session"])
+
+      uri = URI("http://127.0.0.1:#{@bridge_port}/session/#{other.id}/turn")
+      res = Net::HTTP.post(uri, JSON.generate(session_id: other.id, prompt: "for someone else"),
+                           "Content-Type" => "application/json")
+      expect([res.code.to_i, JSON.parse(res.body)["error"]]).to eq([404, "unknown_session"])
+
+      expect(Dir.glob(File.join(state_dir, "*", "input", "*"))).to be_empty
+    end
+
+    it "announces nothing for a turn it fails to write" do
       start_bridge
       seen = []
       @engine.subscribe(observer: ->(e) { seen << e })
-
-      other = make_session
-      status, = post_turn(JSON.generate(session_id: other.id, prompt: "for someone else"))
-      expect(status).to eq(202)
 
       allow(Samagotchi::SessionInbox).to receive(:write_input).and_return(false)
       status, = post_turn(JSON.generate(session_id: @session.id, prompt: "lost"))
@@ -1107,7 +1108,6 @@ RSpec.describe Samagotchi::Bridge do
       # Woken after the write: the worker then finds the file.
       expect(wakes).to eq([1])
 
-      post_turn(JSON.generate(session_id: make_session.id, prompt: "for someone else"))
       allow(Samagotchi::SessionInbox).to receive(:write_input).and_return(false)
       status, = post_turn(JSON.generate(session_id: @session.id, prompt: "lost"))
 
