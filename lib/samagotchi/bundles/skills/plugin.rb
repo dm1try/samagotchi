@@ -13,13 +13,20 @@
 # shows a line: "skill release updated (+2 −1): …" or "skill release saved
 # (project, 14 lines)".
 #
+# A skill read in this turn is also watched for changes made some other way
+# (an execute running sed, a script): after each other tool call, and at the
+# turn's end, its file is compared with the content last seen (at the read,
+# or after the last write above); a change keeps that content as a version,
+# shows the same line and counts as the skill updated.
+#
 # The nudge (nudge: true), for models that skip a failing step instead of
 # fixing the skill: in a turn that read a skill (memory_read of a skill_*
 # name, or a read of its file), the first failing tool call after it (an
 # execute with "exit: N", N ≠ 0, or with no exit line an Error: line near
 # the top; any tool's "[tool] Error: …") steers the model once to find out
-# why and fix the skill. At the turn's end, a failed step with no rewrite of
-# the skill gets a notice line.
+# why and fix the skill, unless a skill read was changed already (by any
+# tool, see above). At the turn's end, a failed step with no change to a
+# skill read gets a notice line.
 #
 # Settings (config.yml, bundles: skills:):
 #   history_keep: 20   older versions kept per skill
@@ -31,8 +38,7 @@ class Plugin
   WRITE_TOOLS = %w[memory_write write edit].freeze
   NOTICE_WIDTH = 60 # the changed line in an update's notice
   NUDGE = "A step of skill %s failed. Find out why before skipping it; if the skill is out of date, fix it now: " \
-          "memory_write the whole skill, its title and every section as they were, that step fixed, a Changelog " \
-          "line added."
+          "edit the step that changed in its file (or memory_write the whole skill) and add a Changelog line."
   NOT_FAILURES = %w[memory_read memory_write].freeze
   USAGE = "usage: /skill save [name] [--system] | list | show <name> | diff <name> [N]"
 
@@ -79,14 +85,36 @@ class Plugin
   def after_tool_call(event, ctx)
     stash = @stash
     @stash = nil
+    stash = nil unless stash && stash[:tool] == event[:tool].to_s
+    changed_elsewhere(ctx) unless stash
     step_failed(event) if @nudge && !@read.empty?
-    return unless stash && stash[:tool] == event[:tool].to_s
+    return unless stash
 
     now = File.file?(stash[:path]) ? File.read(stash[:path]) : nil
     return if now.nil? || now == stash[:old]
 
-    @written << stash[:name]
+    @written |= [stash[:name]]
+    @seen[stash[:name]] = { path: stash[:path], scope: stash[:scope], content: now }
     ctx.notify(change_notice(stash, now))
+  end
+
+  # A skill read this turn whose file differs from the content last seen was
+  # changed by something other than the write tools (an execute's sed, say):
+  # keep what was there as a version, show the change, count the skill as
+  # updated (any change counts, the user's own edit too). A file gone since
+  # is left alone.
+  def changed_elsewhere(ctx)
+    @seen.each do |name, seen|
+      now = File.file?(seen[:path]) ? File.read(seen[:path]) : nil
+      next if now.nil? || now == seen[:content]
+
+      keep_version(ctx, seen[:scope], name, seen[:content]) if seen[:content]
+      ctx.notify(change_notice({ name: name, scope: seen[:scope], old: seen[:content] }, now))
+      seen[:content] = now
+      @written |= [name]
+    end
+  rescue SystemCallError => e
+    ctx.log.warn(:watch_failed, error: e.class.name, msg: e.message)
   end
 
   def change_notice(stash, now)
@@ -105,21 +133,42 @@ class Plugin
 
   def reset_turn
     @read = []      # skills read this turn, in order
+    @seen = {}      # of those, name => {path:, scope:, content:} last seen
     @written = []   # skills changed this turn
     @failed = false # a step failed after a skill was read
     @nudged = false
   end
 
   def note_read(tool, event)
-    names = case tool
+    found = case tool
             when "memory_read"
+              scope = event.dig(:call, :scope).to_s.strip
+              scope = nil unless memory_dirs.key?(scope)
+              # A skill not written yet is watched where memory_write would
+              # put it by default: the read scope, else project.
               event.dig(:call, :content).to_s.split(",").map(&:strip).select { |entry| entry.start_with?("skill_") }
-                   .filter_map { |entry| skill_name(entry) }
+                   .filter_map do |entry|
+                     name = skill_name(entry) or next
+                     unwritten = File.join(memory_dirs[scope || "project"], "skill_#{name}.md")
+                     [name, skill_path(name, scope: scope) || unwritten]
+                   end
             when "read"
-              Array(event.dig(:targets, :paths)).filter_map { |path| skill_at(path)&.last }
+              Array(event.dig(:targets, :paths)).filter_map { |path| (at = skill_at(path)) && [at.last, path] }
             else []
             end
-    @read |= names
+    found.each { |name, path| watch(name, path) }
+    @read |= found.map(&:first)
+  end
+
+  # Remember a read skill's content (nil: not written yet) the first time in
+  # a turn: a later read mustn't hide a change made in between.
+  def watch(name, path)
+    return if @seen.key?(name) || path.nil?
+
+    content = File.file?(path) ? File.read(path) : nil
+    @seen[name] = { path: File.expand_path(path), scope: skill_at(path)&.first, content: content }
+  rescue SystemCallError
+    nil
   end
 
   def step_failed(event)
@@ -127,7 +176,7 @@ class Plugin
     return if NOT_FAILURES.include?(tool) || !failure?(tool, event[:output].to_s)
 
     @failed = true
-    return if @nudged
+    return if @nudged || @read.any? { |name| @written.include?(name) }
 
     @nudged = !!event[:steer]&.call(format(NUDGE, @read.join(", ")))
   end
@@ -146,6 +195,7 @@ class Plugin
   end
 
   def after_turn(ctx)
+    changed_elsewhere(ctx)
     return unless @nudge && @failed
 
     missed = @read - @written

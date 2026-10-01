@@ -277,8 +277,8 @@ RSpec.describe "The skills plugin" do
       run(p, "read", "[read] Error: file not found")
 
       expect(steered).to eq(["A step of skill release failed. Find out why before skipping it; if the skill is out of " \
-                             "date, fix it now: memory_write the whole skill, its title and every section as they " \
-                             "were, that step fixed, a Changelog line added."])
+                             "date, fix it now: edit the step that changed in its file (or memory_write the whole " \
+                             "skill) and add a Changelog line."])
       fire(p, :after_turn, status: "completed")
       expect(ctx.notices).to eq([["skill release was followed, a step failed, the skill wasn't updated", :info]])
     end
@@ -311,6 +311,97 @@ RSpec.describe "The skills plugin" do
       expect(steered).to be_empty
       run(p, "execute", "[execute]\nstdout:\nError: bad config\n#{"x\n" * 30}")
       expect(steered.size).to eq(1)
+    end
+
+    describe "a skill changed by another tool (an execute's sed)" do
+      let(:v1) { "# Skill: release\n\n## Steps\n1. Run `scripts/check.sh`.\n" }
+      let(:v2) { "# Skill: release\n\n## Steps\n1. Run `scripts/verify.sh`.\n" }
+
+      it "counts as updated: a notice, the old text kept, no steer at a later failure, no turn-end line" do
+        File.write(path, v1)
+        p = plugin
+        fire(p, :before_turn, prompt: "release")
+        read_skill(p)
+        File.write(path, v2) # the execute's own write
+        run(p, "execute", "[execute]\nexit: 0 (no output)")
+        expect(ctx.notices.map(&:first)).to eq(["skill release updated (+1 −1): 1. Run `scripts/verify.sh`. · " \
+                                                "/skill diff release"])
+        expect(history("project", "release").map { |f| File.read(f) }).to eq([v1])
+
+        run(p, "execute", "[execute]\nexit: 1 (no output)")
+        fire(p, :after_turn, status: "completed")
+        expect(steered).to be_empty
+        expect(ctx.notices.size).to eq(1)
+        expect(skill(p, "diff release")).to include("-1. Run `scripts/check.sh`.", "+1. Run `scripts/verify.sh`.")
+      end
+
+      it "is seen at the turn's end too, after the last tool call, with nudge: false" do
+        File.write(path, v1)
+        p = plugin("nudge" => false)
+        fire(p, :before_turn, prompt: "release")
+        read_skill(p)
+        run(p, "execute", "[execute]\nexit: 0 (no output)")
+        File.write(path, v2)
+        fire(p, :after_turn, status: "completed")
+        expect(ctx.notices.map(&:first)).to eq(["skill release updated (+1 −1): 1. Run `scripts/verify.sh`. · " \
+                                                "/skill diff release"])
+      end
+
+      it "diffs against the content after the last write, so an edit then a sed show one line each" do
+        File.write(path, v1)
+        p = plugin
+        read_skill(p)
+        write_call(p, "edit", path, v2)
+        File.write(path, "#{v2}2. Tag it.\n")
+        run(p, "execute", "[execute]\nexit: 0 (no output)")
+        expect(ctx.notices.map(&:first)).to eq(
+          ["skill release updated (+1 −1): 1. Run `scripts/verify.sh`. · /skill diff release",
+           "skill release updated (+1 −0): 2. Tag it. · /skill diff release"]
+        )
+        expect(history("project", "release").map { |f| File.read(f) }).to eq([v1, v2])
+      end
+
+      it "watches the scope a memory_read named, and keeps no version for a plain read" do
+        system_path = File.join(system_dir, "skill_release.md")
+        File.write(path, v1)
+        File.write(system_path, v1)
+        p = plugin
+        fire(p, :before_tool_call, call: { name: "memory_read", content: "skill_release", scope: "system" },
+                                   targets: { paths: [] })
+        fire(p, :after_tool_call, tool: "memory_read", output: v1, steer: steer)
+        File.write(path, v2) # the project one: not what was read
+        run(p, "execute", "[execute]\nexit: 0 (no output)")
+        expect(ctx.notices).to be_empty
+        File.write(system_path, v2)
+        run(p, "execute", "[execute]\nexit: 0 (no output)")
+        expect(ctx.notices.size).to eq(1)
+        expect(history("system", "release").size).to eq(1)
+        expect(history("project", "release")).to be_empty
+      end
+
+      it "sees a skill read before it existed and then created by execute (memory_read's comma list)" do
+        p = plugin
+        fire(p, :before_turn, prompt: "release")
+        read_skill(p, "notes, skill_release")
+        File.write(path, v1)
+        run(p, "execute", "[execute]\nexit: 1 (no output)")
+        fire(p, :after_turn, status: "completed")
+        expect(steered).to be_empty
+        expect(ctx.notices.map(&:first)).to eq(["skill release saved (project, 4 lines)"])
+        expect(history("project", "release")).to be_empty
+      end
+
+      it "leaves /skill diff alone on a plain read after a memory_write" do
+        File.write(path, v1)
+        p = plugin
+        write_call(p, "memory_write", path, v2)
+        fire(p, :before_turn, prompt: "again")
+        read_skill(p)
+        run(p, "execute", "[execute]\nexit: 0 (no output)")
+        fire(p, :after_turn, status: "completed")
+        expect(history("project", "release").map { |f| File.read(f) }).to eq([v1])
+        expect(skill(p, "diff release")).to include("+1. Run `scripts/verify.sh`.")
+      end
     end
 
     it "is off with nudge: false" do

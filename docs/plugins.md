@@ -940,16 +940,24 @@ skills> skill release updated (+2 −1): 1. Run `scripts/verify.sh`; stop if it 
 The line is the file on disk changing, whatever the tool answered; a denied
 write shows nothing.
 
+A skill read in the turn is also watched for changes made another way (an
+`execute` running `sed`, a script): after each other tool call, and at the
+turn's end, its file is compared with the content last seen (at the read, or
+after the last write). A change shows the same line, keeps the content last
+seen as a version (so `/skill diff` has it) and counts as the skill updated.
+A plain read keeps no version.
+
 **The nudge** (`nudge: true`). Some models, finding a skill's step broken,
 skip it and go on without fixing the skill. In a turn that read a skill
 (`memory_read` of a `skill_*` name, or `read` of its file), the first failing
 tool call after it (an `execute` that exited non-zero, a tool error) steers
 the model once: *"A step of skill release failed. Find out why before skipping
-it; if the skill is out of date, fix it now: memory_write the whole skill,
-its title and every section as they were, that step fixed, a Changelog line
-added."* If the turn ends with a failed step and the
-skill not rewritten, one line says so: `skill release was followed, a step
-failed, the skill wasn't updated`. A failure unrelated to the skill (a test
+it; if the skill is out of date, fix it now: edit the step that changed in
+its file (or memory_write the whole skill) and add a Changelog line."* No
+steer once a skill read this turn has changed, by any tool. If the turn ends
+with a failed step and no skill read changed, one line says so: `skill
+release was followed, a step failed, the skill wasn't updated`. A failure
+unrelated to the skill (a test
 meant to fail) can set it off too: once per turn, and only after a skill was
 read.
 
