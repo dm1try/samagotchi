@@ -44,7 +44,7 @@ module Samagotchi
 
     # What a tool handler (call, kctx) gets from the kernel: the reminder
     # store, the peers, the model key, and the memory read and ask-user
-    # flows that need its state.
+    # flows that need its state (read through the kernel's public readers).
     class ToolContext
       def initialize(kernel)
         @kernel = kernel
@@ -53,8 +53,44 @@ module Samagotchi
       def reminder_store = @kernel.reminder_store
       def peers = @kernel.peers
       def model_key = @kernel.model_key
-      def muted_memory_read(call) = @kernel.__send__(:muted_memory_read, Tools::MemoryRead, call)
-      def ask_user_question(call) = @kernel.__send__(:handle_ask_user_question, call)
+
+      # memory_read with the session's mutes applied: a blank name (the index)
+      # loses the muted memories' lines; a muted name in a comma list is
+      # refused with its own error line and the rest is read as usual.
+      def muted_memory_read(call)
+        muted = Array(@kernel.muted_memory_names)
+        content = call[:content].to_s
+        read = lambda do |names|
+          Tools::MemoryRead.call(names, scope: call[:scope], model_key: model_key, fallback_model_key: @kernel.model_key_fallback)
+        end
+        return read.call(content) if muted.empty?
+        return MutedMemories.filter_index(read.call(content), muted) if content.strip.empty?
+
+        names = Tools::MemoryRead.parse_names(content)
+        refused, allowed = names.partition { |name| MutedMemories.muted?(name, muted) }
+        return read.call(content) if refused.empty?
+
+        errors = refused.map { |name| "Error: memory '#{name}' is muted for this session" }
+        return errors.join("\n") if allowed.empty?
+
+        [read.call(allowed.join(",")), *errors].join(Tools::MemoryRead::SEPARATOR)
+      end
+
+      # ask_user_question: validate the call, then hand the payload to the
+      # Engine's question flow (the kernel's question_handler, which blocks
+      # until the user answers). Without one (headless), the payload as JSON
+      # so the model sees the options and can ask in plain text.
+      def ask_user_question(call)
+        payload = Tools::AskUserQuestion.validate(call)
+        return payload if payload.is_a?(String)
+
+        handler = @kernel.question_handler
+        return JSON.pretty_generate(payload) unless handler
+
+        handler.call(payload).to_s
+      rescue StandardError => e
+        "Error: ask_user_question handler failed: #{e.message}"
+      end
     end
 
     DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
@@ -99,6 +135,9 @@ module Samagotchi
     attr_accessor :tools
     attr_accessor :client
     attr_accessor :model_key
+    # @return [String, nil] the key whose overlay memory_read takes when
+    #   #model_key has none (#sync_model_key!)
+    attr_reader :model_key_fallback
     # @return [Array<String>, nil] the session's muted memories (normalized
     #   names, see MutedMemories); memory_read refuses them. The Engine sets it.
     attr_accessor :muted_memory_names
@@ -436,26 +475,6 @@ module Samagotchi
                                                            cancel_controller: turn.cancel_controller, answer: answer)
     end
 
-    # memory_read with the session's mutes applied: a blank name (the index)
-    # loses the muted memories' lines; a muted name in a comma list is
-    # refused with its own error line and the rest is read as usual.
-    def muted_memory_read(tool, call)
-      muted = Array(@muted_memory_names)
-      content = call[:content].to_s
-      read = ->(names) { tool.call(names, scope: call[:scope], model_key: @model_key, fallback_model_key: @model_key_fallback) }
-      return read.call(content) if muted.empty?
-      return MutedMemories.filter_index(read.call(content), muted) if content.strip.empty?
-
-      names = Tools::MemoryRead.parse_names(content)
-      refused, allowed = names.partition { |name| MutedMemories.muted?(name, muted) }
-      return read.call(content) if refused.empty?
-
-      errors = refused.map { |name| "Error: memory '#{name}' is muted for this session" }
-      return errors.join("\n") if allowed.empty?
-
-      [read.call(allowed.join(",")), *errors].join(Tools::MemoryRead::SEPARATOR)
-    end
-
     def emit_stream_event(callback, event)
       callback&.call(event)
     rescue StandardError
@@ -527,14 +546,14 @@ module Samagotchi
       # Only a request with images names them: a text-only call is unchanged.
       kwargs[:images] = images unless images.empty?
       kwargs[:on_chunk] = on_chunk if on_chunk
-      kwargs[:on_retry] = on_retry if on_retry && client_supports_keyword?(:on_retry)
-      kwargs[:cancel_controller] = cancel_controller if cancel_controller && client_supports_keyword?(:cancel_controller)
-      kwargs[:stop] = @profile.stop_sequences if client_supports_keyword?(:stop)
+      kwargs[:on_retry] = on_retry if on_retry
+      kwargs[:cancel_controller] = cancel_controller if cancel_controller
+      kwargs[:stop] = @profile.stop_sequences
       n_predict = completion_n_predict
-      kwargs[:n_predict] = n_predict if n_predict && client_supports_keyword?(:n_predict)
+      kwargs[:n_predict] = n_predict if n_predict
       resolved_model_name = completion_model_name(model_name)
-      kwargs[:model] = resolved_model_name if resolved_model_name && client_supports_keyword?(:model)
-      kwargs[:sampling] = sampling if sampling && !sampling.empty? && client_supports_keyword?(:sampling)
+      kwargs[:model] = resolved_model_name if resolved_model_name
+      kwargs[:sampling] = sampling if sampling && !sampling.empty?
       kwargs
     end
 
@@ -545,19 +564,6 @@ module Samagotchi
 
     def completion_model_name(override = nil)
       ModelProfile.required_model_name(override)
-    end
-
-    def client_supports_keyword?(keyword)
-      @client_complete_keyword_support ||= {}
-      return @client_complete_keyword_support[keyword] if @client_complete_keyword_support.key?(keyword)
-
-      @client_complete_keyword_support[keyword] = begin
-        parameters = @client.method(:complete).parameters
-        parameters.any? { |kind, name| (kind == :key || kind == :keyreq) && name == keyword } ||
-          parameters.any? { |kind, _name| kind == :keyrest }
-      rescue StandardError
-        false
-      end
     end
 
     def cancelled_result(conversation, tool_activity:, reason:, partial_assistant_text: "")
@@ -712,20 +718,6 @@ module Samagotchi
         output: "[#{call[:name]}] #{result}",
         activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: @tools)
       }
-    end
-
-    # ask_user_question: validate the call, then hand the payload to the
-    # Engine's question flow (question_handler, which blocks until the user
-    # answers). Without one (headless), the payload as JSON so the model sees
-    # the options and can ask in plain text.
-    def handle_ask_user_question(call)
-      payload = Samagotchi::Tools::AskUserQuestion.validate(call)
-      return payload if payload.is_a?(String)
-      return JSON.pretty_generate(payload) unless @question_handler
-
-      @question_handler.call(payload).to_s
-    rescue => e
-      "Error: ask_user_question handler failed: #{e.message}"
     end
   end
 end
