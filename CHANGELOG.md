@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-01
+
 ### Added
 
 - The web composer has the TUI's prompt history: ↑/↓ walk the prompts typed in either (↑ with the caret on the first
@@ -640,7 +642,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/dm1try/samagotchi/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/dm1try/samagotchi/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/dm1try/samagotchi/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/dm1try/samagotchi/compare/v0.8.1...v0.9.0

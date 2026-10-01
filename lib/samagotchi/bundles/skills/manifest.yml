@@ -7,4 +7,4 @@ trust_level: reviewed
 plugin:
   file: plugin.rb
   sha256: sha256:9bd637f8fa933b03434e4ccdcbf2547aa011993b8044f2739ee7d50f995d2882
-requires_chi: ">= 0.9.0"
+requires_chi: ">= 0.11.0"
