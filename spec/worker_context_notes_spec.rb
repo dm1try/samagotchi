@@ -11,14 +11,6 @@ require "samagotchi/worker"
 # A worker takes context notes from notes/ between turns: each becomes a
 # tail system message, saved at once, and no turn runs for it.
 RSpec.describe Samagotchi::Worker, "context notes" do
-  def mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-
-  def wait_until(timeout: 2)
-    deadline = mono + timeout
-    sleep(0.01) until yield || mono > deadline
-    yield
-  end
-
   around do |example|
     original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"

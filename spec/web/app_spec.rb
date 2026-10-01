@@ -76,10 +76,6 @@ RSpec.describe Samagotchi::Web::App do
     ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
   end
 
-  def mono
-    Process.clock_gettime(Process::CLOCK_MONOTONIC)
-  end
-
   # bridge_wait_timeout: 0 — no real worker is spawned in these specs, so the
   # create handler must not wait for a bridge sidecar.
   # view: nil leaves the app's own default (the turn view).
@@ -1377,8 +1373,7 @@ RSpec.describe Samagotchi::Web::App do
       end
       t.report_on_exception = false
       Thread.new { proxy.each { |chunk| chunk } }
-      deadline = mono + 2.0
-      sleep(0.005) while request.nil? && mono < deadline
+      wait_until(timeout: 2.0, interval: 0.005) { request }
       server.close
       t.join(0.5)
       expect(request).not_to be_nil, "ProxyStreamBody never reached the bridge"

@@ -32,12 +32,8 @@ RSpec.describe "The hook runtime through the Engine" do
     )
   end
 
-  def mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-
   def wait_for_question(engine)
-    deadline = mono + 2
-    sleep(0.005) while engine.pending_question.nil? && mono < deadline
-    engine.pending_question
+    wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
   end
 
   describe "notify" do

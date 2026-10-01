@@ -53,13 +53,8 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     end
     turn_thread.report_on_exception = false
     # Wait until the question is pending (question_requested emitted)
-    deadline = mono + 2.0
-    sleep(0.005) while engine.pending_question.nil? && mono < deadline
+    wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
     [turn_thread, result_box, events]
-  end
-
-  def mono
-    Process.clock_gettime(Process::CLOCK_MONOTONIC)
   end
 
   describe "Engine#request_question / #answer_question" do
@@ -185,8 +180,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
         result_box[:result] = engine.request_question(payload)
       end
       turn_thread.report_on_exception = false
-      deadline = mono + 2.0
-      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+      wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
 
       ctrl.cancel!(:user)
       turn_thread.join(2)
@@ -210,8 +204,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       result_box = {}
       turn_thread = Thread.new { result_box[:result] = engine.request_question(payload) }
       turn_thread.report_on_exception = false
-      deadline = mono + 2.0
-      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+      wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
 
       held = Queue.new
       go = Queue.new
@@ -228,12 +221,10 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
 
       ctrl.cancel!(:user)
       # The turn thread wakes and parks on the event lock, announcing the cancel.
-      deadline = mono + 2.0
-      until Array(turn_thread.backtrace).any? { |l| l.include?("session_observer.rb") && l.include?("notify") }
-        raise "turn thread never reached SessionObserver#notify" if mono > deadline
-
-        sleep(0.005)
+      parked = wait_until(timeout: 2.0, interval: 0.005) do
+        Array(turn_thread.backtrace).any? { |l| l.include?("session_observer.rb") && l.include?("notify") }
       end
+      raise "turn thread never reached SessionObserver#notify" unless parked
       go << true
 
       begin
@@ -255,8 +246,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
 
       turn_thread = Thread.new { engine.request_question(payload) }
       turn_thread.report_on_exception = false
-      deadline = mono + 2.0
-      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+      wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
       id = engine.pending_question[:id]
 
       engine.cancel_question("user")
@@ -302,8 +292,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
         result = engine.open_question(question: "Run it?", options: %w[Yes No], kind: "approval",
                                       approval: { tool: "execute" })
       end
-      deadline = mono + 2.0
-      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+      wait_until(timeout: 2.0, interval: 0.005) { engine.pending_question }
       pending = engine.pending_question
       expect(pending).to include(kind: "approval", approval: { tool: "execute" }, status: "pending")
       engine.answer_question(id: pending[:id], selected: ["No"])

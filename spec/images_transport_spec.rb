@@ -39,16 +39,6 @@ RSpec.describe "Images in transport" do
 
   after { FileUtils.rm_rf(tmpdir) }
 
-  def wait_until(timeout: 2)
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-    until (value = yield)
-      return false if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-
-      sleep(0.02)
-    end
-    value
-  end
-
   def write_sidecar(format)
     FileUtils.mkdir_p(session_dir)
     File.write(File.join(session_dir, "bridge.json"), JSON.generate("port" => 1, "session_id" => session.id, "input_format" => format))

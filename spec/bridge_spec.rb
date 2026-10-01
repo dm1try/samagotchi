@@ -12,11 +12,6 @@ require "samagotchi/session"
 require "samagotchi/bridge"
 require "samagotchi/bridge_client"
 
-# A tiny monotonic clock so the specs don't depend on Time.now.
-def mono
-  Process.clock_gettime(Process::CLOCK_MONOTONIC)
-end
-
 # Minimal SSE/HTTP client for the bridge integration specs. Talks a raw
 # TCP request/response against the in-process bridge so we can read the
 # live event-stream incrementally (Net::HTTP blocks on an open stream).
@@ -68,13 +63,7 @@ class SSEClient
   # Block until +count+ events are visible (or timeout elapses).
   # @return [Array<Hash>] a snapshot of the events seen so far.
   def wait_for(count, timeout: 3)
-    deadline = mono + timeout
-    @mutex.synchronize do
-      until @events.size >= count || mono > deadline
-        @cv.wait(@mutex, [deadline - mono, 0].max)
-      end
-    end
-    @events.dup
+    wait_until(timeout: timeout) { |events| events.size >= count }
   end
 
   # Block until the events seen so far satisfy the block (or timeout
@@ -82,10 +71,10 @@ class SSEClient
   # after run_turn has returned.
   # @return [Array<Hash>] a snapshot of the events seen so far.
   def wait_until(timeout: 3)
-    deadline = mono + timeout
+    deadline = SpecWaiting.mono + timeout
     @mutex.synchronize do
-      until yield(@events) || mono > deadline
-        @cv.wait(@mutex, [deadline - mono, 0].max)
+      until yield(@events) || SpecWaiting.mono > deadline
+        @cv.wait(@mutex, [deadline - SpecWaiting.mono, 0].max)
       end
     end
     @events.dup
@@ -556,12 +545,6 @@ RSpec.describe Samagotchi::Bridge do
     end
 
     describe "client tracking" do
-      def wait_until(timeout: 3)
-        deadline = mono + timeout
-        sleep(0.02) until yield || mono > deadline
-        yield
-      end
-
       it "counts the open streams" do
         start_bridge
         expect(@bridge.open_streams).to eq(0)
@@ -712,11 +695,6 @@ RSpec.describe Samagotchi::Bridge do
           )
         end
         release
-      end
-
-      def wait_until(timeout: 3)
-        deadline = mono + timeout
-        sleep(0.01) until yield || mono > deadline
       end
 
       it "gets the whole in-progress turn after more events than the ring holds, then the rest live" do
@@ -1184,7 +1162,7 @@ RSpec.describe Samagotchi::Bridge do
       Samagotchi::Log.configure(path: log)
       start_bridge
       @bridge.stop
-      sleep 0.1
+      sleep 0.1 # nothing to wait on: the accept loop would have logged by now
 
       expect(File.exist?(log) ? File.read(log) : "").not_to include("accept_loop_failed")
     end
@@ -1432,16 +1410,20 @@ RSpec.describe Samagotchi::Bridge do
           original.call(*args, **kw)
         end
         held = Queue.new
-        holder = Thread.new { @engine.synchronize_events { held << true; sleep(0.9) } }
+        release = Queue.new
+        # The event log held until the client gave up (past its read timeout).
+        holder = Thread.new { @engine.synchronize_events { held << true; release.pop } }
         held.pop
         client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, read_timeout: 0.5)
 
         expect { client.post_command(line: "!echo STALE", client_id: "tui:1") }.to raise_error(Errno::ETIMEDOUT)
+        release << true
         holder.join
 
         expect(dropped.pop(timeout: 2)).to eq("command_expired")
         expect(queued).to be_empty
       ensure
+        release&.push(true)
         holder&.join
       end
 

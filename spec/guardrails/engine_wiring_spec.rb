@@ -43,8 +43,6 @@ RSpec.describe "Engine guardrail wiring" do
       v
     end
 
-    def mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-
     it "denies at once in a non-interactive run" do
       v = engine.request_approval(asking(engine))
       expect(v).to be_deny
@@ -56,8 +54,7 @@ RSpec.describe "Engine guardrail wiring" do
       engine.interface = :worker
       result = nil
       thread = Thread.new { result = engine.request_approval(asking(engine)) }
-      deadline = mono + 2
-      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+      wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
       pending = engine.pending_question
       expect(pending).to include(kind: "approval", header: "Approve tool call?")
       expect(pending[:approval]).to include(command: "git push", rule: "git-push", scopes: %w[once repo])
@@ -75,8 +72,7 @@ RSpec.describe "Engine guardrail wiring" do
       v.context = guardrail_context(engine)
       v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context)
       thread = Thread.new { engine.request_approval(v) }
-      deadline = mono + 2
-      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+      wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
       pending = engine.pending_question
       expect(pending[:approval]).to include(tool: "mcp_x_echo", label: "x: echo")
       expect(pending[:question].lines.first).to start_with("x: echo: ")
@@ -88,8 +84,7 @@ RSpec.describe "Engine guardrail wiring" do
       engine.interface = :worker
       result = nil
       thread = Thread.new { result = engine.request_approval(asking(engine)) }
-      deadline = mono + 2
-      sleep(0.005) while engine.pending_question.nil? && mono < deadline
+      wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
       engine.cancel_question("dismissed", id: engine.pending_question[:id])
       thread.join(2)
       expect(result.deny_text).to include("The approval was cancelled.")
@@ -108,8 +103,7 @@ RSpec.describe "Engine guardrail wiring" do
 
       def pending_for(engine, verdict)
         thread = Thread.new { engine.request_approval(verdict) }
-        deadline = mono + 2
-        sleep(0.005) while engine.pending_question.nil? && mono < deadline
+        wait_until(timeout: 2, interval: 0.005) { engine.pending_question }
         pending = engine.pending_question
         yield pending if block_given?
         engine.cancel_question("dismissed", id: pending[:id])

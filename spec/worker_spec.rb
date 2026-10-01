@@ -11,16 +11,6 @@ require "samagotchi/bridge_client"
 require "samagotchi/worker"
 
 RSpec.describe Samagotchi::Worker do
-  def mono
-    Process.clock_gettime(Process::CLOCK_MONOTONIC)
-  end
-
-  def wait_until(timeout: 2)
-    deadline = mono + timeout
-    sleep(0.01) until yield || mono > deadline
-    yield
-  end
-
   describe Samagotchi::Worker::Waker do
     let(:waker) { described_class.new }
 

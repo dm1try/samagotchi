@@ -5,6 +5,12 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "fileutils"
 require "tmpdir"
 
+# The suite-wide helpers (each example group gets them below). Not every
+# spec/support file: the rest load parts of lib/ (a fake adapter, a
+# surface), and a spec that needs one requires it, so loading one spec file
+# alone still finds its missing requires.
+require_relative "support/waiting"
+
 # Start from none of the developer's SAMAGOTCHI_* settings: a shell may point
 # the debug log somewhere, and a suite run by chi's own execute tool inherits
 # the worker's environment (SAMAGOTCHI_HOSTS_JSON with the real hosts, the
@@ -73,6 +79,7 @@ RSpec.configure do |config|
   config.shared_context_metadata_behavior = :apply_to_host_groups
   config.filter_run_when_matching :focus
   config.disable_monkey_patching!
+  config.include SpecWaiting
   config.warnings = true
   config.order = :random
   Kernel.srand config.seed
