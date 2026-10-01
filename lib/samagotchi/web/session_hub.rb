@@ -244,7 +244,11 @@ module Samagotchi
 
         stamp = [stat.mtime, stat.size]
         changed = false
-        if stamp != entry.stamp
+        dir = Session.session_dir(id, state_dir: @state_dir)
+        dir_stamp = dir_mtime(dir)
+        # The folder changing re-reads the file too: a stop is a marker file
+        # there (Session::STOPPED_FILE), not a change to the session file.
+        if stamp != entry.stamp || dir_stamp != entry.dir_stamp
           session = Session.summary_from_file(path)
           # Corrupt, or missing a field: not a session, as Session.list has it.
           # A `chi scratch` session is never shown.
@@ -257,8 +261,6 @@ module Samagotchi
           entry.stamp = stamp
           changed = true
         end
-        dir = Session.session_dir(id, state_dir: @state_dir)
-        dir_stamp = dir_mtime(dir)
         if dir_stamp != entry.dir_stamp
           entry.dir_stamp = dir_stamp
           changed = true

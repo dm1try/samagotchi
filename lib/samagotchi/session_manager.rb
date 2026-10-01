@@ -377,7 +377,9 @@ module Samagotchi
       return session if refuse_tui!(session.id, state_dir: sd)
 
       # status is turn state, not liveness: a new worker runs no turn yet,
-      # and must not find the session stopped (it would exit).
+      # and must not find the session stopped (it would exit): neither the
+      # marker nor a status field from before it.
+      Session.clear_stopped(session.id, state_dir: sd)
       session.status = Session::STATUS_IDLE
       session.save(state_dir: sd)
       spawn_worker_for_session(session, state_dir: sd)

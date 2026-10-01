@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi sessions stop` marks the session with a `stopped` file in its folder instead of rewriting its session file, so
+  a worker saving at that moment can no longer undo the stop (or lose its own save); a resume removes the file.
 - Web: switching sessions no longer briefly shows the previous session's "delegated by" link in the info bar.
 - The web's `POST /api/sessions/:id/turn` refuses more than 20 images in one message, as a live worker already did.
 - A web page joining (or re-syncing with) a live session gets its status and pending question as of the same moment

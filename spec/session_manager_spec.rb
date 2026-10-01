@@ -403,6 +403,22 @@ RSpec.describe Samagotchi::SessionManager do
         expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_IDLE)
       end
     end
+
+    it "removes the stop marker before it spawns the worker" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+      marker_at_spawn = nil
+      allow(Process).to receive(:spawn) do
+        marker_at_spawn = Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)
+        20_002
+      end
+
+      described_class.resume_session(session.id, state_dir: tmpdir)
+
+      expect(marker_at_spawn).to be(false)
+      expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_IDLE)
+    end
   end
 
   describe ".spawn_session" do

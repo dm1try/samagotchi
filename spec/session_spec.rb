@@ -391,10 +391,36 @@ RSpec.describe Samagotchi::Session do
       expect(loaded.last_prompt).to eq("timeout")
     end
 
-    it ".mark_stopped sets status to stopped" do
+    it ".mark_stopped writes the stop marker, leaving the session file as it is; .load and the summary read stopped" do
+      path = File.join(tmpdir, "#{session.id}.json")
+      before = File.read(path)
       described_class.mark_stopped(session.id, state_dir: tmpdir)
-      loaded = described_class.load(session.id, state_dir: tmpdir)
-      expect(loaded.status).to eq(described_class::STATUS_STOPPED)
+
+      expect(File.read(path)).to eq(before)
+      expect(File.exist?(File.join(tmpdir, session.id, described_class::STOPPED_FILE))).to be(true)
+      expect(described_class.load(session.id, state_dir: tmpdir).status).to eq(described_class::STATUS_STOPPED)
+      expect(described_class.summary_from_file(path).status).to eq(described_class::STATUS_STOPPED)
+      expect(described_class.list(state_dir: tmpdir).map(&:status)).to eq([described_class::STATUS_STOPPED])
+
+      described_class.clear_stopped(session.id, state_dir: tmpdir)
+      expect(described_class.load(session.id, state_dir: tmpdir).status).to eq(described_class::STATUS_IDLE)
+    end
+
+    it "keeps a worker's save from undoing a stop: the marker wins over the status it writes" do
+      described_class.mark_stopped(session.id, state_dir: tmpdir)
+      session.status = described_class::STATUS_RUNNING
+      session.save(state_dir: tmpdir)
+      expect(described_class.load(session.id, state_dir: tmpdir).status).to eq(described_class::STATUS_STOPPED)
+    end
+
+    it "reads a file from before the marker, stopped in its status field, as stopped" do
+      session.status = described_class::STATUS_STOPPED
+      session.save(state_dir: tmpdir)
+      expect(described_class.load(session.id, state_dir: tmpdir).status).to eq(described_class::STATUS_STOPPED)
+    end
+
+    it ".mark_stopped refuses a session that doesn't exist" do
+      expect { described_class.mark_stopped("nope", state_dir: tmpdir) }.to raise_error(ArgumentError, /not found/)
     end
   end
 

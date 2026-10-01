@@ -23,6 +23,13 @@ module Samagotchi
     STATUS_ERROR = "error"
     STATUS_STOPPED = "stopped"
 
+    # A stopped session's marker, <session dir>/stopped: a stop (chi
+    # sessions stop, from another process) creates it instead of rewriting
+    # the session file a worker may be saving at the same moment, and a
+    # resume removes it. A file from before the marker says "stopped" in
+    # its status field, which reads the same.
+    STOPPED_FILE = "stopped"
+
     SORT_KEYS = %w[created_at updated_at].freeze
     SORT_ORDERS = %w[asc desc].freeze
 
@@ -146,7 +153,9 @@ module Samagotchi
       path = session_path(session_id, state_dir: state_dir)
       raise ArgumentError, "Session not found: #{session_id}" unless File.exist?(path)
 
-      from_h(JSON.parse(File.read(path)))
+      session = from_h(JSON.parse(File.read(path)))
+      session.status = STATUS_STOPPED if stopped_marker?(session.id, state_dir: state_dir)
+      session
     rescue JSON::ParserError => e
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
     end
@@ -267,7 +276,9 @@ module Samagotchi
       # An id that isn't one (hand-edited, or not ours) would be a path.
       return nil unless valid_id?(data["id"])
 
-      from_h(data, messages: false)
+      session = from_h(data, messages: false)
+      session.status = STATUS_STOPPED if stopped_marker?(session.id, state_dir: File.dirname(path))
+      session
     rescue JSON::ParserError, KeyError, SystemCallError
       nil
     end
@@ -311,11 +322,24 @@ module Samagotchi
       session.save(state_dir: state_dir)
     end
 
-    # Mark a session as stopped.
+    # Mark a session as stopped (STOPPED_FILE); its session file stays as
+    # it is.
+    # @raise [ArgumentError] when there is no such session
     def self.mark_stopped(session_id, state_dir: default_state_dir)
-      session = load(session_id, state_dir: state_dir)
-      session.status = STATUS_STOPPED
-      session.save(state_dir: state_dir)
+      raise ArgumentError, "Session not found: #{session_id}" unless exist?(session_id, state_dir: state_dir)
+
+      dir = session_dir(session_id, state_dir: state_dir)
+      FileUtils.mkdir_p(dir)
+      FileUtils.touch(File.join(dir, STOPPED_FILE))
+    end
+
+    # Remove the stop marker (a resume, before its worker starts).
+    def self.clear_stopped(session_id, state_dir: default_state_dir)
+      FileUtils.rm_f(File.join(session_dir(session_id, state_dir: state_dir), STOPPED_FILE))
+    end
+
+    def self.stopped_marker?(session_id, state_dir: default_state_dir)
+      File.exist?(File.join(session_dir(session_id, state_dir: state_dir), STOPPED_FILE))
     end
 
     # An id that is not a session id: it could name a path outside the

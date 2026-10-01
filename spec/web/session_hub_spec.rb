@@ -176,6 +176,23 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(hub.snapshot.map { |s| s[:id] }).to eq([a.id])
     end
 
+    it "emits a session stopped when its stop marker is written, the session file untouched, and idle again when it goes" do
+      a = save_session
+      FileUtils.mkdir_p(session_dir(a))
+      hub.scan
+      events.clear
+
+      Samagotchi::Session.mark_stopped(a.id, state_dir: state_dir)
+      hub.scan
+      expect(types).to eq(%w[session])
+      expect(events.first.data[:session]).to include(id: a.id, status: "stopped")
+      events.clear
+
+      Samagotchi::Session.clear_stopped(a.id, state_dir: state_dir)
+      hub.scan
+      expect(events.map { |e| e.data[:session][:status] }).to eq(["idle"])
+    end
+
     it "is an empty projection without a state dir, and fills in when the dir appears" do
       hub.scan
 
