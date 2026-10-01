@@ -1,26 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "model_profile"
-require_relative "tools/execute"
-require_relative "tools/read"
-require_relative "tools/write"
-require_relative "tools/memory"
-require_relative "tools/edit"
-require_relative "tools/task_create"
-require_relative "tools/task_get"
-require_relative "tools/task_list"
-require_relative "tools/task_stop"
-require_relative "tools/task_wait"
-require_relative "tools/web_fetch"
-require_relative "tools/register_reminder"
-require_relative "tools/cancel_reminder"
-require_relative "tools/list_reminders"
-require_relative "tools/list_sessions"
-require_relative "tools/send_note"
-require_relative "tools/delegate"
-require_relative "tools/delegate_result"
-require_relative "tools/ask_user_question"
 require_relative "tools/args"
+require_relative "tools/ask_user_question"
 require_relative "tools/builtin_calls"
 
 module Samagotchi
