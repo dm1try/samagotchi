@@ -140,10 +140,10 @@ whole response), and none after the turn or the generation was cancelled.
 A 240k-char thinking gives about 120 fires.
 
 `thinking` holds what the model streamed as thinking: `reasoning_content`
-on the chat path, a Qwen `<think>` block on the raw-prompt path. Some
-thinking arrives as `text` instead: Gemma 4's on the raw-prompt path (it has
-no close marker), and a chat provider's that puts `<think>` inside the
-answer's content. Tool-call bodies are left out of `text`. With streaming off
+on the chat path, a Qwen `<think>` block or a Gemma 4
+`<|channel>thought … <channel|>` block on the raw-prompt path. Some
+thinking arrives as `text` instead: a chat provider's that puts `<think>`
+inside the answer's content. Tool-call bodies are left out of `text`. With streaming off
 (`stream: false` on a chat host) there are no chunks, so no fires.
 
 **Keep it fast.** The hook runs on the turn's thread, inside the HTTP read:

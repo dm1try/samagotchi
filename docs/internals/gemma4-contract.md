@@ -19,5 +19,6 @@ Thought handling follows the Gemma guidance:
 - Standard multi-turn: prior model thoughts are stripped from conversation history before the next turn.
 - Function/tool-calling exception: during a single turn that includes tool calls, thoughts are not stripped between those tool-call rounds.
 - Final model output returned to the caller is thought-stripped.
+- While a generation streams, the thought channel goes to the stream's `thinking:` lane, not `text:` (`ThoughtStreamSplitter.for_profile`, fresh per generation), so the UIs show it as thinking and `:generation_progress` hooks count it in `thinking_chars`.
 
 In short, raw thought blocks are treated as in-turn transient context, not durable history.
