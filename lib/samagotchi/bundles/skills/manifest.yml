@@ -1,10 +1,10 @@
 ---
 name: skills
-version: 0.1.4
+version: 0.1.5
 scope: system
 description: "Skills (skill_<name> memories, the steps of a task done together): /skill save, list, show and diff; older versions kept with a short diff line on every update; a nudge when a followed skill's step fails"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:cc5b3bcfd571e17074776f48c8d28184475f2a4becd06d70edbacd7381e1f306
+  sha256: sha256:9bd637f8fa933b03434e4ccdcbf2547aa011993b8044f2739ee7d50f995d2882
 requires_chi: ">= 0.9.0"

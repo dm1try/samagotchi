@@ -173,35 +173,15 @@ class Plugin
     nil
   end
 
+  # A failed step is a call whose status (core's, from the full output) is
+  # error: a denied call is blocked, a stopped task_wait stopped.
   def step_failed(event, ctx)
-    tool = event[:tool].to_s
-    output = event[:output].to_s
-    return if NOT_FAILURES.include?(tool) || guardrail_deny?(tool, output) || !failure?(tool, output)
+    return if NOT_FAILURES.include?(event[:tool].to_s) || event[:status] != "error"
 
     @failed = true
     return if @nudged || @read.any? { |name| @written.include?(name) }
 
     @nudged = ctx.steer(format(NUDGE, @read.join(", ")))
-  end
-
-  # A denied call, by its first line: a legacy veto, a rule's, hook's or
-  # core's deny, or the user's (declined, approval cancelled). Core's
-  # wording (ToolRunner#denied, Verdict#deny_text).
-  def guardrail_deny?(tool, output)
-    output.match?(/\A\[#{Regexp.escape(tool)}\] Error: (?:blocked by guardrail: |denied by guardrail \(|[^\n]*? It needed approval \()/)
-  end
-
-  # A tool error ("[x] Error: …" raised, "[x]\nError: …" returned), or an
-  # execute that exited non-zero; its "exit: N" line may be cut off by the
-  # hook's output cap, and then an Error: line near the top counts.
-  def failure?(tool, output)
-    return true if output.match?(/\A\[#{Regexp.escape(tool)}\](?: |\n)Error:/)
-    return false unless tool == "execute"
-
-    exit_line = output.match(/^exit: (\d+)(?: \(no output\))?\s*\z/)
-    return exit_line[1] != "0" if exit_line
-
-    output.lines.first(20).any? { |line| line.match?(/\A\s*Error:/i) }
   end
 
   def after_turn(ctx)

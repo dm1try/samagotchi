@@ -15,6 +15,9 @@ and commands may change between minor versions. How releases are made:
   terminal, without a restart.
 - Hooks and plugins: `:after_tool_call` carries the call's `status` (`ok`, `error`, `blocked` or `stopped`), the one its
   activity line shows, worked out from the full output (`output:` is capped).
+- The `skills` bundle (0.1.5) tells a failed step by that `status` instead of matching the output's wording: an
+  execute killed by a signal now counts as failed, and an `Error:` line in the output of a command that exited 0 no
+  longer does. It needs this chi.
 
 ### Changed
 
@@ -44,7 +47,7 @@ and commands may change between minor versions. How releases are made:
 - `--no-interrupt` (and `no_interrupt: true`) now raises the tool-call limit to 1000 in the in-process REPL with an
   OpenAI-compatible chat host too; it only applied to llama.cpp, mlx and oMLX hosts there.
 
-Update with `chi update` (bundles: known-names 0.1.4).
+Update with `chi update` (bundles: known-names 0.1.4, skills 0.1.5).
 
 ## [0.10.1] - 2026-10-01
 

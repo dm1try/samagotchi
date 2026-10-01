@@ -262,19 +262,20 @@ RSpec.describe "The skills plugin" do
       fire(p, :after_tool_call, tool: "memory_read", output: "# Skill: release", steer: steer)
     end
 
-    def run(p, tool, output)
+    # +status+ as core sends it (ToolRunner: the call's activity status).
+    def run(p, tool, output, status = "ok")
       fire(p, :before_tool_call, call: { name: tool }, targets: { paths: [] })
-      fire(p, :after_tool_call, tool: tool, output: output, steer: steer)
+      fire(p, :after_tool_call, tool: tool, output: output, status: status, steer: steer)
     end
 
     it "steers once at the first failing step after a skill was read, and notes it at the turn's end" do
       p = plugin
       fire(p, :before_turn, prompt: "release 1.3.0")
-      run(p, "execute", "[execute]\nstderr:\nno such file\nexit: 1") # before the read: not the skill's
+      run(p, "execute", "[execute]\nstderr:\nno such file\nexit: 1", "error") # before the read: not the skill's
       read_skill(p, "notes, skill_release")
       run(p, "execute", "[execute]\nstdout:\nok\nexit: 0")
-      run(p, "execute", "[execute]\nstderr:\nbash: scripts/check.sh: No such file or directory\nexit: 127")
-      run(p, "read", "[read] Error: file not found")
+      run(p, "execute", "[execute]\nstderr:\nbash: scripts/check.sh: No such file or directory\nexit: 127", "error")
+      run(p, "read", "[read] Error: file not found", "error")
 
       expect(steered).to eq(["A step of skill release failed. Find out why before skipping it; if the skill is out of " \
                              "date, fix it now: edit the step that changed in its file (or memory_write the whole " \
@@ -287,8 +288,8 @@ RSpec.describe "The skills plugin" do
       p = plugin
       fire(p, :before_turn, prompt: "go")
       fire(p, :before_tool_call, call: { name: "read" }, targets: { paths: [path] })
-      fire(p, :after_tool_call, tool: "read", output: "x", steer: steer)
-      run(p, "execute", "[execute]\nError: command timed out after 60s")
+      fire(p, :after_tool_call, tool: "read", output: "x", status: "ok", steer: steer)
+      run(p, "execute", "[execute]\nError: command timed out after 60s", "error")
       File.write(path, "old\n")
       write_call(p, "memory_write", path, "new\n")
       fire(p, :after_turn, status: "completed")
@@ -296,7 +297,7 @@ RSpec.describe "The skills plugin" do
       expect(ctx.notices.map(&:first)).to eq(["skill release updated (+1 −1): new · /skill diff release"])
 
       fire(p, :before_turn, prompt: "again")
-      run(p, "execute", "[execute]\nexit: 2 (no output)")
+      run(p, "execute", "[execute]\nexit: 2 (no output)", "error")
       read_skill(p)
       run(p, "execute", "[execute]\nexit: 0 (no output)")
       fire(p, :after_turn, status: "completed")
@@ -304,70 +305,29 @@ RSpec.describe "The skills plugin" do
       expect(ctx.notices.size).to eq(1)
     end
 
-    it "reads an execute whose exit line was cut off by an Error: line near the top" do
+    it "goes by the call's status, not its output: an Error: line in an ok call is no failure, a stopped wait neither" do
       p = plugin
       read_skill(p)
-      run(p, "execute", "[execute]\nstdout:\n#{"x\n" * 30}Error: late")
+      run(p, "execute", "[execute]\nstdout:\nError: bad config\nexit: 0")
+      run(p, "task_wait", "[task_wait]\nwait_result: canceled", "stopped")
       expect(steered).to be_empty
-      run(p, "execute", "[execute]\nstdout:\nError: bad config\n#{"x\n" * 30}")
+      run(p, "execute", "[execute]\nstdout:\nfine\nexit: 1 (output cut)", "error")
       expect(steered.size).to eq(1)
     end
 
-    describe "a call a guardrail or the user denied" do
-      # The deny texts as core builds them (Verdict#deny_text after
-      # ToolRunner#denied's "[tool] Error: " prefix), so a wording change
-      # breaks this spec. The legacy veto's text is composed inside the
-      # private ToolRunner#denied: pinned here and in spec/tool_runner_spec.rb.
-      def deny_output(tool, verdict) = "[#{tool}] Error: #{verdict.deny_text}"
-      def verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "execute", content: "rm -rf x" })
+    it "is no failed step for a call a guardrail or the user denied (blocked); a real failure after it still steers once" do
+      p = plugin
+      fire(p, :before_turn, prompt: "release")
+      read_skill(p)
+      run(p, "execute", "[execute] Error: denied by guardrail (rule no-rm): rm -rf. Do not retry it", "blocked")
+      run(p, "write", "[write] Error: The user declined this call: \"not now\".", "blocked")
+      expect(steered).to be_empty
 
-      let(:denies) do
-        {
-          "a legacy veto" => "[execute] Error: blocked by guardrail: nope",
-          "a hook's deny" => deny_output("execute", verdict.deny!('"johndeo" in the command is 1 edit away',
-                                                                  source: "hook known_names, bundle known-names",
-                                                                  advice: 'Retry with "johndoe".')),
-          "a rule's deny" => deny_output("execute", verdict.deny!("rm -rf", rule: "no-rm", source: "config", decided_by: "rule")),
-          "the user's decline" => deny_output("execute", verdict.ask!("rm -rf", rule: "ask-rm", decided_by: "rule")
-                                                                .settle!(:deny, decided_by: "user", note: "The user declined this call: \"not now\".")),
-          "a cancelled approval" => deny_output("write", verdict.ask!("outside the repo", decided_by: "rule")
-                                                                .settle!(:deny, decided_by: "user", note: "The approval was cancelled.")),
-          "a stopped turn (core)" => deny_output("execute", verdict.deny!("the turn was stopped", decided_by: "core")),
-          "no one to approve (core)" => deny_output("execute", verdict.ask!("rm -rf", decided_by: "rule")
-                                                                      .settle!(:deny, decided_by: "no one", note: "No one to approve it."))
-        }
-      end
-
-      it "is not a failed step: no steer, no turn-end line; a real failure after it still steers once" do
-        expect(denies.values).to all(match(/\A\[(execute|write)\] Error: \S/))
-        denies.each do |what, output|
-          ctx.notices.clear
-          p = plugin
-          fire(p, :before_turn, prompt: "release")
-          read_skill(p)
-          run(p, output[/\A\[(\w+)\]/, 1], output)
-          expect(steered).to be_empty, "#{what} steered: #{output}"
-          fire(p, :after_turn, status: "completed")
-          expect(ctx.notices).to be_empty, "#{what} left a turn-end line: #{output}"
-        end
-
-        p = plugin
-        fire(p, :before_turn, prompt: "release")
-        read_skill(p)
-        denies.each_value { |output| run(p, output[/\A\[(\w+)\]/, 1], output) }
-        run(p, "execute", "[execute]\nstderr:\nboom\nexit: 1")
-        run(p, "read", "[read] Error: file not found")
-        expect(steered.size).to eq(1)
-        fire(p, :after_turn, status: "completed")
-        expect(ctx.notices.map(&:first)).to eq(["skill release was followed, a step failed, the skill wasn't updated"])
-      end
-
-      it "counts the phrase in a command's own output (not after the first line's Error:) as a failure" do
-        p = plugin
-        read_skill(p)
-        run(p, "execute", "[execute]\nstdout:\nblocked by guardrail: denied by guardrail (x): y\nexit: 1")
-        expect(steered.size).to eq(1)
-      end
+      run(p, "execute", "[execute]\nstderr:\nboom\nexit: 1", "error")
+      run(p, "read", "[read] Error: file not found", "error")
+      expect(steered.size).to eq(1)
+      fire(p, :after_turn, status: "completed")
+      expect(ctx.notices.map(&:first)).to eq(["skill release was followed, a step failed, the skill wasn't updated"])
     end
 
     describe "a skill changed by another tool (an execute's sed)" do
