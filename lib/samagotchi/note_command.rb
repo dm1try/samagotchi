@@ -3,6 +3,8 @@
 require_relative "session"
 require_relative "session_inbox"
 require_relative "session_manager"
+require_relative "cli/command"
+require_relative "cli/flags"
 
 module Samagotchi
   # `chi note`: push text into sessions as a context note (background the
@@ -10,6 +12,8 @@ module Samagotchi
   # script, e.g. an Automator action:
   #   pbpaste | chi note --source slack $(chi sessions list --live --scope=all --format tsv | cut -f1)
   class NoteCommand
+    include CLI::Command
+
     USAGE = <<~TEXT
       Usage: chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all
         Adds TEXT (or stdin) to each session as a context note: background
@@ -19,6 +23,12 @@ module Samagotchi
         --all          every session a worker runs now, in every project
         Find ids with: chi sessions list --live [--scope=all] [--format tsv]
     TEXT
+
+    FLAGS = CLI::Flags.new(help: CLI::Command::HELP_WORDS) do |f|
+      f.switch "--all"
+      f.value "--source"
+      f.value "-m", "--message", key: :text
+    end
 
     # @param argv [Array<String>] the arguments after "note"
     def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, state_dir: nil)
@@ -32,14 +42,12 @@ module Samagotchi
     # @return [Integer] exit status: 0 all queued, 1 any refused or failed,
     #   2 usage
     def run
-      options = parse or return 2
-      return 0 if options[:help]
+      options = parse
+      return options if options.is_a?(Integer)
 
       text = utf8(options[:text] || read_stdin)
-      unless text
-        usage_error("no note text: pass -m TEXT or pipe it in")
-        return 2
-      end
+      return usage_error("no note text: pass -m TEXT or pipe it in") unless text
+
       begin
         text = SessionInbox.checked_text(text)
       rescue SessionInbox::NoteRejected => e
@@ -64,24 +72,15 @@ module Samagotchi
 
     private
 
+    def command_name = "chi note"
+
+    # @return [Hash, Integer] the options, or the exit status after the
+    #   help or a usage error
     def parse
-      options = { source: "cli", ids: [] }
-      until @argv.empty?
-        arg = @argv.shift
-        case arg
-        when "-h", "--help", "help"
-          @stdout.puts(USAGE)
-          return { help: true }
-        when "--all" then options[:all] = true
-        when "--source", "-m", "--message"
-          value = @argv.shift or return usage_error("#{arg} needs a value")
-          options[arg == "--source" ? :source : :text] = value
-        when /\A--source=(.*)\z/m then options[:source] = Regexp.last_match(1)
-        when /\A--message=(.*)\z/m then options[:text] = Regexp.last_match(1)
-        when /\A-/ then return usage_error("unknown option #{arg}")
-        else options[:ids] << arg
-        end
-      end
+      parsed = parse_flags(FLAGS, @argv, source: "cli")
+      return parsed if parsed.is_a?(Integer)
+
+      options = parsed.options.merge(ids: parsed.args)
       return usage_error("give session ids or --all") if options[:ids].empty? && !options[:all]
       return usage_error("--all takes no ids") if options[:all] && options[:ids].any?
 
@@ -147,19 +146,6 @@ module Samagotchi
     # binary. Invalid bytes become U+FFFD rather than an error.
     def utf8(text)
       text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
-    end
-
-    # stderr isn't buffered, stdout is when it's a pipe: flush the lines
-    # already printed, so the output keeps the order of the ids given.
-    def error_line(text)
-      @stdout.flush
-      @stderr.puts(text)
-    end
-
-    def usage_error(message)
-      error_line("chi note: #{message}")
-      @stderr.puts(USAGE)
-      nil
     end
   end
 end

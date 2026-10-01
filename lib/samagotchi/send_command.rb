@@ -9,6 +9,8 @@ require_relative "image_store"
 require_relative "host_registry"
 require_relative "model_profile"
 require_relative "vision_support"
+require_relative "cli/command"
+require_relative "cli/flags"
 
 module Samagotchi
   # `chi send`: put text into sessions as the user's message, the same as
@@ -19,6 +21,8 @@ module Samagotchi
   # --new starts a session instead, and --wait blocks for the reply and
   # prints it: an agent's one-shot the user can watch in the web.
   class SendCommand
+    include CLI::Command
+
     CLIENT_ID = "cli:send"
     POLL_INTERVAL = ReplyWait::POLL_INTERVAL
     # No live worker this long while waiting: it died before it could mark
@@ -58,6 +62,19 @@ module Samagotchi
         or web page, not here.
         Find ids with: chi sessions list --live [--scope=all] [--format tsv]
     TEXT
+
+    FLAGS = CLI::Flags.new(help: CLI::Command::HELP_WORDS) do |f|
+      f.value "-m", "--message"
+      f.switch "--new"
+      f.value "--dir"
+      f.value "--model"
+      f.value "--image", key: :images, repeat: true
+      f.switch "--wait"
+      f.value "--timeout"
+      # Starting a turn in every live session at once is too easy to do
+      # by accident.
+      f.refuse "--all", "there is no --all: name the sessions"
+    end
 
     # Whether +model_name+ (a session's; blank: the configured default)
     # takes images, decided as its worker decides before a turn with images
@@ -106,22 +123,17 @@ module Samagotchi
     #   2 usage; with --wait 0 answered, 3 waiting for an answer, 130
     #   Ctrl-C (the turn goes on)
     def run
-      options = parse or return 2
-      return 0 if options[:help]
+      options = parse
+      return options if options.is_a?(Integer)
 
       # With --wait stdout is the answer alone.
       @info = options[:wait] ? @stderr : @stdout
       prompt = compose(utf8(read_stdin), utf8(options[:message]))
       # Before the wait-only case, which would drop the images.
-      if prompt.nil? && !options[:images].empty?
-        usage_error("--image needs a message: pass -m TEXT or pipe it in")
-        return 2
-      end
+      return usage_error("--image needs a message: pass -m TEXT or pipe it in") if prompt.nil? && !options[:images].empty?
       return run_wait_only(options) if prompt.nil? && options[:wait] && !options[:new]
-      unless prompt
-        usage_error("no message: pass -m TEXT or pipe it in")
-        return 2
-      end
+      return usage_error("no message: pass -m TEXT or pipe it in") unless prompt
+
       begin
         prompt = SessionInbox.checked_text(prompt, noun: "message")
       rescue SessionInbox::NoteRejected => e
@@ -150,33 +162,15 @@ module Samagotchi
 
     private
 
+    def command_name = "chi send"
+
+    # @return [Hash, Integer] the options, or the exit status after the
+    #   help or a usage error
     def parse
-      options = { ids: [], images: [] }
-      until @argv.empty?
-        arg = @argv.shift
-        case arg
-        when "-h", "--help", "help"
-          @stdout.puts(USAGE)
-          return { help: true }
-        when "-m", "--message"
-          options[:message] = @argv.shift or return usage_error("#{arg} needs a value")
-        when /\A--message=(.*)\z/m then options[:message] = Regexp.last_match(1)
-        when "--new" then options[:new] = true
-        when "--dir", "--model"
-          options[arg.delete_prefix("--").to_sym] = @argv.shift or return usage_error("#{arg} needs a value")
-        when /\A--(dir|model)=(.*)\z/m then options[Regexp.last_match(1).to_sym] = Regexp.last_match(2)
-        when "--image" then options[:images] << (@argv.shift or return usage_error("#{arg} needs a value"))
-        when /\A--image=(.*)\z/m then options[:images] << Regexp.last_match(1)
-        when "--wait" then options[:wait] = true
-        when "--timeout" then options[:timeout] = @argv.shift or return usage_error("#{arg} needs a value")
-        when /\A--timeout=(.*)\z/ then options[:timeout] = Regexp.last_match(1)
-        # Starting a turn in every live session at once is too easy to do
-        # by accident.
-        when "--all" then return usage_error("there is no --all: name the sessions")
-        when /\A-/ then return usage_error("unknown option #{arg}")
-        else options[:ids] << arg
-        end
-      end
+      parsed = parse_flags(FLAGS, @argv, images: [])
+      return parsed if parsed.is_a?(Integer)
+
+      options = parsed.options.merge(ids: parsed.args)
       if options[:timeout]
         return usage_error("--timeout needs --wait") unless options[:wait]
 
@@ -469,19 +463,6 @@ module Samagotchi
     # binary. Invalid bytes become U+FFFD rather than an error.
     def utf8(text)
       text&.dup&.force_encoding(Encoding::UTF_8)&.scrub
-    end
-
-    # stderr isn't buffered, stdout is when it's a pipe: flush the lines
-    # already printed, so the output keeps the order of the ids given.
-    def error_line(text)
-      @stdout.flush
-      @stderr.puts(text)
-    end
-
-    def usage_error(message)
-      error_line("chi send: #{message}")
-      @stderr.puts(USAGE)
-      nil
     end
   end
 end

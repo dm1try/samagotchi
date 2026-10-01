@@ -2,12 +2,16 @@
 
 require_relative "session"
 require_relative "session_manager"
+require_relative "cli/command"
+require_relative "cli/flags"
 
 module Samagotchi
   # `chi sessions delete`: remove sessions for good (SessionManager.delete_session),
   # one line per id. A live worker's session is refused unless --force stops
   # the worker first; a chi REPL's never is.
   class SessionDeleteCommand
+    include CLI::Command
+
     USAGE = <<~TEXT
       Usage: chi sessions delete [--force] (ID|PREFIX)...
         Deletes each session: its history, notes, images and queued input.
@@ -17,6 +21,7 @@ module Samagotchi
                       chi REPL is always refused
     TEXT
     PREVIEW_LIMIT = 60
+    FLAGS = CLI::Flags.new(help: CLI::Command::HELP_WORDS) { |f| f.switch "-f", "--force" }
 
     # @param argv [Array<String>] the arguments after "sessions delete"
     def initialize(argv, stdout: $stdout, stderr: $stderr, state_dir: nil)
@@ -29,30 +34,24 @@ module Samagotchi
     # @return [Integer] exit status: 0 all deleted, 1 any refused or
     #   unknown, 2 usage
     def run
-      options = parse or return 2
-      return 0 if options[:help]
+      options = parse
+      return options if options.is_a?(Integer)
 
       options[:ids].uniq.map { |given| delete(given, force: options[:force]) }.all? ? 0 : 1
     end
 
     private
 
-    def parse
-      options = { ids: [], force: false }
-      until @argv.empty?
-        arg = @argv.shift
-        case arg
-        when "-h", "--help", "help"
-          @stdout.puts(USAGE)
-          return { help: true }
-        when "-f", "--force" then options[:force] = true
-        when /\A-/ then return usage_error("unknown option #{arg}")
-        else options[:ids] << arg
-        end
-      end
-      return usage_error("give session ids") if options[:ids].empty?
+    def command_name = "chi sessions delete"
 
-      options
+    # @return [Hash, Integer] the options, or the exit status after the
+    #   help or a usage error
+    def parse
+      parsed = parse_flags(FLAGS, @argv, force: false)
+      return parsed if parsed.is_a?(Integer)
+      return usage_error("give session ids") if parsed.args.empty?
+
+      parsed.options.merge(ids: parsed.args)
     end
 
     # @return [Boolean] whether the session is gone
@@ -86,19 +85,6 @@ module Samagotchi
 
       text.length > PREVIEW_LIMIT ? "#{text[0, PREVIEW_LIMIT - 1]}…" : text
     rescue ArgumentError, JSON::ParserError
-      nil
-    end
-
-    # stderr isn't buffered, stdout is when it's a pipe: flush the lines
-    # already printed, so the output keeps the order of the ids given.
-    def error_line(text)
-      @stdout.flush
-      @stderr.puts(text)
-    end
-
-    def usage_error(message)
-      error_line("chi sessions delete: #{message}")
-      @stderr.puts(USAGE)
       nil
     end
   end
