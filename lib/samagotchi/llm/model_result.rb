@@ -44,10 +44,13 @@ module Samagotchi
         !!canceled
       end
 
-      # The turn ended with nothing visible: the text shown is a placeholder,
-      # the conversation holds no reply.
+      # The turn ended with nothing visible: no text, or the chat loop's
+      # placeholder (empty_answer:). A cancelled turn or one that can be
+      # continued is not an empty answer.
       def empty_answer?
-        !!@empty_answer
+        return false if canceled? || resumable?
+
+        !!@empty_answer || text.to_s.strip.empty?
       end
 
       def exhausted?

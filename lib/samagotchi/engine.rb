@@ -1649,19 +1649,17 @@ module Samagotchi
           end
         end
 
-        response = result.respond_to?(:output) ? result.output.to_s : result.to_s
-        canceled = result.respond_to?(:canceled?) && result.canceled?
-        conversation = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
+        response = result.output.to_s
+        canceled = result.canceled?
+        conversation = result.conversation if result.conversation.is_a?(Array)
         # Bring the turn into the session and announce its end as one step of
         # the event log: a snapshot taken meanwhile (the Bridge's) shows the
         # turn either in progress or in the messages, never both or neither.
         # A turn that ran out of iterations ends at its tool results, so a
         # continue resumes from them rather than after a made-up reply.
-        resumable = result.respond_to?(:resumable?) && result.resumable?
         # Nothing visible (the native loop: no text; the chat loop: its
         # placeholder text) is a turn the model should know ended that way.
-        empty = !canceled && !resumable &&
-                (response.strip.empty? || (result.respond_to?(:empty_answer?) && result.empty_answer?))
+        empty = result.empty_answer?
         # after_turn hooks run below and may present the answer (the web
         # holds its pop until it knows).
         display_pending = !canceled && @hooks.any?(:after_turn)

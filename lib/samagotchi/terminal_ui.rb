@@ -245,7 +245,9 @@ module Samagotchi
           cancel_controller: nil,
           images: ImageInput.extract(@prompt)
         )
-        if empty_answer?(result)
+        # No answer (the empty-answer retries used up): no text, or the chat
+        # loop's placeholder (LLM::ModelResult#empty_answer?).
+        if result.empty_answer?
           # Nothing to print: say so on stderr and fail, so a script that
           # pipes the answer doesn't take the silence for one.
           session.save
@@ -280,15 +282,6 @@ module Samagotchi
     end
 
     EMPTY_ANSWER_ERROR = "chi: the model gave an empty answer"
-
-    # A -p --non-interactive turn that ended with no answer (the empty-answer
-    # retries used up): no text, or the chat loop's placeholder.
-    def empty_answer?(result)
-      return false if result.respond_to?(:canceled?) && result.canceled?
-      return false if result.respond_to?(:resumable?) && result.resumable?
-
-      result.output.to_s.strip.empty? || (result.respond_to?(:empty_answer?) && result.empty_answer?)
-    end
 
     # Delete the scratch session, the last thing the REPL does. Quiet after
     # a one-shot or on the way out of an error or a signal.

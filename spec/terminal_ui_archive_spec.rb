@@ -14,7 +14,7 @@ RSpec.describe "TerminalUI and archived sessions" do
   let(:client) { instance_double(Samagotchi::Client) }
   let(:surface) { RecordingSurface.new }
   let(:state_dir) { Samagotchi::Session.default_state_dir }
-  let(:result) { instance_double(Samagotchi::KernelLoop::Result, output: "done", canceled?: false) }
+  let(:result) { Samagotchi::LLM::ModelResult.new(text: "done") }
 
   around do |example|
     saved = ENV.to_h.slice("SAMAGOTCHI_DEFAULT_MODEL", "XDG_STATE_HOME", "SAMAGOTCHI_HISTORY_FILE")

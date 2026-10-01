@@ -101,7 +101,7 @@ RSpec.describe "TerminalUI scratch session" do
     engine = ui.engine
     allow(engine).to receive(:run_turn) do |session, prompt, **|
       session.messages << { role: "user", content: prompt } << { role: "model", content: "PONG" }
-      double(output: "PONG")
+      Samagotchi::LLM::ModelResult.new(text: "PONG")
     end
 
     ui.run
