@@ -69,7 +69,7 @@ RSpec.describe Samagotchi::Worker do
                              kernel: instance_double(Samagotchi::KernelLoop))
     end
     let(:turns) { Queue.new }
-    let(:result) { instance_double(Samagotchi::KernelLoop::Result, output: "") }
+    let(:result) { instance_double(Samagotchi::LLM::ModelResult, output: "") }
 
     before do
       FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))
@@ -448,8 +448,8 @@ RSpec.describe Samagotchi::Worker do
           sleep(@boom_delay) if @boom_delay && prompt == "boom"
           raise Samagotchi::LLM::ServerError.new("main: HTTP 500: boom", host: "main", status: 500) unless prompt == "fine"
 
-          Samagotchi::KernelLoop::Result.new(output: "FINE", conversation: messages + [{ role: "model", content: "FINE" }],
-                                             exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+          Samagotchi::LLM::ModelResult.new(text: "FINE", conversation: messages + [{ role: "model", content: "FINE" }],
+                                           exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
         end
         session.messages = earlier
         session.save(state_dir: tmpdir)
@@ -547,14 +547,14 @@ RSpec.describe Samagotchi::Worker do
           prompt = messages.last[:content]
           turns << [prompt, mono]
           if prompt == "long task"
-            Samagotchi::KernelLoop::Result.new(
-              output: "", conversation: messages + [{ role: "model", content: "calling ls" }, { role: "tool_response", content: "a b" }],
+            Samagotchi::LLM::ModelResult.new(
+              text: "", conversation: messages + [{ role: "model", content: "calling ls" }, { role: "tool_response", content: "a b" }],
               exhausted: true, pending_tool_calls: true, canceled: false,
               tool_activity: [{ tool: "execute", status: "ok", params: 'command="ls"' }]
             )
           else
-            Samagotchi::KernelLoop::Result.new(output: "OK", conversation: messages + [{ role: "model", content: "OK" }],
-                                               exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+            Samagotchi::LLM::ModelResult.new(text: "OK", conversation: messages + [{ role: "model", content: "OK" }],
+                                             exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
           end
         end
         engine.subscribe(observer: ->(event) { events << event })
@@ -653,15 +653,15 @@ RSpec.describe Samagotchi::Worker do
             release.pop
           end
           if prompt == "long task"
-            Samagotchi::KernelLoop::Result.new(output: "", conversation: messages + [{ role: "tool_response", content: "r1" }],
-                                               exhausted: true, pending_tool_calls: true, tool_activity: [], canceled: false)
+            Samagotchi::LLM::ModelResult.new(text: "", conversation: messages + [{ role: "tool_response", content: "r1" }],
+                                             exhausted: true, pending_tool_calls: true, tool_activity: [], canceled: false)
           elsif prompt == "cancel me"
-            Samagotchi::KernelLoop::Result.new(output: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]" }],
-                                               exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: true,
-                                               cancellation_reason: :manual)
+            Samagotchi::LLM::ModelResult.new(text: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]" }],
+                                             exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: true,
+                                             cancellation_reason: :manual)
           else
-            Samagotchi::KernelLoop::Result.new(output: "OK", conversation: messages + [{ role: "model", content: "OK" }],
-                                               exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+            Samagotchi::LLM::ModelResult.new(text: "OK", conversation: messages + [{ role: "model", content: "OK" }],
+                                             exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
           end
         end
         engine.subscribe(observer: ->(event) { events << event })

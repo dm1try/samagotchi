@@ -69,8 +69,8 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
         kwargs[:on_stream_event]&.call(event)
         on_event&.call(event)
       end
-      Samagotchi::KernelLoop::Result.new(
-        output: "PONG", conversation: messages + [{ role: "model", content: "PONG" }],
+      Samagotchi::LLM::ModelResult.new(
+        text: "PONG", conversation: messages + [{ role: "model", content: "PONG" }],
         exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false
       )
     end
@@ -211,8 +211,8 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
       allow(ui.instance_variable_get(:@kernel)).to receive(:run) do |messages, **kwargs|
         kernel_calls << messages
         canceled = during&.call(kwargs[:cancel_controller], kernel_calls.size) || false
-        Samagotchi::KernelLoop::Result.new(
-          output: "PONG #{kernel_calls.size}", conversation: messages + [{ role: "model", content: "PONG" }],
+        Samagotchi::LLM::ModelResult.new(
+          text: "PONG #{kernel_calls.size}", conversation: messages + [{ role: "model", content: "PONG" }],
           exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: canceled,
           cancellation_reason: (canceled ? :ctrl_c : nil)
         )

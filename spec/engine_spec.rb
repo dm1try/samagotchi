@@ -237,8 +237,8 @@ RSpec.describe Samagotchi::Engine do
 
   describe "#run_turn" do
     let(:result) do
-      Samagotchi::KernelLoop::Result.new(
-        output: "hello back",
+      Samagotchi::LLM::ModelResult.new(
+        text: "hello back",
         conversation: [{ role: "user", content: "hi" }, { role: "model", content: "hello back" }],
         exhausted: false,
         pending_tool_calls: false,
@@ -292,8 +292,8 @@ RSpec.describe Samagotchi::Engine do
     end
 
     it "emits turn_canceled (not turn_completed) when the result is canceled" do
-      canceled_result = Samagotchi::KernelLoop::Result.new(
-        output: "",
+      canceled_result = Samagotchi::LLM::ModelResult.new(
+        text: "",
         conversation: [],
         exhausted: false,
         pending_tool_calls: false,
@@ -394,7 +394,7 @@ RSpec.describe Samagotchi::Engine do
       allow(client).to receive(:invalidate_context_window!) { calls << :invalidate }
       allow(kernel).to receive(:run) do
         calls << :run
-        Samagotchi::KernelLoop::Result.new(output: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: [])
+        Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: [])
       end
 
       build_engine(profile: "gemma4").run_turn(make_session, "hi")
@@ -424,8 +424,8 @@ RSpec.describe Samagotchi::Engine do
 
   describe "#subscribe / persistent observer" do
     let(:result) do
-      Samagotchi::KernelLoop::Result.new(
-        output: "hello back",
+      Samagotchi::LLM::ModelResult.new(
+        text: "hello back",
         conversation: [{ role: "user", content: "hi" }, { role: "model", content: "hello back" }],
         exhausted: false,
         pending_tool_calls: false,

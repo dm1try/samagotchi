@@ -197,8 +197,8 @@ RSpec.describe Samagotchi::Bridge do
     allow(kernel).to receive(:run) do |_messages, **kwargs|
       cb = kwargs[:on_stream_event]
       raw_events.each { |e| cb.call(e) }
-      Samagotchi::KernelLoop::Result.new(
-        output: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: []
+      Samagotchi::LLM::ModelResult.new(
+        text: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: []
       )
     end
   end
@@ -688,8 +688,8 @@ RSpec.describe Samagotchi::Bridge do
           events.each { |e| kwargs[:on_stream_event].call(e) }
           yield if block_given?
           release.pop
-          Samagotchi::KernelLoop::Result.new(
-            output: "done", conversation: messages + conversation, exhausted: false,
+          Samagotchi::LLM::ModelResult.new(
+            text: "done", conversation: messages + conversation, exhausted: false,
             pending_tool_calls: false, tool_activity: []
           )
         end
@@ -852,8 +852,8 @@ RSpec.describe Samagotchi::Bridge do
         allow(kernel).to receive(:run) do |messages, **kwargs|
           prompt = messages.last[:content]
           kwargs[:on_stream_event].call(type: :generation_chunk, iteration: 1, content: "x")
-          Samagotchi::KernelLoop::Result.new(
-            output: "r-#{prompt}", conversation: messages + [{ role: "model", content: "r-#{prompt}" }],
+          Samagotchi::LLM::ModelResult.new(
+            text: "r-#{prompt}", conversation: messages + [{ role: "model", content: "r-#{prompt}" }],
             exhausted: false, pending_tool_calls: false, tool_activity: []
           )
         end
@@ -1540,8 +1540,8 @@ RSpec.describe Samagotchi::Bridge do
         tool_result = Queue.new
         allow(kernel).to receive(:run) do |messages, **_kwargs|
           tool_result << @engine.request_question(question: "Which?", options: %w[A B])
-          Samagotchi::KernelLoop::Result.new(output: "done", conversation: messages, exhausted: false,
-                                             pending_tool_calls: false, tool_activity: [])
+          Samagotchi::LLM::ModelResult.new(text: "done", conversation: messages, exhausted: false,
+                                           pending_tool_calls: false, tool_activity: [])
         end
         @turn = Thread.new { run_turn_sync(@engine, @session, "ask me") }
         wait_until(timeout: 3) { @engine.pending_question }

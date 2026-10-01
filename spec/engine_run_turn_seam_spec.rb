@@ -17,8 +17,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
   before { allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("") }
 
   def kernel_result(**overrides)
-    Samagotchi::KernelLoop::Result.new(
-      output: "done", conversation: [{ role: "model", content: "done" }], exhausted: false,
+    Samagotchi::LLM::ModelResult.new(
+      text: "done", conversation: [{ role: "model", content: "done" }], exhausted: false,
       pending_tool_calls: false, tool_activity: [], canceled: false, **overrides
     )
   end
@@ -163,7 +163,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
   describe "when the turn's end is announced" do
     it "has the session's messages already updated, placeholder included" do
       allow(kernel).to receive(:run).and_return(
-        kernel_result(output: "", conversation: [{ role: "user", content: "hi" }])
+        kernel_result(text: "", conversation: [{ role: "user", content: "hi" }])
       )
       seen = nil
       engine.subscribe(observer: ->(e) { seen = session.messages.dup if e[:type] == :turn_completed })
@@ -235,7 +235,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
   it "appends a cancel note, not [No response], to a canceled turn" do
     allow(kernel).to receive(:run).and_return(
-      kernel_result(output: "", conversation: [{ role: "user", content: "hi" }], canceled: true, cancellation_reason: :ctrl_c)
+      kernel_result(text: "", conversation: [{ role: "user", content: "hi" }], canceled: true, cancellation_reason: :ctrl_c)
     )
 
     result = engine.run_turn(session, "hi")
@@ -250,7 +250,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
   it "says a cancelled answer was cut off when the tail is [interrupted]" do
     allow(kernel).to receive(:run).and_return(
-      kernel_result(output: "", conversation: [{ role: "user", content: "hi" }, { role: "model", content: "Riv\n[interrupted]", interrupted: true }],
+      kernel_result(text: "", conversation: [{ role: "user", content: "hi" }, { role: "model", content: "Riv\n[interrupted]", interrupted: true }],
                     canceled: true, cancellation_reason: :user)
     )
 
@@ -261,7 +261,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
   it "leaves a turn that can be continued ending at its tool results, with no [No response] placeholder" do
     allow(kernel).to receive(:run).and_return(
-      kernel_result(output: "", conversation: [{ role: "tool_response", content: "r" }], exhausted: true, pending_tool_calls: true)
+      kernel_result(text: "", conversation: [{ role: "tool_response", content: "r" }], exhausted: true, pending_tool_calls: true)
     )
 
     result = engine.run_turn(session, "hi")
@@ -271,7 +271,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
   end
 
   it "keeps the [No response] placeholder for an ordinary empty reply, out of result.conversation" do
-    allow(kernel).to receive(:run).and_return(kernel_result(output: "", conversation: [{ role: "user", content: "hi" }]))
+    allow(kernel).to receive(:run).and_return(kernel_result(text: "", conversation: [{ role: "user", content: "hi" }]))
 
     result = engine.run_turn(session, "hi")
 

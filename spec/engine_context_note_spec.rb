@@ -22,8 +22,8 @@ RSpec.describe Samagotchi::Engine, "context notes" do
   end
 
   def kernel_result
-    Samagotchi::KernelLoop::Result.new(
-      output: "done", conversation: [{ role: "model", content: "done" }], exhausted: false,
+    Samagotchi::LLM::ModelResult.new(
+      text: "done", conversation: [{ role: "model", content: "done" }], exhausted: false,
       pending_tool_calls: false, tool_activity: [], canceled: false
     )
   end

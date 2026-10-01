@@ -71,9 +71,9 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     allow(kernel).to receive(:run, &block)
   end
 
-  def kernel_result(conversation, output: "done", **fields)
-    Samagotchi::KernelLoop::Result.new(output: output, conversation: conversation, exhausted: false,
-                                       pending_tool_calls: false, tool_activity: [], canceled: false, **fields)
+  def kernel_result(conversation, text: "done", **fields)
+    Samagotchi::LLM::ModelResult.new(text: text, conversation: conversation, exhausted: false,
+                                     pending_tool_calls: false, tool_activity: [], canceled: false, **fields)
   end
 
   def chat(*steps)
@@ -142,7 +142,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
   end
 
   it "2. native empty: [No response] and TurnNote.empty, the nudge dropped" do
-    native { |messages, **| kernel_result(messages + [nudge], output: "") }
+    native { |messages, **| kernel_result(messages + [nudge], text: "") }
 
     result = run
 
@@ -178,7 +178,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
   it "4. resumable: ends at its tool results, no note" do
     native do |messages, **|
       kernel_result(messages + [reply("calling"), { role: "tool_response", content: "r" }],
-                    output: "", exhausted: true, pending_tool_calls: true)
+                    text: "", exhausted: true, pending_tool_calls: true)
     end
 
     run
@@ -194,7 +194,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     controller = Samagotchi::CancellationController.new
     native do |messages, **|
       controller.cancel!(:hook, { by: "loop-guard", reason: "looping" })
-      kernel_result(messages, output: "", canceled: true, cancellation_reason: :hook)
+      kernel_result(messages, text: "", canceled: true, cancellation_reason: :hook)
     end
     canceled = nil
     engine.subscribe(observer: ->(e) { canceled = e if e[:type] == :turn_canceled })

@@ -77,7 +77,7 @@ RSpec.describe "TUI hooks forwarding regression" do
       # TUI REPL drives KernelLoop directly, not via Engine#run_turn.
       # Before the fix kernel.hooks is nil, so no kernel-level hooks fire.
       result = kernel.run([{ role: "system", content: "sys" }, { role: "user", content: "hi" }])
-      expect(result).to be_a(Samagotchi::KernelLoop::Result)
+      expect(result).to be_a(Samagotchi::LLM::ModelResult)
       expect(gen_fired).to include(:before_generation)
 
       # Also verify that mutating hooks via Engine is reflected live in Kernel

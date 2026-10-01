@@ -80,8 +80,8 @@ file2.rb")
     end
 
     it "builds its KernelLoop with the client and options" do
-      result = Samagotchi::KernelLoop::Result.new(
-        output: "ok",
+      result = Samagotchi::LLM::ModelResult.new(
+        text: "ok",
         conversation: [],
         exhausted: false,
         pending_tool_calls: false,

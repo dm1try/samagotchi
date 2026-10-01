@@ -21,8 +21,8 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
     it "returns a ModelResult with output identical to the native loop" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(kernel).to receive(:run).and_return(
-        Samagotchi::KernelLoop::Result.new(
-          output: "hello back",
+        Samagotchi::LLM::ModelResult.new(
+          text: "hello back",
           conversation: [{ role: "user", content: "hi" }, { role: "model", content: "hello back" }],
           tool_activity: []
         )
@@ -38,8 +38,8 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
     it "emits turn_canceled (not turn_completed) for a canceled kernel result" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(kernel).to receive(:run).and_return(
-        Samagotchi::KernelLoop::Result.new(
-          output: "", conversation: [], tool_activity: [],
+        Samagotchi::LLM::ModelResult.new(
+          text: "", conversation: [], tool_activity: [],
           canceled: true, cancellation_reason: :user_interrupt
         )
       )
@@ -54,7 +54,7 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
     it "appends the [No response] placeholder for an empty output" do
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       allow(kernel).to receive(:run).and_return(
-        Samagotchi::KernelLoop::Result.new(output: "", conversation: [], tool_activity: [])
+        Samagotchi::LLM::ModelResult.new(text: "", conversation: [], tool_activity: [])
       )
       session = make_session
       build_engine(profile: "gemma4").run_turn(session, "hi")
@@ -70,7 +70,7 @@ RSpec.describe "Engine#run_turn routed through ModelBackend (Phase 1 seam)" do
         expect(kwargs[:max_iterations]).to eq(42)
         expect(kwargs[:max_tool_output_chars]).to eq(500)
         expect(kwargs[:on_stream_event]).to be_a(Proc)
-        Samagotchi::KernelLoop::Result.new(output: "ok", conversation: [], tool_activity: [])
+        Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [], tool_activity: [])
       }
       build_engine(profile: "gemma4").run_turn(make_session, "hi", max_iterations: 42, max_tool_output_chars: 500)
     end

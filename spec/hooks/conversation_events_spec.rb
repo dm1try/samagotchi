@@ -23,8 +23,8 @@ RSpec.describe "Conversation state on the turn hooks" do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     session.messages = history.map(&:dup)
     allow(kernel).to receive(:run).and_return(
-      Samagotchi::KernelLoop::Result.new(output: "done", conversation: stored.map(&:dup), exhausted: false,
-                                         pending_tool_calls: false, tool_activity: [])
+      Samagotchi::LLM::ModelResult.new(text: "done", conversation: stored.map(&:dup), exhausted: false,
+                                       pending_tool_calls: false, tool_activity: [])
     )
   end
 
@@ -61,8 +61,8 @@ RSpec.describe "Conversation state on the turn hooks" do
 
   it "after_turn says canceled for a cancelled turn" do
     allow(kernel).to receive(:run).and_return(
-      Samagotchi::KernelLoop::Result.new(output: "", conversation: stored.map(&:dup), exhausted: false,
-                                         pending_tool_calls: false, tool_activity: [], canceled: true, cancellation_reason: :manual)
+      Samagotchi::LLM::ModelResult.new(text: "", conversation: stored.map(&:dup), exhausted: false,
+                                       pending_tool_calls: false, tool_activity: [], canceled: true, cancellation_reason: :manual)
     )
     seen = nil
     engine.register_hook(:after_turn) { |e| seen = e }

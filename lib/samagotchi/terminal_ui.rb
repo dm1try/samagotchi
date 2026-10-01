@@ -989,15 +989,7 @@ module Samagotchi
     end
 
     def cancelled_result_from(messages, reason:)
-      KernelLoop::Result.new(
-        output: "",
-        conversation: clone_messages(messages),
-        exhausted: false,
-        pending_tool_calls: false,
-        tool_activity: [],
-        canceled: true,
-        cancellation_reason: reason
-      )
+      LLM::ModelResult.new(text: "", conversation: clone_messages(messages), canceled: true, cancellation_reason: reason)
     end
 
     # The status row under the prompt, from the Engine's state (what a

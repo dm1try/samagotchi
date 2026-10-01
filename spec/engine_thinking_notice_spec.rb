@@ -48,8 +48,8 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
       thinking_chars.each_with_index do |chars, index|
         on_stream_event&.call(type: :generation_completed, iteration: index + 1, content_length: 2, thinking_chars: chars)
       end
-      Samagotchi::KernelLoop::Result.new(output: "ok", conversation: messages + [{ role: "model", content: "ok" }],
-                                         exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }],
+                                       exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
     end
   end
 
@@ -153,8 +153,8 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
       on_stream_event&.call(type: :thinking_refused, iteration: 1, model: "qwen-small", level: :off,
                             detail: "HTTP 400: Reasoning is mandatory for this endpoint and cannot be disabled.")
       on_stream_event&.call(type: :generation_completed, iteration: 1, content_length: 2, thinking_chars: 300)
-      Samagotchi::KernelLoop::Result.new(output: "ok", conversation: messages + [{ role: "model", content: "ok" }],
-                                         exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }],
+                                       exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
     end
 
     events = []

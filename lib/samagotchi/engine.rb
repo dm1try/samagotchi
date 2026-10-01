@@ -1520,7 +1520,7 @@ module Samagotchi
     # Run a single turn with event emission.
     #
     # Builds the system prompt + user messages, runs the kernel loop with
-    # event forwarding, and returns a KernelLoop::Result.
+    # event forwarding, and returns its LLM::ModelResult.
     #
     # @param session  [Session] the session to operate on
     # @param prompt   [String] user input
@@ -1529,7 +1529,7 @@ module Samagotchi
     # @param cancel_controller [CancellationController, nil]
     # @param max_tool_output_chars [Integer, nil] per-output char cap for the
     #   :tool_call_completed event's `output:` (nil → max_tool_output_chars)
-    # @return [KernelLoop::Result]
+    # @return [LLM::ModelResult]
     # @param pending_input [#call, nil] optional drain proc returning
     #   Array<String> of steering messages queued while the turn runs; drained
     #   by the agentic loop at iteration boundaries (see KernelLoop#run).

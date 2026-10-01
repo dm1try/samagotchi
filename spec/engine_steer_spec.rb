@@ -16,8 +16,8 @@ RSpec.describe Samagotchi::Engine, "#steer" do
   before { allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("") }
 
   def kernel_result(output = "done")
-    Samagotchi::KernelLoop::Result.new(output: output, conversation: [{ role: "model", content: output }], exhausted: false,
-                                       pending_tool_calls: false, tool_activity: [], canceled: false)
+    Samagotchi::LLM::ModelResult.new(text: output, conversation: [{ role: "model", content: output }], exhausted: false,
+                                     pending_tool_calls: false, tool_activity: [], canceled: false)
   end
 
   # The loop's two drain sites, as the kernel calls them.

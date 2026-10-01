@@ -24,8 +24,8 @@ RSpec.describe "Cards" do
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     allow(kernel).to receive(:run).and_return(
-      Samagotchi::KernelLoop::Result.new(output: "ok", conversation: [{ role: "model", content: "ok" }], exhausted: false,
-                                         pending_tool_calls: false, tool_activity: [])
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [{ role: "model", content: "ok" }], exhausted: false,
+                                       pending_tool_calls: false, tool_activity: [])
     )
     engine.subscribe(observer: ->(e) { seen << e })
   end

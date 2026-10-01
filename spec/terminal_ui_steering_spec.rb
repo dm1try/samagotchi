@@ -16,7 +16,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     instance_double(Samagotchi::Session, id: "s1", "messages=": nil, messages: [{ role: "user", content: "go" }], last_prompt: "go")
   end
   let(:repl_input) { Samagotchi::TerminalUI::ReplInput.new(prompt: -> { "> " }, read: ->(*) {}, surface: surface) }
-  let(:result) { Samagotchi::KernelLoop::Result.new(output: "ok", conversation: [], tool_activity: []) }
+  let(:result) { Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [], tool_activity: []) }
 
   before do
     agent.instance_variable_set(:@pending_input_queue, Samagotchi::PendingInputQueue.new)

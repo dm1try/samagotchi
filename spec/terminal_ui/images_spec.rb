@@ -87,7 +87,7 @@ RSpec.describe "TerminalUI images" do
     let(:agent) { Samagotchi::TerminalUI.new(client: client, surface: surface) }
     let(:engine) { agent.engine }
     let(:session) { instance_double(Samagotchi::Session, id: "s1", messages: []) }
-    let(:result) { Samagotchi::KernelLoop::Result.new(output: "a red square", conversation: [], tool_activity: []) }
+    let(:result) { Samagotchi::LLM::ModelResult.new(text: "a red square", conversation: [], tool_activity: []) }
 
     before do
       allow(agent).to receive(:persist_recent_history)

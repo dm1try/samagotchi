@@ -951,7 +951,7 @@ RSpec.describe Samagotchi::SessionManager do
       session.save(state_dir: tmpdir)
 
       engine = instance_double(Samagotchi::Engine, command_registry: Samagotchi::SessionCommands.builtin_registry, shutdown: nil, announce_load_events!: nil, start_init_tasks!: nil, "interface=": nil, recap: nil, "guardrail_state_dir=": nil, "session_state_dir=": nil, due_reminder_names: [], "session=": nil, messages_checkpoint: [])
-      result = instance_double(Samagotchi::KernelLoop::Result, output: "hi")
+      result = instance_double(Samagotchi::LLM::ModelResult, output: "hi")
       allow(Samagotchi::Engine).to receive(:new).and_return(engine)
       allow(engine).to receive(:start_idle)
       allow(engine).to receive(:stop_idle)
@@ -1355,7 +1355,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:run_turn) do |_session, prompt, origin:, **|
         runs << [prompt, origin]
         Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir) if runs.size == 2
-        instance_double(Samagotchi::KernelLoop::Result, output: "")
+        instance_double(Samagotchi::LLM::ModelResult, output: "")
       end
 
       run_worker_with(engine)
@@ -1371,7 +1371,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:run_turn) do |_session, prompt, max_iterations:, **|
         runs << [prompt, max_iterations]
         Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir) if runs.size == 2
-        instance_double(Samagotchi::KernelLoop::Result, output: "")
+        instance_double(Samagotchi::LLM::ModelResult, output: "")
       end
 
       run_worker_with(engine)
@@ -1387,7 +1387,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(engine).to receive(:run_turn) do |_session, prompt, **|
         runs << [prompt, Samagotchi::Session.load(session.id, state_dir: tmpdir).status]
         Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
-        instance_double(Samagotchi::KernelLoop::Result, output: "")
+        instance_double(Samagotchi::LLM::ModelResult, output: "")
       end
 
       run_worker_with(engine)
@@ -1408,7 +1408,7 @@ RSpec.describe Samagotchi::SessionManager do
         described_class.write_turn_input(session.id, prompt: "steer", client_id: "tui:1", enqueued_id: "e2", state_dir: tmpdir)
         drained = pending_input.call
         Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
-        instance_double(Samagotchi::KernelLoop::Result, output: "")
+        instance_double(Samagotchi::LLM::ModelResult, output: "")
       end
 
       run_worker_with(engine)

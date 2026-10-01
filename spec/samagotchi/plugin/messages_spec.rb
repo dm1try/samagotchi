@@ -29,8 +29,8 @@ RSpec.describe "ctx.messages" do
     allow(kernel).to receive(:run) do |messages, **options|
       options[:on_stream_event].call({ type: :generation_chunk, iteration: 1, content: "Half an ans" })
       seen_mid_turn << [ctx.messages.map { |m| [m[:role], m[:content]] }, ctx.messages_partial?]
-      Samagotchi::KernelLoop::Result.new(output: "ok", conversation: [*messages, { role: "model", content: "ok" }],
-                                         exhausted: false, pending_tool_calls: false, tool_activity: [])
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [*messages, { role: "model", content: "ok" }],
+                                       exhausted: false, pending_tool_calls: false, tool_activity: [])
     end
   end
 

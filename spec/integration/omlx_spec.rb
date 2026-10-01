@@ -69,7 +69,7 @@ RSpec.describe "omlx transport - model resolution + forwarding", :integration do
     kernel = Samagotchi::KernelLoop.new(client: client)
     messages = [{ role: "user", content: "Write exactly two words: hello world" }]
     response = kernel.run(messages, max_iterations: 1)
-    expect(response).to be_a(Samagotchi::KernelLoop::Result)
+    expect(response).to be_a(Samagotchi::LLM::ModelResult)
     expect(response.output).to be_a(String)
   end
 end

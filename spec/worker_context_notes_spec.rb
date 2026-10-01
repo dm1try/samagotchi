@@ -36,7 +36,7 @@ RSpec.describe Samagotchi::Worker, "context notes" do
   end
   let(:turns) { Queue.new }
   let(:events) { [] }
-  let(:result) { instance_double(Samagotchi::KernelLoop::Result, output: "") }
+  let(:result) { instance_double(Samagotchi::LLM::ModelResult, output: "") }
 
   before do
     FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))

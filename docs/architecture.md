@@ -159,7 +159,7 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
 engine = Samagotchi::Engine.new(mode: :assist, model_name: "gemma4", memories: [])
 session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: Dir.pwd)
 
-engine.run_turn(session, "hello", on_event: nil)   # => KernelLoop::Result (`.output`)
+engine.run_turn(session, "hello", on_event: nil)   # => LLM::ModelResult (`.output`)
 ```
 
 #### The `on_event` seam
@@ -169,7 +169,7 @@ forwards the raw `KernelLoop` events unchanged (the low-level contract) and adds
 higher-level events so UIs get clean turn boundaries without inferring them:
 
 - `:turn_started` — `{ session_id:, prompt: }`
-- `:turn_completed` — `{ result: }` (the final `KernelLoop::Result`)
+- `:turn_completed` — `{ result: }` (the final `LLM::ModelResult`)
 - `:turn_canceled` — `{ cancellation_reason: }`
 
 Every event is a `Hash` with a `:type` symbol key; the sink must not raise (the Engine

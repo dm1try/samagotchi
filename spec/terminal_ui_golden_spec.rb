@@ -49,8 +49,8 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
   end
 
   def result_for(messages, output:, **overrides)
-    Samagotchi::KernelLoop::Result.new(
-      output: output, conversation: messages + [{ role: "model", content: output }],
+    Samagotchi::LLM::ModelResult.new(
+      text: output, conversation: messages + [{ role: "model", content: output }],
       exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false, **overrides
     )
   end
@@ -207,8 +207,8 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
 
   it "stops at the iteration limit and offers to continue" do
     output = run_turn(model: "Qwen3-14B", events: tool_round("qwen36")) do |messages|
-      Samagotchi::KernelLoop::Result.new(
-        output: "", conversation: messages + [{ role: "tool_response", content: "remember milk" }],
+      Samagotchi::LLM::ModelResult.new(
+        text: "", conversation: messages + [{ role: "tool_response", content: "remember milk" }],
         exhausted: true, pending_tool_calls: true, tool_activity: [memory_activity], canceled: false
       )
     end
@@ -221,8 +221,8 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
              [{ type: :generation_cancelled, iteration: 1, reason: :ctrl_c }]
 
     output = run_turn(model: "Qwen3-14B", events: events) do |messages|
-      Samagotchi::KernelLoop::Result.new(
-        output: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]", interrupted: true }],
+      Samagotchi::LLM::ModelResult.new(
+        text: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]", interrupted: true }],
         exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: true, cancellation_reason: :ctrl_c
       )
     end
@@ -239,8 +239,8 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
   end
 
   def exhausted_result(messages)
-    Samagotchi::KernelLoop::Result.new(
-      output: "", conversation: messages + [{ role: "tool_response", content: "remember milk" }],
+    Samagotchi::LLM::ModelResult.new(
+      text: "", conversation: messages + [{ role: "tool_response", content: "remember milk" }],
       exhausted: true, pending_tool_calls: true, tool_activity: [memory_activity], canceled: false
     )
   end
@@ -279,8 +279,8 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
 
     it "answers !rollback after a Ctrl-C" do
       cancel = lambda do |messages|
-        Samagotchi::KernelLoop::Result.new(
-          output: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]", interrupted: true }],
+        Samagotchi::LLM::ModelResult.new(
+          text: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]", interrupted: true }],
           exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: true, cancellation_reason: :ctrl_c
         )
       end
@@ -294,8 +294,8 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     it "has nothing to roll back once !cmd output followed the Ctrl-C" do
       allow(Samagotchi::Tools::Execute).to receive(:call).with("echo hi").and_return("hi\n")
       cancel = lambda do |messages|
-        Samagotchi::KernelLoop::Result.new(
-          output: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]", interrupted: true }],
+        Samagotchi::LLM::ModelResult.new(
+          text: "", conversation: messages + [{ role: "model", content: "Partial\n[interrupted]", interrupted: true }],
           exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: true, cancellation_reason: :ctrl_c
         )
       end

@@ -20,9 +20,9 @@ RSpec.describe Samagotchi::TurnFlow do
   let(:flow) { described_class.new(engine: engine) }
 
   def result(conversation, canceled: false, exhausted: false, pending: false, activity: [])
-    Samagotchi::KernelLoop::Result.new(output: "", conversation: conversation, exhausted: exhausted,
-                                       pending_tool_calls: pending, tool_activity: activity, canceled: canceled,
-                                       cancellation_reason: canceled ? :ctrl_c : nil)
+    Samagotchi::LLM::ModelResult.new(text: "", conversation: conversation, exhausted: exhausted,
+                                     pending_tool_calls: pending, tool_activity: activity, canceled: canceled,
+                                     cancellation_reason: canceled ? :ctrl_c : nil)
   end
 
   # What a prompt turn leaves in the engine (Engine#run_turn replaces the

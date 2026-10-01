@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::Engine, "config.yml hooks" do
   it "fires a configured before_turn hook on every turn, not only the first" do
     engine = described_class.new(client: client)
     allow(engine.instance_variable_get(:@kernel)).to receive(:run) do
-      Samagotchi::KernelLoop::Result.new(output: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: [])
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: [])
     end
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd)
 
@@ -59,7 +59,7 @@ RSpec.describe Samagotchi::Engine, "config.yml hooks" do
   it "still clears hooks registered for a single turn via register_hook" do
     engine = described_class.new(client: client)
     allow(engine.instance_variable_get(:@kernel)).to receive(:run) do
-      Samagotchi::KernelLoop::Result.new(output: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: [])
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [], exhausted: false, pending_tool_calls: false, tool_activity: [])
     end
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd)
     manual = 0

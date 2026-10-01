@@ -76,8 +76,8 @@ RSpec.describe "Presenting the answer from after_turn" do
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     allow(kernel).to receive(:run).and_return(
-      Samagotchi::KernelLoop::Result.new(output: "see JIRA-1", conversation: stored.map(&:dup), exhausted: false,
-                                         pending_tool_calls: false, tool_activity: [])
+      Samagotchi::LLM::ModelResult.new(text: "see JIRA-1", conversation: stored.map(&:dup), exhausted: false,
+                                       pending_tool_calls: false, tool_activity: [])
     )
   end
 
@@ -149,8 +149,8 @@ RSpec.describe "Presenting the answer from after_turn" do
 
   it "gives a cancelled turn nothing to present" do
     allow(kernel).to receive(:run).and_return(
-      Samagotchi::KernelLoop::Result.new(output: "", conversation: stored.map(&:dup), exhausted: false, pending_tool_calls: false,
-                                         tool_activity: [], canceled: true, cancellation_reason: :manual)
+      Samagotchi::LLM::ModelResult.new(text: "", conversation: stored.map(&:dup), exhausted: false, pending_tool_calls: false,
+                                       tool_activity: [], canceled: true, cancellation_reason: :manual)
     )
     got = :unset
     bundle_hook("links.rb", 10) { |e| got = e[:present].call { "never" } }

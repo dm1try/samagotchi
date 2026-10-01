@@ -33,8 +33,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn sampling" do
     allow(kernel).to receive(:sampling=) { |value| sampling_set << value }
     allow(kernel).to receive(:thinking=) { |value| thinking_set << value }
     allow(kernel).to receive(:run) do |messages, **|
-      Samagotchi::KernelLoop::Result.new(output: "ok", conversation: messages + [{ role: "model", content: "ok" }],
-                                         exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }],
+                                       exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
     end
   end
 

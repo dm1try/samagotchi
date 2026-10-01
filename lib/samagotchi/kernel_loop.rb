@@ -22,6 +22,7 @@ require_relative "tool_activity"
 require_relative "tool_runner"
 require_relative "tool_response"
 require_relative "answer_display"
+require_relative "llm/model_result"
 
 module Samagotchi
   # The KernelLoop drives the model ↔ tool interaction cycle.
@@ -37,24 +38,6 @@ module Samagotchi
   #   - Gemma 4: <|tool_call>call:NAME{params}<tool_call|>
   #   - Qwen 3.6: <tool_call><function=NAME><parameter=KEY>VALUE</parameter></function></tool_call>
   class KernelLoop
-    Result = Struct.new(:output, :conversation, :exhausted, :pending_tool_calls, :tool_activity, :canceled, :cancellation_reason, :context_status, keyword_init: true) do
-      def exhausted?
-        exhausted
-      end
-
-      def pending_tool_calls?
-        pending_tool_calls
-      end
-
-      def resumable?
-        exhausted? && pending_tool_calls?
-      end
-
-      def canceled?
-        canceled
-      end
-    end
-
     # The built-in tool classes (Tools::Builtins registers them).
     TOOLS = Tools::Builtins::CLASSES
 
@@ -142,7 +125,7 @@ module Samagotchi
     # resumable conversation state when execution stops at max_iterations.
     #
     # @param messages       [Array<Hash>]        conversation so far ({role:, content:});
-    #   a stopped run resumes from its Result#conversation
+    #   a stopped run resumes from its result's #conversation
     # @param max_iterations [Integer]            safety cap on tool-call rounds
     # @param on_stream_event [Proc, nil]         optional callback for generation events
     # @param cancel_controller [CancellationController, nil] optional cancellation source
@@ -155,7 +138,7 @@ module Samagotchi
     #   steering mid-stream); drained lines merge into ONE user message appended
     #   at the conversation tail (prefix KV cache preserved) and a
     #   :pending_input_merged stream event is emitted.
-    # @return [Result] final visible response with continuation metadata
+    # @return [LLM::ModelResult] final visible response with continuation metadata
     def run(messages, max_iterations: 100, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil)
       @current_model_name = completion_model_name(model_name)
       turn = start_turn(messages, on_stream_event: on_stream_event, cancel_controller: cancel_controller,
@@ -164,7 +147,7 @@ module Samagotchi
       max_iterations.times do |iteration_index|
         turn.iteration = iteration_index + 1
         outcome = iterate(turn)
-        return outcome if outcome.is_a?(Result)
+        return outcome if outcome.is_a?(LLM::ModelResult)
         break if outcome == :answer
       rescue Client::RequestCancelled => e
         emit(turn, type: :generation_cancelled, iteration: turn.iteration, reason: e.reason)
@@ -228,7 +211,7 @@ module Samagotchi
     end
 
     # One iteration. Returns :next, :answer (the turn ends), or the turn's
-    # Result (it ended cancelled).
+    # result (it ended cancelled).
     def iterate(turn)
       inject_pending_input!(turn)
       request = prepare_request(turn)
@@ -357,7 +340,7 @@ module Samagotchi
     # with its own nudge while the retry budget lasts (queued input goes in
     # place of the nudge), else the turn ends as cancelled (hook), with
     # nothing salvaged and without the spent nudge. A Stop that came right
-    # after the cut is a plain cancel. Returns :next or the turn's Result.
+    # after the cut is a plain cancel. Returns :next or the turn's result.
     def after_cut(turn, generation)
       cut = generation.cut
       raise Client::RequestCancelled.new(turn.cancel_controller.reason) if turn.cancel_controller.cancelled?
@@ -429,20 +412,19 @@ module Samagotchi
       :next
     end
 
-    # The turn's Result. It is exhausted only when it stopped on tool
-    # results it never answered; then the answer shows only its text.
+    # The turn's result. It is exhausted only when it stopped on tool
+    # results it never answered (so exhausted? alone means resumable?);
+    # then the answer shows only its text.
     def finish(turn)
       exhausted = turn.pending_tool_calls && tool_response_turn?(turn.conversation.last)
       output = strip_thought_blocks(last_model_content(turn.conversation))
       output = parser.strip_tool_calls(output) if exhausted
-      Result.new(
-        output: PromptLiteralGuard.restore(output, profile: @profile),
+      LLM::ModelResult.new(
+        text: PromptLiteralGuard.restore(output, profile: @profile).to_s,
         conversation: duplicate_conversation(turn.conversation),
         exhausted: exhausted,
         pending_tool_calls: turn.pending_tool_calls,
         tool_activity: turn.tool_activity,
-        canceled: false,
-        cancellation_reason: nil,
         context_status: turn.context.display
       )
     end
@@ -592,11 +574,9 @@ module Samagotchi
       unless partial.empty?
         conversation << { role: "model", content: "#{partial}\n[interrupted]", interrupted: true }
       end
-      Result.new(
-        output: "",
+      LLM::ModelResult.new(
+        text: "",
         conversation: conversation,
-        exhausted: false,
-        pending_tool_calls: false,
         tool_activity: tool_activity,
         canceled: true,
         cancellation_reason: reason

@@ -143,7 +143,7 @@ RSpec.describe "Images in transport" do
           merged << kwargs[:pending_input].call
         end
         turns << [prompt, kwargs[:images]]
-        instance_double(Samagotchi::KernelLoop::Result, output: "")
+        instance_double(Samagotchi::LLM::ModelResult, output: "")
       end
       start_worker
       queue_input("first")

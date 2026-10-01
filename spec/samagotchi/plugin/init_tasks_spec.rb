@@ -33,8 +33,8 @@ RSpec.describe "Plugin init tasks" do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     allow(kernel).to receive(:run) do
       tools_at_request << engine.instance_variable_get(:@tools).names.grep(/\Aslow_/)
-      Samagotchi::KernelLoop::Result.new(output: "ok", conversation: [{ role: "model", content: "ok" }], exhausted: false,
-                                         pending_tool_calls: false, tool_activity: [])
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [{ role: "model", content: "ok" }], exhausted: false,
+                                       pending_tool_calls: false, tool_activity: [])
     end
     engine.subscribe(observer: ->(e) { seen << e })
   end

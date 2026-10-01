@@ -35,8 +35,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn with images" do
   end
 
   def result_for(messages)
-    Samagotchi::KernelLoop::Result.new(output: "a red square", conversation: messages + [{ role: "model", content: "a red square" }],
-                                       exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
+    Samagotchi::LLM::ModelResult.new(text: "a red square", conversation: messages + [{ role: "model", content: "a red square" }],
+                                     exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
   end
 
   def turn(prompt = "what's this?", **options)
