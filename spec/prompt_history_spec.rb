@@ -58,12 +58,46 @@ RSpec.describe Samagotchi::PromptHistory do
       expect(JSON.parse(File.read(described_class.path))).to eq(%w[one two])
     end
 
+    it "keeps 100 entries" do
+      expect(described_class::LIMIT).to eq(100)
+    end
+
     it "keeps only the last LIMIT entries" do
       (described_class::LIMIT + 3).times { |i| described_class.append("p#{i}") }
 
       entries = described_class.entries
       expect(entries.size).to eq(described_class::LIMIT)
       expect(entries.last).to eq("p#{described_class::LIMIT + 2}")
+    end
+
+    it "keeps every line when two processes append at once" do
+      lines = 40
+      pids = %w[a b].map do |tag|
+        fork do
+          lines.times { |i| described_class.append("#{tag}#{i}") }
+          exit!(0)
+        end
+      end
+      pids.each { |pid| Process.wait(pid) }
+
+      entries = described_class.entries
+      expect(entries.size).to eq(2 * lines)
+      expect(entries.select { |e| e.start_with?("a") }).to eq(Array.new(lines) { |i| "a#{i}" })
+      expect(entries.select { |e| e.start_with?("b") }).to eq(Array.new(lines) { |i| "b#{i}" })
+    end
+
+    it "writes the file 0600" do
+      described_class.append("secret")
+
+      expect(File.stat(described_class.path).mode & 0o777).to eq(0o600)
+    end
+
+    it "keeps a corrupt file's lines (line format) when appending" do
+      FileUtils.mkdir_p(File.dirname(described_class.path))
+      File.write(described_class.path, "[\"broken\n")
+      described_class.append("next")
+
+      expect(described_class.entries).to eq(["[\"broken", "next"])
     end
 
     it "normalizes the existing entries it rewrites" do

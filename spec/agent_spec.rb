@@ -1203,8 +1203,8 @@ file2.rb")
       expect(Reline::HISTORY.to_a).to include("older prompt", "latest prompt")
     end
 
-    it "persists accepted prompts and keeps only the latest 20 entries" do
-      seed_entries = (1..25).map { |idx| "prompt-#{idx}" }
+    it "persists accepted prompts and keeps only the latest 100 entries" do
+      seed_entries = (1..105).map { |idx| "prompt-#{idx}" }
       FileUtils.mkdir_p(File.dirname(history_file))
       File.write(history_file, JSON.pretty_generate(seed_entries))
       allow(Reline).to receive(:readmultiline).and_return("new prompt", nil)
@@ -1213,7 +1213,7 @@ file2.rb")
       agent.run
 
       persisted = JSON.parse(File.read(history_file))
-      expect(persisted.length).to eq(20)
+      expect(persisted.length).to eq(100)
       expect(persisted.first).to eq("prompt-7")
       expect(persisted.last).to eq("new prompt")
     end
