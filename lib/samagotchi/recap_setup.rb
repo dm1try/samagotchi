@@ -46,6 +46,11 @@ module Samagotchi
       if base_url.nil? && host_ref.nil? && model.nil?
         target = -> { session_target.call }
       else
+        # The model as any model ref (ModelRef): its alias applied once, and
+        # its host (own or the alias's) picks the recap host when host_ref
+        # doesn't.
+        parsed = model && host_registry.model_ref(model)
+        host_ref ||= parsed.host_name if parsed && base_url.nil?
         # If host_ref given, derive base_url (the host's OpenAI base) and its
         # API key variable from the host_registry entry
         api_key_env = nil
@@ -54,13 +59,20 @@ module Samagotchi
           if entry
             base_url = entry.openai_base_url
             api_key_env = entry.api_key_env
-            # If model is host-qualified, extract bare model for recap client
-            _, bare = host_registry.parse_qualified_model(model) if model
-            model = bare if bare && !bare.empty?
+            named = parsed&.host_conflict || parsed&.host_name
+            if named && named != entry.name
+              Log.warn(:recap, "model_host_mismatch",
+                       echo: "Warning: recap model '#{model}' names host '#{named}', not recap.host_ref '#{host_ref}'; recap disabled.",
+                       model: model, host_ref: host_ref)
+              return nil
+            end
+            model = parsed.id if parsed
           else
             Log.warn(:recap, "host_ref_unknown", echo: "Warning: recap host_ref '#{host_ref}' not found in hosts:; recap disabled.", host_ref: host_ref)
             return nil
           end
+        elsif parsed && !parsed.host_name
+          model = parsed.id
         end
 
         if base_url.to_s.strip.empty? || model.to_s.strip.empty?

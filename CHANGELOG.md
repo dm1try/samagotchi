@@ -39,6 +39,9 @@ and commands may change between minor versions. How releases are made:
   else to the first host in `hosts:` order that does (it was whichever host answered `/models` first), else to the
   default host; substring routing is gone (`/model gemma` no longer picks a local host listing `gemma-…`: use
   `box:gemma` or the exact id). chi warns at start about a host named like a model family (`qwen3`, `llama`, …).
+- `recap.model` is a model ref like any other: an alias is applied, and `recap: {model: box:x}` with no `host_ref` recaps
+  on `box` (it turned recap off). Breaking: `recap: {host_ref: a, model: b:x}` now warns and turns recap off instead of
+  silently asking `a` for `x`.
 
 ### Fixed
 

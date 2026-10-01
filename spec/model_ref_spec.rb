@@ -221,18 +221,26 @@ RSpec.describe Samagotchi::ModelRef do
       expect(sent(switched("gemma"))).to eq(%w[openrouter gemma])
     end
 
-    it "#7 recap.model: small sends small", :recap, step: :F4 do
+    it "#7 recap.model: small sends the alias's target", :recap, step: :F4 do
       e = engine(model_name: "box:m", recap: { host_ref: "box", model: "small" })
-      expect(e.recap.target).to include(base_url: "http://box.test:8081/v1", model: "small")
+      expect(e.recap.target).to include(base_url: "http://box.test:8081/v1", model: "gemma-small")
     end
 
-    it "#7 recap with host_ref: openrouter and model: box:x drops box", :recap, step: :F4 do
-      e = engine(model_name: "box:m", recap: { host_ref: "openrouter", model: "box:x" })
-      expect(e.recap.target).to include(base_url: "https://openrouter.test/api/v1", model: "x")
+    it "#7 recap with host_ref: openrouter and model: box:x warns and turns recap off", :recap, step: :F4 do
+      expect(Samagotchi::Log).to receive(:warn).with(:recap, "model_host_mismatch", hash_including(
+        echo: "Warning: recap model 'box:x' names host 'box', not recap.host_ref 'openrouter'; recap disabled."
+      ))
+      expect(engine(model_name: "box:m", recap: { host_ref: "openrouter", model: "box:x" }).recap).to be_nil
     end
 
-    it "#7 recap.model: box:x without host_ref turns recap off", :recap, step: :F4 do
-      expect(engine(model_name: "box:m", recap: { model: "box:x" }).recap).to be_nil
+    it "#7 recap.model: box:x without host_ref recaps on box", :recap, step: :F4 do
+      e = engine(model_name: "box:m", recap: { model: "box:x" })
+      expect(e.recap.target).to eq(base_url: "http://box.test:8081/v1", api_key_env: nil, model: "x", label: "box:x")
+    end
+
+    it "#7 recap.model: tiny (an alias for box:gemma-small) recaps on box", :recap, step: :F4 do
+      e = engine(model_name: "box:m", recap: { model: "tiny" })
+      expect(e.recap.target).to include(base_url: "http://box.test:8081/v1", model: "gemma-small")
     end
 
     describe "F1: the resolved ref is stored, the typed name kept for models:" do
