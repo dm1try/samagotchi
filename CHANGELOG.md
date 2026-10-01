@@ -8,6 +8,19 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- A small change to a memory or skill can go through `edit` on its file instead of rewriting it all with
+  `memory_write`; the prompt, the memory guide and the nudge below say so. `write`/`edit` on a memory's file
+  refresh its line in `index.md` (date, size; the description is kept), and the default guardrails no longer ask
+  before them as "writes outside the repository".
+- The system prompt no longer tells the model to keep `index.md` updated (`memory_write` does it); its result
+  says "Index line refreshed automatically." instead of naming the index file.
+- `skills` bundle 0.1.1 (`chi update`): a skill changed some other way (an `execute` running `sed`) counts as
+  updated: you get the usual "skill X updated" line, `/skill diff` has the old text, and the nudge and the turn-end
+  "wasn't updated" line no longer fire for it. The nudge asks to `edit` the changed step rather than rewrite the
+  whole skill.
+
 ### Fixed
 
 - `chi bundle install` of a bundle that's already installed no longer says "Skipped X (already exists; use --force
