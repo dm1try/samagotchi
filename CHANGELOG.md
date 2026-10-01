@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 
 - Web: switching sessions no longer briefly shows the previous session's "delegated by" link in the info bar.
 - The web's `POST /api/sessions/:id/turn` refuses more than 20 images in one message, as a live worker already did.
+- A web page joining (or re-syncing with) a live session gets its status and pending question as of the same moment
+  as the messages; they could be a step newer.
 
 ## [0.9.0] - 2026-10-01
 

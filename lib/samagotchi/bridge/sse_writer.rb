@@ -46,18 +46,18 @@ module Samagotchi
       # @param last_event_id [String, nil] reconnect cursor (or ?from_seq=):
       #   `<seq>-<epoch>` or a plain seq
       # @param epoch [String, nil] this worker's epoch, in every frame id
-      # @param snapshot_provider [#call] -> {status:, message_count:,
-      #   last_prompt:, event_seq:} (Engine#session_state_snapshot)
-      # @param turn_snapshot_provider [#call, nil] -> {messages:, current_turn:,
-      #   queued:, event_seq:}; called with the event log held
-      #   (Bridge#snapshot). Defaults to just the event_seq.
+      # @param frame_provider [#call, nil] -> {snapshot: {messages:,
+      #   current_turn:, queued:, event_seq:, ...}, session_state_snapshot:
+      #   {status:, message_count:, ...}}; called with the event log held, so
+      #   both describe the same event_seq (Bridge#snapshot_frame). Defaults
+      #   to just the event_seq.
       # @param join_with_snapshot [Boolean] start with a snapshot frame rather
       #   than a replay
       # @param bridge [Samagotchi::Bridge, nil] for stop signalling
       # @param max_queue [Integer] bounded-queue capacity
       # @param heartbeat_interval [Float] idle-seconds between `: ping` frames
       def initialize(engine:, ring:, session_id:, last_event_id: nil, epoch: nil,
-                     snapshot_provider:, turn_snapshot_provider: nil, join_with_snapshot: false, bridge: nil,
+                     frame_provider: nil, join_with_snapshot: false, bridge: nil,
                      max_queue: DEFAULT_MAX_QUEUE,
                      heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL)
         @engine = engine
@@ -65,8 +65,7 @@ module Samagotchi
         @session_id = session_id
         @last_event_id = last_event_id
         @epoch = epoch
-        @snapshot_provider = snapshot_provider
-        @turn_snapshot_provider = turn_snapshot_provider || -> { { event_seq: @engine.event_count } }
+        @frame_provider = frame_provider || -> { { snapshot: { event_seq: @engine.event_count }, session_state_snapshot: {} } }
         @join_with_snapshot = join_with_snapshot
         @bridge = bridge
         @max_queue = max_queue
@@ -78,8 +77,6 @@ module Samagotchi
         @foreign_cursor = !cursor_epoch.nil? && cursor_epoch != @epoch
         @high_water = @foreign_cursor ? 0 : cursor_seq
         @handle = nil
-        @serving = false
-        @mutex = Monitor.new
       end
 
       # Non-blocking enqueue used as the per-connection live observer. Any
@@ -99,16 +96,15 @@ module Samagotchi
       # Run the serve loop on the caller's (connection) thread. Blocks until
       # the client disconnects or the bridge stops.
       def serve!(io)
-        @serving = true
         write_sse_headers(io)
         begin
           if @join_with_snapshot
             # Subscribe and snapshot as one step of the event log, then go live.
-            snapshot = @engine.synchronize_events do
+            frame = @engine.synchronize_events do
               @handle = @engine.subscribe(observer: self)
               take_snapshot
             end
-            write_snapshot_frame(io, :snapshot, snapshot)
+            write_snapshot_frame(io, :snapshot, frame)
           else
             # (1) subscribe the live queue FIRST.
             @handle = @engine.subscribe(observer: self)
@@ -122,7 +118,6 @@ module Samagotchi
         rescue Errno::EPIPE, Errno::ECONNRESET, IOError
           # Client hung up; nothing to do.
         ensure
-          @serving = false
           @engine.unsubscribe(handle: @handle) if @handle
         end
       end
@@ -222,23 +217,22 @@ module Samagotchi
         write_snapshot_frame(io, :reset, @engine.synchronize_events { take_snapshot })
       end
 
-      # With the event log held: the snapshot, and the high-water mark moved
-      # to its seq (down too, for a cursor from before a worker restart), so
-      # events after it pass #call and events it covers are skipped.
+      # With the event log held: the snapshot frame's content (the snapshot
+      # and the session state, both as of one event_seq), and the high-water
+      # mark moved to that seq (down too, for a cursor from before a worker
+      # restart), so events after it pass #call and events it covers are
+      # skipped.
       def take_snapshot
-        snapshot = @turn_snapshot_provider.call
-        @high_water = snapshot[:event_seq].to_i
-        snapshot.merge(event_id: EventId.format(@high_water, @epoch))
+        frame = @frame_provider.call
+        seq = frame[:snapshot][:event_seq].to_i
+        @high_water = seq
+        id = EventId.format(seq, @epoch)
+        { snapshot: frame[:snapshot].merge(event_id: id),
+          session_state_snapshot: frame[:session_state_snapshot].merge(event_seq: seq, event_id: id) }
       end
 
-      def write_snapshot_frame(io, type, snapshot)
-        seq = snapshot[:event_seq]
-        state = @snapshot_provider.call.merge(event_seq: seq, event_id: snapshot[:event_id])
-        write_frame(io, seq: seq, data: { type: type, snapshot: snapshot, session_state_snapshot: state })
-      end
-
-      def closed?
-        @mutex.synchronize { !@serving }
+      def write_snapshot_frame(io, type, frame)
+        write_frame(io, seq: frame[:snapshot][:event_seq], data: { type: type, **frame })
       end
     end
   end

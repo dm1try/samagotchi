@@ -226,6 +226,18 @@ module Samagotchi
       end
     end
 
+    # The snapshot and the session state (status, pending question, ...) as
+    # one step of the event log, both as of the same event_seq: what a
+    # snapshot or reset frame (SSEWriter) and GET snapshot carry.
+    # @return [Hash] {snapshot:, session_state_snapshot:}
+    def snapshot_frame
+      @engine.synchronize_events do
+        snap = snapshot
+        state = @engine.session_state_snapshot.merge(event_seq: snap[:event_seq], event_id: snap[:event_id])
+        { snapshot: snap, session_state_snapshot: state }
+      end
+    end
+
     private
 
     # The Engine's commands: the built-ins and its plugins'.
@@ -355,8 +367,7 @@ module Samagotchi
         session_id: @session_id,
         last_event_id: last_event_id,
         epoch: @epoch,
-        snapshot_provider: -> { @engine.session_state_snapshot },
-        turn_snapshot_provider: -> { self.snapshot },
+        frame_provider: -> { snapshot_frame },
         # A reconnect (with a cursor) replays; only a fresh join snapshots.
         join_with_snapshot: snapshot && last_event_id.nil?,
         bridge: self,
@@ -702,12 +713,7 @@ module Samagotchi
     def handle_snapshot(session_id, _body = nil)
       return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
 
-      body = @engine.synchronize_events do
-        snap = snapshot
-        state = @engine.session_state_snapshot.merge(event_seq: snap[:event_seq], event_id: snap[:event_id])
-        { snapshot: snap, session_state_snapshot: state }
-      end
-      [{}, 200, body]
+      [{}, 200, snapshot_frame]
     end
 
     # The stream cursor for +seq+ in this worker.

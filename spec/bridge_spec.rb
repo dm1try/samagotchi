@@ -271,8 +271,7 @@ RSpec.describe Samagotchi::Bridge do
       engine = make_engine
       ring = Samagotchi::Bridge::RingBuffer.new(capacity: 64)
       writer = Samagotchi::Bridge::SSEWriter.new(
-        engine:, ring:, session_id: "s1", last_event_id: "5",
-        snapshot_provider: -> { {} }
+        engine:, ring:, session_id: "s1", last_event_id: "5"
       )
       # seq 3 is before the cursor → dropped; seq 7 after → enqueued.
       writer.call(type: :x, event_seq: 3)
@@ -291,7 +290,7 @@ RSpec.describe Samagotchi::Bridge do
       io = ControllableIO.new
       writer = Samagotchi::Bridge::SSEWriter.new(
         engine:, ring:, session_id: "s1", last_event_id: "4",
-        snapshot_provider: -> { {} }, heartbeat_interval: 0.05
+        heartbeat_interval: 0.05
       )
       writer_thread = Thread.new { writer.serve!(io) }
       sleep(0.3) # subscribe + replay complete
@@ -318,7 +317,7 @@ RSpec.describe Samagotchi::Bridge do
         io = ControllableIO.new
         writer = Samagotchi::Bridge::SSEWriter.new(
           engine:, ring:, session_id: "s1", last_event_id: cursor,
-          snapshot_provider: -> { {} }, heartbeat_interval: 0.05
+          heartbeat_interval: 0.05
         )
         writer_thread = Thread.new { writer.serve!(io) }
         sleep(0.3)
@@ -345,7 +344,7 @@ RSpec.describe Samagotchi::Bridge do
         io = ControllableIO.new
         writer = Samagotchi::Bridge::SSEWriter.new(
           engine:, ring:, session_id: "s1", last_event_id: cursor, epoch: "e2",
-          snapshot_provider: -> { {} }, heartbeat_interval: 0.05
+          heartbeat_interval: 0.05
         )
         writer_thread = Thread.new { writer.serve!(io) }
         sleep(0.3)
@@ -383,7 +382,7 @@ RSpec.describe Samagotchi::Bridge do
       io.write_sleep = 0.02 # simulate a slow / hung client socket
       writer = Samagotchi::Bridge::SSEWriter.new(
         engine:, ring:, session_id: "s1",
-        snapshot_provider: -> { {} }, heartbeat_interval: 0.05
+        heartbeat_interval: 0.05
       )
       writer_thread = Thread.new { writer.serve!(io) }
       sleep(0.2) # subscribe + headers written
@@ -746,6 +745,24 @@ RSpec.describe Samagotchi::Bridge do
         expect(ids.first).to eq(first[:id].to_i + 1)
         expect(ids).to eq((ids.first..ids.last).to_a)
         expect(rest.map { |e| e[:data]["type"] }).to include("turn_completed")
+      end
+
+      it "takes the frame's session state with the event log held, as the snapshot" do
+        start_bridge
+        held = []
+        allow(@engine).to receive(:session_state_snapshot).and_wrap_original do |original, *args|
+          # Another thread can't take the event log while this one holds it.
+          held << Thread.new { @engine.synchronize_events { true } }.join(0.2).nil?
+          original.call(*args)
+        end
+
+        c = SSEClient.new(@bridge_port, @session.id, snapshot: true).start
+        @clients << c
+        first = c.wait_for(1).first
+
+        expect(first[:data]["type"]).to eq("snapshot")
+        expect(first[:data]["session_state_snapshot"]["event_seq"]).to eq(first[:data]["snapshot"]["event_seq"])
+        expect(held).to eq([true])
       end
 
       it "serves the same snapshot over GET /session/:id/snapshot, with the session state at its seq" do
