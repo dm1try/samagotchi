@@ -20,6 +20,7 @@ require_relative "tools/builtins"
 require_relative "muted_memories"
 require_relative "tool_activity"
 require_relative "tool_runner"
+require_relative "tool_response"
 require_relative "answer_display"
 
 module Samagotchi
@@ -356,39 +357,12 @@ module Samagotchi
         qwen_recovery_attempts = 0
         qwen_partial_tool_call = nil
 
-        emit_stream_event(on_stream_event, type: :tool_dispatch_started, iteration: iteration_index + 1, call_count: calls.length)
-        tool_images = []
-        image_counts = []
-        shown_params = []
-        shown_labels = []
-        diffs = []
-        results = calls.map.with_index do |call, call_index|
-          run = tool_runner.run(call, iteration: iteration_index + 1, call_index: call_index + 1,
-                                      call_count: calls.length, on_stream_event: on_stream_event,
-                                      max_tool_output_chars: effective_max_tool_output_chars)
-          tool_activity << run[:activity]
-          tool_images.concat(Array(run[:images]))
-          image_counts << Array(run[:images]).size
-          shown_params << run[:shown_params]
-          shown_labels << run[:shown_label]
-          diffs << run[:diff]
-          run[:output]
-        end.join("\n\n---\n\n")
-        emit_stream_event(on_stream_event, type: :tool_dispatch_completed, iteration: iteration_index + 1, call_count: calls.length)
-        # The joined results carry every call's images, in call order.
-        tool_response = { role: "tool_response", content: results }
-        tool_response[:images] = tool_images unless tool_images.empty?
-        # How many of them each call returned, in call order, so the web's
-        # reload puts each on its own tool row; the prompt never reads it.
-        tool_response[:image_counts] = image_counts unless tool_images.empty?
-        # A plugin tool's params line, one per call in call order (nil for
-        # a built-in), for the web's reload; the prompt never reads it.
-        tool_response[:tool_params] = shown_params if shown_params.any?
-        tool_response[:tool_labels] = shown_labels if shown_labels.any?
-        # What each edit/write changed (nil for other calls), in call order,
-        # for the web's reload; the prompt never reads it.
-        tool_response[:tool_diffs] = diffs if diffs.any?
-        conversation << tool_response
+        runs = ToolResponse.run_batch(tool_runner, calls, iteration: iteration_index + 1, emit: emit,
+                                                          on_stream_event: on_stream_event,
+                                                          cap: effective_max_tool_output_chars)
+        tool_activity.concat(ToolResponse.activities(runs))
+        # One entry for the batch: the full outputs joined (ToolResponse.joined).
+        conversation << ToolResponse.joined(runs)
         pending_tool_calls = true
       rescue Client::RequestCancelled => e
         emit_stream_event(

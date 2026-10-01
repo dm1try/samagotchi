@@ -384,11 +384,12 @@ RSpec.describe "Turn policy characterization" do
       chat: { conversation: ["user:hi", "model+calls:", "tool_response", "tool_response", "model:done"],
               tool_shapes: [{ keys: %i[images tool_call_id], images: 1 },
                             { keys: %i[tool_call_id tool_diffs], images: 0, diffs: :diff }] } },
-    { name: "a dispatcher that raises", drift: "#12", raising_dispatch: true,
+    { name: "a dispatcher that raises", raising_dispatch: true,
       steps: [[:calls, ["probe", { what: "a" }]], [:text, "done"]],
-      expected: { events: ["gen", "done", "tools(1)", "tool:probe", "gen", "done"], result: res.("done"), temps: [nil, nil] },
-      native: { conversation: ["user:hi", "model:", "tool_response", "model:done"], activity: [nil] },
-      chat: { conversation: ["user:hi", "model+calls:", "tool_response", "model:done"], activity: [] } },
+      expected: { events: ["gen", "done", "tools(1)", "tool:probe", "gen", "done"], result: res.("done"), temps: [nil, nil],
+                  activity: [] },
+      native: { conversation: ["user:hi", "model:", "tool_response", "model:done"] },
+      chat: { conversation: ["user:hi", "model+calls:", "tool_response", "model:done"] } },
     # Native estimates the prompt before each request: past 40% it emits
     # :context_status and gives the model its line. Chat only shows the
     # server's count after the generation.

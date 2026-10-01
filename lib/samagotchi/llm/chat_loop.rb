@@ -12,6 +12,7 @@ require_relative "../answer_display"
 require_relative "../context_window"
 require_relative "../context_note"
 require_relative "../tool_runner"
+require_relative "../tool_response"
 require_relative "../tool_declarations"
 require_relative "../vision_context"
 require_relative "../log"
@@ -219,9 +220,7 @@ module Samagotchi
           message[:tool_call_id] = entry[:tool_call_id] if entry[:tool_call_id]
           message[:images] = entry[:images] if entry[:images].is_a?(Array) && !entry[:images].empty?
           message[:thinking] = entry[:thinking] if entry[:thinking].is_a?(String) && !entry[:thinking].empty?
-          message[:tool_params] = entry[:tool_params] if entry[:tool_params]
-          message[:tool_labels] = entry[:tool_labels] if entry[:tool_labels]
-          message[:tool_diffs] = entry[:tool_diffs] if entry[:tool_diffs]
+          ToolResponse::SAVED_KEYS.each { |key| message[key] = entry[key] if entry[key] }
           message[TurnNote::RETRY_NUDGE] = true if TurnNote.retry_nudge?(entry)
           message[AnswerDisplay::KEY] = entry[AnswerDisplay::KEY] if entry[AnswerDisplay::KEY]
           ContextNote::KEYS.each { |key| message[key] = entry[key] if entry.key?(key) }
@@ -520,25 +519,15 @@ module Samagotchi
                                         served_model: response.model, tool_calls: calls.empty? ? nil : calls.join(","))
         end
 
+        # Each call's result goes on the conversation as it finishes, paired
+        # with its call (ToolResponse.single: the capped output).
         def dispatch(tool_calls, iteration, cap)
-          emit(type: :tool_dispatch_started, iteration: iteration, call_count: tool_calls.length)
-          tool_calls.each_with_index do |tool_call, index|
-            call = NativeToolNormalizer.normalize(tool_call)
-            run = @loop.tool_runner.run(call, iteration: iteration, call_index: index + 1, call_count: tool_calls.length,
-                                              on_stream_event: @on_stream_event, max_tool_output_chars: cap)
-            @tool_activity << run[:activity] if run[:activity]
-            # The chat loop feeds the model the capped output (native feeds
-            # the full one; D-P2-6).
-            entry = { role: "tool_response", content: run[:capped_output], tool_call_id: tool_call.id }
-            entry[:images] = run[:images] if run[:images]&.any?
-            # A plugin tool's params line, for the web's reload; never sent.
-            entry[:tool_params] = run[:shown_params] if run[:shown_params]
-            entry[:tool_labels] = run[:shown_label] if run[:shown_label]
-            # What an edit/write changed, for the web's reload; never sent.
-            entry[:tool_diffs] = run[:diff] if run[:diff]
-            @conversation << entry
+          calls = tool_calls.map { |tool_call| NativeToolNormalizer.normalize(tool_call) }
+          runs = ToolResponse.run_batch(@loop.tool_runner, calls, iteration: iteration, emit: method(:emit),
+                                                                  on_stream_event: @on_stream_event, cap: cap) do |run, index|
+            @conversation << ToolResponse.single(run, tool_call_id: tool_calls[index].id)
           end
-          emit(type: :tool_dispatch_completed, iteration: iteration, call_count: tool_calls.length)
+          @tool_activity.concat(ToolResponse.activities(runs))
         end
 
         # Queued input at an iteration boundary (Steer.inject!). Returns true
