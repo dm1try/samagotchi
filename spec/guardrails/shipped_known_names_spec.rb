@@ -5,6 +5,7 @@ require "yaml"
 require "digest"
 require "samagotchi/guardrails"
 require "samagotchi/hooks"
+require "samagotchi/tool_call_parser"
 
 # The known-names bundle (lib/samagotchi/bundles/known-names): a near miss
 # of a protected name in a tool call's command or paths is rejected with
@@ -150,6 +151,14 @@ RSpec.describe "The known-names bundle" do
       expect(verdict_for({ name: "edit", path: "/home/johndeo/a.txt", content: "x" }).call[:path]).to eq("/home/johndoe/a.txt")
       v = verdict_for({ name: "execute", content: "ls", cwd: "/home/johndeo" })
       expect(v.call[:cwd]).to eq("/home/johndoe")
+    end
+
+    it "also replaces it in an edit's old and new text" do
+      gemma = Samagotchi::ToolCallParser::Gemma.new(Samagotchi::ModelProfile.gemma4)
+      d = '<|"|>'
+      edit = gemma.parse("<|tool_call>call:edit{path:#{d}/home/johndeo/a.txt#{d},old_text:#{d}johndeo#{d}," \
+                         "new_text:#{d}johndeo!#{d}}<tool_call|>").first
+      expect(verdict_for(edit).call).to include(path: "/home/johndoe/a.txt", content: "<old>johndoe</old><new>johndoe!</new>")
     end
   end
 

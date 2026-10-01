@@ -5,6 +5,7 @@ require "tmpdir"
 require "fileutils"
 require "samagotchi/engine"
 require "samagotchi/tool_runner"
+require "samagotchi/tool_call_parser"
 require "samagotchi/memory_bundle/installer"
 
 # The shipped loop-guard bundle (lib/samagotchi/bundles/loop-guard),
@@ -69,5 +70,16 @@ RSpec.describe "The loop-guard bundle" do
 
     hooks.fire(:before_turn, { type: :before_turn, prompt: "try again" })
     expect(run(find.dup)[:output]).to eq("[execute]\nexit: 0 (no output)")
+  end
+
+  it "keys an edit by its old and new text: different edits to one file are not repeats" do
+    gemma = Samagotchi::ToolCallParser::Gemma.new(Samagotchi::ModelProfile.gemma4)
+    d = '<|"|>'
+    edit = ->(old) { gemma.parse("<|tool_call>call:edit{path:#{d}a.rb#{d},old_text:#{d}#{old}#{d},new_text:#{d}x#{d}}<tool_call|>").first }
+    hooks.fire(:before_turn, { type: :before_turn, prompt: "edit" })
+
+    expect(%w[a b c].map { |old| run(edit.(old))[:output] }).to all(start_with("[edit]\nexit: 0"))
+    expect(run(edit.("c"))[:output]).to start_with("[edit]\nexit: 0")
+    expect(run(edit.("c"))[:output]).to start_with("[edit] Error: denied by guardrail (bundle loop-guard): repeated call. ")
   end
 end
