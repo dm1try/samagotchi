@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {
   flashOf, handOffDue, handOffOrder, headlineOf, inUseFrom, isPlain, liveSlots, placeFor, plainHeadline, toolKind,
 } from "../../../lib/samagotchi/web/public/stage_model.js";
-import { applyEvent, newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
+import { newTurn, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
+import { applyEvent } from "./turn_feed.js";
 
 function turnOf(...events) {
   const turn = newTurn();

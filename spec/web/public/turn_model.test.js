@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyEvent, blockSummary, currentGen, genLabel, newTurn, notice, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
+import { blockSummary, currentGen, genLabel, newTurn, notice, takeAnswer } from "../../../lib/samagotchi/web/public/turn_model.js";
+import { applyEvent } from "./turn_feed.js";
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 const feed = (events, turn = newTurn()) => {
