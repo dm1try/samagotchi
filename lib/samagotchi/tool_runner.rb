@@ -25,8 +25,10 @@ module Samagotchi
 
     # @param kernel [KernelLoop] read lazily: Engine sets its hooks after
     #   the kernel is built.
-    def initialize(kernel)
+    # @param clock [#call] monotonic seconds, for the approval wait
+    def initialize(kernel, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @kernel = kernel
+      @clock = clock
     end
 
     # @param call_index [Integer] 1-based position of the call in its batch
@@ -54,8 +56,14 @@ module Samagotchi
       emit(on_stream_event, started)
 
       # The ask comes after tool_call_started: the UI shows the tool line,
-      # then the approval under it.
-      settle_ask(verdict) if verdict.ask?
+      # then the approval under it. waited_ms on tool_call_completed lets a
+      # UI that times the row from tool_call_started leave the wait out.
+      waited_ms = nil
+      if verdict.ask?
+        asked_at = @clock.call
+        settle_ask(verdict)
+        waited_ms = ((@clock.call - asked_at) * 1000).round
+      end
       before = verdict.deny? ? NOT_AN_EDIT : file_before(call)
       result = verdict.deny? ? denied(call, verdict) : dispatch(call)
       diff = file_change(call, before)
@@ -75,6 +83,7 @@ module Samagotchi
                     tool: call[:name], output: capped, output_truncated: truncated, activity: result[:activity] }
       completed[:images] = images if images&.any?
       completed[:diff] = diff if diff
+      completed[:waited_ms] = waited_ms if waited_ms
       emit(on_stream_event, completed)
 
       run = { output: output, capped_output: capped, truncated: truncated, activity: result[:activity] }

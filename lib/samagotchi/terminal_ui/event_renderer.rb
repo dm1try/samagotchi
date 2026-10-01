@@ -209,9 +209,11 @@ private
         [event[:iteration].to_i, event[:call_index].to_i, event[:tool].to_s]
       end
 
+      # From tool_call_started, less an approval wait (waited_ms): an asked
+      # row counts from the answer.
       def tool_duration_ms(event)
         started_at = @tool_started_at.delete(tool_call_key(event))
-        started_at && ((@clock.call - started_at) * 1000.0)
+        started_at && [((@clock.call - started_at) * 1000.0) - event[:waited_ms].to_f, 0.0].max
       end
     end
   end

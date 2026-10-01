@@ -31,6 +31,11 @@ RSpec.describe Samagotchi::ToolRunner do
                   on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
   end
 
+  it "dispatches an unvetoed call; nothing waited, so no waited_ms" do
+    run
+    expect(events.last).not_to have_key(:waited_ms)
+  end
+
   it "dispatches an unvetoed call" do
     result = run
     expect(result[:output]).to eq("[execute]\nran")
@@ -208,6 +213,36 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(asked).to eq([%i[tool_call_started]])
       expect(dispatched).to eq([call])
       expect(result[:activity]).to include(guardrail: { verdict: "allow", decided_by: "user", scope: "once", note: "approved (once)" })
+    end
+
+    # The UIs time a row from tool_call_started, which comes before the ask:
+    # they take the wait back out.
+    context "with a clock" do
+      let(:now) { [100.0] }
+      let(:runner) do
+        approver = lambda do |verdict|
+          now[0] += 2.5
+          answer == :allow ? verdict.settle!(:allow).tap { verdict.scope = "once" } : verdict.settle!(:deny, note: "no")
+        end
+        k = kernel
+        gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: approver)
+        k.define_singleton_method(:guardrail_gate) { gate }
+        described_class.new(k, clock: -> { now.first })
+      end
+
+      it "puts the approval wait on tool_call_completed" do
+        run
+        expect(events.last).to include(type: :tool_call_completed, waited_ms: 2500)
+      end
+
+      context "when the user declines" do
+        let(:answer) { :deny }
+
+        it "puts the wait on the blocked call's tool_call_completed too" do
+          run
+          expect(events.last).to include(type: :tool_call_completed, waited_ms: 2500)
+        end
+      end
     end
 
     context "when the user declines" do

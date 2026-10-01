@@ -153,6 +153,15 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     expect(view.lines).to eq(["read 250.0"])
   end
 
+  it "leaves the approval wait out of a tool call's time (the row counts from the answer)" do
+    started, completed = tool_events(activity)
+    renderer.call(started)
+    now[0] = 13.0
+    renderer.call(completed.merge(waited_ms: 2750))
+
+    expect(view.lines).to eq(["read 250.0"])
+  end
+
   it "does not repeat streamed tool activity in the turn summary" do
     other = activity.merge(tool: "execute")
     tool_events(activity).each { |e| renderer.call(e) }
