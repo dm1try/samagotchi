@@ -95,13 +95,12 @@ RSpec.describe "chi sessions archive" do
   end
 
   describe "bin/chi" do
-    let(:chi) { File.expand_path("../bin/chi", __dir__) }
     let(:outside) { Dir.mktmpdir("chi-sessions-archive-cwd") }
 
     after { FileUtils.rm_rf(outside) }
 
     def run_chi(*args)
-      Open3.capture3({ "XDG_STATE_HOME" => xdg_state }, RbConfig.ruby, chi, "sessions", *args, stdin_data: "", chdir: outside)
+      super("sessions", *args, env: { "XDG_STATE_HOME" => xdg_state }, chdir: outside)
     end
 
     it "archives, hides from list, and list --archived shows it marked (text and json)" do

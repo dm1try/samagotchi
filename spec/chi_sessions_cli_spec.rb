@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "open3"
-require "rbconfig"
 require "tmpdir"
 require "json"
 require "spec_helper"
@@ -12,7 +10,6 @@ require "samagotchi/session"
 # moved out of bin/chi. The other paths have their own specs
 # (chi_sessions_list/stop/clean/archive_spec, session_delete_command_spec).
 RSpec.describe "chi sessions (CLI)" do
-  let(:chi) { File.expand_path("../bin/chi", __dir__) }
   let(:xdg_state) { Dir.mktmpdir("chi-sessions-cli") }
   let(:outside) { Dir.mktmpdir("chi-sessions-cli-cwd") }
   let(:state_dir) { Samagotchi::Session.default_state_dir(env: { "XDG_STATE_HOME" => xdg_state }) }
@@ -44,7 +41,7 @@ RSpec.describe "chi sessions (CLI)" do
   end
 
   def run_chi(*args)
-    out, err, status = Open3.capture3(env, RbConfig.ruby, chi, "sessions", *args, stdin_data: "", chdir: outside)
+    out, err, status = super("sessions", *args, env: env, chdir: outside)
     [out, err, status.exitstatus]
   end
 

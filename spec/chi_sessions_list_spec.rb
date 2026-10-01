@@ -31,7 +31,7 @@ RSpec.describe "chi sessions list" do
   end
 
   def run_chi(*args, dir: outside)
-    Open3.capture3(env, RbConfig.ruby, chi, "sessions", "list", *args, stdin_data: "", chdir: dir)
+    super("sessions", "list", *args, env: env, chdir: dir)
   end
 
   def make(prompt, cwd: "/work/app", live: false, test_run: false, owner: live ? "worker" : nil, parent_id: nil, scratch: false)

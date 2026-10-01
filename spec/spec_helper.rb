@@ -10,6 +10,7 @@ require "tmpdir"
 # surface), and a spec that needs one requires it, so loading one spec file
 # alone still finds its missing requires.
 require_relative "support/waiting"
+require_relative "support/chi_cli"
 
 # Start from none of the developer's SAMAGOTCHI_* settings: a shell may point
 # the debug log somewhere, and a suite run by chi's own execute tool inherits
@@ -80,6 +81,7 @@ RSpec.configure do |config|
   config.filter_run_when_matching :focus
   config.disable_monkey_patching!
   config.include SpecWaiting
+  config.include ChiCli
   config.warnings = true
   config.order = :random
   Kernel.srand config.seed

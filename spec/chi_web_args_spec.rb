@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
-require "rbconfig"
 require "spec_helper"
-require_relative "support/bounded_capture"
 
 # `chi web`'s flags go through OptionParser, which permutes: the ones after
 # `web` are parsed like the ones before it. Flags it can't see (after `--`,
@@ -10,10 +8,9 @@ require_relative "support/bounded_capture"
 # plain stray word after web. Bounded: a case that got past the checks would
 # start the server.
 RSpec.describe "chi web arguments" do
-  let(:chi) { File.expand_path("../bin/chi", __dir__) }
 
   def run_chi(*args, env: {})
-    out, err, status = BoundedCapture.capture3(env, RbConfig.ruby, chi, *args, stdin_data: "", timeout: 10)
+    out, err, status = super(*args, env: env, timeout: 10)
     [out, err, status.exitstatus]
   end
 

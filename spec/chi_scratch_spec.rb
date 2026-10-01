@@ -14,10 +14,9 @@ RSpec.describe "chi scratch" do
 
   def run_chi(*args, server: nil)
     Dir.mktmpdir do |dir|
-      env = { "XDG_CONFIG_HOME" => File.join(dir, "config"), "XDG_STATE_HOME" => File.join(dir, "state"), "HOME" => dir,
-              "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model", "SAMAGOTCHI_MODEL_PROFILE" => nil,
-              "SAMAGOTCHI_SERVER_HOST" => "127.0.0.1", "SAMAGOTCHI_SERVER_PORT" => (server&.port || 9).to_s }
-      out, err, status = Open3.capture3(env, RbConfig.ruby, chi, *args, stdin_data: "", chdir: dir)
+      env = isolated_chi_env(dir, "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model", "SAMAGOTCHI_SERVER_HOST" => "127.0.0.1",
+                                  "SAMAGOTCHI_SERVER_PORT" => (server&.port || 9).to_s)
+      out, err, status = super(*args, env: env, chdir: dir)
       sessions = File.join(dir, "state", "samagotchi", "sessions")
       left = Dir.exist?(sessions) ? Dir.children(sessions).reject { |name| name.start_with?(".") } : []
       [out, err, status, left]

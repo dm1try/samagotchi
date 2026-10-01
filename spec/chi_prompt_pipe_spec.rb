@@ -2,9 +2,7 @@
 
 require "fileutils"
 require "json"
-require "rbconfig"
 require "tmpdir"
-require "support/bounded_capture"
 require "support/fake_provider_server"
 
 # `chi --no-shared -p X </dev/null`: the prompt runs once. A failed turn
@@ -13,7 +11,6 @@ require "support/fake_provider_server"
 # requests in 5 s against a host that answers 400). Now the error shows
 # once and chi exits 1; the provider's retries inside the turn still run.
 RSpec.describe "chi --no-shared -p with no terminal" do
-  let(:chi) { File.expand_path("../bin/chi", __dir__) }
   let(:server) { FakeProviderServer.start }
   let(:dir) { Dir.mktmpdir("chi-p-pipe") }
 
@@ -37,10 +34,7 @@ RSpec.describe "chi --no-shared -p with no terminal" do
         max: #{retries}
       recap: false
     YAML
-    env = { "XDG_CONFIG_HOME" => File.join(dir, "config"), "XDG_STATE_HOME" => File.join(dir, "state"), "HOME" => dir,
-            "SAMAGOTCHI_DEFAULT_MODEL" => nil, "SAMAGOTCHI_MODEL_PROFILE" => nil }
-    out, _err, status = BoundedCapture.capture3(env, RbConfig.ruby, chi, "--no-shared", "-p", "hello", stdin_data: "",
-                                                                                                 timeout: 30)
+    out, _err, status = super("--no-shared", "-p", "hello", env: isolated_chi_env(dir), timeout: 30)
     [out, status]
   end
 

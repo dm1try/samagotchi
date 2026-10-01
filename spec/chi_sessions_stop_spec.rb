@@ -15,7 +15,7 @@ RSpec.describe "chi sessions stop" do
   after { FileUtils.rm_rf(xdg_state) }
 
   def run_chi(*args)
-    Open3.capture3(env, RbConfig.ruby, chi, "sessions", *args, stdin_data: "")
+    super("sessions", *args, env: env)
   end
 
   it "stops the session and says a resume starts a fresh worker" do

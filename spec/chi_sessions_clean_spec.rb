@@ -1,21 +1,18 @@
 # frozen_string_literal: true
 
-require "open3"
-require "rbconfig"
 require "tmpdir"
 require "json"
 require "spec_helper"
 require "samagotchi/session"
 
 RSpec.describe "chi sessions clean" do
-  let(:chi) { File.expand_path("../bin/chi", __dir__) }
   let(:xdg_state) { Dir.mktmpdir("chi-sessions-clean") }
   let(:state_dir) { Samagotchi::Session.default_state_dir(env: { "XDG_STATE_HOME" => xdg_state }) }
 
   after { FileUtils.rm_rf(xdg_state) }
 
   def run_chi(*args)
-    Open3.capture3({ "XDG_STATE_HOME" => xdg_state }, RbConfig.ruby, chi, "sessions", *args, stdin_data: "")
+    super("sessions", *args, env: { "XDG_STATE_HOME" => xdg_state })
   end
 
   def make(test_run:, days_old: 0, scratch: false)

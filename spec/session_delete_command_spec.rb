@@ -122,7 +122,7 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
     after { FileUtils.rm_rf(xdg_state) }
 
     def run_chi(*args)
-      Open3.capture3({ "XDG_STATE_HOME" => xdg_state }, RbConfig.ruby, chi, "sessions", *args, stdin_data: "")
+      super("sessions", *args, env: { "XDG_STATE_HOME" => xdg_state })
     end
 
     it "keeps the order of the ids given when stdout and stderr share a pipe" do
