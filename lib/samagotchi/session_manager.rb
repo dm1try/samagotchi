@@ -594,6 +594,7 @@ module Samagotchi
     # @param idle_exit_minutes [Numeric, nil] nil: session.idle_exit_minutes
     # @param poll_interval [Numeric, nil] seconds between the loop's fallback
     #   ticks (nil: Worker::FALLBACK_TICK_SECONDS); queued turns wake it at once
+    # A stopped session's worker exits 0 and a crashed one 1, there.
     # @return [Symbol] :idle_exit or :exit_requested
     def self.run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT,
                               idle_exit_minutes: nil, poll_interval: nil)
@@ -619,6 +620,10 @@ module Samagotchi
         @owner_lock.release
       end
       Log.info(:worker, "stop", reason: result)
+      # A stopped session is left as it is: no resume for input that came
+      # in, no discard.
+      exit(0) if result == :stopped
+      exit(1) if result == :crashed
       # Only after the release: a writer that still saw this worker as the
       # owner may have queued input since the last check. Either it finds no
       # owner after its write and wakes one, or this finds its input.

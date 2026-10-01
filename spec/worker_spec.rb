@@ -91,20 +91,12 @@ RSpec.describe Samagotchi::Worker do
       FileUtils.rm_rf(tmpdir)
     end
 
-    # Runs the worker on a thread. Its exit (0 on a stop, 1 on a crash) is
-    # caught there and becomes the thread's value: a SystemExit that leaves a
-    # thread is raised again in the main thread, wherever that is unless it
-    # is joining this thread just then, and ends the whole rspec run early
-    # with "0 failures" and exit status 0.
+    # Runs the worker on a thread; what #run returns is the thread's value.
     def start_worker(poll_interval: 5, idle_exit_minutes: 0)
       worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
                                    idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
       @worker = worker
-      @thread = Thread.new do
-        worker.run
-      rescue SystemExit => e
-        e
-      end
+      @thread = Thread.new { worker.run }
       @thread.report_on_exception = false
       expect(wait_until { File.exist?(sidecar) }).to be(true)
       # Let the loop reach its wait.
@@ -276,7 +268,7 @@ RSpec.describe Samagotchi::Worker do
 
       post_turn("one")
 
-      expect(@thread.join(2)&.value).to be_a(SystemExit).and have_attributes(status: 1)
+      expect(@thread.join(2)&.value).to eq(:crashed)
       record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "crashed" } }
       expect(record.to_h).to include(level: "ERROR", tag: "worker")
       expect(record.fields).to include("error" => "JSON::GeneratorError")
@@ -289,7 +281,7 @@ RSpec.describe Samagotchi::Worker do
 
       Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
 
-      expect(@thread.join(2)&.value).to be_a(SystemExit).and have_attributes(status: 0)
+      expect(@thread.join(2)&.value).to eq(:stopped)
     end
 
     it "still leaves when idle" do
@@ -314,7 +306,7 @@ RSpec.describe Samagotchi::Worker do
       allow(Samagotchi::SessionInbox).to receive(:find_new_input_files).and_raise(RuntimeError, "boom")
       worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
                                    idle_exit_minutes: 0, poll_interval: 5)
-      expect { worker.run }.to raise_error(SystemExit) { |e| expect(e.status).to eq(1) }
+      expect(worker.run).to eq(:crashed)
       expect(engine).to have_received(:shutdown)
     end
 

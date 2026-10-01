@@ -95,8 +95,10 @@ module Samagotchi
     # What a new session starts on (and /model resets to); nil before #run.
     attr_reader :default_model
 
-    # @return [Symbol] :idle_exit, or :exit_requested when a client asked it
-    #   to exit (Bridge POST /exit)
+    # @return [Symbol] :idle_exit, :exit_requested when a client asked it
+    #   to exit (Bridge POST /exit), :stopped when the session was stopped
+    #   (chi stop), :crashed when the loop raised (the session is marked
+    #   errored); SessionManager.run_session_loop turns it into the exit
     def run
       @session = Session.load(@session_id, state_dir: @state_dir)
       drop_dead_question
@@ -151,7 +153,7 @@ module Samagotchi
       begin
         # A session stopped before this worker took the lock (e.g. a stop
         # right after create) must not run its initial prompt.
-        exit(0) if stopped_on_disk?
+        return :stopped if stopped_on_disk?
         # Plugins' slow setup (chi.init: an MCP server's first start), in
         # the background, shown by the UIs; a turn waits only for the ones
         # that bring tools.
@@ -161,7 +163,7 @@ module Samagotchi
           # stopped_on_disk?, which reads a vanished file as "not stopped":
           # a session file deleted under a running worker crashes it here
           # instead of being saved back by its next turn.
-          exit(0) if Session.load(@session_id, state_dir: @state_dir).status == Session::STATUS_STOPPED
+          return :stopped if Session.load(@session_id, state_dir: @state_dir).status == Session::STATUS_STOPPED
 
           # Commands queued before a prompt run first (a /continue sent
           # before a new prompt still answers the offer).
@@ -197,7 +199,7 @@ module Samagotchi
         # Its stderr is /dev/null: the log is the only trace of why.
         Log.exception(:worker, "crashed", e)
         Session.mark_error(@session_id, reason: e.message, state_dir: @state_dir)
-        exit(1)
+        :crashed
       ensure
         # The anytime commands finish and the plugins' services stop (a
         # server process), whatever the way out; the Bridge last, so a

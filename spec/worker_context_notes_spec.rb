@@ -56,16 +56,10 @@ RSpec.describe Samagotchi::Worker, "context notes" do
     FileUtils.rm_rf(tmpdir)
   end
 
-  # The worker's exit is caught on its thread (see worker_spec): a SystemExit
-  # leaving a thread ends the whole rspec run early, green.
   def start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
     worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
                                  idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval)
-    @thread = Thread.new do
-      worker.run
-    rescue SystemExit => e
-      e
-    end
+    @thread = Thread.new { worker.run }
     @thread.report_on_exception = false
     expect(wait_until { File.exist?(File.join(session_dir, Samagotchi::WorkerSidecar::FILE)) }).to be(true)
   end

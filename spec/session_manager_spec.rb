@@ -722,6 +722,25 @@ RSpec.describe Samagotchi::SessionManager do
       }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
     end
 
+    it "decides the worker's exit: 0 on a stop, without resuming for queued input or discarding; 1 on a crash" do
+      described_class.write_turn_input(session.id, prompt: "queued", state_dir: tmpdir)
+      allow(described_class).to receive(:resume_session)
+      allow(described_class).to receive(:discardable?).and_return(true)
+      allow_any_instance_of(Samagotchi::Worker).to receive(:run).and_return(:stopped)
+
+      expect {
+        described_class.run_session_loop(session.id, state_dir: tmpdir)
+      }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+      expect(described_class).not_to have_received(:resume_session)
+      expect(described_class).not_to have_received(:discardable?)
+      expect(Samagotchi::OwnerLock.owner(session_dir)).to be_nil
+
+      allow_any_instance_of(Samagotchi::Worker).to receive(:run).and_return(:crashed)
+      expect {
+        described_class.run_session_loop(session.id, state_dir: tmpdir)
+      }.to raise_error(SystemExit) { |e| expect(e.status).to eq(1) }
+    end
+
     it "does not run the initial prompt of a session stopped before the worker took it, nor its plugins' init tasks" do
       session.last_prompt = "hello"
       session.status = Samagotchi::Session::STATUS_STOPPED

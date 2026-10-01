@@ -120,15 +120,9 @@ RSpec.describe "Images in transport" do
       @thread&.join(2)
     end
 
-    # The worker's exit is caught on its thread (see worker_spec): a
-    # SystemExit leaving a thread ends the whole rspec run early, green.
     def start_worker
       worker = Samagotchi::Worker.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir, idle_exit_minutes: 0, poll_interval: 0.05)
-      @thread = Thread.new do
-        worker.run
-      rescue SystemExit => e
-        e
-      end
+      @thread = Thread.new { worker.run }
       @thread.report_on_exception = false
       expect(wait_until { File.exist?(File.join(session_dir, "bridge.json")) }).to be_truthy
       sleep(0.1)
