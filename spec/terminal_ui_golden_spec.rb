@@ -85,7 +85,7 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
     allow(Reline).to receive(:readline).and_return(*answers, nil)
     @kernel_inputs = []
     pending = turns.dup
-    allow(ui.instance_variable_get(:@kernel)).to receive(:run) do |messages, **kwargs|
+    allow(ui.engine.instance_variable_get(:@kernel)).to receive(:run) do |messages, **kwargs|
       @kernel_inputs << messages.drop(1).map { |m| "#{m[:role]}: #{m[:content].inspect}" }
       events, finish = pending.shift
       events.each { |event| kwargs[:on_stream_event]&.call(event) }

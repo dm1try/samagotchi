@@ -65,7 +65,7 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
   # and calls +on_event+ with each one after it is drawn.
   def run_repl(ui, prompts:, events: [], on_event: nil)
     allow(Reline).to receive(:readmultiline).and_return(*prompts, nil)
-    allow(ui.instance_variable_get(:@kernel)).to receive(:run) do |messages, **kwargs|
+    allow(ui.engine.instance_variable_get(:@kernel)).to receive(:run) do |messages, **kwargs|
       events.each do |event|
         kwargs[:on_stream_event]&.call(event)
         on_event&.call(event)
@@ -209,7 +209,7 @@ RSpec.describe Samagotchi::TerminalUI, "on a live region" do
     end
 
     def kernel_replies(&during)
-      allow(ui.instance_variable_get(:@kernel)).to receive(:run) do |messages, **kwargs|
+      allow(ui.engine.instance_variable_get(:@kernel)).to receive(:run) do |messages, **kwargs|
         kernel_calls << messages
         canceled = during&.call(kwargs[:cancel_controller], kernel_calls.size) || false
         Samagotchi::LLM::ModelResult.new(

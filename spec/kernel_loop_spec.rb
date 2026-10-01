@@ -630,13 +630,6 @@ RSpec.describe Samagotchi::KernelLoop do
 
         expect(lines).to be_empty
       end
-
-      it "gives the status line's value for used/window tokens, nil with context.status off or without counts" do
-        expect(kernel.context_display(used_tokens: 4_500, window_tokens: 10_000)).to eq(est_pct: 45.0, bucket: "40plus")
-        expect(kernel.context_display(used_tokens: nil, window_tokens: 10_000)).to be_nil
-        ENV["SAMAGOTCHI_CONTEXT_STATUS"] = "false"
-        expect(kernel.context_display(used_tokens: 4_500, window_tokens: 10_000)).to be_nil
-      end
     end
 
     it "emits bucket-aware actionable guidance" do

@@ -81,20 +81,19 @@ module Samagotchi
       @model_key_fallback = nil
     end
 
-    # @return [ReminderStore, nil] the reminder store for inspection (used by
-    #   Engine to share the same store with the KernelLoop when TerminalUI
-    #   creates both).
-    attr_reader :reminder_store
+    # @return [ReminderStore, nil] the reminder store the reminder tools
+    #   write; the Engine's own (it hands it to a kernel it was given).
+    attr_accessor :reminder_store
 
     # @return [ModelProfile] the active prompt profile
     attr_reader :profile
 
     # @return [Samagotchi::Hooks::Registry, nil] hooks registry shared with Engine.
     #   Engine owns the registry; KernelLoop only fires events. Accessor allows
-    #   Engine to propagate its registry to an externally-created kernel (TUI path).
+    #   Engine to hand its registry to a kernel it is given (specs).
     attr_accessor :hooks
     # @return [Tools::Registry] the tools #dispatch runs. The Engine sets
-    #   its own on a kernel built before it (the REPL's), as with hooks.
+    #   its own on a kernel it is given, as with hooks.
     attr_accessor :tools
     attr_accessor :client
     attr_accessor :model_key
@@ -611,12 +610,6 @@ module Samagotchi
     # whether the model called a tool / returning the final answer".
     def strip_model_thought(text)
       strip_thought_blocks(text)
-    end
-
-    # The status line's context value ({est_pct:, bucket:}) for +used_tokens+
-    # of +window_tokens+; nil without both, or with context.status off.
-    def context_display(used_tokens:, window_tokens:)
-      ContextStatus.new.display_for(used_tokens: used_tokens, window_tokens: window_tokens)
     end
 
     # Per-profile parse strategy. Rebuilt when the active profile changes

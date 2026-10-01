@@ -12,7 +12,6 @@ require_relative "context_note"
 require_relative "cancellation_controller"
 require_relative "llm/errors"
 require_relative "host_registry"
-require_relative "kernel_loop"
 require_relative "session"
 require_relative "owner_lock"
 require_relative "engine"
@@ -114,9 +113,6 @@ module Samagotchi
       # The model it starts on names a configured host (a bad default.model
       # doesn't matter when --model or the session picks another).
       ModelProfile.check_host!(@effective_model_name, hosts: @host_registry.entries)
-      # Only a caller's profile goes in; otherwise the Engine resolves one
-      # for the effective model and hands it to the kernel.
-      @kernel         = KernelLoop.new(client: @client, profile: profile, reminder_store: Samagotchi::ReminderStore.new)
       @no_default_input = no_default_input
       @non_interactive = non_interactive
       # --memory and --mute, with a resumed session's own lists first: a
@@ -157,7 +153,6 @@ module Samagotchi
         model_name: nil,
         memories: @requested_memories,
         muted_memories: @muted_memory_names,
-        kernel: @kernel,
         recap: scratch ? nil : recap_config,
         scratch: scratch,
         reminders: {

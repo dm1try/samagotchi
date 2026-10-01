@@ -8,6 +8,7 @@ require "yaml"
 
 require_relative "config"
 require_relative "context_note"
+require_relative "context_status"
 require_relative "steer"
 require_relative "turn_note"
 require_relative "model_profile"
@@ -196,15 +197,10 @@ module Samagotchi
       @shut_down = false
       load_plugins if plugins
       guardrail_rules
-      # Use the KernelLoop's reminder_store if provided (TerminalUI path),
-      # otherwise create our own (SessionManager/one-shot paths). This ensures
-      # tool calls via KernelLoop and reminder injection via Engine read/write
-      # the same store.
-      if kernel && kernel.respond_to?(:reminder_store)
-        @reminder_store = kernel.reminder_store
-      else
-        @reminder_store = ReminderStore.new
-      end
+      # The Engine owns the reminder store; its kernel (built here, or a
+      # spec's) gets it, so tool calls via KernelLoop and reminder injection
+      # via Engine read/write the same store.
+      @reminder_store = ReminderStore.new
       # The due reminders on their way into a turn, and the names the idle
       # tick queued for a reminder turn.
       @reminder_queue = ReminderQueue.new(store: @reminder_store)
@@ -213,33 +209,29 @@ module Samagotchi
       @reminders = build_reminders(auto_turn_callback: callback)
       # Track whether this is the first turn in the session (for session_start event)
       @first_turn = true
+      # A given kernel (specs) gets the Engine's store, hooks and tools, as
+      # the one built here does.
       @kernel = kernel || KernelLoop.new(client: @client, profile: @given_profile, hooks: @hooks, reminder_store: @reminder_store,
                                          tools: @tools)
+      @kernel.reminder_store = @reminder_store
+      @kernel.hooks = @hooks
+      @kernel.tools = @tools
       sync_kernel_client!
       sync_model_key!
       # The mutes never change during a session, so no re-sync: the kernel's
       # memory_read guard reads the same list for every turn.
       @muted_memory_names = MutedMemories.normalize_list(muted_memories)
-      @kernel.muted_memory_names = @muted_memory_names if @kernel.respond_to?(:muted_memory_names=)
+      @kernel.muted_memory_names = @muted_memory_names
       # Keep kernel client in sync with active host via setter
       @kernel_client_synced = false
-      # Engine owns hooks; if a kernel was supplied externally (TUI path) propagate
-      # the Engine's registry so all UIs reuse the same instance. Without this the
-      # TUI's KernelLoop fires with nil hooks and before_generation/after_generation
-      # etc. never fire in interactive mode.
-      if kernel && @kernel.respond_to?(:hooks=)
-        @kernel.hooks = @hooks
-      end
-      # Likewise its tools: the REPL builds its kernel before the Engine.
-      @kernel.tools = @tools if kernel && @kernel.respond_to?(:tools=)
       # ask_user_question blocks on the Engine's question flow (TUI/Web answer it).
-      @kernel.question_handler = proc { |payload| request_question(payload) } if @kernel.respond_to?(:question_handler=)
+      @kernel.question_handler = proc { |payload| request_question(payload) }
       # Every tool call asks this gate first. The kernel is never rebuilt, so
       # it holds across model switches.
       self.guardrail_state_dir = Session.default_state_dir
       # list_sessions and send_note speak for whichever session runs now.
-      @kernel.peers = PeerView.new(self) if @kernel.respond_to?(:peers=)
-      @kernel.guardrail_gate = @guardrail_wiring.gate if @kernel.respond_to?(:guardrail_gate=)
+      @kernel.peers = PeerView.new(self)
+      @kernel.guardrail_gate = @guardrail_wiring.gate
       # What a hook can do beyond reading its event (event[:notify],
       # event[:ask_user], event[:stop_turn]): the Engine's routes to the UIs.
       @hooks.runtime = hook_runtime
@@ -470,7 +462,7 @@ module Samagotchi
       @model_key = ModelOverlay.key_for(bare_model_name(@effective_model_name))
       typed_key = ModelOverlay.key_for(@host_registry.parse_qualified_model(@typed_model_name).last)
       fallback = typed_key == @model_key ? nil : typed_key
-      @kernel.sync_model_key!(@model_key, fallback: fallback) if @kernel.respond_to?(:sync_model_key!)
+      @kernel.sync_model_key!(@model_key, fallback: fallback)
     end
     private :sync_model_key!
 
@@ -486,7 +478,7 @@ module Samagotchi
     def sync_kernel_client!
       target = @host_registry.resolve(@effective_model_name)
       @client = target.client
-      @kernel.client = target.client if @kernel.respond_to?(:client=) && @kernel.client != target.client
+      @kernel.client = target.client if @kernel.client != target.client
       backend_for(target)
     end
 
@@ -876,9 +868,9 @@ module Samagotchi
     # no turn yet (it woke after an idle exit): nil when either count is
     # unknown or context.status is off.
     def saved_context_status(context)
-      return nil unless context && @kernel.respond_to?(:context_display)
+      return nil unless context
 
-      @kernel.context_display(used_tokens: context[:used_tokens], window_tokens: context[:window_tokens])
+      ContextStatus.new.display_for(used_tokens: context[:used_tokens], window_tokens: context[:window_tokens])
     end
 
     # The effective model is on a chat host (api: openai), whose loop uses
@@ -2267,7 +2259,7 @@ module Samagotchi
     # prompt format and parser, and the system prompts built for the old one.
     def apply_profile(resolution)
       @prompt_builder&.reset! if @profile_resolution && @profile_resolution.profile.name != resolution.profile.name
-      @kernel.use_profile!(resolution) if @kernel.respond_to?(:use_profile!)
+      @kernel.use_profile!(resolution)
       resolution
     end
 

@@ -80,7 +80,7 @@ file2.rb")
       expect { agent.run }.to output(/file1.rb/).to_stdout
     end
 
-    it "builds its KernelLoop with the client and options" do
+    it "has its Engine build the KernelLoop with the client, the Engine's hooks, store and tools" do
       result = Samagotchi::LLM::ModelResult.new(
         text: "ok",
         conversation: [],
@@ -91,7 +91,8 @@ file2.rb")
       kernel = test_kernel(client: client)
       allow(kernel).to receive(:run).and_return(result)
       expect(Samagotchi::KernelLoop).to receive(:new)
-        .with(client: client, profile: nil, reminder_store: instance_of(Samagotchi::ReminderStore))
+        .with(client: client, profile: nil, hooks: instance_of(Samagotchi::Hooks::Registry),
+              reminder_store: instance_of(Samagotchi::ReminderStore), tools: instance_of(Samagotchi::Tools::Registry))
         .and_return(kernel)
 
       agent = described_class.new(prompt: "hi", client: client)

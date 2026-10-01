@@ -30,6 +30,13 @@ RSpec.describe Samagotchi::ContextStatus do
     expect(tracker.take_guidance).to be_nil
   end
 
+  it "gives the status line's value for used/window tokens, nil with context.status off or without counts" do
+    expect(described_class.new.display_for(used_tokens: 4_500, window_tokens: 10_000)).to eq(est_pct: 45.0, bucket: "40plus")
+    expect(described_class.new.display_for(used_tokens: nil, window_tokens: 10_000)).to be_nil
+    ENV["SAMAGOTCHI_CONTEXT_STATUS"] = "false"
+    expect(described_class.new.display_for(used_tokens: 4_500, window_tokens: 10_000)).to be_nil
+  end
+
   it "counts from the conversation's last status line" do
     conversation = [{ role: "system", kind: "context", content: "[CONTEXT: about 45% ... (estimated; bucket=40plus). x]" },
                     { role: "user", content: "hi" }]

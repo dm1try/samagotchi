@@ -20,7 +20,7 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "alpha:gemma-small") { example.run } }
 
   def engine_of(ui) = ui.engine
-  def kernel_of(ui) = ui.instance_variable_get(:@kernel)
+  def kernel_of(ui) = ui.engine.instance_variable_get(:@kernel)
 
   describe "guardrail interface" do
     it "is :repl for the REPL and -p without --non-interactive, :non_interactive with it" do

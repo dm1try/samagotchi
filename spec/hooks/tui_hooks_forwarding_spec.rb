@@ -7,10 +7,11 @@ require "samagotchi/hooks"
 require "support/test_kernel"
 
 RSpec.describe "TUI hooks forwarding regression" do
-  # Minimal repro for the bug where TerminalUI creates a KernelLoop without
-  # hooks and Engine fails to propagate its registry, leaving
+  # Repro for the bug where TerminalUI created a KernelLoop without hooks
+  # and Engine failed to propagate its registry, leaving
   # before_generation/after_generation/before_tool_call/after_tool_call dead
-  # in interactive (TUI) mode.
+  # in interactive (TUI) mode. The TUI's Engine builds the kernel now; a
+  # kernel handed to an Engine still gets its registry.
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
@@ -27,6 +28,15 @@ RSpec.describe "TUI hooks forwarding regression" do
       expect(engine_hooks).to be_a(Samagotchi::Hooks::Registry)
       expect(external_kernel.hooks).to be(engine_hooks)
       expect(external_kernel.hooks).not_to be_nil
+    end
+
+    it "hands its own reminder store and tools to an externally-supplied KernelLoop" do
+      external_kernel = Samagotchi::KernelLoop.new(client: client, reminder_store: Samagotchi::ReminderStore.new)
+
+      engine = Samagotchi::Engine.new(client: client, kernel: external_kernel)
+
+      expect(external_kernel.reminder_store).to be(engine.reminder_store)
+      expect(external_kernel.tools).to be(engine.instance_variable_get(:@tools))
     end
 
     it "shares the same registry instance so Engine#register_hook is visible to KernelLoop" do
@@ -55,7 +65,7 @@ RSpec.describe "TUI hooks forwarding regression" do
       tui = Samagotchi::TerminalUI.new(client: client)
 
       engine = tui.engine
-      kernel = tui.instance_variable_get(:@kernel)
+      kernel = tui.engine.instance_variable_get(:@kernel)
 
       engine_hooks = engine.instance_variable_get(:@hooks)
       expect(engine_hooks).to be_a(Samagotchi::Hooks::Registry)
@@ -68,7 +78,7 @@ RSpec.describe "TUI hooks forwarding regression" do
 
       tui = Samagotchi::TerminalUI.new(client: client)
       engine = tui.engine
-      kernel = tui.instance_variable_get(:@kernel)
+      kernel = tui.engine.instance_variable_get(:@kernel)
 
       gen_fired = []
       tool_fired = []
