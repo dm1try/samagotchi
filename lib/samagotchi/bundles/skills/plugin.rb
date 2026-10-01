@@ -25,8 +25,11 @@
 # execute with "exit: N", N ≠ 0, or with no exit line an Error: line near
 # the top; any tool's "[tool] Error: …") steers the model once to find out
 # why and fix the skill, unless a skill read was changed already (by any
-# tool, see above). At the turn's end, a failed step with no change to a
-# skill read gets a notice line.
+# tool, see above). A call a guardrail or the user denied (its first line
+# "[tool] Error: blocked by guardrail: …", "… denied by guardrail (…): …" or
+# "… <the user's answer> It needed approval (…): …") isn't a failed step:
+# it says nothing about the skill. At the turn's end, a failed step with no
+# change to a skill read gets a notice line.
 #
 # Settings (config.yml, bundles: skills:):
 #   history_keep: 20   older versions kept per skill
@@ -172,12 +175,20 @@ class Plugin
 
   def step_failed(event, ctx)
     tool = event[:tool].to_s
-    return if NOT_FAILURES.include?(tool) || !failure?(tool, event[:output].to_s)
+    output = event[:output].to_s
+    return if NOT_FAILURES.include?(tool) || guardrail_deny?(tool, output) || !failure?(tool, output)
 
     @failed = true
     return if @nudged || @read.any? { |name| @written.include?(name) }
 
     @nudged = ctx.steer(format(NUDGE, @read.join(", ")))
+  end
+
+  # A denied call, by its first line: a legacy veto, a rule's, hook's or
+  # core's deny, or the user's (declined, approval cancelled). Core's
+  # wording (ToolRunner#denied, Verdict#deny_text).
+  def guardrail_deny?(tool, output)
+    output.match?(/\A\[#{Regexp.escape(tool)}\] Error: (?:blocked by guardrail: |denied by guardrail \(|[^\n]*? It needed approval \()/)
   end
 
   # A tool error ("[x] Error: …" raised, "[x]\nError: …" returned), or an

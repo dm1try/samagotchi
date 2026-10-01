@@ -8,6 +8,7 @@ require "samagotchi/session"
 require "samagotchi/session_commands"
 require "samagotchi/turn_flow"
 require "samagotchi/memory_bundle/installer"
+require "samagotchi/guardrails"
 require "support/plugin_handler_ctx"
 
 # The shipped skills bundle (lib/samagotchi/bundles/skills): the plugin on its
@@ -310,6 +311,63 @@ RSpec.describe "The skills plugin" do
       expect(steered).to be_empty
       run(p, "execute", "[execute]\nstdout:\nError: bad config\n#{"x\n" * 30}")
       expect(steered.size).to eq(1)
+    end
+
+    describe "a call a guardrail or the user denied" do
+      # The deny texts as core builds them (Verdict#deny_text after
+      # ToolRunner#denied's "[tool] Error: " prefix), so a wording change
+      # breaks this spec. The legacy veto's text is composed inside the
+      # private ToolRunner#denied: pinned here and in spec/tool_runner_spec.rb.
+      def deny_output(tool, verdict) = "[#{tool}] Error: #{verdict.deny_text}"
+      def verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "execute", content: "rm -rf x" })
+
+      let(:denies) do
+        {
+          "a legacy veto" => "[execute] Error: blocked by guardrail: nope",
+          "a hook's deny" => deny_output("execute", verdict.deny!('"johndeo" in the command is 1 edit away',
+                                                                  source: "hook known_names, bundle known-names",
+                                                                  advice: 'Retry with "johndoe".')),
+          "a rule's deny" => deny_output("execute", verdict.deny!("rm -rf", rule: "no-rm", source: "config", decided_by: "rule")),
+          "the user's decline" => deny_output("execute", verdict.ask!("rm -rf", rule: "ask-rm", decided_by: "rule")
+                                                                .settle!(:deny, decided_by: "user", note: "The user declined this call: \"not now\".")),
+          "a cancelled approval" => deny_output("write", verdict.ask!("outside the repo", decided_by: "rule")
+                                                                .settle!(:deny, decided_by: "user", note: "The approval was cancelled.")),
+          "a stopped turn (core)" => deny_output("execute", verdict.deny!("the turn was stopped", decided_by: "core")),
+          "no one to approve (core)" => deny_output("execute", verdict.ask!("rm -rf", decided_by: "rule")
+                                                                      .settle!(:deny, decided_by: "no one", note: "No one to approve it."))
+        }
+      end
+
+      it "is not a failed step: no steer, no turn-end line; a real failure after it still steers once" do
+        expect(denies.values).to all(match(/\A\[(execute|write)\] Error: \S/))
+        denies.each do |what, output|
+          ctx.notices.clear
+          p = plugin
+          fire(p, :before_turn, prompt: "release")
+          read_skill(p)
+          run(p, output[/\A\[(\w+)\]/, 1], output)
+          expect(steered).to be_empty, "#{what} steered: #{output}"
+          fire(p, :after_turn, status: "completed")
+          expect(ctx.notices).to be_empty, "#{what} left a turn-end line: #{output}"
+        end
+
+        p = plugin
+        fire(p, :before_turn, prompt: "release")
+        read_skill(p)
+        denies.each_value { |output| run(p, output[/\A\[(\w+)\]/, 1], output) }
+        run(p, "execute", "[execute]\nstderr:\nboom\nexit: 1")
+        run(p, "read", "[read] Error: file not found")
+        expect(steered.size).to eq(1)
+        fire(p, :after_turn, status: "completed")
+        expect(ctx.notices.map(&:first)).to eq(["skill release was followed, a step failed, the skill wasn't updated"])
+      end
+
+      it "counts the phrase in a command's own output (not after the first line's Error:) as a failure" do
+        p = plugin
+        read_skill(p)
+        run(p, "execute", "[execute]\nstdout:\nblocked by guardrail: denied by guardrail (x): y\nexit: 1")
+        expect(steered.size).to eq(1)
+      end
     end
 
     describe "a skill changed by another tool (an execute's sed)" do
