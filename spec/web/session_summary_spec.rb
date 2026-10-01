@@ -31,7 +31,7 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       s.pending_question = { id: "q1", question: "Which?", header: "Pick" }
       s.last_turn = { "outcome" => "completed", "ended_at" => "t", "seconds" => 11.0, "origin" => "client" }
 
-      owner = { "kind" => "worker", "pid" => 1 }
+      owner = Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1)
 
       json = described_class.build(s, owner: owner, session_dir: session_dir(s))
 
@@ -59,7 +59,7 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       dir = session_dir(s)
       FileUtils.mkdir_p(dir)
       File.write(File.join(dir, "pending_card.json"), '{"id":"check-in-1","bundle":"check-in"}')
-      owner = { "kind" => "worker", "pid" => 1 }
+      owner = Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1)
       expect(described_class.build(s, owner: owner, session_dir: dir)[:pending_card]).to be_nil # no Bridge sidecar
       File.write(File.join(dir, "bridge.json"), '{"port":1}')
       expect(described_class.build(s, owner: owner, session_dir: dir)[:pending_card]).to eq(id: "check-in-1", bundle: "check-in")
@@ -74,16 +74,16 @@ RSpec.describe Samagotchi::Web::SessionSummary do
     end
 
     it "trusts 'running' while an owner holds the session" do
-      expect(described_class.displayed_status(session(status: "running"), owner: { "kind" => "worker" })).to eq("running")
+      expect(described_class.displayed_status(session(status: "running"), owner: Samagotchi::OwnerLock::Owner.new(kind: "worker"))).to eq("running")
     end
 
     it "leaves every other status alone, owner or not" do
       expect(described_class.displayed_status(session(status: "idle"), owner: nil)).to eq("idle")
-      expect(described_class.displayed_status(session(status: "stopped"), owner: { "kind" => "tui" })).to eq("stopped")
+      expect(described_class.displayed_status(session(status: "stopped"), owner: Samagotchi::OwnerLock::Owner.new(kind: "tui"))).to eq("stopped")
     end
 
     it "takes the live worker's snapshot status over the file" do
-      expect(described_class.displayed_status(session(status: "idle"), { "status" => "running" }, owner: { "kind" => "worker" }))
+      expect(described_class.displayed_status(session(status: "idle"), { "status" => "running" }, owner: Samagotchi::OwnerLock::Owner.new(kind: "worker")))
         .to eq("running")
     end
   end
@@ -126,14 +126,14 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       s = session(status: "running")
 
       expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(status: "idle", owner: nil)
-      expect(described_class.build(s, owner: { "kind" => "tui", "pid" => 1 }, session_dir: session_dir(s)))
+      expect(described_class.build(s, owner: Samagotchi::OwnerLock::Owner.new(kind: "tui", pid: 1), session_dir: session_dir(s)))
         .to include(status: "running", owner: "tui")
     end
 
     it "takes an explicit status as given (the session view has the worker's snapshot)" do
       s = session(status: "running")
 
-      expect(described_class.build(s, status: "idle", owner: { "kind" => "worker" }, session_dir: session_dir(s)))
+      expect(described_class.build(s, status: "idle", owner: Samagotchi::OwnerLock::Owner.new(kind: "worker"), session_dir: session_dir(s)))
         .to include(status: "idle", owner: "worker")
     end
 
@@ -143,7 +143,7 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       File.write(File.join(session_dir(s), "bridge.json"), JSON.generate("port" => 1234))
 
       expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(bridge_up: false)
-      expect(described_class.build(s, owner: { "kind" => "worker" }, session_dir: session_dir(s))).to include(bridge_up: true)
+      expect(described_class.build(s, owner: Samagotchi::OwnerLock::Owner.new(kind: "worker"), session_dir: session_dir(s))).to include(bridge_up: true)
     end
 
     it "gives the recap's preview from the session folder" do

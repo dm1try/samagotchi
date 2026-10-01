@@ -18,7 +18,7 @@ module Samagotchi
       module_function
 
       # @param session [Session] a saved session (messages may be empty)
-      # @param owner [Hash, nil] SessionManager.session_owner's answer; its
+      # @param owner [OwnerLock::Owner, nil] SessionManager.session_owner's; its
       #   kind is shown as `owner`
       # @param session_dir [String] the session's folder (recap.json, bridge.json)
       # @param status [String] the turn state to show; by default
@@ -48,7 +48,7 @@ module Samagotchi
           # The session that delegated this one (the `delegate` tool), else nil.
           parent_id: session.respond_to?(:parent_id) ? session.parent_id : nil,
           first_preview: first_preview_for(session),
-          owner: owner&.fetch("kind", nil),
+          owner: owner&.kind,
           # The saved recap's first sentence, for the session card.
           recap: RecapStore.preview(session_dir),
           # How full the context was after the last turn (%), or nil.

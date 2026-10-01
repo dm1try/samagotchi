@@ -360,9 +360,9 @@ module Samagotchi
       @owner_lock = OwnerLock.acquire(session_dir, kind: "tui", wait: 1.0)
       return @owner_lock if @owner_lock
 
-      owner = OwnerLock.owner(session_dir) || {}
-      where = owner["kind"] == "tui" ? "another chi" : "a `chi web` worker"
-      raise SessionBusy, "Session #{session_id} is open in #{where} (pid #{owner["pid"] || "unknown"}). " \
+      owner = OwnerLock.owner(session_dir)
+      where = owner&.tui? ? "another chi" : "a `chi web` worker"
+      raise SessionBusy, "Session #{session_id} is open in #{where} (pid #{owner&.pid || "unknown"}). " \
                          "Close it there first."
     end
 

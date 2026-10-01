@@ -126,7 +126,7 @@ module Samagotchi
     def deliver(id, text, source)
       short = id[0, 8]
       owner = SessionManager.session_owner(id, state_dir: @state_dir)
-      if owner && owner["kind"] == "tui"
+      if owner&.tui?
         @stdout.puts("#{short}  refused: it is open in a chi REPL; notes need attached mode")
         return false
       end

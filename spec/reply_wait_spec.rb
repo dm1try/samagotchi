@@ -138,7 +138,7 @@ RSpec.describe Samagotchi::ReplyWait do
     allow(Samagotchi::SessionManager).to receive(:session_owner) do
       looks += 1
       write_reply("came back") if looks == 5
-      looks > 2 ? { "pid" => 1 } : nil
+      looks > 2 ? Samagotchi::OwnerLock::Owner.new(pid: 1) : nil
     end
     expect(wait(owner_grace: 1).text).to eq("came back")
     expect(looks).to be >= 5

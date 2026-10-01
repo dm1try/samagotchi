@@ -34,7 +34,7 @@ RSpec.describe Samagotchi::OwnerLock do
     lock = described_class.acquire(dir, kind: "tui")
 
     expect(lock).not_to be_nil
-    expect(described_class.owner(dir)).to include("pid" => Process.pid, "kind" => "tui")
+    expect(described_class.owner(dir)).to have_attributes(pid: Process.pid, kind: "tui")
 
     lock.release
     expect(described_class.owner(dir)).to be_nil
@@ -48,9 +48,9 @@ RSpec.describe Samagotchi::OwnerLock do
     pid, release = hold_in_child(kind: "worker")
 
     expect(described_class.acquire(dir, kind: "worker", wait: 0.3)).to be_nil
-    expect(described_class.owner(dir)).to include("pid" => pid, "kind" => "worker")
+    expect(described_class.owner(dir)).to have_attributes(pid: pid, kind: "worker")
     # Probing again still sees it held: a probe never releases the owner's lock.
-    expect(described_class.owner(dir)).to include("kind" => "worker")
+    expect(described_class.owner(dir)).to have_attributes(kind: "worker")
 
     release.close
     Process.wait(pid)
@@ -60,7 +60,7 @@ RSpec.describe Samagotchi::OwnerLock do
   it "conflicts within one process too (a second open file description)" do
     first = described_class.acquire(dir, kind: "tui")
     expect(described_class.acquire(dir, kind: "worker", wait: 0)).to be_nil
-    expect(described_class.owner(dir)).to include("kind" => "tui")
+    expect(described_class.owner(dir)).to have_attributes(kind: "tui")
     first.release
   end
 

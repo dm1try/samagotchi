@@ -824,8 +824,7 @@ module Samagotchi
         port && BridgeClient.new(session_id: id, port: port, host: DEFAULT_HOST)
       end
 
-      # The process holding the session: {"pid", "kind" => "worker"|"tui"}, or
-      # nil. A worker always runs a Bridge; a TUI (plain `chi`) doesn't share.
+      # The process holding the session (an OwnerLock::Owner), or nil. A worker always runs a Bridge; a TUI (plain `chi`) doesn't share.
       def session_owner(id)
         return nil unless @manager.respond_to?(:session_owner)
 
@@ -1113,7 +1112,7 @@ module Samagotchi
         SessionSummary.displayed_status(session, snapshot, owner: owner)
       end
 
-      # @param owner [Hash, nil] #session_owner; its kind is shown as `owner`
+      # @param owner [OwnerLock::Owner, nil] #session_owner; its kind is shown as `owner`
       def session_to_json(s, status: s.status, owner: nil)
         SessionSummary.build(s, status: status, owner: owner,
                                 session_dir: @session_class.session_dir(s.id, state_dir: default_state_dir))

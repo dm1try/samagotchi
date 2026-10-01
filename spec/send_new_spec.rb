@@ -84,7 +84,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
   let(:out) { StringIO.new }
   let(:err) { StringIO.new }
   let(:threads) { [] }
-  let(:owner) { [{ "pid" => 1, "kind" => "worker" }] }
+  let(:owner) { [Samagotchi::OwnerLock::Owner.new(pid: 1, kind: "worker")] }
   let(:delivered) { [] }
 
   before do

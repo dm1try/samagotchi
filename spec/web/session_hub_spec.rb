@@ -97,7 +97,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
     end
 
     it "emits a session event when a question opens and when it closes" do
-      manager = double("manager", session_owner: { "kind" => "worker", "pid" => 1 }, retention_sweep_if_due: nil)
+      manager = double("manager", session_owner: Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1), retention_sweep_if_due: nil)
       hub = described_class.new(state_dir: state_dir, manager: manager)
       hub.subscribe(->(event) { events << event })
       a = save_session

@@ -46,7 +46,7 @@ RSpec.describe "TerminalUI session ownership" do
   it "owns a resumed session for as long as it lives" do
     ui = Samagotchi::TerminalUI.new(client: client, session_id: session.id)
 
-    expect(Samagotchi::OwnerLock.owner(session_dir)).to include("kind" => "tui", "pid" => Process.pid)
+    expect(Samagotchi::OwnerLock.owner(session_dir)).to have_attributes(kind: "tui", pid: Process.pid)
     expect(Samagotchi::OwnerLock.acquire(session_dir, kind: "worker", wait: 0)).to be_nil
     expect(ui).to be_a(Samagotchi::TerminalUI)
   end

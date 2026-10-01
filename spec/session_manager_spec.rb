@@ -710,7 +710,7 @@ RSpec.describe Samagotchi::SessionManager do
         .to raise_error(described_class::OwnedByTUI)
       expect(Process).not_to have_received(:spawn)
       expect(Process).not_to have_received(:kill)
-      expect(described_class.session_owner(session.id, state_dir: tmpdir)).to include("kind" => "tui")
+      expect(described_class.session_owner(session.id, state_dir: tmpdir)).to have_attributes(kind: "tui")
     end
 
     it "lets only one of two contending workers run the session" do
@@ -778,7 +778,7 @@ RSpec.describe Samagotchi::SessionManager do
         described_class.run_session_loop(session.id, state_dir: tmpdir, poll_interval: 0.01)
       }.to raise_error(SystemExit)
 
-      expect(owner_seen).to include("kind" => "worker", "pid" => Process.pid)
+      expect(owner_seen).to have_attributes(kind: "worker", pid: Process.pid)
       expect(pid_seen).to be(false)
       # Released on the way out.
       expect(Samagotchi::OwnerLock.owner(session_dir)).to be_nil
@@ -1157,7 +1157,7 @@ RSpec.describe Samagotchi::SessionManager do
       it "is kept when another owner took it after the worker left" do
         allow(described_class).to receive(:session_owner).and_call_original
         allow(described_class).to receive(:session_owner).with(session.id, state_dir: tmpdir)
-                                                         .and_return({ "kind" => "worker", "pid" => 1 })
+                                                         .and_return(Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1))
 
         run_worker
 

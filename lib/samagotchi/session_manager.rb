@@ -233,7 +233,7 @@ module Samagotchi
                          .reject { |s| (!include_tests && s.test_run) || s.id == exclude }
                          .select { |s| root.nil? || in_folder?(s.working_directory, root) }
                          .filter_map do |s|
-        owner = session_owner(s.id, state_dir: sd)&.fetch("kind", nil)
+        owner = session_owner(s.id, state_dir: sd)&.kind
         owned = owner == "worker"
         next if live && !owned
 
@@ -277,7 +277,7 @@ module Samagotchi
         owner = owners[sid]
         next unless owner
 
-        raise OwnedByTUI, sid if owner["kind"] == "tui"
+        raise OwnedByTUI, sid if owner.tui?
         next unless Session.load(sid, state_dir: sd).status == Session::STATUS_RUNNING
 
         raise ArchiveRefused.new(id, sid == id ? :busy : :busy_child, busy_id: sid)
@@ -374,9 +374,7 @@ module Samagotchi
     def self.resume_session(session_id, state_dir: nil)
       sd = state_dir || Session.default_state_dir
       session = Session.load(session_id, state_dir: sd)
-      owner = session_owner(session.id, state_dir: sd)
-      raise OwnedByTUI, session.id if owner && owner["kind"] == "tui"
-      return session if owner
+      return session if refuse_tui!(session.id, state_dir: sd)
 
       # status is turn state, not liveness: a new worker runs no turn yet,
       # and must not find the session stopped (it would exit).
@@ -404,13 +402,12 @@ module Samagotchi
     # @raise [OwnedByTUI] when the interactive TUI owns the session
     def self.stop_session(session_id, state_dir: nil, wait: nil)
       sd = state_dir || Session.default_state_dir
-      owner = session_owner(session_id, state_dir: sd)
-      raise OwnedByTUI, session_id if owner && owner["kind"] == "tui"
+      owner = refuse_tui!(session_id, state_dir: sd)
 
       cancel_running_turn(session_id, state_dir: sd)
       # Mark first: a worker that has not taken the lock yet sees it and exits.
       Session.mark_stopped(session_id, state_dir: sd)
-      pid = owner && owner["pid"].to_i
+      pid = owner&.pid.to_i
       begin
         Process.kill("TERM", pid) if pid && pid > 0
       rescue Errno::ESRCH
@@ -545,9 +542,8 @@ module Samagotchi
       dir = Session.session_dir(id, state_dir: sd)
       raise ArgumentError, "no session #{given}" unless File.exist?(path) || Dir.exist?(dir)
 
-      owner = session_owner(id, state_dir: sd)
+      owner = refuse_tui!(id, state_dir: sd)
       if owner
-        raise OwnedByTUI, id if owner["kind"] == "tui"
         raise DeleteRefused.new(id, :worker_running) unless stop
         raise DeleteRefused.new(id, :still_stopping) unless stop_session(id, state_dir: sd, wait: wait)
       end
@@ -781,7 +777,7 @@ module Samagotchi
       owner = delivery_owner(manager, session_id, state_dir)
       # A TUI that took the session between the resume and the write never
       # reads input files; a later worker would replay this one.
-      if owner&.fetch("kind", nil) == "tui"
+      if owner&.tui?
         FileUtils.rm_f(path) if path.is_a?(String)
         raise OwnedByTUI, session_id
       end
@@ -815,9 +811,20 @@ module Samagotchi
     # The session's live owner: the OwnerLock holder. The pid file workers
     # once wrote is never read: a stale one whose pid the OS reused would
     # make a session look owned.
-    # @return [Hash, nil] {"pid", "kind" ("worker"/"tui"), ...} or nil
+    # @return [OwnerLock::Owner, nil]
     def self.session_owner(session_id, state_dir: nil)
       OwnerLock.owner(Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir))
+    end
+
+    # The session's owner (#session_owner), unless it is the interactive
+    # TUI, which nothing else may resume, stop or delete.
+    # @return [OwnerLock::Owner, nil]
+    # @raise [OwnedByTUI]
+    def self.refuse_tui!(session_id, state_dir: nil)
+      owner = session_owner(session_id, state_dir: state_dir)
+      raise OwnedByTUI, session_id if owner&.tui?
+
+      owner
     end
   end
 end

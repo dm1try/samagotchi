@@ -30,7 +30,7 @@ module Samagotchi
         return "Error: #{id[0, 8]} is this session; send_note is for other sessions" if id == peers.session_id
 
         owner = SessionManager.session_owner(id, state_dir: peers.state_dir)
-        if owner && owner["kind"] == "tui"
+        if owner&.tui?
           return "Error: session #{id[0, 8]} is open in a chi REPL, which can't take notes"
         end
 

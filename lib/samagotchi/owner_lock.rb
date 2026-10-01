@@ -20,6 +20,18 @@ module Samagotchi
     RETRY_INTERVAL = 0.05
     OWNER_READ_ATTEMPTS = 10
 
+    # Who holds the lock, as .owner reads it from the lock file. Its fields
+    # may be nil for a moment right after acquisition.
+    # kind: "worker" or "tui"; pid as written (an Integer).
+    Owner = Data.define(:pid, :kind, :started_at) do
+      def initialize(pid: nil, kind: nil, started_at: nil) = super
+
+      # The interactive TUI's: it reads no input files and takes no notes.
+      def tui? = kind == "tui"
+
+      def worker? = kind == "worker"
+    end
+
     # Take the lock, retrying for up to +wait+ seconds (another process's
     # #owner probe holds it for a moment). On success the owner's pid and kind
     # are written into the lock file for #owner to report.
@@ -42,8 +54,7 @@ module Samagotchi
 
     # The current owner, read without disturbing it.
     # @param session_dir [String]
-    # @return [Hash, nil] {"pid", "kind", "started_at"} while held (values may
-    #   be missing for a moment right after acquisition), nil when free
+    # @return [Owner, nil] while held, nil when free
     def self.owner(session_dir)
       File.open(path(session_dir), File::RDONLY) do |file|
         if file.flock(File::LOCK_SH | File::LOCK_NB)
@@ -59,7 +70,7 @@ module Samagotchi
 
           sleep(RETRY_INTERVAL / 5)
         end
-        data
+        Owner.new(pid: data["pid"], kind: data["kind"], started_at: data["started_at"])
       end
     rescue Errno::ENOENT
       nil

@@ -304,7 +304,7 @@ module Samagotchi
       def live_stamp(owner, dir)
         return nil unless owner
 
-        { pid: owner["pid"], kind: owner["kind"], bridge_started_at: bridge_started_at(dir) }
+        { pid: owner.pid, kind: owner.kind, bridge_started_at: bridge_started_at(dir) }
       end
 
       def bridge_started_at(dir)
