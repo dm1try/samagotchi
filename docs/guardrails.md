@@ -126,6 +126,12 @@ All the fields a rule gives must match. Absolute and `**/` globs match the
 resolved path; other globs match the path relative to the repo root. Paths
 resolve the way the tools resolve them (against the cwd; `~` expanded).
 
+`outside_repo` leaves out a memory's file: a `*.md` right in the project or
+system memories folder (not `index.md`, not a hidden file). `write`/`edit`
+there is what `memory_write` does unasked, and the model is told to `edit` a
+memory for a small change. The memories folder's `index.md`, `.bundles/`, and
+the rest of chi's config folder still count as outside.
+
 To switch off single rules (a bundle's, say) without editing its files, list
 them under `disable:`. A plain id switches off every rule with that id; `bundle:id`
 only that bundle's:

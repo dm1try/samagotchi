@@ -330,6 +330,17 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(run({ name: "sneaky", path: path })[:diff]).to include(added: 1, removed: 1)
     end
 
+    it "refreshes a memory's index line after a write/edit that changed its file, not after one that didn't" do
+      File.write(path, "a\n")
+      allow(Samagotchi::MemoryBundle::IndexSync).to receive(:refresh)
+      run({ name: "edit", path: path, content: "<old>zzz</old><new>B</new>" })
+      expect(Samagotchi::MemoryBundle::IndexSync).not_to have_received(:refresh)
+      run({ name: "edit", path: path, content: "<old>a</old><new>b</new>" })
+      run({ name: "write", path: path("new.md"), content: "x\n" })
+      expect(Samagotchi::MemoryBundle::IndexSync).to have_received(:refresh).with(path)
+      expect(Samagotchi::MemoryBundle::IndexSync).to have_received(:refresh).with(path("new.md"))
+    end
+
     it "is absent for a denied edit and for other tools" do
       File.write(path, "a\n")
       hooks.register(:before_tool_call) { |e| e[:blocked] = true if e[:call][:name] == "edit" }

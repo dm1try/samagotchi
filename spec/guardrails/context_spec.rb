@@ -123,6 +123,17 @@ RSpec.describe Samagotchi::Guardrails::Targets do
     expect(targets(name: "write", path: "#{@dir}-sibling/x")).to be_outside_repo
   end
 
+  it "doesn't count a memory's file as leaving the repo (write/edit there is what memory_write does)" do
+    project = Samagotchi::Tools::MemoryRead.memories_dir("project")
+    system = Samagotchi::Tools::MemoryRead.memories_dir("system")
+    expect(targets(name: "edit", path: File.join(project, "skill_release.md"))).not_to be_outside_repo
+    expect(targets(name: "write", path: File.join(system, "notes.qwen.md"))).not_to be_outside_repo
+    [File.join(project, "index.md"), File.join(system, ".bundles", "x", "manifest.md"),
+     File.join(system, "notes.txt"), File.join(File.dirname(system), "config.yml")].each do |path|
+      expect(targets(name: "write", path: path)).to be_outside_repo, path
+    end
+  end
+
   it "uses the cwd as the boundary outside a repo" do
     Dir.mktmpdir("guard-norepo") do |plain|
       plain = File.realpath(plain)

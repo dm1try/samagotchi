@@ -23,6 +23,8 @@ Memory convention:
   System scope:  ~/.config/samagotchi/memories/ (cross-project)
   memory_read accepts optional scope (project|system).
   memory_write requires explicit scope and entry name.
+  For a small change to an existing memory, `edit` its file (<scope dir>/<name>.md)
+  instead of rewriting it all with memory_write; its index line is refreshed either way.
   User prompts may contain memory shorthand like #entry_name.
   Treat #entry_name as a memory reference, not as a file path.
   If shorthand includes a scope prefix, such as #project/entry_name or #system/entry_name,

@@ -6,7 +6,7 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 
 - Plain Markdown files (`*.md`) stored outside the repo so they persist.
 - Loaded at startup into your system prompt as **Project memories** and **System memories** indexes (blank-name `memory_read`).
-- You manage them via tools, not shell file ops. On write, `index.md` is auto-maintained — do not edit it manually.
+- You manage them via tools (`memory_write`, or `edit` on a memory's file for a small change), not shell file ops. `index.md` is auto-maintained on every write — do not edit it manually.
 
 ## Scopes — where files live
 
@@ -16,7 +16,7 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 | `project` | `<system dir>/projects/<basename>_<hash>/` (`MemoryPaths.project_dir`: `basename(root)` + 8-char `MD5(root)`, root = `MemoryPaths.project_root`) | Repo-specific conventions, workflow, stack decisions |
 
 - The project root is the git repository: its common git dir, which every linked worktree shares. All worktrees and subdirectories of one repository share one project folder; the system prompt shows the resolved root and folder. Outside a repository the root is the working directory. A separate clone is a different project.
-- `index.md` lives in each scope dir and contains auto-managed lines like `- **name** · scope · date · bytes — description`. Your free-form sections in `index.md` are preserved but managed lines are owned by `memory_write`.
+- `index.md` lives in each scope dir and contains auto-managed lines like `- **name** · scope · date · bytes — description`. Your free-form sections in `index.md` are preserved but managed lines are owned by `memory_write` (and refreshed when `write`/`edit` change a memory's file).
 
 ## Tools you have
 
@@ -34,6 +34,7 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 - `name` is the entry name **without** `.md` (the tool adds it). Use `name`, **not** `path` — `path` belongs to the file tools and is ignored here. `name: "index"` is a verbatim write to `index.md` (no auto-index update) — rarely needed.
 - `scope` is **required** — never omit. Prefer `project` for repo conventions, `system` for user preferences.
 - `description` is appended to the managed `index.md` line (`— description`). Replaces previous description if given; otherwise preserves existing one.
+- For a small change to an existing memory (a step, a line), `edit` its file instead of rewriting it all: the path is in `memory_write`'s result and the scope dirs are in the prompt. Its index line is refreshed either way.
 - On success returns `Memory 'name' saved to <scope> scope (N bytes). File written: <path> Index line refreshed automatically.` — confirm `bytes` and `scope`; the index needs nothing from you.
 
 **When to write:**
@@ -67,7 +68,7 @@ Shape (plain Markdown, no frontmatter):
 - **Scope**: `project` by default; `system` when the user asks, or when the skill is clearly not about this project.
 - **Saving**: on a request to keep how something was done ("let's memorize this", "save this as a skill", `/skill save`), write it at once, then show it briefly. On an ambiguous one ("I like how we did that") you may ask whether to save it.
 - **Following**: before a task a `skill_*` index line matches, `memory_read` it and follow its steps. A step that fails or names a missing file or command: find out why (look around, read nearby READMEs) before skipping it; a step that says stop means stop and ask. When anything looks unexpected (a check fails, output differs from what a step says, a warning the skill doesn't mention): stop, don't improvise a fix, tell the user what you saw and ask. Read each command's whole output, including warnings, before the next step.
-- **Updating**: when a step turned out different, rewrite the skill with `memory_write` in the same turn: fix those steps, keep the rest as it was, add a dated Changelog line. No confirmation needed.
+- **Updating**: when a step turned out different, update the skill in the same turn: `edit` those steps in its file (`<scope dir>/skill_<name>.md`), or rewrite it with `memory_write`; keep the rest as it was, add a dated Changelog line. No confirmation needed.
 - **The `skills` bundle** (`chi bundle install skills`, optional) adds `/skill save [name] [--system]`, `/skill list`, `/skill show <name>`, `/skill diff <name> [N]`; it keeps older versions and shows a short diff line after each update.
 
 ## Memory Bundles — shareable packs

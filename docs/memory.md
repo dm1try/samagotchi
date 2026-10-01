@@ -12,7 +12,8 @@ Tool behavior:
 - `memory_read`: `scope` is optional.
 - If `scope` is provided (`project` or `system`), only that scope is read.
 - If `scope` is omitted, read falls back from project to system.
-- `memory_write`: `scope` is required (`project` or `system`). The entry name is passed via the `name` parameter (not `path` — the file tools use `path`). On success, the return value includes the full file path, so you can use the `edit` tool directly for targeted updates.
+- `memory_write`: `scope` is required (`project` or `system`). The entry name is passed via the `name` parameter (not `path` — the file tools use `path`). On success, the return value includes the full file path. For a small change to an existing memory (a step, a line) the model is told to `edit` that file rather than rewrite it all with `memory_write`.
+- `write`/`edit` that change a `*.md` right in a scope dir refresh its managed `index.md` line (date, bytes; the description is kept), as `memory_write` does. A memory created with `write` gets a line with no description; any other `.md` written there gets a line too. Model overlays (`<name>.<key>.md` next to `<name>.md`), files in another project's folder and files changed by `execute` are left out.
 
 ## Model-Specific Memory Overlays
 
@@ -51,8 +52,9 @@ chi is told about skills by the system bundle (`identity.md`, every turn, and
   looks unexpected on the way (a failing check, a warning the skill doesn't
   mention), chi stops, says what it saw and asks how to go on.
 - **Updating.** When a step turned out different (a renamed script, an extra
-  step), chi fixes the skill in the same turn: those steps changed, the rest
-  kept, a dated Changelog line added. No confirmation.
+  step), chi fixes the skill in the same turn: those steps changed (with `edit`
+  on its file, so a small fix doesn't resend the whole skill), the rest kept, a
+  dated Changelog line added. No confirmation.
 
 A skill is plain Markdown, no frontmatter:
 

@@ -6,6 +6,7 @@ require_relative "vision_context"
 require_relative "log"
 require_relative "edit_preview"
 require_relative "tools/tool_path"
+require_relative "memory_bundle/index_sync"
 
 module Samagotchi
   # The single per-call path both loops use: the tool_call_started and
@@ -67,6 +68,7 @@ module Samagotchi
       before = verdict.deny? ? NOT_AN_EDIT : file_before(call)
       result = verdict.deny? ? denied(call, verdict) : dispatch(call)
       diff = file_change(call, before)
+      refresh_memory_index(call) if diff
       result = approved(result, verdict) if verdict.allow? && verdict.decided_by
       result, images = attach_images(call, result) if result[:images]
 
@@ -115,6 +117,12 @@ module Samagotchi
     rescue StandardError => e
       Log.warn(:turn, "edit_diff_failed", tool: call[:name], error: "#{e.class}: #{e.message}")
       nil
+    end
+
+    # A write/edit that changed a memory's file refreshes its index line,
+    # as memory_write does (MemoryBundle::IndexSync; a no-op elsewhere).
+    def refresh_memory_index(call)
+      MemoryBundle::IndexSync.refresh(Tools::ToolPath.normalize(call[:path]))
     end
 
     # A tool's output can hold bytes that aren't UTF-8 (`printf '\xff'`, a

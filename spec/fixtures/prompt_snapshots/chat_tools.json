@@ -142,7 +142,7 @@
     "type": "function",
     "function": {
       "name": "memory_write",
-      "description": "Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`); each scope's index.md is auto-maintained (one managed line per entry); use name \"index\" to write the index file verbatim. If the user asks to save guidance for the current model only, pass current_model_only: true to save a model-specific overlay.",
+      "description": "Write or update a memory entry in scoped memories. Scope is required: project or system. Use the `name` parameter for the entry name (use `name`, NOT `path` — the file tools use `path`); each scope's index.md is auto-maintained (one managed line per entry); use name \"index\" to write the index file verbatim. For a small change to an existing memory (a step, a line), `edit` its file (<scope dir>/<name>.md) instead of rewriting it all; its index line is refreshed either way. If the user asks to save guidance for the current model only, pass current_model_only: true to save a model-specific overlay.",
       "parameters": {
         "type": "object",
         "properties": {

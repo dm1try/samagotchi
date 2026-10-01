@@ -4,6 +4,7 @@ require_relative "../tools/tool_path"
 require_relative "../tools/memory"
 require_relative "../log"
 require_relative "model_size"
+require_relative "../memory_bundle/index_sync"
 
 module Samagotchi
   module Guardrails
@@ -123,9 +124,14 @@ module Samagotchi
       end
 
       # Whether any path is outside the repo root (the cwd outside a repo).
+      # A memory's file doesn't count (MemoryBundle::IndexSync.memory_scope):
+      # write/edit there is what memory_write does, unasked; index.md, the
+      # bundles dir and the rest of chi's config dir still count.
       def outside_repo?
         root = @repo_root || @cwd
-        @paths.any? { |p| p != root && !p.start_with?(File.join(root, "")) }
+        @paths.any? do |p|
+          p != root && !p.start_with?(File.join(root, "")) && !MemoryBundle::IndexSync.memory_scope(p)
+        end
       end
 
       # The hook event's targets: hash.
