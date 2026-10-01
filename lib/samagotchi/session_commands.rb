@@ -30,7 +30,6 @@ module Samagotchi
     ROLLBACK_COMMAND = "!rollback"
     CONTINUE_COMMAND = TurnFlow::CONTINUE_COMMAND
     SHELL_BANG_PREFIX = "!"
-    RESERVED_MODEL_ARGS = %w[clear default none off].freeze
     ALIAS_USAGE = "usage /model <model> --alias <name> [--default]"
     # /exit --delete: delete the session on the way out.
     EXIT_DELETE_FLAG = "--delete"
@@ -355,10 +354,10 @@ module Samagotchi
 
       if alias_name
         return ["--alias requires a model name: #{ALIAS_USAGE}", false] if arg.empty?
-        return ["--alias cannot be combined with clear/default/none/off", false] if RESERVED_MODEL_ARGS.include?(arg.downcase)
+        return ["--alias cannot be combined with clear/default/none/off", false] if ConfigFile::RESERVED_MODEL_ALIASES.include?(arg.downcase)
 
         # Validate the alias before switching, so a bad one changes nothing.
-        invalid = alias_name_error(alias_name, arg)
+        invalid = ConfigFile.model_alias_error(alias_name, arg)
         return ["invalid alias: #{invalid}", false] if invalid
 
         switch_model(arg, persist_default: persist_default)
@@ -378,7 +377,7 @@ module Samagotchi
       else
         return ["--default requires a model name: usage /model --default <name> or /model <name> [--default]", false] if arg.empty?
 
-        if RESERVED_MODEL_ARGS.include?(arg.downcase)
+        if ConfigFile::RESERVED_MODEL_ALIASES.include?(arg.downcase)
           return ["--default cannot be combined with clear/default/none/off", false] if persist_default
 
           switch_model(@default_model)
@@ -392,23 +391,6 @@ module Samagotchi
           ["runtime model set to #{model_name}#{model_note}", true]
         end
       end
-    end
-
-    # Mirrors ConfigFile.write_model_alias!'s checks without writing.
-    # @return [String, nil] what is wrong with the alias name
-    def alias_name_error(alias_name, target)
-      ak = alias_name.strip
-      return "alias name is required" if ak.empty?
-
-      lk = ak.downcase
-      return "alias name '#{ak}' is reserved" if RESERVED_MODEL_ARGS.include?(lk)
-      return "alias name must not contain whitespace" if ak.match?(/\s/)
-      return "alias name must not start with '-'" if ak.start_with?("-")
-      return "alias name must not contain '/'" if ak.include?("/")
-      return "alias name must match /[a-z0-9][a-z0-9._-]*/i (got '#{ak}')" unless ak.match?(/\A[a-z0-9][a-z0-9._-]*\z/i)
-      return "alias must not point to itself" if lk == target.strip.downcase
-
-      nil
     end
 
     # Engine owns the switch (alias resolution, profile, kernel, client and

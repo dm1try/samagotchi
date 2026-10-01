@@ -987,24 +987,33 @@ module Samagotchi
       aliases.fetch(value.downcase, value)
     end
 
+    # Words /model takes as arguments (clear/default/none/off reset the
+    # runtime model), so no alias may be named after one.
     RESERVED_MODEL_ALIASES = %w[clear default none off].freeze
 
-    def write_model_alias!(alias_name, model_name, env: ENV, path: global_path(env: env))
+    # What is wrong with +alias_name+ as an alias for +target+, or nil.
+    def model_alias_error(alias_name, target)
       alias_key = alias_name.to_s.strip
-      raise ArgumentError, "alias name is required" if alias_key.empty?
-      raise ArgumentError, "model name is required" if model_name.to_s.strip.empty?
+      return "alias name is required" if alias_key.empty?
 
       lowered_key = alias_key.downcase
-      raise ArgumentError, "alias name '#{alias_key}' is reserved" if RESERVED_MODEL_ALIASES.include?(lowered_key)
-      raise ArgumentError, "alias name must not contain whitespace" if alias_key.match?(/\s/)
-      raise ArgumentError, "alias name must not start with '-'" if alias_key.start_with?("-")
-      raise ArgumentError, "alias name must not contain '/'" if alias_key.include?("/")
-      unless alias_key.match?(/\A[a-z0-9][a-z0-9._-]*\z/i)
-        raise ArgumentError, "alias name must match /[a-z0-9][a-z0-9._-]*/i (got '#{alias_key}')"
-      end
+      return "alias name '#{alias_key}' is reserved" if RESERVED_MODEL_ALIASES.include?(lowered_key)
+      return "alias name must not contain whitespace" if alias_key.match?(/\s/)
+      return "alias name must not start with '-'" if alias_key.start_with?("-")
+      return "alias name must not contain '/'" if alias_key.include?("/")
+      return "alias name must match /[a-z0-9][a-z0-9._-]*/i (got '#{alias_key}')" unless alias_key.match?(/\A[a-z0-9][a-z0-9._-]*\z/i)
+      return "alias must not point to itself" if lowered_key == target.to_s.strip.downcase
 
+      nil
+    end
+
+    def write_model_alias!(alias_name, model_name, env: ENV, path: global_path(env: env))
+      error = model_alias_error(alias_name, model_name)
+      raise ArgumentError, error if error
+      raise ArgumentError, "model name is required" if model_name.to_s.strip.empty?
+
+      lowered_key = alias_name.to_s.strip.downcase
       resolved_model = model_name.to_s.strip
-      raise ArgumentError, "alias must not point to itself" if lowered_key == resolved_model.downcase
 
       previous = model_aliases(env: env, path: path)[lowered_key]
       expected = deep_copy(read_yaml(env: env, path: path) || {})
