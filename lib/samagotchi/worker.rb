@@ -2,6 +2,7 @@
 
 require "fileutils"
 
+require_relative "events"
 require_relative "session"
 require_relative "session_inbox"
 require_relative "turn_note"
@@ -43,7 +44,6 @@ module Samagotchi
     # How much of a command's output goes into its :command_ran.
     COMMAND_OUTPUT_LIMIT = 4096
     BUSY_OUTPUT = "busy: wait for the turn to end"
-    TURN_END_EVENTS = %i[turn_completed turn_canceled turn_failed].freeze
     DEFAULT_MAX_ITERATIONS = 100
     NO_INTERRUPT_MAX_ITERATIONS = 1000
 
@@ -113,7 +113,7 @@ module Samagotchi
       # queued while that turn ran.
       @turn_end_seq = 0
       @engine.subscribe(observer: lambda { |event|
-        @turn_end_seq = event[:event_seq] if TURN_END_EVENTS.include?(event[:type])
+        @turn_end_seq = event[:event_seq] if Events::TURN_END.include?(event[:type])
       })
       # /model's default is the config's, as in the REPL; the Engine started
       # on the session's model.

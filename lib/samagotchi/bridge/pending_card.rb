@@ -3,6 +3,7 @@
 require "json"
 require "fileutils"
 require_relative "../atomic_file"
+require_relative "../events"
 
 module Samagotchi
   class Bridge
@@ -18,7 +19,6 @@ module Samagotchi
     # writes it, nor does a card between turns.
     class PendingCard
       FILE = "pending_card.json"
-      TURN_ENDS = %i[turn_completed turn_canceled turn_failed].freeze
 
       # @param session_dir [String] the session's folder
       # @return [Hash, nil] {id:, bundle:}, nil without a readable file
@@ -58,7 +58,7 @@ module Samagotchi
       def fold(event)
         case event[:type]
         when :card then card(event)
-        when *TURN_ENDS then remove
+        when *Events::TURN_END then remove
         end
       end
 

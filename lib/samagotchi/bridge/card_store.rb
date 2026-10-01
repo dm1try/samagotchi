@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../events"
+
 module Samagotchi
   class Bridge
     # The last cards (Engine#show_card), hook notices (:hook_notice) and
@@ -25,9 +27,6 @@ module Samagotchi
     # A failed turn leaves no prompt, so its cards stay before the next one.
     class CardStore
       CAPACITY = 20
-      # A failed turn's prompt goes back to the composer: no turn in the
-      # conversation.
-      TURN_ENDS = %i[turn_completed turn_canceled].freeze
 
       def initialize(capacity: CAPACITY)
         @capacity = capacity
@@ -79,7 +78,8 @@ module Samagotchi
         when :turn_failed
           @running = false
           settle_during(after_turn: false)
-        when *TURN_ENDS
+        # The turns that stay in the conversation.
+        when *Events::TURN_KEPT
           @running = false
           @turns_done += 1
           settle_during(after_turn: true)

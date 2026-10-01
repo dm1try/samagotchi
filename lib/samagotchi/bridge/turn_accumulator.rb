@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../events"
 require_relative "../kernel_loop"
 require_relative "../steer"
 require_relative "turn_notice"
@@ -15,8 +16,6 @@ module Samagotchi
     # its terminal event, the same event that brings its messages into the
     # session, so a snapshot shows a turn in exactly one of the two.
     class TurnAccumulator
-      TERMINAL_EVENTS = %i[turn_completed turn_canceled turn_failed].freeze
-
       def initialize(max_output_chars: KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS)
         @max_output_chars = max_output_chars
         @mutex = Mutex.new
@@ -127,7 +126,7 @@ module Samagotchi
         return unless @turn
 
         fold_turn_event(event)
-        if TERMINAL_EVENTS.include?(type)
+        if Events::TURN_END.include?(type)
           @turn = nil
           @merged_origins = []
         else
