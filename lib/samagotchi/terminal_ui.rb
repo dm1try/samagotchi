@@ -693,8 +693,8 @@ module Samagotchi
         sync_continue_slot(false)
         @surface.commit(QuestionSlot.continue_summary("(dropped: a reminder ran)", paint: method(:paint)))
       end
-      @surface.commit("reminder: #{names.join(", ")}")
-      hint = "reminder: #{names.join(", ")} · Ctrl-C cancels it"
+      @surface.commit(reminder_line(names))
+      hint = "#{reminder_line(names)} · Ctrl-C cancels it"
       @surface.set_slot(:hints, [color_output? ? paint(hint, 90) : hint])
       result = nil
       begin

@@ -50,9 +50,6 @@ module Samagotchi
       JOIN_ANSWER_LINES = 12
       JOIN_ANSWER_CHARS = 1200
 
-      # Prompt labels by the sender's client_id prefix.
-      CLIENT_LABELS = { "web" => "web", "tui" => "tui", "system" => "reminder", "delegate" => "delegate" }.freeze
-
       attr_reader :client_id
 
       # @return [String, nil] the model the worker's turns run on, as the
@@ -1077,39 +1074,6 @@ module Samagotchi
       end
 
       def reminder_origin?(origin) = origin[:client_id].to_s.start_with?("system:")
-
-      CONTEXT_NOTE_PREVIEW = 60
-
-      # "note from slack: <first line>", cut to one line.
-      def context_note_line(label, text)
-        lines = text.to_s.strip.split("\n")
-        first = lines.first.to_s
-        if first.length > CONTEXT_NOTE_PREVIEW
-          first = "#{first[0, CONTEXT_NOTE_PREVIEW - 1]}…"
-        elsif lines.size > 1
-          first += " …"
-        end
-        paint("note from #{label || "?"}: #{first}", 2)
-      end
-
-      def reminder_line(reminders)
-        names = Array(reminders).filter_map { |r| r.is_a?(Hash) ? r[:name] : r }
-        names.empty? ? "reminder" : "reminder: #{names.join(", ")}"
-      end
-
-      def prompt_line(client_id, prompt)
-        label = client_id ? CLIENT_LABELS.fetch(client_id.to_s.split(":", 2).first, "user") : "user"
-        "#{paint("#{label}>", 35)} #{prompt}"
-      end
-
-      # A tool call from the snapshot: it has no action text, only the tool.
-      def snapshot_tool_line(part)
-        params = part[:params].to_s.strip
-        params_suffix = params.empty? ? "" : " #{paint(params, 90)}"
-        status = part[:status].to_s
-        "#{paint('tool>', 36)} #{part[:tool]}#{params_suffix}: #{paint(status, status_color(status))}" \
-          "#{format_tool_image_suffix(part[:images])}#{format_tool_diff_suffix(part[:diff])}"
-      end
     end
   end
 end
