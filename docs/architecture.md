@@ -269,6 +269,11 @@ a hub; an `App.new` without one answers both routes `503 no_hub`.
 
 ## Model loops and adapters
 
+A model ref (`--model`, `/model`, `default.model`, an alias's target) is parsed
+by one pure resolver, `ModelRef.parse` (host prefix, alias), given the configured
+hosts and aliases; `HostRegistry` routes a name that names no host (its model
+index after `/models`) and builds the `ModelTarget`.
+
 Engine picks the loop from the effective model's host (`HostRegistry#resolve`):
 
 | Loop | Class | Host | Talks through |

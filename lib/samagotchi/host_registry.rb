@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "config"
+require_relative "model_ref"
 require_relative "client"
 require_relative "llm/openai_chat"
 
@@ -149,38 +150,14 @@ module Samagotchi
     end
 
     # Resolve model string (already alias-resolved, may be qualified) to a HostEntry.
-    # If qualified explicitly, return that host. If unqualified, try cached model index,
-    # else fallback to default host.
+    # If qualified explicitly (or through its alias), return that host. If
+    # unqualified, try cached model index, else fallback to default host.
     def host_for_model(raw_model)
-      host_ref, bare = parse_qualified_model(raw_model)
-      # If qualified, try to resolve alias on the bare part (small-box:small -> small-box:gemma-small)
-      if host_ref && bare
-        begin
-          aliases = ConfigFile.model_aliases
-          resolved = aliases.fetch(bare.downcase, bare)
-          bare = resolved if resolved != bare
-        rescue StandardError
-          nil
-        end
-        # parse_qualified_model names a host only when it is one of ours
-        return [find_entry(host_ref), bare]
-      end
-      # Unqualified: also try alias resolution for discovery (small -> gemma-small or small -> small-box:gemma-small)
-      begin
-        aliases = ConfigFile.model_aliases
-        resolved = aliases.fetch(bare.to_s.strip.downcase, bare)
-        if resolved != bare
-          # If alias points to a qualified ref, re-parse it
-          q_host, q_bare = parse_qualified_model(resolved)
-          if q_host
-            entry = find_entry(q_host)
-            return [entry, q_bare] if entry
-          end
-          bare = resolved
-        end
-      rescue StandardError
-        nil
-      end
+      ref = model_ref(raw_model)
+      # ModelRef names a host only when it is one of ours
+      return [find_entry(ref.host_name), ref.alias_resolved] if ref.host_name
+
+      bare = ref.alias_resolved
       bare_down = bare.to_s.strip.downcase
       # Try cached index (populated after list_all_models)
       idx = @mutex.synchronize { @model_index }
@@ -259,8 +236,7 @@ module Samagotchi
     # The model name without a known host prefix ("box:gemma" → "gemma").
     # Aliases are not applied here.
     def bare_name(full_ref)
-      _, bare = parse_qualified_model(full_ref)
-      bare.to_s.strip.empty? ? full_ref.to_s.strip : bare
+      ModelRef.parse(full_ref, hosts: @entries, aliases: {}).sent_id_unresolved
     end
 
     def client_for(entry)
@@ -316,6 +292,16 @@ module Samagotchi
     end
 
     private
+
+    # +raw+ parsed against these hosts and config.yml's aliases.
+    def model_ref(raw)
+      aliases = begin
+        ConfigFile.model_aliases
+      rescue StandardError
+        {}
+      end
+      ModelRef.parse(raw, hosts: @entries, aliases: aliases)
+    end
 
     def fresh_list(name, entry)
       @mutex.synchronize do

@@ -8,6 +8,7 @@ require "set"
 require_relative "atomic_file"
 require_relative "config_text_edit"
 require_relative "log"
+require_relative "model_ref"
 require_relative "paths"
 
 module Samagotchi
@@ -831,28 +832,9 @@ module Samagotchi
     end
 
     # Parse a model string that may be qualified as "host_alias:model"
-    # Returns [host_alias_or_nil, bare_model]
+    # Returns [host_alias_or_nil, bare_model] (ModelRef.split)
     def parse_host_qualified_model(raw, hosts: nil)
-      value = raw.to_s.strip
-      return [nil, value] if value.empty?
-      # Try split on first ':' or '/' where prefix matches a known host
-      hosts_map = hosts || {}
-      # Normalize keys downcase
-      lowered_keys = hosts_map.keys.map(&:downcase)
-      # Check ':' split
-      if value.include?(":")
-        prefix, rest = value.split(":", 2)
-        if lowered_keys.include?(prefix.strip.downcase) && !rest.strip.empty?
-          return [prefix.strip.downcase, rest.strip]
-        end
-      end
-      if value.include?("/")
-        prefix, rest = value.split("/", 2)
-        if lowered_keys.include?(prefix.strip.downcase) && !rest.strip.empty?
-          return [prefix.strip.downcase, rest.strip]
-        end
-      end
-      [nil, value]
+      ModelRef.split(raw, hosts: hosts)
     end
 
     # Hosted providers' names, which no local model family uses: as a
@@ -989,25 +971,15 @@ module Samagotchi
       nil
     end
 
+    # +raw+ with an alias applied, a host prefix kept as typed
+    # ("small-box:small" -> "small-box:gemma-small"; ModelRef#alias_ref).
     def resolve_model_alias(raw, env: ENV, path: global_path(env: env), hosts: nil)
       value = raw.to_s.strip
       return value if value.empty?
 
       aliases = model_aliases(env: env, path: path)
-      # Host-qualified handling: "host:alias" -> "host:resolved"
-      # This allows /model small-box:small where "small" is an alias.
-      if value.include?(":") || value.include?("/")
-        hosts_map = hosts || hosts_config(env: env, path: path)
-        host, bare = parse_host_qualified_model(value, hosts: hosts_map)
-        if host && !bare.to_s.strip.empty?
-          resolved_bare = aliases.fetch(bare.downcase, bare)
-          # Preserve the separator the user used (: or /)
-          sep = value.downcase.include?("#{host}:") ? ":" : (value.downcase.include?("#{host}/") ? "/" : ":")
-          return "#{host}#{sep}#{resolved_bare}"
-        end
-      end
-
-      aliases.fetch(value.downcase, value)
+      hosts_map = value.include?(":") || value.include?("/") ? hosts || hosts_config(env: env, path: path) : {}
+      ModelRef.parse(value, hosts: hosts_map, aliases: aliases).alias_ref
     end
 
     # Words /model takes as arguments (clear/default/none/off reset the
