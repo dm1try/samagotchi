@@ -184,4 +184,107 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
       end
     end
   end
+
+  describe "ChiHelper --model-pick, the model chooser's rules" do
+    let(:payload) do
+      {
+        "default" => "box:gemma-small", "default_typed" => "small", "default_host" => "main",
+        "models" => [
+          { "name" => "gemma-4", "host" => "main", "id" => "gemma-4" },
+          { "name" => "main:qwen3:8b", "host" => "main", "id" => "qwen3:8b" },
+          { "name" => "taken", "host" => "main", "id" => "taken", "shadowed_by" => "taken" },
+          { "name" => "box:gemma-small", "host" => "box", "id" => "gemma-small" },
+          { "name" => "openrouter:qwen/qwen3.8-27b", "host" => "openrouter", "id" => "qwen/qwen3.8-27b" },
+          { "name" => "openrouter:qwen/qwen3.8-max", "host" => "openrouter", "id" => "qwen/qwen3.8-max" },
+          { "name" => "openrouter:anthropic/claude-x", "host" => "openrouter", "id" => "anthropic/claude-x" },
+          { "name" => "openrouter:z/aqxwxexn", "host" => "openrouter", "id" => "z/aqxwxexn" }
+        ],
+        "aliases" => [{ "name" => "small", "ref" => "box:gemma-small", "host" => "box" },
+                      { "name" => "fast", "ref" => "gemma-4", "host" => "main" }],
+        "warnings" => ["splash: no answer in 4 s"]
+      }
+    end
+
+    def pick(*args, input: JSON.generate(payload))
+      out, err, status = Open3.capture3(executable, "--model-pick", *args, stdin_data: input)
+      [status.exitstatus.zero? ? JSON.parse(out) : out, err, status.exitstatus]
+    end
+
+    def names(result) = result["rows"].map { |r| r["name"] }
+
+    it "lists Default first, then the default host's ids and aliases, then the other hosts; no shadowed row" do
+      result, = pick
+
+      expect(result["rows"].first).to eq("kind" => "default", "name" => "box:gemma-small",
+                                         "label" => "Default (small → box:gemma-small)")
+      expect(names(result)).to eq(["box:gemma-small", "gemma-4", "main:qwen3:8b", "fast", "small",
+                                   "openrouter:qwen/qwen3.8-27b", "openrouter:qwen/qwen3.8-max",
+                                   "openrouter:anthropic/claude-x", "openrouter:z/aqxwxexn"])
+      expect(result["rows"].map { |r| r["label"] }).to include("fast → gemma-4", "openrouter · qwen/qwen3.8-27b", "gemma-4")
+      expect(result["warnings"]).to eq(["splash: no answer in 4 s"])
+    end
+
+    it "puts the recent picks still offered after Default" do
+      result, = pick("--recent", "OPENROUTER:z/aqxwxexn", "--recent", "gone:model", "--recent", "box:gemma-small")
+
+      expect(names(result).first(3)).to eq(["box:gemma-small", "openrouter:z/aqxwxexn", "gemma-4"])
+      expect(names(result).count("openrouter:z/aqxwxexn")).to eq(1)
+    end
+
+    it "ranks matches: segment-start substrings, then other substrings, then subsequences; a new name is offered as not listed" do
+      result, = pick("--query", "qwen")
+      expect(names(result)).to eq(["box:gemma-small", "main:qwen3:8b", "openrouter:qwen/qwen3.8-27b",
+                                   "openrouter:qwen/qwen3.8-max", "openrouter:z/aqxwxexn", "qwen"])
+      expect(result["rows"].last).to eq("kind" => "typed", "name" => "qwen", "label" => "qwen — not listed")
+
+      result, = pick("--query", "open max")
+      expect(names(result)).to eq(["box:gemma-small", "openrouter:qwen/qwen3.8-max", "open max"])
+
+      result, = pick("--query", "axe")
+      expect(names(result)).to eq(["box:gemma-small", "openrouter:z/aqxwxexn", "small", "axe"])
+
+      result, = pick("--query", "Gemma-4")
+      expect(names(result)).to eq(["box:gemma-small", "gemma-4", "fast"])
+    end
+
+    it "keeps a remembered pick only while offered, spelled as listed; a gone one falls back to the default with a note" do
+      expect(pick("--stored", "GEMMA-4").first.values_at("pick", "note")).to eq(["gemma-4", nil])
+      expect(pick("--stored", "small").first.values_at("pick", "note")).to eq(["small", nil])
+      expect(pick("--stored", "box:gemma-small").first.values_at("pick", "note")).to eq([nil, nil])
+      expect(pick("--stored", "old:model").first.values_at("pick", "note"))
+        .to eq([nil, "old:model isn't listed any more; using the default"])
+    end
+
+    it "remembers five recent picks, the newest first, without copies" do
+      result, = pick("--recent", "a", "--recent", "b", "--recent", "c", "--recent", "d", "--recent", "e", "--push", "C")
+
+      expect(result["recent"]).to eq(%w[C a b d e])
+    end
+
+    it "reads the exit-1 payload (no host listed): the default alone, and a remembered pick kept" do
+      result, = pick("--stored", "gemma-4", input: JSON.generate("default" => "gemma-4", "default_typed" => nil, "default_host" => nil,
+                                                                  "models" => [], "aliases" => [], "warnings" => ["main: refused"]))
+
+      expect(result["rows"]).to eq([{ "kind" => "default", "name" => "gemma-4", "label" => "Default (gemma-4)" }])
+      expect(result["pick"]).to be_nil
+      expect(pick("--stored", "box:x", input: JSON.generate("default" => "gemma-4", "models" => [])).first["pick"]).to eq("box:x")
+    end
+
+    it "fails on what isn't a payload" do
+      _out, err, status = pick(input: "not json")
+
+      expect(status).to eq(1)
+      expect(err).to include("not a chi models payload")
+    end
+  end
+end
+
+# No build needed: runs everywhere, CI's Linux too.
+RSpec.describe "the desktop helper's Swift sources, as text" do
+  it "use no SwiftUI macros or property wrappers the Command Line Tools may lack" do
+    # code only: comments explain why they're avoided
+    sources = Dir[File.join(Samagotchi::Desktop::MacOS::SOURCES_DIR, "*.swift")].map { |path| File.read(path).gsub(%r{//.*$}, "") }.join
+    expect(sources).to include("struct PanelView")
+    expect(sources).not_to match(/@State\b|@Observable\b|#Preview|@Entry\b/)
+  end
 end

@@ -147,6 +147,25 @@ final class ChiRunner {
     }
   }
 
+  /// `chi models --format json`: every host's models and the aliases. Exit
+  /// 1 (no host listed) still prints the default and the warnings. 10 s:
+  /// the boot and chi's own 4 s cap on the hosts, with a margin.
+  func models(completion: @escaping (Result<ModelList, ChiError>) -> Void) {
+    run(["models", "--format", "json"], timeout: 10) { result in
+      switch result {
+      case .failure(let error): completion(.failure(error))
+      case .success(let r):
+        if r.timedOut { completion(.failure(.failed("chi models took over 10 s"))); return }
+        guard r.status == 0 || r.status == 1, let list = ModelList.decode(Data(r.stdout.utf8)) else {
+          let detail = r.stderr.isEmpty ? r.stdout : r.stderr
+          completion(.failure(.failed("chi models failed (exit \(r.status)): \(detail.prefix(300))")))
+          return
+        }
+        completion(.success(list))
+      }
+    }
+  }
+
   private func list(_ flags: [String], completion: @escaping (Result<[LiveSession], ChiError>) -> Void) {
     // Every project's sessions: the helper isn't in any one project (an
     // older chi ignores the flag).
