@@ -52,6 +52,27 @@ RSpec.describe Samagotchi::Session do
       expect(loaded.metadata_version).to eq(described_class::METADATA_VERSION)
     end
 
+    it "writes every FIELDS key, in that order, and reads the same session back from it" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                            preloaded_memory_names: %w[notes], parent_id: "p1")
+      session.messages << { role: "user", content: "hi" }
+      session.last_turn = { "outcome" => "completed" }
+      session.save(state_dir: tmpdir)
+
+      data = JSON.parse(File.read(File.join(tmpdir, "#{session.id}.json")))
+      expect(data.keys).to eq(described_class::FIELDS.keys)
+      expect(described_class.load(session.id, state_dir: tmpdir).to_h).to eq(data)
+    end
+
+    it "fills a file's missing optional fields from FIELDS and refuses one without a required field" do
+      data = { "id" => "abc", "mode" => "assist", "model_name" => "m", "working_directory" => "/tmp",
+               "created_at" => "2026-01-01T00:00:00Z", "updated_at" => "2026-01-01T00:00:00Z" }
+      session = described_class.from_h(data)
+      expect([session.metadata_version, session.status, session.messages, session.used_memory_names])
+        .to eq([1, "idle", [], []])
+      expect { described_class.from_h(data.except("mode")) }.to raise_error(KeyError)
+    end
+
     it "restores a chat turn's tool calls with symbol keys (their arguments stay as saved)" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.messages = [

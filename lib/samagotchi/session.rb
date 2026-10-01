@@ -146,35 +146,53 @@ module Samagotchi
       path = session_path(session_id, state_dir: state_dir)
       raise ArgumentError, "Session not found: #{session_id}" unless File.exist?(path)
 
-      data = JSON.parse(File.read(path))
-      messages = (data["messages"] || []).map { |msg| symbolize_message_keys(msg) }
-      pending = data["pending_question"]
-      pending = symbolize_message_keys(pending) if pending.is_a?(Hash)
-      used_mems = data["used_memory_names"] || data["used_memories"] || []
-      new(
-        id: data.fetch("id"),
-        metadata_version: data.fetch("metadata_version", 1),
-        mode: data.fetch("mode"),
-        model_name: data.fetch("model_name"),
-        working_directory: data.fetch("working_directory"),
-        messages: messages,
-        created_at: data.fetch("created_at"),
-        updated_at: data.fetch("updated_at"),
-        status: data.fetch("status", STATUS_IDLE),
-        last_prompt: data.fetch("last_prompt", ""),
-        first_preview: data.fetch("first_preview", ""),
-        test_run: data.fetch("test_run", false),
-        pending_question: pending,
-        used_memory_names: Array(used_mems),
-        project_root: data["project_root"],
-        preloaded_memory_names: Array(data["preloaded_memory_names"]),
-        muted_memory_names: Array(data["muted_memory_names"]),
-        parent_id: data["parent_id"],
-        scratch: data.fetch("scratch", false),
-        last_turn: data["last_turn"]
-      )
+      from_h(JSON.parse(File.read(path)))
     rescue JSON::ParserError => e
       raise ArgumentError, "Session file corrupted (#{session_id}): #{e.message}"
+    end
+
+    # A field a session file must have (KeyError without it).
+    REQUIRED = Object.new.freeze
+
+    # The fields of <id>.json, in the order #save writes them: key => the
+    # value for a file without it (REQUIRED for the ones it must have).
+    # .from_h and #to_h both go by this table; messages and
+    # pending_question change key type on the way (symbols in memory,
+    # strings on disk).
+    FIELDS = {
+      "metadata_version" => 1,
+      "id" => REQUIRED,
+      "mode" => REQUIRED,
+      "model_name" => REQUIRED,
+      "working_directory" => REQUIRED,
+      "messages" => [],
+      "created_at" => REQUIRED,
+      "updated_at" => REQUIRED,
+      "status" => STATUS_IDLE,
+      "last_prompt" => "",
+      "first_preview" => "",
+      "test_run" => false,
+      "pending_question" => nil,
+      "used_memory_names" => [],
+      "project_root" => nil,
+      "preloaded_memory_names" => [],
+      "muted_memory_names" => [],
+      "parent_id" => nil,
+      "scratch" => false,
+      "last_turn" => nil
+    }.freeze
+
+    # A session from a parsed session file. +messages+ false leaves the
+    # conversation out (the lists' lightweight summaries).
+    # @raise [KeyError] for a missing REQUIRED field
+    def self.from_h(data, messages: true)
+      attrs = FIELDS.to_h do |key, default|
+        [key.to_sym, default.equal?(REQUIRED) ? data.fetch(key) : data.fetch(key, default)]
+      end
+      attrs[:messages] = messages ? Array(attrs[:messages]).map { |msg| symbolize_message_keys(msg) } : []
+      pending = attrs[:pending_question]
+      attrs[:pending_question] = pending.is_a?(Hash) ? symbolize_message_keys(pending) : nil
+      new(**attrs)
     end
 
     # A prefix that names more than one session.
@@ -249,30 +267,7 @@ module Samagotchi
       # An id that isn't one (hand-edited, or not ours) would be a path.
       return nil unless valid_id?(data["id"])
 
-      used_mems = data["used_memory_names"] || data["used_memories"] || []
-      pending = data["pending_question"]
-      new(
-        id: data.fetch("id"),
-        metadata_version: data.fetch("metadata_version", 1),
-        mode: data.fetch("mode"),
-        model_name: data.fetch("model_name"),
-        working_directory: data.fetch("working_directory"),
-        messages: [],
-        created_at: data.fetch("created_at"),
-        updated_at: data.fetch("updated_at"),
-        status: data.fetch("status", STATUS_IDLE),
-        last_prompt: data.fetch("last_prompt", ""),
-        first_preview: data.fetch("first_preview", ""),
-        test_run: data.fetch("test_run", false),
-        pending_question: pending.is_a?(Hash) ? symbolize_message_keys(pending) : nil,
-        used_memory_names: Array(used_mems),
-        project_root: data["project_root"],
-        preloaded_memory_names: Array(data["preloaded_memory_names"]),
-        muted_memory_names: Array(data["muted_memory_names"]),
-        parent_id: data["parent_id"],
-        scratch: data.fetch("scratch", false),
-        last_turn: data["last_turn"]
-      )
+      from_h(data, messages: false)
     rescue JSON::ParserError, KeyError, SystemCallError
       nil
     end
@@ -289,31 +284,23 @@ module Samagotchi
       # Auto-compute first_preview if not yet cached and messages contain a user entry.
       compute_first_preview!
 
-      record = {
-        "metadata_version" => @metadata_version,
-        "id" => @id,
-        "mode" => @mode,
-        "model_name" => @model_name,
-        "working_directory" => @working_directory,
-        "messages" => @messages.map { |msg| scrub_utf8(stringify_message_keys(msg)) },
-        "created_at" => @created_at,
-        "updated_at" => @updated_at,
-        "status" => @status,
-        "last_prompt" => @last_prompt,
-        "first_preview" => @first_preview,
-        "test_run" => !!@test_run,
-        "pending_question" => @pending_question ? scrub_utf8(stringify_message_keys(@pending_question)) : nil,
-        "used_memory_names" => Array(@used_memory_names),
-        "project_root" => @project_root,
-        "preloaded_memory_names" => Array(@preloaded_memory_names),
-        "muted_memory_names" => Array(@muted_memory_names),
-        "parent_id" => @parent_id,
-        "scratch" => @scratch,
-        "last_turn" => @last_turn
-      }
-
-      AtomicFile.write(path, JSON.pretty_generate(record) + "\n")
+      AtomicFile.write(path, JSON.pretty_generate(to_h) + "\n")
       self
+    end
+
+    # The session as #save writes it (FIELDS, in their order).
+    def to_h
+      FIELDS.keys.to_h do |key|
+        value = case key
+                when "messages" then @messages.map { |msg| scrub_utf8(stringify_message_keys(msg)) }
+                when "pending_question" then @pending_question && scrub_utf8(stringify_message_keys(@pending_question))
+                when "test_run" then !!@test_run
+                when "used_memory_names", "preloaded_memory_names", "muted_memory_names"
+                  Array(instance_variable_get(:"@#{key}"))
+                else instance_variable_get(:"@#{key}")
+                end
+        [key, value]
+      end
     end
 
     # Mark a session as errored.
