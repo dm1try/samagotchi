@@ -507,7 +507,8 @@ RSpec.describe "Tool call characterization" do
      {name: "echo_args", content: "text:hi,times:3", path: nil, scope: nil, args: {"text" => "hi", "times" => "3"}}],
     ["echo_args plugin", :qwen, "echo_args",
      "<tool_call>\n<function=echo_args>\n<parameter=text>\nhi\n</parameter>\n<parameter=times>\n3\n</parameter>\n</function>\n</tool_call>",
-     {name: "echo_args", content: "{\"text\" => \"hi\", \"times\" => \"3\"}", path: nil, scope: nil, args: {"text" => "hi", "times" => "3"}}],
+     # content is the params Hash's #to_s, whose spacing changed in Ruby 3.4 ("a" => 1 vs "a"=>1).
+     {name: "echo_args", content: {"text" => "hi", "times" => "3"}.to_s, path: nil, scope: nil, args: {"text" => "hi", "times" => "3"}}],
     ["echo_args plugin", :chat, "echo_args",
      {"text" => "hi", "times" => "3"},
      {name: "echo_args", content: "hi 3", path: nil, scope: nil, args: {"text" => "hi", "times" => "3"}}],
