@@ -153,7 +153,7 @@ module Samagotchi
       @capture_handle = @engine.subscribe(observer: capture_observer)
       @accumulator_handle = @engine.subscribe(observer: @accumulator)
       # A plugin's ctx.messages mid-turn holds the turn so far (plan O1).
-      @engine.running_turn_messages = -> { @accumulator.current_messages } if @engine.respond_to?(:running_turn_messages=)
+      @engine.running_turn_messages = -> { @accumulator.current_messages }
       @cards_handle = @engine.subscribe(observer: @cards)
       # One a worker that died left is not open.
       @pending_card.clear
@@ -180,7 +180,7 @@ module Samagotchi
       end
       @capture_handle&.unsubscribe
       @accumulator_handle&.unsubscribe
-      @engine.running_turn_messages = nil if @engine.respond_to?(:running_turn_messages=)
+      @engine.running_turn_messages = nil
       @cards_handle&.unsubscribe
       @pending_card_handle&.unsubscribe
       @pending_card&.clear
@@ -217,7 +217,7 @@ module Samagotchi
           continue_offer: @accumulator.continue_offer,
           guardrail_warning: @engine.guardrail_warning,
           plugin_warning: @engine.plugin_warning,
-          init_tasks: @engine.respond_to?(:init_tasks) ? @engine.init_tasks : [],
+          init_tasks: @engine.init_tasks,
           cards: @cards.list,
           commands: command_registry.listing,
           event_seq: seq,
@@ -242,7 +242,7 @@ module Samagotchi
 
     # The Engine's commands: the built-ins and its plugins'.
     def command_registry
-      @engine.respond_to?(:command_registry) ? @engine.command_registry : SessionCommands.builtin_registry
+      @engine.command_registry
     end
 
     # The single shared capture observer: appends every event to the ring.

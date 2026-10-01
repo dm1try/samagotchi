@@ -70,7 +70,7 @@ RSpec.describe Samagotchi::Worker do
                              kernel: test_kernel)
     end
     let(:turns) { Queue.new }
-    let(:result) { instance_double(Samagotchi::LLM::ModelResult, output: "") }
+    let(:result) { instance_double(Samagotchi::LLM::ModelResult, output: "", canceled?: false, resumable?: false) }
 
     before do
       FileUtils.mkdir_p(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))

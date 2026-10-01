@@ -102,12 +102,6 @@ RSpec.describe Samagotchi::TurnFlow do
       expect(flow.offer[:context]).to include(original_prompt: "list it", last_model_intent: "calling ls")
     end
 
-    it "takes a result that doesn't say whether it can be continued as completed" do
-      run_prompt("go", [{ role: "model", content: "done" }])
-
-      expect(flow.after_turn(Struct.new(:output).new("done"))).to eq(:completed)
-    end
-
     it "summarizes a continue that runs out again against the original prompt" do
       run_prompt("the task", [{ role: "tool_response", content: "r1" }])
       flow.after_turn(result(engine.messages, exhausted: true, pending: true))

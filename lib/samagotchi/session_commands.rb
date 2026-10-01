@@ -404,7 +404,7 @@ module Samagotchi
 
     def persist_session_model
       session = @engine.session
-      return unless session.respond_to?(:model_name=)
+      return unless session
 
       @engine.store_model!(session)
       begin
@@ -416,7 +416,7 @@ module Samagotchi
 
     # "; served: <name>" when the server serves another model than asked.
     def served_note
-      served, asked = @engine.respond_to?(:served_model) ? @engine.served_model : nil
+      served, asked = @engine.served_model
       ServedModel.differs?(asked, served) ? "; served: #{served}" : ""
     rescue StandardError
       ""
@@ -424,7 +424,7 @@ module Samagotchi
 
     # "; sampling: temperature=0.6 (hosts.work)" when the model has any.
     def sampling_note
-      summary = @engine.respond_to?(:sampling_summary) ? @engine.sampling_summary : nil
+      summary = @engine.sampling_summary
       summary ? "; sampling: #{summary}" : ""
     rescue StandardError
       ""
@@ -432,7 +432,7 @@ module Samagotchi
 
     # "; thinking: off (models: qwen)" when the model has a level set.
     def thinking_note
-      summary = @engine.respond_to?(:thinking_summary) ? @engine.thinking_summary : nil
+      summary = @engine.thinking_summary
       summary ? "; thinking: #{summary}" : ""
     rescue StandardError
       ""
@@ -447,7 +447,7 @@ module Samagotchi
     end
 
     def chat_model?
-      @engine.respond_to?(:chat_model?) && @engine.chat_model?
+      @engine.chat_model?
     rescue StandardError
       false
     end

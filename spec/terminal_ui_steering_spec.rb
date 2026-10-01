@@ -10,10 +10,10 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
   let(:surface) { RecordingSurface.new }
   let(:agent) { described_class.new(client: client, surface: surface) }
   let(:engine) { agent.engine }
-  let(:session) { instance_double(Samagotchi::Session, id: "s1", messages: []) }
+  let(:session) { instance_double(Samagotchi::Session, id: "s1", messages: [], used_memory_names: []) }
   # A session something happened in: the REPL keeps it at exit.
   let(:used_session) do
-    instance_double(Samagotchi::Session, id: "s1", "messages=": nil, messages: [{ role: "user", content: "go" }], last_prompt: "go")
+    instance_double(Samagotchi::Session, id: "s1", used_memory_names: [], "messages=": nil, messages: [{ role: "user", content: "go" }], last_prompt: "go")
   end
   let(:repl_input) { Samagotchi::TerminalUI::ReplInput.new(prompt: -> { "> " }, read: ->(*) {}, surface: surface) }
   let(:result) { Samagotchi::LLM::ModelResult.new(text: "ok", conversation: [], tool_activity: []) }
@@ -277,7 +277,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     let(:state_dir) { Dir.mktmpdir("repl-empty") }
     # The REPL's working copy starts with its system prompt.
     let(:empty_session) do
-      instance_double(Samagotchi::Session, id: "s-empty", "messages=": nil, messages: [{ role: "system", content: "You are chi." }],
+      instance_double(Samagotchi::Session, id: "s-empty", used_memory_names: [], "messages=": nil, messages: [{ role: "system", content: "You are chi." }],
                                            last_prompt: "")
     end
 

@@ -72,7 +72,7 @@ module Samagotchi
     #   turn: its partial progress stays, !rollback can undo it) or
     #   :continue_cancelled (back to before the continue; the offer stays)
     def after_turn(result, continue: false, no_interrupt: false)
-      if result.respond_to?(:canceled?) && result.canceled?
+      if result.canceled?
         if continue
           restore(@continue_checkpoint)
           return :continue_cancelled
@@ -85,7 +85,7 @@ module Samagotchi
         return :cancelled
       end
 
-      if result.respond_to?(:resumable?) && result.resumable?
+      if result.resumable?
         @offer = { context: interrupted_turn_context(result), no_interrupt: no_interrupt }
         :continue_offered
       else
@@ -172,7 +172,7 @@ module Samagotchi
     end
 
     def conversation_of(result)
-      result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
+      result.conversation if result.conversation.is_a?(Array)
     end
 
     def interrupted_turn_context(result)
@@ -198,7 +198,7 @@ module Samagotchi
     end
 
     def tool_trace(result)
-      activities = result.respond_to?(:tool_activity) ? Array(result.tool_activity) : []
+      activities = Array(result.tool_activity)
       activities.last(SUMMARY_TOOLS_LIMIT).map do |activity|
         tool = activity[:tool].to_s.strip
         status = activity[:status].to_s.strip

@@ -249,7 +249,7 @@ module Samagotchi
       @metrics = SessionMetrics.new
       @used_memories = UsedMemories.new
       # Hydrate from resumed session if present
-      if @resume_session && @resume_session.respond_to?(:used_memory_names)
+      if @resume_session
         @used_memories.absorb(@resume_session)
         @session = @resume_session
       end
@@ -421,7 +421,7 @@ module Samagotchi
     def store_model!(session)
       ref = effective_model_ref
       session.model_name = ref
-      session.model_typed = @typed_model_name.to_s == ref ? nil : @typed_model_name if session.respond_to?(:model_typed=)
+      session.model_typed = @typed_model_name.to_s == ref ? nil : @typed_model_name
       session
     end
 
@@ -993,7 +993,7 @@ module Samagotchi
 
     # The metrics load the session's saved records from its state dir, once.
     def bind_metrics(session)
-      return unless session.respond_to?(:id) && session.id
+      return unless session&.id
 
       @metrics.state_dir = session_state_dir
       @metrics.session_id = session.id
@@ -1309,7 +1309,7 @@ module Samagotchi
     def session=(session)
       @session = session
       # One session per REPL/worker process: its records carry this sid.
-      Log.session_id = session.id if session.respond_to?(:id) && session.id
+      Log.session_id = session.id if session&.id
       # A woken worker's /stats and status line count the turns before it.
       bind_metrics(session)
       @used_memories.absorb(session)

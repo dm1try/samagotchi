@@ -65,7 +65,7 @@ module Samagotchi
 
     # Add the names a session already used.
     def absorb(session)
-      return self unless session && session.respond_to?(:used_memory_names)
+      return self unless session
 
       add(Array(session.used_memory_names))
     end

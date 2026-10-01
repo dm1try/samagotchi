@@ -657,7 +657,7 @@ module Samagotchi
     # After a prompt or continue turn: TurnFlow keeps the checkpoint and the
     # continue offer; the REPL saves and tells the user.
     def finish_turn(session, result, continue:)
-      if result.respond_to?(:canceled?) && result.canceled?
+      if result.canceled?
         outcome = @turn_flow.after_turn(result, continue: continue)
         # A cancelled continue is back where it started, the offer still open.
         return if outcome == :continue_cancelled
@@ -668,7 +668,7 @@ module Samagotchi
         # user's next message continues from it. !rollback restores the
         # pre-turn checkpoint for an explicit full discard (the renderer's
         # hint under :turn_canceled says so).
-        save_session(session) if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
+        save_session(session) if result.conversation.is_a?(Array)
         return
       end
 
@@ -746,9 +746,9 @@ module Samagotchi
       ensure
         @surface.clear_slot(:hints)
       end
-      canceled = result.respond_to?(:canceled?) && result.canceled?
+      canceled = result&.canceled?
       if result && !canceled
-        session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
+        session.messages = result.conversation if result.conversation.is_a?(Array)
         @engine.store_model!(session)
         session.save
       end

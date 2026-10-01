@@ -475,7 +475,7 @@ module Samagotchi
         refuse_queued_commands
       end
       yield result, error
-      response = result.respond_to?(:output) ? result.output : nil
+      response = result&.output
       SessionInbox.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
       save_session
     end
