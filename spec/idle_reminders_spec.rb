@@ -7,15 +7,20 @@ RSpec.describe Samagotchi::IdleReminders do
   subject(:idle_reminders) do
     described_class.new(
       engine: engine,
-      queue: Samagotchi::ReminderQueue.new(store: reminder_store),
+      queue: queue,
       inactivity: 60.0,
       clock: clock,
-      callback: ->(names) { fired << names }
+      # As the worker's and the REPL's do (Engine#note_due_reminders).
+      callback: lambda { |names|
+        fired << names
+        queue.note_pending(names)
+      }
     )
   end
 
   # The due names each synthetic-turn callback got.
   let(:fired) { [] }
+  let(:queue) { Samagotchi::ReminderQueue.new(store: reminder_store) }
 
   let(:engine) { double("Engine") }
   let(:reminder_store) { Samagotchi::ReminderStore.new }
@@ -48,8 +53,9 @@ RSpec.describe Samagotchi::IdleReminders do
       )
       idle_reminders.tick
       idle_reminders.tick
-      # Latched until the engine delivers it (#clear_due).
+      # Queued until a turn delivers it, or the reminder turn's consumer clears it.
       expect(fired).to eq([["health"]])
+      expect(queue.pending_names).to eq(["health"])
     end
 
     it "does not fire if turn is running" do
@@ -83,8 +89,8 @@ RSpec.describe Samagotchi::IdleReminders do
     end
   end
 
-  describe "#clear_due" do
-    it "clears the latch, so the next tick fires again" do
+  describe "the queue's pending names (the latch)" do
+    it "cleared, re-arm the tick: it fires again while still due" do
       reminder_store.register({ name: "health", description: "test", interval_minutes: 1 })
       allow(Process).to receive(:clock_gettime).and_return(
         Process.clock_gettime(Process::CLOCK_MONOTONIC) + 70
@@ -92,7 +98,21 @@ RSpec.describe Samagotchi::IdleReminders do
       idle_reminders.tick
       idle_reminders.tick
       expect(fired).to eq([["health"]])
-      idle_reminders.clear_due
+      queue.clear_pending!
+      idle_reminders.tick
+      expect(fired).to eq([["health"], ["health"]])
+    end
+
+    it "cleared by a turn's injection, re-arm the tick for the next interval" do
+      reminder_store.register({ name: "health", description: "test", interval_minutes: 1 })
+      later = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 70
+      allow(Process).to receive(:clock_gettime).and_return(later)
+      idle_reminders.tick
+      queue.inject!([])
+      idle_reminders.tick
+      expect(fired).to eq([["health"]])
+
+      allow(Process).to receive(:clock_gettime).and_return(later + 70)
       idle_reminders.tick
       expect(fired).to eq([["health"], ["health"]])
     end

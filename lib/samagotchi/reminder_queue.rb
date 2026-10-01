@@ -39,6 +39,11 @@ module Samagotchi
       @lock.synchronize { @pending = Array(names).dup }
     end
 
+    # @return [Boolean] whether names are queued (the idle tick waits meanwhile)
+    def pending?
+      @lock.synchronize { !@pending.empty? }
+    end
+
     def clear_pending!
       @lock.synchronize { @pending = [] }
     end

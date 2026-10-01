@@ -1567,8 +1567,6 @@ module Samagotchi
       # system prompt invalidates cache for the entire prefix.
       due_reminders = @reminder_queue.inject!(turn.messages)
       if due_reminders.any?
-        # The idle tick's latch, so it can find the next interval.
-        @reminders&.clear_due
         emit_event(turn.on_event, {
           type: :reminder_injected,
           reminders: due_reminders

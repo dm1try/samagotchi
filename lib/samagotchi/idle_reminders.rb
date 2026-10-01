@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "monitor"
-
 require_relative "reminder_queue"
 
 module Samagotchi
@@ -12,8 +10,11 @@ module Samagotchi
   #   1. Every turn injects what is due (ReminderQueue#inject!, from
   #      Engine#run_turn) as [SYSTEM: REMINDERS DUE] and marks it fired.
   #   2. Synthetic turns: when this job's tick finds due reminders while
-  #      idle, it latches @due_reminder_name and fires @auto_turn_callback
-  #      (the worker and the REPL queue a reminder turn).
+  #      idle, it fires @auto_turn_callback, which queues their names
+  #      (Engine#note_due_reminders) for the worker's or the REPL's
+  #      reminder turn. While names are queued the tick waits; whoever
+  #      clears them (a turn's injection, the reminder turn's consumer)
+  #      re-arms it. The queue is the only "already due" state.
   class IdleReminders
     DEFAULT_MIN_INACTIVITY_SECONDS = 60.0 # Minimum idle time before checking for reminders
 
@@ -30,21 +31,12 @@ module Samagotchi
       @queue = queue
       @clock = clock
       @auto_turn_callback = callback
-
-      @mutex = Monitor.new
-      @due_reminder_name = nil
-    end
-
-    # Clear the pending due reminder (after it has been delivered).
-    # Called by Engine after a turn injected the due reminders.
-    def clear_due
-      @mutex.synchronize { @due_reminder_name = nil }
     end
 
     # One detector step, called by the shared IdleScheduler. Public so specs
     # can drive it deterministically.
     def tick
-      return if @due_reminder_name # already due, waiting for engine to deliver
+      return if @queue&.pending? # already queued, waiting for a turn to deliver it
       return unless should_check?
 
       check_due_reminders
@@ -71,7 +63,6 @@ module Samagotchi
       # The callback is responsible for triggering a turn (e.g. SessionManager
       # writes a file, TerminalUI queues input). The engine's run_turn or
       # REPL injection point then picks up and delivers the reminders.
-      @mutex.synchronize { @due_reminder_name = due_names.first }
       if @auto_turn_callback
         @auto_turn_callback.call(due_names)
       end

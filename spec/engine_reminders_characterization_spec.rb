@@ -122,7 +122,7 @@ RSpec.describe Samagotchi::Engine, "reminders" do
   end
 
   describe "the stuck latch (cell B)" do
-    it "today: a turn injecting between the tick's read and its latch leaves the tick silent for good" do
+    it "a turn injecting between the tick's read and its callback: once the stale name is cleared, the tick fires again" do
       register
       make_due
       go_idle
@@ -149,12 +149,12 @@ RSpec.describe Samagotchi::Engine, "reminders" do
       go_idle
       idle.tick
 
-      expect(fired).to eq([["tea"]])
+      expect(fired).to eq([["tea"], ["tea"]])
     end
   end
 
   describe "a reminder turn that fails before injecting (cell B2)" do
-    it "today: later ticks stay silent" do
+    it "the reminder is still due, and the next tick fires again" do
       register
       make_due
       go_idle
@@ -169,7 +169,7 @@ RSpec.describe Samagotchi::Engine, "reminders" do
       go_idle
       idle.tick
 
-      expect(fired).to eq([["tea"]])
+      expect(fired).to eq([["tea"], ["tea"]])
     end
   end
 end
