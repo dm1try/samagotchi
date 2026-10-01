@@ -22,12 +22,7 @@ RSpec.describe "Bundle guardrail rule files" do
     { "rules" => [{ "id" => "git-push", "tool" => "shell", "command" => "git push", "verdict" => "ask", "reason" => "publishes" }] }
   end
 
-  around do |example|
-    orig = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = orig
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   before do
     Samagotchi::MemoryBundle::Provenance.bundles_dir_override = bundles_dir

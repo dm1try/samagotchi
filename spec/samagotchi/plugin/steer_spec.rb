@@ -12,13 +12,7 @@ require "support/thinking_off"
 RSpec.describe "ctx.steer, ctx.stop_turn and ctx.stop_generation" do
   include_context "thinking off"
 
-  around do |example|
-    original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-  ensure
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:client) { instance_double(Samagotchi::Client) }
   let(:engine) { Samagotchi::Engine.new(client: client) }

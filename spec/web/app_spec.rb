@@ -69,12 +69,7 @@ class StubSessionLoader
 end
 
 RSpec.describe Samagotchi::Web::App do
-  around do |example|
-    original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   # bridge_wait_timeout: 0 — no real worker is spawned in these specs, so the
   # create handler must not wait for a bridge sidecar.

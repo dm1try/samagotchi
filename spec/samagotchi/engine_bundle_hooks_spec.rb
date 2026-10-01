@@ -21,12 +21,7 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
     dbl
   end
 
-  around do |example|
-    orig_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = orig_model
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   before do
     Samagotchi::MemoryBundle::Provenance.bundles_dir_override = bundles_dir

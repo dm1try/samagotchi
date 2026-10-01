@@ -8,13 +8,7 @@ require_relative "support/fake_chat_adapter"
 # ordinary completed turn (the nudge kept, hidden); one whose retries ran out
 # ends with TurnNote.empty in place of the nudge.
 RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
-  around do |example|
-    original = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-  ensure
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:client) { instance_double(Samagotchi::Client) }
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }

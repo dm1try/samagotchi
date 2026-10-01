@@ -15,12 +15,7 @@ RSpec.describe Samagotchi::TerminalUI, "question widget" do
       multi_select: false, allow_freeform: false }
   end
 
-  around do |example|
-    original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   def answer_with(input, question = pending)
     out = StringIO.new

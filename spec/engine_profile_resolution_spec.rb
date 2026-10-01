@@ -157,13 +157,7 @@ RSpec.describe "Engine prompt profile resolution" do
 end
 
 RSpec.describe "Engine#stats_snapshot" do
-  around do |example|
-    saved = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "house-blend-35b"
-    example.run
-  ensure
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = saved
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "house-blend-35b") { example.run } }
 
   before { allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({}) }
 

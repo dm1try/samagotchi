@@ -10,13 +10,7 @@ RSpec.describe Samagotchi::ContextUsage do
       "timings" => { "cache_n" => 0, "prompt_n" => 3, "predicted_n" => 4 } }
   end
 
-  around do |example|
-    original = ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"]
-    ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"] = "999"
-    example.run
-  ensure
-    ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"] = original
-  end
+  around { |example| with_env("SAMAGOTCHI_CONTEXT_WINDOW_TOKENS" => "999") { example.run } }
 
   it "leaves the window unset when the payload does not report one" do
     usage = described_class.normalize(llama_cpp_final_chunk)

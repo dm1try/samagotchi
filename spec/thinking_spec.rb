@@ -19,15 +19,6 @@ RSpec.describe Samagotchi::Thinking do
     end
   end
 
-  # Config.get reads the file under XDG_CONFIG_HOME and the live ENV.
-  def with_env(vars)
-    saved = vars.keys.to_h { |k| [k, ENV[k]] }
-    vars.each { |k, v| v.nil? ? ENV.delete(k) : ENV[k] = v }
-    yield
-  ensure
-    saved.each { |k, v| v.nil? ? ENV.delete(k) : ENV[k] = v }
-  end
-
   def target_for(path, model)
     hosts = Samagotchi::ConfigFile.hosts_config(env: {}, path: path)
     Samagotchi::HostRegistry.new(hosts_config: hosts, env: {}).resolve(model)

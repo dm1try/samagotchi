@@ -4,12 +4,7 @@ require "samagotchi/engine"
 require "samagotchi/session"
 
 RSpec.describe "Engine/TerminalUI system-prompt parity" do
-  around do |example|
-    original = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   def ui
     Samagotchi::TerminalUI.new(client: instance_double(Samagotchi::Client), profile: "gemma4")

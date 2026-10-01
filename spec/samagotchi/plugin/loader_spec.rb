@@ -15,12 +15,7 @@ RSpec.describe Samagotchi::Plugin::Loader do
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:client) { instance_double(Samagotchi::Client, complete: nil) }
 
-  around do |example|
-    orig_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = orig_model
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   before do
     Samagotchi::MemoryBundle::Provenance.bundles_dir_override = bundles_dir

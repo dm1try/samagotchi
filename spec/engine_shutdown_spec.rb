@@ -5,13 +5,7 @@ require "samagotchi/engine"
 
 # Engine#shutdown (plan P5): the REPL's and the worker's way out.
 RSpec.describe "Engine#shutdown" do
-  around do |example|
-    previous = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-  ensure
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = previous
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:engine) { Samagotchi::Engine.new(client: instance_double(Samagotchi::Client), plugins: false) }
   let(:log) { Queue.new }

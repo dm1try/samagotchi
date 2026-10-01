@@ -3,12 +3,7 @@
 require "samagotchi/session_observer"
 
 RSpec.describe Samagotchi::SessionObserver do
-  around do |example|
-    original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:observer) { described_class.new }
 

@@ -17,13 +17,7 @@ RSpec.describe "TerminalUI ↔ Engine public API" do
   let(:alpha_client) { registry.entries["alpha"].client }
   let(:beta_client) { registry.entries["beta"].client }
 
-  around do |example|
-    previous = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "alpha:gemma-small"
-    example.run
-  ensure
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = previous
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "alpha:gemma-small") { example.run } }
 
   def engine_of(ui) = ui.instance_variable_get(:@engine)
   def kernel_of(ui) = ui.instance_variable_get(:@kernel)

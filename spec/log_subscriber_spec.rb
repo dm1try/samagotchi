@@ -177,13 +177,7 @@ RSpec.describe Samagotchi::LogSubscriber do
   end
 
   describe "on an Engine" do
-    around do |example|
-      original = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-      ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-      example.run
-    ensure
-      ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
-    end
+    around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
     it "is subscribed, so every run_turn leaves a trail with the session's sid" do
       client = instance_double(Samagotchi::Client)

@@ -6,13 +6,7 @@ require "samagotchi/session"
 # What Engine#run_turn has to offer before the interactive TUI can drive its
 # turns through it (Phase R2 of the shared-session plan).
 RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
-  around do |example|
-    original = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-  ensure
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:client) { instance_double(Samagotchi::Client) }
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }

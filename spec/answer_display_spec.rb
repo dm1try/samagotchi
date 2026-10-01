@@ -64,13 +64,7 @@ end
 RSpec.describe "Presenting the answer from after_turn" do
   include_context "thinking off"
 
-  around do |example|
-    original_model = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-  ensure
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original_model
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   let(:client) { instance_double(Samagotchi::Client) }
   let(:kernel) { instance_double(Samagotchi::KernelLoop) }
@@ -207,13 +201,7 @@ RSpec.describe "The display field and the model payloads" do
     [{ role: "user", content: "old" }, { role: "model", content: "ok", display: marker }, { role: "user", content: "next" }]
   end
 
-  around do |example|
-    original = ENV["SAMAGOTCHI_DEFAULT_MODEL"]
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = "Gemma-4B-it"
-    example.run
-  ensure
-    ENV["SAMAGOTCHI_DEFAULT_MODEL"] = original
-  end
+  around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   it "the native prompt leaves it out, and the stored conversation keeps it" do
     client = instance_double(Samagotchi::Client)
