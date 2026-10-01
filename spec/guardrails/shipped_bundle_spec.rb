@@ -3,6 +3,7 @@
 require "tmpdir"
 require "yaml"
 require "samagotchi/guardrails"
+require "samagotchi/model_overlay"
 
 # The optional guardrails bundle's rules (lib/samagotchi/bundles/guardrails):
 # what each one catches and what it lets through.
@@ -77,5 +78,67 @@ RSpec.describe "The guardrails bundle's rules" do
     manifest["files"].each do |file, sha|
       expect(sha).to eq("sha256:#{Digest::SHA256.hexdigest(File.read(File.join(bundle_dir, file)))}")
     end
+  end
+end
+
+# guardrails/small-models.yml: the rules only small models get
+# (models: small, guardrails.small_models).
+RSpec.describe "The guardrails bundle's small-model rules" do
+  let(:bundle_dir) { File.expand_path("../../lib/samagotchi/bundles/guardrails", __dir__) }
+  let(:rules) do
+    doc = YAML.safe_load(File.read(File.join(bundle_dir, "guardrails", "small-models.yml")))
+    Samagotchi::Guardrails::Rules.new(Samagotchi::Guardrails::Rules.parse(doc["rules"], source: "bundle guardrails"))
+  end
+  let(:repo) { File.realpath(Dir.mktmpdir("shipped-small-rules")).tap { |d| system("git", "-C", d, "init", "-q") } }
+  let(:context) { Samagotchi::Guardrails::Context.new(cwd: repo) }
+
+  before do
+    allow(Samagotchi::Config).to receive(:get).and_call_original
+    allow(Samagotchi::Config).to receive(:get).with("guardrails.small_models").and_return("auto")
+  end
+
+  after { FileUtils.rm_rf(repo) }
+
+  def shell(command, model: "Ornith-9B")
+    call = { name: "execute", content: command }
+    v = Samagotchi::Guardrails::Verdict.new(call: call)
+    v.context = context
+    v.targets = Samagotchi::Guardrails::Targets.for(call, context, model_name: model,
+                                                                   model_key: Samagotchi::ModelOverlay.key_for(model))
+    rules.check(v)
+  end
+
+  caught = {
+    "git-discard-worktree" => ["git checkout -- app.rb", "git checkout -- .", "git checkout ./app.rb", "git checkout .",
+                               "git -C x checkout -- a b", "git checkout HEAD -- app.rb", "git restore app.rb",
+                               "git restore .", "git restore --staged --worktree app.rb", "git restore -W app.rb"],
+    "git-stash-drop" => ["git stash drop", "git stash clear", "git -C x stash drop stash@{1}"]
+  }.freeze
+
+  let_through = [
+    "git checkout main", "git checkout -b feat", "git checkout -- ", "git restore --staged app.rb",
+    "git status && git checkout main", "echo git restore", "git stash", "git stash pop", "git stash list"
+  ].freeze
+
+  caught.each do |rule, commands|
+    commands.each do |command|
+      it "#{rule} asks a small model, once or for the session, for: #{command}" do
+        v = shell(command)
+        expect([v.decision, v.rule, v.scopes]).to eq([:ask, rule, %w[once session]])
+      end
+    end
+  end
+
+  let_through.each do |command|
+    it "lets a small model through: #{command}" do
+      expect(shell(command)).to be_allow
+    end
+  end
+
+  it "lets a large model, a model without a size and no model through" do
+    %w[Llama-3.3-70B deepseek-v4.1-flash].each do |model|
+      expect(shell("git checkout -- app.rb", model: model)).to be_allow
+    end
+    expect(shell("git checkout -- app.rb", model: nil)).to be_allow
   end
 end

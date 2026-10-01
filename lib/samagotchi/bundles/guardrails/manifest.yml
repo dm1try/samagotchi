@@ -1,8 +1,10 @@
 ---
 name: guardrails
-version: 0.1.1
+version: 0.2.0
 scope: system
-description: Optional default guardrail rules (git push/rewrites, rm -rf wide, curl | sh, writes outside the repo, git hooks) and a note for the model
+description: Optional default guardrail rules (git push/rewrites, rm -rf wide, curl | sh, writes outside the repo, git hooks), asks only small models get (git checkout --/restore, git stash drop), and a note for the model
 trust_level: reviewed
+# models: in small-models.yml (guardrails.small_models)
+requires_chi: ">= 0.8.0"
 files:
   guardrails.md: sha256:04207fd1738aeeeef3b7a8053fc57597565bddd7862f01acaba784419cbd909b

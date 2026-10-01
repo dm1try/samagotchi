@@ -1,0 +1,27 @@
+# Guardrail rules only small models get (models: small): asks that a strong
+# model would find noise. Which models are small is guardrails.small_models:
+# auto (the default) is 32B or less by the size in the model's name, an
+# MoE's active size counting (35B-A3B is small); a list of globs; or [] for
+# none. `/guardrails` says whether the current model is small.
+#
+# These asks offer only once and session: an approval for the repo or the
+# whole rule would silence them for good, on any model.
+# Same fields and git prefix as rules.yml.
+rules:
+  # ── losing uncommitted work ────────────────────────────────────────────
+  # git checkout -- <path>, git checkout <rev> -- <path>, git checkout .,
+  # and git restore of the worktree (not git restore --staged alone).
+  - id: git-discard-worktree
+    tool: shell
+    command: '\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+(?:checkout\b[^;&|\n]*\s(?:--\s+\S|\.(?:\s|$|/))|restore\b(?![^;&|\n]*\s--staged\b)(?=[^;&|\n]*\s[^-\s])|restore\b(?=[^;&|\n]*\s(?:--worktree|-W)\b))'
+    models: small
+    verdict: ask
+    reason: git checkout -- / git restore discards uncommitted changes
+    scopes: [once, session]
+  - id: git-stash-drop
+    tool: shell
+    command: '\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+stash\s+(drop|clear)\b'
+    models: small
+    verdict: ask
+    reason: git stash drop/clear deletes stashed work
+    scopes: [once, session]
