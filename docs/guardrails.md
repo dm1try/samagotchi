@@ -169,8 +169,9 @@ small. It is read on every check, so `/model` and config edits apply at once.
 small (auto, 27B)`), shows each rule's `models`, and marks a rule that doesn't
 vote for the current model `off for this model`.
 
-Rules load when chi starts (a long-running worker picks up changes after its
-next start). A rule that doesn't parse (an unknown key, a bad regex, no
+Rules are read again on the next tool call after `config.yml` or an installed
+bundle's rules change, so a long-running worker follows edits without a
+restart. A rule that doesn't parse (an unknown key, a bad regex, no
 verdict, a `disable:` that isn't a list of ids) makes chi **deny every tool call** and say why, rather than run
 without it.
 
