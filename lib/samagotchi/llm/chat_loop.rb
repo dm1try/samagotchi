@@ -339,10 +339,12 @@ module Samagotchi
 
             last_text = @loop.strip_model_thought(response.text)
             if response.tool_calls.empty?
+              # Only whitespace is no answer either (as in the native loop).
+              empty = last_text.strip.empty?
               # Kept before a merge too: the model answers the merged line
               # knowing what it just said.
-              @conversation << with_thinking({ role: "model", content: last_text }, response) unless last_text.empty?
-              retry_empty = last_text.empty? &&
+              @conversation << with_thinking({ role: "model", content: last_text }, response) unless empty
+              retry_empty = empty &&
                             @empty_retry.retry_empty?(iteration: iteration, cancelled: @cancel_controller&.cancelled?,
                                                       finish_reason: response.finish_reason,
                                                       used_tokens: response.usage&.total_tokens, window_tokens: @window&.tokens)
@@ -354,7 +356,7 @@ module Samagotchi
 
               # Shown, not saved: an empty answer (content "" + stop, seen from
               # a remote host) would otherwise end the turn with nothing.
-              last_text = EMPTY_ANSWER if last_text.empty?
+              last_text = EMPTY_ANSWER if empty
               exhausted = false
               break
             end

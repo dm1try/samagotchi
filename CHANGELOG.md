@@ -37,6 +37,8 @@ and commands may change between minor versions. How releases are made:
   (90 % or more) is no longer asked again, as `retry.empty_answer` documents and as with OpenAI-compatible chat
   hosts; a thinking loop cut by the output cap still is. These loops' `generation_completed` events and log lines now
   carry the `finish_reason` too.
+- With an OpenAI-compatible chat host, an answer of only whitespace is an empty answer, as with llama.cpp: asked again
+  (`retry.empty_answer`) instead of saved, and with no retry left the turn says the model returned an empty answer.
 
 Update with `chi update` (bundles: known-names 0.1.4).
 

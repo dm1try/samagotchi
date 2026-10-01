@@ -590,6 +590,26 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(adapter.requests.map { |r| r[:options] }).to eq([{ temperature: 0.2, top_p: 0.9 }] * 3)
     end
 
+    # A real kernel: the double above strips what it is given, which would
+    # hide a whitespace answer.
+    it "takes an answer of only whitespace as empty: asked again, never saved" do
+      kernel = Samagotchi::KernelLoop.new(client: nil, profile: Samagotchi::ModelProfile.qwen36)
+      adapter = FakeChatAdapter.new(text("  \n "), text("PONG"))
+      result = described_class.new(kernel: kernel, adapter: adapter).complete(messages: [{ role: "user", content: "hi" }],
+                                                                             model_name: "m")
+
+      expect(result.text).to eq("PONG")
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }, nudge, { role: "model", content: "PONG" }])
+
+      with_limit(0) do
+        adapter = FakeChatAdapter.new(text("  \n "))
+        result = described_class.new(kernel: kernel, adapter: adapter).complete(messages: [{ role: "user", content: "hi" }],
+                                                                               model_name: "m")
+      end
+      expect(result).to be_empty_answer
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }])
+    end
+
     it "counts per turn: an empty answer after the retry is used up ends as today" do
       backend.adapter = adapter = FakeChatAdapter.new(text(""), tools(["c1", "read", { "path" => "a" }]), text(""))
 
