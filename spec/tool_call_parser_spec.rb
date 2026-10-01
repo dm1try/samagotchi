@@ -45,6 +45,27 @@ RSpec.describe Samagotchi::ToolCallParser do
     end
   end
 
+  describe "execute's cwd" do
+    it "keeps it in the Gemma format" do
+      parser = described_class::Gemma.new(Samagotchi::ModelProfile.normalize(:gemma4))
+
+      call = parser.parse("<|tool_call>call:execute{command:<|\"|>ls<|\"|>,cwd:<|\"|>web<|\"|>}<tool_call|>").first
+      bare = parser.parse("<|tool_call>call:execute{command:<|\"|>ls<|\"|>}<tool_call|>").first
+
+      expect(call).to include(name: "execute", content: "ls", cwd: "web")
+      expect(bare[:cwd]).to be_nil
+    end
+
+    it "keeps it in the Qwen format" do
+      parser = described_class::Qwen.new(Samagotchi::ModelProfile.normalize(:qwen36))
+
+      call = parser.parse("<tool_call>\n<function=execute>\n<parameter=command>\nls\n</parameter>\n" \
+                          "<parameter=cwd>\nweb\n</parameter>\n</function>\n</tool_call>").first
+
+      expect(call).to include(name: "execute", content: "ls", cwd: "web")
+    end
+  end
+
   describe "delegate and delegate_result" do
     it "parses them in the Gemma format, optional params left nil" do
       parser = described_class::Gemma.new(Samagotchi::ModelProfile.normalize(:gemma4))

@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
 - The web's answer, dismiss, command and cancel calls fail the same way: a worker that doesn't answer in time is
   504 ("did not answer, so ... was not ..."; cancel said "not running"), a worker running an older chi is 501 with
   how to restart it (an answer said "not running").
+- `execute` with a `cwd` now runs in that directory with Gemma and Qwen native tool calls too (the directory was
+  dropped and the command ran in the project root).
 
 ## [0.9.0] - 2026-10-01
 

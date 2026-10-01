@@ -175,7 +175,7 @@ module Samagotchi
           content = params["command"] ||
                     strip_param_prefix(params_raw, "command") ||
                     params_raw
-          { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil }
+          { name: name, content: strip_gemma_delimiters(content), path: nil, scope: nil, cwd: params["cwd"] }
         when Tools::Read::NAME
           content = params["path"] ||
                     strip_param_prefix(params_raw, "path") ||
@@ -513,7 +513,7 @@ module Samagotchi
       def qwen_call_to_internal(name, params)
         case name
         when Tools::Execute::NAME
-          { name: name, content: qwen_param_value(params, "command"), path: nil, scope: nil }
+          { name: name, content: qwen_param_value(params, "command"), path: nil, scope: nil, cwd: qwen_param_value(params, "cwd") }
         when Tools::Read::NAME
           {
             name: name,
