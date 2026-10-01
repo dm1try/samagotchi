@@ -35,8 +35,30 @@ The first row, **New session in <folder>** (⌘0), starts a session with the mes
 that of the most recently updated live session, else of the newest recent one, else your home folder. It is ticked
 alone (ticking it clears the sessions and the reverse) and is preselected when no session is live. ⌘⏎ on it beeps: a
 note needs a session. After the send the panel shows `started <id>…` for 3 s. On its right, in grey, the row names
-the model the new session starts on (`chi self --model`: `default.model` from config.yml, or its env override); it
-is left out when none is configured.
+the model the new session starts on (`chi self --model`: `default.model` from config.yml, or its env override; an
+alias as the model it names).
+
+### Choosing the model
+
+Click the model on the new row, or press **⌘M**, to choose another one for the new session. The chooser takes the
+place of the session list: a search field (focused), then **Default (<model>)** (`Default (small → box:gemma-small)`
+for an alias), your recent picks and every host's
+models and aliases (from [`chi models`](cli.md#listing-the-models)), at most nine at a time.
+
+- Type to search: every word must match the host or the id; names starting with what you typed rank first. A name
+  no host lists is offered at the bottom as "not listed" and sent as typed (a host that is down, a model just added).
+- ↑/↓ and ⏎, a click, or ⌘1…⌘9 pick; Esc (or ⌘M) closes the chooser only, a second Esc the panel. While an input
+  method is composing, ⏎, the arrows and Esc are its own.
+- The row then shows the pick in the accent colour, and ⏎ sends `chi send --new --model <name>`, the name exactly as
+  the chooser shows it; Default sends no `--model`. An existing session keeps its model (switch it there with `/model`).
+- The pick is remembered for the next open (and the last five in the recent list), for every folder. A remembered
+  model no host lists any more falls back to the default, with a note in the panel.
+- The list is fetched again at each open; the previous one shows meanwhile ("Loading models…" the first time after
+  the helper starts). Hosts that failed or took over 4 s are named under the list; the default and the recent picks
+  still work.
+
+The chooser needs a chi with `chi models`: an older helper works with a newer chi, not the reverse
+(`chi desktop upgrade` after updating chi).
 
 A session open in a `chi --no-shared` REPL isn't listed: it takes no notes or messages.
 

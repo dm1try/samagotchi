@@ -8,6 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi models [--format json] [--timeout S] [TEXT]` lists the names `--model` takes from every host (default first,
+  then `host:id`, then aliases), waiting at most 4 s for the hosts; exit 1 when no host listed.
+- The desktop helper chooses the model for a new session: ⌘M (or a click on the new row's model) opens a searchable
+  chooser of every host's models and aliases; the pick and five recent ones are remembered. Run `chi desktop upgrade`.
+
+### Changed
+
+- `chi self --model` prints an alias default as the ref it resolves to (`box:gemma-small`, not `small`).
+
 ## [0.11.0] - 2026-10-01
 
 ### Added

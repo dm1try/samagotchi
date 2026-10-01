@@ -19,7 +19,8 @@
 - `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
 - `chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...` — send a message to sessions as if typed there: a turn starts (or a running one picks it up); piped stdin goes above `-m` as quoted context, and `--image` attaches images (see [Sessions: Sending a message](sessions.md#sending-a-message)); `--new` starts a session with it instead, and `--wait` prints the answer (`--wait ID` with no message waits for the next reply without sending; see [Starting a session](sessions.md#starting-a-session))
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text to live sessions as context notes (see [Desktop helper](desktop.md))
-- `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles; `chi self --model` prints only the model a new session starts on (the desktop helper's hint)
+- `chi models [--format text|json] [--timeout S] [TEXT]` — list the models every configured host offers, as the names `--model` takes (see [Listing the models](#listing-the-models))
+- `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles; `chi self --model` prints only the model a new session starts on, an alias resolved to its target (the desktop helper's hint)
 - `chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, in one table (see [Updating](#updating))
 - `chi bundle install|upgrade|uninstall|status|diff|list|build` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle), [the check-in bundle](plugins.md#the-check-in-bundle) and [the skills bundle](plugins.md#the-skills-bundle)). A usage error (an unknown subcommand or flag, a missing argument, a bad `build --scope`) exits 2, as for every other command
 
@@ -65,6 +66,29 @@ chi bootstrap                            # try localhost 8080, 11434, 1234, 8000
   you uninstalled stays out ([Bundle profiles](memory.md#bundle-profiles-core-and-dev)).
   A bundle that fails to install makes the exit 1. `--dry-run` says what it
   would install.
+
+### Listing the models
+
+`chi models` asks every host in `hosts:` for its models, in parallel, and prints the names `--model` (and
+`chi send --new --model`, `/model`) takes, one per line:
+
+```sh
+$ chi models
+gemma-4                          # the default (default.model), first
+splash:incoai/Qwen3.8-27B-Splash # another host's id: host:id
+openrouter:qwen/qwen3.8-27b
+small -> box:gemma-small         # an alias and the ref it resolves to
+$ chi models qwen                # only the names containing "qwen" (any case)
+```
+
+- A default-host id is bare, except one with a `:` (`qwen3:8b`), which is written `<host>:qwen3:8b` so it can't
+  read as a host name. An id that an alias of the same name hides is left out.
+- Each run lists anew (no cache); `--timeout S` caps the wait for the hosts (default 4 s). A host that fails or doesn't
+  answer in time is noted on stderr (`chi models: box: no answer in 4 s`).
+- `--format json` prints one object: `default` (and `default_typed` when it was set as an alias), `default_host`,
+  `models` (`name`, `host`, `id`), `aliases` (`name`, `ref`, `host`) and `warnings`. The desktop helper's model
+  chooser reads it.
+- Exit 0 when any host listed its models, 1 when none did (the default is still printed), 2 on a usage error.
 
 ### Updating
 
