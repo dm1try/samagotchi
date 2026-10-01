@@ -6,6 +6,6 @@ description: Default system memories — identity, self map, config modification
 files:
   identity.md: sha256:29c2f7df9f6c5acbc5ec17000a4490741e55e426af15ca0d81c8706edd9bd027
   self_map.md: sha256:93c788fadaf98adeb8946b4a357d2372bd6ebb439042d7cef8dda8fb44187315
-  config_modification_protocol.md: sha256:24e95727488daa80ac3008e020d8be098c7a1882153b7a61aba35450f72b86b7
+  config_modification_protocol.md: sha256:d8bdf062d5afce7430ead7f49439c1d1ed197a6261dc69a7c884f4b814266b12
   memory_guide.md: sha256:81b911b9a015f0924c48162b3dc4b6376309e743765074419a99fab46e480858
   delegated.md: sha256:0a71d5dfa7127df2d51cb5f0e7214240ed88777e36559430a8724c796d7ae561
