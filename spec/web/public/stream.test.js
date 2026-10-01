@@ -26,22 +26,23 @@ class FakeEventSource {
   }
 }
 
-const expectedTypes = [
-  "generation_chunk",
-  "generation_started",
-  "generation_completed",
-  "turn_started",
-  "turn_completed",
-  "turn_canceled",
-  "tool_call_completed",
-  "reset",
-];
-
-test("openStream registers a listener for every canonical event type", () => {
-  const calls = [];
-  openStream("abc", 0, {}, { EventSourceImpl: FakeEventSource });
-  // no handlers supplied -> nothing registered, but also no throw
-  assert.ok(true);
+test("openStream listens for every type it has a handler for, a new type included", () => {
+  const esHolder = {};
+  const Fake = class extends FakeEventSource {
+    constructor(u) {
+      super(u);
+      esHolder.es = this;
+    }
+  };
+  const seen = [];
+  openStream("abc", 0, {
+    turn_started: () => seen.push("turn_started"),
+    some_new_event: (d) => seen.push(d.n),
+    not_a_handler: "ignored",
+  }, { EventSourceImpl: Fake });
+  assert.deepEqual([...esHolder.es.listeners.keys()], ["turn_started", "some_new_event"]);
+  esHolder.es.dispatch("some_new_event", { data: JSON.stringify({ n: 7 }) });
+  assert.deepEqual(seen, [7]);
 });
 
 test("openStream dispatches JSON events to the right typed handler", () => {
