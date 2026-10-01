@@ -2,6 +2,7 @@
 
 require "samagotchi/steer"
 require "samagotchi/pending_input_queue"
+require "samagotchi/cancellation_controller"
 
 RSpec.describe Samagotchi::Steer do
   describe ".merge" do
@@ -35,6 +36,68 @@ RSpec.describe Samagotchi::Steer do
       expect(described_class.drain(->(at_answer: false) { seen = at_answer }, at_answer: true)).to be(true)
       expect(seen).to be(true)
       expect(described_class.drain(-> { raise "boom" }, at_answer: false)).to be_nil
+    end
+  end
+
+  describe ".inject!" do
+    let(:conversation) { [{ role: "user", content: "hi" }] }
+    let(:events) { [] }
+    let(:emit) { ->(event) { events << event } }
+
+    def inject(pending_input, **options)
+      described_class.inject!(conversation, pending_input, iteration: 2, emit: emit, cancel_controller: nil, **options)
+    end
+
+    it "appends the merge on the tail and emits :pending_input_merged" do
+      expect(inject(-> { ["line", { text: "nudge", source: "check-in" }] })).to be(true)
+
+      expect(conversation.drop(1)).to eq([{ role: "user", kind: "input", content: "line" },
+                                          { role: "user", kind: "steer", source: "check-in", content: "nudge" }])
+      expect(events).to eq([{ type: :pending_input_merged, iteration: 2, count: 1, content: "line",
+                              steers: [{ source: "check-in", text: "nudge" }], answer: nil }])
+    end
+
+    it "does nothing without a drain, with nothing queued, or after a cancel (the input stays queued)" do
+      cancelled = Samagotchi::CancellationController.new.tap(&:cancel!)
+      drained = false
+
+      expect(inject(nil)).to be(false)
+      expect(inject(-> { [] })).to be(false)
+      expect(described_class.inject!(conversation, -> { drained = true }, iteration: 1, emit: emit,
+                                                                          cancel_controller: cancelled)).to be(false)
+      expect(drained).to be(false)
+      expect(conversation.size).to eq(1)
+      expect(events).to be_empty
+    end
+
+    it "tells the drain it is the answer site when an answer is given, and names the answer" do
+      seen = []
+      drain = lambda do |at_answer: false|
+        seen << at_answer
+        ["line"]
+      end
+
+      inject(drain)
+      inject(drain, answer: "A")
+
+      expect(seen).to eq([false, true])
+      expect(events.map { |event| event[:answer] }).to eq([nil, "A"])
+    end
+
+    it "builds a lazy answer only for a merge, and a blank one is none" do
+      built = 0
+      answer = lambda do
+        built += 1
+        "  \n "
+      end
+
+      inject(-> { [] }, answer: answer)
+      expect(built).to eq(0)
+      inject(-> { ["line"] }, answer: answer)
+      expect(built).to eq(1)
+      inject(-> { ["line"] }, answer: " ")
+
+      expect(events.map { |event| event[:answer] }).to eq([nil, nil])
     end
   end
 

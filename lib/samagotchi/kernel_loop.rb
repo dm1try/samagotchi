@@ -461,33 +461,11 @@ module Samagotchi
       nil
     end
 
-    # Drain the pending input queue (if any) and, when messages are waiting,
-    # append them as ONE merged user message at the conversation tail and emit
-    # :pending_input_merged. Tail-append only: head mutation would invalidate
-    # the server-side prefix KV cache. Returns true when a message was injected.
-    # A plugin's steers (Steer) follow the user's message, each its own
-    # message; after an answer the Engine's drain has already dropped them.
-    # After a cancel the input stays queued: it runs as the next turn instead
-    # of dying with this one. +answer+ (a proc, called only on a merge) is the
-    # answer the merge follows: the UIs show it, the turn summary has only the
-    # last one.
+    # Queued input at an iteration boundary (Steer.inject!); +answer+ is a
+    # proc, built only on a merge. Returns true when anything was injected.
     def inject_pending_input!(conversation, pending_input, on_stream_event, iteration, cancel_controller = nil, answer: nil)
-      return false unless pending_input
-      return false if cancel_controller&.cancelled?
-
-      merge = Steer.merge(Steer.drain(pending_input, at_answer: !answer.nil?))
-      return false if merge.empty?
-
-      answer = answer.call.to_s if answer
-      conversation.concat(merge.messages)
-      emit_stream_event(
-        on_stream_event,
-        type: :pending_input_merged,
-        iteration: iteration,
-        **merge.event_fields,
-        answer: answer.to_s.strip.empty? ? nil : answer
-      )
-      true
+      Steer.inject!(conversation, pending_input, iteration: iteration, cancel_controller: cancel_controller, answer: answer,
+                                                 emit: ->(event) { emit_stream_event(on_stream_event, event) })
     end
 
     # ── Hook dispatch helper ───────────────────────────────────────────────────

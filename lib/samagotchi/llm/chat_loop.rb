@@ -16,6 +16,7 @@ require_relative "../tool_declarations"
 require_relative "../vision_context"
 require_relative "../log"
 require_relative "../empty_answer_retry"
+require_relative "../steer"
 require_relative "../turn_note"
 require_relative "../thinking"
 
@@ -540,23 +541,11 @@ module Samagotchi
           emit(type: :tool_dispatch_completed, iteration: iteration, call_count: tool_calls.length)
         end
 
-        # Queued steering joins the conversation as one user message, a
-        # plugin's steers each as its own after it (Steer). Returns true when
-        # there was any. After a cancel it stays queued, so it runs as the
-        # next turn instead of dying with this one. +answer+ is the answer the
-        # merge follows, for the UIs; given, the drain is told it is the
-        # after-answer site (plugin steers are dropped there).
+        # Queued input at an iteration boundary (Steer.inject!). Returns true
+        # when there was any.
         def inject_pending_input(iteration, answer: nil)
-          return false unless @pending_input
-          return false if @cancel_controller&.cancelled?
-
-          merge = Steer.merge(Steer.drain(@pending_input, at_answer: !answer.nil?))
-          return false if merge.empty?
-
-          @conversation.concat(merge.messages)
-          emit(type: :pending_input_merged, iteration: iteration, **merge.event_fields,
-               answer: answer.to_s.empty? ? nil : answer)
-          true
+          Steer.inject!(@conversation, @pending_input, iteration: iteration, emit: method(:emit),
+                                                       cancel_controller: @cancel_controller, answer: answer)
         end
 
         # The text streamed before the cancel stays, marked [interrupted],

@@ -74,6 +74,29 @@ module Samagotchi
       nil
     end
 
+    # One injection at an iteration boundary: drain +pending_input+ and, when
+    # anything was waiting, append the merge on the conversation tail (head
+    # mutation would invalidate the server's prefix KV cache) and emit
+    # :pending_input_merged. After a cancel the input stays queued: it runs
+    # as the next turn instead of dying with this one. +answer+ (a String,
+    # or a Proc called only on a merge) is the answer the merge follows, for
+    # the UIs; given, the drain is told it is the after-answer site (plugin
+    # steers are dropped there). A blank answer is none.
+    # @return [Boolean] whether anything was injected
+    def inject!(conversation, pending_input, iteration:, emit:, cancel_controller:, answer: nil)
+      return false unless pending_input
+      return false if cancel_controller&.cancelled?
+
+      merge = merge(drain(pending_input, at_answer: !answer.nil?))
+      return false if merge.empty?
+
+      answer = (answer.respond_to?(:call) ? answer.call : answer).to_s
+      conversation.concat(merge.messages)
+      emit.call({ type: :pending_input_merged, iteration: iteration, **merge.event_fields,
+                  answer: answer.strip.empty? ? nil : answer })
+      true
+    end
+
     # @return [Merge]
     def merge(items)
       items = Array(items)
