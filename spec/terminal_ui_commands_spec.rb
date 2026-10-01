@@ -115,18 +115,18 @@ RSpec.describe Samagotchi::TerminalUI do
       engine.show_card(source: "sample-plugin", title: "Hello", body: "hi there",
                        actions: [{ label: "Again", command: "/hello again" }])
       expect(lines).to be_empty
-      agent.send(:flush_pending_cards)
+      agent.between_turns.flush_cards
       expect(lines).to eq(["┌ Hello · sample-plugin", "│ hi there", "│ → /hello again  Again", "└"])
-      agent.send(:flush_pending_cards)
+      agent.between_turns.flush_cards
       expect(lines.grep(/Hello/).size).to eq(1)
     end
 
     it "prints a plugin's notice between turns under its bundle's name, and a card shown again marked (updated)" do
       engine.send(:hook_notify, "saved", :info, "plugin.rb (bundle sample-plugin)")
       engine.show_card(source: "b", title: "One", id: "c1")
-      agent.send(:flush_pending_cards)
+      agent.between_turns.flush_cards
       engine.show_card(source: "b", title: "Two", id: "c1")
-      agent.send(:flush_pending_cards)
+      agent.between_turns.flush_cards
       expect(lines).to eq(["sample-plugin> saved", "┌ One · b", "└", "┌ Two (updated) · b", "└"])
     end
 
@@ -141,7 +141,7 @@ RSpec.describe Samagotchi::TerminalUI do
       gate << "x ready, 3 tools"
       engine.instance_variable_get(:@plugin_tasks).tasks.each { |task| task.thread.join(2) }
       expect(lines).to be_empty
-      agent.send(:flush_pending_cards)
+      agent.between_turns.flush_cards
       expect(lines).to contain_exactly("┌ y didn't start · mcp", "│ gone", "└", "mcp> ✓ x ready, 3 tools")
       expect(lines.last).to eq("mcp> ✓ x ready, 3 tools")
     end
@@ -152,7 +152,7 @@ RSpec.describe Samagotchi::TerminalUI do
       engine.instance_variable_set(:@guardrail_failures_announced, false)
       engine.instance_variable_get(:@plugin_failures).add("plugin plugin.rb (bundle b)", "boom", required: false)
       engine.announce_load_events!
-      agent.send(:flush_pending_cards)
+      agent.between_turns.flush_cards
       expect(lines).to eq(["plugins> plugin plugin.rb (bundle b) failed to load (boom)"])
     end
 
@@ -165,7 +165,7 @@ RSpec.describe Samagotchi::TerminalUI do
 
       engine.announce({ type: :plugin_init_finished, **task, ok: true, summary: "x ready" })
       expect(surface.slots).not_to have_key(:activity)
-      agent.send(:flush_pending_cards)
+      agent.between_turns.flush_cards
       expect(lines).to eq(["mcp> ✓ x ready"])
     end
 
@@ -173,7 +173,7 @@ RSpec.describe Samagotchi::TerminalUI do
       engine.show_card(source: "b", title: "thinking", id: "c1")
       engine.show_card(source: "b", title: "other", id: "c2")
       engine.show_card(source: "b", title: "answer", id: "c1")
-      agent.send(:flush_pending_cards)
+      agent.between_turns.flush_cards
       expect(lines).to eq(["┌ other · b", "└", "┌ answer · b", "└"])
     end
 
@@ -189,9 +189,9 @@ RSpec.describe Samagotchi::TerminalUI do
     end
 
     it "leaves a turn's card to the turn's sink" do
-      agent.send(:handle_card_event, { type: :card, id: "c1", source: "b", title: "mid", in_turn: true })
-      agent.send(:handle_card_event, { type: :hook_notice, hook: "h", text: "in a turn", level: :info })
-      agent.send(:flush_pending_cards)
+      agent.between_turns.observe({ type: :card, id: "c1", source: "b", title: "mid", in_turn: true })
+      agent.between_turns.observe({ type: :hook_notice, hook: "h", text: "in a turn", level: :info })
+      agent.between_turns.flush_cards
       expect(lines).to be_empty
     end
   end
@@ -235,19 +235,19 @@ RSpec.describe Samagotchi::TerminalUI do
       let(:agent) { described_class.new(client: client, surface: surface) }
 
       it "prints a recap written while idle at the open prompt, on the main thread" do
-        agent.send(:handle_recap_ready, { type: :recap_ready, recap: "Did Y.", generation: 3, covered: 6 })
+        agent.between_turns.take_recap({ type: :recap_ready, recap: "Did Y.", generation: 3, covered: 6 })
         expect(surface.lines.grep(/Did Y/)).to be_empty
-        agent.send(:flush_pending_recap)
+        agent.between_turns.flush_recap
         expect(surface.lines.last).to eq("recap> Did Y.")
-        agent.send(:flush_pending_recap)
+        agent.between_turns.flush_recap
         expect(surface.lines.grep(/Did Y/).size).to eq(1)
       end
 
       it "drops one that lands during a turn" do
         allow(engine).to receive(:turn_running?).and_return(true)
-        agent.send(:handle_recap_ready, { type: :recap_ready, recap: "Did Y.", generation: 3, covered: 6 })
+        agent.between_turns.take_recap({ type: :recap_ready, recap: "Did Y.", generation: 3, covered: 6 })
         allow(engine).to receive(:turn_running?).and_return(false)
-        agent.send(:flush_pending_recap)
+        agent.between_turns.flush_recap
         expect(surface.lines.grep(/Did Y/)).to be_empty
       end
 

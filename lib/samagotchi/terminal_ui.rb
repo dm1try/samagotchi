@@ -21,6 +21,7 @@ require_relative "output_formatter"
 require_relative "turn_flow"
 require_relative "session_commands"
 require_relative "terminal_ui/attached_view"
+require_relative "terminal_ui/between_turns"
 require_relative "terminal_ui/event_renderer"
 require_relative "terminal_ui/formatting"
 require_relative "terminal_ui/input_support"
@@ -62,6 +63,11 @@ module Samagotchi
     class SessionBusy < StandardError; end
     # --resume with an id that has no saved session.
     class SessionNotFound < StandardError; end
+
+    # What prints between turns (cards, notices, init lines, an idle recap):
+    # announced on other threads, printed at the open prompt.
+    # @return [BetweenTurns]
+    attr_reader :between_turns
 
     # ── System prompts (delegated to Engine) ─────────────────────────────────
     def self.system_prompt_for(profile)
@@ -117,12 +123,6 @@ module Samagotchi
         @requested_memories = (@resume_session.preloaded_memory_names + @requested_memories).uniq
         @muted_memory_names = (@resume_session.muted_memory_names + @muted_memory_names).uniq
       end
-      # A recap written while idle, printed by the main thread at the open
-      # prompt (#flush_pending_recap).
-      @pending_recap = nil
-      # Cards and notices announced between turns, printed by the main
-      # thread at the open prompt (#flush_pending_cards).
-      @pending_cards = Queue.new
       # Every terminal write goes through the surface. The REPL swaps in a
       # live region when the terminal can show one (#assist_loop), unless it
       # was given a surface to draw on.
@@ -137,6 +137,10 @@ module Samagotchi
       @view = AttachedView.new(@surface, **view_options)
       @status_row = StatusRow.new(@surface)
       @renderer = EventRenderer.new(@view)
+      # Cards, notices and a recap announced between turns, printed by the
+      # main thread at the open prompt (#poll_input_with_reminder_check).
+      @between_turns = BetweenTurns.new(surface: @surface, view: @view, renderer: @renderer,
+                                        turn_running: -> { @engine.turn_running? }, quiet: @non_interactive)
       @render_event = ->(event) { handle_stream_event(event) }
       @engine         = Engine.new(
         client: client,
@@ -176,9 +180,9 @@ module Samagotchi
       @engine.switch_model!(@effective_model_name) if @effective_model_name != @default_model_name
       # Render an idle session-recap via the cursor-safe background writer; the
       # detector itself is Engine-owned (see Engine#recap) and opt-in.
-      @recap_handle = @engine.subscribe(observer: ->(event) { handle_recap_ready(event) })
+      @recap_handle = @engine.subscribe(observer: ->(event) { @between_turns.take_recap(event) })
       @question_handle = @engine.subscribe(observer: ->(event) { handle_question_event(event) })
-      @card_handle = @engine.subscribe(observer: ->(event) { handle_card_event(event) })
+      @card_handle = @engine.subscribe(observer: ->(event) { @between_turns.observe(event) })
       # The REPL renders events from here on: the load warnings and notices
       # now (at the first prompt), and the plugins' slow setup in the
       # background. A --non-interactive run leaves both to its turn.
@@ -468,6 +472,7 @@ module Samagotchi
       @surface = surface
       @view.surface = surface
       @status_row.surface = surface
+      @between_turns.surface = surface
     end
 
     # Interactive REPL loop. Session seed + messages are built by #run and
@@ -725,7 +730,7 @@ module Samagotchi
       return :due unless @engine.due_reminder_names.empty?
       # Specs and pipes: a plain blocking read.
       unless @repl_input
-        flush_pending_cards
+        @between_turns.flush_cards
         return read_input(awaiting_continue: awaiting_continue)
       end
 
@@ -736,8 +741,8 @@ module Samagotchi
       sync_continue_slot(awaiting_continue)
       @repl_input.sync_prompt
       loop do
-        flush_pending_recap
-        flush_pending_cards
+        @between_turns.flush_recap
+        @between_turns.flush_cards
         kind, line = @repl_input.pop(timeout: REMINDER_PENDING_POLL_INTERVAL)
         if kind
           # What the line does may change the status (/model, a turn).
@@ -826,7 +831,7 @@ module Samagotchi
     end
 
     # /recap: the saved recap, and a new one asked for at once when the
-    # chat moved on (it prints when it arrives, #flush_pending_recap).
+    # chat moved on (it prints when it arrives, BetweenTurns#flush_recap).
     def handle_recap_command
       recap = @engine.recap
       return recap_command_text(enabled: false) unless recap
@@ -942,16 +947,15 @@ module Samagotchi
     # D8: an anytime command runs on its own thread while the turn goes on
     # (it reads copies, and shows things through its ctx). What it prints
     # while the turn runs goes above the live region now, its cards as it
-    # shows them (#handle_card_event); once the turn has ended it waits for
+    # shows them (BetweenTurns#observe); once the turn has ended it waits for
     # the prompt's flush.
     # @return [true]
     def start_anytime_command(line)
       @engine.spawn_anytime do
         output = @engine.running_anytime { @commands.run(line) }&.output
-        items = output.nil? ? [] : [{ type: :command_output, text: "\nmodel> #{output}" }]
-        items.each { |item| @engine.turn_running? ? show_pending_item(item) : @pending_cards << item }
+        @between_turns.show_or_keep({ type: :command_output, text: "\nmodel> #{output}" }) unless output.nil?
       rescue StandardError => e
-        @pending_cards << { type: :command_output, text: "\nmodel> #{line.split.first}: #{e.message}" }
+        @between_turns.keep({ type: :command_output, text: "\nmodel> #{line.split.first}: #{e.message}" })
       end
       true
     end
@@ -993,91 +997,6 @@ module Samagotchi
     def refresh_status_row
       state = @engine.session_state_snapshot.merge(model_name: @effective_model_name)
       @status_row.take_state(state, default_model: @default_model_name)
-    end
-
-    # ── Idle session recap ───────────────────────────────────────────────────
-    #
-    # The Engine's idle job emits :recap_ready once the session has been idle
-    # for its inactivity threshold (or /recap asked). On the scheduler thread:
-    # kept for the main thread to print at the open prompt. One collected
-    # just as a turn started describes the chat before it.
-    def handle_recap_ready(event)
-      return unless event[:type] == :recap_ready
-      return if event[:recap].to_s.strip.empty? || @engine.turn_running?
-
-      @pending_recap = event[:recap].to_s
-    end
-
-    # Print a recap written while idle (main thread, at the open prompt).
-    def flush_pending_recap
-      recap = @pending_recap
-      return unless recap
-
-      @pending_recap = nil
-      @surface.commit(recap_block(recap))
-    end
-
-    # ── Cards and notices between turns ─────────────────────────────────────
-    #
-    # A card or a plugin's notice shown outside a turn is announced; on the
-    # announcing thread it is only kept, for the main thread to print at the
-    # open prompt (after the command that showed it). One shown during a
-    # turn is a turn event: the turn's sink prints it where it happens
-    # (EventRenderer; the Screen draws it above the live region).
-    #
-    # An anytime command's (event[:anytime]) print as it shows them: on the
-    # main thread (the command runs at the prompt) or beside a running turn
-    # (above the live region), else at the next flush.
-    #
-    # A plugin's init task (chi.init) turns the activity row while it runs
-    # (between turns too, as in attached mode) and prints a line when it is
-    # done; a load warning announced before the first turn, one. Beside a
-    # running turn they print at once; a --non-interactive run prints only
-    # its answer.
-    def handle_card_event(event)
-      if INIT_EVENTS.include?(event[:type])
-        return if @non_interactive
-        return @view.init_started(event) if event[:type] == :plugin_init_started
-
-        @view.init_finished(event) if event[:type] == :plugin_init_finished
-        return show_pending_item(event) if @engine.turn_running?
-
-        return @pending_cards << event
-      end
-      return unless (event[:type] == :card && !event[:in_turn]) || (event[:type] == :hook_notice && event[:between_turns])
-      return show_pending_item(event) if event[:anytime] && (Thread.current == Thread.main || @engine.turn_running?)
-
-      @pending_cards << event
-    end
-
-    # Print the cards, notices and anytime commands' output kept since the
-    # last flush (main thread). A card replaced later in the same batch (the
-    # same id: btw's "thinking…", then its answer) prints once, as its last.
-    def flush_pending_cards
-      items = []
-      loop { items << @pending_cards.pop(true) }
-    rescue ThreadError
-      items.each_with_index do |item, index|
-        replaced = item[:type] == :card && items.drop(index + 1).any? { |later| later[:type] == :card && later[:id] == item[:id] }
-        show_pending_item(item) unless replaced
-      end
-      nil
-    end
-
-    INIT_EVENTS = %i[plugin_init_started plugin_init_finished guardrail_warning].freeze
-
-    # A card, a notice, an anytime command's output (:command_output), a
-    # plugin init task's done line or a load warning.
-    def show_pending_item(item)
-      case item[:type]
-      when :card then @renderer.render_card(item)
-      when :command_output then @surface.commit(item[:text])
-      when :guardrail_warning then @surface.commit(EventRenderer.load_warning_line(item))
-      when :plugin_init_finished
-        line = EventRenderer.init_line(item)
-        @surface.commit(line) if line
-      else @surface.commit(EventRenderer.hook_notice_line(item))
-      end
     end
 
     # Resolve the recap config (on by default). Returns false when explicitly

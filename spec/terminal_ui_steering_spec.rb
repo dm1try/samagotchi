@@ -156,7 +156,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
       agent.send(:start_anytime_command, "/side")
       thread.join(2)
       expect(surface.lines).not_to include("\nmodel> later")
-      agent.send(:flush_pending_cards)
+      agent.between_turns.flush_cards
 
       expect(surface.lines).to include("\nmodel> later")
     end
