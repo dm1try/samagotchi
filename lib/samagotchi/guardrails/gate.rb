@@ -21,7 +21,8 @@ module Samagotchi
       #   the kernel is built.
       # @param context_lookup [#call] returns the Context for this call
       #   (the Engine's: session, interface, origin, per-turn git cache)
-      # @param model_key_lookup [#call] the model key (memory overlays)
+      # @param model_key_lookup [#call] the model key (memory overlays, rules' models:)
+      # @param model_name_lookup [#call] the bare model name (rules' models:)
       # @param approver [#call, nil] settles an ask (Engine#request_approval);
       #   without one an ask is denied
       # @param approvals_lookup [#call] returns the Approvals store (or nil)
@@ -31,12 +32,13 @@ module Samagotchi
       #   hook's stop_turn): the rest of a batch is denied without a vote
       # @param tools_lookup [#call] returns the Tools::Registry (or nil): a
       #   plugin tool's targets: say what its call acts on
-      def initialize(hooks_lookup, context_lookup: -> { Context.new }, model_key_lookup: -> {}, approver: nil,
-                     approvals_lookup: -> {}, checks_lookup: -> { [] }, cancelled_lookup: -> { false },
+      def initialize(hooks_lookup, context_lookup: -> { Context.new }, model_key_lookup: -> {}, model_name_lookup: -> {},
+                     approver: nil, approvals_lookup: -> {}, checks_lookup: -> { [] }, cancelled_lookup: -> { false },
                      tools_lookup: -> {})
         @hooks_lookup = hooks_lookup
         @context_lookup = context_lookup
         @model_key_lookup = model_key_lookup
+        @model_name_lookup = model_name_lookup
         @approver = approver
         @approvals_lookup = approvals_lookup
         @checks_lookup = checks_lookup
@@ -113,7 +115,8 @@ module Samagotchi
       end
 
       def targets_for(call, context)
-        Targets.for(call, context, model_key: @model_key_lookup.call, registry: @tools_lookup.call)
+        Targets.for(call, context, model_key: @model_key_lookup.call, model_name: @model_name_lookup.call,
+                                   registry: @tools_lookup.call)
       end
 
       # Registry#fire_each rescues a raising hook itself.

@@ -29,14 +29,16 @@ module Samagotchi
     # @param tools     [#call] → Tools::Registry
     # @param session   [#call] → Session, nil
     # @param model_key [#call] → String, the effective model's overlay key
+    # @param model_name [#call] → String, nil: the effective model's bare name
     # @param cancelled [#call] → Boolean, whether the running turn is cancelled
     # @param ask       [#call] (fields) → the answer; the Engine's question flow
-    def initialize(scratch:, hooks:, tools:, session:, model_key:, cancelled:, ask:)
+    def initialize(scratch:, hooks:, tools:, session:, model_key:, cancelled:, ask:, model_name: -> {})
       @scratch = scratch
       @hooks_lookup = hooks
       @tools_lookup = tools
       @session_lookup = session
       @model_key_lookup = model_key
+      @model_name_lookup = model_name
       @cancelled_lookup = cancelled
       @ask = ask
       @failures = Guardrails::LoadFailures.new
@@ -78,6 +80,7 @@ module Samagotchi
         -> { @hooks_lookup.call },
         context_lookup: -> { context },
         model_key_lookup: -> { @model_key_lookup.call },
+        model_name_lookup: -> { @model_name_lookup.call },
         approver: ->(verdict) { request_approval(verdict) },
         approvals_lookup: -> { @approvals },
         checks_lookup: -> { checks },

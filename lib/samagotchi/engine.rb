@@ -126,6 +126,7 @@ module Samagotchi
         tools: -> { @tools },
         session: -> { @session },
         model_key: -> { @model_key },
+        model_name: -> { guardrail_model_name },
         cancelled: -> { !!active_cancel_controller&.cancelled? },
         ask: ->(fields) { open_question(fields) }
       )
@@ -450,6 +451,13 @@ module Samagotchi
 
     def bare_model_name(full_ref)
       @host_registry.bare_name(full_ref)
+    end
+
+    # The effective model's bare name for the guardrails' models: rules;
+    # nil without a model name.
+    def guardrail_model_name
+      name = @effective_model_name && bare_model_name(@effective_model_name)
+      name.to_s.strip.empty? ? nil : name
     end
 
     # Point the kernel (and a chat backend) at the effective model's host

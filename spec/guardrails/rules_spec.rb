@@ -4,6 +4,7 @@ require "tmpdir"
 require "samagotchi/guardrails"
 require "samagotchi/hooks"
 require "samagotchi/engine"
+require "samagotchi/model_overlay"
 
 RSpec.describe Samagotchi::Guardrails::Rules do
   let(:repo) { File.realpath(Dir.mktmpdir("guard-rules")).tap { |d| system("git", "-C", d, "init", "-q") } }
@@ -99,6 +100,59 @@ RSpec.describe Samagotchi::Guardrails::Rules do
     it "passes the rule's scopes to the ask" do
       v = verdict_for({ name: "execute", content: "git push" }, rules(push.merge(scopes: %w[once repo])))
       expect(v.scopes).to eq(%w[once repo])
+    end
+  end
+
+  describe "models:" do
+    let(:checkout) { { id: "discard", tool: "shell", command: '\bgit checkout --', verdict: "ask" } }
+
+    def verdict_on(model, set, setting: "auto")
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.small_models").and_return(setting)
+      call = { name: "execute", content: "git checkout -- app.rb" }
+      v = Samagotchi::Guardrails::Verdict.new(call: call)
+      v.context = context
+      v.targets = Samagotchi::Guardrails::Targets.for(call, context, model_name: model,
+                                                                     model_key: Samagotchi::ModelOverlay.key_for(model))
+      set.check(v)
+    end
+
+    it "votes on every model without it" do
+      expect(verdict_on("Llama-3.3-70B", rules(checkout))).to be_ask
+      expect(verdict_on(nil, rules(checkout))).to be_ask
+    end
+
+    it "matches a glob on the bare model name or on the model key" do
+      expect(verdict_on("Qwen3.6-27B", rules(checkout.merge(models: "Qwen3.6-*")))).to be_ask
+      expect(verdict_on("Qwen3.6-27B", rules(checkout.merge(models: "qwen3-6-*")))).to be_ask
+      expect(verdict_on("Qwen3-8B", rules(checkout.merge(models: "Qwen3.6-*")))).to be_allow
+    end
+
+    it "matches any glob of a list" do
+      set = rules(checkout.merge(models: %w[gemma-* Qwen3-8B]))
+      expect(verdict_on("Qwen3-8B", set)).to be_ask
+      expect(verdict_on("gemma-4-E4B-it", set)).to be_ask
+      expect(verdict_on("Llama-3.3-70B", set)).to be_allow
+    end
+
+    it "matches small by guardrails.small_models, read on each check" do
+      set = rules(checkout.merge(models: "small"))
+      expect(verdict_on("Qwen3-8B", set)).to be_ask
+      expect(verdict_on("Ornith-1.5-35B-A3B", set)).to be_ask
+      expect(verdict_on("Llama-3.3-70B", set)).to be_allow
+      expect(verdict_on("deepseek-v4.1-flash", set)).to be_allow
+      expect(verdict_on("Qwen3-8B", set, setting: "")).to be_allow
+      expect(verdict_on("deepseek-v4.1-flash", set, setting: "deepseek-*")).to be_ask
+    end
+
+    it "doesn't match without a model (fail open)" do
+      expect(verdict_on(nil, rules(checkout.merge(models: "small")))).to be_allow
+      expect(verdict_on(nil, rules(checkout.merge(models: "*")))).to be_allow
+    end
+
+    it "rejects a models: that isn't a name or a list of names" do
+      expect { rules(checkout.merge(models: [])) }.to raise_error(described_class::ParseError, "rule discard: models must be small, a glob or a list of them")
+      expect { rules(checkout.merge(models: { "a" => 1 })) }.to raise_error(described_class::ParseError, /models must be/)
     end
   end
 
@@ -233,6 +287,22 @@ RSpec.describe "Engine: YAML guardrail rules from config.yml" do
     engine = nil
     expect { engine = engine_with("guardrails:\n  disable: {no-rm: true}\n") }.to output(/disable/).to_stderr
     expect(evaluate(engine, { name: "read", content: "README.md" }).rule).to eq("guardrail-load")
+  end
+
+  it "votes with a models: small rule only on a small model, following guardrails.small_models live" do
+    rule = "guardrails:\n  rules:\n    - {id: small-rm, tool: shell, command: rm, verdict: deny, models: small}\n"
+    on = lambda do |model, extra = ""|
+      File.write(config_path, "default: {model: #{model}}\n#{rule}#{extra}")
+      Samagotchi::ConfigFile.instance_variable_set(:@yaml_cache, nil)
+    end
+    on.call("Qwen3-8B")
+    small = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client))
+    expect(evaluate(small, { name: "execute", content: "rm x" }).rule).to eq("small-rm")
+    on.call("Llama-3.3-70B")
+    expect(evaluate(Samagotchi::Engine.new(client: instance_double(Samagotchi::Client)), { name: "execute", content: "rm x" })).to be_allow
+
+    on.call("Qwen3-8B", "  small_models: []\n")
+    expect(evaluate(small, { name: "execute", content: "rm x" })).to be_allow
   end
 
   it "reads guardrails.enabled" do

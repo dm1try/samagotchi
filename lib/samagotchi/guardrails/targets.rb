@@ -3,6 +3,7 @@
 require_relative "../tools/tool_path"
 require_relative "../tools/memory"
 require_relative "../log"
+require_relative "model_size"
 
 module Samagotchi
   module Guardrails
@@ -16,6 +17,10 @@ module Samagotchi
 
       attr_reader :tool, :command, :paths, :cwd, :repo_root
 
+      # @return [String, nil] the effective model: its bare name (no host
+      #   prefix) and its key (ModelOverlay.key_for), for a rule's models:
+      attr_reader :model_name, :model_key
+
       # @return [Hash, nil] a plugin tool's arguments (call[:args]), for an
       #   approval of a call whose targets name no command or path; nil for
       #   chi's own tools
@@ -23,10 +28,12 @@ module Samagotchi
 
       # @param call [Hash] the parsed tool call
       # @param context [Context]
-      # @param model_key [String, nil] for a memory_write model overlay
+      # @param model_key [String, nil] for a memory_write model overlay, and
+      #   a rule's models:
+      # @param model_name [String, nil] the bare model name, for a rule's models:
       # @param registry [Tools::Registry, nil] the session's tools: a plugin
       #   tool's entry says what it acts on (its targets:)
-      def self.for(call, context, model_key: nil, registry: nil)
+      def self.for(call, context, model_key: nil, model_name: nil, registry: nil)
         tool = call[:name].to_s
         base = context.cwd
         command = nil
@@ -53,7 +60,8 @@ module Samagotchi
           entry = registry && registry[tool]
           args = call[:args] if entry && !entry.core? && call[:args].is_a?(Hash)
         end
-        new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd), args: args)
+        new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd), args: args,
+            model_name: model_name, model_key: model_key)
       end
 
       # What a plugin tool's targets: callable says the call acts on:
@@ -93,8 +101,10 @@ module Samagotchi
         nil
       end
 
-      def initialize(tool:, command:, paths:, cwd:, repo_root:, args: nil)
+      def initialize(tool:, command:, paths:, cwd:, repo_root:, args: nil, model_name: nil, model_key: nil)
         @args = args
+        @model_name = model_name
+        @model_key = model_key
         @tool = tool
         @command = command
         @paths = paths
@@ -103,6 +113,14 @@ module Samagotchi
       end
 
       def shell? = SHELL_TOOLS.include?(@tool)
+
+      # Whether the effective model is a small one (guardrails.small_models,
+      # read when first asked: once per call's targets).
+      def small_model?
+        return @small_model if defined?(@small_model)
+
+        @small_model = ModelSize.small?(@model_name, @model_key)
+      end
 
       # Whether any path is outside the repo root (the cwd outside a repo).
       def outside_repo?

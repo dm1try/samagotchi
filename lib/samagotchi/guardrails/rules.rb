@@ -2,6 +2,7 @@
 
 require_relative "verdict"
 require_relative "targets"
+require_relative "model_size"
 
 module Samagotchi
   module Guardrails
@@ -13,6 +14,10 @@ module Samagotchi
     #   path:    "outside_repo", or a glob on the resolved paths (absolute
     #            or "**/…" globs match the absolute path; others the path
     #            relative to the repo root, the cwd outside one)
+    #   models:  "small" (Guardrails::ModelSize, guardrails.small_models),
+    #            or a glob on the bare model name or the model key, or a
+    #            list of them: the rule only votes for a model that matches
+    #            (no model matches none; missing = every model)
     # verdict ask|deny, reason, scopes (for an ask; default all).
     # `guardrails.disable` switches single rules off (#parse_disable).
     # A rule that doesn't parse raises ParseError: the Engine then denies
@@ -21,13 +26,14 @@ module Samagotchi
     class Rules
       class ParseError < StandardError; end
 
-      KEYS = %w[id tool command path verdict reason scopes].freeze
+      KEYS = %w[id tool command path models verdict reason scopes].freeze
       VERDICTS = %w[ask deny].freeze
       GLOB_FLAGS = File::FNM_PATHNAME | File::FNM_DOTMATCH | File::FNM_EXTGLOB
 
-      Rule = Struct.new(:id, :tools, :command, :path, :verdict, :reason, :scopes, :source, keyword_init: true) do
+      Rule = Struct.new(:id, :tools, :command, :path, :models, :verdict, :reason, :scopes, :source, keyword_init: true) do
         def matches?(targets)
           return false unless targets
+          return false if models && !models_match?(targets)
           return false if tools && !tool_matches?(targets.tool)
           return false if command && !(targets.command && command.match?(targets.command))
           return false if path && !path_matches?(targets)
@@ -37,6 +43,20 @@ module Samagotchi
 
         def tool_matches?(name)
           tools.any? { |tool| Rules.glob?(tool) ? File.fnmatch(tool, name.to_s, File::FNM_EXTGLOB) : tool == name }
+        end
+
+        # Whether the effective model is one of the rule's models:.
+        def models_match?(targets)
+          name = targets.model_name
+          return false if name.nil? || name.empty?
+
+          models.any? do |entry|
+            if entry == "small"
+              targets.small_model?
+            else
+              [name, targets.model_key].compact.any? { |c| File.fnmatch(entry, c, ModelSize::GLOB_FLAGS) }
+            end
+          end
         end
 
         def path_matches?(targets)
@@ -83,7 +103,7 @@ module Samagotchi
         end
 
         Rule.new(id: id, tools: tools_of(raw["tool"], label), command: regex_of(raw["command"], label),
-                 path: path_of(raw["path"], label), verdict: verdict.to_sym,
+                 path: path_of(raw["path"], label), models: models_of(raw["models"], label), verdict: verdict.to_sym,
                  reason: (raw["reason"] || "rule #{id}").to_s, scopes: scopes_of(raw["scopes"], label), source: source)
       end
 
@@ -112,6 +132,17 @@ module Samagotchi
         raise ParseError, "#{label}: path must be a string" unless value.is_a?(String) && !value.empty?
 
         value
+      end
+
+      def self.models_of(value, label)
+        return nil if value.nil?
+
+        names = Array(value)
+        unless !names.empty? && names.all? { |n| n.is_a?(String) && !n.strip.empty? }
+          raise ParseError, "#{label}: models must be small, a glob or a list of them"
+        end
+
+        names.map(&:strip)
       end
 
       def self.scopes_of(value, label)
