@@ -8,12 +8,9 @@ require "samagotchi/memory_bundle/provenance"
 
 RSpec.describe Samagotchi::MemoryBundle::Provenance do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-prov-") }
-  let(:bundles_dir) { File.join(tmpdir, ".bundles") }
-  before do
-    described_class.bundles_dir_override = bundles_dir
-  end
+  let(:bundles_dir) { Samagotchi::MemoryPaths.bundles_dir }
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   after do
-    described_class.bundles_dir_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 

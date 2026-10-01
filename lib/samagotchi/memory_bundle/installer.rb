@@ -29,18 +29,6 @@ module Samagotchi
 
       attr_reader :results, :warnings, :placeholder_warnings, :conflicts
 
-      class << self
-        attr_accessor :system_dir_override, :project_dir_base_override
-
-        def system_dir
-          system_dir_override || MemoryPaths.system_dir
-        end
-
-        def project_dir_base
-          project_dir_base_override || MemoryPaths.projects_dir
-        end
-      end
-
       def initialize(source:, name:, scope: nil, force: false, strict: true, upgrade: false, dry_run: false)
         @source = source
         @name = name
@@ -53,9 +41,6 @@ module Samagotchi
         @warnings = []
         @placeholder_warnings = []
         @conflicts = {}
-        # Propagate scope overrides so IndexUpdater resolves the correct directories.
-        IndexUpdater.system_dir_override = self.class.system_dir_override
-        IndexUpdater.project_dir_base_override = self.class.project_dir_base_override
       end
 
       def run
@@ -531,18 +516,7 @@ module Samagotchi
       end
 
       def resolve_target_dir(scope)
-        case scope
-        when "system", ""
-          self.class.system_dir
-        when "project"
-          if self.class.project_dir_base_override
-            self.class.project_dir_base
-          else
-            File.join(self.class.project_dir_base, MemoryPaths.project_key)
-          end
-        else
-          raise InstallError, "invalid scope: #{scope}"
-        end
+        MemoryPaths.scope_dir(scope) or raise InstallError, "invalid scope: #{scope}"
       end
     end
   end

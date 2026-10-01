@@ -16,11 +16,12 @@ require "support/plugin_handler_ctx"
 RSpec.describe "The skills plugin" do
   let(:source) { File.expand_path("../../../lib/samagotchi/bundles/skills/plugin.rb", __dir__) }
   let(:tmpdir) { Dir.mktmpdir("skills-") }
-  let(:system_dir) { File.join(tmpdir, "mem") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   # MemoryRead takes the project override as the project's own dir,
   # IndexUpdater as the base the project key goes under: this one path is
   # both.
-  let(:project_dir) { File.join(tmpdir, "proj", Samagotchi::MemoryPaths.project_key) }
+  let(:project_dir) { Samagotchi::MemoryPaths.project_dir }
   let(:ctx) do
     Class.new do
       prepend PluginHandlerCtx
@@ -53,18 +54,10 @@ RSpec.describe "The skills plugin" do
   end
 
   before do
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = project_dir
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = File.dirname(project_dir)
     FileUtils.mkdir_p([system_dir, project_dir])
   end
 
   after do
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 
@@ -462,7 +455,8 @@ end
 RSpec.describe "The skills bundle, installed" do
   let(:shipped) { File.expand_path("../../../lib/samagotchi/bundles/skills", __dir__) }
   let(:tmpdir) { Dir.mktmpdir("skills-") }
-  let(:system_dir) { File.join(tmpdir, "mem") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:state_dir) { File.join(tmpdir, "sessions") }
   let(:client) { instance_double(Samagotchi::Client) }
 
@@ -477,9 +471,6 @@ RSpec.describe "The skills bundle, installed" do
   end
 
   before do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(system_dir, ".bundles")
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = File.join(tmpdir, "proj")
     FileUtils.mkdir_p(system_dir)
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     @installer = Samagotchi::MemoryBundle::Installer.new(source: shipped, name: "skills", scope: "system", strict: true)
@@ -487,11 +478,6 @@ RSpec.describe "The skills bundle, installed" do
   end
 
   after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 

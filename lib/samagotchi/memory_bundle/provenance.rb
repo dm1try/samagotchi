@@ -14,12 +14,8 @@ module Samagotchi
     #   manifest.json — metadata about the install (merged on reinstall)
     #   bases/        — snapshots of every file as installed (for 3-way merge later)
     class Provenance
-      class << self
-        attr_accessor :bundles_dir_override
-
-        def bundles_dir
-          bundles_dir_override || MemoryPaths.bundles_dir
-        end
+      def self.bundles_dir
+        MemoryPaths.bundles_dir
       end
 
       attr_reader :name, :bundle_dir

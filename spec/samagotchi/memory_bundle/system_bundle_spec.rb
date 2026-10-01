@@ -72,7 +72,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
     end
 
     def installed_identity
-      File.read(File.join(Samagotchi::MemoryBundle::Installer.system_dir, "identity.md"))
+      File.read(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"))
     end
 
     it "upgrades when the shipped bundle is newer" do
@@ -88,7 +88,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
     it "records the new version on a conflict, so the next start doesn't warn again" do
       ship("0.1.6", "old\n")
       described_class.ensure!
-      File.write(File.join(Samagotchi::MemoryBundle::Installer.system_dir, "identity.md"), "mine\n")
+      File.write(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"), "mine\n")
       ship("0.1.10", "new\n")
 
       expect { described_class.ensure! }.to output(/kept local edit in identity\.md/).to_stderr
@@ -103,7 +103,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
         expect(described_class.sync).to have_attributes(status: :installed, from: nil, to: "0.1.6")
         expect(described_class.sync).to have_attributes(status: :up_to_date, from: "0.1.6", to: "0.1.6")
 
-        File.write(File.join(Samagotchi::MemoryBundle::Installer.system_dir, "identity.md"), "mine\n")
+        File.write(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"), "mine\n")
         ship("0.1.10", "new\n")
         result = nil
         expect { result = described_class.sync }.not_to output.to_stderr
@@ -121,7 +121,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
         described_class.sync
         ship("0.1.10", "new\n")
         expect(described_class.sync(dry_run: true)).to have_attributes(status: :updated, from: "0.1.6", to: "0.1.10", kept: [])
-        File.write(File.join(Samagotchi::MemoryBundle::Installer.system_dir, "identity.md"), "mine\n")
+        File.write(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"), "mine\n")
         expect(described_class.sync(dry_run: true).kept).to eq(["identity.md"])
         expect(installed_identity).to eq("mine\n")
         expect(installed_version).to eq("0.1.6")
@@ -130,7 +130,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
       it "reports a restored file" do
         ship("0.1.6", "old\n")
         described_class.sync
-        File.delete(File.join(Samagotchi::MemoryBundle::Installer.system_dir, "identity.md"))
+        File.delete(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"))
         expect(described_class.sync.status).to eq(:restored)
         expect(installed_identity).to eq("old\n")
       end
@@ -177,12 +177,12 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
     it "does not restore a missing file from an older shipped bundle" do
       ship("0.1.7", "new\n")
       described_class.ensure!
-      File.delete(File.join(Samagotchi::MemoryBundle::Installer.system_dir, "identity.md"))
+      File.delete(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"))
       ship("0.1.6", "old\n")
 
       described_class.ensure!
       expect(installed_version).to eq("0.1.7")
-      expect(File).not_to exist(File.join(Samagotchi::MemoryBundle::Installer.system_dir, "identity.md"))
+      expect(File).not_to exist(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"))
     end
 
     it "installs once, without warnings, when parallel processes start on a fresh config dir" do

@@ -260,9 +260,6 @@ module Samagotchi
         @stderr.puts "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]"
         return 2
       end
-      # Propagate overrides
-      Samagotchi::MemoryBundle::Uninstaller.system_dir_override = Samagotchi::MemoryBundle::Installer.system_dir_override
-      Samagotchi::MemoryBundle::Uninstaller.project_dir_base_override = Samagotchi::MemoryBundle::Installer.project_dir_base_override
       data = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).read
       return uninstall_profile(bundle_name, force: force) if Samagotchi::MemoryBundle::Profile.installed_meta?(bundle_name, data)
 

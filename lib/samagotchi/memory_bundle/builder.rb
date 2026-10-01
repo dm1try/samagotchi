@@ -14,8 +14,6 @@ module Samagotchi
     # Inverse of Installer: reads from the resolved scope directory,
     # computes SHA256 checksums, writes manifest.yml via Manifest.write,
     # and optionally zips/tars the staging directory.
-    #
-    # Reuses Installer.system_dir / project_dir_base overrides for test isolation.
     class Builder
       class BuildError < StandardError; end
 
@@ -291,18 +289,7 @@ module Samagotchi
       end
 
       def resolve_target_dir(scope)
-        case scope
-        when "system"
-          Samagotchi::MemoryBundle::Installer.system_dir
-        when "project"
-          if Samagotchi::MemoryBundle::Installer.project_dir_base_override
-            Samagotchi::MemoryBundle::Installer.project_dir_base
-          else
-            File.join(Samagotchi::MemoryBundle::Installer.project_dir_base, MemoryPaths.project_key)
-          end
-        else
-          raise BuildError, "invalid scope: #{scope}"
-        end
+        MemoryPaths.scope_dir(scope) or raise BuildError, "invalid scope: #{scope}"
       end
 
       def resolve_out_path(out_arg, default_name)

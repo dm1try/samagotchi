@@ -6,6 +6,7 @@ require "samagotchi/self_report"
 RSpec.describe Samagotchi::SelfReport do
   let(:tmp) { Dir.mktmpdir("self-report") }
   let(:config_home) { File.join(tmp, "config") }
+  let(:bundles_dir) { File.join(config_home, "samagotchi", "memories", ".bundles") }
   let(:env) { { "XDG_CONFIG_HOME" => config_home, "XDG_STATE_HOME" => File.join(tmp, "state"), "HOME" => tmp } }
 
   def write_config(yaml)
@@ -26,7 +27,6 @@ RSpec.describe Samagotchi::SelfReport do
   before do
     info = -> { web_info }
     allow(Samagotchi::LiveVersions).to receive(:web_info) { info.call }
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(tmp, "bundles")
     probed = []
     @probed = probed
     answer = -> { props_answer }
@@ -36,10 +36,9 @@ RSpec.describe Samagotchi::SelfReport do
     end
   end
 
-  after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    FileUtils.remove_entry(tmp)
-  end
+  around { |example| with_env("XDG_CONFIG_HOME" => config_home) { example.run } }
+
+  after { FileUtils.remove_entry(tmp) }
 
   it "reports the version and the source dir this code runs from" do
     expect(field("version")).to start_with(Samagotchi::VERSION)
@@ -310,7 +309,7 @@ RSpec.describe Samagotchi::SelfReport do
     shipped = Samagotchi::MemoryBundle::Manifest.read(dir: Samagotchi::MemoryBundle::SystemBundle::GEM_BUNDLE_DIR).version
     expect(field("bundles")).to eq("(none installed; shipped system bundle #{shipped})")
 
-    dir = File.join(tmp, "bundles", "samagotchi-system")
+    dir = File.join(bundles_dir, "samagotchi-system")
     FileUtils.mkdir_p(dir)
     File.write(File.join(dir, "manifest.json"), JSON.generate("name" => "samagotchi-system", "version" => "0.0.9"))
     expect(field("bundles")).to eq("samagotchi-system 0.0.9 (shipped #{shipped})")
@@ -318,12 +317,12 @@ RSpec.describe Samagotchi::SelfReport do
 
   it "lists every bundle with a manifest.json by name, '?' for a version it can't read" do
     { "zeta" => JSON.generate("version" => "2.0"), "broken" => "{", "list" => "[]", "nover" => "{}" }.each do |name, body|
-      FileUtils.mkdir_p(File.join(tmp, "bundles", name))
-      File.write(File.join(tmp, "bundles", name, "manifest.json"), body)
+      FileUtils.mkdir_p(File.join(bundles_dir, name))
+      File.write(File.join(bundles_dir, name, "manifest.json"), body)
     end
-    FileUtils.mkdir_p(File.join(tmp, "bundles", "empty"))
-    FileUtils.mkdir_p(File.join(tmp, "bundles", ".hidden"))
-    File.write(File.join(tmp, "bundles", ".hidden", "manifest.json"), "{}")
+    FileUtils.mkdir_p(File.join(bundles_dir, "empty"))
+    FileUtils.mkdir_p(File.join(bundles_dir, ".hidden"))
+    File.write(File.join(bundles_dir, ".hidden", "manifest.json"), "{}")
     expect(field("bundles")).to eq("broken ?, list ?, nover ?, zeta 2.0")
   end
 

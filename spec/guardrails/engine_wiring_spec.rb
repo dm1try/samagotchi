@@ -164,13 +164,11 @@ RSpec.describe "Engine guardrail rules reload" do
     Dir.mktmpdir do |dir|
       saved = ENV["XDG_CONFIG_HOME"]
       ENV["XDG_CONFIG_HOME"] = dir
-      Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(dir, "bundles")
       @config = File.join(dir, "samagotchi", "config.yml")
       FileUtils.mkdir_p(File.dirname(@config))
       example.run
     ensure
       ENV["XDG_CONFIG_HOME"] = saved
-      Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
     end
   end
 

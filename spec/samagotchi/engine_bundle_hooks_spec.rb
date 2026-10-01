@@ -13,7 +13,8 @@ require "samagotchi/memory_bundle/installer"
 
 RSpec.describe Samagotchi::Engine, "bundle hooks" do
   let(:tmpdir) { Dir.mktmpdir("engine-bundle-") }
-  let(:system_dir) { File.join(tmpdir, "mem") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:client) do
     dbl = instance_double(Samagotchi::Client)
@@ -24,19 +25,11 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   before do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = bundles_dir
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = File.join(tmpdir, "proj")
     FileUtils.mkdir_p(system_dir)
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
   end
 
   after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 
@@ -54,7 +47,7 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
     src
   end
 
-  it "registers bundle hooks into @hooks (Provenance.bundles_dir_override isolation)" do
+  it "registers bundle hooks into @hooks (in an isolated config home)" do
     src = write_bundle("test-hooks", { "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); e[:hit]=true; end; end" }, trust_level: "reviewed")
     Samagotchi::MemoryBundle::Installer.new(source: src, name: "test-hooks", scope: "system", force: false, strict: true).run
     engine = described_class.new(client: client)

@@ -11,21 +11,11 @@ require "samagotchi/plugin/loader"
 
 RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
   let(:tmp) { Dir.mktmpdir("shipped-update") }
-  let(:system_dir) { File.join(tmp, "memories") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
+  around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
   let(:shipped) { Samagotchi::MemoryBundle::SourceNormalizer::SHIPPED_DIR }
 
-  before do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(system_dir, ".bundles")
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = File.join(tmp, "proj")
-  end
-
   after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.remove_entry(tmp)
   end
 

@@ -216,18 +216,7 @@ RSpec.describe "chi bootstrap" do
     end
     # In process, the bundles go where the process ENV points: a tmp dir
     # here, never the suite's shared config dir.
-    let(:memories) { File.join(home, "memories") }
-
-    before do
-      Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(memories, ".bundles")
-      Samagotchi::MemoryBundle::Installer.system_dir_override = memories
-    end
-
-    after do
-      Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-      Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-      Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    end
+    around { |example| with_env("XDG_CONFIG_HOME" => File.join(home, "process-config")) { example.run } }
 
     def run_command(input, *args, extra_env: {}, bundles: nil)
       out = StringIO.new

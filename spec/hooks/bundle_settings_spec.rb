@@ -45,8 +45,8 @@ RSpec.describe Samagotchi::Engine, "bundle settings" do
   end
 
   it "loads the next bundle's hooks when one bundle's manifest.json doesn't parse, and reports the broken one" do
-    Dir.mktmpdir do |dir|
-      Samagotchi::MemoryBundle::Provenance.bundles_dir_override = dir
+    Dir.mktmpdir do |home|
+      dir = File.join(home, "samagotchi", "memories", ".bundles")
       FileUtils.mkdir_p(File.join(dir, "a-broken", "hooks"))
       File.write(File.join(dir, "a-broken", "manifest.json"), '{"hooks": ')
       FileUtils.mkdir_p(File.join(dir, "b-valid"))
@@ -54,11 +54,9 @@ RSpec.describe Samagotchi::Engine, "bundle settings" do
                  JSON.generate(hooks: { "k.rb" => { event: "before_tool_call" } }, trust_level: "reviewed"))
       stub_config({})
       expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(bundle_name: "b-valid")).and_return(1)
-      engine = described_class.new(client: client)
+      engine = with_env("XDG_CONFIG_HOME" => home) { described_class.new(client: client) }
       expect(engine.guardrail_failures.message).to include("hooks (bundle a-broken) failed to load (manifest.json is unreadable")
       expect(engine.guardrail_failures.required).to be_empty
-    ensure
-      Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
     end
   end
 

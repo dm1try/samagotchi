@@ -13,18 +13,9 @@ RSpec.describe Samagotchi::UpdateHint do
   let(:shipped) { Samagotchi::MemoryBundle::SourceNormalizer::SHIPPED_DIR }
   let(:helper) { double("helper", stale?: false) }
 
-  before do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(tmp, "memories", ".bundles")
-    Samagotchi::MemoryBundle::Installer.system_dir_override = File.join(tmp, "memories")
-  end
+  around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
 
-  after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
-    FileUtils.remove_entry(tmp)
-  end
+  after { FileUtils.remove_entry(tmp) }
 
   def install_old(dir)
     dest = File.join(tmp, "old", "lib", "samagotchi", "bundles", dir)

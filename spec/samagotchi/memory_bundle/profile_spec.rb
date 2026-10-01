@@ -9,27 +9,13 @@ require "samagotchi/memory_bundle/profile"
 
 RSpec.describe Samagotchi::MemoryBundle::Profile do
   let(:tmp) { Dir.mktmpdir("profile") }
-  let(:system_dir) { File.join(tmp, "memories") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
+  around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
   # A shipped dir as a gem lays it out, so a member's source is "shipped".
   let(:shipped) { File.join(tmp, "gem", "lib", "samagotchi", "bundles") }
   let(:prov) { Samagotchi::MemoryBundle::Provenance }
 
-  before do
-    prov.bundles_dir_override = File.join(system_dir, ".bundles")
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = File.join(tmp, "proj")
-    Samagotchi::MemoryBundle::Uninstaller.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Uninstaller.project_dir_base_override = File.join(tmp, "proj")
-  end
-
   after do
-    prov.bundles_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::Uninstaller.system_dir_override = nil
-    Samagotchi::MemoryBundle::Uninstaller.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.remove_entry(tmp)
   end
 

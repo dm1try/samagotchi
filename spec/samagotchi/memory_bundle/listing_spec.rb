@@ -17,17 +17,16 @@ RSpec.describe Samagotchi::MemoryBundle::Listing do
   end
 
   def install(name, version:, includes: nil)
-    dir = File.join(tmp, "bundles", name)
+    dir = File.join(Samagotchi::MemoryPaths.bundles_dir, name)
     FileUtils.mkdir_p(dir)
     data = { "version" => version, "scope" => "system", "files" => { "a.md" => {} }, "installed_at" => "2026-09-26" }
     data["includes"] = includes if includes
     File.write(File.join(dir, "manifest.json"), JSON.generate(data))
   end
 
-  before { Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(tmp, "bundles") }
+  around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
 
   after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
     FileUtils.remove_entry(tmp)
   end
 
@@ -67,10 +66,10 @@ RSpec.describe Samagotchi::MemoryBundle::Listing do
 
   it "shows a bundle whose manifest.json doesn't parse as unreadable, without failing the rest" do
     install("good", version: "1.0")
-    FileUtils.mkdir_p(File.join(tmp, "bundles", "broken"))
-    File.write(File.join(tmp, "bundles", "broken", "manifest.json"), "{bad")
-    FileUtils.mkdir_p(File.join(tmp, "bundles", "list"))
-    File.write(File.join(tmp, "bundles", "list", "manifest.json"), "[1]")
+    FileUtils.mkdir_p(File.join(Samagotchi::MemoryPaths.bundles_dir, "broken"))
+    File.write(File.join(Samagotchi::MemoryPaths.bundles_dir, "broken", "manifest.json"), "{bad")
+    FileUtils.mkdir_p(File.join(Samagotchi::MemoryPaths.bundles_dir, "list"))
+    File.write(File.join(Samagotchi::MemoryPaths.bundles_dir, "list", "manifest.json"), "[1]")
 
     installed = described_class.installed(shipped: [])
     expect(installed.map { |b| [b.name, b.error] }).to eq([["broken", "manifest.json unreadable"], ["good", nil], ["list", "manifest.json unreadable"]])

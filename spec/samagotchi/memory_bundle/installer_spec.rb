@@ -9,22 +9,13 @@ require "samagotchi/memory_bundle/installer"
 
 RSpec.describe Samagotchi::MemoryBundle::Installer do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-installer-") }
-  let(:system_memories_dir) { File.join(tmpdir, "memories") }
-  let(:project_memories_dir) { File.join(tmpdir, "project_memories") }
+  let(:system_memories_dir) { Samagotchi::MemoryPaths.system_dir }
+  let(:project_memories_dir) { Samagotchi::MemoryPaths.project_dir }
   let(:bundles_dir) { File.join(system_memories_dir, ".bundles") }
 
-  before do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = bundles_dir
-    described_class.system_dir_override = system_memories_dir
-    described_class.project_dir_base_override = project_memories_dir
-  end
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
 
   after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    described_class.system_dir_override = nil
-    described_class.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 

@@ -88,17 +88,7 @@ RSpec.describe Samagotchi::Engine do
   describe "bundle needs in the system prompt's index" do
     around do |example|
       Dir.mktmpdir do |tmp|
-        installer = Samagotchi::MemoryBundle::Installer
-        provenance = Samagotchi::MemoryBundle::Provenance
-        saved = [installer.system_dir_override, installer.project_dir_base_override, provenance.bundles_dir_override, ENV["PATH"]]
-        installer.system_dir_override = File.join(tmp, "system")
-        installer.project_dir_base_override = File.join(tmp, "project")
-        provenance.bundles_dir_override = File.join(tmp, "system", ".bundles")
-        example.run
-      ensure
-        installer.system_dir_override, installer.project_dir_base_override, provenance.bundles_dir_override, ENV["PATH"] = saved
-        Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-        Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
+        with_env("PATH" => ENV["PATH"]) { with_config_home(tmp) { example.run } }
       end
     end
 

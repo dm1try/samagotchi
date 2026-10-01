@@ -160,7 +160,7 @@ module Samagotchi
       # back via the Installer (which classifies it as :install), without a
       # full reinstall.
       def verify_files_present(gem_manifest, version, dry_run)
-        target_dir = Installer.system_dir
+        target_dir = MemoryPaths.system_dir
         missing = gem_manifest.files.keys.any? { |k| !File.exist?(File.join(target_dir, k)) }
         return result(:up_to_date, from: version, to: version) unless missing
         return result(:restored, from: version, to: version) if dry_run
@@ -174,7 +174,7 @@ module Samagotchi
       def conflicting(gem_manifest)
         provenance = Provenance.new(name: BUNDLE_NAME)
         gem_manifest.files.keys.map(&:to_s).sort.select do |key|
-          Merger.classify(base_path: provenance.base_path(key), current_path: File.join(Installer.system_dir, key),
+          Merger.classify(base_path: provenance.base_path(key), current_path: File.join(MemoryPaths.system_dir, key),
                           incoming_path: File.join(GEM_BUNDLE_DIR, key)) == :conflict
         end
       end

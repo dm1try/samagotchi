@@ -130,6 +130,16 @@ RSpec.describe Samagotchi::MemoryPaths do
     end
   end
 
+  describe ".scope_dir" do
+    let(:env) { { "XDG_CONFIG_HOME" => "/xdg" } }
+
+    it "maps system (or no scope) to system_dir and project to project_dir; nil for anything else" do
+      expect(%w[system project].push("", nil, " system", "other").map { |scope| described_class.scope_dir(scope, env: env, cwd: "/tmp") })
+        .to eq(["/xdg/samagotchi/memories", described_class.project_dir(env: env, cwd: "/tmp"),
+                "/xdg/samagotchi/memories", "/xdg/samagotchi/memories", nil, nil])
+    end
+  end
+
   describe ".bundles_dir" do
     it "sits inside the system memories dir" do
       expect(described_class.bundles_dir(env: { "XDG_CONFIG_HOME" => "/xdg" })).to eq("/xdg/samagotchi/memories/.bundles")

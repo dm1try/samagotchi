@@ -94,6 +94,16 @@ module Samagotchi
       File.join(projects_dir(env: env), project_key(cwd))
     end
 
+    # The folder of a memory scope: "system" (or blank) or "project"; nil for
+    # anything else. Every scope→folder lookup (bundle install/uninstall/build/
+    # status, index.md updates, the memory tools) resolves here.
+    def scope_dir(scope, env: ENV, cwd: Dir.pwd)
+      case scope.to_s
+      when "system", "" then system_dir(env: env)
+      when "project" then project_dir(env: env, cwd: cwd)
+      end
+    end
+
     def bundles_dir(env: ENV)
       File.join(system_dir(env: env), ".bundles")
     end

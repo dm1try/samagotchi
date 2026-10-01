@@ -7,22 +7,9 @@ module Samagotchi
   module MemoryBundle
     # Updates the scoped index.md for a single entry, locked and atomically.
     # Used by Installer (P3) to keep index.md in sync.
-    # Delegates to MemoryRead.memories_dir for test-isolated paths.
     module IndexUpdater
       MEMORY_INDEX = "index"
       LOCK_FILE = ".index.lock"
-      def self.system_dir_override
-        @system_dir_override
-      end
-      def self.system_dir_override=(val)
-        @system_dir_override = val
-      end
-      def self.project_dir_base_override
-        @project_dir_base_override
-      end
-      def self.project_dir_base_override=(val)
-        @project_dir_base_override = val
-      end
       def self.update_index(scope, entry_name, byte_count, description = nil)
         index_path = index_path_for(scope)
         return true unless index_path
@@ -93,21 +80,8 @@ module Samagotchi
         Date.today.iso8601
       end
       def self.index_path_for(scope)
-        normalized = scope.to_s.strip
-        normalized = "system" if normalized.empty?
-        base_dir = case normalized
-                   when "system"
-                     system_dir_override || MemoryPaths.system_dir
-                   when "project"
-                     if project_dir_base_override
-                       File.join(project_dir_base_override, MemoryPaths.project_key)
-                     else
-                       MemoryPaths.project_dir
-                     end
-                   else
-                     return nil
-                   end
-        File.join(base_dir, "#{MEMORY_INDEX}.md")
+        base_dir = MemoryPaths.scope_dir(scope.to_s.strip)
+        base_dir && File.join(base_dir, "#{MEMORY_INDEX}.md")
       end
     end
   end

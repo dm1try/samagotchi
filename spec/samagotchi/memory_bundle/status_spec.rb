@@ -8,21 +8,11 @@ require "samagotchi/memory_bundle/status"
 
 RSpec.describe Samagotchi::MemoryBundle::Status do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-status-") }
-  let(:system_dir) { File.join(tmpdir, "mem") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:fixture) { File.expand_path("../../fixtures/sample_needs_bundle", __dir__) }
 
-  before do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(system_dir, ".bundles")
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = File.join(tmpdir, "proj")
-  end
-
   after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 
@@ -33,7 +23,6 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
   end
 
   it "finds each installed file's index line (lines name the entry without .md)" do
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = system_dir
     Samagotchi::MemoryBundle::Installer.new(source: fixture, name: "sample-needs", scope: "system").run
     files = described_class.bundle_status("sample-needs")[:files]
     expect(files).not_to be_empty

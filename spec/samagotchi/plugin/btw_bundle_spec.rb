@@ -15,7 +15,8 @@ require "samagotchi/memory_bundle/installer"
 RSpec.describe "The btw bundle" do
   let(:shipped) { File.expand_path("../../../lib/samagotchi/bundles/btw", __dir__) }
   let(:tmpdir) { Dir.mktmpdir("btw-") }
-  let(:system_dir) { File.join(tmpdir, "mem") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:state_dir) { File.join(tmpdir, "sessions") }
   let(:client) { instance_double(Samagotchi::Client, complete: nil) }
   let(:settings) { {} }
@@ -30,9 +31,6 @@ RSpec.describe "The btw bundle" do
   end
 
   before do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(system_dir, ".bundles")
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = File.join(tmpdir, "proj")
     FileUtils.mkdir_p(system_dir)
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     allow_any_instance_of(Samagotchi::Engine).to receive(:bundle_settings).and_return("btw" => settings)
@@ -42,11 +40,6 @@ RSpec.describe "The btw bundle" do
   end
 
   after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 

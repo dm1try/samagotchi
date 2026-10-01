@@ -13,24 +13,12 @@ module Samagotchi
 
       attr_reader :warnings, :removed_files
 
-      class << self
-        attr_accessor :system_dir_override, :project_dir_base_override
-        def system_dir
-          system_dir_override || MemoryPaths.system_dir
-        end
-        def project_dir_base
-          project_dir_base_override || MemoryPaths.projects_dir
-        end
-      end
-
       def initialize(name:, scope: nil, force: false)
         @name = name
         @scope = scope&.to_s&.strip&.downcase
         @force = force
         @warnings = []
         @removed_files = []
-        IndexUpdater.system_dir_override = self.class.system_dir_override
-        IndexUpdater.project_dir_base_override = self.class.project_dir_base_override
       end
 
       def run
@@ -110,18 +98,7 @@ module Samagotchi
       private
 
       def resolve_target_dir(scope)
-        case scope
-        when "system", ""
-          self.class.system_dir
-        when "project"
-          if self.class.project_dir_base_override
-            self.class.project_dir_base
-          else
-            File.join(self.class.project_dir_base, MemoryPaths.project_key)
-          end
-        else
-          raise UninstallError, "invalid scope: #{scope}"
-        end
+        MemoryPaths.scope_dir(scope) or raise UninstallError, "invalid scope: #{scope}"
       end
     end
   end

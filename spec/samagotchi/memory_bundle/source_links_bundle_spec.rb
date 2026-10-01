@@ -14,27 +14,16 @@ require "samagotchi/hooks/bundle_loader"
 # sources line, then uninstall cleanly.
 RSpec.describe "Source-links bundle E2E" do
   let(:tmpdir) { Dir.mktmpdir("source-links-e2e-") }
-  let(:system_dir) { File.join(tmpdir, "mem") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:fixture_path) { File.expand_path("../../../lib/samagotchi/bundles/source-links", __dir__) }
 
   before do
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = File.join(tmpdir, "proj")
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = bundles_dir
-    Samagotchi::MemoryBundle::Uninstaller.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Uninstaller.project_dir_base_override = File.join(tmpdir, "proj")
     FileUtils.mkdir_p(system_dir)
   end
 
   after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::Uninstaller.system_dir_override = nil
-    Samagotchi::MemoryBundle::Uninstaller.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 

@@ -16,7 +16,8 @@ require "samagotchi/memory_bundle/uninstaller"
 # copied file's sha256, loaded by the Engine after the config's rules.
 RSpec.describe "Bundle guardrail rule files" do
   let(:tmpdir) { Dir.mktmpdir("bundle-rules-") }
-  let(:system_dir) { File.join(tmpdir, "mem") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:push_rules) do
     { "rules" => [{ "id" => "git-push", "tool" => "shell", "command" => "git push", "verdict" => "ask", "reason" => "publishes" }] }
@@ -25,19 +26,11 @@ RSpec.describe "Bundle guardrail rule files" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
   before do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = bundles_dir
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = File.join(tmpdir, "proj")
     FileUtils.mkdir_p(system_dir)
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
   end
 
   after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 

@@ -80,20 +80,7 @@ module Samagotchi
       end
 
       def self.resolve_target_dir(scope)
-        case scope
-        when "system"
-          Samagotchi::MemoryBundle::Installer.system_dir
-        when "project"
-          base = Samagotchi::MemoryBundle::Installer.project_dir_base
-          # If override set via Installer, use it; else compute hash
-          if Samagotchi::MemoryBundle::Installer.project_dir_base_override
-            base
-          else
-            File.join(base, MemoryPaths.project_key)
-          end
-        else
-          Samagotchi::MemoryBundle::Installer.system_dir
-        end
+        MemoryPaths.scope_dir(scope) || MemoryPaths.system_dir
       end
 
       # Index lines name the entry without ".md" (Installer#update_target_index,

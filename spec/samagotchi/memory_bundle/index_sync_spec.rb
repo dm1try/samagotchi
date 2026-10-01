@@ -10,26 +10,19 @@ require "samagotchi/memory_bundle/installer"
 # memory_write does (the ToolRunner calls IndexSync.refresh).
 RSpec.describe Samagotchi::MemoryBundle::IndexSync do
   let(:tmpdir) { Dir.mktmpdir("index-sync-") }
-  let(:system_dir) { File.join(tmpdir, "mem") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   # MemoryRead takes the project override as the project's own dir,
   # IndexUpdater as the base the project key goes under: this one path is
   # both.
-  let(:project_dir) { File.join(tmpdir, "proj", Samagotchi::MemoryPaths.project_key) }
+  let(:project_dir) { Samagotchi::MemoryPaths.project_dir }
   let(:today) { Date.today.iso8601 }
 
   before do
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = project_dir
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = File.dirname(project_dir)
     FileUtils.mkdir_p([system_dir, project_dir])
   end
 
   after do
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 

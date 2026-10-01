@@ -14,7 +14,8 @@ require "samagotchi/memory_bundle/installer"
 RSpec.describe "The loop-guard bundle" do
   let(:shipped) { File.expand_path("../../../lib/samagotchi/bundles/loop-guard", __dir__) }
   let(:tmpdir) { Dir.mktmpdir("loop-guard-") }
-  let(:system_dir) { File.join(tmpdir, "mem") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:client) { instance_double(Samagotchi::Client, complete: nil) }
 
   around do |example|
@@ -27,9 +28,6 @@ RSpec.describe "The loop-guard bundle" do
   end
 
   before do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(system_dir, ".bundles")
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = File.join(tmpdir, "proj")
     FileUtils.mkdir_p(system_dir)
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
     @installer = Samagotchi::MemoryBundle::Installer.new(source: shipped, name: "loop-guard", scope: "system", strict: true)
@@ -37,11 +35,6 @@ RSpec.describe "The loop-guard bundle" do
   end
 
   after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 

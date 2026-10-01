@@ -13,7 +13,7 @@ RSpec.describe Samagotchi::UpdateCommand do
   around { |example| FakeProviderServer.without_webmock { example.run } }
 
   let(:tmp) { Dir.mktmpdir("update-command") }
-  let(:system_dir) { File.join(tmp, "memories") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
   let(:state_dir) { File.join(tmp, "sessions").tap { |d| FileUtils.mkdir_p(d) } }
   let(:shipped) { Samagotchi::MemoryBundle::SourceNormalizer::SHIPPED_DIR }
   let(:out) { StringIO.new }
@@ -26,19 +26,10 @@ RSpec.describe Samagotchi::UpdateCommand do
   let(:helper) { nil }
   let(:supported) { false }
 
-  before do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = File.join(system_dir, ".bundles")
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = File.join(tmp, "proj")
-  end
+  around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
 
   after do
     servers.each(&:close)
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.remove_entry(tmp)
   end
 

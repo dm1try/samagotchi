@@ -14,22 +14,12 @@ require "samagotchi/plugin/loader"
 
 RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-plugin-manifest-") }
-  let(:system_dir) { File.join(tmpdir, "memories") }
+  let(:system_dir) { Samagotchi::MemoryPaths.system_dir }
+  around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   let(:bundles_dir) { File.join(system_dir, ".bundles") }
   let(:plugin_source) { "class Plugin\n  def register(chi); end\nend\n" }
 
-  before do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = bundles_dir
-    Samagotchi::MemoryBundle::Installer.system_dir_override = system_dir
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = File.join(tmpdir, "proj")
-  end
-
   after do
-    Samagotchi::MemoryBundle::Provenance.bundles_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.system_dir_override = nil
-    Samagotchi::MemoryBundle::Installer.project_dir_base_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.system_dir_override = nil
-    Samagotchi::MemoryBundle::IndexUpdater.project_dir_base_override = nil
     FileUtils.rm_rf(tmpdir)
   end
 
