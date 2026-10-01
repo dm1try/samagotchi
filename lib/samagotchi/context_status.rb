@@ -5,7 +5,7 @@ require_relative "context_usage"
 require_relative "context_window"
 
 module Samagotchi
-  # One turn's context tracking for KernelLoop#run: how full the window is
+  # One turn's context tracking for either loop: how full the window is
   # before each request (the server's last prompt count plus an estimate for
   # what the turn appended since, else a chars-per-token estimate), the
   # bucket that puts it in, and what comes of that:
@@ -95,18 +95,18 @@ module Samagotchi
 
     def enabled? = @enabled
 
-    # Before a request: estimate +prompt+'s usage against +window+ (this
-    # request's ContextWindow::Resolved) and update the status line's
-    # value. A rise into a bucket that asks the model for a change leaves
-    # a line for #take_guidance.
-    # +image_tokens+: the images' estimate (their base64 is not in +prompt+).
+    # Before a request: estimate the usage of a prompt of +prompt_chars+
+    # against +window+ (this request's ContextWindow::Resolved) and update
+    # the status line's value. A rise into a bucket that asks the model for
+    # a change leaves a line for #take_guidance.
+    # +image_tokens+: the images' estimate (their base64 is not in the chars).
     #
     # @return [Hash, nil] the :context_status event's fields (without
     #   :type/:iteration) when the emit gate fires, else nil
-    def observe(prompt, iteration_index:, window:, image_tokens: 0)
+    def observe(prompt_chars, iteration_index:, window:, image_tokens: 0)
       return nil unless @enabled
 
-      usage = estimate(prompt, server_usage: @server_usage, window: window, image_tokens: image_tokens, counted: @counted)
+      usage = estimate(prompt_chars, server_usage: @server_usage, window: window, image_tokens: image_tokens, counted: @counted)
       bucket = bucket_for(usage[:estimated_pct])
       # The status line's value, every iteration; the gate below decides
       # only the event and the model's guidance line.
@@ -135,7 +135,8 @@ module Samagotchi
       normalized
     end
 
-    # After a generation: +usage+ is its own server counts (nil: none), for
+    # After a generation: +usage+ is its own server counts ({prompt_tokens:,
+    # total_tokens:, context_window_tokens:}; nil: none), for
     # +prompt_chars+/+image_tokens+ as sent. The next estimate adds only
     # what the turn appended since (answer, tool results), and the status
     # line's value counts the answer. Without counts the pre-generation
@@ -161,21 +162,21 @@ module Samagotchi
     # `window` is this request's ContextWindow::Resolved. A window the
     # stream payload reports itself still wins.
     # +counted+: the prompt the server's prompt_tokens counted ({chars:,
-    # image_tokens:}); what +prompt+ has on top of it (the answer, tool
+    # image_tokens:}); what the prompt has on top of it (the answer, tool
     # results since) is added as an estimate, so the value doesn't read low
     # during a long tool loop. A prompt shorter than that one (trimmed) or
     # none known: the server's count alone.
-    def estimate(prompt, window:, server_usage: nil, image_tokens: 0, counted: nil)
+    def estimate(prompt_chars, window:, server_usage: nil, image_tokens: 0, counted: nil)
       window_source = window.source
       window_source = :server if server_usage && server_usage[:context_window_tokens]
 
       if server_usage && server_usage[:prompt_tokens]
         window_tokens = server_usage[:context_window_tokens] || window.tokens
-        used_tokens = server_usage[:prompt_tokens] + appended_tokens(prompt, image_tokens, counted)
+        used_tokens = server_usage[:prompt_tokens] + appended_tokens(prompt_chars, image_tokens, counted)
         source = "server"
       else
         window_tokens = window.tokens
-        used_tokens = (prompt.length / @chars_per_token).ceil + image_tokens
+        used_tokens = (prompt_chars / @chars_per_token).ceil + image_tokens
         source = "estimate"
       end
 
@@ -191,11 +192,11 @@ module Samagotchi
 
     private
 
-    # The estimate for what +prompt+ added since the +counted+ one.
-    def appended_tokens(prompt, image_tokens, counted)
+    # The estimate for what the prompt added since the +counted+ one.
+    def appended_tokens(prompt_chars, image_tokens, counted)
       return 0 unless counted
 
-      chars = prompt.length - counted[:chars]
+      chars = prompt_chars - counted[:chars]
       return 0 unless chars.positive?
 
       (chars / @chars_per_token).ceil + [image_tokens - counted[:image_tokens].to_i, 0].max

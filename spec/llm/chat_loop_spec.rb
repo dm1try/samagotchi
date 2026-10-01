@@ -369,8 +369,6 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
     describe "the status line's context value" do
       before do
-        real = Samagotchi::KernelLoop.new(client: nil)
-        allow(fake_kernel).to receive(:context_display) { |**args| real.context_display(**args) }
         allow(fake_kernel).to receive(:client).and_return(double("client", context_window: 100_000))
       end
 
@@ -385,6 +383,16 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       it "is nil when the server reports no counts" do
         expect(run.context_status).to be_nil
+      end
+
+      it "is nil with context.status off" do
+        ENV["SAMAGOTCHI_CONTEXT_STATUS"] = "false"
+        backend.adapter = FakeChatAdapter.new(text("ok", usage: Samagotchi::LLM::Usage.new(prompt_tokens: 3_000, completion_tokens: 1_000,
+                                                                                           source: :server)))
+
+        expect(run.context_status).to be_nil
+      ensure
+        ENV.delete("SAMAGOTCHI_CONTEXT_STATUS")
       end
     end
   end

@@ -606,7 +606,7 @@ module Samagotchi
     # :context_status event. The telemetry is not for the model (it used to
     # be injected as a synthetic system message).
     def emit_context_status_event(on_stream_event, context, prompt, iteration_index:, window:, image_tokens: 0)
-      event = context.observe(prompt, iteration_index: iteration_index, window: window, image_tokens: image_tokens)
+      event = context.observe(prompt.length, iteration_index: iteration_index, window: window, image_tokens: image_tokens)
       return unless event
 
       emit_stream_event(on_stream_event, type: :context_status, iteration: iteration_index + 1, **event)
@@ -624,8 +624,7 @@ module Samagotchi
     end
 
     # The status line's context value ({est_pct:, bucket:}) for +used_tokens+
-    # of +window_tokens+; nil without both, or with context.status off. The
-    # chat loop builds its value with it too.
+    # of +window_tokens+; nil without both, or with context.status off.
     def context_display(used_tokens:, window_tokens:)
       ContextStatus.new.display_for(used_tokens: used_tokens, window_tokens: window_tokens)
     end

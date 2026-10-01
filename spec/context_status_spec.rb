@@ -22,7 +22,7 @@ RSpec.describe Samagotchi::ContextStatus do
     ENV["SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS"] = "20,40"
     ENV["SAMAGOTCHI_CONTEXT_STATUS"] = "false"
 
-    event = tracker.observe("x" * 600, iteration_index: 0, window: window)
+    event = tracker.observe(600, iteration_index: 0, window: window)
 
     expect(event[:usage]).to include(estimated_used_tokens: 600, source: "estimate")
     expect(event[:status]).to include("bucket=50plus", "thresholds=10,50")
@@ -36,7 +36,7 @@ RSpec.describe Samagotchi::ContextStatus do
 
     tracker = described_class.new(conversation: conversation)
 
-    expect(tracker.observe("x" * 1_800, iteration_index: 0, window: window)).to be_nil
+    expect(tracker.observe(1_800, iteration_index: 0, window: window)).to be_nil
     expect(tracker.display).to eq(est_pct: 45.0, bucket: "40plus")
   end
 
@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::ContextStatus do
     tracker.generation_done({ total_tokens: 110 }, prompt_chars: 400, image_tokens: 0, window: window)
     expect(tracker.display).to eq(est_pct: 11.0, bucket: "under20")
 
-    tracker.observe("x" * 800, iteration_index: 1, window: window)
+    tracker.observe(800, iteration_index: 1, window: window)
 
     expect(tracker.display).to eq(est_pct: 20.0, bucket: "20plus")
   end

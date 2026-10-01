@@ -9,6 +9,7 @@ require_relative "openai_chat"
 require_relative "native_tool_normalizer"
 require_relative "../kernel_loop"
 require_relative "../answer_display"
+require_relative "../context_status"
 require_relative "../context_window"
 require_relative "../context_note"
 require_relative "../tool_runner"
@@ -190,14 +191,6 @@ module Samagotchi
         nil
       end
 
-      # The status line's context value for +used_tokens+ of +window_tokens+
-      # (KernelLoop#context_display), or nil.
-      def context_display(used_tokens:, window_tokens:)
-        return nil unless @kernel.respond_to?(:context_display)
-
-        @kernel.context_display(used_tokens: used_tokens, window_tokens: window_tokens)
-      end
-
       # A hook failing must not break the turn (as in ToolRunner).
       def fire_hook(name, event)
         hooks = @kernel.hooks if @kernel.respond_to?(:hooks)
@@ -321,6 +314,7 @@ module Samagotchi
           @prompt_text = conversation.sum("") { |entry| entry[:content].to_s }
           @image_tokens = ImagePlan.estimated_tokens(conversation)
           @empty_retry = EmptyAnswerRetry.new
+          @context = ContextStatus.new(conversation: conversation)
         end
 
         EMPTY_ANSWER = "(the model returned an empty answer)"
@@ -500,10 +494,10 @@ module Samagotchi
         # The status line's value from the server's counts for this request
         # (prompt + answer); without them the last value stays.
         def record_context_status(usage, window)
-          return unless usage.source == :server && window
+          return unless usage.source == :server
 
-          display = @loop.context_display(used_tokens: usage.total_tokens, window_tokens: window.tokens)
-          @context_status = display if display
+          counts = { prompt_tokens: usage.prompt_tokens, total_tokens: usage.total_tokens }
+          @context.generation_done(counts, prompt_chars: 0, image_tokens: 0, window: window)
         end
 
         # The model's answer at debug level, as the native loop dumps its
@@ -547,13 +541,13 @@ module Samagotchi
           conversation.last[:interrupted] = true unless visible.empty?
           ModelResult.new(text: "", provider: :chat, conversation: conversation, canceled: true,
                           cancellation_reason: reason, tool_activity: @tool_activity, usage: usage,
-                          context_status: @context_status)
+                          context_status: @context.display)
         end
 
         def result(text, exhausted:)
           ModelResult.new(text: text, provider: :chat, conversation: @loop.plain(@conversation), exhausted: exhausted,
                           tool_activity: @tool_activity, usage: usage, empty_answer: text == EMPTY_ANSWER,
-                          context_status: @context_status)
+                          context_status: @context.display)
         end
 
         def usage
