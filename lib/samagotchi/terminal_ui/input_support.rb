@@ -6,7 +6,7 @@ require "reline"
 
 require_relative "../config"
 require_relative "../memory_paths"
-require_relative "../paths"
+require_relative "../prompt_history"
 require_relative "../tools/memory"
 require_relative "../session_commands"
 
@@ -21,9 +21,6 @@ module Samagotchi
     # Included for private use; it keeps state in @next_input_prefill and
     # reads @no_default_input.
     module InputSupport
-      PROMPT_HISTORY_FILE = "history.json"
-      PROMPT_HISTORY_STATE_DIR = "samagotchi"
-      PROMPT_HISTORY_LIMIT = 20
       AT_PATH_COMPLETION_PREFIX = "@"
       MEMORY_COMPLETION_PREFIX = "#"
       AT_PATH_COMPLETION_MAX_CANDIDATES = 200
@@ -203,16 +200,8 @@ module Samagotchi
         }
       end
 
-      def history_file_path
-        explicit = Samagotchi::Config.get("history.file").to_s.strip
-        return explicit unless explicit.empty?
-
-        File.join(Paths.state_home, PROMPT_HISTORY_STATE_DIR, PROMPT_HISTORY_FILE)
-      end
-
       def load_persistent_history
-        entries = load_history_entries_from_disk
-        entries.last(PROMPT_HISTORY_LIMIT).each { |entry| Reline::HISTORY << entry }
+        PromptHistory.entries.last(PromptHistory::LIMIT).each { |entry| Reline::HISTORY << entry }
       rescue StandardError
         nil
       end
@@ -221,31 +210,9 @@ module Samagotchi
       def persist_recent_history(input)
         return if @scratch
 
-        entries = normalize_history_entries(load_history_entries_from_disk)
-        entries << input
-        trimmed_entries = entries.last(PROMPT_HISTORY_LIMIT)
-        path = history_file_path
-        FileUtils.mkdir_p(File.dirname(path))
-        File.write(path, JSON.pretty_generate(trimmed_entries) + "\n")
+        PromptHistory.append(input)
       rescue StandardError
         nil
-      end
-
-      def load_history_entries_from_disk
-        path = history_file_path
-        return [] unless File.file?(path)
-
-        raw = File.read(path)
-        parsed = JSON.parse(raw)
-        normalize_history_entries(parsed)
-      rescue JSON::ParserError
-        normalize_history_entries(raw.to_s.lines.map(&:chomp))
-      rescue StandardError
-        []
-      end
-
-      def normalize_history_entries(entries)
-        Array(entries).map { |entry| entry.to_s.gsub(/\r\n?/, "\n").strip }.reject(&:empty?)
       end
 
       # The text as given ("Please " keeps its space); a blank one is none.

@@ -3,6 +3,7 @@
 require "set"
 require_relative "event_renderer"
 require_relative "formatting"
+require_relative "../prompt_history"
 require_relative "attached_view"
 require_relative "status_row"
 require_relative "input_support"
@@ -292,7 +293,7 @@ module Samagotchi
           show_recap
         elsif command_registry.command?(text)
           # The history keeps !cmds, as the REPL's does (prompts: #send_prompt).
-          persist_recent_history(text) if shell_line?(text)
+          persist_recent_history(text) if PromptHistory.shell_line?(text)
           send_command(text)
         else
           send_prompt(text)
@@ -435,7 +436,7 @@ module Samagotchi
         output = event[:output].to_s
         if output.empty?
           nil
-        elsif event[:status] == "busy" || shell_line?(event[:line])
+        elsif event[:status] == "busy" || PromptHistory.shell_line?(event[:line])
           @screen.commit(output)
           put_back_busy_command(event) if event[:status] == "busy"
         else
@@ -454,10 +455,6 @@ module Samagotchi
         return unless own?(event[:client_id]) && event[:command_id] != @first_command_id
 
         @screen.commit("(the command is in the input history: ↑)") unless @reader&.prefill(event[:line].to_s)
-      end
-
-      def shell_line?(line)
-        line.to_s.start_with?(SessionCommands::SHELL_BANG_PREFIX) && line.to_s.strip != SessionCommands::ROLLBACK_COMMAND
       end
 
       def offer_continue(event)
