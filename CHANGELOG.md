@@ -19,6 +19,11 @@ and commands may change between minor versions. How releases are made:
 
 - `chi self --model` prints an alias default as the ref it resolves to (`box:gemma-small`, not `small`).
 
+### Fixed
+
+- A failed turn's messages and its `turn_failed` event reach a joining client together (a snapshot taken in between
+  could show one without the other).
+
 ## [0.11.0] - 2026-10-01
 
 ### Added

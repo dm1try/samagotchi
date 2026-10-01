@@ -258,7 +258,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
 
     expect(raised).to equal(error)
     expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected
-                              replace save turn_failed persist])
+                              replace! turn_failed save persist])
     expect(tail).to eq(["model:calling", "tool_response:ok", "system:[SYSTEM: the previous turn failed before any"])
     expect(failed).to include(error_class: "Samagotchi::LLM::RateLimited", error_kind: :rate_limited, host: "fw")
     expect(at_end).to eq(status: "idle", outcome: "failed")
@@ -272,7 +272,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     raised = run(images: [{ path: "/nonexistent/b3.png" }])
 
     expect(raised).to be_a(Samagotchi::ImageStore::Error)
-    expect(timeline).to eq(%w[turn_started save turn_failed persist])
+    expect(timeline).to eq(%w[turn_started turn_failed save persist])
     expect(session.messages).to eq([{ role: "user", content: "old" }])
     expect(at_end).to eq(status: "idle", outcome: "failed")
     expect_released
@@ -287,7 +287,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
 
     expect(raised).to be_a(RuntimeError)
     expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected
-                              replace save turn_failed persist])
+                              replace! turn_failed save persist])
     expect(session.messages.last[:content]).to eq(
       "[SYSTEM: the previous turn failed before any answer: boom. The continued turn stopped there.]"
     )

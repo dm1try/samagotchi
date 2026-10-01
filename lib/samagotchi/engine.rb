@@ -1229,19 +1229,19 @@ module Samagotchi
     # messages, never both or neither). Then the metrics are persisted.
     # The block runs in that step with the turn's seconds, once, and
     # returns [the messages to keep (nil: leave the session's), the end
-    # event]. +save:+ saves the session before the event (a failed turn:
-    # a worker exits after it); that ending is not yet one step.
+    # event]. +save:+ also saves the session (a failed turn: a worker exits
+    # after it). The disk writes come after the step: every emitter waits
+    # for the event lock.
     def end_turn(turn, outcome, save: false)
       seconds = turn.elapsed
-      ending = lambda do
+      synchronize_events do
         kept, event = yield(seconds)
         replace_session_messages(turn.session, kept) if kept
         turn.session.status = Session::STATUS_IDLE
         record_last_turn(turn.session, outcome, seconds, turn.origin)
-        save_quietly(turn.session) if save
         emit_event(turn.on_event, turn.tag(event))
       end
-      save ? ending.call : synchronize_events(&ending)
+      save_quietly(turn.session) if save
       @metrics.persist(state_dir: session_state_dir)
     end
     private :end_turn
