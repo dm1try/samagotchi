@@ -73,8 +73,9 @@ module Samagotchi
       # @param annotate_presets [String, Array] the quick replies next to
       #   Annotate (web.annotate_presets, "|"-separated); "" shows none. The
       #   page parses them (annotate_presets.js).
-      # @param hub [SessionHub, nil] the session projection GET /api/events
-      #   streams from; without one the route answers 503
+      # @param hub [SessionHub, nil] the session projection GET /api/sessions
+      #   lists and GET /api/events streams from (Server always builds one);
+      #   without one both routes answer 503
       # @param registry [HostRegistry, nil] the hosts GET /api/models lists
       #   (built from the config on first use)
       # @param models_wait_timeout [Float] bounded seconds GET /api/models
@@ -321,14 +322,16 @@ module Samagotchi
 
       # The page's scope: ?dir=<folder> lists that folder's project (every
       # session when the folder is in no repo). A dir that isn't an existing
-      # absolute folder answers 400 before anything else runs.
+      # absolute folder answers 400 before anything else runs. The list is
+      # the hub's projection (archived ones too: the page filters them at
+      # render), with Session.list's sort, paging and total.
       def handle_list(req)
+        return error_response(503, "no_hub", "this chi web has no session hub") unless @hub
+
         dir, error = scope_dir(req.params["dir"])
         return error if error
 
-        scope = {}
         root = dir && ProjectScope.root_for(dir)
-        scope[:project_root] = root if root
         # Lazy retention sweep (once per 24h)
         if @manager.respond_to?(:retention_sweep_if_due)
           begin
@@ -337,45 +340,9 @@ module Samagotchi
             nil
           end
         end
-        sort = sanitize_sort(req.params["sort"])
-        order = sanitize_order(req.params["order"])
         limit = sanitize_limit(req.params["limit"])
         offset = sanitize_offset(req.params["offset"])
-        return list_from_hub(root, sort: sort, order: order, limit: limit, offset: offset) if @hub
-
-        # Archived ones too, as the hub's: the page filters them at render.
-        scope[:include_archived] = true
-        sessions = if @state_dir
-                     @manager.list_sessions(state_dir: @state_dir, sort: sort, order: order, limit: limit, offset: offset,
-                                            **scope)
-                   else
-                     @manager.list_sessions(sort: sort, order: order, limit: limit, offset: offset, **scope)
-                   end
-        roots = {}
-        payload = sessions.map do |s|
-          owner = session_owner(s.id)
-          session_to_json(s, status: displayed_status(s, owner: owner), owner: owner, root_cache: roots)
-        end
-        # Expose total via header for pagination (total unordered count)
-        headers = { "Content-Type" => "application/json; charset=utf-8", "Cache-Control" => "no-store" }
-        # Compute total without limit/offset for header
-        if limit || offset.positive?
-          total = if @state_dir
-                    @manager.list_sessions(state_dir: @state_dir, sort: sort, order: order, **scope).size
-                  else
-                    @manager.list_sessions(sort: sort, order: order, **scope).size
-                  end
-          headers["X-Total-Count"] = total.to_s
-        end
-        body = JSON.generate(payload)
-        headers["Content-Length"] = body.bytesize.to_s
-        [200, headers, [body]]
-      end
-
-      # The list from the hub's projection (the page's fallback and the
-      # first paint): the same sort, paging and total as from the files.
-      def list_from_hub(root, sort:, order:, limit:, offset:)
-        all = @hub.snapshot(project_root: root, sort: sort, order: order)
+        all = @hub.snapshot(project_root: root, sort: sanitize_sort(req.params["sort"]), order: sanitize_order(req.params["order"]))
         page = all.drop(offset)
         page = page.first(limit) if limit
         headers = { "Content-Type" => "application/json; charset=utf-8", "Cache-Control" => "no-store" }
@@ -1147,8 +1114,8 @@ module Samagotchi
       end
 
       # @param owner [Hash, nil] #session_owner; its kind is shown as `owner`
-      def session_to_json(s, status: s.status, owner: nil, root_cache: nil)
-        SessionSummary.build(s, status: status, owner: owner, root_cache: root_cache,
+      def session_to_json(s, status: s.status, owner: nil)
+        SessionSummary.build(s, status: status, owner: owner,
                                 session_dir: @session_class.session_dir(s.id, state_dir: default_state_dir))
       end
 

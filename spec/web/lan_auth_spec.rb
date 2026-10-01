@@ -6,6 +6,7 @@ require "json"
 require "rack/mock"
 
 require "samagotchi/web/app"
+require "samagotchi/web/session_hub"
 require "samagotchi/web/token"
 require "samagotchi/session"
 
@@ -27,13 +28,13 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
   end
   let(:manager) do
     Class.new do
-      def list_sessions(**) = []
       def retention_sweep_if_due(**) = nil
     end.new
   end
   let(:lan) { { ip: lan_ip, token: token } }
   let(:app) do
-    described_class.new(manager: manager, state_dir: state_dir, public_dir: public_dir, bridge_wait_timeout: 0, lan: lan)
+    described_class.new(manager: manager, state_dir: state_dir, public_dir: public_dir, bridge_wait_timeout: 0, lan: lan,
+                        hub: Samagotchi::Web::SessionHub.new(state_dir: state_dir))
   end
 
   after do

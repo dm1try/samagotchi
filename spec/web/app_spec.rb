@@ -39,10 +39,6 @@ class FakeResponsesManager
     end
   end
 
-  def list_sessions(state_dir: nil, sort: nil, order: nil, limit: nil, offset: 0, **)
-    []
-  end
-
   def retention_sweep_if_due(state_dir: nil)
     nil
   end
@@ -398,6 +394,13 @@ RSpec.describe Samagotchi::Web::App do
         s.status = status
         s.save(state_dir: state_dir)
       end
+    end
+
+    it "answers the list 503 no_hub without a hub (Server always builds one)" do
+      status, _, body = build_app(state_dir: state_dir).call(env_for("/api/sessions"))
+
+      expect(status).to eq(503)
+      expect(JSON.parse(body.first)).to include("error" => "no_hub")
     end
 
     it "lists from the projection: Session.list's order, pagination and total, with owner, status and recap" do
@@ -1468,7 +1471,8 @@ RSpec.describe Samagotchi::Web::App do
 
   describe "session status" do
     let(:state_dir) { Dir.mktmpdir("web-status-spec") }
-    let(:app) { build_app(manager: Samagotchi::SessionManager, state_dir: state_dir, session_class: Samagotchi::Session) }
+    let(:hub) { Samagotchi::Web::SessionHub.new(state_dir: state_dir) }
+    let(:app) { build_app(manager: Samagotchi::SessionManager, state_dir: state_dir, session_class: Samagotchi::Session, hub: hub) }
 
     after { FileUtils.rm_rf(state_dir) }
 
@@ -1484,6 +1488,7 @@ RSpec.describe Samagotchi::Web::App do
       allow(app).to receive(:bridge_get_json).and_return(nil)
       allow(app).to receive(:bridge_event_seq).and_return(nil)
 
+      hub.scan
       _, _, list = app.call(env_for("/api/sessions"))
       _, _, show = app.call(env_for("/api/sessions/#{session.id}"))
 
@@ -1499,6 +1504,7 @@ RSpec.describe Samagotchi::Web::App do
       allow(app).to receive(:bridge_get_json).and_return(nil)
       allow(app).to receive(:bridge_event_seq).and_return(nil)
 
+      hub.scan
       _, _, list = app.call(env_for("/api/sessions"))
       owners = JSON.parse(list.first).to_h { |s| [s["id"], s["owner"]] }
       _, _, show = app.call(env_for("/api/sessions/#{tui.id}"))
@@ -1517,6 +1523,7 @@ RSpec.describe Samagotchi::Web::App do
       allow(app).to receive(:bridge_get_json).and_return(nil)
       allow(app).to receive(:bridge_event_seq).and_return(nil)
 
+      hub.scan
       _, _, list = app.call(env_for("/api/sessions"))
 
       expect(JSON.parse(list.first).to_h { |s| [s["id"], s["recap"]] }).to eq(with.id => "We fixed the login.", without.id => nil)
@@ -1528,6 +1535,7 @@ RSpec.describe Samagotchi::Web::App do
       allow(app).to receive(:bridge_get_json).and_return("session_state_snapshot" => { "status" => "idle", "event_seq" => 3 })
 
       _, _, show = app.call(env_for("/api/sessions/#{session.id}"))
+      hub.scan
       _, _, list = app.call(env_for("/api/sessions"))
 
       expect(JSON.parse(show.first).dig("session", "status")).to eq("idle")
@@ -1608,7 +1616,8 @@ RSpec.describe Samagotchi::Web::App do
       end
     end
     let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: state_dir) }
-    let(:app) { build_app(manager: Samagotchi::SessionManager, state_dir: state_dir, session_class: Samagotchi::Session) }
+    let(:hub) { Samagotchi::Web::SessionHub.new(state_dir: state_dir) }
+    let(:app) { build_app(manager: Samagotchi::SessionManager, state_dir: state_dir, session_class: Samagotchi::Session, hub: hub) }
 
     after do
       @lock&.release

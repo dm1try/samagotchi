@@ -256,8 +256,8 @@ session every 10 s, so a `kill -9` shows within a second. The summary (`Web::Ses
 shared with `/api/sessions` and the session view) carries `owner`, `project_root` and
 `bridge_up` (the sidecar is there *and* the lock is held: the page attaches its stream on it).
 `POST/DELETE /api/sessions` and `/stop` rescan the session before answering (`SessionHub#touch`).
-Without a hub (`App.new` alone) `/api/events` answers `503 no_hub` and the page falls back to
-fetching the list.
+`GET /api/sessions` is the hub's projection too (its sort, paging and total). `Server` always builds
+a hub; an `App.new` without one answers both routes `503 no_hub`.
 
 ## Model loops and adapters
 

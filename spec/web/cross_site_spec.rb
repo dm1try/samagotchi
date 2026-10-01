@@ -6,6 +6,7 @@ require "json"
 require "rack/mock"
 
 require "samagotchi/web/app"
+require "samagotchi/web/session_hub"
 require "samagotchi/session"
 
 # The web server listens on 127.0.0.1, and any page open in the desktop
@@ -28,14 +29,14 @@ RSpec.describe Samagotchi::Web::App, "cross-site gate" do
         Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd)
       end
 
-      def list_sessions(**) = []
       def retention_sweep_if_due(**) = nil
       def stop_session(*, **) = nil
       def delete_session(id, **) = @deleted << id
     end.new
   end
   let(:app) do
-    described_class.new(manager: manager, state_dir: state_dir, bridge_wait_timeout: 0)
+    described_class.new(manager: manager, state_dir: state_dir, bridge_wait_timeout: 0,
+                        hub: Samagotchi::Web::SessionHub.new(state_dir: state_dir))
   end
 
   after do

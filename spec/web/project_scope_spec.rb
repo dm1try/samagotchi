@@ -8,22 +8,20 @@ require "open3"
 require "rack/mock"
 
 require "samagotchi/web/app"
+require "samagotchi/web/session_hub"
 require "samagotchi/session"
 require "samagotchi/session_manager"
 
 # ?dir= on the list and the page, dir on create, /api/info: the page's
 # project scope (plans/project-scope.md §2 "Web").
 RSpec.describe Samagotchi::Web::App do
-  # Lists for real (SessionManager over a tmp state dir); records spawns
-  # instead of forking workers.
+  # Records spawns instead of forking workers (the list is the hub's).
   class ScopeSpawnRecorder
     attr_reader :spawn_calls
 
     def initialize
       @spawn_calls = []
     end
-
-    def list_sessions(**kw) = Samagotchi::SessionManager.list_sessions(**kw)
 
     def spawn_session(prompt:, state_dir: nil, **kw)
       @spawn_calls << kw
@@ -48,7 +46,8 @@ RSpec.describe Samagotchi::Web::App do
 
   let(:state_dir) { File.join(@tmp, "state") }
   let(:manager) { ScopeSpawnRecorder.new }
-  let(:app) { described_class.new(manager: manager, state_dir: state_dir, bridge_wait_timeout: 0) }
+  let(:hub) { Samagotchi::Web::SessionHub.new(state_dir: state_dir) }
+  let(:app) { described_class.new(manager: manager, state_dir: state_dir, bridge_wait_timeout: 0, hub: hub) }
   let(:repo_a) { File.join(@tmp, "alpha").tap { |dir| git("init", "-q", dir) } }
   let(:repo_b) { File.join(@tmp, "beta").tap { |dir| git("init", "-q", dir) } }
   let(:plain) { File.join(@tmp, "plain").tap { |dir| FileUtils.mkdir_p(dir) } }
@@ -74,6 +73,7 @@ RSpec.describe Samagotchi::Web::App do
       session_in(repo_b)
       a2 = session_in(File.join(repo_a, "lib").tap { |dir| FileUtils.mkdir_p(dir) })
       session_in(plain)
+      hub.scan
 
       _, _, body = call("/api/sessions?dir=#{q(repo_a)}")
       expect(JSON.parse(body).map { |s| s["id"] }).to eq([a2.id, a1.id])
@@ -85,6 +85,7 @@ RSpec.describe Samagotchi::Web::App do
 
     it "lists every session without dir or for a folder in no repo" do
       3.times { |i| session_in(i.zero? ? repo_a : plain) }
+      hub.scan
 
       expect(JSON.parse(call("/api/sessions")[2]).size).to eq(3)
       expect(JSON.parse(call("/api/sessions?dir=#{q(plain)}")[2]).size).to eq(3)
