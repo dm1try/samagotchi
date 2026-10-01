@@ -86,6 +86,8 @@ module Samagotchi
         all_files_in_bundle = []
         provenance = Provenance.new(name: @name)
         existing_provenance = provenance.read
+        # A plain install over an installed bundle: summary points at upgrade.
+        @reinstall = existing_provenance && !@upgrade && !@force && !@dry_run
 
         Dir.glob(File.join(normalized_dir, "*.md")).each do |file_path|
           file_key = File.basename(file_path)
@@ -125,12 +127,17 @@ module Samagotchi
                 classification = Merger.classify(base_path: base_path, current_path: target_path, incoming_path: file_path)
                 @results[file_key] = { status: classification.to_s }
                 @conflicts[file_key] = { base: base_path, current: target_path, incoming: file_path } if classification == :conflict
+              elsif FileUtils.identical?(file_path, target_path)
+                @results[file_key] = { status: "skipped", reason: "already up to date" }
               else
                 @results[file_key] = { status: "would_skip" }
               end
             else
               @results[file_key] = { status: "would_install" }
             end
+          elsif File.exist?(target_path) && !@force && FileUtils.identical?(file_path, target_path)
+            @results[file_key] = { status: "skipped", reason: "already up to date" }
+            update_target_index(target_scope, target_path, file_key)
           elsif File.exist?(target_path) && !@force
             @results[file_key] = { status: "skipped", reason: "already exists" }
             @warnings << "Skipped #{file_key} (already exists; use --force to overwrite)"
@@ -278,7 +285,8 @@ module Samagotchi
           all_files_in_bundle.each do |file_key|
             next if @conflicts.key?(file_key)
             status = @results[file_key] ? @results[file_key][:status].to_s : nil
-            next if %w[kept kept_pruned fast_forward updated].include?(status)
+            # skipped: not copied, so a local edit isn't a bad download.
+            next if %w[kept kept_pruned fast_forward updated skipped].include?(status)
             # For dry-run, fast_forward would appear as "fast_forward", updated not yet
             target_path = File.join(target_dir, file_key)
             next unless File.exist?(target_path)
@@ -409,6 +417,7 @@ module Samagotchi
         lines << "Conflicts: #{conflicts.join(', ')}" unless conflicts.empty?
         lines.concat(@warnings) unless @warnings.empty?
         lines.concat(@placeholder_warnings) unless @placeholder_warnings.empty?
+        lines << "#{@name} is already installed; `chi bundle upgrade #{@name}` updates it and keeps local edits" if @reinstall
 
         lines.any? ? lines.join("\n") : "No files to install."
       end

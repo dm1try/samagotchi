@@ -125,6 +125,60 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         expect(File.read(File.join(system_memories_dir, "identity.md"))).to eq("# Existing\n")
       end
 
+      it "skips an existing file identical to the bundle's as already up to date, without a warning" do
+        FileUtils.mkdir_p(system_memories_dir)
+        File.write(File.join(system_memories_dir, "identity.md"), "# Identity\n")
+        bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
+
+        installer = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
+        installer.run
+
+        expect(installer.results["identity.md"]).to eq(status: "skipped", reason: "already up to date")
+        expect(installer.warnings).to be_empty
+        expect(installer.summary).not_to include("--force")
+      end
+
+      it "re-installing an installed bundle hints at chi bundle upgrade, once" do
+        bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
+        installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
+
+        again = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
+        again.run
+        hint = "test-bundle is already installed; `chi bundle upgrade test-bundle` updates it and keeps local edits"
+        expect(again.summary.lines.map(&:chomp).count(hint)).to eq(1)
+        expect(again.summary).to include("Skipped: identity.md")
+        expect(again.summary).not_to include("use --force")
+      end
+
+      it "a first install has no upgrade hint" do
+        bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
+        installer = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
+        installer.run
+        expect(installer.summary).not_to include("already installed")
+      end
+
+      it "a differing file in an installed bundle still warns about --force" do
+        bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
+        installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
+        File.write(File.join(system_memories_dir, "identity.md"), "# Edited\n")
+
+        again = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
+        again.run
+        expect(again.results["identity.md"]).to eq(status: "skipped", reason: "already exists")
+        expect(again.warnings).to eq(["Skipped identity.md (already exists; use --force to overwrite)"])
+        expect(again.summary).to include("chi bundle upgrade test-bundle")
+      end
+
+      it "a dry run reports an identical file as already up to date" do
+        FileUtils.mkdir_p(system_memories_dir)
+        File.write(File.join(system_memories_dir, "identity.md"), "# Identity\n")
+        bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
+
+        installer = described_class.new(source: bundle_dir, name: "test-bundle", scope: "system", strict: true, dry_run: true)
+        installer.run
+        expect(installer.results["identity.md"]).to eq(status: "skipped", reason: "already up to date")
+      end
+
       it "overwrites existing files with --force" do
         FileUtils.mkdir_p(system_memories_dir)
         File.write(File.join(system_memories_dir, "identity.md"), "# Old\n")

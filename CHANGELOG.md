@@ -8,6 +8,13 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi bundle install` of a bundle that's already installed no longer says "Skipped X (already exists; use --force
+  to overwrite)" for a file that's the same as the bundle's; it skips it quietly and says once that
+  `chi bundle upgrade NAME` updates the bundle and keeps local edits. A file skipped for a local edit no longer
+  also reports a checksum mismatch.
+
 ## [0.8.1] - 2026-10-01
 
 ### Added
