@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "cli/flags"
 require_relative "memory_bundle"
 
 module Samagotchi
@@ -49,6 +50,38 @@ module Samagotchi
     TEXT
     UPGRADE_HELP = "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]"
     UNINSTALL_HELP = "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]"
+    BUILD_HELP = <<~TEXT
+      Usage: chi bundle build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
+
+        build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
+          Build local memories and installed hooks into a shareable bundle (dir or zip).
+          --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
+          FILES... optional allowlist of *.md basenames to include (default: all).
+
+        Examples:
+          chi bundle build --scope system
+          chi bundle build --scope project --name my-bundle --version 1.0.0 --out bundle.zip
+          chi bundle build --scope system --out ./my-bundle/ identity.md work.md
+    TEXT
+
+    # The subcommands' flags: --help only; a word not starting with -- is
+    # a positional (install's source, -h included). --scope takes whatever
+    # follows it; build's value flags not a --flag.
+    INSTALL_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
+      f.value "--scope"
+      f.switch "--force"
+    end
+    UNINSTALL_FLAGS = INSTALL_FLAGS
+    UPGRADE_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/) do |f|
+      f.value "--scope"
+      f.switch "--force"
+      f.switch "--dry-run"
+      f.switch "--agent"
+      f.switch "--no-agent", key: :agent, set: false
+    end
+    BUILD_FLAGS = CLI::Flags.new(help: %w[--help], flag_pattern: /\A--/, dash_values: false) do |f|
+      %w[--scope --name --version --description --out].each { |name| f.value name }
+    end
 
     # @param argv [Array<String>] the arguments after "bundle"
     def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr)
@@ -83,10 +116,10 @@ module Samagotchi
     private
 
     def install(rest)
-      parsed = parse_flags(rest, "install", help: INSTALL_HELP, bools: { "--force" => [:force, true] })
+      parsed = parse_flags(INSTALL_FLAGS, rest, "install", help: INSTALL_HELP)
       return parsed if parsed.is_a?(Integer)
 
-      opts, source = parsed
+      opts, source = parsed.options, parsed.args.last
       scope = opts[:scope]
       force = opts.fetch(:force, false)
       if source.nil? || source.empty?
@@ -127,12 +160,10 @@ module Samagotchi
     end
 
     def upgrade(rest)
-      parsed = parse_flags(rest, "upgrade", help: UPGRADE_HELP,
-                                            bools: { "--force" => [:force, true], "--dry-run" => [:dry_run, true],
-                                                     "--agent" => [:agent, true], "--no-agent" => [:agent, false] })
+      parsed = parse_flags(UPGRADE_FLAGS, rest, "upgrade", help: UPGRADE_HELP)
       return parsed if parsed.is_a?(Integer)
 
-      opts, source = parsed
+      opts, source = parsed.options, parsed.args.last
       scope = opts[:scope]
       force = opts.fetch(:force, false)
       dry_run = opts.fetch(:dry_run, false)
@@ -231,10 +262,10 @@ module Samagotchi
     end
 
     def uninstall(rest)
-      parsed = parse_flags(rest, "uninstall", help: UNINSTALL_HELP, bools: { "--force" => [:force, true] })
+      parsed = parse_flags(UNINSTALL_FLAGS, rest, "uninstall", help: UNINSTALL_HELP)
       return parsed if parsed.is_a?(Integer)
 
-      opts, bundle_name = parsed
+      opts, bundle_name = parsed.options, parsed.args.last
       scope = opts[:scope]
       force = opts.fetch(:force, false)
       if bundle_name.nil? || bundle_name.empty?
@@ -509,65 +540,17 @@ module Samagotchi
     end
 
     def build(rest)
-      scope = nil
-      name = nil
-      version = nil
-      description = ""
-      out = nil
-      filter_files = []
-      i = 0
-      while i < rest.size
-        arg = rest[i]
-        if arg.start_with?("--")
-          nxt = rest[i + 1]
-          if %w[-h --help help].include?(arg)
-            @stdout.puts "Usage: chi bundle build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
-            @stdout.puts ""
-            @stdout.puts "  build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]"
-            @stdout.puts "    Build local memories and installed hooks into a shareable bundle (dir or zip)."
-            @stdout.puts "    --scope selects source dir (default: system). --out inferred from extension; default <name>.zip."
-            @stdout.puts "    FILES... optional allowlist of *.md basenames to include (default: all)."
-            @stdout.puts ""
-            @stdout.puts "  Examples:"
-            @stdout.puts "    chi bundle build --scope system"
-            @stdout.puts "    chi bundle build --scope project --name my-bundle --version 1.0.0 --out bundle.zip"
-            @stdout.puts "    chi bundle build --scope system --out ./my-bundle/ identity.md work.md"
-            return 0
-          elsif arg == "--scope" && nxt && !nxt.start_with?("--")
-            scope = nxt; i += 2
-          elsif arg.start_with?("--scope=")
-            scope = arg.split("=", 2).last; i += 1
-          elsif arg == "--name" && nxt && !nxt.start_with?("--")
-            name = nxt; i += 2
-          elsif arg.start_with?("--name=")
-            name = arg.split("=", 2).last; i += 1
-          elsif arg == "--version" && nxt && !nxt.start_with?("--")
-            version = nxt; i += 2
-          elsif arg.start_with?("--version=")
-            version = arg.split("=", 2).last; i += 1
-          elsif arg == "--description" && nxt && !nxt.start_with?("--")
-            description = nxt; i += 2
-          elsif arg.start_with?("--description=")
-            description = arg.split("=", 2).last; i += 1
-          elsif arg == "--out" && nxt && !nxt.start_with?("--")
-            out = nxt; i += 2
-          elsif arg.start_with?("--out=")
-            out = arg.split("=", 2).last; i += 1
-          else
-            @stderr.puts "Unknown bundle build flag: #{arg}"
-            return 2
-          end
-        else
-          filter_files << arg
-          i += 1
-        end
-      end
+      parsed = parse_flags(BUILD_FLAGS, rest, "build", help: BUILD_HELP)
+      return parsed if parsed.is_a?(Integer)
+
+      scope, name, version, out = parsed.options.values_at(:scope, :name, :version, :out)
+      description = parsed.options.fetch(:description, "")
+      filter_files = parsed.args.empty? ? nil : parsed.args
       # Validate scope if given
       if scope && !%w[system project].include?(scope.to_s.strip.downcase)
         @stderr.puts "Invalid scope '#{scope}', expected system or project"
         return 2
       end
-      filter_files = nil if filter_files.empty?
       begin
         builder = Samagotchi::MemoryBundle::Builder.new(
           scope: scope,
@@ -592,44 +575,22 @@ module Samagotchi
       end
     end
 
-    # The install/upgrade/uninstall flags, in argv order, stopping at the
-    # first --help or unknown --flag: --scope V (whatever V is) or
-    # --scope=V, and the +bools+ ("--flag" => [key, value]). Anything not
-    # starting with -- is the positional; the last one wins.
+    # +rest+ through +flags+, stopping at the first --help or error.
     #
-    # @return [Array(Hash, String), Integer] the flags and the positional
-    #   (nil when none), or the exit status after --help or an unknown flag
-    def parse_flags(rest, sub, help:, bools:)
-      opts = {}
-      positional = nil
-      i = 0
-      while i < rest.size
-        arg = rest[i]
-        if arg.start_with?("--")
-          nxt = rest[i + 1]
-          if arg == "--help"
-            @stdout.puts help
-            return 0
-          elsif arg == "--scope" && nxt
-            opts[:scope] = nxt
-            i += 2
-          elsif arg.start_with?("--scope=")
-            opts[:scope] = arg.split("=", 2).last
-            i += 1
-          elsif bools.key?(arg)
-            key, value = bools[arg]
-            opts[key] = value
-            i += 1
-          else
-            @stderr.puts "Unknown bundle #{sub} flag: #{arg}"
-            return 2
-          end
-        else
-          positional = arg
-          i += 1
-        end
+    # @return [CLI::Flags::Result, Integer] the result, or the exit status
+    #   after the help or an unknown flag (a value flag without its value
+    #   reads as one)
+    def parse_flags(flags, rest, sub, help:)
+      parsed = flags.parse(rest)
+      if parsed.help
+        @stdout.puts help
+        return 0
       end
-      [opts, positional]
+      if parsed.error
+        @stderr.puts "Unknown bundle #{sub} flag: #{parsed.error.arg}"
+        return 2
+      end
+      parsed
     end
 
     # helpers for bundle_name derivation
