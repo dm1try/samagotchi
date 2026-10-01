@@ -1,0 +1,59 @@
+{
+  "description": "A running turn as the Bridge's snapshot carries it (TurnAccumulator#current_turn) and the live events a joining UI replays it as. One source of truth for the web (turn_events.js snapshotEvents, spec/web/public/turn_events.test.js) and the TUI (TurnAccumulator.replay_events, spec/bridge/turn_accumulator_spec.rb; the join's lines, spec/terminal_ui/attached_loop_spec.rb). The TUI replays only the turn: the queued prompts are its own lines.",
+  "snapshot": {
+    "started_at": "T0",
+    "current_turn": {
+      "prompt": "do it",
+      "origin": { "client_id": "web:abc", "enqueued_id": "e1" },
+      "continue": false,
+      "parts": [
+        { "kind": "thinking", "iteration": 1, "text": "hmm" },
+        { "kind": "text", "iteration": 1, "text": "Let me look." },
+        { "kind": "tool", "iteration": 1, "call_index": 0, "tool": "execute", "params": "command=\"ls\"", "title": "ls",
+          "status": "ok", "output": "a b", "output_truncated": false, "action": "Running command", "duration_ms": 1250 },
+        { "kind": "tool", "iteration": 1, "call_index": 1, "tool": "edit", "params": "path=\"a.rb\"", "status": "ok",
+          "output": "Edited", "output_truncated": false, "action": "Editing file", "duration_ms": 40,
+          "diff": { "text": "@@ -1 +1 @@\n-a\n+b", "added": 1, "removed": 1 } },
+        { "kind": "input", "iteration": 2, "text": "also this", "origins": [{ "client_id": "web:x", "enqueued_id": "e2" }] },
+        { "kind": "steer", "iteration": 2, "source": "check-in", "text": "keep going" },
+        { "kind": "reminder", "reminders": ["r"] },
+        { "kind": "notice", "event": { "type": "hook_notice", "hook": "known_names.rb (bundle known-names)", "text": "rejected execute", "level": "info" } },
+        { "kind": "notice", "event": { "type": "empty_answer_retry", "iteration": 2, "attempt": 1, "of": 1, "stopped_by": "loop-guard" } },
+        { "kind": "notice", "event": { "type": "question_requested", "pending_question": { "id": "q1", "question": "Which?" } } },
+        { "kind": "notice", "event": { "type": "question_answered", "id": "q1", "answer": { "selected": ["A"] } } },
+        { "kind": "tool", "iteration": 2, "call_index": 0, "tool": "read", "params": "path=\"old.rb\"", "status": "ok",
+          "output": "x", "output_truncated": false },
+        { "kind": "text", "iteration": 3, "text": "Nearly" },
+        { "kind": "tool", "iteration": 3, "call_index": 0, "tool": "read", "params": "path=\"f\"", "status": "running" }
+      ]
+    },
+    "queued": [{ "enqueued_id": "e3", "client_id": "web:y", "prompt": "later" }]
+  },
+  "events": [
+    { "type": "turn_started", "prompt": "do it", "origin": { "client_id": "web:abc", "enqueued_id": "e1" }, "continue": false, "started_at": "T0" },
+    { "type": "generation_chunk", "text": "", "thinking": "hmm", "iteration": 1 },
+    { "type": "generation_chunk", "text": "Let me look.", "thinking": "", "iteration": 1 },
+    { "type": "generation_completed" },
+    { "type": "tool_call_started", "iteration": 1, "call_index": 0, "tool": "execute", "params": "command=\"ls\"", "title": "ls" },
+    { "type": "tool_call_completed", "iteration": 1, "call_index": 0, "tool": "execute", "output": "a b", "output_truncated": false,
+      "activity": { "action": "Running command", "tool": "execute", "status": "ok", "params": "command=\"ls\"", "title": "ls" }, "duration_ms": 1250 },
+    { "type": "tool_call_started", "iteration": 1, "call_index": 1, "tool": "edit", "params": "path=\"a.rb\"" },
+    { "type": "tool_call_completed", "iteration": 1, "call_index": 1, "tool": "edit", "output": "Edited", "output_truncated": false,
+      "activity": { "action": "Editing file", "tool": "edit", "status": "ok", "params": "path=\"a.rb\"" }, "duration_ms": 40,
+      "diff": { "text": "@@ -1 +1 @@\n-a\n+b", "added": 1, "removed": 1 } },
+    { "type": "merged_input", "content": "also this", "origins": [{ "client_id": "web:x", "enqueued_id": "e2" }] },
+    { "type": "pending_input_merged", "count": 0, "content": null, "steers": [{ "source": "check-in", "text": "keep going" }] },
+    { "type": "reminder_injected", "reminders": ["r"] },
+    { "type": "hook_notice", "hook": "known_names.rb (bundle known-names)", "text": "rejected execute", "level": "info" },
+    { "type": "empty_answer_retry", "iteration": 2, "attempt": 1, "of": 1, "stopped_by": "loop-guard" },
+    { "type": "question_requested", "pending_question": { "id": "q1", "question": "Which?" } },
+    { "type": "question_answered", "id": "q1", "answer": { "selected": ["A"] } },
+    { "type": "tool_call_started", "iteration": 2, "call_index": 0, "tool": "read", "params": "path=\"old.rb\"" },
+    { "type": "tool_call_completed", "iteration": 2, "call_index": 0, "tool": "read", "output": "x", "output_truncated": false,
+      "activity": { "tool": "read", "status": "ok", "params": "path=\"old.rb\"" } },
+    { "type": "generation_chunk", "text": "Nearly", "thinking": "", "iteration": 3 },
+    { "type": "generation_completed" },
+    { "type": "tool_call_started", "iteration": 3, "call_index": 0, "tool": "read", "params": "path=\"f\"" },
+    { "type": "turn_enqueued", "enqueued_id": "e3", "client_id": "web:y", "prompt": "later" }
+  ]
+}

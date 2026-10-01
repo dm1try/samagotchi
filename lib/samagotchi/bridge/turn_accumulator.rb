@@ -16,10 +16,15 @@ module Samagotchi
     # its terminal event, the same event that brings its messages into the
     # session, so a snapshot shows a turn in exactly one of the two.
     class TurnAccumulator
-      def initialize(max_output_chars: KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS)
+      # @param clock [#call] monotonic seconds: a tool call's duration
+      def initialize(max_output_chars: KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS,
+                     clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
         @max_output_chars = max_output_chars
+        @clock = clock
         @mutex = Mutex.new
         @turn = nil
+        # When each running tool call started, by [iteration, call_index].
+        @tool_started_at = {}
         @queued = []
         @merged_origins = []
         @recap = nil
@@ -35,7 +40,8 @@ module Samagotchi
       # @return [Hash, nil] a copy of the turn in progress: prompt, origin,
       #   continue, ordered parts (thinking / text / tool / input / steer /
       #   reminder / notice), pending_question and the last event_seq folded
-      #   in. A notice part holds the event of one of the turn's rows
+      #   in. A finished tool part keeps the live row's action and duration_ms
+      #   too. A notice part holds the event of one of the turn's rows
       #   (TurnNotice: a hook's notice, an empty-answer retry, a question and
       #   its answer), which a UI replays through its live handler.
       def current_turn
@@ -80,6 +86,80 @@ module Samagotchi
         messages
       end
 
+      # The turn in progress (#current_turn's shape, symbol keys) as the live
+      # events that would have drawn it, in order, as turn_events.js
+      # snapshotEvents replays it for the web (spec/shared/turn_snapshot.json
+      # pins both): a generation_chunk per thinking or text part (a
+      # generation_completed closes text before the next step's), a tool's
+      # tool_call_started and, once finished, its tool_call_completed (with
+      # the live activity: action, tool, params, status), a merged_input
+      # (the one synthetic type) per merged prompt, a steer-only
+      # pending_input_merged per steer, a reminder_injected, and a notice
+      # part's own event.
+      # @param started_at [String, nil] the turn's start, on turn_started
+      # @return [Array<Hash>] symbol keys and types; [] with no turn
+      def self.replay_events(turn, started_at: nil)
+        return [] unless turn
+
+        started = { type: :turn_started, prompt: turn[:prompt], origin: turn[:origin], continue: !!turn[:continue] }
+        started[:started_at] = started_at if started_at
+        events = [with_images(started, turn[:images])]
+        text_iteration = nil # a text part is open for this iteration
+        close_text = lambda do
+          events << { type: :generation_completed } unless text_iteration.nil?
+          text_iteration = nil
+        end
+        Array(turn[:parts]).each do |part|
+          case part[:kind]
+          when "thinking" then events << { type: :generation_chunk, text: "", thinking: part[:text], iteration: part[:iteration] }
+          when "text"
+            close_text.call if !text_iteration.nil? && text_iteration != part[:iteration]
+            text_iteration = part[:iteration]
+            events << { type: :generation_chunk, text: part[:text], thinking: "", iteration: part[:iteration] }
+          when "tool"
+            close_text.call
+            events.concat(tool_replay_events(part))
+          when "input"
+            close_text.call
+            events << { type: :merged_input, content: part[:text], origins: part[:origins] || [] }
+          when "reminder"
+            close_text.call
+            events << { type: :reminder_injected, reminders: part[:reminders] || [] }
+          when "notice"
+            close_text.call
+            notice = part[:event]
+            events << notice.merge(type: notice[:type].to_sym) if notice.is_a?(Hash) && notice[:type]
+          when "steer"
+            close_text.call
+            events << { type: :pending_input_merged, count: 0, content: nil, steers: [{ source: part[:source], text: part[:text] }] }
+          end
+        end
+        events
+      end
+
+      def self.tool_replay_events(part)
+        call = { iteration: part[:iteration], call_index: part[:call_index], tool: part[:tool] }
+        call[:label] = part[:label] if part[:label]
+        title = part[:title] ? { title: part[:title] } : {}
+        events = [{ type: :tool_call_started, **call, params: part[:params], **title }]
+        return events if part[:status] == "running"
+
+        activity = { tool: part[:tool], status: part[:status], params: part[:params], **title }
+        activity[:action] = part[:action] if part[:action]
+        completed = { type: :tool_call_completed, **call, output: part[:output], output_truncated: !!part[:output_truncated],
+                      activity: activity }
+        completed[:duration_ms] = part[:duration_ms] unless part[:duration_ms].nil?
+        completed[:diff] = part[:diff] if part[:diff]
+        events << with_images(completed, part[:images])
+      end
+      private_class_method :tool_replay_events
+
+      # +event+ with images: when there are any.
+      def self.with_images(event, images)
+        Array(images).empty? ? event : event.merge(images: images)
+      end
+      private_class_method :with_images
+
       # @return [String, nil] the last idle recap, until a turn makes it stale
       def recap
         @mutex.synchronize { @recap }
@@ -118,6 +198,7 @@ module Samagotchi
           dequeue([event[:origin]])
           @turn = { prompt: event[:prompt], origin: event[:origin], continue: !!event[:continue],
                     parts: [], pending_question: nil }
+          @tool_started_at = {}
           @turn[:images] = event[:images] if event[:images]
         when :input_merged
           @merged_origins = Array(event[:origins])
@@ -151,6 +232,7 @@ module Samagotchi
           part[:label] = event[:label] if event[:label]
           part[:title] = event[:title] if event[:title]
           parts << part
+          @tool_started_at[[event[:iteration], event[:call_index]]] = @clock.call
         when :tool_call_completed
           tool = parts.reverse_each.find do |part|
             part[:kind] == "tool" && part[:iteration] == event[:iteration] && part[:call_index] == event[:call_index]
@@ -164,6 +246,12 @@ module Samagotchi
           tool[:output_truncated] = capped || !!event[:output_truncated]
           tool[:images] = event[:images] if event[:images]
           tool[:diff] = event[:diff] if event[:diff]
+          action = event.dig(:activity, :action)
+          tool[:action] = action.to_s if action
+          # As the live row times it (EventRenderer): from tool_call_started,
+          # less an approval wait.
+          started_at = @tool_started_at.delete([event[:iteration], event[:call_index]])
+          tool[:duration_ms] = [((@clock.call - started_at) * 1000) - event[:waited_ms].to_f, 0].max.round if started_at
         when :pending_input_merged
           # A steer-only merge (count 0) has no user part: the origins stay
           # for the user lines' own merge.

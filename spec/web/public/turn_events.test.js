@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { turnOutput, workerGoneText } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 test("turnOutput reads turn_summary.output (result is a string on the wire)", () => {
@@ -105,40 +107,15 @@ test("input_merged steers every known origin; pending_input_merged adds the rest
 
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 
+// Shared contract: spec/shared/turn_snapshot.json, the running turn a join
+// gets and the live events it replays as. The TUI's TurnAccumulator.
+// replay_events reads the same file.
+const turnSnapshot = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../../../spec/shared/turn_snapshot.json", import.meta.url)), "utf8"),
+);
+
 test("snapshotEvents replays the turn in progress as live events (a notice part as its own event), then the queued prompts", () => {
-  const turn = {
-    prompt: "do it",
-    origin: { client_id: "tui:1", enqueued_id: "e1" },
-    parts: [
-      { kind: "thinking", iteration: 1, text: "hmm" },
-      { kind: "text", iteration: 1, text: "Let me look." },
-      { kind: "tool", iteration: 1, call_index: 0, tool: "execute", params: "ls", status: "ok", output: "a b", output_truncated: false },
-      { kind: "input", iteration: 2, text: "also this", origins: [{ client_id: "web:x", enqueued_id: "e2" }] },
-      { kind: "reminder", reminders: ["r"] },
-      { kind: "notice", event: { type: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" } },
-      { kind: "notice", event: { type: "empty_answer_retry", iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" } },
-      { kind: "notice", event: { type: "question_requested", pending_question: { id: "q1", question: "Which?" } } },
-      { kind: "notice", event: { type: "question_answered", id: "q1", answer: { selected: ["A"] } } },
-      { kind: "tool", iteration: 2, call_index: 0, tool: "read", params: "f", status: "running" },
-    ],
-  };
-  const queued = [{ enqueued_id: "e3", client_id: "web:y", prompt: "later" }];
-  assert.deepEqual(snapshotEvents({ current_turn: turn, queued, started_at: "T0" }), [
-    { type: "turn_started", prompt: "do it", origin: turn.origin, continue: false, started_at: "T0" },
-    { type: "generation_chunk", text: "", thinking: "hmm", iteration: 1 },
-    { type: "generation_chunk", text: "Let me look.", thinking: "", iteration: 1 },
-    { type: "generation_completed" },
-    { type: "tool_call_started", iteration: 1, call_index: 0, tool: "execute", params: "ls" },
-    { type: "tool_call_completed", iteration: 1, call_index: 0, tool: "execute", output: "a b", output_truncated: false, activity: { status: "ok", params: "ls" } },
-    { type: "merged_input", content: "also this", origins: [{ client_id: "web:x", enqueued_id: "e2" }] },
-    { type: "reminder_injected", reminders: ["r"] },
-    { type: "hook_notice", hook: "known_names.rb (bundle known-names)", text: "rejected execute", level: "info" },
-    { type: "empty_answer_retry", iteration: 2, attempt: 1, of: 1, stopped_by: "loop-guard" },
-    { type: "question_requested", pending_question: { id: "q1", question: "Which?" } },
-    { type: "question_answered", id: "q1", answer: { selected: ["A"] } },
-    { type: "tool_call_started", iteration: 2, call_index: 0, tool: "read", params: "f" },
-    { type: "turn_enqueued", enqueued_id: "e3", client_id: "web:y", prompt: "later" },
-  ]);
+  assert.deepEqual(snapshotEvents(turnSnapshot.snapshot), turnSnapshot.events);
 });
 
 test("snapshotEvents splits text by iteration and leaves the last one streaming", () => {

@@ -2,9 +2,12 @@
 
 require "json"
 require "samagotchi/bridge/turn_accumulator"
+require "samagotchi/terminal_ui/event_renderer"
 
 RSpec.describe Samagotchi::Bridge::TurnAccumulator do
-  subject(:acc) { described_class.new }
+  # Monotonic seconds, moved by the examples that time a tool call.
+  let(:clock) { [100.0] }
+  subject(:acc) { described_class.new(clock: -> { clock[0] }) }
 
   def feed(*events)
     events.each do |event|
@@ -39,7 +42,7 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
       { kind: "thinking", iteration: 1, text: "ab" },
       { kind: "text", iteration: 1, text: "Hello" },
       { kind: "tool", iteration: 1, call_index: 1, tool: "execute", params: "ls", status: "ok",
-        output: "a.txt", output_truncated: false },
+        output: "a.txt", output_truncated: false, duration_ms: 0 },
       { kind: "text", iteration: 2, text: "Done" }
     ])
     expect { JSON.generate(turn) }.not_to raise_error
@@ -52,6 +55,15 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
          { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "edit", output: "Edited x", diff: diff,
            activity: { status: "ok" } })
     expect(acc.current_turn[:parts].last).to include(tool: "edit", diff: diff)
+  end
+
+  it "keeps a tool call's action and its duration, less an approval wait, so a join draws the live row" do
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: "ls" })
+    clock[0] += 2.5
+    feed({ type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", output: "x", waited_ms: 1000,
+           activity: { action: "Running command", tool: "execute", params: "ls", status: "ok" } })
+    expect(acc.current_turn[:parts].last).to include(action: "Running command", duration_ms: 1500)
   end
 
   it "keeps a plugin tool's label on its part" do
@@ -218,5 +230,31 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
 
     expect(snapshot[:parts].first[:text]).to eq("a")
     expect(acc.current_turn[:parts].first[:text]).to eq("ab")
+  end
+
+  describe ".replay_events" do
+    # Shared contract with the web (turn_events.js snapshotEvents).
+    let(:fixture) { JSON.parse(File.read(File.expand_path("../shared/turn_snapshot.json", __dir__))) }
+    let(:symbolize) { ->(value) { Samagotchi::TerminalUI::EventRenderer.symbolize(value) } }
+
+    it "replays the turn in progress as the live events the web replays it as (the queue left out)" do
+      turn = Samagotchi::TerminalUI::EventRenderer.deep_symbolize_keys(fixture.dig("snapshot", "current_turn"))
+      expected = fixture["events"].reject { |e| e["type"] == "turn_enqueued" }.map(&symbolize)
+      expect(described_class.replay_events(turn, started_at: fixture.dig("snapshot", "started_at"))).to eq(expected)
+    end
+
+    it "replays what it folded" do
+      feed({ type: :turn_started, prompt: "hi", origin: { client_id: "web:1" } },
+           { type: :generation_chunk, iteration: 1, content: "a", thinking: "", text: "a" },
+           { type: :tool_call_started, iteration: 1, call_index: 1, tool: "read", params: "p" },
+           { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "read", output: "x",
+             activity: { action: "Reading file", tool: "read", params: "p", status: "ok" } })
+      expect(described_class.replay_events(acc.current_turn).map { |e| e[:type] })
+        .to eq(%i[turn_started generation_chunk generation_completed tool_call_started tool_call_completed])
+    end
+
+    it "has nothing to replay with no turn" do
+      expect(described_class.replay_events(nil)).to eq([])
+    end
   end
 end
