@@ -89,4 +89,71 @@ RSpec.describe Samagotchi::TerminalUI::InputSupport, "history ring" do
 
     expect(Reline::HISTORY.to_a).to eq(["/model x"])
   end
+
+  describe "interrupted by the reader's Reprompt or Stop" do
+    # Pick-up runs inside LineReader's read, where Reprompt and Stop land at
+    # once. Blocks it in PromptHistory.entries (after the signature check),
+    # raises +error+ into it, then lets it go on.
+    def pick_up_interrupted_by(error)
+      entered = Queue.new
+      release = Queue.new
+      calls = 0
+      allow(Samagotchi::PromptHistory).to receive(:entries).and_wrap_original do |original|
+        calls += 1
+        if calls == 1
+          entered << true
+          release.pop
+        end
+        original.call
+      end
+      thread = Thread.new do
+        ui.send(:pick_up_history_lines)
+        :returned
+      rescue error
+        :raised
+      end
+      thread.report_on_exception = false
+      entered.pop
+      thread.raise(error)
+      sleep 0.05
+      release << true
+      thread.value
+    end
+
+    before do
+      Samagotchi::PromptHistory.append("old")
+      ui.send(:load_persistent_history)
+      elsewhere("from the web")
+    end
+
+    [Samagotchi::TerminalUI::LineReader::Reprompt, Samagotchi::TerminalUI::LineReader::Stop].each do |error|
+      it "lets a #{error.name.split("::").last} through once the ring is up to date" do
+        expect(pick_up_interrupted_by(error)).to eq(:raised)
+        expect(Reline::HISTORY.to_a).to eq(["old", "from the web"])
+
+        elsewhere("later")
+        ui.send(:pick_up_history_lines)
+        expect(Reline::HISTORY.to_a).to eq(["old", "from the web", "later"])
+      end
+    end
+
+    it "still swallows an ordinary error (an unreadable file)" do
+      allow(Samagotchi::PromptHistory).to receive(:entries).and_raise(Errno::EACCES)
+
+      expect { ui.send(:pick_up_history_lines) }.not_to raise_error
+    end
+  end
+
+  it "takes a line whose append failed back out of its own lines" do
+    ui.send(:load_persistent_history)
+    type("lost")
+    allow(Samagotchi::PromptHistory).to receive(:append).and_raise(Errno::ENOSPC)
+    ui.send(:persist_recent_history, "lost")
+    allow(Samagotchi::PromptHistory).to receive(:append).and_call_original
+
+    expect(ui.send(:history_own_lines)).to be_empty
+    elsewhere("lost")
+    ui.send(:pick_up_history_lines)
+    expect(Reline::HISTORY.to_a).to eq(%w[lost lost])
+  end
 end

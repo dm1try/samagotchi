@@ -9,6 +9,7 @@ require_relative "../memory_paths"
 require_relative "../prompt_history"
 require_relative "../tools/memory"
 require_relative "../session_commands"
+require_relative "line_reader"
 
 module Samagotchi
   class TerminalUI
@@ -202,6 +203,7 @@ module Samagotchi
       end
 
       def load_persistent_history
+        @history_lock ||= Mutex.new
         @history_own_lines ||= []
         @history_signature = PromptHistory.signature
         @history_seen = PromptHistory.entries
@@ -215,11 +217,11 @@ module Samagotchi
         return if @scratch
 
         own = PromptHistory.normalize([input]).first
-        history_own_lines << own if own
+        history_lock.synchronize { history_own_lines << own } if own
         begin
           PromptHistory.append(input)
         rescue StandardError
-          history_own_lines.delete_at(history_own_lines.rindex(own)) if own
+          history_lock.synchronize { forget_own_line(own) } if own
           raise
         end
       rescue StandardError
@@ -236,16 +238,31 @@ module Samagotchi
       # the line just read; @history_own_lines is filled before each append
       # lands, so either way a line is in the ring once. A scratch session
       # keeps Reline's ring as it is.
+      #
+      # It runs inside LineReader's read, where a Reprompt or Stop lands at
+      # once. Both wait until the ring and what we last saw of the file agree
+      # (a raise in between would lose the new lines for good), then go on
+      # to LineReader; an ordinary error is swallowed.
       def pick_up_history_lines
         return if @scratch
 
-        signature = PromptHistory.signature
-        return if signature == @history_signature
+        Thread.handle_interrupt(LineReader::Reprompt => :never, LineReader::Stop => :never) do
+          signature = PromptHistory.signature
+          next if signature == @history_signature
 
-        entries = PromptHistory.entries
-        fresh = PromptHistory.new_tail(@history_seen || [], entries)
-        @history_signature = signature
-        @history_seen = entries
+          entries = PromptHistory.entries
+          fresh = PromptHistory.new_tail(@history_seen || [], entries)
+          @history_signature = signature
+          @history_seen = entries
+          history_lock.synchronize { add_others_lines(fresh) }
+        rescue StandardError
+          nil
+        end
+      end
+
+      # The lines in +fresh+ go into the ring, except our own (each counted
+      # once). Under the history lock.
+      def add_others_lines(fresh)
         own = history_own_lines
         fresh.each do |line|
           index = own.index(line)
@@ -253,12 +270,21 @@ module Samagotchi
 
           Reline::HISTORY << line
         end
-      rescue StandardError
-        nil
+      end
+
+      def forget_own_line(own)
+        index = history_own_lines.rindex(own)
+        history_own_lines.delete_at(index) if index
       end
 
       def history_own_lines
         @history_own_lines ||= []
+      end
+
+      # Guards @history_own_lines: the main thread persists lines, the
+      # reader thread picks up others'. Never held across file IO.
+      def history_lock
+        @history_lock ||= Mutex.new
       end
 
       # The text as given ("Please " keeps its space); a blank one is none.
