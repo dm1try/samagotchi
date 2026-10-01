@@ -789,7 +789,7 @@ described in their own sections.
 | `web.markdown` | `false` | yes | Render answers as Markdown in `chi web`. |
 | `web.view` | `stage` | yes | How `chi web` draws a turn: `stage` (the running turn pinned above the composer) or `turn` (one block per turn in the history). See [CLI](cli.md#web-views). |
 | `web.annotate_presets` | `Agreed\|Could you please elaborate?` | yes | Quick replies next to Annotate in `chi web`, `\|`-separated (a YAML list works too); `""` in the file or on the CLI leaves only Annotate (an empty env value means the default). See [CLI](cli.md#web-annotate-presets). |
-| `history.file` | state dir | | Prompt history path. |
+| `history.file` | state dir | | Prompt history path, shared by the TUI and the web composer. |
 | `no_interrupt` | `false` | `--no-interrupt` | Raise the tool-call limit of a turn to 1000; a top-level key. |
 | `no_default_input` | `false` | `--no-default-input` | Don't pre-fill `default.input`; a top-level key. |
 | `skip_agent_md` | `false` | | Don't load AGENT.md; a top-level key (see below). |

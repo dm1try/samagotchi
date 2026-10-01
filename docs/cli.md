@@ -640,17 +640,33 @@ This is separate from verbose mode:
 
 ## Persistent Prompt History
 
-Assist mode keeps a small persistent prompt history across restarts.
+Assist mode keeps a persistent prompt history across restarts, one for every
+chi prompt: the REPL, attached mode and the `chi web` composer (↑/↓ there)
+share it.
 
 - Default history file: `$XDG_STATE_HOME/samagotchi/history.json`
 - XDG fallback when unset: `~/.local/state/samagotchi/history.json`
-- Optional override: `SAMAGOTCHI_HISTORY_FILE=/custom/path/history.json`
-- Stored entries: most recent `20` prompts
-- Format: JSON array of prompt strings
+- Optional override: `history.file` in the config, or
+  `SAMAGOTCHI_HISTORY_FILE=/custom/path/history.json`
+- Stored entries: most recent `100` prompts (and `!commands`; not `/commands`
+  or `!rollback`)
+- Format: JSON array of prompt strings, mode 0600. Each write holds
+  `<file>.lock` and replaces the file whole, so a TUI and the web writing at
+  once keep both lines (a symlinked history file becomes a regular file).
 
 Behavior details:
 
 - Prompt history is loaded on startup before the first `>` prompt.
+- A running REPL or attached TUI picks up the lines other chi processes (the
+  web, another terminal) added: before each `>` prompt, when the file changed,
+  its new lines join the ↑ list after the ones already there, without a
+  restart. A `/command` you typed stays under ↑ too. `chi scratch` keeps its
+  own list and writes nothing.
+- The web records a prompt once its session's worker took it (a refused or
+  timed-out send isn't saved), a `!command` likewise; an image-only message
+  isn't saved. `chi send`, `delegate` and plugin turns aren't typed at a
+  prompt and aren't saved. With `chi web --web-host lan` the list is served to
+  token holders (`GET /api/history`), as the sessions are.
 - Only real user prompts are persisted.
 - Continue-flow inputs (`yes`, `no`, `no, <reason>`, `/continue`) are not persisted as prompts.
 - In assist mode, pressing `Tab` on an `@`-prefixed token (for example `@lib/sama`) completes project file and directory paths while preserving the `@` prefix.

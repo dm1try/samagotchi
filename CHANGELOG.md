@@ -8,6 +8,17 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- The web composer has the TUI's prompt history: ↑/↓ walk the prompts typed in either (↑ with the caret on the first
+  line; ↓ past the newest brings your draft back). A running TUI picks up lines typed in the web, or in another
+  terminal, without a restart.
+
+### Changed
+
+- The prompt history keeps 100 entries (was 20), is written under a lock and replaced whole (no lost lines when two
+  chi processes write at once), and is now mode 0600.
+
 ### Fixed
 
 - The `known-names` bundle checks the name in `~name` (that user's home folder): `ls ~myname` is no longer rejected
