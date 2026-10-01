@@ -9,6 +9,8 @@ require_relative "session_metrics"
 require_relative "recap_store"
 require_relative "session_delete_command"
 require_relative "session_archive_command"
+require_relative "cli/command"
+require_relative "cli/flags"
 
 module Samagotchi
   # `chi sessions`: list, stop, archive/unarchive, delete, prune and clean
@@ -16,6 +18,8 @@ module Samagotchi
   # the subcommands have their own flags). Not SessionCommands, the REPL's
   # slash commands for sessions (session_commands.rb).
   class SessionsCommand
+    include CLI::Command
+
     USAGE = <<~TEXT
       Usage: chi sessions <list|stop|archive|unarchive|delete|prune|clean> [options]
         list [--sort updated_at|created_at] [--order desc|asc] [--limit N]
@@ -32,15 +36,32 @@ module Samagotchi
       Defaults: days=14 keep=500 keep_status=none (config: session.retention_days, session.max_count, session.keep_status)
     TEXT
 
-    # The value flags: "--flag V" or "--flag=V", converted with the method
-    # given (nil: the string as it is). Every argument is scanned, the values
-    # too (--cwd --live takes "--live" as the folder and turns --live on),
-    # a flag with nothing after it is ignored, and so is an unknown one.
-    VALUE_FLAGS = {
-      "--days" => [:days, :to_i], "--keep" => [:keep, :to_i], "--keep-status" => [:keep_status, nil],
-      "--sort" => [:sort, nil], "--order" => [:order, nil], "--limit" => [:limit, :to_i],
-      "--cwd" => [:cwd, nil], "--format" => [:format, nil], "--scope" => [:scope, nil]
+    STOP_USAGE = "Usage: chi sessions stop ID...\n"
+    SUBCOMMANDS = %w[list stop archive unarchive delete prune clean].freeze
+
+    # Each subcommand's flags ("--flag V" or "--flag=V" for a value): an
+    # unknown flag, a value flag with nothing after it or an argument where
+    # none is taken is a usage error (exit 2). The numbers become integers
+    # (#integers).
+    FLAGS = {
+      "list" => CLI::Flags.new(args: false) do |f|
+        %w[--sort --order --limit --cwd --format --scope].each { |name| f.value name }
+        f.switch "--live"
+        f.switch "--archived", key: :include_archived
+      end,
+      "stop" => CLI::Flags.new,
+      "prune" => CLI::Flags.new(args: false) do |f|
+        %w[--days --keep --keep-status].each { |name| f.value name }
+        f.switch "--dry-run"
+        f.switch "--test-only", "--test", key: :test_only
+      end,
+      "clean" => CLI::Flags.new(args: false) do |f|
+        f.value "--days"
+        f.switch "--dry-run"
+        f.switch "--all"
+      end
     }.freeze
+    INTEGER_OPTIONS = %i[days keep limit].freeze
 
     # @param argv [Array<String>] the arguments after "sessions"
     def initialize(argv, stdout: $stdout, stderr: $stderr)
@@ -50,61 +71,49 @@ module Samagotchi
     end
 
     # @return [Integer] exit status
+    # @return [Integer] exit status: 2 on a usage error
     def run
-      sub = @argv[0]
-      if sub.nil? || %w[-h --help help].include?(sub)
+      @sub = @argv[0]
+      if @sub.nil? || HELP_WORDS.include?(@sub)
         @stdout.puts USAGE
         return 0
       end
-      @opts = parse_flags
-      case sub
+      return usage_error("unknown subcommand #{@sub}") unless SUBCOMMANDS.include?(@sub)
+
+      case @sub
       when "delete"
-        Samagotchi::SessionDeleteCommand.new(@argv[1..], stdout: @stdout, stderr: @stderr).run
+        return Samagotchi::SessionDeleteCommand.new(@argv[1..], stdout: @stdout, stderr: @stderr).run
       when "archive", "unarchive"
-        Samagotchi::SessionArchiveCommand.new(sub, @argv[1..], stdout: @stdout, stderr: @stderr).run
+        return Samagotchi::SessionArchiveCommand.new(@sub, @argv[1..], stdout: @stdout, stderr: @stderr).run
+      end
+
+      parsed = parse_flags(FLAGS.fetch(@sub), @argv[1..])
+      return parsed if parsed.is_a?(Integer)
+
+      @opts = integers(parsed.options)
+      case @sub
       when "list" then list
-      when "stop" then stop
-      when "prune", "clean" then prune(sub)
-      else
-        @stderr.puts "Unknown sessions subcommand: #{sub}. Use: list, stop, archive, unarchive, delete, prune, clean"
-        1
+      when "stop" then stop(parsed.args)
+      else prune(@sub)
       end
     end
 
     private
 
-    def parse_flags
-      opts = {
-        dry_run: @argv.include?("--dry-run"),
-        test_only: @argv.include?("--test-only") || @argv.include?("--test"),
-        live: @argv.include?("--live"),
-        include_archived: @argv.include?("--archived")
-      }
-      @argv.each_with_index do |arg, i|
-        nxt = @argv[i + 1]
-        VALUE_FLAGS.each do |flag, (key, convert)|
-          value = if arg == flag && nxt then nxt
-                  elsif arg.start_with?("#{flag}=") then arg.split("=", 2).last
-                  end
-          next unless value
+    def command_name = @sub && SUBCOMMANDS.include?(@sub) ? "chi sessions #{@sub}" : "chi sessions"
+    def usage_text = @sub == "stop" ? STOP_USAGE : USAGE
 
-          opts[key] = convert ? value.public_send(convert) : value
-          break
-        end
-      end
-      opts
+    # quirk: a number that isn't one is 0 (--days=abc turns the age limit off)
+    def integers(options)
+      options.to_h { |key, value| [key, INTEGER_OPTIONS.include?(key) ? value.to_i : value] }
     end
 
     def list
       format, scope, cwd = @opts.values_at(:format, :scope, :cwd)
       unless format.nil? || %w[text json tsv].include?(format)
-        @stderr.puts "Unknown format #{format.inspect}: use --format text|json|tsv"
-        return 1
+        return usage_error("unknown format #{format.inspect}: use --format text|json|tsv")
       end
-      unless scope.nil? || %w[project all].include?(scope)
-        @stderr.puts "Unknown scope #{scope.inspect}: use --scope=project|all"
-        return 1
-      end
+      return usage_error("unknown scope #{scope.inspect}: use --scope=project|all") unless scope.nil? || %w[project all].include?(scope)
       # The current git project's sessions (Samagotchi::ProjectScope), like
       # chi web's; --scope=all, a folder in no repo or an explicit --cwd: every
       # project's.
@@ -202,12 +211,9 @@ module Samagotchi
       0
     end
 
-    def stop
-      ids = @argv[1..]
-      if ids.empty? || ids.any? { |arg| arg.start_with?("-") }
-        @stderr.puts "Usage: chi sessions stop ID..."
-        return 1
-      end
+    def stop(ids)
+      return usage_error("give session ids") if ids.empty?
+
       # Each id in turn, like chi sessions delete: stdout is flushed before an
       # error line, so the output keeps the order of the ids given.
       ok = ids.uniq.map do |given|
@@ -236,7 +242,7 @@ module Samagotchi
 
     def prune(sub)
       days, keep, keep_status, dry_run, test_only = @opts.values_at(:days, :keep, :keep_status, :dry_run, :test_only)
-      test_only = true if sub == "clean" && !@argv.include?("--all")
+      test_only = true if sub == "clean" && !@opts[:all]
       # Test sessions are throwaway: clean takes them whatever their age,
       # unless --days asks for the older ones only. Live workers and
       # keep_status still protect a session.

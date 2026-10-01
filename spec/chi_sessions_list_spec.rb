@@ -262,7 +262,7 @@ RSpec.describe "chi sessions list" do
   it "refuses an unknown format" do
     _out, err, status = run_chi("--format", "yaml")
 
-    expect(status.exitstatus).to eq(1)
+    expect(status.exitstatus).to eq(2)
     expect(err).to include("--format text|json|tsv")
   end
 
@@ -337,7 +337,7 @@ RSpec.describe "chi sessions list" do
     it "refuses an unknown scope" do
       _out, err, status = run_chi("--scope=mine", dir: alpha)
 
-      expect(status.exitstatus).to eq(1)
+      expect(status.exitstatus).to eq(2)
       expect(err).to include("--scope=project|all")
     end
 

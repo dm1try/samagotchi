@@ -59,7 +59,7 @@ RSpec.describe "chi sessions stop" do
   it "asks for an id" do
     _out, err, status = run_chi("stop")
 
-    expect(status.exitstatus).to eq(1)
+    expect(status.exitstatus).to eq(2)
     expect(err).to include("Usage: chi sessions stop ID...")
   end
 

@@ -5,7 +5,7 @@ require "json"
 require "spec_helper"
 require "samagotchi/session"
 
-# `chi sessions` through bin/chi: help, the shared flag scan and its quirks,
+# `chi sessions` through bin/chi: help, each subcommand's flags and usage errors,
 # list's plain path, stop's usage and prune/clean, pinned before the command
 # moved out of bin/chi. The other paths have their own specs
 # (chi_sessions_list/stop/clean/archive_spec, session_delete_command_spec).
@@ -33,7 +33,7 @@ RSpec.describe "chi sessions (CLI)" do
       Defaults: days=14 keep=500 keep_status=none (config: session.retention_days, session.max_count, session.keep_status)
     TEXT
   end
-  let(:unknown_tail) { ". Use: list, stop, archive, unarchive, delete, prune, clean\n" }
+  let(:stop_usage) { "Usage: chi sessions stop ID...\n" }
 
   after do
     FileUtils.rm_rf(xdg_state)
@@ -70,13 +70,14 @@ RSpec.describe "chi sessions (CLI)" do
     end
   end
 
-  it "refuses an unknown subcommand" do
-    expect(run_chi("nope")).to eq(["", "Unknown sessions subcommand: nope#{unknown_tail}", 1])
+  # A usage error exits 2 with the usage on stderr, as every chi command's.
+  it "refuses an unknown subcommand with the usage (exit 2)" do
+    expect(run_chi("nope")).to eq(["", "chi sessions: unknown subcommand nope\n#{usage}", 2])
   end
 
-  # quirk: the subcommand must come first; a flag before it is taken as one
+  # The subcommand must come first; a flag before it is taken as one.
   it "refuses a flag before the subcommand" do
-    expect(run_chi("--dry-run", "prune")).to eq(["", "Unknown sessions subcommand: --dry-run#{unknown_tail}", 1])
+    expect(run_chi("--dry-run", "prune")).to eq(["", "chi sessions: unknown subcommand --dry-run\n#{usage}", 2])
   end
 
   it "list sorts by created_at ascending and says so in the footer, and --limit=N cuts it" do
@@ -94,11 +95,10 @@ RSpec.describe "chi sessions (CLI)" do
     expect(out).to end_with("\n1 session(s) (sort=updated_at order=desc)\n")
   end
 
-  # quirk: unknown flags are ignored
-  it "list ignores an unknown flag" do
-    make("hello")
-
-    expect(run_chi("list", "--bogus")).to eq(run_chi("list"))
+  it "list refuses an unknown flag, a value flag with no value and an argument (exit 2)" do
+    expect(run_chi("list", "--bogus")).to eq(["", "chi sessions list: unknown option --bogus\n#{usage}", 2])
+    expect(run_chi("list", "--limit")).to eq(["", "chi sessions list: --limit needs a value\n#{usage}", 2])
+    expect(run_chi("list", "extra")).to eq(["", "chi sessions list: unknown option extra\n#{usage}", 2])
   end
 
   # The desktop helper (desktop/macos/ChiRunner.swift) runs these two.
@@ -112,9 +112,20 @@ RSpec.describe "chi sessions (CLI)" do
     end
   end
 
-  it "stop refuses a dash argument with its usage" do
-    expect(run_chi("stop", "--force")).to eq(["", "Usage: chi sessions stop ID...\n", 1])
-    expect(run_chi("stop")).to eq(["", "Usage: chi sessions stop ID...\n", 1])
+  it "stop refuses a dash argument or no ids with its usage (exit 2)" do
+    expect(run_chi("stop", "--force")).to eq(["", "chi sessions stop: unknown option --force\n#{stop_usage}", 2])
+    expect(run_chi("stop")).to eq(["", "chi sessions stop: give session ids\n#{stop_usage}", 2])
+  end
+
+  it "prune and clean refuse an unknown flag, a missing value and an argument (exit 2), deleting nothing" do
+    old = make("old", days_old: 30)
+
+    expect(run_chi("prune", "--bogus")).to eq(["", "chi sessions prune: unknown option --bogus\n#{usage}", 2])
+    expect(run_chi("prune", "--days")).to eq(["", "chi sessions prune: --days needs a value\n#{usage}", 2])
+    expect(run_chi("prune", "--all")).to eq(["", "chi sessions prune: unknown option --all\n#{usage}", 2])
+    expect(run_chi("clean", "--keep", "1")).to eq(["", "chi sessions clean: unknown option --keep\n#{usage}", 2])
+    expect(run_chi("clean", "old")).to eq(["", "chi sessions clean: unknown option old\n#{usage}", 2])
+    expect(exists?(old)).to be(true)
   end
 
   it "prune --days N deletes the older sessions, with no dry-run tail" do
