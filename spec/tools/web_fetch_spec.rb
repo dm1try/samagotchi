@@ -1,16 +1,9 @@
 
 # frozen_string_literal: true
 require "samagotchi/tools/web_fetch"
-require "webmock/rspec"
 
 RSpec.describe Samagotchi::Tools::WebFetch do
   subject(:web_fetch) { described_class }
-
-  around do |example|
-    WebMock.disable_net_connect!(allow_localhost: true)
-    example.run
-    WebMock.enable_net_connect!
-  end
 
   describe ".name" do
     it "returns 'web_fetch'" do

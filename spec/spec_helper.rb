@@ -5,6 +5,16 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "fileutils"
 require "tmpdir"
 
+# No spec reaches the network, localhost included: an unstubbed request
+# raises WebMock::NetConnectNotAllowedError. Loaded here, not by the one spec
+# that stubs requests, or the run depends on whether that spec's file loaded
+# first in a parallel_rspec process (a default Client probing
+# localhost:8080/props, SelfReport asking 127.0.0.1:4567/api/info). Specs
+# that serve real local HTTP opt out per example
+# (FakeProviderServer.without_webmock).
+require "webmock/rspec"
+WebMock.disable_net_connect!
+
 # The suite-wide helpers (each example group gets them below). Not every
 # spec/support file: the rest load parts of lib/ (a fake adapter, a
 # surface), and a spec that needs one requires it, so loading one spec file
@@ -87,6 +97,9 @@ RSpec.configure do |config|
   config.warnings = true
   config.order = :random
   Kernel.srand config.seed
+
+  # A spec's allow_net_connect! ends with its example: back to no net.
+  config.after(:each) { WebMock.disable_net_connect! }
 
   # Never let a spec block on the developer's real terminal. Unstubbed Reline
   # reads behave like EOF (Ctrl-D); specs that need input stub their own values.
