@@ -52,6 +52,45 @@ RSpec.describe Samagotchi::TerminalUI::StatusRow do
     expect(surface.events).to be_empty
   end
 
+  describe "#take_state" do
+    let(:state) do
+      { model_name: "m2", served_model: "ornith", served_model_for: "m2", parent_id: "3f2a1c9e-0000",
+        used_memory_names: %w[notes], preloaded_memory_names: %w[cli], muted_memory_names: %w[gh],
+        context_status: { est_pct: 12.34, bucket: "under20" } }
+    end
+
+    it "shows a session state's model, served model, parent, ctx and memories" do
+      row.take_state(state, default_model: "m1")
+
+      expect(surface.slots[:status])
+        .to eq(["status> model=ornith (served; asked m2) | ↳ 3f2a1c9e | ctx=12.3% (under20) | mem: notes, cli | muted: gh"])
+    end
+
+    it "keeps what an older state lacks, but clears the served pair" do
+      row.take_state(state, default_model: "m1")
+      row.take_state({ context_status: nil })
+
+      expect(row[:served]).to be_nil
+      expect(row[:model]).to eq("m2")
+      expect(row[:used_memories]).to eq(%w[notes])
+      expect(row[:parent_id]).to eq("3f2a1c9e-0000")
+      expect(row[:context]).to eq(est_pct: 12.34, bucket: "under20")
+    end
+  end
+
+  describe "#take_event" do
+    it "takes ctx, the memories used and the served model from turn events" do
+      row.update(model: "m1", default_model: "m1")
+      row.take_event({ type: :context_status, usage: { estimated_pct: 40.0 }, bucket: "under60" })
+      row.take_event({ type: :used_memories_updated, used_memory_names: %w[notes] })
+      row.take_event({ type: :generation_completed, served_model: "ornith", requested_model: "m1" })
+      row.take_event({ type: :generation_completed })
+      row.take_event({ type: :turn_started })
+
+      expect(surface.slots[:status]).to eq(["status> model=ornith (served; asked m1) | ctx=40.0% (under60) | mem: notes"])
+    end
+  end
+
   it "refuses a field it doesn't know" do
     expect { row.update(server: "x") }.to raise_error(ArgumentError, /server/)
   end

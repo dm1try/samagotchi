@@ -197,10 +197,7 @@ module Samagotchi
           end_turn
           own_turn_ended(event)
         when :prompt_restored then restore_prompt(event)
-        when :context_status
-          @status.update(context: { est_pct: event.dig(:usage, :estimated_pct), bucket: event[:bucket] })
-        when :used_memories_updated
-          @status.update(used_memories: Array(event[:used_memory_names]))
+        when :context_status, :used_memories_updated then @status.take_event(event)
         # Another client's anytime command: its line now, before the cards
         # it shows (its command_ran comes when it's done).
         when :command_queued
@@ -237,7 +234,7 @@ module Samagotchi
           line = EventRenderer.init_line(event)
           @screen.commit(line) if line
         when :generation_completed
-          take_served_model(event[:served_model], event[:requested_model])
+          @status.take_event(event)
           @renderer.call(event)
         when :stream_closed
           @view.finish_thinking_spinner
@@ -1052,22 +1049,7 @@ module Samagotchi
       # The joining snapshot's session state: the worker's model and the
       # memories the session used.
       def take_session_state(state)
-        fields = { served: nil }
-        fields.merge!(model: state[:model_name], default_model: default_model_name) if state[:model_name]
-        fields[:served] = [state[:served_model], state[:served_model_for]] if state[:served_model]
-        fields[:used_memories] = Array(state[:used_memory_names]) if state.key?(:used_memory_names)
-        fields[:preloaded] = Array(state[:preloaded_memory_names]) if state.key?(:preloaded_memory_names)
-        fields[:muted] = Array(state[:muted_memory_names]) if state.key?(:muted_memory_names)
-        fields[:parent_id] = state[:parent_id] if state.key?(:parent_id)
-        # The last turn's ctx, so it shows before this client's first turn.
-        fields[:context] = state[:context_status] if state[:context_status].is_a?(Hash)
-        @status.update(**fields)
-      end
-
-      # What the worker's server said it served for a name (a generation);
-      # dropped when /model switches.
-      def take_served_model(served, served_for)
-        @status.update(served: [served, served_for]) if served
+        @status.take_state(state, default_model: (default_model_name if state[:model_name]))
       end
 
       # The config's default model, as the worker's /model names it.

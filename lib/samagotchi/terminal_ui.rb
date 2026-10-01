@@ -970,13 +970,7 @@ module Samagotchi
     # Bridge's). Engine swallows on_event errors to protect the turn, so log
     # ours instead.
     def handle_stream_event(event)
-      case event[:type]
-      when :context_status
-        @status_row.update(context: { est_pct: event.dig(:usage, :estimated_pct), bucket: event[:bucket] })
-      when :used_memories_updated then @status_row.update(used_memories: Array(event[:used_memory_names]))
-      when :generation_completed
-        @status_row.update(served: [event[:served_model], event[:requested_model]]) if event[:served_model]
-      end
+      @status_row.take_event(event)
       @renderer.call(event)
     rescue StandardError => e
       Log.error(:repl, "render_failed", echo: "[render] #{event[:type]}: #{e.class}: #{e.message}", event_type: event[:type].to_s, error: e.class.name)
@@ -997,13 +991,8 @@ module Samagotchi
     # The status row under the prompt, from the Engine's state (what a
     # worker hands an attached TUI when it joins): drawn when it changed.
     def refresh_status_row
-      state = @engine.session_state_snapshot
-      served = state[:served_model] ? [state[:served_model], state[:served_model_for]] : nil
-      fields = { model: @effective_model_name, default_model: @default_model_name, served: served,
-                 parent_id: state[:parent_id], used_memories: Array(state[:used_memory_names]),
-                 preloaded: Array(state[:preloaded_memory_names]), muted: Array(state[:muted_memory_names]) }
-      fields[:context] = state[:context_status] if state[:context_status].is_a?(Hash)
-      @status_row.update(**fields)
+      state = @engine.session_state_snapshot.merge(model_name: @effective_model_name)
+      @status_row.take_state(state, default_model: @default_model_name)
     end
 
     # ── Idle session recap ───────────────────────────────────────────────────
