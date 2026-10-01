@@ -2045,7 +2045,7 @@ module Samagotchi
           (task = current_init_task) ? task.cancelled? : @activity_mutex && active_cancel_controller&.cancelled?
         },
         card: ->(**card) { show_card(**card) },
-        steer: ->(text, source) { steer(text, source: source) },
+        steer: ->(text, label) { steer(text, source: hook_source(label)) },
         stop_turn: ->(reason, label) { hook_stop_turn(reason, label) },
         stop_generation: ->(reason, label) { hook_stop_generation(reason, label) },
         ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:|

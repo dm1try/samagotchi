@@ -135,9 +135,10 @@ module Samagotchi
 
       # Run the block on a hook event (docs/hooks.md: :before_turn,
       # :after_turn, :before_tool_call, …), like a bundle's hooks/*.rb:
-      # the block gets the event hash, with event[:notify] and the other
-      # helpers, and the Context (a block may take the event alone). A
-      # block that raises is logged (not shown) and skipped.
+      # the block gets the event hash and the Context (a block may take the
+      # event alone); while it runs, ctx.notify and the other helpers act
+      # as this event's (Context#with_event). A block that raises is
+      # logged (not shown) and skipped.
       # @param priority [Integer] lower runs first among bundle hooks
       def on(event, priority: 100, &block)
         raise ArgumentError, "on(#{event.inspect}) needs a block" unless block
@@ -227,7 +228,8 @@ module Samagotchi
           log_failure = Hooks.failure_log_gate(hook[:event])
           @registries.hooks.register_bundle(bundle, hook[:event], hook_name: label.split(" ").first,
                                                                   priority: hook[:priority]) do |event|
-            block.call(event, context)
+            # ctx's helpers act as this event's while the block runs.
+            context ? context.with_event(event) { block.call(event, context) } : block.call(event, context)
           rescue StandardError => e
             next unless log_failure.call
 

@@ -304,18 +304,33 @@ end
 ### `chi.on(event, priority: 100) { |event, ctx| … }`
 
 This is a bundle hook, the same as a `hooks/*.rb` file. See
-[hooks.md](hooks.md#hook-events) for the events and for what `event[:notify]`,
-`event[:ask_user]`, `event[:stop_turn]` and `event[:steer]` do; on `:after_turn`,
+[hooks.md](hooks.md#hook-events) for the events; on `:after_turn`,
 `event[:present]` sets how the answer is shown in the web
 ([Presenting the answer](hooks.md#presenting-the-answer-display-only)). Its label is
 `plugin.rb (bundle my-bundle)`. The block may take only the event. If it
 raises, the error is logged and the hook is skipped.
 
+To act from the block, use `ctx`: `ctx.notify`, `ctx.ask_user`,
+`ctx.steer`, `ctx.stop_turn`, `ctx.stop_generation`. Inside the block they
+act for **this event** (the `event[:notify]`… helpers that plain hooks in
+[hooks.md](hooks.md) get are the same thing, and a plugin doesn't need them):
+
+- `ctx.stop_turn` in a `:before_tool_call` block also denies the call the
+  event is about.
+- From `:after_turn` and `:session_end` there is no turn left:
+  `ctx.steer`, `ctx.stop_turn` and `ctx.stop_generation` do nothing and
+  return false.
+- In a `:generation_progress` block `ctx.ask_user` asks no one (nil).
+
+This holds on the block's own thread while it runs. A thread the block
+starts doesn't inherit the event: there the helpers act as from a command,
+on the session as it is when called ([The context](#the-context-ctx)), so
+`ctx.steer` from it reaches whatever turn is running then.
+
 #### Watching the stream
 
 `chi.on(:generation_progress)` sees a response while it streams, in batches
-(2000 chars or a second), and `event[:stop_generation]` (or
-`ctx.stop_generation`) cuts it while the turn goes on: the model is asked
+(2000 chars or a second), and `ctx.stop_generation` cuts it while the turn goes on: the model is asked
 again. The rules (the thread it runs on, keeping it fast, what a cut does)
 are in [hooks.md](hooks.md#watching-the-stream).
 
@@ -328,7 +343,7 @@ class Plugin
       next if event[:thinking_chars] < LIMIT
 
       # Once per generation: a cut generation fires no more.
-      if event[:stop_generation].call("it thought for over #{LIMIT / 1000}k chars")
+      if ctx.stop_generation("it thought for over #{LIMIT / 1000}k chars")
         ctx.notify("thinking too long (#{event[:elapsed_ms] / 1000} s): cut", level: :warn)
       end
     end
@@ -449,7 +464,14 @@ name order, so the first bundle keeps the name.
 ## The context: `ctx`
 
 Every handler gets the plugin's context. There is one per plugin for the
-session's life, and each read gives the session as it is now.
+session's life, and each read gives the session as it is now. It is a
+plugin's one way to talk to the user and to the turn: the helpers below act
+on the session now from a command, a tool, an init task or your own thread,
+and for the event inside a `chi.on` block (see `chi.on` above).
+
+Everything a plugin shows (notices, nudges, stop notices, questions) is
+named by its bundle in every UI (`my-bundle> …`); the debug log keeps the
+full label, `plugin.rb (bundle my-bundle)`.
 
 | | |
 |---|---|
@@ -461,13 +483,13 @@ session's life, and each read gives the session as it is now.
 | `ctx.log` | `ctx.log.info(:event, key: value)`: debug-log records tagged `plugins`, with `bundle=<bundle>` |
 | `ctx.messages` | the conversation, as a frozen copy, without the system prompt. While a turn runs, a session worker's (attached, web) adds that turn so far: its prompt, the model's text and the lines merged into it (no tool calls or thinking); the REPL's is the conversation before that turn |
 | `ctx.messages_partial?` | whether `ctx.messages` leaves out a running turn (the REPL mid-turn), so a plugin can say what its answer is about |
-| `ctx.notify(text, level: :info)` | one line to the user, like a hook's `event[:notify]`, labelled by the bundle (`my-bundle> …`). Every UI shows it, during a turn (a tool, a hook) or between turns (a command) |
+| `ctx.notify(text, level: :info)` | one line to the user, labelled by the bundle (`my-bundle> …`). Every UI shows it, during a turn (a tool, a hook) or between turns (a command) |
 | `ctx.card(title:, body: "", actions: [], level: :info, id: nil)` | a card in every UI, returning its id: see [Cards](#cards) |
-| `ctx.ask_user(question:, options:, header: nil, allow_freeform: false)` | a question, like a hook's `event[:ask_user]` |
+| `ctx.ask_user(question:, options:, header: nil, allow_freeform: false)` | a single-select question through the question flow: `{selected:, freeform:, selected_indices:}`, or nil (no one to ask, cancelled, bad options) |
 | `ctx.cancelled?` | whether the running turn was cancelled (a long tool should stop) |
-| `ctx.steer(text)` | put text into the running turn, like a hook's `event[:steer]`: its own user message at the loop's next boundary, shown as `my-bundle> nudged: …`. Returns true when queued, false with no turn running (it never starts one; that is `ctx.sessions`' send). Dropped (logged) if the model answers or the turn ends first. Safe from any thread: an anytime command, a hook, your own |
-| `ctx.stop_turn(reason)` | stop the running turn after a warn notice with the reason, like a hook's `event[:stop_turn]`; true when it stopped one now |
-| `ctx.stop_generation(reason)` | cut the generation that is streaming, like a hook's `event[:stop_generation]`: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
+| `ctx.steer(text)` | put text into the running turn: its own user message at the loop's next boundary, shown as `my-bundle> nudged: …`. Returns true when queued, false with no turn running (it never starts one; that is `ctx.sessions`' send). Dropped (logged) if the model answers or the turn ends first. Safe from any thread: an anytime command, a hook (false from `:after_turn`), your own |
+| `ctx.stop_turn(reason)` | stop the running turn after a warn notice with the reason; true when it stopped one now. In a `:before_tool_call` block it also denies that call |
+| `ctx.stop_generation(reason)` | cut the generation that is streaming: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
 | `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
 | `ctx.sessions` | fork, send to and read other sessions: see [Other sessions](#other-sessions-ctxsessions) |
 
@@ -915,7 +937,7 @@ with a line and carry on unchanged.
 
 `chi bundle install skills` (or the `dev` profile) installs the bundle shipped with chi
 (`lib/samagotchi/bundles/skills/plugin.rb`): one anytime command, `chi.on`
-hooks, `ctx.sessions.send`, `ctx.notify` and `event[:steer]`. It has no memory
+hooks, `ctx.sessions.send`, `ctx.notify` and `ctx.steer`. It has no memory
 file; skills themselves work without it ([docs/memory.md](memory.md#skills)).
 
 | | |

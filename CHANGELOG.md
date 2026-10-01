@@ -11,6 +11,10 @@ and commands may change between minor versions. How releases are made:
 ### Changed
 
 - `chi bundle` usage errors (unknown subcommand or flag, a missing argument) exit 2 like every other command, not 1.
+- Plugins: `ctx.notify`, `ctx.ask_user`, `ctx.steer`, `ctx.stop_turn` and `ctx.stop_generation` are the one way a plugin
+  acts; inside a `chi.on` block they act for that event as `event[:x]` does (`ctx.stop_turn` in `:before_tool_call`
+  denies the call, `ctx.steer` from `:after_turn` is false), and as before anywhere else (commands, your own threads).
+  Plain hook files keep `event[:x]`.
 
 ### Fixed
 

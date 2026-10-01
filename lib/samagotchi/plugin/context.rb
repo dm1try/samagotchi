@@ -19,7 +19,7 @@ module Samagotchi
     # the answer text.
     # +messages_partial+ says whether +messages+ leaves out a running turn;
     # +model_name+ and +state_dir+ are what ctx.sessions forks with.
-    # +steer+ takes (text, source), +stop_turn+ and +stop_generation+
+    # +steer+ takes (text, label), +stop_turn+ and +stop_generation+
     # (reason, label), each true when it acted on a running turn.
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :state_dir, :scratch, :steer, :stop_turn, :stop_generation, keyword_init: true)
@@ -35,7 +35,17 @@ module Samagotchi
     # they run for, the bundle's settings and storage, a log, and the
     # user-facing helpers hooks have. One per plugin, for the Engine's life:
     # each read is of the session now.
+    #
+    # The helpers (notify, ask_user, steer, stop_turn, stop_generation)
+    # are a plugin's one surface for them. Inside one of the plugin's event
+    # handlers (#with_event, on the handler's thread) they are that fire's
+    # event[:x]: stop_turn in before_tool_call also denies the pending
+    # call, and steer, stop_turn and stop_generation do nothing once the
+    # turn is over. Anywhere else (a command, an init task, a thread the
+    # handler started) they act on the session now, through the Host.
     class Context
+      # Thread.current key: {Context => the event its handler runs for}.
+      CURRENT_EVENTS = :samagotchi_plugin_current_events
       # Debug-log records tagged plugins, with bundle=<bundle> (tags are a
       # closed list, LogLine::TAGS).
       class Logger
@@ -104,11 +114,34 @@ module Samagotchi
       # a plugin can say what its answer is about.
       def messages_partial? = !!@host.messages_partial&.call
 
-      # One line to the user, labelled by the plugin, like a hook's
-      # event[:notify]. Every UI shows it, during a turn or between turns.
+      # Run +block+ as this plugin's handler for +event+: until it returns,
+      # the helpers called on this thread act as the event's own. Nests (a
+      # fire inside a handler gets its own event; the outer one is back
+      # after it); threads the block starts don't inherit it.
+      # @param event [Hash] the fire's event
+      def with_event(event)
+        events = (Thread.current[CURRENT_EVENTS] ||= {}.compare_by_identity)
+        had = events.key?(self)
+        previous = events[self]
+        events[self] = event
+        yield
+      ensure
+        if had
+          events[self] = previous
+        else
+          events&.delete(self)
+        end
+      end
+
+      # One line to the user, labelled by the plugin (in every UI by its
+      # bundle's name). Every UI shows it, during a turn or between turns.
       # @param level [Symbol] :info or :warn
       def notify(text, level: :info)
-        @host.notify.call(text.to_s, level, @label)
+        if (helper = event_helper(:notify))
+          helper.call(text.to_s, level: level)
+        else
+          @host.notify.call(text.to_s, level, @label)
+        end
         nil
       end
 
@@ -167,11 +200,15 @@ module Samagotchi
         @sessions ||= Sessions.new(@host)
       end
 
-      # A single-select question through the question flow, like a hook's
-      # event[:ask_user].
+      # A single-select question through the question flow. Inside a
+      # stream hook's handler (generation_progress) it asks no one (nil).
       # @return [Hash, nil] {selected:, freeform:, selected_indices:}, or nil
       #   (no one to ask, cancelled, bad options)
       def ask_user(question:, options:, header: nil, allow_freeform: false)
+        if (helper = event_helper(:ask_user))
+          return helper.call(question: question, options: options, header: header, allow_freeform: allow_freeform)
+        end
+
         @host.ask_user.call(question: question, options: options, header: header, allow_freeform: allow_freeform,
                             hook: @label)
       end
@@ -184,30 +221,48 @@ module Samagotchi
       # conversation as its own user message, shown in every UI as a nudge
       # from this bundle. It never starts a turn. True means queued: if the
       # model answers first, or the turn ends, it is dropped (logged).
-      # Callable from a hook, a command (an anytime one runs beside the
-      # turn) or your own thread.
+      # Callable from a handler (false from after_turn / session_end), a
+      # command (an anytime one runs beside the turn) or your own thread.
       # @return [Boolean] whether a turn was running and the text queued
       def steer(text)
-        !!@host.steer&.call(text.to_s, @bundle)
+        helper = event_helper(:steer)
+        return !!helper.call(text.to_s) if helper
+
+        !!@host.steer&.call(text.to_s, @label)
       end
 
-      # Stop the running turn, after a notice with +reason+, as a hook's
-      # event[:stop_turn] does (for commands and threads).
+      # Stop the running turn, after a notice with +reason+. From a
+      # before_tool_call handler it also denies the pending call; from
+      # after_turn / session_end it does nothing (false).
       # @return [Boolean] whether a running turn was stopped now
       def stop_turn(reason)
+        helper = event_helper(:stop_turn)
+        return !!helper.call(reason.to_s) if helper
+
         !!@host.stop_turn&.call(reason.to_s, @label)
       end
 
-      # Cut the generation that is streaming, as a hook's
-      # event[:stop_generation] does: the turn goes on and the model is
-      # asked again (retry.empty_answer), or with no retry left the turn
-      # ends as cancelled (hook). Shows nothing: post your own notice.
+      # Cut the generation that is streaming: the turn goes on and the
+      # model is asked again (retry.empty_answer), or with no retry left
+      # the turn ends as cancelled (hook). Shows nothing: post your own
+      # notice. From after_turn / session_end it does nothing (false).
       # @return [Boolean] whether a streaming generation was cut now
       def stop_generation(reason)
+        helper = event_helper(:stop_generation)
+        return !!helper.call(reason.to_s) if helper
+
         !!@host.stop_generation&.call(reason.to_s, @label)
       end
 
       private
+
+      # The event[:x] helper of the event this plugin's handler runs for on
+      # this thread, or nil (not in a handler).
+      def event_helper(name)
+        event = Thread.current[CURRENT_EVENTS]&.[](self)
+        helper = event[name] if event.is_a?(Hash)
+        helper.respond_to?(:call) ? helper : nil
+      end
 
       def deep_freeze(value)
         case value
