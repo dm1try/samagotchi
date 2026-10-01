@@ -51,7 +51,6 @@ module Samagotchi
     REQUEST_GRACE_SECONDS = 1.0
     # The largest request body read (images travel as refs, never bytes).
     MAX_BODY_BYTES = 1_000_000
-    MAX_TURN_IMAGES = 20
     # A request's deadline (see #handle_post_turn) that isn't epoch seconds.
     BAD_DEADLINE = [{ "Allow" => "POST" }, 400, { error: "bad_deadline", detail: "deadline must be epoch seconds" }].freeze
 
@@ -645,7 +644,7 @@ module Samagotchi
       end
       return [{}, 404, { error: "unknown_session" }] unless own_session?(sid)
 
-      images = turn_images(fetched(parsed, "images"))
+      images = ImageStore.check_refs(session_dir, fetched(parsed, "images"))
       return [{}, 400, { error: "bad_images", detail: images }] if images.is_a?(String)
 
       deadline = fetched(parsed, "deadline")
@@ -750,25 +749,6 @@ module Samagotchi
     def enqueue_turn(prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [])
       SessionInbox.write_input(session_dir, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
                                             no_interrupt: no_interrupt, images: images)
-    end
-
-    # A turn's images as [{file:, name:}], or a String saying what's wrong.
-    # Only refs to files already in that session's images/ pass (a web
-    # upload): never a path, so no client can make the worker read a file.
-    def turn_images(raw)
-      return [] if raw.nil?
-      return "images must be a list" unless raw.is_a?(Array)
-      return "at most #{MAX_TURN_IMAGES} images" if raw.size > MAX_TURN_IMAGES
-
-      raw.map do |image|
-        return "each image must be {file:, name:}" unless image.is_a?(Hash)
-
-        ref = ImageStore.symbolize(image)
-        return "images are refs to uploaded files, not paths" if ref.key?(:path)
-        return "unknown image #{ref[:file].to_s[0, 80]}" unless ImageStore.valid_ref?(session_dir, ref)
-
-        { file: ref[:file].to_s, name: File.basename(ref[:name].to_s)[0, 120] }
-      end
     end
 
     # ── HTTP plumbing ────────────────────────────────────────────────────────

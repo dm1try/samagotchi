@@ -197,6 +197,8 @@ module Samagotchi
     REF_RE = %r{\Aimages/[0-9a-f]{16}\.(png|jpe?g|gif|webp)\z}
     MIME = { png: "image/png", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" }.freeze
     EXT = { png: "png", jpeg: "jpg", gif: "gif", webp: "webp" }.freeze
+    # The most images one turn may carry (a client's refs, check_refs).
+    MAX_TURN_REFS = 20
     # Nothing larger is even read.
     MAX_SOURCE_BYTES = 50 * 1024 * 1024
 
@@ -249,6 +251,26 @@ module Samagotchi
 
       path = File.join(session_dir.to_s, file)
       File.file?(path) && !File.symlink?(path)
+    end
+
+    # A turn's images from a client (the web, a Bridge request) as
+    # [{file:, name:}], or a String saying what's wrong. Only refs to files
+    # already in the session's images/ pass (an upload): never a path, so no
+    # client can make the worker read a file.
+    def self.check_refs(session_dir, raw)
+      return [] if raw.nil?
+      return "images must be a list" unless raw.is_a?(Array)
+      return "at most #{MAX_TURN_REFS} images" if raw.size > MAX_TURN_REFS
+
+      raw.map do |image|
+        return "each image must be {file:, name:}" unless image.is_a?(Hash)
+
+        ref = symbolize(image)
+        return "images are refs to uploaded files, not paths" if ref.key?(:path)
+        return "unknown image #{ref[:file].to_s[0, 80]}" unless valid_ref?(session_dir, ref)
+
+        { file: ref[:file].to_s, name: File.basename(ref[:name].to_s)[0, 120] }
+      end
     end
 
     # Messages seeded into another session (a plugin's ctx.sessions.fork):

@@ -104,6 +104,13 @@ RSpec.describe Samagotchi::Web::App, "images" do
       end
       expect(manager.inputs).to be_empty
     end
+
+    it "refuses more images than one turn may carry, as the Bridge does" do
+      ref = JSON.parse(upload.last)
+      status, _, body = turn([ref] * (Samagotchi::ImageStore::MAX_TURN_REFS + 1))
+      expect([status, JSON.parse(body)["detail"]]).to eq([400, "at most #{Samagotchi::ImageStore::MAX_TURN_REFS} images"])
+      expect(manager.inputs).to be_empty
+    end
   end
 
   it "creates an idle session for a first message with images" do

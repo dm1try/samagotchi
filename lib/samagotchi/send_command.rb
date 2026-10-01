@@ -24,8 +24,8 @@ module Samagotchi
     # No live worker this long while waiting: it died before it could mark
     # the session (a worker takes well under a second to start).
     WORKER_GONE_AFTER = 5
-    # The Bridge's cap on one turn's images (Bridge::MAX_TURN_IMAGES).
-    MAX_IMAGES = 20
+    # The cap on one turn's images the Bridge checks.
+    MAX_IMAGES = ImageStore::MAX_TURN_REFS
 
     USAGE = <<~TEXT
       Usage: chi send [-m TEXT] [--image PATH]... (ID|PREFIX)...

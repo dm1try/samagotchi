@@ -795,18 +795,11 @@ module Samagotchi
       # session's images/), or a String saying what's wrong. Never a path.
       def turn_images(id, raw)
         return [] if raw.nil?
-        return "images must be a list" unless raw.is_a?(Array)
 
         session_dir = image_session_dir(id)
         return "unknown session" unless session_dir
 
-        raw.map do |image|
-          return "each image must be {file:, name:}" unless image.is_a?(Hash)
-          return "images are refs to uploaded files, not paths" if image.key?("path") || image.key?(:path)
-          return "unknown image" unless ImageStore.valid_ref?(session_dir, image)
-
-          { file: (image["file"] || image[:file]).to_s, name: File.basename((image["name"] || image[:name]).to_s)[0, 120] }
-        end
+        ImageStore.check_refs(session_dir, raw)
       end
 
       # The session's folder, or nil for an id that isn't one.
