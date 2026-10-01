@@ -8,6 +8,14 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- The `known-names` bundle (0.1.3) no longer rejects a shell glob of a known name, such as `ls -d myrepo*` in a repo
+  named `myrepo`: a token with `*?[]{}` is not checked. Run `chi bundle upgrade known-names` (or `chi update`).
+- The `skills` bundle (0.1.4) no longer counts a call that a guardrail or the user denied as a failed skill step, so
+  it doesn't steer the model to fix the skill or say "a step failed" at the turn's end. Run
+  `chi bundle upgrade skills` (or `chi update`).
+
 ## [0.10.0] - 2026-10-01
 
 ### Changed

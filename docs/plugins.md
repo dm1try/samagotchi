@@ -973,7 +973,8 @@ A plain read keeps no version.
 skip it and go on without fixing the skill. In a turn that read a skill
 (`memory_read` of a `skill_*` name, or `read` of its file), the first failing
 tool call after it (an `execute` that exited non-zero, a tool error) steers
-the model once: *"A step of skill release failed. Find out why before skipping
+the model once (a call a guardrail or the user denied doesn't count as a
+failed step): *"A step of skill release failed. Find out why before skipping
 it; if the skill is out of date, fix it now: edit the step that changed in
 its file (or memory_write the whole skill) and add a Changelog line."* No
 steer once a skill read this turn has changed, by any tool. If the turn ends
