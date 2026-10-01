@@ -115,9 +115,9 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop ──┬─�
 
 ## Session retention & ordering
 
-- **Files:** `~/.local/state/samagotchi/sessions/<uuid>.json` + `<uuid>/input|output|owner.lock|bridge.json` (XDG-aware).
+- **Files:** `~/.local/state/samagotchi/sessions/<uuid>.json` + `<uuid>/input|output|owner.lock|bridge.json` (XDG-aware), and the `<uuid>/stopped` and `<uuid>/archived` marker files.
 - **Single owner:** the process running a session's Engine (worker or in-process TUI) holds a flock on `owner.lock` (`OwnerLock`); a second owner backs off, and the web answers 409 for a TUI-owned session.
-- **Status:** `status` is turn state (`idle`/`running`); liveness is the lock.
+- **Status:** `status` is turn state (`idle`/`running`); liveness is the lock. A stop is the `<uuid>/stopped` marker (`Session.mark_stopped`; a resume removes it), which `Session.load` and `.summary_from_file` read as status `stopped`, so no other process rewrites a worker's session file.
 - **Retention:** 14 days / 500 cap (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`/`MAX_COUNT`, optional `KEEP_STATUS`), live-owner guard, only when `*.json` present; lazy sweep ≤1/24h from the session hub's full-probe tick (and on `GET /api/sessions`, which the page no longer calls) & `Dashboard#render_list`, manual via `bin/chi sessions prune --dry-run`.
 - **Ordering:** `Session.list(sort:,order:,limit:,offset:)` and `GET /api/sessions?sort=&order=&limit=&offset=` default `updated_at desc`; Web UI sort/filter/pagination.
 - **Test hygiene:** `test_run` flag when `SAMAGOTCHI_ENV=test`/`RACK_ENV=test`/`CI`, targetable via `prune --test-only` / `clean`.
@@ -217,6 +217,10 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   log held, as a turn is), and the Bridge logs `turn_expired`, `answer_expired`, `dismiss_expired`
   or `command_expired`. The web app answers either kind of timeout with `504 worker_timeout`
   ("… so the command was not run"). `/cancel`, `/recap` and `/exit` take none.
+  The web relays answer, dismiss, command and cancel the same way (`App#relay`): a 408 or a read
+  timeout is `504 worker_timeout`; a Bridge 404 for a route an older worker lacks is
+  `501 not_supported` with the restart hint; a Bridge `404 unknown_session`, no bridge or a
+  refused connection is `503 not_live`.
 - `POST /session/:id/cancel` — cancel the running turn; `202`, or `409` when none runs.
 - `POST /session/:id/answer` — answer the pending question; `200`, `409` when another client
   answered first or it is gone, `400` for an invalid selection.
@@ -236,6 +240,10 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   the messages itself, then streams from its `event_seq`).
 - `OPTIONS *` — CORS preflight (`Access-Control-Allow-Origin: *`).
 
+Every route goes through `Bridge#dispatch`: an id other than the bridge's own session is
+`404 unknown_session`, and a handler that raises answers `500 bridge_error` (logged as
+`handler_failed`) rather than dropping the connection.
+
 The per-session port is OS-assigned (bound to `0`) and published to a `bridge.json` sidecar
 for client discovery. `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
 (503 `not_live` when the worker is not running; full history of any session is served by
@@ -249,7 +257,7 @@ changes to every open tab over `GET /api/events` (SSE: a `snapshot` frame on eve
 then `session` for an upsert and `session_gone` for a removal, `: ping` while idle, no replay).
 Files stay the source of truth and workers don't know the hub. Its watcher is a 1 s tick that
 stats the sessions dir (every session writer goes tmp + rename, which bumps the dir's mtime) and
-each `<id>/` folder (recap.json, bridge.json), re-parsing only the files whose mtime or size
+each `<id>/` folder (recap.json, bridge.json, the stopped and archived markers), re-parsing only the files whose mtime or size
 moved through `Session.summary_from_file`. Liveness is probed, since a killed owner leaves no
 file trace: the owner lock every tick for the sessions the projection believes owned, and every
 session every 10 s, so a `kill -9` shows within a second. The summary (`Web::SessionSummary`,
