@@ -1284,6 +1284,16 @@ RSpec.describe Samagotchi::Bridge do
       expect(resp["error"]).to eq("question_not_pending")
     end
 
+    it "reads only id, selected and freeform (no question_id, selection or nested answer alias)" do
+      start_bridge
+      allow(@engine).to receive(:answer_question)
+      ['{"question_id":"q1","selection":["A"]}', '{"answer":{"id":"q1","selected":["A"]}}'].each do |payload|
+        status, resp, = post_answer(payload)
+        expect([status, resp["error"]]).to eq([400, "missing_fields"]), payload
+      end
+      expect(@engine).not_to have_received(:answer_question)
+    end
+
     describe "an answer's deadline" do
       # An answer that waited in the socket while the worker was frozen: its
       # client has said it was not sent, and the question stays open.

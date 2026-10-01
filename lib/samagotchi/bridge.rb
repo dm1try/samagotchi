@@ -493,16 +493,9 @@ module Samagotchi
       unless parsed.is_a?(Hash)
         return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }]
       end
-      qid = fetched(parsed, "id") || fetched(parsed, "question_id")
-      selected = fetched(parsed, "selected") || fetched(parsed, "selection")
-      freeform = fetched(parsed, "freeform") || fetched(parsed, "other")
-      # Support nested answer
-      if parsed["answer"].is_a?(Hash)
-        ans = parsed["answer"]
-        qid ||= fetched(ans, "id")
-        selected ||= fetched(ans, "selected")
-        freeform ||= fetched(ans, "freeform")
-      end
+      qid = fetched(parsed, "id")
+      selected = fetched(parsed, "selected")
+      freeform = fetched(parsed, "freeform")
       if qid.to_s.strip.empty?
         return [{ "Allow" => "POST" }, 400, { error: "missing_fields", detail: "id required" }]
       end
