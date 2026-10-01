@@ -381,8 +381,42 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
         expect(run.context_status).to eq(est_pct: 4.0, bucket: "under20")
       end
 
-      it "is nil when the server reports no counts" do
-        expect(run.context_status).to be_nil
+      it "is the estimate when the server reports no counts" do
+        expect(run.context_status).to match(est_pct: be < 1, bucket: "under20")
+      end
+
+      it "is estimated before each request: :context_status on a rise, and the model's line on the tail" do
+        ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"] = "1000"
+        allow(fake_kernel).to receive(:client).and_return(double("client", context_window: nil))
+
+        result = run([{ role: "user", content: "x" * 2_000 }])
+
+        status = events.find { |event| event[:type] == :context_status }
+        expect(status).to include(iteration: 1, bucket: "40plus", source: "estimate")
+        expect(events.map { |event| event[:type] }.first(2)).to eq(%i[context_status generation_started])
+        line = { role: "system", kind: "context",
+                 content: start_with("[CONTEXT: about 50% of the context window is in use (estimated; bucket=40plus).") }
+        expect(result.conversation[1]).to match(line)
+        expect(adapter.requests.first[:messages].last).to match(role: "system", content: start_with("[CONTEXT: about 50%"))
+        expect(result.context_status).to eq(est_pct: 50.0, bucket: "40plus")
+      ensure
+        ENV.delete("SAMAGOTCHI_CONTEXT_WINDOW_TOKENS")
+      end
+
+      it "adds an estimate for what the turn appended since the server's count" do
+        ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"] = "1000"
+        allow(fake_kernel).to receive(:client).and_return(double("client", context_window: nil))
+        counted = Samagotchi::LLM::Usage.new(prompt_tokens: 100, completion_tokens: 10, source: :server)
+        backend.adapter = FakeChatAdapter.new(tools(["c1", "execute", { "command" => "x" * 800 }]).with(usage: counted),
+                                              text("ok"))
+
+        run([{ role: "user", content: "go" }])
+
+        statuses = events.select { |event| event[:type] == :context_status }
+        expect(statuses.map { |event| event[:usage][:source] }).to eq(["server"])
+        expect(statuses.first[:usage][:estimated_used_tokens]).to be > 100
+      ensure
+        ENV.delete("SAMAGOTCHI_CONTEXT_WINDOW_TOKENS")
       end
 
       it "is nil with context.status off" do

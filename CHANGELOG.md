@@ -18,6 +18,10 @@ and commands may change between minor versions. How releases are made:
 
 - The prompt history keeps 100 entries (was 20), is written under a lock and replaced whole (no lost lines when two
   chi processes write at once), and is now mode 0600.
+- With an OpenAI-compatible chat host (`api: openai`), the context value in the REPL's status line and the web's ctx
+  meter now moves during a turn, before each request, and the model gets the same short `[CONTEXT: …]` line the
+  llama.cpp loop gives it once usage rises past 40 % (`context.status_thresholds`). Before the host reports its first
+  token counts, the value is an estimate.
 
 ### Fixed
 

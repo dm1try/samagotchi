@@ -391,14 +391,12 @@ RSpec.describe "Turn policy characterization" do
                   activity: [] },
       native: { conversation: ["user:hi", "model:", "tool_response", "model:done"] },
       chat: { conversation: ["user:hi", "model+calls:", "tool_response", "model:done"] } },
-    # Native estimates the prompt before each request: past 40% it emits
-    # :context_status and gives the model its line. Chat only shows the
-    # server's count after the generation.
-    { name: "usage crossing 40%", drift: "A9", env: window, prompt: "x" * 2000, also: %i[ctx_display],
+    # Both loops estimate the prompt before each request: past 40% they
+    # emit :context_status and give the model its line.
+    { name: "usage crossing 40%", env: window, prompt: "x" * 2000, also: %i[ctx_display],
       steps: [[:text, "ok", { usage: [500, 10] }]],
-      expected: { result: res.("ok"), temps: [nil], activity: [], ctx_display: "40plus" },
-      native: { events: ["ctx(40plus)", "gen", "done"], conversation: ["user:xxxxxxxxxxxx", "system:context", "model:ok"] },
-      chat: { events: ["gen", "done"], conversation: ["user:xxxxxxxxxxxx", "model:ok"] } },
+      expected: { events: ["ctx(40plus)", "gen", "done"], conversation: ["user:xxxxxxxxxxxx", "system:context", "model:ok"],
+                  result: res.("ok"), temps: [nil], activity: [], ctx_display: "40plus" } },
     { name: "finish_reason on the events", also: %i[finish], steps: [[:thought], [:text, "PONG"]],
       expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.("PONG"),
                   temps: [nil, 0.6], activity: [],

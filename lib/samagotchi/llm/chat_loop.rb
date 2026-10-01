@@ -415,6 +415,7 @@ module Samagotchi
         # text] when it was cancelled.
         def generate(iteration)
           window = @window = @loop.context_window(@model_name)
+          observe_context(iteration, window)
           retry_generation = @empty_retry.take_sampling!
           emit(type: :generation_started, iteration: iteration, context_window_tokens: window&.tokens,
                context_window_source: window&.source)
@@ -491,13 +492,49 @@ module Samagotchi
             !error.context_overflow? && !@loop.thinking_fields(@model_name).empty?
         end
 
-        # The status line's value from the server's counts for this request
-        # (prompt + answer); without them the last value stays.
+        # Before a request, as the native loop: estimate how full the window
+        # is (the server's last count plus what the turn appended since),
+        # emit :context_status on a bucket change, and put the model's own
+        # line on the tail on a rise that asks it for a change. The estimate
+        # counts the conversation's text and tool calls, not the tool
+        # schemas (the server's count does).
+        def observe_context(iteration, window)
+          return unless window
+
+          @request_image_tokens = ImagePlan.estimated_tokens(@conversation)
+          event = @context.observe(prompt_chars, iteration_index: iteration - 1, window: window,
+                                                 image_tokens: @request_image_tokens)
+          emit(type: :context_status, iteration: iteration, **event) if event
+          if (line = @context.take_guidance)
+            @conversation << line
+          end
+          @request_chars = prompt_chars
+        end
+
+        # The conversation's text as the request carries it: contents (a
+        # parts list's text parts) and the tool calls' names and arguments.
+        def prompt_chars
+          @conversation.sum do |entry|
+            content = entry[:content]
+            chars = if content.is_a?(Array)
+                      content.sum { |part| part.is_a?(Hash) ? (part[:text] || part["text"]).to_s.length : 0 }
+                    else
+                      content.to_s.length
+                    end
+            chars + Array(entry[:tool_calls]).sum { |call| call[:name].to_s.length + call[:arguments].to_json.length }
+          end
+        end
+
+        # The server's counts for this request (prompt + answer): the status
+        # line's value, and where the next estimate starts. Without them the
+        # estimate stays.
         def record_context_status(usage, window)
           return unless usage.source == :server
 
-          counts = { prompt_tokens: usage.prompt_tokens, total_tokens: usage.total_tokens }
-          @context.generation_done(counts, prompt_chars: 0, image_tokens: 0, window: window)
+          counts = @context.capture({ "usage" => { "prompt_tokens" => usage.prompt_tokens,
+                                                   "completion_tokens" => usage.completion_tokens } })
+          @context.generation_done(counts, prompt_chars: @request_chars.to_i, image_tokens: @request_image_tokens.to_i,
+                                           window: window)
         end
 
         # The model's answer at debug level, as the native loop dumps its

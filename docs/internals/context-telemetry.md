@@ -10,8 +10,10 @@ resumed session's line already names):
 
 `[CONTEXT: about 55% of the context window is in use (estimated; bucket=40plus). context moderate — prefer targeted and range reads over full-file dumps]`
 
-The native loop only (the chat loop has no context status). The event carries
-a `status` string using this prefix:
+Both loops do this, before each request (`ContextStatus`, one per turn). The
+chat loop's estimate counts the conversation's text and tool calls, not the
+tool schemas it sends, until the host's first count (its `usage`). The event
+carries a `status` string using this prefix:
 
 `CONTEXT_STATUS ...`
 
