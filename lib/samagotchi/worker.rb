@@ -300,28 +300,19 @@ module Samagotchi
     #   its continue turn
     # @param images [Array<Hash>] the prompt's image refs ({file:, name:})
     def run_prompt(prompt, origin, no_interrupt: false, images: [])
-      # Show the turn as running to readers of the file (the web's session
-      # list); the Engine resets it to idle when it ends.
-      @session.status = Session::STATUS_RUNNING
-      @session.save(state_dir: @state_dir)
       user_input(origin&.dig(:client_id))
       drop_continue_offer(origin)
       @turn_flow.before_prompt_turn
       @merged_this_turn = []
-      begin
-        result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, origin: origin,
-                                                    max_iterations: max_iterations(no_interrupt), images: images)
-      rescue StandardError => e
-        # The Engine announced :turn_failed (with the error's one line).
-        restore_failed_turn([[prompt, origin, images], *@merged_this_turn], error: e)
-        return
-      ensure
-        refuse_queued_commands
+      run_engine_turn(prompt, origin: origin, max_iterations: max_iterations(no_interrupt),
+                              images: images) do |result, error|
+        if error
+          # The Engine announced :turn_failed (with the error's one line).
+          restore_failed_turn([[prompt, origin, images], *@merged_this_turn], error: error)
+        else
+          after_turn(result, no_interrupt: no_interrupt)
+        end
       end
-      after_turn(result, no_interrupt: no_interrupt)
-      response = result.respond_to?(:output) ? result.output : nil
-      SessionInbox.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
-      save_session
     end
 
     # A due reminder runs as a continue turn, as in the REPL: Engine#run_turn
@@ -336,23 +327,11 @@ module Samagotchi
       return false unless @engine.reminders_due?
 
       drop_continue_offer({ client_id: SessionManager::REMINDER_CLIENT_ID })
-      @session.status = Session::STATUS_RUNNING
-      @session.save(state_dir: @state_dir)
-      begin
-        result = @engine.run_turn(@session, nil, continue: true, pending_input: pending_input_drain,
-                                                 origin: { client_id: SessionManager::REMINDER_CLIENT_ID },
-                                                 max_iterations: DEFAULT_MAX_ITERATIONS)
-        response = result.respond_to?(:output) ? result.output : nil
-        SessionInbox.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
-      rescue StandardError
-        nil # the Engine announced :turn_failed; there is no prompt to hand back
-      ensure
-        refuse_queued_commands
-      end
-      # The offer went before the turn (drop_continue_offer); the rollback
-      # window closes.
-      @turn_flow.after_reminder_turn
-      save_session
+      # A failure has no prompt to hand back (the Engine announced
+      # :turn_failed). The offer went before the turn
+      # (drop_continue_offer); either way the rollback window closes.
+      run_engine_turn(nil, continue: true, origin: { client_id: SessionManager::REMINDER_CLIENT_ID },
+                           max_iterations: DEFAULT_MAX_ITERATIONS) { @turn_flow.after_reminder_turn }
       true
     end
 
@@ -464,20 +443,35 @@ module Samagotchi
     def run_continue_turn(command)
       offer = @turn_flow.offer
       @turn_flow.before_continue_turn
+      run_engine_turn(nil, continue: true, origin: { client_id: command[:client_id] }.compact,
+                           max_iterations: max_iterations(offer[:no_interrupt])) do |result, error|
+        if error
+          @engine.announce(type: :continue_offered, context: offer[:context], no_interrupt: offer[:no_interrupt])
+        else
+          after_turn(result, continue: true, no_interrupt: offer[:no_interrupt])
+        end
+      end
+    end
+
+    # One Engine turn, the same for a prompt, a reminder and a continue:
+    # the session shows as running to readers of the file (the web's
+    # session list; the Engine resets it to idle when it ends), commands
+    # queued while it ran are refused, then the caller's block takes the
+    # result (or the error the Engine announced as :turn_failed), the
+    # answer goes to the output file and the session is saved.
+    # @yieldparam result [Object, nil] Engine#run_turn's, nil on a failure
+    # @yieldparam error [StandardError, nil]
+    def run_engine_turn(prompt, **turn_args)
       @session.status = Session::STATUS_RUNNING
       @session.save(state_dir: @state_dir)
       begin
-        result = @engine.run_turn(@session, nil, continue: true, pending_input: pending_input_drain,
-                                                 origin: { client_id: command[:client_id] }.compact,
-                                                 max_iterations: max_iterations(offer[:no_interrupt]))
-      rescue StandardError
-        @engine.announce(type: :continue_offered, context: offer[:context], no_interrupt: offer[:no_interrupt])
-        save_session
-        return
+        result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, **turn_args)
+      rescue StandardError => e
+        error = e
       ensure
         refuse_queued_commands
       end
-      after_turn(result, continue: true, no_interrupt: offer[:no_interrupt])
+      yield result, error
       response = result.respond_to?(:output) ? result.output : nil
       SessionInbox.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
       save_session
@@ -516,6 +510,7 @@ module Samagotchi
     #   origin, images] (a web client gets its image chips back)
     # @param error [Exception, nil] what failed: its one line stays in the
     #   conversation as a turn note
+    # Not saved here: run_engine_turn saves after its block.
     def restore_failed_turn(prompts, error: nil)
       note = error && TurnNote.failed(error.respond_to?(:summary) ? error.summary : error.message, restored: true)
       @engine.synchronize_events do
@@ -526,7 +521,6 @@ module Samagotchi
           @engine.announce(restored)
         end
       end
-      save_session
     end
 
     # Shared mid-turn steering drain: claims any input files that arrive
