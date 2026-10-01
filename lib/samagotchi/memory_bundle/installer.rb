@@ -348,7 +348,13 @@ module Samagotchi
           else
             all_files_in_bundle.each do |file_key|
               target_path = File.join(target_dir, file_key)
-              provenance_files[file_key] = target_path if File.exist?(target_path)
+              next unless File.exist?(target_path)
+
+              # Skipped for a local edit: keep the installed base, so the
+              # next upgrade still sees the edit (not a fast-forward over it).
+              base_path = provenance.base_path(file_key)
+              kept = existing_provenance && @results.dig(file_key, :reason) == "already exists" && File.exist?(base_path)
+              provenance_files[file_key] = kept ? base_path : target_path
             end
           end
           # Build hooks metadata for provenance

@@ -387,6 +387,21 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
   end
 
+  describe "a plain re-install over a local edit" do
+    it "keeps the installed base, so the next upgrade still keeps the edit" do
+      bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
+      target = File.join(system_memories_dir, "identity.md")
+      installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
+      File.write(target, "# Identity\nmy edit\n")
+      installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
+
+      up = described_class.new(source: bundle_dir, name: "test-bundle", scope: "system", strict: true, upgrade: true)
+      up.run
+      expect(up.results["identity.md"][:status]).to eq("kept")
+      expect(File.read(target)).to eq("# Identity\nmy edit\n")
+    end
+  end
+
   describe "upgrade: files the new version no longer ships" do
     def bundle_version(dir, files, version)
       FileUtils.rm_rf(File.join(tmpdir, dir))
