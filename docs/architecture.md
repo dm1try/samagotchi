@@ -270,7 +270,10 @@ Engine picks the loop from the effective model's host (`HostRegistry#resolve`):
 
 Both return an `LLM::ModelResult` and emit the same stream events; tool calls in
 both go through `ToolRunner` (events, hooks, veto, output cap) and
-`KernelLoop#dispatch_tool_call`. Both loops' `generation_chunk` carries
+`KernelLoop#dispatch_tool_call`. Every format's built-in calls (Gemma, Qwen,
+chat `tool_calls`) are built by one table, `Tools::BuiltinCalls`, from the
+parsed `{name, args}` (derived from `TOOL_SCHEMAS`), so a call looks the same to
+hooks and tools whichever model made it. Both loops' `generation_chunk` carries
 `thinking:`, `text:` and `content:` (both): the chat loop's thinking is the
 server's `reasoning_content`; the raw-prompt loop splits each generation's
 stream with a fresh `ThoughtStreamSplitter` (Qwen's `<think>` and Gemma's

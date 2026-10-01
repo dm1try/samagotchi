@@ -244,8 +244,9 @@ bundles:
     max_distance: 2           # default: 1 under 10 characters, else 2
 ```
 
-`mode: correct` rewrites the call (whole tokens, everywhere they appear) and
-says so; `mode: ask` shows the call with three choices, *Correct it and
+`mode: correct` rewrites the call (whole tokens, everywhere they appear in
+the command, the `cwd` and the paths; never in file text: a write's content
+or an edit's `old_text`/`new_text`) and says so; `mode: ask` shows the call with three choices, *Correct it and
 run*, *Run as is*, *Deny*; with no one to ask (`--non-interactive`) or a
 dismissed question it rejects. A real near name (a folder `jondoe` next to
 user `johndoe`, a login one letter from another) is caught too: list it under
