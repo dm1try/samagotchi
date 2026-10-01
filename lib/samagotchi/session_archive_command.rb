@@ -2,6 +2,7 @@
 
 require_relative "session"
 require_relative "session_manager"
+require_relative "cli/command"
 
 module Samagotchi
   # `chi sessions archive|unarchive`: hide sessions from every list and keep
@@ -9,6 +10,8 @@ module Samagotchi
   # unarchive_session), one line per id. Delegated children follow their
   # parent.
   class SessionArchiveCommand
+    include CLI::Command
+
     USAGE = {
       "archive" => <<~TEXT,
         Usage: chi sessions archive (ID|PREFIX)...
@@ -36,8 +39,9 @@ module Samagotchi
 
     # @return [Integer] exit status: 0 all done, 1 any refused or unknown, 2 usage
     def run
-      if @argv.any? { |arg| %w[-h --help help].include?(arg) }
-        @stdout.puts(USAGE.fetch(@action))
+      # Help anywhere wins, even after an unknown option.
+      if @argv.any? { |arg| HELP_WORDS.include?(arg) }
+        @stdout.puts(usage_text)
         return 0
       end
       bad = @argv.find { |arg| arg.start_with?("-") }
@@ -91,17 +95,7 @@ module Samagotchi
       false
     end
 
-    # stdout is buffered when it's a pipe: flush the lines already printed,
-    # so the output keeps the order of the ids given.
-    def error_line(text)
-      @stdout.flush
-      @stderr.puts(text)
-    end
-
-    def usage_error(message)
-      error_line("chi sessions #{@action}: #{message}")
-      @stderr.puts(USAGE.fetch(@action))
-      2
-    end
+    def command_name = "chi sessions #{@action}"
+    def usage_text = USAGE.fetch(@action)
   end
 end

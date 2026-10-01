@@ -1,11 +1,15 @@
 # frozen_string_literal: true
 
+require_relative "cli/command"
+require_relative "cli/flags"
 require_relative "desktop"
 
 module Samagotchi
   # `chi desktop install|upgrade|uninstall|status`: the native helper that
   # sends selected text to live sessions as a context note (macOS for now).
   class DesktopCommand
+    include CLI::Command
+
     USAGE = <<~TEXT
       Usage: chi desktop <install|upgrade|uninstall|status>
         install [--force] [--login]
@@ -21,6 +25,15 @@ module Samagotchi
 
     SUBCOMMANDS = %w[install upgrade uninstall status].freeze
 
+    # --no-register (hidden) on each; --help is an unknown option after the
+    # subcommand.
+    FLAGS = CLI::Flags.new(args: false) { |f| f.switch "--no-register" }
+    INSTALL_FLAGS = CLI::Flags.new(args: false) do |f|
+      f.switch "--no-register"
+      f.switch "--force"
+      f.switch "--login"
+    end
+
     # @param platform [#call] register: → a Desktop::MacOS-like object
     def initialize(argv, stdout: $stdout, stderr: $stderr, platform: nil, supported: Desktop.supported?)
       @argv = argv.dup
@@ -33,7 +46,7 @@ module Samagotchi
     # @return [Integer] 0 ok, 1 failed, 2 usage
     def run
       sub = @argv.shift
-      if sub.nil? || %w[-h --help help].include?(sub)
+      if sub.nil? || HELP_WORDS.include?(sub)
         @stdout.puts(USAGE)
         return 0
       end
@@ -44,7 +57,9 @@ module Samagotchi
         return 1
       end
 
-      options = parse(sub) or return 2
+      options = parse(sub)
+      return options if options.is_a?(Integer)
+
       # --no-register (hidden): no pbs/lsregister/open/pkill, for installs
       # into temp dirs (HOME=…) that must not touch the real Services.
       helper = @platform.call(register: !options[:no_register])
@@ -56,17 +71,14 @@ module Samagotchi
 
     private
 
-    # @return [Hash, nil] nil after a usage error
+    def command_name = "chi desktop"
+
+    # @return [Hash, Integer] the options, or the usage error's exit status
     def parse(sub)
-      flags = { "--no-register" => :no_register }
-      flags.merge!("--force" => :force, "--login" => :login) if sub == "install"
-      @argv.each_with_object({}) do |arg, options|
-        unless flags.key?(arg)
-          usage_error("unknown option #{arg}")
-          return nil
-        end
-        options[flags[arg]] = true
-      end
+      parsed = (sub == "install" ? INSTALL_FLAGS : FLAGS).parse(@argv)
+      return usage_error(parsed.error.message) if parsed.error
+
+      parsed.options
     end
 
     # The warnings come after a done install: a refused or failed one
@@ -135,12 +147,6 @@ module Samagotchi
 
     def print_warnings(helper)
       helper.warnings.each { |warning| @stderr.puts("warning: #{warning}") }
-    end
-
-    def usage_error(message)
-      @stderr.puts("chi desktop: #{message}")
-      @stderr.puts(USAGE)
-      2
     end
   end
 end

@@ -6,6 +6,8 @@ require_relative "model_profile"
 require_relative "bootstrap/probe"
 require_relative "bootstrap/config_writer"
 require_relative "bootstrap/bundles"
+require_relative "cli/command"
+require_relative "cli/flags"
 
 module Samagotchi
   # `chi bootstrap [TARGET]`: the first setup. It names a model server, works
@@ -15,6 +17,8 @@ module Samagotchi
   # system bundle and the core profile, and on a terminal asks about dev.
   # Prompts only on a terminal; a script gets the list and exit 2 instead.
   class BootstrapCommand
+    include CLI::Command
+
     USAGE = <<~TEXT
       Usage: chi bootstrap [TARGET] [--name NAME] [--model ID] [--key-env VAR] [--no-test] [--dry-run]
         Finds the model server at TARGET and writes config.yml for it.
@@ -36,6 +40,14 @@ module Samagotchi
         Then it installs the system bundle and the core bundles (loop-guard,
         check-in, guardrails), and on a terminal offers the dev bundles.
     TEXT
+
+    FLAGS = CLI::Flags.new(help: CLI::Command::HELP_WORDS) do |f|
+      f.value "--name"
+      f.value "--model"
+      f.value "--key-env"
+      f.switch "--no-test"
+      f.switch "--dry-run"
+    end
 
     PICK_SHOWN = 20
     # A test request slower than this says it is waiting (a model loading).
@@ -66,8 +78,8 @@ module Samagotchi
     # @return [Integer] 0 written (or already there), 1 failed (a failed
     #   test still writes the config), 2 usage or a choice to make
     def run
-      options = parse or return 2
-      return 0 if options[:help]
+      options = parse
+      return options if options.is_a?(Integer)
 
       key_env = options[:key_env]
       return fail!("#{key_env} is not set; export it first (the API key; chi only writes its name)") if key_env && unset?(key_env)
@@ -85,26 +97,21 @@ module Samagotchi
 
     private
 
-    def parse
-      options = {}
-      until @argv.empty?
-        arg = @argv.shift
-        case arg
-        when "-h", "--help", "help"
-          @stdout.puts(USAGE)
-          return { help: true }
-        when "--name", "--model", "--key-env"
-          options[arg.delete_prefix("--").tr("-", "_").to_sym] = @argv.shift or return usage_error("#{arg} needs a value")
-        when /\A--(name|model|key-env)=(.+)\z/ then options[Regexp.last_match(1).tr("-", "_").to_sym] = Regexp.last_match(2)
-        when "--no-test" then options[:no_test] = true
-        when "--dry-run" then options[:dry_run] = true
-        when /\A-/ then return usage_error("unknown option #{arg}")
-        else
-          return usage_error("one TARGET only (got #{options[:target]} and #{arg})") if options[:target]
+    def command_name = "chi bootstrap"
+    # A usage error's line ends with "(see chi bootstrap --help)".
+    def usage_on_error = nil
 
-          options[:target] = arg
-        end
-      end
+    # @return [Hash, Integer] the options, or the exit status after the
+    #   help or a usage error
+    def parse
+      parsed = parse_flags(FLAGS, @argv)
+      return parsed if parsed.is_a?(Integer)
+
+      options = parsed.options
+      target, extra = parsed.args
+      return usage_error("one TARGET only (got #{target} and #{extra})") if extra
+
+      options[:target] = target if target
       if options[:key_env] && !options[:key_env].match?(ConfigFile::ENV_NAME_RE)
         return usage_error("--key-env takes the variable's name (e.g. OPENROUTER_API_KEY), not the key")
       end
@@ -119,8 +126,7 @@ module Samagotchi
       candidates = begin
         Bootstrap::Probe.candidates(options[:target])
       rescue ArgumentError => e
-        usage_error(e.message)
-        @exit = 2
+        @exit = usage_error(e.message)
         return nil
       end
       result = @probe.classify_target(candidates, key_env: key_env)
@@ -251,8 +257,7 @@ module Samagotchi
       name = begin
         writer.host_name(Bootstrap::ConfigWriter.derived_name(result.candidate.host), requested: options[:name], model_ids: ids)
       rescue Bootstrap::ConfigWriter::Error => e
-        usage_error(e.message)
-        @exit = 2
+        @exit = usage_error(e.message)
         return nil
       end
       outcome = writer.write(name: name, fields: fields, model: model, dry_run: options[:dry_run])
@@ -406,11 +411,6 @@ module Samagotchi
     def fail!(message)
       @stderr.puts("chi bootstrap: #{message}")
       @exit = 1
-      nil
-    end
-
-    def usage_error(message)
-      @stderr.puts("chi bootstrap: #{message} (see chi bootstrap --help)")
       nil
     end
   end

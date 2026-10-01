@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "cli/command"
+require_relative "cli/flags"
 require_relative "config"
 require_relative "desktop"
 require_relative "gem_update"
@@ -19,6 +21,8 @@ module Samagotchi
   # workers and a running chi web are reported, never restarted. Prints one
   # table; a second run changes nothing and says so.
   class UpdateCommand
+    include CLI::Command
+
     USAGE = <<~TEXT
       Usage: chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]
         Updates this chi's install: the gem (from rubygems.org), then the
@@ -34,9 +38,22 @@ module Samagotchi
         chi sessions stop ID; a running chi web needs a restart.
     TEXT
 
-    FLAGS = { "--dry-run" => :dry_run, "--no-gem" => :no_gem, "--no-bundles" => :no_bundles, "--no-desktop" => :no_desktop,
-              # Hidden: no pbs/lsregister/open/pkill for a helper under HOME=<tmp>.
-              "--no-register" => :no_register }.freeze
+    # Help is a flag here: it doesn't stop the parse (an unknown option
+    # after it is still an error).
+    FLAGS = CLI::Flags.new(args: false) do |f|
+      f.switch "-h", "--help", "help"
+      f.switch "--dry-run"
+      f.switch "--no-gem"
+      f.switch "--no-bundles"
+      f.switch "--no-desktop"
+      # Hidden: no pbs/lsregister/open/pkill for a helper under HOME=<tmp>.
+      f.switch "--no-register"
+      # Hidden: the old version, passed by the chi that installed this one.
+      f.value "--gem-from"
+    end
+    # The switches the newer gem's update gets again (hand_over).
+    HANDED_OVER = { "--no-gem" => :no_gem, "--no-bundles" => :no_bundles, "--no-desktop" => :no_desktop,
+                    "--no-register" => :no_register }.freeze
 
     # A table row. info rows (live workers, chi web) say what runs; they
     # never fail.
@@ -70,7 +87,9 @@ module Samagotchi
 
     # @return [Integer] 0 nothing failed, 1 a part failed (or a checkout), 2 usage
     def run
-      options = parse or return 2
+      options = parse
+      return options if options.is_a?(Integer)
+
       if options[:help]
         @stdout.puts(USAGE)
         return 0
@@ -92,24 +111,15 @@ module Samagotchi
 
     private
 
+    def command_name = "chi update"
+
+    # @return [Hash, Integer] the options, or the usage error's exit status
+    #   (every error reads "unknown option", a --gem-from without its value too)
     def parse
-      argv = @argv.dup
-      options = {}
-      while (arg = argv.shift)
-        if %w[-h --help help].include?(arg)
-          options[:help] = true
-        elsif arg == "--gem-from" && argv.first
-          # Hidden: the old version, passed by the chi that installed this one.
-          options[:gem_from] = argv.shift
-        elsif FLAGS.key?(arg)
-          options[FLAGS[arg]] = true
-        else
-          @stderr.puts("chi update: unknown option #{arg}")
-          @stderr.puts(USAGE)
-          return nil
-        end
-      end
-      options
+      parsed = FLAGS.parse(@argv)
+      return usage_error("unknown option #{parsed.error.arg}") if parsed.error
+
+      parsed.options
     end
 
     # Installs a newer gem and hands over to it (exec: the new code syncs
@@ -150,7 +160,7 @@ module Samagotchi
       wrapper = InstalledGem.wrapper(@gem_spec)
       return done(row, :update, "run chi update again to sync with it") unless wrapper
 
-      passed = FLAGS.select { |_, key| options[key] && key != :dry_run }.keys
+      passed = HANDED_OVER.select { |_, key| options[key] }.keys
       @stdout.flush
       @exec.call([RbConfig.ruby, wrapper, "update", "--no-gem", "--gem-from", VERSION, *passed])
       done(row, :update) # only when exec is a spec's stand-in
