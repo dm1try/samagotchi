@@ -18,6 +18,7 @@ require_relative "../steer"
 require_relative "../host_registry"
 require_relative "../model_profile"
 require_relative "../project_scope"
+require_relative "../prompt_history"
 require_relative "../version"
 require_relative "../config"
 require_relative "../output_formatter"
@@ -127,6 +128,7 @@ module Samagotchi
         ["POST", %r{\A/api/sessions\z}, :handle_create],
         ["GET", %r{\A/api/info\z}, :handle_info],
         ["GET", %r{\A/api/models\z}, :handle_models],
+        ["GET", %r{\A/api/history\z}, :handle_history],
         ["GET", %r{\A/api/events\z}, :handle_events],
         ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream],
         ["GET", %r{\A/api/sessions/([^/]+)/output\z}, :handle_output],
@@ -381,6 +383,25 @@ module Samagotchi
       # a bounded time for a fresh listing and answers with what it has, a
       # host that failed or the wait running out noted in +warning+, never a
       # failure: the default alone is enough for the page.
+      # GET /api/history: the prompt history the TUI's ↑ walks, which the
+      # composer's ↑/↓ share (PromptHistory), oldest first.
+      def handle_history(_req)
+        json_response(200, { entries: PromptHistory.entries })
+      end
+
+      # A line the page sent, once the worker took it, into the shared prompt
+      # history; "history": false (an image-only send's placeholder text)
+      # keeps it out. A failed write never fails the send. There's no scratch
+      # check: a live scratch session is the REPL's (OwnedByTUI, 409 before
+      # any delivery), and one whose REPL died is left as an edge case.
+      def record_history(body, line)
+        return if body["history"] == false
+
+        PromptHistory.append(line.to_s)
+      rescue StandardError => e
+        Log.warn(:web, "history_write_failed", error: e.class.name, msg: e.message)
+      end
+
       def handle_models(_req)
         default = begin
           ModelProfile.required_model_name
@@ -500,6 +521,7 @@ module Samagotchi
         port = await_bridge_port(session.id)
         # The projection holds it before the page hears back (no tick wait).
         @hub&.touch(session.id)
+        record_history(body, prompt) if !idle && PromptHistory.shell_line?(prompt.to_s.strip)
         json_response(201, session_to_json(session).merge(bridge_port: port))
       end
 
@@ -660,7 +682,9 @@ module Samagotchi
         request = ->(client) { client.post_command(line: line, client_id: body["client_id"], card: body["card"] == true) }
         relay(id, live_bridge_client(id), request, what: "the command was not run", cant: "run commands") do |reply|
           case reply.status
-          when 202 then json_response(202, reply.json || { status: "accepted" })
+          when 202
+            record_history(body, line) if PromptHistory.shell_line?(line)
+            json_response(202, reply.json || { status: "accepted" })
           when 400 then error_response(400, reply.json&.dig("error") || "unknown_command", reply_detail(reply, "not a session command"))
           end
         end
@@ -747,7 +771,9 @@ module Samagotchi
         result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images, state_dir: @state_dir,
                                              manager: @manager, bridge: -> { live_bridge_client(id) })
         case result[:status]
-        when :accepted then json_response(202, result[:ack])
+        when :accepted
+          record_history(body, prompt)
+          json_response(202, result[:ack])
         when :refused then json_response(result[:code], result[:ack])
         when :timeout then error_response(504, "worker_timeout", result[:ack]["detail"])
         else error_response(500, "enqueue_failed", "could not write turn input")

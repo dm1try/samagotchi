@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
     end
 
     it "is refused on every route: the event streams, static files and /api/info" do
-      %w[/api/sessions/0123456789abcdef/stream /api/events /app.js /index.html /api/info /nope].each do |path|
+      %w[/api/sessions/0123456789abcdef/stream /api/events /app.js /index.html /api/info /api/history /nope].each do |path|
         expect(call(path).first).to eq(401), path
       end
       expect(call("/api/sessions", method: "POST").first).to eq(401)
