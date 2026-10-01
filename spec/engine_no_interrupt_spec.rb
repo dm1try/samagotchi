@@ -16,7 +16,6 @@ RSpec.describe Samagotchi::Engine, "with no_interrupt" do
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow(kernel).to receive(:sampling=)
   end
 
   # The max_iterations the chat backend was asked to run with.

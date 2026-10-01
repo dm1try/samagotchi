@@ -133,20 +133,15 @@ module Samagotchi
 
       TOOL_IMAGES_TEXT = "[images from tool results]"
 
-      # The turn's VisionContext (the Engine sets it on the kernel), or nil.
-      def vision
-        @kernel.respond_to?(:vision) ? @kernel.vision : nil
-      end
+      # The turn's VisionContext (the Engine sets the kernel's
+      # turn_settings), or nil.
+      def vision = @kernel.turn_settings.vision
 
-      # The turn's request parameters (the Engine sets them on the kernel).
-      def sampling
-        @kernel.respond_to?(:sampling) ? @kernel.sampling || {} : {}
-      end
+      # The turn's request parameters (the kernel's turn_settings).
+      def sampling = @kernel.turn_settings.sampling || {}
 
-      # The turn's thinking level (the Engine sets it on the kernel).
-      def thinking
-        (@kernel.respond_to?(:thinking) && @kernel.thinking) || Thinking::DEFAULT
-      end
+      # The turn's thinking level (the kernel's turn_settings).
+      def thinking = @kernel.turn_settings.thinking || Thinking::DEFAULT
 
       # The request fields the thinking level adds (Thinking.chat_fields);
       # none for a model whose host refused them (#thinking_refused!).

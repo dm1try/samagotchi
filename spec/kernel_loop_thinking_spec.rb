@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::KernelLoop, "thinking level" do
   let(:tool_call) { "<tool_call>\n<function=read>\n<parameter=path>\nnope.txt\n</parameter>\n</function>\n</tool_call>" }
 
   it "prefills the empty thought after the cue for off, and keeps it in the turn's model messages" do
-    kernel.thinking = :off
+    kernel.turn_settings = kernel.turn_settings.with(thinking: :off)
     prompts = script(tool_call, "PONG")
 
     result = run
@@ -44,7 +44,7 @@ RSpec.describe Samagotchi::KernelLoop, "thinking level" do
 
   it "leaves the prompt tail alone for default and an effort" do
     %i[default low].each do |level|
-      kernel.thinking = level
+      kernel.turn_settings = kernel.turn_settings.with(thinking: level)
       prompts = script("PONG")
 
       expect(run.conversation.last).to eq(role: "model", content: "PONG")
@@ -53,7 +53,7 @@ RSpec.describe Samagotchi::KernelLoop, "thinking level" do
   end
 
   it "strips the empty thought from the history of the next turn" do
-    kernel.thinking = :off
+    kernel.turn_settings = kernel.turn_settings.with(thinking: :off)
     script("PONG")
     first = run
     prompts = script("again")

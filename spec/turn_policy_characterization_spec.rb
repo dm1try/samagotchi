@@ -166,7 +166,7 @@ RSpec.describe "Turn policy characterization" do
       kernel = Samagotchi::KernelLoop.new(client: client, profile: profile_for(loop_name), tools: registry)
       backend = Samagotchi::LLM::NativeBackend.new(kernel: kernel)
     end
-    kernel.vision = vision
+    kernel.turn_settings = kernel.turn_settings.with(vision: vision)
     if row[:raising_dispatch]
       allow(kernel).to receive(:dispatch_tool_call).and_raise(RuntimeError, "dispatcher broke")
     end

@@ -38,7 +38,6 @@ RSpec.describe Samagotchi::Engine, "#run_turn with a hung /props" do
   before do
     stub_const("Samagotchi::Client::CONTEXT_WINDOW_PROBE_READ_TIMEOUT", 5)
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow(kernel).to receive(:sampling=)
     allow(engine).to receive(:backend_for).and_return(Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter))
     @acceptor = Thread.new do
       loop { accepted << hung.accept }

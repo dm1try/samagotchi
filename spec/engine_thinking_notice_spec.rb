@@ -39,10 +39,6 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
     allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return({})
     allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil)
     allow_any_instance_of(Samagotchi::Client).to receive(:cached_server_props).and_return(nil)
-    allow(kernel).to receive(:vision=)
-    allow(kernel).to receive(:sampling=)
-    allow(kernel).to receive(:thinking=)
-    allow(kernel).to receive(:current_model_name=)
     allow(kernel).to receive(:run) do |messages, on_stream_event: nil, **|
       thinking_chars.each_with_index do |chars, index|
         on_stream_event&.call(type: :generation_completed, iteration: index + 1, content_length: 2, thinking_chars: chars)

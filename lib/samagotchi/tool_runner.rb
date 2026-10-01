@@ -146,7 +146,7 @@ module Samagotchi
     # says the image is attached, that line replaces the text.
     # @return [Array(Hash, Array<Hash>)] the result and its refs
     def attach_images(call, result)
-      vision = @kernel.vision if @kernel.respond_to?(:vision)
+      vision = @kernel.turn_settings.vision
       reason = if vision.nil? then "images can't be attached here"
                elsif !vision.sendable? then ImagePlan::CANT_SEE
                end

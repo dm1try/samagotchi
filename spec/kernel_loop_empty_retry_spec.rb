@@ -39,7 +39,7 @@ RSpec.describe Samagotchi::KernelLoop, "empty answer retry" do
   end
 
   it "keeps a configured temperature for the retry" do
-    kernel.sampling = { temperature: 0.2 }
+    kernel.turn_settings = kernel.turn_settings.with(sampling: { temperature: 0.2 })
     calls = script("", "PONG")
 
     run

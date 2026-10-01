@@ -25,6 +25,7 @@ require_relative "client"
 require_relative "host_registry"
 require_relative "llm/backend"
 require_relative "llm/openai_chat"
+require_relative "llm/turn_settings"
 require_relative "session"
 require_relative "archive_store"
 require_relative "session_observer"
@@ -1365,7 +1366,10 @@ module Samagotchi
     # single-threaded: the cross-thread turn state (the cancel slot, the
     # sink, steers) stays on the Engine.
     # +ended+: the end event is out (what follows is post-turn work).
-    Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended) do
+    # +settings+: the kernel's LLM::TurnSettings, made in #prepare_turn and
+    # set on the kernel in #generate.
+    Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
+                      :settings) do
       # The turn's boundary events carry the origin only when there is one,
       # so payloads stay unchanged for callers that don't pass it.
       def tag(event) = origin ? event.merge(origin: origin) : event
@@ -1500,8 +1504,8 @@ module Samagotchi
       refresh_profile!
 
       # Before anything of the turn is kept or a reminder is used up.
-      vision = configure_kernel(session)
-      refuse_images!(vision) unless image_refs.empty?
+      turn.settings = turn_settings(session)
+      refuse_images!(turn.settings.vision) unless image_refs.empty?
       announce_guardrail_failures(turn.on_event)
       # Plugins' slow setup that brings tools (an MCP server's first
       # start): the turn waits for it here, before the system prompt
@@ -1527,20 +1531,19 @@ module Samagotchi
     end
     private :prepare_turn
 
-    # The kernel's per-turn settings (vision, sampling, thinking); returns
-    # the turn's VisionContext. The model name is set in #generate, after
-    # the hooks that may switch the model.
-    def configure_kernel(session)
+    # The turn's settings for the kernel (LLM::TurnSettings): vision,
+    # sampling and thinking, the thinking resolved before the hooks run.
+    # The model name is added in #generate, after the hooks that may switch
+    # the model.
+    def turn_settings(session)
       vision = turn_vision(session)
-      @kernel.vision = vision if @kernel.respond_to?(:vision=)
-      @kernel.sampling = turn_sampling if @kernel.respond_to?(:sampling=)
+      sampling = turn_sampling
       thinking_target = @host_registry.resolve(@effective_model_name)
       @turn_thinking = [thinking_level(thinking_target), thinking_target]
-      @kernel.thinking = @turn_thinking.first if @kernel.respond_to?(:thinking=)
       announce_thinking_level(*@turn_thinking)
-      vision
+      LLM::TurnSettings.new(vision: vision, sampling: sampling, thinking: @turn_thinking.first, model_name: nil)
     end
-    private :configure_kernel
+    private :turn_settings
 
     # The messages the turn sends: the history under the system head, due
     # reminders, the prompt. turn.messages is set first and grown in place,
@@ -1580,9 +1583,10 @@ module Samagotchi
       # Route model name as bare (without host prefix) to the transport;
       # host selection already done via active client.
       bare_for_backend = bare_model_name(@effective_model_name)
-      # The chat loop dispatches tools through the kernel without its #run:
-      # tag those dumps with this turn's model, not the last native one.
-      @kernel.current_model_name = bare_for_backend if @kernel.respond_to?(:current_model_name=)
+      # The turn's settings, set once here. The chat loop dispatches tools
+      # through the kernel without its #run: tag those dumps with this
+      # turn's model, not the last native one.
+      @kernel.turn_settings = turn.settings.with(model_name: bare_for_backend)
 
       backend.complete(
         messages: turn.messages,

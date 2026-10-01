@@ -20,7 +20,6 @@ RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow(kernel).to receive(:sampling=)
   end
 
   def chat_turn(*steps)

@@ -166,7 +166,8 @@ RSpec.describe "The mcp bundle" do
   # Through ToolRunner, with the session's images in +session_dir+.
   def run_tool(name, args = {}, vision: nil)
     kernel = engine.instance_variable_get(:@kernel)
-    kernel.vision = vision || Samagotchi::VisionContext.new(session_dir: session_dir, resizer: Samagotchi::ImageResizer.new(nil))
+    vision ||= Samagotchi::VisionContext.new(session_dir: session_dir, resizer: Samagotchi::ImageResizer.new(nil))
+    kernel.turn_settings = kernel.turn_settings.with(vision: vision)
     Samagotchi::ToolRunner.new(kernel).run({ name: name, args: args }, iteration: 1, call_index: 1, call_count: 1,
                                                                        on_stream_event: nil, max_tool_output_chars: nil)
   end

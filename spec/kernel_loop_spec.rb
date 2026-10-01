@@ -2024,9 +2024,9 @@ end
       end
 
       qwen_kernel.run([{ role: "user", content: "hi" }])
-      qwen_kernel.sampling = { temperature: 0.6 }
+      qwen_kernel.turn_settings = qwen_kernel.turn_settings.with(sampling: { temperature: 0.6 })
       qwen_kernel.run([{ role: "user", content: "hi" }])
-      qwen_kernel.sampling = {}
+      qwen_kernel.turn_settings = qwen_kernel.turn_settings.with(sampling: {})
       qwen_kernel.run([{ role: "user", content: "hi" }])
 
       expect(seen.map { |kwargs| kwargs[:sampling] }).to eq([nil, { temperature: 0.6 }, nil])

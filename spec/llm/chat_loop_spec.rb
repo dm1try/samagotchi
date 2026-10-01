@@ -59,7 +59,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
   it "sends the kernel's sampling as the request options of every generation, none without" do
     run
-    allow(fake_kernel).to receive(:sampling).and_return({ temperature: 0.6 })
+    fake_kernel.turn_settings = fake_kernel.turn_settings.with(sampling: { temperature: 0.6 })
     backend.adapter = FakeChatAdapter.new(tools(["c1", "read", { "path" => "a.rb" }]), text("done"))
     run
 
@@ -69,8 +69,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
   describe "thinking level" do
     def options_for(thinking, sampling = {})
-      allow(fake_kernel).to receive(:thinking).and_return(thinking)
-      allow(fake_kernel).to receive(:sampling).and_return(sampling)
+      fake_kernel.turn_settings = fake_kernel.turn_settings.with(thinking: thinking, sampling: sampling)
       run
       adapter.requests.last[:options]
     end
@@ -104,8 +103,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
 
     before do
-      allow(fake_kernel).to receive(:thinking).and_return(:off)
-      allow(fake_kernel).to receive(:sampling).and_return({ temperature: 0.6 })
+      fake_kernel.turn_settings = fake_kernel.turn_settings.with(thinking: :off, sampling: { temperature: 0.6 })
     end
 
     it "asks again once without them, says so in a stream event, and leaves them out for that model after" do
@@ -138,7 +136,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect { run }.to raise_error(Samagotchi::LLM::BadRequest)
       expect(backend.adapter.requests.size).to eq(1)
 
-      allow(fake_kernel).to receive(:thinking).and_return(:default)
+      fake_kernel.turn_settings = fake_kernel.turn_settings.with(thinking: :default)
       backend.adapter = FakeChatAdapter.new(refused)
       expect { run }.to raise_error(Samagotchi::LLM::BadRequest)
       expect(backend.adapter.requests.size).to eq(1)
@@ -569,7 +567,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
 
     it "keeps a configured temperature for the retry, and goes back to the turn's sampling after it" do
-      allow(fake_kernel).to receive(:sampling).and_return({ temperature: 0.2, top_p: 0.9 })
+      fake_kernel.turn_settings = fake_kernel.turn_settings.with(sampling: { temperature: 0.2, top_p: 0.9 })
       backend.adapter = adapter = FakeChatAdapter.new(text(""), tools(["c1", "read", { "path" => "a" }]), text("done"))
 
       run

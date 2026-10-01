@@ -28,7 +28,6 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow(kernel).to receive(:sampling=)
     allow(Samagotchi::Log).to receive(:info).and_call_original
     # A reminder due when the turn starts.
     store = engine.reminder_store

@@ -23,6 +23,7 @@ require_relative "tool_runner"
 require_relative "tool_response"
 require_relative "answer_display"
 require_relative "llm/model_result"
+require_relative "llm/turn_settings"
 
 module Samagotchi
   # The KernelLoop drives the model ↔ tool interaction cycle.
@@ -66,11 +67,12 @@ module Samagotchi
       @client = client || Client.new
       @tools = tools || Tools::Builtins.default
       resolved_model_name = ModelProfile.required_model_name(model_name)
-      # The resolved model id actually used for this run (per-run override wins
+      # The turn's settings (LLM::TurnSettings). Its model name is the
+      # resolved model id actually used for this run (per-run override wins
       # over the config alias); on every debug dump so we can see exactly
-      # which model each request went to. The Engine sets it per turn too:
+      # which model each request went to. The Engine sets them per turn:
       # the chat loop dispatches tools here without going through #run.
-      @current_model_name = resolved_model_name
+      @turn_settings = LLM::TurnSettings.none.with(model_name: resolved_model_name)
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(resolved_model_name)
       # Where @profile came from, as /stats shows it (a Resolution's label
       # once the Engine resolves one, see #use_profile!).
@@ -97,7 +99,6 @@ module Samagotchi
     attr_accessor :tools
     attr_accessor :client
     attr_accessor :model_key
-    attr_accessor :current_model_name
     # @return [Array<String>, nil] the session's muted memories (normalized
     #   names, see MutedMemories); memory_read refuses them. The Engine sets it.
     attr_accessor :muted_memory_names
@@ -107,15 +108,11 @@ module Samagotchi
     # The Guardrails::Gate ToolRunner asks before each call; the Engine sets
     # it (nil: ToolRunner's own, hooks only).
     attr_accessor :guardrail_gate
-    # The turn's VisionContext (images: capability, files, limits), set by
-    # the Engine per turn; nil sends no images (placeholders instead).
-    attr_accessor :vision
-    # The turn's request parameters (SamplingSettings.for), set by the Engine
-    # per turn; empty or nil sends none.
-    attr_accessor :sampling
-    # The turn's thinking level (Thinking.resolve), set by the Engine per
-    # turn; its own accessor, since the native path sends @sampling as is.
-    attr_accessor :thinking
+    # @return [LLM::TurnSettings] the turn's vision, sampling, thinking and
+    #   model name, set by the Engine per turn (#run sets the model name
+    #   too); the thinking level is its own field, since the native path
+    #   sends the sampling as is.
+    attr_accessor :turn_settings
     # Tools::Peers (or the Engine's live view of it): the session
     # list_sessions and send_note speak for; nil outside a session.
     attr_accessor :peers
@@ -139,7 +136,7 @@ module Samagotchi
     #   :pending_input_merged stream event is emitted.
     # @return [LLM::ModelResult] final visible response with continuation metadata
     def run(messages, max_iterations: 100, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil)
-      @current_model_name = completion_model_name(model_name)
+      @turn_settings = @turn_settings.with(model_name: completion_model_name(model_name))
       turn = start_turn(messages, on_stream_event: on_stream_event, cancel_controller: cancel_controller,
                                   pending_input: pending_input, cap: resolve_output_char_cap(max_tool_output_chars))
 
@@ -202,8 +199,8 @@ module Samagotchi
         # Qwen with thinking off: an empty thought after the cue, so the model
         # answers at once. Kept in the turn's model messages, so each tool-loop
         # prompt starts with what the server already has cached.
-        prefill: Thinking.native(@thinking || Thinking::DEFAULT, @profile).prefill,
-        pending_tool_calls: false, model_name: @current_model_name, pending_input: pending_input,
+        prefill: Thinking.native(@turn_settings.thinking || Thinking::DEFAULT, @profile).prefill,
+        pending_tool_calls: false, model_name: @turn_settings.model_name, pending_input: pending_input,
         on_stream_event: on_stream_event, cancel_controller: cancel_controller, cap: cap,
         emit: ->(event) { emit_stream_event(on_stream_event, event) }
       )
@@ -246,7 +243,7 @@ module Samagotchi
     end
 
     def format_prompt(turn)
-      Prompt.format_with_images(turn.conversation, profile: @profile, vision: @vision, prefill: turn.prefill)
+      Prompt.format_with_images(turn.conversation, profile: @profile, vision: @turn_settings.vision, prefill: turn.prefill)
     end
 
     # One streamed request, under the generation's own controller: a
@@ -272,7 +269,7 @@ module Samagotchi
           generation_controller: generation_controller,
           cancel_controller: turn.cancel_controller,
           model_name: turn.model_name,
-          sampling: turn.empty_retry.request_sampling(@sampling),
+          sampling: turn.empty_retry.request_sampling(@turn_settings.sampling),
           on_chunk: ->(chunk) { stream_chunk(turn, generation, stream_splitter, chunk) },
           on_retry: lambda { |retry_event|
             # The retry streams from the start: its counts replace these.
@@ -587,7 +584,7 @@ module Samagotchi
     def dump_log(event, payload, **fields)
       return unless Log.level?(:debug)
 
-      Log.debug(:model, event, payload: payload, model: @current_model_name, **fields)
+      Log.debug(:model, event, payload: payload, model: @turn_settings.model_name, **fields)
     end
 
     # Estimate context usage for this iteration's prompt (ContextStatus#observe)

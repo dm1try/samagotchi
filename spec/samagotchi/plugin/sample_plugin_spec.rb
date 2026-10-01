@@ -251,15 +251,17 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     end
 
     it "attaches the images, and a bad entry is an Error: line for that image only" do
-      kernel.vision = Samagotchi::VisionContext.new(session_dir: session_dir, resizer: Samagotchi::ImageResizer.new(nil))
+      vision = Samagotchi::VisionContext.new(session_dir: session_dir, resizer: Samagotchi::ImageResizer.new(nil))
+      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
       result = run(name: "shoot", args: { "path" => png_path })
       expect(result[:output]).to eq("[shoot]\ntook 2 shots\nError: image 3 is not {path:} or {bytes:, name:}")
       expect(result[:images].map { |ref| ref[:name] }).to eq(%w[tiny.png frame.png])
     end
 
     it "keeps the text when the model can't see images" do
-      kernel.vision = Samagotchi::VisionContext.new(session_dir: session_dir,
-                                                    capability: Samagotchi::VisionSupport::Answer.new(value: false, reason: "no"))
+      blind = Samagotchi::VisionContext.new(session_dir: session_dir,
+                                            capability: Samagotchi::VisionSupport::Answer.new(value: false, reason: "no"))
+      kernel.turn_settings = kernel.turn_settings.with(vision: blind)
       result = run(name: "shoot", args: { "path" => png_path })
       expect(result[:output]).to start_with("[shoot]\ntook 2 shots\ntiny.png is an image; this model can't see images\n")
       expect(result).not_to have_key(:images)

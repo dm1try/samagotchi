@@ -115,7 +115,6 @@ RSpec.describe Samagotchi::Engine, "stream hooks" do
     let(:adapter) { Samagotchi::LLM::OpenAIChat.new(base_url: server.base_url, host_name: "box", sleeper: ->(_s) {}) }
 
     before do
-      allow(kernel).to receive(:sampling=)
       allow(kernel).to receive(:strip_model_thought) { |text| text.to_s.strip }
       allow(engine).to receive(:backend_for).and_return(Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter))
     end

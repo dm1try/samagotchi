@@ -20,7 +20,7 @@ RSpec.describe "ChatLoop images" do
   let(:vision) { Samagotchi::VisionContext.new(capability: capability, session_dir: dir, limits: limits) }
   let(:kernel) do
     test_kernel.tap do |k|
-      k.vision = vision
+      k.turn_settings = k.turn_settings.with(vision: vision)
       allow(k).to receive(:strip_model_thought) { |text| text }
       allow(k).to receive(:dispatch_tool_call) { |call| { output: "[#{call[:name]}] ok", activity: nil } }
     end
@@ -78,7 +78,7 @@ RSpec.describe "ChatLoop images" do
 
   it "sends only the newest max_per_request images (D6)" do
     tight = Samagotchi::VisionContext.new(session_dir: dir, limits: limits.with(max_per_request: 1))
-    allow(kernel).to receive(:vision).and_return(tight)
+    kernel.turn_settings = kernel.turn_settings.with(vision: tight)
     wire = loop.wire_messages([{ role: "user", content: "one", images: [png] }, { role: "model", content: "ok" },
                                { role: "user", content: "two", images: [gif] }])
     expect(wire[0][:content]).to eq([{ type: "text", text: "one\n[image tiny.png 3×2 not sent: only the newest 1 images are sent]" }])
@@ -91,7 +91,7 @@ RSpec.describe "ChatLoop images" do
   end
 
   it "sends placeholders when the turn has no vision context" do
-    allow(kernel).to receive(:vision).and_return(nil)
+    kernel.turn_settings = kernel.turn_settings.with(vision: nil)
     wire = loop.wire_messages([{ role: "user", content: "x", images: [png] }])
     expect(JSON.generate(wire)).not_to include("image_url")
   end

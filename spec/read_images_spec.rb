@@ -52,7 +52,7 @@ RSpec.describe "read on images" do
     end
 
     it "stores the image with the session and returns its ref on the run and the event" do
-      kernel.vision = vision
+      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
       run = run_read
       expect(run[:output]).to eq("[read]\nImage tiny.png (3×2 PNG) attached.")
       expect(run[:images].first).to include(name: "tiny.png", source: "tool", width: 3, height: 2)
@@ -61,7 +61,7 @@ RSpec.describe "read on images" do
     end
 
     it "tells the model it can't see images, and attaches nothing" do
-      kernel.vision = blind
+      kernel.turn_settings = kernel.turn_settings.with(vision: blind)
       run = run_read
       expect(run[:output]).to eq("[read]\ntiny.png (3×2 PNG) is an image; this model can't see images")
       expect(run).not_to have_key(:images)
@@ -95,7 +95,7 @@ RSpec.describe "read on images" do
           "a red square"
         end
       end
-      kernel.vision = vision
+      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
 
       result = kernel.run([{ role: "user", content: "check #{png_path} and describe it" }])
 
@@ -115,7 +115,7 @@ RSpec.describe "read on images" do
     end
 
     it "follows the tool message with a user message holding the picture (tool messages take text only)" do
-      kernel.vision = vision
+      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
       result = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
                                         .complete(messages: [{ role: "user", content: "check the png" }], model_name: "m")
 

@@ -126,7 +126,7 @@ RSpec.describe "Native images" do
     it "passes the prompt's images to the client, and none on a text-only turn" do
       calls = []
       allow(client).to receive(:complete) { |prompt, **kwargs| calls << [prompt, kwargs]; "a red square" }
-      kernel.vision = vision
+      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
 
       kernel.run([{ role: "user", content: "look", images: [png] }])
       kernel.run([{ role: "user", content: "no picture" }])

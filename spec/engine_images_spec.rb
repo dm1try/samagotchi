@@ -27,11 +27,9 @@ RSpec.describe Samagotchi::Engine, "#run_turn with images" do
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Ornith", working_directory: Dir.pwd) }
   let(:shot) { File.expand_path("fixtures/images/tiny.png", __dir__) }
   let(:events) { [] }
-  let(:vision_set) { [] }
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow(kernel).to receive(:vision=) { |value| vision_set << value }
     session.messages = [{ role: "system", content: "sys" }, { role: "user", content: "earlier" }, { role: "model", content: "ok" }]
   end
 
@@ -59,7 +57,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with images" do
     expect(File.binread(File.join(@state_dir, session.id, ref[:file]))).to eq(File.binread(shot))
     expect(sent.last).to eq({ role: "user", content: "what's this?", images: [ref] })
     expect(session.messages[-2]).to include(images: [ref])
-    expect(vision_set.last.session_dir).to eq(File.join(@state_dir, session.id))
+    expect(kernel.turn_settings.vision.session_dir).to eq(File.join(@state_dir, session.id))
   end
 
   it "accepts a {file:} ref already in the session, rebuilt from the file" do
