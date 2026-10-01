@@ -8,46 +8,59 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-01
+
 ### Changed
 
-- `chi bundle` usage errors (unknown subcommand or flag, a missing argument) exit 2 like every other command, not 1.
+- Built-in tool calls are built the same way for every model format (Gemma and Qwen native, OpenAI-style chat), so
+  they no longer differ by format. As part of that:
+  - `edit` takes the old and new text as two fields (`old_text`, `new_text`), so old text that contains `</old>` is
+    no longer cut short; `edit` without `new_text` is an error (it deleted the matched text; pass `""` to delete).
+  - `write` without `content` is an error with every model format (Gemma and Qwen emptied the file).
+  - `register_reminder` from a Qwen model without an interval no longer always fails.
 - Plugins: `ctx.notify`, `ctx.ask_user`, `ctx.steer`, `ctx.stop_turn` and `ctx.stop_generation` are the one way a plugin
   acts; inside a `chi.on` block they act for that event as `event[:x]` does (`ctx.stop_turn` in `:before_tool_call`
   denies the call, `ctx.steer` from `:after_turn` is false), and as before anywhere else (commands, your own threads).
   Plain hook files keep `event[:x]`.
-- Bundles check-in 0.1.2, loop-guard 0.2.1 and skills 0.1.2 use `ctx` instead of `event[:steer]`/`event[:stop_turn]`/
-  `event[:stop_generation]`; they behave as before (`chi update` picks them up).
 - Attaching to a session mid-turn (`chi --attach`) shows the turn's finished tool calls as they looked live, with
-  what each did and how long it took (`tool> Running command (execute …): ok (1.3s)`), when the worker runs this chi.
-- Bundles mcp 0.3.2 (now requires chi >= 0.8.0) and skills 0.1.3 write the MCP tool cache and a skill's history
-  versions through a unique temporary file: two workers saving the same file at once no longer collide (skills used a
-  fixed `<file>.tmp`). Bundles known-names 0.1.2, source-links 0.3.1, loop-guard 0.2.2 and check-in 0.1.3 only drop
-  dead code; `chi update` picks them all up.
+  what each did and how long it took (`tool> running command (execute …): ok (1.3s)`), when the worker runs this chi.
+- `chi bundle` usage errors (unknown subcommand or flag, a missing argument) exit 2 like every other command, not 1.
 - A config hook with `on_error: log` warns as `[samagotchi:hooks] <file> (config) failed: <error>`, the same shape as a
   bundle hook's warning; a fail-closed bundle guardrail's deny reason reads `... (bundle <name>) raised <error>`.
+- Bundles (`chi update`):
+  - known-names 0.1.2: corrects a near-miss name only in paths, `cwd` and commands, no longer inside text being
+    written to a file (`write`/`memory_write` content, `edit`'s old and new text, where a correction could stop the
+    edit matching).
+  - loop-guard 0.2.2: tells repeated `edit` calls apart by their old and new text; acts through `ctx`.
+  - skills 0.1.3 and mcp 0.3.2 (mcp now needs chi 0.8.0): write a skill's history and the MCP tool cache through a
+    unique temporary file, so two workers saving at once no longer collide.
+  - check-in 0.1.3 acts through `ctx`; source-links 0.3.1 drops dead code. They behave as before.
 
 ### Fixed
 
 - Web: a Gemma model on a native llama.cpp host streams its answer into the reply as it writes (it showed only when the
   turn ended), with its thoughts in the thinking block; the attached terminal shows them as thinking and the answer as
   writing.
+- `execute` with a `cwd` now runs in that directory with Gemma and Qwen native tool calls too (the directory was
+  dropped and the command ran in the project root).
+- `/model … --default` and `/model … --alias` keep the comments and layout of `config.yml`: they change one line
+  (or add one) instead of rewriting the whole file.
 - `chi sessions stop` marks the session with a `stopped` file in its folder instead of rewriting its session file, so
   a worker saving at that moment can no longer undo the stop (or lose its own save); a resume removes the file.
-- Web: switching sessions no longer briefly shows the previous session's "delegated by" link in the info bar.
-- The web's `POST /api/sessions/:id/turn` refuses more than 20 images in one message, as a live worker already did.
-- A web page joining (or re-syncing with) a live session gets its status and pending question as of the same moment
-  as the messages; they could be a step newer.
 - The web's answer, dismiss, command and cancel calls fail the same way: a worker that doesn't answer in time is
   504 ("did not answer, so ... was not ..."; cancel said "not running"), a worker running an older chi is 501 with
   how to restart it (an answer said "not running").
+- A web page joining (or re-syncing with) a live session gets its status and pending question as of the same moment
+  as the messages; they could be a step newer.
+- The web's `POST /api/sessions/:id/turn` refuses more than 20 images in one message, as a live worker already did.
+- Web: switching sessions no longer briefly shows the previous session's "delegated by" link in the info bar.
+- The terminal's "retrying (1/3 …)" line counts retries as the web does (it said "1/4", counting the first try).
 - `chi self`'s thinking line finds a `models:` entry under the model an alias points at, as a turn does.
 - A `required: true` config hook that raises something other than a StandardError (e.g. `NotImplementedError`) denies
   the tool call like any other raise, instead of escaping the guardrail check.
-- `/model … --default` and `/model … --alias` keep the comments and layout of `config.yml`: they change one line
-  (or add one) instead of rewriting the whole file.
-- The terminal's "retrying (1/3 …)" line counts retries as the web does (it said "1/4", counting the first try).
-- `execute` with a `cwd` now runs in that directory with Gemma and Qwen native tool calls too (the directory was
-  dropped and the command ran in the project root).
+
+Update with `chi update` (bundles: known-names 0.1.2, loop-guard 0.2.2, skills 0.1.3, mcp 0.3.2, check-in 0.1.3,
+source-links 0.3.1).
 
 ## [0.9.0] - 2026-10-01
 
@@ -554,7 +567,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/dm1try/samagotchi/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/dm1try/samagotchi/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/dm1try/samagotchi/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/dm1try/samagotchi/compare/v0.7.0...v0.8.0
