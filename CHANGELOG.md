@@ -14,6 +14,9 @@ and commands may change between minor versions. How releases are made:
 - The web's `POST /api/sessions/:id/turn` refuses more than 20 images in one message, as a live worker already did.
 - A web page joining (or re-syncing with) a live session gets its status and pending question as of the same moment
   as the messages; they could be a step newer.
+- The web's answer, dismiss, command and cancel calls fail the same way: a worker that doesn't answer in time is
+  504 ("did not answer, so ... was not ..."; cancel said "not running"), a worker running an older chi is 501 with
+  how to restart it (an answer said "not running").
 
 ## [0.9.0] - 2026-10-01
 

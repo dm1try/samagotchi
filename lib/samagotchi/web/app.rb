@@ -47,9 +47,6 @@ module Samagotchi
       IMAGE_NAME_RE = /\A[0-9a-f]{16}\.(png|jpe?g|gif|webp)\z/
       IMAGE_TYPES = { "png" => "image/png", "jpg" => "image/jpeg", "jpeg" => "image/jpeg", "gif" => "image/gif",
                       "webp" => "image/webp" }.freeze
-      # The cancel reasons a client may give, as the Bridge takes them
-      # (Bridge::CANCEL_REASONS); anything else is sent and echoed as manual.
-      CANCEL_REASONS = %w[manual user ctrl_c].freeze
 
       # POST /stop waits this long for the worker to let go of the session.
       STOP_WAIT_SECONDS = 2.0
@@ -647,39 +644,20 @@ module Samagotchi
         return error_response(404, "not_found", "Session not found: #{id}") unless session
 
         body = parse_json(request_body(req))
-        unless body.is_a?(Hash)
-          return error_response(400, "invalid_json", "invalid JSON body")
-        end
-        qid = body["id"]
-        selected = body["selected"]
-        freeform = body["freeform"]
-        if qid.to_s.strip.empty?
-          return error_response(400, "missing_fields", "id is required")
-        end
-        # Try live Engine via Bridge first (in-process answer without file IPC)
-        client = bridge_client(id)
-        if client
-          begin
-            reply = client.answer(id: qid, selected: selected, freeform: freeform)
-            return json_response(200, { status: "answered", session_id: id, id: qid }) if reply.ok?
-            # Read after its deadline and dropped (see #worker_timeout).
-            return worker_timeout("the answer was not sent") if reply.status == 408
+        return error_response(400, "invalid_json", "invalid JSON body") unless body.is_a?(Hash)
 
-            # Pass the bridge's verdict through: 409 = another client answered
-            # first (or the question was cancelled), 400 = invalid selection.
-            if [400, 409].include?(reply.status)
-              detail = reply.json&.dig("detail") || "answer rejected"
-              return error_response(reply.status, reply.status == 409 ? "question_not_pending" : "invalid_answer", detail)
-            end
-          rescue Errno::ETIMEDOUT
-            return worker_timeout("the answer was not sent")
-          rescue StandardError
-            nil
+        qid = body["id"]
+        return error_response(400, "missing_fields", "id is required") if qid.to_s.strip.empty?
+
+        request = ->(client) { client.answer(id: qid, selected: body["selected"], freeform: body["freeform"]) }
+        relay(id, bridge_client(id), request, what: "the answer was not sent", cant: "answer questions") do |reply|
+          case reply.status
+          when 200 then json_response(200, { status: "answered", session_id: id, id: qid })
+          # Another client answered first (or the question was cancelled).
+          when 409 then error_response(409, "question_not_pending", reply_detail(reply, "question not pending"))
+          when 400 then error_response(400, "invalid_answer", reply_detail(reply, "answer rejected"))
           end
         end
-        error_response(503, "not_live", "no live bridge for session #{id}")
-      rescue ArgumentError => e
-        error_response(404, "not_found", e.message)
       end
 
       # Leave the pending question unanswered (the card's Dismiss). A question
@@ -691,22 +669,13 @@ module Samagotchi
         qid = body["id"].to_s
         return error_response(400, "missing_fields", "id is required") if qid.strip.empty?
 
-        client = bridge_client(id)
-        return error_response(503, "not_live", "no live bridge for session #{id}") unless client
-
-        reply = client.dismiss_question(id: qid)
-        case reply.status
-        when 200 then json_response(200, { status: "dismissed", session_id: id, id: qid })
-        when 409 then error_response(409, "question_not_pending", reply.json&.dig("detail") || "question not pending")
-        when 408 then worker_timeout("the question was not dismissed")
-        when 404
-          error_response(501, "not_supported", BridgeClient.stale_worker_message(id, cant: "dismiss questions"))
-        else error_response(503, "not_live", "no live bridge for session #{id}")
+        request = ->(client) { client.dismiss_question(id: qid) }
+        relay(id, bridge_client(id), request, what: "the question was not dismissed", cant: "dismiss questions") do |reply|
+          case reply.status
+          when 200 then json_response(200, { status: "dismissed", session_id: id, id: qid })
+          when 409 then error_response(409, "question_not_pending", reply_detail(reply, "question not pending"))
+          end
         end
-      rescue Errno::ETIMEDOUT
-        worker_timeout("the question was not dismissed")
-      rescue StandardError
-        error_response(503, "not_live", "no live bridge for session #{id}")
       end
 
       # A session command typed in the composer (/model, /models, !rollback,
@@ -720,27 +689,58 @@ module Samagotchi
         return error_response(400, "missing_fields", "line is required") if line.empty?
 
         @manager.resume_session(id, state_dir: @state_dir) if @manager.respond_to?(:resume_session)
-        client = live_bridge_client(id)
-        return error_response(503, "not_live", "no live bridge for session #{id}") unless client
-
         # card: a card's action; its command events say so (no echo).
-        reply = client.post_command(line: line, client_id: body["client_id"], card: body["card"] == true)
-        case reply.status
-        when 202 then json_response(202, reply.json || { status: "accepted" })
-        when 400 then error_response(400, reply.json&.dig("error") || "unknown_command", reply.json&.dig("detail") || "not a session command")
-        when 408 then worker_timeout("the command was not run")
-        when 404
-          error_response(501, "not_supported", BridgeClient.stale_worker_message(id, cant: "run commands"))
-        else error_response(503, "not_live", "no live bridge for session #{id}")
+        request = ->(client) { client.post_command(line: line, client_id: body["client_id"], card: body["card"] == true) }
+        relay(id, live_bridge_client(id), request, what: "the command was not run", cant: "run commands") do |reply|
+          case reply.status
+          when 202 then json_response(202, reply.json || { status: "accepted" })
+          when 400 then error_response(400, reply.json&.dig("error") || "unknown_command", reply_detail(reply, "not a session command"))
+          end
         end
       rescue SessionManager::OwnedByTUI => e
         error_response(409, "owned_by_tui", e.message)
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
+      end
+
+      # Hand a request to the session's live Bridge (+client+, nil without
+      # one) and map its reply. The block gets the reply and answers the
+      # statuses its route knows (nil for the rest); every relay maps the
+      # rest the same way: 408 deadline_passed or a read timeout → 504
+      # worker_timeout (+what+ didn't happen), a 404 for a route the worker
+      # doesn't have → 501 not_supported (it runs an older chi that +cant+;
+      # 501, not 503: it is live, and the page reads 503 as "not running"),
+      # and no live bridge, a refused connection or anything else → 503
+      # not_live.
+      # @param request [#call] sends with the client, answers its Response
+      def relay(id, client, request, what:, cant:)
+        return not_live(id) unless client
+
+        reply = request.call(client)
+        mapped = yield(reply)
+        return mapped if mapped
+
+        case reply.status
+        when 408 then worker_timeout(what)
+        when 404
+          return not_live(id) if reply.json&.dig("error") == "unknown_session"
+
+          error_response(501, "not_supported", BridgeClient.stale_worker_message(id, cant: cant))
+        else not_live(id)
+        end
       rescue Errno::ETIMEDOUT
-        worker_timeout("the command was not run")
-      rescue SystemCallError, IOError
+        worker_timeout(what)
+      rescue SystemCallError, IOError, SocketError
+        not_live(id)
+      end
+
+      def not_live(id)
         error_response(503, "not_live", "no live bridge for session #{id}")
+      end
+
+      # The Bridge's detail for a refusal, or +fallback+.
+      def reply_detail(reply, fallback)
+        reply.json&.dig("detail") || fallback
       end
 
       # The worker didn't take a request in time: its read timed out, or the
@@ -867,46 +867,25 @@ module Samagotchi
         nil
       end
 
+      # The Bridge decides the reason (Bridge::CANCEL_REASONS; anything
+      # else is manual) and the reply echoes its choice. No reason: user.
       def handle_cancel(req, id)
-        # Validate session exists
-        begin
-          @session_class.load(id, state_dir: default_state_dir)
-        rescue ArgumentError => e
-          return error_response(404, "not_found", e.message)
-        end
+        @session_class.load(id, state_dir: default_state_dir)
 
         body = request_body(req)
-        reason = "user"
-        unless body.nil? || body.strip.empty?
-          parsed = parse_json(body)
-          if parsed.is_a?(Hash)
-            r = parsed["reason"] || parsed[:reason] || parsed["cancellation_reason"]
-            r = r.to_s.strip
-            reason = if r.empty? then "user"
-                     elsif CANCEL_REASONS.include?(r) then r
-                     else "manual"
-                     end
+        parsed = body.nil? || body.strip.empty? ? nil : parse_json(body)
+        reason = (parsed["reason"] if parsed.is_a?(Hash)).to_s.strip
+        reason = "user" if reason.empty?
+
+        request = ->(client) { client.cancel(reason: reason) }
+        relay(id, bridge_client(id), request, what: "the turn was not cancelled", cant: "cancel turns") do |reply|
+          case reply.status
+          when 202
+            json_response(202, { status: "cancel_requested", session_id: id, reason: reply.json&.dig("reason"), via: "bridge" })
+          # No active turn to cancel.
+          when 409 then json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id })
           end
         end
-
-        # Try direct bridge cancel first (in-process, low latency)
-        client = bridge_client(id)
-        if client
-          begin
-            reply = client.cancel(reason: reason)
-            if reply.status == 202
-              return json_response(202, { status: "cancel_requested", session_id: id, reason: reason, via: "bridge" })
-            end
-            # The bridge answers 409 when there is no active turn to cancel.
-            if reply.status == 409
-              return json_response(409, { error: "not_running", detail: "no active turn to cancel", session_id: id })
-            end
-          rescue StandardError
-            nil
-          end
-        end
-
-        error_response(503, "not_live", "no live bridge for session #{id}")
       rescue ArgumentError => e
         error_response(404, "not_found", e.message)
       end

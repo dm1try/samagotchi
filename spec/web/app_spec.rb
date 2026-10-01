@@ -9,6 +9,7 @@ require "rack/mock"
 require "rack/request"
 
 require "samagotchi/web/app"
+require "samagotchi/bridge"
 require "samagotchi/web/session_hub"
 require "samagotchi/session"
 
@@ -1824,14 +1825,15 @@ RSpec.describe Samagotchi::Web::App do
   end
 
   describe "POST /api/sessions/:id/cancel" do
-    it "passes a known reason through and echoes it; anything else is manual" do
+    it "hands the client's reason to the Bridge (user without one) and echoes the one the Bridge took" do
       app = build_app(state_dir: Dir.mktmpdir)
       bridge = instance_double(Samagotchi::BridgeClient)
       allow(app).to receive(:bridge_client).with("s1").and_return(bridge)
       sent = []
       allow(bridge).to receive(:cancel) do |reason:|
         sent << reason
-        Samagotchi::BridgeClient::Response.new(status: 202, body: nil)
+        taken = Samagotchi::Bridge::CANCEL_REASONS.include?(reason) ? reason : "manual"
+        Samagotchi::BridgeClient::Response.new(status: 202, body: JSON.generate(status: "cancel_requested", reason: taken))
       end
 
       replies = ['{"reason":"ctrl_c"}', '{"reason":"<img src=x onerror=alert(1)>"}', "{}", ""].map do |body|
@@ -1840,7 +1842,7 @@ RSpec.describe Samagotchi::Web::App do
       end
 
       expect(replies).to eq(%w[ctrl_c manual user user])
-      expect(sent).to eq(%w[ctrl_c manual user user])
+      expect(sent).to eq(["ctrl_c", "<img src=x onerror=alert(1)>", "user", "user"])
     end
 
     it "takes a POST with no body and no Content-Length as empty (curl -X POST)" do
@@ -1848,7 +1850,7 @@ RSpec.describe Samagotchi::Web::App do
       bridge = instance_double(Samagotchi::BridgeClient)
       allow(app).to receive(:bridge_client).with("s1").and_return(bridge)
       allow(bridge).to receive(:cancel).with(reason: "user")
-                                       .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: nil))
+                                       .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"reason":"user"}'))
       # WEBrick (through rackup) refuses to read such a body: LengthRequired.
       input = Object.new
       def input.read(*) = raise("LengthRequired")
@@ -2095,7 +2097,7 @@ RSpec.describe Samagotchi::Web::App do
   # A worker frozen (a sleeping Mac, SIGSTOP) or too slow: the client's read
   # timed out, or the Bridge read the request after its deadline and dropped
   # it. Either way it didn't run, and the page says so.
-  describe "a command, answer or dismissal the worker didn't take in time" do
+  describe "a command, answer, dismissal or cancel the worker didn't take in time" do
     let(:bridge) { instance_double(Samagotchi::BridgeClient) }
     let(:late) { Samagotchi::BridgeClient::Response.new(status: 408, body: '{"error":"deadline_passed"}') }
     let(:app) do
@@ -2112,7 +2114,8 @@ RSpec.describe Samagotchi::Web::App do
     {
       "a command" => ["command", '{"line":"!echo hi"}', :post_command, "the command was not run"],
       "an answer" => ["answer", '{"id":"q-1","selected":["A"]}', :answer, "the answer was not sent"],
-      "a dismissal" => ["question/dismiss", '{"id":"q-1"}', :dismiss_question, "the question was not dismissed"]
+      "a dismissal" => ["question/dismiss", '{"id":"q-1"}', :dismiss_question, "the question was not dismissed"],
+      "a cancel" => ["cancel", '{"reason":"user"}', :cancel, "the turn was not cancelled"]
     }.each do |what, (path, body, call, said)|
       it "answers 504 for #{what} the worker timed out on" do
         allow(bridge).to receive(call).and_raise(Errno::ETIMEDOUT)
@@ -2126,6 +2129,19 @@ RSpec.describe Samagotchi::Web::App do
 
         expect(post(path, body)).to eq([504, { "error" => "worker_timeout",
                                                "detail" => "the session's worker did not answer, so #{said}" }])
+      end
+
+      it "answers 501 for #{what} a worker older than the route refuses, 503 for one that isn't this session's" do
+        allow(bridge).to receive(call).and_return(Samagotchi::BridgeClient::Response.new(status: 404, body: '{"error":"not_found"}'))
+        expect(post(path, body)).to match([501, hash_including("error" => "not_supported")])
+
+        allow(bridge).to receive(call).and_return(Samagotchi::BridgeClient::Response.new(status: 404, body: '{"error":"unknown_session"}'))
+        expect(post(path, body)).to match([503, hash_including("error" => "not_live")])
+      end
+
+      it "answers 503 for #{what} the worker refuses the connection to" do
+        allow(bridge).to receive(call).and_raise(Errno::ECONNREFUSED)
+        expect(post(path, body)).to match([503, hash_including("error" => "not_live")])
       end
     end
   end

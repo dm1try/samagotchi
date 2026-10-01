@@ -184,10 +184,11 @@ module Samagotchi
       post("recap", {}, read_body: true)
     end
 
-    # POST /session/:id/cancel. 202 = requested, 409 = no active turn.
-    # @return [Response] (status only)
+    # POST /session/:id/cancel. 202 = requested (body names the reason the
+    # Bridge took), 409 = no active turn.
+    # @return [Response]
     def cancel(reason:)
-      post("cancel", { reason: reason }, read_body: false)
+      post("cancel", { reason: reason }, read_body: true)
     end
 
     # GET /session/:id/<path> as JSON.
