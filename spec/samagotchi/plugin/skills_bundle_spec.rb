@@ -8,6 +8,7 @@ require "samagotchi/session"
 require "samagotchi/session_commands"
 require "samagotchi/turn_flow"
 require "samagotchi/memory_bundle/installer"
+require "support/plugin_handler_ctx"
 
 # The shipped skills bundle (lib/samagotchi/bundles/skills): the plugin on its
 # own with a recording chi and ctx, then installed as a user would and loaded
@@ -22,6 +23,8 @@ RSpec.describe "The skills plugin" do
   let(:project_dir) { File.join(tmpdir, "proj", Samagotchi::MemoryPaths.project_key) }
   let(:ctx) do
     Class.new do
+      prepend PluginHandlerCtx
+
       attr_reader :notices, :sent, :data_dir
       attr_accessor :session_id, :send_error
 
@@ -126,7 +129,10 @@ RSpec.describe "The skills plugin" do
   end
 
   def fire(p, type, **event)
-    p[:hooks][type].each { |block| block.call({ type: type, **event }, ctx) }
+    p[:hooks][type].each do |block|
+      fired = { type: type, **event }
+      ctx.with_event(fired) { block.call(fired, ctx) }
+    end
   end
 
   def history(scope, name)

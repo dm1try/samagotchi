@@ -1,10 +1,10 @@
 ---
 name: check-in
-version: 0.1.1
+version: 0.1.2
 scope: system
 description: "Checks on a long turn: after N tool calls with no answer, a card asks the user (Nudge / Keep going / Stop), or the model is nudged to say what it has found"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:b2ca10c949734ef3d31df9ff775cf136d7f86f185e875a4c16259e8f871bfb82
+  sha256: sha256:9472ef46bac7f97658eeb5b20186c4564a3ae213a9b30b061e2200ca668051c0
 requires_chi: ">= 0.3.0"

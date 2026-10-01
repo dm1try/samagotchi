@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/hooks"
+require "support/plugin_handler_ctx"
 
 # loop-guard's thinking watch (lib/samagotchi/bundles/loop-guard): the
 # :generation_progress hook sees streamed thinking go round in the same few
@@ -134,6 +135,8 @@ RSpec.describe "The loop-guard thinking watch" do
     let(:acts) { [] }
     let(:ctx) do
       Struct.new(:notices, :cards) do
+        prepend PluginHandlerCtx
+
         def notify(text, level: :info) = notices << [text, level]
         def card(**card) = cards << card
       end.new(notices, cards)
@@ -148,7 +151,7 @@ RSpec.describe "The loop-guard thinking watch" do
     end
 
     def fire(hooks, event)
-      hooks[event[:type]].each { |block| block.arity == 1 ? block.call(event) : block.call(event, ctx) }
+      hooks[event[:type]].each { |block| ctx.with_event(event) { block.arity == 1 ? block.call(event) : block.call(event, ctx) } }
     end
 
     # One generation streaming +text+ in batches, as StreamWatch fires them.

@@ -87,7 +87,7 @@ class Plugin
     @stash = nil
     stash = nil unless stash && stash[:tool] == event[:tool].to_s
     changed_elsewhere(ctx) unless stash
-    step_failed(event) if @nudge && !@read.empty?
+    step_failed(event, ctx) if @nudge && !@read.empty?
     return unless stash
 
     now = File.file?(stash[:path]) ? File.read(stash[:path]) : nil
@@ -171,14 +171,14 @@ class Plugin
     nil
   end
 
-  def step_failed(event)
+  def step_failed(event, ctx)
     tool = event[:tool].to_s
     return if NOT_FAILURES.include?(tool) || !failure?(tool, event[:output].to_s)
 
     @failed = true
     return if @nudged || @read.any? { |name| @written.include?(name) }
 
-    @nudged = !!event[:steer]&.call(format(NUDGE, @read.join(", ")))
+    @nudged = ctx.steer(format(NUDGE, @read.join(", ")))
   end
 
   # A tool error ("[x] Error: …" raised, "[x]\nError: …" returned), or an

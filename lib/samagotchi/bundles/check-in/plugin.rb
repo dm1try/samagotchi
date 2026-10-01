@@ -85,13 +85,13 @@ class Plugin
       @next_at = @count + @every
       [@count, @mode]
     end
-    check_in(event, ctx, *due) if due
+    check_in(ctx, *due) if due
   end
 
-  def check_in(event, ctx, count, mode)
+  def check_in(ctx, count, mode)
     case mode
     when "nudge"
-      ctx.notify("nudged the model after #{count} tool calls") if event[:steer]&.call(message(count))
+      ctx.notify("nudged the model after #{count} tool calls") if ctx.steer(message(count))
     when "notify"
       ctx.notify("#{count} tool calls in this turn, no answer yet")
     else

@@ -234,16 +234,16 @@ class Plugin
       ctx.notify("thinking repeats itself (#{what})", level: :warn)
     when "retry"
       @thinking_loops += 1
-      return stop_thinking(event, ctx, found, what) if @thinking_loops > 1
+      return stop_thinking(ctx, found, what) if @thinking_loops > 1
 
-      ctx.notify("thinking repeats itself (#{what}): cut", level: :warn) if event[:stop_generation]&.call("its thinking kept repeating itself")
+      ctx.notify("thinking repeats itself (#{what}): cut", level: :warn) if ctx.stop_generation("its thinking kept repeating itself")
     else
-      stop_thinking(event, ctx, found, what)
+      stop_thinking(ctx, found, what)
     end
   end
 
-  def stop_thinking(event, ctx, found, what)
-    return unless event[:stop_turn]&.call("the model's thinking kept repeating itself (#{what})")
+  def stop_thinking(ctx, found, what)
+    return unless ctx.stop_turn("the model's thinking kept repeating itself (#{what})")
 
     lines = found.sentences.first(3).map { |sentence| "- \"#{cut(sentence, THOUGHT_CHARS)}\"" }
     ctx.card(title: "loop-guard stopped the turn",
@@ -288,7 +288,7 @@ class Plugin
     verdict.deny!("repeated call", source: SOURCE, advice: advice(key, times))
     warn(ctx, key, "repeated, denied")
     @denials += 1
-    stop(event, ctx) if @denials == @stop_after
+    stop(ctx) if @denials == @stop_after
   end
 
   # A call's result, paired with the before_tool_call that keyed it. A call
@@ -308,8 +308,8 @@ class Plugin
     @previews[key] = preview(output)
   end
 
-  def stop(event, ctx)
-    event[:stop_turn]&.call("the model kept repeating the same calls")
+  def stop(ctx)
+    ctx.stop_turn("the model kept repeating the same calls")
     repeated = @attempts.select { |key, n| n > 1 && @last_result[key] && @results[[key, @last_result[key]]] >= @deny_after }
     lines = repeated.map do |key, n|
       "- `#{short_key(key)}`: #{n} times, the same result each time (#{@previews[key]})"

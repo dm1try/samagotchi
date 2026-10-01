@@ -8,6 +8,7 @@ require "samagotchi/session"
 require "samagotchi/session_commands"
 require "samagotchi/turn_flow"
 require "samagotchi/memory_bundle/installer"
+require "support/plugin_handler_ctx"
 
 # The shipped check-in bundle (lib/samagotchi/bundles/check-in): the plugin
 # on its own with a recording chi and ctx, then installed as a user would
@@ -16,6 +17,8 @@ RSpec.describe "The check-in plugin" do
   let(:source) { File.expand_path("../../../lib/samagotchi/bundles/check-in/plugin.rb", __dir__) }
   let(:ctx) do
     Class.new do
+      prepend PluginHandlerCtx
+
       attr_reader :notices, :cards, :steers, :stops
       attr_accessor :running
 
@@ -50,7 +53,10 @@ RSpec.describe "The check-in plugin" do
   end
 
   def fire(p, type, **event)
-    p[:hooks][type].each { |block| block.call({ type: type, **event }, ctx) }
+    p[:hooks][type].each do |block|
+      fired = { type: type, **event }
+      ctx.with_event(fired) { block.call(fired, ctx) }
+    end
   end
 
   def turn(p) = fire(p, :before_turn, prompt: "go")

@@ -4,6 +4,7 @@ require "spec_helper"
 require "json"
 require "samagotchi/guardrails"
 require "samagotchi/llm/native_tool_normalizer"
+require "support/plugin_handler_ctx"
 
 # The loop-guard plugin (lib/samagotchi/bundles/loop-guard) replayed over
 # the turn that looped in session b7089279: the model ran
@@ -20,6 +21,8 @@ RSpec.describe "The loop-guard plugin, replayed" do
   let(:stops) { [] }
   let(:ctx) do
     Struct.new(:notices, :cards) do
+      prepend PluginHandlerCtx
+
       def notify(text, level: :info) = notices << [text, level]
       def card(**card) = cards << card
     end.new(notices, cards)
@@ -39,7 +42,7 @@ RSpec.describe "The loop-guard plugin, replayed" do
   end
 
   def fire(hooks, event)
-    hooks[event[:type]].each { |block| block.arity == 1 ? block.call(event) : block.call(event, ctx) }
+    hooks[event[:type]].each { |block| ctx.with_event(event) { block.arity == 1 ? block.call(event) : block.call(event, ctx) } }
   end
 
   # Replays a turn: before_turn, then before/after_tool_call per call, as

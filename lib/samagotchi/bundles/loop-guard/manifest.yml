@@ -1,10 +1,10 @@
 ---
 name: loop-guard
-version: 0.2.0
+version: 0.2.1
 scope: system
 description: "Breaks loops: the same tool call with the same result again and again in one turn is denied with advice (after a few denies the turn stops with a card), and thinking that repeats itself while it streams is cut and the model asked again"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:5a0dc653a654e73d881767c8b7b9486d4ac02cfc7823a150132593ffa2cbba04
+  sha256: sha256:fe297669b3c17bedeee36c9b22af2636b219a7b34c927d02ee0eeaad03124a17
 requires_chi: ">= 0.6.0"

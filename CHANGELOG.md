@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
   acts; inside a `chi.on` block they act for that event as `event[:x]` does (`ctx.stop_turn` in `:before_tool_call`
   denies the call, `ctx.steer` from `:after_turn` is false), and as before anywhere else (commands, your own threads).
   Plain hook files keep `event[:x]`.
+- Bundles check-in 0.1.2, loop-guard 0.2.1 and skills 0.1.2 use `ctx` instead of `event[:steer]`/`event[:stop_turn]`/
+  `event[:stop_generation]`; they behave as before (`chi update` picks them up).
 
 ### Fixed
 
