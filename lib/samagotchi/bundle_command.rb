@@ -130,32 +130,10 @@ module Samagotchi
       if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
         return install_profile(expanded_source, scope: scope, force: force, dry_run: false, word: "Install")
       end
-      bundle_name = begin
-        bundle_name_for(expanded_source)
-      rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError => e
-        @stderr.puts "Install failed: #{e.message}"
-        return 1
-      end
-      installer = Samagotchi::MemoryBundle::Installer.new(
-        source: expanded_source,
-        name: bundle_name,
-        scope: scope,
-        force: force,
-        strict: true
-      )
-      begin
-        _nd, manifest = installer.run
-        @stdout.puts installer.summary
-        if manifest && manifest.hooks && !manifest.hooks.empty?
-          hook_cnt = manifest.hooks.size
-          @stdout.puts "Hooks: #{hook_cnt} hook(s) (#{manifest.hooks.keys.join(', ')})"
-        end
-        @stdout.puts "Plugin: #{manifest.plugin[:file]} (loads at the next chi start)" if manifest&.plugin
-        @stdout.puts "Provenance written to: #{Samagotchi::MemoryBundle::Provenance.bundles_dir}/#{bundle_name}/" if manifest
-        return 0
-      rescue Samagotchi::MemoryBundle::Installer::InstallError => e
-        @stderr.puts "Install failed: #{e.message}"
-        return 1
+      bundle_name = bundle_name_or_fail(expanded_source, "Install") or return 1
+      run_installer(installer_for(expanded_source, bundle_name, scope: scope, force: force), failed: "Install") do |manifest|
+        print_hooks_and_plugin(manifest)
+        print_provenance(bundle_name, manifest)
       end
     end
 
@@ -176,89 +154,99 @@ module Samagotchi
       if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
         return install_profile(expanded_source, scope: scope, force: force, dry_run: dry_run, word: "Upgrade")
       end
-      bundle_name = begin
-        bundle_name_for(expanded_source)
-      rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError => e
-        @stderr.puts "Upgrade failed: #{e.message}"
-        return 1
-      end
-      provenance = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name)
-      unless provenance.installed?
+      bundle_name = bundle_name_or_fail(expanded_source, "Upgrade") or return 1
+      unless Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).installed?
         @stderr.puts "Bundle '#{bundle_name}' not installed — falling back to install"
-        installer = Samagotchi::MemoryBundle::Installer.new(source: expanded_source, name: bundle_name, scope: scope, force: force,
-                                                            strict: true, dry_run: dry_run)
-        begin
-          _nd, manifest = installer.run
-          @stdout.puts installer.summary
-          if dry_run
-            @stdout.puts "(dry-run: no changes written)"
-            return 0
-          end
-          @stdout.puts "Provenance written to: #{Samagotchi::MemoryBundle::Provenance.bundles_dir}/#{bundle_name}/" if manifest
-          return 0
-        rescue Samagotchi::MemoryBundle::Installer::InstallError => e
-          @stderr.puts "Install failed: #{e.message}"; return 1
+        # (no Hooks/Plugin lines here)
+        installer = installer_for(expanded_source, bundle_name, scope: scope, force: force, dry_run: dry_run)
+        return run_installer(installer, failed: "Install") do |manifest|
+          next dry_run_done if dry_run
+
+          print_provenance(bundle_name, manifest)
         end
       end
-      installer = Samagotchi::MemoryBundle::Installer.new(
-        source: expanded_source,
-        name: bundle_name,
-        scope: scope,
-        force: force,
-        strict: true,
-        upgrade: true,
-        dry_run: dry_run
-      )
-      begin
-        _nd, manifest = installer.run
-        @stdout.puts installer.summary
-        if manifest && manifest.hooks && !manifest.hooks.empty?
-          @stdout.puts "Hooks: #{manifest.hooks.size} hook(s) (#{manifest.hooks.keys.join(', ')})"
-        end
-        @stdout.puts "Plugin: #{manifest.plugin[:file]} (loads at the next chi start)" if manifest&.plugin && !dry_run
-        if dry_run
-          @stdout.puts "(dry-run: no changes written)" 
-          return 0
-        end
-        if installer.conflicts.any? && !force
-          @stdout.puts "\n#{installer.conflicts.size} conflict(s) need resolution."
-          installer.conflicts.each { |k, _| @stdout.puts "  conflict: #{k}" }
-          # Decide whether to launch agent
-          launch = false
-          if agent == false
-            launch = false
-          elsif agent == true
-            launch = true
-          elsif @stdin.tty?
-            @stdout.print "Conflicts detected — launch interactive agent to resolve? [y/N] "
-            ans = begin; @stdin.gets; rescue => _e; nil; end
-            launch = ans && ans.strip.downcase.start_with?("y")
-          else
-            @stdout.puts "Non-interactive terminal: kept your edits in the file(s) above; the rest is upgraded. Re-run with --force to take the bundle's version, or --agent in a TTY to merge."
-            return 2
-          end
-          if launch
-            prompt = build_conflict_prompt(bundle_name, installer.conflicts, expanded_source)
-            @stdout.puts "Launching interactive session for conflict resolution… (/exit when done)"
-            require "samagotchi/terminal_ui"
-            Samagotchi::TerminalUI.new(prompt: prompt).run
-            # The installer already recorded the upgrade (conflicted files
-            # kept their old base); the resolved files now start from the
-            # bundle's version.
-            Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).resolve_conflicts(installer.conflicts)
-            @stdout.puts "Provenance updated after interactive resolution."
-            @stdout.puts "Upgrade resolved interactively."
-            return 0
-          else
-            @stdout.puts "Kept your edits in the file(s) above; the rest is upgraded. chi bundle diff #{bundle_name} FILE shows the base; re-run with --force to take the bundle's version."
-            return 2
-          end
-        end
-        @stdout.puts "Provenance written to: #{Samagotchi::MemoryBundle::Provenance.bundles_dir}/#{bundle_name}/" if manifest
-        return 0
-      rescue Samagotchi::MemoryBundle::Installer::InstallError => e
-        @stderr.puts "Upgrade failed: #{e.message}"; return 1
+      installer = installer_for(expanded_source, bundle_name, scope: scope, force: force, upgrade: true, dry_run: dry_run)
+      run_installer(installer, failed: "Upgrade") do |manifest|
+        print_hooks_and_plugin(manifest, plugin: !dry_run)
+        next dry_run_done if dry_run
+        next upgrade_conflicts(installer, bundle_name, expanded_source, agent) if installer.conflicts.any? && !force
+
+        print_provenance(bundle_name, manifest)
       end
+    end
+
+    # The bundle's name, or nil after "<word> failed: …".
+    def bundle_name_or_fail(expanded_source, word)
+      bundle_name_for(expanded_source)
+    rescue Samagotchi::MemoryBundle::SourceNormalizer::UnknownSourceError => e
+      @stderr.puts "#{word} failed: #{e.message}"
+      nil
+    end
+
+    def installer_for(source, name, scope:, force:, **options)
+      Samagotchi::MemoryBundle::Installer.new(source: source, name: name, scope: scope, force: force, strict: true, **options)
+    end
+
+    # Runs +installer+, prints its summary, then yields the manifest.
+    # @return [Integer] the block's exit status, or 1 after "<failed> failed: …"
+    def run_installer(installer, failed:)
+      _nd, manifest = installer.run
+      @stdout.puts installer.summary
+      yield manifest
+    rescue Samagotchi::MemoryBundle::Installer::InstallError => e
+      @stderr.puts "#{failed} failed: #{e.message}"
+      1
+    end
+
+    def print_hooks_and_plugin(manifest, plugin: true)
+      @stdout.puts "Hooks: #{manifest.hooks.size} hook(s) (#{manifest.hooks.keys.join(', ')})" if manifest&.hooks&.any?
+      @stdout.puts "Plugin: #{manifest.plugin[:file]} (loads at the next chi start)" if plugin && manifest&.plugin
+    end
+
+    # @return [Integer] 0
+    def print_provenance(bundle_name, manifest)
+      @stdout.puts "Provenance written to: #{Samagotchi::MemoryBundle::Provenance.bundles_dir}/#{bundle_name}/" if manifest
+      0
+    end
+
+    # @return [Integer] 0
+    def dry_run_done
+      @stdout.puts "(dry-run: no changes written)"
+      0
+    end
+
+    # An upgrade that kept edited files: launch an agent to merge them
+    # (--agent, or yes on a terminal), or say how to take the bundle's.
+    # @return [Integer] 0 resolved, 2 kept the edits
+    def upgrade_conflicts(installer, bundle_name, expanded_source, agent)
+      @stdout.puts "\n#{installer.conflicts.size} conflict(s) need resolution."
+      installer.conflicts.each { |k, _| @stdout.puts "  conflict: #{k}" }
+      launch = if agent.nil? && @stdin.tty?
+                 @stdout.print "Conflicts detected — launch interactive agent to resolve? [y/N] "
+                 ans = begin; @stdin.gets; rescue => _e; nil; end
+                 ans && ans.strip.downcase.start_with?("y")
+               elsif agent.nil?
+                 @stdout.puts "Non-interactive terminal: kept your edits in the file(s) above; the rest is upgraded. Re-run with --force to take the bundle's version, or --agent in a TTY to merge."
+                 return 2
+               else
+                 agent
+               end
+      unless launch
+        @stdout.puts "Kept your edits in the file(s) above; the rest is upgraded. chi bundle diff #{bundle_name} FILE shows the base; re-run with --force to take the bundle's version."
+        return 2
+      end
+
+      prompt = build_conflict_prompt(bundle_name, installer.conflicts, expanded_source)
+      @stdout.puts "Launching interactive session for conflict resolution… (/exit when done)"
+      require "samagotchi/terminal_ui"
+      Samagotchi::TerminalUI.new(prompt: prompt).run
+      # The installer already recorded the upgrade (conflicted files kept
+      # their old base); the resolved files now start from the bundle's
+      # version.
+      Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).resolve_conflicts(installer.conflicts)
+      @stdout.puts "Provenance updated after interactive resolution."
+      @stdout.puts "Upgrade resolved interactively."
+      0
     end
 
     def uninstall(rest)
