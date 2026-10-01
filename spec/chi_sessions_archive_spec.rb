@@ -53,7 +53,7 @@ RSpec.describe "chi sessions archive" do
 
   it "refuses a busy session, a REPL's and a scratch one, archives the rest, and exits 1" do
     busy = make("busy", id: "aaaa1111-0000", owner: "worker")
-    Samagotchi::Session.mark_running(busy.id, state_dir: state_dir)
+    Samagotchi::Session.load(busy.id, state_dir: state_dir).tap { |s| s.status = Samagotchi::Session::STATUS_RUNNING }.save(state_dir: state_dir)
     make("open", id: "bbbb2222-0000", owner: "tui")
     make("scratch", id: "cccc3333-0000", scratch: true)
     fine = make("fine", id: "dddd4444-0000")

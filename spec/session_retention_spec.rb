@@ -226,7 +226,7 @@ RSpec.describe Samagotchi::SessionRetention do
       lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(running.id, state_dir: tmpdir), kind: "tui")
 
       # keep_status running doesn't save a leftover: nobody runs it.
-      Samagotchi::Session.mark_running(leftover.id, state_dir: tmpdir)
+      Samagotchi::Session.load(leftover.id, state_dir: tmpdir).tap { |s| s.status = Samagotchi::Session::STATUS_RUNNING }.save(state_dir: tmpdir)
       result = described_class.prune(state_dir: tmpdir, keep_status: "running")
 
       expect(result[:deleted]).to eq([leftover.id])

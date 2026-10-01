@@ -20,7 +20,6 @@ module Samagotchi
 
     STATUS_IDLE = "idle"
     STATUS_RUNNING = "running"
-    STATUS_COMPLETED = "completed"
     STATUS_ERROR = "error"
     STATUS_STOPPED = "stopped"
 
@@ -315,20 +314,6 @@ module Samagotchi
 
       AtomicFile.write(path, JSON.pretty_generate(record) + "\n")
       self
-    end
-
-    # Mark a session as running.
-    def self.mark_running(session_id, state_dir: default_state_dir)
-      session = load(session_id, state_dir: state_dir)
-      session.status = STATUS_RUNNING
-      session.save(state_dir: state_dir)
-    end
-
-    # Mark a session as completed.
-    def self.mark_completed(session_id, state_dir: default_state_dir)
-      session = load(session_id, state_dir: state_dir)
-      session.status = STATUS_COMPLETED
-      session.save(state_dir: state_dir)
     end
 
     # Mark a session as errored.

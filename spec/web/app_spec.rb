@@ -1730,7 +1730,7 @@ RSpec.describe Samagotchi::Web::App do
 
       it "answers 409 busy while a turn runs, owned_by_tui for a REPL's, and archives nothing" do
         @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
-        Samagotchi::Session.mark_running(session.id, state_dir: state_dir)
+        Samagotchi::Session.load(session.id, state_dir: state_dir).tap { |s| s.status = Samagotchi::Session::STATUS_RUNNING }.save(state_dir: state_dir)
 
         status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/archive", method: "POST"))
         expect(status).to eq(409)

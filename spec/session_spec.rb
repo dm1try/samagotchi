@@ -363,18 +363,6 @@ RSpec.describe Samagotchi::Session do
 
     before { session.save(state_dir: tmpdir) }
 
-    it ".mark_running sets status to running" do
-      described_class.mark_running(session.id, state_dir: tmpdir)
-      loaded = described_class.load(session.id, state_dir: tmpdir)
-      expect(loaded.status).to eq(described_class::STATUS_RUNNING)
-    end
-
-    it ".mark_completed sets status to completed" do
-      described_class.mark_completed(session.id, state_dir: tmpdir)
-      loaded = described_class.load(session.id, state_dir: tmpdir)
-      expect(loaded.status).to eq(described_class::STATUS_COMPLETED)
-    end
-
     it ".mark_error sets status to error with reason in last_prompt" do
       described_class.mark_error(session.id, reason: "timeout", state_dir: tmpdir)
       loaded = described_class.load(session.id, state_dir: tmpdir)
