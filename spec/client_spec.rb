@@ -28,6 +28,29 @@ RSpec.describe Samagotchi::Client do
       end
     end
 
+    # The last stream payloads as llama.cpp (b10819) sent them.
+    def final_chunk(name)
+      JSON.parse(File.read(File.expand_path("fixtures/llama_cpp/final_chunks/#{name}.json", __dir__)))
+    end
+
+    it "reads a finish reason from llama.cpp's stop_type: limit is length, eos and a stop word are stop" do
+      t = described_class.new(:llama_cpp)
+      expect(t.finish_reason_from(final_chunk("completion_limit"))).to eq("length")
+      expect(t.finish_reason_from(final_chunk("completion_eos"))).to eq("stop")
+      expect(t.finish_reason_from(final_chunk("completion_word"))).to eq("stop")
+      expect(t.finish_reason_from({ "content" => "hi", "stop" => false })).to be_nil
+      expect(t.finish_reason_from(nil)).to be_nil
+    end
+
+    it "reads an OpenAI-compatible completion's own finish_reason for mlx and omlx" do
+      %i[mlx omlx].each do |name|
+        t = described_class.new(name)
+        expect(t.finish_reason_from(final_chunk("v1_completions_limit"))).to eq("length")
+        expect(t.finish_reason_from(final_chunk("v1_completions_stop"))).to eq("stop")
+        expect(t.finish_reason_from({ "choices" => [{ "text" => "hi", "finish_reason" => nil }] })).to be_nil
+      end
+    end
+
     it "forwards the model selector verbatim by default (omitting empty/blank)" do
       t = described_class.new(:llama_cpp)
       expect(t.model_for_payload("gemma-4-26b-a4b-it-4bit")).to eq("gemma-4-26b-a4b-it-4bit")
@@ -215,6 +238,22 @@ RSpec.describe Samagotchi::Client do
 
       expect(result).to eq("Hello")
       expect(chunks).to eq(["Hel", "lo"])
+    end
+
+    it "names the stream's finish reason on the chunk that carries it" do
+      client = described_class.new(host: "localhost", port: 8080)
+      http = instance_double(Net::HTTP)
+      response = double("response", code: "200")
+      chunks = []
+
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(http).to receive(:request) { |_request, &block| block.call(response) }
+      allow(response).to receive(:read_body).and_yield("data: {\"content\":\"Hi\"}\n")
+        .and_yield("data: {\"content\":\"\",\"stop\":true,\"stop_type\":\"limit\"}\n")
+
+      client.complete("prompt", on_chunk: ->(event) { chunks << event })
+
+      expect(chunks.map { |chunk| chunk[:finish_reason] }).to eq([nil, "length"])
     end
 
     it "reads timeout values from environment" do

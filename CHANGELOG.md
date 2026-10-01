@@ -29,6 +29,10 @@ and commands may change between minor versions. How releases are made:
   `list --format` or `--scope`, and now also an unknown flag or a flag missing its value for `list`, `prune` and
   `clean` (they were ignored). Each prints what was wrong and the usage on stderr. A session that is unknown or
   refused still exits 1.
+- With a llama.cpp, mlx or oMLX server (no `api: openai`), an empty answer cut short because the context is full
+  (90 % or more) is no longer asked again, as `retry.empty_answer` documents and as with OpenAI-compatible chat
+  hosts; a thinking loop cut by the output cap still is. These loops' `generation_completed` events and log lines now
+  carry the `finish_reason` too.
 
 Update with `chi update` (bundles: known-names 0.1.4).
 

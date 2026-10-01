@@ -297,6 +297,16 @@ hook's `stop_generation` cancels the generation's own controller (a child of
 the turn's, `CancellationController#generation`), and each loop takes the cut
 as an empty answer and asks again.
 
+Both loops keep one `EmptyAnswerRetry` per turn (the `retry.empty_answer`
+budget, the hidden nudge, the retry's sampling), and both end each
+generation's `:generation_completed` with a `finish_reason`: the chat host's
+own, or for the raw-prompt loop what `Client::Transport#finish_reason_from`
+reads from the stream's last payload (llama.cpp `/completion`'s `stop_type`:
+`limit` is `length`, `eos` and a stop word are `stop`; `/v1/completions` sends
+its own). An empty answer with a `length` stop and the context 90 % full or
+more is not asked again (a full window, not a thinking loop); with no finish
+reason it is.
+
 **Adapters.** `Client` (raw-prompt servers) and `LLM::OpenAIChat` (one per host,
 `HostRegistry#adapter_for`) share `LLM::HTTP`: timeouts, TLS for https, a line
 reader for streamed bodies, the retry loop (`retry.*`; network errors, 429 and

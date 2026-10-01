@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "tmpdir"
+require "samagotchi/client"
 require "samagotchi/kernel_loop"
 require "samagotchi/model_profile"
 require "samagotchi/cancellation_controller"
@@ -23,8 +24,9 @@ RSpec.describe "Turn policy characterization" do
   cut = { by: "loop-guard", reason: "its thinking kept repeating itself" }.freeze
 
   # Streams like Client#complete: content chunks, then the last payload
-  # (llama.cpp's /completion shape); a cancelled controller raises before
-  # the request, as LLM::HTTP does.
+  # (llama.cpp's /completion shape) with the finish reason the transport
+  # reads from it; a cancelled controller raises before the request, as
+  # LLM::HTTP does.
   class TurnPolicyFakeClient
     attr_reader :requests
 
@@ -85,7 +87,8 @@ RSpec.describe "Turn policy characterization" do
       if (usage = options[:usage])
         final.merge!("tokens_evaluated" => usage[0], "tokens_predicted" => usage[1])
       end
-      on_chunk&.call(content: "", payload: final)
+      on_chunk&.call(content: "", payload: final,
+                     finish_reason: Samagotchi::Client::Transport.new(:llama_cpp).finish_reason_from(final))
       text
     end
   end
@@ -309,15 +312,13 @@ RSpec.describe "Turn policy characterization" do
       expected: { events: merged.(nil), result: res.("PONG"), temps: [nil, nil], activity: [] },
       native: { conversation: ["user:hi", "user:input", "model:PONG"] },
       chat: { conversation: ["user:hi", "model:<blank>", "user:input", "model:PONG"] } },
-    { name: "length stop with the context full", drift: "A9", env: window, also: %i[finish],
+    # Not retried: the window is full (≥ 90 %), not a thinking loop. The
+    # native loop keeps the empty generation; chat saves none.
+    { name: "length stop with the context full", env: window, also: %i[finish],
       steps: [[:length, { usage: [950, 10] }], [:text, "late"]],
-      expected: { activity: [] },
-      native: { events: ["gen", "done", "retry 1/1", "ctx(80plus)", "gen", "done"],
-                conversation: ["user:hi", "system:nudge", "system:context", "model:late"], result: res.("late"),
-                temps: [nil, 0.6],
-                finish: ["generation_completed=nil", "empty_answer_retry=nil", "generation_completed=nil"] },
-      chat: { events: ["gen", "done"], conversation: ["user:hi"], result: res.(empty_answer, empty: true), temps: [nil],
-              finish: ["generation_completed=\"length\""] } },
+      expected: { events: ["gen", "done"], temps: [nil], activity: [], finish: ["generation_completed=\"length\""] },
+      native: { conversation: ["user:hi", "model:"], result: res.("") },
+      chat: { conversation: ["user:hi"], result: res.(empty_answer, empty: true) } },
     { name: "length stop with room left", env: window, steps: [[:length, { usage: [100, 10] }], [:text, "PONG"]],
       expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.("PONG"),
                   temps: [nil, 0.6], activity: [] } },
@@ -398,11 +399,10 @@ RSpec.describe "Turn policy characterization" do
       expected: { result: res.("ok"), temps: [nil], activity: [], ctx_display: "40plus" },
       native: { events: ["ctx(40plus)", "gen", "done"], conversation: ["user:xxxxxxxxxxxx", "system:context", "model:ok"] },
       chat: { events: ["gen", "done"], conversation: ["user:xxxxxxxxxxxx", "model:ok"] } },
-    { name: "finish_reason on the events", drift: "#19", also: %i[finish], steps: [[:thought], [:text, "PONG"]],
+    { name: "finish_reason on the events", also: %i[finish], steps: [[:thought], [:text, "PONG"]],
       expected: { events: answered, conversation: ["user:hi", "system:nudge", "model:PONG"], result: res.("PONG"),
-                  temps: [nil, 0.6], activity: [] },
-      native: { finish: ["generation_completed=nil", "empty_answer_retry=nil", "generation_completed=nil"] },
-      chat: { finish: ["generation_completed=\"stop\"", "empty_answer_retry=\"stop\"", "generation_completed=\"stop\""] } }
+                  temps: [nil, 0.6], activity: [],
+                  finish: ["generation_completed=\"stop\"", "empty_answer_retry=\"stop\"", "generation_completed=\"stop\""] } }
   ]
 
   loops = %i[qwen gemma chat]

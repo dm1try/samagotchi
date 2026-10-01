@@ -90,6 +90,21 @@ module Samagotchi
         openai_compatible? ? payload.dig("choices", 0, "text").to_s : payload.fetch("content", "")
       end
 
+      # Why the stream stopped, from its last payload, as an OpenAI finish
+      # reason ("length" for the token cap or a full context, "stop"
+      # otherwise); nil for a payload that doesn't say. llama.cpp's
+      # /completion names it stop_type ("limit", "eos", "word"); the
+      # OpenAI-compatible servers send their own finish_reason.
+      def finish_reason_from(payload)
+        return nil unless payload.is_a?(Hash)
+        return payload.dig("choices", 0, "finish_reason") if openai_compatible?
+
+        case payload["stop_type"]
+        when "limit" then "length"
+        when "eos", "word" then "stop"
+        end
+      end
+
       # The request's `model` field for this transport (nil = omit the field):
       #   - llama.cpp: forward the selector (SAMAGOTCHI_DEFAULT_MODEL) verbatim.
       #   - mlx_lm.server: omit `model` entirely (use whatever was loaded via the
@@ -248,7 +263,12 @@ module Samagotchi
         content, payload = parsed_chunk
         shown.call unless content.to_s.empty?
         result << content
-        on_chunk&.call(content: content, payload: payload)
+        next unless on_chunk
+
+        chunk = { content: content, payload: payload }
+        finish_reason = @transport.finish_reason_from(payload)
+        chunk[:finish_reason] = finish_reason if finish_reason
+        on_chunk.call(**chunk)
       end
       result
     rescue LLM::BadRequest => e

@@ -1,0 +1,27 @@
+{
+  "index": 0,
+  "content": "",
+  "tokens": [],
+  "id_slot": 0,
+  "stop": true,
+  "model": "ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M",
+  "tokens_predicted": 49,
+  "tokens_evaluated": 3,
+  "prompt": "Say hi.",
+  "has_new_line": true,
+  "truncated": false,
+  "stop_type": "eos",
+  "stopping_word": "",
+  "tokens_cached": 51,
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 3,
+    "prompt_ms": 38.801,
+    "prompt_per_token_ms": 12.933666666666667,
+    "prompt_per_second": 77.31759490734774,
+    "predicted_n": 49,
+    "predicted_ms": 552.33,
+    "predicted_per_token_ms": 11.506875,
+    "predicted_per_second": 86.90456792135136
+  }
+}

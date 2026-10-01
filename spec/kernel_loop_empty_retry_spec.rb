@@ -67,6 +67,52 @@ RSpec.describe Samagotchi::KernelLoop, "empty answer retry" do
     ENV.delete("SAMAGOTCHI_RETRY_EMPTY_ANSWER")
   end
 
+  describe "an empty answer cut at a length stop" do
+    # Streams +text+, then a last payload with +finish_reason+ and the
+    # server's counts, as Client does.
+    def script_stop(*steps)
+      calls = []
+      allow(client).to receive(:context_window).and_return(1_000)
+      allow(client).to receive(:complete) do |prompt, on_chunk: nil, **kwargs|
+        calls << { prompt: prompt, sampling: kwargs[:sampling] }
+        text, finish_reason, used = steps.length > 1 ? steps.shift : steps.first
+        on_chunk&.call(content: text, payload: { "content" => text })
+        on_chunk&.call(content: "", payload: { "stop" => true, "tokens_evaluated" => used - 10, "tokens_predicted" => 10 },
+                       finish_reason: finish_reason)
+        text
+      end
+      calls
+    end
+
+    it "is not retried when the context is full, and says why on the events" do
+      allow(Samagotchi::Log).to receive(:info)
+      calls = script_stop(["<think>loop</think>", "length", 950], ["late", "stop", 960])
+
+      result = run
+
+      expect(calls.length).to eq(1)
+      expect(result.output).to eq("")
+      expect(events.map { |e| e[:type] }).not_to include(:empty_answer_retry)
+      expect(events.find { |e| e[:type] == :generation_completed }).to include(finish_reason: "length")
+      expect(Samagotchi::Log).to have_received(:info).with(:turn, "empty_answer_not_retried", iteration: 1, why: "context full")
+    end
+
+    it "is retried with room left (a thinking loop cut by the output cap)" do
+      calls = script_stop(["<think>loop</think>", "length", 500], ["PONG", "stop", 520])
+
+      expect(run.output).to eq("PONG")
+      expect(calls.length).to eq(2)
+      expect(events.find { |e| e[:type] == :empty_answer_retry }).to include(finish_reason: "length")
+    end
+
+    it "is retried when the server names no finish reason" do
+      calls = script_stop(["<think>loop</think>", nil, 950], ["PONG", nil, 960])
+
+      expect(run.output).to eq("PONG")
+      expect(calls.length).to eq(2)
+    end
+  end
+
   it "lets queued input go in place of the nudge" do
     calls = script("", "answered")
     queue = [[], ["user line"], []]

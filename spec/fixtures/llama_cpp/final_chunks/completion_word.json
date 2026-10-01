@@ -1,0 +1,27 @@
+{
+  "index": 0,
+  "content": "",
+  "tokens": [],
+  "id_slot": 3,
+  "stop": true,
+  "model": "ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M",
+  "tokens_predicted": 65,
+  "tokens_evaluated": 11,
+  "prompt": "Count from one to ten in words, comma separated:",
+  "has_new_line": true,
+  "truncated": false,
+  "stop_type": "word",
+  "stopping_word": "five",
+  "tokens_cached": 75,
+  "timings": {
+    "cache_n": 4,
+    "prompt_n": 7,
+    "prompt_ms": 48.299,
+    "prompt_per_token_ms": 6.899857142857143,
+    "prompt_per_second": 144.93053686411727,
+    "predicted_n": 65,
+    "predicted_ms": 745.626,
+    "predicted_per_token_ms": 11.65040625,
+    "predicted_per_second": 85.83391673573615
+  }
+}

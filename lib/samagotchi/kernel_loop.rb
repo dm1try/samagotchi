@@ -204,9 +204,10 @@ module Samagotchi
     # estimate, and the window it was measured against.
     Request = Struct.new(:prompt, :images, :image_tokens, :window, keyword_init: true)
     # One generation: the response (nil when cut), the cut's detail, this
-    # generation's own server counts, the model the server named, and the
-    # thinking it streamed.
-    Generation = Struct.new(:response, :cut, :usage, :served_model, :streamed_thinking, keyword_init: true)
+    # generation's own server counts, the model the server named, the
+    # thinking it streamed, and why it stopped (the transport's finish
+    # reason, Client::Transport#finish_reason_from; nil when not named).
+    Generation = Struct.new(:response, :cut, :usage, :served_model, :streamed_thinking, :finish_reason, keyword_init: true)
     private_constant :Turn, :Request, :Generation
 
     def start_turn(messages, on_stream_event:, cancel_controller:, pending_input:, cap:)
@@ -238,7 +239,7 @@ module Samagotchi
       # iteration if the model opened a tool-call block it did not close.
       calls, turn.qwen_partial = parser.parse_with_recovery(generation.response, turn.qwen_partial)
       calls = calls.map { |call| PromptLiteralGuard.restore_call(call, profile: @profile) }
-      return after_text(turn, generation) if calls.empty?
+      return after_text(turn, request, generation) if calls.empty?
 
       dispatch_calls(turn, calls)
     end
@@ -293,6 +294,7 @@ module Samagotchi
             # The retry streams from the start: its counts replace these.
             generation.usage = nil
             generation.streamed_thinking = 0
+            generation.finish_reason = nil
             turn.emit.call({ type: :generation_retrying, iteration: turn.iteration }.merge(retry_event)) if turn.on_stream_event
           },
           images: request.images
@@ -312,6 +314,7 @@ module Samagotchi
       # llama.cpp names the loaded model in the stream's last payload.
       named = chunk[:payload]["model"] if chunk[:payload].is_a?(Hash)
       generation.served_model = named if named.is_a?(String) && !named.strip.empty?
+      generation.finish_reason = chunk[:finish_reason] if chunk[:finish_reason]
       split = stream_splitter.feed(chunk[:content])
       turn.buffer << split[:text]
       generation.streamed_thinking += split[:thinking].to_s.length
@@ -337,7 +340,8 @@ module Samagotchi
                                                      window: request.window)
       emit(turn, type: :generation_completed, iteration: turn.iteration, content_length: response.length,
                  thinking_chars: thinking_chars(response, generation.streamed_thinking),
-                 served_model: generation.served_model, requested_model: turn.model_name)
+                 served_model: generation.served_model, requested_model: turn.model_name,
+                 finish_reason: generation.finish_reason)
       dump_log("response", generation.response, iteration: turn.iteration)
       # The after_generation hook (after the model returns, before the tool
       # parse), with a read-only copy of the conversation as sent.
@@ -360,7 +364,7 @@ module Samagotchi
         return :next if inject_pending_input!(turn)
 
         turn.empty_retry.nudge!(turn.conversation, TurnNote.cut_retry(cut[:by], cut[:reason]),
-                                emit: turn.emit, iteration: turn.iteration,
+                                emit: turn.emit, iteration: turn.iteration, finish_reason: "stopped",
                                 thinking_chars: generation.streamed_thinking, stopped_by: cut[:by])
         return :next
       end
@@ -371,10 +375,11 @@ module Samagotchi
     end
 
     # A generation with no tool calls: a Qwen call left open is asked to be
-    # finished; an empty answer is asked again (EmptyAnswerRetry); queued
-    # input keeps the turn going (the model answers it); else it is the
-    # answer. Returns :next or :answer.
-    def after_text(turn, generation)
+    # finished; an empty answer is asked again (EmptyAnswerRetry: not when
+    # a length stop came with the context full); queued input keeps the
+    # turn going (the model answers it); else it is the answer. Returns
+    # :next or :answer.
+    def after_text(turn, request, generation)
       turn.pending_tool_calls = false
       if turn.qwen_partial && turn.qwen_attempts < QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT
         turn.qwen_attempts += 1
@@ -386,7 +391,10 @@ module Samagotchi
       answer = -> { PromptLiteralGuard.restore(strip_thought_blocks(response), profile: @profile) }
       empty = strip_thought_blocks(response.to_s).strip.empty?
       retry_empty = empty && turn.empty_retry.retry_empty?(iteration: turn.iteration,
-                                                           cancelled: turn.cancel_controller&.cancelled?)
+                                                           cancelled: turn.cancel_controller&.cancelled?,
+                                                           finish_reason: generation.finish_reason,
+                                                           used_tokens: generation.usage&.dig(:total_tokens),
+                                                           window_tokens: request.window.tokens)
       # The empty generation goes (its thinking would be sent again and
       # prime the same loop); an empty answer that will be retried is no
       # answer site, so a plugin's steer joins the retry.
@@ -397,7 +405,7 @@ module Samagotchi
 
       if retry_empty
         turn.empty_retry.nudge!(turn.conversation, TurnNote.empty_retry,
-                                emit: turn.emit, iteration: turn.iteration,
+                                emit: turn.emit, iteration: turn.iteration, finish_reason: generation.finish_reason,
                                 thinking_chars: thinking_chars(response.to_s, generation.streamed_thinking))
         return :next
       end

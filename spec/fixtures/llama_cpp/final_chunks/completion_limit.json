@@ -1,0 +1,27 @@
+{
+  "index": 0,
+  "content": "",
+  "tokens": [],
+  "id_slot": 3,
+  "stop": true,
+  "model": "ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M",
+  "tokens_predicted": 16,
+  "tokens_evaluated": 8,
+  "prompt": "Count from one to fifty in words:",
+  "has_new_line": true,
+  "truncated": false,
+  "stop_type": "limit",
+  "stopping_word": "",
+  "tokens_cached": 23,
+  "timings": {
+    "cache_n": 4,
+    "prompt_n": 4,
+    "prompt_ms": 36.138,
+    "prompt_per_token_ms": 9.0345,
+    "prompt_per_second": 110.68681166638996,
+    "predicted_n": 16,
+    "predicted_ms": 166.975,
+    "predicted_per_token_ms": 11.131666666666666,
+    "predicted_per_second": 89.83380745620602
+  }
+}
