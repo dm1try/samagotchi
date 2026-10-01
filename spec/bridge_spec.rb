@@ -536,7 +536,10 @@ RSpec.describe Samagotchi::Bridge do
 
         started = mono
         @bridge.stop
-        expect(mono - started).to be < 0.5
+        # Not the 1 s request grace nor the stream: only the acceptor's
+        # 0.5 s IO.select poll, which closing the socket doesn't cut short
+        # on Linux (macOS wakes it at once).
+        expect(mono - started).to be < 0.9
       end
     end
 
