@@ -58,6 +58,27 @@ module Samagotchi
       end
     end
 
+    # What changes when anyone writes the file: its mtime and size.
+    # @return [Array, nil] nil without a file
+    def signature
+      stat = File.stat(path)
+      [stat.mtime, stat.size]
+    rescue SystemCallError
+      nil
+    end
+
+    # The entries +now+ has after the ones +seen+ earlier: the longest end
+    # of +seen+ that +now+ starts with lines the two up (appends trim the
+    # front); when nothing lines up, all of +now+.
+    # @return [Array<String>]
+    def new_tail(seen, now)
+      (0..seen.size).each do |drop|
+        kept = seen.size - drop
+        return now.drop(kept) if kept <= now.size && now.first(kept) == seen.last(kept)
+      end
+      now
+    end
+
     # A `!command` worth recalling; `!rollback` isn't one.
     def shell_line?(line)
       line.to_s.start_with?(SessionCommands::SHELL_BANG_PREFIX) && line.to_s.strip != SessionCommands::ROLLBACK_COMMAND

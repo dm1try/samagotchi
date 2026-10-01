@@ -109,6 +109,37 @@ RSpec.describe Samagotchi::PromptHistory do
     end
   end
 
+  describe ".new_tail" do
+    it "is what came after the entries seen before" do
+      expect(described_class.new_tail(%w[a b], %w[a b c d])).to eq(%w[c d])
+    end
+
+    it "lines up a list trimmed at the front" do
+      expect(described_class.new_tail(%w[a b c], %w[b c d])).to eq(%w[d])
+    end
+
+    it "lines up repeated entries on the longest overlap" do
+      expect(described_class.new_tail(%w[x x], %w[x x x])).to eq(%w[x])
+    end
+
+    it "is nothing when nothing changed, everything when nothing lines up" do
+      expect(described_class.new_tail(%w[a b], %w[a b])).to eq([])
+      expect(described_class.new_tail(%w[a b], %w[c d])).to eq(%w[c d])
+    end
+  end
+
+  describe ".signature" do
+    it "is nil without a file and changes with an append" do
+      expect(described_class.signature).to be_nil
+      described_class.append("one")
+      first = described_class.signature
+      described_class.append("two")
+
+      expect(first).not_to be_nil
+      expect(described_class.signature).not_to eq(first)
+    end
+  end
+
   describe ".shell_line?" do
     it "is true for !commands" do
       expect(described_class.shell_line?("!ls -la")).to be(true)

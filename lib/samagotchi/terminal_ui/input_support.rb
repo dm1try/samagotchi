@@ -43,6 +43,7 @@ module Samagotchi
       # is typed in first.
       # @return [String, nil] the line, nil on Ctrl-D
       def read_prompt_line(prompt)
+        pick_up_history_lines
         input = with_scoped_at_path_completion do
           with_next_input_prefill do
             Reline.readmultiline(prompt, true) { true }
@@ -201,7 +202,10 @@ module Samagotchi
       end
 
       def load_persistent_history
-        PromptHistory.entries.last(PromptHistory::LIMIT).each { |entry| Reline::HISTORY << entry }
+        @history_own_lines ||= []
+        @history_signature = PromptHistory.signature
+        @history_seen = PromptHistory.entries
+        @history_seen.last(PromptHistory::LIMIT).each { |entry| Reline::HISTORY << entry }
       rescue StandardError
         nil
       end
@@ -210,9 +214,51 @@ module Samagotchi
       def persist_recent_history(input)
         return if @scratch
 
-        PromptHistory.append(input)
+        own = PromptHistory.normalize([input]).first
+        history_own_lines << own if own
+        begin
+          PromptHistory.append(input)
+        rescue StandardError
+          history_own_lines.delete_at(history_own_lines.rindex(own)) if own
+          raise
+        end
       rescue StandardError
         nil
+      end
+
+      # Before a main-prompt read: the lines other processes (the web,
+      # another TUI) added to the history file since we last looked join the
+      # ring. Only the file's new tail is appended, so a line this TUI read
+      # and didn't persist (/model, !rollback: Reline rings every read) stays
+      # put; other processes' lines land after it, the order between the two
+      # approximate. Our own appends are skipped (they're in the ring as
+      # read). Runs on the reader thread, while the main thread may persist
+      # the line just read; @history_own_lines is filled before each append
+      # lands, so either way a line is in the ring once. A scratch session
+      # keeps Reline's ring as it is.
+      def pick_up_history_lines
+        return if @scratch
+
+        signature = PromptHistory.signature
+        return if signature == @history_signature
+
+        entries = PromptHistory.entries
+        fresh = PromptHistory.new_tail(@history_seen || [], entries)
+        @history_signature = signature
+        @history_seen = entries
+        own = history_own_lines
+        fresh.each do |line|
+          index = own.index(line)
+          next own.delete_at(index) if index
+
+          Reline::HISTORY << line
+        end
+      rescue StandardError
+        nil
+      end
+
+      def history_own_lines
+        @history_own_lines ||= []
       end
 
       # The text as given ("Please " keeps its space); a blank one is none.
