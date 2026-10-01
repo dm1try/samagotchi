@@ -371,6 +371,18 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
         expect(result).to include("overlay content")
       end
 
+      it "reads the fallback key's overlay only when the key has none (a model once keyed by its alias)" do
+        File.write(File.join(project_memories_dir, "my_memory.md"), "base content")
+        File.write(File.join(project_memories_dir, "my_memory.small.md"), "alias overlay")
+        result = mr.call("my_memory", scope: "project", model_key: "gemma-small", fallback_model_key: "small")
+        expect(result).to include("Model-specific guidance (small):\nalias overlay")
+
+        File.write(File.join(project_memories_dir, "my_memory.gemma-small.md"), "target overlay")
+        result = mr.call("my_memory", scope: "project", model_key: "gemma-small", fallback_model_key: "small")
+        expect(result).to include("Model-specific guidance (gemma-small):\ntarget overlay")
+        expect(result).not_to include("alias overlay")
+      end
+
       it "read with no key (legacy callers) returns unchanged output" do
         File.write(File.join(project_memories_dir, "my_memory.md"), "base content")
         File.write(File.join(project_memories_dir, "my_memory.gemma4o.md"), "overlay content")

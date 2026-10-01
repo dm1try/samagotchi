@@ -84,8 +84,8 @@ module Samagotchi
       @scratch        = scratch
       @prompt         = prompt
       @default_model_name = ModelProfile.required_model_name(nil)
-      aliased_model_name = model_name.to_s.strip.empty? ? nil : ConfigFile.resolve_model_alias(model_name)
-      flag_model_name = aliased_model_name.to_s.strip.empty? ? nil : ModelProfile.required_model_name(aliased_model_name)
+      # As typed: the Engine applies an alias where it resolves the model.
+      flag_model_name = model_name.to_s.strip.empty? ? nil : ModelProfile.required_model_name(model_name)
       @effective_model_name = flag_model_name || @default_model_name
       @host_registry  = host_registry || Samagotchi::HostRegistry.new
       # An injected client (specs) stands in for every host's client.
@@ -106,6 +106,7 @@ module Samagotchi
           @effective_model_name = flag_model_name
         else
           @effective_model_name = @resume_session.model_name.to_s.strip.empty? ? @default_model_name : @resume_session.model_name
+          @resumed_model_typed = @resume_session.model_typed
         end
         # Re-resolve client after resume may change effective model
         @client = @host_registry.resolve(@effective_model_name).client
@@ -180,7 +181,7 @@ module Samagotchi
                                       registry: @engine.command_registry)
       # Runtime --model flag or resumed session: switch the Engine (client,
       # kernel profile) without persisting the default.
-      @engine.switch_model!(@effective_model_name) if @effective_model_name != @default_model_name
+      @engine.switch_model!(@effective_model_name, typed: @resumed_model_typed) if @effective_model_name != @default_model_name
       # Render an idle session-recap via the cursor-safe background writer; the
       # detector itself is Engine-owned (see Engine#recap) and opt-in.
       @recap_handle = @engine.subscribe(observer: ->(event) { @between_turns.take_recap(event) })
@@ -217,14 +218,14 @@ module Samagotchi
       # nothing and return (no transient session, no banner).
       return if @non_interactive && @prompt.nil?
 
-      session = @resume_session || Session.new_session(
+      session = @resume_session || @engine.store_model!(Session.new_session(
         mode: "assist",
         model_name: @effective_model_name,
         working_directory: Dir.pwd,
         preloaded_memory_names: @requested_memories,
         muted_memory_names: @muted_memory_names,
         scratch: @scratch
-      )
+      ))
       claim_session!(session.id) unless @owner_lock
       # Saved at once, so a process killed before its first turn leaves a
       # file the sweep knows to delete.
@@ -691,7 +692,7 @@ module Samagotchi
     end
 
     def save_session(session)
-      session.model_name = @effective_model_name
+      @engine.store_model!(session)
       session.save
     end
 
@@ -760,7 +761,7 @@ module Samagotchi
       canceled = result.respond_to?(:canceled?) && result.canceled?
       if result && !canceled
         session.messages = result.conversation if result.respond_to?(:conversation) && result.conversation.is_a?(Array)
-        session.model_name = @effective_model_name
+        @engine.store_model!(session)
         session.save
       end
       # The synthetic turn is activity: the next reminder waits a full

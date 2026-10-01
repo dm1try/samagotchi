@@ -129,15 +129,22 @@ module Samagotchi
 
     # Raises UnknownHost when +model_name+ (or the alias it names) is
     # qualified with a host that isn't configured, instead of sending the
-    # whole ref to the default host as a model id. Where a model comes in
-    # (an Engine starting or switching, a spawned session) calls it.
+    # whole ref to the default host as a model id, and when an alias after
+    # a host prefix names another host ("openrouter:tiny" with tiny:
+    # box:…). Where a model comes in (an Engine starting or switching, a
+    # spawned session) calls it.
     # @param hosts [Hash, nil] the hosts a prefix may name (a HostRegistry's
     #   entries); config.yml's by default
     # @return [String] +model_name+
     def self.check_host!(model_name, env: ENV, hosts: nil)
       require_relative "config"
       hosts ||= Samagotchi::ConfigFile.hosts_config(env: env)
-      ref = Samagotchi::ConfigFile.resolve_model_alias(model_name, env: env, hosts: hosts)
+      parsed = Samagotchi::ConfigFile.model_ref(model_name, env: env, hosts: hosts)
+      if (other = parsed.host_conflict)
+        raise UnknownHost, "alias '#{parsed.alias_name}' names host '#{other}', not '#{parsed.host_name}'; " \
+                           "use #{parsed.alias_name} or #{other}:#{parsed.alias_name}"
+      end
+      ref = parsed.ref
       host = Samagotchi::ConfigFile.unknown_host_prefix(ref, hosts: hosts)
       return model_name unless host
 

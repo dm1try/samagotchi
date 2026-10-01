@@ -117,12 +117,13 @@ module Samagotchi
       end
       private_class_method :follow_up
 
-      # --model as the REPL reads it: an alias resolved, a host prefix kept.
-      # No existence check: an unknown model fails the child's first turn.
+      # The model as typed (spawn_session stores its resolved ref), else the
+      # parent's. No existence check: an unknown model fails the child's
+      # first turn.
       def self.child_model(model, parent)
         return parent.model_name if model.to_s.strip.empty?
 
-        ModelProfile.required_model_name(ConfigFile.resolve_model_alias(model.to_s.strip))
+        ModelProfile.required_model_name(model.to_s.strip)
       end
       private_class_method :child_model
 

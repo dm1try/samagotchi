@@ -27,9 +27,18 @@ and commands may change between minor versions. How releases are made:
   meter now moves during a turn, before each request, and the model gets the same short `[CONTEXT: …]` line the
   llama.cpp loop gives it once usage rises past 40 % (`context.status_thresholds`). Before the host reports its first
   token counts, the value is an estimate.
+- Model aliases apply once (an alias pointing to another alias sends that name as written; chi warns at start), and a
+  session stores the resolved model (`box:gemma-small` for `tiny`) plus the name it was typed as (`model_typed`), so a
+  resumed session keeps its model when an alias is retargeted. With a `default.model` alias, memory overlays and the
+  guardrails' `models:` rules now go by the alias's target (an overlay saved under the alias is still read).
 
 ### Fixed
 
+- An alias in `default.model`, the web's new-session model, `chi send --new --model` or a plugin fork was sent to the
+  server as the alias, not its target; `chi self` named a different model than the worker sent.
+- `/model box:tiny` (an alias for `box:gemma-small`) sent `box:gemma-small` to box; `/model openrouter:tiny` is now
+  refused (the alias names host `box`), in the TUI and as a web 400.
+- `models: {small: …}` now applies after `chi --model small` and after resuming such a session.
 - A TUI already waiting at `>` shows a prompt just typed in the web (or another terminal) at the first ↑, instead of
   only from the next prompt on.
 - The `known-names` bundle checks the name in `~name` (that user's home folder): `ls ~myname` is no longer rejected

@@ -449,7 +449,7 @@ RSpec.describe Samagotchi::SendCommand do
       end
 
       it "with --new starts no session" do
-        allow(described_class).to receive(:vision_answer).with("txt").and_return(text_only)
+        allow(described_class).to receive(:vision_answer).with("txt", typed: nil).and_return(text_only)
         allow(Process).to receive(:spawn)
 
         expect(run("--new", "--model", "txt", "--image", png, "-m", "hi")).to eq(1)

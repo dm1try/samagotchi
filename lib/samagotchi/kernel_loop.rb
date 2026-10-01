@@ -95,6 +95,7 @@ module Samagotchi
       @hooks = hooks
       @reminder_store = reminder_store
       @model_key = model_key
+      @model_key_fallback = nil
     end
 
     # @return [ReminderStore, nil] the reminder store for inspection (used by
@@ -183,8 +184,11 @@ module Samagotchi
       @profile_source = resolution.label
     end
 
-    def sync_model_key!(key)
+    # @param fallback [String, nil] a key whose overlay memory_read takes
+    #   when +key+ has none (the alias a model was typed as)
+    def sync_model_key!(key, fallback: nil)
       @model_key = key
+      @model_key_fallback = fallback
     end
 
     private
@@ -460,7 +464,7 @@ module Samagotchi
     def muted_memory_read(tool, call)
       muted = Array(@muted_memory_names)
       content = call[:content].to_s
-      read = ->(names) { tool.call(names, scope: call[:scope], model_key: @model_key) }
+      read = ->(names) { tool.call(names, scope: call[:scope], model_key: @model_key, fallback_model_key: @model_key_fallback) }
       return read.call(content) if muted.empty?
       return MutedMemories.filter_index(read.call(content), muted) if content.strip.empty?
 

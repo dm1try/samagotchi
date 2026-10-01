@@ -7,6 +7,7 @@ require "time"
 require "securerandom"
 require "rbconfig"
 require_relative "atomic_file"
+require_relative "config"
 
 require_relative "session"
 require_relative "session_inbox"
@@ -126,9 +127,14 @@ module Samagotchi
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
                            title: nil)
       sd = state_dir || Session.default_state_dir
+      # The resolved ref is stored (a resumed session keeps its model when an
+      # alias is retargeted), with the name as typed beside it.
+      typed = Samagotchi::ModelProfile.check_host!(Samagotchi::ModelProfile.required_model_name(model_name))
+      ref = ConfigFile.model_ref(typed).ref
       session = Session.new_session(
         mode: mode,
-        model_name: Samagotchi::ModelProfile.check_host!(Samagotchi::ModelProfile.required_model_name(model_name)),
+        model_name: ref,
+        model_typed: typed == ref ? nil : typed,
         working_directory: working_directory || Dir.pwd,
         preloaded_memory_names: memories,
         muted_memory_names: muted_memories,
@@ -466,7 +472,7 @@ module Samagotchi
     #   when the session was never saved
     def self.discardable?(session_id, default_model:, state_dir: nil, model_name: default_model, used_memory_names: [],
                           unsaved: nil)
-      return false unless discard_empty? && model_name == default_model && Array(used_memory_names).empty?
+      return false unless discard_empty? && same_model?(model_name, default_model) && Array(used_memory_names).empty?
 
       sd = state_dir || Session.default_state_dir
       if unsaved && !File.exist?(Session.session_file(session_id, state_dir: sd))
@@ -488,10 +494,21 @@ module Samagotchi
       session = Session.load(session_id, state_dir: sd)
       return false unless no_conversation?(session.messages) && session.pending_question.nil? && session.used_memory_names.empty?
       return false unless session.last_prompt.to_s.strip.empty? && session.first_preview.to_s.strip.empty?
-      return false unless session.mode.to_s == "assist" && !default_model.nil? && session.model_name.to_s == default_model.to_s
+      return false unless session.mode.to_s == "assist" && !default_model.nil? && same_model?(session.model_name, default_model)
 
       empty_session_dir?(Session.session_dir(session_id, state_dir: sd))
     rescue ArgumentError, SystemCallError, JSON::ParserError
+      false
+    end
+
+    # Whether two model names resolve to the same ref (ModelRef#ref): a
+    # session stores the resolved ref, the default may be an alias.
+    def self.same_model?(one, other)
+      return true if one.to_s == other.to_s
+      return false if one.nil? || other.nil?
+
+      ConfigFile.model_ref(one).ref == ConfigFile.model_ref(other).ref
+    rescue StandardError
       false
     end
 

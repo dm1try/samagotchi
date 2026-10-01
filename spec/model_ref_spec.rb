@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "tmpdir"
+require "yaml"
 require "samagotchi/model_ref"
 require "samagotchi/engine"
 require "samagotchi/session_commands"
@@ -25,24 +26,38 @@ RSpec.describe Samagotchi::ModelRef do
 
   describe ".parse" do
     let(:hosts) { { "box" => {}, "openrouter" => {} } }
-    let(:aliases) { { "tiny" => "box:gemma-small", "small" => "gemma-small" } }
+    let(:aliases) { { "tiny" => "box:gemma-small", "small" => "gemma-small", "chain" => "small" } }
 
     def parse(raw) = described_class.parse(raw, hosts: hosts, aliases: aliases)
 
     it "takes a host from the ref" do
       ref = parse("box:gemma-small")
-      expect([ref.host_name, ref.alias_resolved, ref.sent_id_unresolved]).to eq(%w[box gemma-small gemma-small])
+      expect([ref.host_name, ref.id, ref.ref]).to eq(%w[box gemma-small box:gemma-small])
     end
 
     it "takes the host from the alias's target" do
       ref = parse("tiny")
-      expect([ref.host_name, ref.alias_resolved, ref.alias_ref]).to eq(%w[box gemma-small box:gemma-small])
+      expect([ref.host_name, ref.id, ref.alias_name, ref.ref]).to eq(%w[box gemma-small tiny box:gemma-small])
     end
 
     it "names no host for a bare id or an alias to one" do
-      expect(parse("small").host_name).to be_nil
-      expect(parse("small").alias_resolved).to eq("gemma-small")
-      expect(parse("other").alias_resolved).to eq("other")
+      expect([parse("small").host_name, parse("small").ref]).to eq([nil, "gemma-small"])
+      expect([parse("other").host_name, parse("other").ref]).to eq([nil, "other"])
+    end
+
+    it "applies an alias once" do
+      expect(parse("chain").ref).to eq("small")
+    end
+
+    it "applies an alias after a host prefix" do
+      expect(parse("box:small").ref).to eq("box:gemma-small")
+      expect(parse("box:tiny").ref).to eq("box:gemma-small")
+      expect(parse("box:tiny").host_conflict).to be_nil
+    end
+
+    it "names the alias's host when it differs from the prefix" do
+      ref = parse("openrouter:tiny")
+      expect([ref.host_name, ref.host_conflict, ref.alias_name]).to eq(%w[openrouter box tiny])
     end
   end
 
@@ -119,47 +134,49 @@ RSpec.describe Samagotchi::ModelRef do
       engine.tap { |e| e.switch_model!(name) }
     end
 
-    it "#1 /model box:tiny stores box:box:gemma-small and sends box:gemma-small", step: :F1 do
+    it "#1 /model box:tiny stores box:gemma-small and sends gemma-small to box", step: :F1 do
       e = engine
-      expect(e.switch_model!("box:tiny")).to eq("box:box:gemma-small")
-      expect(sent(e)).to eq(["box", "box:gemma-small"])
+      expect(e.switch_model!("box:tiny")).to eq("box:gemma-small")
+      expect(sent(e)).to eq(%w[box gemma-small])
     end
 
-    it "#1 /model openrouter:tiny sends box:gemma-small to openrouter", step: :F1 do
-      expect(sent(switched("openrouter:tiny"))).to eq(["openrouter", "box:gemma-small"])
+    it "#1 /model openrouter:tiny is refused: the alias names another host", step: :F1 do
+      expect { switched("openrouter:tiny") }
+        .to raise_error(Samagotchi::ModelProfile::UnknownHost, "alias 'tiny' names host 'box', not 'openrouter'; use tiny or box:tiny")
     end
 
-    it "#2 /model chain routes on gemma-small but sends small", step: :F1 do
+    it "#2 /model chain resolves one level: small is sent, and routed as small", step: :F1 do
       list_models({ "openai" => ["gemma-small"] })
-      expect(sent(switched("chain"))).to eq(%w[openai small])
+      expect(sent(switched("chain"))).to eq(%w[openrouter small])
     end
 
     context "with default.model: small" do
       let(:default_model) { "small" }
 
-      it "#2b a worker sends the alias literally", step: :F1 do
-        expect(sent(engine)).to eq(%w[openrouter small])
+      it "#2b a worker sends the alias's target", step: :F1 do
+        expect(sent(engine)).to eq(%w[openrouter gemma-small])
       end
 
-      it "#2b a new session stores the alias", step: :F1 do
+      it "#2b a new session stores the target, and the alias as typed", step: :F1 do
         allow(Process).to receive(:spawn).and_return(12_345)
         session = Samagotchi::SessionManager.spawn_session(prompt: nil, state_dir: File.join(tmp, "state"))
-        expect(Samagotchi::Session.load(session.id, state_dir: File.join(tmp, "state")).model_name).to eq("small")
+        loaded = Samagotchi::Session.load(session.id, state_dir: File.join(tmp, "state"))
+        expect([loaded.model_name, loaded.model_typed]).to eq(%w[gemma-small small])
       end
     end
 
     context "with default.model: tiny" do
       let(:default_model) { "tiny" }
 
-      it "#2b a worker routes to box but sends tiny", step: :F1 do
-        expect(sent(engine)).to eq(%w[box tiny])
+      it "#2b a worker sends the target to box", step: :F1 do
+        expect(sent(engine)).to eq(%w[box gemma-small])
       end
     end
 
-    it "#2c chi self names box:gemma-small as the model box:tiny sends", step: :F1 do
+    it "#2c chi self names gemma-small as the model box:tiny sends, as the worker does", step: :F1 do
       allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("box:tiny")
       host = Samagotchi::SelfReport.fields(env: ENV).to_h.fetch("host")
-      expect(host).to eq("box box.test:8081 as box:gemma-small")
+      expect(host).to eq("box box.test:8081 as gemma-small")
     end
 
     it "#3 openai/gpt-4o goes to the openai host as gpt-4o", step: :F2 do
@@ -201,6 +218,62 @@ RSpec.describe Samagotchi::ModelRef do
 
     it "#7 recap.model: box:x without host_ref turns recap off", :recap, step: :F4 do
       expect(engine(model_name: "box:m", recap: { model: "box:x" }).recap).to be_nil
+    end
+
+    describe "F1: the resolved ref is stored, the typed name kept for models:" do
+      let(:config) { super() + "models:\n  small:\n    profile: gemma4\n" }
+
+      def profile_source(engine) = engine.profile_resolution.label
+
+      it "applies models: small after --model small" do
+        expect(profile_source(switched("small"))).to eq("config (models: small)")
+      end
+
+      it "applies models: small after a resume (the stored ref plus model_typed)" do
+        expect(profile_source(engine(model_name: "gemma-small", model_typed: "small"))).to eq("config (models: small)")
+        resumed = engine.tap { |e| e.switch_model!("gemma-small", typed: "small") }
+        expect(profile_source(resumed)).to eq("config (models: small)")
+      end
+
+      it "stores the ref and the alias on the session" do
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "x", working_directory: Dir.pwd)
+        switched("tiny").store_model!(session)
+        expect([session.model_name, session.model_typed]).to eq(%w[box:gemma-small tiny])
+        switched("box:gemma-small").store_model!(session)
+        expect([session.model_name, session.model_typed]).to eq(["box:gemma-small", nil])
+      end
+    end
+
+    context "with default.model: small, an empty session" do
+      let(:default_model) { "small" }
+      let(:state) { File.join(tmp, "state") }
+
+      it "is still discarded (the stored ref against the alias default)" do
+        allow(Process).to receive(:spawn).and_return(12_345)
+        session = Samagotchi::SessionManager.spawn_session(prompt: nil, state_dir: state)
+        expect(Samagotchi::SessionManager.discardable?(session.id, state_dir: state, default_model: "small")).to be(true)
+        expect(Samagotchi::SessionManager.discardable?(session.id, state_dir: state, default_model: "box:other")).to be(false)
+      end
+
+      it "keys memory overlays and guardrail rules by the target, reading the alias's old overlay key as a fallback" do
+        kernel = Samagotchi::KernelLoop.new(client: nil, profile: :gemma4)
+        allow(kernel).to receive(:sync_model_key!).and_call_original
+        e = engine(kernel: kernel)
+        expect([e.model_key, e.guardrail_model_name]).to eq(%w[gemma-small gemma-small])
+        expect(kernel).to have_received(:sync_model_key!).with("gemma-small", fallback: "small")
+      end
+    end
+
+    it "refuses a session on a host:alias naming another host (a web 400)" do
+      allow(Process).to receive(:spawn).and_return(12_345)
+      expect { Samagotchi::SessionManager.spawn_session(prompt: nil, model_name: "openrouter:tiny", state_dir: File.join(tmp, "state")) }
+        .to raise_error(Samagotchi::ModelProfile::UnknownHost, /alias 'tiny' names host 'box'/)
+      expect(Process).not_to have_received(:spawn)
+    end
+
+    it "warns at start that aliases don't chain" do
+      problems = Samagotchi::Config.validate_yaml_sections(YAML.safe_load(config))
+      expect(problems).to eq(["config: model_aliases.chain points to the alias 'small'; aliases don't chain, so 'small' is sent as written"])
     end
 
     it "#9 /models shows an alias for box:gemma-small under every host listing gemma-small", step: :F2 do

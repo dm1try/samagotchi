@@ -92,9 +92,9 @@ module Samagotchi
         raise Error, e.message
       end
 
-      # --model as the REPL reads it: an alias resolved, a host prefix kept.
+      # --model as typed: spawn_session stores the resolved ref and this name.
       def model_ref(model)
-        ModelProfile.required_model_name(ConfigFile.resolve_model_alias(model))
+        ModelProfile.required_model_name(model)
       end
 
       # An existing session's prompt is built from its own session fields:

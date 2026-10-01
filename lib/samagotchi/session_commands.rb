@@ -172,7 +172,8 @@ module Samagotchi
 
     private
 
-    def model_name = @engine.effective_model_name
+    # The resolved ref (what the session stores and --alias/--default write).
+    def model_name = @engine.effective_model_ref
 
     # A bundle plugin's command: its handler gets the text after the name;
     # what it returns is the output (nil: nothing to show), and a raise is
@@ -293,7 +294,7 @@ module Samagotchi
       session = @engine.session
       return unless session
 
-      session.model_name = model_name
+      @engine.store_model!(session)
       @save.call(session)
     end
 
@@ -309,7 +310,7 @@ module Samagotchi
     def model_command(input)
       suffix = input.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
-        return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}#{thinking_note}", false] if model_name == @default_model
+        return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}#{thinking_note}", false] if model_name == @engine.model_ref_for(@default_model)
 
         return ["runtime model: #{model_name}#{model_note("default: #{@default_model}")}#{served_note}#{sampling_note}#{thinking_note}", false]
       end
@@ -405,7 +406,7 @@ module Samagotchi
       session = @engine.session
       return unless session.respond_to?(:model_name=)
 
-      session.model_name = model_name
+      @engine.store_model!(session)
       begin
         @save.call(session)
       rescue StandardError
@@ -527,7 +528,7 @@ module Samagotchi
         end
       end
       # Warnings for unreachable hosts are already in lines; no failover
-      orphans = aliases.reject { |_, model_id| seen.include?(model_id.downcase) || seen.include?(registry.bare_name(model_id).downcase) }
+      orphans = aliases.reject { |_, model_id| seen.include?(model_id.downcase) || seen.include?(registry.parse_qualified_model(model_id).last.downcase) }
       unless orphans.empty? || !needle.empty?
         lines << ""
         lines << "orphan aliases (target not discovered):"

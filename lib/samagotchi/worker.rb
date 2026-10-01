@@ -216,6 +216,7 @@ module Samagotchi
       engine = nil
       engine = Samagotchi::Engine.new(
         model_name: @session.model_name,
+        model_typed: @session.model_typed,
         # The session's --memory and --mute lists: the same prompt on every
         # (re)spawn.
         memories: @session.preloaded_memory_names,

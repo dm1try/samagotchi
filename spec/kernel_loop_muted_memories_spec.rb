@@ -12,7 +12,7 @@ RSpec.describe "memory_read with muted memories" do
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_call_original
-    allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil, model_key: nil|
+    allow(Samagotchi::Tools::MemoryRead).to receive(:call) do |name, scope: nil, model_key: nil, fallback_model_key: nil|
       names = Samagotchi::Tools::MemoryRead.parse_names(name.to_s)
       if names.empty?
         index
@@ -36,7 +36,7 @@ RSpec.describe "memory_read with muted memories" do
     expect(read("gh-helper,cli_usage")).to eq(
       "[memory_read]\nBODY-cli_usage#{Samagotchi::Tools::MemoryRead::SEPARATOR}Error: memory 'gh-helper' is muted for this session"
     )
-    expect(Samagotchi::Tools::MemoryRead).to have_received(:call).with("cli_usage", scope: nil, model_key: nil)
+    expect(Samagotchi::Tools::MemoryRead).to have_received(:call).with("cli_usage", scope: nil, model_key: nil, fallback_model_key: nil)
   end
 
   it "answers a lone muted name with the error only, without reading" do

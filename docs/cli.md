@@ -576,7 +576,7 @@ access token", paste the token there (the part of the link after
 In interactive assist mode, you can switch the request model without restarting:
 
 - `/model <name>`: set a session-scoped model override.
-- `/model host:model` or `/model host/alias`: qualified host routing (`host:alias` expands alias bare, alias may itself be `host:model` — hybrid).
+- `/model host:model` or `/model host/alias`: qualified host routing. `host:alias` applies the alias; an alias whose target names another host is refused (`alias 'tiny' names host 'box', not 'openrouter'`). Aliases apply once: an alias pointing to another alias sends that name as written.
 - `/model --default <name>`: set session model and persist as new default in `config.yml` (also updates `SAMAGOTCHI_DEFAULT_MODEL` for future sessions; supports `host:model` full ref).
 - `/model <name> --alias <alias>`: create alias for current effective model (alias value may be bare or `host:model`).
 - `/model`: show the effective model (and default when diverged: `runtime model: <effective> (default: <default>, profile=<name>, <source>)`, e.g. `profile=qwen36, server (chat_template)`).

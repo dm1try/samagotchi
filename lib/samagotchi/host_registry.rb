@@ -143,21 +143,20 @@ module Samagotchi
     # @param target [ModelTarget, nil] the resolved model's target (resolved when not given)
     # @return [Array<String>]
     def lookup_names(typed, resolved: nil, target: nil)
-      aliased = ConfigFile.resolve_model_alias(typed, env: @env)
-      target ||= resolve(resolved || aliased)
-      [typed, aliased, resolved, parse_qualified_model(typed).last, target.bare_model]
+      target ||= resolve(resolved || typed)
+      [typed, model_ref(typed).ref, resolved, parse_qualified_model(typed).last, target.bare_model]
         .map { |name| name.to_s.strip }.reject(&:empty?).uniq
     end
 
-    # Resolve model string (already alias-resolved, may be qualified) to a HostEntry.
-    # If qualified explicitly (or through its alias), return that host. If
-    # unqualified, try cached model index, else fallback to default host.
+    # The host a model name, alias or host:model ref goes to and the model
+    # id it is sent as (ModelRef: one alias pass). A ref that names a host
+    # goes there; otherwise the cached model index, else the default host.
     def host_for_model(raw_model)
       ref = model_ref(raw_model)
       # ModelRef names a host only when it is one of ours
-      return [find_entry(ref.host_name), ref.alias_resolved] if ref.host_name
+      return [find_entry(ref.host_name), ref.id] if ref.host_name
 
-      bare = ref.alias_resolved
+      bare = ref.id
       bare_down = bare.to_s.strip.downcase
       # Try cached index (populated after list_all_models)
       idx = @mutex.synchronize { @model_index }
@@ -224,19 +223,30 @@ module Samagotchi
       [client_for(host_entry), bare, host_entry]
     end
 
-    # The single host/model resolution: alias and host routing (host_for_model)
-    # plus the name sent to the server (bare_name).
+    # The single host/model resolution: the alias applied, the host and
+    # the name sent to the server (host_for_model).
     # @param raw_model [String] a model name, alias or host:model ref
     # @return [ModelTarget]
     def resolve(raw_model)
-      entry, = host_for_model(raw_model)
-      ModelTarget.new(model: raw_model, entry: entry, bare_model: bare_name(raw_model), client: client_for(entry))
+      entry, bare = host_for_model(raw_model)
+      ModelTarget.new(model: raw_model, entry: entry, bare_model: bare, client: client_for(entry))
     end
 
-    # The model name without a known host prefix ("box:gemma" → "gemma").
-    # Aliases are not applied here.
+    # The model id sent for +full_ref+: its alias applied, a known host
+    # prefix stripped ("box:gemma" → "gemma").
     def bare_name(full_ref)
-      ModelRef.parse(full_ref, hosts: @entries, aliases: {}).sent_id_unresolved
+      model_ref(full_ref).id
+    end
+
+    # +raw+ parsed against these hosts and config.yml's aliases.
+    # @return [ModelRef]
+    def model_ref(raw)
+      aliases = begin
+        ConfigFile.model_aliases(env: @env)
+      rescue StandardError
+        {}
+      end
+      ModelRef.parse(raw, hosts: @entries, aliases: aliases)
     end
 
     def client_for(entry)
@@ -292,16 +302,6 @@ module Samagotchi
     end
 
     private
-
-    # +raw+ parsed against these hosts and config.yml's aliases.
-    def model_ref(raw)
-      aliases = begin
-        ConfigFile.model_aliases
-      rescue StandardError
-        {}
-      end
-      ModelRef.parse(raw, hosts: @entries, aliases: aliases)
-    end
 
     def fresh_list(name, entry)
       @mutex.synchronize do

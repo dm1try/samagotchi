@@ -22,7 +22,8 @@ module Samagotchi
 
       SEPARATOR = "\n\n---\n\n"
 
-      def self.call(entry_name, scope: nil, model_key: nil)
+      # @param fallback_model_key [String, nil] read when +model_key+ has no overlay
+      def self.call(entry_name, scope: nil, model_key: nil, fallback_model_key: nil)
         entry_name = entry_name.to_s.strip
         scope = normalize_scope(scope)
 
@@ -60,11 +61,12 @@ module Samagotchi
             if File.exist?(path)
               body = File.read(path)
               # Append model-specific overlay if key is provided and overlay exists.
-              if model_key
-                overlay_path = ModelOverlay.overlay_path_for(name, model_key, resolved_scope)
-                if overlay_path && File.exist?(overlay_path)
-                  body += SEPARATOR + "Model-specific guidance (#{model_key}):\n" + File.read(overlay_path)
-                end
+              [model_key, fallback_model_key].compact.each do |key|
+                overlay_path = ModelOverlay.overlay_path_for(name, key, resolved_scope)
+                next unless overlay_path && File.exist?(overlay_path)
+
+                body += SEPARATOR + "Model-specific guidance (#{key}):\n" + File.read(overlay_path)
+                break
               end
               results << body
               found = true

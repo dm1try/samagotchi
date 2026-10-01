@@ -80,16 +80,16 @@ module Samagotchi
     # takes images, decided as its worker decides before a turn with images
     # (Engine#turn_vision: VisionSupport, with models.<name>.vision under
     # the name as given (maybe an alias), the alias's target, the part
-    # after a host prefix and the bare name, as after /model). A native
+    # after a host prefix and the bare name). A native
     # host whose /props doesn't answer is unknown here, not a no: the
     # worker asks again when the turn runs.
+    # @param typed [String, nil] the name the model was typed as (a session's model_typed)
     # @return [VisionSupport::Answer] value nil when unknown
-    def self.vision_answer(model_name, registry: nil)
+    def self.vision_answer(model_name, registry: nil, typed: nil)
       registry ||= HostRegistry.new
       name = ModelProfile.required_model_name(model_name)
-      aliased = ConfigFile.resolve_model_alias(name)
-      target = registry.resolve(aliased)
-      names = registry.lookup_names(name, target: target)
+      target = registry.resolve(name)
+      names = registry.lookup_names(typed.to_s.strip.empty? ? name : typed, resolved: name, target: target)
       entry = target.entry
       return VisionSupport.for(target, adapter: registry.adapter_for(entry), names: names) if entry.chat?
 
@@ -385,7 +385,7 @@ module Samagotchi
     def deliver(id, prompt)
       short = id[0, 8]
       session = Session.load(id, state_dir: @state_dir)
-      if !@images.empty? && (refusal = vision_refusal(session.model_name))
+      if !@images.empty? && (refusal = vision_refusal(session.model_name, typed: session.model_typed))
         @info.puts("#{short}  refused: #{refusal}")
         return false
       end
@@ -415,9 +415,9 @@ module Samagotchi
 
     # What to say when +model_name+ is known not to take images, or nil
     # (it does, or it is unknown: sent as before). Asked once per model.
-    def vision_refusal(model_name)
+    def vision_refusal(model_name, typed: nil)
       @vision ||= {}
-      answer = @vision[model_name.to_s] ||= self.class.vision_answer(model_name)
+      answer = @vision[[model_name.to_s, typed.to_s]] ||= self.class.vision_answer(model_name, typed: typed)
       return nil unless answer.no?
 
       name = model_name.to_s.strip

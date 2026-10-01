@@ -504,6 +504,23 @@ alias, `/model`, `chi send --new --model`, the web's new-session model and a
 delegate's model. Any other unknown prefix (`nosuch:x`) is sent to the default
 host as the model id.
 
+### Model aliases
+
+`model_aliases:` maps a name to a model id or `host:model`. An alias works
+wherever a model name does (`--model`, `default.model`, `/model`, the web's
+new-session model, `chi send --new --model`, a delegate's or fork's model, the
+`models:` keys) and the server is sent its target:
+
+- Aliases apply once. An alias whose target is another alias sends that name as
+  written, and chi warns about it at start ("aliases don't chain").
+- `host:alias` applies the alias on that host. When the alias's target names
+  another host, the model is refused (`alias 'tiny' names host 'box', not
+  'openrouter'`).
+- An alias named like a real model id shadows that id, also as `host:<id>`.
+- A session stores the resolved ref (`box:your-small-model-id`) plus the name it
+  was typed as, so a resumed session keeps its model when an alias is
+  retargeted, and `models: {small: …}` still applies to it.
+
 ## Llama Network Retry Behavior
 
 Transient network failures are retried automatically with exponential backoff.

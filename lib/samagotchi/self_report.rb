@@ -114,7 +114,7 @@ module Samagotchi
     # Routed without model discovery, so an unqualified name may land on
     # another host at runtime after /models.
     def loop_for(model, env)
-      entry, = HostRegistry.new(env: env).host_for_model(model)
+      entry = HostRegistry.new(env: env).resolve(model).entry
       return "-" unless entry
 
       entry.chat? ? "chat (api: openai)" : "native (raw prompt)"
@@ -125,7 +125,9 @@ module Samagotchi
     # GET with the probe's short timeouts; a remote host isn't asked.
     def served_model_for(model, env)
       registry = HostRegistry.new(env: env)
-      entry, bare = registry.host_for_model(model)
+      target = registry.resolve(model)
+      entry = target.entry
+      bare = target.bare_model
       return "-" unless entry
       return "reported per turn (remote host)" if entry.remote?
 
@@ -146,7 +148,9 @@ module Samagotchi
     # llama.cpp host's chat template decides at runtime.
     def profile_for(model, env)
       registry = HostRegistry.new(env: env)
-      entry, bare = registry.host_for_model(model)
+      target = registry.resolve(model)
+      entry = target.entry
+      bare = target.bare_model
       return "name-based (chat API: only strips thoughts)" if entry&.chat?
 
       names = registry.lookup_names(model)
@@ -177,7 +181,9 @@ module Samagotchi
     end
 
     def host_for(model, env)
-      entry, bare = HostRegistry.new(env: env).host_for_model(model)
+      target = HostRegistry.new(env: env).resolve(model)
+      entry = target.entry
+      bare = target.bare_model
       return "(no hosts configured)" unless entry
 
       suffix = bare && bare != model ? " as #{bare}" : ""
@@ -188,8 +194,7 @@ module Samagotchi
     # The variable the host's API key comes from and whether it is set; the
     # key itself is never shown.
     def api_key_for(model, env)
-      entry, = HostRegistry.new(env: env).host_for_model(model)
-      name = entry&.api_key_env
+      name = HostRegistry.new(env: env).resolve(model).entry&.api_key_env
       return "-" unless name
 
       "#{name} (#{env[name].to_s.empty? ? "unset" : "set"})"

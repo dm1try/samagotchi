@@ -104,14 +104,13 @@ RSpec.describe "delegate tools" do
       expect(Process).to have_received(:spawn)
     end
 
-    it "resolves a model alias for the child, a host prefix kept" do
-      allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).and_call_original
-      allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).with("tiny").and_return("box:gemma-small")
+    it "stores the child's model alias resolved, a host prefix kept, and the alias as typed" do
+      allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return("tiny" => "box:gemma-small")
 
       described_class.call("quick look", model: "tiny", wait: "false", peers: peers)
 
       child = Samagotchi::Session.load((session_files - [parent.id]).first, state_dir: tmpdir)
-      expect(child.model_name).to eq("box:gemma-small")
+      expect([child.model_name, child.model_typed]).to eq(%w[box:gemma-small tiny])
     end
 
     it "refuses a model whose host isn't configured, creating nothing" do

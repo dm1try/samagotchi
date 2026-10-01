@@ -135,8 +135,7 @@ RSpec.describe "Engine prompt profile resolution" do
 
   it "looks up models: under the alias as typed" do
     allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("ista" => { profile: "gemma4" })
-    allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).and_call_original
-    allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).with("ista").and_return("house-blend-35b")
+    allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return("ista" => "house-blend-35b")
     engine = engine_with(FakeResolvingClient.new(answered(ornith_props)))
 
     engine.switch_model!("ista")
@@ -146,8 +145,7 @@ RSpec.describe "Engine prompt profile resolution" do
 
   it "looks up models: vision under the alias as typed, like the profile" do
     allow(Samagotchi::ConfigFile).to receive(:model_settings).and_return("ista" => { vision: false })
-    allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).and_call_original
-    allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).with("ista").and_return("house-blend-35b")
+    allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return("ista" => "house-blend-35b")
     engine = engine_with(FakeResolvingClient.new(answered(ornith_props)))
 
     engine.switch_model!("ista")

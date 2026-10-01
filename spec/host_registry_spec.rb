@@ -31,12 +31,13 @@ RSpec.describe Samagotchi::HostRegistry do
       expect(target.model).to eq("Gemma-4B-it")
     end
 
-    it "routes by alias but keeps the name it was given (as Engine always did)" do
+    it "routes by alias and sends the alias's target" do
       allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({ "small" => "box:gemma-small" })
       target = registry.resolve("small")
 
       expect(target.entry.name).to eq("box")
-      expect(target.bare_model).to eq("small")
+      expect(target.bare_model).to eq("gemma-small")
+      expect(target.model).to eq("small")
     end
 
     it "gives each host's client the host's config name, for its error lines" do

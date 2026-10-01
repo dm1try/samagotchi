@@ -68,15 +68,14 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
         .with(session.id, session_dir: Samagotchi::Session.session_dir(session.id, state_dir: state_dir), timeout: 0.2)
     end
 
-    it "starts a new session on --model, its alias resolved" do
+    it "starts a new session on --model as typed (spawn_session stores its alias resolved)" do
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
       allow(Samagotchi::BridgeClient).to receive(:wait_for).and_return(client)
-      allow(Samagotchi::ConfigFile).to receive(:resolve_model_alias).with("fast").and_return("unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M")
 
       connect(shared: true, model: "fast")
 
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
-        .with(prompt: nil, model_name: "unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M", state_dir: state_dir,
+        .with(prompt: nil, model_name: "fast", state_dir: state_dir,
               memories: [], muted_memories: [])
     end
 

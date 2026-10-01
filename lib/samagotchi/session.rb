@@ -40,6 +40,10 @@ module Samagotchi
     # from it (--mute): the worker rebuilds the same prompt on a respawn.
     # Names as given; the engine normalizes them.
     attr_accessor :preloaded_memory_names, :muted_memory_names
+    # The name model_name was typed as when that differs from the resolved
+    # ref stored in model_name (an alias: `small` for `gemma-small`), else
+    # nil. The models: lookup takes it (HostRegistry#lookup_names).
+    attr_accessor :model_typed
     # The project the session was started in (ProjectScope.root_for its
     # folder), stored because worktrees are deleted after a merge and a
     # deleted folder no longer leads to its repository. nil outside a repo,
@@ -70,11 +74,12 @@ module Samagotchi
                    first_preview: "", test_run: false, pending_question: nil,
                    used_memory_names: [], project_root: nil,
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
-                   last_turn: nil)
+                   last_turn: nil, model_typed: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
       @model_name = model_name
+      @model_typed = model_typed
       @working_directory = working_directory
       @messages = messages
       @created_at = created_at
@@ -113,7 +118,7 @@ module Samagotchi
     #   seed); [] by default
     def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
                          preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [],
-                         scratch: false)
+                         scratch: false, model_typed: nil)
       now = Time.now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?
@@ -124,6 +129,7 @@ module Samagotchi
         id: SecureRandom.uuid,
         mode: mode.to_s,
         model_name: model_name.to_s,
+        model_typed: model_typed,
         working_directory: working_directory.to_s,
         messages: Array(messages).map(&:dup),
         created_at: now,
@@ -173,6 +179,7 @@ module Samagotchi
       "id" => REQUIRED,
       "mode" => REQUIRED,
       "model_name" => REQUIRED,
+      "model_typed" => nil,
       "working_directory" => REQUIRED,
       "messages" => [],
       "created_at" => REQUIRED,

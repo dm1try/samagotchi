@@ -79,6 +79,8 @@ module Samagotchi
     # @param no_interrupt       [Boolean] --no-interrupt: every turn runs with
     #   NO_INTERRUPT_MAX_ITERATIONS, whichever loop runs it
     # @param model_name         [String, nil] defaults from SAMAGOTCHI_DEFAULT_MODEL
+    # @param model_typed        [String, nil] the name the model was given as (a session's
+    #   model_typed: an alias), for the models: lookup; model_name by default
     # @param memories           [Array<String>] explicit --memory preload list (merged with the config.yml `memories:` baseline)
     # @param muted_memories     [Array<String>] --mute list: memories hidden from this session (not in the
     #   prompt's index, dropped from the preloads, refused by memory_read); a mute wins over a preload
@@ -92,7 +94,7 @@ module Samagotchi
     # @param scratch            [Boolean] a `chi scratch` session: memory writes are refused, and there is no
     #   delegate (a child would outlive it) nor plugin fork
     def initialize(client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], muted_memories: [], kernel: nil, recap: nil, reminders: nil,
-                   plugins: true, scratch: false)
+                   plugins: true, scratch: false, model_typed: nil)
       @scratch = scratch
       @no_interrupt = no_interrupt
       @chat_backend = nil
@@ -111,7 +113,7 @@ module Samagotchi
       # #profile_resolution decides on first need (see there), so building an
       # Engine makes no network call.
       @given_profile = profile ? ModelProfile.normalize(profile) : nil
-      @typed_model_name = @default_model_name
+      @typed_model_name = model_typed.to_s.strip.empty? ? @default_model_name : model_typed.to_s.strip
       @profile_resolution = nil
       # Ensure the built-in system bundle is installed (lazy, warn-only).
       # This is the single seam for both TUI and non-TUI (web/worker) paths.
@@ -204,8 +206,7 @@ module Samagotchi
       @kernel = kernel || KernelLoop.new(client: @client, profile: @given_profile, hooks: @hooks, reminder_store: @reminder_store,
                                          tools: @tools)
       sync_kernel_client!
-      @model_key = ModelOverlay.key_for(bare_model_name(@effective_model_name))
-      @kernel.sync_model_key!(@model_key) if @kernel.respond_to?(:sync_model_key!)
+      sync_model_key!
       # The mutes never change during a session, so no re-sync: the kernel's
       # memory_read guard reads the same list for every turn.
       @muted_memory_names = MutedMemories.normalize_list(muted_memories)
@@ -431,7 +432,30 @@ module Samagotchi
 
     # @return [SessionMetrics] the per-session analytics collector
     attr_reader :metrics
-    attr_reader :default_model_name, :effective_model_name
+    # effective_model_name: the model as given (maybe an alias; HostRegistry#resolve
+    # applies it); typed_model_name: as typed at start or at the last /model.
+    attr_reader :default_model_name, :effective_model_name, :typed_model_name
+
+    # The resolved ref a session stores for the effective model (ModelRef#ref:
+    # the alias applied, "host:id" when it names a host).
+    def effective_model_ref
+      model_ref_for(@effective_model_name)
+    end
+
+    # +name+'s resolved ref (ModelRef#ref).
+    def model_ref_for(name)
+      @host_registry.model_ref(name).ref
+    end
+
+    # Writes the effective model to +session+: the resolved ref, and the
+    # name as typed when that differs (model_typed: an alias, for the
+    # models: lookup after a resume).
+    def store_model!(session)
+      ref = effective_model_ref
+      session.model_name = ref
+      session.model_typed = @typed_model_name.to_s == ref ? nil : @typed_model_name if session.respond_to?(:model_typed=)
+      session
+    end
 
     # The effective model's key (ModelOverlay.key_for its bare name): memory
     # overlays, guardrail rules' models:.
@@ -458,9 +482,22 @@ module Samagotchi
     #   built-ins, and the ones bundle plugins add
     attr_reader :command_registry
 
+    # The model id sent for +full_ref+ (its alias applied, the host prefix off).
     def bare_model_name(full_ref)
       @host_registry.bare_name(full_ref)
     end
+
+    # The memory overlay key follows the model sent (ModelOverlay.key_for
+    # its id). A model typed as an alias used to key overlays by the alias
+    # (before aliases were applied there): that key is read when the
+    # target's overlay is missing (KernelLoop#sync_model_key!).
+    def sync_model_key!
+      @model_key = ModelOverlay.key_for(bare_model_name(@effective_model_name))
+      typed_key = ModelOverlay.key_for(@host_registry.parse_qualified_model(@typed_model_name).last)
+      fallback = typed_key == @model_key ? nil : typed_key
+      @kernel.sync_model_key!(@model_key, fallback: fallback) if @kernel.respond_to?(:sync_model_key!)
+    end
+    private :sync_model_key!
 
     # The effective model's bare name for the guardrails' models: rules;
     # nil without a model name.
@@ -767,27 +804,29 @@ module Samagotchi
 
     # ── Model switching ────────────────────────────────────────────────────────
 
-    def switch_model!(model_name, persist_default: false)
-      # Resolve alias first (alias may point to qualified ref)
-      aliased = ConfigFile.resolve_model_alias(model_name)
-      resolved = ModelProfile.check_host!(ModelProfile.required_model_name(aliased), hosts: @host_registry.entries)
+    # @param typed [String, nil] the name the model was typed as when
+    #   +model_name+ is a stored ref (a resumed session's model_typed)
+    # @return [String] the resolved ref the session stores (ModelRef#ref)
+    def switch_model!(model_name, persist_default: false, typed: nil)
+      # The alias is applied where the model is resolved (HostRegistry#resolve),
+      # once; checked here: an unknown host, an alias naming another host.
+      resolved = ModelProfile.check_host!(ModelProfile.required_model_name(model_name), hosts: @host_registry.entries)
       @effective_model_name = resolved
-      bare = bare_model_name(resolved)
-      @typed_model_name = model_name
+      @typed_model_name = typed.to_s.strip.empty? ? model_name : typed.to_s.strip
       # A profile given to .new was for the starting model.
       @given_profile = nil
       @profile_resolution = nil
-      @model_key = ModelOverlay.key_for(bare)
-      @kernel.sync_model_key!(@model_key) if @kernel.respond_to?(:sync_model_key!)
+      sync_model_key!
       @prompt_builder.reset!
       sync_kernel_client!
       @client.invalidate_context_window! if @client.respond_to?(:invalidate_context_window!)
       @metrics.forget_model_reports!
+      ref = effective_model_ref
       if persist_default
-        ConfigFile.write_default_model!(resolved)
-        @default_model_name = resolved
+        ConfigFile.write_default_model!(ref)
+        @default_model_name = ref
       end
-      resolved
+      ref
     end
 
     # ── Hooks API ──────────────────────────────────────────────────────────────
@@ -973,7 +1012,7 @@ module Samagotchi
         preloaded_memory_names: preloaded_memory_names,
         muted_memory_names: @muted_memory_names.dup,
         parent_id: @session&.parent_id,
-        model_name: @effective_model_name,
+        model_name: effective_model_ref,
         served_model: served_pair[0],
         served_model_for: served_pair[1],
         context_status: @last_context_status&.dup || saved_context_status(metrics[:context]),

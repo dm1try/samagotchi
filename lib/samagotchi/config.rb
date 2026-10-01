@@ -437,6 +437,22 @@ module Samagotchi
           else
             [key_problem(key)].compact
           end
+        end + model_ref_problems(data)
+      end
+
+      # What a model ref in config.yml won't do as written: an alias whose
+      # target is another alias (aliases apply once, ModelRef).
+      def model_ref_problems(data)
+        aliases = data["model_aliases"]
+        return [] unless aliases.is_a?(Hash)
+
+        hosts = data["hosts"].is_a?(Hash) ? data["hosts"] : {}
+        names = aliases.keys.map { |k| k.to_s.strip.downcase }
+        aliases.filter_map do |name, target|
+          _, inner = ModelRef.split(target, hosts: hosts)
+          next unless names.include?(inner.downcase)
+
+          "config: model_aliases.#{name} points to the alias '#{inner}'; aliases don't chain, so '#{inner}' is sent as written"
         end
       end
 
@@ -971,15 +987,10 @@ module Samagotchi
       nil
     end
 
-    # +raw+ with an alias applied, a host prefix kept as typed
-    # ("small-box:small" -> "small-box:gemma-small"; ModelRef#alias_ref).
-    def resolve_model_alias(raw, env: ENV, path: global_path(env: env), hosts: nil)
-      value = raw.to_s.strip
-      return value if value.empty?
-
-      aliases = model_aliases(env: env, path: path)
-      hosts_map = value.include?(":") || value.include?("/") ? hosts || hosts_config(env: env, path: path) : {}
-      ModelRef.parse(value, hosts: hosts_map, aliases: aliases).alias_ref
+    # +raw+ parsed against config.yml's hosts (or +hosts+) and aliases.
+    # @return [ModelRef]
+    def model_ref(raw, env: ENV, path: global_path(env: env), hosts: nil)
+      ModelRef.parse(raw, hosts: hosts || hosts_config(env: env, path: path), aliases: model_aliases(env: env, path: path))
     end
 
     # Words /model takes as arguments (clear/default/none/off reset the
