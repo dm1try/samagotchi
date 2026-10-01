@@ -25,7 +25,6 @@ class KnownNames
   ASK_OPTIONS = ["Correct it and run", "Run as is", "Deny"].freeze
 
   def initialize(settings = {})
-    settings = {} unless settings.is_a?(Hash)
     @names = list(settings["names"])
     @ignore = list(settings["ignore"]).map(&:downcase)
     @mode = MODES.include?(settings["mode"].to_s) ? settings["mode"].to_s : "reject"

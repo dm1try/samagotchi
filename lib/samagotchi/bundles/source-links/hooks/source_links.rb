@@ -92,7 +92,6 @@ class SourceLinks
   end
 
   def initialize(settings = {})
-    settings = {} unless settings.is_a?(Hash)
     @sources = compile_sources(settings["sources"])
     max = settings["max"].to_i
     @max = max.positive? ? max : DEFAULT_MAX

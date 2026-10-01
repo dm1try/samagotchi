@@ -193,7 +193,6 @@ class Plugin
   SOURCE = "bundle loop-guard"
 
   def initialize(settings = {})
-    settings = {} unless settings.is_a?(Hash)
     @deny_after = positive(settings["deny_after"]) || 2
     @stop_after = positive(settings["stop_after"]) || 4
     @ignore = settings.key?("ignore_tools") ? Array(settings["ignore_tools"]).map(&:to_s) : DEFAULT_IGNORE

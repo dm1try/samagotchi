@@ -32,7 +32,6 @@ class Plugin
   USAGE = "usage: /checkin [on|off|<calls>|mode ask|nudge|notify|nudge|later|stop]"
 
   def initialize(settings = {})
-    settings = {} unless settings.is_a?(Hash)
     @after = positive(settings["after"]) || 50
     @every = positive(settings["every"]) || @after
     @mode = MODES.include?(settings["mode"].to_s) ? settings["mode"].to_s : "ask"
