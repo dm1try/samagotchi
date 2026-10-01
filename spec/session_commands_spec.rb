@@ -390,6 +390,26 @@ RSpec.describe Samagotchi::SessionCommands do
                              "  core: deny writes", "approvals (0):\n  (none)")
     end
 
+    it "says whether the model is small, and which models: rules are on for it" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.small_models").and_return("auto")
+      rules = Samagotchi::Guardrails::Rules.parse(
+        [{ "id" => "discard", "tool" => "shell", "command" => "git restore", "models" => "small", "verdict" => "ask", "reason" => "discards" },
+         { "id" => "big", "tool" => "shell", "command" => "x", "models" => %w[Llama-* gpt-*], "verdict" => "ask", "reason" => "big" }],
+        source: "bundle guardrails"
+      )
+      allow(engine).to receive(:guardrail_rules).and_return(Samagotchi::Guardrails::Rules.new(rules))
+      out = commands.run("/guardrails").output
+      expect(engine.model_key).to eq("qwen3-14b")
+      expect(out).to include("model: Qwen3-14B — small (auto, 14B)",
+                             "  1. discard: ask (tool execute,task_create, command /git restore/, models small) — discards [bundle guardrails]",
+                             "  2. big: off for this model — ask (tool execute,task_create, command /x/, models Llama-*,gpt-*) — big [bundle guardrails]")
+
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.small_models").and_return("")
+      out = commands.run("/guardrails").output
+      expect(out).to include("model: Qwen3-14B — not small (small_models: [])", "  1. discard: off for this model — ask")
+    end
+
     it "lists a tool glob as given" do
       rules = Samagotchi::Guardrails::Rules.parse(
         [{ "id" => "mcp-ask", "tool" => "mcp_*", "verdict" => "ask", "reason" => "an MCP tool" }], source: "config"

@@ -234,6 +234,9 @@ module Samagotchi
       rules = @engine.guardrail_rules
       approvals = @engine.guardrail_approvals.entries
       lines = ["guardrails: #{rules.enabled? ? "on" : "off (guardrails.enabled: false; denies still apply)"}"]
+      name = @engine.guardrail_model_name
+      key = @engine.model_key
+      lines << "model: #{name || "none"} — #{Guardrails::ModelSize.describe(name, key)}"
       failures = @engine.guardrail_failures.list
       unless failures.empty?
         lines << "failed to load:"
@@ -248,9 +251,11 @@ module Samagotchi
         match = [
           ("tool #{rule.tools.join(",")}" if rule.tools),
           ("command /#{shorten_pattern(rule.command.source)}/" if rule.command),
-          ("path #{rule.path}" if rule.path)
+          ("path #{rule.path}" if rule.path),
+          ("models #{rule.models.join(",")}" if rule.models)
         ].compact.join(", ")
         off = "disabled (guardrails.disable) — " if rules.disabled?(rule)
+        off ||= "off for this model — " unless rule.for_model?(name, key)
         lines << "  #{idx + 1}. #{rule.id}: #{off}#{rule.verdict} (#{match}) — #{rule.reason} [#{rule.source}]"
       end
       rules.unmatched_disables.each { |entry| lines << "  guardrails.disable: #{entry} matches no rule" }

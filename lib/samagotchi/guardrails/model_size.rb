@@ -63,6 +63,18 @@ module Samagotchi
         end
       end
 
+      # How /guardrails says it: "small (auto, 27B)", "not small (auto, no
+      # size in the name)", "small (small_models: qwen*)".
+      def describe(name, key, setting = self.setting)
+        return "not small (no model name)" if name.nil? || name.to_s.strip.empty?
+
+        verdict = small?(name, key, setting) ? "small" : "not small"
+        return "#{verdict} (small_models: #{setting.empty? ? "[]" : setting})" unless setting.nil? || setting.strip.casecmp?("auto")
+
+        size = billions(name)
+        "#{verdict} (auto, #{size ? "#{size}B" : "no size in the name"})"
+      end
+
       # The setting, live (config.yml is re-read on change); auto when it
       # can't be read.
       def setting

@@ -33,7 +33,7 @@ module Samagotchi
       Rule = Struct.new(:id, :tools, :command, :path, :models, :verdict, :reason, :scopes, :source, keyword_init: true) do
         def matches?(targets)
           return false unless targets
-          return false if models && !models_match?(targets)
+          return false unless for_model?(targets.model_name, targets.model_key, -> { targets.small_model? })
           return false if tools && !tool_matches?(targets.tool)
           return false if command && !(targets.command && command.match?(targets.command))
           return false if path && !path_matches?(targets)
@@ -45,16 +45,17 @@ module Samagotchi
           tools.any? { |tool| Rules.glob?(tool) ? File.fnmatch(tool, name.to_s, File::FNM_EXTGLOB) : tool == name }
         end
 
-        # Whether the effective model is one of the rule's models:.
-        def models_match?(targets)
-          name = targets.model_name
+        # Whether the rule votes for this model (its models:; without one,
+        # for every model). +small+ says whether the model is a small one.
+        def for_model?(name, key, small = -> { ModelSize.small?(name, key) })
+          return true unless models
           return false if name.nil? || name.empty?
 
           models.any? do |entry|
             if entry == "small"
-              targets.small_model?
+              small.call
             else
-              [name, targets.model_key].compact.any? { |c| File.fnmatch(entry, c, ModelSize::GLOB_FLAGS) }
+              [name, key].compact.any? { |candidate| File.fnmatch(entry, candidate, ModelSize::GLOB_FLAGS) }
             end
           end
         end

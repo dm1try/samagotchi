@@ -753,6 +753,7 @@ described in their own sections.
 | `image.max_bytes` | `3750000` | | See "Images". |
 | `image.max_per_request` | `20` | | See "Images". |
 | `guardrails.enabled` | `true` | | See [Guardrails](guardrails.md). |
+| `guardrails.small_models` | `auto` | | Which models get the `models: small` rules: `auto` (32B or less by the size in the name, an MoE's active size), a list of globs, or `[]`. See [Guardrails](guardrails.md#rules-for-some-models). |
 | `log.file` | state dir | yes | See "Debug Log File". |
 | `log.disable` | `false` | yes | No file logging. |
 | `log.level` | `info` | yes | `debug`, `info`, `warn`, `error`. |

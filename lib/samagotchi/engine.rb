@@ -429,6 +429,11 @@ module Samagotchi
     attr_reader :metrics
     attr_reader :default_model_name, :effective_model_name
 
+    # The effective model's key (ModelOverlay.key_for its bare name): memory
+    # overlays, guardrail rules' models:.
+    # @return [String, nil]
+    attr_reader :model_key
+
     # The prompt profile for the effective model (see #profile_resolution).
     # @return [ModelProfile]
     def profile = profile_resolution.profile

@@ -71,6 +71,18 @@ RSpec.describe Samagotchi::Guardrails::ModelSize do
     end
   end
 
+  describe ".describe" do
+    it "says small or not, and why" do
+      expect(described_class.describe("Qwen3.6-27B", "qwen3-6-27b", "auto")).to eq("small (auto, 27B)")
+      expect(described_class.describe("Ornith-1.5-35B-A3B", "ornith-1-5-35b-a3b", "auto")).to eq("small (auto, 3B)")
+      expect(described_class.describe("Llama-3.3-70B", "llama-3-3-70b", nil)).to eq("not small (auto, 70B)")
+      expect(described_class.describe("deepseek-v4.1-flash", "deepseek-v4-1-flash", "auto")).to eq("not small (auto, no size in the name)")
+      expect(described_class.describe("Qwen3-8B", "qwen3-8b", "")).to eq("not small (small_models: [])")
+      expect(described_class.describe("Qwen3-8B", "qwen3-8b", "gemma*|qwen*")).to eq("small (small_models: gemma*|qwen*)")
+      expect(described_class.describe(nil, nil, "auto")).to eq("not small (no model name)")
+    end
+  end
+
   describe ".setting" do
     it "reads guardrails.small_models live, auto by default, a YAML list joined with |" do
       entry = Samagotchi::Config.find_by_key("guardrails.small_models")

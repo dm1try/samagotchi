@@ -138,6 +138,37 @@ guardrails:
 `/guardrails` marks them `disabled (guardrails.disable)` and names entries that
 match no rule. `disable:` only removes rules; hooks and the core checks still vote.
 
+### Rules for some models
+
+`models:` makes a rule vote only for some models: `small`, or a glob on the
+model's name (`Qwen3.6-*`, matched on the bare name without the host prefix and
+on the model key `qwen3-6-27b`, case-insensitively), or a list of them. Without
+`models:` a rule is for every model. With no model name set, a `models:` rule
+doesn't vote.
+
+```yaml
+guardrails:
+  small_models: auto          # the default; or a list of globs, or [] for none
+  rules:
+    - id: no-force-push-small
+      tool: shell
+      command: '\bgit\s+push\b.*--force'
+      models: small             # or "gemma-*", or [small, "deepseek-*"]
+      verdict: deny
+```
+
+Which models are small is `guardrails.small_models`. Nothing reports a model's
+size, so `auto` reads it from the name: `Qwen3.6-27B` is 27B, `gemma-4-E4B-it`
+4B, `Mixtral-8x7B` 56B, and for an MoE the active size counts
+(`Ornith-1.5-35B-A3B` is 3B, `Qwen3-235B-A22B` 22B). 32B or less is small. A name
+without a size (`deepseek-v4.1-flash`) is not small. A list of globs names the
+small models yourself (`auto` may be one of them), and `[]` means no model is
+small. It is read on every check, so `/model` and config edits apply at once.
+
+`/guardrails` names the model and whether it is small (`model: Qwen3.6-27B —
+small (auto, 27B)`), shows each rule's `models`, and marks a rule that doesn't
+vote for the current model `off for this model`.
+
 Rules load when chi starts (a long-running worker picks up changes after its
 next start). A rule that doesn't parse (an unknown key, a bad regex, no
 verdict, a `disable:` that isn't a list of ids) makes chi **deny every tool call** and say why, rather than run
@@ -156,6 +187,14 @@ route around a deny. It asks before `git push`, `reset --hard`, `clean -f`,
 repo; and shell commands that name chi's config, hooks or guardrails or
 `.git/hooks`. It denies writes into `.git/hooks`. The rules are in
 `lib/samagotchi/bundles/guardrails/guardrails/rules.yml`.
+
+Small models (`models: small`, see above) get two more asks, in
+`guardrails/small-models.yml`: `git checkout -- <path>`, `git checkout <rev> --
+<path>`, `git checkout .` and `git restore <path>` (not `--staged` alone), which
+discard uncommitted changes, and `git stash drop`/`clear`. They offer only
+"once" and "this session", so an approval doesn't silence them for good. To get
+them on every model, set `small_models` to `"*"`; to drop them, `[]` (or
+`disable:` the ids).
 
 A bundle ships rules as `guardrails/*.yml` (the same `rules:` shape). Install
 records each file's sha256; a file changed afterwards, missing, or not parsing
