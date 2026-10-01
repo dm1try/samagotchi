@@ -17,7 +17,6 @@ module Samagotchi
   # exactly what the Bridge's minimal server expects.
   class BridgeClient
     HOST = "127.0.0.1"
-    PROBE_TIMEOUT = 0.2
     STREAM_CONNECT_ATTEMPTS = 3
     # Seconds #stream waits for bytes before it asks `running` again.
     STREAM_POLL = 0.5
@@ -59,24 +58,7 @@ module Samagotchi
     # @param session_dir [String]
     # @return [Integer, nil]
     def self.sidecar_port(session_dir, host: HOST)
-      port = WorkerSidecar.read(session_dir)&.port
-      return nil unless port&.positive?
-
-      # Validate liveness: stale sidecar after worker death causes ECONNREFUSED
-      # which surfaces as WEBrick ERROR. Probe quickly and clean up if dead.
-      begin
-        Socket.tcp(host, port, connect_timeout: PROBE_TIMEOUT).close
-      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ETIMEDOUT, SocketError, IOError, StandardError
-        begin
-          File.unlink(WorkerSidecar.path(session_dir))
-        rescue StandardError
-          nil
-        end
-        return nil
-      end
-      port
-    rescue StandardError
-      nil
+      WorkerSidecar.live_port(session_dir, unlink: true, host: host)
     end
 
     # @return [BridgeClient, nil] a client for the live Bridge in +session_dir+

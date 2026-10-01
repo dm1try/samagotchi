@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "socket"
 require_relative "session"
 require_relative "version"
 require_relative "worker_sidecar"
@@ -12,7 +11,6 @@ module Samagotchi
   # older one names none) and a `chi web` on its port (/api/info). Read-only:
   # a dead worker's sidecar is left for the next client to clean up.
   module LiveVersions
-    PROBE_TIMEOUT = 0.2
     WEB_TIMEOUT = 0.5
 
     # version is nil for a sidecar written before sidecars carried one.
@@ -24,8 +22,8 @@ module Samagotchi
     def workers(state_dir: Session.default_state_dir)
       Dir[File.join(state_dir, "*", WorkerSidecar::FILE)].sort.filter_map do |path|
         session_dir = File.dirname(path)
-        sidecar = WorkerSidecar.read(session_dir)
-        next unless sidecar && listening?(sidecar.port)
+        sidecar = WorkerSidecar.live(session_dir, unlink: false)
+        next unless sidecar
 
         Worker.new(session_id: File.basename(session_dir), version: sidecar.version)
       end
@@ -47,15 +45,6 @@ module Samagotchi
     def web_info(host, port, timeout: WEB_TIMEOUT)
       info = Web::InfoProbe.call(host, port, timeout: timeout)
       info.is_a?(Hash) ? info : nil
-    end
-
-    def listening?(port, host: "127.0.0.1")
-      return false unless port.positive?
-
-      Socket.tcp(host, port, connect_timeout: PROBE_TIMEOUT).close
-      true
-    rescue StandardError
-      false
     end
   end
 end

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "tmpdir"
+require "socket"
 require "spec_helper"
 require "samagotchi/worker_sidecar"
 
@@ -33,5 +34,20 @@ RSpec.describe Samagotchi::WorkerSidecar do
       expect(described_class.read(dir)).to be_nil, body
     end
     expect(described_class.read(File.join(dir, "none"))).to be_nil
+  end
+
+  it "is .live while its port takes a connect; a stale one is nil, and removed only with unlink: true" do
+    server = TCPServer.new("127.0.0.1", 0)
+    described_class.new(port: server.local_address.ip_port, version: "0.8.1").write(dir)
+    expect(described_class.live(dir, unlink: false)).to have_attributes(port: server.local_address.ip_port, version: "0.8.1")
+    expect(described_class.live_port(dir, unlink: true)).to eq(server.local_address.ip_port)
+
+    server.close
+    expect(described_class.live(dir, unlink: false)).to be_nil
+    expect(File.exist?(described_class.path(dir))).to be(true)
+    expect(described_class.live_port(dir, unlink: true)).to be_nil
+    expect(File.exist?(described_class.path(dir))).to be(false)
+  ensure
+    server&.close unless server&.closed?
   end
 end
