@@ -141,4 +141,14 @@ RSpec.describe "The guardrails bundle's small-model rules" do
     end
     expect(shell("git checkout -- app.rb", model: nil)).to be_allow
   end
+
+  # 0.8.0 shipped without the `models:` key: it fails closed on this file and
+  # denies every call, so the bundle must not install there.
+  it "needs a chi that knows models: (0.8.1 or later), which this one is" do
+    manifest = YAML.safe_load(File.read(File.join(bundle_dir, "manifest.yml")))
+    requirement = Gem::Requirement.new(manifest["requires_chi"])
+    expect(requirement).not_to be_satisfied_by(Gem::Version.new("0.8.0"))
+    expect(requirement).to be_satisfied_by(Gem::Version.new("0.8.1"))
+    expect(requirement).to be_satisfied_by(Gem::Version.new(Samagotchi::VERSION))
+  end
 end

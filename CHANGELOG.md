@@ -11,12 +11,12 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - Guardrail rules can name the models they apply to (`models: small`, or globs on the model name). The guardrails
-  bundle (0.2.0, `chi update`) adds two asks only small models get: `git checkout -- <file>` / `git restore`
-  (discards uncommitted changes) and `git stash drop`/`clear`. Small is `guardrails.small_models`: `auto` (the
-  default: 32B or less by the size in the model's name, an MoE's active size counting), a list of globs, or `[]`
-  for none. A chi older than this one that shares the bundles dir (a checkout next to the gem, or a worker still
-  running after a gem update) doesn't know `models:` and denies every tool call until it is restarted on the new
-  chi.
+  bundle (0.2.0, `chi update`; needs chi 0.8.1) adds two asks only small models get: `git checkout -- <file>` /
+  `git restore` (discards uncommitted changes) and `git stash drop`/`clear`. Small is `guardrails.small_models`:
+  `auto` (the default: 32B or less by the size in the model's name, an MoE's active size counting), a list of
+  globs, or `[]` for none. A chi older than 0.8.1 that shares the bundles dir (a checkout next to the gem, or a
+  worker still running after a gem update) doesn't know `models:` and denies every tool call until it is
+  restarted on the new chi.
 
 ## [0.8.0] - 2026-10-01
 
