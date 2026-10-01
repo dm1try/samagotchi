@@ -66,6 +66,28 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(attached).not_to be_running
     end
 
+    # Shared with the web: spec/shared/turn_snapshot.json.
+    it "replays the joined turn as it was drawn live: tool rows with their action and duration" do
+      fixture = JSON.parse(File.read(File.expand_path("../shared/turn_snapshot.json", __dir__)))
+      joined = snapshot(current_turn: fixture.dig("snapshot", "current_turn"), queued: fixture.dig("snapshot", "queued"))
+      feed(joined)
+
+      expect(screen.lines.map { |line| line.gsub(/\e\[[\d;]*m/, "") }).to eq([
+        "web> do it",
+        'tool> Running command (execute command="ls"): ok (1.3s)',
+        "tool> Editing file (edit path=\"a.rb\"): ok (40ms) +1 −1",
+        "input> also this",
+        "check-in> nudged: keep going",
+        "reminder: r",
+        "known-names> rejected execute",
+        "↻ cut by loop-guard, asking again (1/1)",
+        # A snapshot from an older worker: no action, the tool's row.
+        'tool> read path="old.rb": ok',
+        "queued web> later"
+      ])
+      expect(screen.statuses.last).to eq("| running read…")
+    end
+
     it "leaves the last answer's thinking and tool-call markup out, keeping its layout" do
       answer = "<think>\nplan it\n</think>\n\nHere:\n```\ndef a\n    b = 1\nend\n```"
       feed(snapshot(messages: [{ role: "user", content: "code" }, { role: "model", content: answer }]))

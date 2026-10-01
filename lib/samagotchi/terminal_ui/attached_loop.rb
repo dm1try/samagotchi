@@ -10,6 +10,7 @@ require_relative "image_input"
 require_relative "line_reader"
 require_relative "question_prompt"
 require_relative "reline_seam"
+require_relative "../bridge/turn_accumulator"
 require_relative "../bridge_client"
 require_relative "../log"
 require_relative "../context_note"
@@ -965,41 +966,44 @@ module Samagotchi
         return unless turn
 
         continues = turn[:prompt].nil?
-        @renderer.turn_continues = continues
         unless continues && reminder_origin?(turn[:origin] || {})
           @screen.commit(prompt_line(turn.dig(:origin, :client_id), turn[:prompt] || "(continuing)"))
         end
-        Array(turn[:images]).each { |ref| @screen.commit(format_image_line(ref)) }
         tail = nil
         lane = :writing
         running_tool = nil
-        Array(turn[:parts]).each do |part|
-          case part[:kind]
-          when "thinking" then tail, lane = part[:text], :thinking
-          when "text" then tail, lane = part[:text], :writing
-          when "tool"
-            if part[:status] == "running"
-              running_tool = part[:tool]
-            else
-              @screen.commit(snapshot_tool_line(part))
-            end
-          when "input" then @screen.commit("input> #{part[:text]}")
-          when "steer" then @screen.commit(format_steer_line(source: part[:source], text: part[:text]))
-          when "reminder" then @screen.commit(reminder_line(part[:reminders]))
-          when "notice" then replay_notice(part[:event])
+        Bridge::TurnAccumulator.replay_events(turn).each do |event|
+          case event[:type]
+          when :generation_chunk
+            tail, lane = event[:thinking].to_s.empty? ? [event[:text], :writing] : [event[:thinking], :thinking]
+          when :tool_call_started
+            running_tool = event[:tool]
+            @renderer.call(event)
+          when :tool_call_completed
+            running_tool = nil
+            replay_tool_completed(event)
+          when :merged_input then @screen.commit("input> #{event[:content]}")
+          when :reminder_injected then @screen.commit(reminder_line(event[:reminders]))
+          # The turn's start (its images), a plugin's steer, and its rows (a
+          # hook's notice, a retry's line), as they were drawn live.
+          # Questions are left out: the pending one is asked after the
+          # replay, answered ones showed no line.
+          when :turn_started, :pending_input_merged, :hook_notice, :empty_answer_retry then @renderer.call(event)
           end
         end
         @view.resume(tail: tail, lane: lane, tool: running_tool, parts: turn[:parts])
         ask(turn[:pending_question]) if turn[:pending_question]
       end
 
-      # One of the running turn's rows (Bridge::TurnNotice), drawn as it was
-      # live: a hook's notice and a retry's line. Questions are left out:
-      # the pending one is asked after the replay, answered ones showed no
-      # line.
-      def replay_notice(event)
-        event = EventRenderer.symbolize(event || {})
-        @renderer.call(event) if %i[hook_notice empty_answer_retry].include?(event[:type])
+      # A finished tool call of the joined turn: the live row (action,
+      # duration). A snapshot from an older worker has no action: its row
+      # names the tool only.
+      def replay_tool_completed(event)
+        return @renderer.call({ duration_ms: nil }.merge(event)) if event.dig(:activity, :action)
+
+        activity = event[:activity] || {}
+        @screen.commit(snapshot_tool_line({ tool: event[:tool], params: activity[:params], status: activity[:status],
+                                            images: event[:images], diff: event[:diff] }))
       end
 
       def show_enqueued(event)

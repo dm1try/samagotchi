@@ -68,7 +68,9 @@ module Samagotchi
         when :tool_call_completed
           @view.clear_generation_retry
           @view.tool_call_feedback_completed(event)
-          render_streamed_tool_activity(event[:activity], duration_ms: tool_duration_ms(event), images: event[:images],
+          # A replayed row (a join) carries its duration (nil: unknown).
+          measured = tool_duration_ms(event)
+          render_streamed_tool_activity(event[:activity], duration_ms: event.fetch(:duration_ms, measured), images: event[:images],
                                                           diff: event[:diff])
         when :generation_completed, :generation_cancelled, :tool_dispatch_started
           @view.generation_feedback_finished

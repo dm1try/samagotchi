@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
   Plain hook files keep `event[:x]`.
 - Bundles check-in 0.1.2, loop-guard 0.2.1 and skills 0.1.2 use `ctx` instead of `event[:steer]`/`event[:stop_turn]`/
   `event[:stop_generation]`; they behave as before (`chi update` picks them up).
+- Attaching to a session mid-turn (`chi --attach`) shows the turn's finished tool calls as they looked live, with
+  what each did and how long it took (`tool> Running command (execute …): ok (1.3s)`), when the worker runs this chi.
 
 ### Fixed
 
