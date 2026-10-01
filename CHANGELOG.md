@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
 
 - A failed turn's messages and its `turn_failed` event reach a joining client together (a snapshot taken in between
   could show one without the other).
+- A Ctrl-C while an `after_turn` or `session_end` hook runs no longer cancels the turn that already answered: the
+  answer stays in the session (it was replaced with a cancel note and a second end event).
 
 ## [0.11.0] - 2026-10-01
 

@@ -319,11 +319,9 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(session.messages.last).to include(role: "model", content: "done")
   end
 
-  # Today's behaviour, not a wanted one (plan B3 §8.9, D6): an Interrupt in
-  # the post-turn hooks runs the Ctrl-C ending after the turn completed —
-  # a second end event, and the answer replaced by the pre-turn messages
-  # plus a cancel note.
-  it "12. Interrupt after turn_completed (an after_turn hook): a second ending, the answer lost" do
+  # The turn has ended once turn_completed is out: an Interrupt in the
+  # post-turn hooks only re-raises (no second ending; the answer stays).
+  it "12. Interrupt after turn_completed (an after_turn hook): re-raised, no second ending, the answer kept" do
     record_hooks
     native { |messages, **| kernel_result(messages + [reply("done")]) }
     engine.instance_variable_get(:@hooks).register_persistent(:after_turn) { |_event| raise Interrupt }
@@ -332,10 +330,9 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
 
     expect(error).to be_a(Interrupt)
     expect(timeline).to eq(%w[turn_started hook:session_start hook:before_turn reminder_injected used_memories_updated
-                              replace! turn_completed persist hook:after_turn=completed replace! turn_canceled persist])
-    expect(tail(2)).to eq(["user:hi", "system:[SYSTEM: the previous turn was cancelled (ct"])
-    expect(session.messages.map { |m| m[:content] }).not_to include("done")
-    expect(session.last_turn["outcome"]).to eq("canceled")
+                              replace! turn_completed persist hook:after_turn=completed])
+    expect(tail(2)).to eq(["user:hi", "model:done"])
+    expect(session.last_turn["outcome"]).to eq("completed")
     expect_released
   end
 end

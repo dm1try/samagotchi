@@ -1241,6 +1241,7 @@ module Samagotchi
         record_last_turn(turn.session, outcome, seconds, turn.origin)
         emit_event(turn.on_event, turn.tag(event))
       end
+      turn.ended = true
       save_quietly(turn.session) if save
       @metrics.persist(state_dir: session_state_dir)
     end
@@ -1507,7 +1508,8 @@ module Samagotchi
     # One turn's values, for #run_turn and its endings. Per turn and
     # single-threaded: the cross-thread turn state (the cancel slot, the
     # sink, steers) stays on the Engine.
-    Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages) do
+    # +ended+: the end event is out (what follows is post-turn work).
+    Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended) do
       # The turn's boundary events carry the origin only when there is one,
       # so payloads stay unchanged for callers that don't pass it.
       def tag(event) = origin ? event.merge(origin: origin) : event
@@ -1548,7 +1550,9 @@ module Samagotchi
     #
     # An Interrupt (SIGINT) cancels the turn: the pre-turn conversation plus
     # the prompt is kept in the session and :turn_canceled is emitted, then the
-    # Interrupt is re-raised so the caller still decides whether to exit. Any
+    # Interrupt is re-raised so the caller still decides whether to exit. One
+    # after the turn's end event (in its after_turn/session_end hooks) is
+    # only re-raised: the turn already ended. Any
     # other error (e.g. an LLM::ProviderError) emits :turn_failed and
     # re-raises; a provider error adds error_kind:, retryable:, host: and a
     # one-line summary:.
@@ -1567,6 +1571,10 @@ module Samagotchi
         complete_turn(turn, result)
         result
       rescue Interrupt
+        # After the end event (in the after_turn/session_end hooks) the
+        # turn is over: no second ending, the answer stays.
+        raise if turn.ended
+
         turn.controller.cancel!(:ctrl_c)
         end_turn(turn, "canceled") do |seconds|
           [ctrl_c_messages(turn, seconds), { type: :turn_canceled, cancellation_reason: :ctrl_c, duration_ms: (seconds * 1000).round }]
