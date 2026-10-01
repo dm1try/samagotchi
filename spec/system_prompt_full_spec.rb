@@ -169,7 +169,7 @@ RSpec.describe "Full system prompt snapshots" do
     e.send(:tools_changed!)
     expect(e.system_prompt).to eq(first)
     expect(e.system_prompt).not_to equal(first)
-    # Each build records the preload again (add_used_memory_names dedups).
+    # Each build records the preload again (UsedMemories#add dedups).
     expect(e.activated_memory_names).to eq(%w[cli_note cli_note])
   end
 end

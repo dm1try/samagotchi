@@ -40,6 +40,7 @@ require_relative "guardrails"
 require_relative "reminder_store"
 require_relative "tools/memory"
 require_relative "muted_memories"
+require_relative "used_memories"
 require_relative "bundle_needs"
 require_relative "model_overlay"
 require_relative "served_model"
@@ -244,11 +245,10 @@ module Samagotchi
       @session = nil
       @session_observer = SessionObserver.new
       @metrics = SessionMetrics.new
-      @used_memory_names = []
-      @used_memory_mutex = Monitor.new
+      @used_memories = UsedMemories.new
       # Hydrate from resumed session if present
       if @resume_session && @resume_session.respond_to?(:used_memory_names)
-        @used_memory_names = Array(@resume_session.used_memory_names).map(&:to_s).reject(&:empty?).uniq
+        @used_memories.absorb(@resume_session)
         @session = @resume_session
       end
       # Shared inactivity clock + turn-running flag for the idle subsystems
@@ -1008,7 +1008,7 @@ module Samagotchi
         event_seq: @session_observer&.event_count,
         metrics: metrics,
         pending_question: @question_desk.pending,
-        used_memory_names: @used_memory_mutex.synchronize { @used_memory_names.dup },
+        used_memory_names: @used_memories.names,
         preloaded_memory_names: preloaded_memory_names,
         muted_memory_names: @muted_memory_names.dup,
         parent_id: @session&.parent_id,
@@ -1024,7 +1024,7 @@ module Samagotchi
 
     # @return [Array<String>] deduped used memory names (thread-safe copy)
     def used_memory_names
-      @used_memory_mutex.synchronize { @used_memory_names.dup }
+      @used_memories.names
     end
 
     # @return [Array<String>] the memories hidden from this session (normalized names)
@@ -1041,73 +1041,6 @@ module Samagotchi
 
     def memory_muted?(name)
       MutedMemories.muted?(name, @muted_memory_names)
-    end
-
-    def add_used_memory_names(names)
-      return if names.nil? || Array(names).empty?
-
-      @used_memory_mutex.synchronize do
-        Array(names).each do |n|
-          v = n.to_s.strip
-          next if v.empty?
-          next if @used_memory_names.include?(v)
-
-          @used_memory_names << v
-        end
-      end
-    end
-
-    def sync_used_memories_from_session(session)
-      return unless session && session.respond_to?(:used_memory_names)
-
-      add_used_memory_names(Array(session.used_memory_names))
-    end
-
-    def memory_name_from_tool_call(call)
-      return nil unless call.is_a?(Hash)
-
-      tool = call[:name].to_s
-      case tool
-      when Tools::MemoryRead::NAME
-        content = call[:content].to_s.strip
-        return nil if content.empty?
-
-        # comma-separated names
-        content.split(",").map { |s| normalize_memory_name(s) }.compact
-      when Tools::Read::NAME
-        path = call[:content].to_s.strip.tr("\\", "/")
-        return nil if path.empty?
-        return nil unless path.match?(/memories\/.+\.md\z/)
-
-        normalize_memory_name(path)
-      else
-        nil
-      end
-    end
-
-    def normalize_memory_name(raw)
-      v = raw.to_s.strip
-      return nil if v.empty?
-
-      # basename without .md, handle comma already split
-      base = File.basename(v, ".md").strip
-      base.empty? ? nil : base
-    end
-
-    # A memory read (memory_read, or read of a memories/*.md file) as it
-    # starts: its names join used_memory_names.
-    # @return [Array<String>, nil] the names this call read, nil for any other event
-    def capture_used_memory_from_event(event)
-      return unless event.is_a?(Hash) && event[:type] == :tool_call_started
-
-      call = event[:call].is_a?(Hash) ? event[:call] : {}
-      names = memory_name_from_tool_call(call)
-      # A refused read of a muted memory is not a use of it.
-      names = Array(names).reject { |n| memory_muted?(n) }
-      return if names.empty?
-
-      add_used_memory_names(names)
-      names
     end
 
     # ── Guardrails ─────────────────────────────────────────────────────────────
@@ -1455,7 +1388,7 @@ module Samagotchi
       Log.session_id = session.id if session.respond_to?(:id) && session.id
       # A woken worker's /stats and status line count the turns before it.
       bind_metrics(session)
-      sync_used_memories_from_session(session)
+      @used_memories.absorb(session)
     end
 
     # @return [IdleRecap, nil] the idle recap detector, or nil when disabled
@@ -1600,7 +1533,7 @@ module Samagotchi
       # status is turn state: running now, idle again before the turn's end
       # is announced, so a UI reacting to that event reads the new state.
       session.status = Session::STATUS_RUNNING
-      sync_used_memories_from_session(session)
+      @used_memories.absorb(session)
       # Mark the turn running before generating so the idle recap detector does
       # not fire (or render an invalidated recap) while the model is working,
       # and drop a recap already in flight: the turn makes it stale.
@@ -1694,8 +1627,7 @@ module Samagotchi
       # prefix, and the model server's KV cache for it, stay stable.
       turn.messages = ContextNote.with_system_head(turn.messages, { role: "system", content: system_prompt })
       # Explicit --memory preloads are now known after system prompt build.
-      add_used_memory_names(activated_memory_names)
-      sync_used_memories_from_session(session)
+      @used_memories.add(activated_memory_names).absorb(session)
 
       # Inject due reminders as a tail system message (after history, before
       # the new user prompt) to preserve prefix KV cache. Mutating the head
@@ -2322,7 +2254,7 @@ module Samagotchi
     def emit_event(on_event, event)
       # Capture used memories synchronously in the turn thread.
       read_names = begin
-        capture_used_memory_from_event(event)
+        @used_memories.capture(event, muted: @muted_memory_names)
       rescue StandardError
         nil
       end

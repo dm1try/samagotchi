@@ -65,7 +65,7 @@ RSpec.describe "memory_read with muted memories" do
     engine = Samagotchi::Engine.new(client: client, profile: "gemma4", kernel: kernel,
                                     muted_memories: ["gh-helper"])
     event = { type: :tool_call_started, call: { name: "memory_read", content: "gh-helper, cli_usage" } }
-    engine.send(:capture_used_memory_from_event, event)
+    engine.send(:emit_event, nil, event)
     expect(engine.used_memory_names).to eq(["cli_usage"])
   end
 
