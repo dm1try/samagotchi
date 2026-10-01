@@ -480,11 +480,18 @@ To explicitly route requests to a named model in llama.cpp, set:
 
 When `default.model` is unset or blank, Samagotchi fails fast with a clear startup/configuration error.
 
-With several `hosts:`, an unqualified model name goes to the host whose `/models`
-list has it (after `/models` ran), by exact id first, then by substring. A
-**remote** host (one with `api_key_env:` or an `https` url) is only chosen by exact
-id, `host:model` or an alias, never by a substring, and its model list is kept for
-10 minutes (60s for local hosts). For a chat host the context window comes from
+**The default host** is the host named `default`, else the first one under
+`hosts:` (without `hosts:`, the `server:` section).
+
+With several `hosts:`, `host:model` (or an alias naming a host) pins the host.
+An unqualified model name goes to the default host when its `/models` list has
+that exact id, else to the first host in `hosts:` order whose list has it, else
+to the default host. Only exact ids count, never a substring: `/model gemma` on
+a box that lists `gemma-3-12b` needs `box:gemma` or the exact id. The lists are
+known only after `/models` ran (nothing is fetched before the first turn), so
+until then an unqualified name goes to the default host; use `host:model` to pin
+one. A **remote** host (one with `api_key_env:` or an `https` url) keeps its model
+list for 10 minutes (60s for local hosts). For a chat host the context window comes from
 the running server (llama.cpp's `/props`), else the window the host's model list
 gives (`context_length`, `context_window`, `max_model_len` or llama.cpp's
 `meta.n_ctx`), else `context.window_tokens`.
@@ -495,7 +502,9 @@ OpenRouter id and goes to the default host as written, even with a host named
 `host/model` gets a warning at start; fix it with `host:model`. A `:` in a model
 name is often part of the id (`qwen3:8b`, `mistral:7b`,
 `unsloth/Qwen3-8B-GGUF:Q4_K_M`), so the part before the first `:` picks a host
-only when it is a configured host's name. An unknown prefix is refused with an
+only when it is a configured host's name. chi warns at start about a host named
+like a model family (`qwen3`, `llama`, `gemma`, …): `qwen3:8b` would go to that
+host as `8b`. An unknown prefix is refused with an
 error naming it and the configured hosts (with a "did you mean" for a near
 miss) when either
 - the rest is an `org/model` id (`nosuch:anthropic/claude-sonnet-4`), or

@@ -15,8 +15,9 @@ module Samagotchi
   #   /models), not on startup. Each host's list is cached (60s, 10 minutes
   #   for a remote host) with skip-on-error; lists are LLM::ModelInfo.
   # - Routing: client_for_model resolves a (possibly qualified) model string
-  #   to the appropriate Client instance. A remote host is chosen only by
-  #   exact model id, host:model or an alias, never by a substring.
+  #   to the appropriate Client instance: host:model, an alias, or an exact
+  #   id in a cached list (default host first, then hosts: order); never by
+  #   a substring.
   class HostRegistry
     CACHE_TTL_SECONDS = 60
     REMOTE_CACHE_TTL_SECONDS = 600
@@ -46,8 +47,7 @@ module Samagotchi
       def openai_base_url = url || "#{root_url}/v1"
 
       # A provider on the network rather than a local server: it needs a key
-      # or speaks https. Its model list is cached longer and it is never
-      # picked by a substring of a model name.
+      # or speaks https. Its model list is cached longer.
       def remote? = !api_key_env.to_s.empty? || scheme == "https"
 
       def models_ttl = remote? ? REMOTE_CACHE_TTL_SECONDS : CACHE_TTL_SECONDS
@@ -107,7 +107,7 @@ module Samagotchi
       @mutex = Mutex.new
       @cache = nil
       @cache_at = nil
-      @model_index = nil # downcased model_id => host_name
+      @model_index = nil # downcased model_id => [host_name] in hosts: order
     end
 
     def entries
@@ -150,47 +150,19 @@ module Samagotchi
 
     # The host a model name, alias or host:model ref goes to and the model
     # id it is sent as (ModelRef: one alias pass). A ref that names a host
-    # goes there; otherwise the cached model index, else the default host.
+    # goes there. A bare id goes to the default host when its cached list
+    # has it, else to the first host in hosts: order whose list has it,
+    # else to the default host (before /models nothing is listed: no
+    # discovery here, the latency budget). Never by a substring.
     def host_for_model(raw_model)
       ref = model_ref(raw_model)
       # ModelRef names a host only when it is one of ours
       return [find_entry(ref.host_name), ref.id] if ref.host_name
 
-      bare = ref.id
-      bare_down = bare.to_s.strip.downcase
-      # Try cached index (populated after list_all_models)
-      idx = @mutex.synchronize { @model_index }
-      if idx && idx.key?(bare_down)
-        host_name = idx[bare_down]
-        entry = find_entry(host_name)
-        return [entry, bare] if entry
-      end
-      # Fallback: try substring match in cached aggregated results if available
-      # (lightweight: scan cached model lists). Remote hosts match exactly only.
-      cached = @mutex.synchronize { @cache }
-      if cached
-        cached.each do |hname, data|
-          next unless data[:models]
-          data[:models].each do |m|
-            if m.id.downcase == bare_down
-              entry = find_entry(hname)
-              return [entry, bare] if entry
-            end
-          end
-        end
-        cached.each do |hname, data|
-          next unless data[:models]
-          next if find_entry(hname)&.remote?
-
-          data[:models].each do |m|
-            if m.id.downcase.include?(bare_down)
-              entry = find_entry(hname)
-              return [entry, bare] if entry
-            end
-          end
-        end
-      end
-      [default_entry, bare]
+      listed = @mutex.synchronize { @model_index }&.fetch(ref.id.to_s.strip.downcase, nil) || []
+      default = default_entry
+      name = listed.include?(default.name) ? default.name : listed.first
+      [(name && find_entry(name)) || default, ref.id]
     end
 
     # The chat adapter for a host (one per host, so its cached model list
@@ -277,17 +249,19 @@ module Samagotchi
       end
       threads.each { |thread| thread.join if thread.is_a?(Thread) }
 
-      # Build model index: model_id downcased -> host_name (first host wins)
-      index = {}
-      results.each do |hname, data|
-        next if data[:error]
+      # Model index: model_id downcased -> the hosts listing it, in hosts:
+      # order (not the order the threads answered in).
+      index = Hash.new { |h, k| h[k] = [] }
+      @entries.each_key do |hname|
+        data = results[hname]
+        next if data.nil? || data[:error]
+
         Array(data[:models]).each do |m|
-          mid = m.id.to_s
-          next if mid.strip.empty?
-          down = mid.downcase
-          index[down] = hname unless index.key?(down)
+          down = m.id.to_s.strip.downcase
+          index[down] << hname unless down.empty? || index[down].include?(hname)
         end
       end
+      index.default_proc = nil
 
       @mutex.synchronize do
         @cache = results

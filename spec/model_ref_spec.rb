@@ -196,18 +196,29 @@ RSpec.describe Samagotchi::ModelRef do
       expect(sent(switched("qwen3:8b"))).to eq(%w[qwen3 8b])
     end
 
-    it "#5 a bare id listed on two hosts goes to the host that answered /models first", step: :F3 do
+    it "#4 warns at start about a host named like a model family", step: :F3 do
+      problems = Samagotchi::Config.validate_yaml_sections(YAML.safe_load(config))
+      expect(problems).to include("config: hosts.qwen3 is named like a model family: a ref such as 'qwen3:8b' " \
+                                  "(an Ollama tag) goes to host qwen3 as '8b'; rename the host if you use such ids")
+    end
+
+    it "#5 a bare id listed on two hosts goes to the first in hosts: order, whichever answered first", step: :F3 do
       list_models({ "box" => ["gemma-small"], "qwen3" => ["gemma-small"] }, slow: "box")
-      expect(sent(switched("gemma-small"))).to eq(%w[qwen3 gemma-small])
+      expect(sent(switched("gemma-small"))).to eq(%w[box gemma-small])
+    end
+
+    it "#5 a bare id the default host lists stays there", step: :F3 do
+      list_models({ "box" => ["gemma-small"], "openrouter" => ["gemma-small"] })
+      expect(sent(switched("gemma-small"))).to eq(%w[openrouter gemma-small])
     end
 
     it "#5 a bare id before /models goes to the default host" do
       expect(sent(switched("gemma-small"))).to eq(%w[openrouter gemma-small])
     end
 
-    it "#6 /model gemma after /models goes to a local host listing gemma-small", step: :F3 do
+    it "#6 /model gemma after /models goes to the default host: no substring routing", step: :F3 do
       list_models({ "box" => ["gemma-small"] })
-      expect(sent(switched("gemma"))).to eq(%w[box gemma])
+      expect(sent(switched("gemma"))).to eq(%w[openrouter gemma])
     end
 
     it "#7 recap.model: small sends small", :recap, step: :F4 do
@@ -298,7 +309,7 @@ RSpec.describe Samagotchi::ModelRef do
 
     it "warns at start that aliases don't chain" do
       problems = Samagotchi::Config.validate_yaml_sections(YAML.safe_load(config))
-      expect(problems).to eq(["config: model_aliases.chain points to the alias 'small'; aliases don't chain, so 'small' is sent as written"])
+      expect(problems.grep(/model_aliases/)).to eq(["config: model_aliases.chain points to the alias 'small'; aliases don't chain, so 'small' is sent as written"])
     end
 
     it "#9 /models shows an alias for box:gemma-small only under box", step: :F2 do

@@ -456,7 +456,18 @@ module Samagotchi
 
           "config: model_aliases.#{name} points to the alias '#{inner}'; aliases don't chain, so '#{inner}' is sent as written"
         end
-        slash + chains
+        slash + chains + hosts.keys.filter_map { |name| family_host_problem(name.to_s) }
+      end
+
+      # Model families whose ids carry a ':' tag on Ollama and friends
+      # (qwen3:8b, llama3.1:70b): a host named like one takes those refs.
+      MODEL_FAMILY_HOST_RE = /\A(?:qwen|llama|codellama|gemma|mistral|mixtral|deepseek|phi|granite|starcoder|smollm|olmo)[\d.]*\z/i
+
+      def family_host_problem(name)
+        return nil unless name.match?(MODEL_FAMILY_HOST_RE)
+
+        "config: hosts.#{name} is named like a model family: a ref such as '#{name}:8b' (an Ollama tag) " \
+          "goes to host #{name} as '8b'; rename the host if you use such ids"
       end
 
       def host_slash_problem(where, ref, hosts)

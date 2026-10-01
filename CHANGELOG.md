@@ -35,6 +35,10 @@ and commands may change between minor versions. How releases are made:
   the default host as written even when a host is named `openai`. chi always wrote `host:`; a hand-written
   `host/model` in `default.model`, an alias or a saved session warns at start (fix it with `host:model`).
 - `/models` shows a `host:model` alias only under its own host.
+- Breaking: an unqualified model name is routed by exact id only. It goes to the default host when that host lists it,
+  else to the first host in `hosts:` order that does (it was whichever host answered `/models` first), else to the
+  default host; substring routing is gone (`/model gemma` no longer picks a local host listing `gemma-…`: use
+  `box:gemma` or the exact id). chi warns at start about a host named like a model family (`qwen3`, `llama`, …).
 
 ### Fixed
 
