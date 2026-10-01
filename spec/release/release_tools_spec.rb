@@ -139,6 +139,38 @@ RSpec.describe ReleaseTools do
         git("add", ".")
         expect(described_class.bundles_check(tmp)).to eq([[], []])
       end
+
+      # A warning, not a failure: most bundle changes need nothing new from chi.
+      context "with a requires_chi" do
+        before do
+          path = File.join(tmp, bundle, "manifest.yml")
+          File.write(path, File.read(path).sub("files:", "requires_chi: \">= 0.1.0\"\nfiles:"))
+          git("commit", "-qam", "requires_chi")
+          git("tag", "-f", "v0.1.0")
+        end
+
+        def change_bundle(requires_chi)
+          write("#{bundle}/a.md", "two")
+          described_class.refresh_bundle_shas!(tmp)
+          path = File.join(tmp, bundle, "manifest.yml")
+          File.write(path, File.read(path).sub("version: 0.1.0", "version: 0.1.1")
+                                          .sub(/requires_chi: .*$/, "requires_chi: \"#{requires_chi}\""))
+        end
+
+        it "warns about a changed bundle whose requires_chi the last tag's chi already meets" do
+          change_bundle(">= 0.1.0")
+          expect(described_class.bundles_check(tmp)).to eq(
+            [[], ["b: changed since v0.1.0 and requires_chi \">= 0.1.0\" admits that chi: " \
+                  "raise it if the change uses anything newer"]]
+          )
+        end
+
+        it "is quiet when the changed bundle requires a newer chi, or the bundle didn't change" do
+          expect(described_class.bundles_check(tmp)).to eq([[], []])
+          change_bundle(">= 0.1.1")
+          expect(described_class.bundles_check(tmp)).to eq([[], []])
+        end
+      end
     end
   end
 

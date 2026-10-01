@@ -130,12 +130,31 @@ module ReleaseTools
     end
   end
 
+  # A bundle changed since the tag whose requires_chi the tagged chi already
+  # meets: if the change uses anything new in chi, that chi would install it
+  # and break (guardrails 0.2.0 and `models:` under 0.8.0). A warning only:
+  # most bundle changes need nothing new.
+  def stale_requires_chi(root, tag)
+    tagged = Gem::Version.new(tag.delete_prefix("v"))
+    bundle_dirs(root).filter_map do |dir|
+      requires = YAML.safe_load(File.read(File.join(dir, "manifest.yml")))["requires_chi"] or next
+      next unless Gem::Requirement.new(*requires.to_s.split(",").map(&:strip)).satisfied_by?(tagged)
+
+      _, same = git(root, "diff", "--quiet", tag, "--", dir.delete_prefix("#{File.expand_path(root)}/"))
+      next if same
+
+      "#{File.basename(dir)}: changed since #{tag} and requires_chi #{requires.to_s.inspect} admits that chi: " \
+        "raise it if the change uses anything newer"
+    end
+  end
+
   # [problems, notes] for `rake bundles:check`.
   def bundles_check(root)
     problems = stale_shas(root)
     notes = []
     if (tag = last_tag(root))
       problems += unbumped_bundles(root, tag)
+      notes += stale_requires_chi(root, tag)
     else
       notes << "No v* tag yet: skipped the changed-bundle version check."
     end

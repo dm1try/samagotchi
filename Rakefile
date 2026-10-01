@@ -59,7 +59,7 @@ namespace :bundles do
     end
   end
 
-  desc "Check the bundle manifests: sha256 lines match; a bundle changed since the last v* tag has a higher version"
+  desc "Check the bundle manifests: sha256 lines match; a bundle changed since the last v* tag has a higher version (and a warning when its requires_chi admits that tag)"
   task :check do
     problems, notes = ReleaseTools.bundles_check(ROOT)
     notes.each { |n| puts "note: #{n}" }
