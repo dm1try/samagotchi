@@ -5,15 +5,11 @@ import {
   rowKey,
   addStarted,
   addCompleted,
-  finalizeActivity,
-  activityCount,
 } from "../../../lib/samagotchi/web/public/activity.js";
 
-test("newActivity starts empty and not finalized", () => {
+test("newActivity starts empty", () => {
   const m = newActivity();
-  assert.equal(m.finalized, false);
   assert.deepEqual(m.rows, []);
-  assert.equal(activityCount(m), 0);
 });
 
 test("rowKey is stable per iteration:call_index", () => {
@@ -34,7 +30,7 @@ test("addStarted creates a running row", () => {
   assert.equal(row.tool, "read");
   assert.equal(row.params, 'path="lib/x.rb"');
   assert.equal(row.output, "");
-  assert.equal(activityCount(m), 1);
+  assert.equal(m.rows.length, 1);
 });
 
 test("addStarted with the same key does not duplicate", () => {
@@ -42,7 +38,7 @@ test("addStarted with the same key does not duplicate", () => {
   addStarted(m, { iteration: 1, call_index: 1, tool: "read", params: "a" });
   const { created } = addStarted(m, { iteration: 1, call_index: 1, tool: "read", params: "b" });
   assert.equal(created, false);
-  assert.equal(activityCount(m), 1);
+  assert.equal(m.rows.length, 1);
   assert.equal(m.rows[0].params, "b");
 });
 
@@ -100,7 +96,7 @@ test("addCompleted synthesizes a row when no start was seen (replay gap)", () =>
   });
   assert.equal(row.status, "ok");
   assert.equal(row.tool, "memory_read");
-  assert.equal(activityCount(m), 1);
+  assert.equal(m.rows.length, 1);
 });
 
 test("rows are ordered by arrival (call_index order)", () => {
@@ -113,14 +109,6 @@ test("rows are ordered by arrival (call_index order)", () => {
     m.rows.map((r) => r.key),
     ["1:1", "1:2", "1:3"],
   );
-});
-
-test("finalizeActivity marks finalized but keeps rows", () => {
-  const m = newActivity();
-  addStarted(m, { iteration: 1, call_index: 1, tool: "read" });
-  finalizeActivity(m);
-  assert.equal(m.finalized, true);
-  assert.equal(activityCount(m), 1);
 });
 
 test("output_truncated flag is preserved", () => {

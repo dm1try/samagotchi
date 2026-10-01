@@ -24,7 +24,6 @@ button{background:var(--primary);border:0;color:#fff;padding:8px 12px;border-rad
 button:hover:not(:disabled){filter:brightness(1.12)}
 button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button.ghost{background:var(--bg-raised);color:var(--text-2)}
-button.danger{background:var(--danger-bg)}
 button:disabled{opacity:.5;cursor:not-allowed}
 main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:auto;background:transparent;min-height:0}
 #topStrip{display:grid;grid-template-columns:repeat(var(--strip-cols,3),minmax(0,440px)) 150px;gap:12px;min-height:88px;align-content:start;transition:opacity 280ms ease, transform 280ms ease}
@@ -661,7 +660,6 @@ body.all-view #center, body.all-view #topStrip{display:none}
 .card.skeleton{pointer-events:none;border-style:dashed;opacity:.9;animation:skeleton-pulse 1.2s ease-in-out infinite}
 .card.skeleton .line{height:10px;background:var(--bg-raised);border-radius:6px}
 .card.skeleton .line.long{width:78%}
-.card.skeleton .line.long2{width:62%}
 .card.skeleton .line.tiny{width:30%;height:8px}
 @keyframes skeleton-pulse{0%,100%{opacity:1}50%{opacity:.55}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
