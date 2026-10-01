@@ -282,7 +282,7 @@ RSpec.describe Samagotchi::Bridge do
         heartbeat_interval: 0.05
       )
       writer_thread = Thread.new { writer.serve!(io) }
-      sleep(0.3) # subscribe + replay complete
+      wait_until { io.buffer.include?("id: 10\r\n") } # subscribe + replay complete
 
       seqs_in_order = %w[5 6 7 8 9 10]
       positions = seqs_in_order.map { |s| io.buffer.index("id: #{s}") }
@@ -309,7 +309,8 @@ RSpec.describe Samagotchi::Bridge do
           heartbeat_interval: 0.05
         )
         writer_thread = Thread.new { writer.serve!(io) }
-        sleep(0.3)
+        # The last replayed frame, or the reset (which carries the newest id).
+        wait_until { io.buffer.include?("id: 10\r\n") }
 
         if resets
           expect(io.buffer).to include("event: reset")
@@ -336,7 +337,7 @@ RSpec.describe Samagotchi::Bridge do
           heartbeat_interval: 0.05
         )
         writer_thread = Thread.new { writer.serve!(io) }
-        sleep(0.3)
+        wait_until { io.buffer.include?("id: 10-e2\r\n") } # the last replayed frame, or the reset's
         writer_thread.kill
         io.buffer
       end
@@ -374,7 +375,7 @@ RSpec.describe Samagotchi::Bridge do
         heartbeat_interval: 0.05
       )
       writer_thread = Thread.new { writer.serve!(io) }
-      sleep(0.2) # subscribe + headers written
+      wait_until { io.buffer.include?("text/event-stream") } # subscribe + headers written
 
       start = mono
       500.times { |i| writer.call(type: :x, event_seq: 10_000 + i) }
@@ -521,7 +522,7 @@ RSpec.describe Samagotchi::Bridge do
         # The prompt is queued; the reply hasn't gone out yet.
         allow(@bridge).to receive(:write_json).and_wrap_original do |original, *args|
           enqueued << true
-          sleep(0.3)
+          sleep(0.3) # the reply still going out while stop runs (stop must wait for it)
           original.call(*args)
         end
         client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port)
@@ -536,7 +537,7 @@ RSpec.describe Samagotchi::Bridge do
       it "doesn't wait on an open stream" do
         start_bridge
         @clients << SSEClient.new(@bridge_port, @session.id).start
-        sleep(0.2)
+        wait_until { @bridge.open_streams == 1 }
 
         started = mono
         @bridge.stop
@@ -604,7 +605,7 @@ RSpec.describe Samagotchi::Bridge do
         expect(Samagotchi::BridgeClient.sidecar_port(
           Samagotchi::Session.session_dir(@session.id, state_dir: state_dir)
         )).to eq(@bridge_port)
-        sleep(0.1)
+        sleep(0.1) # nothing to wait on: a request would have noted activity by now
         expect(@bridge.last_client_activity_at).to eq(before)
       end
     end
@@ -634,7 +635,7 @@ RSpec.describe Samagotchi::Bridge do
       start_bridge
       client = SSEClient.new(@bridge_port, @session.id).start
       @clients = [client]
-      sleep(0.3) # ensure the acceptor + per-connection subscribe happened
+      wait_until { @bridge.open_streams == 1 } # the acceptor + per-connection subscribe happened
 
       stub_kernel_emit({ type: :generation_started, iteration: 1 })
       run_turn_sync(@engine, @session, "hi")
@@ -954,7 +955,8 @@ RSpec.describe Samagotchi::Bridge do
 
       c = SSEClient.new(@bridge_port, @session.id, last_event_id: current_seq.to_s).start
       @clients << c
-      sleep(0.3)
+      wait_until { @bridge.open_streams == 1 }
+      sleep(0.1) # nothing to wait on: a reset would follow the subscribe at once
       events = c.events
       reset = events.find { |e| e[:data]&.fetch("type") == "reset" }
       expect(reset).to be_nil
@@ -1029,17 +1031,21 @@ RSpec.describe Samagotchi::Bridge do
           original.call(*args, **kw)
         end
         held = Queue.new
-        holder = Thread.new { @engine.synchronize_events { held << true; sleep(0.9) } }
+        release = Queue.new
+        # The event log held until the client gave up (past its read timeout).
+        holder = Thread.new { @engine.synchronize_events { held << true; release.pop } }
         held.pop
         client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, read_timeout: 0.5)
 
         expect { client.post_turn(prompt: "late", client_id: "cli:send") }.to raise_error(Errno::ETIMEDOUT)
+        release << true
         holder.join
 
         expect(dropped.pop(timeout: 2)).to eq("turn_expired")
         expect(Dir.exist?(input_dir) ? Dir.children(input_dir) : []).to be_empty
         expect(seen).to be_empty
       ensure
+        release&.push(true)
         holder&.join
       end
 
@@ -1148,11 +1154,8 @@ RSpec.describe Samagotchi::Bridge do
 
       Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"))
 
-      deadline = mono + 2
-      record = nil
-      until record || mono > deadline
-        record = File.exist?(log) && File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.tag == "bridge" && r.event == "request" } }
-        sleep 0.01 unless record
+      record = wait_until(timeout: 2) do
+        File.exist?(log) && File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.tag == "bridge" && r.event == "request" } }
       end
       expect(record.fields.except("ms")).to eq("method" => "GET", "path" => "/session/#{@session.id}/stats", "status" => "200")
     end
@@ -1176,8 +1179,7 @@ RSpec.describe Samagotchi::Bridge do
       expect { Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats")) }
         .to raise_error(EOFError)
 
-      deadline = mono + 2
-      sleep 0.01 until File.exist?(log) || mono > deadline
+      wait_until(timeout: 2) { File.exist?(log) }
       record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "connection_failed" } }
       expect(record.to_h).to include(level: "ERROR", tag: "bridge")
       expect(record.fields).to include("error" => "RuntimeError", "msg" => "boom")
@@ -1544,8 +1546,7 @@ RSpec.describe Samagotchi::Bridge do
                                              pending_tool_calls: false, tool_activity: [])
         end
         @turn = Thread.new { run_turn_sync(@engine, @session, "ask me") }
-        deadline = mono + 3
-        sleep(0.01) until @engine.pending_question || mono > deadline
+        wait_until(timeout: 3) { @engine.pending_question }
         tool_result
       end
 
