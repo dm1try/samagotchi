@@ -42,7 +42,7 @@ RSpec.describe "The loop-guard bundle" do
   let(:engine) { Samagotchi::Engine.new(client: client) }
   let(:hooks) { engine.instance_variable_get(:@hooks) }
   let(:runner) do
-    kernel = Struct.new(:hooks) do
+    kernel = Struct.new(:hooks, :tools, :guardrail_gate) do
       def dispatch_tool_call(call) = { output: "[#{call[:name]}]\nexit: 0 (no output)", activity: { tool: call[:name], status: "ok" } }
     end
     Samagotchi::ToolRunner.new(kernel.new(hooks))

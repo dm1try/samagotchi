@@ -14,7 +14,7 @@ RSpec.describe Samagotchi::ToolRunner do
   let(:hooks) { Samagotchi::Hooks::Registry.new }
   let(:dispatched) { [] }
   let(:kernel) do
-    k = Struct.new(:hooks, :dispatched) do
+    k = Struct.new(:hooks, :dispatched, :tools, :guardrail_gate) do
       def dispatch_tool_call(call)
         dispatched << call
         { output: "[#{call[:name]}]\nran", activity: { tool: call[:name], status: "ok" } }
@@ -193,7 +193,7 @@ RSpec.describe Samagotchi::ToolRunner do
       registry = Samagotchi::Tools::Builtins.registry
       registry.register("mcp_chrome_screenshot", schema: { parameters: { properties: {} } }, handler: ->(*) { "ok" },
                                                  source: "mcp", label: "chrome: screenshot")
-      labelled = Struct.new(:hooks, :tools) do
+      labelled = Struct.new(:hooks, :tools, :guardrail_gate) do
         def dispatch_tool_call(call) = { output: "[#{call[:name]}]\nok", activity: { tool: call[:name], status: "ok" } }
       end.new(hooks, registry)
       result = described_class.new(labelled).run({ name: "mcp_chrome_screenshot" }, iteration: 1, call_index: 1, call_count: 1,
@@ -318,7 +318,7 @@ RSpec.describe Samagotchi::ToolRunner do
     around { |ex| Dir.mktmpdir { |dir| @dir = dir; ex.run } }
 
     let(:kernel) do
-      k = Struct.new(:hooks, :dispatched) do
+      k = Struct.new(:hooks, :dispatched, :tools, :guardrail_gate) do
         def dispatch_tool_call(call)
           dispatched << call
           out = case call[:name]

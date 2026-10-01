@@ -192,7 +192,7 @@ module Samagotchi
     end
 
     # The kernel's tools, for the activity line of a tool that isn't built in.
-    def tools = @kernel.respond_to?(:tools) ? @kernel.tools : nil
+    def tools = @kernel.tools
 
     # A tool the registry has from a plugin (not core, not unknown).
     def plugin_tool?(name)
@@ -206,8 +206,7 @@ module Samagotchi
     # The Engine sets the kernel's gate (its context, later the approval
     # flow); a bare kernel (specs) gets one that only runs the hooks.
     def gate
-      given = @kernel.guardrail_gate if @kernel.respond_to?(:guardrail_gate)
-      given || (@gate ||= Guardrails::Gate.new(-> { @kernel.hooks if @kernel.respond_to?(:hooks) }, tools_lookup: -> { tools }))
+      @kernel.guardrail_gate || (@gate ||= Guardrails::Gate.new(-> { @kernel.hooks }, tools_lookup: -> { tools }))
     end
 
     # A gate that fails denies the call (fail closed).
@@ -254,8 +253,7 @@ module Samagotchi
 
     # A failing hook must not break the turn.
     def fire(name, event)
-      hooks = @kernel.hooks if @kernel.respond_to?(:hooks)
-      hooks&.fire(name, event)
+      @kernel.hooks&.fire(name, event)
     rescue StandardError
       nil
     end

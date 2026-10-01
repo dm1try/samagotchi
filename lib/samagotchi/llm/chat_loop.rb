@@ -77,10 +77,8 @@ module Samagotchi
         end
       end
 
-      # The kernel's tools; the built-ins for a kernel without a registry.
-      def tools
-        @kernel.respond_to?(:tools) ? @kernel.tools : Tools::Builtins.default
-      end
+      # The kernel's tools.
+      def tools = @kernel.tools
 
       # engine-format conversation -> OpenAI wire messages. Model turns are
       # thought-stripped and carry their tool_calls; tool responses go as tool
@@ -166,9 +164,7 @@ module Samagotchi
         deep_compact(options)
       end
 
-      def strip_model_thought(text)
-        @kernel.respond_to?(:strip_model_thought) ? @kernel.strip_model_thought(text) : text
-      end
+      def strip_model_thought(text) = @kernel.strip_model_thought(text)
 
       def tool_runner
         @tool_runner ||= ToolRunner.new(@kernel)
@@ -179,8 +175,7 @@ module Samagotchi
       # llama.cpp answers /props), then the host's model list, config, env
       # and the default. A remote provider has no /props to probe.
       def context_window(model)
-        remote = @adapter.respond_to?(:remote?) && @adapter.remote?
-        client = @kernel.client if !remote && @kernel.respond_to?(:client)
+        client = @adapter.remote? ? nil : @kernel.client
         ContextWindow.resolve(client: client, model: model, adapter: @adapter)
       rescue StandardError
         nil
@@ -188,8 +183,7 @@ module Samagotchi
 
       # A hook failing must not break the turn (as in ToolRunner).
       def fire_hook(name, event)
-        hooks = @kernel.hooks if @kernel.respond_to?(:hooks)
-        hooks&.fire(name, event)
+        @kernel.hooks&.fire(name, event)
       rescue StandardError
         nil
       end

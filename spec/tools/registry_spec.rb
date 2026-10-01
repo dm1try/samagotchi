@@ -75,14 +75,12 @@ RSpec.describe Samagotchi::Tools::Registry do
     end
   end
 
-  it "the chat loop declares its kernel's tools, and the built-ins for a kernel without a registry" do
+  it "the chat loop declares its kernel's tools" do
     kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
     kernel.tools = extended_registry
     names = ->(loop) { loop.tool_definitions.map { |tool| tool[:function][:name] } }
 
     expect(names.call(Samagotchi::LLM::ChatLoop.new(kernel: kernel)).last).to eq("echo")
-    expect(names.call(Samagotchi::LLM::ChatLoop.new(kernel: instance_double(Samagotchi::KernelLoop))))
-      .to eq(Samagotchi::ToolDeclarations::TOOL_SCHEMAS.map { |s| s[:name] })
   end
 
   it "an Engine gives a kernel it is given its own registry" do
