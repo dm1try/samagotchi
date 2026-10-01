@@ -6,6 +6,7 @@ require "fileutils"
 require "digest"
 require "samagotchi/hooks/bundle_loader"
 require "samagotchi/hooks/registry"
+require "samagotchi/guardrails"
 
 RSpec.describe Samagotchi::Hooks::BundleLoader do
   let(:tmpdir) { Dir.mktmpdir("bundle-loader-") }
@@ -116,17 +117,46 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       expect(registry.size).to eq(0)
     end
 
-    it "fail_closed sets event[:blocked] on before_tool_call when hook raises" do
+    it "fail_closed denies the call on before_tool_call when the hook raises" do
       hooks_dir = File.join(tmpdir, "hooks")
       write_hook(hooks_dir, "guardrails.rb", "class Guardrails; def call(e); raise \"boom\"; end; end")
       registry = Samagotchi::Hooks::Registry.new
       sha = Digest::SHA256.hexdigest(File.read(File.join(hooks_dir, "guardrails.rb")))
       meta = { "guardrails.rb" => { "event" => "before_tool_call", "on_error" => "fail_closed", "sha256" => sha } }
       described_class.load(bundle_name: "fail-bundle", hooks_dir: hooks_dir, metadata: meta, registry: registry)
-      e = { tool_name: "bad" }
-      registry.fire(:before_tool_call, e)
-      expect(e[:blocked]).to be true
-      expect(e[:block_reason]).to include("guardrails.rb")
+      verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "bad" })
+      registry.fire(:before_tool_call, { tool_name: "bad", guardrail: verdict })
+      expect(verdict).to be_deny
+      expect([verdict.reason, verdict.rule, verdict.decided_by]).to eq(
+        ["guardrail guardrails.rb (bundle fail-bundle) raised RuntimeError: boom", "guardrail-load", "core"]
+      )
+    end
+
+    it "fail_closed denies whatever the hook raises, not only a StandardError" do
+      hooks_dir = File.join(tmpdir, "hooks")
+      write_hook(hooks_dir, "deep.rb", "class Deep; def call(e); raise NotImplementedError, \"later\"; end; end")
+      registry = Samagotchi::Hooks::Registry.new
+      sha = Digest::SHA256.hexdigest(File.read(File.join(hooks_dir, "deep.rb")))
+      meta = { "deep.rb" => { "event" => "before_tool_call", "on_error" => "fail_closed", "sha256" => sha } }
+      described_class.load(bundle_name: "deep-bundle", hooks_dir: hooks_dir, metadata: meta, registry: registry)
+      verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "x" })
+      registry.fire(:before_tool_call, { guardrail: verdict })
+      expect(verdict).to be_deny
+    end
+
+    it "fail_closed: through the Gate, a raise denies the call and the next hook sees event[:blocked]" do
+      hooks_dir = File.join(tmpdir, "hooks")
+      write_hook(hooks_dir, "guardrails.rb", "class Guardrails; def call(e); raise \"boom\"; end; end")
+      registry = Samagotchi::Hooks::Registry.new
+      sha = Digest::SHA256.hexdigest(File.read(File.join(hooks_dir, "guardrails.rb")))
+      meta = { "guardrails.rb" => { "event" => "before_tool_call", "on_error" => "fail_closed", "priority" => 10, "sha256" => sha } }
+      described_class.load(bundle_name: "fail-bundle", hooks_dir: hooks_dir, metadata: meta, registry: registry)
+      seen = nil
+      registry.register(:before_tool_call) { |e| seen = e.slice(:blocked, :block_reason) }
+      verdict = Samagotchi::Guardrails::Gate.new(-> { registry }).evaluate({ name: "execute" }, iteration: 1, params: "")
+      reason = "guardrail guardrails.rb (bundle fail-bundle) raised RuntimeError: boom"
+      expect([verdict.decision, verdict.reason]).to eq([:deny, reason])
+      expect(seen).to eq(blocked: true, block_reason: reason)
     end
 
     it "logs an on_error: log :generation_progress hook's raise once a minute" do

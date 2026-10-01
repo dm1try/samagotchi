@@ -220,23 +220,15 @@ module Samagotchi
         end
         @tools.each { |tool| @registries.tools.register(tool[:name], source: @bundle, **Api.entry_fields(tool, context)) }
         @hooks.each do |hook|
-          bundle = @bundle
-          label = @label
           block = hook[:block]
-          context = @context
-          # A stream hook fires ~once a second: a broken one logs once a minute.
-          log_failure = Hooks.failure_log_gate(hook[:event])
-          @registries.hooks.register_bundle(bundle, hook[:event], hook_name: label.split(" ").first,
-                                                                  priority: hook[:priority]) do |event|
+          # Logged only (echo: false): a turn's live region is on screen.
+          handler = Hooks.wrap(label: "#{@label} #{hook[:event]} hook", event: hook[:event], policy: :log,
+                               log: [:plugins, "plugin_hook_failed"], echo: false, fields: { bundle: @bundle }) do |event|
             # ctx's helpers act as this event's while the block runs.
             context ? context.with_event(event) { block.call(event, context) } : block.call(event, context)
-          rescue StandardError => e
-            next unless log_failure.call
-
-            # Logged only: a turn's live region is on screen.
-            Log.warn(:plugins, "plugin_hook_failed", bundle: bundle, event: hook[:event].to_s, error: e.class.name,
-                                                     msg: "#{label} #{hook[:event]} hook failed: #{e.message}")
           end
+          @registries.hooks.register_bundle(@bundle, hook[:event], hook_name: @label.split(" ").first,
+                                                                   priority: hook[:priority], &handler)
         end
         @inits.each do |init|
           block = init[:block]

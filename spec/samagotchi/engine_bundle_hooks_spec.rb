@@ -109,15 +109,15 @@ RSpec.describe Samagotchi::Engine, "bundle hooks" do
     hooks = engine.instance_variable_get(:@hooks)
     # After first turn, bundle hook should still be present (clear_all spares it)
     expect(hooks.size).to eq(1)
-    e1 = { tool_name: "bad", blocked: false }
-    hooks.fire(:before_tool_call, e1)
-    expect(e1[:blocked]).to be true
+    v1 = Samagotchi::Guardrails::Verdict.new(call: { name: "bad" })
+    hooks.fire(:before_tool_call, { tool_name: "bad", guardrail: v1 })
+    expect(v1).to be_deny
 
     # Second turn — should still veto
     engine.run_turn(session, "hi2")
-    e2 = { tool_name: "bad", blocked: false }
-    hooks.fire(:before_tool_call, e2)
-    expect(e2[:blocked]).to be true
+    v2 = Samagotchi::Guardrails::Verdict.new(call: { name: "bad" })
+    hooks.fire(:before_tool_call, { tool_name: "bad", guardrail: v2 })
+    expect(v2).to be_deny
   end
 
   it "proves trust_level persistence is wired end-to-end (installer → provenance → engine warning)" do

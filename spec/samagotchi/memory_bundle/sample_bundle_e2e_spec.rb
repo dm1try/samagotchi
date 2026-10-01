@@ -8,6 +8,7 @@ require "samagotchi/memory_bundle/uninstaller"
 require "samagotchi/memory_bundle/provenance"
 require "samagotchi/hooks/registry"
 require "samagotchi/hooks/bundle_loader"
+require "samagotchi/guardrails"
 
 RSpec.describe "Sample hooks bundle E2E", type: :integration do
   let(:tmpdir) { Dir.mktmpdir("sample-e2e-") }
@@ -42,14 +43,14 @@ RSpec.describe "Sample hooks bundle E2E", type: :integration do
     expect(loaded).to eq(1)
 
     # vetoes bad_tool
-    e = { tool_name: "bad_tool", blocked: false }
-    registry.fire(:before_tool_call, e)
-    expect(e[:blocked]).to be true
+    bad = Samagotchi::Guardrails::Verdict.new(call: { name: "bad_tool" })
+    registry.fire(:before_tool_call, { tool_name: "bad_tool", guardrail: bad })
+    expect(bad).to be_deny
 
     # good tool passes
-    e2 = { tool_name: "good_tool", blocked: false }
-    registry.fire(:before_tool_call, e2)
-    expect(e2[:blocked]).not_to be true
+    good = Samagotchi::Guardrails::Verdict.new(call: { name: "good_tool" })
+    registry.fire(:before_tool_call, { tool_name: "good_tool", guardrail: good })
+    expect(good).to be_allow
 
     # uninstall cleanly
     uninstaller = Samagotchi::MemoryBundle::Uninstaller.new(name: "sample-hooks-bundle", force: false)

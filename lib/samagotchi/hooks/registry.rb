@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../log"
 
 module Samagotchi
   module Hooks
@@ -33,6 +34,46 @@ module Samagotchi
 
         logged_at = now
         true
+      end
+    end
+
+    # A hook file's class: the PascalCase of its basename (my_hook.rb →
+    # MyHook), looked up in +namespace+ (a bundle's module; Object for a
+    # config hook).
+    # @return [Class]
+    def self.class_for(file, namespace = Object)
+      namespace.const_get(File.basename(file.to_s, ".rb").split("_").map(&:capitalize).join, false)
+    end
+
+    # A hook's block wrapped in its error policy: what a loader registers.
+    # When the block raises,
+    #   :deny  denies the call (event[:guardrail], the Gate's Verdict),
+    #          whatever was raised: a fail-closed before_tool_call guardrail.
+    #          The Gate folds the verdict into event[:blocked] and
+    #          event[:block_reason] for the hooks after it.
+    #   :log   warns (a stream hook at most once a minute, failure_log_gate)
+    #   :skip  is silent
+    # :log and :skip rescue StandardError and ScriptError.
+    # @param label [String] the hook, for the deny reason and the warning
+    # @param event [Symbol] the hook's event
+    # @param log [Array(Symbol, String)] the warning's tag and record name
+    # @param echo [Boolean] the warning also goes to stderr
+    # @param fields [Hash] more fields for the warning's record
+    def self.wrap(label:, event:, policy:, log: [:hooks, "hook_failed"], echo: true, fields: {}, &block)
+      log_failure = failure_log_gate(event)
+      lambda do |payload|
+        block.call(payload)
+      rescue Exception => e # rubocop:disable Lint/RescueException -- :deny fails closed on anything
+        raise unless policy == :deny || e.is_a?(StandardError) || e.is_a?(ScriptError)
+
+        failed = "#{e.class}: #{e.message}"
+        if policy == :deny
+          payload[:guardrail]&.deny!("#{label} raised #{failed}", rule: "guardrail-load", source: "core", decided_by: "core") if payload.is_a?(Hash)
+        elsif policy == :log && log_failure.call
+          text = "#{label} failed: #{failed}"
+          Log.warn(log[0], log[1], echo: echo ? "[samagotchi:hooks] #{text}" : nil, hook: label, event: event.to_s,
+                                   error: e.class.name, msg: text, **fields)
+        end
       end
     end
 

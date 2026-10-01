@@ -98,10 +98,9 @@ module Samagotchi
       def instantiate(bundle_name, file, settings)
         namespace = fresh_namespace(bundle_name)
         namespace.module_eval(File.read(file), file, 1)
-        class_name = File.basename(file, ".rb").split("_").map(&:capitalize).join
-        klass = namespace.const_get(class_name, false)
+        klass = Hooks.class_for(file, namespace)
         plugin = Hooks.build_plugin(klass, settings)
-        raise ArgumentError, "#{class_name} does not respond to #register" unless plugin.respond_to?(:register)
+        raise ArgumentError, "#{klass.name.split("::").last} does not respond to #register" unless plugin.respond_to?(:register)
 
         plugin
       end

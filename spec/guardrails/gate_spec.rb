@@ -85,11 +85,8 @@ RSpec.describe Samagotchi::Guardrails::Gate do
     end
 
     it "counts a fail_closed bundle hook that raises as a deny" do
-      hooks.register_bundle("b", :before_tool_call, hook_name: "g.rb") do |e|
-        raise "boom"
-      rescue StandardError => err
-        Samagotchi::Hooks::BundleLoader.handle_error("b", "g.rb", "fail_closed", true, e, err)
-      end
+      raising = Samagotchi::Hooks.wrap(label: "guardrail g.rb (bundle b)", event: :before_tool_call, policy: :deny) { raise "boom" }
+      hooks.register_bundle("b", :before_tool_call, hook_name: "g.rb", &raising)
       hooks.register(:before_tool_call) { |e| e[:blocked] = false }
       expect(evaluate).to be_deny
     end

@@ -19,6 +19,8 @@ and commands may change between minor versions. How releases are made:
   `event[:stop_generation]`; they behave as before (`chi update` picks them up).
 - Attaching to a session mid-turn (`chi --attach`) shows the turn's finished tool calls as they looked live, with
   what each did and how long it took (`tool> Running command (execute …): ok (1.3s)`), when the worker runs this chi.
+- A config hook with `on_error: log` warns as `[samagotchi:hooks] <file> (config) failed: <error>`, the same shape as a
+  bundle hook's warning; a fail-closed bundle guardrail's deny reason reads `... (bundle <name>) raised <error>`.
 
 ### Fixed
 
@@ -32,6 +34,8 @@ and commands may change between minor versions. How releases are made:
   504 ("did not answer, so ... was not ..."; cancel said "not running"), a worker running an older chi is 501 with
   how to restart it (an answer said "not running").
 - `chi self`'s thinking line finds a `models:` entry under the model an alias points at, as a turn does.
+- A `required: true` config hook that raises something other than a StandardError (e.g. `NotImplementedError`) denies
+  the tool call like any other raise, instead of escaping the guardrail check.
 - `/model … --default` and `/model … --alias` keep the comments and layout of `config.yml`: they change one line
   (or add one) instead of rewriting the whole file.
 - The terminal's "retrying (1/3 …)" line counts retries as the web does (it said "1/4", counting the first try).

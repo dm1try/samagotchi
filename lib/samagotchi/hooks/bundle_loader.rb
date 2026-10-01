@@ -30,9 +30,9 @@ module Samagotchi
     # Any hook whose sha256 differs is not loaded (reinstall the bundle
     # after editing a hook by hand).
     #
-    # The +on_error+ policy is applied per hook at fire time:
-    #   - "fail_closed" (on :before_tool_call): a raising guardrail sets
-    #     event[:blocked] = true — the tool call is prevented (fail-closed).
+    # The +on_error+ policy is applied per hook at fire time (Hooks.wrap):
+    #   - "fail_closed" (on :before_tool_call): a raising guardrail denies
+    #     the tool call (fail-closed).
     #   - "log": warn to stderr and continue.
     #   - "skip" (default): silently continue.
     module BundleLoader
@@ -80,16 +80,14 @@ module Samagotchi
 
             begin
               plugin = instantiate(bundle_name, basename, file, settings: settings)
-              log_failure = Hooks.failure_log_gate(event_sym)
-
-              registry.register_bundle(bundle_name, event_sym, hook_name: basename, priority: priority) do |event|
-                begin
-                  plugin.call(event)
-                rescue Exception => e
-                  # A veto always applies; only the log line is throttled.
-                  handle_error(bundle_name, basename, on_error, fail_closed, event, e) if fail_closed || log_failure.call
-                end
-              end
+              policy = if fail_closed then :deny
+                       elsif on_error == "log" then :log
+                       else :skip
+                       end
+              label = "#{fail_closed ? "guardrail " : ""}#{basename} (bundle #{bundle_name})"
+              handler = Hooks.wrap(label: label, event: event_sym, policy: policy, log: [:hooks, "bundle_hook_failed"],
+                                   fields: { bundle: bundle_name }) { |event| plugin.call(event) }
+              registry.register_bundle(bundle_name, event_sym, hook_name: basename, priority: priority, &handler)
               loaded += 1
             rescue Exception => e
               Log.error(:hooks, "bundle_hook_load_failed", echo: "[samagotchi:hooks] bundle '#{bundle_name}' hook '#{basename}' failed to load: #{e.class}: #{e.message}", bundle: bundle_name, hook: basename.to_s, error: e.class.name)
@@ -119,10 +117,9 @@ module Samagotchi
           ns = namespace_for(bundle_name)
           content = File.read(file)
           ns.module_eval(content, file, 1)
-          class_name = File.basename(basename, ".rb").split("_").map(&:capitalize).join
-          klass = ns.const_get(class_name, false)
+          klass = Hooks.class_for(basename, ns)
           instance = Hooks.build_plugin(klass, settings)
-          raise ArgumentError, "plugin #{class_name} does not respond to #call" unless instance.respond_to?(:call)
+          raise ArgumentError, "plugin #{klass.name.split("::").last} does not respond to #call" unless instance.respond_to?(:call)
           instance
         end
 
@@ -140,20 +137,6 @@ module Samagotchi
           else
             Samagotchi::Bundles.const_set(ns_name.to_sym, Module.new)
           end
-        end
-
-        # Apply the per-hook on_error policy when a plugin raises.
-        def handle_error(bundle_name, basename, on_error, fail_closed, event, error)
-          if fail_closed && event.is_a?(Hash)
-            event[:blocked] = true
-            reason = "guardrail #{basename} (bundle #{bundle_name}) failed: #{error.class}: #{error.message}"
-            event[:guardrail]&.deny!(reason, rule: "guardrail-load", source: "core", decided_by: "core")
-            existing = event[:block_reason].to_s
-            event[:block_reason] = existing.empty? ? reason : "#{existing}; #{reason}"
-          elsif on_error == "log"
-            Log.warn(:hooks, "bundle_hook_failed", echo: "[samagotchi:hooks] #{basename} (bundle #{bundle_name}) failed: #{error.class}: #{error.message}", bundle: bundle_name, hook: basename.to_s, error: error.class.name)
-          end
-          # "skip" (and fail_closed on non-veto events) is silent.
         end
       end
     end

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/hooks/loader"
+require "samagotchi/guardrails"
 require "tmpdir"
 
 RSpec.describe Samagotchi::Hooks::Loader do
@@ -174,7 +175,25 @@ RSpec.describe Samagotchi::Hooks::Loader do
       registry.fire(:before_tool_call, event)
       expect(verdict).to be_deny
       expect(verdict.reason).to eq("required hook raising_guard_hook.rb raised RuntimeError: boom")
-      expect(event[:blocked]).to be(true)
+    end
+
+    it "denies the call whatever a required hook raises, not only a StandardError" do
+      File.write(File.join(tmpdir, "later_guard_hook.rb"), "class LaterGuardHook; def call(e) = raise(NotImplementedError, 'later'); end")
+      registry = load_hooks([{ "path" => "later_guard_hook.rb", "required" => true }])
+      verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "execute" })
+      registry.fire(:before_tool_call, { guardrail: verdict })
+      expect(verdict.reason).to eq("required hook later_guard_hook.rb raised NotImplementedError: later")
+    end
+
+    it "a required hook's raise, through the Gate: denied, and the next hook sees event[:blocked]" do
+      File.write(File.join(tmpdir, "gated_guard_hook.rb"), "class GatedGuardHook; def call(e) = raise('boom'); end")
+      registry = load_hooks([{ "path" => "gated_guard_hook.rb", "required" => true }])
+      seen = nil
+      registry.register(:before_tool_call) { |e| seen = e.slice(:blocked, :block_reason) }
+      verdict = Samagotchi::Guardrails::Gate.new(-> { registry }).evaluate({ name: "execute" }, iteration: 1, params: "")
+      reason = "required hook gated_guard_hook.rb raised RuntimeError: boom"
+      expect([verdict.decision, verdict.reason, verdict.decided_by]).to eq([:deny, reason, "core"])
+      expect(seen).to eq(blocked: true, block_reason: reason)
     end
   end
 
