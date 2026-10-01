@@ -658,8 +658,9 @@ Behavior details:
 
 - Prompt history is loaded on startup before the first `>` prompt.
 - A running REPL or attached TUI picks up the lines other chi processes (the
-  web, another terminal) added: before each `>` prompt, when the file changed,
-  its new lines join the ↑ list after the ones already there, without a
+  web, another terminal) added: before each `>` prompt and on the first ↑ at
+  an open one (Ctrl-P, vi `k` too), when the file changed, its new lines join
+  the ↑ list after the ones already there, without a
   restart. A `/command` you typed stays under ↑ too. `chi scratch` keeps its
   own list and writes nothing.
 - The web records a prompt once its session's worker took it (a refused or

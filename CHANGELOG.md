@@ -21,6 +21,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A TUI already waiting at `>` shows a prompt just typed in the web (or another terminal) at the first ↑, instead of
+  only from the next prompt on.
 - The `known-names` bundle checks the name in `~name` (that user's home folder): `ls ~myname` is no longer rejected
   as a near miss of `myname`, and `ls ~mynmae` is caught.
 - `chi sessions` usage errors exit 2, as every other command's: an unknown subcommand, `stop` with no ids, a bad

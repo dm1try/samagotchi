@@ -10,6 +10,7 @@ require_relative "../prompt_history"
 require_relative "../tools/memory"
 require_relative "../session_commands"
 require_relative "line_reader"
+require_relative "reline_history_hook"
 
 module Samagotchi
   class TerminalUI
@@ -41,13 +42,17 @@ module Samagotchi
       # One read at the main prompt. In multiline mode Enter submits, while
       # Meta+Enter/Alt+Enter inserts a newline on terminals that emit that
       # distinct sequence (for example kitty); Tab completes; a queued prefill
-      # is typed in first.
+      # is typed in first. Other processes' history lines are picked up
+      # before the read and again on the first ↑ of a walk.
       # @return [String, nil] the line, nil on Ctrl-D
       def read_prompt_line(prompt)
         pick_up_history_lines
+        RelineHistoryHook.install if RelineHistoryHook.supported?
         input = with_scoped_at_path_completion do
           with_next_input_prefill do
-            Reline.readmultiline(prompt, true) { true }
+            RelineHistoryHook.with_refresh(method(:pick_up_history_lines)) do
+              Reline.readmultiline(prompt, true) { true }
+            end
           end
         end
         return nil if input.nil?
@@ -228,7 +233,8 @@ module Samagotchi
         nil
       end
 
-      # Before a main-prompt read: the lines other processes (the web,
+      # Before a main-prompt read, and on the first ↑ of a walk at an open
+      # one (RelineHistoryHook): the lines other processes (the web,
       # another TUI) added to the history file since we last looked join the
       # ring. Only the file's new tail is appended, so a line this TUI read
       # and didn't persist (/model, !rollback: Reline rings every read) stays
