@@ -1222,6 +1222,37 @@ module Samagotchi
     end
     private :record_last_turn
 
+    # How every turn ends (completed, canceled, failed): the session gets
+    # what the turn kept, goes idle and records the ending, and the end
+    # event is announced, as one step of the event log (a snapshot taken
+    # meanwhile, the Bridge's, shows the turn either in progress or in the
+    # messages, never both or neither). Then the metrics are persisted.
+    # The block runs in that step with the turn's seconds, once, and
+    # returns [the messages to keep (nil: leave the session's), the end
+    # event]. +save:+ saves the session before the event (a failed turn:
+    # a worker exits after it); that ending is not yet one step.
+    def end_turn(turn, outcome, save: false)
+      seconds = turn.elapsed
+      ending = lambda do
+        kept, event = yield(seconds)
+        replace_session_messages(turn.session, kept) if kept
+        turn.session.status = Session::STATUS_IDLE
+        record_last_turn(turn.session, outcome, seconds, turn.origin)
+        save_quietly(turn.session) if save
+        emit_event(turn.on_event, turn.tag(event))
+      end
+      save ? ending.call : synchronize_events(&ending)
+      @metrics.persist(state_dir: session_state_dir)
+    end
+    private :end_turn
+
+    def save_quietly(session)
+      session.save(state_dir: session_state_dir)
+    rescue StandardError
+      nil
+    end
+    private :save_quietly
+
     # Keep what the after_turn hooks presented as the answer's `display`
     # and tell the observers (:answer_display), after the turn_completed
     # they already had: the web re-reads the answer then. A turn_completed
@@ -1473,6 +1504,19 @@ module Samagotchi
       self
     end
 
+    # One turn's values, for #run_turn and its endings. Per turn and
+    # single-threaded: the cross-thread turn state (the cancel slot, the
+    # sink, steers) stays on the Engine.
+    Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages) do
+      # The turn's boundary events carry the origin only when there is one,
+      # so payloads stay unchanged for callers that don't pass it.
+      def tag(event) = origin ? event.merge(origin: origin) : event
+
+      # Seconds since the turn started (the cancel note says how long it ran).
+      def elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
+    end
+    private_constant :Turn
+
     # Run a single turn with event emission.
     #
     # Builds the system prompt + user messages, runs the kernel loop with
@@ -1538,13 +1582,9 @@ module Samagotchi
       @guardrail_wiring.begin_turn(origin)
 
       prompt = nil if continue
-      # For the cancel note: how long the turn ran.
-      turn_started_clock = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      turn_seconds = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) - turn_started_clock }
-      messages = nil
-      # Boundary events carry the origin only when there is one, so payloads
-      # stay unchanged for callers that don't pass it.
-      with_origin = origin ? ->(event) { event.merge(origin: origin) } : ->(event) { event }
+      turn = Turn.new(session: session, prompt: prompt, continue: continue, on_event: on_event,
+                      controller: effective_controller, origin: origin,
+                      started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC))
       begin
         # A Stop cuts the /props probes this thread makes for the turn
         # (window, served model, vision) instead of waiting their timeout.
@@ -1555,7 +1595,7 @@ module Samagotchi
         turn_started = { type: :turn_started, session_id: session.id, prompt: prompt }
         turn_started[:continue] = true if continue
         turn_started[:images] = image_refs unless image_refs.empty?
-        emit_event(on_event, with_origin.call(turn_started))
+        emit_event(on_event, turn.tag(turn_started))
         raise image_error if image_error
 
         # Before anything of the turn is kept or a reminder is used up.
@@ -1588,10 +1628,10 @@ module Samagotchi
         @hooks.fire(:before_turn, { type: :before_turn, session_id: session.id, prompt: prompt,
                                     messages: hook_messages(session.messages) })
 
-        messages = session.messages.dup
+        turn.messages = session.messages.dup
         # Built once per Engine (and again after a model switch) so the prompt
         # prefix, and the model server's KV cache for it, stay stable.
-        messages = ContextNote.with_system_head(messages, { role: "system", content: system_prompt })
+        turn.messages = messages = ContextNote.with_system_head(turn.messages, { role: "system", content: system_prompt })
         # Explicit --memory preloads are now known after system prompt build.
         add_used_memory_names(activated_memory_names)
         sync_used_memories_from_session(session)
@@ -1663,47 +1703,36 @@ module Samagotchi
         # after_turn hooks run below and may present the answer (the web
         # holds its pop until it knows).
         display_pending = !canceled && @hooks.any?(:after_turn)
-        synchronize_events do
-          if empty
-            # The placeholder is for the UIs (a new array: it must not leak
-            # into the result); the note is for the model, so it goes on the
-            # result's conversation too, which the REPL keeps as-is.
-            # A retry's nudge at the tail goes: this note says it all.
-            note = TurnNote.empty
-            conversation&.replace(TurnNote.without_trailing(conversation))
-            saved = TurnNote.without_trailing(conversation || session.messages)
-            saved << { role: "model", content: "[No response]" } if response.strip.empty?
-            replace_session_messages(session, saved + [note])
-            conversation << note if conversation
-          elsif canceled && conversation
-            conversation << TurnNote.cancelled(result.cancellation_reason, seconds: turn_seconds.call,
-                                                                          stopped_by: effective_controller.detail,
-                                                                          shown: TurnNote.interrupted_tail?(conversation),
-                                                                          running_tasks: Tools::TaskRuntime.running_created_in(conversation))
-            replace_session_messages(session, conversation)
-          elsif conversation
-            replace_session_messages(session, conversation)
-          end
-          session.status = Session::STATUS_IDLE
-          record_last_turn(session, canceled ? "canceled" : "completed", turn_seconds.call, origin)
+        end_turn(turn, canceled ? "canceled" : "completed") do |seconds|
+          kept = if empty
+                   # The placeholder is for the UIs (a new array: it must not leak
+                   # into the result); the note is for the model, so it goes on the
+                   # result's conversation too, which the REPL keeps as-is.
+                   # A retry's nudge at the tail goes: this note says it all.
+                   note = TurnNote.empty
+                   conversation&.replace(TurnNote.without_trailing(conversation))
+                   saved = TurnNote.without_trailing(conversation || session.messages)
+                   saved << { role: "model", content: "[No response]" } if response.strip.empty?
+                   conversation << note if conversation
+                   saved + [note]
+                 elsif canceled && conversation
+                   conversation << TurnNote.cancelled(result.cancellation_reason, seconds: seconds,
+                                                                                 stopped_by: effective_controller.detail,
+                                                                                 shown: TurnNote.interrupted_tail?(conversation),
+                                                                                 running_tasks: Tools::TaskRuntime.running_created_in(conversation))
+                 else
+                   conversation
+                 end
           if canceled
-            emit_event(on_event, with_origin.call({
-              type: :turn_canceled,
-              cancellation_reason: result.cancellation_reason,
-              duration_ms: (turn_seconds.call * 1000).round
-            }))
+            [kept, { type: :turn_canceled, cancellation_reason: result.cancellation_reason,
+                     duration_ms: (seconds * 1000).round }]
           else
             # For a client that attaches later (session_state_snapshot).
             @last_context_status = result.context_status.dup if result.context_status
-            emit_event(on_event, with_origin.call({
-              type: :turn_completed,
-              result: result,
-              turn_summary: turn_summary(result),
-              display_pending: display_pending
-            }))
+            [kept, { type: :turn_completed, result: result, turn_summary: turn_summary(result),
+                     display_pending: display_pending }]
           end
         end
-        @metrics.persist(state_dir: session_state_dir)
 
         # Fire :after_turn hook (runs even on cancel/success), with a read-only
         # copy of the conversation the turn stored, and event[:present] for
@@ -1721,45 +1750,38 @@ module Samagotchi
         result
       rescue Interrupt
         effective_controller.cancel!(:ctrl_c)
-        synchronize_events do
+        end_turn(turn, "canceled") do |seconds|
           # Only the pre-turn messages survive here, so tasks this turn
           # started are missed (plan wait-stop §6).
-          if messages
-            note = TurnNote.cancelled(:ctrl_c, seconds: turn_seconds.call,
-                                               running_tasks: Tools::TaskRuntime.running_created_in(messages))
-            replace_session_messages(session, TurnNote.replace_trailing(messages, note))
-          end
-          session.status = Session::STATUS_IDLE
-          record_last_turn(session, "canceled", turn_seconds.call, origin)
-          emit_event(on_event, with_origin.call({ type: :turn_canceled, cancellation_reason: :ctrl_c,
-                                                   duration_ms: (turn_seconds.call * 1000).round }))
+          kept = if turn.messages
+                   note = TurnNote.cancelled(:ctrl_c, seconds: seconds,
+                                                      running_tasks: Tools::TaskRuntime.running_created_in(turn.messages))
+                   TurnNote.replace_trailing(turn.messages, note)
+                 end
+          [kept, { type: :turn_canceled, cancellation_reason: :ctrl_c, duration_ms: (seconds * 1000).round }]
         end
-        @metrics.persist(state_dir: session_state_dir)
         raise
       rescue StandardError => e
         # Keep what the turn got to (the prompt plus the loop's completed
         # tool iterations) like a cancel does, and save it: a worker exits
         # after a failed turn. The REPL still rolls back to its checkpoint.
-        kept = e.respond_to?(:partial_conversation) && e.partial_conversation.is_a?(Array) ? e.partial_conversation : messages
-        # The model reads why on its next turn (a UI that rolls the turn back
-        # leaves its own note, TurnFlow#prompt_turn_failed). Nothing when the
-        # turn never reached the model (kept is nil).
-        if kept
-          summary = e.respond_to?(:summary) ? e.summary : e.message
-          kept = TurnNote.replace_trailing(kept, TurnNote.failed(summary, continued: continue))
+        end_turn(turn, "failed", save: true) do |seconds|
+          kept = e.respond_to?(:partial_conversation) && e.partial_conversation.is_a?(Array) ? e.partial_conversation : turn.messages
+          # The model reads why on its next turn (a UI that rolls the turn back
+          # leaves its own note, TurnFlow#prompt_turn_failed). Nothing when the
+          # turn never reached the model (kept is nil).
+          if kept
+            summary = e.respond_to?(:summary) ? e.summary : e.message
+            kept = TurnNote.replace_trailing(kept, TurnNote.failed(summary, continued: continue))
+          end
+          failed = { type: :turn_failed, error_class: e.class.name, message: e.message,
+                     duration_ms: (seconds * 1000).round }
+          # A provider error says what kind it is, for one line per kind in the UIs.
+          if e.is_a?(LLM::ProviderError)
+            failed.merge!(error_kind: e.kind, retryable: e.retryable?, host: e.host, summary: e.summary)
+          end
+          [kept, failed]
         end
-        replace_session_messages(session, kept) if kept
-        session.status = Session::STATUS_IDLE
-        record_last_turn(session, "failed", turn_seconds.call, origin)
-        begin; session.save(state_dir: session_state_dir); rescue StandardError; nil; end
-        failed = { type: :turn_failed, error_class: e.class.name, message: e.message,
-                   duration_ms: (turn_seconds.call * 1000).round }
-        # A provider error says what kind it is, for one line per kind in the UIs.
-        if e.is_a?(LLM::ProviderError)
-          failed.merge!(error_kind: e.kind, retryable: e.retryable?, host: e.host, summary: e.summary)
-        end
-        emit_event(on_event, with_origin.call(failed))
-        @metrics.persist(state_dir: session_state_dir)
         raise
       ensure
         # A completed turn is activity: release the turn flag and advance the
