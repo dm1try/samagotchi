@@ -320,8 +320,7 @@ module Samagotchi
           # usage: the text, and each image's estimate (not its base64).
           @prompt_text = conversation.sum("") { |entry| entry[:content].to_s }
           @image_tokens = ImagePlan.estimated_tokens(conversation)
-          @empty_retries = 0
-          @empty_retry_limit = EmptyAnswerRetry.limit
+          @empty_retry = EmptyAnswerRetry.new
         end
 
         EMPTY_ANSWER = "(the model returned an empty answer)"
@@ -349,7 +348,10 @@ module Samagotchi
               # Kept before a merge too: the model answers the merged line
               # knowing what it just said.
               @conversation << with_thinking({ role: "model", content: last_text }, response) unless last_text.empty?
-              retry_empty = last_text.empty? && retry_empty_answer?(iteration, response)
+              retry_empty = last_text.empty? &&
+                            @empty_retry.retry_empty?(iteration: iteration, cancelled: @cancel_controller&.cancelled?,
+                                                      finish_reason: response.finish_reason,
+                                                      used_tokens: response.usage&.total_tokens, window_tokens: @window&.tokens)
               # An empty answer that will be retried is no answer site: a
               # plugin's steer joins the retry instead of being dropped, and
               # queued input (a user's line, a steer) goes in place of the nudge.
@@ -376,29 +378,12 @@ module Samagotchi
 
         private
 
-        # A retry is left, and the answer wasn't cut short by a full context
-        # (a length stop while thinking is retried: a thinking loop cut by
-        # the provider's output cap, not a full window).
-        def retry_empty_answer?(iteration, response)
-          return false if @empty_retries >= @empty_retry_limit || @cancel_controller&.cancelled?
-
-          if response.finish_reason.to_s == "length" &&
-             EmptyAnswerRetry.context_full?(response.usage&.total_tokens, @window&.tokens)
-            Log.info(:turn, "empty_answer_not_retried", iteration: iteration, why: "context full")
-            return false
-          end
-          true
-        end
-
         # The hidden nudge before the next generation (EmptyAnswerRetry),
         # which runs at the retry temperature. Returns true.
         def nudge_empty_answer(iteration, response)
-          @empty_retries += 1
-          @retry_generation = true
-          emit(type: :empty_answer_retry, iteration: iteration, attempt: @empty_retries, of: @empty_retry_limit,
-               finish_reason: response.finish_reason, thinking_chars: response.reasoning.to_s.length)
-          @conversation << TurnNote.empty_retry
-          true
+          @empty_retry.nudge!(@conversation, TurnNote.empty_retry,
+                              emit: method(:emit), iteration: iteration, finish_reason: response.finish_reason,
+                              thinking_chars: response.reasoning.to_s.length)
         end
 
         # A generation a plugin cut (stop_generation) is an empty answer made
@@ -410,19 +395,15 @@ module Samagotchi
         def after_cut(iteration, response)
           return canceled(iteration, @cancel_controller.reason) if @cancel_controller.cancelled?
 
-          if @empty_retries < @empty_retry_limit
+          if @empty_retry.left?
             return :retry if inject_pending_input(iteration)
 
-            @empty_retries += 1
-            @retry_generation = true
-            emit(type: :empty_answer_retry, iteration: iteration, attempt: @empty_retries, of: @empty_retry_limit,
-                 finish_reason: response.finish_reason, thinking_chars: response.reasoning.to_s.length,
-                 stopped_by: response.cut[:by])
-            @conversation << TurnNote.cut_retry(response.cut[:by], response.cut[:reason])
+            @empty_retry.nudge!(@conversation, TurnNote.cut_retry(response.cut[:by], response.cut[:reason]),
+                                emit: method(:emit), iteration: iteration, finish_reason: response.finish_reason,
+                                thinking_chars: response.reasoning.to_s.length, stopped_by: response.cut[:by])
             return :retry
           end
-          index = @conversation.rindex { |entry| TurnNote.retry_nudge?(entry) }
-          @conversation.delete_at(index) if index
+          @empty_retry.drop_nudge!(@conversation)
           @cancel_controller.cancel!(:hook, response.cut)
           canceled(iteration, :hook)
         end
@@ -440,8 +421,7 @@ module Samagotchi
         # text] when it was cancelled.
         def generate(iteration)
           window = @window = @loop.context_window(@model_name)
-          retry_generation = @retry_generation
-          @retry_generation = false
+          retry_generation = @empty_retry.take_sampling!
           emit(type: :generation_started, iteration: iteration, context_window_tokens: window&.tokens,
                context_window_source: window&.source)
           @loop.fire_hook(:before_generation, { type: :before_generation, iteration: iteration })

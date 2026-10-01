@@ -167,9 +167,8 @@ module Samagotchi
       tool_activity = []
       qwen_recovery_attempts = 0
       qwen_partial_tool_call = nil
-      empty_retries = 0
-      empty_retry_limit = EmptyAnswerRetry.limit
-      @retry_generation = false
+      empty_retry = EmptyAnswerRetry.new
+      emit = ->(event) { emit_stream_event(on_stream_event, event) }
       # Qwen with thinking off: an empty thought after the cue, so the model
       # answers at once. Kept in the turn's model messages, so each tool-loop
       # prompt starts with what the server already has cached.
@@ -223,6 +222,7 @@ module Samagotchi
             generation_controller: generation_controller,
             cancel_controller: cancel_controller,
             model_name: resolved_model_name,
+            sampling: empty_retry.request_sampling(@sampling),
             on_chunk: lambda { |chunk|
               generation_usage = context.capture(chunk[:payload]) || generation_usage
               # llama.cpp names the loaded model in the stream's last payload.
@@ -276,21 +276,18 @@ module Samagotchi
           # A Stop that came right after the cut is a plain cancel.
           raise Client::RequestCancelled.new(cancel_controller.reason) if cancel_controller.cancelled?
 
-          if empty_retries < empty_retry_limit
+          if empty_retry.left?
             # Queued input (the user's line, a plugin's steer) goes in place of the nudge.
             next if inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller)
 
-            empty_retries += 1
-            @retry_generation = true
-            emit_stream_event(on_stream_event, type: :empty_answer_retry, iteration: iteration_index + 1,
-                                               attempt: empty_retries, of: empty_retry_limit,
-                                               thinking_chars: streamed_thinking, stopped_by: cut[:by])
-            conversation << TurnNote.cut_retry(cut[:by], cut[:reason])
+            empty_retry.nudge!(conversation, TurnNote.cut_retry(cut[:by], cut[:reason]),
+                               emit: emit, iteration: iteration_index + 1,
+                               thinking_chars: streamed_thinking, stopped_by: cut[:by])
             next
           end
           # No retry left: the turn ends as cancelled (hook), with nothing
           # salvaged and without the spent nudge.
-          drop_last_empty_retry!(conversation)
+          empty_retry.drop_nudge!(conversation)
           cancel_controller.cancel!(:hook, cut)
           emit_stream_event(on_stream_event, type: :generation_cancelled, iteration: iteration_index + 1, reason: :hook)
           return cancelled_result(conversation, tool_activity: tool_activity, reason: :hook, partial_assistant_text: "")
@@ -333,7 +330,8 @@ module Samagotchi
           pending_tool_calls = false
           answer = -> { PromptLiteralGuard.restore(strip_thought_blocks(response), profile: @profile) }
           empty = strip_thought_blocks(response.to_s).strip.empty?
-          retry_empty = empty && empty_retries < empty_retry_limit && !cancel_controller&.cancelled?
+          retry_empty = empty && empty_retry.retry_empty?(iteration: iteration_index + 1,
+                                                          cancelled: cancel_controller&.cancelled?)
           # The empty generation goes (its thinking would be sent again and
           # prime the same loop); an empty answer that will be retried is no
           # answer site, so a plugin's steer joins the retry.
@@ -341,16 +339,13 @@ module Samagotchi
           unless inject_pending_input!(conversation, pending_input, on_stream_event, iteration_index + 1, cancel_controller,
                                        answer: retry_empty ? nil : answer)
             if retry_empty
-              empty_retries += 1
-              @retry_generation = true
-              emit_stream_event(on_stream_event, type: :empty_answer_retry, iteration: iteration_index + 1,
-                                                 attempt: empty_retries, of: empty_retry_limit,
-                                                 thinking_chars: thinking_chars(response.to_s, streamed_thinking))
-              conversation << TurnNote.empty_retry
+              empty_retry.nudge!(conversation, TurnNote.empty_retry,
+                                 emit: emit, iteration: iteration_index + 1,
+                                 thinking_chars: thinking_chars(response.to_s, streamed_thinking))
               next
             end
             # The Engine's TurnNote.empty says it all: the spent nudge goes.
-            drop_last_empty_retry!(conversation) if empty && empty_retries.positive?
+            empty_retry.drop_nudge!(conversation) if empty && empty_retry.used?
             break
           end
           # Queued steering keeps the turn going: loop again so the model
@@ -553,7 +548,8 @@ module Samagotchi
       generation_controller&.cancelled? && !cancel_controller.cancelled?
     end
 
-    def complete_kwargs(cancel_controller:, model_name: nil, on_chunk: nil, on_retry: nil, images: [])
+    # +sampling+: this request's (EmptyAnswerRetry#request_sampling).
+    def complete_kwargs(cancel_controller:, model_name: nil, on_chunk: nil, on_retry: nil, images: [], sampling: nil)
       kwargs = {}
       # Only a request with images names them: a text-only call is unchanged.
       kwargs[:images] = images unless images.empty?
@@ -565,8 +561,6 @@ module Samagotchi
       kwargs[:n_predict] = n_predict if n_predict && client_supports_keyword?(:n_predict)
       resolved_model_name = completion_model_name(model_name)
       kwargs[:model] = resolved_model_name if resolved_model_name && client_supports_keyword?(:model)
-      sampling = @retry_generation ? EmptyAnswerRetry.sampling(@sampling) : @sampling
-      @retry_generation = false
       kwargs[:sampling] = sampling if sampling && !sampling.empty? && client_supports_keyword?(:sampling)
       kwargs
     end
@@ -694,11 +688,6 @@ module Samagotchi
 
     def duplicate_conversation(messages)
       messages.map(&:dup)
-    end
-
-    def drop_last_empty_retry!(conversation)
-      index = conversation.rindex { |entry| TurnNote.retry_nudge?(entry) }
-      conversation.delete_at(index) if index
     end
 
     def last_model_content(conversation)

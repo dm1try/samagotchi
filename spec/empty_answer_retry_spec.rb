@@ -41,6 +41,83 @@ RSpec.describe Samagotchi::EmptyAnswerRetry do
     expect(described_class.context_full?(900, nil)).to be(false)
   end
 
+  describe "one turn's budget" do
+    let(:events) { [] }
+    let(:emit) { ->(event) { events << event } }
+    let(:conversation) { [{ role: "user", content: "hi" }] }
+    let(:note) { Samagotchi::TurnNote.empty_retry }
+
+    it "retries while attempts are left and the turn isn't cancelled" do
+      retry_budget = described_class.new(limit: 1)
+
+      expect(retry_budget).to be_left
+      expect(retry_budget.retry_empty?(iteration: 1, cancelled: true)).to be(false)
+      expect(retry_budget.retry_empty?(iteration: 1, cancelled: false)).to be(true)
+      retry_budget.nudge!(conversation, note, emit: emit, iteration: 1)
+      expect(retry_budget).not_to be_left
+      expect(retry_budget.retry_empty?(iteration: 2, cancelled: false)).to be(false)
+      expect(described_class.new(limit: 0).retry_empty?(iteration: 1, cancelled: false)).to be(false)
+    end
+
+    it "doesn't retry a length stop with the context full, and logs why" do
+      retry_budget = described_class.new(limit: 1)
+      allow(Samagotchi::Log).to receive(:info)
+
+      expect(retry_budget.retry_empty?(iteration: 2, cancelled: false, finish_reason: "length",
+                                       used_tokens: 950, window_tokens: 1000)).to be(false)
+      expect(Samagotchi::Log).to have_received(:info).with(:turn, "empty_answer_not_retried", iteration: 2, why: "context full")
+      expect(retry_budget.retry_empty?(iteration: 2, cancelled: false, finish_reason: "length",
+                                       used_tokens: 100, window_tokens: 1000)).to be(true)
+      expect(retry_budget.retry_empty?(iteration: 2, cancelled: false, finish_reason: "stop",
+                                       used_tokens: 950, window_tokens: 1000)).to be(true)
+      expect(retry_budget.retry_empty?(iteration: 2, cancelled: false, finish_reason: "length")).to be(true)
+    end
+
+    it "nudges: counts the attempt, emits it, appends the note" do
+      retry_budget = described_class.new(limit: 2)
+
+      expect(retry_budget).not_to be_used
+      expect(retry_budget.nudge!(conversation, note, emit: emit, iteration: 3, thinking_chars: 7)).to be(true)
+
+      expect(retry_budget).to be_used
+      expect(events).to eq([{ type: :empty_answer_retry, iteration: 3, attempt: 1, of: 2, thinking_chars: 7 }])
+      expect(conversation.last).to eq(note)
+    end
+
+    it "asks the next request, once, at the retry sampling" do
+      retry_budget = described_class.new(limit: 1)
+
+      expect(retry_budget.request_sampling({ top_p: 0.9 })).to eq(top_p: 0.9)
+      retry_budget.nudge!(conversation, note, emit: emit, iteration: 1)
+      expect(retry_budget.request_sampling({ top_p: 0.9 })).to eq(top_p: 0.9, temperature: 0.6)
+      expect(retry_budget.request_sampling({ top_p: 0.9 })).to eq(top_p: 0.9)
+    end
+
+    it "takes the retry sampling once, for a loop that builds its own options" do
+      retry_budget = described_class.new(limit: 1)
+      retry_budget.nudge!(conversation, note, emit: emit, iteration: 1)
+
+      expect(retry_budget.take_sampling!).to be(true)
+      expect(retry_budget.take_sampling!).to be(false)
+    end
+
+    it "drops the last spent nudge" do
+      other = Samagotchi::TurnNote.cut_retry("loop-guard", "")
+      conversation.push(other, { role: "model", content: "x" }, note)
+
+      described_class.new(limit: 1).drop_nudge!(conversation)
+
+      expect(conversation).to eq([{ role: "user", content: "hi" }, other, { role: "model", content: "x" }])
+    end
+
+    it "reads its limit from retry.empty_answer by default" do
+      ENV["SAMAGOTCHI_RETRY_EMPTY_ANSWER"] = "2"
+      expect(described_class.new.limit).to eq(2)
+    ensure
+      ENV.delete("SAMAGOTCHI_RETRY_EMPTY_ANSWER")
+    end
+  end
+
   it "nudges with a hidden turn note" do
     expect(Samagotchi::TurnNote.empty_retry).to eq(
       role: "system", kind: "turn_note", retry_nudge: true,
