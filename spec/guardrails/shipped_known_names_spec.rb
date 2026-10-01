@@ -62,13 +62,15 @@ RSpec.describe "The known-names bundle" do
     "ls /home/jonathndoe/work" => %w[jonathndoe jonathandoe],
     "cd ~/projects && cat /home/Johndeo/notes.txt" => %w[Johndeo johndoe],
     # A glob in another path segment: "/" splits first, the typo is still caught.
-    "ls /home/johndeo/*" => %w[johndeo johndoe]
+    "ls /home/johndeo/*" => %w[johndeo johndoe],
+    # "~name" is that user's home: "~" splits, the name after it is checked.
+    "ls ~johndeo/x" => %w[johndeo johndoe]
   }.freeze
 
   let_through = [
     "ls /home/johndoe", "ls ~/projects", "echo $HOME/x", "cat ~/x", "ls johnn", "ls johnnz",
     "cd samagotchi-known-names && git status", "ls /home/johndoe/projects/samagotchi", "ps aux | grep processes",
-    "ssh j0hnny@host", "echo jonathandoe",
+    "ssh j0hnny@host", "echo jonathandoe", "ls ~johndoe", "cat ~johndoe/projects/samagotchi/x",
     # A token with a shell glob (*?[]{}) is not checked: a glob of a known name isn't a typo.
     "ls -d johndoe*", "ls /home/johndoe?", "ls /home/johndoe/project?", "cat samagotchi[12].log",
     "ls {johndoe,other}", "rm -rf samagotchi-*", "ls -d samagotchi*"
@@ -150,6 +152,10 @@ RSpec.describe "The known-names bundle" do
       expect(v.call[:content]).to eq("ls /home/johndoe/a /home/johndoe-old; echo johndeox")
       expect(notices).to eq([{ text: 'corrected "johndeo" → "johndoe" in execute', level: :info,
                                hook: "known_names.rb (bundle known-names)" }])
+    end
+
+    it "keeps the \"~\" of a \"~name\" it corrects" do
+      expect(shell("ls ~johndeo/x").call[:content]).to eq("ls ~johndoe/x")
     end
 
     it "corrects a path call's path and a command's cwd" do

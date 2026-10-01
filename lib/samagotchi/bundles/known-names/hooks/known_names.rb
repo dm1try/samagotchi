@@ -6,7 +6,8 @@
 # that once misspelled a name in a path keeps copying the wrong spelling;
 # a rejection that names the right one breaks the loop.
 #
-# A token with a shell glob (*?[]{}) is not checked.
+# A token with a shell glob (*?[]{}) is not checked. In "~name" the name
+# after "~" is checked.
 #
 # Settings (config.yml, `bundles: known-names:`), all optional:
 #   names: [jonathandoe]         names to protect besides the derived ones
@@ -21,8 +22,9 @@ class KnownNames
   DERIVATIONS = %w[home user git repo].freeze
   DEFAULT_MIN_LENGTH = 6
   # Splits a command or path into tokens; each token's [-_.] parts are
-  # candidates too.
-  TOKEN_SPLIT = %r{[/\s"'=:,;|&()<>@]+}.freeze
+  # candidates too. "~" splits: in "~name" (that user's home) the name
+  # after it is what is checked.
+  TOKEN_SPLIT = %r{[/\s"'=:,;|&()<>@~]+}.freeze
   PART_SPLIT = /[-_.]+/.freeze
   # A candidate with a shell glob character is not checked: `workato*`
   # is a pattern over the name, not a misspelling of it.
