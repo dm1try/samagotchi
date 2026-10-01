@@ -387,6 +387,25 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
   end
 
+  describe "guardrail rule files" do
+    it "an unchanged rules file is skipped as already up to date; a changed one is installed" do
+      bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
+      FileUtils.mkdir_p(File.join(bundle_dir, "guardrails"))
+      File.write(File.join(bundle_dir, "guardrails", "a.yml"), "rules: []\n")
+      File.write(File.join(bundle_dir, "guardrails", "b.yml"), "rules: []\n")
+      installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
+      File.write(File.join(bundle_dir, "guardrails", "b.yml"), "rules: [] # v2\n")
+
+      up = described_class.new(source: bundle_dir, name: "test-bundle", scope: "system", strict: true, upgrade: true)
+      up.run
+      expect(up.results["guardrails/a.yml"]).to eq(status: "skipped", reason: "already up to date")
+      expect(up.results["guardrails/b.yml"]).to eq(status: "installed")
+      expect(File.read(File.join(bundles_dir, "test-bundle", "guardrails", "b.yml"))).to eq("rules: [] # v2\n")
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "test-bundle").read[:guardrails].keys.map(&:to_s))
+        .to contain_exactly("a.yml", "b.yml")
+    end
+  end
+
   describe "a plain re-install over a local edit" do
     it "keeps the installed base, so the next upgrade still keeps the edit" do
       bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })

@@ -259,13 +259,19 @@ module Samagotchi
         if @dry_run
           incoming_rules.each { |src| @results["guardrails/#{File.basename(src)}"] = { status: "would_install" } }
         else
+          # Same bytes as installed: reported as up to date, not "Installed".
+          unchanged = incoming_rules.select do |src|
+            dest = File.join(guardrails_target, File.basename(src))
+            File.file?(dest) && FileUtils.identical?(src, dest)
+          end
           FileUtils.rm_rf(guardrails_target)
           unless incoming_rules.empty?
             FileUtils.mkdir_p(guardrails_target)
             incoming_rules.each do |src|
               dest = File.join(guardrails_target, File.basename(src))
               FileUtils.cp(src, dest)
-              @results["guardrails/#{File.basename(src)}"] = { status: "installed" }
+              @results["guardrails/#{File.basename(src)}"] =
+                unchanged.include?(src) ? { status: "skipped", reason: "already up to date" } : { status: "installed" }
               guardrail_files_for_provenance[File.basename(src)] = dest
             end
           end

@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   to overwrite)" for a file that's the same as the bundle's; it skips it quietly and says once that
   `chi bundle upgrade NAME` updates the bundle and keeps local edits. A file skipped for a local edit no longer
   also reports a checksum mismatch.
+- `chi bundle install` and `upgrade` no longer list a bundle's unchanged guardrail rule files as "Installed"; they
+  are skipped as already up to date like its memory files.
 - A memory file you edited, then `chi bundle install` of its bundle again (skipped for the edit), no longer gets
   overwritten by the next `chi bundle upgrade`: the re-install kept your edit as the bundle's base, so the upgrade
   took it as unedited.
