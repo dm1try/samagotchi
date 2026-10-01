@@ -179,6 +179,8 @@ RSpec.describe Samagotchi::ModelRef do
 
     it "#2c chi self names gemma-small as the model box:tiny sends, as the worker does", step: :F1 do
       allow(Samagotchi::ModelProfile).to receive(:required_model_name).and_return("box:tiny")
+      # SelfReport also asks a chi web on this machine (/api/info): no network here.
+      allow(Samagotchi::LiveVersions).to receive(:web_info).and_return(nil)
       host = Samagotchi::SelfReport.fields(env: ENV).to_h.fetch("host")
       expect(host).to eq("box box.test:8081 as gemma-small")
     end
