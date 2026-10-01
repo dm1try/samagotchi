@@ -783,7 +783,7 @@ module Samagotchi
       sync_model_key!
       @prompt_builder.reset!
       sync_kernel_client!
-      @client.invalidate_context_window! if @client.respond_to?(:invalidate_context_window!)
+      @client.invalidate_context_window!
       @metrics.forget_model_reports!
       ref = effective_model_ref
       if persist_default
@@ -1500,7 +1500,7 @@ module Samagotchi
       # profile may probe too (a first turn, a retry). Both run after
       # run_turn's probe-cancel swap, so a Stop cuts them, and a failure
       # ends the turn as turn_failed.
-      @client.invalidate_context_window! if @client.respond_to?(:invalidate_context_window!)
+      @client.invalidate_context_window!
       refresh_profile!
 
       # Before anything of the turn is kept or a reminder is used up.
@@ -1796,7 +1796,7 @@ module Samagotchi
       return unless target&.entry&.chat? && Thinking::EFFORTS.include?(level)
 
       client = target.client
-      props = client.respond_to?(:cached_server_props) ? client.cached_server_props(model: target.bare_model) : nil
+      props = client.cached_server_props(model: target.bare_model)
       return unless Thinking.effort_ignored?(level, props)
 
       thinking_notice_once(:unsupported, target, :info,
@@ -2216,7 +2216,7 @@ module Samagotchi
       adapter = nil
       if target.entry.chat?
         adapter = @host_registry.adapter_for(target.entry)
-        client = nil if adapter.respond_to?(:remote?) && adapter.remote?
+        client = nil if adapter.remote?
       end
       ContextWindow.resolve(client: client, model: target.bare_model, adapter: adapter)
     rescue StandardError
@@ -2234,9 +2234,9 @@ module Samagotchi
       client = target.client
       if target.entry.chat?
         adapter = @host_registry.adapter_for(target.entry)
-        return [nil, nil] if adapter.respond_to?(:remote?) && adapter.remote?
+        return [nil, nil] if adapter.remote?
       end
-      served = ServedModel.from_props(client.server_props(model: target.bare_model)) if client.respond_to?(:server_props)
+      served = ServedModel.from_props(client.server_props(model: target.bare_model))
       served ? [served, asked] : [nil, nil]
     rescue StandardError
       [nil, nil]

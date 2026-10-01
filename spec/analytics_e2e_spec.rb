@@ -22,6 +22,9 @@ class AnalyticsChunkClient
     )
     "hello world"
   end
+
+  # Engine drops the cached window before each turn.
+  def invalidate_context_window! = nil
 end
 
 RSpec.describe "SessionMetrics end-to-end (real KernelLoop flow)" do
