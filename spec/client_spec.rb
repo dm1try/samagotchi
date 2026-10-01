@@ -1087,15 +1087,23 @@ end
       expect(accepted.size).to eq(1)
     end
 
+    # The first call pays its read timeout: that is the one probe. Only the
+    # later calls are timed: a re-probe or any wait per call would cost a
+    # whole read timeout each, while cache hits take microseconds, so the
+    # bound holds however slow the runner is at the first probe.
     it "costs one probe per failure window, not one per turn or generation" do
+      client.invalidate_context_window!
+      expect(client.context_window(model: "m")).to be_nil
+
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      3.times do
+      2.times do
         client.invalidate_context_window!
         expect(client.context_window(model: "m")).to be_nil
       end
 
       expect(accepted.size).to eq(1)
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.5
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
+        .to be < described_class::CONTEXT_WINDOW_PROBE_READ_TIMEOUT
     end
 
     it "ends at a Stop of the thread's turn (Client.probe_cancel), uncached" do
