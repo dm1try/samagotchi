@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-01
+
 ### Added
 
 - Guardrail rules can name the models they apply to (`models: small`, or globs on the model name). The guardrails
@@ -17,6 +19,13 @@ and commands may change between minor versions. How releases are made:
   globs, or `[]` for none. A chi older than 0.8.1 that shares the bundles dir (a checkout next to the gem, or a
   worker still running after a gem update) doesn't know `models:` and denies every tool call until it is
   restarted on the new chi.
+
+### Fixed
+
+- A tool row's time in the REPL and the attached TUI no longer counts the wait for a guardrail approval
+  (`blocked (2m 54s)` for a call denied at once).
+- docs/guardrails.md: rules are read again on the next tool call after config.yml or a bundle's rules change, with
+  no restart.
 
 ## [0.8.0] - 2026-10-01
 
@@ -472,7 +481,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/dm1try/samagotchi/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/dm1try/samagotchi/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/dm1try/samagotchi/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dm1try/samagotchi/compare/v0.5.1...v0.6.0
