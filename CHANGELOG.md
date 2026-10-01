@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-01
+
 ### Changed
 
 - A small change to a memory or skill can go through `edit` on its file instead of rewriting it all with
@@ -16,7 +18,7 @@ and commands may change between minor versions. How releases are made:
   before them as "writes outside the repository".
 - The system prompt no longer tells the model to keep `index.md` updated (`memory_write` does it); its result
   says "Index line refreshed automatically." instead of naming the index file.
-- `skills` bundle 0.1.1 (`chi update`): a skill changed some other way (an `execute` running `sed`) counts as
+- `skills` bundle 0.1.1 (`chi update`; needs chi 0.9.0): a skill changed some other way (an `execute` running `sed`) counts as
   updated: you get the usual "skill X updated" line, `/skill diff` has the old text, and the nudge and the turn-end
   "wasn't updated" line no longer fire for it. The nudge asks to `edit` the changed step rather than rewrite the
   whole skill.
@@ -35,6 +37,8 @@ and commands may change between minor versions. How releases are made:
 - `chi sessions list --sort/--order` is no longer ignored with `--live`, `--cwd` or `--format`.
 - A tool's time in the web's turn timing and the debug log's `tool_call_completed ms:` no longer counts the wait for
   a guardrail approval; the log line shows the wait as `waited_ms:`.
+
+Update with `chi update` (bundles: `skills` 0.1.1).
 
 ## [0.8.1] - 2026-10-01
 
@@ -509,7 +513,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/dm1try/samagotchi/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/dm1try/samagotchi/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/dm1try/samagotchi/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/dm1try/samagotchi/compare/v0.6.0...v0.7.0
