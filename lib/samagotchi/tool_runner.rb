@@ -80,7 +80,12 @@ module Samagotchi
         capped = output[0, max_tool_output_chars]
       end
 
-      fire(:after_tool_call, { type: :after_tool_call, iteration: iteration, tool: call[:name], output: capped })
+      # The call's outcome as its activity line has it (worked out from the
+      # full output: ok, error, blocked, stopped); a dispatcher that raised
+      # left none, an error.
+      status = result[:activity].is_a?(Hash) ? result[:activity][:status] : nil
+      fire(:after_tool_call, { type: :after_tool_call, iteration: iteration, tool: call[:name], output: capped,
+                               status: status || "error" })
       completed = { type: :tool_call_completed, iteration: iteration, call_count: call_count, call_index: call_index,
                     tool: call[:name], output: capped, output_truncated: truncated, activity: result[:activity] }
       completed[:images] = images if images&.any?

@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - The web composer has the TUI's prompt history: ↑/↓ walk the prompts typed in either (↑ with the caret on the first
   line; ↓ past the newest brings your draft back). A running TUI picks up lines typed in the web, or in another
   terminal, without a restart.
+- Hooks and plugins: `:after_tool_call` carries the call's `status` (`ok`, `error`, `blocked` or `stopped`), the one its
+  activity line shows, worked out from the full output (`output:` is capped).
 
 ### Changed
 

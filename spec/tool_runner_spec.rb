@@ -31,6 +31,38 @@ RSpec.describe Samagotchi::ToolRunner do
                   on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
   end
 
+  describe "after_tool_call's status" do
+    let(:statuses) { [] }
+
+    before { hooks.register(:after_tool_call) { |event| statuses << event[:status] } }
+
+    it "is the call's activity status: ok, or blocked when a hook vetoed it" do
+      run
+      hooks.register(:before_tool_call) { |event| event[:blocked] = true }
+      run
+
+      expect(statuses).to eq(%w[ok blocked])
+    end
+
+    it "is the tool's error status, worked out from the full output" do
+      allow(kernel).to receive(:dispatch_tool_call) do
+        { output: "[execute]\n#{"x" * 50}\nexit: 2", activity: { tool: "execute", status: "error" } }
+      end
+
+      runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil, max_tool_output_chars: 10)
+
+      expect(statuses).to eq(%w[error])
+    end
+
+    it "is error when the dispatcher itself raised (no activity)" do
+      allow(kernel).to receive(:dispatch_tool_call).and_raise(RuntimeError, "boom")
+
+      run
+
+      expect(statuses).to eq(%w[error])
+    end
+  end
+
   it "dispatches an unvetoed call; nothing waited, so no waited_ms" do
     run
     expect(events.last).not_to have_key(:waited_ms)

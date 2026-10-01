@@ -55,7 +55,7 @@ The plugin class must respond to `#call(event)` — duck-typed, no base class re
 | `:after_generation` | After LLM returns (both loops); not after a generation a hook cut (`stop_generation`) | `{ type: :after_generation, iteration: N, response: "...", messages: [...] (the conversation as sent) }` |
 | `:generation_progress` | While the response streams, in batches (see [Watching the stream](#watching-the-stream)) | `{ type: :generation_progress, iteration: N, thinking: "..." (new since the last fire), text: "..." (new visible text), thinking_chars: N, text_chars: N (this generation so far), elapsed_ms: N }` |
 | `:before_tool_call` | Before tool dispatch (and before `tool_call_started`) | `{ type: :before_tool_call, iteration: N, call: {...}, params: "...", guardrail: Verdict, context: {...}, targets: {...}, blocked: false, block_reason: nil }` |
-| `:after_tool_call` | After tool execution | `{ type: :after_tool_call, iteration: N, tool: "read", output: "..." }` |
+| `:after_tool_call` | After tool execution | `{ type: :after_tool_call, iteration: N, tool: "read", output: "..." (capped at max_tool_output_chars), status: "ok" \| "error" \| "blocked" \| "stopped" }` |
 | `:session_end` | After every turn (turn-level lifecycle) | `{ type: :session_end, session_id: "..." }` |
 
 Every event also carries the hook runtime (next section): `hook:` (the label
@@ -348,7 +348,8 @@ is sticky too), and the model gets `[<tool>] Error: blocked by guardrail: <reaso
 (default reason `blocked by hook`). A verdict's deny reads
 `[<tool>] Error: denied by guardrail (<rule or hook>): <reason>. … Do not retry it …`
 (after a user's Deny on an ask: `[<tool>] Error: The user declined this call… It needed approval (<rule or hook>): <reason>. …`).
-Either way the activity status is `blocked`, and `:after_tool_call` still fires.
+Either way the activity status is `blocked`, and `:after_tool_call` still fires,
+with `status: "blocked"`.
 Only `:before_tool_call` votes.
 
 **Mutating params (legacy):**
