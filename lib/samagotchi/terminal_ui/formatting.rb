@@ -44,6 +44,16 @@ module Samagotchi
         paint("↻ #{what}, asking again (#{event[:attempt]}/#{event[:of]})", 90)
       end
 
+      # "retrying (1/3 in 0.5s): Errno::ECONNREFUSED": the retry of all the
+      # retries there will be (as the web counts), the wait before it, and
+      # what failed (generation_retrying).
+      def format_generation_retry_line(event)
+        return "retrying (attempt #{event[:attempt]})" unless event[:max_retries]
+
+        text = "retrying (#{event[:attempt]}/#{event[:max_retries]} in #{format("%.1f", event[:next_delay].to_f)}s)"
+        event[:error_class].to_s.empty? ? text : "#{text}: #{event[:error_class]}"
+      end
+
       # " → image 1280×800" after a tool line whose tool read an image.
       def format_tool_image_suffix(images)
         refs = Array(images).map { |ref| ImageStore.symbolize(ref) }
@@ -62,7 +72,7 @@ module Samagotchi
       end
 
       # Prompt labels by the sender's client_id prefix (turn_events.js
-      # CLIENT_LABELS).
+      # CLIENT_LABELS; spec/shared/labels_matrix.json).
       CLIENT_LABELS = { "web" => "web", "tui" => "tui", "system" => "reminder", "delegate" => "delegate" }.freeze
 
       # "web> <prompt>": a prompt, labelled by who sent it.
@@ -179,7 +189,8 @@ module Samagotchi
       # ── Turn ends: one set of words for the REPL, attached mode and the
       # web (timing.js cancelLineText, format.js failedTurnText) ──────────
 
-      # A cancel's reason as the UIs name it (anything else as it is).
+      # A cancel's reason as the UIs name it (anything else as it is);
+      # spec/shared/labels_matrix.json pins it for both.
       CANCEL_REASONS = { "ctrl_c" => "Ctrl-C", "user" => "stopped", "hook" => "by a hook" }.freeze
       # Under a canceled prompt turn (a canceled continue is back where it
       # started): its partial progress stays in the conversation.

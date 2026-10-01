@@ -1,0 +1,75 @@
+{
+  "description": "Canonical label contract shared by the web (JS) and TUI (Ruby) suites: the words both UIs put on the same event. One source of truth: edit this file to change either side's words and BOTH suites must still pass. A case with \"expected\" is the same on both sides; one with \"ruby\" / \"js\" pins where the two UIs differ on purpose (the line around the label is each UI's own: the TUI's \"x>\" rows, the web's bubbles). Ruby: spec/labels_matrix_spec.rb; JS: spec/web/public/labels_matrix.test.js.",
+  "cancel_reasons": {
+    "note": "The label a canceled turn's line ends with, in parentheses (Formatting#turn_canceled_line: \"✕ turn canceled (label)\"; timing.js cancelLineText: \"✕ canceled (label)\"); null: no parentheses.",
+    "cases": [
+      { "reason": "ctrl_c", "expected": "Ctrl-C" },
+      { "reason": "user", "expected": "stopped" },
+      { "reason": "hook", "expected": "by a hook" },
+      { "reason": "shutdown", "expected": "shutdown" },
+      { "reason": "", "expected": null }
+    ]
+  },
+  "client_labels": {
+    "note": "The label on a prompt by its sender's client_id prefix (Formatting#prompt_line \"label> prompt\"; turn_events.js clientLabel). No client_id: the TUI's history/own prompt shows user>, the web's own bubble has no label.",
+    "cases": [
+      { "client_id": "web:abc", "expected": "web" },
+      { "client_id": "tui:123", "expected": "tui" },
+      { "client_id": "system:reminders", "expected": "reminder" },
+      { "client_id": "delegate:3f2a1c9e", "expected": "delegate" },
+      { "client_id": "other:1", "expected": "user" },
+      { "client_id": null, "ruby": "user", "js": null }
+    ]
+  },
+  "hook_notice_labels": {
+    "note": "Who a hook's notice is from (EventRenderer.hook_notice_line \"label> text\"; turn_events.js hookNoticeLabel, shown \"label: text\").",
+    "cases": [
+      { "hook": "known_names.rb (bundle known-names)", "expected": "known-names" },
+      { "hook": "thinking", "expected": "thinking" },
+      { "hook": "loop-guard", "expected": "loop-guard" },
+      { "hook": "audit.rb (config)", "expected": "hook" },
+      { "hook": "turn hook", "expected": "hook" },
+      { "hook": null, "expected": "hook" }
+    ]
+  },
+  "empty_retry_lines": {
+    "note": "The row a step gets when the loop asks again (Formatting#format_empty_retry_line; turn_events.js emptyRetryLine).",
+    "cases": [
+      { "event": { "attempt": 1, "of": 1 }, "expected": "↻ empty answer, asking again (1/1)" },
+      { "event": { "attempt": 1, "of": 2 }, "expected": "↻ empty answer, asking again (1/2)" },
+      { "event": { "attempt": 1, "of": 1, "stopped_by": "loop-guard" }, "expected": "↻ cut by loop-guard, asking again (1/1)" }
+    ]
+  },
+  "retry_lines": {
+    "note": "The live status while the provider is asked again (generation_retrying): Formatting#format_generation_retry_line; turn_events.js retryStatusLine. Both count the retry of all retries (1/3); the wording around it differs.",
+    "cases": [
+      { "event": { "attempt": 1, "max_retries": 3, "next_delay": 0.5, "error_class": "Errno::ECONNREFUSED" },
+        "ruby": "retrying (1/3 in 0.5s): Errno::ECONNREFUSED", "js": "↻ retrying (ECONNREFUSED) in 0.5 s, 1/3" },
+      { "event": { "attempt": 2, "max_retries": 5, "next_delay": 4, "status": 503 },
+        "ruby": "retrying (2/5 in 4.0s)", "js": "↻ retrying (503) in 4 s, 2/5" },
+      { "event": { "attempt": 2 },
+        "ruby": "retrying (attempt 2)", "js": "↻ retrying, 2" }
+    ]
+  },
+  "reminder_lines": {
+    "note": "The line for the reminders a turn got (Formatting#reminder_line; turn_events.js reminderText).",
+    "cases": [
+      { "reminders": [{ "name": "stretch" }, { "name": "water" }], "expected": "reminder: stretch, water" },
+      { "reminders": ["stretch"], "expected": "reminder: stretch" },
+      { "reminders": [], "expected": "reminder" },
+      { "reminders": null, "expected": "reminder" }
+    ]
+  },
+  "served_model": {
+    "note": "Whether the served model is another one than the name asked (ServedModel.differs?; format.js servedModelDiffers).",
+    "cases": [
+      { "asked": "qwen3", "served": "qwen3", "differs": false },
+      { "asked": "Qwen3", "served": "qwen3", "differs": false },
+      { "asked": "deepseek/deepseek-r1:free", "served": "deepseek/deepseek-r1", "differs": false },
+      { "asked": "gpt-4o", "served": "gpt-4o-2024-08-06", "differs": false },
+      { "asked": "qwen3", "served": "gemma-3", "differs": true },
+      { "asked": "", "served": "gemma-3", "differs": false },
+      { "asked": "qwen3", "served": null, "differs": false }
+    ]
+  }
+}
