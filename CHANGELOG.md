@@ -28,6 +28,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- Web: a Gemma model on a native llama.cpp host streams its answer into the reply as it writes (it showed only when the
+  turn ended), with its thoughts in the thinking block; the attached terminal shows them as thinking and the answer as
+  writing.
 - `chi sessions stop` marks the session with a `stopped` file in its folder instead of rewriting its session file, so
   a worker saving at that moment can no longer undo the stop (or lose its own save); a resume removes the file.
 - Web: switching sessions no longer briefly shows the previous session's "delegated by" link in the info bar.

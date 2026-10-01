@@ -11,7 +11,6 @@ require_relative "context_note"
 require_relative "steer"
 require_relative "turn_note"
 require_relative "model_profile"
-require_relative "thought_stream_splitter"
 require_relative "cancellation_controller"
 require_relative "context_window"
 require_relative "kernel_loop"
@@ -2130,44 +2129,29 @@ module Samagotchi
     # only notifying the observer.
     # Wrap a raw kernel stream event and fan it out to the turn sink + observers.
     #
-    # Phase 2 (web-stream-rendering): each :generation_chunk is enriched with two
-    # ADDITIVE fields derived from the raw `content` (which is left untouched —
-    # the TUI thinking spinner, analytics, and Bridge replay all rely on raw):
+    # Each :generation_chunk comes split already, by the loop that streamed it:
+    # besides the raw `content` (left untouched — the TUI thinking spinner,
+    # analytics, and Bridge replay rely on it) it carries
     #   * :text     — visible prose (thinking AND tool_call blocks removed)
     #   * :thinking — thinking-only content
-    # The splitter is profile-aware and resets on each :generation_started so a
-    # turn's multiple generations each start clean.
-    #
-    # Enrichment is profile-scoped:
-    #   * Splitting profiles (explicit think close, e.g. Qwen) ALWAYS emit
-    #     `text`/`thinking` on every :generation_chunk — even when empty — so the
-    #     web client can rely on them and never fall back to raw `content`.
-    #   * Non-splitting profiles (nil think close, e.g. Gemma) leave the event
-    #     unchanged; the web client then falls back to raw `content`, preserving
-    #     today's behavior (no regression).
+    # KernelLoop splits a native stream with a ThoughtStreamSplitter per
+    # generation (every profile, Gemma's thought channel included); the chat
+    # loop gets reasoning apart from the answer. The web routes on those
+    # fields (chunk_router.js).
     #
     # With a :generation_progress hook registered, a Hooks::StreamWatch gets
     # each chunk's thinking and text after the UIs had it.
     def build_stream_event_handler(on_event, cancel_controller: nil)
-      splitter = ThoughtStreamSplitter.for_profile(profile)
-      enrich = profile.thought_close ? :always : :never
       watch = stream_watch(cancel_controller)
       proc do |event|
         progress = nil
         case event[:type]
         when :generation_started
-          splitter = ThoughtStreamSplitter.for_profile(profile)
           watch&.started(event[:iteration])
         when :generation_chunk
-          # The chat loop already splits its stream (reasoning arrives apart
-          # from the answer); only raw native chunks are split here.
-          if event.key?(:text)
-            progress = { thinking: event[:thinking], text: event[:text] }
-          else
-            delta = splitter.feed(event[:content])
-            progress = { thinking: delta[:thinking], text: delta[:text] }
-            event = event.merge(text: delta[:text], thinking: delta[:thinking]) if enrich == :always
-          end
+          # A chunk without the lanes (no loop of ours sends one) counts as text.
+          text = event.key?(:text) ? event[:text] : event[:content]
+          progress = { thinking: event[:thinking].to_s, text: text.to_s }
         end
         # The chat loop asked again without the thinking fields: a notice,
         # not an event of its own.

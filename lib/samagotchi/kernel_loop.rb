@@ -170,7 +170,6 @@ module Samagotchi
       empty_retries = 0
       empty_retry_limit = EmptyAnswerRetry.limit
       @retry_generation = false
-      stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
       # Qwen with thinking off: an empty thought after the cue, so the model
       # answers at once. Kept in the turn's model messages, so each tool-loop
       # prompt starts with what the server already has cached.
@@ -192,6 +191,9 @@ module Samagotchi
           conversation << line
           prompt, images = Prompt.format_with_images(conversation, profile: @profile, vision: @vision, prefill: prefill)
         end
+        # Each generation splits its own stream: one that ended inside a
+        # thought or a tool call doesn't leave the next one "inside" it.
+        stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
         emit_stream_event(
           on_stream_event,
           type: :generation_started,
@@ -235,6 +237,7 @@ module Samagotchi
                   type: :generation_chunk,
                   iteration: iteration_index + 1,
                   content: chunk[:content],
+                  text: split[:text],
                   thinking: split[:thinking],
                   payload: chunk[:payload]
                 )
@@ -263,9 +266,8 @@ module Samagotchi
           ""
         end
         if cut
-          # The cut stream may have stopped mid-block, and its visible text
-          # goes with it: a fresh splitter, the buffer as it was before.
-          stream_splitter = ThoughtStreamSplitter.for_profile(@profile)
+          # The cut stream's visible text goes with it: the buffer as it was
+          # before (the next generation gets a fresh splitter).
           partial_assistant_buffer.slice!(buffer_mark..)
           emit_stream_event(on_stream_event, type: :generation_completed, iteration: iteration_index + 1,
                                              content_length: 0, thinking_chars: streamed_thinking,
@@ -660,8 +662,8 @@ module Samagotchi
     private
 
     # The generation's thinking: what the stream split into the thinking
-    # lane (Qwen), else what the profile's thought blocks hold (Gemma's
-    # stream isn't split).
+    # lane, else what the profile's thought blocks hold (an empty thought, a
+    # bare Gemma <|think|> cue, a response that wasn't streamed).
     def thinking_chars(response, streamed)
       return streamed if streamed.positive?
 

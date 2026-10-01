@@ -32,12 +32,13 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
 
   before { allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("") }
 
-  # Chunk events as KernelLoop emits them (thinking split by the profile).
+  # Chunk events as KernelLoop emits them (text and thinking split by the profile).
   def chunks(profile, *pieces, iteration: 1, payload: nil)
     splitter = Samagotchi::ThoughtStreamSplitter.for_profile(Samagotchi::ModelProfile.normalize(profile))
     pieces.map do |content|
+      split = splitter.feed(content)
       { type: :generation_chunk, iteration: iteration, content: content,
-        thinking: splitter.feed(content)[:thinking], payload: payload || { "content" => content } }
+        text: split[:text], thinking: split[:thinking], payload: payload || { "content" => content } }
     end
   end
 
@@ -167,7 +168,7 @@ RSpec.describe "TerminalUI interactive turn output (golden)" do
   end
 
   it "renders a Gemma answer with its thinking sentence" do
-    events = generation("gemma4", "<|channel>thought\nweighing ", "options<channel|>", "Hi!")
+    events = generation("gemma4", "<|channel>thought\nweighing ", "options.<channel|>", "Hi!")
 
     output = run_turn(model: "gemma-4-e4b", events: events) { |messages| result_for(messages, output: "Hi!") }
 

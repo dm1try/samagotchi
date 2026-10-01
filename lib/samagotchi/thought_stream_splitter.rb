@@ -18,21 +18,22 @@ module Samagotchi
   # fragments at the end of each chunk so a marker split across a stream boundary
   # is still recognized. `ThoughtStreamSplitter.for_profile` derives the block
   # markers from the active ModelProfile, so the same splitter works for the
-  # Qwen literal-marker family and (tool_call only) the Gemma control-token family.
+  # Qwen literal-marker family and the Gemma control-token family.
   #
-  # For a profile whose `thought_close` is nil (Gemma 4), thinking blocks have no
-  # explicit close marker and are NOT split out — they remain in `:text` and the
-  # renderer's existing strip still hides them from the bubble. Qwen 3.6 (the
-  # default runtime profile) has explicit open/close markers for both families,
-  # so thinking is split cleanly.
+  # Gemma 4 thinks in a channel, `<|channel>thought` … `<channel|>`: that is
+  # its thinking block. Its bare `<|think|>` cue has no close marker, so it is
+  # not a block and stays in `:text` (the model doesn't emit it; the system
+  # prompt carries it).
   class ThoughtStreamSplitter
+    # Gemma 4's thought channel (ToolCallParser::Gemma strips the same pair).
+    GEMMA_THOUGHT_CHANNEL = { open: "<|channel>thought", close: "<channel|>" }.freeze
+
     # @return [Array<Hash>] each entry { open: String, close: String, lane: :thinking|:drop }
     def self.for_profile(profile)
       blocks = []
-      # Only register a thinking block when the profile has an explicit close
-      # marker (Qwen). A nil close (Gemma) means we can't bound the block, so we
-      # leave thinking in :text and let the renderer's strip handle it.
+      # A thinking block needs a close marker to be bounded.
       blocks << { open: profile.thought_open, close: profile.thought_close, lane: :thinking } if profile.thought_close
+      blocks << GEMMA_THOUGHT_CHANNEL.merge(lane: :thinking) if profile.name == "gemma4"
       blocks << { open: profile.tool_call_open, close: profile.tool_call_close, lane: :drop }
       new(blocks)
     end

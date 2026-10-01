@@ -11,9 +11,9 @@ module Samagotchi
     # ThinkingTicker (so it changes at most once per dwell). Both TUIs use it
     # in place of the raw tail of the stream.
     #
-    # A chunk carries :text (and :thinking) when the profile splits its stream
-    # (Qwen, every chat host); otherwise the raw :content, markup stripped,
-    # stands for thinking. A switch of lane starts the next sentence from the new
+    # A chunk carries :text (and :thinking): both loops split their stream,
+    # for every profile. A chunk without them (an older worker) has its raw
+    # :content, markup stripped, stand for thinking. A switch of lane starts the next sentence from the new
     # lane's text; the line shown keeps the label of the lane it came from.
     class ThinkingLine
       include Formatting

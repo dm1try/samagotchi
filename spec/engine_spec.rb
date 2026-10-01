@@ -344,78 +344,32 @@ RSpec.describe Samagotchi::Engine do
       expect(completed[:output_truncated]).to be(false)
     end
 
-    describe "generation_chunk text/thinking enrichment (Phase 2)" do
-      QWEN_THINK_OPEN = Samagotchi::ModelProfile.qwen36.thought_open
-      QWEN_THINK_CLOSE = Samagotchi::ModelProfile.qwen36.thought_close
-
+    describe "generation_chunk lanes" do
+      # The loop that streamed a chunk split it (KernelLoop's per-generation
+      # ThoughtStreamSplitter, the chat loop's reasoning field): the Engine
+      # passes its lanes on as they are and splits nothing itself.
       def stream_turn_chunks(engine, session, chunks)
         events = []
         allow(kernel).to receive(:run) do |_messages, **kwargs|
           cb = kwargs[:on_stream_event]
           cb.call(type: :generation_started, iteration: 1)
-          chunks.each { |c| cb.call(type: :generation_chunk, iteration: 1, content: c) }
-          cb.call(type: :generation_completed, iteration: 1, content: chunks.join)
+          chunks.each { |c| cb.call(c.merge(type: :generation_chunk, iteration: 1)) }
           result
         end
         engine.run_turn(session, "hi", on_event: proc { |e| events << e })
         events.select { |e| e[:type] == :generation_chunk }
       end
 
-      it "enriches a Qwen chunk with text/thinking and leaves raw content untouched" do
-        engine = build_engine(profile: "qwen36")
-        raw = "hi #{QWEN_THINK_OPEN}reasoning#{QWEN_THINK_CLOSE}there"
-        chunk = stream_turn_chunks(engine, make_session, [raw]).first
-        expect(chunk[:content]).to eq(raw)
-        expect(chunk[:thinking]).to eq("reasoning")
-        expect(chunk[:text]).to eq("hi there")
+      it "passes a split chunk on unchanged" do
+        chunk = { content: "<think>a</think>b", text: "b", thinking: "a" }
+        got = stream_turn_chunks(build_engine(profile: "qwen36"), make_session, [chunk]).first
+        expect(got).to eq(chunk.merge(type: :generation_chunk, iteration: 1))
       end
 
-      it "accumulates text/thinking deltas across chunks of one generation" do
-        engine = build_engine(profile: "qwen36")
-        chunks = ["hi ", QWEN_THINK_OPEN, "reason", QWEN_THINK_CLOSE, "there"]
-        got = stream_turn_chunks(engine, make_session, chunks)
-        text = got.map { |c| c[:text].to_s }.join
-        thinking = got.map { |c| c[:thinking].to_s }.join
-        expect(text).to eq("hi there")
-        expect(thinking).to eq("reason")
-        # every chunk's content is unchanged raw
-        got.each { |c| expect(c[:content]).to eq(chunks[got.index(c)]) }
-      end
-
-      it "always includes text/thinking keys (even empty) for a splitting profile" do
-        engine = build_engine(profile: "qwen36")
-        got = stream_turn_chunks(engine, make_session, [""])
-        expect(got.first[:text]).to eq("")
-        expect(got.first[:thinking]).to eq("")
-      end
-
-      it "resets the splitter on each generation_started" do
-        engine = build_engine(profile: "qwen36")
-        events = []
-        allow(kernel).to receive(:run) do |_messages, **kwargs|
-          cb = kwargs[:on_stream_event]
-          # generation 1 leaves an unterminated thinking block open
-          cb.call(type: :generation_started, iteration: 1)
-          cb.call(type: :generation_chunk, iteration: 1, content: "a#{QWEN_THINK_OPEN}open-thought")
-          # generation 2 must start clean: a leading think-close is prose, not a close
-          cb.call(type: :generation_started, iteration: 2)
-          cb.call(type: :generation_chunk, iteration: 2, content: "b")
-          result
-        end
-        engine.run_turn(make_session, "hi", on_event: proc { |e| events << e })
-        g1 = events.find { |e| e[:type] == :generation_chunk && e[:iteration] == 1 }
-        g2 = events.find { |e| e[:type] == :generation_chunk && e[:iteration] == 2 }
-        expect(g1[:thinking]).to eq("open-thought")
-        expect(g2[:text]).to eq("b")
-        expect(g2[:thinking]).to eq("")
-      end
-
-      it "leaves the event unchanged for a profile with a nil think close (Gemma)" do
-        engine = build_engine(profile: "gemma4")
-        raw = "hi #{Samagotchi::ModelProfile.gemma4.thought_open}reasoning"
-        chunk = stream_turn_chunks(engine, make_session, [raw]).first
-        # Non-splitting profile: no text/thinking added, web falls back to raw content.
-        expect(chunk).to eq(type: :generation_chunk, iteration: 1, content: raw)
+      it "doesn't split a chunk that came without lanes" do
+        chunk = { content: "<think>a</think>b" }
+        got = stream_turn_chunks(build_engine(profile: "qwen36"), make_session, [chunk]).first
+        expect(got).to eq(chunk.merge(type: :generation_chunk, iteration: 1))
       end
     end
   end

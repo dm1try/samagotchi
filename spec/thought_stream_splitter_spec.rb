@@ -35,15 +35,26 @@ RSpec.describe Samagotchi::ThoughtStreamSplitter do
       expect(splitter.feed("x")[:thinking]).to eq("x")
     end
 
-    it "registers only tool_call (drop) for a profile with a nil think close (Gemma)" do
+    it "keeps Gemma's bare think cue in :text (it has no close) and drops its tool_call bodies" do
       expect(GEMMA.thought_close).to be_nil
       splitter = described_class.for_profile(GEMMA)
-      # Gemma thinking markers stay in :text (no explicit close).
       expect(splitter.feed(GEMMA.thought_open)[:text]).to eq(GEMMA.thought_open)
       # Gemma tool_call markers are dropped.
       out = run_chunks(described_class.for_profile(GEMMA), [GEMMA.tool_call_open, "body", GEMMA.tool_call_close])
       expect(out[:text]).to eq("")
       expect(out[:thinking]).to eq("")
+    end
+
+    it "splits Gemma's thought channel into :thinking, markers dropped, across chunk boundaries" do
+      chunks = ["<|chan", "nel>thought\nweighing ", "options<chan", "nel|>Hi ", "there."]
+      out = run_chunks(described_class.for_profile(GEMMA), chunks)
+      expect(out[:thinking]).to eq("\nweighing options")
+      expect(out[:text]).to eq("Hi there.")
+    end
+
+    it "registers no thought channel for Qwen" do
+      out = run_chunks(described_class.for_profile(QWEN), ["<|channel>thought x<channel|>y"])
+      expect(out[:text]).to eq("<|channel>thought x<channel|>y")
     end
   end
 

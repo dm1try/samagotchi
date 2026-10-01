@@ -916,6 +916,64 @@ Need to inspect the filesystem first.
       expect(completed).to include(content_length: 30, thinking_chars: 18)
     end
 
+    describe "the chunk lanes (text: and thinking: on every native chunk)" do
+      def stream_chunks(kernel, *responses)
+        events = []
+        allow(client).to receive(:complete) do |_prompt, **kwargs|
+          pieces = responses.shift
+          pieces.each { |piece| kwargs[:on_chunk]&.call(content: piece, payload: {}) }
+          pieces.join
+        end
+        result = kernel.run([{ role: "user", content: "hi" }], on_stream_event: ->(event) { events << event })
+        [result, events]
+      end
+
+      def lanes(events, iteration)
+        chunks = events.select { |e| e[:type] == :generation_chunk && e[:iteration] == iteration }
+        expect(chunks).to all(include(:text, :thinking))
+        { text: chunks.map { |e| e[:text] }.join, thinking: chunks.map { |e| e[:thinking] }.join }
+      end
+
+      it "splits a Gemma stream: the thought channel to thinking, the answer to text, raw content kept" do
+        pieces = ["<|channel>thought\nweighing ", "options<channel|>", "Hello ", "from ", "Gemma."]
+        _result, events = stream_chunks(kernel, pieces)
+
+        expect(lanes(events, 1)).to eq(text: "Hello from Gemma.", thinking: "\nweighing options")
+        expect(events.select { |e| e[:type] == :generation_chunk }.map { |e| e[:content] }).to eq(pieces)
+        expect(events.find { |e| e[:type] == :generation_completed }).to include(thinking_chars: "\nweighing options".length)
+      end
+
+      it "gives a Gemma chunk with nothing visible an empty text (a tool call body is dropped)" do
+        allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+        _result, events = stream_chunks(kernel, ['<|tool_call>call:memory_read{name:<|"|>notes<|"|>}', "<tool_call|>"], ["Done."])
+
+        expect(lanes(events, 1)).to eq(text: "", thinking: "")
+        expect(lanes(events, 2)).to eq(text: "Done.", thinking: "")
+      end
+
+      it "keeps Qwen's lanes as they were" do
+        qwen = described_class.new(client: client, profile: Samagotchi::ModelProfile.qwen36)
+        _result, events = stream_chunks(qwen, ["<think>", "reason", "</think>", "hi ", "<tool_", "call>x</tool_call>", "there"])
+
+        expect(lanes(events, 1)).to eq(text: "hi there", thinking: "reason")
+      end
+
+      it "starts each generation with a fresh splitter: one that ended inside a thought doesn't swallow the next" do
+        original = ENV.fetch("SAMAGOTCHI_RETRY_EMPTY_ANSWER", nil)
+        ENV["SAMAGOTCHI_RETRY_EMPTY_ANSWER"] = "1"
+        qwen = described_class.new(client: client, profile: Samagotchi::ModelProfile.qwen36)
+        result, events = stream_chunks(qwen, ["<think>", "never closed"], ["PONG"])
+
+        expect(events.map { |e| e[:type] }).to include(:empty_answer_retry)
+        expect(lanes(events, 2)).to eq(text: "PONG", thinking: "")
+        completed = events.select { |e| e[:type] == :generation_completed }
+        expect(completed.last[:thinking_chars]).to eq(0)
+        expect(result.output).to eq("PONG")
+      ensure
+        original.nil? ? ENV.delete("SAMAGOTCHI_RETRY_EMPTY_ANSWER") : ENV["SAMAGOTCHI_RETRY_EMPTY_ANSWER"] = original
+      end
+    end
+
     it "counts the thinking a Qwen stream split off, and zero without any" do
       events = []
       responses = ["<think>\nlooping on a thought</think>\n\nok", "plain"]
