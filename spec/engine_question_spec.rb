@@ -115,7 +115,14 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       engine.session_state_dir = state_dir
       turn_thread, = request_in_background(engine, payload)
 
-      on_disk = Samagotchi::Session.load(session.id, state_dir: state_dir)
+      # The question is saved right after it is set: wait for the file, not just the engine.
+      on_disk = nil
+      wait_until(timeout: 2) do
+        on_disk = Samagotchi::Session.load(session.id, state_dir: state_dir)
+        on_disk.pending_question
+      rescue ArgumentError
+        nil
+      end
       expect(on_disk.pending_question[:id]).to eq(engine.pending_question[:id])
 
       engine.answer_question(id: engine.pending_question[:id], selected: ["Dogs"])
