@@ -157,7 +157,10 @@ module Samagotchi
         # that bring tools.
         @engine.start_init_tasks!
         loop do
-          # Check if the session was externally marked as stopped
+          # Check if the session was externally marked as stopped. Not
+          # stopped_on_disk?, which reads a vanished file as "not stopped":
+          # a session file deleted under a running worker crashes it here
+          # instead of being saved back by its next turn.
           exit(0) if Session.load(@session_id, state_dir: @state_dir).status == Session::STATUS_STOPPED
 
           # Commands queued before a prompt run first (a /continue sent
@@ -318,7 +321,7 @@ module Samagotchi
       after_turn(result, no_interrupt: no_interrupt)
       response = result.respond_to?(:output) ? result.output : nil
       SessionInbox.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
-      @session.save(state_dir: @state_dir) unless stopped_on_disk?
+      save_session
     end
 
     # A due reminder runs as a continue turn, as in the REPL: Engine#run_turn
@@ -349,7 +352,7 @@ module Samagotchi
       # The offer went before the turn (drop_continue_offer); the rollback
       # window closes.
       @turn_flow.after_reminder_turn
-      @session.save(state_dir: @state_dir) unless stopped_on_disk?
+      save_session
       true
     end
 
@@ -397,7 +400,7 @@ module Samagotchi
         announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed))
         shown.each { |event| @engine.announce(event) }
       end
-      @session.save(state_dir: @state_dir) unless Array(result.changed).empty? || stopped_on_disk?
+      save_session unless Array(result.changed).empty?
       user_input(command[:client_id]) if resolved
       # An offer answered without a turn ("no") is activity: the recap
       # written at the offer (it says the turn stopped) gets rewritten.
@@ -469,7 +472,7 @@ module Samagotchi
                                                  max_iterations: max_iterations(offer[:no_interrupt]))
       rescue StandardError
         @engine.announce(type: :continue_offered, context: offer[:context], no_interrupt: offer[:no_interrupt])
-        @session.save(state_dir: @state_dir) unless stopped_on_disk?
+        save_session
         return
       ensure
         refuse_queued_commands
@@ -477,7 +480,7 @@ module Samagotchi
       after_turn(result, continue: true, no_interrupt: offer[:no_interrupt])
       response = result.respond_to?(:output) ? result.output : nil
       SessionInbox.write_output(@session_dir, response) unless response.nil? || response.strip.empty?
-      @session.save(state_dir: @state_dir) unless stopped_on_disk?
+      save_session
     end
 
     # TurnFlow keeps the checkpoint (a cancelled turn's, for !rollback) and
@@ -523,7 +526,7 @@ module Samagotchi
           @engine.announce(restored)
         end
       end
-      @session.save(state_dir: @state_dir) unless stopped_on_disk?
+      save_session
     end
 
     # Shared mid-turn steering drain: claims any input files that arrive
@@ -656,6 +659,13 @@ module Samagotchi
 
     def stopped_on_disk?
       SessionManager.stopped_on_disk?(@session_id, state_dir: @state_dir)
+    end
+
+    # Save the session unless it was stopped meanwhile: the stop (chi stop,
+    # from another process) saved its status, and this save would write
+    # the worker's over it.
+    def save_session
+      @session.save(state_dir: @state_dir) unless stopped_on_disk?
     end
   end
 end
