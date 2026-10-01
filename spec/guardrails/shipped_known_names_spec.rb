@@ -60,13 +60,18 @@ RSpec.describe "The known-names bundle" do
     "git -C /home/johndoe/projects/samagothci status" => %w[samagothci samagotchi],
     "ssh j0hnno@host" => %w[j0hnno J0hnni],
     "ls /home/jonathndoe/work" => %w[jonathndoe jonathandoe],
-    "cd ~/projects && cat /home/Johndeo/notes.txt" => %w[Johndeo johndoe]
+    "cd ~/projects && cat /home/Johndeo/notes.txt" => %w[Johndeo johndoe],
+    # A glob in another path segment: "/" splits first, the typo is still caught.
+    "ls /home/johndeo/*" => %w[johndeo johndoe]
   }.freeze
 
   let_through = [
     "ls /home/johndoe", "ls ~/projects", "echo $HOME/x", "cat ~/x", "ls johnn", "ls johnnz",
     "cd samagotchi-known-names && git status", "ls /home/johndoe/projects/samagotchi", "ps aux | grep processes",
-    "ssh j0hnny@host", "echo jonathandoe"
+    "ssh j0hnny@host", "echo jonathandoe",
+    # A token with a shell glob (*?[]{}) is not checked: a glob of a known name isn't a typo.
+    "ls -d johndoe*", "ls /home/johndoe?", "ls /home/johndoe/project?", "cat samagotchi[12].log",
+    "ls {johndoe,other}", "rm -rf samagotchi-*", "ls -d samagotchi*"
   ].freeze
 
   caught.each do |command, (miss, name)|

@@ -6,6 +6,8 @@
 # that once misspelled a name in a path keeps copying the wrong spelling;
 # a rejection that names the right one breaks the loop.
 #
+# A token with a shell glob (*?[]{}) is not checked.
+#
 # Settings (config.yml, `bundles: known-names:`), all optional:
 #   names: [jonathandoe]         names to protect besides the derived ones
 #   mode: reject                 reject (default) | correct | ask
@@ -22,6 +24,9 @@ class KnownNames
   # candidates too.
   TOKEN_SPLIT = %r{[/\s"'=:,;|&()<>@]+}.freeze
   PART_SPLIT = /[-_.]+/.freeze
+  # A candidate with a shell glob character is not checked: `workato*`
+  # is a pattern over the name, not a misspelling of it.
+  GLOB = /[*?\[\]{}]/.freeze
   ASK_OPTIONS = ["Correct it and run", "Run as is", "Deny"].freeze
 
   def initialize(settings = {})
@@ -119,7 +124,7 @@ class KnownNames
 
   def candidates(text)
     text.split(TOKEN_SPLIT).flat_map { |token| [token] + token.split(PART_SPLIT) }
-        .uniq.select { |c| c.length >= @min_length }
+        .uniq.select { |c| c.length >= @min_length && !c.match?(GLOB) }
   end
 
   # downcased name => name as given, minus ignored and short ones
