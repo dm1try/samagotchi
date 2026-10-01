@@ -16,6 +16,7 @@ require_relative "../session_manager"
 require_relative "../session_commands"
 require_relative "../steer"
 require_relative "../host_registry"
+require_relative "../model_catalog"
 require_relative "../model_profile"
 require_relative "../project_scope"
 require_relative "../prompt_history"
@@ -417,19 +418,11 @@ module Samagotchi
             warnings << "the hosts are still listing their models"
           else
             default_host = registry.default_entry&.name
-            ordered = results.keys.sort_by { |name| [name == default_host ? 0 : 1, name] }
-            ordered.each do |host|
-              data = results[host]
-              if data[:error]
-                warnings << "#{host}: #{data[:error]}"
-                next
-              end
-              Array(data[:models]).each do |info|
-                id = info.id.to_s
-                next if id.strip.empty? || id.end_with?(":batch")
-
-                models << { name: host == default_host ? id : "#{host}:#{id}", host: host, id: id }
-              end
+            listing = ModelCatalog.listing(results, registry: registry)
+            warnings.concat(listing.warnings)
+            # the web's own spelling, kept as it was: bare on the default host
+            listing.rows.each do |row|
+              models << { name: row.host == default_host ? row.id : "#{row.host}:#{row.id}", host: row.host, id: row.id }
             end
           end
         rescue StandardError => e
