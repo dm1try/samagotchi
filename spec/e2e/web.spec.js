@@ -186,6 +186,28 @@ test("cancel mid-turn shows the canceled turn (its timing line too), and the nex
   await turnEnded(page, 2);
 });
 
+test("↑/↓ in the composer walk the prompt history and bring the draft back", async ({ page, script }) => {
+  script("plain");
+  // The workers' state is shared across scenarios: unique prompts, and
+  // only their order is asserted.
+  const tag = Date.now().toString(36);
+  await send(page, `first ${tag}`);
+  await turnEnded(page, 1);
+  await send(page, `second ${tag}`);
+  await turnEnded(page, 2);
+
+  const prompt = page.locator("#prompt");
+  await prompt.fill("my draft");
+  await prompt.press("ArrowUp");
+  await expect(prompt).toHaveValue(`second ${tag}`);
+  await prompt.press("ArrowUp");
+  await expect(prompt).toHaveValue(`first ${tag}`);
+  await prompt.press("ArrowDown");
+  await expect(prompt).toHaveValue(`second ${tag}`);
+  await prompt.press("ArrowDown");
+  await expect(prompt).toHaveValue("my draft");
+});
+
 test("a question card: the answer lets the turn go on", { tag: "@turn" }, async ({ page, script }) => {
   script("question");
   await send(page, "Read a file of my choice");

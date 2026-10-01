@@ -14,6 +14,7 @@ import {
   unarchiveSession,
   dismissQuestion,
   listModels,
+  fetchHistory,
 } from "../../../lib/samagotchi/web/public/data.js";
 
 function okResponse(body, status = 200) {
@@ -198,6 +199,29 @@ test("sendTurn sends the tab's client_id when given", async () => {
   });
   assert.deepEqual(JSON.parse(calls[0].body), { prompt: "hi", client_id: "web:tab1" });
   assert.equal(calls[0].clientId, undefined);
+});
+
+test("sendTurn keeps an image-only send out of the history (history: false)", async () => {
+  const calls = [];
+  const fetchImpl = (path, opts) => {
+    calls.push(JSON.parse(opts.body));
+    return Promise.resolve(okResponse({}));
+  };
+  await sendTurn("abc", "[image: cat.png]", { history: false, fetchImpl });
+  await sendTurn("abc", "typed", { history: true, fetchImpl });
+  assert.deepEqual(calls, [{ prompt: "[image: cat.png]", history: false }, { prompt: "typed" }]);
+});
+
+test("fetchHistory gets the shared prompt history's entries", async () => {
+  const calls = [];
+  const entries = await fetchHistory({
+    fetchImpl: (path, opts) => {
+      calls.push([path, opts.method]);
+      return Promise.resolve(okResponse({ entries: ["one", "two"] }));
+    },
+  });
+  assert.deepEqual(entries, ["one", "two"]);
+  assert.deepEqual(calls, [["/api/history", undefined]]);
 });
 
 test("dismissQuestion posts the question id to the dismiss route", async () => {
