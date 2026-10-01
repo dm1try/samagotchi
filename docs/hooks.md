@@ -430,7 +430,7 @@ hooks:
   guardrails.rb:
     sha256: 1234...
     event: before_tool_call
-    on_error: fail_closed   # default for before_tool_call
+    on_error: fail_closed   # skip (default) | log | fail_closed (before_tool_call only)
     priority: 10
   audit.rb:
     sha256: 5678...
@@ -447,7 +447,7 @@ Notes:
 - `event` is required for auto-registration; a hook with no event is skipped.
 - `sha256` is integrity (not authenticity). No signing in v1. Install records the sha256 of the copied file; at `Engine.new` a hook whose file differs is not loaded (reinstall the bundle after editing one by hand).
 - Hook code is the bundle author's source of truth: on upgrade, hooks are overwritten; if the installed file was locally modified, a warning is emitted (`was locally modified; overwriting`).
-- A raising `:before_tool_call` guardrail respects `on_error`: `fail_closed` denies the call (fail-closed), `log` warns, `skip` is silent.
+- `on_error` defaults to `skip` for every event, `:before_tool_call` included: a raising hook is silent and the call goes ahead. `log` warns. `fail_closed` (only on `:before_tool_call`; on any other event it acts as `skip`) denies the call the hook raised on. Choose `fail_closed` for a hook that is a guardrail, whose failure should stop tool calls rather than let them through.
 - A `fail_closed` `:before_tool_call` hook is required: if it is missing, fails to load or its sha256 differs, chi denies every tool call until it is fixed.
 - A bundle can also ship YAML rules in `guardrails/*.yml`; see [Guardrails](guardrails.md#the-guardrails-bundle).
 - Ordering: bundle hooks fire by `(priority, bundle_name, hook_name)` (lower priority first), then plain `config.yml` hooks in registration order.
