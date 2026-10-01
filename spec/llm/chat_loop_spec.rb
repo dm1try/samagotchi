@@ -591,9 +591,12 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
 
     # A real kernel: the double above strips what it is given, which would
-    # hide a whitespace answer.
+    # hide a whitespace answer. Its client is a stub: a default Client would
+    # probe localhost:8080/props for the context window (WebMock's error is
+    # not a StandardError, so ChatLoop#context_window can't swallow it).
     it "takes an answer of only whitespace as empty: asked again, never saved" do
-      kernel = Samagotchi::KernelLoop.new(client: nil, profile: Samagotchi::ModelProfile.qwen36)
+      client = instance_double(Samagotchi::Client, context_window: nil)
+      kernel = Samagotchi::KernelLoop.new(client: client, profile: Samagotchi::ModelProfile.qwen36)
       adapter = FakeChatAdapter.new(text("  \n "), text("PONG"))
       result = described_class.new(kernel: kernel, adapter: adapter).complete(messages: [{ role: "user", content: "hi" }],
                                                                              model_name: "m")
