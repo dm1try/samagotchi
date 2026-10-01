@@ -24,11 +24,12 @@ require_relative "tools/args"
 require_relative "tools/builtin_calls"
 
 module Samagotchi
-  # Per-profile strategy for parsing raw model output into internal tool
-  # calls ({name:, content:, path:, scope:, ...}) and stripping per-profile
-  # thought blocks. KernelLoop delegates here so it no longer carries dual
-  # Gemma/Qwen parse code paths; the ModelProfile remains the source of truth
-  # for call/thought delimiter tokens.
+  # Per-profile strategy for reading tool calls out of raw model output and
+  # stripping per-profile thought blocks. #read gives each call as
+  # {name:, args:, raw:} (its wire format read, nothing more); #parse builds
+  # them into internal calls with Tools::BuiltinCalls, as the chat path
+  # does. The ModelProfile remains the source of truth for call/thought
+  # delimiter tokens.
   class ToolCallParser
     # @param profile [ModelProfile]
     # @return [Gemma, Qwen]

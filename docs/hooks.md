@@ -368,6 +368,43 @@ end
 
 Note: `:before_tool_call` can replace the `:call` hash to change what runs; `tool_call_started` (what the UIs show) and the rules see the final call.
 
+### The call a hook sees
+
+`event[:call]` is the same hash for every model format (Gemma, Qwen, the
+chat path): `name:`, `content:`, `path:`, `scope:`, plus the tool's other
+parameters by their own names (symbol keys). `content:` holds the tool's
+main argument (`""` when it has none), `path:` the parameter named in its
+column, and an argument the model left out is `nil`. Text values are
+stripped of surrounding whitespace, except file text, an edit's
+`old_text`/`new_text`, `env` and `options`.
+
+| Tool | `content:` from | `path:` from | Own fields |
+|------|-----------------|--------------|------------|
+| `execute` | `command` | — | `cwd` |
+| `read` | `path` | — | `start_line`, `end_line` |
+| `write` | — | `path` | `content` |
+| `edit` | — | `path` | `old_text`, `new_text`, `start_line`, `end_line` |
+| `memory_read` | `name` | — | `scope` |
+| `memory_write` | — | `name` | `content`, `scope`, `description`, `current_model_only` |
+| `task_create` | `command` | — | `cwd`, `env` |
+| `task_get` | `id` or `task_id` | — | — |
+| `task_list` | — | — | — |
+| `task_stop` | `id` or `task_id` | — | — |
+| `task_wait` | `id` or `task_id` | — | `timeout`, `tail_lines`, `done_pattern` |
+| `web_fetch` | `url` | — | — |
+| `register_reminder` | `name` | — | `description`, `interval_minutes` |
+| `cancel_reminder` | `name` | — | — |
+| `list_reminders` | — | — | — |
+| `list_sessions` | — | — | `cwd` |
+| `send_note` | `text` | — | `session` |
+| `delegate` | `task` | — | `model`, `session`, `wait`, `timeout` |
+| `delegate_result` | — | — | `session`, `timeout` |
+| `ask_user_question` | `question` | — | `question`, `options`, `header`, `multi_select`, `allow_freeform` |
+
+A `write`'s `content:` is the file text; an `edit` carries `old_text:` and
+`new_text:` (its `content:` is `""`). A plugin or MCP tool's call has its
+arguments whole on `args:` (string keys) instead.
+
 ## Bundle Hooks (unified workflow bundle)
 
 Bundles can ship executable guardrails alongside memories. A bundle with hooks lives as a directory with a `hooks/` subdirectory (flat, basename-keyed):
