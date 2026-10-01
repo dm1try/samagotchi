@@ -331,7 +331,7 @@ module Samagotchi
                                     client_id: stream_client_id(request[:query]))
           break # SSE owns the connection until the client disconnects.
         else
-          payload, status, body = send(route.first, route.last, request[:body])
+          payload, status, body = dispatch(route.first, route.last, request[:body])
           write_json(io, status, payload, body)
         end
 
@@ -440,28 +440,33 @@ module Samagotchi
       [handler, m[1]]
     end
 
+    # Every route but the stream: only this bridge's own session (see
+    # #own_session?), and a handler that raises answers 500 bridge_error,
+    # logged (the connection thread doesn't report).
+    # @return [Array(Hash, Integer, Hash)] headers, status, body
+    def dispatch(handler, session_id, body)
+      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
+
+      send(handler, session_id, body)
+    rescue StandardError => e
+      Log.exception(:bridge, "handler_failed", e)
+      [{}, 500, { error: "bridge_error", detail: e.message }]
+    end
+
     # /recap in an attached TUI: the saved recap, and a new one asked for at
     # once (it arrives as :recap_ready). Answers mid-turn too.
     # 200 {enabled:, saved:, request:, min_user_turns:}. Returns [headers, status, body].
     def handle_recap(session_id, _body = nil)
-      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
-
       recap = @engine.recap
       return [{}, 200, { enabled: false }] unless recap
 
       saved = @engine.saved_recap
       [{}, 200, { enabled: true, saved: saved, request: @engine.request_recap.to_s, min_user_turns: recap.min_user_turns }]
-    rescue StandardError => e
-      [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 
     # Cancel the active turn on this session's engine, if any.
     # Returns [headers, status, body].
     def handle_cancel(session_id, body)
-      unless own_session?(session_id)
-        return [{}, 404, { error: "unknown_session" }]
-      end
-
       # Optional reason from JSON body
       reason = :manual
       if body && !body.strip.empty?
@@ -478,17 +483,12 @@ module Samagotchi
       else
         [{}, 409, { error: "not_running", detail: "no active turn to cancel", session_id: @session_id }]
       end
-    rescue StandardError => e
-      [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 
     # Answer the pending question. A past +deadline+ (see #handle_post_turn):
     # 408 deadline_passed, and the question stays open. An answer takes no
     # event hold, so it is checked right before it is recorded.
     def handle_answer(session_id, body)
-      unless own_session?(session_id)
-        return [{}, 404, { error: "unknown_session" }]
-      end
       parsed = parse_json(body)
       unless parsed.is_a?(Hash)
         return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }]
@@ -511,8 +511,6 @@ module Samagotchi
         [{}, 409, { error: "question_not_pending", detail: e.message }]
       rescue ArgumentError => e
         [{}, 400, { error: "invalid_answer", detail: e.message }]
-      rescue StandardError => e
-        [{}, 500, { error: "bridge_error", detail: e.message }]
       end
     end
 
@@ -523,8 +521,6 @@ module Samagotchi
     # +deadline+ (dismissing an approval denies it): 408, as for an answer.
     # Returns [headers, status, body].
     def handle_dismiss_question(session_id, body)
-      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
-
       parsed = parse_json(body)
       return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }] unless parsed.is_a?(Hash)
 
@@ -539,8 +535,6 @@ module Samagotchi
       return [{}, 409, { error: "question_not_pending", detail: "no pending question #{qid}" }] unless dismissed
 
       [{}, 200, { status: "dismissed", id: qid, session_id: @session_id }]
-    rescue StandardError => e
-      [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 
     # Queue a session command (/model, /models, !rollback, !cmd, /continue)
@@ -553,7 +547,6 @@ module Samagotchi
     # read-only ones (/models) too: its client said it didn't run.
     # Returns [headers, status, body].
     def handle_command(session_id, body)
-      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
       return [{}, 501, { error: "commands_unavailable" }] unless @on_command
 
       parsed = parse_json(body)
@@ -587,8 +580,6 @@ module Samagotchi
       return deadline_passed("command") unless queued
 
       [{}, 202, { status: "accepted", command_id: command[:command_id], session_id: @session_id }]
-    rescue StandardError => e
-      [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 
     # A client asks the worker to exit now (`/exit` in the attached TUI). The
@@ -597,7 +588,6 @@ module Samagotchi
     # 200 {status: "exiting", discard?: the session is empty and goes}, or 409 {status: "held", reason:} naming what
     # keeps it up. Returns [headers, status, body].
     def handle_exit_request(session_id, body)
-      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
       return [{}, 501, { error: "exit_unavailable" }] unless @on_exit_request
 
       parsed = parse_json(body)
@@ -613,8 +603,6 @@ module Samagotchi
       end
 
       [{}, 409, { status: "held", reason: reason.to_s, session_id: @session_id }]
-    rescue StandardError => e
-      [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 
     # Queue a turn for this session through its file IPC (the worker polls
@@ -630,8 +618,6 @@ module Samagotchi
     # right before the write, so nothing that holds the log (an exit check)
     # can delay an accepted turn past it. No deadline (an older client): taken.
     def handle_post_turn(session_id, body)
-      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
-
       parsed = parse_json(body)
       unless parsed.is_a?(Hash)
         return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }]
@@ -675,17 +661,11 @@ module Samagotchi
       return [{}, 500, { error: "enqueue_failed", detail: "could not write turn input" }] unless enqueued
 
       [{}, 202, { status: "accepted", enqueued_id: enqueued_id, session_id: @session_id }]
-    rescue StandardError => e
-      [{}, 500, { error: "bridge_error", detail: e.message }]
     end
 
     # Read-only snapshot surface. AC #4: too-old reconnects re-derive state
     # from here.
     def handle_state(session_id, _body = nil)
-      unless own_session?(session_id)
-        return [{}, 404, { error: "unknown_session" }]
-      end
-
       state = @engine.session_state_snapshot
       [{}, 200, { session_id: @session_id, session_state_snapshot: state.merge(event_id: event_id(state[:event_seq])) }]
     end
@@ -694,8 +674,6 @@ module Samagotchi
     # profile asked from the server when no turn has reported them yet (so,
     # unlike /state, it may wait on one short /props GET).
     def handle_stats(session_id, _body = nil)
-      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
-
       [{}, 200, { session_id: @session_id, metrics: @engine.stats_snapshot }]
     end
 
@@ -704,8 +682,6 @@ module Samagotchi
     # streams from the snapshot's event_seq, and the ring replays what came
     # after (or the stream resets). Returns [headers, status, body].
     def handle_snapshot(session_id, _body = nil)
-      return [{}, 404, { error: "unknown_session" }] unless own_session?(session_id)
-
       [{}, 200, snapshot_frame]
     end
 

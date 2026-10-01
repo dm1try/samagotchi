@@ -1168,20 +1168,20 @@ RSpec.describe Samagotchi::Bridge do
       expect(File.exist?(log) ? File.read(log) : "").not_to include("accept_loop_failed")
     end
 
-    it "logs a request that fails in its handler (the thread doesn't report), with the backtrace" do
+    it "answers a request that fails in its handler with 500 and logs it, with the backtrace" do
       log = File.join(Dir.mktmpdir, "chi.log")
       Samagotchi::Log.configure(path: log)
       start_bridge
       allow(@bridge).to receive(:handle_stats).and_raise(RuntimeError, "boom")
 
-      expect { Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats")) }
-        .to raise_error(EOFError)
+      response = Net::HTTP.get_response(URI("http://127.0.0.1:#{@bridge_port}/session/#{@session.id}/stats"))
+      expect([response.code, JSON.parse(response.body)]).to eq(["500", { "error" => "bridge_error", "detail" => "boom" }])
 
       wait_until(timeout: 2) { File.exist?(log) }
-      record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "connection_failed" } }
+      record = File.open(log) { |io| Samagotchi::LogLine.each_record(io).find { |r| r.event == "handler_failed" } }
       expect(record.to_h).to include(level: "ERROR", tag: "bridge")
       expect(record.fields).to include("error" => "RuntimeError", "msg" => "boom")
-      expect(record.payload).to match(/in [`'](Samagotchi::Bridge#)?handle_connection'/) # 3.3: `handle_connection', 3.4+ adds the class
+      expect(record.payload).to match(/in [`'](Samagotchi::Bridge#)?dispatch'/) # 3.3: `dispatch', 3.4+ adds the class
     end
 
     it "rejects an unknown session on the read surface with 404" do

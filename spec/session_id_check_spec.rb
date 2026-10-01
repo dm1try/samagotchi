@@ -82,7 +82,8 @@ RSpec.describe "session id check" do
       bad_ids.reject { |id| id.strip.empty? }.each do |id|
         _headers, status, body = bridge.send(:handle_post_turn, "s1", JSON.generate(session_id: id, prompt: "hi"))
         expect([status, body[:error]]).to eq([404, "unknown_session"]), id.inspect
-        _headers, status, body = bridge.send(:handle_post_turn, id, JSON.generate(session_id: "s1", prompt: "hi"))
+        # The path's id is checked by the dispatch, before any handler.
+        _headers, status, body = bridge.send(:dispatch, :handle_post_turn, id, JSON.generate(session_id: "s1", prompt: "hi"))
         expect([status, body[:error]]).to eq([404, "unknown_session"]), id.inspect
       end
       expect_nothing_outside

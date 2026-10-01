@@ -71,13 +71,27 @@ RSpec.describe Samagotchi::Bridge, "routing" do
       ["GET", "snapshot"] => "handle_snapshot"
     }
     table.each do |(method, action), handler|
-      status, headers, body = request(method, "/session/abc/#{action}", body: method == "POST" ? '{"x":1}' : nil)
-      expect([status, headers["x-route"], body]).to eq([200, handler, { "handler" => handler, "sid" => "abc" }]),
+      status, headers, body = request(method, "/session/s1/#{action}", body: method == "POST" ? '{"x":1}' : nil)
+      expect([status, headers["x-route"], body]).to eq([200, handler, { "handler" => handler, "sid" => "s1" }]),
                                                      "#{method} #{action}"
     end
-    expect(@bridge).to have_received(:handle_post_turn).with("abc", '{"x":1}')
-    expect(@bridge).to have_received(:handle_cancel).with("abc", '{"x":1}')
-    expect(request("get", "/session/abc/state")[2]).to eq("handler" => "handle_state", "sid" => "abc")
+    expect(@bridge).to have_received(:handle_post_turn).with("s1", '{"x":1}')
+    expect(@bridge).to have_received(:handle_cancel).with("s1", '{"x":1}')
+    expect(request("get", "/session/s1/state")[2]).to eq("handler" => "handle_state", "sid" => "s1")
+  end
+
+  it "answers another session's id with 404 before any handler, and a handler that raises with 500" do
+    table = { "POST" => %w[cancel answer question/dismiss turn command exit recap], "GET" => %w[state stats snapshot] }
+    table.each do |method, actions|
+      actions.each do |action|
+        status, _, body = request(method, "/session/other/#{action}", body: method == "POST" ? "{}" : nil)
+        expect([status, body]).to eq([404, { "error" => "unknown_session" }]), "#{method} #{action}"
+      end
+    end
+    handlers.each { |name| expect(@bridge).not_to have_received(name) }
+
+    allow(@bridge).to receive(:handle_stats).and_raise(RuntimeError, "boom")
+    expect(request("GET", "/session/s1/stats").values_at(0, 2)).to eq([500, { "error" => "bridge_error", "detail" => "boom" }])
   end
 
   it "serves a GET stream with the cursor, the snapshot flag and the client id from the query" do
