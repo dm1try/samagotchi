@@ -41,6 +41,7 @@ require_relative "reminder_store"
 require_relative "tools/memory"
 require_relative "muted_memories"
 require_relative "used_memories"
+require_relative "turn_state"
 require_relative "bundle_needs"
 require_relative "model_overlay"
 require_relative "served_model"
@@ -96,6 +97,10 @@ module Samagotchi
     #   delegate (a child would outlive it) nor plugin fork
     def initialize(client: nil, host_registry: nil, profile: nil, session_id: nil, no_interrupt: false, model_name: nil, memories: [], muted_memories: [], kernel: nil, recap: nil, reminders: nil,
                    plugins: true, scratch: false, model_typed: nil)
+      # The turn as other threads see it (flag, cancel controller, sink,
+      # steers) and the idle layer's activity clock. Built first: a plugin
+      # may steer or ask whether a turn runs while it loads.
+      @turn_state = TurnState.new(clock: -> { monotonic_now })
       @scratch = scratch
       @no_interrupt = no_interrupt
       @chat_backend = nil
@@ -251,21 +256,15 @@ module Samagotchi
         @used_memories.absorb(@resume_session)
         @session = @resume_session
       end
-      # Shared inactivity clock + turn-running flag for the idle subsystems
-      # (session recap + reminders), all polled by the shared IdleScheduler.
-      # `record_activity` is the single seam every UI calls (run_turn itself,
-      # the REPL on keystrokes and after a reminder turn), so the idle
-      # layer's clock is identical across UIs.
-      @activity_mutex = Monitor.new
-      @last_activity_at = monotonic_now
-      @activity_seq = 0
-      @turn_running = false
-      @active_cancel_controller = nil
-      # Plugin steers ({text:, source:}) waiting for the running turn's next
-      # boundary (#steer); guarded by @activity_mutex.
-      @steers = []
+      # The idle subsystems' (session recap + reminders) inactivity clock
+      # starts now, after the plugins loaded. `record_activity` is the
+      # single seam every UI calls (run_turn itself, the REPL on keystrokes
+      # and after a reminder turn), so the idle layer's clock is identical
+      # across UIs.
+      @turn_state.restart_clock!
       # Reminder names the interactive REPL's IdleReminders callback marked due;
       # the REPL polls them to decide when to run a synthetic reminder turn.
+      @due_reminder_mutex = Mutex.new
       @due_reminder_names = []
       @recap = RecapSetup.build(recap, engine: self, host_registry: @host_registry,
                                 session_target: -> { session_model_recap_target },
@@ -296,37 +295,29 @@ module Samagotchi
       backend_for(@host_registry.resolve(@effective_model_name))
     end
 
-    # Record that activity happened (user input or a completed turn). Shared,
-    # mutex-guarded seam for the idle recap detector. Idempotent-ish: each call
-    # advances both the last-activity timestamp and the activity sequence.
+    # Record that activity happened (user input or a completed turn): the
+    # idle jobs' seam (TurnState#record_activity). Each call advances both
+    # the last-activity timestamp and the activity sequence.
     # @param now [Float, nil] injectable monotonic time (defaults to now)
     def record_activity(now = nil)
-      @activity_mutex.synchronize do
-        @last_activity_at = now ? now.to_f : monotonic_now
-        @activity_seq += 1
-      end
+      @turn_state.record_activity(now)
     end
 
     # @return [Float] monotonic seconds of the last recorded activity
     def last_activity_at
-      @activity_mutex.synchronize { @last_activity_at }
+      @turn_state.last_activity_at
     end
 
     # @return [Integer] monotonically-increasing activity counter (advanced by
     #   #record_activity; lets the idle detector summarize once per idle window)
     def activity_seq
-      @activity_mutex.synchronize { @activity_seq }
+      @turn_state.activity_seq
     end
 
-    # Mark whether a turn is currently running (shared with the idle detector so
-    # a recap never fires, or renders, while the model is generating).
-    def set_turn_running(running)
-      @activity_mutex.synchronize { @turn_running = running }
-    end
-
-    # @return [Boolean] true while a turn is in flight
+    # @return [Boolean] true while a turn is in flight (the idle jobs never
+    #   fire, nor render, while the model is generating)
     def turn_running?
-      @activity_mutex.synchronize { @turn_running }
+      @turn_state.running?
     end
 
     # Put +text+ into the running turn, as a UI's steering does: it joins the
@@ -337,15 +328,7 @@ module Samagotchi
     # the turn ends first, it is dropped (logged).
     # @return [Boolean] whether it was queued
     def steer(text, source:)
-      text = text.to_s.strip
-      return false if text.empty?
-
-      @activity_mutex.synchronize do
-        return false unless @turn_running
-
-        @steers << { text: text, source: source.to_s }
-      end
-      true
+      @turn_state.steer(text, source: source)
     end
 
     # The drain a turn's loop gets: the caller's lines (a UI's steering; nil
@@ -362,11 +345,7 @@ module Samagotchi
     private :turn_drain
 
     def take_steers(drop)
-      steers = @activity_mutex.synchronize do
-        taken = @steers
-        @steers = []
-        taken
-      end
+      steers = @turn_state.take_steers
       return steers unless drop
 
       log_dropped_steers(steers, "answered")
@@ -383,41 +362,37 @@ module Samagotchi
 
     # @return [Array<String>] reminder names queued for a synthetic REPL turn
     def due_reminder_names
-      @activity_mutex.synchronize { @due_reminder_names.dup }
+      @due_reminder_mutex.synchronize { @due_reminder_names.dup }
     end
 
     # Queue reminder names for a synthetic REPL turn (IdleReminders callback).
     def note_due_reminders(names)
-      @activity_mutex.synchronize { @due_reminder_names = Array(names).dup }
+      @due_reminder_mutex.synchronize { @due_reminder_names = Array(names).dup }
     end
 
     def clear_due_reminder_names!
-      @activity_mutex.synchronize { @due_reminder_names = [] }
+      @due_reminder_mutex.synchronize { @due_reminder_names = [] }
     end
 
     # @return [CancellationController, nil] active turn's cancellation controller
     def active_cancel_controller
-      @activity_mutex.synchronize { @active_cancel_controller }
+      @turn_state.controller
     end
 
     # Cancel the currently running turn, if any.
     # @param reason [Symbol] cancellation reason
     # @return [Boolean] whether a cancellation was triggered
     def cancel_current_turn!(reason = :manual)
-      ctrl = active_cancel_controller
-      return false unless ctrl
-
-      ctrl.cancel!(reason)
+      @turn_state.cancel!(reason)
     end
 
     # Snapshot the current session messages as a JSON string for the idle
-    # recap. Reads the array reference under the mutex (a single atomic
-    # pointer read in CRuby) then serializes a dup'd copy OUTSIDE the lock so
-    # the brief serialization never blocks the main turn thread. Never mutates
-    # session.messages.
+    # recap. The array is never mutated in place (a turn or a note replaces
+    # it), so the reference read here is a consistent snapshot; a dup'd
+    # copy is serialized. Never mutates session.messages.
     # @return [String] JSON array of the messages
     def messages_json_for_recap
-      snapshot = @activity_mutex.synchronize { @session&.messages }
+      snapshot = @session&.messages
       return "[]" if snapshot.nil?
 
       JSON.generate(AnswerDisplay.strip_all(snapshot).map(&:dup))
@@ -609,11 +584,7 @@ module Samagotchi
       # A plugin's init task (chi.init): never a running turn's event.
       return announce(card.merge(in_turn: false)) && card[:id] if current_init_task
 
-      sink = nil
-      in_turn = @activity_mutex.synchronize do
-        sink = @turn_event_sink
-        @turn_running
-      end
+      in_turn, sink = @turn_state.in_turn_sink
       card[:in_turn] = in_turn ? true : false
       if in_turn
         emit_event(sink, card)
@@ -1240,11 +1211,7 @@ module Samagotchi
       notice = { type: :hook_notice, hook: hook.to_s, text: text.to_s, level: level }
       return hold_load_event(notice) && nil if @loading_plugins
 
-      sink = nil
-      in_turn = @activity_mutex.synchronize do
-        sink = @turn_event_sink
-        @turn_running
-      end
+      in_turn, sink = @turn_state.in_turn_sink
       if anytime_thread?
         announce_anytime(notice.merge(between_turns: true))
       elsif current_init_task
@@ -1416,7 +1383,7 @@ module Samagotchi
       state = @recap&.state
       return nil unless state
 
-      messages = @activity_mutex.synchronize { @session&.messages } || []
+      messages = @session&.messages || []
       covered = state[:covered].to_i
       turns_since = Array(messages).drop(covered).count { |m| Steer.turn_prompt?(m) }
       { text: state[:text], covered: covered, turns_since: turns_since, created_at: state[:created_at] }
@@ -1537,7 +1504,7 @@ module Samagotchi
       # Mark the turn running before generating so the idle recap detector does
       # not fire (or render an invalidated recap) while the model is working,
       # and drop a recap already in flight: the turn makes it stale.
-      set_turn_running(true)
+      @turn_state.mark_running!
       @recap&.invalidate!
       # Ask the server for its window again each turn (one short /props GET,
       # cached across the turn's generations): a restart with another -c
@@ -1546,12 +1513,9 @@ module Samagotchi
       refresh_profile!
       # Provide a cancellable controller for this turn (cross-process cancel via file flag)
       effective_controller = cancel_controller || CancellationController.new
-      @activity_mutex.synchronize do
-        @active_cancel_controller = effective_controller
-        # A hook's notice goes where the turn's events go (the REPL renders
-        # only its sink; a worker's observers carry it to the bridge).
-        @turn_event_sink = on_event
-      end
+      # A hook's notice goes where the turn's events go (the REPL renders
+      # only its sink; a worker's observers carry it to the bridge).
+      @turn_state.wire!(controller: effective_controller, sink: on_event)
       # The gate's context: who queued this turn, and git asked afresh.
       @guardrail_wiring.begin_turn(origin)
 
@@ -1801,13 +1765,8 @@ module Samagotchi
       # A completed turn is activity: release the turn flag and advance the
       # shared inactivity clock so the idle recap detector (shared with the REPL)
       # treats the just-finished turn as activity and re-arms its window.
-      set_turn_running(false)
+      left = @turn_state.finish!
       Client.swap_probe_cancel(probe_cancel_before)
-      left = @activity_mutex.synchronize do
-        @active_cancel_controller = nil
-        @turn_event_sink = nil
-        @steers.tap { @steers = [] }
-      end
       log_dropped_steers(left, "turn_ended")
       record_activity
       # Clear hooks so they remain turn-scoped and never leak into the next turn.
@@ -1997,8 +1956,14 @@ module Samagotchi
 
     private
 
+    # The one named seam for replacing a session's conversation (the
+    # array is replaced, never mutated in place). No lock: a reader gets
+    # the old array or the new one, and both are whole.
+    # The turn as other threads see it (TurnState).
+    attr_reader :turn_state
+
     def replace_session_messages(session, messages)
-      @activity_mutex.synchronize { session.messages = messages }
+      session.messages = messages
     end
 
     # Pick the loop for a target; the chat loop is pointed at the target
@@ -2114,11 +2079,9 @@ module Samagotchi
         ask_user: lambda { |question:, options:, header:, allow_freeform:, hook:|
           hook_ask_user(question, options, header, allow_freeform, hook)
         },
-        # Nothing to cancel while the Engine is still being built (a
-        # server that starts as its plugin loads).
         # An init task's is its own (a Ctrl-C ends a turn, not the task).
         cancelled: lambda {
-          (task = current_init_task) ? task.cancelled? : @activity_mutex && active_cancel_controller&.cancelled?
+          (task = current_init_task) ? task.cancelled? : active_cancel_controller&.cancelled?
         },
         card: ->(**card) { show_card(**card) },
         steer: ->(text, label) { steer(text, source: hook_source(label)) },

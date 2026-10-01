@@ -173,7 +173,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     it "returns a cancelled error payload when the turn is cancelled while pending" do
       engine = build_engine
       ctrl = Samagotchi::Client::CancellationController.new
-      engine.instance_variable_set(:@active_cancel_controller, ctrl)
+      engine.send(:turn_state).begin!(controller: ctrl, sink: nil)
 
       events = []
       engine.subscribe(observer: ->(e) { events << e })
@@ -202,7 +202,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     it "doesn't deadlock when a cancelled question races a snapshot taken with the event log held" do
       engine = build_engine
       ctrl = Samagotchi::Client::CancellationController.new
-      engine.instance_variable_set(:@active_cancel_controller, ctrl)
+      engine.send(:turn_state).begin!(controller: ctrl, sink: nil)
       result_box = {}
       turn_thread = Thread.new { result_box[:result] = engine.request_question(payload) }
       turn_thread.report_on_exception = false

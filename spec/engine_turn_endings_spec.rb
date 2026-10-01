@@ -101,7 +101,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
   def expect_released
     expect(engine.turn_running?).to be(false)
     expect(engine.active_cancel_controller).to be_nil
-    expect(engine.instance_variable_get(:@turn_event_sink)).to be_nil
+    expect(engine.send(:turn_state).in_turn_sink).to eq([false, nil])
     expect(engine.instance_variable_get(:@hooks).any?(:session_end)).to be(true) # the persistent one
     expect(engine.instance_variable_get(:@hooks).instance_variable_get(:@hooks)).to be_empty
     expect(@probe_after).to equal(probe_before)
