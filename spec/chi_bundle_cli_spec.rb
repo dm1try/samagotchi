@@ -119,11 +119,11 @@ RSpec.describe "chi bundle (CLI)" do
       expect(chi("build", "--help")).to eq([BUILD_USAGE, "", 0])
     end
 
-    it "refuses install without a source, an unknown flag and a trailing --scope" do
-      expect(chi("install")).to eq(["", "Usage: chi bundle install <source> [--scope system|project] [--force]\n", 1])
-      expect(chi("install", "--bogus")).to eq(["", "Unknown bundle install flag: --bogus\n", 1])
+    it "refuses install without a source, an unknown flag and a trailing --scope (usage errors exit 2)" do
+      expect(chi("install")).to eq(["", "Usage: chi bundle install <source> [--scope system|project] [--force]\n", 2])
+      expect(chi("install", "--bogus")).to eq(["", "Unknown bundle install flag: --bogus\n", 2])
       # quirk: a --scope with no value after it reads as an unknown flag
-      expect(chi("install", "--scope")).to eq(["", "Unknown bundle install flag: --scope\n", 1])
+      expect(chi("install", "--scope")).to eq(["", "Unknown bundle install flag: --scope\n", 2])
     end
 
     # An unknown source fails like any other install ("Install failed: …",
@@ -164,10 +164,10 @@ RSpec.describe "chi bundle (CLI)" do
     end
 
     it "refuses upgrade and uninstall without a source or name, and an unknown bundle" do
-      expect(chi("upgrade")).to eq(["", "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run]\n", 1])
-      expect(chi("upgrade", "--bogus")).to eq(["", "Unknown bundle upgrade flag: --bogus\n", 1])
-      expect(chi("uninstall")).to eq(["", "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]\n", 1])
-      expect(chi("uninstall", "--bogus")).to eq(["", "Unknown bundle uninstall flag: --bogus\n", 1])
+      expect(chi("upgrade")).to eq(["", "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run]\n", 2])
+      expect(chi("upgrade", "--bogus")).to eq(["", "Unknown bundle upgrade flag: --bogus\n", 2])
+      expect(chi("uninstall")).to eq(["", "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]\n", 2])
+      expect(chi("uninstall", "--bogus")).to eq(["", "Unknown bundle uninstall flag: --bogus\n", 2])
       expect(chi("uninstall", "nope")).to eq(["", "Uninstall failed: Bundle 'nope' is not installed\n", 1])
     end
 
@@ -254,8 +254,8 @@ RSpec.describe "chi bundle (CLI)" do
     end
 
     it "refuses a bad build scope and a value flag followed by a flag" do
-      expect(chi("build", "--scope", "bogus")).to eq(["", "Invalid scope 'bogus', expected system or project\n", 1])
-      expect(chi("build", "--name", "--out", "x")).to eq(["", "Unknown bundle build flag: --name\n", 1])
+      expect(chi("build", "--scope", "bogus")).to eq(["", "Invalid scope 'bogus', expected system or project\n", 2])
+      expect(chi("build", "--name", "--out", "x")).to eq(["", "Unknown bundle build flag: --name\n", 2])
     end
 
     it "builds the listed local memories into a dir" do
@@ -271,7 +271,7 @@ RSpec.describe "chi bundle (CLI)" do
     end
 
     it "refuses an unknown subcommand" do
-      expect(chi("nope")).to eq(["", "Unknown bundle subcommand: nope. Use: install, upgrade, uninstall, status, diff, list, build\n", 1])
+      expect(chi("nope")).to eq(["", "Unknown bundle subcommand: nope. Use: install, upgrade, uninstall, status, diff, list, build\n", 2])
     end
 
     it "status and diff with nothing installed" do
@@ -280,7 +280,7 @@ RSpec.describe "chi bundle (CLI)" do
       expect(chi("status", "nope")).to eq(["Bundle 'nope' not installed.\n", "", 0])
       # quirk: status and diff only drop --args, so -h is a bundle name
       expect(chi("status", "-h")).to eq(["Bundle '-h' not installed.\n", "", 0])
-      expect(chi("diff")).to eq(["", "Usage: chi bundle diff <bundle> [file]\n", 1])
+      expect(chi("diff")).to eq(["", "Usage: chi bundle diff <bundle> [file]\n", 2])
       expect(chi("diff", "nope")).to eq(["", "Bundle 'nope' not installed\n", 1])
       expect(chi("diff", "-h")).to eq(["", "Bundle '-h' not installed\n", 1])
     end

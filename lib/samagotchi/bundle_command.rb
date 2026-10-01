@@ -76,7 +76,7 @@ module Samagotchi
       when "build" then build(@argv[1..])
       else
         @stderr.puts "Unknown bundle subcommand: #{sub}. Use: install, upgrade, uninstall, status, diff, list, build"
-        return 1
+        return 2
       end
     end
 
@@ -91,7 +91,7 @@ module Samagotchi
       force = opts.fetch(:force, false)
       if source.nil? || source.empty?
         @stderr.puts "Usage: chi bundle install <source> [--scope system|project] [--force]"
-        return 1
+        return 2
       end
       expanded_source = expand_source(source)
       if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
@@ -139,7 +139,7 @@ module Samagotchi
       agent = opts[:agent]
       if source.nil? || source.empty?
         @stderr.puts "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run]"
-        return 1
+        return 2
       end
       expanded_source = expand_source(source)
       if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
@@ -239,7 +239,7 @@ module Samagotchi
       force = opts.fetch(:force, false)
       if bundle_name.nil? || bundle_name.empty?
         @stderr.puts "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]"
-        return 1
+        return 2
       end
       # Propagate overrides
       Samagotchi::MemoryBundle::Uninstaller.system_dir_override = Samagotchi::MemoryBundle::Installer.system_dir_override
@@ -377,7 +377,7 @@ module Samagotchi
       bname = args[0]
       file_arg = args[1]
       if bname.nil? || bname.empty?
-        @stderr.puts "Usage: chi bundle diff <bundle> [file]"; return 1
+        @stderr.puts "Usage: chi bundle diff <bundle> [file]"; return 2
       end
       prov = Samagotchi::MemoryBundle::Provenance.new(name: bname)
       data = prov.read
@@ -555,7 +555,7 @@ module Samagotchi
             out = arg.split("=", 2).last; i += 1
           else
             @stderr.puts "Unknown bundle build flag: #{arg}"
-            return 1
+            return 2
           end
         else
           filter_files << arg
@@ -565,7 +565,7 @@ module Samagotchi
       # Validate scope if given
       if scope && !%w[system project].include?(scope.to_s.strip.downcase)
         @stderr.puts "Invalid scope '#{scope}', expected system or project"
-        return 1
+        return 2
       end
       filter_files = nil if filter_files.empty?
       begin
@@ -622,7 +622,7 @@ module Samagotchi
             i += 1
           else
             @stderr.puts "Unknown bundle #{sub} flag: #{arg}"
-            return 1
+            return 2
           end
         else
           positional = arg

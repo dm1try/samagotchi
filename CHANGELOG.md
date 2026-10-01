@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- `chi bundle` usage errors (unknown subcommand or flag, a missing argument) exit 2 like every other command, not 1.
+
 ### Fixed
 
 - Web: switching sessions no longer briefly shows the previous session's "delegated by" link in the info bar.
