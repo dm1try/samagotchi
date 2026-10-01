@@ -257,7 +257,9 @@ RSpec.describe Samagotchi::Worker do
 
       prompt, started_at = next_turn
       expect(prompt).to eq("two")
-      expect(started_at - released_at).to be < 0.3
+      # Well under the 5 s poll: the queued turn starts on release, not on the
+      # next poll (0.3 s flaked on a loaded CI runner at 0.3007 s).
+      expect(started_at - released_at).to be < 2.0
     end
 
     it "logs what ended it when a turn's input fails past its own handling (then marks the session)" do
