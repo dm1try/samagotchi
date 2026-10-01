@@ -396,6 +396,20 @@ RSpec.describe Samagotchi::SessionMetrics do
     expect(snap[:active_tools]).to be_empty
   end
 
+  it "leaves a guardrail approval wait out of a tool record's duration" do
+    monotonic = 10.0
+    metrics = described_class.new(clock: -> { monotonic })
+    metrics.call(type: :turn_started, session_id: "timed", prompt: "x")
+    metrics.call(type: :tool_call_started, iteration: 1, call_index: 1, tool: "shell")
+    monotonic += 3.0
+    metrics.call(type: :tool_call_completed, iteration: 1, call_index: 1, tool: "shell", status: "ok", waited_ms: 2_750)
+    metrics.call(type: :tool_call_started, iteration: 1, call_index: 2, tool: "shell")
+    monotonic += 0.1
+    metrics.call(type: :tool_call_completed, iteration: 1, call_index: 2, tool: "shell", status: "ok", waited_ms: 9_999)
+
+    expect(metrics.snapshot[:tool_records].map { |r| r[:duration_ms] }).to eq([250, 0])
+  end
+
   it "keeps the earlier records in its state dir when a later worker persists analytics" do
     state_dir = Dir.mktmpdir
     first = described_class.new

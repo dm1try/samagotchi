@@ -123,8 +123,12 @@ module Samagotchi
     def on_tool_call_completed(event)
       # A tool's output can be any bytes (invalid UTF-8 would fail the match).
       output = event[:output].to_s.scrub
+      # ms leaves out a guardrail approval wait (waited_ms, logged apart).
+      waited = event[:waited_ms].to_i
+      ms = since(@tool_started_at.delete([event[:iteration], event[:call_index]]))
+      ms = [ms - waited, 0].max if ms
       log(:info, :tool_call_completed, iteration: event[:iteration], tool: event[:tool],
-                                       ms: since(@tool_started_at.delete([event[:iteration], event[:call_index]])),
+                                       ms: ms, waited_ms: (waited if waited.positive?),
                                        output_chars: output.length, truncated: event[:output_truncated] || nil,
                                        error: tool_error?(output) || nil)
     end

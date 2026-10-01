@@ -427,7 +427,8 @@ module Samagotchi
         ).merge(
           status: status.empty? ? "ok" : status,
           completed_at: finished_at.iso8601(3),
-          duration_ms: elapsed_ms(active[:started_monotonic])
+          # Less a guardrail approval wait (ToolRunner's waited_ms).
+          duration_ms: [elapsed_ms(active[:started_monotonic]) - event[:waited_ms].to_i, 0].max
         )
       end
     end

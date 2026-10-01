@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
   to overwrite)" for a file that's the same as the bundle's; it skips it quietly and says once that
   `chi bundle upgrade NAME` updates the bundle and keeps local edits. A file skipped for a local edit no longer
   also reports a checksum mismatch.
+- A tool's time in the web's turn timing and the debug log's `tool_call_completed ms:` no longer counts the wait for
+  a guardrail approval; the log line shows the wait as `waited_ms:`.
 
 ## [0.8.1] - 2026-10-01
 

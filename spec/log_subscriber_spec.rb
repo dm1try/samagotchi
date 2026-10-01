@@ -94,6 +94,17 @@ RSpec.describe Samagotchi::LogSubscriber do
                                           fields: { "iteration" => "2", "profile" => "gemma4", "context_window" => "8192" })
   end
 
+  it "times a tool call without its guardrail approval wait, and logs the wait" do
+    feed({ type: :tool_call_started, iteration: 1, call_index: 0, tool: "shell" })
+    now[0] = 103.0
+    feed({ type: :tool_call_completed, iteration: 1, call_index: 0, tool: "shell", output: "ok", waited_ms: 2_800 },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "shell" })
+    now[0] = 103.5
+    feed({ type: :tool_call_completed, iteration: 1, call_index: 1, tool: "shell", output: "ok", waited_ms: 0 })
+
+    expect(records.map { |r| r.fields.slice("ms", "waited_ms") }).to eq([{ "ms" => "200", "waited_ms" => "2800" }, { "ms" => "500" }])
+  end
+
   it "marks a failed tool call" do
     feed({ type: :tool_call_completed, iteration: 1, call_index: 0, tool: "read", output: "[read] Error: no such file" },
          { type: :tool_call_completed, iteration: 1, call_index: 1, tool: "read", output: "[read]\nError: denied" },
