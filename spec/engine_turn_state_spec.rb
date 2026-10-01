@@ -135,10 +135,12 @@ RSpec.describe Samagotchi::Engine, "turn state" do
   end
 
   describe "the begin window (cell A)" do
-    it "today: during the profile probe the flag is set but there is no controller, so a Stop is lost" do
+    it "during the profile probe the turn has its controller, the probe can be cut, and a Stop lands" do
       entered = Queue.new
       release = Queue.new
+      probe_cancel = nil
       allow(engine).to receive(:refresh_profile!) do
+        probe_cancel = Samagotchi::Client.probe_cancel
         entered << true
         release.pop
       end
@@ -146,22 +148,28 @@ RSpec.describe Samagotchi::Engine, "turn state" do
 
       turn = Thread.new { engine.run_turn(session, "hi") }
       entered.pop
-      observed = [engine.turn_running?, engine.active_cancel_controller, engine.cancel_current_turn!(:manual)]
+      controller = engine.active_cancel_controller
+      observed = [engine.turn_running?, controller, engine.cancel_current_turn!(:manual)]
       release << true
-      result = turn.value
+      turn.value
 
-      expect(observed).to eq([true, nil, false])
-      expect(result.canceled?).to be(false)
+      expect(observed).to eq([true, controller, true])
+      expect(controller).to be_a(Samagotchi::CancellationController).and have_attributes(reason: :manual)
+      expect(probe_cancel).to equal(controller)
     end
   end
 
   describe "a raise in the profile refresh (cell A2)" do
-    it "today: leaves the turn flag set" do
+    it "ends the turn as turn_failed and clears the flag, controller and sink" do
       allow(engine).to receive(:refresh_profile!).and_raise(RuntimeError, "probe failed")
+      events = []
+      engine.subscribe(observer: ->(event) { events << event[:type] })
 
       expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError, "probe failed")
 
-      expect(engine.turn_running?).to be(true)
+      expect(events).to include(:turn_started, :turn_failed)
+      expect_idle
+      expect(engine.send(:turn_state).in_turn_sink).to eq([false, nil])
     end
   end
 end

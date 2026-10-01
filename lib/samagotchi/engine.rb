@@ -1501,21 +1501,17 @@ module Samagotchi
       # is announced, so a UI reacting to that event reads the new state.
       session.status = Session::STATUS_RUNNING
       @used_memories.absorb(session)
-      # Mark the turn running before generating so the idle recap detector does
-      # not fire (or render an invalidated recap) while the model is working,
-      # and drop a recap already in flight: the turn makes it stale.
-      @turn_state.mark_running!
-      @recap&.invalidate!
-      # Ask the server for its window again each turn (one short /props GET,
-      # cached across the turn's generations): a restart with another -c
-      # between turns raises no error that would drop the cache.
-      @client.invalidate_context_window! if @client.respond_to?(:invalidate_context_window!)
-      refresh_profile!
       # Provide a cancellable controller for this turn (cross-process cancel via file flag)
       effective_controller = cancel_controller || CancellationController.new
-      # A hook's notice goes where the turn's events go (the REPL renders
-      # only its sink; a worker's observers carry it to the bridge).
-      @turn_state.wire!(controller: effective_controller, sink: on_event)
+      # The turn runs, with its controller and sink, in one step: a Stop
+      # or a plugin's card from another thread never sees a running turn
+      # without them. The idle recap detector does not fire (or render an
+      # invalidated recap) while the model is working. A hook's notice goes
+      # where the turn's events go (the REPL renders only its sink; a
+      # worker's observers carry it to the bridge).
+      @turn_state.begin!(controller: effective_controller, sink: on_event)
+      # Drop a recap already in flight: the turn makes it stale.
+      @recap&.invalidate!
       # The gate's context: who queued this turn, and git asked afresh.
       @guardrail_wiring.begin_turn(origin)
 
@@ -1537,6 +1533,15 @@ module Samagotchi
       turn_started[:images] = image_refs unless image_refs.empty?
       emit_event(turn.on_event, turn.tag(turn_started))
       raise image_error if image_error
+
+      # Ask the server for its window again each turn (one short /props GET,
+      # cached across the turn's generations): a restart with another -c
+      # between turns raises no error that would drop the cache. The
+      # profile may probe too (a first turn, a retry). Both run after
+      # run_turn's probe-cancel swap, so a Stop cuts them, and a failure
+      # ends the turn as turn_failed.
+      @client.invalidate_context_window! if @client.respond_to?(:invalidate_context_window!)
+      refresh_profile!
 
       # Before anything of the turn is kept or a reminder is used up.
       vision = configure_kernel(session)

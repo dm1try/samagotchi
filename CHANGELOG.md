@@ -25,6 +25,9 @@ and commands may change between minor versions. How releases are made:
   could show one without the other).
 - A Ctrl-C while an `after_turn` or `session_end` hook runs no longer cancels the turn that already answered: the
   answer stays in the session (it was replaced with a cancel note and a second end event).
+- A web Stop sent right as a turn starts (while chi asks the model server for its settings, a first turn's /props
+  probe) cancels the turn at once; it used to answer "not running" and the turn ran on. A failed probe there now ends
+  the turn as failed instead of leaving the session marked running.
 
 ## [0.11.0] - 2026-10-01
 

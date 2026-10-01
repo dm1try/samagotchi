@@ -63,19 +63,6 @@ module Samagotchi
       @lock.synchronize { @running }
     end
 
-    # The turn is running (the first half of a begin; see #wire!).
-    def mark_running!
-      @lock.synchronize { @running = true }
-    end
-
-    # The running turn's cancel controller and event sink.
-    def wire!(controller:, sink:)
-      @lock.synchronize do
-        @controller = controller
-        @sink = sink
-      end
-    end
-
     # A turn begins: running, with its controller and sink, in one step.
     def begin!(controller:, sink:)
       @lock.synchronize do

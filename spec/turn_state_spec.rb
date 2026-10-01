@@ -47,13 +47,6 @@ RSpec.describe Samagotchi::TurnState do
       expect([state.running?, state.controller, state.in_turn_sink]).to eq([false, nil, [false, nil]])
     end
 
-    it "mark_running! then wire! is the two-phase begin" do
-      state.mark_running!
-      expect([state.running?, state.controller]).to eq([true, nil])
-      state.wire!(controller: controller, sink: nil)
-      expect(state.controller).to equal(controller)
-    end
-
     it "cancel! cancels the turn's controller outside the lock" do
       held = nil
       allow(controller).to receive(:cancel!).and_wrap_original do |original, reason|
