@@ -34,7 +34,7 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 - `name` is the entry name **without** `.md` (the tool adds it). Use `name`, **not** `path` — `path` belongs to the file tools and is ignored here. `name: "index"` is a verbatim write to `index.md` (no auto-index update) — rarely needed.
 - `scope` is **required** — never omit. Prefer `project` for repo conventions, `system` for user preferences.
 - `description` is appended to the managed `index.md` line (`— description`). Replaces previous description if given; otherwise preserves existing one.
-- On success returns `Memory 'name' saved to <scope> scope (N bytes). Index updated: …` — confirm `bytes` and `scope`.
+- On success returns `Memory 'name' saved to <scope> scope (N bytes). File written: <path> Index line refreshed automatically.` — confirm `bytes` and `scope`; the index needs nothing from you.
 
 **When to write:**
 - After learning a durable preference (e.g. commit style, test command, coding guideline) that the user confirmed or you observed repeatedly — ask before overwriting existing entries where appropriate.

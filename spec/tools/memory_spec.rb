@@ -245,7 +245,7 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
       expect(result).to include("index")
       expect(File.read(File.join(project_memories_dir, "index.md"))).to eq("- **notes**: project notes")
       # verbatim index write must not trigger upsert / header injection
-      expect(result).not_to include("Index updated")
+      expect(result).not_to include("Index line refreshed")
       expect(File.read(File.join(project_memories_dir, "index.md"))).not_to include("auto-maintained")
     end
 
@@ -346,12 +346,13 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
       end
     end
 
-    it "includes the index file path in the success message on a normal write" do
+    it "says the index line was refreshed, without the index path, on a normal write" do
       result = described_class.call("hello", path: "greet", scope: "project")
       expect(result).to include("greet")
       expect(result).to include("project")
       expect(result).to include("5 bytes")
-      expect(result).to include(File.join(project_memories_dir, "index.md"))
+      expect(result).not_to include(File.join(project_memories_dir, "index.md"))
+      expect(result).to include("Index line refreshed automatically.")
     end
 
     # ── Overlay tests ────────────────────────────────────────────────────

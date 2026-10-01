@@ -176,7 +176,6 @@ Memory convention:
   Treat #entry_name as a memory reference, not as a file path.
   If shorthand includes a scope prefix, such as #project/entry_name or #system/entry_name,
   preserve that scope when reading the memory.
-  Keep each scope's index.md updated when adding/updating entries.
   Each scope's `index.md` is auto-maintained by `memory_write` (one
   managed line per entry with name/scope/date/size); free-form sections
   are preserved. The verbatim `index` write (`name: "index"`) is kept.

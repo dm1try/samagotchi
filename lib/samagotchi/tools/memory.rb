@@ -204,9 +204,8 @@ module Samagotchi
         # The verbatim "write to index.md" behavior (path: "index") must not
         # trigger upsert logic.
         unless entry_name == MEMORY_INDEX
-          index_path = self.index_path_for(resolved_scope)
           if manage_index(resolved_scope, entry_name, bytes, description)
-            message += " Index updated: #{index_path}"
+            message += " Index line refreshed automatically."
           end
         end
 
