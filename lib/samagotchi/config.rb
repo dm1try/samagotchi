@@ -699,18 +699,7 @@ module Samagotchi
 
     def hosts_config(env: ENV, path: global_path(env: env))
       data = read_yaml(env: env, path: path)
-      raw_hosts = data[HOSTS_KEY] if data.is_a?(Hash)
-
-      # ENV override: SAMAGOTCHI_HOSTS_JSON (used to propagate to workers)
-      env_json = env["SAMAGOTCHI_HOSTS_JSON"].to_s.strip
-      unless env_json.empty?
-        begin
-          parsed_env = JSON.parse(env_json)
-          raw_hosts = parsed_env if parsed_env.is_a?(Hash)
-        rescue StandardError
-          nil
-        end
-      end
+      raw_hosts = hosts_source(data, env)
 
       normalized = {}
       if raw_hosts.is_a?(Hash)
@@ -730,10 +719,8 @@ module Samagotchi
           port = raw_cfg["port"] || raw_cfg[:port]
           transport = raw_cfg["transport"] || raw_cfg[:transport]
           api = raw_cfg["api"] || raw_cfg[:api]
-          enabled = raw_cfg.key?("enabled") ? raw_cfg["enabled"] : (raw_cfg.key?(:enabled) ? raw_cfg[:enabled] : true)
-          if enabled == false || enabled.to_s.strip.downcase == "false"
-            next
-          end
+          next if host_disabled?(raw_cfg)
+
           url = (raw_cfg["url"] || raw_cfg[:url]).to_s.strip
           api_key_env = (raw_cfg["api_key_env"] || raw_cfg[:api_key_env]).to_s.strip
           # Kept as written; ModelProfile.resolve warns about an unknown one.
@@ -826,6 +813,42 @@ module Samagotchi
       {}
     end
 
+    # The names (lowercased) of the hosts entries with enabled: false, which
+    # hosts_config leaves out. Read from the same source: config.yml's
+    # hosts:, or SAMAGOTCHI_HOSTS_JSON in a worker.
+    # @return [Array<String>]
+    def disabled_host_names(env: ENV, path: global_path(env: env))
+      raw = hosts_source(read_yaml(env: env, path: path), env)
+      return [] unless raw.is_a?(Hash)
+
+      raw.filter_map { |name, cfg| name.to_s.strip.downcase if cfg.is_a?(Hash) && host_disabled?(cfg) }
+    rescue StandardError
+      []
+    end
+
+    # config.yml's hosts: as written, or the SAMAGOTCHI_HOSTS_JSON override
+    # a worker inherits from its parent.
+    def hosts_source(data, env)
+      raw = data[HOSTS_KEY] if data.is_a?(Hash)
+      env_json = env["SAMAGOTCHI_HOSTS_JSON"].to_s.strip
+      return raw if env_json.empty?
+
+      parsed = begin
+        JSON.parse(env_json)
+      rescue StandardError
+        nil
+      end
+      parsed.is_a?(Hash) ? parsed : raw
+    end
+    private_class_method :hosts_source
+
+    # enabled: false (or "false", any case) in a hosts entry.
+    def host_disabled?(cfg)
+      enabled = cfg.key?("enabled") ? cfg["enabled"] : (cfg.key?(:enabled) ? cfg[:enabled] : true)
+      enabled == false || enabled.to_s.strip.downcase == "false"
+    end
+    private_class_method :host_disabled?
+
     # Resolve the `recap:` section through the Config registry so scalar
     # recap settings share the single precedence path (CLI > ENV > file >
     # default). Returns false when explicitly disabled (file `recap: false`
@@ -912,6 +935,9 @@ module Samagotchi
                        "profile" => v[:profile], "first_token_timeout" => v[:first_token_timeout],
                        "vision" => v[:vision], "sampling" => v[:sampling], "thinking" => v[:thinking]&.to_s).compact
       end
+      # Disabled hosts travel as just that, so a worker refuses "box:x"
+      # the way its parent does instead of sending it to the default host.
+      disabled_host_names(env: env, path: path).grep(HOST_NAME_RE).each { |name| simple[name] ||= { "enabled" => false } }
       JSON.generate(simple)
     rescue StandardError
       nil

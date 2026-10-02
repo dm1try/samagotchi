@@ -65,6 +65,35 @@ RSpec.describe "hosts: api" do
     end
   end
 
+  describe "enabled: false" do
+    let(:yaml_hosts) do
+      { "main" => { "host" => "h" }, "Box" => { "host" => "b", "enabled" => "FALSE" },
+        "spare" => { "host" => "s", "enabled" => false }, "on" => { "host" => "o", "enabled" => true } }
+    end
+
+    it "leaves the entry out of hosts_config and lists it in disabled_host_names" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "config.yml")
+        File.write(path, { "hosts" => yaml_hosts }.to_yaml)
+
+        expect(Samagotchi::ConfigFile.hosts_config(env: {}, path: path).keys).to eq(%w[main on])
+        expect(Samagotchi::ConfigFile.disabled_host_names(env: {}, path: path)).to eq(%w[box spare])
+      end
+    end
+
+    it "carries the disabled names to a worker that has no config.yml" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "config.yml")
+        File.write(path, { "hosts" => yaml_hosts }.to_yaml)
+        worker_env = { "SAMAGOTCHI_HOSTS_JSON" => Samagotchi::ConfigFile.hosts_json_for_env(env: {}, path: path) }
+        none = File.join(dir, "none.yml")
+
+        expect(Samagotchi::ConfigFile.hosts_config(env: worker_env, path: none).keys).to eq(%w[main on])
+        expect(Samagotchi::ConfigFile.disabled_host_names(env: worker_env, path: none)).to eq(%w[box spare])
+      end
+    end
+  end
+
   describe Samagotchi::HostRegistry do
     it "marks openai hosts as chat hosts, everything else (and entries without api) as raw" do
       registry = described_class.new(hosts_config: {

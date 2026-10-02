@@ -180,15 +180,7 @@ module Samagotchi
       prefix = prefix.strip.downcase
       return nil if hosts.keys.any? { |k| k.to_s.downcase == prefix }
 
-      raw = Samagotchi::ConfigFile.read_yaml(env: env)
-      raw = raw[Samagotchi::ConfigFile::HOSTS_KEY] if raw.is_a?(Hash)
-      return nil unless raw.is_a?(Hash)
-
-      cfg = raw.find { |name, _| name.to_s.strip.downcase == prefix }&.last
-      return nil unless cfg.is_a?(Hash)
-
-      enabled = cfg.key?("enabled") ? cfg["enabled"] : cfg[:enabled]
-      enabled == false || enabled.to_s.strip.downcase == "false" ? prefix : nil
+      Samagotchi::ConfigFile.disabled_host_names(env: env).include?(prefix) ? prefix : nil
     end
 
     # "box/x" named host box until '/' stopped naming a host: a saved
