@@ -40,6 +40,14 @@
       { "event": { "attempt": 1, "of": 1, "stopped_by": "loop-guard" }, "expected": "↻ cut by loop-guard, asking again (1/1)" }
     ]
   },
+  "empty_answer_lines": {
+    "note": "The one muted line every UI shows for a turn that ended with no answer (TurnNote.empty_answer_line, Formatting#format_empty_answer_line; turn_events.js emptyAnswerLine).",
+    "cases": [
+      { "retries": 0, "expected": "no answer: the model returned nothing" },
+      { "retries": 1, "expected": "no answer: the model returned nothing (after 1 retry)" },
+      { "retries": 3, "expected": "no answer: the model returned nothing (after 3 retries)" }
+    ]
+  },
   "retry_lines": {
     "note": "The live status while the provider is asked again (generation_retrying): Formatting#format_generation_retry_line; turn_events.js retryStatusLine. Both count the retry of all retries (1/3); the wording around it differs.",
     "cases": [

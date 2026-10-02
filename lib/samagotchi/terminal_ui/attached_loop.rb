@@ -939,13 +939,20 @@ module Samagotchi
 
         @screen.commit(prompt_line(nil, exchange[last_user][:content]))
         Array(exchange[last_user][:images]).each { |ref| @screen.commit(format_image_line(ref)) }
-        render_join_steps(messages, messages.index { |m| m.equal?(exchange[last_user]) })
-        # The saved answer is raw: the latest keeps its thinking, and one may
-        # be only a tool call.
-        answer = exchange[(last_user + 1)..].reverse_each
-                                           .map { |m| OutputFormatter.strip_markup(m[:content]) }
-                                           .find { |text| !text.empty? }
-        @screen.commit(last_lines(answer)) if answer
+        from = messages.index { |m| m.equal?(exchange[last_user]) }
+        render_join_steps(messages, from)
+        # A turn that ended with no answer: its notice, as live.
+        empty = messages.drop(from + 1).filter_map { |m| TurnNote.empty_answer(m) }.last
+        if empty
+          @screen.commit(format_empty_answer_line(empty[:retries] || empty["retries"]))
+        else
+          # The saved answer is raw: the latest keeps its thinking, and one may
+          # be only a tool call.
+          answer = exchange[(last_user + 1)..].reverse_each
+                                             .map { |m| OutputFormatter.strip_markup(m[:content]) }
+                                             .find { |text| !text.empty? }
+          @screen.commit(last_lines(answer)) if answer
+        end
         render_join_notes(messages, after_exchange: true)
       end
 

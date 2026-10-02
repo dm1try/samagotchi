@@ -2,6 +2,7 @@
 
 require_relative "../served_model"
 require_relative "../image_store"
+require_relative "../turn_note"
 
 module Samagotchi
   class TerminalUI
@@ -42,6 +43,12 @@ module Samagotchi
       def format_empty_retry_line(event)
         what = event[:stopped_by] ? "cut by #{event[:stopped_by]}" : "empty answer"
         paint("↻ #{what}, asking again (#{event[:attempt]}/#{event[:of]})", 90)
+      end
+
+      # "no answer: the model returned nothing (after 1 retry)", dim like the
+      # retry row: a turn that ended with no answer (TurnNote.empty_answer_line).
+      def format_empty_answer_line(retries)
+        paint(TurnNote.empty_answer_line(retries), 90)
       end
 
       # "retrying (1/3 in 0.5s): Errno::ECONNREFUSED": the retry of all the

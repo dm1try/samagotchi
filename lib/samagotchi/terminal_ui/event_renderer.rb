@@ -167,7 +167,12 @@ module Samagotchi
 
           @view.print_line(@view.format_tool_activity_line(activity))
         end
-        @view.print_line(summary[:output])
+        # No answer: chi's muted notice, never an empty answer line.
+        if summary[:empty_answer]
+          @view.print_line(@view.format_empty_answer_line(summary.dig(:empty_answer, :retries)))
+        else
+          @view.print_line(summary[:output])
+        end
         @view.print_line("iteration limit reached") if summary[:resumable]
       end
 

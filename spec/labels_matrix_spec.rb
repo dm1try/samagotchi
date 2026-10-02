@@ -51,6 +51,12 @@ RSpec.describe "Shared labels matrix (TUI side)" do
     end
   end
 
+  cases(matrix, "empty_answer_lines").each do |entry|
+    it "words the no-answer notice after #{entry["retries"]} retries" do
+      expect(fmt.format_empty_answer_line(entry["retries"])).to eq(expected(entry))
+    end
+  end
+
   cases(matrix, "retry_lines").each do |entry|
     it "words the provider retry #{entry["event"].inspect}" do
       expect(fmt.format_generation_retry_line(event(entry["event"]))).to eq(expected(entry))

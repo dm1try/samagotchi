@@ -16,6 +16,12 @@ and commands may change between minor versions. How releases are made:
   longer the answer text (`chi send --wait` saw it as an answer). The note carries a marker the UIs draw from, never
   sent to the model. Older sessions keep their `[No response]`.
 
+### Fixed
+
+- A turn with no answer shows one muted line in the attached TUI and the REPL,
+  `no answer: the model returned nothing (after 1 retry)`, like the retry row, and so does `chi --resume` when it was
+  the last turn (it showed `[No response]` or an earlier step's text as the answer, or nothing).
+
 ## [0.15.0] - 2026-10-02
 
 ### Added

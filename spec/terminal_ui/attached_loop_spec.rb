@@ -115,6 +115,24 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
                                   'tool> reading file (read path="NOPE.md"): error', "Done."])
     end
 
+    it "shows a last turn that ended with no answer as the notice, not an earlier step's text" do
+      feed(snapshot(messages: [{ role: "user", content: "go" },
+                               { role: "model", content: "Looking.", tool_calls: [{ id: "c1", name: "execute", arguments: { command: "true" } }] },
+                               { role: "tool_response", tool_call_id: "c1", content: "exit: 0" },
+                               Samagotchi::TurnNote.empty(retries: 1, steps: [{ role: "model", content: "<think>x</think>" }])]))
+
+      expect(screen.lines.map { |line| line.gsub(/\e\[[\d;]*m/, "") })
+        .to eq(["user> go", 'tool> running command (execute command="true"): ok',
+                "no answer: the model returned nothing (after 1 retry)"])
+    end
+
+    it "still shows an older session's [No response] as it was saved" do
+      feed(snapshot(messages: [{ role: "user", content: "go" }, { role: "model", content: "[No response]" },
+                               Samagotchi::TurnNote.empty.except(:empty_answer)]))
+
+      expect(screen.lines).to eq(["user> go", "[No response]"])
+    end
+
     it "shows only the end of an answer made of long lines" do
       feed(snapshot(messages: [{ role: "user", content: "essay" }, { role: "model", content: "#{"x" * 2000}END" }]))
 
