@@ -56,9 +56,14 @@ Who answers:
   the approval waits (in the session file) and shows on attach.
 - `-p … --non-interactive`: nobody; the call is denied ("No one to approve it
   (non-interactive run)").
+- A delegated child session (the `delegate` tool), while its parent waits:
+  the parent's user, on the parent's own card (the approval relay; see
+  [Sessions: Delegating](sessions.md#delegating)). The child's card stays
+  answerable too, the first answer wins. The parent's model sees only the
+  outcome.
 - A parent agent running chi as a sub-agent (`chi send --wait` exits 3 with
-  the approval): `chi answer` may deny it, never allow it by default. See
-  [Approvals from a parent agent](#approvals-from-a-parent-agent).
+  the approval): `chi answer` may deny it, never allow it by default, or leave
+  it for the user. See [Approvals from a parent agent](#approvals-from-a-parent-agent).
 
 The model gets one line on a deny. A rule's or hook's deny reads
 `[execute] Error: denied by guardrail (rule git-push, bundle guardrails): git push publishes commits. The user was not asked. Do not retry it or reach the same result another way; ask the user how to proceed.`
@@ -83,6 +88,15 @@ with one warning, and chi starts with no stored approvals (more asks, nothing lo
 The file tools can't write the store.
 
 ### Approvals from a parent agent
+
+A chi parent's `delegate` children don't need any of this: their approvals go
+to the user on the parent's own card (the approval relay). This section is the
+path for other agents, and for a chi parent that can't host the relay (a
+`--no-shared` REPL, `--non-interactive`): there the model gets the approval
+block and the rules below. With the relay, the same rules still hold for a
+parent model that answers its own relay card (a piped or marked `chi --attach`
+on the parent): that answer is a parent agent's, checked by the parent and
+again by the child.
 
 When another agent (Claude Code, Codex, a script) runs chi with
 `chi send --wait`, an approval comes back to it as exit 3 with `kind:

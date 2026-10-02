@@ -228,6 +228,16 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   `guardrails.parent_approvals` is `403 parent_approval_refused`, the question still open.
 - `POST /session/:id/question/dismiss` — leave the question unanswered (an approval: denied);
   `200`, or `409` when it is no longer pending.
+- `POST /session/:id/relay` — the approval relay, on a delegated child's worker
+  (`{action, relay_id, question_id}`): `opened` / `closed` (with a `reason`) set or clear the
+  pending question's `relayed_to` mark (`QuestionDesk#annotate`, `:question_relay`); `answered`
+  makes the child ask its parent's Bridge for the answer (`RelayVerifier`) and take it only for
+  this child and the question pending now. `200`, `409` no longer pending, `403` a parent agent's
+  allow beyond the child's `guardrails.parent_approvals`, `422 relay_unverified` (the question
+  stays open).
+- `POST /session/:id/relay/status` — on a parent's worker, `{relay_id}`: what its `RelayDesk`
+  (memory only) holds for that relay (`child_id`, `child_question_id`, `state`, `answer`, `by`);
+  `404` for an unknown id. A POST with a body because routes match exact paths.
 - `POST /session/:id/command` — a session command (`/model`, `/models`, `!rollback`, `!cmd`,
   `/continue`) for the worker loop; `202` with a `command_id` its `:command_ran` names, `400` when
   the line isn't one.

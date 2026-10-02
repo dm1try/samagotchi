@@ -53,12 +53,22 @@ command, folder, rule and reason.
 
 ## Approvals
 
+A chi parent (the `delegate` tool) doesn't go through any of this: its
+children's approvals go to its own user as its own approvals, and its model
+sees only how each was answered. See
+[Sessions: Delegating](sessions.md#delegating). What follows is for other
+parents (Claude Code, Codex, a script), and for a chi parent that can't host
+the relay (a `--no-shared` REPL, `--non-interactive`).
+
 An approval is a guardrail rule with `verdict: ask`: its user said "ask me". So
 a parent may deny it (`--option Deny --text "why"`, `--text` alone, or
 `--dismiss`) but not allow it: `chi answer` refuses an Allow with exit 1 and
 `allowing a tool call is up to the user: deny it (--option Deny --text WHY),
 and tell your user`. For an approval, the question block and `answer_with` give
-the deny command, not `--option N` or `chi --attach`. With
+the deny command, not `--option N` or `chi --attach`. The block also offers to
+leave it open: tell your user it waits in chi web (the bell and badge show
+it there), and `chi send --wait --format json ID` (no message) waits until
+they answer it. With
 `guardrails.parent_approvals: once` in chi's config.yml (it has no environment
 variable), "Allow once" goes through; the wider scopes never do,
 and neither does any allow on chi's own config, hooks or guardrail rules. See

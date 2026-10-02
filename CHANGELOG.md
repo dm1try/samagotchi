@@ -8,6 +8,21 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A delegated child's guardrail approvals go to the parent session's user (the approval relay): while the parent
+  waits (`delegate`, `delegate_result`), the child's approval opens as the parent's own approval, in the parent's web
+  page and attached terminal, with the same facts and diff and a line naming the delegate (linked) and its task. The
+  user answers once there; the parent's model sees only an outcome line in the tool's result (`approval relayed to
+  your user: execute: git push → allowed once`). The child verifies each answer with the parent's own worker before
+  taking it, and holds a parent agent's answer to its own `guardrails.parent_approvals`. The child's card stays
+  answerable (first answer wins) and says it waits in the parent too; `chi sessions list` shows it as
+  `waiting (in parent ab12)` (json `relayed_to`), and the web's bell rings once, for the parent's card. The other
+  running children's approvals are relayed during a wait too, one card at a time (`+1 more delegate waiting`), and a
+  grandchild's hop by hop. The time a card is open doesn't count against the wait's timeout.
+- For other parents (`chi send --wait`, `chi answer`), an approval's question block also offers to leave it open for
+  the user: `chi send --wait --format json ID` waits until they answer it in chi.
+
 ### Changed
 
 - A turn that ends with no answer (the empty-answer retries used up) saves the same shape from both loops: the hidden
@@ -15,6 +30,8 @@ and commands may change between minor versions. How releases are made:
   next prompt had two assistant turns in a row), and the chat loop's `(the model returned an empty answer)` is no
   longer the answer text (`chi send --wait` saw it as an answer). The note carries a marker the UIs draw from, never
   sent to the model. Older sessions keep their `[No response]`.
+- A parent agent's answer (`chi answer`, a marked `chi --attach`) no longer brings an archived session back to the
+  lists; only a human's does.
 
 ### Fixed
 
