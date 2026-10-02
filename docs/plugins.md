@@ -73,7 +73,7 @@ Settings work as they do for hooks ([hooks.md](hooks.md#settings)). An
 
 ### `chi.command(name, description, anytime: false) { |args, ctx| … }`
 
-This adds a slash command. `name` is `/name` (a–z, 0–9, `_` and `-`).
+This adds a slash command. `name` is `/name`: a lowercase letter first, then a–z, 0–9, `_` and `-`, at most 32 characters after the `/`.
 `args` is the text after the name, stripped, or `""` when there is none. The
 block returns the text to show (a String), or nil to show nothing. If the
 block raises, the user sees `/name: <error>`.
