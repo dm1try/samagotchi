@@ -14,9 +14,16 @@ command.
 ## Requirements
 
 - Ruby 3.3+
-- A model server: [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server`
-  by default; mlx-lm, oMLX and OpenAI-compatible servers also work
-  (see [Configuration](docs/configuration.md#model-server-transport))
+- A model server: any OpenAI-compatible chat completions server, or
+  [llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server` through
+  its own API (the native path, and the default)
+
+Tested: llama.cpp native (Qwen, Gemma 4), [Splash](https://github.com/incoai/splash)
+over the OpenAI API, and [OpenRouter](https://openrouter.ai) (remote, OpenAI API
+with `api_key_env`). vLLM, LM Studio, Ollama, mlx-lm, oMLX and other
+OpenAI-compatible servers should work over the OpenAI API but are not tested;
+mlx-lm and oMLX also have native transports, see
+[Configuration](docs/configuration.md#model-server-transport).
 
 ## Install
 
@@ -59,7 +66,7 @@ Point chi at your model server; it works out the rest and writes
 
 ```sh
 chi bootstrap 192.168.1.29:8081          # llama.cpp on another machine
-chi bootstrap localhost:11434            # Ollama (any OpenAI-compatible server)
+chi bootstrap localhost:11434            # any OpenAI-compatible server
 chi bootstrap https://openrouter.ai/api/v1 --key-env OPENROUTER_API_KEY
 chi bootstrap                            # look on this machine's usual ports
 ```
@@ -86,9 +93,8 @@ server:
   port: 8080
 ```
 
-`server:` is a llama.cpp `llama-server`. For any other OpenAI-compatible
-server (vLLM, LM Studio, Ollama, a gateway), name it under `hosts:` with
-`api: openai` instead:
+`server:` is a llama.cpp `llama-server`. For an OpenAI-compatible server,
+name it under `hosts:` with `api: openai` instead:
 
 ```yaml
 default:
