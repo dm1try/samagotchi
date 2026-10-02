@@ -12,6 +12,11 @@ and commands may change between minor versions. How releases are made:
 
 - `chi send --wait --format json` prints one JSON object on stdout however the wait ends: the reply, a question with its
   options and the `chi answer` command for it, or the status and a detail line, for scripts and parent agents.
+- `chi answer ID --question QID --option N` (or `--text`, `--dismiss`) answers the question a session waits on and
+  waits for what comes next, as `chi send --wait` does, so an agent running chi as a sub-agent can answer chi's
+  questions itself.
+- An approval answered with `chi answer` can be denied, not allowed: allowing is the user's (the web, `chi --attach`).
+  `guardrails.parent_approvals: once` lets "Allow once" through, never a wider scope.
 
 ### Changed
 

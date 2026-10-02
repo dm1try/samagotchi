@@ -56,6 +56,9 @@ Who answers:
   the approval waits (in the session file) and shows on attach.
 - `-p … --non-interactive`: nobody; the call is denied ("No one to approve it
   (non-interactive run)").
+- A parent agent running chi as a sub-agent (`chi send --wait` exits 3 with
+  the approval): `chi answer` may deny it, never allow it by default. See
+  [Approvals from a parent agent](#approvals-from-a-parent-agent).
 
 The model gets one line on a deny. A rule's or hook's deny reads
 `[execute] Error: denied by guardrail (rule git-push, bundle guardrails): git push publishes commits. The user was not asked. Do not retry it or reach the same result another way; ask the user how to proceed.`
@@ -78,6 +81,32 @@ A file that doesn't parse is moved aside to `approvals.json.corrupt-<UTC time>`
 with one warning, and chi starts with no stored approvals (more asks, nothing lost).
 `/guardrails` lists the rules and approvals; `/guardrails revoke N` removes one.
 The file tools can't write the store.
+
+### Approvals from a parent agent
+
+When another agent (Claude Code, Codex, a script) runs chi with
+`chi send --wait`, an approval comes back to it as exit 3 with `kind:
+approval`, and `chi answer` answers it. A rule with `verdict: ask` means "ask
+me", so by default a parent may only deny: `--option Deny --text "why"`,
+`--text` alone, or `--dismiss`. An Allow is refused (exit 1, `allowing a tool
+call is up to the user: approve it in the web or chi --attach ID`); the
+parent tells its user, who approves in the web or an attached terminal.
+
+```yaml
+guardrails:
+  parent_approvals: once    # default off
+```
+
+`once` lets `chi answer --option "Allow once"` through, picked by the
+option's scope, not its label; the wider scopes (this session, this repo or
+directory, the rule) stay with the web and the terminal. An approval that
+doesn't offer "once" can't be allowed from a parent. Env:
+`SAMAGOTCHI_GUARDRAILS_PARENT_APPROVALS`.
+
+This is a convention for a well-behaved parent, not a security boundary: the
+worker's Bridge and the web's answer route on localhost take an answer from
+any local process. chi's instructions for parents ([chi as a
+sub-agent](sub-agent.md)) tell them to use `chi answer` only.
 
 ## Protected paths
 

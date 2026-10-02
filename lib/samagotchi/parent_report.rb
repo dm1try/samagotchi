@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "delegate"
 require "json"
 
 module Samagotchi
@@ -18,6 +19,17 @@ module Samagotchi
     # The approval facts a parent needs; the rest (preview, branch) is the
     # card's.
     APPROVAL_KEYS = %i[tool label command paths args cwd rule source reason scopes].freeze
+
+    # stderr that keeps its last line: with --format json a failure before
+    # any wait is reported from it (#error_line).
+    class LastLine < SimpleDelegator
+      attr_reader :last
+
+      def puts(*lines)
+        @last = lines.last.to_s.chomp unless lines.empty?
+        __getobj__.puts(*lines)
+      end
+    end
 
     module_function
 

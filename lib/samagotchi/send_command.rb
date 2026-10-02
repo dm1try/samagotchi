@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "delegate"
-
 require_relative "session"
 require_relative "session_inbox"
 require_relative "session_manager"
@@ -145,7 +143,7 @@ module Samagotchi
       @json = options[:format] == "json"
       # With --format json stdout is one JSON object, whatever the end: a
       # failure before the wait is reported from stderr's last line.
-      @stderr = LastLine.new(@stderr) if @json
+      @stderr = ParentReport::LastLine.new(@stderr) if @json
       status = run_parsed(options)
       if @json && !@reported && status == 1
         detail = @stderr.last.to_s.delete_prefix("#{command_name}: ")
@@ -153,16 +151,6 @@ module Samagotchi
         @stdout.flush
       end
       status
-    end
-
-    # stderr that keeps its last line.
-    class LastLine < SimpleDelegator
-      attr_reader :last
-
-      def puts(*lines)
-        @last = lines.last.to_s.chomp unless lines.empty?
-        __getobj__.puts(*lines)
-      end
     end
 
     private

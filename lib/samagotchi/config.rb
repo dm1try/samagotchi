@@ -108,6 +108,8 @@ module Samagotchi
       # Which models get the rules with `models: small` (Guardrails::ModelSize): auto (32B or less by the name's size, an MoE's
       # active size counting), globs on the bare model name or its key, "|"-separated (a YAML list works too), or "" ([]) for none.
       Entry.new(key: "guardrails.small_models",  yaml_path: %w[guardrails small_models],  type: :string, default: "auto",           expose: %i[env config]),
+      # What `chi answer` lets a parent agent allow on an approval: off (deny only) or once ("Allow once", never a wider scope).
+      Entry.new(key: "guardrails.parent_approvals", yaml_path: %w[guardrails parent_approvals], type: :enum, default: "off", expose: %i[env config], enum_values: %w[off once]),
 
       Entry.new(key: "log.file",                 yaml_path: %w[log file],                 type: :string, default: nil,              expose: %i[env config cli]),
       Entry.new(key: "log.disable",              yaml_path: %w[log disable],              type: :bool,   default: false,            expose: %i[env config cli]),
